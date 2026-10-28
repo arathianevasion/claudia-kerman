@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 //
 // Building Block return: flies home from orbit around a moon of Kerbin to a Kerbin periapsis in the
-// atmosphere. Built on claudia_lib.ks (its patch, descent and mid-course correction helpers) and
+// atmosphere. Built on claudia_lib.ks (its patch, descent and Course Correction helpers) and
 // exec_node.ks; block-only helpers are prefixed return_. kOS lets a function be named return
 // when it is called as a value. The "//|" lines are Claudia's docs for it; the first is its summary.
 
@@ -26,7 +26,7 @@
 //|     The landing is hard to steer from here: read predicted_error_km, and when it is too far for the
 //|     Mission Goal, capture at Kerbin and call deorbit instead. Aim a splashdown offshore.
 //|   correction [true]: false leaves out the mid-course correction.
-//|   max_duration ["auto"]: the time to the predicted reentry plus 900 s.
+//|   max_duration ["auto"]: the time to the predicted reentry plus 900 s; a shorter one moves the correction sooner.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block; each burn gets them too.
 //| Extra results: kerbin_pe (m, the predicted Kerbin periapsis), reentry_ut (UT of the predicted
 //| entry into Kerbin's atmosphere, or of periapsis if that is above it), predicted_geo (lexicon lat,
@@ -39,7 +39,7 @@
 //| Fails with an option value it can't read, "not in orbit", "already orbiting Kerbin: lower the
 //| periapsis with exec_node instead", "return starts from orbit around a moon of Kerbin, not <body>",
 //| "a maneuver node is already planned: remove it first", "found no ejection that returns to
-//| Kerbin", "no return to Kerbin after the ejection burn" (or "after the correction"), an exec_node
+//| Kerbin", "found no correction: <why>", "no return to Kerbin after the ejection burn" (or "after the correction"), an exec_node
 //| failure (that burn's node is left in place), or an abort.
 //| Follow it with reentry, in the same sequence or the next (no Due Time needed): once the craft is
 //| in Kerbin's sphere of influence (after the correction it usually is; if ship:body is still the
@@ -171,6 +171,74 @@ function return_ejection_time {
   return best_ut.
 }
 
+// Before the correction at mid (UT): leaving the moon's sphere of influence before then is waited out (on rails, however
+// long), so the node is placed on the orbit round the planet the craft will be on. Returns "" or why the wait failed.
+function return_leave_moon {
+  parameter ctx, mid.
+  if ship:orbit:hasnextpatch {
+    local soi_ut is time:seconds + ship:orbit:nextpatcheta.
+    if soi_ut < mid - 120 {
+      return claudia_wait_until(ctx, soi_ut + 30).
+    }
+  }
+  return "".
+}
+
+// km the predicted landing may be from the target before the aimed correction stops looking.
+function return_aim_good_km {
+  return 2.
+}
+
+// What the aimed correction (return_aimed_correction) lowers for the path orb: the km from the
+// target to where it lands; over any real landing (Kerbin is under 2000 km round) when it misses
+// the atmosphere, so the search first moves towards the air by target_pe, or 1e5 with no path to dest.
+// p is claudia_patch's result for the path.
+function return_aim_cost {
+  parameter aim, p, target_pe.
+  if p:istype("String") {
+    return 1e5.
+  }
+  local km is aim(p:orbit, p:soi_ut).
+  if km < 0 {
+    return 1e4 + abs(p:orbit:periapsis - target_pe) / 1000.
+  }
+  return km.
+}
+
+// The correction with a landing target: a node at ut whose burn aims the landing the predictor gives at the target, by
+// coordinate descent over its components, flown with exec_node. aim is a delegate of an orbit patch round dest and the UT
+// it begins, that returns the km its predicted landing is from the target, or -1 if it doesn't come down; target_pe only
+// draws a path that misses the atmosphere towards it. The search stops once the landing is within return_aim_good_km()
+// of the target (the block asks only when it isn't yet), and nothing is burned when the fix is under 0.1 m/s. Returns
+// lexicon("reason", "" or why the block fails, "dv", m/s burned).
+function return_aimed_correction {
+  parameter ctx, dest, target_pe, ut, aim.
+  local done is lexicon("reason", "", "dv", 0).
+  local good is return_aim_good_km().
+  local nd is node(ut, 0, 0, 0).
+  add nd.
+  local found is claudia_descend({
+    parameter x.
+    set nd:radialout to x[0].
+    set nd:normal to x[1].
+    set nd:prograde to x[2].
+    return return_aim_cost(aim, claudia_patch(nd:orbit, dest), target_pe).
+  }, list(0, 0, 0), list(1, 1, 1), 10, good).
+  set nd:radialout to found:x[0].
+  set nd:normal to found:x[1].
+  set nd:prograde to found:x[2].
+  if nd:deltav:mag < 0.1 {
+    remove nd.
+    return done.
+  }
+  local burned is claudia_burn(ctx, nd).
+  set done:dv to burned:dv_used.
+  if not burned:success {
+    set done:reason to burned:reason.
+  }
+  return done.
+}
+
 function return {
   parameter options is lexicon().
   local extra is lexicon("kerbin_pe", -1, "reentry_ut", -1, "predicted_geo", lexicon(), "predicted_error_km", -1).
@@ -268,7 +336,33 @@ function return {
       claudia_make_safe().
       return claudia_finish(ctx, false, ticked, extra).
     }
-    local fixed is claudia_correct(ctx, planet, opt:target_pe, return_reentry_ut(home:orbit), aim).
+    // Halfway to reentry, once out of the moon's sphere of influence; sooner if max_duration ends first (#368).
+    local mid is (time:seconds + return_reentry_ut(home:orbit)) / 2.
+    local waited is return_leave_moon(ctx, mid).
+    if waited <> "" {
+      claudia_make_safe().
+      return claudia_finish(ctx, false, waited, extra).
+    }
+    local fixed is lexicon("reason", "", "dv", 0).
+    local needed is false.
+    if return_aims(opt) {
+      set needed to return_aim_cost(aim, claudia_patch(ship:orbit, planet), opt:target_pe) > return_aim_good_km().
+    } else {
+      set needed to abs(claudia_pe_error(ship:orbit, planet, opt:target_pe)) > claudia_correction_good_m().
+    }
+    if needed {
+      // 300 s to turn to and lead the burn, as the ejection's earliest departure leaves (claudia_earliest).
+      local when is claudia_correction_ut(mid, time:seconds, 300, ctx:start_ut, opt:max_duration).
+      if when:reason <> "" {
+        return claudia_finish(ctx, false, when:reason, extra).
+      }
+      if return_aims(opt) {
+        set fixed to return_aimed_correction(ctx, planet, opt:target_pe, when:ut, aim).
+      } else {
+        // The Course Correction is the mod's solver, a block-internal call (ADR 0007), so it sits in the block.
+        set fixed to claudia_fly_correction(ctx, addons:claudia:correctionburn(claudia_correction_ask(planet:name, opt:target_pe, when:ut))).
+      }
+    }
     if fixed:reason <> "" {
       return claudia_finish(ctx, false, fixed:reason, extra).
     }

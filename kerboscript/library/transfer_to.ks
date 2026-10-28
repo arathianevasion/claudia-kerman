@@ -3,9 +3,9 @@
 //
 // Building Block transfer_to, the spec's `transfer` (kOS already has a built-in TRANSFER, for moving
 // resources, which a function may not hide): flies from orbit around a body to an encounter with
-// one of its moons, finding the ejection with ADDONS:CLAUDIA:EJECTIONBURN. Built on
-// claudia_lib.ks and exec_node.ks (the patch, descent and mid-course correction helpers it shares with
-// return are in claudia_lib.ks); block-only helpers are prefixed transfer_to_. The "//|" lines are
+// one of its moons, finding the ejection with ADDONS:CLAUDIA:EJECTIONBURN and the Course Correction with
+// ADDONS:CLAUDIA:CORRECTIONBURN. Built on claudia_lib.ks and exec_node.ks (the patch and Course Correction helpers it
+// shares with return are in claudia_lib.ks); block-only helpers are prefixed transfer_to_. The "//|" lines are
 // Claudia's docs for it; the first is its summary.
 
 @lazyglobal off.
@@ -22,7 +22,7 @@
 //|     Mun from a 100 km orbit); a time (UT seconds) searches the same span from that time. It warps
 //|     there on rails: no Due Time needed.
 //|   correction [true]: false leaves out the mid-course correction.
-//|   max_duration ["auto"]: the time to the planned arrival plus 900 s.
+//|   max_duration ["auto"]: the time to the planned arrival plus 900 s; a shorter one moves the correction sooner.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block; each burn gets them too.
 //| Extra results: encounter_ut (UT the craft enters the target's sphere of influence),
 //| target_pe_actual (m, the periapsis predicted at the target), correction_dv (m/s the corrections
@@ -35,7 +35,7 @@
 //| synodic period plus the turn time): -1 if it failed before the node was planned.
 //| Fails with "target is required", "target_pe is required", an option value it can't read, "no body
 //| named <x>", a target that doesn't orbit the craft's body, "not in orbit", "a maneuver node is
-//| already planned: remove it first", "found no transfer: <why>", "no encounter with
+//| already planned: remove it first", "found no transfer: <why>", "found no correction: <why>", "no encounter with
 //| <target> after the ejection burn, and no correction fits: <why>" (or "the correction failed:
 //| <why>"; or "after the correction"), an exec_node failure (its node stays), or an abort. The craft must be the active vessel.
 //| Capture isn't part of transfer_to: inside the target's sphere of influence, fly
@@ -207,10 +207,18 @@ function transfer_to {
       claudia_make_safe().
       return claudia_finish(ctx, false, ticked, extra).
     }
-    local fixed is claudia_correct(ctx, dest, opt:target_pe, enc:soi_ut).
-    set extra:correction_dv to round(extra:correction_dv + fixed:dv, 2).
-    if fixed:reason <> "" {
-      return claudia_finish(ctx, false, fixed:reason, extra).
+    // The Course Correction halfway to the encounter (sooner if max_duration ends first, #368), found by the mod's solver:
+    // a block-internal call (ADR 0007), so it sits in the block.
+    if abs(claudia_pe_error(ship:orbit, dest, opt:target_pe)) > claudia_correction_good_m() {
+      local when is claudia_correction_ut((time:seconds + enc:soi_ut) / 2, time:seconds, turn:turn_time + 60, ctx:start_ut, opt:max_duration).
+      if when:reason <> "" {
+        return claudia_finish(ctx, false, when:reason, extra).
+      }
+      local fixed is claudia_fly_correction(ctx, addons:claudia:correctionburn(claudia_correction_ask(dest:name, opt:target_pe, when:ut))).
+      set extra:correction_dv to round(extra:correction_dv + fixed:dv, 2).
+      if fixed:reason <> "" {
+        return claudia_finish(ctx, false, fixed:reason, extra).
+      }
     }
     set enc to claudia_patch(ship:orbit, dest).
     if enc:istype("String") {

@@ -311,6 +311,52 @@ namespace ClaudiaKermin.Core.Tools
             };
         }
 
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:CORRECTIONBURN</c>, for <c>transfer_to</c> and <c>return</c> (#449): the Course Correction, the smallest
+        /// burn that brings the craft's trajectory to <c>target</c> (a body's name) at <c>target_pe</c> (m) and, if given, at
+        /// <c>target_inc</c> (degrees), by <see cref="Tools.CorrectionBurn"/>. <c>earliest_ut</c> (UT; now if missing) and
+        /// <c>latest_ut</c> (UT; earliest_ut if missing) are the burn's window: the same UT burns then, a wider window lets the
+        /// solver choose the time. <c>pe_tolerance</c> (m, default 1000) and <c>inc_tolerance</c> (degrees, default 0.5) are how
+        /// close the answer must be. Gives <c>error</c> "", <c>ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver
+        /// node components), <c>dv</c>, <c>pe_predicted</c> (m) and <c>inc_predicted</c> (degrees); a best burn outside the
+        /// tolerances gives its <c>error</c> with the rest; a solve that could not start, only <c>error</c>, "found no correction: &lt;why&gt;".
+        /// </summary>
+        public static IDictionary<string, object> CorrectionBurn(IDictionary<string, object> input, GameSnapshot snapshot)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            if (snapshot == null) return Error(Tools.CorrectionBurn.Fail("no Game Snapshot").Error);
+            object target;
+            ask.TryGetValue("target", out target);
+            if (!(target is string)) return Error(Tools.CorrectionBurn.Fail("target must be a body's name").Error);
+            var pe = NumberOrNull(ask, "target_pe");
+            if (!pe.HasValue) return Error(Tools.CorrectionBurn.Fail("target_pe is required").Error);
+            if (ask.ContainsKey("target_inc") && !(ask["target_inc"] is double))
+                return Error(Tools.CorrectionBurn.Fail("target_inc must be a number of degrees").Error);
+            var earliest = Number(ask, "earliest_ut", snapshot.Ut);
+            var plan = Tools.CorrectionBurn.Find(snapshot, new CorrectionAsk
+            {
+                Target = (string)target,
+                TargetPe = pe.Value,
+                TargetInc = NumberOrNull(ask, "target_inc"),
+                EarliestUt = earliest,
+                LatestUt = Number(ask, "latest_ut", earliest),
+                PeTolerance = Number(ask, "pe_tolerance", 1000),
+                IncTolerance = Number(ask, "inc_tolerance", 0.5),
+            });
+            if (!plan.HasBurn) return Error(plan.Error);
+            return new Dictionary<string, object>
+            {
+                { "error", plan.Error ?? "" },
+                { "ut", plan.Ut },
+                { "prograde", plan.Prograde },
+                { "normal", plan.Normal },
+                { "radial", plan.Radial },
+                { "dv", plan.DeltaV },
+                { "pe_predicted", plan.PePredicted },
+                { "inc_predicted", plan.IncPredicted },
+            };
+        }
+
         private static double Number(IDictionary<string, object> ask, string key, double fallback)
         {
             object value;
