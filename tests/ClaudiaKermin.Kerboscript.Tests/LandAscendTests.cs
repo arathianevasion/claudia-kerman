@@ -637,6 +637,8 @@ print land_brake_estimate(samples, a_brake, 1.1).");
         {
             Assert.Equal("", One("land_brake_guard(507, 26900, 526.9, 28899)"));
             Assert.Equal("", One("land_brake_guard(507, 26900, 300, 20000)"));
+            // Altitude up 3 km over a rim, clearance steady: no trip (#433).
+            Assert.Equal("", One("land_brake_guard(507, 1400, 400, 1400)"));
             Assert.Equal("braking added speed: v_h 527 m/s, 507 when braking began", One("land_brake_guard(507, 26900, 527, 26900)"));
             Assert.Equal("braking climbed 2.1 km", One("land_brake_guard(507, 26900, 400, 29000)"));
             Assert.Equal("braking climbed 2 km", One("land_brake_guard(507, 26900, 400, 28900)"));
