@@ -18,7 +18,7 @@ namespace ClaudiaKermin.Core.Tools
     /// <c>match_plane</c>, <c>shift_lan</c>, <c>resonant</c>, <c>stationary</c>) are in <see cref="OrbitChange"/>, each at a
     /// <see cref="BurnTime"/> reference; every goal reads the element it set back from the propagated orbit.
     /// </summary>
-    internal sealed class SolveBurn : IPlanningTool
+    internal sealed partial class SolveBurn : IPlanningTool
     {
         /// <summary>The finest burn step the search scans with, m/s: a transfer window is tens of m/s wide.</summary>
         private const double ScanStep = 2;
@@ -69,7 +69,8 @@ namespace ClaudiaKermin.Core.Tools
                     + "match_plane: target's plane, at the cheaper of rel_an and rel_dn; "
                     + "shift_lan: value degrees, default where the planes cross; "
                     + "resonant: value orbits while target (default this orbit) makes of, at default pe; "
-                    + "stationary: synchronous circle. "
+                    + "stationary: synchronous circle; "
+                    + "intercept_at: Lambert arc, arrive_ut or tof. "
                     + "Its blocks are circularize, exec_node and tune_pe: call it to budget their burn instead of working it out, then "
                     + "pass the block the goal, or exec_node the node. Don't call it to check a burn (predict_burn) or for the craft's "
                     + "delta-v (stage_performance).";
@@ -81,12 +82,13 @@ namespace ClaudiaKermin.Core.Tools
             get
             {
                 return "{\"type\":\"object\",\"properties\":{"
-                    + "\"goal\":{\"type\":\"string\",\"enum\":[\"circularize\",\"set_ap\",\"set_pe\",\"next_patch_pe\",\"set_sma\",\"set_ecc\",\"ellipticize\",\"set_inc\",\"match_plane\",\"shift_lan\",\"resonant\",\"stationary\"]},"
+                    + "\"goal\":{\"type\":\"string\",\"enum\":[\"circularize\",\"set_ap\",\"set_pe\",\"next_patch_pe\",\"set_sma\",\"set_ecc\",\"ellipticize\",\"set_inc\",\"match_plane\",\"shift_lan\",\"resonant\",\"stationary\",\"intercept_at\"]},"
                     + "\"at\":{\"description\":\"A word from the description, \\\"altitude <m> [ascending|descending]\\\", a UT in seconds or \\\"in <s>\\\". rel_an, rel_dn and closest_approach use target.\"},"
                     + "\"target\":{\"type\":\"string\",\"description\":\"A body.\"},"
                     + "\"value\":{\"type\":\"number\"},"
                     + "\"pe\":{\"type\":\"number\"},\"ap\":{\"type\":\"number\"},"
                     + "\"of\":{\"type\":\"number\",\"description\":\"Default 1.\"},"
+                    + "\"arrive_ut\":{\"type\":\"number\"},\"tof\":{\"type\":\"number\"},\"retrograde\":{\"type\":\"boolean\"},\"revolutions\":{\"type\":\"integer\"},"
                     + "\"direction\":{\"type\":\"string\",\"enum\":[\"prograde\",\"retrograde\"],\"description\":\"next_patch_pe only. Default prograde.\"}"
                     + "},\"required\":[\"goal\"],\"additionalProperties\":false}";
             }
@@ -112,13 +114,24 @@ namespace ClaudiaKermin.Core.Tools
             var pe = JsonNode.Double(input["pe"]);
             var ap = JsonNode.Double(input["ap"]);
             var of = JsonNode.Double(input["of"]);
+            var arriveUt = JsonNode.Double(input["arrive_ut"]);
+            var tof = JsonNode.Double(input["tof"]);
+            var retrograde = JsonNode.Bool(input["retrograde"]);
+            var revolutions = JsonNode.Long(input["revolutions"]);
             var word = at != null && at.Kind == JsonKind.String ? at.StringValue.Trim().ToLowerInvariant() : null;
             if (goal != "next_patch_pe" && direction != null) return PlanningJson.Error("direction is for next_patch_pe only");
             if (goal != "ellipticize" && (pe.HasValue || ap.HasValue)) return PlanningJson.Error("pe and ap are for ellipticize only; set_ap and set_pe take value");
             if (goal != "resonant" && of.HasValue) return PlanningJson.Error("of is for resonant only");
+            if (goal != "intercept_at" && (input["arrive_ut"] != null || input["tof"] != null || input["retrograde"] != null || input["revolutions"] != null))
+                return PlanningJson.Error("arrive_ut, tof, retrograde and revolutions are for intercept_at only");
+            if (goal == "intercept_at")
+            {
+                var bad = InterceptInputs(input, target, arriveUt, tof, retrograde, revolutions);
+                if (bad != null) return PlanningJson.Error(bad);
+            }
             if (target != null && (goal == "circularize" || goal == "set_ap" || goal == "set_pe" || goal == "stationary"))
                 return PlanningJson.Error("target is for next_patch_pe and the other goals that take at, and for match_plane and resonant; " + goal + " takes none");
-            if (target != null && goal != "match_plane" && goal != "resonant" && word != "rel_an" && word != "rel_dn" && word != "closest_approach")
+            if (target != null && goal != "match_plane" && goal != "resonant" && word != "rel_an" && word != "rel_dn" && word != "closest_approach" && goal != "intercept_at")
                 return PlanningJson.Error("target is for at rel_an, rel_dn or closest_approach, or for match_plane and resonant");
             if (target == null && goal == "match_plane") return PlanningJson.Error("match_plane needs target, the body whose orbit plane to match");
             if (at != null && (goal == "set_ap" || goal == "set_pe"))
@@ -143,6 +156,7 @@ namespace ClaudiaKermin.Core.Tools
                 case "match_plane": return SolveMatchPlane(setup, path, at);
                 case "shift_lan": return SolveShiftLan(setup, path, value.Value, at);
                 case "stationary": return SolveStationary(setup, path);
+                case "intercept_at": return SolveIntercept(setup, path, at, arriveUt, tof, retrograde ?? false, (int)(revolutions ?? 0));
                 default: return SolveAt(setup, path, goal, value, pe, ap, of, at);
             }
         }
@@ -150,7 +164,7 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>Why the goal's own fields don't fit it; null when they do. Every build checks them, unlike MechJeb's Debug-only checks.</summary>
         private static string Inputs(string goal, double? value, double? pe, double? ap, double? of)
         {
-            var takesValue = goal != "circularize" && goal != "ellipticize" && goal != "match_plane" && goal != "stationary";
+            var takesValue = goal != "circularize" && goal != "ellipticize" && goal != "match_plane" && goal != "stationary" && goal != "intercept_at";
             if (!takesValue && value.HasValue) return goal + " takes no value";
             if (takesValue && !value.HasValue) return goal + " needs a value, " + ValueMeaning(goal);
             if (value.HasValue && (double.IsNaN(value.Value) || double.IsInfinity(value.Value))) return "value must be a finite number";
@@ -554,7 +568,7 @@ namespace ClaudiaKermin.Core.Tools
         /// orbit predict_burn's propagation leaves, and the predict_burn result for it. <paramref name="dv"/> is the velocity
         /// change at (<paramref name="r"/>, <paramref name="v"/>), the craft's state at <paramref name="ut"/>.
         /// </summary>
-        private static ToolOutcome Answer(PredictBurn.Setup setup, string goal, double ut, Vec3 r, Vec3 v, Vec3 dv)
+        private static ToolOutcome Answer(PredictBurn.Setup setup, string goal, double ut, Vec3 r, Vec3 v, Vec3 dv, Action<JsonWriter> extra = null)
         {
             double prograde, normal, radial;
             OrbitChange.NodeComponents(r, v, dv, out prograde, out normal, out radial);
@@ -580,6 +594,7 @@ namespace ClaudiaKermin.Core.Tools
             if (!burn.BurnTime.HasValue) json.Field("burn_time_note", "the craft's stages don't give it");
             else if (burn.BurnTime.Value > PredictBurn.LongBurnSeconds) json.Field("long_burn", true);
             Achieved(json.Name("achieved").BeginObject(), setup, goal, burn, path).EndObject();
+            if (extra != null) extra(json);
             json.Name("predict_burn").Raw(predicted.Json).EndObject();
             var along = Math.Abs(prograde) >= magnitude - 1e-6 * Math.Max(1, magnitude);
             return new ToolOutcome
@@ -621,6 +636,8 @@ namespace ClaudiaKermin.Core.Tools
                     return json.Field("lan", PlanningJson.Round(lan < 0 ? lan + 360 : lan, 4)).Field("inclination", PlanningJson.Round(orbit.Inclination, 4));
                 case "resonant":
                     return json.Field("period", PlanningJson.Round(orbit.Period, 1));
+                case "intercept_at":
+                    return json.Field("sma", PlanningJson.Round(orbit.A, 0)).Field("eccentricity", PlanningJson.Round(orbit.E, 6));
                 default:
                     return json.Field("sma", PlanningJson.Round(orbit.A, 0)).Field("eccentricity", PlanningJson.Round(orbit.E, 6)).Field("period", PlanningJson.Round(orbit.Period, 1));
             }
