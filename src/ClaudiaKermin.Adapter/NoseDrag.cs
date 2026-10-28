@@ -34,15 +34,32 @@ namespace ClaudiaKermin.Adapter
         /// <summary>Stock's DragCubeList.AddSurfaceDragDirection's areaDrag (decompiled), with the face areas given.</summary>
         public static double Area(DragCubeList cubes, float[] areas, Vector3 direction, float mach)
         {
+            return Area(cubes, areas, cubes.WeightedDrag, direction, mach);
+        }
+
+        /// <summary>The same with the faces' drag coefficients given too: one cube's own, for a parachute's open cubes (#462).</summary>
+        public static double Area(DragCubeList cubes, float[] areas, float[] drags, Vector3 direction, float mach)
+        {
             double sum = 0;
             for (var f = 0; f < Faces.Length; f++)
             {
                 var dot = Vector3.Dot(direction, Faces[f]);
                 var area = areas[f] * PhysicsGlobals.DragCurveValue(cubes.SurfaceCurves, (dot + 1) * 0.5f, mach);
-                var cd = cubes.WeightedDrag[f];
+                var cd = drags[f];
                 sum += area * (cd < 1 ? Mathf.Pow(cubes.DragCurveCd.Evaluate(cd), cubes.DragCurveCdPower.Evaluate(mach)) : cd);
             }
             return sum;
+        }
+
+        /// <summary>
+        /// The part's body-lift vector (its own axes) for the airflow along <paramref name="local"/>, as stock's cubes give it before
+        /// the part's and stock's multipliers and the lift-by-Mach curve (#462).
+        /// </summary>
+        public static Vector3 Lift(Part part, Vector3 local)
+        {
+            var data = default(DragCubeList.CubeData);
+            part.DragCubes.AddSurfaceDragDirection(local, 0, ref data);
+            return data.liftForce;
         }
 
         /// <summary>Stock's multipliers on areaDrag, all but the pseudo-Reynolds curve, which depends on the air.</summary>

@@ -27,7 +27,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [Fact]
         public void The_options_take_the_spec_defaults()
         {
-            Assert.Equal("required|auto|10|none|auto", One("deorbit_defaults():values:join(\"|\") + \"|\" + claudia_options(lexicon(), deorbit_defaults(), \"auto\"):opt:max_duration"));
+            Assert.Equal("required|auto|5|none|auto", One("deorbit_defaults():values:join(\"|\") + \"|\" + claudia_options(lexicon(), deorbit_defaults(), \"auto\"):opt:max_duration"));
         }
 
         [Theory]
