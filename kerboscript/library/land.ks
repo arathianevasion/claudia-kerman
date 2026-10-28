@@ -61,7 +61,7 @@
 //| geo (lat, lng, alt) is the common field once landed. Fails with "land flies airless
 //| bodies only", an orbit it can't land from, a site off the ground track, no daylight pass,
 //| "no site in the <biome> biome" (saying how far the search got), landing outside the biome asked for,
-//| not enough delta-v, "deorbit left periapsis" well under the plan, braking that added speed or climbed, "tipped over", out of fuel, or an abort; a failure in the
+//| not enough delta-v, "deorbit left periapsis" under the plan, braking that raised periapsis or climbed, "tipped over", out of fuel, or an abort; a failure in the
 //| descent leaves the craft safe but falling, so give it the delta-v (and TWR over 1.5) it needs.
 //| Tool: stage_performance for the delta-v and TWR at the body (and find_landing_site, as above).
 //| Example: `local res is land(lexicon("target", latlng(-0.5, 22), "daylight", true)). addons:claudia:report(res).`
@@ -524,14 +524,15 @@ function land_turn_back {
   return s < -max_overshoot and speed < 1.
 }
 
-// Why braking that makes things worse must stop (#431), or "": horizontal speed v_h (m/s) 20 m/s or
-// more over its value when braking began (v_h0; over 50, the speed braking may close on the site at),
-// or the clearance over the highest ground ahead (h_now, m; land_clearance) 2000 m or more over what it
-// was when braking began (h0). Clearance, not altitude: a descent may rightly climb over a rim. Pure.
+// Why braking that makes things worse must stop (#431), or "": periapsis pe (m; negative below sea level)
+// 1000 m or more over its value when braking began (pe0), or the clearance over the highest ground ahead
+// (h_now, m; land_clearance) 2000 m or more over what it was when braking began (h0). Periapsis, not
+// speed: free fall gains speed but never raises periapsis; only thrust along the track does (#434).
+// Clearance, not altitude: a descent may rightly climb over a rim. Pure.
 function land_brake_guard {
-  parameter v_h0, h0, v_h, h_now.
-  if v_h >= max(50, v_h0) + 20 {
-    return "braking added speed: v_h " + round(v_h) + " m/s, " + round(v_h0) + " when braking began".
+  parameter pe0, h0, pe, h_now.
+  if pe - pe0 >= 1000 {
+    return "braking raised periapsis: " + round(pe / 1000, 1) + " km, " + round(pe0 / 1000, 1) + " when braking began".
   }
   if h_now - h0 >= 2000 {
     return "braking climbed " + round((h_now - h0) / 1000, 1) + " km".
@@ -1720,7 +1721,7 @@ function land_coast {
 // phase and every 2 s to the log (#365). turn: the TURNTIME lexicon (top_rate, turn_s) for the turn
 // allowance (#380). under: land_measure_underhang's, whose droppable Underhang it drops (land_drop_due,
 // land_drop) and then lands clear of (#427). It measures the site along the surface and carries the
-// braking direction round the body (#431), and stops braking that adds speed or climbs
+// braking direction round the body (#431), and stops braking that raises periapsis or climbs
 // (land_brake_guard): throttle 0, safe, traced. Returns "" or why it failed.
 function land_descend {
   parameter ctx, aim, extra, turn, under.
@@ -1733,7 +1734,8 @@ function land_descend {
   // moving back along it (land_is_reversed).
   local axis is v(0, 0, 0).
   local reversed is false.
-  // Horizontal speed and clearance (h, unclamped) when braking began, for the guard (land_brake_guard).
+  // Periapsis, horizontal speed and clearance (h, unclamped) when braking began, for the guard (land_brake_guard).
+  local pe_start is 0.
   local v_h_start is 0.
   local h_began is 0.
   set extra:reversals to 0.
@@ -1831,6 +1833,7 @@ function land_descend {
         set h_start to max(500, h).
         // At least enough to close on a site moved up to max_divert.
         set v_top to max(50, v_h:mag).
+        set pe_start to ship:orbit:periapsis.
         set v_h_start to v_h:mag.
         set h_began to h.
         set axis to fall_ahead.
@@ -1856,13 +1859,13 @@ function land_descend {
       set tset to 0.
     }
     if braking {
-      // Braking that adds speed or climbs is making things worse: stop, and leave the rest of the fuel
-      // in the tanks (#431).
-      local tripped is land_brake_guard(v_h_start, h_began, v_h:mag, h).
+      // Braking that raises periapsis or climbs is making things worse: stop, and leave the rest of the
+      // fuel in the tanks (#431).
+      local tripped is land_brake_guard(pe_start, h_began, ship:orbit:periapsis, h).
       if tripped <> "" {
         set tset to 0.
         addons:claudia:blocktrace("land", lexicon("phase", "guard", "error", tripped, "v_h", round(v_h:mag, 1), "v_h_start", round(v_h_start, 1),
-          "h", round(h), "h_start", round(h_began), "dist", round(dist), "pe", round(ship:orbit:periapsis))).
+          "h", round(h), "h_start", round(h_began), "dist", round(dist), "pe", round(ship:orbit:periapsis), "pe_start", round(pe_start))).
         claudia_make_safe().
         return tripped.
       }
