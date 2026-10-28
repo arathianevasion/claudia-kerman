@@ -28,6 +28,8 @@ namespace ClaudiaKermin.Adapter
                 Situation = vessel.situation.ToString(),
                 Body = vessel.mainBody != null ? vessel.mainBody.bodyName : "",
                 Altitude = vessel.altitude,
+                Latitude = vessel.latitude,
+                CelestialLongitude = vessel.mainBody != null ? ((vessel.longitude + vessel.mainBody.rotationAngle) % 360 + 360) % 360 : 0,
                 VerticalSpeed = vessel.verticalSpeed,
             };
             snapshot.Craft.Name = vessel.vesselName ?? "";

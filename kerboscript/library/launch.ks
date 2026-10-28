@@ -42,7 +42,7 @@
 //| hop's coast, between stages) only fins and reaction wheels hold it: a craft with neither tumbles in
 //| thick air. Engines are staged into from the pad, and launch clamps released.
 //| Extra results: ap_error (m, apoapsis minus target_ap when the block ended; a hop's shows drag
-//| loss), max_q (Pa, highest dynamic pressure), coast_ap (m, apoapsis at first engine cutoff).
+//| loss), max_q (Pa, highest dynamic pressure), coast_ap (m, apoapsis at first engine cutoff), lan_actual (degrees, the orbit's LAN at the end).
 //| Fails with "launch starts on the ground", "no atmosphere on <body>: use ascend", "no thrust", a
 //| launch_at it can't use, "lost control: ..." (saying whether it was burning or
 //| coasting, the throttle, q and the nose's angle off the airflow), "fell back into the
@@ -152,29 +152,6 @@ function launch_throttle_floor {
   return min(1, mass_t * g / thrust_kn).
 }
 
-// How long until a launch site at latitude lat (degrees) and celestial longitude site_lng
-// (degrees: its longitude plus the body's rotation angle) next passes under the plane of an orbit of
-// inclination inc and longitude of ascending node lan, on a body turning once in period s.
-// lexicon("wait", s or -1 if the site never passes under it, "north", true if that pass launches
-// northward). An equatorial plane gives no wait.
-function launch_plane_wait {
-  parameter lat, site_lng, inc, lan, period.
-  if abs(sin(inc)) < 0.0001 {
-    return lexicon("wait", 0, "north", true).
-  }
-  local x is tan(lat) / tan(inc).
-  if abs(x) > 1 {
-    return lexicon("wait", -1, "north", true).
-  }
-  local offset is arcsin(x).
-  local north_wait is claudia_wrap_angle(lan + offset - site_lng) / 360 * period.
-  local south_wait is claudia_wrap_angle(lan + 180 - offset - site_lng) / 360 * period.
-  if north_wait <= south_wait {
-    return lexicon("wait", north_wait, "north", true).
-  }
-  return lexicon("wait", south_wait, "north", false).
-}
-
 // Dynamic pressure (Pa) above which the air pushes hard enough on the craft for max_aoa to apply.
 function launch_aero_q {
   return 500.
@@ -275,7 +252,7 @@ function launch_lost_control {
 // When to launch and into what inclination: lexicon("error", "" or why not, "wait", s, "inc", degrees).
 // options are the ones given (to tell whether target_inc was).
 function launch_when {
-  parameter opt, options.
+  parameter opt, options, target_ap.
   local plan is lexicon("error", "", "wait", 0, "inc", opt:target_inc).
   local go_at is opt:launch_at.
   if go_at:istype("String") {
@@ -301,17 +278,21 @@ function launch_when {
     set plan:error to "launch_at " + go_at:name + " doesn't orbit " + ship:body:name.
     return plan.
   }
-  local plane is launch_plane_wait(ship:latitude, ship:longitude + ship:body:rotationangle, go_at:orbit:inclination, go_at:orbit:lan, ship:body:rotationperiod).
-  if plane:wait < 0 {
-    set plan:error to "the pad never passes under " + go_at:name + "'s plane: inclination " + round(go_at:orbit:inclination, 2) + " is below latitude " + round(abs(ship:latitude), 2).
+  local win is addons:claudia:launchwindow(lexicon("inc", go_at:orbit:inclination, "lan", go_at:orbit:lan, "target_ap", target_ap)).
+  return launch_apply_window(plan, win, go_at:name, options:haskey("target_inc")).
+}
+
+// plan with the window win (ADDONS:CLAUDIA:LAUNCHWINDOW's lexicon) for the plane of name: its error, or the wait and,
+// unless target_inc was given, the inclination (negative for the southbound window).
+function launch_apply_window {
+  parameter plan, win, name, inc_given.
+  if win:error <> "" {
+    set plan:error to "launch_at " + name + ": " + win:error.
     return plan.
   }
-  set plan:wait to plane:wait.
-  if not options:haskey("target_inc") {
-    set plan:inc to go_at:orbit:inclination.
-    if not plane:north {
-      set plan:inc to -plan:inc.
-    }
+  set plan:wait to win:wait.
+  if not inc_given {
+    set plan:inc to win:inc.
   }
   return plan.
 }
@@ -335,7 +316,7 @@ function launch_release_clamps {
 
 function launch {
   parameter options is lexicon().
-  local extra is lexicon("ap_error", 0, "max_q", 0, "coast_ap", 0).
+  local extra is lexicon("ap_error", 0, "max_q", 0, "coast_ap", 0, "lan_actual", 0).
   local ctx is claudia_begin("launch", options, launch_defaults(), "auto").
   if ctx:error <> "" {
     return claudia_finish(ctx, false, ctx:error, extra).
@@ -359,7 +340,7 @@ function launch {
   set extra:ap_error to round(ship:apoapsis - target_ap).
 
   // Wait on the pad.
-  local go is launch_when(opt, options).
+  local go is launch_when(opt, options, target_ap).
   if go:error <> "" {
     return claudia_finish(ctx, false, go:error, extra).
   }
@@ -529,6 +510,7 @@ function launch {
   }
 
   set extra:max_q to round(q_max).
+  set extra:lan_actual to round(ship:orbit:lan, 2).
   set extra:ap_error to round(ship:apoapsis - target_ap).
   if extra:coast_ap = 0 {
     set extra:coast_ap to round(ship:apoapsis).

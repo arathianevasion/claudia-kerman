@@ -23,6 +23,8 @@ namespace ClaudiaKermin.KOS
     {
         private void AddBlockCallSuffixes()
         {
+            AddSuffix("LAUNCHWINDOW", new OneArgsSuffix<Lexicon, Lexicon>(LaunchWindow,
+                "Core Library only (launch): when the pad next passes under the plane of inc and lan (degrees); lexicon error, wait (s), ut, north, inc (negative southbound), heading"));
             AddSuffix("LANDINGSITE", new OneArgsSuffix<Lexicon, Lexicon>(LandingSite,
                 "Core Library only (land): find_landing_site's search on the body orbited; gives the first site as lexicon error, lat, lng, biome, ..."));
             AddSuffix("DEORBITBURN", new OneArgsSuffix<Lexicon, Lexicon>(DeorbitBurn,
@@ -81,6 +83,19 @@ namespace ClaudiaKermin.KOS
                 ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.0} m/s); Pe {5:0} m at UT {6:0}, arrival burn {7:0.0} m/s; synodic period {8:0} s from UT {9:0.0}",
                     node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["target_pe_actual"], node["arrival_ut"], node["arrival_dv"], node["synodic"], node["search_from"])
                 : (string)node["error"]);
+        }
+
+        private Lexicon LaunchWindow(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> window = null;
+            return (Lexicon)Guarded("LAUNCHWINDOW", () =>
+            {
+                window = BlockCalls.LaunchWindow(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel));
+                return KosValues.FromPlain(window);
+            }, () => window["error"] as string == ""
+                ? string.Format(CultureInfo.InvariantCulture, "window in {0:0} s at UT {1:0}, {2}bound, inclination {3:0.00}, heading {4:0.0}",
+                    window["wait"], window["ut"], (bool)window["north"] ? "north" : "south", window["inc"], window["heading"])
+                : (string)window["error"]);
         }
 
         private Lexicon TurnTime(Lexicon input)
