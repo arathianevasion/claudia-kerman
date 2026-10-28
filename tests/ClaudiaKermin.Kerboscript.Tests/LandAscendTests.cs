@@ -633,18 +633,25 @@ print land_brake_estimate(samples, a_brake, 1.1).");
         }
 
         [Fact]
-        public void Braking_that_adds_speed_or_climbs_trips_the_guard()
+        public void Braking_that_raises_periapsis_or_climbs_trips_the_guard()
         {
-            Assert.Equal("", One("land_brake_guard(507, 26900, 526.9, 28899)"));
-            Assert.Equal("", One("land_brake_guard(507, 26900, 300, 20000)"));
+            // Speed is not an input (#434): a fall alone gains speed with periapsis steady, so nothing trips.
+            Assert.Equal("", One("land_brake_guard(4900, 26900, 4900, 28899)"));
+            // Periapsis falling: no trip.
+            Assert.Equal("", One("land_brake_guard(4900, 26900, -20000, 20000)"));
+            Assert.Equal("", One("land_brake_guard(4900, 26900, 4950, 26900)"));
             // Altitude up 3 km over a rim, clearance steady: no trip (#433).
-            Assert.Equal("", One("land_brake_guard(507, 1400, 400, 1400)"));
-            Assert.Equal("braking added speed: v_h 527 m/s, 507 when braking began", One("land_brake_guard(507, 26900, 527, 26900)"));
-            Assert.Equal("braking climbed 2.1 km", One("land_brake_guard(507, 26900, 400, 29000)"));
-            Assert.Equal("braking climbed 2 km", One("land_brake_guard(507, 26900, 400, 28900)"));
-            // Braking that began slow may still close on the site at up to 50 m/s.
-            Assert.Equal("", One("land_brake_guard(10, 1000, 60, 1000)"));
-            Assert.Equal("braking added speed: v_h 70 m/s, 10 when braking began", One("land_brake_guard(10, 1000, 70, 1000)"));
+            Assert.Equal("", One("land_brake_guard(4900, 1400, 4900, 1400)"));
+            Assert.Equal("braking raised periapsis: 6.2 km, 4.9 when braking began", One("land_brake_guard(4900, 26900, 6200, 26900)"));
+            Assert.Equal("", One("land_brake_guard(4900, 26900, 5899, 26900)"));
+            Assert.Equal("braking raised periapsis: 5.9 km, 4.9 when braking began", One("land_brake_guard(4900, 26900, 5900, 26900)"));
+            // Below sea level reads negative.
+            Assert.Equal("", One("land_brake_guard(-3000, 1000, -3500, 1000)"));
+            Assert.Equal("", One("land_brake_guard(-3000, 1000, -2001, 1000)"));
+            Assert.Equal("braking raised periapsis: -2 km, -3 when braking began", One("land_brake_guard(-3000, 1000, -2000, 1000)"));
+            Assert.Equal("braking raised periapsis: 0.5 km, -1.5 when braking began", One("land_brake_guard(-1500, 1000, 500, 1000)"));
+            Assert.Equal("braking climbed 2.1 km", One("land_brake_guard(4900, 26900, 4900, 29000)"));
+            Assert.Equal("braking climbed 2 km", One("land_brake_guard(4900, 26900, 4900, 28900)"));
         }
 
         [Fact]
