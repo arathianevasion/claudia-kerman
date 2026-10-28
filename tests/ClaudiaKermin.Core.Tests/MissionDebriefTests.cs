@@ -496,7 +496,10 @@ namespace ClaudiaKermin.Core.Tests
                 Assert.Equal("pending", debrief.Event);
                 Assert.Equal("paid", after[1].Event);
                 // The Debrief must fit, and then the next Sequence Plan's worst case beside the Debrief's real cost.
-                return settled + Math.Max(debrief.Amount, after[1].Amount + next.Amount);
+                var cap = settled + Math.Max(debrief.Amount, after[1].Amount + next.Amount);
+                // The recheck's worst case alone must not fit in what the cap leaves over the plan and the sequence.
+                Assert.True(cap < settled + log[recheck].Amount + debrief.Amount, "the recheck would fit under the derived cap " + cap);
+                return cap;
             }
         }
 
