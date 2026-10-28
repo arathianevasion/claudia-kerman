@@ -278,7 +278,8 @@ namespace ClaudiaKermin.Core.Tools
             if (after - before > ClosestTolerance)
             {
                 var found = BrentMin.Solve(s => gap(before + s), 0, after - before, ClosestTolerance, ClosestIterations);
-                if (SearchInput.Finite(found.X) && found.Fx < best)
+                // A search that never got going has NaN here, which is never below the best.
+                if (found.Fx < best)
                 {
                     best = found.Fx;
                     bestT = before + found.X;

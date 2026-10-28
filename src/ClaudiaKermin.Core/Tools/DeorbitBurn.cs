@@ -223,7 +223,8 @@ namespace ClaudiaKermin.Core.Tools
                 // reaches it (or every one passes under it), the end nearer it, as a bisection would settle.
                 Func<double, double> under = s => PeR(r, v - along * s + up * normal, ut) - _peRadius;
                 var found = BrentRoot.Solve(under, 0, v.Length, RetroTolerance, RetroIterations);
-                var retro = found.Status != SearchStatus.NotBracketed ? found.X : under(0) <= 0 ? 0 : v.Length;
+                var usable = found.Converged || found.Status == SearchStatus.IterationCap;
+                var retro = usable ? found.X : under(0) <= 0 ? 0 : v.Length;
                 var after = Conic.FromState(_body.Gm, r, v - along * retro + up * normal, ut);
                 var dv = Math.Sqrt(retro * retro + normal * normal);
                 var mass = _craft.MassKg;
