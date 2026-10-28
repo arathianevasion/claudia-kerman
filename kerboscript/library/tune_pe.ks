@@ -5,11 +5,13 @@
 // after a sphere-of-influence change), by planning one maneuver node at a point it chooses and flying it
 // with exec_node. Built on claudia_lib.ks; block-only helpers are prefixed tune_pe_. The "//|" lines
 // are Claudia's docs for it; the first is its summary.
+// It keeps its kerboscript maths rather than ADDONS:CLAUDIA:ORBITBURN (#444): patch "current" is closed form on the
+// live orbit, and patch "next" searches the node against kOS's own patched conics (nextpatch), the path KSP flies.
 
 @lazyglobal off.
 
-//| tune_pe(options): sets the periapsis, on the current orbit or on the next patch, with one burn it
-//| places itself. Use it to fine-tune the periapsis at a moon before arrival or at Kerbin on the way
+//| tune_pe(options): sets the periapsis, this orbit's or the next patch's.
+//| One burn it places itself. Use it to fine-tune the periapsis at a moon before arrival or at Kerbin on the way
 //| home; the burn is planned as a maneuver node and flown by exec_node.
 //| Options:
 //|   value [required]: the periapsis altitude wanted, m above the surface.
@@ -18,11 +20,11 @@
 //|     change. If the periapsis is inside the atmosphere (or below the surface) and the craft reaches it
 //|     before that apoapsis, it burns instead as soon as a burn can be led (about 2 minutes on), the
 //|     cheapest point before the periapsis, so the craft is not lost to it; "next" burns halfway to the sphere-of-influence change and aims the periapsis of the orbit
-//|     after it (at the Mun before arrival, at Kerbin on the way home).
+//|     after it (at the Mun before arrival, at Kerbin on the way home), earlier if the burn would not end 60 s before the change.
 //|   tolerance [1000]: m the periapsis may end from value; more fails the block.
 //|   max_dv [50]: m/s the burn may cost; more fails the block before any burn.
 //|   max_duration ["auto"]: as for exec_node (the wait to the burn, twice the burn, plus 300 s).
-//|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
+//|   plus min_ec_pct, abort_on_part_loss, stage_limit and drop_empty as for every block.
 //| Extra results: pe_actual (m, the periapsis of the chosen patch when the block ended), burn_ut (UT of
 //| the burn; -1 if none was needed). Succeeds at once, with no burn, if the periapsis is already within
 //| tolerance. Fails with "value is required", an option value it can't read, "a maneuver node is already
@@ -31,7 +33,8 @@
 //| "the periapsis is inside the atmosphere or the surface and comes in <s> s, too soon to plan and fly a
 //| burn before it" (patch "current", under 5 minutes to it), "no prograde burn at the burn point reaches
 //| a periapsis of <m> m from the centre",
-//| "value is above the apoapsis", "the sphere-of-influence change is too close", "needs <dv> m/s, over
+//| "value is above the apoapsis", "the sphere-of-influence change is too close", "the burn (<s> s from <s>
+//| s before its node) does not fit before the sphere-of-influence change in <s> s" (patch "next"), "needs <dv> m/s, over
 //| max_dv <max>", "found no burn that reaches <value> m", the reasons exec_node gives (no thrust, out of
 //| fuel, an abort), or "periapsis <pe> m is over tolerance <t> m from <value> m"; on an exec_node failure
 //| the node is left in place.
@@ -180,6 +183,54 @@ function tune_pe_search {
   return found:cost.
 }
 
+// The next-patch burn's node UT so the burn ends 60 s before the sphere-of-influence change at soi_ut (#291): node_ut
+// if it already does, else moved earlier to the latest that does. The burn starts lead s before its node and lasts
+// burn_time s (claudia_burn_timing; burn_time -1, unknown, is left to exec_node). A burn that would start under 120 s
+// from now, too soon to turn to and lead, doesn't fit. Returns lexicon("error", "" or why it doesn't fit, "ut", the node's
+// UT, "moved", true if it moved). Pure.
+function tune_pe_fit {
+  parameter now, node_ut, soi_ut, burn_time, lead.
+  local fit is lexicon("error", "", "ut", node_ut, "moved", false).
+  if burn_time < 0 {
+    return fit.
+  }
+  local latest is soi_ut - 60 - (burn_time - lead).
+  if node_ut > latest {
+    set fit:ut to latest.
+    set fit:moved to true.
+  }
+  if fit:ut - lead < now + 120 {
+    set fit:error to "the burn (" + round(burn_time) + " s from " + round(lead) + " s before its node) does not fit before the sphere-of-influence change in "
+      + round(soi_ut - now) + " s".
+  }
+  return fit.
+}
+
+// Places the next-patch burn: searches nd at its UT, then moves it earlier and searches again while the burn would not
+// end before the sphere-of-influence change (tune_pe_fit), up to three times. Returns lexicon("error", "" or why not,
+// "off_by", m the periapsis is still off by).
+function tune_pe_place_next {
+  parameter nd, opt, soi_ut.
+  local placed is lexicon("error", "", "off_by", 0).
+  local tries is 0.
+  until tries >= 3 {
+    set placed:off_by to tune_pe_search(nd, opt:value, opt:tolerance).
+    local timing is claudia_burn_timing(nd:deltav:mag, claudia_burn_stages(opt:stage_limit), nd:eta, "half_burn").
+    local fit is tune_pe_fit(time:seconds, nd:time, soi_ut, timing:burn_time, timing:lead).
+    if fit:error <> "" {
+      set placed:error to fit:error.
+      return placed.
+    }
+    if not fit:moved {
+      return placed.
+    }
+    set nd:time to fit:ut.
+    set tries to tries + 1.
+  }
+  set placed:off_by to tune_pe_search(nd, opt:value, opt:tolerance).
+  return placed.
+}
+
 function tune_pe {
   parameter options is lexicon().
   local extra is lexicon("pe_actual", -1, "burn_ut", -1).
@@ -246,7 +297,13 @@ function tune_pe {
     add nd.
   } else {
     add nd.
-    local off_by is tune_pe_search(nd, opt:value, opt:tolerance).
+    local placed is tune_pe_place_next(nd, opt, time:seconds + soi_eta).
+    if placed:error <> "" {
+      remove nd.
+      return claudia_finish(ctx, false, placed:error, extra).
+    }
+    set burn_ut to nd:time.
+    local off_by is placed:off_by.
     if off_by > opt:tolerance {
       remove nd.
       return claudia_finish(ctx, false, "found no burn that reaches " + round(opt:value) + " m (best is " + round(off_by) + " m off)", extra).

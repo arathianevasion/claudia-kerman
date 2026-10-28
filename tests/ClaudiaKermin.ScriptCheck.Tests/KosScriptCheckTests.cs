@@ -299,6 +299,8 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("local w is addons:claudia:launchwindow(lexicon(\"inc\", 6, \"lan\", 78)).\nprint w:wait.")]
         [InlineData("local k is addons:claudia:correctionburn(lexicon(\"target\", \"Mun\", \"target_pe\", 30000)).\nadd node(k:ut, k:radial, k:normal, k:prograde).")]
         [InlineData("local c is addons:claudia.\nprint c:CorrectionBurn(lexicon(\"target\", \"Kerbin\", \"target_pe\", 35000, \"target_inc\", 0)):dv.")]
+        [InlineData("local o is addons:claudia:orbitburn(lexicon(\"goal\", \"set_inc\", \"value\", 90)).\nadd node(o:ut, o:radial, o:normal, o:prograde).")]
+        [InlineData("local c is addons:claudia.\nprint c:OrbitBurn(lexicon(\"goal\", \"match_plane\", \"target\", \"Minmus\")):dv.")]
         public void ABlockInternalCallInAMissionScriptFails(string script)
         {
             AssertForbidden("call block-internal calculations", script);
@@ -499,6 +501,15 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             Assert.Contains(new KosScriptCheck(forCoreLibrary: true).Check("kuniverse:quicksave().").Forbidden, f => f.EndsWith("(quicksave)"));
         }
 
+        [Fact]
+        public void ChangeOrbitsFileAlonePassesOnlyAsCoreLibrary()
+        {
+            // change_orbit makes ORBITBURN inline (#444): allowed as the library's, refused as a Mission Script's.
+            var block = File.ReadAllText(Path.Combine(RepoRoot(), "kerboscript", "library", "change_orbit.ks"));
+            Assert.True(new KosScriptCheck(forCoreLibrary: true).Check(block).Passed);
+            Assert.Contains(_check.Check(block).Forbidden, f => f.EndsWith(":ORBITBURN (call block-internal calculations)"));
+        }
+
         [Theory]
         [InlineData("land_biome_mun")]
         [InlineData("land_biome_minmus")]
@@ -628,9 +639,13 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [Theory]
         [InlineData("transfer_to")]
         [InlineData("return")]
+        [InlineData("change_orbit_inc")]
+        [InlineData("change_orbit_match_minmus")]
+        [InlineData("change_orbit_resonant")]
         public void EachBlockTestScriptBundledWithTheLibraryPasses(string test)
         {
-            // transfer_to calls the ejection solver inline; return calls the block kOS lets be named return.
+            // transfer_to calls the ejection solver inline; return calls the block kOS lets be named return; change_orbit
+            // calls ORBITBURN inline.
             var script = File.ReadAllText(Path.Combine(RepoRoot(), "tests", "blocks", test, "test.ks"));
             AssertAllowed(CoreLibrary.Bundle(script));
         }

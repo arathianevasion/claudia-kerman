@@ -4,11 +4,13 @@
 // Building Block circularize: makes the orbit circular at apoapsis, periapsis or an altitude, by
 // planning one maneuver node and flying it with exec_node. Built on claudia_lib.ks; block-only
 // helpers are prefixed circularize_. The "//|" lines are Claudia's docs for it; the first is its summary.
+// It keeps its kerboscript maths rather than ADDONS:CLAUDIA:ORBITBURN (#444): the burn is closed form on the live
+// orbit, already solved when the block flies, and needs no Game Snapshot.
 
 @lazyglobal off.
 
-//| circularize(options): makes the orbit circular at apoapsis, periapsis or an altitude in one burn.
-//| The burn is planned as a maneuver node and flown by exec_node. After launch, in the same Mission
+//| circularize(options): circular orbit at ap, pe or an altitude.
+//| One burn, planned as a maneuver node and flown by exec_node. After launch, in the same Mission
 //| Script, it finishes the orbit; at "pe" inside a new body's SOI it is the capture burn.
 //| Options:
 //|   at ["ap"]: where to burn: "ap", "pe" or an altitude in m between pe and ap (the next pass).
