@@ -122,6 +122,15 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void TheBaseLayerPointsPlaneChangesAtChangeOrbitInOneLine()
+        {
+            // #444's guidance line, one line (#212): change_orbit's summary, so Claudia calls it rather than hand-writing a plane change.
+            Assert.Contains("\n- change_orbit(options): inclination, plane, LAN, resonance.", MissionPrompts.BaseLayer);
+            Assert.Contains("call it rather than hand-write the node", CoreLibrary.FullDocs(new[] { "change_orbit" }));
+            Assert.Contains("Its blocks are change_orbit,", Tools().Single(t => t.Name == "solve_burn").Description);
+        }
+
+        [Fact]
         public void CheckScriptIsNotForTestingThatToolsWork()
         {
             var check = Tools().Single(t => t.Name == "check_script").Description;
@@ -134,6 +143,7 @@ namespace ClaudiaKermin.Core.Tests
         [InlineData("deorbit", "stage_performance")]
         [InlineData("return", "stage_performance")]
         [InlineData("tune_pe", "solve_burn")]
+        [InlineData("change_orbit", "solve_burn")]
         [InlineData("drop_parts", "stage_performance")]
         public void EachNewOrChangedBlocksDocsNameItsTool(string block, string tool)
         {

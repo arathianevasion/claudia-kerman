@@ -33,6 +33,28 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void APolarOrPlaneMatchingGoalGetsChangeOrbitAndALandingDoesNot()
+        {
+            // #444: change_orbit's full docs come with the orbit changes it flies, not with every goal.
+            var names = CoreLibrary.Blocks.Select(b => b.Name).ToList();
+            Assert.Contains("change_orbit", BlockSelection.For("Put a probe in a polar Mun orbit", names));
+            Assert.Contains("change_orbit", BlockSelection.For("Orbit Kerbin in the orbital plane of Minmus", names));
+            Assert.Contains("change_orbit", BlockSelection.For("Orbit Minmus", names));
+            Assert.Contains("change_orbit", BlockSelection.For("Make the orbit polar", names));
+            Assert.DoesNotContain("change_orbit", BlockSelection.For("Land on the Mun", names));
+            Assert.DoesNotContain("change_orbit", BlockSelection.For("Orbit the planet Duna and land", names));
+        }
+
+        [Fact]
+        public void AGoalThatPointsAtNothingGetsEveryBlockButChangeOrbit()
+        {
+            // Its summary stays in the base layer; its full docs come only with a goal that names an orbit change.
+            var names = CoreLibrary.Blocks.Select(b => b.Name).ToList();
+            var picked = BlockSelection.For("Prove the kOS link from the launch pad.", names);
+            Assert.Equal(names.Where(n => n != "change_orbit"), picked);
+        }
+
+        [Fact]
         public void AGoalThatPointsAtNothingGetsEveryBlock()
         {
             Assert.Equal(Shipped.Length, BlockSelection.For("Do something cool", Shipped).Count);
@@ -61,7 +83,8 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("transfer_to", narrow);
             Assert.Contains("land", narrow);
             Assert.DoesNotContain("reentry", narrow);
-            Assert.Equal(names.Count, BlockSelection.For("", names).Count);
+            // change_orbit comes only with a goal that names an orbit change (#444).
+            Assert.Equal(names.Count - 1, BlockSelection.For("", names).Count);
         }
 
         [Fact]

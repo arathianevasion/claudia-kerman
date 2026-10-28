@@ -31,6 +31,10 @@ namespace ClaudiaKermin.Core.Tools
         /// </summary>
         internal const int DefaultMaxScanEvaluations = MaxScanSteps + 1;
         private const string DefaultAt = "in 60";
+        private static readonly string[] Goals =
+        {
+            "circularize", "set_ap", "set_pe", "next_patch_pe", "set_sma", "set_ecc", "ellipticize", "set_inc", "match_plane", "shift_lan", "resonant", "stationary", "intercept_at",
+        };
         /// <summary>BrentRoot's tolerance on the burn size, relative to max(|burn|, 1) m/s: far finer than the metre the Pe is held to.</summary>
         private const double RefineTolerance = 1e-9;
         private const int RefineIterations = 80;
@@ -70,8 +74,8 @@ namespace ClaudiaKermin.Core.Tools
                     + "shift_lan: value degrees, default where the planes cross; "
                     + "resonant: value orbits while target (default this orbit) makes of, at default pe; "
                     + "stationary: synchronous circle; "
-                    + "intercept_at: Lambert arc, arrive_ut or tof. "
-                    + "Its blocks are circularize, exec_node and tune_pe: call it to budget their burn instead of working it out, then "
+                    + "intercept_at: Lambert arc, arrive_ut or tof; exec_node only. "
+                    + "Its blocks are change_orbit, circularize, exec_node and tune_pe: call it to budget their burn, then "
                     + "pass the block the goal, or exec_node the node. Don't call it to check a burn (predict_burn) or for the craft's "
                     + "delta-v (stage_performance).";
             }
@@ -106,7 +110,17 @@ namespace ClaudiaKermin.Core.Tools
 
         public ToolOutcome Run(JsonNode input, GameSnapshot snapshot, IPlanningBody body)
         {
+            return Solve(input, snapshot, new SolvedBurn());
+        }
+
+        /// <summary>
+        /// <see cref="Run"/>'s solve, also filling <paramref name="into"/> with the burn unrounded and the figure the goal aims at,
+        /// for <c>ADDONS:CLAUDIA:ORBITBURN</c> (#444). It checks the goal itself: the block call has no schema check before it.
+        /// </summary>
+        internal ToolOutcome Solve(JsonNode input, GameSnapshot snapshot, SolvedBurn into)
+        {
             var goal = JsonNode.Str(input["goal"]);
+            if (Array.IndexOf(Goals, goal) < 0) return PlanningJson.Error("goal must be one of " + string.Join(", ", Goals));
             var value = JsonNode.Double(input["value"]);
             var at = input["at"];
             var direction = JsonNode.Str(input["direction"]);
@@ -149,15 +163,15 @@ namespace ClaudiaKermin.Core.Tools
             if (path[path.Count - 1].Error != null) return PlanningJson.Error(path[path.Count - 1].Error);
             switch (goal)
             {
-                case "next_patch_pe": return SolvePatchPe(setup, path, value.Value, at, direction ?? "prograde");
+                case "next_patch_pe": return SolvePatchPe(into, setup, path, value.Value, at, direction ?? "prograde");
                 case "circularize":
                 case "set_ap":
-                case "set_pe": return SolveClosedForm(setup, path, goal, value, at);
-                case "match_plane": return SolveMatchPlane(setup, path, at);
-                case "shift_lan": return SolveShiftLan(setup, path, value.Value, at);
-                case "stationary": return SolveStationary(setup, path);
-                case "intercept_at": return SolveIntercept(setup, path, at, arriveUt, tof, retrograde ?? false, (int)(revolutions ?? 0));
-                default: return SolveAt(setup, path, goal, value, pe, ap, of, at);
+                case "set_pe": return SolveClosedForm(into, setup, path, goal, value, at);
+                case "match_plane": return SolveMatchPlane(into, setup, path, at);
+                case "shift_lan": return SolveShiftLan(into, setup, path, value.Value, at);
+                case "stationary": return SolveStationary(into, setup, path);
+                case "intercept_at": return SolveIntercept(into, setup, path, at, arriveUt, tof, retrograde ?? false, (int)(revolutions ?? 0));
+                default: return SolveAt(into, setup, path, goal, value, pe, ap, of, at);
             }
         }
 
@@ -209,7 +223,7 @@ namespace ClaudiaKermin.Core.Tools
         /// The goals solved at one time, the caller's <c>at</c> or the goal's default: set_sma and resonant by vis-viva, set_ecc by
         /// <see cref="BrentRoot"/>, ellipticize and set_inc by MechJeb's closed forms (<see cref="OrbitChange"/>).
         /// </summary>
-        private static ToolOutcome SolveAt(PredictBurn.Setup setup, List<Patch> path, string goal, double? value, double? pe, double? ap, double? of, JsonNode at)
+        private static ToolOutcome SolveAt(SolvedBurn into, PredictBurn.Setup setup, List<Patch> path, string goal, double? value, double? pe, double? ap, double? of, JsonNode at)
         {
             if (at == null)
             {
@@ -234,11 +248,13 @@ namespace ClaudiaKermin.Core.Tools
                     var toSma = OrbitChange.ProgradeForSma(mu, r, v, value.Value, out problem);
                     if (!toSma.HasValue) return PlanningJson.Error(problem);
                     dv = v.Normalized * toSma.Value;
+                    into.Want("sma", value.Value);
                     break;
                 case "set_ecc":
                     var toEcc = OrbitChange.ProgradeForEccentricity(mu, r, v, value.Value, out problem);
                     if (!toEcc.HasValue) return PlanningJson.Error(problem);
                     dv = v.Normalized * toEcc.Value;
+                    into.Want("ecc", value.Value);
                     break;
                 case "ellipticize":
                     double peR = patch.Body.Radius + pe.Value, apR = patch.Body.Radius + ap.Value, radius = r.Length;
@@ -248,6 +264,7 @@ namespace ClaudiaKermin.Core.Tools
                         return PlanningJson.Error("the burn is at " + Num(radius - patch.Body.Radius) + " m, outside the Pe of " + Num(pe.Value) + " m and Ap of "
                             + Num(ap.Value) + " m asked for; a burn leaves the craft at its own altitude, so pick an at between them");
                     dv = OrbitChange.Ellipticize(mu, r, v, Math.Min(peR, radius), Math.Max(apR, radius));
+                    into.Want("pe", pe.Value).Want("ap", ap.Value);
                     break;
                 case "set_inc":
                     if (!patch.Orbit.Closed)
@@ -255,14 +272,17 @@ namespace ClaudiaKermin.Core.Tools
                     var toInc = OrbitChange.ChangeInclination(r, v, value.Value, out problem);
                     if (!toInc.HasValue) return PlanningJson.Error(problem);
                     dv = toInc.Value;
+                    into.Want("inc", value.Value);
                     break;
                 default:
-                    var toResonant = Resonant(setup, patch, r, v, value.Value, of ?? 1, out problem);
+                    double period;
+                    var toResonant = Resonant(setup, patch, r, v, value.Value, of ?? 1, out period, out problem);
                     if (!toResonant.HasValue) return PlanningJson.Error(problem);
                     dv = v.Normalized * toResonant.Value;
+                    into.Want("period", period);
                     break;
             }
-            return Answer(setup, goal, ut.Value, r, v, dv);
+            return Answer(into, setup, goal, ut.Value, r, v, dv);
         }
 
         /// <summary>
@@ -271,9 +291,10 @@ namespace ClaudiaKermin.Core.Tools
         /// the other; a prograde burn at the default pe does that. A Pe under the surface or an Ap past the sphere of influence is
         /// an error, not a resonant orbit.
         /// </summary>
-        private static double? Resonant(PredictBurn.Setup setup, Patch patch, Vec3 r, Vec3 v, double orbits, double of, out string why)
+        private static double? Resonant(PredictBurn.Setup setup, Patch patch, Vec3 r, Vec3 v, double orbits, double of, out double period, out string why)
         {
             why = null;
+            period = 0;
             double reference;
             var target = setup.Target;
             if (target != null)
@@ -294,7 +315,7 @@ namespace ClaudiaKermin.Core.Tools
                     return null;
                 }
             }
-            var period = reference * of / orbits;
+            period = reference * of / orbits;
             var sma = OrbitChange.RadiusForPeriod(patch.Body.Gm, period);
             var burn = OrbitChange.ProgradeForSma(patch.Body.Gm, r, v, sma, out why);
             if (!burn.HasValue) return null;
@@ -319,7 +340,7 @@ namespace ClaudiaKermin.Core.Tools
         /// DeltaVAndTimeToMatchPlanes*: the plane change into the target's orbit plane at a node with it, rel_an or rel_dn, or the
         /// slower of the two when at is left out (the same angle costs less at a lower speed).
         /// </summary>
-        private static ToolOutcome SolveMatchPlane(PredictBurn.Setup setup, List<Patch> path, JsonNode at)
+        private static ToolOutcome SolveMatchPlane(SolvedBurn into, PredictBurn.Setup setup, List<Patch> path, JsonNode at)
         {
             string problem;
             Patch patch;
@@ -327,14 +348,15 @@ namespace ClaudiaKermin.Core.Tools
             var ut = at != null ? Place(setup, path, at, out patch, out r, out v, out problem) : Slower(setup, path, "rel_an", "rel_dn", out patch, out r, out v, out problem);
             if (!ut.HasValue) return PlanningJson.Error(problem);
             var dv = OrbitChange.MatchPlane(r, v, setup.System.OrbitOf(setup.Target).W);
-            return Answer(setup, "match_plane", ut.Value, r, v, dv);
+            into.Want("rel_inc", 0);
+            return Answer(into, setup, "match_plane", ut.Value, r, v, dv);
         }
 
         /// <summary>
         /// DeltaVToShiftLAN at the caller's time; left out, where the orbit's plane crosses the plane with the same inclination
         /// and the new LAN (the slower crossing), so the burn turns the plane about that line and keeps the inclination.
         /// </summary>
-        private static ToolOutcome SolveShiftLan(PredictBurn.Setup setup, List<Patch> path, double lan, JsonNode at)
+        private static ToolOutcome SolveShiftLan(SolvedBurn into, PredictBurn.Setup setup, List<Patch> path, double lan, JsonNode at)
         {
             var first = path[0];
             if (Vec3.Cross(new Vec3(0, 0, 1), first.Orbit.W).Length < 1e-6)
@@ -366,14 +388,16 @@ namespace ClaudiaKermin.Core.Tools
             if (!ut.HasValue) return PlanningJson.Error(problem);
             var dv = OrbitChange.ShiftLan(r, v, lan, out problem);
             if (!dv.HasValue) return PlanningJson.Error(problem);
-            return Answer(setup, "shift_lan", ut.Value, r, v, dv.Value);
+            // The burn turns the plane about the crossing, so the inclination it started with is kept.
+            into.Want("lan", lan - 360 * Math.Floor(lan / 360)).Want("inc", first.Orbit.Inclination);
+            return Answer(into, setup, "shift_lan", ut.Value, r, v, dv.Value);
         }
 
         /// <summary>
         /// set_sma to the body's synchronous radius with zero eccentricity, in one burn: Simple.DeltaVToCircularize where the
         /// orbit crosses that radius (or at the apsis within <see cref="SynchronousSlack"/> of it).
         /// </summary>
-        private static ToolOutcome SolveStationary(PredictBurn.Setup setup, List<Patch> path)
+        private static ToolOutcome SolveStationary(SolvedBurn into, PredictBurn.Setup setup, List<Patch> path)
         {
             var patch = path[0];
             var body = patch.Body;
@@ -396,7 +420,8 @@ namespace ClaudiaKermin.Core.Tools
             Vec3 r, v;
             var ut = Place(setup, path, at, out patch, out r, out v, out problem);
             if (!ut.HasValue) return PlanningJson.Error(problem);
-            return Answer(setup, "stationary", ut.Value, r, v, OrbitChange.Circularize(patch.Body.Gm, r, v));
+            into.Want("period", body.RotationPeriod);
+            return Answer(into, setup, "stationary", ut.Value, r, v, OrbitChange.Circularize(patch.Body.Gm, r, v));
         }
 
         /// <summary>How far, m, an apsis may be from the synchronous radius for stationary to circularize there: a period within about 0.05%.</summary>
@@ -442,7 +467,7 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>A prograde burn at an apsis to the speed that puts the orbit's other end at the goal, by vis-viva.</summary>
-        private static ToolOutcome SolveClosedForm(PredictBurn.Setup setup, List<Patch> path, string goal, double? value, JsonNode at)
+        private static ToolOutcome SolveClosedForm(SolvedBurn into, PredictBurn.Setup setup, List<Patch> path, string goal, double? value, JsonNode at)
         {
             var apsis = goal == "circularize" ? at.StringValue.Trim().ToLowerInvariant() : goal == "set_ap" ? "pe" : "ap";
             string problem;
@@ -469,14 +494,16 @@ namespace ClaudiaKermin.Core.Tools
                     return PlanningJson.Error("a Pe of " + Num(value.Value) + " m is above the Ap of " + Num(radius - patch.Body.Radius) + " m; a burn can't put the Pe over the point it burns at");
                 wanted = Math.Sqrt(mu * (2 / radius - 2 / (radius + far)));
             }
-            return Answer(setup, goal, ut.Value, r, v, v.Normalized * (wanted - v.Length));
+            if (goal == "circularize") into.Want("ecc", 0);
+            else into.Want(goal == "set_ap" ? "ap" : "pe", value.Value);
+            return Answer(into, setup, goal, ut.Value, r, v, v.Normalized * (wanted - v.Length));
         }
 
         /// <summary>
         /// The burn at <c>at</c>, prograde or retrograde, whose next patch has the periapsis asked for: scans the burn size in steps
         /// with the predict_burn propagation, finds where the next patch's Pe crosses the goal, and refines it with <see cref="BrentRoot"/>.
         /// </summary>
-        private ToolOutcome SolvePatchPe(PredictBurn.Setup setup, List<Patch> path, double value, JsonNode at, string direction)
+        private ToolOutcome SolvePatchPe(SolvedBurn into, PredictBurn.Setup setup, List<Patch> path, double value, JsonNode at, string direction)
         {
             string problem;
             var ut = PredictBurn.BurnUt(at ?? JsonReader.Parse(PlanningJson.Quote(DefaultAt)), path, setup.Now, setup.Now, "the burn", out problem, setup.System, setup.Target);
@@ -525,7 +552,8 @@ namespace ClaudiaKermin.Core.Tools
                     var found = Refine(pe, s - step, s, last.Value, got.Item1, value, got.Item2);
                     if (found == null)
                         return PlanningJson.Error("found a burn near " + Num(s) + " m/s that reaches " + got.Item2 + ", but the search could not narrow it to the Pe asked for (the encounter drops out or the Pe jumps there); try another burn time");
-                    return Answer(setup, "next_patch_pe", ut.Value, r, v, v.Normalized * (sign * found.Value));
+                    into.Want("next_patch_pe", value);
+                    return Answer(into, setup, "next_patch_pe", ut.Value, r, v, v.Normalized * (sign * found.Value));
                 }
                 last = got.Item1;
                 lastBody = got.Item2;
@@ -568,7 +596,7 @@ namespace ClaudiaKermin.Core.Tools
         /// orbit predict_burn's propagation leaves, and the predict_burn result for it. <paramref name="dv"/> is the velocity
         /// change at (<paramref name="r"/>, <paramref name="v"/>), the craft's state at <paramref name="ut"/>.
         /// </summary>
-        private static ToolOutcome Answer(PredictBurn.Setup setup, string goal, double ut, Vec3 r, Vec3 v, Vec3 dv, Action<JsonWriter> extra = null)
+        private static ToolOutcome Answer(SolvedBurn into, PredictBurn.Setup setup, string goal, double ut, Vec3 r, Vec3 v, Vec3 dv, Action<JsonWriter> extra = null)
         {
             double prograde, normal, radial;
             OrbitChange.NodeComponents(r, v, dv, out prograde, out normal, out radial);
@@ -583,6 +611,12 @@ namespace ClaudiaKermin.Core.Tools
             var predicted = PredictBurn.Result(setup.System, burns, path, null, setup.Now);
             var burn = burns[0];
             var magnitude = dv.Length;
+            into.Ut = ut;
+            into.Prograde = prograde;
+            into.Normal = normal;
+            into.Radial = radial;
+            into.DeltaV = magnitude;
+            into.BurnTime = burn.BurnTime;
             var json = new JsonWriter().BeginObject().Field("goal", goal);
             PlanningJson.Time(json, "at", ut, setup.Now);
             // + 0.0 turns a rounded -0 into 0.
@@ -646,6 +680,29 @@ namespace ClaudiaKermin.Core.Tools
         private static string Num(double value)
         {
             return Math.Round(value).ToString("0", CultureInfo.InvariantCulture);
+        }
+    }
+
+    /// <summary>
+    /// A burn <see cref="SolveBurn"/> solved, unrounded, for a block to fly (<c>ADDONS:CLAUDIA:ORBITBURN</c>): the node's UT and
+    /// components, its magnitude and burn time, and <see cref="Wanted"/>, what the burn should leave.
+    /// </summary>
+    internal sealed class SolvedBurn
+    {
+        public double Ut, Prograde, Normal, Radial, DeltaV;
+        public double? BurnTime;
+
+        /// <summary>
+        /// Each element the goal sets with the figure it aims at, in the order set: <c>inc</c>, <c>rel_inc</c> (to the target's
+        /// plane) and <c>lan</c> in degrees, <c>period</c> in s, <c>pe</c>, <c>ap</c> and <c>next_patch_pe</c> in m above sea level,
+        /// <c>sma</c> in m from the centre, <c>ecc</c>.
+        /// </summary>
+        public readonly List<KeyValuePair<string, double>> Wanted = new List<KeyValuePair<string, double>>();
+
+        public SolvedBurn Want(string element, double figure)
+        {
+            Wanted.Add(new KeyValuePair<string, double>(element, figure));
+            return this;
         }
     }
 }
