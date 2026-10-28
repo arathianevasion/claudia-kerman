@@ -160,6 +160,21 @@ namespace ClaudiaKermin.Core.Tests
             return Path.Combine(_save.Path, "ClaudiaKermin", "missions", mission.View.MissionId);
         }
 
+        /// <summary>A Spending Cap measured from a dry run of the same two steps with a roomy cap.</summary>
+        private decimal CapWithRoomForTheFirstStepButNotTheNext()
+        {
+            using (var probe = new MissionToolLoopTests())
+            {
+                var mission = probe.Control(new StreamingFakeTransport(ToolUseStreams.ToolUsePriced("cap", 100000, ("stage_performance", Vacuum)), Fixture("mission-plan.sse")));
+                probe.Start(mission);
+                probe.DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+                var log = File.ReadAllText(Path.Combine(probe.Folder(mission), "cost-log.jsonl"));
+                var worst = CostLogGap.Amounts(log, "pending");
+                var paid = CostLogGap.Amounts(log, "paid");
+                return CostLogGap.Between(worst[0], paid[0] + worst[1], "fits the first step but not the next after its real cost");
+            }
+        }
+
         private string Events(MissionControl mission)
         {
             var path = Path.Combine(Folder(mission), MissionStore.EventsFile);
@@ -480,10 +495,10 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void AStepWithNoRoomUnderTheSpendingCapPausesTheMissionAndDiscardsTheLoop()
         {
-            // The first request's worst case fits $0.45; after the tool step's $0.20 the next step's no longer does.
+            // The first request's worst case fits the cap; after the tool step's real cost the next step's no longer does.
             var transport = new StreamingFakeTransport(ToolUseStreams.ToolUsePriced("cap", 100000, ("stage_performance", Vacuum)), Fixture("mission-plan.sse"));
             var mission = Control(transport);
-            Start(mission, 0.45m);
+            Start(mission, CapWithRoomForTheFirstStepButNotTheNext());
             DrainUntil(mission, v => v.Stage == MissionStage.Paused);
 
             Assert.Single(transport.Requests);
