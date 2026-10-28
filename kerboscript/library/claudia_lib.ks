@@ -1800,11 +1800,12 @@ function claudia_geo {
   return lexicon("lat", round(landing:lat, 4), "lng", round(landing:lng, 4)).
 }
 
-// The earliest departure (UT): 5 minutes from now, time to plan, turn and lead the burn, or window
-// if that is a later UT.
+// The earliest departure (UT) of transfer_to's and return's ejection (#346, #357): the block's start_ut plus
+// turn_time (s, ADDONS:CLAUDIA:TURNTIME's), so the craft can have turned to the burn, or window if that is a later UT.
+// Pure.
 function claudia_earliest {
-  parameter now, window.
-  local earliest is now + 300.
+  parameter start_ut, turn_time, window.
+  local earliest is start_ut + turn_time.
   if window:istype("Scalar") {
     set earliest to max(earliest, window).
   }

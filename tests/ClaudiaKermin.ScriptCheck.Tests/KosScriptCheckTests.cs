@@ -299,6 +299,8 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("local w is addons:claudia:launchwindow(lexicon(\"inc\", 6, \"lan\", 78)).\nprint w:wait.")]
         [InlineData("local k is addons:claudia:correctionburn(lexicon(\"target\", \"Mun\", \"target_pe\", 30000)).\nadd node(k:ut, k:radial, k:normal, k:prograde).")]
         [InlineData("local c is addons:claudia.\nprint c:CorrectionBurn(lexicon(\"target\", \"Kerbin\", \"target_pe\", 35000, \"target_inc\", 0)):dv.")]
+        [InlineData("local h is addons:claudia:returnburn(lexicon(\"target_pe\", 35000)).\nadd node(h:ut, h:radial, h:normal, h:prograde).")]
+        [InlineData("local c is addons:claudia.\nprint c:ReturnBurn(lexicon(\"target_pe\", 35000, \"target_inc\", 30)):dv.")]
         public void ABlockInternalCallInAMissionScriptFails(string script)
         {
             AssertForbidden("call block-internal calculations", script);

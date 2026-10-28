@@ -37,6 +37,23 @@ namespace ClaudiaKermin.KOS
                 "Core Library only (a block that turns to a burn): the time to leave for a 190 degree turn on the wheels and RCS (if the craft has monoprop, on or off), given max_stopping_time; lexicon error, turn_time, turn_s, top_rate, and wheels_turn_time, wheels_turn_s on the wheels alone (-1: no wheel torque)"));
             AddSuffix("EJECTIONBURN", new OneArgsSuffix<Lexicon, Lexicon>(EjectionBurn,
                 "Core Library only (transfer_to): the cheapest departure to target (a moon's name) arriving at target_pe, or to an orbit (target_sma, target_ecc, ...; mode rendezvous or intercept), capture true or false, within one synodic period from earliest_ut or window (to latest_ut, refusing over max_dv); lexicon error, ut, prograde, normal, radial, dv, arrival_dv, encounter_ut, arrival_ut, target_pe_actual, ..."));
+            AddSuffix("RETURNBURN", new OneArgsSuffix<Lexicon, Lexicon>(ReturnBurn,
+                "Core Library only (return): the least burn from earliest_ut to latest_ut (one orbit later if missing) that leaves the moon orbited for its planet at target_pe and, if given, target_inc; lexicon error, planet, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted, soi_ut, from_grid"));
+        }
+
+        private Lexicon ReturnBurn(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> node = null;
+            // The solve's time against ADR 0010's budget (about 100 ms, under 200 ms from the grid), and the node.
+            return (Lexicon)Guarded("RETURNBURN", () =>
+            {
+                node = BlockCalls.ReturnBurn(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel));
+                return KosValues.FromPlain(node);
+            }, () => node.ContainsKey("dv")
+                ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); {5} Pe {6:0} m, inclination {7:0.00}, leaving the moon at UT {8:0}{9}{10}",
+                    node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["planet"], node["pe_predicted"], node["inc_predicted"], node["soi_ut"],
+                    (bool)node["from_grid"] ? " (from the grid)" : "", node["error"] as string == "" ? "" : "; " + node["error"])
+                : (string)node["error"]);
         }
 
         /// <summary>
