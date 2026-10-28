@@ -115,7 +115,7 @@ namespace ClaudiaKermin.Core.Tools.Numerics
         /// </summary>
         public OdeResult Solve(OdeFunction f, double[] y0, double t0, double tf, IReadOnlyList<OdeEvent> events = null)
         {
-            var problem = Problem(f, y0, t0, tf);
+            var problem = Problem(f, y0, t0, tf, events);
             if (problem != null) return new OdeResult { Status = OdeStatus.InvalidInput, Reason = Name + ": " + problem, T = t0, Y = y0 == null ? null : (double[])y0.Clone() };
 
             _n = y0.Length;
@@ -202,9 +202,12 @@ namespace ClaudiaKermin.Core.Tools.Numerics
             return End(OdeStatus.Finished, null, null, steps);
         }
 
-        private string Problem(OdeFunction f, double[] y0, double t0, double tf)
+        private string Problem(OdeFunction f, double[] y0, double t0, double tf, IReadOnlyList<OdeEvent> events)
         {
             if (f == null) return "the function is missing";
+            if (events != null)
+                foreach (var e in events)
+                    if (e == null || e.F == null || e.Direction < -1 || e.Direction > 1) return "each event needs a function and a direction of -1, 0 or 1";
             if (y0 == null || y0.Length == 0) return "the start state must have at least one component";
             foreach (var y in y0)
                 if (!SearchInput.Finite(y)) return "the start state must be finite";

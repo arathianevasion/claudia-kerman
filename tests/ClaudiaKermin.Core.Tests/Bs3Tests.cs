@@ -120,6 +120,16 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void A_missing_or_malformed_event_is_refused_not_thrown()
+        {
+            var result = new Bs3().Solve(Fall, new[] { 1.0, 0 }, 0, 1, new[] { Floor, null });
+            Assert.Equal(OdeStatus.InvalidInput, result.Status);
+            Assert.Equal("Bogacki-Shampine: each event needs a function and a direction of -1, 0 or 1", result.Reason);
+            Assert.Equal(OdeStatus.InvalidInput, new Bs3().Solve(Fall, new[] { 1.0, 0 }, 0, 1, new[] { new OdeEvent(null) }).Status);
+            Assert.Equal(OdeStatus.InvalidInput, new Bs3().Solve(Fall, new[] { 1.0, 0 }, 0, 1, new[] { new OdeEvent((y, t) => y[0], 2) }).Status);
+        }
+
+        [Fact]
         public void A_non_finite_end_time_or_an_empty_state_is_refused()
         {
             Assert.Equal(OdeStatus.InvalidInput, new Bs3().Solve(Fall, new[] { 1.0, 0 }, 0, double.PositiveInfinity).Status);

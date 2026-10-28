@@ -61,7 +61,8 @@ namespace ClaudiaKermin.Adapter
     /// each ModuleParachute's own numbers, with the drag areas of its SEMIDEPLOYED and DEPLOYED cubes met as the part meets
     /// the air (held retrograde, or hanging under the canopy alike), at low Mach. Given the parts the heat shield drop takes
     /// (<c>shieldDrop</c>, kOS UIDs), <see cref="AfterShield"/> is the craft without them.
-    /// Main thread; reads only (the cube data is a local copy).
+    /// Main thread; reads only (the drag cube data is a local copy; body lift is read from the live cubes, so a part beside a
+    /// dropped one keeps that one's occlusion for its lift).
     /// </summary>
     public sealed class ReentryCraft : IReentryCraft
     {
@@ -91,11 +92,17 @@ namespace ClaudiaKermin.Adapter
                 if (!DragCubeDrag.MeetsAir(part)) continue;
                 var local = part.partTransform.InverseTransformDirection(flow);
                 var bared = BaredFaces(part, gone);
+                var chute = part.FindModuleImplementing<ModuleParachute>();
+                // A chute already open has its canopy in its live cubes; the predictor adds that itself (Chutes), so its own
+                // drag here is its PACKED cube's.
+                var packed = chute != null && Open(chute) ? Cube(part, "PACKED") : null;
                 for (var i = 0; i < Machs.Length; i++)
                 {
-                    _area[i] += bared != null
-                        ? DragCubeDrag.Area(part.DragCubes, bared, local, (float)Machs[i])
-                        : DragCubeDrag.Area(part, local, (float)Machs[i]);
+                    _area[i] += packed != null
+                        ? DragCubeDrag.Area(part.DragCubes, packed.Area, packed.Drag, local, (float)Machs[i])
+                        : bared != null
+                            ? DragCubeDrag.Area(part.DragCubes, bared, local, (float)Machs[i])
+                            : DragCubeDrag.Area(part, local, (float)Machs[i]);
                 }
                 if (!part.hasLiftModule)
                 {
@@ -109,7 +116,6 @@ namespace ClaudiaKermin.Adapter
                         _lift[a] += Vector3.Dot(lift, square) * part.bodyLiftMultiplier * PhysicsGlobals.BodyLiftMultiplier;
                     }
                 }
-                var chute = part.FindModuleImplementing<ModuleParachute>();
                 if (chute != null) AddChute(part, chute, local);
             }
             if (shieldDrop != null && shieldDrop.Count > 0)
@@ -150,12 +156,21 @@ namespace ClaudiaKermin.Adapter
         /// <summary>The drag area, m², of the part's drag cube <paramref name="name"/> alone, unoccluded, met along <paramref name="local"/>; 0 if it has none.</summary>
         private static double CubeArea(Part part, string name, Vector3 local)
         {
+            var cube = Cube(part, name);
+            return cube == null ? 0 : DragCubeDrag.Area(part.DragCubes, cube.Area, cube.Drag, local, ChuteMach) * DragCubeDrag.Multiplier;
+        }
+
+        private static DragCube Cube(Part part, string name)
+        {
             foreach (var cube in part.DragCubes.Cubes)
-            {
-                if (cube.Name != name) continue;
-                return DragCubeDrag.Area(part.DragCubes, cube.Area, cube.Drag, local, ChuteMach) * DragCubeDrag.Multiplier;
-            }
-            return 0;
+                if (cube.Name == name) return cube;
+            return null;
+        }
+
+        private static bool Open(ModuleParachute chute)
+        {
+            return chute.deploymentState == ModuleParachute.deploymentStates.SEMIDEPLOYED
+                || chute.deploymentState == ModuleParachute.deploymentStates.DEPLOYED;
         }
 
         private static bool Gone(Part part, HashSet<string> gone)

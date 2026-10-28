@@ -40,16 +40,15 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [Fact]
         public void The_reentry_predictor_opens_chutes_and_drops_the_shield_by_reentry_s_own_rules()
         {
-            // #462: the predictor mirrors these in C# (ReentryRules.Block); a change here must be made there too.
-            var rules = ClaudiaKermin.Core.Tools.ReentryRules.Block;
-            Assert.Equal(rules.ChuteMaxSpeed, Number("reentry_chute_max_speed()"));
-            Assert.Equal(rules.ChuteMinPressureAtm, Number("reentry_chute_min_pressure()"));
-            Assert.Equal(rules.ChuteLastAgl, Number("reentry_chute_last_agl()"));
-            Assert.Equal(rules.DrogueMaxSpeed, Number("reentry_drogue_max_speed()"));
-            Assert.Equal(rules.DrogueMinPressureAtm, Number("reentry_drogue_min_pressure()"));
-            Assert.Equal(rules.DrogueLastAgl, Number("reentry_drogue_last_agl()"));
-            Assert.Equal(rules.ShieldSpeed, Number("reentry_shield_speed()"));
-            Assert.Equal(rules.ShieldLastAgl, Number("reentry_shield_last_agl()"));
+            // #462: the predictor mirrors these in C# (ReentryRules); a change here must be made there too.
+            Assert.Equal(ClaudiaKermin.Core.Tools.ReentryRules.ChuteMaxSpeed, Number("reentry_chute_max_speed()"));
+            Assert.Equal(ClaudiaKermin.Core.Tools.ReentryRules.ChuteMinPressureAtm, Number("reentry_chute_min_pressure()"));
+            Assert.Equal(ClaudiaKermin.Core.Tools.ReentryRules.ChuteLastAgl, Number("reentry_chute_last_agl()"));
+            Assert.Equal(ClaudiaKermin.Core.Tools.ReentryRules.DrogueMaxSpeed, Number("reentry_drogue_max_speed()"));
+            Assert.Equal(ClaudiaKermin.Core.Tools.ReentryRules.DrogueMinPressureAtm, Number("reentry_drogue_min_pressure()"));
+            Assert.Equal(ClaudiaKermin.Core.Tools.ReentryRules.DrogueLastAgl, Number("reentry_drogue_last_agl()"));
+            Assert.Equal(ClaudiaKermin.Core.Tools.ReentryRules.ShieldSpeed, Number("reentry_shield_speed()"));
+            Assert.Equal(ClaudiaKermin.Core.Tools.ReentryRules.ShieldLastAgl, Number("reentry_shield_last_agl()"));
         }
 
         [Fact]

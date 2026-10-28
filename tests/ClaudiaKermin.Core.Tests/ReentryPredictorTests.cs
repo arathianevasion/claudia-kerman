@@ -208,9 +208,9 @@ namespace ClaudiaKermin.Core.Tests
             Assert.InRange(bare.LandingSpeed, 200, 260);
             Assert.True(chuted.ChuteUt > chuted.EntryUt && chuted.ChuteUt < chuted.LandingUt);
             Assert.Equal(-1, bare.ChuteUt);
-            // Fully open, drag balances weight: v = sqrt(2 m g / (rho A)) = sqrt(2 × 1240 × 9.807 / (1.226 × 362)) = 7.4 m/s.
+            // Fully open, drag balances weight: v = sqrt(2 m g / (rho A)) = sqrt(2 × 1240 × 9.807 / (1.226 × 337)) = 7.7 m/s.
             Assert.InRange(chuted.LandingSpeed, 7, 8);
-            // 1000 m at 7.4 m/s is 135 s, less the 8 s the canopy takes to open and the fall while it does.
+            // 1000 m at 7.7 m/s is 130 s, less the 8 s the canopy takes to open and the fall while it does.
             Assert.InRange(chuted.LandingUt - bare.LandingUt, 80, 135);
         }
 
@@ -235,7 +235,7 @@ namespace ClaudiaKermin.Core.Tests
             var craft = new ReentrySim.Capsule { Chutes = new List<ReentryChute> { open } };
             var landed = ReentryPredictor.Predict(ReentrySim.Kerbin(), orbit, entry, 0, craft.MassKg, new ReentrySim.Atmosphere(), craft, ReentrySim.Frame());
             Assert.Null(landed.Error);
-            // A 362 m² canopy from the top of the air: it all but stops in the thin air and comes down far short.
+            // A 337 m² canopy from the top of the air: it all but stops in the thin air and comes down far short.
             Assert.True(Downrange(Fly()) - Downrange(landed) > 100);
         }
 

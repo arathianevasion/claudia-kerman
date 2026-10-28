@@ -90,25 +90,22 @@ namespace ClaudiaKermin.Core.Tools
 
     /// <summary>
     /// When the <c>reentry</c> block arms its parachutes and drops its heat shield, as reentry.ks has them
-    /// (<c>reentry_chute_*</c>, <c>reentry_drogue_*</c>, <c>reentry_shield_*</c>): <see cref="Block"/> is that rule set; keep the
-    /// two in step (ReentryScienceTests checks them). Speeds are air speeds, heights above the ground.
+    /// (<c>reentry_chute_*</c>, <c>reentry_drogue_*</c>, <c>reentry_shield_*</c>), its "safe" chute mode; keep the two in step
+    /// (ReentryScienceTests checks them). Speeds are air speeds, heights above the ground.
     /// </summary>
-    public sealed class ReentryRules
+    public static class ReentryRules
     {
         /// <summary>Mains arm at or under this speed (m/s) in air of this pressure (atm) or more, or by this height (m) whatever the speed.</summary>
-        public double ChuteMaxSpeed = 250;
-        public double ChuteMinPressureAtm = 0.04;
-        public double ChuteLastAgl = 1500;
+        public const double ChuteMaxSpeed = 250;
+        public const double ChuteMinPressureAtm = 0.04;
+        public const double ChuteLastAgl = 1500;
         /// <summary>Drogues the same, by their own numbers.</summary>
-        public double DrogueMaxSpeed = 500;
-        public double DrogueMinPressureAtm = 0.02;
-        public double DrogueLastAgl = 3000;
+        public const double DrogueMaxSpeed = 500;
+        public const double DrogueMinPressureAtm = 0.02;
+        public const double DrogueLastAgl = 3000;
         /// <summary>The heat shield goes at or under this speed (m/s), or by this height (m).</summary>
-        public double ShieldSpeed = 400;
-        public double ShieldLastAgl = 3000;
-
-        /// <summary>reentry.ks's rules, the "safe" chute mode.</summary>
-        public static readonly ReentryRules Block = new ReentryRules();
+        public const double ShieldSpeed = 400;
+        public const double ShieldLastAgl = 3000;
     }
 
     /// <summary>
@@ -202,7 +199,6 @@ namespace ClaudiaKermin.Core.Tools
 
         private readonly SnapshotBody _body;
         private readonly IReentryAir _air;
-        private readonly ReentryRules _rules;
         private readonly Vec3 _spin;
         private readonly double _ground;
         private readonly List<Chute> _chutes = new List<Chute>();
@@ -222,14 +218,13 @@ namespace ClaudiaKermin.Core.Tools
             public double OpenedUt = double.NegativeInfinity;
         }
 
-        private ReentryPredictor(SnapshotBody body, IReentryAir air, IReentryCraft craft, BodyFrame frame, double ground, ReentryRules rules)
+        private ReentryPredictor(SnapshotBody body, IReentryAir air, IReentryCraft craft, BodyFrame frame, double ground)
         {
             _body = body;
             _air = air;
             _craft = craft;
             _spin = frame.Spin;
             _ground = ground;
-            _rules = rules;
             foreach (var chute in craft.Chutes ?? new ReentryChute[0])
                 if (chute != null) _chutes.Add(new Chute { Of = chute, State = chute.State });
         }
@@ -237,15 +232,17 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>
         /// Where the craft on <paramref name="orbit"/> round <paramref name="body"/> lands, falling from <paramref name="fromUt"/>,
         /// on ground <paramref name="groundAltitude"/> m above sea level, with mass <paramref name="massKg"/>, opening its chutes and
-        /// dropping its heat shield by <paramref name="rules"/> (<see cref="ReentryRules.Block"/> when null).
+        /// dropping its heat shield by <see cref="ReentryRules"/>.
         /// </summary>
         public static ReentryPrediction Predict(SnapshotBody body, Conic orbit, double fromUt, double groundAltitude, double massKg,
-            IReentryAir air, IReentryCraft craft, BodyFrame frame, ReentryRules rules = null)
+            IReentryAir air, IReentryCraft craft, BodyFrame frame)
         {
+            if (body == null || orbit == null || air == null || craft == null || frame == null)
+                return Fail("the body, orbit, air, craft and frame must all be given");
             if (body.AtmosphereHeight <= 0) return Fail(body.Name + " has no atmosphere");
             if (!SearchInput.Finite(fromUt) || !SearchInput.Finite(groundAltitude)) return Fail("the start time and the ground's height must be finite");
             if (!SearchInput.Finite(massKg) || massKg <= 0) return Fail("the craft's mass must be a positive number of kg");
-            var predictor = new ReentryPredictor(body, air, craft, frame, groundAltitude, rules ?? ReentryRules.Block) { _mass = massKg };
+            var predictor = new ReentryPredictor(body, air, craft, frame, groundAltitude) { _mass = massKg };
             return predictor.Fly(orbit, fromUt, frame);
         }
 
@@ -434,14 +431,14 @@ namespace ClaudiaKermin.Core.Tools
         private double Arms(Chute chute, double[] y)
         {
             var drogue = chute.Of.Drogue;
-            var speed = Slower(y, drogue ? _rules.DrogueMaxSpeed : _rules.ChuteMaxSpeed);
-            var pressure = PressureShare(y, drogue ? _rules.DrogueMinPressureAtm : _rules.ChuteMinPressureAtm);
-            return Math.Max(Math.Min(speed, pressure), Below(y, drogue ? _rules.DrogueLastAgl : _rules.ChuteLastAgl));
+            var speed = Slower(y, drogue ? ReentryRules.DrogueMaxSpeed : ReentryRules.ChuteMaxSpeed);
+            var pressure = PressureShare(y, drogue ? ReentryRules.DrogueMinPressureAtm : ReentryRules.ChuteMinPressureAtm);
+            return Math.Max(Math.Min(speed, pressure), Below(y, drogue ? ReentryRules.DrogueLastAgl : ReentryRules.ChuteLastAgl));
         }
 
         private double ShieldDue(double[] y)
         {
-            return Math.Max(Slower(y, _rules.ShieldSpeed), Below(y, _rules.ShieldLastAgl));
+            return Math.Max(Slower(y, ReentryRules.ShieldSpeed), Below(y, ReentryRules.ShieldLastAgl));
         }
 
         private void Derivative(double[] y, double t, double[] dy)

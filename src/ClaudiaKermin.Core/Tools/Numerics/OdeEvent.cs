@@ -22,10 +22,9 @@ namespace ClaudiaKermin.Core.Tools.Numerics
         /// <summary>Which crossings count: 1 rising through zero, -1 falling through it, 0 either.</summary>
         public readonly int Direction;
 
+        /// <summary>An event on <paramref name="f"/>; <see cref="Bs3.Solve"/> refuses one with no function or a direction outside -1 to 1.</summary>
         public OdeEvent(Func<double[], double, double> f, int direction = 0)
         {
-            if (f == null) throw new ArgumentNullException(nameof(f));
-            if (direction < -1 || direction > 1) throw new ArgumentOutOfRangeException(nameof(direction), "an event's direction is -1, 0 or 1");
             F = f;
             Direction = direction;
         }
