@@ -11,7 +11,7 @@ using Xunit;
 namespace ClaudiaKermin.Core.Tests.Numerics
 {
     /// <summary>
-    /// Seeded random sweep of <see cref="Sqp"/> on Course Corrections (#447, the #440 pattern): <see cref="EjectionBurn"/>'s Mun
+    /// Seeded random sweep of <see cref="Sqp"/> on Course Corrections (#447, the #440 pattern): <see cref="Tools.Transfer"/>'s Mun
     /// transfer from EjectionBurnTests' circular 100 km orbit, its ejection perturbed by 0.5 to 5 m/s in a random direction, and
     /// then the least burn at a random point of the coast that brings periapsis at the Mun to a random target_pe, posed by single
     /// shooting through <see cref="BodySystem.Follow"/> as #449 will pose it. Each must converge within 1 km of target_pe, in
@@ -37,7 +37,7 @@ namespace ClaudiaKermin.Core.Tests.Numerics
         private const double KerbinR = 600000;
         private const double MunR = 200000;
         private const double EjectionPe = 30000;
-        /// <summary>The periapsis tolerance the solve is given (EjectionBurn's PeClose), and the acceptance's bound on the answer.</summary>
+        /// <summary>The periapsis tolerance the solve is given (Transfer's PeClose), and the acceptance's bound on the answer.</summary>
         private const double PeTolerance = 10;
         private const double PeBound = 1000;
         /// <summary>The inclination residuals' tolerance (of a cosine, or of a unit normal's component), and the bound on the arrival, degrees.</summary>
@@ -49,62 +49,37 @@ namespace ClaudiaKermin.Core.Tests.Numerics
         /// <summary>The angle the least burn may make with the periapsis's gradient, degrees: the solver's derivatives are finite differences on a periapsis staircase.</summary>
         private const double AlongGradient = 1;
 
-        /// <summary>Which planned ejection a sweep perturbs: the same Mun transfer as two planners find it.</summary>
-        public enum Plan
-        {
-            /// <summary><see cref="EjectionBurn"/>'s, found when the sweep first needs it.</summary>
-            EjectionBurn,
-            /// <summary><see cref="TransferFindFigures"/>: the transfer as #448's <c>Transfer.Find</c> plans it.</summary>
-            TransferFind,
-        }
-
-        /// <summary>
-        /// The ejection as #448's <c>Transfer.Find</c> plans it from <see cref="Circular"/>, about 1 ms and 0.5 mm/s from
-        /// <see cref="EjectionBurn"/>'s. Sqp once stalled on two seeds from it (#481), which a Course Correction must not: a real
-        /// one starts from whatever the last plan left. When Transfer.Find is on main, point this at it.
-        /// </summary>
-        internal static readonly EjectionPlan TransferFindFigures = new EjectionPlan
-        {
-            Ut = 1912.6872892554063, Prograde = 837.6841505772729, Normal = 0, Radial = 0.000538,
-        };
-
-        /// <summary>Every seed from every plan.</summary>
         public static IEnumerable<object[]> Seeds
         {
-            get
-            {
-                foreach (Plan plan in Enum.GetValues(typeof(Plan)))
-                    foreach (var seed in Sweep.SeedValues)
-                        yield return new object[] { plan, seed };
-            }
+            get { return Sweep.Seeds; }
         }
 
         [Theory]
         [MemberData(nameof(Seeds))]
-        public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_in_under_100_ms(Plan plan, int seed)
+        public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_in_under_100_ms(int seed)
         {
-            Corrects(seed, Arrival.AnyInclination, plan, true);
+            Corrects(seed, Arrival.AnyInclination, true);
         }
 
         [Theory]
         [MemberData(nameof(Seeds))]
-        public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_and_an_inclined_arrival(Plan plan, int seed)
+        public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_and_an_inclined_arrival(int seed)
         {
-            Corrects(seed, Arrival.Inclined, plan, true);
+            Corrects(seed, Arrival.Inclined, true);
         }
 
         [Theory]
         [MemberData(nameof(Seeds))]
-        public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_and_an_equatorial_arrival(Plan plan, int seed)
+        public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_and_an_equatorial_arrival(int seed)
         {
-            Corrects(seed, Arrival.Equatorial, plan, true);
+            Corrects(seed, Arrival.Equatorial, true);
         }
 
         [Theory]
         [MemberData(nameof(Seeds))]
-        public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_with_a_free_burn_time(Plan plan, int seed)
+        public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_with_a_free_burn_time(int seed)
         {
-            Corrects(seed, Arrival.FreeTime, plan, true);
+            Corrects(seed, Arrival.FreeTime, true);
         }
 
         /// <summary>EjectionBurnTests' start: a circular, equatorial 100 km orbit at UT 0, the Mun at mean anomaly 1.7.</summary>
@@ -129,28 +104,25 @@ namespace ClaudiaKermin.Core.Tests.Numerics
             return snapshot;
         }
 
-        /// <summary>The transfer, found once: the setup, and the ejection's UT, state and burn (inertial, m/s).</summary>
-        private sealed class Transfer
+        /// <summary>The Mun transfer's ejection, found once: the setup, and the ejection's UT, state and burn (inertial, m/s).</summary>
+        private sealed class Ejection
         {
             public PredictBurn.Setup Setup;
             public double Ut;
             public Vec3 R, V, Burn;
         }
 
-        private static readonly Lazy<Transfer> ByEjectionBurn = new Lazy<Transfer>(() =>
+        /// <summary>
+        /// The ejection as <see cref="Tools.Transfer"/>'s <c>Find</c> plans it from <see cref="Circular"/>. Sqp once stalled on two
+        /// seeds from this plan (#481), which a Course Correction must not: a real one starts from whatever the last plan left.
+        /// </summary>
+        private static readonly Lazy<Ejection> Planned = new Lazy<Ejection>(() =>
         {
-            var plan = EjectionBurn.Find(Circular(), new EjectionAsk { Target = "Mun", TargetPe = EjectionPe, EarliestUt = 0 });
+            var snapshot = Circular();
+            var plan = Tools.Transfer.Find(snapshot, new TransferAsk { Target = "Mun", TargetPe = EjectionPe, EarliestUt = 0 });
             Assert.Null(plan.Error);
-            return Planned(plan);
-        });
-
-        private static readonly Lazy<Transfer> ByTransferFind = new Lazy<Transfer>(() => Planned(TransferFindFigures));
-
-        /// <summary>The transfer a plan from <see cref="Circular"/> flies.</summary>
-        private static Transfer Planned(EjectionPlan plan)
-        {
             ToolOutcome error;
-            var setup = PredictBurn.Setup.Prepare(Circular(), "Mun", out error);
+            var setup = PredictBurn.Setup.Prepare(snapshot, "Mun", out error);
             Assert.NotNull(setup);
             Vec3 r, v;
             setup.Start.State(plan.Ut, out r, out v);
@@ -158,8 +130,8 @@ namespace ClaudiaKermin.Core.Tests.Numerics
             var along = v.Normalized;
             var up = Vec3.Cross(r, v).Normalized;
             var outward = Vec3.Cross(along, up);
-            return new Transfer { Setup = setup, Ut = plan.Ut, R = r, V = v, Burn = along * plan.Prograde + up * plan.Normal + outward * plan.Radial };
-        }
+            return new Ejection { Setup = setup, Ut = plan.Ut, R = r, V = v, Burn = along * plan.Prograde + up * plan.Normal + outward * plan.Radial };
+        });
 
         /// <summary>The Mun patch after a burn of <paramref name="dv"/> at (<paramref name="r"/>, <paramref name="v"/>) at <paramref name="ut"/>, or null when the trajectory has no Mun encounter.</summary>
         /// <remarks>
@@ -186,10 +158,10 @@ namespace ClaudiaKermin.Core.Tests.Numerics
             return Vec3.Cross(r, v);
         }
 
-        internal static void Corrects(int seed, Arrival ask, Plan plan, bool timed)
+        internal static void Corrects(int seed, Arrival ask, bool timed)
         {
-            var name = "Course Correction" + (ask == Arrival.AnyInclination ? "" : " (" + ask + ")") + " from " + plan + "'s plan";
-            var transfer = (plan == Plan.TransferFind ? ByTransferFind : ByEjectionBurn).Value;
+            var name = "Course Correction" + (ask == Arrival.AnyInclination ? "" : " (" + ask + ")");
+            var transfer = Planned.Value;
             var system = transfer.Setup.System;
             var rng = new Random(seed);
             for (var i = 0; i < Cases; i++)

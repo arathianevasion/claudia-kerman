@@ -1,0 +1,362 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Andrew Watson
+
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text.Json;
+using ClaudiaKermin.Core.Missions;
+using ClaudiaKermin.Core.Tools;
+using Xunit;
+
+namespace ClaudiaKermin.Core.Tests
+{
+    /// <summary>
+    /// The transfer solver (#448) through <c>ADDONS:CLAUDIA:EJECTIONBURN</c>'s new inputs: to an orbit round the craft's body
+    /// (rendezvous and intercept, capture in and out) and to Minmus from an inclined parking orbit. Each node is checked again
+    /// by propagating it: the arc must arrive where the solver says, and the arrival burn must be the velocity it says.
+    /// <see cref="EjectionBurnTests"/> keeps the moon transfers <c>transfer_to</c> asks for.
+    /// </summary>
+    public sealed class TransferTests
+    {
+        private const double KerbinGm = 3.5316e12;
+        private const double KerbinR = 600000;
+
+        /// <summary>A circular, equatorial 100 km orbit at its periapsis at UT 0, with Kerbin and the Mun.</summary>
+        private static GameSnapshot Circular()
+        {
+            var snapshot = new GameSnapshot { Ut = 0, Situation = "ORBITING", Body = "Kerbin" };
+            snapshot.Orbit = new SnapshotOrbit
+            {
+                SemiMajorAxis = KerbinR + 100000, Eccentricity = 0, Body = "Kerbin", Periapsis = 100000, Apoapsis = 100000,
+            };
+            snapshot.Bodies.Add(new SnapshotBody { Name = "Sun", Gm = 1.1723328e18, Radius = 261600000, RotationPeriod = 432000 });
+            snapshot.Bodies.Add(new SnapshotBody
+            {
+                Name = "Kerbin", Parent = "Sun", Gm = KerbinGm, Radius = KerbinR, AtmosphereHeight = 70000, SeaLevelAtm = 1, SoiRadius = 84159286.48,
+                RotationPeriod = 21549.425, Sma = 13599840256, MeanAnomalyAtEpoch = 3.14,
+            });
+            snapshot.Bodies.Add(new SnapshotBody
+            {
+                Name = "Mun", Parent = "Kerbin", Gm = 6.5138398e10, Radius = 200000, SoiRadius = 2429559.1, RotationPeriod = 138984.38, Sma = 12000000,
+                MeanAnomalyAtEpoch = 1.7,
+            });
+            return snapshot;
+        }
+
+        private static GameSnapshot BlockTestStart()
+        {
+            return GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "kerbin-orbit-100km.json")));
+        }
+
+        /// <summary>A target orbit round Kerbin: circular at <paramref name="altitude"/>, <paramref name="mnaDeg"/> degrees on at UT 0.</summary>
+        private static Dictionary<string, object> ToOrbit(double altitude, double inc = 0, double lan = 0, double mnaDeg = 0, string mode = "intercept", bool capture = true)
+        {
+            return new Dictionary<string, object>
+            {
+                { "target_sma", KerbinR + altitude }, { "target_ecc", 0.0 }, { "target_inc", inc }, { "target_lan", lan }, { "target_argpe", 0.0 },
+                { "target_mna", mnaDeg }, { "target_epoch", 0.0 }, { "mode", mode }, { "capture", capture }, { "earliest_ut", 0.0 },
+            };
+        }
+
+        private static IDictionary<string, object> Solved(GameSnapshot snapshot, Dictionary<string, object> input)
+        {
+            var result = BlockCalls.EjectionBurn(input, snapshot);
+            Assert.Equal("", result["error"]);
+            return result;
+        }
+
+        private static double D(IDictionary<string, object> result, string key)
+        {
+            return (double)result[key];
+        }
+
+        private static Conic CraftOrbit(GameSnapshot snapshot)
+        {
+            var o = snapshot.Orbit;
+            return Conic.FromElements(KerbinGm, o.SemiMajorAxis, o.Eccentricity, o.Inclination, o.Lan, o.ArgumentOfPeriapsis, o.MeanAnomalyAtEpoch, o.Epoch);
+        }
+
+        private static Conic TargetOrbit(Dictionary<string, object> input)
+        {
+            return Conic.FromElements(KerbinGm, (double)input["target_sma"], (double)input["target_ecc"], (double)input["target_inc"], (double)input["target_lan"],
+                (double)input["target_argpe"], (double)input["target_mna"] * Math.PI / 180, (double)input["target_epoch"]);
+        }
+
+        /// <summary>The node flown from the craft's orbit and coasted to its <c>arrival_ut</c>: where the craft is then, and how fast.</summary>
+        private static void Flown(GameSnapshot snapshot, IDictionary<string, object> node, out Vec3 r, out Vec3 v)
+        {
+            var ut = D(node, "ut");
+            Vec3 r0, v0;
+            CraftOrbit(snapshot).State(ut, out r0, out v0);
+            var along = v0.Normalized;
+            var up = Vec3.Cross(r0, v0).Normalized;
+            var outward = Vec3.Cross(along, up);
+            var burned = Conic.FromState(KerbinGm, r0, v0 + along * D(node, "prograde") + up * D(node, "normal") + outward * D(node, "radial"), ut);
+            burned.State(D(node, "arrival_ut"), out r, out v);
+        }
+
+        /// <summary>A circular orbit's velocity at <paramref name="r"/> on it.</summary>
+        private static Vec3 CircularVelocity(Conic orbit, Vec3 r)
+        {
+            return Vec3.Cross(orbit.W, r).Normalized * Math.Sqrt(KerbinGm / orbit.A);
+        }
+
+        // ---- a Hohmann transfer ----
+
+        [Fact]
+        public void A_Hohmann_to_a_200_km_circular_orbit_from_100_km_is_the_closed_form_within_1_m_s()
+        {
+            // r1 = 700 km, r2 = 800 km: 2246.1 and 2101.1 m/s circular, so dv1 = v1 (sqrt(2 r2 / (r1 + r2)) - 1) = 73.7 m/s and
+            // dv2 = v2 (1 - sqrt(2 r1 / (r1 + r2))) = 71.2 m/s.
+            double r1 = 700000, r2 = 800000;
+            var dv1 = Math.Sqrt(KerbinGm / r1) * (Math.Sqrt(2 * r2 / (r1 + r2)) - 1);
+            var dv2 = Math.Sqrt(KerbinGm / r2) * (1 - Math.Sqrt(2 * r1 / (r1 + r2)));
+            Assert.Equal(73.7, dv1, 1);
+            Assert.Equal(71.2, dv2, 1);
+            var snapshot = Circular();
+            var input = ToOrbit(200000);
+            var node = Solved(snapshot, input);
+            Assert.InRange(D(node, "dv"), dv1 - 1, dv1 + 1);
+            Assert.InRange(D(node, "prograde"), dv1 - 1, dv1 + 1);
+            Assert.InRange(D(node, "arrival_dv"), dv2 - 1, dv2 + 1);
+            Assert.InRange(D(node, "ut"), 0, CraftOrbit(snapshot).Period);
+            Assert.Equal(-1, D(node, "target_pe_actual"));
+            Assert.Equal(D(node, "encounter_ut"), D(node, "arrival_ut"));
+
+            // Flown: it arrives on the 800 km orbit at apoapsis, half an orbit of the transfer later.
+            Vec3 r, v;
+            Flown(snapshot, node, out r, out v);
+            Assert.InRange(r.Length, r2 - 100, r2 + 100);
+            var hohmannTime = Math.PI * Math.Sqrt(Math.Pow((r1 + r2) / 2, 3) / KerbinGm);
+            Assert.InRange(D(node, "arrival_ut") - D(node, "ut"), hohmannTime - 30, hohmannTime + 30);
+            Assert.InRange((CircularVelocity(TargetOrbit(input), r) - v).Length, D(node, "arrival_dv") - 0.5, D(node, "arrival_dv") + 0.5);
+        }
+
+        // ---- intercept and rendezvous to an inclined orbit ----
+
+        /// <summary>A 300 km orbit at 10° whose ascending node is a quarter turn round from the craft's start, the target a third of a turn on.</summary>
+        private static Dictionary<string, object> Inclined(string mode, bool capture = true)
+        {
+            return ToOrbit(300000, inc: 10, lan: 90, mnaDeg: 120, mode: mode, capture: capture);
+        }
+
+        [Fact]
+        public void A_rendezvous_with_an_inclined_orbit_arrives_where_the_target_is()
+        {
+            var snapshot = Circular();
+            var input = Inclined("rendezvous");
+            var node = Solved(snapshot, input);
+            Vec3 r, v, rt, vt;
+            Flown(snapshot, node, out r, out v);
+            TargetOrbit(input).State(D(node, "arrival_ut"), out rt, out vt);
+            Assert.InRange((r - rt).Length, 0, 1000);
+            Assert.InRange((vt - v).Length, D(node, "arrival_dv") - 0.5, D(node, "arrival_dv") + 0.5);
+            Assert.InRange(D(node, "ut"), 0, D(node, "synodic"));
+        }
+
+        [Fact]
+        public void An_intercept_of_an_inclined_orbit_arrives_on_it_but_not_at_the_target_and_costs_no_more_than_the_rendezvous()
+        {
+            var snapshot = Circular();
+            var input = Inclined("intercept");
+            var meet = Solved(snapshot, Inclined("rendezvous"));
+            var node = Solved(snapshot, input);
+            var target = TargetOrbit(input);
+            Vec3 r, v, rt, vt;
+            Flown(snapshot, node, out r, out v);
+            target.State(D(node, "arrival_ut"), out rt, out vt);
+            // On the target orbit: at its radius and in its plane.
+            Assert.InRange(r.Length, target.A - 1000, target.A + 1000);
+            Assert.InRange(Math.Abs(Vec3.Dot(r, target.W)), 0, 1000);
+            // Not where the target is: the phase is free.
+            Assert.True((r - rt).Length > 100000, "the intercept arrived " + (r - rt).Length + " m from the target");
+            Assert.InRange((CircularVelocity(target, r) - v).Length, D(node, "arrival_dv") - 0.5, D(node, "arrival_dv") + 0.5);
+            // Free to arrive anywhere, it is never dearer, and it goes within one orbit of the craft.
+            Assert.True(D(node, "dv") + D(node, "arrival_dv") <= D(meet, "dv") + D(meet, "arrival_dv") + 0.5,
+                "intercept " + (D(node, "dv") + D(node, "arrival_dv")) + " m/s, rendezvous " + (D(meet, "dv") + D(meet, "arrival_dv")) + " m/s");
+            Assert.InRange(D(node, "ut"), 0, CraftOrbit(snapshot).Period);
+        }
+
+        /// <summary>Degrees round the craft's equatorial orbit from UT 0's periapsis to where it is at <paramref name="ut"/>.</summary>
+        private static double AngleAt(GameSnapshot snapshot, double ut)
+        {
+            var r = CraftOrbit(snapshot).Position(ut);
+            return Math.Atan2(r.Y, r.X) * 180 / Math.PI;
+        }
+
+        [Fact]
+        public void An_intercept_departing_alone_is_a_Hohmann_from_a_node_with_the_plane_change_at_arrival()
+        {
+            // The target plane crosses the craft's at 90° and 270° round from UT 0's periapsis. The cheapest departure alone
+            // leaves from one of them on a Hohmann in the craft's plane (dv1 = 136.3 m/s to 900 km) and arrives at the other,
+            // in both planes; the arrival then matches the target orbit and turns 10° at once: from vApo = 1853 m/s to
+            // vCirc = 1981 m/s, sqrt(vApo² + vCirc² - 2 vApo vCirc cos 10°) = 357.6 m/s. Either node will do; both are tried.
+            double r1 = 700000, r2 = 900000;
+            var dv1 = Math.Sqrt(KerbinGm / r1) * (Math.Sqrt(2 * r2 / (r1 + r2)) - 1);
+            var vApo = Math.Sqrt(KerbinGm / r2) * Math.Sqrt(2 * r1 / (r1 + r2));
+            var vCirc = Math.Sqrt(KerbinGm / r2);
+            var dv2 = Math.Sqrt(vApo * vApo + vCirc * vCirc - 2 * vApo * vCirc * Math.Cos(10 * Math.PI / 180));
+            Assert.Equal(136.3, dv1, 1);
+            Assert.Equal(357.6, dv2, 1);
+            var snapshot = Circular();
+            var node = Solved(snapshot, Inclined("intercept", capture: false));
+            Assert.InRange(D(node, "dv"), dv1 - 1, dv1 + 1);
+            Assert.InRange(Math.Abs(D(node, "normal")), 0, 1);
+            Assert.InRange(D(node, "arrival_dv"), dv2 - 1, dv2 + 1);
+            var angle = AngleAt(snapshot, D(node, "ut"));
+            Assert.True(Math.Abs(Math.Abs(angle) - 90) < 2, "departs at " + angle + "°, not at a node");
+        }
+
+        [Fact]
+        public void An_intercept_with_capture_splits_the_plane_change_and_beats_the_Hohmann_with_it_all_at_arrival()
+        {
+            // With the arrival counted, a few degrees of the plane change move to the departure, where they cost less than they
+            // save at arrival (the textbook split): the two burns come to less than 136.3 + 357.6 = 493.9 m/s.
+            var snapshot = Circular();
+            var alone = Solved(snapshot, Inclined("intercept", capture: false));
+            var node = Solved(snapshot, Inclined("intercept", capture: true));
+            var both = D(node, "dv") + D(node, "arrival_dv");
+            Assert.True(both < D(alone, "dv") + D(alone, "arrival_dv") - 10, "with capture " + both + " m/s");
+            Assert.True(Math.Abs(D(node, "normal")) > 10, "no plane change at departure: normal " + D(node, "normal"));
+            Assert.True(D(node, "dv") > D(alone, "dv"));
+            var angle = AngleAt(snapshot, D(node, "ut"));
+            Assert.True(Math.Abs(Math.Abs(angle) - 90) < 5, "departs at " + angle + "°, not near a node");
+        }
+
+        // ---- capture in and out ----
+
+        [Fact]
+        public void Capture_false_minimises_the_departure_and_true_the_two_burns_each_checked_by_flying_the_node()
+        {
+            var snapshot = Circular();
+            var withCapture = Inclined("rendezvous", capture: true);
+            var without = Inclined("rendezvous", capture: false);
+            var both = Solved(snapshot, withCapture);
+            var departing = Solved(snapshot, without);
+            // The documented two figures: dv the departure, arrival_dv the burn that matches the target at arrival.
+            foreach (var pair in new[] { Tuple.Create(both, withCapture), Tuple.Create(departing, without) })
+            {
+                Vec3 r, v, rt, vt;
+                Flown(snapshot, pair.Item1, out r, out v);
+                TargetOrbit(pair.Item2).State(D(pair.Item1, "arrival_ut"), out rt, out vt);
+                Assert.InRange((r - rt).Length, 0, 1000);
+                Assert.InRange((vt - v).Length, D(pair.Item1, "arrival_dv") - 0.5, D(pair.Item1, "arrival_dv") + 0.5);
+            }
+            Assert.True(D(departing, "dv") <= D(both, "dv") + 0.01, "departure alone " + D(departing, "dv") + ", with capture " + D(both, "dv"));
+            Assert.True(D(both, "dv") + D(both, "arrival_dv") <= D(departing, "dv") + D(departing, "arrival_dv") + 0.01);
+        }
+
+        [Fact]
+        public void A_moon_s_arrival_burn_is_the_circular_capture_at_the_periapsis_reached()
+        {
+            var snapshot = Circular();
+            var node = Solved(snapshot, new Dictionary<string, object> { { "target", "Mun" }, { "target_pe", 30000.0 }, { "earliest_ut", 0.0 } });
+            // From predict_burn's patch round the Mun: periapsis speed sqrt(gm (1 + e) / rp) less the circular sqrt(gm / rp).
+            var input = string.Format(CultureInfo.InvariantCulture,
+                "{{\"burns\":[{{\"at\":{0:R},\"dv\":{{\"prograde\":{1:R},\"normal\":{2:R},\"radial\":{3:R}}}}}]}}",
+                D(node, "ut"), D(node, "prograde"), D(node, "normal"), D(node, "radial"));
+            var outcome = PlanningTools.Default().Run("predict_burn", input, snapshot, new NoPlanningBody());
+            Assert.False(outcome.IsError, outcome.Json);
+            using (var doc = JsonDocument.Parse(outcome.Json))
+            {
+                var mun = doc.RootElement.GetProperty("patches").EnumerateArray().First(p => p.GetProperty("body").GetString() == "Mun");
+                const double gm = 6.5138398e10;
+                var rp = 200000 + mun.GetProperty("pe").GetDouble();
+                var e = mun.GetProperty("eccentricity").GetDouble();
+                var capture = Math.Sqrt(gm * (1 + e) / rp) - Math.Sqrt(gm / rp);
+                Assert.InRange(D(node, "arrival_dv"), capture - 1, capture + 1);
+            }
+            // The Mun from 100 km: about 840 m/s out and about 260 m/s to capture at 30 km.
+            Assert.InRange(D(node, "arrival_dv"), 230, 290);
+        }
+
+        // ---- Minmus from an inclined parking orbit ----
+
+        [Fact]
+        public void Minmus_is_reached_from_an_inclined_parking_orbit()
+        {
+            var snapshot = BlockTestStart();
+            snapshot.Orbit.Inclination = 25;
+            snapshot.Orbit.Lan = 40;
+            var node = Solved(snapshot, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 20000.0 }, { "earliest_ut", snapshot.Ut + 30 } });
+            var input = string.Format(CultureInfo.InvariantCulture,
+                "{{\"burns\":[{{\"at\":{0:R},\"dv\":{{\"prograde\":{1:R},\"normal\":{2:R},\"radial\":{3:R}}}}}],\"target\":\"Minmus\"}}",
+                D(node, "ut"), D(node, "prograde"), D(node, "normal"), D(node, "radial"));
+            var outcome = PlanningTools.Default().Run("predict_burn", input, snapshot, new NoPlanningBody());
+            Assert.False(outcome.IsError, outcome.Json);
+            using (var doc = JsonDocument.Parse(outcome.Json))
+                Assert.InRange(doc.RootElement.GetProperty("closest_approach").GetProperty("altitude").GetDouble(), 19900, 20100);
+            // In plane it would be 907 m/s. Leaving where the parking plane crosses Minmus's orbit, the arc reaches it without
+            // turning the whole way at 2.2 km/s (a 19° turn there would be about 730 m/s more); the capture takes the rest.
+            Assert.InRange(D(node, "dv"), 900, 1100);
+            Assert.InRange(D(node, "arrival_dv"), 150, 400);
+        }
+
+        // ---- the wall clock ----
+
+        [Fact]
+        public void Each_solve_runs_under_100_ms()
+        {
+            var snapshot = Circular();
+            var parking = BlockTestStart();
+            parking.Orbit.Inclination = 25;
+            parking.Orbit.Lan = 40;
+            Timing.Within(100, () => Solved(snapshot, ToOrbit(200000)));
+            Timing.Within(100, () => Solved(snapshot, Inclined("intercept")));
+            Timing.Within(100, () => Solved(snapshot, Inclined("rendezvous")));
+            Timing.Within(100, () => Solved(snapshot, Inclined("rendezvous", capture: false)));
+            Timing.Within(100, () => Solved(parking, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 20000.0 }, { "earliest_ut", parking.Ut + 30 } }));
+        }
+
+        // ---- failures: "found no transfer: <why>" ----
+
+        [Fact]
+        public void An_intercept_of_a_body_has_no_transfer()
+        {
+            var input = new Dictionary<string, object> { { "target", "Mun" }, { "target_pe", 30000.0 }, { "mode", "intercept" } };
+            Assert.Equal("found no transfer: intercept is for a target orbit; a body is met where it is", BlockCalls.EjectionBurn(input, Circular())["error"]);
+        }
+
+        [Fact]
+        public void A_target_body_and_a_target_orbit_together_have_no_transfer()
+        {
+            var input = ToOrbit(200000);
+            input["target"] = "Mun";
+            Assert.Equal("found no transfer: give a target body or a target orbit, not both", BlockCalls.EjectionBurn(input, Circular())["error"]);
+        }
+
+        [Theory]
+        [InlineData(0.0, 0.0, "found no transfer: the target orbit must be closed: a semi-major axis over 0 and an eccentricity from 0 to under 1")]
+        [InlineData(800000.0, 1.0, "found no transfer: the target orbit must be closed: a semi-major axis over 0 and an eccentricity from 0 to under 1")]
+        [InlineData(500000.0, 0.0, "found no transfer: the target orbit's periapsis is below Kerbin's surface")]
+        [InlineData(90000000.0, 0.0, "found no transfer: the target orbit's apoapsis is outside Kerbin's sphere of influence")]
+        [InlineData(double.NaN, 0.0, "found no transfer: the target orbit's elements must be numbers")]
+        public void A_target_orbit_that_is_not_a_closed_orbit_inside_the_sphere_of_influence_has_no_transfer(double sma, double ecc, string error)
+        {
+            var input = ToOrbit(200000);
+            input["target_sma"] = sma;
+            input["target_ecc"] = ecc;
+            Assert.Equal(error, BlockCalls.EjectionBurn(input, Circular())["error"]);
+        }
+
+        [Fact]
+        public void A_mode_or_capture_it_can_t_read_has_no_transfer()
+        {
+            var input = ToOrbit(200000);
+            input["mode"] = "flyby";
+            Assert.Equal("found no transfer: mode must be \"rendezvous\" or \"intercept\", not flyby", BlockCalls.EjectionBurn(input, Circular())["error"]);
+            input = ToOrbit(200000);
+            input["capture"] = "yes";
+            Assert.Equal("found no transfer: capture must be true or false", BlockCalls.EjectionBurn(input, Circular())["error"]);
+            input = ToOrbit(200000);
+            input["target_inc"] = "steep";
+            Assert.Equal("found no transfer: target_inc must be a number", BlockCalls.EjectionBurn(input, Circular())["error"]);
+            input = ToOrbit(200000);
+            input.Remove("target_epoch");
+            Assert.Equal("found no transfer: target_epoch is required with target_sma: the target orbit takes all seven elements", BlockCalls.EjectionBurn(input, Circular())["error"]);
+        }
+    }
+}

@@ -56,7 +56,7 @@ namespace ClaudiaKermin.Core.Tools
     internal static class CorrectionBurn
     {
         private const string Failure = "found no correction";
-        /// <summary>The solver's own tolerances: periapsis (m, as EjectionBurn's PeClose) and the inclination residuals.</summary>
+        /// <summary>The solver's own tolerances: periapsis (m, as Transfer's PeClose) and the inclination residuals.</summary>
         private const double PeResidual = 10;
         private const double IncResidual = 1e-6;
         private const int MaxIterations = 50;
