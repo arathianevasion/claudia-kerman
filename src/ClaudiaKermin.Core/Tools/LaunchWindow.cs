@@ -47,7 +47,7 @@ namespace ClaudiaKermin.Core.Tools
             if (!Finite(inc) || Math.Abs(inc) > 180 || !Finite(lan)) return Fail("the plane's inclination and LAN must be numbers (inclination within 180 degrees)");
             var size = Math.Abs(inc);
             // An equatorial plane (the Mun's) is under a pad within a degree of the equator at once: the longitude doesn't matter (as MechJeb).
-            var equatorial = (size < 0.01 || size > 179.99) && Math.Abs(latitude) <= 1;
+            var equatorial = (size < 1e-9 || size > 180 - 1e-9) && Math.Abs(latitude) <= 1;
             if (!equatorial && (size < Math.Abs(latitude) - 1e-9 || size > 180 - Math.Abs(latitude) + 1e-9))
                 return Fail("the pad never passes under a plane of inclination " + Round(size) + ": the pad's latitude is " + Round(Math.Abs(latitude))
                     + " degrees, past it");

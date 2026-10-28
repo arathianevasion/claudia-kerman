@@ -38,7 +38,7 @@ namespace ClaudiaKermin.Core.Tools
                     + "else Orbital stage) and the altitude, speed, apoapsis, periapsis and time to apoapsis when it lights; then delta-v "
                     + "to orbit, left and kept by stage_limit, and the margin (marginal when thin). Give turn_shape to fly one shape. "
                     + "Its block is launch: pass launch the turn_shape it gives, with the same target_ap, stage_limit, turn_start_speed "
-                    + "and throttle_max_q. target_lan or launch_at adds launch_ut, heading. A point-mass sim, not KSP.Don't call it for a body without air (use stage_performance), "
+                    + "and throttle_max_q. target_lan or launch_at adds launch_ut, heading. A point-mass sim, not KSP. Don't call it for a body without air (use stage_performance), "
                     + "or again when the craft and target_ap haven't changed since you last did.";
             }
         }
