@@ -62,6 +62,29 @@ namespace ClaudiaKermin.Core.Tests
             CraftCheckRouter.StartChecked(mission, _crashable.TryGetValue(mission, out background) ? background : _background, OnPad(), start);
         }
 
+        /// <summary>
+        /// A Spending Cap measured from the rig's own request, so it keeps its meaning as the tools list (counted in every worst
+        /// case) grows: the big plan's worst case fits, so it is sent, but what it really costs ($0.80) passes the cap.
+        /// </summary>
+        private static decimal CapUnderTheBigPlansRealCost()
+        {
+            using (var probe = new MissionPersistenceTests())
+            {
+                var mission = probe.Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-big.sse")));
+                mission.Send(new SceneChanged(GameScene.Flight));
+                mission.Send(OnPad());
+                CraftCheckRouter.StartChecked(mission, probe._background, OnPad(), new StartMission(Goal, 10m, "claude-sonnet-5-5"));
+                probe.DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+                var path = Path.Combine(probe._save.Path, "ClaudiaKermin", "missions", mission.View.MissionId, "cost-log.jsonl");
+                var worstCase = File.ReadAllText(path).Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(line => JsonDocument.Parse(line).RootElement)
+                    .First(r => r.GetProperty("event").GetString() == "pending").GetProperty("amount").GetDecimal();
+                var paid = mission.View.Spent;
+                Assert.True(worstCase < paid, "no cap fits the worst case but not the real cost: " + worstCase + " to " + paid);
+                return Math.Round((worstCase + paid) / 2, 4);
+            }
+        }
+
         private static GameSnapshot OnPad()
         {
             return GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "on-pad.json")));
@@ -751,7 +774,7 @@ namespace ClaudiaKermin.Core.Tests
             var mission = Control(transport);
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(OnPad());
-            StartChecked(mission, new StartMission(Goal, 0.50m, "claude-sonnet-5-5"));
+            StartChecked(mission, new StartMission(Goal, CapUnderTheBigPlansRealCost(), "claude-sonnet-5-5"));
             DrainUntil(mission, v => v.Stage == MissionStage.Paused);
             Assert.Equal(0.80m, mission.View.Spent);
             var saved = Saved(mission);
@@ -788,7 +811,7 @@ namespace ClaudiaKermin.Core.Tests
             var mission = Control(transport);
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(OnPad());
-            StartChecked(mission, new StartMission(Goal, 0.50m, "claude-sonnet-5-5"));
+            StartChecked(mission, new StartMission(Goal, CapUnderTheBigPlansRealCost(), "claude-sonnet-5-5"));
             DrainUntil(mission, v => v.Stage == MissionStage.Paused);
             var saved = Saved(mission);
             Assert.True(saved[0].PausedForCap);
@@ -809,7 +832,7 @@ namespace ClaudiaKermin.Core.Tests
             var mission = Control(transport);
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(OnPad());
-            StartChecked(mission, new StartMission(Goal, 0.50m, "claude-sonnet-5-5"));
+            StartChecked(mission, new StartMission(Goal, CapUnderTheBigPlansRealCost(), "claude-sonnet-5-5"));
             DrainUntil(mission, v => v.Stage == MissionStage.Paused);
             // The Pause is the cap's and the craft's both: Resume waits for the player to be in Flight with it.
             var saved = Saved(mission);
@@ -838,7 +861,7 @@ namespace ClaudiaKermin.Core.Tests
             var mission = Control(transport);
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(OnPad());
-            StartChecked(mission, new StartMission(Goal, 0.50m, "claude-sonnet-5-5"));
+            StartChecked(mission, new StartMission(Goal, CapUnderTheBigPlansRealCost(), "claude-sonnet-5-5"));
             DrainUntil(mission, v => v.Stage == MissionStage.Paused);
             var saved = Saved(mission);
 
@@ -878,7 +901,7 @@ namespace ClaudiaKermin.Core.Tests
             var mission = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-big.sse")));
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(OnPad());
-            StartChecked(mission, new StartMission(Goal, 0.50m, "claude-sonnet-5-5"));
+            StartChecked(mission, new StartMission(Goal, CapUnderTheBigPlansRealCost(), "claude-sonnet-5-5"));
             DrainUntil(mission, v => v.Stage == MissionStage.Paused);
             var saved = Saved(mission);
 
