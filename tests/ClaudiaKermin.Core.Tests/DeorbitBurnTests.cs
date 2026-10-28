@@ -298,6 +298,13 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void The_parts_the_heat_shield_takes_are_the_uids_given_as_shield_drop_and_none_by_default()
+        {
+            Assert.Equal(new[] { "4294512000" }, BlockCalls.ShieldDrop(Ask("shield_drop", new System.Collections.Generic.List<object> { "4294512000" })));
+            Assert.Empty(BlockCalls.ShieldDrop(Ask("leave_out", "99")));
+        }
+
+        [Fact]
         public void The_engines_isp_lightens_the_craft_after_the_burn_and_the_search_allows_for_it()
         {
             var orbit = Circular();

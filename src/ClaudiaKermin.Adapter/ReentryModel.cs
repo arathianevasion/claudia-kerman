@@ -38,6 +38,13 @@ namespace ClaudiaKermin.Adapter
             density = _body.GetDensity(pressure, temperature);
             speedOfSound = _body.GetSpeedOfSound(pressure, density);
         }
+
+        public double PressureAtm(double altitude)
+        {
+            if (!_body.atmosphere || altitude >= _body.atmosphereDepth) return 0;
+            // Stock's GetPressure is kPa.
+            return _body.GetPressure(Math.Max(0, altitude)) * PhysicsGlobals.KpaToAtmospheres;
+        }
     }
 
     /// <summary>
@@ -47,20 +54,35 @@ namespace ClaudiaKermin.Adapter
     /// is interpolated, times stock's multipliers and pseudo-Reynolds curve. Parts shielded from the airstream add none.
     /// Parts the block will drop (#326, by kOS UID, which is the part's flightID) are left out, mass and drag: a part that
     /// stays faces the air bare where one of them is attached, as it will once they have gone.
+    /// Body lift (#462) is read from the same cubes as MechJeb's ReentrySimulation reads it: each part's cube lift for the
+    /// airflow, times its and stock's body-lift multipliers, toward the craft's top square to the flow, at a table of angles
+    /// off retrograde (the airflow tilted toward the craft's belly); stock's lift-by-Mach curve is applied when asked. Parts
+    /// with a lifting-surface module are left out of it, as stock does (their wing lift is not modelled). The parachutes are
+    /// each ModuleParachute's own numbers, with the drag areas of its SEMIDEPLOYED and DEPLOYED cubes met as the part meets
+    /// the air (held retrograde, or hanging under the canopy alike), at low Mach. Given the parts the heat shield drop takes
+    /// (<c>shieldDrop</c>, kOS UIDs), <see cref="AfterShield"/> is the craft without them.
     /// Main thread; reads only (the cube data is a local copy).
     /// </summary>
     public sealed class ReentryCraft : IReentryCraft
     {
         private static readonly double[] Machs = MachTable();
+        private static readonly double[] Angles = { 0, 5, 10, 15, 20, 30, 45, 60, 90 };
         private static readonly Vector3[] Faces = DragCubeDrag.Faces;
+        /// <summary>The Mach the open parachutes' cubes are read at: they open subsonic, where stock's curves hardly change.</summary>
+        private const float ChuteMach = 0.3f;
         private readonly double[] _area = new double[Machs.Length];
+        private readonly double[] _lift = new double[Angles.Length];
+        private readonly List<ReentryChute> _chutes = new List<ReentryChute>();
         private readonly double _mass;
+        private readonly ReentryCraft _afterShield;
 
-        public ReentryCraft(Vessel vessel, ICollection<string> leaveOut = null)
+        public ReentryCraft(Vessel vessel, ICollection<string> leaveOut = null, ICollection<string> shieldDrop = null)
         {
             var gone = new HashSet<string>(leaveOut ?? new string[0]);
             // The way the craft moves through the air when its forward axis points at surface retrograde.
-            var flow = -vessel.ReferenceTransform.up;
+            var nose = vessel.ReferenceTransform.up;
+            var top = -vessel.ReferenceTransform.forward;
+            var flow = -nose;
             if (gone.Count == 0) _mass = vessel.totalMass * 1000;
             foreach (var part in vessel.parts)
             {
@@ -75,7 +97,65 @@ namespace ClaudiaKermin.Adapter
                         ? DragCubeDrag.Area(part.DragCubes, bared, local, (float)Machs[i])
                         : DragCubeDrag.Area(part, local, (float)Machs[i]);
                 }
+                if (!part.hasLiftModule)
+                {
+                    for (var a = 0; a < Angles.Length; a++)
+                    {
+                        var rad = Angles[a] * Math.PI / 180;
+                        // Tilted toward the belly, the flow meets the craft's belly side, as a nose-up lifting entry does.
+                        var tilted = (flow * (float)Math.Cos(rad) - top * (float)Math.Sin(rad)).normalized;
+                        var lift = part.partTransform.TransformDirection(DragCubeDrag.Lift(part, part.partTransform.InverseTransformDirection(tilted)));
+                        var square = Vector3.ProjectOnPlane(top, tilted).normalized;
+                        _lift[a] += Vector3.Dot(lift, square) * part.bodyLiftMultiplier * PhysicsGlobals.BodyLiftMultiplier;
+                    }
+                }
+                var chute = part.FindModuleImplementing<ModuleParachute>();
+                if (chute != null) AddChute(part, chute, local);
             }
+            if (shieldDrop != null && shieldDrop.Count > 0)
+            {
+                var without = new HashSet<string>(gone);
+                foreach (var uid in shieldDrop) without.Add(uid);
+                _afterShield = new ReentryCraft(vessel, without);
+            }
+        }
+
+        private void AddChute(Part part, ModuleParachute chute, Vector3 local)
+        {
+            ReentryChuteState state;
+            switch (chute.deploymentState)
+            {
+                case ModuleParachute.deploymentStates.STOWED: state = ReentryChuteState.Stowed; break;
+                case ModuleParachute.deploymentStates.ACTIVE: state = ReentryChuteState.Armed; break;
+                case ModuleParachute.deploymentStates.SEMIDEPLOYED: state = ReentryChuteState.SemiDeployed; break;
+                case ModuleParachute.deploymentStates.DEPLOYED: state = ReentryChuteState.Deployed; break;
+                // Cut, or anything newer: no drag to come from it.
+                default: return;
+            }
+            _chutes.Add(new ReentryChute
+            {
+                // As reentry.ks's reentry_is_drogue reads the part's name.
+                Drogue = part.partInfo != null && part.partInfo.name.ToLowerInvariant().Contains("drogue"),
+                State = state,
+                MinPressureAtm = chute.minAirPressureToOpen,
+                DeployAltitude = chute.deployAltitude,
+                SemiArea = CubeArea(part, "SEMIDEPLOYED", local),
+                FullArea = CubeArea(part, "DEPLOYED", local),
+                SemiSeconds = chute.semiDeploymentSpeed > 0 ? 1 / chute.semiDeploymentSpeed : 0,
+                FullSeconds = chute.deploymentSpeed > 0 ? 1 / chute.deploymentSpeed : 0,
+                Curve = chute.deploymentCurve > 0 ? chute.deploymentCurve : 1,
+            });
+        }
+
+        /// <summary>The drag area, m², of the part's drag cube <paramref name="name"/> alone, unoccluded, met along <paramref name="local"/>; 0 if it has none.</summary>
+        private static double CubeArea(Part part, string name, Vector3 local)
+        {
+            foreach (var cube in part.DragCubes.Cubes)
+            {
+                if (cube.Name != name) continue;
+                return DragCubeDrag.Area(part.DragCubes, cube.Area, cube.Drag, local, ChuteMach) * DragCubeDrag.Multiplier;
+            }
+            return 0;
         }
 
         private static bool Gone(Part part, HashSet<string> gone)
@@ -113,6 +193,31 @@ namespace ClaudiaKermin.Adapter
         {
             var area = Interpolate(mach);
             return area * DragCubeDrag.Multiplier * PhysicsGlobals.DragCurvePseudoReynolds.Evaluate((float)densitySpeed);
+        }
+
+        public double LiftArea(double mach, double angleOfAttack)
+        {
+            var angle = Math.Max(Angles[0], Math.Min(Angles[Angles.Length - 1], Math.Abs(angleOfAttack)));
+            var lift = _lift[_lift.Length - 1];
+            for (var i = 1; i < Angles.Length; i++)
+            {
+                if (angle > Angles[i]) continue;
+                var t = (angle - Angles[i - 1]) / (Angles[i] - Angles[i - 1]);
+                lift = _lift[i - 1] + t * (_lift[i] - _lift[i - 1]);
+                break;
+            }
+            if (lift == 0) return 0;
+            return lift * PhysicsGlobals.BodyLiftCurve.liftMachCurve.Evaluate((float)mach);
+        }
+
+        public IList<ReentryChute> Chutes
+        {
+            get { return _chutes; }
+        }
+
+        public IReentryCraft AfterShield
+        {
+            get { return _afterShield; }
         }
 
         private double Interpolate(double mach)

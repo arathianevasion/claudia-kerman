@@ -111,7 +111,7 @@ namespace ClaudiaKermin.KOS
                 var vessel = shared.Vessel;
                 var ask = KosValues.ToDictionary(input);
                 found = BlockCalls.DeorbitBurn(ask, SnapshotReader.Read(vessel), new PlanningBody(),
-                    new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask)));
+                    new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
                 return KosValues.FromPlain(found);
             }, () => Landing(found));
         }
@@ -124,7 +124,7 @@ namespace ClaudiaKermin.KOS
                 var vessel = shared.Vessel;
                 var ask = KosValues.ToDictionary(input);
                 landing = BlockCalls.ReentryImpact(ask, SnapshotReader.Read(vessel), new PlanningBody(),
-                    new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask)));
+                    new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
                 return KosValues.FromPlain(landing);
             }, () => Landing(landing));
         }

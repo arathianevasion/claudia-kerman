@@ -2,7 +2,9 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
+using System.Collections.Generic;
 using ClaudiaKermin.Core.Missions;
+using ClaudiaKermin.Core.Tools.Numerics;
 
 namespace ClaudiaKermin.Core.Tools
 {
@@ -17,6 +19,9 @@ namespace ClaudiaKermin.Core.Tools
         /// degrees; density 0 above the atmosphere.
         /// </summary>
         void Air(double altitude, double latitude, out double density, out double speedOfSound);
+
+        /// <summary>Static pressure, atm, at <paramref name="altitude"/> m above sea level (0 above the atmosphere): when parachutes open.</summary>
+        double PressureAtm(double altitude);
     }
 
     /// <summary>
@@ -30,9 +35,80 @@ namespace ClaudiaKermin.Core.Tools
 
         /// <summary>
         /// The drag area, m², held retrograde at <paramref name="mach"/>, so that drag (N) = ½ρv² × this; <paramref name="densitySpeed"/>
-        /// (ρv, kg/m²/s) is for KSP's pseudo-Reynolds curve.
+        /// (ρv, kg/m²/s) is for KSP's pseudo-Reynolds curve. Stowed parachutes are in it; open ones are <see cref="Chutes"/>'.
         /// </summary>
         double DragArea(double mach, double densitySpeed);
+
+        /// <summary>
+        /// The lift area, m², at <paramref name="mach"/> with the airflow <paramref name="angleOfAttack"/> degrees off retrograde
+        /// (0 held retrograde, which is all the predictor flies): lift (N) = ½ρv² × this, square to the airflow, toward the
+        /// craft's top (the sky, as kOS holds <c>srfretrograde</c>); negative pushes it down. 0 for a craft without body lift.
+        /// </summary>
+        double LiftArea(double mach, double angleOfAttack);
+
+        /// <summary>The craft's parachutes, in no order; empty for none, never null.</summary>
+        IList<ReentryChute> Chutes { get; }
+
+        /// <summary>
+        /// The craft once its heat shield has gone (its mass, drag and lift; its <see cref="Chutes"/> are not read, the chutes being
+        /// this craft's), or null when the heat shield stays (none, or the block keeps it).
+        /// </summary>
+        IReentryCraft AfterShield { get; }
+    }
+
+    /// <summary>Where a parachute is in KSP's deployment: stowed, armed (waiting for its opening pressure), semi- or fully deployed.</summary>
+    public enum ReentryChuteState
+    {
+        Stowed,
+        Armed,
+        SemiDeployed,
+        Deployed,
+    }
+
+    /// <summary>
+    /// One parachute for the reentry predictor, as KSP's ModuleParachute has it: once armed (by the block's rules,
+    /// <see cref="ReentryRules"/>) it semi-deploys when the air reaches <see cref="MinPressureAtm"/>, and deploys fully at
+    /// <see cref="DeployAltitude"/> above the ground, each opening over its time.
+    /// </summary>
+    public sealed class ReentryChute
+    {
+        /// <summary>A drogue chute: <c>reentry</c> opens drogues first, by their own rules, and the mains only once they are out.</summary>
+        public bool Drogue;
+        public ReentryChuteState State = ReentryChuteState.Stowed;
+        /// <summary>KSP's minAirPressureToOpen, atm: an armed chute semi-deploys at this pressure or more.</summary>
+        public double MinPressureAtm;
+        /// <summary>KSP's deployAltitude, m above the ground: a semi-deployed chute deploys fully below it.</summary>
+        public double DeployAltitude;
+        /// <summary>The drag area, m², the chute adds semi-deployed and fully deployed (over the stowed chute's, in the craft's drag).</summary>
+        public double SemiArea;
+        public double FullArea;
+        /// <summary>How long, s, the semi and full deployments take to open (KSP's semiDeploymentSpeed and deploymentSpeed), and the curve of the opening (deploymentCurve: area share = time share ^ this).</summary>
+        public double SemiSeconds;
+        public double FullSeconds;
+        public double Curve = 1;
+    }
+
+    /// <summary>
+    /// When the <c>reentry</c> block arms its parachutes and drops its heat shield, as reentry.ks has them
+    /// (<c>reentry_chute_*</c>, <c>reentry_drogue_*</c>, <c>reentry_shield_*</c>): <see cref="Block"/> is that rule set; keep the
+    /// two in step. Speeds are air speeds, heights above the ground.
+    /// </summary>
+    internal sealed class ReentryRules
+    {
+        /// <summary>Mains arm at or under this speed (m/s) in air of this pressure (atm) or more, or by this height (m) whatever the speed.</summary>
+        public double ChuteMaxSpeed = 250;
+        public double ChuteMinPressureAtm = 0.04;
+        public double ChuteLastAgl = 1500;
+        /// <summary>Drogues the same, by their own numbers.</summary>
+        public double DrogueMaxSpeed = 500;
+        public double DrogueMinPressureAtm = 0.02;
+        public double DrogueLastAgl = 3000;
+        /// <summary>The heat shield goes at or under this speed (m/s), or by this height (m).</summary>
+        public double ShieldSpeed = 400;
+        public double ShieldLastAgl = 3000;
+
+        /// <summary>reentry.ks's rules, the "safe" chute mode.</summary>
+        public static readonly ReentryRules Block = new ReentryRules();
     }
 
     /// <summary>
@@ -85,59 +161,104 @@ namespace ClaudiaKermin.Core.Tools
         public Vec3 Position;
         /// <summary>The most drag deceleration on the way down, in g.</summary>
         public double PeakG;
+        /// <summary>The air speed it reaches the ground at, m/s.</summary>
+        public double LandingSpeed;
+        /// <summary>When the first parachute starts to open (semi-deploys), and when the heat shield goes; -1 for never.</summary>
+        public double ChuteUt = -1;
+        public double ShieldUt = -1;
+        /// <summary>The integrator's accepted steps, and the craft's drag asked for (each one also asks the air once).</summary>
+        public int Steps;
+        public int Evaluations;
     }
 
     /// <summary>
-    /// The reentry predictor (#282, from the reentry research of #247): where a craft held surface retrograde lands. The vacuum
-    /// leg follows the Kepler orbit (<see cref="Conic"/>, as predict_burn) to the top of the atmosphere; from there gravity and
-    /// drag are integrated with fixed-step RK4 against the turning atmosphere, as the Trajectories mod does. The air and the
-    /// craft's drag come through <see cref="IReentryAir"/> and <see cref="IReentryCraft"/>. Parachutes and the heat shield's
-    /// drop are not modelled: they come after Mach 1, a few km of the downrange at most. Shared by the deorbit burn search and
-    /// the block-internal calls; it only reads.
+    /// The reentry predictor (#282, from the reentry research of #247; adaptive, with lift, parachutes and the heat shield's drop
+    /// since #462): where a craft held surface retrograde lands. The vacuum leg follows the Kepler orbit (<see cref="Conic"/>,
+    /// as predict_burn) to the top of the atmosphere; from there gravity, drag and lift are integrated against the turning
+    /// atmosphere with <see cref="Bs3"/>'s adaptive step, as MechJeb's ReentrySimulation does. Its events end a stretch where the
+    /// model changes (a parachute arms, semi-deploys or deploys fully; the heat shield goes, by <see cref="ReentryRules"/>) or
+    /// the flight does (the ground; back out of the atmosphere), and the next stretch starts from there. The air and the craft
+    /// come through <see cref="IReentryAir"/> and <see cref="IReentryCraft"/>. Shared by the deorbit burn search and the
+    /// block-internal calls; it only reads.
     /// </summary>
     internal sealed class ReentryPredictor
     {
         private const double G0 = 9.80665;
-        /// <summary>The RK4 step, s: within about 10 m of a 0.1 s step through Kerbin's atmosphere (the research's step table).</summary>
-        public const double Step = 2;
+        /// <summary>
+        /// The integrator's relative tolerance per step on the state (position and velocity in the body's frame): within about
+        /// 15 m of a 0.25 s RK4 step through Kerbin's atmosphere in about 215 steps, as many as the 2 s RK4 took and a quarter of
+        /// a 0.5 s one's (1e-5 halves the steps but drifts 110 m; 1e-7 doubles them for 1 m). Under an open parachute the drag
+        /// is stiff and the step stays near a second, so a fall under one takes about twice the steps.
+        /// </summary>
+        public const double Rtol = 1e-6;
+        /// <summary>The largest step, s: high in the air, where the drag is all but none, the step would otherwise grow past what the events can see.</summary>
+        public const double MaxStep = 20;
         /// <summary>A craft still flying after this long in the atmosphere is given up on.</summary>
         public const double MaxAtmosphereSeconds = 3600;
         /// <summary>Times it may skip back out of the atmosphere and fall in again.</summary>
         private const int MaxSkips = 3;
+        /// <summary>The integrator's step cap per stretch.</summary>
+        private const int MaxSteps = 5000;
 
         private readonly SnapshotBody _body;
         private readonly IReentryAir _air;
-        private readonly IReentryCraft _craft;
+        private readonly ReentryRules _rules;
         private readonly Vec3 _spin;
+        private readonly double _ground;
+        private readonly List<Chute> _chutes = new List<Chute>();
+        private IReentryCraft _craft;
         private double _mass;
         private double _peak;
+        private int _evaluations;
+        private bool _shieldGone;
+        /// <summary>The unit normal of the airflow's plane as the craft entered the air: lift is square to it.</summary>
+        private Vec3 _plane;
 
-        private ReentryPredictor(SnapshotBody body, IReentryAir air, IReentryCraft craft, BodyFrame frame)
+        /// <summary>A parachute's state over the flight, and when its current deployment began.</summary>
+        private sealed class Chute
+        {
+            public ReentryChute Of;
+            public ReentryChuteState State;
+            public double OpenedUt = double.NegativeInfinity;
+        }
+
+        private ReentryPredictor(SnapshotBody body, IReentryAir air, IReentryCraft craft, BodyFrame frame, double ground, ReentryRules rules)
         {
             _body = body;
             _air = air;
             _craft = craft;
             _spin = frame.Spin;
+            _ground = ground;
+            _rules = rules;
+            foreach (var chute in craft.Chutes ?? new ReentryChute[0])
+                if (chute != null) _chutes.Add(new Chute { Of = chute, State = chute.State });
         }
 
         /// <summary>
         /// Where the craft on <paramref name="orbit"/> round <paramref name="body"/> lands, falling from <paramref name="fromUt"/>,
-        /// on ground <paramref name="groundAltitude"/> m above sea level, with mass <paramref name="massKg"/>.
+        /// on ground <paramref name="groundAltitude"/> m above sea level, with mass <paramref name="massKg"/>, opening its chutes and
+        /// dropping its heat shield by <paramref name="rules"/> (<see cref="ReentryRules.Block"/> when null).
         /// </summary>
         public static ReentryPrediction Predict(SnapshotBody body, Conic orbit, double fromUt, double groundAltitude, double massKg,
-            IReentryAir air, IReentryCraft craft, BodyFrame frame, double step = Step)
+            IReentryAir air, IReentryCraft craft, BodyFrame frame, ReentryRules rules = null)
         {
             if (body.AtmosphereHeight <= 0) return Fail(body.Name + " has no atmosphere");
-            var predictor = new ReentryPredictor(body, air, craft, frame) { _mass = massKg };
-            return predictor.Fly(orbit, fromUt, groundAltitude, frame, step);
+            if (!SearchInput.Finite(fromUt) || !SearchInput.Finite(groundAltitude)) return Fail("the start time and the ground's height must be finite");
+            if (!SearchInput.Finite(massKg) || massKg <= 0) return Fail("the craft's mass must be a positive number of kg");
+            var predictor = new ReentryPredictor(body, air, craft, frame, groundAltitude, rules ?? ReentryRules.Block) { _mass = massKg };
+            return predictor.Fly(orbit, fromUt, frame);
         }
 
-        private ReentryPrediction Fly(Conic orbit, double t, double ground, BodyFrame frame, double step)
+        private ReentryPrediction Fly(Conic orbit, double t, BodyFrame frame)
         {
             var radius = _body.Radius;
             var top = radius + _body.AtmosphereHeight;
             var prediction = new ReentryPrediction();
-            if (orbit.Radius(t) <= radius + ground) return Fail("the craft is already on the ground");
+            if (orbit.Radius(t) <= radius + _ground) return Fail("the craft is already on the ground");
+            var solver = new Bs3 { Rtol = Rtol, Atol = 1e-6, Hmax = MaxStep, MaxSteps = MaxSteps };
+            OdeFunction f = Derivative;
+            var groundEvent = new OdeEvent((y, ut) => Height(y) - _ground, -1);
+            var outEvent = new OdeEvent((y, ut) => Height(y) - _body.AtmosphereHeight, 1);
             for (var skip = 0; skip <= MaxSkips; skip++)
             {
                 if (orbit.Radius(t) > top)
@@ -152,55 +273,189 @@ namespace ClaudiaKermin.Core.Tools
                 if (skip == 0) prediction.EntryUt = t;
                 Vec3 r, v;
                 orbit.State(t, out r, out v);
+                var y = new[] { r.X, r.Y, r.Z, v.X, v.Y, v.Z };
+                var normal = Vec3.Cross(r, v - Vec3.Cross(_spin, r));
+                _plane = normal.Length > 0 ? normal.Normalized : new Vec3(0, 0, 1);
                 var end = t + MaxAtmosphereSeconds;
                 var skipped = false;
-                while (t < end)
+                while (true)
                 {
-                    var r0 = r;
-                    var h0 = r.Length - radius;
-                    Rk4(ref r, ref v, step);
-                    t += step;
-                    var h = r.Length - radius;
-                    if (h <= ground)
+                    // Anything due already (a craft predicted from under its chutes' heights) happens before the stretch.
+                    while (Happen(y, t, prediction)) { }
+                    var events = new List<OdeEvent> { groundEvent, outEvent };
+                    var changes = Changes(prediction);
+                    events.AddRange(changes.Keys);
+                    var leg = solver.Solve(f, y, t, end, events);
+                    prediction.Steps += leg.Steps;
+                    prediction.Evaluations = _evaluations;
+                    if (leg.Status == OdeStatus.Finished) break;
+                    if (leg.Status != OdeStatus.EventTerminated) return Fail("the fall could not be integrated: " + leg.Reason);
+                    y = leg.Y;
+                    t = leg.T;
+                    if (leg.Event == groundEvent)
                     {
-                        var f = (h0 - ground) / (h0 - h);
-                        var at = r0 + (r - r0) * f;
-                        var ut = t - step + f * step;
+                        var at = new Vec3(y[0], y[1], y[2]);
                         double lat, lng;
-                        frame.Ground(at, ut, out lat, out lng);
+                        frame.Ground(at, t, out lat, out lng);
                         prediction.Latitude = lat;
                         prediction.Longitude = lng;
-                        prediction.LandingUt = ut;
+                        prediction.LandingUt = t;
                         prediction.Position = at;
                         prediction.PeakG = _peak;
+                        prediction.LandingSpeed = AirSpeed(y);
                         return prediction;
                     }
-                    if (h > _body.AtmosphereHeight && Vec3.Dot(r, v) > 0)
+                    if (leg.Event == outEvent)
                     {
-                        orbit = Conic.FromState(_body.Gm, r, v, t);
+                        orbit = Conic.FromState(_body.Gm, new Vec3(y[0], y[1], y[2]), new Vec3(y[3], y[4], y[5]), t);
                         skipped = true;
                         break;
                     }
+                    changes[leg.Event](t);
                 }
                 if (!skipped) return Fail("the craft is still flying after " + Metres(MaxAtmosphereSeconds) + " s in " + _body.Name + "'s atmosphere");
             }
             return Fail("the craft skips out of " + _body.Name + "'s atmosphere more than " + MaxSkips + " times");
         }
 
-        private void Rk4(ref Vec3 r, ref Vec3 v, double dt)
+        /// <summary>
+        /// The changes the next stretch may end at, each with its event: a function that crosses 0 upward where the change's
+        /// condition comes true (its conditions' shares of their limits, combined by min for "and", max for "or").
+        /// </summary>
+        private Dictionary<OdeEvent, Action<double>> Changes(ReentryPrediction prediction)
         {
-            var a1 = Accel(r, v);
-            var v2 = v + a1 * (dt / 2);
-            var a2 = Accel(r + v * (dt / 2), v2);
-            var v3 = v + a2 * (dt / 2);
-            var a3 = Accel(r + v2 * (dt / 2), v3);
-            var v4 = v + a3 * dt;
-            var a4 = Accel(r + v3 * dt, v4);
-            r = r + (v + 2 * v2 + 2 * v3 + v4) * (dt / 6);
-            v = v + (a1 + 2 * a2 + 2 * a3 + a4) * (dt / 6);
+            var changes = new Dictionary<OdeEvent, Action<double>>();
+            foreach (var chute in _chutes)
+            {
+                var c = chute;
+                if (Pending(c)) changes.Add(new OdeEvent((y, ut) => Due(c, y), 1), ut => Advance(c, ut, prediction));
+            }
+            if (!ShieldStays) changes.Add(new OdeEvent((y, ut) => ShieldDue(y), 1), ut => DropShield(ut, prediction));
+            return changes;
         }
 
-        private Vec3 Accel(Vec3 r, Vec3 v)
+        /// <summary>
+        /// Makes the one change due at <paramref name="y"/> now, if any, without waiting for an event: a craft predicted from low
+        /// down, or a chute armed in air already thick enough (KSP checks the pressure the moment it is armed). False for none.
+        /// </summary>
+        private bool Happen(double[] y, double t, ReentryPrediction prediction)
+        {
+            foreach (var chute in _chutes)
+            {
+                if (!Pending(chute) || Due(chute, y) < 0) continue;
+                Advance(chute, t, prediction);
+                return true;
+            }
+            if (ShieldStays || ShieldDue(y) < 0) return false;
+            DropShield(t, prediction);
+            return true;
+        }
+
+        /// <summary>Whether the chute has a next state to reach: the mains are not armed while a drogue is still stowed.</summary>
+        private bool Pending(Chute chute)
+        {
+            if (chute.State == ReentryChuteState.Deployed) return false;
+            return chute.State != ReentryChuteState.Stowed || chute.Of.Drogue || !DroguesPending();
+        }
+
+        /// <summary>The event function for the chute's next state: arming by the block's rule, semi-deploying by its pressure, deploying fully by its height.</summary>
+        private double Due(Chute chute, double[] y)
+        {
+            switch (chute.State)
+            {
+                case ReentryChuteState.Stowed: return Arms(chute, y);
+                case ReentryChuteState.Armed: return PressureShare(y, chute.Of.MinPressureAtm);
+                default: return Below(y, chute.Of.DeployAltitude);
+            }
+        }
+
+        private void Advance(Chute chute, double t, ReentryPrediction prediction)
+        {
+            chute.State++;
+            if (chute.State < ReentryChuteState.SemiDeployed) return;
+            chute.OpenedUt = t;
+            if (prediction.ChuteUt < 0) prediction.ChuteUt = t;
+        }
+
+        private bool DroguesPending()
+        {
+            foreach (var chute in _chutes)
+                if (chute.Of.Drogue && chute.State == ReentryChuteState.Stowed) return true;
+            return false;
+        }
+
+        /// <summary>The heat shield goes: the craft is the one after it, lighter by the difference in their masses.</summary>
+        private void DropShield(double t, ReentryPrediction prediction)
+        {
+            var after = _craft.AfterShield;
+            _mass = Math.Max(1e-3, _mass - (_craft.MassKg - after.MassKg));
+            _craft = after;
+            _shieldGone = true;
+            prediction.ShieldUt = t;
+        }
+
+        /// <summary>Whether no heat-shield drop is to come: it has gone, or the craft keeps it.</summary>
+        private bool ShieldStays
+        {
+            get { return _shieldGone || _craft.AfterShield == null; }
+        }
+
+        private double Height(double[] y)
+        {
+            return Math.Sqrt(y[0] * y[0] + y[1] * y[1] + y[2] * y[2]) - _body.Radius;
+        }
+
+        private double AirSpeed(double[] y)
+        {
+            var r = new Vec3(y[0], y[1], y[2]);
+            return (new Vec3(y[3], y[4], y[5]) - Vec3.Cross(_spin, r)).Length;
+        }
+
+        /// <summary>The share by which the craft is under <paramref name="agl"/> m above the ground: 0 at it, positive below.</summary>
+        private double Below(double[] y, double agl)
+        {
+            return (agl - (Height(y) - _ground)) / Math.Max(agl, 1);
+        }
+
+        /// <summary>The share by which the pressure is over <paramref name="atm"/>: 0 at it, positive above.</summary>
+        private double PressureShare(double[] y, double atm)
+        {
+            var min = Math.Max(atm, 1e-9);
+            return (_air.PressureAtm(Height(y)) - min) / min;
+        }
+
+        /// <summary>The share by which the air speed is under <paramref name="speed"/>: 0 at it, positive slower.</summary>
+        private double Slower(double[] y, double speed)
+        {
+            return (speed - AirSpeed(y)) / Math.Max(speed, 1);
+        }
+
+        /// <summary>reentry's arming rule for the chute: slow enough in thick enough air, or low enough whatever the speed.</summary>
+        private double Arms(Chute chute, double[] y)
+        {
+            var drogue = chute.Of.Drogue;
+            var speed = Slower(y, drogue ? _rules.DrogueMaxSpeed : _rules.ChuteMaxSpeed);
+            var pressure = PressureShare(y, drogue ? _rules.DrogueMinPressureAtm : _rules.ChuteMinPressureAtm);
+            return Math.Max(Math.Min(speed, pressure), Below(y, drogue ? _rules.DrogueLastAgl : _rules.ChuteLastAgl));
+        }
+
+        private double ShieldDue(double[] y)
+        {
+            return Math.Max(Slower(y, _rules.ShieldSpeed), Below(y, _rules.ShieldLastAgl));
+        }
+
+        private void Derivative(double[] y, double t, double[] dy)
+        {
+            var a = Accel(new Vec3(y[0], y[1], y[2]), new Vec3(y[3], y[4], y[5]), t);
+            dy[0] = y[3];
+            dy[1] = y[4];
+            dy[2] = y[5];
+            dy[3] = a.X;
+            dy[4] = a.Y;
+            dy[5] = a.Z;
+        }
+
+        private Vec3 Accel(Vec3 r, Vec3 v, double t)
         {
             var length = r.Length;
             var a = r * (-_body.Gm / (length * length * length));
@@ -212,10 +467,45 @@ namespace ClaudiaKermin.Core.Tools
             var air = v - Vec3.Cross(_spin, r);
             var speed = air.Length;
             if (speed <= 0) return a;
-            var area = _craft.DragArea(sound > 0 ? speed / sound : 0, density * speed);
-            var k = 0.5 * density * speed * area / _mass;
+            _evaluations++;
+            var mach = sound > 0 ? speed / sound : 0;
+            var area = _craft.DragArea(mach, density * speed) + ChuteArea(t);
+            var q = 0.5 * density * speed / _mass;
+            var k = q * area;
             _peak = Math.Max(_peak, k * speed / G0);
-            return a - air * k;
+            a = a - air * k;
+            var liftArea = _craft.LiftArea(mach, 0);
+            if (liftArea == 0) return a;
+            // Lift is square to the airflow and to the orbit's plane as it entered: toward the sky while the craft flies along
+            // its track, and still the same way, not flipping, once the fall turns vertical (the craft keeps its roll).
+            var square = Vec3.Cross(air, _plane);
+            var size = square.Length;
+            if (size < 1e-9 * speed) return a;
+            return a + square * (q * speed * liftArea / size);
+        }
+
+        /// <summary>The drag area the open chutes add at <paramref name="t"/>, each opening over its time.</summary>
+        private double ChuteArea(double t)
+        {
+            double area = 0;
+            foreach (var chute in _chutes)
+            {
+                if (chute.State == ReentryChuteState.SemiDeployed)
+                    area += Opening(t, chute, chute.Of.SemiSeconds) * chute.Of.SemiArea;
+                else if (chute.State == ReentryChuteState.Deployed)
+                {
+                    var share = Opening(t, chute, chute.Of.FullSeconds);
+                    area += (1 - share) * chute.Of.SemiArea + share * chute.Of.FullArea;
+                }
+            }
+            return area;
+        }
+
+        private static double Opening(double t, Chute chute, double seconds)
+        {
+            if (seconds <= 0 || t - chute.OpenedUt >= seconds) return 1;
+            var share = Math.Max(0, (t - chute.OpenedUt) / seconds);
+            return Math.Pow(share, chute.Of.Curve > 0 ? chute.Of.Curve : 1);
         }
 
         private static ReentryPrediction Fail(string reason)
