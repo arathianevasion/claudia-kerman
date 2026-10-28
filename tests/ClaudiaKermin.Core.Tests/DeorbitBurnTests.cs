@@ -124,6 +124,18 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void It_runs_in_milliseconds()
+        {
+            // The deorbit block's search to KSC from the 80 km orbit, and one too far off the track (every pass refined). Measured
+            // at about 35 ms alone in a Debug build; the budget is about 15 times that.
+            Timing.Within(500, () =>
+            {
+                Find(KscLat, KscLng);
+                Find(20, KscLng);
+            });
+        }
+
+        [Fact]
         public void An_airless_body_fails_with_body_has_no_atmosphere()
         {
             Assert.Equal("body has no atmosphere", Find(KscLat, KscLng, atmosphere: 0).Error);

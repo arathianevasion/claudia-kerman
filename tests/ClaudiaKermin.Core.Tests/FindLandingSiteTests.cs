@@ -111,6 +111,19 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void It_runs_in_milliseconds()
+        {
+            // The whole track with every site kept, and a biome search that sweeps the track for its sites. Measured at about
+            // 1.3 ms alone in a Debug build; the budget is about 20 times that.
+            var basin = new FakeBody { BiomeAt = (lat, lon) => lon >= 45.5 ? "EastCrater" : "Highlands" };
+            Timing.Within(25, () =>
+            {
+                Run(Snapshot(inclination: 30), "{\"body\":\"Mun\",\"daylight\":false}", new FakeBody());
+                Run(Snapshot(), "{\"body\":\"Mun\",\"daylight\":false,\"biome\":\"EastCrater\",\"edge_margin_m\":10000}", basin);
+            });
+        }
+
+        [Fact]
         public void The_tool_is_offered_on_mission_turns_only()
         {
             Assert.Contains("find_landing_site", _tools.Definitions(ToolOffer.Mission).Select(t => t.Name));

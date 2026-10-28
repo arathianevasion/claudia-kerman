@@ -41,6 +41,19 @@ namespace ClaudiaKermin.Core.Tests
             Assert.InRange(landed.PeakG, 2, 3);
         }
 
+        [Fact]
+        public void It_runs_in_milliseconds()
+        {
+            // The reference reentry, and the steepest and shallowest of the research's periapsis sweep. Measured at about 1.5 ms
+            // alone in a Debug build; the budget is about 15 times that.
+            Timing.Within(25, () =>
+            {
+                Fly();
+                Fly(10000);
+                Fly(50000);
+            });
+        }
+
         [Theory]
         [InlineData(10000, 927)]
         [InlineData(20000, 1002)]

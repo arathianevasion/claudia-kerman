@@ -129,6 +129,18 @@ namespace ClaudiaKermin.Core.Tests
             return result.GetProperty("tried").EnumerateArray().Select(t => t.GetProperty("turn_shape").GetDouble()).ToArray();
         }
 
+        [Fact]
+        public void It_runs_in_milliseconds()
+        {
+            // Every turn shape for a strong craft, and for one that falls whatever the shape. Measured at about 25 ms alone in a
+            // Debug build; the budget is about 10 times that.
+            Timing.Within(250, () =>
+            {
+                Run(Strong(), "{\"target_ap\":80000}");
+                Run(Hopeless(), "{\"target_ap\":80000}");
+            });
+        }
+
         // ---- reaching orbit ----
 
         [Fact]

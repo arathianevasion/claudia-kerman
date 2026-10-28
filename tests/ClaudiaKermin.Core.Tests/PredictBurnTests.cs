@@ -215,6 +215,19 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void It_runs_in_milliseconds()
+        {
+            // A closest approach to the Mun with no encounter, an escape to a patch round the Sun, and two burns on one patch.
+            // Measured at about 1.6 ms alone in a Debug build; the budget is about 15 times that.
+            Timing.Within(25, () =>
+            {
+                Run(Snapshot(), "{\"burns\":[" + Burn("0", 100) + "],\"target\":\"Mun\"}");
+                Run(Snapshot(munPhase: -Math.PI / 2), "{\"burns\":[" + Burn("0", 1000) + "]}");
+                Run(Snapshot(), "{\"burns\":[" + Burn("0", 500) + "," + Burn("\"ap\"", 200) + "],\"target\":\"Mun\"}");
+            });
+        }
+
+        [Fact]
         public void A_retrograde_burn_low_over_the_airless_mun_ends_in_an_impact_where_the_orbit_meets_the_surface()
         {
             var result = Run(Snapshot("Mun", 30000), "{\"burns\":[" + Burn("0", -100) + "]}");

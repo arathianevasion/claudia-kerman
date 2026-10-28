@@ -103,10 +103,15 @@ namespace ClaudiaKermin.Core.Tools
             if (until <= from)
                 return Fail("the burn must come by UT " + Num(until) + ", before the earliest it can be, UT " + Num(from));
             var span = Math.Min(synodic, until - from);
+            // Why the last Lambert solve that failed had no path, for the error when no departure has one.
+            string lambertError = null;
             Func<double, double, double> cost = (t, tof) =>
             {
                 Vec3 burn;
-                return Cost(craft, moon, target.Gm, peR, t, tof, out burn);
+                string why;
+                var c = Cost(craft, moon, target.Gm, peR, t, tof, out burn, out why);
+                if (why != null) lambertError = why;
+                return c;
             };
 
             // The grid: a departure every span / Seeds from one step before the start (so a window just before it is a
@@ -148,7 +153,8 @@ namespace ClaudiaKermin.Core.Tools
                 for (var i = 1; i < count - 1 && (i - 1) * step <= span; i++)
                     if (!double.IsInfinity(cheapest[i]) && (pick < 0 || cheapest[i] < cheapest[pick])) pick = i;
             if (pick < 0)
-                return Fail("no departure in the " + Num(span) + " s from UT " + Num(from) + " has a path to " + target.Name);
+                return Fail("no departure in the " + Num(span) + " s from UT " + Num(from) + " has a path to " + target.Name
+                    + (lambertError != null ? " (Lambert: " + lambertError + ")" : ""));
 
             // Coordinate descent from the grid's dip, never before the start or past the grid's end (or the latest UT).
             var last = Math.Min(from + (count - 2) * step, until);
@@ -175,7 +181,9 @@ namespace ClaudiaKermin.Core.Tools
                 }
             }
             Vec3 lambert;
-            Cost(craft, moon, target.Gm, peR, bestT, bestTof, out lambert);
+            string unsolved;
+            Cost(craft, moon, target.Gm, peR, bestT, bestTof, out lambert, out unsolved);
+            if (unsolved != null) return Fail("the cheapest ejection, at UT " + Num(bestT) + ", has no Lambert path: " + unsolved);
             Vec3 r, v;
             craft.State(bestT, out r, out v);
             var along = v.Normalized;
@@ -198,16 +206,21 @@ namespace ClaudiaKermin.Core.Tools
             return beat < 1e-12 ? Math.Max(a, b) : 1 / beat;
         }
 
-        /// <summary>RSVP's cost of a departure at <paramref name="t"/> taking <paramref name="tof"/> s: the ejection plus a circular capture at <paramref name="peR"/>.</summary>
-        private static double Cost(Conic craft, Conic moon, double targetGm, double peR, double t, double tof, out Vec3 burn)
+        /// <summary>
+        /// RSVP's cost of a departure at <paramref name="t"/> taking <paramref name="tof"/> s: the ejection plus a circular capture
+        /// at <paramref name="peR"/>; infinity, with the Lambert solver's reason in <paramref name="error"/>, when there is no path.
+        /// </summary>
+        private static double Cost(Conic craft, Conic moon, double targetGm, double peR, double t, double tof, out Vec3 burn, out string error)
         {
             burn = default(Vec3);
-            Vec3 r1, vc, r2, vt, v1, v2;
+            Vec3 r1, vc, r2, vt;
             craft.State(t, out r1, out vc);
             moon.State(t + tof, out r2, out vt);
-            if (!Lambert.Solve(craft.Mu, r1, r2, tof, craft.W, out v1, out v2)) return double.PositiveInfinity;
-            burn = v1 - vc;
-            var arriving = (v2 - vt).Length;
+            var path = Lambert.Solve(craft.Mu, r1, r2, tof, craft.W);
+            error = path.Error;
+            if (error != null) return double.PositiveInfinity;
+            burn = path.V1 - vc;
+            var arriving = (path.V2 - vt).Length;
             return burn.Length + Math.Sqrt(arriving * arriving + 2 * targetGm / peR) - Math.Sqrt(targetGm / peR);
         }
 
