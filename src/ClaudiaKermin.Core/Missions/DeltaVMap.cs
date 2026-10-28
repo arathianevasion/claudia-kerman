@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using ClaudiaKermin.Core.Tools;
 
 namespace ClaudiaKermin.Core.Missions
 {
@@ -41,6 +42,9 @@ namespace ClaudiaKermin.Core.Missions
         private const double AtmosphereClearance = 10000;
         /// <summary>Low orbit round an airless body, as a fraction of its radius above the surface.</summary>
         private const double AirlessOrbitFraction = 0.07;
+
+        /// <summary>The inclination of a polar orbit (degrees).</summary>
+        private const double PolarInclination = 90;
 
         /// <summary>The body whose system the Map covers by default.</summary>
         public const string DefaultHome = "Kerbin";
@@ -83,7 +87,7 @@ namespace ClaudiaKermin.Core.Missions
                 var atMoon = Math.Sqrt(center.Gm * (2 / moon.Sma - 1 / a));
                 var excess = Math.Abs(Circular(center.Gm, moon.Sma) - atMoon);
                 var arrival = Math.Sqrt(excess * excess + 2 * moon.Gm / lowMoon) - Circular(moon.Gm, lowMoon);
-                var plane = 2 * atMoon * Math.Sin(moon.Inclination * Math.PI / 360);
+                var plane = OrbitChange.PlaneChangeDeltaV(atMoon, moon.Inclination);
 
                 map.Legs.Add(new DeltaVLeg
                 {
@@ -93,6 +97,16 @@ namespace ClaudiaKermin.Core.Missions
                     Arrival = arrival,
                     PlaneChange = plane,
                     DeltaV = departure + arrival + plane,
+                });
+                // A polar orbit round the moon, from the equatorial one the transfer captures into: turned at the highest point
+                // of the capture, where the craft moves at the speed it arrived with (the hyperbolic excess).
+                var polar = OrbitChange.PlaneChangeDeltaV(excess, PolarInclination);
+                map.Legs.Add(new DeltaVLeg
+                {
+                    Id = "polar:" + moon.Name,
+                    Description = "Extra for a polar orbit of " + moon.Name + " instead of an equatorial one (plane change at the capture's highest point)",
+                    DeltaV = polar,
+                    PlaneChange = polar,
                 });
                 map.Legs.Add(new DeltaVLeg
                 {
@@ -127,7 +141,10 @@ namespace ClaudiaKermin.Core.Missions
             foreach (var leg in Legs)
             {
                 text.Append("- ").Append(leg.Id).Append(": ").Append(leg.Description).Append(": ")
-                    .Append(leg.DeltaV.ToString("#,0", CultureInfo.InvariantCulture)).Append(" m/s\n");
+                    .Append(leg.DeltaV.ToString("#,0", CultureInfo.InvariantCulture)).Append(" m/s");
+                if (leg.PlaneChange > 0)
+                    text.Append(" (carries a plane change of ").Append(leg.PlaneChange.ToString("#,0", CultureInfo.InvariantCulture)).Append(" m/s)");
+                text.Append('\n');
             }
             return text.ToString();
         }
