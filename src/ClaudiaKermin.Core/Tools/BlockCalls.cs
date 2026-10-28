@@ -89,7 +89,7 @@ namespace ClaudiaKermin.Core.Tools
                 EarliestUt = Number(ask, "earliest_ut", snapshot.Ut),
                 MaxWait = Number(ask, "max_wait", at.RotationPeriod),
                 GroundAltitude = Number(ask, "ground_alt", 0),
-                AccuracyKm = Number(ask, "accuracy_km", 10),
+                AccuracyKm = Number(ask, "accuracy_km", 5),
                 Isp = Number(ask, "isp", 0),
             }, air, craft, frame);
             if (plan.Landing == null || plan.Landing.Error != null) return Error(plan.Error ?? plan.Landing.Error);

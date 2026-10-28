@@ -22,7 +22,7 @@
 //|     splashdown offshore of a coast, so a miss lands in the water.
 //|   max_wait ["auto"]: s the burn may wait; "auto" is one turn of the body (about 6 h at Kerbin). The
 //|     burn is at least 4 minutes ahead. Give expected_duration_s that wait.
-//|   accuracy_km [10]: km the predicted landing may be from the target; a worse best burn fails the
+//|   accuracy_km [5]: km the predicted landing may be from the target; a worse best burn fails the
 //|     block before any burn, and a flown burn predicted worse reports success false.
 //|   separate ["none"]: what to drop once the burn is flown, so only the capsule re-enters: a stage
 //|     number (the decouplers that fire at that stage, as reentry's jettison_stage), or a list of part
@@ -53,7 +53,7 @@
 
 // The block's own options and defaults ("required" means the Mission Script must give it).
 function deorbit_defaults {
-  return lexicon("target", "required", "max_wait", "auto", "accuracy_km", 10, "separate", "none").
+  return lexicon("target", "required", "max_wait", "auto", "accuracy_km", 5, "separate", "none").
 }
 
 // "" or why a separate option value isn't one the block can use: "none", a whole stage number from

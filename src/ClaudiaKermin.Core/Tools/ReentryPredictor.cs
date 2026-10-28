@@ -91,9 +91,9 @@ namespace ClaudiaKermin.Core.Tools
     /// <summary>
     /// When the <c>reentry</c> block arms its parachutes and drops its heat shield, as reentry.ks has them
     /// (<c>reentry_chute_*</c>, <c>reentry_drogue_*</c>, <c>reentry_shield_*</c>): <see cref="Block"/> is that rule set; keep the
-    /// two in step. Speeds are air speeds, heights above the ground.
+    /// two in step (ReentryScienceTests checks them). Speeds are air speeds, heights above the ground.
     /// </summary>
-    internal sealed class ReentryRules
+    public sealed class ReentryRules
     {
         /// <summary>Mains arm at or under this speed (m/s) in air of this pressure (atm) or more, or by this height (m) whatever the speed.</summary>
         public double ChuteMaxSpeed = 250;
