@@ -490,8 +490,9 @@ namespace ClaudiaKermin.Core.Tests
             var description = new SolveBurn().Description;
             foreach (var goal in new[] { "set_sma:", "set_ecc:", "ellipticize:", "set_inc:", "match_plane:", "shift_lan:", "resonant:", "stationary:" })
                 Assert.Single(description.Split(new[] { goal }, StringSplitOptions.None).Skip(1));
-            // Prompt cost (#212): 1,451 characters with #443's eight goal clauses; a new goal or option adds at most one clause.
-            Assert.InRange(description.Length, 1, 1500);
+            // Prompt cost (#212): 1,100 characters with #443's eight goal clauses, cut from 1,451 so the Mission requests stay under
+            // the Spending Cap tests' sizes (MissionDebriefTests' $0.45 cap failed at 1,451); a new goal or option adds at most one clause.
+            Assert.InRange(description.Length, 1, 1150);
         }
     }
 }

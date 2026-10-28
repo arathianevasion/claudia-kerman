@@ -56,23 +56,23 @@ namespace ClaudiaKermin.Core.Tools
         {
             get
             {
-                return "The burn that reaches an orbit goal, worked from this turn's Game Snapshot: its delta-v in maneuver-node "
-                    + "components (prograde, normal, radial m/s), magnitude, burn time, the element reached (achieved) and the predict_burn result. "
-                    + "at is ap, pe, altitude, eq_an, eq_dn, eq_nearest, eq_highest, rel_an, rel_dn, closest_approach or a UT. Goals: "
+                return "The burn to an orbit goal, from this turn's Game Snapshot: maneuver-node components (prograde, normal, radial m/s), "
+                    + "magnitude, burn time, the element reached and the predict_burn result. at: ap, pe, altitude, eq_an, eq_dn, eq_nearest, "
+                    + "eq_highest, rel_an, rel_dn, closest_approach or a UT. Goals (altitudes in m above sea level): "
                     + "circularize: at ap or pe; "
-                    + "set_ap, set_pe: value m above sea level, at the Pe, Ap; "
-                    + "next_patch_pe: value m above the next patch's body, prograde or retrograde (the smaller burn), at default in 60 s; "
-                    + "set_sma: value m from the body's centre, prograde, at default pe; "
-                    + "set_ecc: value, prograde, at default pe; "
-                    + "ellipticize: pe and ap m above sea level, either side of the burn's altitude, at default in 60 s; "
+                    + "set_ap, set_pe: value; "
+                    + "next_patch_pe: value above the next body, at default in 60 s; "
+                    + "set_sma: value m from the centre, at default pe; "
+                    + "set_ecc: value, at default pe; "
+                    + "ellipticize: pe and ap, at default in 60 s; "
                     + "set_inc: value degrees, at default eq_highest; "
-                    + "match_plane: into target's orbit plane at rel_an or rel_dn, default the cheaper; "
-                    + "shift_lan: value degrees, default where the planes cross, keeping the inclination; "
-                    + "resonant: value orbits per of orbits of target (default this orbit), at default pe; "
-                    + "stationary: circular at the synchronous altitude, where the orbit crosses it. "
-                    + "Its blocks are circularize, exec_node and tune_pe: call it for the delta-v to budget their burn instead of working "
-                    + "it out yourself, then pass the block the goal (tune_pe's value, circularize's at), or exec_node the node. Don't call it to check "
-                    + "a burn you already have (use predict_burn), or for the craft's delta-v (stage_performance).";
+                    + "match_plane: target's plane, at the cheaper of rel_an and rel_dn; "
+                    + "shift_lan: value degrees, default where the planes cross; "
+                    + "resonant: value orbits per of of target's (default this orbit's), at default pe; "
+                    + "stationary: synchronous circle. "
+                    + "Its blocks are circularize, exec_node and tune_pe: call it to budget their burn instead of working it out, then "
+                    + "pass the block the goal, or exec_node the node. Don't call it to check a burn (predict_burn) or for the craft's "
+                    + "delta-v (stage_performance).";
             }
         }
 
@@ -82,12 +82,12 @@ namespace ClaudiaKermin.Core.Tools
             {
                 return "{\"type\":\"object\",\"properties\":{"
                     + "\"goal\":{\"type\":\"string\",\"enum\":[\"circularize\",\"set_ap\",\"set_pe\",\"next_patch_pe\",\"set_sma\",\"set_ecc\",\"ellipticize\",\"set_inc\",\"match_plane\",\"shift_lan\",\"resonant\",\"stationary\"]},"
-                    + "\"at\":{\"description\":\"When: \\\"ap\\\", \\\"pe\\\", \\\"altitude <m> [ascending|descending]\\\", eq_an, eq_dn, eq_nearest, eq_highest, rel_an, rel_dn, closest_approach (the last three use target), a UT in seconds or \\\"in <s>\\\". set_ap, set_pe and stationary take none.\"},"
-                    + "\"target\":{\"type\":\"string\",\"description\":\"A body: match_plane's and resonant's, and what rel_an, rel_dn and closest_approach measure from.\"},"
-                    + "\"value\":{\"type\":\"number\",\"description\":\"The goal's figure, in the units its line gives.\"},"
+                    + "\"at\":{\"description\":\"A word from the description, \\\"altitude <m> [ascending|descending]\\\", a UT in seconds or \\\"in <s>\\\". rel_an, rel_dn and closest_approach use target.\"},"
+                    + "\"target\":{\"type\":\"string\",\"description\":\"A body.\"},"
+                    + "\"value\":{\"type\":\"number\"},"
                     + "\"pe\":{\"type\":\"number\"},\"ap\":{\"type\":\"number\"},"
-                    + "\"of\":{\"type\":\"number\",\"description\":\"resonant only; default 1.\"},"
-                    + "\"direction\":{\"type\":\"string\",\"enum\":[\"prograde\",\"retrograde\"],\"description\":\"next_patch_pe only: which way to burn. Default prograde.\"}"
+                    + "\"of\":{\"type\":\"number\",\"description\":\"Default 1.\"},"
+                    + "\"direction\":{\"type\":\"string\",\"enum\":[\"prograde\",\"retrograde\"],\"description\":\"next_patch_pe only. Default prograde.\"}"
                     + "},\"required\":[\"goal\"],\"additionalProperties\":false}";
             }
         }
