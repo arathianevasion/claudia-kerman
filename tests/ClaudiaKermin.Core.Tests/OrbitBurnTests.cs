@@ -189,6 +189,7 @@ namespace ClaudiaKermin.Core.Tests
         [InlineData(null, "goal must be one of circularize, set_ap, set_pe, next_patch_pe, set_sma, set_ecc, ellipticize, set_inc, match_plane, shift_lan, resonant, stationary, intercept_at")]
         [InlineData("goal=launch", "goal must be one of circularize, set_ap, set_pe, next_patch_pe, set_sma, set_ecc, ellipticize, set_inc, match_plane, shift_lan, resonant, stationary, intercept_at")]
         [InlineData("goal=intercept_at;target=Mun", "ORBITBURN does not solve intercept_at")]
+        [InlineData("goal=intercept_at;target=Mun;tof=3600", "ORBITBURN does not solve intercept_at")]
         [InlineData("goal=set_inc", "set_inc needs a value, the inclination in degrees")]
         [InlineData("goal=set_inc;value=200", "set_inc's value is an inclination from 0 to 180 degrees")]
         [InlineData("goal=set_inc;value=high", "value must be a finite number, not high")]

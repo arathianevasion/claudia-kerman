@@ -74,8 +74,8 @@ namespace ClaudiaKermin.Core.Tools
                     + "shift_lan: value degrees, default where the planes cross; "
                     + "resonant: value orbits while target (default this orbit) makes of, at default pe; "
                     + "stationary: synchronous circle; "
-                    + "intercept_at: Lambert arc, arrive_ut or tof. "
-                    + "Its blocks are change_orbit, circularize, exec_node and tune_pe: call it to budget their burn, not by hand, then"
+                    + "intercept_at: Lambert arc, arrive_ut or tof; exec_node only. "
+                    + "Its blocks are change_orbit, circularize, exec_node and tune_pe: call it to budget their burn, then "
                     + "pass the block the goal, or exec_node the node. Don't call it to check a burn (predict_burn) or for the craft's "
                     + "delta-v (stage_performance).";
             }

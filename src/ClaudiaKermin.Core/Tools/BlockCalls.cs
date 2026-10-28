@@ -371,6 +371,12 @@ namespace ClaudiaKermin.Core.Tools
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
             if (snapshot == null) return Error("no Game Snapshot");
+            // change_orbit judges the elements a burn sets (wanted); an intercept aims at an arrival, which no element holds. Checked
+            // before the inputs, so an intercept's own fields (arrive_ut, tof) get this reason, not "unknown input".
+            object goal;
+            if (ask.TryGetValue("goal", out goal) && goal as string == "intercept_at")
+                return Error("ORBITBURN does not solve intercept_at: change_orbit checks the orbit elements a burn sets, and an intercept "
+                    + "aims at an arrival, not an element; exec_node the node solve_burn gives");
             var json = new JsonWriter().BeginObject();
             foreach (var entry in ask)
             {
@@ -402,11 +408,6 @@ namespace ClaudiaKermin.Core.Tools
                         return Error("unknown input " + entry.Key + ": ORBITBURN takes solve_burn's goal, value, at, target, pe, ap, of and direction");
                 }
             }
-            // change_orbit judges the elements a burn sets (wanted); an intercept aims at an arrival, which no element holds.
-            object goal;
-            if (ask.TryGetValue("goal", out goal) && string.Equals(goal as string, "intercept_at", StringComparison.OrdinalIgnoreCase))
-                return Error("ORBITBURN does not solve intercept_at: change_orbit checks the orbit elements a burn sets, and an intercept "
-                    + "aims at an arrival, not an element; exec_node the node solve_burn gives");
             var solved = new SolvedBurn();
             var outcome = new SolveBurn().Solve(JsonReader.Parse(json.EndObject().ToString()), snapshot, solved);
             if (outcome.IsError) return Error(outcome.Summary);
