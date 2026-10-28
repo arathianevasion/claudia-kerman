@@ -1903,83 +1903,57 @@ function claudia_burn {
   return burned.
 }
 
-// km the predicted landing may be from the target before the aimed correction stops looking.
-function claudia_aim_good_km {
-  return 2.
+// ---- Course Corrections: shared by transfer_to and return ----
+
+// m from target_pe within which a predicted arrival needs no Course Correction.
+function claudia_correction_good_m {
+  return 1000.
 }
 
-// What an aimed correction (claudia_correct with aim) lowers for the path orb: the km from the
-// target to where it lands; over any real landing (Kerbin is under 2000 km round) when it misses
-// the atmosphere, so the search first moves towards the air by target_pe, or 1e5 with no path to dest.
-// p is claudia_patch's result for the path.
-function claudia_aim_cost {
-  parameter aim, p, target_pe.
-  if p:istype("String") {
-    return 1e5.
+// The Course Correction's burn UT (#368): mid (halfway to arrival), or sooner when a max_duration the block has as a
+// number ends before then, leaving 120 s of it to burn in, as the correction after a missed ejection is bounded. A burn
+// sooner than lead s from now (the time to turn to it and lead it) can't be flown, so the block fails before it, with the
+// reason. Returns lexicon("reason", "" or why there is no time for it, "ut", the burn's UT). Pure.
+function claudia_correction_ut {
+  parameter mid, now, lead, start_ut, max_duration.
+  local done is lexicon("reason", "", "ut", mid).
+  local bounded is max_duration:istype("Scalar").
+  if bounded {
+    set done:ut to min(mid, start_ut + max_duration - 120).
   }
-  local km is aim(p:orbit, p:soi_ut).
-  if km < 0 {
-    return 1e4 + abs(p:orbit:periapsis - target_pe) / 1000.
+  if done:ut < now + lead {
+    if bounded {
+      set done:reason to "max_duration (" + round(max_duration) + " s) ends at UT " + round(start_ut + max_duration)
+        + ", too soon for the mid-course correction: its burn needs " + round(lead + 120) + " s from UT " + round(now).
+    } else {
+      set done:reason to "the arrival comes too soon for the mid-course correction".
+    }
   }
-  return km.
+  return done.
 }
 
-// The mid-course correction: a node halfway between now and arrive_ut, aimed at target_pe at dest,
-// flown with exec_node. A sphere-of-influence change before halfway (leaving a moon on the way home)
-// is waited out first (on rails, however long), so the node is placed on the orbit it will be on. Nothing is burned
-// when the prediction is already within 1 km of target_pe or the fix is under 0.1 m/s.
-// aim, when given (a delegate of an orbit patch round dest and the UT it begins, that returns the km
-// its predicted landing is from the target, or -1 if it doesn't come down), makes the correction aim the landing at the
-// target instead: target_pe then only draws a path that misses the atmosphere towards it, and
-// nothing is burned when the landing is already within claudia_aim_good_km() of the target.
-// Returns lexicon("reason", "" or why the block fails, "dv", m/s burned).
-function claudia_correct {
-  parameter ctx, dest, target_pe, arrive_ut, aim is 0.
-  local aiming is not aim:istype("Scalar").
+// What a Course Correction asks ADDONS:CLAUDIA:CORRECTIONBURN: the least burn at ut that brings the path to dest_name at
+// target_pe (m). Pure.
+function claudia_correction_ask {
+  parameter dest_name, target_pe, ut.
+  return lexicon("target", dest_name, "target_pe", target_pe, "earliest_ut", ut, "latest_ut", ut).
+}
+
+// Flies the Course Correction ADDONS:CLAUDIA:CORRECTIONBURN gave (fix) with exec_node. Its error (a solve that found no
+// burn within the tolerance, or a call that threw, #439) is the block's reason, with nothing burned; a burn under 0.1 m/s
+// isn't flown. Returns lexicon("reason", "" or why the block fails, "dv", m/s burned).
+function claudia_fly_correction {
+  parameter ctx, fix.
   local done is lexicon("reason", "", "dv", 0).
-  local mid is (time:seconds + arrive_ut) / 2.
-  if ship:orbit:hasnextpatch {
-    local soi_ut is time:seconds + ship:orbit:nextpatcheta.
-    if soi_ut < mid - 120 {
-      local after is soi_ut + 30.
-      local waited is claudia_wait_until(ctx, after).
-      if waited <> "" {
-        claudia_make_safe().
-        set done:reason to waited.
-        return done.
-      }
-    }
-  }
-  local good is 100.
-  if aiming {
-    set good to claudia_aim_good_km().
-    if claudia_aim_cost(aim, claudia_patch(ship:orbit, dest), target_pe) <= good {
-      return done.
-    }
-  } else if abs(claudia_pe_error(ship:orbit, dest, target_pe)) <= 1000 {
+  if fix:error <> "" {
+    set done:reason to fix:error.
     return done.
   }
-
-  local nd is node(mid, 0, 0, 0).
-  add nd.
-  local found is claudia_descend({
-    parameter x.
-    set nd:radialout to x[0].
-    set nd:normal to x[1].
-    set nd:prograde to x[2].
-    if aiming {
-      return claudia_aim_cost(aim, claudia_patch(nd:orbit, dest), target_pe).
-    }
-    return abs(claudia_pe_error(nd:orbit, dest, target_pe)).
-  }, list(0, 0, 0), list(1, 1, 1), 10, good).
-  set nd:radialout to found:x[0].
-  set nd:normal to found:x[1].
-  set nd:prograde to found:x[2].
-  if nd:deltav:mag < 0.1 {
-    remove nd.
+  if fix:dv < 0.1 {
     return done.
   }
-  local burned is claudia_burn(ctx, nd).
+  add node(fix:ut, fix:radial, fix:normal, fix:prograde).
+  local burned is claudia_burn(ctx, nextnode).
   set done:dv to burned:dv_used.
   if not burned:success {
     set done:reason to burned:reason.

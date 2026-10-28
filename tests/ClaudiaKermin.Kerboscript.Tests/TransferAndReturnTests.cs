@@ -106,6 +106,45 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal(new[] { "target,target_pe,earliest_ut", "5193" }, CorrectionAsk("30000", "true", "-1"));
         }
 
+        // ---- The Course Correction's burn time (#368) ----
+
+        private static string[] CorrectionUt(string maxDuration)
+        {
+            // Block started at UT 1000; the ejection is flown and it is now UT 3000; halfway to the encounter is UT 16500; the
+            // craft needs 193 s to turn to and lead a burn (transfer_to's 133 s TURNTIME plus a minute).
+            return Run("local w is claudia_correction_ut(16500, 3000, 193, 1000, " + maxDuration + "). print w:ut. print w:reason.");
+        }
+
+        [Fact]
+        public void The_correction_burns_halfway_when_max_duration_is_auto_or_ends_after_it()
+        {
+            Assert.Equal(new[] { "16500", "" }, CorrectionUt("\"auto\""));
+            Assert.Equal(new[] { "16500", "" }, CorrectionUt("20000"));
+        }
+
+        [Fact]
+        public void A_max_duration_that_admits_the_ejection_admits_its_correction_too_burning_it_sooner()
+        {
+            // max_duration ends at UT 11000, before halfway: the correction moves to 120 s before the end, not past it into the abort.
+            Assert.Equal(new[] { "10880", "" }, CorrectionUt("10000"));
+            // Just enough: 120 s to burn after the 193 s lead.
+            Assert.Equal(new[] { "3193", "" }, CorrectionUt("2313"));
+        }
+
+        [Fact]
+        public void A_max_duration_with_no_time_left_for_the_correction_fails_before_the_burn_with_a_reason()
+        {
+            Assert.Equal(new[] { "3180", "max_duration (2300 s) ends at UT 3300, too soon for the mid-course correction: its burn needs 313 s from UT 3000" },
+                CorrectionUt("2300"));
+        }
+
+        [Fact]
+        public void The_correction_asks_the_solver_for_a_burn_at_its_time()
+        {
+            Assert.Equal(new[] { "target,target_pe,earliest_ut,latest_ut", "Mun", "30000", "16500", "16500" },
+                Run("local q is claudia_correction_ask(\"Mun\", 30000, 16500). print q:keys:join(\",\"). print q:target. print q:target_pe. print q:earliest_ut. print q:latest_ut."));
+        }
+
         // ---- Earliest departure ----
 
         [Theory]
@@ -208,11 +247,11 @@ namespace ClaudiaKermin.Kerboscript.Tests
         public void An_aimed_correction_lowers_the_km_to_the_target_and_otherwise_draws_the_path_into_the_air()
         {
             var patch = "local p is lexicon(\"orbit\", lexicon(\"periapsis\", 80000), \"soi_ut\", 0). ";
-            Assert.Equal("12.5", Run(patch + "print claudia_aim_cost({ parameter o, u. return 12.5. }, p, 35000).").Single());
+            Assert.Equal("12.5", Run(patch + "print return_aim_cost({ parameter o, u. return 12.5. }, p, 35000).").Single());
             // No landing: worse than any real one, and nearer to the target periapsis is better.
-            Assert.Equal("10045", Run(patch + "print claudia_aim_cost({ parameter o, u. return -1. }, p, 35000).").Single());
+            Assert.Equal("10045", Run(patch + "print return_aim_cost({ parameter o, u. return -1. }, p, 35000).").Single());
             // No path to Kerbin at all.
-            Assert.Equal("100000", One("claudia_aim_cost({ parameter o, u. return 1. }, \"none\", 35000)"));
+            Assert.Equal("100000", One("return_aim_cost({ parameter o, u. return 1. }, \"none\", 35000)"));
         }
 
         // A worked example: from a 30 km Mun orbit to a 35 km Kerbin periapsis (stock body values).
