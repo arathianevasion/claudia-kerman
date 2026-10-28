@@ -303,8 +303,8 @@ namespace ClaudiaKermin.Core.Tests
                 Sized(ScriptedResponse.Fixture("mission-answer.sse"), 170000),
                 Compaction());
             var mission = Control(new CraftCheckRouter(transport));
-            // The plan's worst case (about $0.36) fits; after its $0.38, neither a compaction nor the Sequence Plan does.
-            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, 0.50m, Sonnet));
+            // The plan's worst case fits; after its real cost, neither a compaction nor the Sequence Plan does.
+            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, CapWithRoomForThePlanButNothingAfterIt(), Sonnet));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
             Assert.Equal(MissionStage.Paused, mission.View.Stage);
@@ -370,9 +370,8 @@ namespace ClaudiaKermin.Core.Tests
                 Sized(LongRun(ScriptedResponse.Fixture("mission-sequence-plan.sse"), 600), 170000),
                 Compaction());
             var mission = Control(new CraftCheckRouter(transport));
-            // The Sequence Plan's worst case (about $0.36) fits under the cap before it is paid; after its $0.34, a
-            // compaction's worst case (about $0.20) doesn't.
-            var start = ToRunning(mission, 0.45m);
+            // The Sequence Plan's worst case fits under the cap before it is paid; after its real cost, a compaction's worst case doesn't.
+            var start = ToRunning(mission, CapWithRoomForTheSequencePlanButNotACompaction());
             _background.Drain();
             Assert.Equal(2, transport.Requests.Count);
             Assert.Contains("compaction_deferred", Events(mission));
@@ -384,6 +383,98 @@ namespace ClaudiaKermin.Core.Tests
             mission.Send(new Approve());
             DrainUntil(mission, v => Summarized(v));
             Assert.True(Body(transport.Requests[4]).TryGetProperty("compaction", out _));
+        }
+
+        // ---- Spending Caps measured from a dry run ----
+        // A cap is set from the rig's own requests, so it keeps its meaning as the tools list (counted in every worst case) grows.
+
+        /// <summary>One request in the cost log: its worst case when pending, its real cost when paid.</summary>
+        private sealed class CostLine
+        {
+            public string Event;
+            public string Outcome;
+            public decimal Amount;
+        }
+
+        /// <summary>
+        /// A cap that sends the ceiling Mission Plan (its worst case fits) but leaves no room, after the plan's real cost, for a
+        /// compaction or the Sequence Plan. A dry run with a roomy cap and the compaction ahead of the Sequence Plan.
+        /// </summary>
+        private static decimal CapWithRoomForThePlanButNothingAfterIt()
+        {
+            var log = DryRun(new StreamingFakeTransport(
+                Priced(ScriptedResponse.Fixture("mission-plan.sse"), 190000),
+                Compaction(),
+                Sized(LongRun(ScriptedResponse.Fixture("mission-sequence-plan.sse"), 600), 185000)),
+                (probe, mission) =>
+                {
+                    CraftCheckRouter.StartChecked(mission, probe._background, OnPad(), new StartMission(Goal, 10m, Sonnet));
+                    probe.DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+                    mission.Send(new Approve());
+                    probe.DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval && !v.Busy);
+                });
+            // Mission Plan, then the compaction (the Sequence Plan's worst case is the larger).
+            var plan = log.Where(c => c.Event == "pending").ToList();
+            Assert.Equal("compaction", plan[1].Outcome);
+            var planPaid = log.First(c => c.Event == "paid").Amount;
+            return CapBetween(plan[0].Amount, planPaid + Math.Min(plan[1].Amount, plan[2].Amount), "fits the plan's worst case but nothing after its real cost");
+        }
+
+        /// <summary>
+        /// A cap that sends the Sequence Plan (its worst case fits) but leaves no room, after its real cost, for a compaction's worst
+        /// case. A dry run with a roomy cap through the start of Running.
+        /// </summary>
+        private static decimal CapWithRoomForTheSequencePlanButNotACompaction()
+        {
+            var log = DryRun(new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                Priced(LongRun(ScriptedResponse.Fixture("mission-sequence-plan.sse"), 600), 170000),
+                ScriptedResponse.Fixture("mission-debrief-next.sse"),
+                Sized(LongRun(ScriptedResponse.Fixture("mission-sequence-plan.sse"), 600), 170000),
+                Compaction()),
+                (probe, mission) =>
+                {
+                    probe.ToRunning(mission);
+                    probe.DrainUntil(mission, v => probe.CostLogLines(mission).Any(c => c.Event == "paid" && c.Outcome.StartsWith("compaction")));
+                });
+            var pending = log.Where(c => c.Event == "pending").ToList();
+            var paid = log.Where(c => c.Event == "paid").ToList();
+            Assert.Equal("compaction", pending[2].Outcome);
+            // The Sequence Plan is sent after the Mission Plan's real cost, and the compaction after the Sequence Plan's.
+            return CapBetween(paid[0].Amount + pending[1].Amount, paid[0].Amount + paid[1].Amount + pending[2].Amount, "fits the Sequence Plan's worst case but not a compaction after its real cost");
+        }
+
+        private static IList<CostLine> DryRun(StreamingFakeTransport transport, Action<MissionCompactionTests, MissionControl> flow)
+        {
+            using (var probe = new MissionCompactionTests())
+            {
+                var mission = probe.Control(new CraftCheckRouter(transport));
+                flow(probe, mission);
+                return probe.CostLogLines(mission);
+            }
+        }
+
+        private IList<CostLine> CostLogLines(MissionControl mission)
+        {
+            var path = Path.Combine(Folder(mission), "cost-log.jsonl");
+            return File.ReadAllText(path).Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries).Select(line =>
+            {
+                var root = JsonDocument.Parse(line).RootElement;
+                JsonElement outcome;
+                return new CostLine
+                {
+                    Event = root.GetProperty("event").GetString(),
+                    Outcome = root.TryGetProperty("outcome", out outcome) ? outcome.GetString() : "",
+                    Amount = root.GetProperty("amount").GetDecimal(),
+                };
+            }).ToList();
+        }
+
+        /// <summary>A cap in the middle of the gap a test means, the gap itself asserted so it cannot close unnoticed.</summary>
+        private static decimal CapBetween(decimal low, decimal high, string gap)
+        {
+            Assert.True(low < high, "no gap for a cap that " + gap + ": " + low + " to " + high);
+            return Math.Round((low + high) / 2, 4);
         }
 
         // ---- Persistence ----
