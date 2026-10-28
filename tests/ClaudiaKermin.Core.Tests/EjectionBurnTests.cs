@@ -18,7 +18,8 @@ namespace ClaudiaKermin.Core.Tests
     /// like the <c>transfer_to</c> block test's start (Fixtures/snapshots/kerbin-orbit-100km.json: the stock body elements,
     /// Minmus's inclined orbit included, and a near-circular 100 km orbit at UT 100). That file is written by hand in the
     /// snapshot's format, not captured in the game: no in-orbit snapshot had been recorded. Each node is checked again through
-    /// <c>predict_burn</c>, which must arrive at <c>target_pe</c>.
+    /// <c>predict_burn</c>, which must arrive at <c>target_pe</c>. Since #441 a Game Snapshot captured in orbit in the game (#353)
+    /// is a golden case beside it.
     /// </summary>
     public sealed class EjectionBurnTests
     {
@@ -209,6 +210,48 @@ namespace ClaudiaKermin.Core.Tests
             Assert.InRange(PredictedPe(snapshot, node, "Minmus"), 19900, 20100);
             // A Hohmann transfer to Minmus's 47,000 km is 907 m/s in plane, plus the plane change toward its 6 degrees.
             Assert.InRange(D(node, "dv"), 900, 1100);
+        }
+
+        // ---- the golden in-orbit Game Snapshot (#353, #441) ----
+
+        /// <summary>
+        /// A Game Snapshot captured in the game, not written by hand: Mun Shot v2 in a 99.3 x 99.5 km Kerbin orbit at 0.10°
+        /// inclination, UT 1162056, with the stock 17-body table (Fixtures/snapshots/mun-shot-v2-kerbin-orbit.json).
+        /// </summary>
+        private static GameSnapshot Golden()
+        {
+            return GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "mun-shot-v2-kerbin-orbit.json")));
+        }
+
+        [Fact]
+        public void The_golden_snapshot_is_the_captured_orbit()
+        {
+            var snapshot = Golden();
+            Assert.Equal(17, snapshot.Bodies.Count);
+            Assert.Equal("Kerbin", snapshot.Orbit.Body);
+            Assert.InRange(snapshot.Orbit.Periapsis, 99200, 99400);
+            Assert.InRange(snapshot.Orbit.Apoapsis, 99400, 99600);
+            Assert.InRange(snapshot.Orbit.Inclination, 0.09, 0.11);
+        }
+
+        [Fact]
+        public void From_the_golden_snapshot_the_Mun_transfer_keeps_the_block_tests_contract()
+        {
+            // As the hand-written block-test start: under 900 m/s, within a synodic period of the earliest UT, at target_pe on predict_burn.
+            var snapshot = Golden();
+            var node = Solved(snapshot, earliest: snapshot.Ut + 30);
+            Assert.InRange(D(node, "dv"), 830, 900);
+            Assert.InRange(D(node, "ut") - snapshot.Ut, 30, 30 + D(node, "synodic"));
+            Assert.InRange(D(node, "target_pe_actual"), TargetPe - 10, TargetPe + 10);
+            Assert.InRange(PredictedPe(snapshot, node, "Mun"), TargetPe - 100, TargetPe + 100);
+            Assert.True(D(node, "arrival_ut") > D(node, "encounter_ut"));
+        }
+
+        [Fact]
+        public void From_the_golden_snapshot_it_runs_in_milliseconds()
+        {
+            var snapshot = Golden();
+            Timing.Within(500, () => Solved(snapshot, earliest: snapshot.Ut + 30));
         }
 
         // ---- the correction after an ejection that missed (#363) ----
