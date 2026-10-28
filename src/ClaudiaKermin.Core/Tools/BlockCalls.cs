@@ -13,12 +13,11 @@ namespace ClaudiaKermin.Core.Tools
     /// The block-internal calls (ADR 0006, ADR 0007): the mod's calculations a Building Block makes while it flies, through
     /// <c>ADDONS:CLAUDIA</c>: the site search, the reentry predictor with the deorbit burn search on it, the turn time, the
     /// ejection burn to a moon and the one home from it, the launch window, the Course Correction and solve_burn's orbit
-    /// changes. They run the same C#
-    /// as the Planning Tools, on a Game Snapshot read at the call (the reentry calls also read the air and the craft's drag cubes
-    /// live, through <see cref="IReentryAir"/> and <see cref="IReentryCraft"/>), and only read. The turn time is the exception:
-    /// it needs no Snapshot, only the craft's torque and moment of inertia, read live into a <see cref="TurnCraft"/>. The
-    /// Script Check lets the Core Library call them and refuses them in a Mission Script. Inputs and results are plain values, as
-    /// <c>KosValues</c> converts a kOS lexicon.
+    /// changes. They run the same C# as the Planning Tools, on a Game Snapshot read at the call (the reentry calls also read the
+    /// air and the craft's drag cubes live, through <see cref="IReentryAir"/> and <see cref="IReentryCraft"/>), and only read. The
+    /// turn time is the exception: it needs no Snapshot, only the craft's torque and moment of inertia, read live into a
+    /// <see cref="TurnCraft"/>. The Script Check lets the Core Library call them and refuses them in a Mission Script. Inputs and
+    /// results are plain values, as <c>KosValues</c> converts a kOS lexicon.
     /// </summary>
     public static class BlockCalls
     {

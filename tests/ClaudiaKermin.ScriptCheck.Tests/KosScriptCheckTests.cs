@@ -512,6 +512,15 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             Assert.Contains(_check.Check(block).Forbidden, f => f.EndsWith(":ORBITBURN (call block-internal calculations)"));
         }
 
+        [Fact]
+        public void ReturnsFileAlonePassesOnlyAsCoreLibrary()
+        {
+            // return makes RETURNBURN inline (#450): allowed as the library's, refused as a Mission Script's.
+            var block = File.ReadAllText(Path.Combine(RepoRoot(), "kerboscript", "library", "return.ks"));
+            Assert.True(new KosScriptCheck(forCoreLibrary: true).Check(block).Passed);
+            Assert.Contains(_check.Check(block).Forbidden, f => f.EndsWith(":RETURNBURN (call block-internal calculations)"));
+        }
+
         [Theory]
         [InlineData("land_biome_mun")]
         [InlineData("land_biome_minmus")]
@@ -641,6 +650,7 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [Theory]
         [InlineData("transfer_to")]
         [InlineData("return")]
+        [InlineData("return_ike")]
         [InlineData("change_orbit_inc")]
         [InlineData("change_orbit_match_minmus")]
         [InlineData("change_orbit_resonant")]
