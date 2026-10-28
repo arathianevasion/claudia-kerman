@@ -526,14 +526,15 @@ function land_turn_back {
 
 // Why braking that makes things worse must stop (#431), or "": horizontal speed v_h (m/s) 20 m/s or
 // more over its value when braking began (v_h0; over 50, the speed braking may close on the site at),
-// or the craft (alt_now, m above sea level) 2000 m or more above where braking began (alt_start). Pure.
+// or the clearance over the highest ground ahead (h_now, m; land_clearance) 2000 m or more over what it
+// was when braking began (h0). Clearance, not altitude: a descent may rightly climb over a rim. Pure.
 function land_brake_guard {
-  parameter v_h0, alt_start, v_h, alt_now.
+  parameter v_h0, h0, v_h, h_now.
   if v_h >= max(50, v_h0) + 20 {
     return "braking added speed: v_h " + round(v_h) + " m/s, " + round(v_h0) + " when braking began".
   }
-  if alt_now - alt_start >= 2000 {
-    return "braking climbed " + round((alt_now - alt_start) / 1000, 1) + " km".
+  if h_now - h0 >= 2000 {
+    return "braking climbed " + round((h_now - h0) / 1000, 1) + " km".
   }
   return "".
 }
@@ -1732,9 +1733,9 @@ function land_descend {
   // moving back along it (land_is_reversed).
   local axis is v(0, 0, 0).
   local reversed is false.
-  // Horizontal speed and altitude when braking began, for the guard (land_brake_guard).
+  // Horizontal speed and clearance (h, unclamped) when braking began, for the guard (land_brake_guard).
   local v_h_start is 0.
-  local alt_start is 0.
+  local h_began is 0.
   set extra:reversals to 0.
   local steer is -ship:velocity:surface.
   local tset is 0.
@@ -1831,7 +1832,7 @@ function land_descend {
         // At least enough to close on a site moved up to max_divert.
         set v_top to max(50, v_h:mag).
         set v_h_start to v_h:mag.
-        set alt_start to altitude.
+        set h_began to h.
         set axis to fall_ahead.
         // Is the ground at the site flat enough? If not, divert to flatter ground now, while the
         // descent has the whole braking distance to take the new site in (a later move could put
@@ -1857,11 +1858,11 @@ function land_descend {
     if braking {
       // Braking that adds speed or climbs is making things worse: stop, and leave the rest of the fuel
       // in the tanks (#431).
-      local tripped is land_brake_guard(v_h_start, alt_start, v_h:mag, altitude).
+      local tripped is land_brake_guard(v_h_start, h_began, v_h:mag, h).
       if tripped <> "" {
         set tset to 0.
         addons:claudia:blocktrace("land", lexicon("phase", "guard", "error", tripped, "v_h", round(v_h:mag, 1), "v_h_start", round(v_h_start, 1),
-          "alt", round(altitude), "alt_start", round(alt_start), "dist", round(dist), "pe", round(ship:orbit:periapsis))).
+          "h", round(h), "h_start", round(h_began), "dist", round(dist), "pe", round(ship:orbit:periapsis))).
         claudia_make_safe().
         return tripped.
       }
