@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using ClaudiaKermin.Core.Missions;
+using ClaudiaKermin.Core.Tools.Numerics;
 
 namespace ClaudiaKermin.Core.Tools
 {
@@ -62,6 +63,9 @@ namespace ClaudiaKermin.Core.Tools
         private const double CloseEnoughKm = 0.05;
         /// <summary>Burns this close in error are a tie, and the earlier wins, km.</summary>
         private const double TieKm = 0.5;
+        /// <summary>The retrograde part's search: BrentRoot's tolerance relative to max(|burn|, 1) m/s, and its iteration cap.</summary>
+        private const double RetroTolerance = 1e-12;
+        private const int RetroIterations = 100;
 
         public static DeorbitPlan Find(SnapshotBody body, Conic orbit, DeorbitAsk ask, IReentryAir air, IReentryCraft craft, BodyFrame frame)
         {
@@ -215,15 +219,11 @@ namespace ClaudiaKermin.Core.Tools
                 var along = v.Normalized;
                 // The node's normal is the orbit's real angular momentum: in a mirrored frame (Handed -1) the cross product points the other way.
                 var up = Vec3.Cross(r, v).Normalized * _frame.Handed;
-                // The periapsis falls as the retrograde part grows: bisect for the one aimed at.
-                double lo = 0, hi = v.Length;
-                for (var i = 0; i < 60; i++)
-                {
-                    var mid = (lo + hi) / 2;
-                    if (PeR(r, v - along * mid + up * normal, ut) > _peRadius) lo = mid;
-                    else hi = mid;
-                }
-                var retro = (lo + hi) / 2;
+                // The periapsis falls as the retrograde part grows: BrentRoot for the one aimed at. When no retrograde part
+                // reaches it (or every one passes under it), the end nearer it, as a bisection would settle.
+                Func<double, double> under = s => PeR(r, v - along * s + up * normal, ut) - _peRadius;
+                var found = BrentRoot.Solve(under, 0, v.Length, RetroTolerance, RetroIterations);
+                var retro = found.Status != SearchStatus.NotBracketed ? found.X : under(0) <= 0 ? 0 : v.Length;
                 var after = Conic.FromState(_body.Gm, r, v - along * retro + up * normal, ut);
                 var dv = Math.Sqrt(retro * retro + normal * normal);
                 var mass = _craft.MassKg;
@@ -236,9 +236,10 @@ namespace ClaudiaKermin.Core.Tools
                 };
             }
 
+            /// <summary>The periapsis radius after the burn; 0 for a burn that leaves the craft falling straight down (no orbit plane).</summary>
             private double PeR(Vec3 r, Vec3 v, double ut)
             {
-                return Conic.FromState(_body.Gm, r, v, ut).PeR;
+                return Vec3.Cross(r, v).Length > 0 ? Conic.FromState(_body.Gm, r, v, ut).PeR : 0;
             }
 
             /// <summary>The target's offset from a landing, km east and north on the ground there.</summary>
