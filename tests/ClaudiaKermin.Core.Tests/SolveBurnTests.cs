@@ -250,6 +250,20 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void It_runs_in_milliseconds()
+        {
+            // A next_patch_pe search that finds its burn, a full scan that never reaches the goal, and a closed-form goal. Measured
+            // at about 0.45 s alone in a Debug build, nearly all of it the full scan; the budget is about 11 times that.
+            var snapshot = MunBound();
+            Timing.Within(5000, () =>
+            {
+                Run(snapshot, "{\"goal\":\"next_patch_pe\",\"value\":50000}");
+                Error(snapshot, "{\"goal\":\"next_patch_pe\",\"value\":90000000000}");
+                Run(Snapshot(), "{\"goal\":\"set_ap\",\"value\":700000}");
+            });
+        }
+
+        [Fact]
         public void A_burn_time_after_the_path_ends_is_an_error_not_a_crash()
         {
             // A 100 km x 30 km-Pe orbit hits the atmosphere on its first pass, so the path ends in "atmosphere" before a day on.

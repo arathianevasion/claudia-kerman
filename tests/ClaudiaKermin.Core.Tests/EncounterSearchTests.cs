@@ -54,5 +54,30 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Null(error);
             Assert.Null(patch.Error);
         }
+
+        [Fact]
+        public void Following_a_path_runs_in_milliseconds()
+        {
+            // The patched conics of the golden in-orbit snapshot (#441): its own orbit, stable, searched for an encounter over a
+            // period; then an ejection that meets the Mun and leaves its SOI again; and the closest approach of a burn that misses.
+            // Measured at about 0.8 ms alone in a Debug build and 2.7 ms in the parallel full run; the budget is 25 times the first.
+            var golden = GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "mun-shot-v2-kerbin-orbit.json")));
+            ToolOutcome error;
+            var setup = PredictBurn.Setup.Prepare(golden, "Mun", out error);
+            Assert.NotNull(setup);
+            var system = setup.System;
+            var at = golden.Ut + 300;
+            Vec3 r, v;
+            setup.Start.State(at, out r, out v);
+            var ejected = Conic.FromState(setup.Body.Gm, r, v * (1 + 860 / v.Length), at);
+            var missed = Conic.FromState(setup.Body.Gm, r, v * (1 + 800 / v.Length), at);
+            Timing.Within(20, () =>
+            {
+                system.Follow(setup.Body, setup.Start, golden.Ut, 8);
+                system.Follow(setup.Body, ejected, at, 8);
+                double distance, ut;
+                system.ClosestApproach(system.Follow(setup.Body, missed, at, 1)[0], setup.Target, out distance, out ut);
+            });
+        }
     }
 }
