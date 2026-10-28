@@ -157,6 +157,30 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         /// <summary>
+        /// A variable fixed by equal bounds, or held in a window narrower than one finite-difference step, still solves: min
+        /// x² + y² + z² on x + y + z = 1 with z fixed at 0.25 is x = y = 0.375.
+        /// </summary>
+        [Theory]
+        [InlineData(0.25, 0.25)]
+        [InlineData(0.25, 0.25 + 1e-8)]
+        public void A_fixed_or_narrow_window_variable_still_solves(double lo, double hi)
+        {
+            var problem = Problem(3, x => x[0] * x[0] + x[1] * x[1] + x[2] * x[2], (x, c) =>
+            {
+                c[0] = x[0] + x[1] + x[2] - 1;
+                return true;
+            }, new[] { 0, 0, 0.25 });
+            problem.Lower = new[] { double.NegativeInfinity, double.NegativeInfinity, lo };
+            problem.Upper = new[] { double.PositiveInfinity, double.PositiveInfinity, hi };
+            problem.ObjectiveHessian = Diagonal(2, 2, 2);
+            var result = Sqp.Solve(problem);
+            Assert.True(result.Converged, result.Reason);
+            Assert.Equal(0.375, result.X[0], 6);
+            Assert.Equal(0.375, result.X[1], 6);
+            Assert.InRange(result.X[2], lo, hi);
+        }
+
+        /// <summary>
         /// min 4(x² + y²) on x + y = 2 from (0.1, −0.1) with no exact Hessian: the first step (from W = I, against a gradient
         /// scaled to 1) lands on (0.1, 1.9), inside a region (y &gt; 1.5) where the constraint is undefined, as a burn past which
         /// the encounter is lost. It must back off and still converge to (1, 1).
@@ -305,6 +329,13 @@ namespace ClaudiaKermin.Core.Tests
             Sqp.Inclination(new Vec3(0, 0, -3), 180, c, 0);
             Assert.Equal(0, c[0], 12);
             Assert.Equal(0, c[1], 12);
+
+            // A radial trajectory has no plane: NaN, which the solve takes as undefined. No room, or no such inclination, throws.
+            Sqp.Inclination(default(Vec3), 30, c, 0);
+            Assert.True(double.IsNaN(c[0]));
+            Assert.Throws<ArgumentException>(() => Sqp.Inclination(h, 0, c, 2));
+            Assert.Throws<ArgumentException>(() => Sqp.Inclination(h, 30, null, 0));
+            Assert.Throws<ArgumentException>(() => Sqp.Inclination(h, 200, c, 0));
         }
 
         /// <summary>A burn problem round Kerbin: minimise |Δv|² over its three components (m/s) from zero, subject to <paramref name="residuals"/>.</summary>

@@ -2,7 +2,6 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
-using System.Globalization;
 
 namespace ClaudiaKermin.Core.Tools.Numerics
 {
@@ -41,14 +40,15 @@ namespace ClaudiaKermin.Core.Tools.Numerics
         public SqpVariable[] Variables;
         /// <summary>The starting point. It must be defined (<see cref="Evaluate"/> true) and within the bounds.</summary>
         public double[] Start;
-        /// <summary>The bounds, or null for none; an entry may be infinite.</summary>
+        /// <summary>The lower bounds, or null for none; an entry may be infinite.</summary>
         public double[] Lower;
+        /// <summary>The upper bounds, or null for none; an entry may be infinite, and one equal to its lower bound fixes the variable.</summary>
         public double[] Upper;
         /// <summary>The objective; it must be finite wherever <see cref="Evaluate"/> is defined.</summary>
         public Func<double[], double> Objective;
         /// <summary>
         /// The objective's Hessian in SI units when the objective is quadratic (|Δv|² has 2I over the burn components and 0 for a
-        /// burn time), or null for none; symmetric and positive semi-definite. The solve starts from it and stays exact on it.
+        /// burn time), or null for none; symmetric and positive semi-definite. The solve's Hessian starts from it.
         /// </summary>
         public double[,] ObjectiveHessian;
         /// <summary>How many equality constraints there are.</summary>
@@ -57,6 +57,7 @@ namespace ClaudiaKermin.Core.Tools.Numerics
         public Func<double[], double[], bool> Evaluate;
         /// <summary>Each constraint is met within its tolerance, in the residual's units.</summary>
         public double[] Tolerances;
+        /// <summary>The cap on SQP iterations (each a derivative evaluation and a line search), at least 1.</summary>
         public int MaxIterations;
     }
 
@@ -88,7 +89,8 @@ namespace ClaudiaKermin.Core.Tools.Numerics
     /// central finite differences at fixed steps in <see cref="Scale"/> units, solves a dense KKT system for the step (an active set
     /// holds the box bounds), and backtracks on an L1 merit function. The Hessian is the objective's exact part plus damped BFGS
     /// updates for the constraints' curvature. A trial point that is undefined halves the step; a start that is undefined is
-    /// <see cref="SqpStatus.Invalid"/>. It never throws: a solve that does not converge returns its best point with a status.
+    /// <see cref="SqpStatus.Invalid"/>. It throws nothing of its own: a solve that does not converge returns its best point with a
+    /// status. An exception from the caller's objective or constraints is a bug in them and is not caught.
     /// </summary>
     internal static class Sqp
     {
@@ -121,10 +123,15 @@ namespace ClaudiaKermin.Core.Tools.Numerics
         /// <summary>
         /// The inclination residuals of the orbit with angular momentum <paramref name="h"/> into <paramref name="into"/> from
         /// <paramref name="at"/>: h_z/|h| − cos(target), or within <see cref="EquatorialBand"/> of the equator, where that has
-        /// zero slope at the answer, the unit normal's x and y, which must both be zero.
+        /// zero slope at the answer, the unit normal's x and y, which must both be zero. A zero <paramref name="h"/> (a radial
+        /// trajectory) gives NaN residuals, which the solve takes as an undefined point.
         /// </summary>
         public static void Inclination(Vec3 h, double targetIncDeg, double[] into, int at)
         {
+            if (into == null || at < 0 || at + InclinationConstraints(targetIncDeg) > into.Length)
+                throw new ArgumentException("the residuals array has no room at " + at + " for the inclination's constraints", "into");
+            if (double.IsNaN(targetIncDeg) || targetIncDeg < 0 || targetIncDeg > 180)
+                throw new ArgumentException("the target inclination must be from 0 to 180 degrees", "targetIncDeg");
             var n = h / h.Length;
             if (InclinationConstraints(targetIncDeg) == 2)
             {
@@ -289,8 +296,9 @@ namespace ClaudiaKermin.Core.Tools.Numerics
                     if (!Search(p, merit, slope, mu, out zNew, out fNew, out cNew))
                         return Result(SqpStatus.Stalled, "no defined point along the step lowers the merit", iter + 1);
 
-                    // The new multipliers' Lagrangian gradient at both ends gives the curvature the BFGS update learns. On the
-                    // objective's quadratic part it is exactly the Hessian already held (W s = y there), so that part stays exact.
+                    // The new multipliers' Lagrangian gradient at both ends gives the curvature the BFGS update learns. Where the
+                    // constraints add none along the step, y is the exact Hessian's W s and the update leaves W as it is; where they
+                    // do, it blends their curvature in, so W is the exact part only until then.
                     double[] gNew;
                     double[,] aNew;
                     if (!Derivatives(zNew, fNew * _fScale, cNew, out gNew, out aNew))
@@ -502,7 +510,8 @@ namespace ClaudiaKermin.Core.Tools.Numerics
 
             /// <summary>
             /// Central differences of the objective and constraints at fixed scaled steps, one-sided where a step would cross a bound
-            /// or land on an undefined point. False when both sides of some variable are undefined.
+            /// or land on an undefined point (a fixed variable, lower bound equal to upper, has none). False when every side
+            /// tried for some variable is undefined.
             /// </summary>
             private bool Derivatives(double[] z, double f, double[] c, out double[] g, out double[,] a)
             {
@@ -515,6 +524,15 @@ namespace ClaudiaKermin.Core.Tools.Numerics
                     var h = _step[j];
                     var up = z[j] + h <= _hi[j];
                     var down = z[j] - h >= _lo[j];
+                    if (!up && !down)
+                    {
+                        // A window narrower than a step each side: one side, as far as the wider room goes; none for a fixed variable.
+                        var room = Math.Max(_hi[j] - z[j], z[j] - _lo[j]);
+                        if (!(room > 0)) continue;
+                        up = _hi[j] - z[j] >= z[j] - _lo[j];
+                        down = !up;
+                        h = room;
+                    }
                     double fp = 0, fm = 0;
                     if (up) up = Eval(Moved(z, j, h), out fp, cp);
                     if (down) down = Eval(Moved(z, j, -h), out fm, cm);
@@ -668,14 +686,6 @@ namespace ClaudiaKermin.Core.Tools.Numerics
                 var r = (double[])z.Clone();
                 r[j] += h;
                 return r;
-            }
-
-            private double Quad(double[,] w, double[] p)
-            {
-                var sum = 0.0;
-                for (var i = 0; i < _n; i++)
-                    for (var j = 0; j < _n; j++) sum += p[i] * w[i, j] * p[j];
-                return sum;
             }
         }
 

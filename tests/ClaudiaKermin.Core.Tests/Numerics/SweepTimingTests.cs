@@ -12,7 +12,8 @@ namespace ClaudiaKermin.Core.Tests.Numerics
         [Fact]
         public void The_whole_sweep_runs_in_seconds()
         {
-            // Every seed of every sweep, as the Theories run them. Measured at about 0.5 s alone in a Debug build, so 5 s is ten times that; the budget leaves room for the
+            // Every seed of every sweep, as the Theories run them. Measured at about 0.5 s alone in a Debug build, and about 1 s with the Course Correction sweep (#447),
+            // so 5 s is five times that; the budget leaves room for the
             // parallel full-solution run, which Timing.Within's best-of-several is there to ride out.
             Timing.Within(5000, () =>
             {
