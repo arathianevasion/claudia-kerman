@@ -58,7 +58,7 @@ namespace ClaudiaKermin.Core.Tools
                     + "components (prograde, normal, radial m/s), its magnitude, its burn time, and the predict_burn result for that burn. "
                     + "Goals: circularize (at \"ap\" or \"pe\"); set_ap or set_pe (value, m above sea level; set_ap burns at the next Pe, "
                     + "set_pe at the next Ap); next_patch_pe (value, m above the next patch's body, from a prograde or retrograde burn at "
-                    + "\"at\", default in 60 s; the smaller burn when two reach it). Plane changes are not included. Its blocks are "
+                    + "\"at\" (ap, pe, altitude, eq_an, eq_dn, eq_nearest, eq_highest, rel_an, rel_dn, closest_approach, a UT; default in 60 s; the smaller burn when two reach it). Plane changes are not included. Its blocks are "
                     + "circularize, exec_node and tune_pe: call it for the delta-v to budget their burn instead of working it out "
                     + "yourself, then pass the block the goal (tune_pe's value, circularize's at), not the burn. Don't call it to check "
                     + "a burn you already have (use predict_burn), or for the craft's delta-v (stage_performance).";
@@ -71,7 +71,8 @@ namespace ClaudiaKermin.Core.Tools
             {
                 return "{\"type\":\"object\",\"properties\":{"
                     + "\"goal\":{\"type\":\"string\",\"enum\":[\"circularize\",\"set_ap\",\"set_pe\",\"next_patch_pe\"]},"
-                    + "\"at\":{\"description\":\"circularize: \\\"ap\\\" or \\\"pe\\\". next_patch_pe: \\\"ap\\\", \\\"pe\\\", a UT in seconds or \\\"in <s>\\\"; default \\\"in 60\\\".\"},"
+                    + "\"at\":{\"description\":\"circularize: \\\"ap\\\" or \\\"pe\\\". next_patch_pe: \\\"ap\\\", \\\"pe\\\", \\\"altitude <m> [ascending|descending]\\\", eq_an, eq_dn, eq_nearest, eq_highest, rel_an, rel_dn, closest_approach (the last three use target), a UT in seconds or \\\"in <s>\\\"; default \\\"in 60\\\".\"},"
+                    + "\"target\":{\"type\":\"string\",\"description\":\"The body rel_an, rel_dn and closest_approach measure from.\"},"
                     + "\"value\":{\"type\":\"number\",\"description\":\"set_ap, set_pe, next_patch_pe: the altitude in metres above sea level.\"},"
                     + "\"direction\":{\"type\":\"string\",\"enum\":[\"prograde\",\"retrograde\"],\"description\":\"next_patch_pe only: which way to burn. Default prograde.\"}"
                     + "},\"required\":[\"goal\"],\"additionalProperties\":false}";
@@ -94,7 +95,15 @@ namespace ClaudiaKermin.Core.Tools
             var value = JsonNode.Double(input["value"]);
             var at = input["at"];
             var direction = JsonNode.Str(input["direction"]);
+            var target = JsonNode.Str(input["target"]);
             if (goal != "next_patch_pe" && direction != null) return PlanningJson.Error("direction is for next_patch_pe only");
+            if (target != null && goal != "next_patch_pe") return PlanningJson.Error("target is for next_patch_pe's rel_an, rel_dn and closest_approach only");
+            if (target != null)
+            {
+                var word = at != null && at.Kind == JsonKind.String ? at.StringValue.Trim().ToLowerInvariant() : null;
+                if (word != "rel_an" && word != "rel_dn" && word != "closest_approach")
+                    return PlanningJson.Error("target is for at rel_an, rel_dn or closest_approach only");
+            }
             if (goal == "set_ap" || goal == "set_pe")
             {
                 if (at != null) return PlanningJson.Error(goal + " burns at the " + (goal == "set_ap" ? "periapsis" : "apoapsis") + "; leave at out");
@@ -108,7 +117,7 @@ namespace ClaudiaKermin.Core.Tools
             else if (!value.HasValue) return PlanningJson.Error(goal + " needs a value, the altitude in metres above sea level");
 
             ToolOutcome error;
-            var setup = PredictBurn.Setup.Prepare(snapshot, null, out error);
+            var setup = PredictBurn.Setup.Prepare(snapshot, target, out error);
             if (setup == null) return error;
             var path = setup.System.Follow(setup.Body, setup.Start, setup.Now, 8);
             if (path[path.Count - 1].Error != null) return PlanningJson.Error(path[path.Count - 1].Error);
@@ -122,7 +131,7 @@ namespace ClaudiaKermin.Core.Tools
         {
             var apsis = goal == "circularize" ? at.StringValue.Trim().ToLowerInvariant() : goal == "set_ap" ? "pe" : "ap";
             string problem;
-            var ut = PredictBurn.BurnUt(JsonReader.Parse(PlanningJson.Quote(apsis)), path, setup.Now, setup.Now, "the burn", out problem);
+            var ut = PredictBurn.BurnUt(JsonReader.Parse(PlanningJson.Quote(apsis)), path, setup.Now, setup.Now, "the burn", out problem, setup.System, setup.Target);
             if (problem != null) return PlanningJson.Error(problem);
             var patch = PredictBurn.Containing(path, ut.Value);
             if (patch == null) return PlanningJson.Error("the burn is after the craft reaches " + PredictBurn.Ending(path[path.Count - 1]) + "; nothing after that is predicted");
@@ -155,7 +164,7 @@ namespace ClaudiaKermin.Core.Tools
         private ToolOutcome SolvePatchPe(PredictBurn.Setup setup, List<Patch> path, double value, JsonNode at, string direction)
         {
             string problem;
-            var ut = PredictBurn.BurnUt(at ?? JsonReader.Parse(PlanningJson.Quote(DefaultAt)), path, setup.Now, setup.Now, "the burn", out problem);
+            var ut = PredictBurn.BurnUt(at ?? JsonReader.Parse(PlanningJson.Quote(DefaultAt)), path, setup.Now, setup.Now, "the burn", out problem, setup.System, setup.Target);
             if (problem != null) return PlanningJson.Error(problem);
             var patch = PredictBurn.Containing(path, ut.Value);
             if (patch == null) return PlanningJson.Error("the burn is after the craft reaches " + PredictBurn.Ending(path[path.Count - 1]) + "; nothing after that is predicted");
