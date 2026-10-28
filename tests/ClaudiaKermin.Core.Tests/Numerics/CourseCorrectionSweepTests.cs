@@ -104,7 +104,7 @@ namespace ClaudiaKermin.Core.Tests.Numerics
             return snapshot;
         }
 
-        /// <summary>The transfer, found once: the setup, and the ejection's UT, state and burn (inertial, m/s).</summary>
+        /// <summary>The Mun transfer's ejection, found once: the setup, and the ejection's UT, state and burn (inertial, m/s).</summary>
         private sealed class Ejection
         {
             public PredictBurn.Setup Setup;
