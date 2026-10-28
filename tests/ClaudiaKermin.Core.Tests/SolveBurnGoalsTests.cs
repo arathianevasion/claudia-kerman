@@ -319,6 +319,18 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void Shift_lan_round_the_Mun_costs_the_same_plane_turn()
+        {
+            var r = MunR + 30000;
+            var result = Run(Snapshot(30000, inclination: 45, lan: 100, body: "Mun"), "{\"goal\":\"shift_lan\",\"value\":80}");
+            double i = 45 * Math.PI / 180, dOmega = 20 * Math.PI / 180;
+            var theta = Math.Acos(Math.Cos(i) * Math.Cos(i) + Math.Sin(i) * Math.Sin(i) * Math.Cos(dOmega));
+            Assert.Equal(2 * Math.Sqrt(MunGm / r) * Math.Sin(theta / 2), Magnitude(result), 2);
+            Assert.Equal(80, Achieved(result, "lan"), 3);
+            Assert.Equal(45, Achieved(result, "inclination"), 3);
+        }
+
+        [Fact]
         public void Shift_lan_at_a_given_time_sets_the_lan_from_there()
         {
             // MechJeb's form: the plane through the burn point and the new node, so the LAN is exact and the inclination moves.
@@ -351,8 +363,12 @@ namespace ClaudiaKermin.Core.Tests
         public void Resonant_with_the_Mun_has_half_its_period_for_two_orbits_per_one()
         {
             var munPeriod = 2 * Math.PI * Math.Sqrt(Math.Pow(12000000, 3) / KerbinGm);
+            double rp = KerbinR + 100000, ra = KerbinR + 300000;
             var result = Run(Snapshot(100000, 300000, phase: JustPast), "{\"goal\":\"resonant\",\"value\":2,\"of\":1,\"target\":\"Mun\"}");
             Assert.Equal(munPeriod / 2, Achieved(result, "period"), 0);
+            // A prograde burn at the Pe to the semi-major axis Kepler's third law gives that period.
+            var a = Math.Pow(KerbinGm * Math.Pow(munPeriod / 2 / (2 * Math.PI), 2), 1.0 / 3);
+            Assert.Equal(VisViva(KerbinGm, rp, a) - VisViva(KerbinGm, rp, (rp + ra) / 2), Prograde(result), 2);
         }
 
         [Fact]
