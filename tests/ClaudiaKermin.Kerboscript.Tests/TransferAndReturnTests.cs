@@ -147,13 +147,24 @@ namespace ClaudiaKermin.Kerboscript.Tests
 
         // ---- Earliest departure ----
 
+        /// <summary>transfer_to's and return's one rule (#346, #357): the block's start plus the turn time, or a later window.</summary>
         [Theory]
-        [InlineData("\"next\"", "1300")]
+        [InlineData("\"next\"", "1133")]
         [InlineData("2000", "2000")]
-        [InlineData("1100", "1300")]
-        public void The_departure_is_searched_from_five_minutes_ahead_or_from_the_window(string window, string earliest)
+        [InlineData("1100", "1133")]
+        public void The_departure_is_searched_from_once_the_craft_can_have_turned_or_from_the_window(string window, string earliest)
         {
-            Assert.Equal(earliest, One("claudia_earliest(1000, " + window + ")"));
+            Assert.Equal(earliest, One("claudia_earliest(1000, 133, " + window + ")"));
+        }
+
+        [Fact]
+        public void Transfer_to_and_return_both_depart_by_the_shared_rule()
+        {
+            foreach (var block in new[] { "transfer_to", "return" })
+            {
+                var source = CoreLibrary.Blocks.Single(b => b.Name == block).Source;
+                Assert.Contains("claudia_earliest(ctx:start_ut, turn:turn_time, opt:window)", source);
+            }
         }
 
         // ---- Coordinate descent ----
@@ -250,29 +261,57 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal("12.5", Run(patch + "print return_aim_cost({ parameter o, u. return 12.5. }, p, 35000).").Single());
             // No landing: worse than any real one, and nearer to the target periapsis is better.
             Assert.Equal("10045", Run(patch + "print return_aim_cost({ parameter o, u. return -1. }, p, 35000).").Single());
-            // No path to Kerbin at all.
+            // No path to the planet at all.
             Assert.Equal("100000", One("return_aim_cost({ parameter o, u. return 1. }, \"none\", 35000)"));
         }
 
-        // A worked example: from a 30 km Mun orbit to a 35 km Kerbin periapsis (stock body values).
-        private const string MunReturn = "return_ejection(3.5316e12, 12000000, 635000, 6.5138398e10, 230000)";
+        // ---- return from any moon (#450) ----
 
         [Fact]
-        public void A_mun_return_ejects_at_about_307_ms_and_132_degrees_before_the_asymptote()
+        public void Return_names_no_body()
         {
-            Assert.InRange(Number(MunReturn + ":v_inf"), 370, 371);
-            Assert.InRange(Number(MunReturn + ":dv"), 306, 307.5);
-            Assert.InRange(Number(MunReturn + ":eject_angle"), 132, 132.7);
+            Assert.DoesNotContain("Kerbin", CoreLibrary.Blocks.Single(b => b.Name == "return").Source);
         }
 
         [Fact]
-        public void Aiming_at_the_moons_own_distance_needs_only_escape_and_ejects_straight_back()
+        public void Return_takes_any_arrival_inclination_by_default()
         {
-            const double mu = 6.5138398e10, r0 = 230000;
-            var printed = Run("local e is return_ejection(3.5316e12, 12000000, 12000000, " + mu.ToString("R", CultureInfo.InvariantCulture) + ", " + r0 + "). print round(e:v_inf, 3). print round(e:eject_angle, 3). print round(e:dv, 2).");
-            Assert.Equal("0", printed[0]);
-            Assert.Equal("180", printed[1]);
-            Assert.Equal(Math.Round(Math.Sqrt(2 * mu / r0) - Math.Sqrt(mu / r0), 2).ToString(CultureInfo.InvariantCulture), printed[2]);
+            Assert.Equal("any", One("claudia_options(lexicon(), return_defaults(), \"auto\"):opt:target_inc"));
+            Assert.Equal("", ReturnUnreadable("lexicon(\"target_inc\", 30)"));
+            Assert.Equal("", ReturnUnreadable("lexicon(\"target_inc\", 180)"));
+        }
+
+        [Theory]
+        [InlineData("lexicon(\"target_inc\", 200)", "target_inc must be 'any' or degrees from 0 to 180, not 200")]
+        [InlineData("lexicon(\"target_inc\", -1)", "target_inc must be 'any' or degrees from 0 to 180, not -1")]
+        [InlineData("lexicon(\"target_inc\", \"polar\")", "target_inc must be 'any' or degrees from 0 to 180, not 'polar'")]
+        [InlineData("lexicon(\"target_inc\", list())", "target_inc must be 'any' or degrees from 0 to 180, not a List")]
+        public void Return_refuses_a_target_inc_it_cannot_read(string options, string reason)
+        {
+            Assert.Equal(reason, ReturnUnreadable(options));
+        }
+
+        [Fact]
+        public void A_target_inc_given_goes_into_the_solvers_ask_and_any_leaves_it_out()
+        {
+            Assert.Equal(new[] { "target_pe,earliest_ut,target_inc", "30" },
+                Run("local q is return_with_inc(lexicon(\"target_pe\", 35000, \"earliest_ut\", 1133), 30). print q:keys:join(\",\"). print q:target_inc."));
+            Assert.Equal("target_pe,earliest_ut", One("return_with_inc(lexicon(\"target_pe\", 35000, \"earliest_ut\", 1133), \"any\"):keys:join(\",\")"));
+        }
+
+        private static string NeedsCorrection(string pe, string inc, string targetInc)
+        {
+            return One("return_needs_correction(lexicon(\"orbit\", lexicon(\"periapsis\", " + pe + ", \"inclination\", " + inc + "), \"soi_ut\", 0), 35000, " + targetInc + ")");
+        }
+
+        [Fact]
+        public void The_plain_correction_is_needed_off_target_pe_or_off_a_target_inc_given()
+        {
+            Assert.Equal("False", NeedsCorrection("35900", "12", "\"any\""));
+            Assert.Equal("True", NeedsCorrection("36100", "12", "\"any\""));
+            Assert.Equal("False", NeedsCorrection("35000", "30.4", "30"));
+            Assert.Equal("True", NeedsCorrection("35000", "30.6", "30"));
+            Assert.Equal("True", One("return_needs_correction(\"none\", 35000, \"any\")"));
         }
 
         [Fact]

@@ -12,12 +12,12 @@ namespace ClaudiaKermin.Core.Tools
     /// <summary>
     /// The block-internal calls (ADR 0006, ADR 0007): the mod's calculations a Building Block makes while it flies, through
     /// <c>ADDONS:CLAUDIA</c>: the site search, the reentry predictor with the deorbit burn search on it, the turn time, the
-    /// ejection burn to a moon, the launch window, the Course Correction and solve_burn's orbit changes. They run the same C#
-    /// as the Planning Tools, on a Game Snapshot read at the call (the reentry calls also read the air and the craft's drag cubes
-    /// live, through <see cref="IReentryAir"/> and <see cref="IReentryCraft"/>), and only read. The turn time is the exception:
-    /// it needs no Snapshot, only the craft's torque and moment of inertia, read live into a <see cref="TurnCraft"/>. The
-    /// Script Check lets the Core Library call them and refuses them in a Mission Script. Inputs and results are plain values, as
-    /// <c>KosValues</c> converts a kOS lexicon.
+    /// ejection burn to a moon and the one home from it, the launch window, the Course Correction and solve_burn's orbit
+    /// changes. They run the same C# as the Planning Tools, on a Game Snapshot read at the call (the reentry calls also read the
+    /// air and the craft's drag cubes live, through <see cref="IReentryAir"/> and <see cref="IReentryCraft"/>), and only read. The
+    /// turn time is the exception: it needs no Snapshot, only the craft's torque and moment of inertia, read live into a
+    /// <see cref="TurnCraft"/>. The Script Check lets the Core Library call them and refuses them in a Mission Script. Inputs and
+    /// results are plain values, as <c>KosValues</c> converts a kOS lexicon.
     /// </summary>
     public static class BlockCalls
     {
@@ -389,6 +389,51 @@ namespace ClaudiaKermin.Core.Tools
                 { "dv", plan.DeltaV },
                 { "pe_predicted", plan.PePredicted },
                 { "inc_predicted", plan.IncPredicted },
+            };
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:RETURNBURN</c>, for <c>return</c> (#450): the ejection from the moon the craft orbits to the planet that
+        /// moon orbits, the smallest burn arriving there at <c>target_pe</c> (m) and, if given, at <c>target_inc</c> (degrees), by
+        /// <see cref="Tools.ReturnBurn"/>. <c>earliest_ut</c> (UT; now if missing or past) and <c>latest_ut</c> (UT; one orbit of the craft
+        /// later if missing) are the burn's window. <c>pe_tolerance</c> (m, default 1000) and <c>inc_tolerance</c> (degrees,
+        /// default 0.5) are how close the answer must be. Gives <c>error</c> "", <c>planet</c>, <c>ut</c>, <c>prograde</c>,
+        /// <c>normal</c>, <c>radial</c> (m/s, maneuver node components), <c>dv</c>, <c>pe_predicted</c> (m), <c>inc_predicted</c>
+        /// (degrees), <c>soi_ut</c> (UT the craft leaves the moon) and <c>from_grid</c> (the analytic seed was undefined); a best
+        /// burn outside the tolerances gives its <c>error</c> with the rest; a solve that could not start, only <c>error</c>,
+        /// "found no return: &lt;why&gt;".
+        /// </summary>
+        public static IDictionary<string, object> ReturnBurn(IDictionary<string, object> input, GameSnapshot snapshot)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            if (snapshot == null) return Error(Tools.ReturnBurn.Fail("no Game Snapshot").Error);
+            var pe = NumberOrNull(ask, "target_pe");
+            if (!pe.HasValue) return Error(Tools.ReturnBurn.Fail("target_pe is required").Error);
+            foreach (var key in new[] { "target_inc", "earliest_ut", "latest_ut", "pe_tolerance", "inc_tolerance" })
+                if (ask.ContainsKey(key) && !(ask[key] is double)) return Error(Tools.ReturnBurn.Fail(key + " must be a number").Error);
+            var plan = Tools.ReturnBurn.Find(snapshot, new ReturnAsk
+            {
+                TargetPe = pe.Value,
+                TargetInc = NumberOrNull(ask, "target_inc"),
+                EarliestUt = Number(ask, "earliest_ut", snapshot.Ut),
+                LatestUt = NumberOrNull(ask, "latest_ut"),
+                PeTolerance = Number(ask, "pe_tolerance", 1000),
+                IncTolerance = Number(ask, "inc_tolerance", 0.5),
+            });
+            if (!plan.HasBurn) return Error(plan.Error);
+            return new Dictionary<string, object>
+            {
+                { "error", plan.Error ?? "" },
+                { "planet", plan.Planet },
+                { "ut", plan.Ut },
+                { "prograde", plan.Prograde },
+                { "normal", plan.Normal },
+                { "radial", plan.Radial },
+                { "dv", plan.DeltaV },
+                { "pe_predicted", plan.PePredicted },
+                { "inc_predicted", plan.IncPredicted },
+                { "soi_ut", plan.SoiUt },
+                { "from_grid", plan.FromGrid },
             };
         }
 

@@ -22,7 +22,7 @@ function test_km {
 local aim is deorbit_ksc().
 // Called as a value: a bare return(). would be kOS's return statement.
 local result is return(lexicon("target", "ksc", "stage_limit", 2)).
-print "return target test: success " + result:success + ", Kerbin pe " + result:kerbin_pe + " m, predicted " + result:predicted_geo + " (" + result:predicted_error_km + " km off KSC), " + result:reason.
+print "return target test: success " + result:success + ", Kerbin pe " + result:planet_pe + " m, predicted " + result:predicted_geo + " (" + result:predicted_error_km + " km off KSC), " + result:reason.
 // The checker compares a field with a literal only, so the test reports the comparisons it needs; a
 // distance it never measured stays far over its check.
 set result["landed_or_splashed"] to false.

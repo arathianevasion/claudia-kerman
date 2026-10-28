@@ -165,7 +165,7 @@ function transfer_to {
     return claudia_finish(ctx, false, turn_failure, extra).
   }
   local found is addons:claudia:ejectionburn(lexicon("target", dest:name, "target_pe", opt:target_pe,
-    "earliest_ut", ctx:start_ut + turn:turn_time, "window", opt:window)).
+    "earliest_ut", claudia_earliest(ctx:start_ut, turn:turn_time, opt:window), "window", opt:window)).
   local found_failure is transfer_to_call_failure(found).
   if found_failure <> "" {
     return claudia_finish(ctx, false, found_failure, extra).

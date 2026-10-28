@@ -50,13 +50,14 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Theory]
-        [InlineData("transfer_to", "Kerbin")]
-        [InlineData("return", "Mun")]
-        public void TheTransferAndReturnBlockTestsParseAndShipTheirFiles(string test, string orbitBody)
+        [InlineData("transfer_to", "transfer_to", "Kerbin")]
+        [InlineData("return", "return", "Mun")]
+        [InlineData("return_ike", "return", "Ike")]
+        public void TheTransferAndReturnBlockTestsParseAndShipTheirFiles(string test, string block, string orbitBody)
         {
             var dir = Path.Combine(RepoRoot(), "tests", "blocks", test);
             var spec = BlockTestSpec.Parse(test, File.ReadAllText(Path.Combine(dir, "test.cfg")));
-            Assert.Equal(test, spec.Block);
+            Assert.Equal(block, spec.Block);
             Assert.Equal(orbitBody, spec.OrbitBody);
             Assert.True(File.Exists(Path.Combine(dir, spec.Craft)));
             Assert.True(File.Exists(Path.Combine(dir, "scenario.sfs")));
