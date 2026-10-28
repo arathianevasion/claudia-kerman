@@ -89,7 +89,7 @@ namespace ClaudiaKermin.Core.Tools
                 EarliestUt = Number(ask, "earliest_ut", snapshot.Ut),
                 MaxWait = Number(ask, "max_wait", at.RotationPeriod),
                 GroundAltitude = Number(ask, "ground_alt", 0),
-                AccuracyKm = Number(ask, "accuracy_km", 10),
+                AccuracyKm = Number(ask, "accuracy_km", 5),
                 Isp = Number(ask, "isp", 0),
             }, air, craft, frame);
             if (plan.Landing == null || plan.Landing.Error != null) return Error(plan.Error ?? plan.Landing.Error);
@@ -213,9 +213,23 @@ namespace ClaudiaKermin.Core.Tools
         /// </summary>
         public static IList<string> LeftOut(IDictionary<string, object> input)
         {
+            return Uids(input, "leave_out");
+        }
+
+        /// <summary>
+        /// The parts the heat shield's drop takes (#462): <c>shield_drop</c>, kOS UIDs, as <see cref="LeftOut"/>. The adapter builds
+        /// the craft after the drop from it; none (the default) keeps the heat shield to the ground in the prediction.
+        /// </summary>
+        public static IList<string> ShieldDrop(IDictionary<string, object> input)
+        {
+            return Uids(input, "shield_drop");
+        }
+
+        private static IList<string> Uids(IDictionary<string, object> input, string key)
+        {
             var uids = new List<string>();
             object value;
-            if (input == null || !new Dictionary<string, object>(input, StringComparer.OrdinalIgnoreCase).TryGetValue("leave_out", out value) || value == null)
+            if (input == null || !new Dictionary<string, object>(input, StringComparer.OrdinalIgnoreCase).TryGetValue(key, out value) || value == null)
                 return uids;
             var many = value as System.Collections.IEnumerable;
             if (value is string || many == null) many = new[] { value };

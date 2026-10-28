@@ -21,7 +21,7 @@ namespace ClaudiaKermin.Core.Tools
         public double MaxWait;
         /// <summary>The ground's height above sea level at the target, m.</summary>
         public double GroundAltitude;
-        public double AccuracyKm = 10;
+        public double AccuracyKm = 5;
         /// <summary>The engines' Isp, s, for the mass after the burn; 0 takes the mass as it is now.</summary>
         public double Isp;
     }

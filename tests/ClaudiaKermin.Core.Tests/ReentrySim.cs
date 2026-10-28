@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
+using System.Collections.Generic;
 using ClaudiaKermin.Core.Missions;
 using ClaudiaKermin.Core.Tools;
 
@@ -61,6 +62,11 @@ namespace ClaudiaKermin.Core.Tests
                 var temp = LerpTable(altitude, 2);
                 density = p * 0.0289644 / (8.314462 * temp);
                 speedOfSound = Math.Sqrt(1.4 * 8.314462 * temp / 0.0289644);
+            }
+
+            public double PressureAtm(double altitude)
+            {
+                return altitude >= AtmTop ? 0 : LerpTable(Math.Max(0, altitude), 1) / 101.325;
             }
         }
 
@@ -138,6 +144,52 @@ namespace ClaudiaKermin.Core.Tests
                 var side = 4 * 1.06 * Hermite(Surf, mach) * m * FaceCd(0.716, mach);
                 return (tip + tail + side) * 0.1 * 8 * Hermite(Pre, densitySpeed) * Scale;
             }
+
+            /// <summary>The research's capsule has no lift; a test may give it some, m², at every Mach.</summary>
+            public double Lift;
+
+            public double LiftArea(double mach, double angleOfAttack)
+            {
+                return Lift;
+            }
+
+            /// <summary>No parachutes in the research's model (it stopped at Mach 1); a test gives them.</summary>
+            public IList<ReentryChute> Chutes { get; set; } = new List<ReentryChute>();
+
+            /// <summary>The craft once its heat shield has gone; null keeps it, as the research did.</summary>
+            public IReentryCraft AfterShield { get; set; }
+        }
+
+        /// <summary>
+        /// Stock's Mk16 parachute (parachuteMk1.cfg and its drag cubes in PartDatabase.cfg, KSP 1.12.5): opens at 0.04 atm,
+        /// deploys fully at 1000 m, over 1 / 0.5 s and 1 / 0.12 s. Its areas are the SEMIDEPLOYED and DEPLOYED cubes met bottom
+        /// first at Mach 0.3, as the adapter reads them: the YN face on the tip curve, YP on the tail curve, the four sides on
+        /// the surface curve, each by its drag, times the Mach multiplier and stock's 0.1 × 8. That is about 337 m² fully open,
+        /// so it lets the research's 1240 kg capsule down at about 7.7 m/s at sea level.
+        /// </summary>
+        public static ReentryChute Mk16()
+        {
+            return new ReentryChute
+            {
+                MinPressureAtm = 0.04, DeployAltitude = 1000,
+                SemiArea = OpenArea(0.5275, 1.124, 0.5275, 1.225, new[] { 7.477, 7.477, 7.54, 7.54 }, new[] { 0.2764, 0.2764, 0.2754, 0.2744 }),
+                FullArea = OpenArea(52.78, 6.533, 52.78, 8.568, new[] { 72.79, 72.79, 73.5, 73.5 }, new[] { 7.569, 7.568, 7.509, 7.474 }),
+                SemiSeconds = 1 / 0.5, FullSeconds = 1 / 0.12, Curve = 1,
+            };
+        }
+
+        private static double OpenArea(double tipArea, double tipCd, double tailArea, double tailCd, double[] sideAreas, double[] sideCds)
+        {
+            const double mach = 0.3;
+            var sum = tipArea * Hermite(Tip, mach) * StockCd(tipCd, mach) + tailArea * Hermite(Tail, mach) * StockCd(tailCd, mach);
+            for (var i = 0; i < sideAreas.Length; i++) sum += sideAreas[i] * Hermite(Surf, mach) * StockCd(sideCds[i], mach);
+            return sum * Hermite(Mult, mach) * 0.1 * 8;
+        }
+
+        /// <summary>Stock's face drag (DragCubeList.AddSurfaceDragDirection): a drag of 1 or more is taken as it is. The research's script took it as 1 (<see cref="FaceCd"/>), which its capsule's faces, all under 1, never meet.</summary>
+        private static double StockCd(double cd, double mach)
+        {
+            return cd >= 1 ? cd : FaceCd(cd, mach);
         }
 
         public static SnapshotBody Kerbin(double atmosphere = AtmTop)
