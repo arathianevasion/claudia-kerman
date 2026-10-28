@@ -417,7 +417,7 @@ namespace ClaudiaKermin.Core.Tests
             var plan = log.Where(c => c.Event == "pending").ToList();
             Assert.Equal("compaction", plan[1].Outcome);
             var planPaid = log.First(c => c.Event == "paid").Amount;
-            return CapBetween(plan[0].Amount, planPaid + Math.Min(plan[1].Amount, plan[2].Amount), "fits the plan's worst case but nothing after its real cost");
+            return CostLogGap.Between(plan[0].Amount, planPaid + Math.Min(plan[1].Amount, plan[2].Amount), "fits the plan's worst case but nothing after its real cost");
         }
 
         /// <summary>
@@ -441,7 +441,7 @@ namespace ClaudiaKermin.Core.Tests
             var paid = log.Where(c => c.Event == "paid").ToList();
             Assert.Equal("compaction", pending[2].Outcome);
             // The Sequence Plan is sent after the Mission Plan's real cost, and the compaction after the Sequence Plan's.
-            return CapBetween(paid[0].Amount + pending[1].Amount, paid[0].Amount + paid[1].Amount + pending[2].Amount, "fits the Sequence Plan's worst case but not a compaction after its real cost");
+            return CostLogGap.Between(paid[0].Amount + pending[1].Amount, paid[0].Amount + paid[1].Amount + pending[2].Amount, "fits the Sequence Plan's worst case but not a compaction after its real cost");
         }
 
         private static IList<CostLine> DryRun(StreamingFakeTransport transport, Action<MissionCompactionTests, MissionControl> flow)
@@ -470,12 +470,6 @@ namespace ClaudiaKermin.Core.Tests
             }).ToList();
         }
 
-        /// <summary>A cap in the middle of the gap a test means, the gap itself asserted so it cannot close unnoticed.</summary>
-        private static decimal CapBetween(decimal low, decimal high, string gap)
-        {
-            Assert.True(low < high, "no gap for a cap that " + gap + ": " + low + " to " + high);
-            return Math.Round((low + high) / 2, 4);
-        }
 
         // ---- Persistence ----
 

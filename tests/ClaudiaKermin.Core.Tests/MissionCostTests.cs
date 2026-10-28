@@ -90,13 +90,6 @@ namespace ClaudiaKermin.Core.Tests
             }
         }
 
-        /// <summary>A cap in the middle of the gap a test means, the gap itself asserted so it cannot close unnoticed.</summary>
-        private static decimal CapBetween(decimal low, decimal high, string gap)
-        {
-            Assert.True(low < high, "no gap for a cap that " + gap + ": " + low + " to " + high);
-            return Math.Round((low + high) / 2, 4);
-        }
-
         // ---- Price table ----
 
         [Fact]
@@ -306,7 +299,7 @@ namespace ClaudiaKermin.Core.Tests
             // The plan's real cost is past 80% of the cap, yet its worst case still fits before sending.
             decimal worstCase, paid;
             PlanCost("mission-plan-priced.sse", out worstCase, out paid);
-            var cap = CapBetween(Math.Max(worstCase, paid), paid / 0.8m, "fits the worst case and is 80% spent");
+            var cap = CostLogGap.Between(Math.Max(worstCase, paid), paid / 0.8m, "fits the worst case and is 80% spent");
             CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, cap, Sonnet));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
 
@@ -361,7 +354,7 @@ namespace ClaudiaKermin.Core.Tests
             // The plan costs $0.80, past the cap, though its worst-case estimate fitted.
             decimal worstCase, paid;
             PlanCost("mission-plan-big.sse", out worstCase, out paid);
-            var cap = CapBetween(worstCase, paid, "fits the worst case but not the real cost");
+            var cap = CostLogGap.Between(worstCase, paid, "fits the worst case but not the real cost");
             CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, cap, Sonnet));
             DrainUntil(mission, v => v.Stage == MissionStage.Paused);
 

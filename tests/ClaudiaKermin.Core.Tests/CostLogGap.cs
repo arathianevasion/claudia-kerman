@@ -28,7 +28,9 @@ namespace ClaudiaKermin.Core.Tests
         public static decimal Between(decimal low, decimal high, string gap)
         {
             Assert.True(low < high, "no gap for a cap that " + gap + ": " + low + " to " + high);
-            return Math.Round((low + high) / 2, 4);
+            var cap = Math.Round((low + high) / 2, 4);
+            Assert.InRange(cap, low, high - 0.0001m);
+            return cap;
         }
     }
 }
