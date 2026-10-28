@@ -1924,9 +1924,9 @@ function claudia_correction_ut {
   if done:ut < now + lead {
     if bounded {
       set done:reason to "max_duration (" + round(max_duration) + " s) ends at UT " + round(start_ut + max_duration)
-        + ", too soon for the mid-course correction: its burn needs " + round(lead + 120) + " s from UT " + round(now).
+        + ", too soon for the Course Correction: its burn needs " + round(lead + 120) + " s from UT " + round(now).
     } else {
-      set done:reason to "the arrival comes too soon for the mid-course correction".
+      set done:reason to "the arrival comes too soon for the Course Correction".
     }
   }
   return done.

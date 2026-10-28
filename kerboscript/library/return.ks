@@ -208,16 +208,13 @@ function return_aim_cost {
 // The correction with a landing target: a node at ut whose burn aims the landing the predictor gives at the target, by
 // coordinate descent over its components, flown with exec_node. aim is a delegate of an orbit patch round dest and the UT
 // it begins, that returns the km its predicted landing is from the target, or -1 if it doesn't come down; target_pe only
-// draws a path that misses the atmosphere towards it. Nothing is burned when the landing is already within
-// return_aim_good_km() of the target or the fix is under 0.1 m/s. Returns lexicon("reason", "" or why the block fails,
-// "dv", m/s burned).
+// draws a path that misses the atmosphere towards it. The search stops once the landing is within return_aim_good_km()
+// of the target (the block asks only when it isn't yet), and nothing is burned when the fix is under 0.1 m/s. Returns
+// lexicon("reason", "" or why the block fails, "dv", m/s burned).
 function return_aimed_correction {
   parameter ctx, dest, target_pe, ut, aim.
   local done is lexicon("reason", "", "dv", 0).
   local good is return_aim_good_km().
-  if return_aim_cost(aim, claudia_patch(ship:orbit, dest), target_pe) <= good {
-    return done.
-  }
   local nd is node(ut, 0, 0, 0).
   add nd.
   local found is claudia_descend({
@@ -346,16 +343,25 @@ function return {
       claudia_make_safe().
       return claudia_finish(ctx, false, waited, extra).
     }
-    local when is claudia_correction_ut(mid, time:seconds, 300, ctx:start_ut, opt:max_duration).
-    if when:reason <> "" {
-      return claudia_finish(ctx, false, when:reason, extra).
-    }
     local fixed is lexicon("reason", "", "dv", 0).
+    local needed is false.
     if return_aims(opt) {
-      set fixed to return_aimed_correction(ctx, planet, opt:target_pe, when:ut, aim).
-    } else if abs(claudia_pe_error(ship:orbit, planet, opt:target_pe)) > claudia_correction_good_m() {
-      // The Course Correction is the mod's solver, a block-internal call (ADR 0007), so it sits in the block.
-      set fixed to claudia_fly_correction(ctx, addons:claudia:correctionburn(claudia_correction_ask(planet:name, opt:target_pe, when:ut))).
+      set needed to return_aim_cost(aim, claudia_patch(ship:orbit, planet), opt:target_pe) > return_aim_good_km().
+    } else {
+      set needed to abs(claudia_pe_error(ship:orbit, planet, opt:target_pe)) > claudia_correction_good_m().
+    }
+    if needed {
+      // 300 s to turn to and lead the burn, as the ejection's earliest departure leaves (claudia_earliest).
+      local when is claudia_correction_ut(mid, time:seconds, 300, ctx:start_ut, opt:max_duration).
+      if when:reason <> "" {
+        return claudia_finish(ctx, false, when:reason, extra).
+      }
+      if return_aims(opt) {
+        set fixed to return_aimed_correction(ctx, planet, opt:target_pe, when:ut, aim).
+      } else {
+        // The Course Correction is the mod's solver, a block-internal call (ADR 0007), so it sits in the block.
+        set fixed to claudia_fly_correction(ctx, addons:claudia:correctionburn(claudia_correction_ask(planet:name, opt:target_pe, when:ut))).
+      }
     }
     if fixed:reason <> "" {
       return claudia_finish(ctx, false, fixed:reason, extra).

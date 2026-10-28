@@ -134,7 +134,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [Fact]
         public void A_max_duration_with_no_time_left_for_the_correction_fails_before_the_burn_with_a_reason()
         {
-            Assert.Equal(new[] { "3180", "max_duration (2300 s) ends at UT 3300, too soon for the mid-course correction: its burn needs 313 s from UT 3000" },
+            Assert.Equal(new[] { "3180", "max_duration (2300 s) ends at UT 3300, too soon for the Course Correction: its burn needs 313 s from UT 3000" },
                 CorrectionUt("2300"));
         }
 
