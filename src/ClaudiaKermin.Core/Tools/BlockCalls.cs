@@ -12,7 +12,8 @@ namespace ClaudiaKermin.Core.Tools
     /// <summary>
     /// The block-internal calls (ADR 0006, ADR 0007): the mod's calculations a Building Block makes while it flies, through
     /// <c>ADDONS:CLAUDIA</c>: the site search, the reentry predictor with the deorbit burn search on it, the turn time, the
-    /// ejection burn to a moon and the one home from it. They run the same C#
+    /// ejection burn to a moon and the one home from it, the launch window, the Course Correction and solve_burn's orbit
+    /// changes. They run the same C#
     /// as the Planning Tools, on a Game Snapshot read at the call (the reentry calls also read the air and the craft's drag cubes
     /// live, through <see cref="IReentryAir"/> and <see cref="IReentryCraft"/>), and only read. The turn time is the exception:
     /// it needs no Snapshot, only the craft's torque and moment of inertia, read live into a <see cref="TurnCraft"/>. The
@@ -434,6 +435,75 @@ namespace ClaudiaKermin.Core.Tools
                 { "inc_predicted", plan.IncPredicted },
                 { "soi_ut", plan.SoiUt },
                 { "from_grid", plan.FromGrid },
+            };
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:ORBITBURN</c>, for <c>change_orbit</c> (#444): <c>solve_burn</c>'s solve (<see cref="SolveBurn"/>) on the
+        /// craft's orbit as it is at the call, so the node a block flies is solved when it starts, not when Claudia planned. Takes
+        /// <c>solve_burn</c>'s inputs: <c>goal</c>, and as that goal needs them <c>value</c>, <c>at</c> (a word or a UT),
+        /// <c>target</c> (a body's name), <c>pe</c>, <c>ap</c>, <c>of</c> and <c>direction</c>. Gives <c>error</c> "", <c>ut</c>,
+        /// <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver node components), <c>dv</c>, <c>burn_time</c> (s; -1 when
+        /// the craft's stages don't give it) and <c>wanted</c>, a lexicon of each element the goal sets and the figure it aims at
+        /// (<see cref="SolvedBurn.Wanted"/>); or only <c>error</c>, solve_burn's reason. It refuses <c>intercept_at</c>, whose aim is
+        /// an arrival, not an element.
+        /// </summary>
+        public static IDictionary<string, object> OrbitBurn(IDictionary<string, object> input, GameSnapshot snapshot)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            if (snapshot == null) return Error("no Game Snapshot");
+            // change_orbit judges the elements a burn sets (wanted); an intercept aims at an arrival, which no element holds. Checked
+            // before the inputs, so an intercept's own fields (arrive_ut, tof) get this reason, not "unknown input".
+            object goal;
+            if (ask.TryGetValue("goal", out goal) && goal as string == "intercept_at")
+                return Error("ORBITBURN does not solve intercept_at: change_orbit checks the orbit elements a burn sets, and an intercept "
+                    + "aims at an arrival, not an element; exec_node the node solve_burn gives");
+            var json = new JsonWriter().BeginObject();
+            foreach (var entry in ask)
+            {
+                var key = entry.Key.ToLowerInvariant();
+                var text = entry.Value as string;
+                switch (key)
+                {
+                    case "goal":
+                    case "target":
+                    case "direction":
+                        if (text == null) return Error(key + " must be a string, not " + Convert.ToString(entry.Value, CultureInfo.InvariantCulture));
+                        json.Field(key, text);
+                        break;
+                    case "value":
+                    case "pe":
+                    case "ap":
+                    case "of":
+                    case "at":
+                        if (key == "at" && text != null)
+                        {
+                            json.Field(key, text);
+                            break;
+                        }
+                        if (!(entry.Value is double) || double.IsNaN((double)entry.Value) || double.IsInfinity((double)entry.Value))
+                            return Error(key + " must be a finite number" + (key == "at" ? " (a UT) or a word" : "") + ", not " + Convert.ToString(entry.Value, CultureInfo.InvariantCulture));
+                        json.Field(key, (double)entry.Value);
+                        break;
+                    default:
+                        return Error("unknown input " + entry.Key + ": ORBITBURN takes solve_burn's goal, value, at, target, pe, ap, of and direction");
+                }
+            }
+            var solved = new SolvedBurn();
+            var outcome = new SolveBurn().Solve(JsonReader.Parse(json.EndObject().ToString()), snapshot, solved);
+            if (outcome.IsError) return Error(outcome.Summary);
+            var wanted = new Dictionary<string, object>();
+            foreach (var element in solved.Wanted) wanted[element.Key] = element.Value;
+            return new Dictionary<string, object>
+            {
+                { "error", "" },
+                { "ut", solved.Ut },
+                { "prograde", solved.Prograde },
+                { "normal", solved.Normal },
+                { "radial", solved.Radial },
+                { "dv", solved.DeltaV },
+                { "burn_time", solved.BurnTime ?? -1 },
+                { "wanted", wanted },
             };
         }
 

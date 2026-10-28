@@ -42,7 +42,7 @@ namespace ClaudiaKermin.Core.Tools
         /// orbit the body the craft is round at the burn. The arrival is reported with the speed relative to the target and the
         /// burn that would match its velocity there.
         /// </summary>
-        private static ToolOutcome SolveIntercept(PredictBurn.Setup setup, List<Patch> path, JsonNode at, double? arriveUt, double? tof, bool retrograde, int revolutions)
+        private static ToolOutcome SolveIntercept(SolvedBurn into, PredictBurn.Setup setup, List<Patch> path, JsonNode at, double? arriveUt, double? tof, bool retrograde, int revolutions)
         {
             string problem;
             Patch patch;
@@ -74,7 +74,7 @@ namespace ClaudiaKermin.Core.Tools
             var match = vt - solution.V2;
             double mp, mn, mr;
             OrbitChange.NodeComponents(rt, solution.V2, match, out mp, out mn, out mr);
-            return Answer(setup, "intercept_at", ut.Value, r, v, solution.V1 - v, json =>
+            return Answer(into, setup, "intercept_at", ut.Value, r, v, solution.V1 - v, json =>
             {
                 PlanningJson.Time(json.Name("arrival").BeginObject(), "at", arrival, setup.Now);
                 json.Field("flight_time", PlanningJson.Round(flight, 1))
