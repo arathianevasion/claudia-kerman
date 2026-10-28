@@ -26,7 +26,7 @@
 //|     The landing is hard to steer from here: read predicted_error_km, and when it is too far for the
 //|     Mission Goal, capture at Kerbin and call deorbit instead. Aim a splashdown offshore.
 //|   correction [true]: false leaves out the mid-course correction.
-//|   max_duration ["auto"]: the time to the predicted reentry plus 900 s.
+//|   max_duration ["auto"]: the time to the predicted reentry plus 900 s; a shorter one moves the correction sooner.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block; each burn gets them too.
 //| Extra results: kerbin_pe (m, the predicted Kerbin periapsis), reentry_ut (UT of the predicted
 //| entry into Kerbin's atmosphere, or of periapsis if that is above it), predicted_geo (lexicon lat,

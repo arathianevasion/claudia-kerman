@@ -22,7 +22,7 @@
 //|     Mun from a 100 km orbit); a time (UT seconds) searches the same span from that time. It warps
 //|     there on rails: no Due Time needed.
 //|   correction [true]: false leaves out the mid-course correction.
-//|   max_duration ["auto"]: the time to the planned arrival plus 900 s.
+//|   max_duration ["auto"]: the time to the planned arrival plus 900 s; a shorter one moves the correction sooner.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block; each burn gets them too.
 //| Extra results: encounter_ut (UT the craft enters the target's sphere of influence),
 //| target_pe_actual (m, the periapsis predicted at the target), correction_dv (m/s the corrections
