@@ -190,7 +190,7 @@ namespace ClaudiaKermin.Core.Tests
                 ScriptedResponse.Fixture("mission-sequence-plan-unsafe.sse"),
                 ScriptedResponse.Fixture("mission-sequence-plan.sse"));
             var mission = Control(transport, null, new QuicksaveCheck());
-            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, 0.90m, Sonnet));
+            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, CapWithRoomForThePlansButNotTheReplan(), Sonnet));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.UnsafeScript && !v.Busy);
@@ -305,7 +305,7 @@ namespace ClaudiaKermin.Core.Tests
                 ScriptedResponse.Fixture("mission-alert-abort.sse"));
             var mission = Control(transport, AutoModeOn());
             // No room for the Debrief and next plan: the player approves the Sequence Plan themselves.
-            ToSequencePlan(mission, 0.90m);
+            ToSequencePlan(mission, CapWithRoomForThePlansButNotTheDebriefAfter());
             Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
             mission.Send(new Approve());
             var start = mission.TakeCommands().OfType<StartScript>().Single();
@@ -351,7 +351,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             var mission = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), ScriptedResponse.Fixture("mission-sequence-plan.sse")), AutoModeOn());
             var watch = new AttentionWatch();
-            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, 0.90m, Sonnet));
+            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, CapWithRoomForThePlansButNotTheDebriefAfter(), Sonnet));
             Baseline(watch, mission);
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
             Assert.Equal(AttentionKind.Approval, watch.Observe(mission.View).Kind);
@@ -373,7 +373,7 @@ namespace ClaudiaKermin.Core.Tests
         public void RaisingTheCapOnAWaitingSequencePlanApprovesItAndLiftsTheStop()
         {
             var mission = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), ScriptedResponse.Fixture("mission-sequence-plan.sse")), AutoModeOn());
-            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, 0.90m, Sonnet));
+            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, CapWithRoomForThePlansButNotTheDebriefAfter(), Sonnet));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval && !v.Busy);
@@ -544,9 +544,10 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void ExactlyEnoughCapForTheDebriefAndNextPlanApprovesAndACentLessLeavesThePlanWaiting()
         {
-            // $0.90 is room for the plan requests, not for a Debrief and a next plan on top.
+            // The cap is room for the plan requests, not for a Debrief and a next plan on top.
             var mission = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), ScriptedResponse.Fixture("mission-sequence-plan.sse")));
-            ToSequencePlan(mission, 0.90m);
+            var cap = CapWithRoomForThePlansButNotTheDebriefAfter();
+            ToSequencePlan(mission, cap);
             mission.TakeCommands();
 
             mission.Send(new SetAutoMode(true));
@@ -556,7 +557,7 @@ namespace ClaudiaKermin.Core.Tests
             var blocked = CostLines(mission).Single(l => l.GetProperty("event").GetString() == "blocked");
             Assert.Equal("auto_mode_room", blocked.GetProperty("outcome").GetString());
             var needed = mission.View.Spent + mission.View.HeldCharges + blocked.GetProperty("amount").GetDecimal();
-            Assert.True(needed > 0.90m, "the room check needs more than the cap: " + needed);
+            Assert.True(needed > cap,"the room check needs more than the cap: " + needed);
 
             mission.Send(new RaiseCap(needed - 0.01m));
             Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
@@ -574,7 +575,7 @@ namespace ClaudiaKermin.Core.Tests
         public void InABlackoutBlackoutsRulesStandWithAutoModeOnAndNoRoomCheck()
         {
             var mission = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), ScriptedResponse.Fixture("mission-sequence-plan.sse")), AutoModeOn());
-            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, 0.90m, Sonnet));
+            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, CapWithRoomForThePlansButNotTheDebriefAfter(), Sonnet));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
             mission.Send(new Approve());
             mission.Send(Snapshot(s => s.HasLink = false));
@@ -718,6 +719,60 @@ namespace ClaudiaKermin.Core.Tests
                     ? new ScriptCheckResult(null, new List<string> { "line 1: :QUICKSAVE (quicksave)" })
                     : ScriptCheckResult.Pass();
             }
+        }
+
+        /// <summary>
+        /// A Spending Cap measured from the rig's own requests, so it keeps its meaning as the tools list (counted in every worst
+        /// case) grows: room for the Mission Plan and the Sequence Plan, but short of Auto Mode's room check for the Debrief and the
+        /// next plan after them. Dry runs: the plan requests with a roomy cap, then again at exactly their cost to read the room check.
+        /// </summary>
+        private static decimal CapWithRoomForThePlansButNotTheDebriefAfter()
+        {
+            return CapShortOfTheRoomCheck(() => new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), ScriptedResponse.Fixture("mission-sequence-plan.sse")),
+                new PassingScriptCheck(), MissionStage.AwaitingSequenceApproval);
+        }
+
+        /// <summary>The same, for an unsafe Sequence Plan: room for it, but not for the replan Auto Mode asks for.</summary>
+        private static decimal CapWithRoomForThePlansButNotTheReplan()
+        {
+            return CapShortOfTheRoomCheck(() => new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"),
+                    ScriptedResponse.Fixture("mission-sequence-plan-unsafe.sse"), ScriptedResponse.Fixture("mission-sequence-plan-unsafe.sse")),
+                new QuicksaveCheck(), MissionStage.UnsafeScript);
+        }
+
+        private static decimal CapShortOfTheRoomCheck(Func<StreamingFakeTransport> transport, IScriptCheck check, MissionStage waiting)
+        {
+            // The cost of the plan requests: every earlier one at its real cost and the last one at its worst case.
+            decimal planRequests;
+            using (var probe = new MissionAutoModeTests())
+            {
+                var mission = probe.PlansUntil(transport(), check, 10m, waiting);
+                var lines = probe.CostLines(mission);
+                var paid = lines.Where(l => l.GetProperty("event").GetString() == "paid").Sum(l => l.GetProperty("amount").GetDecimal());
+                var lastPaid = lines.Last(l => l.GetProperty("event").GetString() == "paid").GetProperty("amount").GetDecimal();
+                var lastWorst = lines.Last(l => l.GetProperty("event").GetString() == "pending").GetProperty("amount").GetDecimal();
+                planRequests = Math.Ceiling((paid - lastPaid + lastWorst) * 10000m) / 10000m;
+            }
+            // At exactly that cap both plan requests are sent, and Auto Mode's room check reads what it would need.
+            using (var probe = new MissionAutoModeTests())
+            {
+                var mission = probe.PlansUntil(transport(), check, planRequests, waiting);
+                mission.Send(new SetAutoMode(true));
+                var blocked = probe.CostLines(mission).Single(l => l.GetProperty("event").GetString() == "blocked");
+                var needed = mission.View.Spent + mission.View.HeldCharges + blocked.GetProperty("amount").GetDecimal();
+                Assert.True(planRequests < needed, "no gap: the plan requests (" + planRequests + ") are not under what the room check needs (" + needed + ")");
+                return Math.Round((planRequests + needed) / 2, 4);
+            }
+        }
+
+        private MissionControl PlansUntil(StreamingFakeTransport transport, IScriptCheck check, decimal cap, MissionStage waiting)
+        {
+            var mission = Control(transport, null, check);
+            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, cap, Sonnet));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == waiting && !v.Busy);
+            return mission;
         }
 
         private static PlayerConfig AutoModeOn()
