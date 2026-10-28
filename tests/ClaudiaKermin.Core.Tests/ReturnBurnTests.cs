@@ -192,6 +192,19 @@ namespace ClaudiaKermin.Core.Tests
             Assert.InRange(D(node, "ut"), earliest, earliest + Period(snapshot));
         }
 
+        /// <summary>
+        /// return asks from the block's start plus the turn time; the call may come a moment after that. As transfer_to's
+        /// departure (Transfer), an earliest_ut already past is now, not an error.
+        /// </summary>
+        [Fact]
+        public void An_earliest_ut_already_past_burns_from_now()
+        {
+            var snapshot = Orbiting(Mun, 30000);
+            var node = Solve(snapshot, 35000, earliest: snapshot.Ut - 10);
+            Assert.Equal("", node["error"]);
+            Assert.InRange(D(node, "ut"), snapshot.Ut, snapshot.Ut + Period(snapshot));
+        }
+
         // ---- the budget (ADR 0010) ----
 
         [Fact]
@@ -224,7 +237,6 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal("found no return: target_pe is required", BlockCalls.ReturnBurn(new Dictionary<string, object>(), snapshot)["error"]);
             Assert.Equal("found no return: target_pe must be metres above 0, not -5", Solve(snapshot, -5)["error"]);
             Assert.Equal("found no return: target_inc must be from 0 to 180 degrees, not 200", Solve(snapshot, 35000, 200)["error"]);
-            Assert.StartsWith("found no return: earliest_ut", (string)Solve(snapshot, 35000, earliest: snapshot.Ut - 10)["error"]);
             Assert.StartsWith("found no return: the burn must come by latest_ut", (string)Solve(snapshot, 35000, earliest: snapshot.Ut + 100, latest: snapshot.Ut + 50)["error"]);
             Assert.StartsWith("found no return: target_pe must be under", (string)Solve(snapshot, 9e7)["error"]);
             Assert.Equal("found no return: target_inc must be a number", BlockCalls.ReturnBurn(new Dictionary<string, object>

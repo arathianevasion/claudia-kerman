@@ -395,7 +395,7 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>
         /// <c>ADDONS:CLAUDIA:RETURNBURN</c>, for <c>return</c> (#450): the ejection from the moon the craft orbits to the planet that
         /// moon orbits, the smallest burn arriving there at <c>target_pe</c> (m) and, if given, at <c>target_inc</c> (degrees), by
-        /// <see cref="Tools.ReturnBurn"/>. <c>earliest_ut</c> (UT; now if missing) and <c>latest_ut</c> (UT; one orbit of the craft
+        /// <see cref="Tools.ReturnBurn"/>. <c>earliest_ut</c> (UT; now if missing or past) and <c>latest_ut</c> (UT; one orbit of the craft
         /// later if missing) are the burn's window. <c>pe_tolerance</c> (m, default 1000) and <c>inc_tolerance</c> (degrees,
         /// default 0.5) are how close the answer must be. Gives <c>error</c> "", <c>planet</c>, <c>ut</c>, <c>prograde</c>,
         /// <c>normal</c>, <c>radial</c> (m/s, maneuver node components), <c>dv</c>, <c>pe_predicted</c> (m), <c>inc_predicted</c>

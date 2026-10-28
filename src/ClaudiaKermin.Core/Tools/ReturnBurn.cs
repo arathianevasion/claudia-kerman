@@ -17,7 +17,7 @@ namespace ClaudiaKermin.Core.Tools
         public double TargetPe;
         /// <summary>The arrival inclination round the planet, degrees from 0 to 180, or null for any.</summary>
         public double? TargetInc;
-        /// <summary>The soonest UT the burn may be: the block's start plus the turn time, or the window's UT if later.</summary>
+        /// <summary>The soonest UT the burn may be: the block's start plus the turn time, or the window's UT if later; one already past is now.</summary>
         public double EarliestUt;
         /// <summary>The latest UT the burn may be, or null for one orbit of the craft after <see cref="EarliestUt"/>, so the burn point comes round once.</summary>
         public double? LatestUt;
@@ -99,8 +99,10 @@ namespace ClaudiaKermin.Core.Tools
             if (planet == null || system.Parent(planet) == null)
                 return Fail("the craft orbits " + moon.Name + ", not a moon: return starts from orbit round a moon");
             if (!orbit.Closed) return Fail("the craft is not in a closed orbit round " + moon.Name);
-            var latest = ask.LatestUt ?? ask.EarliestUt + orbit.Period;
-            var why = Unreadable(ask, latest, now);
+            // An earliest_ut already past (the call comes a moment after the block asked) is now, as Transfer takes it for transfer_to.
+            var earliest = Math.Max(now, ask.EarliestUt);
+            var latest = ask.LatestUt ?? earliest + orbit.Period;
+            var why = Unreadable(ask, earliest, latest);
             if (why != null) return Fail(why);
             if (planet.SoiRadius > 0 && ask.TargetPe >= planet.SoiRadius - planet.Radius)
                 return Fail("target_pe must be under " + Num(planet.SoiRadius - planet.Radius) + " m, inside " + planet.Name + "'s sphere of influence");
@@ -109,7 +111,7 @@ namespace ClaudiaKermin.Core.Tools
                 return Fail("the craft's orbit round " + moon.Name + " does not stay there until the burn: return starts from a stable orbit");
 
             var peR = planet.Radius + ask.TargetPe;
-            var free = latest > ask.EarliestUt;
+            var free = latest > earliest;
             var withInc = ask.TargetInc.HasValue;
             var m = 1 + (withInc ? Sqp.InclinationConstraints(ask.TargetInc.Value) : 0);
             var tolerances = new double[m];
@@ -118,11 +120,11 @@ namespace ClaudiaKermin.Core.Tools
 
             var fromGrid = false;
             double startUt;
-            var seed = Seed(system, moon, planet, orbit, ask.EarliestUt, latest, peR, out startUt);
+            var seed = Seed(system, moon, planet, orbit, earliest, latest, peR, out startUt);
             if (ask.FromGrid || Arrive(system, moon, orbit, startUt, seed, planet) == null)
             {
                 fromGrid = true;
-                if (!Grid(system, moon, planet, orbit, ask.EarliestUt, latest, peR, out startUt, out seed))
+                if (!Grid(system, moon, planet, orbit, earliest, latest, peR, out startUt, out seed))
                     return Fail("no prograde burn in the window leaves " + moon.Name + " for " + planet.Name);
             }
             if (withInc && Sqp.InclinationConstraints(ask.TargetInc.Value) == 1) seed = OffTheEquator(system, moon, planet, orbit, startUt, seed);
@@ -135,7 +137,7 @@ namespace ClaudiaKermin.Core.Tools
                     ? new[] { SqpVariable.Velocity, SqpVariable.Velocity, SqpVariable.Velocity, SqpVariable.Time }
                     : new[] { SqpVariable.Velocity, SqpVariable.Velocity, SqpVariable.Velocity },
                 Start = free ? new[] { seed.X, seed.Y, seed.Z, startUt } : new[] { seed.X, seed.Y, seed.Z },
-                Lower = free ? new[] { double.NegativeInfinity, double.NegativeInfinity, double.NegativeInfinity, ask.EarliestUt } : null,
+                Lower = free ? new[] { double.NegativeInfinity, double.NegativeInfinity, double.NegativeInfinity, earliest } : null,
                 Upper = free ? new[] { double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity, latest } : null,
                 Objective = x => x[0] * x[0] + x[1] * x[1] + x[2] * x[2],
                 ObjectiveHessian = free
@@ -195,15 +197,14 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>Why the ask can't be solved as given, or null.</summary>
-        private static string Unreadable(ReturnAsk ask, double latest, double now)
+        private static string Unreadable(ReturnAsk ask, double earliest, double latest)
         {
             if (!Finite(ask.TargetPe) || ask.TargetPe <= 0) return "target_pe must be metres above 0, not " + Num(ask.TargetPe);
             if (ask.TargetInc.HasValue && !(ask.TargetInc.Value >= 0 && ask.TargetInc.Value <= 180))
                 return "target_inc must be from 0 to 180 degrees, not " + Num(ask.TargetInc.Value);
             if (!Finite(ask.EarliestUt) || !Finite(latest)) return "earliest_ut and latest_ut must be finite UTs";
-            if (ask.EarliestUt < now) return "earliest_ut (UT " + Num(ask.EarliestUt) + ") is before now (UT " + Num(now) + ")";
-            if (latest < ask.EarliestUt)
-                return "the burn must come by latest_ut, UT " + Num(latest) + ", before earliest_ut, UT " + Num(ask.EarliestUt);
+            if (latest < earliest)
+                return "the burn must come by latest_ut, UT " + Num(latest) + ", before the earliest it can be, UT " + Num(earliest);
             if (!(ask.PeTolerance > 0) || !(ask.IncTolerance > 0)) return "pe_tolerance and inc_tolerance must be above 0";
             return null;
         }

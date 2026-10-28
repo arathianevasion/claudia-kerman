@@ -344,8 +344,8 @@ function return {
       set needed to return_needs_correction(claudia_patch(ship:orbit, planet), opt:target_pe, opt:target_inc).
     }
     if needed {
-      // The turn time to turn to the burn and a minute to lead it, as transfer_to's correction leaves.
-      local when is claudia_correction_ut(mid, time:seconds, turn:turn_time + 60, ctx:start_ut, opt:max_duration).
+      // 300 s to turn to and lead the burn, as before #450, so the aimed correction's timing is unchanged.
+      local when is claudia_correction_ut(mid, time:seconds, 300, ctx:start_ut, opt:max_duration).
       if when:reason <> "" {
         return claudia_finish(ctx, false, when:reason, extra).
       }
