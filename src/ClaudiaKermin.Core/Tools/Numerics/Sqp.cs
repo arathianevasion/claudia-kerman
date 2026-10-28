@@ -95,14 +95,13 @@ namespace ClaudiaKermin.Core.Tools.Numerics
     internal static class Sqp
     {
         /// <summary>
-        /// The finite-difference steps, scaled: about 3 cm/s and 0.3 s at Kerbin's surface scale, near the middle (in ratio) of
-        /// the window where the Course Correction sweep converges from every plan near its own (#481). The bisected SOI entry
+        /// The finite-difference steps, scaled: about 3 cm/s and 0.3 s at Kerbin's surface scale, inside the window where the
+        /// Course Correction sweep converges from every plan near its own (#481). The bisected SOI entry
         /// time leaves a staircase in periapsis (2 to 3 cm) and in inclination (about 1e-8 in its cosine). A step that runs
         /// mostly along the constraints' tangent, as one toward the least burn does, amplifies that: at the old 1e-3 m/s the
         /// inclination's slope along such a step came out with the wrong sign, and at the old 1e-2 s the periapsis's slope in
-        /// burn time changed sign from one iteration to the next, so no point along the step lowered the merit. Over 25 plans
-        /// within a few ms and mm/s of the sweep's, the old steps stalled 30 of 800 seeds; velocity steps from 4e-6 to 4e-5 and
-        /// time steps from 4e-4 to 4e-2 stalled none; a velocity step of 4e-4 stalled 25, on the curvature it skips.
+        /// burn time changed sign from one iteration to the next, so no point along the step lowered the merit. ADR 0010 has
+        /// the window as measured.
         /// </summary>
         private const double VelocityStep = 1.3e-5;
         private const double TimeStep = 1.3e-3;
@@ -525,7 +524,7 @@ namespace ClaudiaKermin.Core.Tools.Numerics
                 a = new double[_m, _n];
                 var cp = new double[_m];
                 var cm = new double[_m];
-                var c2 = new double[_m];
+                var cFar = new double[_m];
                 for (var j = 0; j < _n; j++)
                 {
                     var h = _step[j];
@@ -550,17 +549,18 @@ namespace ClaudiaKermin.Core.Tools.Numerics
                     }
                     else if (up || down)
                     {
-                        // One side: second order from a second point twice as far where it is in bounds and defined (the
-                        // first-order error, half the step times the curvature, would be most of a step tolerance), else first.
+                        // One side: second order from a second point twice as far where it is in bounds and defined, else
+                        // first. The first-order error, half the step times the curvature, grows with the step, and at these
+                        // steps it moved a bound-held answer by half a step tolerance.
                         var side = up ? 1.0 : -1.0;
                         var f1 = up ? fp : fm;
                         var c1 = up ? cp : cm;
                         var far = z[j] + 2 * side * h;
                         double f2;
-                        if (far >= _lo[j] && far <= _hi[j] && Eval(Moved(z, j, 2 * side * h), out f2, c2))
+                        if (far >= _lo[j] && far <= _hi[j] && Eval(Moved(z, j, 2 * side * h), out f2, cFar))
                         {
                             g[j] = side * (4 * f1 - 3 * f - f2) / (2 * h);
-                            for (var k = 0; k < _m; k++) a[k, j] = side * (4 * c1[k] - 3 * c[k] - c2[k]) / (2 * h);
+                            for (var k = 0; k < _m; k++) a[k, j] = side * (4 * c1[k] - 3 * c[k] - cFar[k]) / (2 * h);
                         }
                         else
                         {
