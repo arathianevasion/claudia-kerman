@@ -115,6 +115,10 @@ namespace ClaudiaKermin.Core.Missions
         public SnapshotCraft Craft = new SnapshotCraft();
         /// <summary>Altitude above sea level, m; 0 in the editor.</summary>
         public double Altitude;
+        /// <summary>Latitude of the craft over its body, degrees; 0 in the editor. With <see cref="CelestialLongitude"/> it places a pad against a plane (#464).</summary>
+        public double Latitude;
+        /// <summary>Longitude plus the body's rotation angle, degrees: the craft's longitude against the stars, as an orbit's LAN is; 0 in the editor.</summary>
+        public double CelestialLongitude;
         /// <summary>Vertical speed, m/s, negative going down; 0 in the editor.</summary>
         public double VerticalSpeed;
         /// <summary>Null when there is no orbit to read (e.g. in the editor).</summary>
@@ -224,6 +228,8 @@ namespace ClaudiaKermin.Core.Missions
                 .Field("commnet", CommNetEnabled)
                 .Field("link", HasLink)
                 .Field("altitude", Altitude)
+                .Field("latitude", Latitude)
+                .Field("celestial_longitude", CelestialLongitude)
                 .Field("vertical_speed", VerticalSpeed);
             if (RcsOn.HasValue) json.Field("rcs_on", RcsOn.Value);
             if (DeltaVUnreliable)
@@ -377,6 +383,8 @@ namespace ClaudiaKermin.Core.Missions
                 CommNetEnabled = JsonNode.Bool(root["commnet"]) ?? true,
                 HasLink = JsonNode.Bool(root["link"]) ?? true,
                 Altitude = JsonNode.Double(root["altitude"]) ?? 0,
+                Latitude = JsonNode.Double(root["latitude"]) ?? 0,
+                CelestialLongitude = JsonNode.Double(root["celestial_longitude"]) ?? 0,
                 VerticalSpeed = JsonNode.Double(root["vertical_speed"]) ?? 0,
                 RcsOn = JsonNode.Bool(root["rcs_on"]),
             };

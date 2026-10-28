@@ -268,6 +268,35 @@ namespace ClaudiaKermin.Core.Tools
             };
         }
 
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:LAUNCHWINDOW</c>, for <c>launch</c> given a plane to launch into (#464): when the craft's pad next passes
+        /// under the plane of inclination <c>inc</c> and ascending node <c>lan</c> (degrees; the sign of <c>inc</c> is ignored), by
+        /// <see cref="LaunchWindow"/> on the Game Snapshot's pad and body. <c>target_ap</c> (m, default 0) sets the heading's orbital
+        /// speed. Gives <c>error</c> "", <c>wait</c> (s), <c>ut</c>, <c>north</c> (the window launches northward), <c>inc</c> (negative for
+        /// a southbound window) and <c>heading</c> (degrees); or only <c>error</c>, saying why the pad never passes under the plane.
+        /// </summary>
+        public static IDictionary<string, object> LaunchWindow(IDictionary<string, object> input, GameSnapshot snapshot)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            if (snapshot == null) return Error("no Game Snapshot");
+            var inc = NumberOrNull(ask, "inc");
+            var lan = NumberOrNull(ask, "lan");
+            if (!inc.HasValue || !lan.HasValue) return Error("inc and lan are required numbers");
+            var body = new BodySystem(snapshot.Bodies).Find(snapshot.Body);
+            if (body == null) return Error("the body table has no " + snapshot.Body);
+            var window = Tools.LaunchWindow.Find(body, snapshot.Ut, snapshot.Latitude, snapshot.CelestialLongitude, inc.Value, lan.Value, Number(ask, "target_ap", 0));
+            if (window.Error != null) return Error(window.Error);
+            return new Dictionary<string, object>
+            {
+                { "error", "" },
+                { "wait", window.WaitSeconds },
+                { "ut", window.Ut },
+                { "north", window.North },
+                { "inc", window.Inclination },
+                { "heading", window.Heading },
+            };
+        }
+
         private static double Number(IDictionary<string, object> ask, string key, double fallback)
         {
             object value;

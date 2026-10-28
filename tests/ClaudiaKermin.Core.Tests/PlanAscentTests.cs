@@ -331,6 +331,76 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("Orbital stage", definition.Description);
         }
 
+        // ---- the launch window (#464) ----
+
+        /// <summary>Strong() on the pad at KSC at celestial longitude 40, with Minmus (inclination 6, LAN 78) and the Mun (equatorial) in the table.</summary>
+        private static GameSnapshot AtKsc()
+        {
+            var snapshot = Strong();
+            snapshot.Ut = 5000;
+            snapshot.Latitude = -0.0972;
+            snapshot.CelestialLongitude = 40;
+            snapshot.Bodies[1].Parent = "Kerbin";
+            snapshot.Bodies.Add(new SnapshotBody { Name = "Minmus", Parent = "Kerbin", Gm = 1.7658e9, Radius = 60000, Inclination = 6, Lan = 78 });
+            return snapshot;
+        }
+
+        [Fact]
+        public void Given_a_LAN_it_reports_launch_ut_heading_and_the_window_it_chose()
+        {
+            var result = Run(AtKsc(), "{\"target_ap\":80000,\"target_inc\":28.5,\"target_lan\":100,\"turn_shape\":0.45}");
+            var wait = result.GetProperty("wait_s").GetDouble();
+            Assert.InRange(wait, 0, 21549.425);
+            Assert.Equal(5000 + wait, result.GetProperty("launch_ut").GetDouble(), 0);
+            var window = result.GetProperty("window").GetString();
+            Assert.Contains(window, new[] { "northbound", "southbound" });
+            Assert.Equal(window == "northbound" ? 28.5 : -28.5, result.GetProperty("target_inc").GetDouble());
+            Assert.InRange(result.GetProperty("heading").GetDouble(), 0, 360);
+        }
+
+        [Fact]
+        public void Given_a_moon_it_launches_into_the_plane_of_it_and_the_pad_is_in_the_plane_then()
+        {
+            var result = Run(AtKsc(), "{\"target_ap\":80000,\"launch_at\":\"Minmus\",\"turn_shape\":0.45}");
+            var wait = result.GetProperty("launch_ut").GetDouble() - 5000;
+            var phi = -0.0972 * Math.PI / 180;
+            var lambda = (40 + 360 * wait / 21549.425) * Math.PI / 180;
+            var i = 6 * Math.PI / 180;
+            var o = 78 * Math.PI / 180;
+            var dot = Math.Cos(phi) * Math.Cos(lambda) * Math.Sin(i) * Math.Sin(o) - Math.Cos(phi) * Math.Sin(lambda) * Math.Sin(i) * Math.Cos(o)
+                + Math.Sin(phi) * Math.Cos(i);
+            Assert.InRange(dot, -1e-3, 1e-3);
+
+            var mun = Run(AtKsc(), "{\"target_ap\":80000,\"launch_at\":\"mun\",\"turn_shape\":0.45}");
+            Assert.Equal(5000, mun.GetProperty("launch_ut").GetDouble());
+        }
+
+        [Fact]
+        public void A_site_whose_latitude_exceeds_the_inclination_is_an_error_naming_it()
+        {
+            var snapshot = AtKsc();
+            snapshot.Latitude = 28.5;
+            Assert.Contains("never passes under a plane of inclination 6", Error(snapshot, "{\"launch_at\":\"Minmus\"}"));
+            Assert.Contains("28.5", Error(snapshot, "{\"target_inc\":10,\"target_lan\":0}"));
+            Assert.Contains("orbiting Kerbin", Error(AtKsc(), "{\"launch_at\":\"Kerbin\"}"));
+        }
+
+        [Fact]
+        public void Without_a_LAN_or_a_moon_there_is_no_window_in_the_result()
+        {
+            var result = Run(AtKsc(), "{\"target_ap\":80000,\"turn_shape\":0.45}");
+            Assert.False(result.TryGetProperty("launch_ut", out _));
+            Assert.False(result.TryGetProperty("heading", out _));
+        }
+
+        [Fact]
+        public void The_launch_window_survives_a_round_trip_of_the_recording()
+        {
+            var parsed = GameSnapshot.Parse(AtKsc().ToJson());
+            Assert.Equal(-0.0972, parsed.Latitude);
+            Assert.Equal(40, parsed.CelestialLongitude);
+        }
+
         [Fact]
         public void The_air_rows_survive_a_round_trip_of_the_recording()
         {

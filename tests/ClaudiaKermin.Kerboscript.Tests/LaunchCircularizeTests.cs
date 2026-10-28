@@ -233,17 +233,16 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal(azimuth, One("round(LAZcalc_azimuth(" + data + ", 0, " + northSpeed + "), 1)"));
         }
 
+        // The window itself is ADDONS:CLAUDIA:LAUNCHWINDOW's (C#, LaunchWindowTests); launch_apply_window takes its lexicon into the plan.
         [Theory]
-        [InlineData(0, 40, 30, 100, 21549.425, "3591.6", "True")]
-        [InlineData(0, 150, 30, 100, 21549.425, "7781.74", "False")]
-        [InlineData(20, 0, 40, 0, 360, "25.71", "True")]
-        [InlineData(-0.0972, 40, 0, 100, 21549.425, "0", "True")]
-        [InlineData(10, 40, 5, 100, 21549.425, "-1", "True")]
-        public void The_wait_for_a_plane_is_until_the_site_next_passes_under_it(double lat, double siteLng, double inc, double lan, double period, string wait, string north)
+        [InlineData("lexicon(\"error\", \"\", \"wait\", 3591.6, \"inc\", -6)", "false", "3591.6 -6 ")]
+        [InlineData("lexicon(\"error\", \"\", \"wait\", 3591.6, \"inc\", -6)", "true", "3591.6 0 ")]
+        [InlineData("lexicon(\"error\", \"the pad never passes under a plane of inclination 6\", \"wait\", 0, \"inc\", 0)", "false", "0 0 launch_at Minmus: the pad never passes under a plane of inclination 6")]
+        public void The_window_sets_the_wait_and_unless_target_inc_was_given_the_inclination(string window, string incGiven, string expected)
         {
-            var printed = Run("local w is launch_plane_wait(" + lat + ", " + siteLng + ", " + inc + ", " + lan + ", " + period + "). print round(w:wait, 2). print w:north.");
-            Assert.Equal(wait, RoundedLike(printed[0], wait));
-            Assert.Equal(north, printed[1]);
+            var printed = Run("local plan is lexicon(\"error\", \"\", \"wait\", 0, \"inc\", 0). set plan to launch_apply_window(plan, " + window + ", \"Minmus\", " + incGiven
+                + "). print plan:wait + \" \" + plan:inc + \" \" + plan:error.");
+            Assert.Equal(expected, printed[0]);
         }
 
         // LAZcalc_init puts a red message on the HUD for an inclination the latitude can't reach, so
