@@ -230,11 +230,32 @@ namespace ClaudiaKermin.Core.Tools
             why = null;
             var which = ascending ? "rel_an" : "rel_dn";
             if (!ChildOf(patch, system, target, which, out why)) return null;
-            var other = system.OrbitOf(target);
-            var toAn = Vec3.Cross(other.W, patch.Orbit.W);
+            return PlaneNodeTime(patch, system.OrbitOf(target).W, ascending, from, target.Name + "'s", out why);
+        }
+
+        /// <summary>
+        /// The next node, after <paramref name="after"/> and within the patch, of the patch's orbit with the plane whose normal is
+        /// <paramref name="normal"/> (ascending: crossing it towards that normal, as <c>rel_an</c> does); null with why. solve_burn's
+        /// shift_lan burns where its orbit's plane and the plane it wants cross.
+        /// </summary>
+        public static double? PlaneNode(Patch patch, Vec3 normal, bool ascending, double after, string plane, out string why)
+        {
+            var ut = PlaneNodeTime(patch, normal, ascending, after + Nudge, plane, out why);
+            if (ut > patch.EndUt)
+            {
+                why = "the craft reaches " + PredictBurn.Ending(patch) + " before that node";
+                return null;
+            }
+            return ut;
+        }
+
+        private static double? PlaneNodeTime(Patch patch, Vec3 normal, bool ascending, double from, string plane, out string why)
+        {
+            why = null;
+            var toAn = Vec3.Cross(normal, patch.Orbit.W);
             if (toAn.Length < SamePlane)
             {
-                why = "the orbit round " + patch.Body.Name + " is in the same plane as " + target.Name + "'s, so there are no relative nodes";
+                why = "the orbit round " + patch.Body.Name + " is in the same plane as " + plane + ", so there are no relative nodes";
                 return null;
             }
             var direction = ascending ? toAn : toAn * -1;

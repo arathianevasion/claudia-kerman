@@ -66,6 +66,32 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void APolarMunOrbitBudgetsAPlaneChangeAtTheCapturesHighestPoint()
+        {
+            var map = DeltaVMap.Compute(KerbinSystem(), "Kerbin");
+            var polar = map.Leg("polar:Mun");
+            // 2 v sin(45 degrees) at the speed the craft arrives with relative to the Mun, a few hundred m/s.
+            Assert.InRange(polar.DeltaV, 300, 600);
+            Assert.Equal(polar.DeltaV, polar.PlaneChange);
+            Assert.Contains("polar:Mun: ", map.ToText());
+            Assert.Contains("carries a plane change", map.ToText().Split('\n').Single(l => l.StartsWith("- polar:Mun")));
+        }
+
+        [Fact]
+        public void MinmusBudgetsItsSixDegreesInTheTransferAndEquatorialLegsBudgetNone()
+        {
+            var map = DeltaVMap.Compute(KerbinSystem(), "Kerbin");
+            var minmus = map.Leg("transfer:Minmus");
+            Assert.InRange(minmus.PlaneChange, 4, 6);
+            Assert.Equal(minmus.Departure + minmus.Arrival + minmus.PlaneChange, minmus.DeltaV, 6);
+            Assert.Equal(0, map.Leg("transfer:Mun").PlaneChange);
+            Assert.Equal(0, map.Leg("land:Mun").PlaneChange);
+            var lines = map.ToText().Split('\n');
+            Assert.DoesNotContain("carries a plane change", lines.Single(l => l.StartsWith("- transfer:Mun")));
+            Assert.Contains("carries a plane change", lines.Single(l => l.StartsWith("- transfer:Minmus")));
+        }
+
+        [Fact]
         public void EveryMoonOfTheHomeBodyGetsLegsAndNothingIsHardCoded()
         {
             var bodies = KerbinSystem();
