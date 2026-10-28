@@ -196,7 +196,10 @@ namespace ClaudiaKermin.Core.Tools
             if (toOrbit)
             {
                 foreach (var key in new[] { "target_sma", "target_ecc", "target_inc", "target_lan", "target_argpe", "target_mna", "target_epoch" })
-                    if (ask.ContainsKey(key) && !(ask[key] is double)) return Error(Transfer.Fail(key + " must be a number").Error);
+                {
+                    if (!ask.ContainsKey(key)) return Error(Transfer.Fail(key + " is required with target_sma: the target orbit takes all seven elements").Error);
+                    if (!(ask[key] is double)) return Error(Transfer.Fail(key + " must be a number").Error);
+                }
                 orbit = new SnapshotOrbit
                 {
                     SemiMajorAxis = Number(ask, "target_sma", 0),

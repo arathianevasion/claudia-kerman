@@ -140,7 +140,7 @@ namespace ClaudiaKermin.Core.Tools
             if (!setup.Start.Closed) return Fail("the craft is not in a closed orbit round " + home.Name);
 
             var body = setup.Target;
-            Conic aim;
+            Conic targetOrbit;
             double peR = 0;
             if (body != null)
             {
@@ -150,20 +150,20 @@ namespace ClaudiaKermin.Core.Tools
                 var ceiling = body.SoiRadius - body.Radius;
                 if (!(ask.TargetPe >= 0 && ask.TargetPe < ceiling))
                     return Fail("target_pe must be from 0 to " + Num(ceiling) + " m, inside " + body.Name + "'s sphere of influence");
-                aim = setup.System.OrbitOf(body);
+                targetOrbit = setup.System.OrbitOf(body);
                 peR = body.Radius + ask.TargetPe;
             }
             else
             {
-                var problem = OrbitProblem(ask.TargetOrbit, home);
-                if (problem != null) return Fail(problem);
+                var orbitError = OrbitProblem(ask.TargetOrbit, home);
+                if (orbitError != null) return Fail(orbitError);
                 var o = ask.TargetOrbit;
-                aim = Conic.FromElements(home.Gm, o.SemiMajorAxis, o.Eccentricity, o.Inclination, o.Lan, o.ArgumentOfPeriapsis, o.MeanAnomalyAtEpoch, o.Epoch);
+                targetOrbit =Conic.FromElements(home.Gm, o.SemiMajorAxis, o.Eccentricity, o.Inclination, o.Lan, o.ArgumentOfPeriapsis, o.MeanAnomalyAtEpoch, o.Epoch);
             }
 
             var craft = setup.Start;
             var intercept = ask.Mode == TransferMode.Intercept;
-            var synodic = Synodic(craft.Period, aim.Period);
+            var synodic = Synodic(craft.Period, targetOrbit.Period);
             var from = Math.Max(setup.Now, Math.Max(ask.EarliestUt, ask.WindowUt ?? double.NegativeInfinity));
             // A latest UT shortens the span, and no window past it may be taken.
             var until = ask.LatestUt ?? double.PositiveInfinity;
@@ -171,7 +171,7 @@ namespace ClaudiaKermin.Core.Tools
                 return Fail("the burn must come by UT " + Num(until) + ", before the earliest it can be, UT " + Num(from));
             // With the arrival point free, every departure point comes round once an orbit of the craft.
             var span = Math.Min(intercept ? craft.Period : synodic, until - from);
-            var problemOf = new Problem(craft, aim, body, peR, ask.Capture, intercept);
+            var transfer = new Problem(craft, targetOrbit, body, peR, ask.Capture, intercept);
 
             // The grid: a departure every span / Seeds from one step before the start (so a window just before it is a
             // falling edge, not a minimum) to a quarter span past the end, each at its cheapest time of flight.
@@ -183,12 +183,12 @@ namespace ClaudiaKermin.Core.Tools
             for (var i = 0; i < count; i++)
             {
                 var t = from + (i - 1) * step;
-                hohmann[i] = problemOf.HohmannTime(t);
+                hohmann[i] = transfer.HohmannTime(t);
                 cheapest[i] = double.PositiveInfinity;
                 for (var j = 0; j < Flights; j++)
                 {
                     var tof = hohmann[i] * (FlightLow + (FlightHigh - FlightLow) * j / (Flights - 1));
-                    var c = problemOf.Cost(t, tof, 0);
+                    var c = transfer.Cost(t, tof, 0);
                     if (c < cheapest[i])
                     {
                         cheapest[i] = c;
@@ -196,24 +196,24 @@ namespace ClaudiaKermin.Core.Tools
                     }
                 }
             }
-            var picks = intercept ? InterceptPicks(cheapest, from, step, span, craft.Period) : RendezvousPick(cheapest, step, span, ask.LatestUt.HasValue);
+            var picks = intercept ? InterceptPicks(cheapest, step, span, craft.Period) : RendezvousPick(cheapest, step, span, ask.LatestUt.HasValue);
             if (picks.Count == 0)
-                return Fail("no departure in the " + Num(span) + " s from UT " + Num(from) + " has a path to " + problemOf.Name
-                    + (problemOf.LambertError != null ? " (Lambert: " + problemOf.LambertError + ")" : ""));
+                return Fail("no departure in the " + Num(span) + " s from UT " + Num(from) + " has a path to " + transfer.Name
+                    + (transfer.LambertError != null ? " (Lambert: " + transfer.LambertError + ")" : ""));
 
             // BrentMin from each pick, never before the start or past the grid's end (or the latest UT); the cheapest wins.
             var last = Math.Min(from + (count - 2) * step, until);
-            var scale = Scale.Create(home.Gm, Math.Sqrt(craft.A * aim.A));
+            var scale = Scale.Create(home.Gm, Math.Sqrt(craft.A * targetOrbit.A));
             Point best = null;
             foreach (var pick in picks)
             {
                 var seed = new Point { T = from + (pick - 1) * step, Tof = flight[pick], Cost = cheapest[pick] };
-                var found = problemOf.Refine(seed, Math.Max(from, seed.T - step), Math.Min(last, seed.T + step),
+                var found = transfer.Refine(seed, Math.Max(from, seed.T - step), Math.Min(last, seed.T + step),
                     FlightReach * hohmann[pick] * (FlightHigh - FlightLow) / (Flights - 1), scale.TimeScale);
                 if (best == null || found.Cost < best.Cost) best = found;
             }
 
-            var leg = problemOf.Leg(best.T, best.Tof, best.Shift);
+            var leg = transfer.Leg(best.T, best.Tof, best.Shift);
             if (leg.Error != null) return Fail("the cheapest departure, at UT " + Num(best.T) + ", has no Lambert path: " + leg.Error);
             Vec3 r, v;
             craft.State(best.T, out r, out v);
@@ -223,7 +223,7 @@ namespace ClaudiaKermin.Core.Tools
             double prograde = Vec3.Dot(leg.Departure, along), normal = Vec3.Dot(leg.Departure, up), radial = Vec3.Dot(leg.Departure, outward);
 
             var plan = body != null
-                ? Aim(setup, body, aim, best.T, prograde, normal, radial, ask.TargetPe)
+                ? Aim(setup, body, targetOrbit, best.T, prograde, normal, radial, ask.TargetPe)
                 : new TransferPlan
                 {
                     Ut = best.T, Prograde = prograde, Normal = normal, Radial = radial, DeltaV = leg.Departure.Length,
@@ -274,9 +274,7 @@ namespace ClaudiaKermin.Core.Tools
                 else if (late < 0 || cheapest[i] < cheapest[late]) late = i;
             }
             if (pick < 0 && !latest) pick = late;
-            if (pick < 0 && latest)
-                for (var i = 1; i < count - 1 && (i - 1) * step <= span; i++)
-                    if (!double.IsInfinity(cheapest[i]) && (pick < 0 || cheapest[i] < cheapest[pick])) pick = i;
+            if (pick < 0 && latest) pick = CheapestInSpan(cheapest, step, span, i => true);
             return pick < 0 ? new List<int>() : new List<int> { pick };
         }
 
@@ -285,19 +283,21 @@ namespace ClaudiaKermin.Core.Tools
         /// from it (a quarter to three quarters of an orbit away), which arrives on the other side of the target orbit: the
         /// two sides TwoImpulseTransfer tries, so one node is not taken for the other.
         /// </summary>
-        private static List<int> InterceptPicks(double[] cheapest, double from, double step, double span, double period)
+        private static List<int> InterceptPicks(double[] cheapest, double step, double span, double period)
         {
-            int pick = -1;
-            for (var i = 1; i < cheapest.Length - 1 && (i - 1) * step <= span; i++)
-                if (!double.IsInfinity(cheapest[i]) && (pick < 0 || cheapest[i] < cheapest[pick])) pick = i;
+            var pick = CheapestInSpan(cheapest, step, span, i => true);
             if (pick < 0) return new List<int>();
-            int other = -1;
-            for (var i = 1; i < cheapest.Length - 1 && (i - 1) * step <= span; i++)
-            {
-                var phase = Math.Abs(Math.IEEERemainder((i - pick) * step / period, 1.0));
-                if (phase >= 0.25 && !double.IsInfinity(cheapest[i]) && (other < 0 || cheapest[i] < cheapest[other])) other = i;
-            }
+            var other = CheapestInSpan(cheapest, step, span, i => Math.Abs(Math.IEEERemainder((i - pick) * step / period, 1.0)) >= 0.25);
             return other < 0 ? new List<int> { pick } : new List<int> { pick, other };
+        }
+
+        /// <summary>The grid's cheapest departure with a path inside the span, of those <paramref name="allowed"/>; -1 for none.</summary>
+        private static int CheapestInSpan(double[] cheapest, double step, double span, Func<int, bool> allowed)
+        {
+            var pick = -1;
+            for (var i = 1; i < cheapest.Length - 1 && (i - 1) * step <= span; i++)
+                if (!double.IsInfinity(cheapest[i]) && allowed(i) && (pick < 0 || cheapest[i] < cheapest[pick])) pick = i;
+            return pick;
         }
 
         /// <summary>A departure time and flight time, with an intercept's arrival shift (rad from the point opposite the departure), and its cost.</summary>
@@ -355,10 +355,7 @@ namespace ClaudiaKermin.Core.Tools
                 return Math.PI * Math.Sqrt(a * a * a / _craft.Mu);
             }
 
-            /// <summary>
-            /// Where the arc ends: a rendezvous at the target at <paramref name="t"/> + <paramref name="tof"/>; an intercept on the
-            /// target orbit, <paramref name="shift"/> rad on from the point opposite the craft at <paramref name="t"/>, with its velocity there.
-            /// </summary>
+            /// <summary>Where an arc departing at <paramref name="t"/> with no flight time would end (<see cref="ArrivalState"/>): for the Hohmann time's radius.</summary>
             private Vec3 ArrivalPoint(double t, double shift)
             {
                 Vec3 r, v;
@@ -366,6 +363,10 @@ namespace ClaudiaKermin.Core.Tools
                 return r;
             }
 
+            /// <summary>
+            /// Where the arc ends: a rendezvous at the target at <paramref name="t"/> + <paramref name="tof"/>; an intercept on the
+            /// target orbit, <paramref name="shift"/> rad on from the point opposite the craft at <paramref name="t"/>, with its velocity there.
+            /// </summary>
             private void ArrivalState(double t, double tof, double shift, out Vec3 r, out Vec3 v)
             {
                 if (!_intercept)
@@ -471,7 +472,7 @@ namespace ClaudiaKermin.Core.Tools
         /// conics until the periapsis at the target crosses the one asked for, bisects each crossing, and keeps the one that
         /// orbits the target prograde (else the smaller burn).
         /// </summary>
-        private static TransferPlan Aim(PredictBurn.Setup setup, SnapshotBody target, Conic moon, double ut, double prograde, double normal, double radial, double goal)
+        private static TransferPlan Aim(PredictBurn.Setup setup, SnapshotBody target, Conic targetOrbit, double ut, double prograde, double normal, double radial, double goal)
         {
             var at = JsonReader.Parse(ut.ToString("R", CultureInfo.InvariantCulture));
             Func<double, Arrival> arrive = p =>
@@ -489,7 +490,7 @@ namespace ClaudiaKermin.Core.Tools
                 {
                     ProgradeDv = p,
                     Pe = there.PeR - target.Radius,
-                    OrbitsPrograde = Vec3.Dot(there.W, moon.W) > 0,
+                    OrbitsPrograde = Vec3.Dot(there.W, targetOrbit.W) > 0,
                     EncounterUt = after[0].EndUt,
                     PeUt = peUt,
                     CaptureDv = Math.Abs(vPe.Length - Math.Sqrt(target.Gm / rPe.Length)),

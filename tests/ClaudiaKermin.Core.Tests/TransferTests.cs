@@ -354,6 +354,9 @@ namespace ClaudiaKermin.Core.Tests
             input = ToOrbit(200000);
             input["target_inc"] = "steep";
             Assert.Equal("found no transfer: target_inc must be a number", BlockCalls.EjectionBurn(input, Circular())["error"]);
+            input = ToOrbit(200000);
+            input.Remove("target_epoch");
+            Assert.Equal("found no transfer: target_epoch is required with target_sma: the target orbit takes all seven elements", BlockCalls.EjectionBurn(input, Circular())["error"]);
         }
     }
 }
