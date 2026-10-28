@@ -14,14 +14,14 @@
 //| when the block starts and flown by exec_node.
 //| Options:
 //|   goal [required]: set_inc, match_plane, shift_lan, resonant, stationary, set_sma, set_ecc, ellipticize, set_ap,
-//|     set_pe, circularize or next_patch_pe, with value, at, target, pe, ap and of as solve_burn takes them.
+//|     set_pe, circularize or next_patch_pe, with value, at, target, pe, ap, of and direction as solve_burn takes them.
 //|   tolerance ["auto"]: how far the element set may end from the goal, in its units: 1000 m (pe, ap, sma,
 //|     next_patch_pe), 0.01 (ecc), 0.5 degrees (inc, rel_inc, lan), 1% of the period; more fails the block.
 //|   max_dv ["none"]: m/s the burn may cost; more fails the block before any burn.
 //|   max_duration ["auto"]: as for exec_node (the wait to the burn, twice the burn, plus 300 s).
 //|   plus min_ec_pct, abort_on_part_loss, stage_limit and drop_empty as for every block.
 //| Extra results: <element>_actual for each element the goal sets, when the block ended: inc_actual (set_inc),
-//| rel_inc_actual (degrees off target's plane: match_plane), lan_actual (and inc kept: shift_lan), period_actual (s:
+//| rel_inc_actual (degrees off target's plane: match_plane), lan_actual and inc_actual (kept: shift_lan), period_actual (s:
 //| resonant, stationary), sma_actual, ecc_actual (also circularize), ap_actual, pe_actual (both: ellipticize),
 //| next_patch_pe_actual; burn_ut (UT of the burn; -1 if none was needed). Succeeds at once, with no burn, when the
 //| burn is under 0.05 m/s. Fails with "goal is required", an option value it can't read, "a maneuver node is already
@@ -33,12 +33,12 @@
 // The block's own options and defaults ("required" means the Mission Script must give it; "none", left out).
 function change_orbit_defaults {
   return lexicon("goal", "required", "value", "none", "at", "none", "target", "none", "pe", "none", "ap", "none", "of", "none",
-    "tolerance", "auto", "max_dv", "none").
+    "direction", "none", "tolerance", "auto", "max_dv", "none").
 }
 
 // The options passed on to ADDONS:CLAUDIA:ORBITBURN as solve_burn's inputs, when given.
 function change_orbit_inputs {
-  return list("value", "at", "target", "pe", "ap", "of").
+  return list("value", "at", "target", "pe", "ap", "of", "direction").
 }
 
 // "" or why an option value isn't one the block can use. The goal and its inputs are solve_burn's to judge: ORBITBURN
@@ -61,6 +61,9 @@ function change_orbit_unreadable {
   }
   if not opt:target:istype("String") and not opt:target:istype("Body") {
     return "target must be a body or its name".
+  }
+  if not opt:direction:istype("String") {
+    return "direction must be 'prograde' or 'retrograde', not " + opt:direction.
   }
   if not change_orbit_is(opt:tolerance, "auto") and not change_orbit_positive(opt:tolerance) {
     return "tolerance must be 'auto' or a number above 0, not " + opt:tolerance.

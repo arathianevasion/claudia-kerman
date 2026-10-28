@@ -69,7 +69,7 @@ namespace ClaudiaKermin.Core.Tests
                 { "{\"goal\":\"ellipticize\",\"pe\":80000,\"ap\":300000,\"at\":\"altitude 150000\"}", "goal=ellipticize;pe=80000;ap=300000;at=altitude 150000", "pe=80000,ap=300000" },
                 { "{\"goal\":\"set_inc\",\"value\":5}", "goal=set_inc;value=5", "inc=5" },
                 { "{\"goal\":\"match_plane\",\"target\":\"Minmus\"}", "goal=match_plane;target=Minmus", "rel_inc=0" },
-                { "{\"goal\":\"shift_lan\",\"value\":60}", "goal=shift_lan;value=60", "lan=60" },
+                { "{\"goal\":\"shift_lan\",\"value\":60}", "goal=shift_lan;value=60", "lan=60,inc=20" },
                 { "{\"goal\":\"resonant\",\"value\":2,\"of\":3}", "goal=resonant;value=2;of=3", "period=resonant" },
                 { "{\"goal\":\"stationary\"}", "goal=stationary", "period=" + KerbinDay.ToString("R", CultureInfo.InvariantCulture) },
                 { "{\"goal\":\"set_pe\",\"value\":90000}", "goal=set_pe;value=90000", "pe=90000" },

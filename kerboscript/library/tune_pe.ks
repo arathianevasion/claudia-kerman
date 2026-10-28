@@ -207,13 +207,13 @@ function tune_pe_fit {
 }
 
 // Places the next-patch burn: searches nd at its UT, then moves it earlier and searches again while the burn would not
-// end before the sphere-of-influence change (tune_pe_fit), up to three times. Returns lexicon("error", "" or why not,
-// "off_by", m the periapsis is still off by).
+// end before the sphere-of-influence change (tune_pe_fit); a burn still too long after three moves doesn't fit.
+// Returns lexicon("error", "" or why not, "off_by", m the periapsis is still off by).
 function tune_pe_place_next {
   parameter nd, opt, soi_ut.
   local placed is lexicon("error", "", "off_by", 0).
   local tries is 0.
-  until tries >= 3 {
+  until false {
     set placed:off_by to tune_pe_search(nd, opt:value, opt:tolerance).
     local timing is claudia_burn_timing(nd:deltav:mag, claudia_burn_stages(opt:stage_limit), nd:eta, "half_burn").
     local fit is tune_pe_fit(time:seconds, nd:time, soi_ut, timing:burn_time, timing:lead).
@@ -224,11 +224,13 @@ function tune_pe_place_next {
     if not fit:moved {
       return placed.
     }
+    if tries >= 3 {
+      set placed:error to "the burn does not fit before the sphere-of-influence change: it still runs into it after moving the node three times".
+      return placed.
+    }
     set nd:time to fit:ut.
     set tries to tries + 1.
   }
-  set placed:off_by to tune_pe_search(nd, opt:value, opt:tolerance).
-  return placed.
 }
 
 function tune_pe {

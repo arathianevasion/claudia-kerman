@@ -61,7 +61,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [Fact]
         public void The_options_take_the_spec_defaults()
         {
-            Assert.Equal("required|none|none|none|none|none|none|auto|none|auto",
+            Assert.Equal("required|none|none|none|none|none|none|none|auto|none|auto",
                 One("change_orbit_defaults():values:join(\"|\") + \"|\" + claudia_options(lexicon(), change_orbit_defaults(), \"auto\"):opt:max_duration"));
         }
 
@@ -87,7 +87,10 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [Fact]
         public void An_unknown_option_is_refused_and_the_common_ones_are_taken()
         {
-            Assert.Equal("unknown option direction", One("claudia_options(lexicon(\"goal\", \"next_patch_pe\", \"direction\", \"retrograde\"), change_orbit_defaults(), \"auto\"):error"));
+            Assert.Equal("unknown option colour", One("claudia_options(lexicon(\"goal\", \"set_inc\", \"colour\", \"red\"), change_orbit_defaults(), \"auto\"):error"));
+            Assert.Equal("", One("claudia_options(lexicon(\"goal\", \"next_patch_pe\", \"value\", 30000, \"direction\", \"retrograde\"), change_orbit_defaults(), \"auto\"):error"));
+            Assert.Equal("direction must be 'prograde' or 'retrograde', not 1",
+                One("change_orbit_unreadable(claudia_options(lexicon(\"goal\", \"next_patch_pe\", \"direction\", 1), change_orbit_defaults(), \"auto\"):opt)"));
             Assert.Equal("", One("claudia_options(lexicon(\"goal\", \"set_inc\", \"value\", 90, \"stage_limit\", 1, \"drop_empty\", list(\"side tanks\"), \"max_duration\", 900), change_orbit_defaults(), \"auto\"):error"));
         }
 
@@ -170,10 +173,12 @@ namespace ClaudiaKermin.Kerboscript.Tests
         {
             OrbitRig.Start(Low());
             var before = OrbitRig.Orbit().Period;
-            var printed = Fly("\"goal\", \"resonant\", \"value\", 2, \"of\", 3", "done:reason", "done:extra:period_actual", "done:extra:burn_ut");
+            var printed = Fly("\"goal\", \"resonant\", \"value\", 2, \"of\", 3", "done:reason", "done:extra:period_actual", "done:extra:burn_ut", "done:extra:keys:join(\",\")");
             Assert.Equal("", printed[0]);
             Assert.InRange(Number(printed[1]) / before, 1.5 * 0.99, 1.5 * 1.01);
             Assert.True(Number(printed[2]) > 0);
+            Assert.Equal("burn_ut,period_actual", printed[3]);
+            Assert.Equal(1, OrbitRig.Flights);
         }
 
         // ---- Solved when the block starts ----

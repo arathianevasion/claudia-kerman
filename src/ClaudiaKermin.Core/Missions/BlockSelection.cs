@@ -38,7 +38,7 @@ namespace ClaudiaKermin.Core.Missions
             // Not "lan" or "plane": they start "land" and "planet". Minmus's orbit is inclined: reaching it starts with a plane match.
             Rule("change_orbit", "inclin", "polar", "plane change", "orbital plane", "plane of", "equatorial", "ascending node", "resonan", "stationary", "synchronous",
                 "eccentric", "semi-major", "minmus"),
-            Rule("science","science", "experiment", "survey", "biome", "sample", "data", "report", "goo", "thermometer"),
+            Rule("science", "science", "experiment", "survey", "biome", "sample", "data", "report", "goo", "thermometer"),
         };
 
         private static KeyValuePair<string, string[]> Rule(string block, params string[] words)

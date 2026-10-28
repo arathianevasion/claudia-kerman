@@ -374,7 +374,8 @@ namespace ClaudiaKermin.Core.Tools
             if (!ut.HasValue) return PlanningJson.Error(problem);
             var dv = OrbitChange.ShiftLan(r, v, lan, out problem);
             if (!dv.HasValue) return PlanningJson.Error(problem);
-            into.Want("lan", lan - 360 * Math.Floor(lan / 360));
+            // The burn turns the plane about the crossing, so the inclination it started with is kept.
+            into.Want("lan", lan - 360 * Math.Floor(lan / 360)).Want("inc", first.Orbit.Inclination);
             return Answer(into, setup, "shift_lan", ut.Value, r, v, dv.Value);
         }
 
