@@ -72,6 +72,18 @@ _Avoid_: node time, burn time (the burn's length)
 A burn between departure and arrival that trims the predicted arrival at a body or vessel to the target periapsis or closest approach, and optionally to the target arrival inclination.
 _Avoid_: mid-course correction, MCC
 
+**Rendezvous**:
+A transfer that meets its target where the target is at arrival: a body, or a vessel's orbit with the vessel on it. A transfer to a body is always one.
+_Avoid_: encounter (the patched-conic event of entering a sphere of influence), meet
+
+**Intercept**:
+A transfer that reaches a target orbit anywhere on it, wherever the target is, such as a parking orbit; free to choose the arrival point, it is never dearer than a Rendezvous with the same orbit.
+_Avoid_: flyby, orbit change (one burn, not a transfer)
+
+**Capture**:
+The arrival burn of a transfer: circular at the target periapsis round a body, or matching the target orbit's velocity. A transfer solved with capture is the cheapest departure and capture together; without, the cheapest departure alone.
+_Avoid_: insertion, orbit insertion
+
 **Daylight**:
 At a landing site, the sun is more than 20° above the horizon there. A daylight landing touches down only in Daylight; a sun lower than that, though up, is not Daylight.
 _Avoid_: lit, sunlit, daytime

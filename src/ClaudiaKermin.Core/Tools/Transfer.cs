@@ -1,5 +1,13 @@
+/*
+ * Copyright Lamont Granquist, Sebastien Gaggini and the MechJeb contributors
+ * SPDX-License-Identifier: LicenseRef-PD-hp OR Unlicense OR CC0-1.0 OR 0BSD OR MIT-0 OR MIT OR LGPL-2.1+
+ */
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
+//
+// The two-impulse formulation (the Lambert arc's two burns, the cost with and without capture, the offset held at 0 for a
+// rendezvous and both sides of the target orbit tried for an intercept) is ported from MechJeb2's
+// MechJebLib/Maneuvers/TwoImpulseTransfer.cs (https://github.com/MuMech/MechJeb2, commit a958383), without its alglib call.
 
 using System;
 using System.Collections.Generic;

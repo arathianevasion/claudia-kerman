@@ -29,13 +29,10 @@ namespace ClaudiaKermin.Core.Tools
         {
             get
             {
-                return "The cheapest two-burn transfer from the craft's orbit in the next window, worked out from this turn's Game Snapshot: "
-                    + "to a body that orbits the craft's body (target, arriving at target_pe), or to an orbit round it (orbit, reached "
-                    + "anywhere on it). It gives the departure burn in maneuver-node components (prograde, normal, radial m/s) with its time, "
-                    + "the arrival burn (at a body, the capture into a circular orbit at target_pe) and their total; capture false finds the "
-                    + "cheapest departure alone. Its block is transfer_to: call it for the delta-v to budget a transfer and its capture "
-                    + "instead of working them out yourself, then pass the block the target and target_pe, not the burn. Don't call it for "
-                    + "a body round another planet, or to check a burn you already have (use predict_burn).";
+                return "The cheapest two-burn transfer in the next window, from this turn's Game Snapshot: to target (a body orbiting the "
+                    + "craft's body) at target_pe (m), or to orbit (ap, pe m; inc, lan deg) anywhere on it. Gives the departure burn "
+                    + "(maneuver-node components) and time, and the arrival burn; capture false minimises the departure alone. Its block "
+                    + "is transfer_to: call it to budget a transfer, then pass the block the target. Don't call it for another planet's moons.";
             }
         }
 
@@ -43,12 +40,12 @@ namespace ClaudiaKermin.Core.Tools
         {
             get
             {
+                // The fields are explained in the description: the tools list rides on every Mission request (prompt cost, #212).
                 return "{\"type\":\"object\",\"properties\":{"
-                    + "\"target\":{\"type\":\"string\",\"description\":\"A body orbiting the craft's body.\"},"
-                    + "\"target_pe\":{\"type\":\"number\",\"description\":\"With target: the periapsis altitude to arrive at, m.\"},"
+                    + "\"target\":{\"type\":\"string\"},\"target_pe\":{\"type\":\"number\"},"
                     + "\"orbit\":{\"type\":\"object\",\"properties\":{\"ap\":{\"type\":\"number\"},\"pe\":{\"type\":\"number\"},\"inc\":{\"type\":\"number\"},\"lan\":{\"type\":\"number\"}},"
-                    + "\"required\":[\"ap\",\"pe\"],\"additionalProperties\":false,\"description\":\"Instead of target: an orbit round the craft's body, m above sea level and degrees (inc, lan default 0).\"},"
-                    + "\"capture\":{\"type\":\"boolean\",\"description\":\"Count the arrival burn in the cost. Default true.\"}"
+                    + "\"required\":[\"ap\",\"pe\"],\"additionalProperties\":false},"
+                    + "\"capture\":{\"type\":\"boolean\"}"
                     + "},\"additionalProperties\":false}";
             }
         }
