@@ -161,29 +161,60 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
-        /// <c>ADDONS:CLAUDIA:EJECTIONBURN</c>, for <c>transfer_to</c>: the ejection burn to a moon of the body the craft orbits
-        /// (<see cref="Tools.EjectionBurn"/>), in place of RSVP's search. Takes <c>target</c> (the moon's name), <c>target_pe</c>
-        /// (m), <c>earliest_ut</c> (UT; now if missing) and <c>window</c> ("next", the default, or a UT): it searches one synodic
-        /// period from the later of the two, so a window sooner than <c>earliest_ut</c> is skipped for the next. <c>latest_ut</c>
-        /// (UT) ends the search there and <c>max_dv</c> (m/s) refuses a dearer burn; both are optional, for the correction after
-        /// an ejection that missed (#363). Gives
-        /// <c>error</c> "", <c>ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver node components), <c>dv</c>,
-        /// <c>encounter_ut</c>, <c>arrival_ut</c> (periapsis at the target), <c>target_pe_actual</c> (m), <c>search_from</c> (UT)
-        /// and <c>synodic</c> (s); or only <c>error</c>, "found no transfer: &lt;why&gt;".
+        /// <c>ADDONS:CLAUDIA:EJECTIONBURN</c>, for <c>transfer_to</c>: the departure burn of a transfer (<see cref="Transfer"/>), in
+        /// place of RSVP's search, to <c>target</c> (the name of a moon of the body the craft orbits) arriving at <c>target_pe</c>
+        /// (m), or to an orbit round the craft's body given as <c>target_sma</c> (m), <c>target_ecc</c>, <c>target_inc</c>,
+        /// <c>target_lan</c>, <c>target_argpe</c>, <c>target_mna</c> (degrees, as kOS gives them) and <c>target_epoch</c> (UT).
+        /// <c>mode</c> is "rendezvous" (the default: meet the target where it is) or "intercept" (an orbit only: reach it anywhere);
+        /// <c>capture</c> (default true) minimises the departure plus the arrival burn, false the departure alone. It takes
+        /// <c>earliest_ut</c> (UT; now if missing) and <c>window</c> ("next", the default, or a UT): it searches one synodic period
+        /// (an intercept, one orbit of the craft) from the later of the two, so a window sooner than <c>earliest_ut</c> is skipped
+        /// for the next. <c>latest_ut</c> (UT) ends the search there and <c>max_dv</c> (m/s) refuses a dearer departure; both are
+        /// optional, for the correction after an ejection that missed (#363). Gives <c>error</c> "", <c>ut</c>, <c>prograde</c>,
+        /// <c>normal</c>, <c>radial</c> (m/s, maneuver node components), <c>dv</c>, <c>arrival_dv</c> (m/s: the circular capture at a
+        /// body's periapsis, or matching an orbit's velocity), <c>encounter_ut</c>, <c>arrival_ut</c> (periapsis at a body; for an
+        /// orbit both are the arrival), <c>target_pe_actual</c> (m; -1 for an orbit), <c>search_from</c> (UT) and <c>synodic</c>
+        /// (s); or only <c>error</c>, "found no transfer: &lt;why&gt;".
         /// </summary>
         public static IDictionary<string, object> EjectionBurn(IDictionary<string, object> input, GameSnapshot snapshot)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
-            object target, window;
+            object target, window, mode, capture;
             ask.TryGetValue("target", out target);
             ask.TryGetValue("window", out window);
-            if (!ask.ContainsKey("target_pe") || !(ask["target_pe"] is double)) return Error(Tools.EjectionBurn.Fail("target_pe is required").Error);
+            ask.TryGetValue("mode", out mode);
+            ask.TryGetValue("capture", out capture);
+            var toOrbit = ask.ContainsKey("target_sma");
+            if (!toOrbit && (!ask.ContainsKey("target_pe") || !(ask["target_pe"] is double))) return Error(Transfer.Fail("target_pe is required").Error);
             if (window != null && !(window is double) && !string.Equals(window as string, "next", StringComparison.OrdinalIgnoreCase))
-                return Error(Tools.EjectionBurn.Fail("window must be \"next\" or a UT, not " + Convert.ToString(window, CultureInfo.InvariantCulture)).Error);
-            if (snapshot == null) return Error(Tools.EjectionBurn.Fail("no Game Snapshot").Error);
-            var plan = Tools.EjectionBurn.Find(snapshot, new EjectionAsk
+                return Error(Transfer.Fail("window must be \"next\" or a UT, not " + Convert.ToString(window, CultureInfo.InvariantCulture)).Error);
+            var intercept = string.Equals(mode as string, "intercept", StringComparison.OrdinalIgnoreCase);
+            if (mode != null && !intercept && !string.Equals(mode as string, "rendezvous", StringComparison.OrdinalIgnoreCase))
+                return Error(Transfer.Fail("mode must be \"rendezvous\" or \"intercept\", not " + Convert.ToString(mode, CultureInfo.InvariantCulture)).Error);
+            if (capture != null && !(capture is bool)) return Error(Transfer.Fail("capture must be true or false").Error);
+            SnapshotOrbit orbit = null;
+            if (toOrbit)
+            {
+                foreach (var key in new[] { "target_sma", "target_ecc", "target_inc", "target_lan", "target_argpe", "target_mna", "target_epoch" })
+                    if (ask.ContainsKey(key) && !(ask[key] is double)) return Error(Transfer.Fail(key + " must be a number").Error);
+                orbit = new SnapshotOrbit
+                {
+                    SemiMajorAxis = Number(ask, "target_sma", 0),
+                    Eccentricity = Number(ask, "target_ecc", 0),
+                    Inclination = Number(ask, "target_inc", 0),
+                    Lan = Number(ask, "target_lan", 0),
+                    ArgumentOfPeriapsis = Number(ask, "target_argpe", 0),
+                    MeanAnomalyAtEpoch = Number(ask, "target_mna", 0) * Math.PI / 180,
+                    Epoch = Number(ask, "target_epoch", 0),
+                };
+            }
+            if (snapshot == null) return Error(Transfer.Fail("no Game Snapshot").Error);
+            var plan = Transfer.Find(snapshot, new TransferAsk
             {
                 Target = target as string,
+                TargetOrbit = orbit,
+                Mode = intercept ? TransferMode.Intercept : TransferMode.Rendezvous,
+                Capture = capture as bool? ?? true,
                 TargetPe = Number(ask, "target_pe", 0),
                 EarliestUt = Number(ask, "earliest_ut", snapshot.Ut),
                 WindowUt = window as double?,
@@ -199,9 +230,10 @@ namespace ClaudiaKermin.Core.Tools
                 { "normal", plan.Normal },
                 { "radial", plan.Radial },
                 { "dv", plan.DeltaV },
+                { "arrival_dv", plan.ArrivalDv },
                 { "encounter_ut", plan.EncounterUt },
                 { "arrival_ut", plan.ArrivalUt },
-                { "target_pe_actual", plan.PeActual },
+                { "target_pe_actual", double.IsNaN(plan.PeActual) ? -1.0 : plan.PeActual },
                 { "search_from", plan.SearchFrom },
                 { "synodic", plan.Synodic },
             };
