@@ -42,7 +42,7 @@ namespace ClaudiaKermin.Core.Tools
                     + "to 4 patches, each with its body, Ap and Pe (m above sea level), inclination, eccentricity, start and end UT, and "
                     + "how it ends (escape, encounter <body>, impact, atmosphere or stable), plus the closest approach to a target body "
                     + "and each burn's estimated burn time. Burns are impulsive, in maneuver-node components (prograde, normal, radial "
-                    + "m/s), at ap, pe, a UT or \"in <s>\". Its block is exec_node: call it to check what a node's burn does before you "
+                    + "m/s), at ap, pe, altitude, eq_an, eq_dn, eq_nearest, eq_highest, rel_an, rel_dn, closest_approach, a UT or \"in <s>\". Its block is exec_node: call it to check what a node's burn does before you "
                     + "put it in a plan, instead of working the orbit out yourself. Don't call it for transfer_to, return, tune_pe, "
                     + "deorbit, circularize or land, which plan their own burns, for what to burn to reach an orbit (solve_burn), or for the craft's delta-v "
                     + "(stage_performance).";
@@ -55,11 +55,11 @@ namespace ClaudiaKermin.Core.Tools
             {
                 return "{\"type\":\"object\",\"properties\":{"
                     + "\"burns\":{\"type\":\"array\",\"minItems\":1,\"maxItems\":3,\"description\":\"The burns, in time order.\",\"items\":{\"type\":\"object\",\"properties\":{"
-                    + "\"at\":{\"description\":\"When: \\\"ap\\\" or \\\"pe\\\" (the next one after the burn before), a UT in seconds, or \\\"in <s>\\\" seconds from now.\"},"
+                    + "\"at\":{\"description\":\"When, the next one after the burn before: \\\"ap\\\", \\\"pe\\\", \\\"altitude <m> [ascending|descending]\\\", eq_an, eq_dn, eq_nearest, eq_highest, rel_an, rel_dn or closest_approach (the last three use target), a UT in seconds, or \\\"in <s>\\\" seconds from now.\"},"
                     + "\"dv\":{\"type\":\"object\",\"properties\":{\"prograde\":{\"type\":\"number\"},\"normal\":{\"type\":\"number\"},\"radial\":{\"type\":\"number\"}},"
                     + "\"additionalProperties\":false,\"description\":\"m/s in maneuver-node components; a missing one is 0.\"}"
                     + "},\"required\":[\"at\",\"dv\"],\"additionalProperties\":false}},"
-                    + "\"target\":{\"type\":\"string\",\"description\":\"A body to give the closest approach to.\"}"
+                    + "\"target\":{\"type\":\"string\",\"description\":\"A body to give the closest approach to; also what rel_an, rel_dn and closest_approach measure from.\"}"
                     + "},\"required\":[\"burns\"],\"additionalProperties\":false}";
             }
         }
@@ -176,7 +176,7 @@ namespace ClaudiaKermin.Core.Tools
                 var label = "burn " + (i + 1).ToString(CultureInfo.InvariantCulture);
                 var after = burns.Count > 0 ? burns[burns.Count - 1].Ut : now;
                 string problem;
-                var ut = BurnUt(requests[i].At, path, after, now, label, out problem);
+                var ut = BurnUt(requests[i].At, path, after, now, label, out problem, system, setup.Target);
                 if (problem != null) return problem;
                 var patch = Containing(path, ut.Value);
                 if (patch == null)
@@ -212,52 +212,11 @@ namespace ClaudiaKermin.Core.Tools
             public double? BurnTime;
         }
 
-        /// <summary>The burn's UT from its <c>at</c>, or why it can't be placed.</summary>
-        internal static double? BurnUt(JsonNode at, List<Patch> path, double after, double now, string label, out string problem)
+        /// <summary>The burn's UT from its <c>at</c> (see <see cref="BurnTime"/>), or why it can't be placed. The system and target are for the relative and closest-approach references.</summary>
+        internal static double? BurnUt(JsonNode at, List<Patch> path, double after, double now, string label, out string problem,
+            BodySystem system = null, SnapshotBody target = null)
         {
-            problem = null;
-            double ut;
-            var text = at != null && at.Kind == JsonKind.String ? at.StringValue.Trim().ToLowerInvariant() : null;
-            if (text == "ap" || text == "pe")
-            {
-                var patch = Containing(path, after);
-                if (patch == null)
-                {
-                    problem = label + " is at " + text + ", but the craft has left the predicted path by then";
-                    return null;
-                }
-                var next = text == "ap" ? patch.Orbit.NextApoapsis(after + 1e-3) : patch.Orbit.NextPeriapsis(after + 1e-3);
-                if (!next.HasValue)
-                {
-                    problem = label + " is at " + text + ", but the orbit round " + patch.Body.Name + " is "
-                        + (text == "ap" ? "an escape with no apoapsis" : "past its periapsis");
-                    return null;
-                }
-                if (next.Value > patch.EndUt)
-                {
-                    problem = label + " is at " + text + ", but the craft reaches " + Ending(patch) + " first";
-                    return null;
-                }
-                return next.Value;
-            }
-            if (at != null && at.Kind == JsonKind.Number)
-                ut = JsonNode.Double(at).Value;
-            else if (text != null && text.StartsWith("in ", StringComparison.Ordinal)
-                && double.TryParse(text.Substring(3).Trim().TrimEnd('s').Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out ut))
-                ut += now;
-            else if (text != null && double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out ut)) { }
-            else
-            {
-                problem = label + ".at must be \"ap\", \"pe\", a UT in seconds, or \"in <s>\"";
-                return null;
-            }
-            if (ut < after - 0.5)
-            {
-                problem = label + " is at UT " + Math.Round(ut).ToString("0", CultureInfo.InvariantCulture) + ", before "
-                    + (after == now ? "now" : "the burn before it");
-                return null;
-            }
-            return Math.Max(ut, after);
+            return BurnTime.Resolve(at, path, after, now, label, system, target, out problem);
         }
 
         /// <summary>The patch flown at <paramref name="ut"/>; null when the path has ended (an impact, the atmosphere) before it.</summary>
