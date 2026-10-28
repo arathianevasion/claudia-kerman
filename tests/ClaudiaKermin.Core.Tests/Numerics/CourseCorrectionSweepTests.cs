@@ -112,6 +112,10 @@ namespace ClaudiaKermin.Core.Tests.Numerics
             public Vec3 R, V, Burn;
         }
 
+        /// <summary>
+        /// The ejection as <see cref="Tools.Transfer"/>'s <c>Find</c> plans it from <see cref="Circular"/>. Sqp once stalled on two
+        /// seeds from this plan (#481), which a Course Correction must not: a real one starts from whatever the last plan left.
+        /// </summary>
         private static readonly Lazy<Ejection> Planned = new Lazy<Ejection>(() =>
         {
             var snapshot = Circular();
