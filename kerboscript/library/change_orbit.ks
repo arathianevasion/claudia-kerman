@@ -186,9 +186,11 @@ function change_orbit_run {
     set flown to fly(plan).
   }
   local actual is lexicon().
+  local extra is done:extra.
   for element in plan:wanted:keys {
-    set actual[element] to read(element).
-    set done:extra[element + "_actual"] to change_orbit_round(element, actual[element]).
+    local figure is read(element).
+    set actual[element] to figure.
+    set extra[element + "_actual"] to change_orbit_round(element, figure).
   }
   if not flown:success {
     set done:reason to flown:reason.
