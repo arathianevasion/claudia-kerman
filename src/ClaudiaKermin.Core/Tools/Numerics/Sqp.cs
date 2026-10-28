@@ -95,11 +95,17 @@ namespace ClaudiaKermin.Core.Tools.Numerics
     internal static class Sqp
     {
         /// <summary>
-        /// The finite-difference steps, scaled: about 1e-3 m/s and 1e-2 s at Kerbin's surface scale. Smaller velocity steps fall
-        /// into the periapsis staircase (2 to 3 cm) the bisected SOI entry time leaves.
+        /// The finite-difference steps, scaled: about 3 cm/s and 0.3 s at Kerbin's surface scale, near the middle (in ratio) of
+        /// the window where the Course Correction sweep converges from every plan near its own (#481). The bisected SOI entry
+        /// time leaves a staircase in periapsis (2 to 3 cm) and in inclination (about 1e-8 in its cosine). A step that runs
+        /// mostly along the constraints' tangent, as one toward the least burn does, amplifies that: at the old 1e-3 m/s the
+        /// inclination's slope along such a step came out with the wrong sign, and at the old 1e-2 s the periapsis's slope in
+        /// burn time changed sign from one iteration to the next, so no point along the step lowered the merit. Over 25 plans
+        /// within a few ms and mm/s of the sweep's, the old steps stalled 30 of 800 seeds; velocity steps from 4e-6 to 4e-5 and
+        /// time steps from 4e-4 to 4e-2 stalled none; a velocity step of 4e-4 stalled 25, on the curvature it skips.
         /// </summary>
-        private const double VelocityStep = 4e-7;
-        private const double TimeStep = 4e-5;
+        private const double VelocityStep = 1.3e-5;
+        private const double TimeStep = 1.3e-3;
         /// <summary>A feasible point whose step is under this (scaled; about 2 mm/s at Kerbin) has converged.</summary>
         private const double StepTolerance = 1e-6;
         private const int MaxVariables = 8;
@@ -509,9 +515,9 @@ namespace ClaudiaKermin.Core.Tools.Numerics
             }
 
             /// <summary>
-            /// Central differences of the objective and constraints at fixed scaled steps, one-sided where a step would cross a bound
-            /// or land on an undefined point (a fixed variable, lower bound equal to upper, has none). False when every side
-            /// tried for some variable is undefined.
+            /// Central differences of the objective and constraints at fixed scaled steps, one-sided (second order where it can be)
+            /// where a step would cross a bound or land on an undefined point (a fixed variable, lower bound equal to upper, has
+            /// none). False when every side tried for some variable is undefined.
             /// </summary>
             private bool Derivatives(double[] z, double f, double[] c, out double[] g, out double[,] a)
             {
@@ -519,6 +525,7 @@ namespace ClaudiaKermin.Core.Tools.Numerics
                 a = new double[_m, _n];
                 var cp = new double[_m];
                 var cm = new double[_m];
+                var c2 = new double[_m];
                 for (var j = 0; j < _n; j++)
                 {
                     var h = _step[j];
@@ -541,15 +548,25 @@ namespace ClaudiaKermin.Core.Tools.Numerics
                         g[j] = (fp - fm) / (2 * h);
                         for (var k = 0; k < _m; k++) a[k, j] = (cp[k] - cm[k]) / (2 * h);
                     }
-                    else if (up)
+                    else if (up || down)
                     {
-                        g[j] = (fp - f) / h;
-                        for (var k = 0; k < _m; k++) a[k, j] = (cp[k] - c[k]) / h;
-                    }
-                    else if (down)
-                    {
-                        g[j] = (f - fm) / h;
-                        for (var k = 0; k < _m; k++) a[k, j] = (c[k] - cm[k]) / h;
+                        // One side: second order from a second point twice as far where it is in bounds and defined (the
+                        // first-order error, half the step times the curvature, would be most of a step tolerance), else first.
+                        var side = up ? 1.0 : -1.0;
+                        var f1 = up ? fp : fm;
+                        var c1 = up ? cp : cm;
+                        var far = z[j] + 2 * side * h;
+                        double f2;
+                        if (far >= _lo[j] && far <= _hi[j] && Eval(Moved(z, j, 2 * side * h), out f2, c2))
+                        {
+                            g[j] = side * (4 * f1 - 3 * f - f2) / (2 * h);
+                            for (var k = 0; k < _m; k++) a[k, j] = side * (4 * c1[k] - 3 * c[k] - c2[k]) / (2 * h);
+                        }
+                        else
+                        {
+                            g[j] = side * (f1 - f) / h;
+                            for (var k = 0; k < _m; k++) a[k, j] = side * (c1[k] - c[k]) / h;
+                        }
                     }
                     else return false;
                 }
