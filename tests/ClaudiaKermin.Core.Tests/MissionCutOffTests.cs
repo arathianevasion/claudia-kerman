@@ -59,6 +59,22 @@ namespace ClaudiaKermin.Core.Tests
             Assert.True(condition(mission.View), "never reached; stage is " + mission.View.Stage + " " + mission.View.PauseReason);
         }
 
+        /// <summary>A Spending Cap measured from a dry run of the same two requests with a roomy cap.</summary>
+        private static decimal CapWithRoomForTheFirstRequestButNotTheRetry()
+        {
+            using (var probe = new MissionCutOffTests())
+            {
+                var mission = probe.Control(new StreamingFakeTransport(CutOff(), ScriptedResponse.Fixture("mission-plan.sse")));
+                probe.Start(mission);
+                // With room, the retry is sent at once.
+                probe.DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+                var log = File.ReadAllText(Path.Combine(probe._save.Path, "ClaudiaKermin", "missions", mission.View.MissionId, "cost-log.jsonl"));
+                var worst = CostLogGap.Amounts(log, "pending");
+                var paid = CostLogGap.Amounts(log, "paid");
+                return CostLogGap.Between(worst[0], paid[0] + worst[1], "fits the first request but not the retry after its real cost");
+            }
+        }
+
         private static ScriptedResponse CutOff()
         {
             return ScriptedResponse.Fixture("max-tokens-tool.sse");
@@ -165,10 +181,10 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void WithNoSpendingCapRoomForTheRetryTheTurnFailsAsBeforeAndRetryStillSendsTheReducedForm()
         {
-            // The first request's worst case fits $0.40 (Sonnet's $10 per million output tokens); after its real cost the retry's worst case no longer does.
+            // The first request's worst case fits the cap; after its real cost the retry's worst case no longer does.
             var transport = new StreamingFakeTransport(CutOff(), ScriptedResponse.Fixture("mission-plan.sse"));
             var mission = Control(transport);
-            Start(mission, 0.41m); // raised for #348 Physics warp on Coasts setting (human decision 2026-10-27)
+            Start(mission, CapWithRoomForTheFirstRequestButNotTheRetry());
             DrainUntil(mission, v => v.Stage == MissionStage.Paused);
 
             Assert.Single(transport.Requests);
