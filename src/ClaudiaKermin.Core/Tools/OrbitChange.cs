@@ -220,6 +220,12 @@ namespace ClaudiaKermin.Core.Tools
             return new Vec3(Math.Sin(o) * Math.Sin(i), -Math.Cos(o) * Math.Sin(i), Math.Cos(i));
         }
 
+        /// <summary>The cost, m/s, of turning a velocity of <paramref name="speed"/> m/s through <paramref name="deltaIncDeg"/> degrees of plane: 2 v sin(Δi/2).</summary>
+        public static double PlaneChangeDeltaV(double speed, double deltaIncDeg)
+        {
+            return 2 * speed * Math.Sin(Math.Abs(deltaIncDeg) * Math.PI / 360);
+        }
+
         /// <summary>The radius, m, at which a circular orbit's period is <paramref name="period"/> s: Kepler's third law.</summary>
         public static double RadiusForPeriod(double mu, double period)
         {

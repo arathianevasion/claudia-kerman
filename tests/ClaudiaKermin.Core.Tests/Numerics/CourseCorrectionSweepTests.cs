@@ -49,37 +49,62 @@ namespace ClaudiaKermin.Core.Tests.Numerics
         /// <summary>The angle the least burn may make with the periapsis's gradient, degrees: the solver's derivatives are finite differences on a periapsis staircase.</summary>
         private const double AlongGradient = 1;
 
+        /// <summary>Which planned ejection a sweep perturbs: the same Mun transfer as two planners find it.</summary>
+        public enum Plan
+        {
+            /// <summary><see cref="EjectionBurn"/>'s, found when the sweep first needs it.</summary>
+            EjectionBurn,
+            /// <summary><see cref="TransferFindFigures"/>: the transfer as #448's <c>Transfer.Find</c> plans it.</summary>
+            TransferFind,
+        }
+
+        /// <summary>
+        /// The ejection as #448's <c>Transfer.Find</c> plans it from <see cref="Circular"/>, about 1 ms and 0.5 mm/s from
+        /// <see cref="EjectionBurn"/>'s. Sqp once stalled on two seeds from it (#481), which a Course Correction must not: a real
+        /// one starts from whatever the last plan left. When Transfer.Find is on main, point this at it.
+        /// </summary>
+        internal static readonly EjectionPlan TransferFindFigures = new EjectionPlan
+        {
+            Ut = 1912.6872892554063, Prograde = 837.6841505772729, Normal = 0, Radial = 0.000538,
+        };
+
+        /// <summary>Every seed from every plan.</summary>
         public static IEnumerable<object[]> Seeds
         {
-            get { return Sweep.Seeds; }
+            get
+            {
+                foreach (Plan plan in Enum.GetValues(typeof(Plan)))
+                    foreach (var seed in Sweep.SeedValues)
+                        yield return new object[] { plan, seed };
+            }
         }
 
         [Theory]
         [MemberData(nameof(Seeds))]
-        public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_in_under_100_ms(int seed)
+        public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_in_under_100_ms(Plan plan, int seed)
         {
-            Corrects(seed, Arrival.AnyInclination, true);
+            Corrects(seed, Arrival.AnyInclination, plan, true);
         }
 
         [Theory]
         [MemberData(nameof(Seeds))]
-        public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_and_an_inclined_arrival(int seed)
+        public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_and_an_inclined_arrival(Plan plan, int seed)
         {
-            Corrects(seed, Arrival.Inclined, true);
+            Corrects(seed, Arrival.Inclined, plan, true);
         }
 
         [Theory]
         [MemberData(nameof(Seeds))]
-        public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_and_an_equatorial_arrival(int seed)
+        public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_and_an_equatorial_arrival(Plan plan, int seed)
         {
-            Corrects(seed, Arrival.Equatorial, true);
+            Corrects(seed, Arrival.Equatorial, plan, true);
         }
 
         [Theory]
         [MemberData(nameof(Seeds))]
-        public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_with_a_free_burn_time(int seed)
+        public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_with_a_free_burn_time(Plan plan, int seed)
         {
-            Corrects(seed, Arrival.FreeTime, true);
+            Corrects(seed, Arrival.FreeTime, plan, true);
         }
 
         /// <summary>EjectionBurnTests' start: a circular, equatorial 100 km orbit at UT 0, the Mun at mean anomaly 1.7.</summary>
@@ -112,13 +137,20 @@ namespace ClaudiaKermin.Core.Tests.Numerics
             public Vec3 R, V, Burn;
         }
 
-        private static readonly Lazy<Transfer> Planned = new Lazy<Transfer>(() =>
+        private static readonly Lazy<Transfer> ByEjectionBurn = new Lazy<Transfer>(() =>
         {
-            var snapshot = Circular();
-            var plan = EjectionBurn.Find(snapshot, new EjectionAsk { Target = "Mun", TargetPe = EjectionPe, EarliestUt = 0 });
+            var plan = EjectionBurn.Find(Circular(), new EjectionAsk { Target = "Mun", TargetPe = EjectionPe, EarliestUt = 0 });
             Assert.Null(plan.Error);
+            return Planned(plan);
+        });
+
+        private static readonly Lazy<Transfer> ByTransferFind = new Lazy<Transfer>(() => Planned(TransferFindFigures));
+
+        /// <summary>The transfer a plan from <see cref="Circular"/> flies.</summary>
+        private static Transfer Planned(EjectionPlan plan)
+        {
             ToolOutcome error;
-            var setup = PredictBurn.Setup.Prepare(snapshot, "Mun", out error);
+            var setup = PredictBurn.Setup.Prepare(Circular(), "Mun", out error);
             Assert.NotNull(setup);
             Vec3 r, v;
             setup.Start.State(plan.Ut, out r, out v);
@@ -127,7 +159,7 @@ namespace ClaudiaKermin.Core.Tests.Numerics
             var up = Vec3.Cross(r, v).Normalized;
             var outward = Vec3.Cross(along, up);
             return new Transfer { Setup = setup, Ut = plan.Ut, R = r, V = v, Burn = along * plan.Prograde + up * plan.Normal + outward * plan.Radial };
-        });
+        }
 
         /// <summary>The Mun patch after a burn of <paramref name="dv"/> at (<paramref name="r"/>, <paramref name="v"/>) at <paramref name="ut"/>, or null when the trajectory has no Mun encounter.</summary>
         /// <remarks>
@@ -154,10 +186,10 @@ namespace ClaudiaKermin.Core.Tests.Numerics
             return Vec3.Cross(r, v);
         }
 
-        internal static void Corrects(int seed, Arrival ask, bool timed)
+        internal static void Corrects(int seed, Arrival ask, Plan plan, bool timed)
         {
-            var name = "Course Correction" + (ask == Arrival.AnyInclination ? "" : " (" + ask + ")");
-            var transfer = Planned.Value;
+            var name = "Course Correction" + (ask == Arrival.AnyInclination ? "" : " (" + ask + ")") + " from " + plan + "'s plan";
+            var transfer = (plan == Plan.TransferFind ? ByTransferFind : ByEjectionBurn).Value;
             var system = transfer.Setup.System;
             var rng = new Random(seed);
             for (var i = 0; i < Cases; i++)

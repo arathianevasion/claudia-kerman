@@ -364,7 +364,8 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>target</c> (a body's name), <c>pe</c>, <c>ap</c>, <c>of</c> and <c>direction</c>. Gives <c>error</c> "", <c>ut</c>,
         /// <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver node components), <c>dv</c>, <c>burn_time</c> (s; -1 when
         /// the craft's stages don't give it) and <c>wanted</c>, a lexicon of each element the goal sets and the figure it aims at
-        /// (<see cref="SolvedBurn.Wanted"/>); or only <c>error</c>, solve_burn's reason.
+        /// (<see cref="SolvedBurn.Wanted"/>); or only <c>error</c>, solve_burn's reason. It refuses <c>intercept_at</c>, whose aim is
+        /// an arrival, not an element.
         /// </summary>
         public static IDictionary<string, object> OrbitBurn(IDictionary<string, object> input, GameSnapshot snapshot)
         {
@@ -401,6 +402,11 @@ namespace ClaudiaKermin.Core.Tools
                         return Error("unknown input " + entry.Key + ": ORBITBURN takes solve_burn's goal, value, at, target, pe, ap, of and direction");
                 }
             }
+            // change_orbit judges the elements a burn sets (wanted); an intercept aims at an arrival, which no element holds.
+            object goal;
+            if (ask.TryGetValue("goal", out goal) && string.Equals(goal as string, "intercept_at", StringComparison.OrdinalIgnoreCase))
+                return Error("ORBITBURN does not solve intercept_at: change_orbit checks the orbit elements a burn sets, and an intercept "
+                    + "aims at an arrival, not an element; exec_node the node solve_burn gives");
             var solved = new SolvedBurn();
             var outcome = new SolveBurn().Solve(JsonReader.Parse(json.EndObject().ToString()), snapshot, solved);
             if (outcome.IsError) return Error(outcome.Summary);
