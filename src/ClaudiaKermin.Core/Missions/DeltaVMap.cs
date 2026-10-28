@@ -104,7 +104,7 @@ namespace ClaudiaKermin.Core.Missions
                 map.Legs.Add(new DeltaVLeg
                 {
                     Id = "polar:" + moon.Name,
-                    Description = "Extra for a polar orbit of " + moon.Name + " instead of an equatorial one (plane change at the capture's highest point)",
+                    Description = "Extra, added to transfer:" + moon.Name + ", for a polar orbit of " + moon.Name + " instead of an equatorial one (plane change costed at the arrival speed relative to " + moon.Name + ", an upper bound on a turn at the capture orbit's highest point; return:" + moon.Name + " does not include it)",
                     DeltaV = polar,
                     PlaneChange = polar,
                 });
