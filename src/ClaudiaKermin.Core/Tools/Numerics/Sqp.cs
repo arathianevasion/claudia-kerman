@@ -642,10 +642,12 @@ namespace ClaudiaKermin.Core.Tools.Numerics
                 return true;
             }
 
+            /// <summary>The point in SI units; a variable at a bound is the caller's bound exactly, not its scaled image (which rounds a ulp outside).</summary>
             private double[] X(double[] z)
             {
                 var x = new double[_n];
-                for (var i = 0; i < _n; i++) x[i] = z[i] * _unit[i];
+                for (var i = 0; i < _n; i++)
+                    x[i] = z[i] <= _lo[i] ? _p.Lower[i] : z[i] >= _hi[i] ? _p.Upper[i] : z[i] * _unit[i];
                 return x;
             }
 
@@ -698,15 +700,57 @@ namespace ClaudiaKermin.Core.Tools.Numerics
             return max;
         }
 
-        /// <summary>A small dense linear solve by Gaussian elimination with complete pivoting.</summary>
+        /// <summary>A small dense linear solve: Ruiz equilibration, then Gaussian elimination with complete pivoting.</summary>
         private static class Linear
         {
-            /// <summary>The solution of <paramref name="a"/> x = <paramref name="b"/>, or null when a pivot falls below 1e-13 of the largest entry (singular).</summary>
+            private const int EquilibrationRounds = 4;
+
+            /// <summary>
+            /// The solution of <paramref name="a"/> x = <paramref name="b"/>, or null when, with every row and column scaled to a
+            /// largest entry near 1, a pivot falls below 1e-13 (singular). The scaling keeps one stiff entry (a BFGS curvature of
+            /// 1e10) from making every small one, the regularisation included, look like zero.
+            /// </summary>
             public static double[] Solve(double[,] a, double[] b)
             {
                 var n = b.Length;
                 a = (double[,])a.Clone();
                 b = (double[])b.Clone();
+                foreach (var v in a)
+                    if (!SearchInput.Finite(v)) return null;
+                var colScale = new double[n];
+                for (var j = 0; j < n; j++) colScale[j] = 1;
+                for (var round = 0; round < EquilibrationRounds; round++)
+                {
+                    for (var i = 0; i < n; i++)
+                    {
+                        var max = 0.0;
+                        for (var j = 0; j < n; j++) max = Math.Max(max, Math.Abs(a[i, j]));
+                        if (max <= 0) return null;
+                        var s = 1 / Math.Sqrt(max);
+                        for (var j = 0; j < n; j++) a[i, j] *= s;
+                        b[i] *= s;
+                    }
+                    for (var j = 0; j < n; j++)
+                    {
+                        var max = 0.0;
+                        for (var i = 0; i < n; i++) max = Math.Max(max, Math.Abs(a[i, j]));
+                        if (max <= 0) return null;
+                        var s = 1 / Math.Sqrt(max);
+                        for (var i = 0; i < n; i++) a[i, j] *= s;
+                        colScale[j] *= s;
+                    }
+                }
+                var scaled = Eliminate(a, b);
+                if (scaled == null) return null;
+                for (var j = 0; j < n; j++) scaled[j] *= colScale[j];
+                foreach (var v in scaled)
+                    if (!SearchInput.Finite(v)) return null;
+                return scaled;
+            }
+
+            private static double[] Eliminate(double[,] a, double[] b)
+            {
+                var n = b.Length;
                 var col = new int[n];
                 for (var i = 0; i < n; i++) col[i] = i;
                 var largest = 0.0;

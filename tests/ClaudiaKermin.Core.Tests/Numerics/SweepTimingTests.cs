@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System;
 using Xunit;
 
 namespace ClaudiaKermin.Core.Tests.Numerics
@@ -22,6 +23,8 @@ namespace ClaudiaKermin.Core.Tests.Numerics
                     ShepperdSweepTests.Agrees(seed);
                     LambertSweepTests.Recovers(seed);
                     TrajectorySweepTests.Agrees(seed);
+                    foreach (CourseCorrectionSweepTests.Arrival arrival in Enum.GetValues(typeof(CourseCorrectionSweepTests.Arrival)))
+                        CourseCorrectionSweepTests.Corrects(seed, arrival, false);
                 }
             });
         }
