@@ -62,9 +62,9 @@ namespace ClaudiaKermin.Core.Tools
 
             // Near 180 degrees the arc's plane is set by how far the target is off the line through the body, and the burn to it grows
             // without bound as that shrinks. Exactly across in the craft's own plane (a Hohmann arc) is fine: the plane is the craft's.
-            var turn = Vec3.Cross(r.Normalized, rt.Normalized).Length;
+            var sinTurn = Vec3.Cross(r.Normalized, rt.Normalized).Length;
             var outOfPlane = Math.Abs(Vec3.Dot(rt.Normalized, patch.Orbit.W.Normalized));
-            if (turn < HalfTurnSine && Vec3.Dot(r, rt) < 0 && outOfPlane > CoplanarSine)
+            if (sinTurn < HalfTurnSine && Vec3.Dot(r, rt) < 0 && outOfPlane > CoplanarSine)
                 return PlanningJson.Error("the arc is nearly 180 degrees: " + target.Name + " is almost straight across " + patch.Body.Name + " from the craft at UT "
                     + Num(arrival) + " but off the craft's orbit plane, so the transfer's plane is set by a sliver and the burn would be enormous; arrive earlier or later, or burn at another time");
 

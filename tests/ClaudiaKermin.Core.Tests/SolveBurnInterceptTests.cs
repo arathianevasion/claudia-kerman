@@ -212,6 +212,8 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("one of them", Error(snapshot, "{\"goal\":\"intercept_at\",\"target\":\"Mun\",\"tof\":1000,\"arrive_ut\":2000}"));
             Assert.Contains("above 0", Error(snapshot, "{\"goal\":\"intercept_at\",\"target\":\"Mun\",\"tof\":-5}"));
             Assert.Contains("above 0", Error(snapshot, "{\"goal\":\"intercept_at\",\"target\":\"Mun\",\"tof\":0}"));
+            Assert.Contains("finite", Error(snapshot, "{\"goal\":\"intercept_at\",\"target\":\"Mun\",\"tof\":1e999}"));
+            Assert.Contains("finite", Error(snapshot, "{\"goal\":\"intercept_at\",\"target\":\"Mun\",\"arrive_ut\":1e999}"));
             Assert.Contains("not after the burn", Error(snapshot, "{\"goal\":\"intercept_at\",\"target\":\"Mun\",\"at\":\"in 100\",\"arrive_ut\":50}"));
             Assert.Contains("whole number", Error(snapshot, "{\"goal\":\"intercept_at\",\"target\":\"Mun\",\"tof\":1000,\"revolutions\":1.5}"));
             Assert.Contains("revolutions is from 0", Error(snapshot, "{\"goal\":\"intercept_at\",\"target\":\"Mun\",\"tof\":1000,\"revolutions\":-1}"));
