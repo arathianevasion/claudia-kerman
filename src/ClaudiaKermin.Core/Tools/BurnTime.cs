@@ -209,6 +209,9 @@ namespace ClaudiaKermin.Core.Tools
                     if (!dn.HasValue) why = Missing("descending equatorial");
                     return dn;
             }
+            // A node past the patch's end is no node to choose between: the other one may still be flown.
+            if (an > patch.EndUt) an = null;
+            if (dn > patch.EndUt) dn = null;
             if (an.HasValue && dn.HasValue)
             {
                 if (text == "eq_nearest") return Math.Min(an.Value, dn.Value);
@@ -241,7 +244,7 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
-        /// The craft's nearest approach to the target over the next few orbits (MechJeb searches one; a hyperbola, 100 radians of
+        /// The craft's nearest approach to the target over the next few orbits (#442 asks for a few, MechJeb searches one; a hyperbola, 100 radians of
         /// mean anomaly), found by <see cref="BodySystem.ClosestApproach"/> on the part of the patch in that window.
         /// </summary>
         private static double? ClosestApproach(Patch patch, double from, BodySystem system, SnapshotBody target, out string why)
