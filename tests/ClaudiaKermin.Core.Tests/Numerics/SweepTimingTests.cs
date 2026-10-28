@@ -24,8 +24,9 @@ namespace ClaudiaKermin.Core.Tests.Numerics
                     ShepperdSweepTests.Agrees(seed);
                     LambertSweepTests.Recovers(seed);
                     TrajectorySweepTests.Agrees(seed);
-                    foreach (CourseCorrectionSweepTests.Arrival arrival in Enum.GetValues(typeof(CourseCorrectionSweepTests.Arrival)))
-                        CourseCorrectionSweepTests.Corrects(seed, arrival, false);
+                    foreach (CourseCorrectionSweepTests.Plan plan in Enum.GetValues(typeof(CourseCorrectionSweepTests.Plan)))
+                        foreach (CourseCorrectionSweepTests.Arrival arrival in Enum.GetValues(typeof(CourseCorrectionSweepTests.Arrival)))
+                            CourseCorrectionSweepTests.Corrects(seed, arrival, plan, false);
                 }
             });
         }
