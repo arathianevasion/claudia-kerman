@@ -1764,7 +1764,7 @@ function land_descend {
   // still turning onto its first command, flying by land_turning_s until it is pointed and braking (#380).
   local turn_left is 0.
   local first_turn is false.
-  // RCS Use: the pre-point has until braking is planned to start; braking itself has no deadline.
+  // RCS Use: the pre-point has until braking is planned to start; braking keeps RCS off (#506) unless the wheels have no torque.
   set ctx:turn_by to extra:burn_start_ut.
   // The Underhang (#427): still to drop, and where it was predicted to hit once dropped ("" until then).
   local drop_pending is under:plan:decouplers:length > 0.
@@ -1834,6 +1834,7 @@ function land_descend {
       if land_brake_due(dist, fig:along, v_h:mag, -v_v, h, land_brake_accel(a_max, g), opt:burn_margin, turn_left) {
         set braking to true.
         set ctx:turn_by to 0.
+        set ctx:rcs_braking to true.
         set extra:braking_began_ut to round(time:seconds, 1).
         set first_turn to true.
         set h_start to max(500, h).

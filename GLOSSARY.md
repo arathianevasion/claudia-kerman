@@ -57,7 +57,7 @@ A stretch of flight with no engine or RCS thrust, in an atmosphere or not (e.g. 
 _Avoid_: drift, glide, cruise
 
 **RCS Use**:
-A stretch on which a Mission Script has RCS switched on, always for a stated reason: a big turn (even with time to spare), turning when the reaction wheels alone can't make the turn in time, settling an attitude error the wheels can't, or translating. Outside RCS Use, RCS is off, whatever the player set before launch, so a craft holding attitude on a Coast doesn't fire thrusters.
+A stretch on which a Mission Script has RCS switched on, always for a stated reason: a big turn (even with time to spare), turning when the reaction wheels alone can't make the turn in time, settling an attitude error the wheels can't, or translating. Outside RCS Use, RCS is off, whatever the player set before launch, so a craft holding attitude on a Coast doesn't fire thrusters. Two exceptions (#506): `land`'s braking to touchdown keeps RCS off unless the craft has no wheel torque, and on the ground (LANDED, SPLASHED or PRELAUNCH) RCS never comes on, in any block.
 _Avoid_: RCS mode, RCS assist
 
 **Aligned**:
