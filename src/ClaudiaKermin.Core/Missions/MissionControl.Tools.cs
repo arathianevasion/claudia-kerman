@@ -81,7 +81,7 @@ namespace ClaudiaKermin.Core.Missions
                 Failed(mission, turn, "Claudia kept calling Planning Tools after the limit of " + ToolStep.MaxSteps + " steps.");
                 return;
             }
-            var atLimit = turn.ToolSteps >= ToolStep.MaxSteps;
+            var atLimit = false;
             var names = message.Content.OfType<ToolUseBlock>().Select(t => _tools.Activity(t.Name)).Distinct().ToArray();
             mission.InFlight = true;
             mission.Activity = names.Length > 0 ? string.Join(" and ", names) : "calculating";
@@ -126,7 +126,6 @@ namespace ClaudiaKermin.Core.Missions
                 turn.Messages.Add(message.ToMessage());
                 turn.Messages.Add(step.Results);
                 turn.ToolSteps++;
-                if (atLimit) turn.ToolLimitSent = true;
                 foreach (var call in step.Calls)
                 {
                     turn.Stats.Called(call.Name);
@@ -151,9 +150,12 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The next step goes only if the Spending Cap has room for its worst case; with none, the loop is discarded and the Mission Pauses (or the call waits, as any waiting turn does).</summary>
         private void NextStep(Mission mission, Turn turn)
         {
+            // At the step limit the next request is the last: tool_choice none, the tools list and system prompt unchanged (#509). The cap check below prices it like any step.
+            turn.ToolLimitSent = turn.ToolSteps >= ToolStep.MaxSteps;
             var worst = RequestCharge.WorstCase(_config.Prices, mission.Model, BuildRequest(mission, turn));
             if (mission.Committed + worst <= mission.SpendingCap)
             {
+                if (turn.ToolLimitSent) Event(mission, "tool_limit_final", turn.Purpose + " after " + turn.ToolSteps + " steps; the reply is asked for with tool_choice none");
                 Send(mission, turn);
                 return;
             }

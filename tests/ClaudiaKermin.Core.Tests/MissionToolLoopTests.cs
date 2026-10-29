@@ -437,39 +437,77 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void AfterEightStepsEveryResultSaysToReplyNowAndTheReplyIsAccepted()
+        public void AfterEightStepsTheNextRequestIsTheLastWithToolChoiceNoneAndTheSameToolsAndTheReplyIsAccepted()
         {
             var transport = new StreamingFakeTransport();
-            for (var i = 0; i < 9; i++) transport.Add(ToolUseStreams.ToolUse("s" + i, ("stage_performance", Vacuum), ("stage_performance", Vacuum)));
+            for (var i = 0; i < 8; i++) transport.Add(ToolUseStreams.ToolUse("s" + i, ("stage_performance", Vacuum), ("stage_performance", Vacuum)));
             transport.Add(Fixture("mission-plan.sse"));
             var mission = Control(transport);
             Start(mission);
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
 
-            Assert.Equal(10, transport.Requests.Count);
+            Assert.Equal(9, transport.Requests.Count);
             for (var step = 1; step <= 8; step++)
+            {
                 Assert.All(Results(transport.Requests[step]), r => Assert.False(r.TryGetProperty("is_error", out _)));
-            var last = Results(transport.Requests[9]);
-            Assert.Equal(2, last.Count);
-            Assert.All(last, r => Assert.Equal("tool limit reached; reply now", ErrorOf(r)));
+                Assert.Equal(step == 8 ? "{\"type\":\"none\"}" : "{\"type\":\"auto\"}", Body(transport.Requests[step]).GetProperty("tool_choice").GetRawText());
+                Assert.Equal(ToolsJson(transport.Requests[0]), ToolsJson(transport.Requests[step]));
+                Assert.Equal(Body(transport.Requests[0]).GetProperty("system").GetRawText(), Body(transport.Requests[step]).GetProperty("system").GetRawText());
+            }
+            Assert.Contains("tool_limit_final", Events(mission));
             Assert.Equal(16, ToolLines(mission).Count(l => !l.Text.Contains("error")));
         }
 
         [Fact]
-        public void AReplyThatStillCallsToolsAfterTheLimitFailsTheTurnAndRetrySendsItFromScratch()
+        public void AReplyThatStillCallsToolsOnTheToollessRequestFailsTheTurnAndRetrySendsItFromScratch()
         {
             var transport = new StreamingFakeTransport();
-            for (var i = 0; i < 10; i++) transport.Add(StagePerformance("s" + i));
+            for (var i = 0; i < 9; i++) transport.Add(StagePerformance("s" + i));
             transport.Add(Fixture("mission-plan.sse"));
             var mission = Control(transport);
             Start(mission);
             DrainUntil(mission, v => v.Stage == MissionStage.Paused);
-            Assert.Equal(10, transport.Requests.Count);
+            Assert.Equal(9, transport.Requests.Count);
             Assert.Equal("Claudia kept calling Planning Tools after the limit of 8 steps.", mission.View.PauseReason);
 
             mission.Send(new Retry());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
-            Assert.Equal(transport.Requests[0].Body, transport.Requests[10].Body);
+            Assert.Equal(transport.Requests[0].Body, transport.Requests[9].Body);
+        }
+
+        [Fact]
+        public void TheToollessRequestAtTheStepLimitIsBlockedByTheSpendingCapAsAnyStepIs()
+        {
+            Func<ScriptedResponse[]> steps = () => Enumerable.Range(0, 8)
+                .Select(i => i == 7 ? ToolUseStreams.ToolUsePriced("cap", 100000, ("stage_performance", Vacuum)) : StagePerformance("s" + i))
+                .Concat(new[] { Fixture("mission-plan.sse") }).ToArray();
+            decimal cap;
+            using (var probe = new MissionToolLoopTests())
+            {
+                var mission = probe.Control(new StreamingFakeTransport(steps()));
+                probe.Start(mission);
+                probe.DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+                var log = File.ReadAllText(Path.Combine(probe.Folder(mission), "cost-log.jsonl"));
+                var worst = CostLogGap.Amounts(log, "pending");
+                var paid = CostLogGap.Amounts(log, "paid");
+                decimal low = 0, committed = 0;
+                for (var k = 0; k < 8; k++)
+                {
+                    low = Math.Max(low, committed + worst[k]);
+                    committed += paid[k];
+                }
+                cap = CostLogGap.Between(low, committed + worst[8], "fits the eight steps but not the last request");
+            }
+
+            var transport = new StreamingFakeTransport(steps());
+            var run = Control(transport);
+            Start(run, cap);
+            DrainUntil(run, v => v.Stage == MissionStage.Paused);
+
+            Assert.Equal(8, transport.Requests.Count);
+            Assert.Contains("Spending Cap", run.View.PauseReason);
+            Assert.Contains("tool_loop_discarded", Events(run));
+            Assert.DoesNotContain("tool_limit_final", Events(run));
         }
 
         [Fact]
