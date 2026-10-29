@@ -100,8 +100,8 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <summary>
         /// Claudia's reply asked for tools: they run on a worker against the Game Snapshot the turn was built with, while the
-        /// Capcom strip names them. At the step limit nothing runs and every result says to reply now; a reply that still calls
-        /// tools after that fails the turn, so a loop can never run away.
+        /// Capcom strip names them. After the step limit the next request goes with tool_choice none (<see cref="NextStep"/>); a reply that still
+        /// calls tools to that fails the turn, so a loop can never run away.
         /// </summary>
         private void ToolsCalled(Mission mission, Turn turn, AssistantMessage message)
         {
@@ -118,7 +118,7 @@ namespace ClaudiaKermin.Core.Missions
                 Failed(mission, turn, "Claudia kept calling Planning Tools after the limit of " + ToolStep.MaxSteps + " steps.");
                 return;
             }
-            var atLimit = turn.ToolSteps >= ToolStep.MaxSteps;
+            var atLimit = false;
             var names = message.Content.OfType<ToolUseBlock>().Select(t => _tools.Activity(t.Name)).Distinct().ToArray();
             mission.InFlight = true;
             mission.Activity = names.Length > 0 ? string.Join(" and ", names) : "calculating";
@@ -165,7 +165,6 @@ namespace ClaudiaKermin.Core.Missions
                 turn.Messages.Add(message.ToMessage());
                 turn.Messages.Add(step.Results);
                 turn.ToolSteps++;
-                if (atLimit) turn.ToolLimitSent = true;
                 for (var i = 0; i < step.Calls.Count; i++)
                 {
                     var call = step.Calls[i];
@@ -195,9 +194,12 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The next step goes only if the Spending Cap has room for its worst case; with none, the loop is discarded and the Mission Pauses (or the call waits, as any waiting turn does).</summary>
         private void NextStep(Mission mission, Turn turn)
         {
+            // At the step limit the next request is the last: tool_choice none, the tools list and system prompt unchanged (#509). The cap check below prices it like any step.
+            turn.ToolLimitSent = turn.ToolSteps >= ToolStep.MaxSteps;
             var worst = RequestCharge.WorstCase(_config.Prices, mission.Model, BuildRequest(mission, turn));
             if (mission.Committed + worst <= mission.SpendingCap)
             {
+                if (turn.ToolLimitSent) Event(mission, "tool_limit_final", turn.Purpose + " after " + turn.ToolSteps + " steps; the reply is asked for with tool_choice none");
                 Send(mission, turn);
                 return;
             }
