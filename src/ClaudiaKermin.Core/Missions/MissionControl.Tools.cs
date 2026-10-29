@@ -63,8 +63,8 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <summary>
         /// Claudia's reply asked for tools: they run on a worker against the Game Snapshot the turn was built with, while the
-        /// Capcom strip names them. At the step limit nothing runs and every result says to reply now; a reply that still calls
-        /// tools after that fails the turn, so a loop can never run away.
+        /// Capcom strip names them. After the step limit the next request goes with tool_choice none (<see cref="NextStep"/>); a reply that still
+        /// calls tools to that fails the turn, so a loop can never run away.
         /// </summary>
         private void ToolsCalled(Mission mission, Turn turn, AssistantMessage message)
         {
