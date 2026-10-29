@@ -45,6 +45,7 @@ namespace ClaudiaKermin.ScriptCheck
         /// Switching SAS on (RCS Use): SAS fights kOS steering and fires RCS through holds, so it stays off while a Mission Script runs.
         /// Only Claudia's code is held to it: the Core Library's claudia_make_safe turns SAS on at an abort.
         /// </summary>
+        public const string SetSuffixIndex = "kOS miscompiles SET a:b[c] TO: assign through a local first (local x is a:b. set x[c] to ...)";
         public const string SasOn = "SAS must stay off while a Mission Script runs: it fights kOS steering and fires RCS through holds";
         /// <summary>From the allowed list: <c>makebuiltindelegate</c> is allowed only with a constant argument.</summary>
         public const string ComputedDelegate = "makebuiltindelegate without a constant argument";

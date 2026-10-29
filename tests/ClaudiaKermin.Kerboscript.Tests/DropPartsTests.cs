@@ -104,13 +104,26 @@ namespace ClaudiaKermin.Kerboscript.Tests
         }
 
         [Fact]
+        public void A_decoupler_whose_parts_stay_is_counted_to_the_bound_then_left_in_drop_tried_with_no_kOS_error()
+        {
+            var script = "local ctx is lexicon(\"drop_tried\", list(), \"drop_tries\", lexicon()).\n"
+                + "print claudia_drop_settle(ctx, \"u1\", true) + ctx:drop_tries[\"u1\"] + ctx:drop_tried:length.\n"
+                + "print claudia_drop_settle(ctx, \"u1\", true) + ctx:drop_tries[\"u1\"] + ctx:drop_tried:length.\n"
+                + "print claudia_drop_settle(ctx, \"u1\", true) + ctx:drop_tries[\"u1\"] + ctx:drop_tried:length.\n"
+                + "print ctx:drop_tried[0].\n"
+                + "print claudia_drop_settle(ctx, \"u2\", false) + ctx:drop_tries[\"u2\"] + ctx:drop_tried:length.\n";
+            Assert.Equal(new[] { "retry10", "retry20", "gave_up31", "u1", "left12" },
+                KosHarness.Run(CoreLibrary.Bundle(script)).ToArray());
+        }
+
+        [Fact]
         public void Drop_empty_ignores_stage_limit_and_the_bound_ends_in_a_blocknote()
         {
             var source = CoreLibrary.Files.Single(f => f.Name == "claudia_lib").Source;
             var start = source.IndexOf("function claudia_drop_empty {", System.StringComparison.Ordinal);
             var body = source.Substring(start, source.IndexOf("// ---- Waits and warp", start, System.StringComparison.Ordinal) - start);
             Assert.DoesNotContain("stage_limit", body);
-            Assert.Contains("claudia_drop_outcome(stayed, tries)", body);
+            Assert.Contains("claudia_drop_settle(ctx, fired[i], stayed)", body);
             Assert.Contains("blocknote", body);
         }
 

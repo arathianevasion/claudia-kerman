@@ -170,6 +170,31 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         public void OpenGuiWindows(string script) { AssertForbidden("open GUI windows", script); }
 
         [Theory]
+        [InlineData("set a:b[1] to 2.", 1)]
+        [InlineData("local a is lexicon().\nset a:b:c[\"k\"] to 2.", 2)]
+        public void SetOfASuffixIndexIsRefusedWithItsLine(string script, int line)
+        {
+            var result = _check.Check(script);
+            Assert.False(result.Passed);
+            Assert.Contains(result.Forbidden, f => f.StartsWith("line " + line + ": ") && f.Contains("assign through a local"));
+        }
+
+        [Theory]
+        [InlineData("local x is a:b.\nset x[1] to 2.")]
+        [InlineData("local x is lexicon().\nset x[1] to 2.")]
+        [InlineData("print a:b[1].")]
+        [InlineData("local res is lexicon().\nset res[\"k\"] to 2.")]
+        [InlineData("local res is lexicon().\nset res[\"k\"] to status = \"LANDED\" or status = \"SPLASHED\".")]
+        [InlineData("local res is lexicon().\nset res[\"k\"] to status = \"LANDED\".")]
+        public void SetOfALocalsIndexAndReadsOfASuffixIndexPass(string script) { AssertAllowed(script); }
+
+        [Fact]
+        public void TheCoreLibraryBundleHasNoSetOfASuffixIndex()
+        {
+            AssertAllowed(CoreLibrary.Bundle(""));
+        }
+
+        [Theory]
         [InlineData("debugfreezegame(1).")]
         public void FreezeTheGame(string script) { AssertForbidden("freeze the game", script); }
 
