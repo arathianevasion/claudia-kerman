@@ -79,8 +79,11 @@ namespace ClaudiaKermin.ScriptCheck
             var stack = new Stack<Value>();
             // Values an arm left on the stack when it jumped ahead, keyed by the label it jumped to.
             var arms = new Dictionary<string, List<Value>>(StringComparer.Ordinal);
-            foreach (var op in code)
+            // The same for a jump over a fixed number of opcodes (an OR or AND), keyed by the opcode it lands on.
+            var armsAt = new Dictionary<int, List<Value>>();
+            for (var at = 0; at < code.Count; at++)
             {
+                var op = code[at];
                 if (!string.IsNullOrEmpty(op.Label)) _labelLines[op.Label] = op.SourceLine;
                 List<Value> waiting;
                 if (!string.IsNullOrEmpty(op.Label) && arms.TryGetValue(op.Label, out waiting))
@@ -89,12 +92,27 @@ namespace ClaudiaKermin.ScriptCheck
                     if (stack.Count > 0) waiting.Add(stack.Pop());
                     stack.Push(Merge(waiting));
                 }
+                if (armsAt.TryGetValue(at, out waiting))
+                {
+                    armsAt.Remove(at);
+                    if (stack.Count > 0) waiting.Add(stack.Pop());
+                    stack.Push(Merge(waiting));
+                }
 
                 var jump = op as OpcodeBranchJump;
-                if (jump != null && stack.Count > 0 && !string.IsNullOrEmpty(jump.DestinationLabel))
+                // A conditional branch consumes its condition (Step pops it); only a plain jump carries an arm's value ahead.
+                if (jump != null && !(op is OpcodeBranchIfTrue) && !(op is OpcodeBranchIfFalse) && stack.Count > 0 && !string.IsNullOrEmpty(jump.DestinationLabel))
                 {
                     if (!arms.TryGetValue(jump.DestinationLabel, out waiting)) arms[jump.DestinationLabel] = waiting = new List<Value>();
                     waiting.Add(stack.Pop());
+                    continue;
+                }
+                if (jump != null && !(op is OpcodeBranchIfTrue) && !(op is OpcodeBranchIfFalse) && stack.Count > 0
+                    && string.IsNullOrEmpty(jump.DestinationLabel) && jump.Distance > 0)
+                {
+                    List<Value> ahead;
+                    if (!armsAt.TryGetValue(at + jump.Distance, out ahead)) armsAt[at + jump.Distance] = ahead = new List<Value>();
+                    ahead.Add(stack.Pop());
                     continue;
                 }
                 Step(op, stack);
@@ -224,6 +242,8 @@ namespace ClaudiaKermin.ScriptCheck
                 Consumed(Pop(stack), line);
                 Pop(stack);
                 var collection = Pop(stack);
+                // SET a:b[c] TO x compiles to push a, push "b" (a literal where getmember belongs), push c, push x, setindex.
+                if (collection.IsConstant && collection.Text != null) Found(line, "SET suffix[index]", ForbiddenList.SetSuffixIndex);
                 if (collection.OtherVessel) Found(line, "SET [index]", ForbiddenList.OtherVessels);
                 return;
             }

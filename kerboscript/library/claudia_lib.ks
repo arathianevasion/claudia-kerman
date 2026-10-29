@@ -650,6 +650,24 @@ function claudia_drop_outcome {
   return "gave_up".
 }
 
+// Counts one more try for the fired decoupler uid in ctx:drop_tries, adds it to ctx:drop_tried unless a
+// retry remains, and returns the outcome (claudia_drop_outcome). The count goes through a local: kOS
+// miscompiles SET a:b[c] TO as an index assignment on the string "b".
+function claudia_drop_settle {
+  parameter ctx, uid, stayed.
+  local counts is ctx:drop_tries.
+  local tries is 1.
+  if counts:haskey(uid) {
+    set tries to counts[uid] + 1.
+  }
+  set counts[uid] to tries.
+  local outcome is claudia_drop_outcome(stayed, tries).
+  if outcome <> "retry" {
+    ctx:drop_tried:add(uid).
+  }
+  return outcome.
+}
+
 // Fires decouplers whose tanks are all empty, together with every other part leaving with them, and
 // notes the names of the parts that left in ctx:dropped. Looks twice a second. drop_empty "auto" judges
 // every decoupler on the craft (claudia_auto_drop_fires); a list judges the decoupler of each part it
@@ -743,15 +761,8 @@ function claudia_drop_empty {
           set stayed to true.
         }
       }
-      local tries is 1.
-      if ctx:drop_tries:haskey(fired[i]) {
-        set tries to ctx:drop_tries[fired[i]] + 1.
-      }
-      set ctx:drop_tries[fired[i]] to tries.
-      local outcome is claudia_drop_outcome(stayed, tries).
-      if outcome <> "retry" {
-        ctx:drop_tried:add(fired[i]).
-      }
+      local outcome is claudia_drop_settle(ctx, fired[i], stayed).
+      local tries is ctx:drop_tries[fired[i]].
       if outcome = "gave_up" {
         addons:claudia:blocknote(ctx:block, lexicon("phase", "drop_empty", "note", "a decoupler fired " + tries + " times and its parts are still aboard: left on")).
       }
