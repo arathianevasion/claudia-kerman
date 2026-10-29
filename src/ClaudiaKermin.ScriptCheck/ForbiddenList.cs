@@ -41,11 +41,12 @@ namespace ClaudiaKermin.ScriptCheck
         public const string BlockInternal = "call block-internal calculations";
         /// <summary>A Mission Script defining a function (or lock) the Core Library defines, which would change a block's code (ADR 0007).</summary>
         public const string RedefineLibrary = "redefine a Core Library function";
+        /// <summary>SET a:b[c] TO x: kOS compiles it as an index assignment on the suffix name, a string, and the run dies.</summary>
+        public const string SetSuffixIndex = "kOS miscompiles SET a:b[c] TO: assign through a local first (local x is a:b. set x[c] to ...)";
         /// <summary>
         /// Switching SAS on (RCS Use): SAS fights kOS steering and fires RCS through holds, so it stays off while a Mission Script runs.
         /// Only Claudia's code is held to it: the Core Library's claudia_make_safe turns SAS on at an abort.
         /// </summary>
-        public const string SetSuffixIndex = "kOS miscompiles SET a:b[c] TO: assign through a local first (local x is a:b. set x[c] to ...)";
         public const string SasOn = "SAS must stay off while a Mission Script runs: it fights kOS steering and fires RCS through holds";
         /// <summary>From the allowed list: <c>makebuiltindelegate</c> is allowed only with a constant argument.</summary>
         public const string ComputedDelegate = "makebuiltindelegate without a constant argument";
