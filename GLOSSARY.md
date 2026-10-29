@@ -100,6 +100,10 @@ _Avoid_: upper stage, insertion stage, sustainer
 The parts of a craft that reach below its landing legs' feet when it stands upright, such as a spent transfer stage under a lander. A landing drops them before touchdown, so the craft comes down on its legs.
 _Avoid_: parts below the legs, lower stage
 
+**Descent Shape**:
+The one number that sets how a landing's braking trades height for speed: a small shape holds height until the craft is nearly stopped and then drops steeply, and a large one sinks early. `land` picks it from the terrain under its approach (ADR 0011).
+_Avoid_: glide slope, descent profile (as a name for the number), approach angle
+
 **Mission Plan**:
 The ordered list of Maneuver Sequences Claudia intends to fly to reach a Mission Goal, each with its delta-v budget and Due Time or rough timing; approved once to start the Mission and revised as Debriefs require.
 _Avoid_: flight plan, roadmap
