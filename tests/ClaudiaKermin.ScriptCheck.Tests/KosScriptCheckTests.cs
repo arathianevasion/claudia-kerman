@@ -316,6 +316,8 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("local f is addons:claudia:LandingSite@.\nprint f(lexicon()).")]
         [InlineData("local p is addons:claudia:landingpass(lexicon(\"lat\", 0, \"lng\", 20, \"r_pe\", 203000)).\nprint p:burn_ut.")]
         [InlineData("local c is addons:claudia.\nprint c:LandingPass(lexicon()):next_pass_ut.")]
+        [InlineData("local p is addons:claudia:brakepath(lexicon(\"lat\", 0, \"lng\", 20, \"shape\", \"auto\")).\nprint p:descent_shape.")]
+        [InlineData("local c is addons:claudia.\nprint c:BrakePath(lexicon()):clears.")]
         [InlineData("local b is addons:claudia:deorbitburn(lexicon(\"lat\", 0, \"lng\", -74)).")]
         [InlineData("print addons:claudia:reentryimpact(lexicon()):lat.")]
         [InlineData("local c is addons:claudia.\nprint c:ReentryImpact(lexicon()).")]

@@ -33,6 +33,8 @@ namespace ClaudiaKermin.KOS
                 "Core Library only (land): find_landing_site's search on the body orbited; gives the first site as lexicon error, lat, lng, biome, ..."));
             AddSuffix("LANDINGPASS", new OneArgsSuffix<Lexicon, Lexicon>(LandingPass,
                 "Core Library only (land): the first pass over lat, lng (r_pe, earliest_ut, daylight, max_correction_dv, within_hours) land may plan for; lexicon error, burn_ut, arrive_ut, correction_dv, next_pass_ut, passes, ..."));
+            AddSuffix("BRAKEPATH", new OneArgsSuffix<Lexicon, Lexicon>(BrakePath,
+                "Core Library only (land): braking simulated from now onto lat, lng s m ahead on heading (alt, v_h, v_up, the craft's thrust, mass, isp, ...) on shape (a Descent Shape or auto); lexicon error, clears, descent_shape, shape_lo, shape_hi, brake_dv, predicted_clearance, path"));
             AddSuffix("DEORBITBURN", new OneArgsSuffix<Lexicon, Lexicon>(DeorbitBurn,
                 "Core Library only (deorbit): the deorbit burn that lands on lat, lng by the reentry predictor; lexicon error, burn_ut, prograde, normal, radial, dv, lat, lng, error_km, ...; leave_out (part UIDs) flies the craft without them"));
             AddSuffix("REENTRYIMPACT", new OneArgsSuffix<Lexicon, Lexicon>(ReentryImpact,
@@ -228,6 +230,21 @@ namespace ClaudiaKermin.KOS
                 : (string)site["error"]);
         }
 
+        private Lexicon BrakePath(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> path = null;
+            // The prediction against the flown descent, and its time against the search's budget (#511).
+            return (Lexicon)Guarded("BRAKEPATH", () =>
+            {
+                path = BlockCalls.BrakePathCall(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel), new PlanningBody());
+                return KosValues.FromPlain(path);
+            }, () => path["error"] as string == ""
+                ? string.Format(CultureInfo.InvariantCulture, "shape {0:0.###} {1}, shapes {2:0.###} to {3:0.###} clear, braking {4:0} m/s",
+                    path["descent_shape"], (bool)path["clears"] ? "clears" : "doesn't clear", path["shape_lo"], path["shape_hi"],
+                    path.ContainsKey("brake_dv") ? path["brake_dv"] : -1.0)
+                : (string)path["error"]);
+        }
+
         private Lexicon LandingPass(Lexicon input)
         {
             System.Collections.Generic.IDictionary<string, object> pass = null;
@@ -236,8 +253,8 @@ namespace ClaudiaKermin.KOS
                 pass = BlockCalls.LandingPass(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel), new PlanningBody());
                 return KosValues.FromPlain(pass);
             }, () => pass.ContainsKey("burn_ut") && pass["error"] as string == ""
-                ? string.Format(CultureInfo.InvariantCulture, "burn at UT {0:0.0}, touchdown at UT {1:0.0}, correction {2:0.0} m/s, next pass {3:0.0}",
-                    pass["burn_ut"], pass["arrive_ut"], pass["correction_dv"], pass["next_pass_ut"])
+                ? string.Format(CultureInfo.InvariantCulture, "burn at UT {0:0.0}, touchdown at UT {1:0.0}, correction {2:0.0} m/s, next pass {3:0.0}; descent shape {4:0.###}, periapsis {5:0} m, landing {6:0} m/s",
+                    pass["burn_ut"], pass["arrive_ut"], pass["correction_dv"], pass["next_pass_ut"], pass["descent_shape"], pass["r_pe"], pass["predicted_dv"])
                 : (string)pass["error"]);
         }
     }
