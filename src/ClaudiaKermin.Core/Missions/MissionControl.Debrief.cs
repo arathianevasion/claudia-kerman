@@ -525,7 +525,8 @@ namespace ClaudiaKermin.Core.Missions
             {
                 Purpose = Purpose.MissionPlan,
                 UserText = "The player approved a reduced Mission Goal (quoted data): " + MissionPrompts.Quoted(mission.ReducedGoal)
-                    + " in place of the original (quoted data): " + MissionPrompts.Quoted(mission.Goal) + ".\n" + MissionPrompts.Facts(_ut, _snapshot),
+                    + " in place of the original (quoted data): " + MissionPrompts.Quoted(mission.Goal) + ".\n" + MissionPrompts.Facts(_ut, _snapshot)
+                    + PlanFigures(mission, mission.ReducedGoal),
                 Notice = DebriefPrompts.ReducedGoalNotice,
             };
         }
@@ -539,7 +540,7 @@ namespace ClaudiaKermin.Core.Missions
                 Begin(new Turn
                 {
                     Purpose = Purpose.MissionPlan,
-                    UserText = "Revise the Mission Plan after the Off-Nominal Debrief.\n" + MissionPrompts.Facts(_ut, _snapshot),
+                    UserText = "Revise the Mission Plan after the Off-Nominal Debrief.\n" + MissionPrompts.Facts(_ut, _snapshot) + PlanFigures(mission, mission.Goal),
                     Notice = DebriefPrompts.RevisedPlanAfterOffNominal,
                 });
                 return;

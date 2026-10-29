@@ -450,6 +450,24 @@ namespace ClaudiaKermin.Core.Tests
         // ---- Handing back ----
 
         [Fact]
+        public void TheRevisedMissionPlanRequestAfterAHandBackCarriesTheStageTableAndThePadWording()
+        {
+            var transport = Replies("mission-plan.sse", "mission-sequence-plan.sse", "mission-debrief-manual.sse", "mission-plan.sse", "mission-sequence-plan.sse");
+            var mission = Control(transport);
+            ToRunning(mission);
+            mission.Send(new TakeManualControl());
+            mission.TakeCommands();
+
+            mission.Send(new HandBack("by hand"));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            var text = AllText(transport.Requests[3]);
+            Assert.Contains("Stage table: these are the figures stage_performance and plan_ascent would give for this craft now", text);
+            Assert.Contains("stage_performance {\\\"situation\\\":\\\"vacuum\\\"}: ", text);
+            Assert.Contains("On the launch pad, predict_burn", text);
+        }
+
+        [Fact]
         public void HandingBackAfterATakeoverGivesAPlainAccountThenARevisedMissionPlanForApproval()
         {
             var transport = Replies("mission-plan.sse", "mission-sequence-plan.sse", "mission-debrief-manual.sse", "mission-plan.sse", "mission-sequence-plan.sse");
