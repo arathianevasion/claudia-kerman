@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using ClaudiaKermin.Core.Kos;
+using ClaudiaKermin.Core.Missions;
 using Xunit;
 
 namespace ClaudiaKermin.Core.Tests
@@ -260,6 +261,26 @@ namespace ClaudiaKermin.Core.Tests
             var outcome = run.Finish(new[] { "x", "", "y" });
 
             Assert.Equal("x\ny", outcome.ErrorText);
+        }
+
+        [Fact]
+        public void ANoReportWithALongCallStackStillCarriesTheKosErrorLineAndItsFailingLine()
+        {
+            var after = new List<string> { "my own output", "KOSSuffixUseException: GET Suffix 'CREWCAPACITY' not found on object PART(RCSFuelTank,uid=3565649920)", "At claudia_lib on line 598:" };
+            for (var i = 1; i <= 30; i++) after.Add("  called from frame " + i);
+            var run = new KosRun(Blank);
+            run.ProgramEnded();
+
+            var outcome = run.Finish(after);
+
+            Assert.Equal(RunOutcomeKind.NoReport, outcome.Kind);
+            var lines = outcome.ErrorText.Split('\n');
+            Assert.Equal("KOSSuffixUseException: GET Suffix 'CREWCAPACITY' not found on object PART(RCSFuelTank,uid=3565649920)", lines[0]);
+            Assert.Equal("At claudia_lib on line 598:", lines[1]);
+            Assert.Equal("  called from frame 30", lines[lines.Length - 1]);
+            Assert.True(lines.Length <= TerminalText.TailLines + 3);
+            // The turn Claudia reads carries it.
+            Assert.Contains("KOSSuffixUseException: GET Suffix", MissionPrompts.RunReport(new SequencePlan { Name = "x" }, outcome, ""));
         }
 
         [Fact]

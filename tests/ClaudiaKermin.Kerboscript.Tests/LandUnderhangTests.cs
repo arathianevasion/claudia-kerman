@@ -205,6 +205,20 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Contains("local drop_pending is under:plan:decouplers:length > 0.", land);
         }
 
+        // ---- A part that left before the drop ----
+
+        [Fact]
+        public void A_droppable_part_that_left_before_land_drop_keeps_its_name_without_being_read()
+        {
+            // land_drop takes names and uids at the measuring; a part gone from the ship by the drop is named
+            // from that list (uid 2, "fuelTank"), never by reading the part, which would throw.
+            Assert.Equal("fuelTank", One("claudia_names_left(list(1, 2), list(\"liquidEngine\", \"fuelTank\"), list(1)):join(\",\")"));
+            var land = CoreLibrary.Files.Single(f => f.Name == "land").Source;
+            Assert.DoesNotContain("extra:dropped_underhang:add(p:name)", land);
+            Assert.DoesNotContain("extra:dropped_underhang:add(g:name)", land);
+            Assert.Contains("claudia_names_left(under:droppable_uids, under:droppable_names, on_ship)", land);
+        }
+
         // ---- Docs ----
 
         [Fact]

@@ -1446,7 +1446,7 @@ function land_part_low {
 function land_measure_underhang {
   parameter ctx.
   local g is body:mu / body:radius ^ 2.
-  local found is lexicon("error", "", "names", list(), "droppable", list(), "kept", list(),
+  local found is lexicon("error", "", "names", list(), "droppable", list(), "droppable_uids", list(), "droppable_names", list(), "kept", list(),
     "plan", lexicon("error", "", "decouplers", list(), "gone", list()), "lander_dv", 0,
     "need", land_lander_need(ctx:opt:underhang_agl, g), "engine_ok", true).
   local leg_parts is list().
@@ -1505,6 +1505,8 @@ function land_measure_underhang {
     }
     if droppable {
       found:droppable:add(p).
+      found:droppable_uids:add(p:uid).
+      found:droppable_names:add(p:name).
     } else {
       found:kept:add(p:name).
     }
@@ -1574,18 +1576,24 @@ function land_drop {
     }
   }
   local leaving is list().
+  local leaving_uids is list().
+  local leaving_names is list().
   for g in under:plan:gone {
     if on_ship:contains(g:uid) {
       leaving:add(g).
+      leaving_uids:add(g:uid).
+      leaving_names:add(g:name).
     }
   }
+  // Names and uids were taken at the measuring, while the parts were aboard.
   local hanging is list().
-  for p in under:droppable {
-    if on_ship:contains(p:uid) {
-      hanging:add(p).
-    } else {
-      extra:dropped_underhang:add(p:name).
+  from { local i is 0. } until i >= under:droppable:length step { set i to i + 1. } do {
+    if on_ship:contains(under:droppable_uids[i]) {
+      hanging:add(under:droppable[i]).
     }
+  }
+  for n in claudia_names_left(under:droppable_uids, under:droppable_names, on_ship) {
+    extra:dropped_underhang:add(n).
   }
   if still:length = 0 or hanging:length = 0 {
     addons:claudia:blocktrace("land", lexicon("phase", "drop", "note", "the Underhang already left when the stage was staged off before the fall")).
@@ -1630,10 +1638,8 @@ function land_drop {
   for p in ship:parts {
     now_on:add(p:uid).
   }
-  for g in leaving {
-    if not now_on:contains(g:uid) {
-      extra:dropped_underhang:add(g:name).
-    }
+  for n in claudia_names_left(leaving_uids, leaving_names, now_on) {
+    extra:dropped_underhang:add(n).
   }
   for p in hanging {
     if now_on:contains(p:uid) {
