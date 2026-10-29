@@ -44,8 +44,9 @@ namespace ClaudiaKermin.Core.Kos
             // A long call stack pushes the error itself out of the tail: keep it, with the line after it.
             var error = lines.FindLastIndex(l => ErrorLine.IsMatch(l));
             if (error < 0 || error >= tailStart) return tail;
-            var head = lines.Skip(error).Take(2).ToList();
-            head.Add("... (" + System.Math.Max(0, tailStart - error - 2) + " lines omitted)");
+            var head = lines.Skip(error).Take(System.Math.Min(2, tailStart - error)).ToList();
+            var omitted = tailStart - error - head.Count;
+            if (omitted > 0) head.Add("... (" + omitted + " lines omitted)");
             return head.Concat(tail).ToList();
         }
 
