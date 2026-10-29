@@ -57,7 +57,8 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <summary>
         /// Why a turn may not call <paramref name="tool"/>, or null when it may: no tool during an Alert; on the ground, none of
-        /// the tools that need an orbit (#508); no check_script on a Mission Plan request, which has no script.
+        /// the tools that need an orbit (#508); no check_script on a request for a Mission Plan (new, or revised for the Mission
+        /// Settings), which has no script.
         /// </summary>
         private static string ToolRefusal(Purpose purpose, GameSnapshot snapshot, string tool)
         {
@@ -65,7 +66,9 @@ namespace ClaudiaKermin.Core.Missions
             var where = snapshot != null ? Grounded(snapshot.Situation) : null;
             if (where != null)
             {
-                const string launch = ": plan the launch with plan_ascent (the stage table is in the Mission request), and this burn once in orbit";
+                var launch = snapshot.Situation == "PRELAUNCH"
+                    ? ": plan the launch with plan_ascent (the stage table is in the Mission request), and this burn once in orbit"
+                    : ": check the ascent with plan_ascent or stage_performance, and plan this burn once in orbit";
                 if (tool == "predict_burn") return "the craft is " + where + ", with no orbit to burn from" + launch;
                 if (tool == "solve_burn") return "the craft is " + where + ", with no orbit to solve a burn from" + launch;
                 if (tool == "find_landing_site") return "the craft is " + where + ", with no orbit and so no ground track to search: plan the landing site once in orbit round the body";

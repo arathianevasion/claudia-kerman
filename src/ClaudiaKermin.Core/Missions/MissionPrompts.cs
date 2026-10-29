@@ -5,6 +5,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using ClaudiaKermin.Core.Claude;
 using ClaudiaKermin.Core.Kos;
 using ClaudiaKermin.Core.Tools;
@@ -560,8 +561,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             goal = goal ?? "";
             return snapshot.Bodies
-                .Select(b => new { Body = b, At = System.Text.RegularExpressions.Regex.Match(goal, @"\b" + System.Text.RegularExpressions.Regex.Escape(b.Name) + @"\b",
-                    System.Text.RegularExpressions.RegexOptions.IgnoreCase) })
+                .Select(b => new { Body = b, At = Regex.Match(goal, @"\b" + Regex.Escape(b.Name) + @"\b", RegexOptions.IgnoreCase) })
                 .Where(m => m.At.Success && m.Body.SurfaceGravity > 0)
                 .OrderBy(m => m.At.Index)
                 .Select(m => m.Body)

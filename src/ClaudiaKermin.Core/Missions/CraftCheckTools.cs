@@ -86,7 +86,7 @@ namespace ClaudiaKermin.Core.Missions
             {
                 var call = step.Calls[i];
                 _client.Log("Craft Check Planning Tool " + call.Name + ": " + (call.IsError ? "error: " : "") + call.Summary);
-                // The Mission request carries it (#508), so the Mission Plan step needn't fly the ascent again.
+                // The Mission request carries it (#508), so the Mission Plan step needn't run plan_ascent again.
                 var result = step.Results.Content[i] as ToolResultBlock;
                 if (call.Name == "plan_ascent" && !call.IsError && result != null) _plannedAscent = call.InputJson + ": " + result.Content;
             }

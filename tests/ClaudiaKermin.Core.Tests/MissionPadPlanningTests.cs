@@ -251,6 +251,24 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void ACallThatGotNoResultIsNoRepeat()
+        {
+            var transport = new StreamingFakeTransport(
+                // The seventh call is over the per-step limit and gets no result, so sending it again in the next step runs it.
+                ToolUseStreams.ToolUse("a", ("stage_performance", "{\"situation\":\"surface\"}"), ("stage_performance", "{\"situation\":\"vacuum\",\"body\":\"Mun\"}"),
+                    ("stage_performance", "{\"situation\":\"vacuum\",\"body\":\"Minmus\"}"), ("stage_performance", "{\"situation\":\"surface\",\"body\":\"Mun\"}"),
+                    ("stage_performance", "{\"situation\":\"surface\",\"body\":\"Minmus\"}"), ("stage_performance", "{\"situation\":\"vacuum\",\"body\":\"Sun\"}"),
+                    ("stage_performance", Vacuum)),
+                ToolUseStreams.ToolUse("b", ("stage_performance", Vacuum)),
+                Plan());
+            var mission = Control(transport);
+            Plan(mission);
+
+            Assert.StartsWith("at most 6 calls", ErrorOf(Results(transport.Requests[1])[6]));
+            Assert.False(IsError(Assert.Single(Results(transport.Requests[2]))));
+        }
+
+        [Fact]
         public void RefusalsAreLoggedAsToolRefusedEventsWithTheTurnsCounts()
         {
             var transport = new StreamingFakeTransport(
