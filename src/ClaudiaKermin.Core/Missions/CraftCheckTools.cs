@@ -82,8 +82,14 @@ namespace ClaudiaKermin.Core.Missions
             _request.Messages.Add(step.Results);
             _toolSteps++;
             if (atLimit) _toolLimitSent = true;
-            foreach (var call in step.Calls)
+            for (var i = 0; i < step.Calls.Count; i++)
+            {
+                var call = step.Calls[i];
                 _client.Log("Craft Check Planning Tool " + call.Name + ": " + (call.IsError ? "error: " : "") + call.Summary);
+                // The Mission request carries it (#508), so the Mission Plan step needn't fly the ascent again.
+                var result = step.Results.Content[i] as ToolResultBlock;
+                if (call.Name == "plan_ascent" && !call.IsError && result != null) _plannedAscent = call.InputJson + ": " + result.Content;
+            }
 
             var worstCase = RequestCharge.WorstCase(_config.Prices, _request.Model, _request);
             var spent = _stepCharges.Sum(c => c.Settlement.Spent + c.Settlement.Held);

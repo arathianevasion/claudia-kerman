@@ -43,6 +43,8 @@ namespace ClaudiaKermin.Core.Missions
             public string SafePending = "";
             /// <summary>The turn_shape the Craft Check planned for the launch; null when it planned none. Saved.</summary>
             public double? PlannedTurnShape;
+            /// <summary>The Craft Check's last plan_ascent call, its input and result JSON, for the Mission request's stage table (#508); "" when it made none. Saved.</summary>
+            public string PlannedAscent = "";
             /// <summary>Requests sent when the craft docked: a plan from a later request was made with the facts after docking.</summary>
             public int RecheckSince;
         }

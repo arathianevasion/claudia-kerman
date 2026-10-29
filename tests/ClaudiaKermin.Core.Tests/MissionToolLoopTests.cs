@@ -91,7 +91,8 @@ namespace ClaudiaKermin.Core.Tests
         {
             public string Name { get; set; } = "fake";
             public string Description { get { return "A test tool."; } }
-            public string InputSchemaJson { get { return "{\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":false}"; } }
+            /// <summary>An optional <c>n</c>, so calls can differ: an identical repeat in a turn is refused without running (#508).</summary>
+            public string InputSchemaJson { get { return "{\"type\":\"object\",\"properties\":{\"n\":{\"type\":\"integer\"}},\"required\":[],\"additionalProperties\":false}"; } }
             public bool OnCraftCheck { get; set; }
             public string Activity { get; set; } = "faking it";
             public Func<ToolOutcome> Answer = () => new ToolOutcome { Json = "{\"ok\":true}", Summary = "ok" };
@@ -423,7 +424,7 @@ namespace ClaudiaKermin.Core.Tests
                     return new ToolOutcome { Json = "{\"together\":" + (together ? "true" : "false") + "}", Summary = "ok" };
                 },
             };
-            var calls = Enumerable.Range(0, 7).Select(i => ("fake", "{}")).ToArray();
+            var calls = Enumerable.Range(0, 7).Select(i => ("fake", "{\"n\":" + i + "}")).ToArray();
             var transport = new StreamingFakeTransport(ToolUseStreams.ToolUse("par", calls), Fixture("mission-plan.sse"));
             var mission = Control(transport, With(tool));
             Start(mission);
@@ -440,9 +441,9 @@ namespace ClaudiaKermin.Core.Tests
         public void AfterEightStepsEveryResultSaysToReplyNowAndTheReplyIsAccepted()
         {
             var transport = new StreamingFakeTransport();
-            for (var i = 0; i < 9; i++) transport.Add(ToolUseStreams.ToolUse("s" + i, ("stage_performance", Vacuum), ("stage_performance", Vacuum)));
+            for (var i = 0; i < 9; i++) transport.Add(ToolUseStreams.ToolUse("s" + i, ("fake", "{\"n\":" + (2 * i) + "}"), ("fake", "{\"n\":" + (2 * i + 1) + "}")));
             transport.Add(Fixture("mission-plan.sse"));
-            var mission = Control(transport);
+            var mission = Control(transport, With(new TestTool()));
             Start(mission);
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
 
