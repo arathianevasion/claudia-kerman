@@ -120,6 +120,12 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         }
 
         [Fact]
+        public void A_missed_pass_has_its_own_results_starting_at_none()
+        {
+            Assert.Equal(new[] { "0", "-1" }, Run("local x is land_extra().\nprint x:passes_missed. print x:next_pass_ut."));
+        }
+
+        [Fact]
         public void The_pass_is_solved_again_600_s_before_the_deorbit_burn()
         {
             Assert.Equal("9400", One("land_resolve_ut(10000)"));
