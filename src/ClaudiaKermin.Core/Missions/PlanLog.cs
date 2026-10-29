@@ -85,6 +85,8 @@ namespace ClaudiaKermin.Core.Missions
     internal static class PlanLog
     {
         public const string FileName = "plans.jsonl";
+        private const string PlanEvent = "plan";
+        private const string MissionPlanEvent = "mission_plan";
 
         private static readonly Encoding Utf8 = new UTF8Encoding(false);
 
@@ -94,17 +96,12 @@ namespace ClaudiaKermin.Core.Missions
             Directory.CreateDirectory(folder);
             var path = Path.Combine(folder, FileName);
             var json = new JsonWriter().BeginObject()
-                .Field("event", "plan")
-                .Field("plan", Lines(path).Count + 1)
+                .Field("event", PlanEvent)
+                .Field("plan", Lines(path).Count(IsPlanLine) + 1)
                 .Field("name", plan.Name)
                 .Field("purpose", purpose)
                 .Field("manual", plan.Manual);
-            json.Name("tools").BeginObject();
-            foreach (var tool in stats.Tools) json.Field(tool.Key, tool.Value);
-            json.EndObject();
-            json.Field("tool_calls", stats.Tools.Values.Sum())
-                .Field("refused_calls", stats.RefusedCalls)
-                .Field("repeat_calls", stats.RepeatCalls);
+            Calls(json, stats);
             json.Name("blocks").BeginObject();
             foreach (var block in BlocksCalled(plan.Script)) json.Field(block.Key, block.Value);
             json.EndObject();
@@ -120,20 +117,59 @@ namespace ClaudiaKermin.Core.Missions
             File.AppendAllText(path, json + "\n", Utf8);
         }
 
+        /// <summary>
+        /// A Mission Plan turn (first or revised) accepted, or its tool loop <paramref name="discarded"/> (#514): a line with the
+        /// same call figures as a Sequence Plan's plus <c>tool_steps</c>, zeros included. Its event is <c>mission_plan</c>, so the
+        /// lines of Sequence Plans stay what they were. A discarded loop's turn is sent again with the stats it had, so the line
+        /// that finally accepts the plan counts the discarded steps' calls again.
+        /// </summary>
+        public static void AppendMissionPlan(string folder, string purpose, TurnStats stats, int toolSteps, string effort,
+            string secondLook, bool cutOffRetry, bool discarded)
+        {
+            Directory.CreateDirectory(folder);
+            var json = new JsonWriter().BeginObject()
+                .Field("event", MissionPlanEvent)
+                .Field("purpose", purpose);
+            Calls(json, stats);
+            json.Field("tool_steps", toolSteps)
+                .Field("discarded", discarded);
+            Turn(json, effort, stats, secondLook, cutOffRetry);
+            json.Field("at", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture))
+                .EndObject();
+            File.AppendAllText(Path.Combine(folder, FileName), json + "\n", Utf8);
+        }
+
+        private static void Calls(JsonWriter json, TurnStats stats)
+        {
+            json.Name("tools").BeginObject();
+            foreach (var tool in stats.Tools) json.Field(tool.Key, tool.Value);
+            json.EndObject();
+            json.Field("tool_calls", stats.Tools.Values.Sum())
+                .Field("refused_calls", stats.RefusedCalls)
+                .Field("repeat_calls", stats.RepeatCalls);
+        }
+
+        private static bool IsPlanLine(string line)
+        {
+            return line.StartsWith("{\"event\":\"" + PlanEvent + "\"", StringComparison.Ordinal);
+        }
+
         /// <summary>The Debrief committed: the latest plan's line gains <c>debrief</c>; a Debrief with no plan line before it (or a plan already debriefed) writes nothing.</summary>
         public static void SetDebrief(string folder, string outcome, TurnStats stats, string effort, string secondLook, bool cutOffRetry)
         {
             var path = Path.Combine(folder, FileName);
             var lines = Lines(path);
-            if (lines.Count == 0 || lines[lines.Count - 1].Contains(",\"debrief\":")) return;
+            // The latest Sequence Plan's line: a Mission Plan line after it is not the plan this Debrief is of.
+            var index = lines.FindLastIndex(IsPlanLine);
+            if (index < 0 || lines[index].Contains(",\"debrief\":")) return;
             var json = new JsonWriter().BeginObject().Field("outcome", outcome);
             Turn(json, effort, stats, secondLook, cutOffRetry);
             json.EndObject();
-            var last = lines[lines.Count - 1];
+            var last = lines[index];
             // The plan line's last field is "at": the debrief goes in front of it, so the order of the line's fields is fixed.
             var at = last.LastIndexOf(",\"at\":", StringComparison.Ordinal);
             if (at < 0) return;
-            lines[lines.Count - 1] = last.Substring(0, at) + ",\"debrief\":" + json + last.Substring(at);
+            lines[index] = last.Substring(0, at) + ",\"debrief\":" + json + last.Substring(at);
             MissionFolder.ReplaceAtomically(path, string.Join("\n", lines.ToArray()) + "\n");
         }
 

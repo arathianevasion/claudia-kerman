@@ -37,6 +37,10 @@ with lints. The log is rewritten, not appended to: when that sequence's Debrief 
 `debrief` object (`outcome`, and the Debrief turn's own `effort`, `requests`, `cost`, `second_look`, ...). The rewrite is atomic.
 A plan whose Debrief has not come shows "not yet".
 
+Each Mission Plan turn (first or revised, #514) also writes a line with `"event":"mission_plan"`: `purpose`, `tools`, `tool_calls`,
+`refused_calls`, `repeat_calls` (zeros included), `tool_steps`, `discarded` (true for a tool loop dropped before the plan came),
+and the turn's figures as for a plan. `baseline.py` reads only the `plan` lines, so these do not change its report.
+
 Fields of a line: `plan` (1, 2, ... in the file), `name`, `purpose` (the turn that made it), `manual`, `tools` and `tool_calls`
 (Planning Tools called, with counts), `blocks` (Building Blocks the script calls, with counts), `custom_script`, `custom_lines`
 (lines of code, not blank or comment), `lints`, `effort`, `requests`, `output_tokens`, `thinking_tokens`, `reply_seconds`,
