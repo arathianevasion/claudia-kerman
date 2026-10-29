@@ -182,6 +182,30 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void TheRevisedMissionPlanRequestAfterASettingsChangeCarriesTheStageTableAndThePadWordingOnlyOnThePad()
+        {
+            var padTransport = new StreamingFakeTransport(Plan(), Plan());
+            var onPad = Control(padTransport);
+            Plan(onPad);
+            onPad.Send(new EditSettings(new MissionSettingsValues { PhysicsWarp = false }));
+            DrainUntil(onPad, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+            var padText = Text(padTransport.Requests[1]);
+            Assert.Contains("changed the Mission Settings", padText);
+            Assert.Contains("stage_performance {\"situation\":\"vacuum\"}: ", padText);
+            Assert.Contains("On the launch pad", padText);
+
+            var orbitTransport = new StreamingFakeTransport(Plan(), Plan());
+            var inOrbit = Control(orbitTransport, InOrbit());
+            Plan(inOrbit);
+            inOrbit.Send(new EditSettings(new MissionSettingsValues { PhysicsWarp = false }));
+            DrainUntil(inOrbit, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+            var orbitText = Text(orbitTransport.Requests[1]);
+            Assert.Contains("stage_performance {\"situation\":\"vacuum\"}: ", orbitText);
+            Assert.DoesNotContain("On the launch pad", orbitText);
+            Assert.Equal(Body(padTransport.Requests[1]).GetProperty("tools").GetRawText(), Body(orbitTransport.Requests[1]).GetProperty("tools").GetRawText());
+        }
+
+        [Fact]
         public void TheToolsListOnTheMissionRequestIsByteIdenticalToBefore()
         {
             var transport = new StreamingFakeTransport(Plan());

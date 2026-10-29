@@ -451,9 +451,15 @@ namespace ClaudiaKermin.Core.Missions
                     + "Spending Cap: $" + mission.SpendingCap.ToString("0.00", CultureInfo.InvariantCulture) + ".\n"
                     + MissionPrompts.SettingsText(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config))) + "\n"
                     + MissionPrompts.Facts(_ut, _snapshot) + ChildVesselFacts(mission)
-                    + MissionPrompts.StageTable(_snapshot, mission.Goal, mission.PlannedAscent) + MissionPrompts.PadPlanning(_snapshot),
+                    + PlanFigures(mission, mission.Goal),
                 Notice = MissionPrompts.PlanNotice,
             });
+        }
+
+        /// <summary>What every request for a Mission Plan carries from its own Game Snapshot (#508, #513): the stage table, and the pad wording while the craft is on the pad.</summary>
+        private string PlanFigures(Mission mission, string goal)
+        {
+            return MissionPrompts.StageTable(_snapshot, goal, mission.PlannedAscent) + MissionPrompts.PadPlanning(_snapshot);
         }
 
         /// <summary>
@@ -770,7 +776,7 @@ namespace ClaudiaKermin.Core.Missions
             Begin(new Turn
             {
                 Purpose = Purpose.Settings,
-                UserText = MissionPrompts.SettingsChanged(edited) + "\n" + MissionPrompts.Facts(_ut, _snapshot),
+                UserText = MissionPrompts.SettingsChanged(edited) + "\n" + MissionPrompts.Facts(_ut, _snapshot) + PlanFigures(mission, mission.Goal),
                 Notice = MissionPrompts.SettingsNotice,
             });
         }

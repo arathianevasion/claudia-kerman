@@ -691,6 +691,20 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void TheRevisedMissionPlanRequestAfterADebriefCarriesTheStageTable()
+        {
+            var rig = new Rig(this, DebriefJson("Off-Nominal", ",\"follow_up\":\"revised_plan\",\"follow_up_text\":\"Add a second burn.\""), PlanReply());
+            var start = rig.RunToRunning();
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => rig.Transport.Requests.Count == 4 && v.Stage == MissionStage.AwaitingPlanApproval);
+
+            var text = LastUserText(rig.Transport.Requests[3]);
+            Assert.Contains("Stage table: these are the figures stage_performance and plan_ascent would give for this craft now", text);
+            Assert.Contains("stage_performance {\"situation\":\"vacuum\"}: ", text);
+        }
+
+        [Fact]
         public void AnOffNominalDebriefWithNoRevisedPlanAsksForACorrectiveSequence()
         {
             var rig = new Rig(this, DebriefJson("Off-Nominal", ""), Rig.SequenceReply());
