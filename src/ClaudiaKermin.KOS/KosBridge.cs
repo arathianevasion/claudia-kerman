@@ -403,6 +403,7 @@ namespace ClaudiaKermin.KOS
             // Every run starts with SAS off, whatever left it on (a hand back, a make-safe, the player): it fights kOS steering.
             try { CraftSafety.SasOff(shared.Vessel, "run start"); }
             catch (Exception e) { Debug.LogWarning(ModInfo.LogTag + " couldn't turn SAS off at run start: " + e.Message); }
+            run.NodesAtStart = ManeuverPlan.Nodes(shared.Vessel);
             _runs[pending.PartId] = run;
             KosGates.Runs.Open(pending.PartId, pending.RunId);
             if (pending.RunId >= 0) IpuGuard.RunStarted();
@@ -425,6 +426,8 @@ namespace ClaudiaKermin.KOS
             if (run.RunId >= 0) IpuGuard.RunEnded(outcome);
             // kOS hands controls back as the program ends, so make safe again once it has.
             if (outcome.WasAborted) CraftSafety.MakeSafe(run.Vessel);
+            try { ManeuverPlan.RunEnded(run.Vessel, run.NodesAtStart, run.Label, outcome); }
+            catch (Exception e) { Debug.LogWarning(ModInfo.LogTag + " couldn't tidy the maneuver nodes of '" + run.Label + "': " + e.Message); }
             Debug.Log(ModInfo.LogTag + " '" + run.Label + "' ended: " + outcome.Summary +
                       (outcome.ErrorText.Length > 0 ? "\n" + outcome.ErrorText : "") +
                       (outcome.Kind != RunOutcomeKind.Finished && outcome.Report != null ? "\nin place of a Script Result: " + KosValues.Format(outcome.Report) : ""));
@@ -491,6 +494,8 @@ namespace ClaudiaKermin.KOS
             public readonly Action<RunOutcome> OnOutcome;
             public readonly Action<string> OnBlocked;
             public int EndedFrame = int.MaxValue;
+            /// <summary>The craft's maneuver nodes when the run started: the run's own are the ones not here (#522).</summary>
+            public List<ManeuverNode> NodesAtStart = new List<ManeuverNode>();
 
             public ActiveRun(PendingStart start, ClaudiaAddon addon, IList<string> terminal)
             {
