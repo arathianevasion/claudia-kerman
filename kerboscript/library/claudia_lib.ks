@@ -501,12 +501,30 @@ function claudia_drop_uids {
   return uids.
 }
 
+// The names, of those names, whose uid is no longer in now_uids: what left. Names are taken while the
+// part is on the ship, since a part that has left cannot be read (its vessel may be gone).
+function claudia_names_left {
+  parameter uids, names, now_uids.
+  local left is list().
+  from { local i is 0. } until i >= uids:length step { set i to i + 1. } do {
+    if not now_uids:contains(uids[i]) {
+      left:add(names[i]).
+    }
+  }
+  return left.
+}
+
 // Fires a drop plan's decouplers, lets the parts leave, notes the names of those that really left in
 // ctx:dropped and takes the craft as it now is (a drop the block chose is not part loss). Returns ""
 // or "nothing separated: the decouplers did not fire".
 function claudia_fire_drop {
   parameter ctx, plan.
   local before is ship:parts:length.
+  local gone_uids is claudia_drop_uids(plan).
+  local gone_names is list().
+  for g in plan:gone {
+    gone_names:add(g:name).
+  }
   local fired is 0.
   for d in plan:decouplers {
     if claudia_fire_decoupler(d) {
@@ -525,10 +543,8 @@ function claudia_fire_drop {
   for p in ship:parts {
     left:add(p:uid).
   }
-  for g in plan:gone {
-    if not left:contains(g:uid) {
-      ctx:dropped:add(g:name).
-    }
+  for n in claudia_names_left(gone_uids, gone_names, left) {
+    ctx:dropped:add(n).
   }
   return "".
 }
@@ -595,9 +611,6 @@ function claudia_part_kind {
       return c[0].
     }
   }
-  if p:crewcapacity > 0 {
-    return "crew".
-  }
   return "".
 }
 
@@ -627,7 +640,8 @@ function claudia_drop_empty {
   }
   set ctx:drop_ut to time:seconds.
   local fired is list().
-  local fired_parts is list().
+  local fired_uids is list().
+  local fired_names is list().
   local judged is list().
   for p in ship:parts {
     if auto or claudia_drop_matches(p:name, p:tag, wanted) {
@@ -662,7 +676,8 @@ function claudia_drop_empty {
             if claudia_fire_decoupler(d) {
               fired:add(d:uid).
               for g in gone {
-                fired_parts:add(g).
+                fired_uids:add(g:uid).
+                fired_names:add(g:name).
               }
             }
           }
@@ -677,10 +692,8 @@ function claudia_drop_empty {
     for p in ship:parts {
       left:add(p:uid).
     }
-    for g in fired_parts {
-      if not left:contains(g:uid) {
-        ctx:dropped:add(g:name).
-      }
+    for n in claudia_names_left(fired_uids, fired_names, left) {
+      ctx:dropped:add(n).
     }
     set ctx:parts to ship:parts:length.
     set ctx:last_ut to time:seconds.
