@@ -601,6 +601,7 @@ function claudia_part_kind {
   parameter p.
   local checks is list(
     list("engine", "ModuleEngines"), list("engine", "ModuleEnginesFX"), list("command", "ModuleCommand"),
+    list("crew", "ModuleScienceContainer"), list("crew", "KerbalSeat"),
     list("processor", "kOSProcessor"), list("science", "ModuleScienceExperiment"),
     list("power", "ModuleGenerator"), list("power", "ModuleDeployableSolarPanel"),
     list("antenna", "ModuleDataTransmitter"), list("wheel", "ModuleReactionWheel"),
@@ -643,6 +644,13 @@ function claudia_drop_empty {
   local fired_uids is list().
   local fired_names is list().
   local judged is list().
+  local crewed is list().
+  if auto {
+    // Second net for a crew cabin whose modules claudia_part_kind does not know: any part holding a kerbal.
+    for c in ship:crew {
+      crewed:add(c:part:uid).
+    }
+  }
   for p in ship:parts {
     if auto or claudia_drop_matches(p:name, p:tag, wanted) {
       local d is claudia_decoupler_of(p).
@@ -660,7 +668,11 @@ function claudia_drop_empty {
             }
           }
           if auto {
-            kinds:add(claudia_part_kind(g)).
+            if crewed:contains(g:uid) {
+              kinds:add("crew").
+            } else {
+              kinds:add(claudia_part_kind(g)).
+            }
           }
         }
         local ok is false.

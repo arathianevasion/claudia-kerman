@@ -109,6 +109,16 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal("False", One("claudia_auto_drop_fires(list(claudia_part_kind(" + PlainPart + "), claudia_part_kind(lexicon(\"hasmodule\", { parameter m. return m = \"ModuleCommand\". }))), list(0), list(40))"));
         }
 
+        [Theory]
+        [InlineData("ModuleScienceContainer")]
+        [InlineData("KerbalSeat")]
+        public void A_crew_cabin_known_only_by_its_container_or_seat_module_has_a_kind_and_blocks_auto_drop(string module)
+        {
+            var cabin = "lexicon(\"hasmodule\", { parameter m. return m = \"" + module + "\". })";
+            Assert.Equal("crew", One("claudia_part_kind(" + cabin + ")"));
+            Assert.Equal("False", One("claudia_auto_drop_fires(list(claudia_part_kind(" + PlainPart + "), claudia_part_kind(" + cabin + ")), list(0), list(40))"));
+        }
+
         [Fact]
         public void The_names_of_what_left_come_from_the_uids_and_names_taken_while_aboard()
         {
