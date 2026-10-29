@@ -107,7 +107,7 @@ namespace ClaudiaKermin.Core.Tools
                 Daylight = wantDaylight,
                 MaxCorrectionDv = Number(ask, "max_correction_dv", Tools.LandingPass.MostCorrectionDv),
             }, body);
-            if (found.Error != null && found.Passes.Count == 0 && found.FallS == 0) return Error(found.Error);
+            if (!found.Ran) return Error(found.Error);
             var passes = new List<object>();
             foreach (var pass in found.Passes)
                 passes.Add(new Dictionary<string, object>

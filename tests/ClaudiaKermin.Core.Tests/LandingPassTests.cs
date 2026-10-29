@@ -193,8 +193,8 @@ namespace ClaudiaKermin.Core.Tests
         {
             var snapshot = Mun(0);
             var first = Find(snapshot, 0, 120, false, 30);
-            var lit = new FakeBody { Sun = (lat, lon, ut) => ut < first.ArriveUt + 100 ? -5 : 40 };
-            var found = Find(snapshot, 0, 120, true, 30, lit);
+            var sunUp = new FakeBody { Sun = (lat, lon, ut) => ut < first.ArriveUt + 100 ? -5 : 40 };
+            var found = Find(snapshot, 0, 120, true, 30, sunUp);
             Assert.Null(found.Error);
             Assert.Equal(first.NextPassUt, found.ArriveUt, 3);
             Assert.Equal("dark: the sun -5 degrees up, not over 20", found.Passes[0].Verdict);
@@ -279,8 +279,8 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void Find_landing_site_shows_only_sites_land_can_fly()
         {
-            // Sun up over the biome's ground-track points but dark at every touchdown land could plan (from 120 s on): the one
-            // site under the craft now is lit only now, too soon for land.
+            // The sun up over the ground-track points only in the first minute, dark at every touchdown land could plan (from 120 s on): the one
+            // site under the craft now has the sun up only now, too soon for land.
             var fake = new FakeBody { Sun = (lat, lon, ut) => ut < 1060 ? 45 : -10 };
             var outcome = PlanningTools.Default().Run("find_landing_site", "{\"body\":\"Mun\",\"daylight\":true,\"within_hours\":2}", Mun(0), fake);
             Assert.False(outcome.IsError, outcome.Json);

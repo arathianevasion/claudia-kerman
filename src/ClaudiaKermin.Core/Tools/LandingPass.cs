@@ -45,6 +45,8 @@ namespace ClaudiaKermin.Core.Tools
     {
         /// <summary>Null when a pass was found; otherwise why there is none.</summary>
         public string Error;
+        /// <summary>The search ran over the passes (false when it could not start: no closed orbit, too low, no frame).</summary>
+        public bool Ran;
         public double BurnUt = -1;
         public double ArriveUt = -1;
         public double CorrectionDv;
@@ -154,6 +156,7 @@ namespace ClaudiaKermin.Core.Tools
 
             var fall = FallSeconds(orbit.Mu, orbit.A, ask.PeRadius);
             result.FallS = fall;
+            result.Ran = true;
             var turnRate = body.RotationPeriod != 0 ? 360 / body.RotationPeriod : 0;
             var lat = ask.Latitude * Math.PI / 180;
             Func<double, Vec3> siteAt = ut =>

@@ -82,7 +82,7 @@ namespace ClaudiaKermin.Core.Tools
                 return PlanningJson.Error("the craft is not in orbit round " + body.Name + "; its ground track is only known for the body it orbits, so ask again once it is");
 
             var within = JsonNode.Double(input["within_hours"]);
-            if (within.HasValue && within.Value <= 0) return PlanningJson.Error("max_slope_deg and within_hours must be more than 0");
+            if (within.HasValue && within.Value <= 0) return PlanningJson.Error("within_hours must be more than 0");
             var query = new LandingSiteQuery
             {
                 Biome = JsonNode.Str(input["biome"]),
@@ -92,7 +92,7 @@ namespace ClaudiaKermin.Core.Tools
                 MaxCorrectionDv = JsonNode.Double(input["max_correction_dv"]) ?? LandingPass.DefaultMaxCorrectionDv(LanderDv(snapshot)),
             };
             query.EdgeMarginM = JsonNode.Double(input["edge_margin_m"]) ?? LandingSiteSearch.DefaultEdgeMarginM;
-            if (query.MaxSlopeDeg <= 0) return PlanningJson.Error("max_slope_deg and within_hours must be more than 0");
+            if (query.MaxSlopeDeg <= 0) return PlanningJson.Error("max_slope_deg must be more than 0");
             if (!(query.EdgeMarginM >= 0 && query.EdgeMarginM <= 50000)) return PlanningJson.Error("edge_margin_m must be from 0 to 50000");
             if (!(query.MaxCorrectionDv >= 0 && query.MaxCorrectionDv <= 1000)) return PlanningJson.Error("max_correction_dv must be from 0 to 1000 m/s");
             var near = input["near"];

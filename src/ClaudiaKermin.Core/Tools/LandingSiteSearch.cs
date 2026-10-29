@@ -87,7 +87,7 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>Sites in one result are at least this far apart, degrees of arc.</summary>
         public const double MinSeparationDeg = 2;
         private const int TrackStepsPerOrbit = 180;
-        /// <summary>Enough for 48 h of a low Mun orbit at full resolution (#510: the window is at least a turn of the body).</summary>
+        /// <summary>Enough for 48 h of a 30 km Mun orbit at full resolution (#510: the window is at least a turn of the body).</summary>
         private const int MaxTrackSamples = 16000;
         /// <summary>The most track points surveyed for the biome and the sun in one round (with a <c>near</c> point, the only round), and the most whose slope is measured, per search.</summary>
         private const int MaxCandidates = 240;
@@ -147,7 +147,7 @@ namespace ClaudiaKermin.Core.Tools
                     result.AfterBiome += candidates.Count;
                 }
                 result.AfterDaylight += candidates.Count;
-                SlopeRound(body, orbit, now, query, api, candidates, sites, edgeSites, result, ref checkedSlope, ref unreadable, ref passedSlope);
+                TestRound(body, orbit, now, query, api, candidates, sites, edgeSites, result, ref checkedSlope, ref unreadable, ref passedSlope);
             }
             if (sites.Count == 0) sites = edgeSites;
             result.AfterSlope = passedSlope;
@@ -164,7 +164,7 @@ namespace ClaudiaKermin.Core.Tools
         /// One round's candidates (already in the biome and the sun) through the slope test in batches, the biome margin and
         /// <c>land</c>'s pass search, adding sites to <paramref name="sites"/> (or <paramref name="edgeSites"/>, at the biome edge).
         /// </summary>
-        private static void SlopeRound(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, IPlanningBody api, List<Candidate> candidates,
+        private static void TestRound(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, IPlanningBody api, List<Candidate> candidates,
             List<LandingSite> sites, List<LandingSite> edgeSites, LandingSiteResult result, ref int checkedSlope, ref int unreadable, ref int passedSlope)
         {
             var wantBiome = !string.IsNullOrEmpty(query.Biome);
@@ -226,7 +226,7 @@ namespace ClaudiaKermin.Core.Tools
                 Latitude = site.Latitude, Longitude = site.Longitude, PeRadius = body.Radius + Math.Max(0, site.Altitude) + LandingPass.ApproachM,
                 EarliestUt = now + LandingPass.LeadS, Daylight = query.Daylight, MaxCorrectionDv = query.MaxCorrectionDv,
             };
-            var latest = now + LandingPass.ReachSeconds(LandingPass.WindowHours(query.WithinHours, 0, 0), query.Daylight, body.RotationPeriod);
+            var latest = now + LandingPass.ReachSeconds(Math.Max(0.05, Math.Min(MaxWindowHours, query.WithinHours)), query.Daylight, body.RotationPeriod);
             ask.LatestUt = Math.Min(latest, site.PassUt + 1.5 * orbit.Period);
             var pass = LandingPass.Find(body, orbit, now, ask, api);
             if (pass.Error != null && ask.LatestUt < latest)
