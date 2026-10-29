@@ -92,6 +92,28 @@ namespace ClaudiaKermin.Kerboscript.Tests
         // (no crewcapacity, so reading one throws).
         private const string PlainPart = "lexicon(\"hasmodule\", { parameter m. return false. })";
 
+        [Theory]
+        [InlineData("false", 1, "left")]
+        [InlineData("true", 1, "retry")]
+        [InlineData("true", 2, "retry")]
+        [InlineData("true", 3, "gave_up")]
+        public void A_fired_decoupler_whose_parts_stay_is_tried_again_until_the_bound_then_given_up(string stayed, int tries, string expected)
+        {
+            Assert.Equal("3", One("claudia_drop_max_tries()"));
+            Assert.Equal(expected, One("claudia_drop_outcome(" + stayed + ", " + tries + ")"));
+        }
+
+        [Fact]
+        public void Drop_empty_ignores_stage_limit_and_the_bound_ends_in_a_blocknote()
+        {
+            var source = CoreLibrary.Files.Single(f => f.Name == "claudia_lib").Source;
+            var start = source.IndexOf("function claudia_drop_empty {", System.StringComparison.Ordinal);
+            var body = source.Substring(start, source.IndexOf("// ---- Waits and warp", start, System.StringComparison.Ordinal) - start);
+            Assert.DoesNotContain("stage_limit", body);
+            Assert.Contains("claudia_drop_outcome(stayed, tries)", body);
+            Assert.Contains("blocknote", body);
+        }
+
         [Fact]
         public void A_plain_part_has_no_kind_and_the_kind_reads_nothing_but_modules()
         {

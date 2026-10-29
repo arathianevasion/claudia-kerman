@@ -34,14 +34,14 @@
 //| (r, v, q, node, transfer, ...): kOS won't compile the script. An unknown option fails the block at once
 //| with reason "unknown option <name>". Every block also takes the common options:
 //|   drop_empty ["auto"]: "auto", or part names or tags (e.g. list("fuelTank", "side tanks")); list() is off. The auto-staging
-//|     fires a decoupler once all its tanks are empty, never one holding fuel, below stage_limit or holding the part
+//|     fires a decoupler once all its tanks are empty, whatever stage_limit says, never one holding fuel or the part
 //|     running the script. "auto" judges every decoupler: only empty tanks and trim (cones, ducts, struts) may leave,
 //|     never an engine, crew/command part, processor, science, power, antenna, wheel, RCS, leg, chute, heat shield.
 //|     Burning blocks only; result lists dropped.
 //|   min_ec_pct [10]: abort when electric charge falls below this percent of capacity.
 //|   max_duration [per block]: abort when the block has run this many seconds, waits included.
 //|   abort_on_part_loss [true]: abort when the craft loses a part other than by the block's own staging.
-//|   stage_limit [0]: auto-staging stages on flameout but never below this stage number, and never
+//|   stage_limit [0]: flameout staging stops at this stage number (not drop_empty), and never
 //|     fires a stage holding parachutes or heat-shield separation. Out of fuel at the limit fails.
 //|   rcs_tolerance [lexicon("on_deg", 10, "big_deg", 20, "aligned_deg", 2, "aligned_rate", 0.5)]: RCS Use. Blocks switch RCS on when the steering error is over big_deg (a big turn, even with time to spare), or over on_deg and the reaction wheels can't make the turn in time (big_deg at or under on_deg acts as on_deg), and off once the craft is Aligned: within aligned_deg and turning under aligned_rate deg/s, or within aligned_deg for 3 s. Aligned also lets a burn start, so loosening it loosens burn pointing. Give only the keys you change.
 //| A block returns a result lexicon (it does not report). Common fields: success (boolean), reason
@@ -632,10 +632,30 @@ function claudia_auto_drop_fires {
   return claudia_tanks_empty(amounts, capacities).
 }
 
+// How many times drop_empty fires a decoupler whose parts stay aboard before it gives up.
+function claudia_drop_max_tries {
+  return 3.
+}
+
+// What a fired decoupler's try came to, after tries tries: "left" if its parts went, else "retry" while
+// tries remain, else "gave_up".
+function claudia_drop_outcome {
+  parameter stayed, tries.
+  if not stayed {
+    return "left".
+  }
+  if tries < claudia_drop_max_tries() {
+    return "retry".
+  }
+  return "gave_up".
+}
+
 // Fires decouplers whose tanks are all empty, together with every other part leaving with them, and
 // notes the names of the parts that left in ctx:dropped. Looks twice a second. drop_empty "auto" judges
 // every decoupler on the craft (claudia_auto_drop_fires); a list judges the decoupler of each part it
-// names. A decoupler is tried once (ctx:drop_tried), and never one below stage_limit.
+// names. stage_limit does not apply: it limits flameout staging only. A decoupler whose parts are still
+// aboard after the wait is tried again on a later look, up to claudia_drop_max_tries times (ctx:drop_tries
+// counts them), then a blocknote, and it stays in ctx:drop_tried.
 function claudia_drop_empty {
   parameter ctx.
   local wanted is ctx:opt:drop_empty.
@@ -647,6 +667,7 @@ function claudia_drop_empty {
   local fired is list().
   local fired_uids is list().
   local fired_names is list().
+  local fired_groups is list().
   local judged is list().
   local crewed is list().
   if auto {
@@ -658,7 +679,7 @@ function claudia_drop_empty {
   for p in ship:parts {
     if auto or claudia_drop_matches(p:name, p:tag, wanted) {
       local d is claudia_decoupler_of(p).
-      if not d:istype("String") and not ctx:drop_tried:contains(d:uid) and not judged:contains(d:uid) and d:stage >= ctx:opt:stage_limit {
+      if not d:istype("String") and not ctx:drop_tried:contains(d:uid) and not judged:contains(d:uid) {
         judged:add(d:uid).
         local gone is claudia_dropped_with(d).
         local amounts is list().
@@ -688,13 +709,17 @@ function claudia_drop_empty {
         // Nested, not one "and": firing is a side effect and must only follow the guards.
         if ok {
           if not claudia_drop_holds_core(gone) {
-            ctx:drop_tried:add(d:uid).
             if claudia_fire_decoupler(d) {
               fired:add(d:uid).
+              local group is list().
               for g in gone {
                 fired_uids:add(g:uid).
                 fired_names:add(g:name).
+                group:add(g:uid).
               }
+              fired_groups:add(group).
+            } else {
+              ctx:drop_tried:add(d:uid).
             }
           }
         }
@@ -710,6 +735,26 @@ function claudia_drop_empty {
     }
     for n in claudia_names_left(fired_uids, fired_names, left) {
       ctx:dropped:add(n).
+    }
+    from { local i is 0. } until i >= fired:length step { set i to i + 1. } do {
+      local stayed is false.
+      for u in fired_groups[i] {
+        if left:contains(u) {
+          set stayed to true.
+        }
+      }
+      local tries is 1.
+      if ctx:drop_tries:haskey(fired[i]) {
+        set tries to ctx:drop_tries[fired[i]] + 1.
+      }
+      set ctx:drop_tries[fired[i]] to tries.
+      local outcome is claudia_drop_outcome(stayed, tries).
+      if outcome <> "retry" {
+        ctx:drop_tried:add(fired[i]).
+      }
+      if outcome = "gave_up" {
+        addons:claudia:blocknote(ctx:block, lexicon("phase", "drop_empty", "note", "a decoupler fired " + tries + " times and its parts are still aboard: left on")).
+      }
     }
     set ctx:parts to ship:parts:length.
     set ctx:last_ut to time:seconds.
@@ -1596,6 +1641,7 @@ function claudia_begin {
     "parts", ship:parts:length,
     "dropped", list(),
     "drop_tried", list(),
+    "drop_tries", lexicon(),
     "drop_ut", 0,
     // RCS Use (claudia_rcs_tick): turn_by is the UT a turn must be done by (0: no deadline), set around a
     // turn to a burn; while rcs_translating is true RCS stays on and the rule decides nothing.
