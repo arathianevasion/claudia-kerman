@@ -85,7 +85,7 @@ function deorbit_stage_drop_plan {
   parameter stage_num.
   local plan is claudia_drop_plan(list()).
   for p in ship:parts {
-    if claudia_is_decoupler(p) and p:stage = stage_num {
+    if claudia_is_decoupler(p) and claudia_part_kind(p) <> "shield" and p:stage = stage_num {
       local with is claudia_dropped_with(p).
       if claudia_drop_holds_core(with) {
         set plan:error to "stage " + stage_num + "'s " + p:name + " would drop the part running the script".

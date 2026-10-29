@@ -404,14 +404,31 @@ function claudia_is_propellant {
   return res_name <> "ElectricCharge" and res_name <> "IntakeAir" and res_name <> "Ablator".
 }
 
-// The part that separates p from the craft, or "" if it has none.
+// The part that separates p from the craft, or "" if it has none. A heat shield never counts (#516): its
+// omni ModuleDecouple lets go on both sides, and only reentry jettisons it.
 function claudia_decoupler_of {
   parameter p.
   local d is p:decoupler.
-  if d:istype("Part") {
-    return d.
+  if d:istype("String") {
+    return "".
   }
-  return "".
+  if claudia_part_kind(d) = "shield" {
+    return "".
+  }
+  return d.
+}
+
+// The decoupler a drop fires for part p: p itself if it is a decoupler (kOS's p:decoupler is the one above
+// it), else the one holding it; "" if none, or p is a heat shield.
+function claudia_drop_decoupler {
+  parameter p.
+  if claudia_part_kind(p) = "shield" {
+    return "".
+  }
+  if claudia_is_decoupler(p) {
+    return p.
+  }
+  return claudia_decoupler_of(p).
 }
 
 // Every part that leaves with decoupler d: the parts whose decoupler it is, and those held by a
@@ -458,7 +475,11 @@ function claudia_drop_plan {
     for p in ship:parts {
       if claudia_drop_matches(p:name, p:tag, list(wanted)) {
         set matched to true.
-        local d is claudia_decoupler_of(p).
+        if claudia_part_kind(p) = "shield" {
+          set plan:error to p:name + " is a heat shield; reentry drops it".
+          return plan.
+        }
+        local d is claudia_drop_decoupler(p).
         if d:istype("String") {
           set plan:error to wanted + " has no decoupler".
           return plan.
@@ -696,7 +717,7 @@ function claudia_drop_empty {
   }
   for p in ship:parts {
     if auto or claudia_drop_matches(p:name, p:tag, wanted) {
-      local d is claudia_decoupler_of(p).
+      local d is claudia_drop_decoupler(p).
       if not d:istype("String") and not ctx:drop_tried:contains(d:uid) and not judged:contains(d:uid) {
         judged:add(d:uid).
         local gone is claudia_dropped_with(d).

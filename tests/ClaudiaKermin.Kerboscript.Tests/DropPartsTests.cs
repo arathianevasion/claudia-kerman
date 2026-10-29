@@ -154,6 +154,52 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal("False", One("claudia_auto_drop_fires(list(claudia_part_kind(" + PlainPart + "), claudia_part_kind(" + cabin + ")), list(0), list(40))"));
         }
 
+        // A part as kOS gives it, by the modules it has; "above" is what its :decoupler answers.
+        private static string Part(string modules, string above)
+        {
+            return "lexicon(\"name\", \"p\", \"decoupler\", " + above + ", \"hasmodule\", { parameter m. return list(" + modules + "):contains(m). })";
+        }
+
+        private const string Shield = "\"ModuleDecouple\", \"ModuleAblator\"";
+
+        [Fact]
+        public void A_heat_shield_is_never_the_decoupler_of_the_part_below_it()
+        {
+            // pod -> battery -> heat shield -> TR-18A -> tank: the TR-18A's decoupler, as kOS gives it, is the shield.
+            var shield = Part(Shield, "\"\"");
+            Assert.Equal("", One("claudia_decoupler_of(" + Part("", shield) + ")"));
+            Assert.Equal("", One("claudia_decoupler_of(" + Part("\"ModuleDecouple\"", shield) + ")"));
+            var trunk = Part("\"ModuleDecouple\"", "\"\"");
+            Assert.Equal("True", One("claudia_decoupler_of(" + Part("", trunk) + "):istype(\"Lexicon\")"));
+        }
+
+        [Fact]
+        public void Naming_a_decoupler_fires_that_decoupler_and_not_the_one_above_it()
+        {
+            var shield = Part(Shield, "\"\"");
+            var tr18 = Part("\"ModuleDecouple\"", shield);
+            Assert.Equal("True", One("claudia_drop_decoupler(" + tr18 + "):hasmodule(\"ModuleDecouple\")"));
+            Assert.Equal("False", One("claudia_drop_decoupler(" + tr18 + "):hasmodule(\"ModuleAblator\")"));
+        }
+
+        [Fact]
+        public void A_heat_shield_is_no_drop_target_even_when_named_or_under_a_tank()
+        {
+            var shield = Part(Shield, "\"\"");
+            Assert.Equal("", One("claudia_drop_decoupler(" + shield + ")"));
+            // An empty tank directly under the shield (no decoupler between): nothing to fire.
+            Assert.Equal("", One("claudia_drop_decoupler(" + Part("", shield) + ")"));
+        }
+
+        [Fact]
+        public void The_drop_plan_refuses_a_named_heat_shield_and_the_stage_plan_skips_it()
+        {
+            var source = CoreLibrary.Files.Single(f => f.Name == "claudia_lib").Source;
+            Assert.Contains("is a heat shield; reentry drops it", source);
+            var deorbit = CoreLibrary.Files.Single(f => f.Name == "deorbit").Source;
+            Assert.Contains("claudia_part_kind(p) <> \"shield\" and p:stage = stage_num", deorbit);
+        }
+
         [Fact]
         public void The_names_of_what_left_come_from_the_uids_and_names_taken_while_aboard()
         {
