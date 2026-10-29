@@ -84,7 +84,7 @@ namespace ClaudiaKermin.Core.Missions
             + "and how to burn.\n"
             + "Call a Planning Tool only when its answer changes your reply, and never to test that tools work: a Debrief "
             + "whose Script Result has the figures, or a Mission Plan revised from figures you already have, needs no tool. "
-            + "No tool is offered on an Alert, so never call a tool during an Alert.\n"
+            + "Send independent calls together in one reply, and never call a tool during an Alert.\n"
             + "Example: a Sequence Plan to land in the Mun's Midlands from low Mun orbit, with Daylight landing on. "
             + "find_landing_site {\"body\": \"Mun\", \"biome\": \"Midlands\"} shows a daylight site under the ground track "
             + "in about 2 h. stage_performance {\"situation\": \"vacuum\"} shows 820 m/s in the descent stage against the "
