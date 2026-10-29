@@ -318,14 +318,13 @@ namespace ClaudiaKermin.Core.Missions
                 RecheckAnswered(mission, turn, null, "Claudia kept calling Planning Tools after the limit of " + ToolStep.MaxSteps + " steps", null);
                 return;
             }
-            var atLimit = gate.RecheckToolSteps >= ToolStep.MaxSteps;
             mission.InFlight = true;
             mission.Activity = _craftCheck.ActivityOf(message);
             turn.Cancel = new CancellationTokenSource();
-            _craftCheck.RunTools(message, gate.RecheckSnapshot, atLimit, step => RecheckToolsAnswered(mission, turn, message, step, atLimit));
+            _craftCheck.RunTools(message, gate.RecheckSnapshot, false, step => RecheckToolsAnswered(mission, turn, message, step));
         }
 
-        private void RecheckToolsAnswered(Mission mission, Turn turn, AssistantMessage message, ToolStepResult step, bool atLimit)
+        private void RecheckToolsAnswered(Mission mission, Turn turn, AssistantMessage message, ToolStepResult step)
         {
             if (mission.Pending != turn || !mission.InFlight) return;
             mission.InFlight = false;
@@ -348,7 +347,6 @@ namespace ClaudiaKermin.Core.Missions
                 gate.RecheckRequest.Messages.Add(message.ToMessage());
                 gate.RecheckRequest.Messages.Add(step.Results);
                 gate.RecheckToolSteps++;
-                if (atLimit) gate.RecheckLimitSent = true;
                 foreach (var call in step.Calls)
                 {
                     Note(LogKind.Notice, "Planning Tool " + call.Name + " for the margin recheck (" + Shorten(call.InputJson) + "): " + (call.IsError ? "error: " : "") + call.Summary);
@@ -360,6 +358,9 @@ namespace ClaudiaKermin.Core.Missions
                     RecheckAnswered(mission, turn, null, "the Mission was Paused", null);
                     return;
                 }
+                // At the step limit the next request is the last: tool_choice none, tools and system unchanged, as for a Mission turn (#509).
+                gate.RecheckLimitSent = gate.RecheckToolSteps >= ToolStep.MaxSteps;
+                gate.RecheckRequest.NoToolChoice = gate.RecheckLimitSent;
                 var worst = RequestCharge.WorstCase(_config.Prices, mission.Model, gate.RecheckRequest);
                 if (mission.Committed + worst + DebriefReserve(mission, turn) > mission.SpendingCap)
                 {
@@ -367,6 +368,7 @@ namespace ClaudiaKermin.Core.Missions
                     RecheckAnswered(mission, turn, null, "its next calculation step could pass the Spending Cap ($" + Dollars(mission.SpendingCap) + ")", null);
                     return;
                 }
+                if (gate.RecheckLimitSent) Event(mission, "tool_limit_final", "margin_recheck after " + gate.RecheckToolSteps + " steps; the reply is asked for with tool_choice none");
                 SendRecheck(mission, turn, worst);
             }
             finally

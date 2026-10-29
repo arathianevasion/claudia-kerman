@@ -503,6 +503,110 @@ namespace ClaudiaKermin.Core.Tests
             }
         }
 
+        private static void QueueRecheckToolSteps(Rig rig, int count, int pricedStep = -1)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                var call = ("stage_performance", "{\"situation\":\"surface\",\"n\":" + i + "}");
+                rig.Router.Rechecks.Enqueue(i == pricedStep ? ToolUseStreams.ToolUsePriced("rc" + i, 100000, call) : ToolUseStreams.ToolUse("rc" + i, call));
+            }
+        }
+
+        private static string Events(Rig rig)
+        {
+            var path = Path.Combine(rig.Folder, MissionStore.EventsFile);
+            return File.Exists(path) ? File.ReadAllText(path) : "";
+        }
+
+        [Fact]
+        public void AfterEightToolStepsTheMarginRecheckSendsOneLastRequestWithToolChoiceNoneAndTheSameToolsAndATextReplyCompletesIt()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            QueueRecheckToolSteps(rig, 8);
+            rig.Router.Rechecks.Enqueue(Reply("{\"summary\":\"Plenty left.\",\"findings\":[]}"));
+            var start = rig.RunToRunning();
+            var checksBefore = rig.Router.CheckRequests.Count;
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(checksBefore + 9, rig.Router.CheckRequests.Count);
+            using (var first = JsonDocument.Parse(rig.Router.CheckRequests[checksBefore].Body))
+            {
+                for (var step = 0; step < 9; step++)
+                {
+                    using (var doc = JsonDocument.Parse(rig.Router.CheckRequests[checksBefore + step].Body))
+                    {
+                        Assert.Equal(step == 8 ? "{\"type\":\"none\"}" : "{\"type\":\"auto\"}", doc.RootElement.GetProperty("tool_choice").GetRawText());
+                        Assert.Equal(first.RootElement.GetProperty("tools").GetRawText(), doc.RootElement.GetProperty("tools").GetRawText());
+                        Assert.Equal(first.RootElement.GetProperty("system").GetRawText(), doc.RootElement.GetProperty("system").GetRawText());
+                    }
+                }
+            }
+            Assert.Contains("tool_limit_final", Events(rig));
+            Assert.Contains("The mod's margin recheck", LastUserText(rig.Transport.Requests[2]));
+            Assert.Equal("", rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief.RecheckSkipped ?? "");
+        }
+
+        [Fact]
+        public void AMarginRecheckWhoseLastReplyStillCallsToolsEndsWithoutItAsBefore()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            QueueRecheckToolSteps(rig, 9);
+            var start = rig.RunToRunning();
+            var checksBefore = rig.Router.CheckRequests.Count;
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(checksBefore + 9, rig.Router.CheckRequests.Count);
+            Assert.Contains("Claudia kept calling Planning Tools after the limit of 8 steps", rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief.RecheckSkipped);
+        }
+
+        [Fact]
+        public void TheMarginRechecksLastRequestIsBlockedByTheDebriefRoomGateAsAnyStepIs()
+        {
+            // The cap that fits the first eight recheck requests and the Debrief's room, not the ninth.
+            decimal cap;
+            using (var probe = new MissionDebriefTests())
+            {
+                var rig = new Rig(probe, DebriefJson("Nominal", ""));
+                QueueRecheckToolSteps(rig, 8, pricedStep: 7);
+                rig.Router.Rechecks.Enqueue(Reply("{\"summary\":\"Plenty left.\",\"findings\":[]}"));
+                var start = rig.RunToRunning();
+                rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+                rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+                var log = rig.CostLog();
+                var first = log.Select((c, i) => new { c, i }).First(x => x.c.Event == "pending" && x.c.Outcome == "margin_recheck").i;
+                var committed = log.Take(first).Where(c => c.Event == "paid" || c.Event == "craft_check_paid").Sum(c => c.Amount);
+                var reserve = log[first + 18].Amount;
+                Assert.Equal("pending", log[first + 18].Event);
+                decimal low = 0;
+                for (var k = 0; k < 8; k++)
+                {
+                    low = Math.Max(low, committed + log[first + 2 * k].Amount + reserve);
+                    committed += log[first + 2 * k + 1].Amount;
+                }
+                var high = committed + log[first + 16].Amount + reserve;
+                Assert.True(low < high, "no gap for a cap that fits the eight steps but not the last request: " + low + " to " + high);
+                // Just under the last request's gate, so the Debrief itself still fits once the recheck is cut short.
+                cap = high - 0.0001m;
+            }
+
+            var run = new Rig(this, DebriefJson("Nominal", ""), cap: cap);
+            QueueRecheckToolSteps(run, 8, pricedStep: 7);
+            run.Router.Rechecks.Enqueue(Reply("{\"summary\":\"Plenty left.\",\"findings\":[]}"));
+            var started = run.RunToRunning();
+            var before = run.Router.CheckRequests.Count;
+            run.Mission.Send(new KosRunEnded(Finished(), started.RunId));
+            run.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(before + 8, run.Router.CheckRequests.Count);
+            Assert.Contains("Spending Cap", run.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief.RecheckSkipped);
+            Assert.DoesNotContain("tool_limit_final", Events(run));
+        }
+
         [Fact]
         public void AMarginRecheckThatFailsIsPaidForReportedAndTheDebriefGoesOnWithoutIt()
         {
@@ -957,6 +1061,11 @@ namespace ClaudiaKermin.Core.Tests
                 }
                 _tests._background.Drain();
                 Assert.True(condition(Mission.View), "never reached; stage is " + Mission.View.Stage + " " + Mission.View.PauseReason);
+            }
+
+            public string Folder
+            {
+                get { return Path.Combine(_tests._save.Path, "ClaudiaKermin", "missions", Mission.View.MissionId); }
             }
 
             public IList<CostLine> CostLog()
