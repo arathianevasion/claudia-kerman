@@ -26,12 +26,14 @@ namespace ClaudiaKermin.Core.Tools
             {
                 return "Up to 3 landing sites on an airless body that the craft's current orbit passes over within a window, found from "
                     + "the game's live terrain, biome and sun: each has latitude and longitude (degrees), biome, terrain altitude (m above "
-                    + "sea level), slope (degrees), the UT the ground track passes over it and the sun's elevation then. Filters: an "
-                    + "optional biome, daylight (defaults to the Mission Settings), a slope limit (default 5 degrees), a window in hours "
-                    + "(defaults to the Mission Settings time cap) and an optional point to be near. The craft must be in orbit round the "
-                    + "body. Its block is land: call it to see that a biome target or a landing the Mission Goal names can be flown, "
-                    + "instead of searching by hand, then pass land the biome, not a site. Don't call it for land's target \"any\", or "
-                    + "for a body with an atmosphere (an error; deorbit aims those landings).";
+                    + "sea level), slope (degrees), the UT the ground track passes over it, the sun's elevation then, and landing_ut, when "
+                    + "land would touch down there from this orbit (correction_dv: its burn onto the site, m/s). Only sites land can fly "
+                    + "come back. Filters: an optional biome, daylight (defaults to the Mission Settings), a slope limit (default 5 "
+                    + "degrees), a window in hours (defaults to the larger of the Mission Settings time cap and one turn of the body, at "
+                    + "most 48) and an optional point to be near. The craft must be in orbit round the body. Its block is land: call it "
+                    + "to see that a biome target or a landing the Mission Goal names can be flown, instead of searching by hand, then pass "
+                    + "land the biome with the site as near (or the site alone as its target), and any within_hours or max_correction_dv "
+                    + "you gave here. Don't call it for land's target \"any\", or for a body with an atmosphere (an error; deorbit aims those landings).";
             }
         }
 
@@ -44,7 +46,8 @@ namespace ClaudiaKermin.Core.Tools
                     + "\"biome\":{\"type\":\"string\",\"description\":\"Only sites in this biome (e.g. Highlands, Midlands, Poles); omit for any.\"},"
                     + "\"daylight\":{\"type\":\"boolean\",\"description\":\"Only sites in Daylight when the track passes: the sun more than 20 degrees above the horizon; defaults to the Mission Settings.\"},"
                     + "\"max_slope_deg\":{\"type\":\"number\",\"description\":\"The steepest ground allowed, degrees; default 5.\"},"
-                    + "\"within_hours\":{\"type\":\"number\",\"description\":\"How far ahead to look along the ground track, hours (at most 48); defaults to the Mission Settings time cap.\"},"
+                    + "\"within_hours\":{\"type\":\"number\",\"description\":\"How far ahead to look along the ground track, hours (at most 48); defaults to the larger of the Mission Settings time cap and one turn of the body.\"},"
+                    + "\"max_correction_dv\":{\"type\":\"number\",\"description\":\"The most land's correction burn onto a site may cost, m/s; defaults to land's: the smaller of 30 and 5% of the craft's delta-v.\"},"
                     + "\"edge_margin_m\":{\"type\":\"number\",\"description\":\"With a biome: how far inside its edge a site should be, m; default 5000 (about the landing accuracy), 0 for none. Sites at the edge come back only when nothing deeper is reachable, marked near_biome_edge.\"},"
                     + "\"near\":{\"type\":\"object\",\"properties\":{\"latitude\":{\"type\":\"number\"},\"longitude\":{\"type\":\"number\"}},"
                     + "\"required\":[\"latitude\",\"longitude\"],\"additionalProperties\":false,\"description\":\"Prefer sites close to this point, degrees (within 15 degrees of arc of it).\"}"
@@ -78,16 +81,20 @@ namespace ClaudiaKermin.Core.Tools
             if (orbit == null || !string.Equals(orbitBody, body.Name, StringComparison.OrdinalIgnoreCase))
                 return PlanningJson.Error("the craft is not in orbit round " + body.Name + "; its ground track is only known for the body it orbits, so ask again once it is");
 
+            var within = JsonNode.Double(input["within_hours"]);
+            if (within.HasValue && within.Value <= 0) return PlanningJson.Error("max_slope_deg and within_hours must be more than 0");
             var query = new LandingSiteQuery
             {
                 Biome = JsonNode.Str(input["biome"]),
                 Daylight = JsonNode.Bool(input["daylight"]) ?? snapshot.DaylightLandingDefault,
                 MaxSlopeDeg = JsonNode.Double(input["max_slope_deg"]) ?? 5,
-                WithinHours = JsonNode.Double(input["within_hours"]) ?? snapshot.TimeCapHours,
+                WithinHours = LandingPass.WindowHours(within, snapshot.TimeCapHours, body.RotationPeriod),
+                MaxCorrectionDv = JsonNode.Double(input["max_correction_dv"]) ?? LandingPass.DefaultMaxCorrectionDv(LanderDv(snapshot)),
             };
             query.EdgeMarginM = JsonNode.Double(input["edge_margin_m"]) ?? LandingSiteSearch.DefaultEdgeMarginM;
-            if (query.MaxSlopeDeg <= 0 || query.WithinHours <= 0) return PlanningJson.Error("max_slope_deg and within_hours must be more than 0");
+            if (query.MaxSlopeDeg <= 0) return PlanningJson.Error("max_slope_deg and within_hours must be more than 0");
             if (!(query.EdgeMarginM >= 0 && query.EdgeMarginM <= 50000)) return PlanningJson.Error("edge_margin_m must be from 0 to 50000");
+            if (!(query.MaxCorrectionDv >= 0 && query.MaxCorrectionDv <= 1000)) return PlanningJson.Error("max_correction_dv must be from 0 to 1000 m/s");
             var near = input["near"];
             if (near != null)
             {
@@ -114,6 +121,8 @@ namespace ClaudiaKermin.Core.Tools
                     .Field("slope_deg", PlanningJson.Round(site.SlopeDeg, 1));
                 PlanningJson.Time(json, "pass", site.PassUt, snapshot.Ut)
                     .Field("sun_elevation_deg", PlanningJson.Round(site.SunElevationDeg, 1));
+                PlanningJson.Time(json, "landing", site.LandingUt, snapshot.Ut)
+                    .Field("correction_dv", PlanningJson.Round(site.CorrectionDv, 1));
                 if (!double.IsNaN(site.FromNearDeg)) json.Field("from_near_deg", PlanningJson.Round(site.FromNearDeg, 1));
                 if (site.AtEdge) json.Field("near_biome_edge", true);
                 json.EndObject();
@@ -127,6 +136,7 @@ namespace ClaudiaKermin.Core.Tools
                 json.Field("note", "no site met the limits; of " + LandingSiteSearch.Count(found.Candidates) + " ground-track points, "
                     + LandingSiteSearch.Count(found.AfterBiome) + " were in the biome, " + LandingSiteSearch.Count(found.AfterDaylight)
                     + " also in daylight, " + LandingSiteSearch.Count(found.AfterSlope) + " also gentle enough"
+                    + (found.Unflyable > 0 ? ", " + LandingSiteSearch.Count(found.Unflyable) + " of them with no pass land can fly in the window (max_correction_dv " + query.MaxCorrectionDv.ToString("0.#", CultureInfo.InvariantCulture) + " m/s)" : "")
                     + (query.Daylight && found.AfterDaylight == 0 && found.AfterBiome > 0
                         ? "; the sun never gets over " + LandingSiteSearch.MinSunElevationDeg.ToString("0.##", CultureInfo.InvariantCulture) + " degrees there in the window, so try a lower-latitude site, a longer window, or daylight false"
                         : "")
@@ -139,6 +149,15 @@ namespace ClaudiaKermin.Core.Tools
                 Summary = found.Sites.Count == 0 ? "no landing site on " + body.Name
                     : found.Sites.Count + (found.Sites.Count == 1 ? " site" : " sites") + " on " + body.Name + ", the first in the " + found.Sites[0].Biome,
             };
+        }
+
+        /// <summary>The craft's delta-v from the stock simulator (m/s, vacuum), as land reads it; 0 (unknown) when it isn't reliable.</summary>
+        private static double LanderDv(GameSnapshot snapshot)
+        {
+            if (!snapshot.DeltaVSimulator || snapshot.DeltaVUnreliable) return 0;
+            var total = 0.0;
+            foreach (var stage in snapshot.Stages) total += stage.DeltaVVac;
+            return total;
         }
     }
 }

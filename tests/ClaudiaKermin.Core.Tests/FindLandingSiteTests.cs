@@ -369,8 +369,16 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Empty(Sites(Run(snapshot, "{\"body\":\"Mun\"}", fake)));
             snapshot.DaylightLandingDefault = false;
             Assert.NotEmpty(Sites(Run(snapshot, "{\"body\":\"Mun\"}", fake)));
+            // #510: the window is the larger of the time cap and one turn of the body (the Mun's 38.6 h), up to 48 h.
             snapshot.TimeCapHours = 2;
-            Assert.Equal(2, Num(Run(snapshot, "{\"body\":\"Mun\"}", fake), "window_hours"));
+            Assert.Equal(38.61, Num(Run(snapshot, "{\"body\":\"Mun\"}", fake), "window_hours"));
+            snapshot.TimeCapHours = 40;
+            Assert.Equal(40, Num(Run(snapshot, "{\"body\":\"Mun\"}", fake), "window_hours"));
+            snapshot.TimeCapHours = 60;
+            Assert.Equal(48, Num(Run(snapshot, "{\"body\":\"Mun\"}", fake), "window_hours"));
+            var quick = Snapshot(rotationPeriod: 3600);
+            quick.TimeCapHours = 2;
+            Assert.Equal(2, Num(Run(quick, "{\"body\":\"Mun\",\"daylight\":false}", fake), "window_hours"));
             Assert.Equal(3, Num(Run(snapshot, "{\"body\":\"Mun\",\"within_hours\":3}", fake), "window_hours"));
         }
 

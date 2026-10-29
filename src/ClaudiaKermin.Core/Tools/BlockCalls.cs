@@ -66,6 +66,75 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
+        /// <c>ADDONS:CLAUDIA:LANDINGPASS</c>, for <c>land</c> with a site (#510): its pass search (<see cref="Tools.LandingPass"/>)
+        /// over the site <c>lat</c>, <c>lng</c> (degrees) on the body the craft orbits, the one <c>find_landing_site</c> keeps its
+        /// sites by. Takes <c>r_pe</c> (m from the body's centre: the descent's periapsis), <c>earliest_ut</c> (UT; now plus 120 s if
+        /// missing), <c>daylight</c> (default true), <c>max_correction_dv</c> (m/s; 30 if missing) and <c>within_hours</c> (the
+        /// window as <c>find_landing_site</c> takes it; its default if missing). Gives <c>error</c> "", <c>burn_ut</c>,
+        /// <c>arrive_ut</c>, <c>correction_dv</c>, <c>cross_m</c>, <c>sun</c> (degrees; -90 where not asked), <c>next_pass_ut</c> (the
+        /// next pass's touchdown; -1 for none), <c>fall_s</c>, <c>window_hours</c> (how far it looked, with daylight's reach) and
+        /// <c>passes</c> (each pass looked at: <c>burn_ut</c>, <c>arrive_ut</c>, <c>cross_km</c>, <c>correction_dv</c>, <c>sun</c>,
+        /// <c>verdict</c>). With no pass, <c>error</c> says why, with <c>passes</c> and <c>next_pass_ut</c> -1; a search that could not
+        /// run gives only <c>error</c>.
+        /// </summary>
+        public static IDictionary<string, object> LandingPass(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            if (snapshot == null || snapshot.Orbit == null) return Error("the craft is not in orbit, so it has no passes over the site");
+            if (snapshot.Bodies.Count == 0) return Error("the Game Snapshot has no body table");
+            var orbited = !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body;
+            var at = new BodySystem(snapshot.Bodies).Find(orbited);
+            if (at == null) return Error("there is no body named " + PlanningJson.Quote(orbited));
+            if (at.AtmosphereHeight > 0 || at.SeaLevelAtm > 0) return Error(at.Name + " has an atmosphere, and land flies airless bodies only");
+            foreach (var key in new[] { "lat", "lng", "r_pe" })
+                if (!(NumberOrNull(ask, key).HasValue)) return Error(key + " is required");
+            object daylight;
+            if (ask.TryGetValue("daylight", out daylight) && !(daylight is bool)) return Error("daylight must be true or false");
+
+            var orbit = snapshot.Orbit;
+            var conic = Conic.FromElements(at.Gm, orbit.SemiMajorAxis, orbit.Eccentricity, orbit.Inclination, orbit.Lan, orbit.ArgumentOfPeriapsis,
+                orbit.MeanAnomalyAtEpoch, orbit.Epoch);
+            var window = Tools.LandingPass.WindowHours(NumberOrNull(ask, "within_hours"), snapshot.TimeCapHours, at.RotationPeriod);
+            var wantDaylight = daylight == null || (bool)daylight;
+            var reach = Tools.LandingPass.ReachSeconds(window, wantDaylight, at.RotationPeriod);
+            var found = Tools.LandingPass.Find(at, conic, snapshot.Ut, new LandingPassAsk
+            {
+                Latitude = Number(ask, "lat", 0),
+                Longitude = Number(ask, "lng", 0),
+                PeRadius = Number(ask, "r_pe", 0),
+                EarliestUt = Number(ask, "earliest_ut", snapshot.Ut + Tools.LandingPass.LeadS),
+                LatestUt = snapshot.Ut + reach,
+                Daylight = wantDaylight,
+                MaxCorrectionDv = Number(ask, "max_correction_dv", Tools.LandingPass.MostCorrectionDv),
+            }, body);
+            if (found.Error != null && found.Passes.Count == 0 && found.FallS == 0) return Error(found.Error);
+            var passes = new List<object>();
+            foreach (var pass in found.Passes)
+                passes.Add(new Dictionary<string, object>
+                {
+                    { "burn_ut", Math.Round(pass.BurnUt, 1) },
+                    { "arrive_ut", Math.Round(pass.ArriveUt, 1) },
+                    { "cross_km", Math.Round(pass.CrossM / 1000, 1) },
+                    { "correction_dv", Math.Round(pass.CorrectionDv, 1) },
+                    { "sun", double.IsNaN(pass.SunDeg) ? -90.0 : Math.Round(pass.SunDeg, 1) },
+                    { "verdict", pass.Verdict },
+                });
+            return new Dictionary<string, object>
+            {
+                { "error", found.Error ?? "" },
+                { "burn_ut", found.BurnUt },
+                { "arrive_ut", found.ArriveUt },
+                { "correction_dv", found.CorrectionDv },
+                { "cross_m", found.CrossM },
+                { "sun", double.IsNaN(found.SunDeg) ? -90.0 : found.SunDeg },
+                { "next_pass_ut", found.NextPassUt },
+                { "fall_s", found.FallS },
+                { "window_hours", reach / 3600 },
+                { "passes", passes },
+            };
+        }
+
+        /// <summary>
         /// <c>ADDONS:CLAUDIA:DEORBITBURN</c>, for <c>deorbit</c>: the deorbit burn search (<see cref="DeorbitBurn"/>) from the craft's
         /// orbit, by the reentry predictor with <paramref name="air"/> and <paramref name="craft"/>. Takes <c>lat</c>, <c>lng</c>
         /// (the target), <c>earliest_ut</c>, <c>max_wait</c> (s), <c>ground_alt</c> (m), <c>accuracy_km</c> and <c>isp</c> (s; 0 or
