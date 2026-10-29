@@ -38,6 +38,7 @@ namespace ClaudiaKermin.Adapter
             snapshot.Craft.Stage = vessel.currentStage;
             snapshot.RcsOn = vessel.ActionGroups[KSPActionGroup.RCS];
             snapshot.Throttle = vessel.ctrlState.mainThrottle;
+            snapshot.Nodes = ManeuverPlan.ForSnapshot(vessel);
             ReadParts(snapshot, vessel.parts, vessel.VesselDeltaV);
             MarkTrickleStages(snapshot, vessel.parts);
             // plan_ascent's drag, for a launch: only a craft on the ground of a body with air needs it.
