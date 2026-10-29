@@ -34,31 +34,113 @@ namespace ClaudiaKermin.Kerboscript.Tests
             var printed = Run(
                 "local o is claudia_options(lexicon(), land_defaults(), \"auto\"):opt.\n"
                 + "print o:target. print o:daylight. print o:max_slope. print o:max_divert.\n"
-                + "print o:touchdown_speed. print o:gear_alt. print o:burn_margin. print o:max_duration.");
-            Assert.Equal(new[] { "any", "True", "8", "300", "2", "1000", "1.1", "auto" }, printed);
-        }
-
-        // ---- land: daylight past the old one-orbit cap (#122, ADR 0004) ----
-
-        [Fact]
-        public void Land_looks_a_whole_day_of_the_body_ahead_for_a_daylight_pass()
-        {
-            // The Mun's day is 138984 s, about 70 of a low orbit's 2000 s: far past the old one-orbit cap.
-            Assert.Equal("166781.376", One("round(land_daylight_horizon(138984.48), 3)"));
-            Assert.Equal("True", One("land_daylight_horizon(138984.48) > 138984.48"));
+                + "print o:touchdown_speed. print o:gear_alt. print o:burn_margin. print o:max_duration.\n"
+                + "print o:within_hours. print o:max_correction_dv.");
+            Assert.Equal(new[] { "any", "True", "8", "300", "2", "1000", "1.1", "auto", "auto", "auto" }, printed);
         }
 
         [Theory]
-        [InlineData(0, 30, "True")]
-        [InlineData(20000, 21, "True")]
-        [InlineData(20001, 30, "False")]
-        [InlineData(0, 21, "True")]
-        [InlineData(0, 20, "False")]
-        [InlineData(0, 5, "False")]
-        [InlineData(0, -40, "False")]
-        public void A_daylight_pass_is_within_20_km_of_the_track_with_the_sun_over_20_degrees_up(double cross, double sun, string expected)
+        [InlineData("\"within_hours\", 20", "")]
+        [InlineData("\"within_hours\", 0", "within_hours must be \"auto\" or hours from 0.05 to 48")]
+        [InlineData("\"within_hours\", 60", "within_hours must be \"auto\" or hours from 0.05 to 48")]
+        [InlineData("\"within_hours\", \"long\"", "within_hours must be \"auto\" or hours from 0.05 to 48")]
+        [InlineData("\"max_correction_dv\", 45", "")]
+        [InlineData("\"max_correction_dv\", -1", "max_correction_dv must be \"auto\" or m/s from 0 to 1000")]
+        public void Land_reads_within_hours_and_max_correction_dv_as_auto_or_numbers(string option, string expected)
         {
-            Assert.Equal(expected, One(string.Format(System.Globalization.CultureInfo.InvariantCulture, "land_lit_near({0}, {1})", cross, sun)));
+            Assert.Equal(expected, One("land_unreadable(claudia_options(lexicon(" + option + "), land_defaults(), \"auto\"):opt)"));
+        }
+
+        // ---- land: the pass search's reach and window (#510) ----
+
+        [Theory]
+        [InlineData("\"auto\"", 1000, "30")]
+        [InlineData("\"auto\"", 400, "20")]
+        [InlineData("\"auto\"", 0, "30")]
+        [InlineData("45", 400, "45")]
+        public void Max_correction_dv_auto_is_the_smaller_of_30_and_5_percent_of_the_delta_v_as_find_landing_site_works_it_out(string option, double dv, string expected)
+        {
+            Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture, "land_reach_dv({0}, {1})", option, dv)));
+            if (option == "\"auto\"") Assert.Equal(double.Parse(expected, CultureInfo.InvariantCulture), Core.Tools.LandingPass.DefaultMaxCorrectionDv(dv), 6);
+        }
+
+        [Fact]
+        public void The_pass_query_asks_for_the_site_its_periapsis_the_reach_and_the_window_only_when_given()
+        {
+            var printed = Run(
+                "local q is land_pass_query(lexicon(\"lat\", -17.9, \"lng\", 118.9), 63000, 5000, true, 30, \"auto\").\n"
+                + "print q:lat. print q:lng. print q:r_pe. print q:earliest_ut. print q:daylight. print q:max_correction_dv. print q:haskey(\"within_hours\").\n"
+                + "print land_pass_query(lexicon(\"lat\", 0, \"lng\", 0), 63000, 5000, false, 30, 20):within_hours.");
+            Assert.Equal(new[] { "-17.9", "118.9", "63000", "5000", "True", "30", "False", "20" }, printed);
+        }
+
+        // ---- land: a missed pass (#510) ----
+
+        // Solving the pass again before each burn: the planned burn, the first pass found now, and the
+        // passes missed so far, on a 3700 s orbit that stays circular. Each miss is a warp that overshot
+        // the planned burn, so the search finds the pass an orbit and a half on.
+        private const string Misses = @"
+local period is 3700.
+local missed is 0.
+local planned is 10000.
+local verdict is """".
+until false {
+  local found is planned + 1.5 * period.
+  set verdict to land_pass_verdict(planned, found, true, period, missed, 0).
+  print verdict.
+  if verdict <> ""replan"" { break. }
+  set missed to missed + 1.
+  set planned to found.
+}
+print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
+";
+
+        [Fact]
+        public void A_missed_pass_replans_to_the_next_at_most_twice_then_fails_naming_the_next_pass()
+        {
+            Assert.Equal(new[] { "replan", "replan", "fail", "missed its pass over the site a third time; the next is at UT 28450 (next_pass_ut)" }, Run(Misses));
+        }
+
+        [Fact]
+        public void A_pass_solved_again_within_half_an_orbit_of_the_plan_is_the_same_pass()
+        {
+            Assert.Equal("fly", One("land_pass_verdict(10000, 10004, true, 3700, 0, 0.01)"));
+            Assert.Equal("fly", One("land_pass_verdict(10000, 9990, true, 3700, 2, 0.01)"));
+        }
+
+        [Fact]
+        public void A_missed_pass_fails_when_the_orbit_is_no_longer_near_circular_or_no_pass_is_left()
+        {
+            Assert.Equal("fail", One("land_pass_verdict(10000, 15550, true, 3700, 0, 0.12)"));
+            Assert.Equal("missed its pass over the site and the orbit is no longer near-circular (eccentricity 0.12); the next is at UT 17400 (next_pass_ut)",
+                One("land_missed_reason(true, \"\", 17400, 0, 0.12)"));
+            Assert.Equal("fail", One("land_pass_verdict(10000, -1, false, 3700, 0, 0)"));
+            Assert.Equal("missed its pass over the site and has no other: no pass over the site in the next 11.2 h",
+                One("land_missed_reason(false, \"no pass over the site in the next 11.2 h\", -1, 0, 0)"));
+        }
+
+        [Fact]
+        public void A_missed_pass_has_its_own_results_starting_at_none()
+        {
+            Assert.Equal(new[] { "0", "-1" }, Run("local x is land_extra().\nprint x:passes_missed. print x:next_pass_ut."));
+        }
+
+        [Fact]
+        public void The_pass_is_solved_again_600_s_before_the_deorbit_burn()
+        {
+            Assert.Equal("9400", One("land_resolve_ut(10000)"));
+        }
+
+        // ---- land: the default max_duration (#510) ----
+
+        [Fact]
+        public void The_default_max_duration_covers_a_planned_descent_longer_than_2400_s()
+        {
+            // Spike 2a0e: a 3,089 s descent from the deorbit burn on Minmus, a minute's wait, aborted at "ran 2564 s, over
+            // 2460 s" under the old wait plus 2400 s. Now the wait, the fall (3,000 s) and the braking (89 s), plus 1200 s.
+            Assert.Equal("4349", One("land_max_duration(60, 3000, 89)"));
+            Assert.Equal("True", One("land_max_duration(60, 3000, 89) > 60 + 3089"));
+            Assert.Equal("4289", One("land_max_duration(-5, 3000, 89)"));
         }
 
         [Fact]
@@ -137,131 +219,19 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [Fact]
         public void A_biome_target_asks_the_site_search_for_its_biome_daylight_and_slope_and_leaves_the_window_to_its_default()
         {
-            // No within_hours: the search looks as far as find_landing_site does by default (the time cap), not 3 orbits.
+            // No within_hours: the search looks as far as find_landing_site does by default (#510: the larger of the time cap
+            // and a turn of the body), not 3 orbits.
             var printed = Run(
                 "local q is land_site_query(lexicon(\"biome\", \"Midlands\"), true, 8).\n"
-                + "print q:biome. print q:daylight. print q:max_slope_deg. print q:haskey(\"within_hours\"). print q:haskey(\"near\").");
-            Assert.Equal(new[] { "Midlands", "True", "8", "False", "False" }, printed);
+                + "print q:biome. print q:daylight. print q:max_slope_deg. print q:haskey(\"within_hours\"). print q:haskey(\"near\"). print q:max_correction_dv.");
+            Assert.Equal(new[] { "Midlands", "True", "8", "False", "False", "30" }, printed);
         }
 
         [Fact]
-        public void The_pass_search_starts_an_orbit_before_a_far_pass_and_two_minutes_on_for_a_near_or_no_one()
+        public void A_biome_target_passes_on_the_window_and_reach_it_was_given()
         {
-            // A 2000 s orbit, now 1000: a pass at 13000 is searched from an orbit before it, 11000.
-            Assert.Equal("11000", One("land_search_start(1000, 13000, 2000)"));
-            // No pass given (-1), or one inside the first orbit: now + 120.
-            Assert.Equal("1120", One("land_search_start(1000, -1, 2000)"));
-            Assert.Equal("1120", One("land_search_start(1000, 2500, 2000)"));
-        }
-
-        // ---- land: the pass search (#383) ----
-
-        // Mission m20261027-141128-3c1d: a Mun 30 km circular orbit inclined 2.8 degrees, the craft over
-        // East Crater's site (-2.139, 83.39) at t0 = 568694, the pass Claudia planned for. land was called
-        // at t0 - 6000 with a near point, and the site search, ranking by closeness to it, gave the pass
-        // two over-the-site passes (2769.6 s apart) later. The craft and site are unit vectors in a frame
-        // fixed to the stars, as the ship's positionat and land_site_vector give them; apart_at and facts_at
-        // are land_plan_site's, with the sun from sun_at and any cross-track miss from cross_at (both of the
-        // touchdown UT; cross_at -1 for the orbit's own). Prints which pass the search chose (0 for t0's,
-        // -1 the one before, "none") and each trace line's phase and verdict.
-        private const string MunPasses = @"
-local pi is 3.141592653589793.
-local mu is 6.5138398e10.
-local period is 2 * pi * sqrt(230000 ^ 3 / mu).
-local fall_s is land_transfer_time(mu, 230000, 205435).
-local rot is 138984.48.
-local inc is 2.8.
-local site_lat is -2.139.
-local t0 is 568694.
-local now is t0 - 6000.
-local given is t0 + 2 * 2769.6.
-local u_s is arcsin(sin(site_lat) / sin(inc)).
-local lam_s is arctan2(sin(u_s) * cos(inc), cos(u_s)).
-local dot3 is { parameter a, b. return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]. }.
-local craft_at is { parameter t. local u is u_s + 360 * (t - t0) / period. return list(cos(u), sin(u) * cos(inc), sin(u) * sin(inc)). }.
-local site_at is { parameter t. local l is lam_s + 360 * (t - t0) / rot. return list(cos(site_lat) * cos(l), cos(site_lat) * sin(l), sin(site_lat)). }.
-local normal is list(0, -sin(inc), cos(inc)).
-local apart_at is { parameter burn_ut. return arccos(max(-1, min(1, -dot3:call(craft_at:call(burn_ut), site_at:call(burn_ut + fall_s))))). }.
-local facts_at is {
-  parameter burn_ut.
-  local cross is cross_at:call(burn_ut + fall_s).
-  if cross < 0 { set cross to abs(arcsin(dot3:call(normal, site_at:call(burn_ut + fall_s)))) * pi / 180 * 200000. }
-  return lexicon(""cross"", cross, ""sun"", sun_at:call(burn_ut + fall_s)).
-}.
-function search {
-  parameter starts.
-  local trace is list().
-  local found is land_pass_search(starts, period, fall_s, true, land_daylight_horizon(rot), rot / 720, apart_at, facts_at, trace).
-  if found:burn_ut < 0 { print ""none"". } else { print round((found:burn_ut + fall_s - t0) / 2769.6). }
-  for line in trace {
-    if line:haskey(""verdict"") { print line:phase + "": "" + line:verdict. } else { print line:phase. }
-  }
-}
-";
-
-        private static string[] MunSearch(string sunAt, string crossAt, string starts)
-        {
-            return Run("local sun_at is " + sunAt + ".\nlocal cross_at is " + crossAt + ".\n" + MunPasses + "search(" + starts + ").");
-        }
-
-        private const string Lit = "{ parameter t. return 54. }";
-        private const string OnTrack = "{ parameter t. return -1. }";
-
-        [Fact]
-        public void Lands_pass_search_takes_the_soonest_lit_pass_over_the_site_not_the_one_the_site_search_ranked_first()
-        {
-            // Before #383 the search started an orbit before the site search's pass, so it flew that pass,
-            // about two orbits after Claudia's: the passes before it were never looked at.
-            Assert.Equal(new[] { "2", "search", "pass: chosen" }, MunSearch(Lit, OnTrack, "list(land_search_start(now, given, period))"));
-            // From now, the first pass over the site is lit and within 20 km of the track: the one before
-            // Claudia's, as soon as land can plan it.
-            Assert.Equal(new[] { "-1", "search", "pass: chosen" }, MunSearch(Lit, OnTrack, "land_search_starts(now, given, period)"));
-        }
-
-        [Fact]
-        public void The_pass_search_traces_a_dark_pass_and_takes_the_next_lit_one()
-        {
-            var printed = MunSearch("{ parameter t. if t < t0 - 1000 { return -20. } return 40. }", OnTrack, "land_search_starts(now, given, period)");
-            Assert.Equal(new[] { "0", "search", "pass: dark: the sun -20 degrees up, not over 20", "pass: chosen" }, printed);
-        }
-
-        [Fact]
-        public void The_pass_search_falls_back_to_the_site_searchs_far_pass_when_the_passes_from_now_are_off_the_track()
-        {
-            // An inclined orbit whose track crosses the site only hours on: the 3 orbits from now miss it by
-            // 50 km, so the search goes on from an orbit before the site search's pass, as for #364.
-            var printed = MunSearch(Lit, "{ parameter t. if t < t0 + 4000 { return 50000. } return -1. }", "land_search_starts(now, given, period)");
-            Assert.Equal(new[] { "2", "search", "pass: off the ground track by 50 km, over 20", "pass: off the ground track by 50 km, over 20", "pass: off the ground track by 50 km, over 20", "search", "pass: chosen" }, printed);
-        }
-
-        [Fact]
-        public void A_site_dark_for_3_orbits_is_searched_on_for_its_first_lit_pass()
-        {
-            var printed = MunSearch("{ parameter t. if t < t0 + 20000 { return -30. } return 30. }", OnTrack, "land_search_starts(now, given, period)");
-            // The first pass whose touchdown is after t0 + 20000: the 8th after t0's (t0 + 22157 - 108).
-            Assert.Equal("8", printed[0]);
-            Assert.Equal("pass: chosen", printed.Last());
-            Assert.Contains("pass: dark: the sun -30 degrees up, not over 20", printed);
-        }
-
-        [Fact]
-        public void The_pass_search_starts_from_now_and_then_an_orbit_before_a_far_pass()
-        {
-            Assert.Equal(new[] { "1120", "11000" }, Run("for s in land_search_starts(1000, 13000, 2000) { print s. }"));
-            Assert.Equal(new[] { "1120" }, Run("for s in land_search_starts(1000, -1, 2000) { print s. }"));
-            Assert.Equal(new[] { "1120" }, Run("for s in land_search_starts(1000, 2500, 2000) { print s. }"));
-        }
-
-        [Theory]
-        [InlineData(25000, 30, true, "off the ground track by 25 km, over 20")]
-        [InlineData(1000, 15, true, "dark: the sun 15 degrees up, not over 20")]
-        [InlineData(1000, 20, true, "dark: the sun 20 degrees up, not over 20")]
-        [InlineData(1000, -40, false, "")]
-        [InlineData(1000, 15, false, "")]
-        [InlineData(20000, 21, true, "")]
-        public void A_pass_is_rejected_off_the_track_or_dark_and_says_which(double cross, double sun, bool daylight, string expected)
-        {
-            Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture, "land_pass_rejected({0}, {1}, {2})", cross, sun, daylight ? "true" : "false")));
+            var printed = Run("local q is land_site_query(lexicon(\"biome\", \"Flats\"), true, 8, 20, 12.5).\nprint q:within_hours. print q:max_correction_dv.");
+            Assert.Equal(new[] { "20", "12.5" }, printed);
         }
 
         // ---- land: impact_ut over the terrain on the way down (#383) ----

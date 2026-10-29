@@ -3,7 +3,7 @@
 //
 // land block test, a biome target at Minmus (#281): as land_biome_mun, at Minmus, whose equatorial ground track crosses the
 // Flats (see tests/tools/find_landing_site_minmus). The reference lander arrives in a 30 km circular equatorial Minmus orbit
-// with no stage fired; land must find a daylight site in the Flats under the next 3 orbits, fly it, and come to rest there.
+// with no stage fired; land must find a daylight site in the Flats in its window (#510: a turn of Minmus), fly it, and come to rest there.
 
 @lazyglobal off.
 

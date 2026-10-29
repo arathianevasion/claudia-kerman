@@ -31,6 +31,8 @@ namespace ClaudiaKermin.KOS
                 "Core Library only (launch): when the pad next passes under the plane of inc and lan (degrees); lexicon error, wait (s), ut, north, inc (negative southbound), heading"));
             AddSuffix("LANDINGSITE", new OneArgsSuffix<Lexicon, Lexicon>(LandingSite,
                 "Core Library only (land): find_landing_site's search on the body orbited; gives the first site as lexicon error, lat, lng, biome, ..."));
+            AddSuffix("LANDINGPASS", new OneArgsSuffix<Lexicon, Lexicon>(LandingPass,
+                "Core Library only (land): the first pass over lat, lng (r_pe, earliest_ut, daylight, max_correction_dv, within_hours) land may plan for; lexicon error, burn_ut, arrive_ut, correction_dv, next_pass_ut, passes, ..."));
             AddSuffix("DEORBITBURN", new OneArgsSuffix<Lexicon, Lexicon>(DeorbitBurn,
                 "Core Library only (deorbit): the deorbit burn that lands on lat, lng by the reentry predictor; lexicon error, burn_ut, prograde, normal, radial, dv, lat, lng, error_km, ...; leave_out (part UIDs) flies the craft without them"));
             AddSuffix("REENTRYIMPACT", new OneArgsSuffix<Lexicon, Lexicon>(ReentryImpact,
@@ -224,6 +226,19 @@ namespace ClaudiaKermin.KOS
             }, () => site["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "{0} at {1}, {2}", site["biome"], site["lat"], site["lng"])
                 : (string)site["error"]);
+        }
+
+        private Lexicon LandingPass(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> pass = null;
+            return (Lexicon)Guarded("LANDINGPASS", () =>
+            {
+                pass = BlockCalls.LandingPass(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel), new PlanningBody());
+                return KosValues.FromPlain(pass);
+            }, () => pass.ContainsKey("burn_ut") && pass["error"] as string == ""
+                ? string.Format(CultureInfo.InvariantCulture, "burn at UT {0:0.0}, touchdown at UT {1:0.0}, correction {2:0.0} m/s, next pass {3:0.0}",
+                    pass["burn_ut"], pass["arrive_ut"], pass["correction_dv"], pass["next_pass_ut"])
+                : (string)pass["error"]);
         }
     }
 }

@@ -3,7 +3,7 @@
 //
 // land block test, a biome target at the Mun (#281): the Mission Script the debug block test runner starts (bundled with the
 // Core Library, as for a real Mission). The reference lander arrives in a 30 km circular equatorial Mun orbit with no stage
-// fired; land must find a daylight site in the Midlands under the next 3 orbits through its block-internal site search, fly
+// fired; land must find a daylight site in the Midlands in its window (#510) through its block-internal site search, fly
 // it as a LATLNG, and come to rest in the Midlands. The script calls only land: the search is the block's, never the script's.
 
 @lazyglobal off.

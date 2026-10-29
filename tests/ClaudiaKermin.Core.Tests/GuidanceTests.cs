@@ -72,7 +72,10 @@ namespace ClaudiaKermin.Core.Tests
             var script = plan.IndexOf(MissionPrompts.WorkedExampleScript, StringComparison.Ordinal);
             Assert.True(site >= 0 && stages > site && script > stages, plan);
             Assert.Contains("land(", MissionPrompts.WorkedExampleScript);
-            Assert.Contains("lexicon(\"biome\", \"Midlands\")", MissionPrompts.WorkedExampleScript);
+            // #510: the biome with the site find_landing_site showed as near, so land flies that site.
+            Assert.Contains("lexicon(\"biome\", \"Midlands\", \"near\", latlng(3.1, 24.6))", MissionPrompts.WorkedExampleScript);
+            Assert.Contains("site at (3.1, 24.6)", plan);
+            Assert.Contains("give land a biome with find_landing_site's site as near", plan);
             Assert.Contains("\"drop_empty\"", MissionPrompts.WorkedExampleScript);
             Assert.Contains("addons:claudia:report(res).", MissionPrompts.WorkedExampleScript);
             // The example is block use, not a Custom Script, and its Debrief calls no tool.
@@ -90,8 +93,9 @@ namespace ClaudiaKermin.Core.Tests
             // to 10921 for the spec's RCS Use / SAS wording in the mission prompt (#402; spec-mandated, not yet human-approved);
             // to 11116 (+195) for numbering the Mission Plan's Maneuver Sequence each Sequence Plan flies (#413; ticket-mandated, not yet human-approved);
             // to 11275 (+159) for #415: big_deg in the rcs_tolerance doc and the big-turn wording in the RCS Use sentence (spec-mandated, not yet human-approved);
-            // to 11461 (+186) for #421: the one-line claudia_keep_roll doc (human approved the raise, trimming the doc to one line)
-            Assert.InRange(MissionPrompts.BaseLayer.Length, 1, 11461);
+            // to 11461 (+186) for #421: the one-line claudia_keep_roll doc (human approved the raise, trimming the doc to one line);
+            // to 11483 (+22) for #510: rule 3 and the worked example pass land the tool's site as near (human approved 2026-10-28, run budget +250)
+            Assert.InRange(MissionPrompts.BaseLayer.Length, 1, 11483);
         }
 
         [Fact]

@@ -289,6 +289,8 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("local s is addons:claudia:landingsite(lexicon(\"biome\", \"Midlands\")).")]
         [InlineData("local c is addons:claudia.\nprint c:landingsite(lexicon()).")]
         [InlineData("local f is addons:claudia:LandingSite@.\nprint f(lexicon()).")]
+        [InlineData("local p is addons:claudia:landingpass(lexicon(\"lat\", 0, \"lng\", 20, \"r_pe\", 203000)).\nprint p:burn_ut.")]
+        [InlineData("local c is addons:claudia.\nprint c:LandingPass(lexicon()):next_pass_ut.")]
         [InlineData("local b is addons:claudia:deorbitburn(lexicon(\"lat\", 0, \"lng\", -74)).")]
         [InlineData("print addons:claudia:reentryimpact(lexicon()):lat.")]
         [InlineData("local c is addons:claudia.\nprint c:ReentryImpact(lexicon()).")]
