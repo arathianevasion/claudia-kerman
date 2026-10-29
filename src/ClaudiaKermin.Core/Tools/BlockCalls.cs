@@ -62,6 +62,8 @@ namespace ClaudiaKermin.Core.Tools
                 { "pass_ut", JsonNode.Double(site["pass_ut"]) ?? 0 },
                 { "sun_elevation_deg", JsonNode.Double(site["sun_elevation_deg"]) ?? 0 },
                 { "near_edge", site["near_biome_edge"] != null },
+                { "predicted_dv", JsonNode.Double(site["predicted_dv"]) ?? -1 },
+                { "descent_shape", JsonNode.Double(site["descent_shape"]) ?? -1 },
             };
         }
 
@@ -97,15 +99,24 @@ namespace ClaudiaKermin.Core.Tools
             var window = Tools.LandingPass.WindowHours(NumberOrNull(ask, "within_hours"), snapshot.TimeCapHours, at.RotationPeriod);
             var wantDaylight = daylight == null || (bool)daylight;
             var reach = Tools.LandingPass.ReachSeconds(window, wantDaylight, at.RotationPeriod);
+            double? shape;
+            var shapeProblem = ShapeOf(ask, out shape);
+            if (shapeProblem != null) return Error(shapeProblem);
+            object move;
+            ask.TryGetValue("move_site", out move);
             var found = Tools.LandingPass.Find(at, conic, snapshot.Ut, new LandingPassAsk
             {
                 Latitude = Number(ask, "lat", 0),
                 Longitude = Number(ask, "lng", 0),
                 PeRadius = Number(ask, "r_pe", 0),
                 EarliestUt = Number(ask, "earliest_ut", snapshot.Ut + Tools.LandingPass.LeadS),
-                LatestUt = snapshot.Ut + reach,
+                LatestUt = Math.Min(snapshot.Ut + reach, Number(ask, "latest_ut", double.PositiveInfinity)),
                 Daylight = wantDaylight,
                 MaxCorrectionDv = Number(ask, "max_correction_dv", Tools.LandingPass.MostCorrectionDv),
+                Craft = CraftOf(ask),
+                Shape = shape,
+                Margin = Number(ask, "burn_margin", 1.1),
+                MoveSite = move is bool && (bool)move,
             }, body);
             if (!found.Ran) return Error(found.Error);
             var passes = new List<object>();
@@ -118,8 +129,9 @@ namespace ClaudiaKermin.Core.Tools
                     { "correction_dv", Math.Round(pass.CorrectionDv, 1) },
                     { "sun", double.IsNaN(pass.SunDeg) ? -90.0 : Math.Round(pass.SunDeg, 1) },
                     { "verdict", pass.Verdict },
+                    { "landing_dv", double.IsNaN(pass.LandingDv) ? -1.0 : Math.Round(pass.LandingDv, 1) },
                 });
-            return new Dictionary<string, object>
+            var result = new Dictionary<string, object>
             {
                 { "error", found.Error ?? "" },
                 { "burn_ut", found.BurnUt },
@@ -131,7 +143,137 @@ namespace ClaudiaKermin.Core.Tools
                 { "fall_s", found.FallS },
                 { "window_hours", reach / 3600 },
                 { "passes", passes },
+                { "r_pe", found.PeRadius },
+                { "lat", found.Error == null ? found.SiteLat : Number(ask, "lat", 0) },
+                { "lng", found.Error == null ? found.SiteLng : Number(ask, "lng", 0) },
+                { "moved_for_terrain", found.Moved },
+                { "terrain_passes", found.TerrainPasses },
+                { "shape_lo", double.IsNaN(found.ShapeLo) ? -1.0 : found.ShapeLo },
+                { "shape_hi", double.IsNaN(found.ShapeHi) ? -1.0 : found.ShapeHi },
             };
+            Descent(result, found.Descent, found.LandingDv);
+            return result;
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:BRAKEPATH</c>, for <c>land</c> as braking begins (#511): its descent simulated (<see cref="BrakePath"/>) from
+        /// the craft's state, braking from now, onto the site <c>lat</c>, <c>lng</c> (degrees) <c>s</c> m ahead along the track on
+        /// <c>heading</c> (degrees across the ground), at <c>alt</c> m above sea level moving <c>v_h</c> m/s across the ground and
+        /// <c>v_up</c> m/s up, for the craft (<see cref="CraftOf"/>), on <c>shape</c> (a Descent Shape, or "auto" for the cheapest
+        /// that clears). Gives <c>error</c> "", <c>clears</c>, <c>descent_shape</c>, <c>shape_lo</c>, <c>shape_hi</c> (-1: none clears),
+        /// <c>brake_dv</c>, <c>predicted_clearance</c> and <c>path</c> (lexicons of <c>s</c>, <c>alt</c>, <c>ground</c>); not clearing,
+        /// <c>clears</c> false with the shape's own figures and <c>error</c> "". A call that could not run gives only <c>error</c>.
+        /// </summary>
+        public static IDictionary<string, object> BrakePathCall(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            if (snapshot == null) return Error("no Game Snapshot");
+            var name = snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body;
+            var at = new BodySystem(snapshot.Bodies).Find(name);
+            if (at == null) return Error("there is no body named " + PlanningJson.Quote(name));
+            foreach (var key in new[] { "lat", "lng", "heading", "s", "alt", "v_h", "v_up" })
+                if (!NumberOrNull(ask, key).HasValue) return Error(key + " is required");
+            double? shape;
+            var shapeProblem = ShapeOf(ask, out shape);
+            if (shapeProblem != null) return Error(shapeProblem);
+            var craft = CraftOf(ask);
+            if (craft == null) return Error("thrust and mass are required");
+            var s = Number(ask, "s", 0);
+            string error;
+            var ground = DescentApproach.Read(body, at.Name, at.Radius, Number(ask, "lat", 0), Number(ask, "lng", 0), Number(ask, "heading", 0),
+                Math.Max(0, s) + 2000, out error);
+            if (ground == null) return Error(error);
+            var world = new BrakeWorld { Mu = at.Gm, Radius = at.Radius, Ground = ground, Margin = Number(ask, "burn_margin", 1.1) };
+            var start = new BrakeStart { S = s, Alt = Number(ask, "alt", 0), VH = Number(ask, "v_h", 0), VUp = Number(ask, "v_up", 0), Braking = true };
+            var all = BrakePath.FromState(craft, world, start, BrakePath.Shapes);
+            var flown = shape.HasValue ? BrakePath.Simulate(craft, world, start, shape.Value) : all.Best != null ? all.Best.Result : null;
+            var result = new Dictionary<string, object>
+            {
+                { "error", "" },
+                { "clears", flown != null && flown.Clears },
+                { "shape_lo", double.IsNaN(all.ShapeLo) ? -1.0 : all.ShapeLo },
+                { "shape_hi", double.IsNaN(all.ShapeHi) ? -1.0 : all.ShapeHi },
+            };
+            if (flown == null)
+            {
+                result["descent_shape"] = -1.0;
+                return result;
+            }
+            result["descent_shape"] = flown.Shape;
+            result["brake_dv"] = flown.DvUsed;
+            result["predicted_clearance"] = Finite(flown.LowestClearance);
+            result["path"] = PathOf(flown);
+            return result;
+        }
+
+        /// <summary>The descent's figures for <c>land</c>: shape, delta-v, clearance, braking start and the path.</summary>
+        private static void Descent(Dictionary<string, object> result, DescentTry descent, double landingDv)
+        {
+            if (descent == null)
+            {
+                result["descent_shape"] = -1.0;
+                result["predicted_dv"] = -1.0;
+                result["path"] = new List<object>();
+                return;
+            }
+            result["descent_shape"] = descent.Shape;
+            result["predicted_dv"] = landingDv;
+            result["deorbit_dv"] = descent.DeorbitDv;
+            result["brake_dv"] = descent.Result.DvUsed;
+            result["predicted_clearance"] = Finite(descent.Result.LowestClearance);
+            result["brake_start_s"] = Finite(descent.Result.BrakeStartS);
+            result["brake_end_agl"] = Finite(descent.Result.BrakeEndAgl);
+            result["heading"] = descent.Heading;
+            result["path"] = PathOf(descent.Result);
+        }
+
+        private static List<object> PathOf(BrakeResult flown)
+        {
+            var path = new List<object>();
+            foreach (var p in flown.Path)
+                path.Add(new Dictionary<string, object> { { "s", Math.Round(p.S) }, { "alt", Math.Round(p.Alt) }, { "ground", Math.Round(p.Ground) } });
+            return path;
+        }
+
+        private static double Finite(double x)
+        {
+            return double.IsNaN(x) || double.IsInfinity(x) ? -1 : x;
+        }
+
+        /// <summary>
+        /// The craft that will brake, as <c>land</c> measures it: <c>thrust</c> (kN), <c>mass</c> (t), <c>isp</c> (s), <c>turn_lag</c>
+        /// (s), <c>dry_mass</c> (t, where the stage runs dry; 0 or missing for never), and with an Underhang <c>drop_agl</c> (m), <c>lander_thrust</c> (kN), <c>lander_mass</c> (t), <c>lander_isp</c> (s);
+        /// null without thrust and mass.
+        /// </summary>
+        internal static BrakeCraft CraftOf(IDictionary<string, object> ask)
+        {
+            var thrust = Number(ask, "thrust", 0);
+            var mass = Number(ask, "mass", 0);
+            if (thrust <= 0 || mass <= 0) return null;
+            return new BrakeCraft
+            {
+                ThrustN = thrust * 1000,
+                MassKg = mass * 1000,
+                Isp = Number(ask, "isp", 300),
+                DryMassKg = Number(ask, "dry_mass", 0) * 1000,
+                LagS = Number(ask, "turn_lag", 1),
+                DropAgl = Number(ask, "drop_agl", -1),
+                LanderThrustN = Number(ask, "lander_thrust", 0) * 1000,
+                LanderMassKg = Number(ask, "lander_mass", 0) * 1000,
+                LanderIsp = Number(ask, "lander_isp", 300),
+            };
+        }
+
+        /// <summary>The Descent Shape asked for: <c>shape</c> a number, or "auto" or missing for none; a problem text otherwise.</summary>
+        private static string ShapeOf(IDictionary<string, object> ask, out double? shape)
+        {
+            shape = null;
+            object value;
+            if (!ask.TryGetValue("shape", out value) || value == null) return null;
+            if (value is string && string.Equals((string)value, "auto", StringComparison.OrdinalIgnoreCase)) return null;
+            if (!(value is double) || (double)value <= 0) return "shape must be \"auto\" or a Descent Shape over 0";
+            shape = (double)value;
+            return null;
         }
 
         /// <summary>

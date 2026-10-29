@@ -27,6 +27,8 @@ namespace ClaudiaKermin.Core.Tools
         public double EdgeMarginM = LandingSiteSearch.DefaultEdgeMarginM;
         /// <summary>A site is one <c>land</c> can fly only with a pass whose correction burn costs at most this, m/s (<see cref="LandingPass"/>).</summary>
         public double MaxCorrectionDv = LandingPass.MostCorrectionDv;
+        /// <summary>The craft that will land (#511): a site is kept only if some Descent Shape clears its pass's approach. Null: no terrain filter.</summary>
+        public BrakeCraft Craft;
     }
 
     internal sealed class LandingSite
@@ -49,6 +51,9 @@ namespace ClaudiaKermin.Core.Tools
         public double LandingUt;
         /// <summary>That pass's correction burn, m/s.</summary>
         public double CorrectionDv;
+        /// <summary>The landing's predicted delta-v (deorbit, correction and descent) and the Descent Shape it flies (#511); NaN without a craft.</summary>
+        public double PredictedDv = double.NaN;
+        public double DescentShape = double.NaN;
     }
 
     internal sealed class LandingSiteResult
@@ -224,7 +229,7 @@ namespace ClaudiaKermin.Core.Tools
             var ask = new LandingPassAsk
             {
                 Latitude = site.Latitude, Longitude = site.Longitude, PeRadius = body.Radius + Math.Max(0, site.Altitude) + LandingPass.ApproachM,
-                EarliestUt = now + LandingPass.LeadS, Daylight = query.Daylight, MaxCorrectionDv = query.MaxCorrectionDv,
+                EarliestUt = now + LandingPass.LeadS, Daylight = query.Daylight, MaxCorrectionDv = query.MaxCorrectionDv, Craft = query.Craft,
             };
             var latest = now + LandingPass.ReachSeconds(Math.Max(0.05, Math.Min(MaxWindowHours, query.WithinHours)), query.Daylight, body.RotationPeriod);
             ask.LatestUt = Math.Min(latest, site.PassUt + 1.5 * orbit.Period);
@@ -237,6 +242,8 @@ namespace ClaudiaKermin.Core.Tools
             if (pass.Error != null) return false;
             site.LandingUt = pass.ArriveUt;
             site.CorrectionDv = pass.CorrectionDv;
+            site.PredictedDv = pass.LandingDv;
+            if (pass.Descent != null) site.DescentShape = pass.Descent.Shape;
             return true;
         }
 
