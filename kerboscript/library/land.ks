@@ -23,19 +23,24 @@
 //| flatter ground) and touches down at about touchdown_speed. Aims for about 5 km of the site.
 //| Options:
 //|   target ["any"]: "any", LATLNG(lat, lng), lexicon("lat", x, "lng", y) or
-//|     lexicon("biome", name) on the body orbited. "any" lands about half an orbit on. A site must
-//|     pass within 20 km of the ground track in the next 3 orbits; plan a plane change first
-//|     otherwise. A biome target (e.g. lexicon("biome", "Midlands")), with an optional "near" point
-//|     (LATLNG or lat/lng lexicon), finds its site when it flies, with find_landing_site's search: the
-//|     soonest pass (or the one nearest near) over the biome under the ground track in the time cap,
-//|     5 km inside its edge if it can, in daylight if daylight is set, within max_slope. It flies that
-//|     site as a LATLNG on the soonest pass it can (warping there on rails), which may be before find_landing_site's.
-//|     Use find_landing_site to see such sites when you plan; pass land the biome, not a site.
+//|     lexicon("biome", name) on the body orbited. "any" lands about half an orbit on. A biome target
+//|     (e.g. lexicon("biome", "Midlands")), with an optional "near" point (LATLNG or lat/lng lexicon),
+//|     finds its site when it flies, with find_landing_site's search: the soonest pass (or the one
+//|     nearest near) over the biome under the ground track in the window, 5 km inside its edge if it
+//|     can, in daylight if daylight is set, within max_slope. A site, given or found, flies on the
+//|     soonest pass in the window whose correction burn is within max_correction_dv (warping there on
+//|     rails); land solves that pass again shortly before the deorbit burn and, if it missed it, takes the
+//|     next (up to 2 times). Use find_landing_site to see sites when you plan, then pass land the biome
+//|     with the site it showed as near, or that site alone as the target.
+//|   within_hours ["auto"]: the window, hours: the larger of 6 and a turn of the body (11.2 at Minmus,
+//|     38.6 at the Mun), up to 48. Pass the window_hours find_landing_site gave.
+//|   max_correction_dv ["auto"]: m/s the correction burn onto the site may cost: the smaller of 30 and 5%
+//|     of the craft's delta-v (30 m/s reaches about 11 km off the ground track). Pass any you gave find_landing_site.
 //|   daylight [true]: set it from the Mission Setting Daylight landing. true touches down only with
 //|     Daylight at the site: the sun more than 20 degrees up. For a site it looks up to a day of the body ahead
-//|     for such a pass (about 47 h at the Mun, 13 h at Minmus) and warps there on rails, with no Due
-//|     Time needed; give expected_duration_s that wait. "any" with daylight fails only on an orbit
-//|     that runs along the day-night line.
+//|     for such a pass (about 46 h at the Mun, 13 h at Minmus) where that is longer than the window, and warps
+//|     there on rails, with no Due Time needed; give expected_duration_s that wait. "any" with daylight fails
+//|     only on an orbit that runs along the day-night line.
 //|   max_slope [8]: degrees; steeper ground is rejected during final descent.
 //|   max_divert [300]: m it may move off the site to find ground within max_slope.
 //|   max_overshoot [500]: m past the site it may land rather than turn back. The descent brakes
@@ -46,7 +51,7 @@
 //|   gear_alt [1000]: m above the ground to lower the landing gear.
 //|   burn_margin [1.10]: braking starts this much farther out than the stopping distance needs.
 //|   underhang_agl [2000]: m above the ground to drop any Underhang.
-//|   max_duration ["auto"]: the wait to the deorbit burn plus 2400 s.
+//|   max_duration ["auto"]: the wait to the deorbit burn, plus the planned fall and braking, plus 1200 s.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
 //| Stages off a stage that can't cover the braking before the fall (within stage_limit), so plan the deorbit on it if you like.
 //| Drops any Underhang (parts below the landing legs) at underhang_agl [2000] m above the ground during braking, or earlier if it runs dry, then relights on the lander's engines and lands clear of where the Underhang falls. Fails before the deorbit burn if the lander alone can't fly the last underhang_agl m.
@@ -57,9 +62,10 @@
 //| (m from the site asked for, or the spot chosen for "any" or a biome), best_effort (true if nothing within
 //| max_divert was flat enough and it landed on the least steep spot found), burn_start_ut (when braking was planned to start, before the fall; -1 if it never got that far),
 //| braking_began_ut (when braking actually began; -1 if it never did), impact_ut (when the orbit after the deorbit burn meets
-//| the ground on the way down; -1 if it clears it or it never got that far), biome (the biome it came to rest in; "" if it never landed);
+//| the ground on the way down; -1 if it clears it or it never got that far), biome (the biome it came to rest in; "" if it never landed),
+//| passes_missed (passes it missed and took the next for; 0 normally), next_pass_ut (when it fails for a missed pass, the touchdown UT of the next it could fly; -1 for none);
 //| geo (lat, lng, alt) is the common field once landed. Fails with "land flies airless
-//| bodies only", an orbit it can't land from, a site off the ground track, no daylight pass,
+//| bodies only", an orbit it can't land from, no pass over the site within max_correction_dv, no daylight pass, a missed pass,
 //| "no site in the <biome> biome" (saying how far the search got), landing outside the biome asked for,
 //| not enough delta-v, "deorbit left periapsis" under the plan, braking that raised periapsis or climbed, "tipped over", out of fuel, or an abort; a failure in the
 //| descent leaves the craft safe but falling, so give it the delta-v (and TWR over 1.5) it needs.
@@ -69,14 +75,16 @@
 // The block's own options and defaults.
 function land_defaults {
   return lexicon("target", "any", "daylight", true, "max_slope", 8, "max_divert", 300,
-    "max_overshoot", 500, "touchdown_speed", 2, "gear_alt", 1000, "burn_margin", 1.10, "underhang_agl", 2000).
+    "max_overshoot", 500, "touchdown_speed", 2, "gear_alt", 1000, "burn_margin", 1.10, "underhang_agl", 2000,
+    "within_hours", "auto", "max_correction_dv", "auto").
 }
 
 // The block's extra results at their defaults, before it flies. Pure.
 function land_extra {
   return lexicon("slope", -1, "touchdown_speed_actual", -1, "touchdown_h_speed", -1, "lean", -1, "reversals", 0,
     "distance_to_target", -1, "best_effort", false, "burn_start_ut", -1, "braking_began_ut", -1, "impact_ut", -1, "biome", "",
-    "staged_before_braking", false, "stage_left", -1, "dropped_underhang", list(), "underhang_kept", list(), "underhang_drop_agl", -1).
+    "staged_before_braking", false, "stage_left", -1, "dropped_underhang", list(), "underhang_kept", list(), "underhang_drop_agl", -1,
+    "passes_missed", 0, "next_pass_ut", -1).
 }
 
 // "" or why an option's value isn't one the block can use.
@@ -127,7 +135,22 @@ function land_unreadable {
   if not land_number_in(opt:underhang_agl, 0, 100000) {
     return "underhang_agl must be metres, 0 or more".
   }
+  if not land_auto_or_in(opt:within_hours, 0.05, 48) {
+    return "within_hours must be " + char(34) + "auto" + char(34) + " or hours from 0.05 to 48".
+  }
+  if not land_auto_or_in(opt:max_correction_dv, 0, 1000) {
+    return "max_correction_dv must be " + char(34) + "auto" + char(34) + " or m/s from 0 to 1000".
+  }
   return "".
+}
+
+// True if x is "auto" or a number from low to high. Pure.
+function land_auto_or_in {
+  parameter x, low, high.
+  if x:istype("String") {
+    return x = "auto".
+  }
+  return land_number_in(x, low, high).
 }
 
 // "" or why a biome target (a lexicon with the key biome) isn't one the block can use: biome a name,
@@ -174,16 +197,34 @@ function land_is_biome {
 
 // What land asks ADDONS:CLAUDIA:LANDINGSITE (find_landing_site's search) for a biome target: a
 // site in the biome, in daylight if wanted, no steeper than max_slope, under the ground track in the
-// window find_landing_site defaults to (the Mission Settings time cap, no within_hours) and at
-// least the search's default margin inside the biome, nearest the near point if there is one. The
-// search wants a slope over 0, so max_slope 0 asks for 0.1 degrees. Pure.
+// window (within_hours, or for "auto" the one find_landing_site defaults to: no within_hours), at
+// least the search's default margin inside the biome, nearest the near point if there is one, and
+// with a pass in reach of max_correction_dv (reach, m/s). The search wants a slope over 0, so
+// max_slope 0 asks for 0.1 degrees. Pure.
 function land_site_query {
-  parameter target_opt, daylight, max_slope.
-  local query is lexicon("biome", target_opt:biome, "daylight", daylight, "max_slope_deg", max(0.1, max_slope)).
+  parameter target_opt, daylight, max_slope, within_hours is "auto", reach is 30.
+  local query is lexicon("biome", target_opt:biome, "daylight", daylight, "max_slope_deg", max(0.1, max_slope), "max_correction_dv", reach).
   if target_opt:haskey("near") {
     query:add("near", lexicon("latitude", target_opt:near:lat, "longitude", target_opt:near:lng)).
   }
+  if not within_hours:istype("String") {
+    query:add("within_hours", within_hours).
+  }
   return query.
+}
+
+// The m/s land's correction burn onto the site may cost: max_correction_dv, or for "auto" the smaller of
+// 30 and 5% of the craft's delta-v (lander_dv, m/s; 0 or less when stock reads none: 30), as
+// LandingPass.DefaultMaxCorrectionDv works it out for find_landing_site. Pure.
+function land_reach_dv {
+  parameter max_correction_dv, lander_dv.
+  if not max_correction_dv:istype("String") {
+    return max_correction_dv.
+  }
+  if lander_dv <= 0 {
+    return 30.
+  }
+  return min(30, 0.05 * lander_dv).
 }
 
 // True if two biome names are the same one, ignoring case and spaces ("northern basin" is stock's
@@ -893,214 +934,115 @@ function land_is_daylight {
   return sun_deg > land_daylight_sun_deg().
 }
 
-// True if a touchdown cross_m off the ground track with the sun sun_deg up is one land may plan for
-// in Daylight: within 20 km of the track and the sun more than 20 degrees up. Pure.
-function land_lit_near {
-  parameter cross_m, sun_deg.
-  return cross_m <= 20000 and land_is_daylight(sun_deg).
-}
+// ---- The pass search over a site (#510): ADDONS:CLAUDIA:LANDINGPASS, the one find_landing_site keeps its sites by ----
 
-// How far ahead (s) land looks for a daylight pass over a site: a little over one turn of the body
-// (rotation_s), which holds a whole day and night. Pure.
-function land_daylight_horizon {
-  parameter rotation_s.
-  return 1.2 * rotation_s.
-}
-
-// The first burn UT from from_ut to until_ut, in strides of stride s, at which a pass could touch
-// down in daylight (land_lit_near) on the orbit as it is now; -1 if none. facts_at: a delegate from a
-// burn UT to its touchdown's lexicon(cross (m off the ground track), sun (degrees up)). Coarse, so
-// land_scan_passes then pins the pass itself. Pure, given facts_at.
-function land_next_lit {
-  parameter from_ut, until_ut, stride, facts_at.
-  local t is from_ut.
-  until t > until_ut {
-    local f is facts_at:call(t).
-    if land_lit_near(f:cross, f:sun) {
-      return t.
-    }
-    set t to t + stride.
+// What land asks ADDONS:CLAUDIA:LANDINGPASS for: the first pass over site (lat, lng) whose deorbit burn is
+// at earliest (UT) or later, for a descent to periapsis r_pe (m from the body's centre), in daylight if
+// wanted, whose correction burn costs at most reach (m/s, land_reach_dv), in the window (within_hours, or
+// for "auto" the one find_landing_site defaults to: no within_hours). Pure.
+function land_pass_query {
+  parameter site, r_pe, earliest, daylight, reach, within_hours.
+  local query is lexicon("lat", site:lat, "lng", site:lng, "r_pe", r_pe, "earliest_ut", earliest, "daylight", daylight, "max_correction_dv", reach).
+  if not within_hours:istype("String") {
+    query:add("within_hours", within_hours).
   }
-  return -1.
+  return query.
 }
 
-// The UT a pass search starts from: 120 s from now, or when the craft passes over a site
-// (pass_ut, -1 for none) an orbit before it, so the 3 orbits searched hold that pass however far
-// ahead it is (a biome site's pass may be hours on). Pure.
-function land_search_start {
-  parameter now, pass_ut, period.
-  return max(now + 120, pass_ut - period).
-}
-
-// Where land's pass search starts, in turn: 120 s from now, then (if later) land_search_start's
-// orbit before the site search's pass. A site search with a near point ranks its sites by closeness,
-// not by pass time, so its pass may be orbits after an earlier one over the same site; land takes the
-// earliest it may plan for (#383). Pure.
-function land_search_starts {
-  parameter now, pass_ut, period.
-  local starts is list(now + 120).
-  local later is land_search_start(now, pass_ut, period).
-  if later > now + 120 {
-    starts:add(later).
-  }
-  return starts.
-}
-
-// Why land won't plan for a pass whose touchdown is cross_m off the ground track with the sun sun_deg
-// up; "" if it will (within 20 km, and lit if daylight is wanted, as land_lit_near). Pure.
-function land_pass_rejected {
-  parameter cross_m, sun_deg, daylight.
-  if cross_m > 20000 {
-    return "off the ground track by " + round(cross_m / 1000, 1) + " km, over 20".
-  }
-  if daylight and not land_is_daylight(sun_deg) {
-    return "dark: the sun " + round(sun_deg, 1) + " degrees up, not over " + land_daylight_sun_deg().
-  }
-  return "".
-}
-
-// The passes over a site from UT earliest, up to 3 orbits (period s) ahead: each a burn at which the
-// arrival point (opposite the burn, a fall_s fall later) comes closest to the site. apart_at: a
-// delegate from a burn UT to the degrees between the two; facts_at as for land_next_lit. Adds a
-// "pass" line to trace for each (its burn and arrival UTs, km off the track, the sun, and why it
-// was rejected or "chosen"). Returns lexicon("burn_ut" (the first pass land may plan for; -1 for
-// none), "dark" (a pass near the track was dark), "best_cross" (m; 1e9 for no pass)). Pure, given the
-// delegates.
-function land_scan_passes {
-  parameter earliest, period, fall_s, daylight, apart_at, facts_at, trace.
-  local step is period / 360.
-  local steps is ceiling(3 * period / step).
-  local best_cross is 1e9.
-  local dark is false.
-  local prev2 is 1e9.
-  local prev is 1e9.
-  for i in range(steps + 1) {
-    local burn_ut is earliest + i * step.
-    local apart is apart_at:call(burn_ut).
-    // A pass: the previous step was closest.
-    if i >= 2 and prev < prev2 and prev <= apart {
-      local pass_ut is burn_ut - step.
-      local f is facts_at:call(pass_ut).
-      set best_cross to min(best_cross, f:cross).
-      local why is land_pass_rejected(f:cross, f:sun, daylight).
-      local verdict is why.
-      if why = "" {
-        set verdict to "chosen".
-      }
-      trace:add(lexicon("phase", "pass", "burn_ut", round(pass_ut, 1), "arrive_ut", round(pass_ut + fall_s, 1),
-        "cross_km", round(f:cross / 1000, 1), "sun", round(f:sun, 1), "verdict", verdict)).
-      if why = "" {
-        return lexicon("burn_ut", pass_ut, "dark", dark, "best_cross", best_cross).
-      }
-      if f:cross <= 20000 {
-        set dark to true.
-      }
-    }
-    set prev2 to prev.
-    set prev to apart.
-  }
-  return lexicon("burn_ut", -1, "dark", dark, "best_cross", best_cross).
-}
-
-// The pass search over a site: from each of starts (land_search_starts) in turn, the first pass in
-// 3 orbits land may plan for (land_scan_passes); when daylight is wanted and the only passes near the
-// track there are dark, on for a lit one up to horizon s ahead (land_next_lit in strides of stride s,
-// then the scan from an orbit before it). Adds a "search" line to trace for each window searched
-// (its from and to UTs). Returns land_scan_passes's lexicon: the first start's pass, else the last
-// start's failure. Pure, given the delegates.
-function land_pass_search {
-  parameter starts, period, fall_s, daylight, horizon, stride, apart_at, facts_at, trace.
-  local found is lexicon("burn_ut", -1, "dark", false, "best_cross", 1e9).
-  for start in starts {
-    trace:add(lexicon("phase", "search", "from", round(start, 1), "to", round(start + 3 * period, 1))).
-    set found to land_scan_passes(start, period, fall_s, daylight, apart_at, facts_at, trace).
-    if found:burn_ut >= 0 {
-      return found.
-    }
-    if found:dark and daylight {
-      local until_ut is start + horizon.
-      local from_ut is start.
-      until from_ut > until_ut {
-        local lit is land_next_lit(from_ut, until_ut, stride, facts_at).
-        if lit < 0 {
-          break.
-        }
-        // Start the fine search an orbit early, so the pass the coarse step found is inside it.
-        // Any miss here (dark, or the passes in this window wide of the site on an inclined orbit)
-        // steps on: the first search already found the site near the track, so only success ends it.
-        local again is max(start, lit - period).
-        trace:add(lexicon("phase", "search", "from", round(again, 1), "to", round(again + 3 * period, 1), "note", "a lit pass near " + round(lit, 1))).
-        local later is land_scan_passes(again, period, fall_s, daylight, apart_at, facts_at, trace).
-        if later:burn_ut >= 0 {
-          return later.
-        }
-        set from_ut to lit + period.
-      }
+// The plan from LANDINGPASS's answer (found) for site, descending to r_pe: lexicon("error" ("" or why
+// there is no pass), "burn_ut", "arrive_ut" (-1 with no pass), "site", "r_pe", "next_pass_ut" (the
+// touchdown of the pass after it; -1 for none)). Traces each pass the search looked at (its burn and touchdown UTs, km off the
+// track, the correction it needs, the sun, and why it was rejected, "chosen" or "next") and the plan (#383).
+function land_pass_plan {
+  parameter found, site, r_pe.
+  if found:haskey("passes") {
+    for p in found:passes {
+      addons:claudia:blocktrace("land", lexicon("phase", "pass", "burn_ut", p:burn_ut, "arrive_ut", p:arrive_ut, "cross_km", p:cross_km,
+        "correction_dv", p:correction_dv, "sun", p:sun, "verdict", p:verdict)).
     }
   }
-  return found.
+  if found:error <> "" {
+    addons:claudia:blocktrace("land", lexicon("phase", "plan", "error", found:error)).
+    return lexicon("error", found:error, "burn_ut", -1, "arrive_ut", -1, "next_pass_ut", -1).
+  }
+  addons:claudia:blocktrace("land", lexicon("phase", "plan", "burn_ut", round(found:burn_ut, 1), "arrive_ut", round(found:arrive_ut, 1),
+    "lat", round(site:lat, 3), "lng", round(site:lng, 3), "correction_dv", round(found:correction_dv, 1), "window_h", round(found:window_hours, 1))).
+  return lexicon("error", "", "burn_ut", found:burn_ut, "arrive_ut", found:arrive_ut, "site", site, "r_pe", r_pe, "next_pass_ut", found:next_pass_ut).
 }
 
-// When to burn to land at the site (or anywhere, for site ""): lexicon("error", "" or why not,
-// "burn_ut", "arrive_ut", "site" (lat, lng), "r_pe"). A site's passes are searched 3 orbits ahead,
-// from now and then from an orbit before pass_ut (land_search_starts); when daylight is wanted and
-// every pass near the track in that time is dark, it looks on for a lit pass up to a day of the body
-// ahead (land_daylight_horizon). There is no wait cap: the block warps there (ADR 0004). Traces the
-// search, each pass and the plan (#383).
+// When land solves its pass again before the deorbit burn at burn_ut (#510): 600 s before it, leaving
+// exec_node time to turn and warp the rest. Pure.
+function land_resolve_ut {
+  parameter burn_ut.
+  return burn_ut - 600.
+}
+
+// What land does once it has solved its pass again before the deorbit burn (#510), from the burn it
+// planned (planned_ut) and the first pass the search finds now (its burn found_ut; found_ok false if it
+// found none): "fly" that pass (the same one: its burn within half an orbit, period s, of the plan),
+// "replan" to the later pass it found while it has missed fewer than 2 passes (missed) and the orbit is
+// still near-circular (eccentricity ecc under 0.1), or "fail". Pure.
+function land_pass_verdict {
+  parameter planned_ut, found_ut, found_ok, period, missed, ecc.
+  if found_ok and abs(found_ut - planned_ut) < period / 2 {
+    return "fly".
+  }
+  if found_ok and missed < 2 and ecc < 0.1 {
+    return "replan".
+  }
+  return "fail".
+}
+
+// Why land fails for a missed pass (land_pass_verdict "fail"), with the search's answer now: found_ok and
+// its error (found_error), the touchdown UT of the next pass it found (next_ut), the passes already missed
+// (missed) and the orbit's eccentricity (ecc). Pure.
+function land_missed_reason {
+  parameter found_ok, found_error, next_ut, missed, ecc.
+  local what is "missed its pass over the site".
+  if not found_ok {
+    return what + " and has no other: " + found_error.
+  }
+  local next is "; the next is at UT " + round(next_ut) + " (next_pass_ut)".
+  if missed >= 2 {
+    return what + " a third time" + next.
+  }
+  return what + " and the orbit is no longer near-circular (eccentricity " + round(ecc, 3) + ")" + next.
+}
+
+// The deorbit burn's figures for a plan (burn_ut, r_pe): lexicon("deorbit_dv" (m/s along prograde,
+// negative), "v_pe" (m/s at periapsis), "needed" (m/s: the burn, 1.2 times the speed to brake at
+// periapsis, and 100 m/s of margin)).
+function land_deorbit_figures {
+  parameter plan.
+  local mu is body:mu.
+  local burn_pos is positionat(ship, plan:burn_ut) - body:position.
+  local burn_vel is velocityat(ship, plan:burn_ut):orbit.
+  local deorbit_dv is land_deorbit_dv(mu, burn_pos:mag, burn_vel:mag, plan:r_pe).
+  local v_pe is land_periapsis_speed(mu, burn_pos:mag, plan:r_pe).
+  return lexicon("deorbit_dv", deorbit_dv, "v_pe", v_pe, "needed", abs(deorbit_dv) + 1.2 * v_pe + 100).
+}
+
+// max_duration's "auto": the wait (s) to the deorbit burn, plus land's planned time from it to touchdown
+// (fall_s to periapsis and brake_s of braking), plus 1200 s. Pure.
+function land_max_duration {
+  parameter wait_s, fall_s, brake_s.
+  return max(0, wait_s) + fall_s + brake_s + 1200.
+}
+
+// When to burn to land anywhere (target "any"): lexicon("error", "" or why not, "burn_ut", "arrive_ut",
+// "site" (lat, lng), "r_pe", "next_pass_ut" (-1)), searched 3 orbits ahead from 120 s on. A site's plan
+// is the pass search's (land_pass_plan). There is no wait cap: the block warps there (ADR 0004). Traces the plan.
 function land_plan {
-  parameter opt, site, approach, pass_ut is -1.
-  addons:claudia:blocktrace("land", lexicon("phase", "search", "now", round(time:seconds, 1), "given_pass", round(pass_ut, 1),
-    "note", "a burn under 120 s on is too soon to plan; passes outside each 3-orbit window's from and to aren't looked at")).
-  local plan is land_plan_site(opt, site, approach, pass_ut).
+  parameter opt, approach.
+  local plan is land_plan_any(opt, approach, time:seconds + 120).
   if plan:error = "" {
+    set plan["next_pass_ut"] to -1.
     addons:claudia:blocktrace("land", lexicon("phase", "plan", "burn_ut", round(plan:burn_ut, 1), "arrive_ut", round(plan:arrive_ut, 1),
       "lat", round(plan:site:lat, 3), "lng", round(plan:site:lng, 3))).
   } else {
     addons:claudia:blocktrace("land", lexicon("phase", "plan", "error", plan:error)).
   }
   return plan.
-}
-
-// land_plan's search (land_plan_any's for "any"), which traces each window searched and each pass.
-function land_plan_site {
-  parameter opt, site, approach, pass_ut.
-  if site:istype("String") {
-    return land_plan_any(opt, approach, time:seconds + 120).
-  }
-  local sma is ship:orbit:semimajoraxis.
-  local period is ship:orbit:period.
-  local r_pe is land_pe_radius(site, approach, sma).
-  if r_pe < 0 {
-    return land_too_low(site, approach).
-  }
-  local fall_s is land_transfer_time(body:mu, sma, r_pe).
-  local normal is vcrs(ship:position - body:position, ship:velocity:orbit):normalized.
-  // The angle between the arrival point (opposite the burn) and the site then.
-  local apart_at is {
-    parameter burn_ut.
-    return vang(-(positionat(ship, burn_ut) - body:position), land_site_vector(site, burn_ut + fall_s)).
-  }.
-  local facts_at is {
-    parameter burn_ut.
-    local spot is land_site_vector(site, burn_ut + fall_s).
-    return lexicon("cross", abs(90 - vang(normal, spot)) * constant:pi / 180 * body:radius, "sun", land_sun_elevation(spot, burn_ut + fall_s)).
-  }.
-  local trace is list().
-  local found is land_pass_search(land_search_starts(time:seconds, pass_ut, period), period, fall_s, opt:daylight,
-    land_daylight_horizon(body:rotationperiod), body:rotationperiod / 720, apart_at, facts_at, trace).
-  for line in trace {
-    addons:claudia:blocktrace("land", line).
-  }
-  if found:burn_ut >= 0 {
-    return lexicon("error", "", "burn_ut", found:burn_ut, "arrive_ut", found:burn_ut + fall_s, "site", site, "r_pe", r_pe).
-  }
-  if found:dark and opt:daylight {
-    return lexicon("error", "no daylight pass over the site within a day of " + body:name + " (" + round(land_daylight_horizon(body:rotationperiod) / 3600, 1) + " h) on this orbit: the sun never gets over " + land_daylight_sun_deg() + " degrees there in that time; pick a lower-latitude site, change the orbit's plane, or land with daylight false").
-  }
-  if found:best_cross < 1e9 {
-    return lexicon("error", "the site is " + round(found:best_cross / 1000, 1) + " km off the ground track, over 20 km: plan a plane change first").
-  }
-  return lexicon("error", "no pass over the site in the next 3 orbits").
 }
 
 // land_plan for "any", from UT earliest, up to 3 orbits ahead.
@@ -1205,9 +1147,9 @@ function land {
   // (find_landing_site's), through a block-internal call the Script Check allows only here in the
   // Core Library (ADR 0007), so it stays inline rather than in a helper a Mission Script could call.
   local site is "".
-  local pass_ut is -1.
+  local reach is land_reach_dv(opt:max_correction_dv, ship:deltav:current).
   if by_biome {
-    local found is addons:claudia:landingsite(land_site_query(opt:target, opt:daylight, opt:max_slope)).
+    local found is addons:claudia:landingsite(land_site_query(opt:target, opt:daylight, opt:max_slope, opt:within_hours, reach)).
     if found:error <> "" {
       local advice is "raise max_slope, try another biome or near point, or change the orbit's plane".
       if opt:daylight {
@@ -1216,7 +1158,6 @@ function land {
       return claudia_finish(ctx, false, found:error + "; " + advice, extra).
     }
     set site to lexicon("lat", found:lat, "lng", found:lng).
-    set pass_ut to found:pass_ut.
     if found:near_edge {
       addons:claudia:blocktrace("land", lexicon("phase", "site", "note", "at the " + opt:target:biome + " biome edge: nothing deeper reachable")).
     }
@@ -1240,18 +1181,26 @@ function land {
   }
 
   local approach is 3000.
-  local plan is land_plan(opt, site, approach, pass_ut).
+  local plan is "".
+  local r_pe is -1.
+  if site:istype("String") {
+    set plan to land_plan(opt, approach).
+  } else {
+    set r_pe to land_pe_radius(site, approach, ship:orbit:semimajoraxis).
+    if r_pe < 0 {
+      return claudia_finish(ctx, false, land_too_low(site, approach):error, extra).
+    }
+    // The pass search is the mod's too (find_landing_site keeps its sites by it, so both choose the
+    // same pass), through a block-internal call that stays inline for the same reason (ADR 0007).
+    set plan to land_pass_plan(addons:claudia:landingpass(land_pass_query(site, r_pe, time:seconds + 120, opt:daylight, reach, opt:within_hours)), site, r_pe).
+  }
   if plan:error <> "" {
     return claudia_finish(ctx, false, plan:error, extra).
   }
-  local aim is plan:site.
   local mu is body:mu.
-  local burn_pos is positionat(ship, plan:burn_ut) - body:position.
-  local burn_vel is velocityat(ship, plan:burn_ut):orbit.
-  local deorbit_dv is land_deorbit_dv(mu, burn_pos:mag, burn_vel:mag, plan:r_pe).
-  local needed is abs(deorbit_dv) + 1.2 * land_periapsis_speed(mu, burn_pos:mag, plan:r_pe) + 100.
-  if ship:deltav:current > 0 and ship:deltav:current < needed {
-    return claudia_finish(ctx, false, "not enough delta-v: about " + round(needed) + " m/s needed, " + round(ship:deltav:current) + " m/s left", extra).
+  local figures is land_deorbit_figures(plan).
+  if ship:deltav:current > 0 and ship:deltav:current < figures:needed {
+    return claudia_finish(ctx, false, "not enough delta-v: about " + round(figures:needed) + " m/s needed, " + round(ship:deltav:current) + " m/s left", extra).
   }
   // With an Underhang to drop, the lander alone must fly the last underhang_agl m on an engine it can light.
   if under:droppable:length > 0 {
@@ -1260,10 +1209,49 @@ function land {
       return claudia_finish(ctx, false, unflyable, extra).
     }
   }
+
+  // A site's pass is solved again from the orbit as it is shortly before the deorbit burn (ADR 0006):
+  // a pass missed before the burn commits it (a warp that overshot it, an orbit that moved) gives way to
+  // the next in the window, up to 2 times, while the orbit is near-circular (#510). The call is inline (ADR 0007).
+  if not site:istype("String") {
+    until land_resolve_ut(plan:burn_ut) <= time:seconds {
+      local waited is claudia_warp_to(ctx, land_resolve_ut(plan:burn_ut), 30).
+      if waited <> "" {
+        claudia_make_safe().
+        return claudia_finish(ctx, false, waited, extra).
+      }
+      local again is land_pass_plan(addons:claudia:landingpass(land_pass_query(site, r_pe, time:seconds + 120, opt:daylight, reach, opt:within_hours)), site, r_pe).
+      local found_ok is again:error = "".
+      local verdict is land_pass_verdict(plan:burn_ut, again:burn_ut, found_ok, ship:orbit:period, extra:passes_missed, ship:orbit:eccentricity).
+      addons:claudia:blocktrace("land", lexicon("phase", "resolve", "planned_burn_ut", round(plan:burn_ut, 1), "burn_ut", round(again:burn_ut, 1),
+        "verdict", verdict, "passes_missed", extra:passes_missed)).
+      if verdict = "fail" {
+        if found_ok {
+          set extra:next_pass_ut to round(again:arrive_ut, 1).
+        }
+        return claudia_finish(ctx, false, land_missed_reason(found_ok, again:error, again:arrive_ut, extra:passes_missed, ship:orbit:eccentricity), extra).
+      }
+      if verdict = "replan" {
+        set extra:passes_missed to extra:passes_missed + 1.
+      }
+      set plan to again.
+      if verdict = "fly" {
+        break.
+      }
+    }
+    // A later pass needs its own deorbit burn, and the delta-v for it.
+    set figures to land_deorbit_figures(plan).
+    if ship:deltav:current > 0 and ship:deltav:current < figures:needed {
+      return claudia_finish(ctx, false, "not enough delta-v: about " + round(figures:needed) + " m/s needed, " + round(ship:deltav:current) + " m/s left", extra).
+    }
+  }
+  local aim is plan:site.
+  local deorbit_dv is figures:deorbit_dv.
+  local needed is figures:needed.
   // The deorbit burn may be up to a day of the body off (a daylight pass): exec_node warps there.
-  local wait_s is plan:burn_ut - time:seconds - 60.
   if opt:max_duration:istype("String") {
-    set opt:max_duration to max(0, wait_s) + 2400.
+    local brake_s is figures:v_pe * opt:burn_margin / land_brake_accel(ship:availablethrust / ship:mass, mu / plan:r_pe ^ 2).
+    set opt:max_duration to land_max_duration(plan:burn_ut - ctx:start_ut, plan:arrive_ut - plan:burn_ut, brake_s).
   }
   sas off.
 
