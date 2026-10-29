@@ -112,6 +112,8 @@ namespace ClaudiaKermin.Core.Missions
         public string SafePending = "";
         /// <summary>The turn_shape the Craft Check planned for the launch; null when it planned none, and in older saves.</summary>
         public double? PlannedTurnShape;
+        /// <summary>The Craft Check's last plan_ascent call and result (#508); "" when it made none, and in older saves.</summary>
+        public string PlannedAscent = "";
         public MissionPlan MissionPlan;
         /// <summary>The current Sequence Plan: the one awaiting Approval, running, or just run.</summary>
         public SequencePlan SequencePlan;
@@ -178,6 +180,7 @@ namespace ClaudiaKermin.Core.Missions
             if (PausedForCap) values["pausedForCap"] = "true";
             if (SafePending.Length > 0) values["safePending"] = SafePending;
             if (PlannedTurnShape.HasValue) values["plannedTurnShape"] = PlannedTurnShape.Value.ToString("R", CultureInfo.InvariantCulture);
+            if (PlannedAscent.Length > 0) values["plannedAscent"] = PlannedAscent;
             foreach (var setting in Settings) values[SettingPrefix + setting.Key] = setting.Value;
             for (var i = 0; i < UnsafeProblems.Count; i++) values[UnsafeProblemPrefix + i.ToString(CultureInfo.InvariantCulture)] = UnsafeProblems[i];
             if (QueuedEntries > 0) values["queuedEntries"] = QueuedEntries.ToString(CultureInfo.InvariantCulture);
@@ -232,6 +235,7 @@ namespace ClaudiaKermin.Core.Missions
                 PausedCannotFly = Get(values, "pausedCannotFly") == "true",
                 PausedForCap = Get(values, "pausedForCap") == "true",
                 SafePending = Get(values, "safePending"),
+                PlannedAscent = Get(values, "plannedAscent"),
             };
             double runStart;
             if (double.TryParse(Get(values, "runStartUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out runStart)) state.RunStartUt = runStart;

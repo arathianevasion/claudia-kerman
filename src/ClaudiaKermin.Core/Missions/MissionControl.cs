@@ -369,6 +369,7 @@ namespace ClaudiaKermin.Core.Missions
             mission.System.Add(MissionPrompts.BaseLayer);
             var bodyTable = MissionPrompts.BodyTable(_snapshot != null ? _snapshot.Bodies : null);
             mission.PlannedTurnShape = _craftCheck.PlannedTurnShape;
+            mission.PlannedAscent = _craftCheck.PlannedAscent;
             mission.System.Add(MissionPrompts.MissionLayer(id, goal, bodyTable, mission.PlannedTurnShape));
             var settings = start.Settings != null ? start.Settings.Copy() : MissionSettingsValues.Defaults(_config);
             settings.ConfigAllowsPhysicsWarp = _config.PhysicsWarp;
@@ -449,7 +450,8 @@ namespace ClaudiaKermin.Core.Missions
                     + MissionPrompts.ModeFacts(mission.Remote, _snapshot) + "\n"
                     + "Spending Cap: $" + mission.SpendingCap.ToString("0.00", CultureInfo.InvariantCulture) + ".\n"
                     + MissionPrompts.SettingsText(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config))) + "\n"
-                    + MissionPrompts.Facts(_ut, _snapshot) + ChildVesselFacts(mission),
+                    + MissionPrompts.Facts(_ut, _snapshot) + ChildVesselFacts(mission)
+                    + MissionPrompts.StageTable(_snapshot, mission.Goal, mission.PlannedAscent) + MissionPrompts.PadPlanning(_snapshot),
                 Notice = MissionPrompts.PlanNotice,
             });
         }

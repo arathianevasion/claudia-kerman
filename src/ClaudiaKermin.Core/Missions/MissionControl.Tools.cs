@@ -55,10 +55,47 @@ namespace ClaudiaKermin.Core.Missions
             }
         }
 
-        /// <summary>Why a turn may not call <paramref name="tool"/>, or null when it may: no tool during an Alert.</summary>
-        private static string ToolRefusal(Purpose purpose, string tool)
+        /// <summary>
+        /// Why a turn may not call <paramref name="tool"/>, or null when it may: no tool during an Alert; on the ground, none of
+        /// the tools that need an orbit (#508); no check_script on a request for a Mission Plan (new, or revised for the Mission
+        /// Settings), which has no script.
+        /// </summary>
+        private static string ToolRefusal(Purpose purpose, GameSnapshot snapshot, string tool)
         {
-            return purpose == Purpose.Alert ? "not available during an Alert" : null;
+            if (purpose == Purpose.Alert) return "not available during an Alert";
+            var where = snapshot != null ? Grounded(snapshot.Situation) : null;
+            if (where != null)
+            {
+                var launch = snapshot.Situation == "PRELAUNCH"
+                    ? ": plan the launch with plan_ascent (the stage table is in the Mission request), and this burn once in orbit"
+                    : ": check the ascent with plan_ascent or stage_performance, and plan this burn once in orbit";
+                if (tool == "predict_burn") return "the craft is " + where + ", with no orbit to burn from" + launch;
+                if (tool == "solve_burn") return "the craft is " + where + ", with no orbit to solve a burn from" + launch;
+                if (tool == "find_landing_site") return "the craft is " + where + ", with no orbit and so no ground track to search: plan the landing site once in orbit round the body";
+            }
+            if (tool == "check_script" && (purpose == Purpose.MissionPlan || purpose == Purpose.Settings))
+                return "the Mission Plan needs no script check; the Sequence Plan's script is checked when you send it";
+            return null;
+        }
+
+        /// <summary>Where a craft on the ground is, in words ("on the launch pad"), or null when it is not on the ground.</summary>
+        internal static string Grounded(string situation)
+        {
+            switch (situation)
+            {
+                case "PRELAUNCH": return "on the launch pad";
+                case "LANDED": return "landed";
+                case "SPLASHED": return "splashed down";
+                default: return null;
+            }
+        }
+
+        /// <summary>A step's refusals: <see cref="ToolRefusal"/> first, then an identical repeat of a call made earlier in the turn (<see cref="ToolRepeats"/>).</summary>
+        private static Func<ToolUseBlock, string> ToolRefusals(Purpose purpose, GameSnapshot snapshot, Turn turn, AssistantMessage message)
+        {
+            var uses = message.Content.OfType<ToolUseBlock>().ToList();
+            var repeats = ToolRepeats.Of(turn.Messages, message);
+            return use => ToolRefusal(purpose, snapshot, use.Name) ?? repeats[uses.IndexOf(use)];
         }
 
         /// <summary>
@@ -97,8 +134,9 @@ namespace ClaudiaKermin.Core.Missions
             }
             var purpose = turn.Purpose;
             var timeout = _toolCallTimeout;
+            var refusal = ToolRefusals(purpose, snapshot, turn, message);
             _background.Run(
-                () => ToolStep.Run(tools, message, name => ToolRefusal(purpose, name), atLimit, snapshot, body, timeout),
+                () => ToolStep.Run(tools, message, refusal, atLimit, snapshot, body, timeout),
                 step => ToolsAnswered(mission, turn, message, step, atLimit),
                 error => ToolsAnswered(mission, turn, message, null, atLimit));
         }
@@ -122,15 +160,21 @@ namespace ClaudiaKermin.Core.Missions
                     Failed(mission, turn, "A Planning Tool failed; see KSP.log.");
                     return;
                 }
+                var repeats = ToolRepeats.Of(turn.Messages, message);
                 // Byte for byte as Claude sent it, then the results: the next request is this one plus these two messages.
                 turn.Messages.Add(message.ToMessage());
                 turn.Messages.Add(step.Results);
                 turn.ToolSteps++;
-                foreach (var call in step.Calls)
+                for (var i = 0; i < step.Calls.Count; i++)
                 {
+                    var call = step.Calls[i];
                     turn.Stats.Called(call.Name);
                     Note(LogKind.Notice, "Planning Tool " + call.Name + " (" + Shorten(call.InputJson) + "): " + (call.IsError ? "error: " : "") + call.Summary);
                     Event(mission, "tool", call.Name + " " + call.InputJson + " -> " + (call.IsError ? "error: " : "") + call.Summary);
+                    if (call.Refusal.Length == 0) continue;
+                    turn.Stats.Refused(call.Refusal == repeats[i]);
+                    Event(mission, "tool_refused", call.Name + " " + call.InputJson + " -> " + call.Refusal + " (this turn: " + turn.Stats.RefusedCalls + " refused, "
+                        + turn.Stats.RepeatCalls + (turn.Stats.RepeatCalls == 1 ? " repeat)" : " repeats)"));
                 }
                 // Paused while the tools ran (at the Spending Cap after the step's charge): the loop goes, the turn waits for Retry.
                 if (mission.Stage == MissionStage.Paused)
