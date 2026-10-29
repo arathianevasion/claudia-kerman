@@ -172,8 +172,8 @@ function claudia_ec_pct {
 }
 
 // Leaves the craft safe: throttle 0, steering released to SAS holding the current attitude. RCS goes
-// off (RCS Use), except on a craft whose wheels have no pitch or yaw torque: there RCS is left on (or
-// switched on, with monoprop) so SAS can hold it.
+// off (RCS Use), except on a craft in flight whose wheels have no pitch or yaw torque: there RCS is left on
+// (or switched on, with monoprop) so SAS can hold it. On the ground (#506) RCS goes off whatever the torque.
 function claudia_make_safe {
   set ship:control:pilotmainthrottle to 0.
   unlock throttle.
@@ -181,12 +181,16 @@ function claudia_make_safe {
   set ship:control:neutralize to true.
   claudia_rcs_restore_tuning().
   local mono is claudia_monoprop().
-  if mono:amount > 0 and claudia_wheels_turn_time() < 0 {
+  if mono:amount > 0 and not claudia_on_ground() and claudia_wheels_turn_time() < 0 {
     if not rcs {
       claudia_rcs_switch(true, "no wheel torque", lexicon("monoprop", round(mono:amount, 1), "monoprop_max", round(mono:capacity, 1))).
     }
   } else {
-    claudia_rcs_off("block end").
+    if claudia_on_ground() {
+      claudia_rcs_off("on the ground").
+    } else {
+      claudia_rcs_off("block end").
+    }
   }
   sas on.
 }
@@ -1293,7 +1297,8 @@ function claudia_burn_throttle {
 // What RCS should do this tick. Pure. s: lexicon rcs (on now), steering (kOS steering enabled), monoprop
 // (units ship-wide), error (|steering error|, degrees), rate (deg/s), held_s (s the error has stayed
 // under aligned_deg), translating (ctx:rcs_translating), gate (the on-gate is due: claudia_rcs_gate_due), wheels_s (the wheels-only turn
-// time, -1 with no wheel torque on pitch or yaw), left_s (s to the deadline ctx:turn_by, -1 for none).
+// time, -1 with no wheel torque on pitch or yaw), left_s (s to the deadline ctx:turn_by, -1 for none),
+// ground (LANDED, SPLASHED or PRELAUNCH: claudia_on_ground), braking (land's braking to touchdown, ctx:rcs_braking).
 // tol: rcs_tolerance. Returns lexicon on (what RCS should be) and reason (why it switched; "" for no switch).
 function claudia_rcs_decide {
   parameter s, tol.
@@ -1303,6 +1308,14 @@ function claudia_rcs_decide {
     // The RCS group still reads on with empty tanks, so this is checked first, and it never goes back on.
     set want to false.
     set reason to "no monoprop".
+  } else if s:ground {
+    // On the ground (#506) RCS never comes on, in any block, whatever the error, wheel torque or reason.
+    set want to false.
+    set reason to "on the ground".
+  } else if s:braking and s:wheels_s >= 0 {
+    // Land's braking to touchdown (#506): off while the wheels have torque; with none, the rule below stands.
+    set want to false.
+    set reason to "braking".
   } else if s:translating {
     // claudia_rcs_translate: RCS stays on, reported once, and nothing else decides.
     set want to true.
@@ -1336,6 +1349,11 @@ function claudia_rcs_decide {
     set reason to "".
   }
   return lexicon("on", want, "reason", reason).
+}
+
+// Whether the craft is on the ground: LANDED, SPLASHED or PRELAUNCH.
+function claudia_on_ground {
+  return status = "LANDED" or status = "SPLASHED" or status = "PRELAUNCH".
 }
 
 // Whether the on-gate is checked this tick: the error (degrees) is over on_deg and either just crossed
@@ -1464,10 +1482,12 @@ function claudia_rcs_tick {
   local left_s is -1.
   if gate {
     set ctx:rcs_gate_ut to now.
-    if ctx:rcs_wheels_parts <> ship:parts:length {
-      set ctx:rcs_wheels_s to claudia_wheels_turn_time().
-      set ctx:rcs_wheels_parts to ship:parts:length.
-    }
+  }
+  if (gate or ctx:rcs_braking) and ctx:rcs_wheels_parts <> ship:parts:length {
+    set ctx:rcs_wheels_s to claudia_wheels_turn_time().
+    set ctx:rcs_wheels_parts to ship:parts:length.
+  }
+  if gate {
     if ctx:turn_by > 0 {
       set left_s to max(0, ctx:turn_by - now).
     }
@@ -1477,7 +1497,8 @@ function claudia_rcs_tick {
     set monoprop to 0.
   }
   local decided is claudia_rcs_decide(lexicon("rcs", rcs, "steering", steer_on, "monoprop", monoprop, "translating", false, "error", error, "rate", rate,
-    "held_s", claudia_held_s(ctx:rcs_within_ut, now), "gate", gate, "wheels_s", ctx:rcs_wheels_s, "left_s", left_s), tol).
+    "held_s", claudia_held_s(ctx:rcs_within_ut, now), "gate", gate, "wheels_s", ctx:rcs_wheels_s, "left_s", left_s,
+    "ground", claudia_on_ground(), "braking", ctx:rcs_braking), tol).
   if decided:reason <> "" {
     local figures is lexicon("rate_dps", round(rate, 2)).
     if steer_on {
@@ -1523,7 +1544,7 @@ function claudia_rcs_translate {
       set monoprop to 0.
     }
     local decided is claudia_rcs_decide(lexicon("rcs", rcs, "steering", steeringmanager:enabled, "monoprop", monoprop,
-      "translating", true), ctx:opt:rcs_tolerance).
+      "translating", true, "ground", claudia_on_ground(), "braking", false, "wheels_s", -1), ctx:opt:rcs_tolerance).
     if decided:reason <> "" {
       claudia_rcs_switch(decided["on"], decided:reason, lexicon("rate_dps", round(ship:angularvel:mag * constant:radtodeg, 2))).
     }
@@ -1560,6 +1581,7 @@ function claudia_begin {
     "rcs_gate_ut", -1,
     "rcs_within_ut", -1,
     "rcs_wheels_s", -1,
+    "rcs_braking", false,
     "rcs_wheels_parts", -1,
     "rcs_trace_ut", -1,
     "burn_within_ut", -1).
