@@ -100,6 +100,17 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void TheCraftChecksPlanAscentCallSurvivesSaveAndLoadAndIsAbsentWhenNoneWasMade()
+        {
+            const string ascent = "{\"target_ap\":80000}: {\"body\":\"Kerbin\",\"reaches_orbit\":true,\"turn_shape\":0.35}";
+            var state = new MissionSaveState { Id = "m1", PlannedAscent = ascent };
+            Assert.Equal(ascent, MissionSaveState.FromValues(state.ToValues()).PlannedAscent);
+            var none = new MissionSaveState { Id = "m1" };
+            Assert.DoesNotContain("plannedAscent", none.ToValues().Keys);
+            Assert.Equal("", MissionSaveState.FromValues(none.ToValues()).PlannedAscent);
+        }
+
+        [Fact]
         public void TheShapeReachesTheMissionStartedFromTheCheck()
         {
             var mission = Control("craft-check-ascent.sse");

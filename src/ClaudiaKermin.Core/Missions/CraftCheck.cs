@@ -108,6 +108,8 @@ namespace ClaudiaKermin.Core.Missions
         private CraftCheckCharge _cost;
         /// <summary>The turn_shape the latest check's reply planned for the launch; null when it planned none.</summary>
         private double? _plannedTurnShape;
+        /// <summary>The latest check's last plan_ascent call that answered, "input: result"; "" when none did.</summary>
+        private string _plannedAscent = "";
 
         /// <param name="completed">Called on the main thread when a request ends, whatever the result.</param>
         public CraftCheckFlow(ClaudeClient client, Background background, PlayerConfig config, Func<bool> hasKey, Action completed)
@@ -300,6 +302,7 @@ namespace ClaudiaKermin.Core.Missions
             _craftKey = null;
             _goal = null;
             _plannedTurnShape = null;
+            _plannedAscent = "";
         }
 
         /// <summary>
@@ -318,6 +321,12 @@ namespace ClaudiaKermin.Core.Missions
         public double? PlannedTurnShape
         {
             get { return _state == CraftCheckState.Done ? _plannedTurnShape : null; }
+        }
+
+        /// <summary>The finished check's last plan_ascent call, as "input: result" JSON, for the Mission starting from it; "" when none.</summary>
+        public string PlannedAscent
+        {
+            get { return _state == CraftCheckState.Done ? _plannedAscent : ""; }
         }
 
         /// <summary>This check is replaced or gone: no Mission starts from it, so its charge goes to KSP.log only.</summary>

@@ -54,6 +54,16 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void TheBaseLayerSaysToSendIndependentCallsTogetherAndLeavesThePadWordingToTheMissionRequest()
+        {
+            var layer = MissionPrompts.BaseLayer;
+            Assert.Contains("Send independent calls together in one reply", layer);
+            // #508: the pad-specific wording rides in the Mission request, not the cached base layer.
+            Assert.DoesNotContain("launch pad", layer);
+            Assert.DoesNotContain("needs no check_script", layer);
+        }
+
+        [Fact]
         public void TheWorkedExampleIsAMunLandingFromFindLandingSiteToStagePerformanceToLandByBiomeWithDropEmpty()
         {
             var plan = MissionPrompts.HowToPlan;
