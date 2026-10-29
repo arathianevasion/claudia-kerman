@@ -1392,6 +1392,7 @@ namespace ClaudiaKermin.Core.Missions
                     break;
             }
             if (reply.SequencePlan != null && ReferenceEquals(mission.PendingSequence, reply.SequencePlan)) LogPlan(mission, turn, reply.SequencePlan, checkWarnings);
+            if (reply.MissionPlan != null && ReferenceEquals(mission.Plan, reply.MissionPlan)) LogMissionPlan(mission, turn, false);
         }
 
         /// <summary>The ids a Mission Plan this reply would offer names as Child Vessels without their having left the craft; empty if it offers none.</summary>
