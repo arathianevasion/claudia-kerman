@@ -493,18 +493,18 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [Fact]
         public void AMissionScriptCannotSwapItsOwnCodeIntoABlockWithALock()
         {
-            // A lock is stored when its line runs, over the library's function of that name: a lock named land_plan would get land's
+            // A lock is stored when its line runs, over the library's function of that name: a lock named land_pass_plan would get land's
             // site from the block-internal search and could keep it without the block flying it.
-            var result = _check.Check(CoreLibrary.Bundle("print 1.\nlock land_plan to lexicon(\"error\", \"x\").\nprint land(lexicon(\"target\", lexicon(\"biome\", \"Midlands\")))."));
-            Assert.Contains("line 2: LAND_PLAN* (redefine a Core Library function)", result.Forbidden);
+            var result = _check.Check(CoreLibrary.Bundle("print 1.\nlock land_pass_plan to lexicon(\"error\", \"x\").\nprint land(lexicon(\"target\", lexicon(\"biome\", \"Midlands\")))."));
+            Assert.Contains("line 2: LAND_PASS_PLAN* (redefine a Core Library function)", result.Forbidden);
         }
 
         [Fact]
         public void AMissionScriptCannotDefineAFunctionTheLibraryDefines()
         {
-            // The Mission Script's function wins over the library's (LandAscendTests shows it on kOS), so land_plan could keep the site.
-            var result = _check.Check(CoreLibrary.Bundle("print 1.\n\nfunction land_plan {\n  parameter a, b, c.\n  return lexicon(\"error\", \"x\").\n}"));
-            Assert.Contains(result.Forbidden, f => f.EndsWith("FUNCTION LAND_PLAN (redefine a Core Library function)"));
+            // The Mission Script's function wins over the library's (LandAscendTests shows it on kOS), so land_pass_plan could keep the site.
+            var result = _check.Check(CoreLibrary.Bundle("print 1.\n\nfunction land_pass_plan {\n  parameter a, b, c.\n  return lexicon(\"error\", \"x\").\n}"));
+            Assert.Contains(result.Forbidden, f => f.EndsWith("FUNCTION LAND_PASS_PLAN (redefine a Core Library function)"));
             Assert.All(result.Forbidden, f => Assert.True(int.Parse(f.Split(' ', ':')[1]) <= 6, f));
             AssertForbidden("redefine a Core Library function", CoreLibrary.Bundle("global function claudia_finish { parameter a, b, c, d. return a. }"));
         }

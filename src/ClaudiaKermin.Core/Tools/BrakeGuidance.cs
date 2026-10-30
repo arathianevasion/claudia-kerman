@@ -63,11 +63,11 @@ namespace ClaudiaKermin.Core.Tools
         /// The clearance the predicted path must keep over a point of the approach whose ground is <paramref name="overSite"/> m
         /// above the site's, m: <see cref="ClearMargin"/> over the terrain on the approach, but over ground at the site's own level
         /// the Descent Shape's end height (<see cref="HEnd"/>, 200 m over the site) is the plan, so 150 m is enough there, rising to
-        /// the full margin over ground 150 m higher. A rim or ridge keeps the whole margin.
+        /// 300 m over ground 150 m higher; never under 2 s of the descent rate. A rim or ridge keeps the whole margin.
         /// </summary>
         public static double PathMargin(double vDown, double overSite)
         {
-            return Math.Min(ClearMargin(vDown), Math.Max(0.75 * HEnd, 0.75 * HEnd + overSite));
+            return Math.Max(2 * Math.Max(0, vDown), Math.Min(300, Math.Max(0.75 * HEnd, 0.75 * HEnd + overSite)));
         }
 
         /// <summary>land_lookahead: m along the track at which the descent reads the terrain ahead.</summary>
