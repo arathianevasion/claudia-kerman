@@ -19,7 +19,7 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>m between the terrain samples along the track.</summary>
         public const double ProfileStep = 200;
         /// <summary>m between the terrain samples under the whole fall from the deorbit burn (#530): about the block's look-ahead spacing, 3 s at 150 m/s or more.</summary>
-        public const double FallStep = 500;
+        public const double FallProfileStep = 500;
         /// <summary>m past the site the terrain is read, for a descent that stops long.</summary>
         public const double PastSiteM = 3000;
         /// <summary>m a site may move off its coordinates for terrain (#511).</summary>
@@ -127,7 +127,7 @@ namespace ClaudiaKermin.Core.Tools
             var fallFar = BrakePath.FallReach(body.Radius, r0, body.Radius + lowest, highest);
             if (fallFar > far)
             {
-                world.FallGround = Read(api, body.Name, body.Radius, lat, lng, heading, fallFar, out error, FallStep);
+                world.FallGround = Read(api, body.Name, body.Radius, lat, lng, heading, fallFar, out error, FallProfileStep);
                 if (world.FallGround == null) return new DescentChoice { Error = error };
             }
             var choice = BrakePath.Search(craft, world, r0, vRotAlong, lowest, highest, shape.HasValue ? new[] { shape.Value } : shapes);

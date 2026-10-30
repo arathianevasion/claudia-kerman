@@ -2078,8 +2078,8 @@ function land_after_abort {
   local power is 0.
   lock steering to claudia_keep_roll(steer).
   lock throttle to power.
-  // Long enough to climb to the target at the recovery's climb rate, and the 300 s the burn had before.
-  local give_up is time:seconds + 300 + 10 * max(0, target_alt - altitude) / 20.
+  // The 300 s the burn had before, and the climb to the target at land_recover_climb's 20 m/s (its slower last 200 m fit in the 300).
+  local give_up is time:seconds + 300 + max(0, target_alt - altitude) / 20.
   until time:seconds > give_up {
     local up_v is ship:up:vector.
     local vel is ship:velocity:orbit.
