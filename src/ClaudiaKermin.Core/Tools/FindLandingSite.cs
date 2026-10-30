@@ -33,7 +33,10 @@ namespace ClaudiaKermin.Core.Tools
                     + "most 48) and an optional point to be near. The craft must be in orbit round the body. Its block is land: call it "
                     + "to see that a biome target or a landing the Mission Goal names can be flown, instead of searching by hand, then pass "
                     + "land the biome with the site as near (or the site alone as its target), and any within_hours or max_correction_dv "
-                    + "you gave here. Don't call it for land's target \"any\", or for a body with an atmosphere (an error; deorbit aims those landings).";
+                    + "you gave here. plane_changes, for near (else the first site): change_orbit calls (set_inc) that put it under the "
+                    + "track, with plane_change_dv, landing_dv and total_dv: cheapest and soonest when land cannot reach it from this orbit, "
+                    + "else one only if it saves 20 m/s net. Fly the one you pick as its own step before land, budgeting its total_dv. "
+                    + "Don't call it for land's target \"any\", or for a body with an atmosphere (an error; deorbit aims those landings).";
             }
         }
 
@@ -50,7 +53,7 @@ namespace ClaudiaKermin.Core.Tools
                     + "\"max_correction_dv\":{\"type\":\"number\",\"description\":\"The most land's correction burn onto a site may cost, m/s; defaults to land's: the smaller of 30 and 5% of the craft's delta-v.\"},"
                     + "\"edge_margin_m\":{\"type\":\"number\",\"description\":\"With a biome: how far inside its edge a site should be, m; default 5000 (about the landing accuracy), 0 for none. Sites at the edge come back only when nothing deeper is reachable, marked near_biome_edge.\"},"
                     + "\"near\":{\"type\":\"object\",\"properties\":{\"latitude\":{\"type\":\"number\"},\"longitude\":{\"type\":\"number\"}},"
-                    + "\"required\":[\"latitude\",\"longitude\"],\"additionalProperties\":false,\"description\":\"Prefer sites close to this point, degrees (within 15 degrees of arc of it).\"}"
+                    + "\"required\":[\"latitude\",\"longitude\"],\"additionalProperties\":false,\"description\":\"Prefer sites close to this point, degrees (within 15 degrees of arc of it); plane_changes are for it.\"}"
                     + "},\"required\":[\"body\"],\"additionalProperties\":false}";
             }
         }
@@ -143,7 +146,9 @@ namespace ClaudiaKermin.Core.Tools
                     + (query.Daylight && found.AfterDaylight == 0 && found.AfterBiome > 0
                         ? "; the sun never gets over " + LandingSiteSearch.MinSunElevationDeg.ToString("0.##", CultureInfo.InvariantCulture) + " degrees there in the window, so try a lower-latitude site, a longer window, or daylight false"
                         : "")
-                    + "; widen within_hours, the slope or the biome");
+                    + "; widen within_hours, the slope or the biome"
+                    + (query.HasNear ? "" : ", or give near (the site wanted) for plane changes that reach it"));
+            PlaneChangesFor(json, body, conic, snapshot.Ut, query, found, api);
             json.EndObject();
 
             return new ToolOutcome
@@ -152,6 +157,67 @@ namespace ClaudiaKermin.Core.Tools
                 Summary = found.Sites.Count == 0 ? "no landing site on " + body.Name
                     : found.Sites.Count + (found.Sites.Count == 1 ? " site" : " sites") + " on " + body.Name + ", the first in the " + found.Sites[0].Biome,
             };
+        }
+
+        /// <summary>
+        /// The plane changes (#521) for the <c>near</c> point, or without one the first site: <see cref="PlaneChanges"/> over the
+        /// window <c>land</c> searches, against the landing <c>land</c> plans there from the orbit as it is (a <c>near</c> point is
+        /// coordinates, so it may move up to 5 km for terrain, as <c>land</c> would).
+        /// </summary>
+        private static void PlaneChangesFor(JsonWriter json, SnapshotBody body, Conic conic, double now, LandingSiteQuery query, LandingSiteResult found, IPlanningBody api)
+        {
+            if (query.Craft == null || (!query.HasNear && found.Sites.Count == 0)) return;
+            double lat, lng, altitude;
+            if (query.HasNear)
+            {
+                lat = query.NearLatitude;
+                lng = query.NearLongitude;
+                var at = new SiteSample { Latitude = lat, Longitude = lng, Ut = now };
+                api.Survey(body.Name, new[] { at }, SiteFacts.Altitude);
+                altitude = double.IsNaN(at.Altitude) ? 0 : at.Altitude;
+            }
+            else
+            {
+                lat = found.Sites[0].Latitude;
+                lng = found.Sites[0].Longitude;
+                altitude = found.Sites[0].Altitude;
+            }
+            var ask = new LandingPassAsk
+            {
+                Latitude = lat, Longitude = lng, PeRadius = body.Radius + Math.Max(0, altitude) + LandingPass.ApproachM, EarliestUt = now + LandingPass.LeadS,
+                LatestUt = now + LandingPass.ReachSeconds(found.WindowHours, query.Daylight, body.RotationPeriod), Daylight = query.Daylight,
+                MaxCorrectionDv = query.MaxCorrectionDv, Craft = query.Craft, MoveSite = query.HasNear,
+            };
+            var currentDv = found.Sites.Count > 0 ? found.Sites[0].PredictedDv : double.NaN;
+            var moved = false;
+            if (query.HasNear)
+            {
+                var current = LandingPass.Find(body, conic, now, ask, api);
+                currentDv = current.Error == null ? current.LandingDv : double.NaN;
+                moved = current.Error == null && current.Moved;
+            }
+            var changes = PlaneChanges.Find(body, conic, now, ask, api, currentDv, moved);
+            json.Name("plane_change_site").BeginObject().Field("latitude", PlanningJson.Round(lat, 3)).Field("longitude", PlanningJson.Round(lng, 3)).EndObject();
+            json.Name("plane_changes").BeginArray();
+            foreach (var change in changes.Options)
+            {
+                json.BeginObject().Field("option", change.Option).Field("call", change.Call).Field("goal", "set_inc")
+                    .Field("value", PlanningJson.Round(change.Inclination, 3));
+                PlanningJson.Time(json, "burn", change.BurnUt, now)
+                    .Field("plane_change_dv", PlanningJson.Round(change.PlaneDv, 0))
+                    .Field("landing_dv", PlanningJson.Round(change.LandingDv, 0))
+                    .Field("total_dv", PlanningJson.Round(change.TotalDv, 0));
+                PlanningJson.Time(json, "landing", change.ArriveUt, now)
+                    .Field("approach", change.Approach)
+                    .Field("heading_deg", PlanningJson.Round(change.Heading, 0))
+                    .Field("descent_shape", PlanningJson.Round(change.Shape, 3));
+                if (change.Moved) json.Field("moved_for_terrain", true);
+                json.EndObject();
+            }
+            json.EndArray();
+            if (changes.Options.Count == 0)
+                json.Field("plane_change_note", changes.Note ?? (double.IsNaN(currentDv) ? "no plane change tried reaches the site"
+                    : "land reaches the site from this orbit, and no plane change saves " + PlaneChanges.SavingDv.ToString("0", CultureInfo.InvariantCulture) + " m/s net"));
         }
 
         /// <summary>The craft's delta-v from the stock simulator (m/s, vacuum), as land reads it; 0 (unknown) when it isn't reliable.</summary>
