@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using ClaudiaKermin.Core.Missions;
 using ClaudiaKermin.Core.Tools;
 using Xunit;
@@ -179,6 +180,58 @@ namespace ClaudiaKermin.Core.Tests
             // A full window: a turn of the Mun, 38.6 h, rough ground, a site above the orbit's inclination.
             var terrain = new Terrain { At = (lat, lng) => 600 * Math.Sin(lat * 7) * Math.Cos(lng * 5) };
             Timing.Within(PlaneChanges.BudgetMs, () => Assert.NotEmpty(PlaneChanges.Find(Mun, Orbit(10), Now, Ask(20, 30), terrain, double.NaN, false).Options));
+        }
+
+        [Fact]
+        public void Land_on_a_site_it_cannot_reach_fails_before_any_burn_and_names_the_change_orbit_calls()
+        {
+            // land's pass search (LANDINGPASS) over (20, 30) from the 10 degree orbit, asked for plane changes as land asks.
+            var ask = new Dictionary<string, object>
+            {
+                { "lat", 20.0 }, { "lng", 30.0 }, { "r_pe", MunR + 3000.0 }, { "daylight", false }, { "max_correction_dv", 30.0 },
+                { "thrust", 60.0 }, { "mass", 5.4 }, { "isp", 345.0 }, { "turn_lag", 1.0 }, { "shape", "auto" }, { "move_site", true }, { "plane_changes", true },
+            };
+            var failed = BlockCalls.LandingPass(ask, Snapshot(10), new Terrain());
+            var error = (string)failed["error"];
+            _out.WriteLine(error);
+            Assert.StartsWith("the site is ", error);
+            Assert.Contains("over max_correction_dv 30 m/s: plan a plane change first, or raise max_correction_dv; plane changes that reach it", error);
+            var calls = (List<object>)failed["plane_changes"];
+            Assert.Equal(2, calls.Count);
+            foreach (string call in calls) Assert.Contains("cheapest: " + call, error.Replace("soonest: " + call, "cheapest: " + call));
+            Assert.Contains("m/s in all", error);
+            // No pass, so no deorbit burn planned.
+            Assert.Equal(-1.0, failed["burn_ut"]);
+            // Not asked (the "any" and biome searches, which try on), it names none.
+            ask.Remove("plane_changes");
+            var plain = BlockCalls.LandingPass(ask, Snapshot(10), new Terrain());
+            Assert.Empty((List<object>)plain["plane_changes"]);
+            Assert.EndsWith("raise max_correction_dv", (string)plain["error"]);
+        }
+
+        [Fact]
+        public void Find_landing_site_gives_the_plane_changes_for_its_near_point()
+        {
+            var snapshot = Snapshot(10);
+            snapshot.Stages.Add(new SnapshotStage { Number = 0, ThrustVacKn = 60, StartMassT = 5.4, EndMassT = 2.5, DeltaVVac = 2600 });
+            var outcome = PlanningTools.Default().Run("find_landing_site", "{\"body\":\"Mun\",\"daylight\":false,\"near\":{\"latitude\":20,\"longitude\":30}}", snapshot, new Terrain());
+            _out.WriteLine(outcome.Json);
+            Assert.False(outcome.IsError, outcome.Json);
+            using (var doc = JsonDocument.Parse(outcome.Json))
+            {
+                var json = doc.RootElement;
+                Assert.Equal(20, json.GetProperty("plane_change_site").GetProperty("latitude").GetDouble());
+                var changes = json.GetProperty("plane_changes").EnumerateArray().ToList();
+                Assert.Equal(new[] { "cheapest", "soonest" }, changes.Select(c => c.GetProperty("option").GetString()));
+                foreach (var change in changes)
+                {
+                    Assert.Equal("set_inc", change.GetProperty("goal").GetString());
+                    Assert.StartsWith("change_orbit(lexicon(\"goal\", \"set_inc\", \"value\", ", change.GetProperty("call").GetString());
+                    Assert.Equal(change.GetProperty("plane_change_dv").GetDouble() + change.GetProperty("landing_dv").GetDouble(), change.GetProperty("total_dv").GetDouble(), 0);
+                    Assert.True(change.GetProperty("landing_ut").GetDouble() > change.GetProperty("burn_ut").GetDouble());
+                    Assert.Contains(change.GetProperty("approach").GetString(), new[] { "northbound", "southbound" });
+                }
+            }
         }
 
         private static LandingPassAsk Without(LandingPassAsk ask, double burn)

@@ -508,6 +508,22 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         }
 
         [Fact]
+        public void A_site_out_of_reach_fails_before_any_burn_naming_the_plane_changes_and_land_never_flies_one()
+        {
+            // #521: the site's pass search asks LANDINGPASS for the plane changes, whose error the block fails with before any burn;
+            // the docs say to fly the change_orbit first, and the block never calls it.
+            var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null && !System.IO.File.Exists(System.IO.Path.Combine(dir.FullName, "ClaudiaKermin.sln"))) dir = dir.Parent;
+            Assert.NotNull(dir);
+            var source = System.IO.File.ReadAllText(System.IO.Path.Combine(dir.FullName, "kerboscript", "library", "land.ks"));
+            Assert.Contains("site_query:add(\"plane_changes\", true).", source);
+            Assert.DoesNotContain("change_orbit(", string.Join("\n", source.Split('\n').Where(l => !l.TrimStart().StartsWith("//"))));
+            var docs = CoreLibrary.FullDocs(new[] { "land" });
+            Assert.Contains("fly a change_orbit from find_landing_site's plane_changes first, as its own step, and budget its total_dv", docs);
+            Assert.Contains("the change_orbit plane changes that reach the site, with their delta-v", docs);
+        }
+
+        [Fact]
         public void The_delta_v_check_and_the_staging_use_the_simulated_figures_times_burn_margin()
         {
             Assert.Equal("825", One("round(land_dv_needed(750, 1.1, 1500))"));

@@ -98,7 +98,7 @@ namespace ClaudiaKermin.Core.Tools
     /// </summary>
     internal static class PlaneChanges
     {
-        /// <summary>About the whole search's budget, ms.</summary>
+        /// <summary>About the whole search's budget, ms (ADR 0011); the work is bounded by count, so the answer doesn't hang on the clock.</summary>
         public const double BudgetMs = 2000;
         /// <summary>A plane change on a site <c>land</c> can already reach is offered only for at least this net saving, m/s.</summary>
         public const double SavingDv = 20;
@@ -107,6 +107,8 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The coarse pass's heading step, degrees, and how many planes are planned again on every shape.</summary>
         private const double CoarseHeadingDeg = 3;
         private const int Refined = 3;
+        /// <summary>The most planes whose first pass gets a coarse descent.</summary>
+        private const int Coarse = 48;
         /// <summary>Inclinations tried, degrees: over the site's latitude, and either side of the orbit's own.</summary>
         private static readonly double[] OverLatitude = { -2, -1, 0, 0.5, 1, 2, 3, 5, 8, 12, 18, 25, 35 };
         private static readonly double[] RoundOrbit = { -8, -4, -2, -1, -0.5, 0.5, 1, 2, 4, 8 };
@@ -122,8 +124,7 @@ namespace ClaudiaKermin.Core.Tools
         /// <paramref name="orbit"/> at <paramref name="now"/>. <paramref name="currentDv"/> is the landing <c>land</c> plans on the
         /// orbit as it is (NaN: it can't reach the site), and <paramref name="currentMoved"/> whether that landing moves the site.
         /// </summary>
-        public static PlaneChangeResult Find(SnapshotBody body, Conic orbit, double now, LandingPassAsk ask, IPlanningBody api, double currentDv, bool currentMoved,
-            double budgetMs = BudgetMs)
+        public static PlaneChangeResult Find(SnapshotBody body, Conic orbit, double now, LandingPassAsk ask, IPlanningBody api, double currentDv, bool currentMoved)
         {
             var watch = Stopwatch.StartNew();
             var result = new PlaneChangeResult();
@@ -159,12 +160,12 @@ namespace ClaudiaKermin.Core.Tools
                 return Done(result, watch);
             }
 
-            // The coarse descent over each plane's first pass, one per few degrees of heading, cheapest plane changes first.
+            // The coarse descent over each plane's first pass, one per few degrees of heading: the cheapest plane changes and the
+            // soonest landings in turn, up to Coarse planes, so neither option is left out however many planes reach the site.
             var coarse = new Dictionary<string, DescentChoice>();
             var planned = new List<PlaneChange>();
-            foreach (var plane in planes.OrderBy(p => p.PlaneDv))
+            foreach (var plane in Alternate(planes.OrderBy(p => p.PlaneDv), planes.OrderBy(p => p.ArriveUt)).Take(Coarse))
             {
-                if (watch.Elapsed.TotalMilliseconds > budgetMs / 2) break;
                 var pass = Land(body, plane, now, ask, api, plane.ArriveUt + 60, CoarseShapes, coarse);
                 if (pass != null) planned.Add(pass);
             }
@@ -269,6 +270,22 @@ namespace ClaudiaKermin.Core.Tools
             var all = OverLatitude.Select(d => lat + d).Concat(RoundOrbit.Select(d => own + d))
                 .Where(i => i >= 0 && i <= 90).Select(i => Math.Round(i, 1)).Distinct();
             return all.Select(i => retrograde ? 180 - i : i);
+        }
+
+        /// <summary>The items of <paramref name="one"/> and <paramref name="two"/> in turn, each once.</summary>
+        private static IEnumerable<PlaneChange> Alternate(IEnumerable<PlaneChange> one, IEnumerable<PlaneChange> two)
+        {
+            var seen = new HashSet<PlaneChange>();
+            using (var a = one.GetEnumerator())
+            using (var b = two.GetEnumerator())
+            {
+                bool moreA = true, moreB = true;
+                while (moreA || moreB)
+                {
+                    if (moreA && (moreA = a.MoveNext()) && seen.Add(a.Current)) yield return a.Current;
+                    if (moreB && (moreB = b.MoveNext()) && seen.Add(b.Current)) yield return b.Current;
+                }
+            }
         }
 
         private static PlaneChangeResult Done(PlaneChangeResult result, Stopwatch watch)
