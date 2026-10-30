@@ -18,6 +18,8 @@ namespace ClaudiaKermin.Core.Tools
     {
         /// <summary>m between the terrain samples along the track.</summary>
         public const double ProfileStep = 200;
+        /// <summary>m between the terrain samples under the whole fall from the deorbit burn (#530): about the block's look-ahead spacing, 3 s at 150 m/s or more.</summary>
+        public const double FallStep = 500;
         /// <summary>m past the site the terrain is read, for a descent that stops long.</summary>
         public const double PastSiteM = 3000;
         /// <summary>m a site may move off its coordinates for terrain (#511).</summary>
@@ -44,16 +46,18 @@ namespace ClaudiaKermin.Core.Tools
 
         /// <summary>
         /// The terrain on the track that reaches the site on <paramref name="heading"/> (degrees, across the ground), from
-        /// <paramref name="far"/> m before the site to <see cref="PastSiteM"/> past it, in one survey; null with <paramref name="error"/> if unreadable.
+        /// <paramref name="far"/> m before the site to <see cref="PastSiteM"/> past it every <paramref name="step"/> m, in one survey;
+        /// null with <paramref name="error"/> if unreadable.
         /// </summary>
-        public static TerrainProfile Read(IPlanningBody api, string body, double radius, double lat, double lng, double heading, double far, out string error)
+        public static TerrainProfile Read(IPlanningBody api, string body, double radius, double lat, double lng, double heading, double far, out string error,
+            double step = ProfileStep)
         {
             error = null;
-            var count = (int)Math.Ceiling((far + PastSiteM) / ProfileStep) + 1;
+            var count = (int)Math.Ceiling((far + PastSiteM) / step) + 1;
             var samples = new List<SiteSample>(count);
             for (var i = 0; i < count; i++)
             {
-                var s = -PastSiteM + i * ProfileStep;
+                var s = -PastSiteM + i * step;
                 double pLat, pLng;
                 Destination(lat, lng, s >= 0 ? heading + 180 : heading, Math.Abs(s), radius, out pLat, out pLng);
                 samples.Add(new SiteSample { Latitude = pLat, Longitude = pLng });
@@ -69,7 +73,7 @@ namespace ClaudiaKermin.Core.Tools
                 }
                 heights[i] = samples[i].Altitude;
             }
-            return new TerrainProfile(-PastSiteM, ProfileStep, heights);
+            return new TerrainProfile(-PastSiteM, step, heights);
         }
 
         /// <summary>
@@ -94,7 +98,8 @@ namespace ClaudiaKermin.Core.Tools
         /// The plan-time search over the approach to (<paramref name="lat"/>, <paramref name="lng"/>) on <paramref name="heading"/>
         /// from an orbit of radius <paramref name="r0"/> (#511): periapsis heights from the highest ground on the final stretch (where
         /// braking flies) plus the margin, in 500 m steps up to 10 km over the site's terrain and 1 km under the orbit, against the
-        /// Descent Shapes (only <paramref name="shape"/> if given). Without a clearing pair, <see cref="DescentChoice.Error"/> says so.
+        /// Descent Shapes (only <paramref name="shape"/> if given), passing over a periapsis whose fall from the deorbit burn comes
+        /// inside the margin over the ground before braking is due (#530). Without a clearing pair, <see cref="DescentChoice.Error"/> says so.
         /// </summary>
         public static DescentChoice Plan(BrakeCraft craft, SnapshotBody body, IPlanningBody api, double r0, double lat, double lng, double heading,
             double vRotAlong, double? shape, double margin = 1.1)
@@ -116,6 +121,14 @@ namespace ClaudiaKermin.Core.Tools
                     Error = "terrain on the approach: the ground under the braking, " + Whole(ground.Max(0, stretch)) + " m up, leaves no periapsis "
                         + Whole(BrakeGuidance.ClearMargin(0)) + " m over it under the orbit",
                 };
+            // The whole fall from the deorbit burn, wherever the lowest periapsis's descent orbit is under the search's ceiling (#530):
+            // a ridge it passes low over far out would start braking there.
+            var fallFar = BrakePath.FallReach(body.Radius, r0, body.Radius + lowest, highest);
+            if (fallFar > far)
+            {
+                world.FallGround = Read(api, body.Name, body.Radius, lat, lng, heading, fallFar, out error, FallStep);
+                if (world.FallGround == null) return new DescentChoice { Error = error };
+            }
             var shapes = shape.HasValue ? new[] { shape.Value } : null;
             var choice = BrakePath.Search(craft, world, r0, vRotAlong, lowest, highest, shapes);
             if (shape.HasValue && choice.Best == null)
