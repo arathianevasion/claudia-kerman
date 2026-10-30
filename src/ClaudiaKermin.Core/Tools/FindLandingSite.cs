@@ -90,6 +90,7 @@ namespace ClaudiaKermin.Core.Tools
                 MaxSlopeDeg = JsonNode.Double(input["max_slope_deg"]) ?? 5,
                 WithinHours = LandingPass.WindowHours(within, snapshot.TimeCapHours, body.RotationPeriod),
                 MaxCorrectionDv = JsonNode.Double(input["max_correction_dv"]) ?? LandingPass.DefaultMaxCorrectionDv(LanderDv(snapshot)),
+                Craft = DescentApproach.FromSnapshot(snapshot),
             };
             query.EdgeMarginM = JsonNode.Double(input["edge_margin_m"]) ?? LandingSiteSearch.DefaultEdgeMarginM;
             if (query.MaxSlopeDeg <= 0) return PlanningJson.Error("max_slope_deg must be more than 0");
@@ -123,6 +124,8 @@ namespace ClaudiaKermin.Core.Tools
                     .Field("sun_elevation_deg", PlanningJson.Round(site.SunElevationDeg, 1));
                 PlanningJson.Time(json, "landing", site.LandingUt, snapshot.Ut)
                     .Field("correction_dv", PlanningJson.Round(site.CorrectionDv, 1));
+                if (!double.IsNaN(site.PredictedDv))
+                    json.Field("predicted_dv", PlanningJson.Round(site.PredictedDv, 0)).Field("descent_shape", PlanningJson.Round(site.DescentShape, 3));
                 if (!double.IsNaN(site.FromNearDeg)) json.Field("from_near_deg", PlanningJson.Round(site.FromNearDeg, 1));
                 if (site.AtEdge) json.Field("near_biome_edge", true);
                 json.EndObject();

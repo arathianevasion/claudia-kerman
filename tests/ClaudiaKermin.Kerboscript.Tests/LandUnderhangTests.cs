@@ -189,7 +189,8 @@ namespace ClaudiaKermin.Kerboscript.Tests
             {
                 "slope=-1", "touchdown_speed_actual=-1", "touchdown_h_speed=-1", "lean=-1", "reversals=0", "distance_to_target=-1", "best_effort=False",
                 "burn_start_ut=-1", "braking_began_ut=-1", "impact_ut=-1", "biome=", "staged_before_braking=False", "stage_left=-1",
-                "0", "0", "-1", "18",
+                // 25 keys: #511 added descent_shape, descent_pe, predicted_dv, actual_dv, predicted_clearance, moved_for_terrain and shape_range.
+                "0", "0", "-1", "25",
             }, printed);
         }
 
