@@ -210,6 +210,36 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void A_biome_site_no_shape_clears_gives_way_to_the_next_best_site_in_the_biome()
+        {
+            // The site search's first site, then a ring wall round it that no approach clears: with the craft, the search
+            // filters it out and takes the next site in the biome, with its predicted landing.
+            var conic = Conic.FromElements(MunGm, MunR + 30000, 0, 0, 0, 0, 0, 1000);
+            var query = new LandingSiteQuery { Biome = "Midlands", Daylight = false, MaxSlopeDeg = 5, WithinHours = 6, EdgeMarginM = 0, MaxSites = 1 };
+            var plain = LandingSiteSearch.Find(Mun, conic, 1000, query, new Terrain());
+            Assert.Null(plain.Error);
+            var first = plain.Sites[0];
+            Assert.True(double.IsNaN(first.PredictedDv));
+            var walled = new Terrain
+            {
+                At = (lat, lng) =>
+                {
+                    var d = LandingSiteSearch.ArcDegrees(lat, lng, first.Latitude, first.Longitude) * MPerDeg;
+                    return d > 6000 && d < 12000 ? 12000 : 0;
+                },
+            };
+            query.Craft = Lander();
+            var found = LandingSiteSearch.Find(Mun, conic, 1000, query, walled);
+            Assert.Null(found.Error);
+            var next = found.Sites[0];
+            // Another site (the next on the track; the flat top of the ring is one, its approach clear of anything higher).
+            Assert.True(LandingSiteSearch.ArcDegrees(next.Latitude, next.Longitude, first.Latitude, first.Longitude) * MPerDeg > 5000);
+            Assert.Equal("Midlands", next.Biome);
+            Assert.True(next.PredictedDv > 0);
+            Assert.True(next.DescentShape > 0);
+        }
+
+        [Fact]
         public void With_no_site_clearing_on_any_pass_land_fails_before_the_deorbit_burn_with_terrain_on_the_approach()
         {
             var none = BlockCalls.LandingPass(Ask(0, 30, "move_site", true), MunOrbit(), new Terrain { At = Tower });
