@@ -503,6 +503,25 @@ function land_axis_accel {
   return max(-a_max, min(a_max, a)).
 }
 
+// The braking (m/s^2) land_guide asks for while climbing faster than it wants at v_al m/s along the axis, s m short of the
+// site (#530): enough to get under the speed at which gravity g (m/s^2) holds it down radius m from the body's centre, over
+// 2 s, or to stop on the site, whichever is more; never more than braking_needs, the stopping curve's rate. At the stopping
+// curve's rate however far out, it slowed from 192 to 50 m/s 22 km short of Minmus Flats. Pure.
+function land_climb_braking {
+  parameter s, v_al, g, radius, braking_needs.
+  local held is sqrt(max(0, g * radius)).
+  return min(braking_needs, max(v_al ^ 2 / (2 * max(1, s)), (v_al - held) / 2)).
+}
+
+// The fastest braking may move along its axis (m/s), from v_top, the last tick's, and v_h, the speed across the ground now
+// (#530): never speeding back up past the slowest it has flown since braking began, but always 20 m/s, enough to close on a
+// site moved up to max_divert. Holding the starting speed, the approach pushed back up towards it under 50 m/s and the cone
+// turned the push up and back over it: 430 s flip-flopping at 50 m/s, climbing 2.4 km. Pure.
+function land_v_top {
+  parameter v_top, v_h.
+  return min(v_top, max(20, v_h)).
+}
+
 // land_axis_accel across the braking axis, where the site may be on either side: c m to it (either
 // sign), moving v_across m/s the same way.
 function land_cross_accel {
@@ -521,7 +540,7 @@ function land_cross_accel {
 // Shape's height (land_shape_ref) down to where it stops, the site or its stopping distance on, so it comes straight down
 // once it has stopped; gives the vertical acceleration first, brakes along the axis with what is left (land_axis_accel) and
 // closes across it with the rest, upright near the ground. Climbing faster than it wants while still fast, it brakes along at
-// least the stopping curve's rate (#511): only slowing brings an orbiting craft down, and holding its speed there left it
+// least land_climb_braking's rate (#511, #530): only slowing brings an orbiting craft down, and holding its speed there left it
 // coasting up out of periapsis at zero throttle. Returns lexicon("al", "cr", "up"): m/s^2 wanted, with, for the trace,
 // "h_ref" (m), "vh" and "vv" (m/s) it aims for and "to_go" (m to where it stops).
 function land_guide {
@@ -541,7 +560,7 @@ function land_guide {
   local split is land_split_accel(a_most, g_eff + 0.5 * (vv_want - st:v_up), a_most).
   local al is land_axis_accel(st:s, st:v_al, split:h, margin, st:v_top).
   if v_h > 50 and st:v_up > 0 and vv_want < st:v_up and st:v_al > 0 {
-    set al to min(al, -min(split:h, braking_needs)).
+    set al to min(al, -min(split:h, land_climb_braking(st:s, st:v_al, st:g, st:radius, braking_needs))).
   }
   local cr is land_cross_accel(st:c, st:v_cr, sqrt(max(0, split:h ^ 2 - al ^ 2)), margin).
   local tilt is land_max_tilt(st:h).
@@ -674,8 +693,9 @@ function land_path_guard {
 // want, m/s^2; the last direction last; the velocity vel, m/s): the last direction while the demand is
 // under 5% of a_max (m/s^2), so a tiny demand flipping each tick doesn't swing the craft; otherwise the
 // demand, held within 45 degrees of surface retrograde while braking (over 50 m/s across the ground).
-// Returns lexicon("al", "cr", "up"), a unit vector, with "mag": the m/s^2 to thrust along it, the demand's,
-// or where the cone turned it, enough to keep the demand's upward part (a climb over a rim isn't starved). Pure.
+// Returns lexicon("al", "cr", "up"), a unit vector, with "mag": the m/s^2 to thrust along it, the demand's, or where the
+// cone turned it, the demand's part along the turned direction (none for a demand ahead, which the cone would turn up and
+// back, #530), or enough to keep the demand's upward part (a climb over a rim isn't starved), whichever is more. Pure.
 function land_steer {
   parameter want, last, vel, a_max.
   local mag is sqrt(want:al ^ 2 + want:cr ^ 2 + want:up ^ 2).
@@ -700,8 +720,9 @@ function land_steer {
     local k is sin(45) / side_mag.
     set turned to lexicon("al", cos(45) * back:al + k * side:al, "cr", cos(45) * back:cr + k * side:cr, "up", cos(45) * back:up + k * side:up, "mag", mag).
   }
+  set turned["mag"] to max(0, want:al * turned:al + want:cr * turned:cr + want:up * turned:up).
   if turned:up > 0.01 {
-    set turned["mag"] to max(mag, want:up / turned:up).
+    set turned["mag"] to max(turned:mag, want:up / turned:up).
   }
   return turned.
 }
@@ -2093,7 +2114,8 @@ function land_descend {
   lock throttle to tset.
   local last_speed is ship:velocity:surface:mag.
   local last_h_speed is 0.
-  // The fastest it may move along the braking axis: its speed when braking began (#365).
+  // The fastest it may move along the braking axis: its speed when braking began (#365), then never more than the slowest
+  // since (land_v_top, #530).
   local v_top is 0.
   // The terrain heights at land_lookahead's points along the ground track, a few read each tick.
   local ahead_h is list().
@@ -2301,6 +2323,7 @@ function land_descend {
       if first_turn {
         set s_guide to land_turning_s(s, v_h:mag, turn_left).
       }
+      set v_top to land_v_top(v_top, v_h:mag).
       set want to land_guide(lexicon("s", s_guide, "c", fig:across, "v_al", v_ahead, "v_cr", vdot(v_h, across),
         "v_up", v_v, "h", h, "h_start", h_start, "v0", v_h_start, "shape", shape, "v_top", v_top, "a_max", a_max, "g", g, "radius", radius_now),
         opt:touchdown_speed, opt:burn_margin).

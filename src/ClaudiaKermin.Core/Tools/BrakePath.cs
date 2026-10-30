@@ -262,7 +262,7 @@ namespace ClaudiaKermin.Core.Tools
                 foreach (var d in BrakeGuidance.Lookahead(Math.Abs(vx), toGo)) h = Math.Min(h, y - ground.At(s - d));
                 // Braking also steers by the highest ground on to where it stops (land_path_ground_ahead); the fall, as land_descend's,
                 // only by the look-ahead, so the safety net fires where the block's would.
-                if (braking) h = Math.Min(h, y - ground.Max(s - toGo, s));
+                if (braking || start.Braking) h = Math.Min(h, y - ground.Max(s - toGo, s));
                 if (!braking && (start.Braking || BrakeGuidance.BrakeDue(s, Math.Abs(vx), -vy, h, BrakeGuidance.BrakeAccel(aMax, g), margin)))
                 {
                     braking = true;
