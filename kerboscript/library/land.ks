@@ -2028,36 +2028,61 @@ function land_coast {
   return claudia_warp_to(ctx, ut, 30, ground_near, cap).
 }
 
+// The height (m above sea level) a near-circular orbit must have after braking aborts (#530): the body's highest terrain
+// (highest, m; ADDONS:CLAUDIA:HIGHESTTERRAIN) by the path's margin, since its ground track will cross the whole band of
+// the body under it, or alt_now, where the craft is, if that is higher. Circularized at 2.6 km over the 1.6 km of ground on
+// Minmus Flats' approach, the next block flew it into 5.7 km terrain. Pure.
+function land_recover_alt {
+  parameter alt_now, highest.
+  return max(alt_now, highest + land_clear_margin(0)).
+}
+
+// The vertical speed (m/s, up positive) the recovery climbs at with rise m still to climb: a tenth of it a second, at
+// most 20 m/s, as land_vv_target climbs back to its height. Pure.
+function land_recover_climb {
+  parameter rise.
+  return min(20, 0.1 * max(0, rise)).
+}
+
+// The burn (m/s) that brings a craft at alt_now m moving v_h m/s horizontally and v_up m/s vertically (orbital frame) to a
+// near-circular orbit at target_alt m (land_recover_alt) round a body of body_radius m under mu: circular there, with the
+// climb's speed gained and lost on the way up (land_recover_climb). Pure.
+function land_recover_dv {
+  parameter mu, body_radius, alt_now, target_alt, v_h, v_up.
+  return land_circular_dv(mu, body_radius + max(alt_now, target_alt), v_h, v_up) + 2 * land_recover_climb(target_alt - alt_now).
+}
+
 // After braking aborts (#511): brings the orbit back to near-circular, burning now, only when the abort leaves
-// periapsis under the terrain (the site's, or the highest on the predicted path), the delta-v left covers the burn
-// (land_circular_dv) and plan has another pass in the window (land_recover); otherwise leaves it alone. Traced.
-// Returns the note for the failure: what it did with the orbit.
+// periapsis under the body's highest terrain by the margin, the delta-v left covers the burn and plan has another pass in the window
+// (land_recover); otherwise leaves it alone. The orbit it makes clears the body's highest terrain (land_recover_alt, #530):
+// it climbs to that height first if it is under it. Traced. Returns the note for the failure: what it did with the orbit,
+// and whether that orbit is under the highest terrain, so will meet the ground.
 function land_after_abort {
-  parameter ctx, plan, predicted.
-  local ground is max(body:geopositionlatlng(plan:site:lat, plan:site:lng):terrainheight, land_path_ground_ahead(predicted, 1e12)).
+  parameter ctx, plan.
+  local highest is addons:claudia:highestterrain(body).
+  local target_alt is land_recover_alt(altitude, highest).
   local up_now is ship:up:vector.
   local v_now is ship:velocity:orbit.
-  local need is land_circular_dv(body:mu, body:radius + altitude, vxcl(up_now, v_now):mag, vdot(v_now, up_now)).
-  local verdict is land_recover(ship:orbit:periapsis < ground, ship:deltav:current, need, plan:next_pass_ut > 0).
-  // A circular orbit at this height must itself clear the terrain by the margin, or the burn buys nothing.
-  if verdict = "circularize" and altitude < ground + land_clear_margin(0) {
-    set verdict to "leave".
-  }
-  addons:claudia:blocktrace("land", lexicon("phase", "recover", "verdict", verdict, "pe", round(ship:orbit:periapsis), "ground", round(ground),
-    "alt", round(altitude), "need", round(need), "dv_left", round(ship:deltav:current), "next_pass_ut", round(plan:next_pass_ut))).
+  local need is land_recover_dv(body:mu, body:radius, altitude, target_alt, vxcl(up_now, v_now):mag, vdot(v_now, up_now)).
+  local verdict is land_recover(ship:orbit:periapsis < highest + land_clear_margin(0), ship:deltav:current, need, plan:next_pass_ut > 0).
+  addons:claudia:blocktrace("land", lexicon("phase", "recover", "verdict", verdict, "pe", round(ship:orbit:periapsis), "highest", round(highest),
+    "alt", round(altitude), "target_alt", round(target_alt), "need", round(need), "dv_left", round(ship:deltav:current), "next_pass_ut", round(plan:next_pass_ut))).
   if verdict <> "circularize" {
-    return "; the orbit is left as it is (periapsis " + round(ship:orbit:periapsis) + " m)".
+    return "; the orbit is left as it is (periapsis " + round(ship:orbit:periapsis) + " m)" + land_recover_under(highest).
   }
-  local steer is vxcl(up_now, v_now):normalized * sqrt(body:mu / (body:radius + altitude)) - v_now.
+  local steer is v(0, 0, 0).
   local power is 0.
   lock steering to claudia_keep_roll(steer).
   lock throttle to power.
-  local give_up is time:seconds + 300.
+  // Long enough to climb to the target at the recovery's climb rate, and the 300 s the burn had before.
+  local give_up is time:seconds + 300 + 10 * max(0, target_alt - altitude) / 20.
   until time:seconds > give_up {
     local up_v is ship:up:vector.
     local vel is ship:velocity:orbit.
-    set steer to vxcl(up_v, vel):normalized * sqrt(body:mu / (body:radius + altitude)) - vel.
-    if steer:mag < 1 {
+    // Circular at the target's height, climbing to it (land_recover_climb).
+    local want is vxcl(up_v, vel):normalized * sqrt(body:mu / (body:radius + max(altitude, target_alt))) + up_v * land_recover_climb(target_alt - altitude).
+    set steer to want - vel.
+    if steer:mag < 1 and altitude >= target_alt - 50 {
       break.
     }
     local a_max is ship:availablethrust / max(0.001, ship:mass).
@@ -2069,7 +2094,17 @@ function land_after_abort {
     wait 0.
   }
   set power to 0.
-  return "; the orbit was brought back to near-circular (periapsis " + round(ship:orbit:periapsis) + " m)".
+  return "; the orbit was brought back to near-circular (periapsis " + round(ship:orbit:periapsis) + " m)" + land_recover_under(highest).
+}
+
+// The note on an orbit left after an abort (#530): "" if periapsis clears the body's highest terrain (highest, m), else
+// that it doesn't and will meet the ground.
+function land_recover_under {
+  parameter highest.
+  if ship:orbit:periapsis >= highest {
+    return "".
+  }
+  return ", under " + body:name + "'s highest terrain (" + round(highest) + " m): it will meet the ground unless raised".
 }
 
 // The powered descent onto aim, to touchdown and a settled craft. Sets braking_began_ut, best_effort, reversals,
@@ -2301,7 +2336,7 @@ function land_descend {
         addons:claudia:blocktrace("land", lexicon("phase", "guard", "error", tripped, "v_h", round(v_h:mag, 1), "v_h_start", round(v_h_start, 1),
           "alt", round(altitude), "predicted_alt", round(land_or(on_path, "alt", -1)), "s", round(s), "h", round(h), "h_start", round(h_began),
           "dist", round(dist), "pe", round(ship:orbit:periapsis), "pe_start", round(pe_start))).
-        local orbit_note is land_after_abort(ctx, plan, predicted).
+        local orbit_note is land_after_abort(ctx, plan).
         claudia_make_safe().
         return tripped + orbit_note.
       }

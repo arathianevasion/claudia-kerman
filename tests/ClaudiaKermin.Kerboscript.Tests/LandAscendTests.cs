@@ -544,6 +544,23 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         }
 
         [Fact]
+        public void The_orbit_after_an_abort_clears_the_bodys_highest_terrain_climbing_to_it_if_need_be()
+        {
+            // #530: on Minmus Flats the abort circularized at 2650 m, over the 1.6 km of ground on the approach but under Minmus's
+            // 5.7 km peaks; the next block flew into them. Now it recovers to the highest terrain plus the path's margin.
+            Assert.Equal("6025", One("land_recover_alt(2650, 5725)"));
+            Assert.Equal("8000", One("land_recover_alt(8000, 5725)"));
+            // It climbs at a tenth of the height still to gain a second, at most 20 m/s, and not at all once there.
+            Assert.Equal("20", One("land_recover_climb(3375)"));
+            Assert.Equal("5", One("land_recover_climb(50)"));
+            Assert.Equal("0", One("land_recover_climb(-10)"));
+            // From 50.1 m/s at 2650 m on Minmus: circular at 6025 m (163.6 m/s) and the 20 m/s climb gained and lost, 153 m/s
+            // against the 467 m/s it had left. Already over it: the circular burn alone, as before.
+            Assert.Equal("153", One("round(land_recover_dv(1.7658e9, 60000, 2650, 6025, 50.1, 0))"));
+            Assert.Equal(One("round(land_circular_dv(" + MunMu + ", 208000, 400, 13), 3)"), One("round(land_recover_dv(" + MunMu + ", 200000, 8000, 8000, 400, 13), 3)"));
+        }
+
+        [Fact]
         public void The_turn_lag_the_simulation_flies_is_the_time_to_turn_20_degrees_and_at_least_1_s()
         {
             Assert.Equal("1", One("land_turn_lag(0, 0)"));
