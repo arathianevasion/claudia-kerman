@@ -135,8 +135,7 @@ namespace ClaudiaKermin.Core.Tools
             var up = Math.Min(aMost, Math.Max(0, gEff + 0.5 * (vvWant - vUp)));
             var horizontal = Math.Min(aMost, Math.Sqrt(Math.Max(0, aMost * aMost - up * up)));
             var al = AxisAccel(s, vAl, horizontal, margin, vTop);
-            
-            if (vH > 50 && vUp > 0 && vvWant < vUp && vAl > 0) al = Math.Min(al, -Math.Min(horizontal, brakingNeeds));
+            if (vH > 50 && vUp > 0 && vvWant < vUp && vAl > 0) al = Math.Min(al, -Math.Min(horizontal, ClimbBraking(s, vAl, g, radius, brakingNeeds)));
             var tilt = MaxTilt(h);
             if (tilt < 90)
             {
@@ -144,6 +143,19 @@ namespace ClaudiaKermin.Core.Tools
                 if (Math.Abs(al) > most) al = al * most / Math.Abs(al);
             }
             return new BrakeDemand { Along = al, Up = up, HRef = hRef, ToGo = toGo };
+        }
+
+        /// <summary>land_climb_braking.</summary>
+        public static double ClimbBraking(double s, double vAl, double g, double radius, double brakingNeeds)
+        {
+            var held = Math.Sqrt(Math.Max(0, g * radius));
+            return Math.Min(brakingNeeds, Math.Max(vAl * vAl / (2 * Math.Max(1, s)), (vAl - held) / 2));
+        }
+
+        /// <summary>land_v_top.</summary>
+        public static double VTop(double vTop, double vH)
+        {
+            return Math.Min(vTop, Math.Max(20, vH));
         }
 
         /// <summary>land_brake_accel.</summary>
@@ -179,7 +191,8 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>
         /// land_steer in the track's plane: the unit direction (along, up) for the demand, the last direction under 5% of
         /// <paramref name="aMax"/>, and within 45° of surface retrograde while over 50 m/s across the ground; and the m/s² to thrust
-        /// along it (<paramref name="mag"/>), which keeps the demand's upward part where the cone turned it.
+        /// along it (<paramref name="mag"/>): where the cone turned it, the demand's part along the turned direction (none for a
+        /// demand ahead), or enough to keep the demand's upward part.
         /// </summary>
         public static void Steer(double wantAl, double wantUp, double lastAl, double lastUp, double vAl, double vUp, double aMax,
             out double al, out double up, out double mag)
@@ -214,6 +227,7 @@ namespace ClaudiaKermin.Core.Tools
                 al = cos45 * rAl + k * pAl;
                 up = cos45 * rUp + k * pUp;
             }
+            mag = Math.Max(0, wantAl * al + wantUp * up);
             if (up > 0.01) mag = Math.Max(mag, wantUp / up);
         }
     }

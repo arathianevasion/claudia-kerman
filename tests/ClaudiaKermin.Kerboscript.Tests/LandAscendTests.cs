@@ -560,6 +560,23 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         }
 
         [Fact]
+        public void The_orbit_after_an_abort_clears_the_bodys_highest_terrain_climbing_to_it_if_need_be()
+        {
+            // #530: on Minmus Flats the abort circularized at 2650 m, over the 1.6 km of ground on the approach but under Minmus's
+            // 5.7 km peaks; the next block flew into them. Now it recovers to the highest terrain plus the path's margin.
+            Assert.Equal("6025", One("land_recover_alt(2650, 5725)"));
+            Assert.Equal("8000", One("land_recover_alt(8000, 5725)"));
+            // It climbs at a tenth of the height still to gain a second, at most 20 m/s, and not at all once there.
+            Assert.Equal("20", One("land_recover_climb(3375)"));
+            Assert.Equal("5", One("land_recover_climb(50)"));
+            Assert.Equal("0", One("land_recover_climb(-10)"));
+            // From 50.1 m/s at 2650 m on Minmus: circular at 6025 m (163.6 m/s) and the 20 m/s climb gained and lost, 153 m/s
+            // against the 467 m/s it had left. Already over it: the circular burn alone, as before.
+            Assert.Equal("153", One("round(land_recover_dv(1.7658e9, 60000, 2650, 6025, 50.1, 0))"));
+            Assert.Equal(One("round(land_circular_dv(" + MunMu + ", 208000, 400, 13), 3)"), One("round(land_recover_dv(" + MunMu + ", 200000, 8000, 8000, 400, 13), 3)"));
+        }
+
+        [Fact]
         public void The_turn_lag_the_simulation_flies_is_the_time_to_turn_20_degrees_and_at_least_1_s()
         {
             Assert.Equal("1", One("land_turn_lag(0, 0)"));
@@ -769,7 +786,7 @@ print land_brake_estimate(samples, a_brake, 1.1).");
         {
             return Run(string.Format(CultureInfo.InvariantCulture,
                 "local d is land_steer(lexicon(\"al\", {0}, \"cr\", 0, \"up\", {1}), lexicon(\"al\", -1, \"cr\", 0, \"up\", 0), lexicon(\"al\", {2}, \"cr\", 0, \"up\", {3}), 10).\n"
-                + "print d:al. print d:up. print arccos(max(-1, min(1, -(d:al * {2} + d:up * {3}) / sqrt({2} ^ 2 + {3} ^ 2)))).", al, up, vAl, vUp))
+                + "print d:al. print d:up. print arccos(max(-1, min(1, -(d:al * {2} + d:up * {3}) / sqrt({2} ^ 2 + {3} ^ 2)))). print d:mag.", al, up, vAl, vUp))
                 .Select(x => double.Parse(x, CultureInfo.InvariantCulture)).ToArray();
         }
 
@@ -799,14 +816,56 @@ print land_brake_estimate(samples, a_brake, 1.1).");
         [Fact]
         public void The_steering_port_matches_land_steer()
         {
-            foreach (var c in new[] { new[] { 0.0, 5, 567, 0 }, new[] { 3.0, 4, 300, -40 }, new[] { 0.2, 0.1, 567, 13 }, new[] { -8.0, 3, 567, -10 } })
+            foreach (var c in new[] { new[] { 0.0, 5, 567, 0 }, new[] { 3.0, 4, 300, -40 }, new[] { 0.2, 0.1, 567, 13 }, new[] { -8.0, 3, 567, -10 }, new[] { 12.0, 0, 180, 2 } })
             {
                 double al, up, mag;
                 Core.Tools.BrakeGuidance.Steer(c[0], c[1], -1, 0, c[2], c[3], 10, out al, out up, out mag);
                 var kos = Steer(c[0], c[1], c[2], c[3]);
                 Assert.Equal(kos[0], al, 9);
                 Assert.Equal(kos[1], up, 9);
+                Assert.Equal(kos[3], mag, 9);
             }
+        }
+
+        [Fact]
+        public void A_demand_ahead_over_50_m_s_thrusts_nothing_rather_than_being_turned_up_and_back()
+        {
+            // #530: on Minmus Flats a push ahead for the starting speed at 50 m/s was laid 45 degrees off retrograde at its full
+            // 12 m/s^2, and climbed the craft. Now the cone keeps only the demand's part along where it points: none.
+            Assert.Equal(0, Steer(12, 0, 52, 0.5)[3], 9);
+            Assert.Equal(0, Steer(12, 0, 180, -2)[3], 9);
+            // An upward demand keeps its upward part, as before (#511): 5 m/s^2 up at 45 degrees takes 7.07.
+            Assert.Equal(5 / Math.Sin(Math.PI / 4), Steer(0, 5, 567, 0)[3], 6);
+            // Within the cone, as asked.
+            Assert.Equal(Math.Sqrt(73), Steer(-8, 3, 567, -10)[3], 6);
+        }
+
+        [Fact]
+        public void Climbing_while_fast_brakes_off_the_speed_over_what_gravity_holds_down_or_what_stops_on_the_site_not_the_curves_rate()
+        {
+            // #530: Minmus, 62.1 km from the centre (g 0.458 m/s^2, so gravity holds 168.6 m/s down); the stopping curve's rate 9.34.
+            const string G = "1.7658e9 / 62100 ^ 2";
+            // 21.9 km short at 180.4 m/s, over the held speed: its excess over 2 s, not the 9.34 that took it to 50 m/s 22 km short.
+            Assert.Equal("5.9", One("round(land_climb_braking(21874, 180.4, " + G + ", 62100, 9.34), 1)"));
+            // Under it, far out: what stops it on the site.
+            Assert.Equal("0.56", One("round(land_climb_braking(20000, 150, " + G + ", 62100, 9.34), 2)"));
+            // At the stopping distance: the curve's rate, as #511 had it for Twin Craters.
+            Assert.Equal("9.34", One("land_climb_braking(1000, 150, " + G + ", 62100, 9.34)"));
+            foreach (var c in new[] { new[] { 21874, 180.4 }, new[] { 20000, 150.0 }, new[] { 1000, 150.0 }, new[] { 0, 60.0 } })
+                Assert.Equal(double.Parse(One(string.Format(CultureInfo.InvariantCulture, "land_climb_braking({0}, {1}, " + G + ", 62100, 9.34)", c[0], c[1])), CultureInfo.InvariantCulture),
+                    Core.Tools.BrakeGuidance.ClimbBraking(c[0], c[1], 1.7658e9 / (62100.0 * 62100), 62100, 9.34), 9);
+        }
+
+        [Fact]
+        public void Braking_never_speeds_back_up_past_the_slowest_it_has_flown_but_keeps_20_m_s()
+        {
+            // #530: v_top held the starting 191.7 m/s, so at 45 m/s, 20 km short, the guidance pushed back up for it.
+            Assert.Equal("45", One("land_v_top(191.7, 45)"));
+            Assert.Equal("191.7", One("land_v_top(191.7, 200)"));
+            Assert.Equal("20", One("land_v_top(50, 3)"));
+            foreach (var c in new[] { new[] { 191.7, 45 }, new[] { 191.7, 200 }, new[] { 50, 3.0 } })
+                Assert.Equal(double.Parse(One(string.Format(CultureInfo.InvariantCulture, "land_v_top({0}, {1})", c[0], c[1])), CultureInfo.InvariantCulture),
+                    Core.Tools.BrakeGuidance.VTop(c[0], c[1]), 9);
         }
 
         [Fact]
@@ -987,7 +1046,8 @@ function sim {
         // 575 m/s along and 5 m/s down, with the reference lander (60 kN, 5.4 t, lag 1 s), the site at
         // site_x, on the Descent Shape shape (#511). It steers by land_clearance over the terrain at land_lookahead's
         // distances and the highest ground on to where it stops (the rest of its path), as land_descend does, holds to
-        // the speed braking began at (v_top) and points as land_steer says. BrakePath.Simulate is this loop in C#.
+        // the speed braking began at, or the slowest since (land_v_top), and points as land_steer says. BrakePath.Simulate is
+        // this loop in C#. Another body and craft (mu, rad; m kg, thrust N, a lag s) may be given after t_end.
         // Prints whether it hit the ground hard (over 5 m/s), the fastest descent, the m past the site and the seconds
         // flown, then the altitude (m) each time it passed another 5 km along.
         private const string TerrainSimulation = @"
@@ -1010,8 +1070,8 @@ function terr_max {
   return most.
 }
 function tsim {
-  parameter prof, site_x, y, shape, v_start is 575, vy_start is -5, t_end is 900.
-  local mu is 6.5138398e10. local rad is 200000. local margin is 1.1. local m is 5400. local thrust is 60000.
+  parameter prof, site_x, y, shape, v_start is 575, vy_start is -5, t_end is 900, mu is 6.5138398e10, rad is 200000, m is 5400, thrust is 60000, lag is 1.
+  local margin is 1.1.
   local x is 0. local vx is v_start. local vy is vy_start. local ax is 0. local ay is 0. local idle is 0.
   local h_start is -1. local v0 is vx. local v_top is max(50, vx). local to_go is max(0, site_x).
   local dir is lexicon(""al"", -1, ""cr"", 0, ""up"", 0).
@@ -1027,6 +1087,7 @@ function tsim {
     heights:add(terr_max(prof, x, x + to_go)).
     local h is land_clearance(radar, y, heights).
     if h_start < 0 { set h_start to max(land_h_end(), h). }
+    set v_top to land_v_top(v_top, abs(vx)).
     local w is land_guide(lexicon(""s"", site_x - x, ""c"", 0, ""v_al"", vx, ""v_cr"", 0, ""v_up"", vy, ""h"", h, ""h_start"", h_start,
       ""v0"", v0, ""shape"", shape, ""v_top"", v_top, ""a_max"", a_max, ""g"", g, ""radius"", rad + y), 2, margin).
     set to_go to w:to_go.
@@ -1034,7 +1095,7 @@ function tsim {
     local mag is min(a_max, dir:mag).
     // The zero-thrust coast (#511): climbing while the demand is under 5% of what the engines give.
     if vy > 0 and mag < 0.05 * a_max { set idle to idle + 1. }
-    local k is min(1, dt / 1).
+    local k is min(1, dt / lag).
     set ax to ax + (dir:al * mag - ax) * k.
     set ay to ay + (dir:up * mag - ay) * k.
     local a_mag is sqrt(ax ^ 2 + ay ^ 2).
@@ -1060,8 +1121,23 @@ function tsim {
             return Run(TerrainSimulation + string.Format(CultureInfo.InvariantCulture, "tsim({0}, {1}, {2}, {3}).", profile, siteX, startY, shape));
         }
 
+        /// <summary>
+        /// <see cref="FlyOver"/> for the Minmus Flats approach of m20261030-013514-be46 (#530): braking 22.8 km short at 191.7 m/s and 10.4 m/s
+        /// down, 2097 m up, shape 0.2, Mun Shot v2 (60 kN, 5 t, the turn lag of TURNTIME's 9.8 s at up to 59.9 deg/s).
+        /// </summary>
+        private static string[] FlyOverFlats()
+        {
+            return Run(TerrainSimulation + string.Format(CultureInfo.InvariantCulture, "tsim({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}).",
+                FlatsProfile, 22808, 2097, 0.2, 191.7, -10.4, 900, MinmusMu, 60000, 5000, 60000, Core.Tools.BrakePath.TurnLag(59.9, 9.8)));
+        }
+
+        private const double MinmusMu = 1.7658e9;
+        /// <summary>The Flats approach by x from braking start (BrakePathTests' Flats): plain at 0, the ridge 1650 m high 1.8 to 3.2 km on, the Flats at 1100 m from 4.2 km.</summary>
+        private const string FlatsProfile = "list(list(0, 0), list(1808, 0), list(2408, 1650), list(3208, 1650), list(4208, 1100), list(30000, 1100))";
+
         /// <summary>The same flight as <see cref="FlyOver"/> by BrakePath.Simulate, the C# port: m past the site, seconds, and the altitude at each 5 km.</summary>
-        private static Core.Tools.BrakeResult FlyOverInCSharp(double[][] profile, double siteX, double startY, double shape, out List<double> alts)
+        private static Core.Tools.BrakeResult FlyOverInCSharp(double[][] profile, double siteX, double startY, double shape, out List<double> alts,
+            double vStart = 575, double vUpStart = -5, double mu = 6.5138398e10, double radius = 200000, double massKg = 5400, double thrustN = 60000, double lag = 1)
         {
             Func<double, double> terr = x =>
             {
@@ -1072,11 +1148,11 @@ function tsim {
             };
             var world = new Core.Tools.BrakeWorld
             {
-                Mu = 6.5138398e10, Radius = 200000, Dt = 0.05, PathSpacing = 5000,
+                Mu = mu, Radius = radius, Dt = 0.05, PathSpacing = 5000,
                 Ground = Core.Tools.TerrainProfile.Sample(s => terr(siteX - s), -5000, siteX + 5000, 50),
             };
-            var craft = new Core.Tools.BrakeCraft { ThrustN = 60000, MassKg = 5400, Isp = 345, LagS = 1 };
-            var flown = Core.Tools.BrakePath.Simulate(craft, world, new Core.Tools.BrakeStart { S = siteX, Alt = startY, VH = 575, VUp = -5, Braking = true }, shape);
+            var craft = new Core.Tools.BrakeCraft { ThrustN = thrustN, MassKg = massKg, Isp = 345, LagS = lag };
+            var flown = Core.Tools.BrakePath.Simulate(craft, world, new Core.Tools.BrakeStart { S = siteX, Alt = startY, VH = vStart, VUp = vUpStart, Braking = true }, shape);
             alts = flown.Path.Take(flown.Path.Count - 1).Select(p => p.Alt).ToList();
             return flown;
         }
@@ -1097,10 +1173,19 @@ function tsim {
         {
             // #511: the C# port BRAKEPATH predicts with, against land_guide, land_steer and the look-ahead on kOS, the same loop.
             var kos = FlyOver(profile, siteX, startY, shape);
-            var corners = profile.Replace("list(list(", "").Replace("))", "").Split(new[] { "), list(" }, StringSplitOptions.None)
-                .Select(c => c.Split(',').Select(n => double.Parse(n.Trim(), CultureInfo.InvariantCulture)).ToArray()).ToArray();
             List<double> alts;
-            var flown = FlyOverInCSharp(corners, siteX, startY, shape, out alts);
+            var flown = FlyOverInCSharp(Corners(profile), siteX, startY, shape, out alts);
+            AssertTheSameFlight(kos, flown, alts);
+        }
+
+        private static double[][] Corners(string profile)
+        {
+            return profile.Replace("list(list(", "").Replace("))", "").Split(new[] { "), list(" }, StringSplitOptions.None)
+                .Select(c => c.Split(',').Select(n => double.Parse(n.Trim(), CultureInfo.InvariantCulture)).ToArray()).ToArray();
+        }
+
+        private static void AssertTheSameFlight(string[] kos, Core.Tools.BrakeResult flown, List<double> alts)
+        {
             Assert.Null(flown.Failure);
             Assert.Equal("False", kos[0]);
             // The same stop point, to 5 m.
@@ -1109,6 +1194,23 @@ function tsim {
             var kosAlts = kos.Skip(5).Select(a => double.Parse(a, CultureInfo.InvariantCulture)).ToList();
             Assert.Equal(kosAlts.Count, alts.Count);
             for (var i = 0; i < alts.Count; i++) Assert.InRange(alts[i] - kosAlts[i], -10, 10);
+        }
+
+        [Fact]
+        public void On_the_minmus_flats_approach_braking_begun_22_km_short_crosses_and_lands_on_the_site_the_same_in_kOS_and_brakepath()
+        {
+            // #530: from the trace's braking start the kOS laws braked to 50 m/s in 16 s, then flip-flopped there for 430 s,
+            // climbing; BRAKEPATH predicted 687 m/s. Now both fly it across at its speed and down onto the site.
+            var kos = FlyOverFlats();
+            List<double> alts;
+            var flown = FlyOverInCSharp(Corners(FlatsProfile), 22808, 2097, 0.2, out alts, 191.7, -10.4, MinmusMu, 60000, 5000, 60000,
+                Core.Tools.BrakePath.TurnLag(59.9, 9.8));
+            AssertTheSameFlight(kos, flown, alts);
+            Assert.InRange(double.Parse(kos[2], CultureInfo.InvariantCulture), -300, 300);
+            Assert.InRange(double.Parse(kos[3], CultureInfo.InvariantCulture), 0, 250);
+            Assert.InRange(flown.DvUsed, 150, 300);
+            // Never back over its starting height plus the arrest of its fall above circular speed (BrakePathTests), let alone 2.4 km.
+            Assert.True(alts.Max() < 2097 + 300, string.Join(", ", alts));
         }
 
         [Fact]

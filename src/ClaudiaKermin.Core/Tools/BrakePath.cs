@@ -103,6 +103,8 @@ namespace ClaudiaKermin.Core.Tools
         public double Mu;
         public double Radius;
         public TerrainProfile Ground;
+        /// <summary>The terrain under the whole fall from the deorbit burn, more coarsely (<see cref="BrakePath.FallDue"/>); null for <see cref="Ground"/>.</summary>
+        public TerrainProfile FallGround;
         public double Touchdown = 2;
         public double Margin = 1.1;
         /// <summary>The integration step, s.</summary>
@@ -132,9 +134,13 @@ namespace ClaudiaKermin.Core.Tools
         public double DvUsed;
         /// <summary>m to the site where braking began; NaN if it never did.</summary>
         public double BrakeStartS = double.NaN;
+        /// <summary>The craft's state where braking began (braking from there), for BRAKEPATH's prediction at braking start; null if it never did.</summary>
+        public BrakeStart BrakingFrom;
         /// <summary>m to the site and m above the ground where braking ended (under 1 m/s across the ground); NaN if it never did.</summary>
         public double BrakeEndS = double.NaN;
         public double BrakeEndAgl = double.NaN;
+        /// <summary>m to the site where the braking descent first came down to <see cref="BrakeGuidance.HEnd"/> over the ground; NaN if it never did.</summary>
+        public double HEndS = double.NaN;
         /// <summary>The least height over the terrain before braking ended, m.</summary>
         public double LowestClearance = double.PositiveInfinity;
         /// <summary>The least height over the terrain less its margin (<see cref="BrakeGuidance.ClearMargin"/>) before braking ended, m.</summary>
@@ -185,6 +191,12 @@ namespace ClaudiaKermin.Core.Tools
         public double ShapeHi = double.NaN;
         public int Tried;
         public double Ms;
+        /// <summary>
+        /// The periapses passed over because the fall to them came inside the margin over the ground before braking was due
+        /// (<see cref="BrakePath.FallDue"/>), and the farthest from the site that happened, m (NaN if none).
+        /// </summary>
+        public int FallBlocked;
+        public double FallBlockedS = double.NaN;
     }
 
     /// <summary>
@@ -248,7 +260,9 @@ namespace ClaudiaKermin.Core.Tools
                 var aMax = thrust > 0 && (dry <= 0 || m > dry) ? thrust / m : 0;
                 var h = radar;
                 foreach (var d in BrakeGuidance.Lookahead(Math.Abs(vx), toGo)) h = Math.Min(h, y - ground.At(s - d));
-                h = Math.Min(h, y - ground.Max(s - toGo, s));
+                // Braking also steers by the highest ground on to where it stops (land_path_ground_ahead); the fall, as land_descend's,
+                // only by the look-ahead, so the safety net fires where the block's would.
+                if (braking || start.Braking) h = Math.Min(h, y - ground.Max(s - toGo, s));
                 if (!braking && (start.Braking || BrakeGuidance.BrakeDue(s, Math.Abs(vx), -vy, h, BrakeGuidance.BrakeAccel(aMax, g), margin)))
                 {
                     braking = true;
@@ -256,10 +270,12 @@ namespace ClaudiaKermin.Core.Tools
                     v0 = vx;
                     vTop = Math.Max(50, vx);
                     result.BrakeStartS = s;
+                    result.BrakingFrom = new BrakeStart { S = s, Alt = y, VH = vx, VUp = vy, Braking = true };
                 }
                 double wantAl = 0, wantUp = 0;
                 if (braking)
                 {
+                    vTop = BrakeGuidance.VTop(vTop, Math.Abs(vx));
                     var w = BrakeGuidance.Guide(s, vx, vy, h, hStart, v0, shape, vTop, Math.Max(aMax, 1e-6), g, world.Radius + y, world.Touchdown, margin);
                     toGo = w.ToGo;
                     double mag;
@@ -302,6 +318,7 @@ namespace ClaudiaKermin.Core.Tools
                     result.BrakeEndS = s;
                     result.BrakeEndAgl = radar;
                 }
+                if (braking && double.IsNaN(result.HEndS) && radar <= BrakeGuidance.HEnd) result.HEndS = s;
                 if (s <= nextPoint)
                 {
                     result.Path.Add(new BrakePoint { S = s, Alt = y, Ground = ground.At(s), VH = vx });
@@ -364,6 +381,60 @@ namespace ClaudiaKermin.Core.Tools
             return Math.Abs(Math.Sqrt(mu * (2 / r0 - 2 / (r0 + rPe))) - Math.Sqrt(mu / r0));
         }
 
+        /// <summary>m between the points <see cref="FallDue"/> checks along the fall.</summary>
+        public const double FallStep = 100;
+        /// <summary>
+        /// The clearance over the margin the fall must keep before braking is due, m: the deorbit burn may leave periapsis a little
+        /// low (25 m on Minmus Flats, #530), and the block reads the look-ahead along a straight line off the curving ground.
+        /// </summary>
+        public const double FallSlack = 100;
+
+        /// <summary>
+        /// Where <c>land_brake_due</c> first fires on the unbraked fall from <paramref name="from"/> m before the site down the
+        /// transfer to a periapsis of <paramref name="rPe"/> (as <see cref="OnTransfer"/>), the block's own check: the stopping
+        /// distance, or the ground-close safety net, the look-ahead (<see cref="BrakeGuidance.Lookahead"/>) inside the margin
+        /// (plus <see cref="FallSlack"/>). The state there, braking from it; <paramref name="early"/> when the safety net fired
+        /// first, so braking would begin at orbital speed short of where the simulation plans it (#530). Analytic along the
+        /// conic, so it holds over the whole fall, where <see cref="Simulate"/>'s flat frame would drift.
+        /// </summary>
+        public static BrakeStart FallDue(BrakeCraft craft, BrakeWorld world, double r0, double rPe, double vRotAlong, double from, out bool early)
+        {
+            var ground = world.FallGround ?? world.Ground;
+            var aMax = craft.ThrustN / craft.MassKg;
+            early = false;
+            BrakeStart at = null;
+            for (var before = from; before > -DescentApproach.PastSiteM; before -= FallStep)
+            {
+                at = OnTransfer(world.Mu, world.Radius, r0, rPe, before, vRotAlong);
+                var g = world.Mu / Math.Pow(world.Radius + at.Alt, 2);
+                var h = at.Alt - ground.At(before);
+                foreach (var d in BrakeGuidance.Lookahead(at.VH, before)) h = Math.Min(h, at.Alt - ground.At(before - d));
+                if (before <= BrakeGuidance.BrakeDistance(at.VH, BrakeGuidance.BrakeAccel(aMax, g), world.Margin, 0)) break;
+                if (h < BrakeGuidance.ClearMargin(-at.VUp) + FallSlack)
+                {
+                    early = true;
+                    break;
+                }
+            }
+            if (at != null) at.Braking = true;
+            return at;
+        }
+
+        /// <summary>
+        /// How far before the site the fall to a periapsis of <paramref name="rPe"/> off an orbit of radius <paramref name="r0"/>
+        /// is under <paramref name="ceilingAlt"/> m above sea level, m along the surface: the stretch whose terrain <see cref="FallDue"/>
+        /// must see; at most half the orbit, from the deorbit burn.
+        /// </summary>
+        public static double FallReach(double bodyRadius, double r0, double rPe, double ceilingAlt)
+        {
+            var e = (r0 - rPe) / (r0 + rPe);
+            if (e <= 0) return 0;
+            var p = rPe * (1 + e);
+            var cos = (p / (bodyRadius + ceilingAlt) - 1) / e;
+            if (cos >= 1) return 0;
+            return Math.Acos(Math.Max(-1, cos)) * bodyRadius;
+        }
+
         /// <summary>How far before the site the simulation starts falling from, m: past where braking starts for this craft, and 5 km more.</summary>
         public static double FallFrom(BrakeCraft craft, double mu, double bodyRadius, double vPe, double margin)
         {
@@ -388,6 +459,17 @@ namespace ClaudiaKermin.Core.Tools
             for (var pe = peLowest; pe <= peHighest + 1e-6; pe += PeStep)
             {
                 var rPe = world.Radius + pe;
+                // The whole fall first: one that comes inside the margin over the ground before braking is due would start braking
+                // there at orbital speed, far short of the path simulated below (#530).
+                bool early;
+                var due = FallDue(craft, world, r0, rPe, vRotAlong, (world.FallGround ?? world.Ground).FarthestS, out early);
+                if (early)
+                {
+                    choice.FallBlocked++;
+                    choice.FallBlockedS = double.IsNaN(choice.FallBlockedS) ? due.S : Math.Max(choice.FallBlockedS, due.S);
+                    if (watch.Elapsed.TotalMilliseconds > budgetMs) break;
+                    continue;
+                }
                 var vPe = Math.Sqrt(world.Mu * (2 / rPe - 2 / (r0 + rPe)));
                 var before = Math.Min(world.Ground.FarthestS, FallFrom(craft, world.Mu, world.Radius, vPe, world.Margin));
                 var start = OnTransfer(world.Mu, world.Radius, r0, rPe, before, vRotAlong);
@@ -414,7 +496,8 @@ namespace ClaudiaKermin.Core.Tools
             choice.Ms = watch.Elapsed.TotalMilliseconds;
             if (choice.Best == null)
                 choice.Error = "no Descent Shape clears the terrain on the approach by " + BrakeGuidance.ClearMargin(0).ToString("0", System.Globalization.CultureInfo.InvariantCulture)
-                    + " m from a periapsis of " + Whole(peLowest) + " to " + Whole(peHighest) + " m";
+                    + " m from a periapsis of " + Whole(peLowest) + " to " + Whole(peHighest) + " m"
+                    + (choice.FallBlocked > 0 ? "; the fall from the deorbit burn passes too low over the ground up to " + Whole(choice.FallBlockedS / 1000) + " km before the site" : "");
             return choice;
         }
 

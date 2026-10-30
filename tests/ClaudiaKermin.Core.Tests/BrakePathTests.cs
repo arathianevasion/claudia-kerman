@@ -36,11 +36,13 @@ namespace ClaudiaKermin.Core.Tests
             /// <summary>The terrain's height by m before the site along the equator (negative: past it); 0 off the equator's band.</summary>
             public Func<double, double> Before = d => 0;
             public Func<double, double, double> At;
+            /// <summary>m of the equator a degree of longitude spans: the Mun's unless set.</summary>
+            public double PerDegree = MPerDeg;
 
             public override double TerrainAltitude(string body, double latitude, double longitude)
             {
                 if (At != null) return At(latitude, longitude);
-                return Before(-LandingSiteSearch.Wrap180(longitude) * MPerDeg);
+                return Before(-LandingSiteSearch.Wrap180(longitude) * PerDegree);
             }
 
             public override string Biome(string body, double latitude, double longitude) { return "Midlands"; }
@@ -115,6 +117,137 @@ namespace ClaudiaKermin.Core.Tests
             Assert.True(flown.Clears, flown.Failure + ", least spare " + flown.LeastSpare);
             Assert.InRange(flown.BrakeStartS, 10000, 30000);
             Assert.True(flown.LowestClearance > 300);
+        }
+
+        // ---- Minmus Flats (#530, m20261030-013514-be46) ----
+
+        private const double MinmusGm = 1.7658e9;
+        private const double MinmusR = 60000;
+        private const double MinmusTurn = 40400;
+        private static readonly double MinmusVRot = 2 * Math.PI * MinmusR / MinmusTurn;
+        private static readonly SnapshotBody Minmus = new SnapshotBody { Name = "Minmus", Parent = "Kerbin", Gm = MinmusGm, Radius = MinmusR, RotationPeriod = MinmusTurn, SoiRadius = 2247428.4 };
+
+        /// <summary>Mun Shot v2 as it braked: 60 kN, about 5 t, Isp 345 s, and TURNTIME's 190 degrees in 9.8 s at up to 59.9 deg/s.</summary>
+        private static BrakeCraft MunShot()
+        {
+            return new BrakeCraft { ThrustN = 60000, MassKg = 5000, Isp = 345, LagS = BrakePath.TurnLag(59.9, 9.8) };
+        }
+
+        /// <summary>
+        /// The Flats approach as the trace read it: plain ground at sea level, a ridge 1650 m high some 20 km before the site
+        /// (the descent orbit to a 1.5 km periapsis passes about 300 m over it), then the Flats at 1100 m to the site and past it.
+        /// </summary>
+        private static double Flats(double d)
+        {
+            if (d > 21000) return 0;
+            if (d > 20400) return 1650 * (21000 - d) / 600;
+            if (d >= 19600) return 1650;
+            if (d > 18600) return 1650 - 550 * (19600 - d) / 1000;
+            return 1100;
+        }
+
+        private static Terrain FlatsTerrain()
+        {
+            return new Terrain { Before = Flats, PerDegree = MinmusR * Math.PI / 180 };
+        }
+
+        private static BrakeWorld FlatsWorld()
+        {
+            var ground = DescentApproach.Read(FlatsTerrain(), "Minmus", MinmusR, 0, 0, 90, 80000, out _);
+            return new BrakeWorld { Mu = MinmusGm, Radius = MinmusR, Ground = ground };
+        }
+
+        /// <summary>The most a braking path climbs over the lowest it has been since braking began, m.</summary>
+        private static double Climb(BrakeResult flown)
+        {
+            var lowest = double.PositiveInfinity;
+            var most = 0.0;
+            foreach (var p in flown.Path.Where(p => p.S <= flown.BrakeStartS && (double.IsNaN(flown.BrakeEndS) || p.S >= flown.BrakeEndS)))
+            {
+                lowest = Math.Min(lowest, p.Alt);
+                most = Math.Max(most, p.Alt - lowest);
+            }
+            return most;
+        }
+
+        [Fact]
+        public void On_minmus_flats_the_whole_fall_from_the_deorbit_brakes_where_the_plan_says_and_comes_down_on_the_site_without_climbing()
+        {
+            // #530: the plan simulated only the last 9 km of the fall, so it took a 1.5 km periapsis whose descent orbit passes
+            // 300 m over the ridge 20 km out; there the ground-close safety net started braking at 192 m/s, 22.8 km short.
+            var plan = DescentApproach.Plan(MunShot(), Minmus, FlatsTerrain(), MinmusR + 30000, 0, 0, 90, MinmusVRot, 0.2);
+            Assert.Null(plan.Error);
+            var world = FlatsWorld();
+            // The whole fall the block flies after the deorbit burn, from 70 km out: braking comes due by the block's own check
+            // where the plan's simulation starts it, and is flown from there.
+            bool early;
+            var due = BrakePath.FallDue(MunShot(), world, MinmusR + 30000, MinmusR + plan.Best.PeAlt, MinmusVRot, 70000, out early);
+            Assert.True(Math.Abs(due.S - plan.Best.Result.BrakeStartS) <= 500,
+                "braking comes due " + Math.Round(due.S) + " m out" + (early ? " (the ground-close safety net)" : "") + ", planned " + Math.Round(plan.Best.Result.BrakeStartS)
+                + " m out from a periapsis of " + plan.Best.PeAlt + " m");
+            Assert.False(early);
+            var flown = BrakePath.Simulate(MunShot(), world, due, plan.Best.Shape);
+            Assert.True(flown.Clears, flown.Failure + ", least spare " + flown.LeastSpare);
+            // Stopped over the site, and down through h_end (200 m over the Flats) there, never climbing on the way.
+            Assert.InRange(flown.BrakeEndS, -300, 300);
+            Assert.InRange(flown.HEndS, -300, 300);
+            Assert.InRange(Climb(flown), 0, 25);
+            // Shape 0.2 holds its height until nearly stopped, then comes straight down: the planned figure, near the 279 m/s planned in-game.
+            Assert.InRange(flown.DvUsed, 150, 350);
+        }
+
+        [Fact]
+        public void Braking_begun_22_km_short_at_192_m_s_crosses_without_flip_flopping_and_lands_on_the_site()
+        {
+            // The trace's braking start, as the safety net could still begin it: 22.8 km out at 191.7 m/s, 10.4 m/s down, 297 m
+            // over the ridge ahead, shape 0.2. The climbing rule braked it to 50 m/s in 16 s; under 50 m/s the guidance pushed for
+            // its starting speed, and over it the cone turned that push up and back: 430 s at 50 m/s, climbing 2.4 km, 687 m/s.
+            var start = new BrakeStart { S = 22808, Alt = 2097, VH = 191.7, VUp = -10.4, Braking = true };
+            var flown = BrakePath.Simulate(MunShot(), FlatsWorld(), start, 0.2);
+            Assert.True(flown.Clears, flown.Failure + ", least spare " + flown.LeastSpare);
+            Assert.InRange(flown.StopS, -300, 300);
+            Assert.InRange(flown.HEndS, -300, 300);
+            // It never speeds up again once braking, the flip-flop's mark.
+            var points = flown.Path.Where(p => p.S > flown.BrakeEndS).ToList();
+            for (var i = 1; i < points.Count; i++) Assert.True(points[i].VH <= points[i - 1].VH + 1, points[i].S + ": " + points[i].VH + " after " + points[i - 1].VH);
+            // Above circular speed only braking brings it down, so arresting its 10 m/s fall leaves a climb; well inside the path
+            // guard's 1 km, and it holds its speed across rather than crawling at 50 m/s.
+            Assert.InRange(Climb(flown), 0, 300);
+            Assert.InRange(flown.DvUsed, 150, 300);
+            Assert.InRange(flown.Seconds, 0, 250);
+        }
+
+        [Fact]
+        public void The_braking_figure_at_plan_time_and_at_braking_start_agree_for_the_same_craft_and_path()
+        {
+            // #530: 262 m/s at plan time against 687 m/s from BRAKEPATH at braking start, because the plan never saw where braking
+            // began. BRAKEPATH from where the whole fall begins braking (as the block calls it) gives the plan's figure.
+            var plan = DescentApproach.Plan(MunShot(), Minmus, FlatsTerrain(), MinmusR + 30000, 0, 0, 90, MinmusVRot, 0.2);
+            Assert.Null(plan.Error);
+            bool early;
+            var at = BrakePath.FallDue(MunShot(), FlatsWorld(), MinmusR + 30000, MinmusR + plan.Best.PeAlt, MinmusVRot, 70000, out early);
+            Assert.NotNull(at);
+            var again = BlockCalls.BrakePathCall(new Dictionary<string, object>
+            {
+                { "lat", 0.0 }, { "lng", 0.0 }, { "heading", 90.0 }, { "s", at.S }, { "alt", at.Alt }, { "v_h", at.VH }, { "v_up", at.VUp },
+                { "thrust", 60.0 }, { "mass", 5.0 }, { "isp", 345.0 }, { "turn_lag", MunShot().LagS }, { "shape", plan.Best.Shape },
+            }, MinmusOrbit(), FlatsTerrain());
+            Assert.Equal("", again["error"]);
+            Assert.Equal(true, again["clears"]);
+            var brakeDv = (double)again["brake_dv"];
+            Assert.InRange(brakeDv / plan.Best.Result.DvUsed, 0.95, 1.05);
+        }
+
+        private static GameSnapshot MinmusOrbit()
+        {
+            var snapshot = new GameSnapshot { Ut = 1000, Situation = "ORBITING", Body = "Minmus" };
+            snapshot.Orbit = new SnapshotOrbit
+            {
+                SemiMajorAxis = MinmusR + 30000, Eccentricity = 0, Inclination = 0, Lan = 0, ArgumentOfPeriapsis = 0,
+                MeanAnomalyAtEpoch = 0, Epoch = 1000, Body = "Minmus", Periapsis = 30000, Apoapsis = 30000,
+            };
+            snapshot.Bodies.Add(Minmus);
+            return snapshot;
         }
 
         [Fact]
