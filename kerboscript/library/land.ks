@@ -33,7 +33,8 @@
 //|     soonest pass in the window whose correction burn is within max_correction_dv (warping there on
 //|     rails); land solves that pass again shortly before the deorbit burn and, if it missed it, takes the
 //|     next (up to 2 times). Use find_landing_site to see sites when you plan, then pass land the biome
-//|     with the site it showed as near, or that site alone as the target.
+//|     with the site it showed as near, or that site alone as the target. land never changes the plane: for a site
+//|     off the track, fly a change_orbit from find_landing_site's plane_changes first, as its own step, and budget its total_dv.
 //|   within_hours ["auto"]: the window, hours: the larger of 6 and a turn of the body (11.2 at Minmus,
 //|     38.6 at the Mun), up to 48. Pass the window_hours find_landing_site gave.
 //|   max_correction_dv ["auto"]: m/s the correction burn onto the site may cost: the smaller of 30 and 5%
@@ -75,7 +76,8 @@
 //| predicted_clearance (m, the predicted path's lowest over the terrain), moved_for_terrain (true if the site moved up to 5 km for terrain), shape_range (the shapes
 //| that clear, when it refuses a descent_shape; e.g. "0.2 to 1.2"); find_landing_site gives each site's predicted_dv and descent_shape, from the same simulation;
 //| geo (lat, lng, alt) is the common field once landed. Fails with "land flies airless
-//| bodies only", an orbit it can't land from, no pass over the site within max_correction_dv, no daylight pass, a missed pass,
+//| bodies only", an orbit it can't land from, no pass over the site within max_correction_dv, no daylight pass (both before any burn, naming
+//| the change_orbit plane changes that reach the site, with their delta-v), a missed pass,
 //| "no site in the <biome> biome" (saying how far the search got), landing outside the biome asked for,
 //| not enough delta-v, "terrain on the approach" (before the deorbit burn, or as braking begins, keeping its orbit), "deorbit left periapsis" under the plan,
 //| braking that raised periapsis or "climbed off its predicted path" (the report says whether it brought the orbit back to near-circular), "tipped over",
@@ -1439,8 +1441,10 @@ function land {
     }
     // The pass search is the mod's too (find_landing_site keeps its sites by it, so both choose the
     // same pass), through a block-internal call that stays inline for the same reason (ADR 0007).
-    set plan to land_pass_plan(addons:claudia:landingpass(land_pass_query(site, r_pe, time:seconds + 120, opt:daylight, reach, opt:within_hours,
-      craft, opt:descent_shape, may_move)), site, r_pe).
+    local site_query is land_pass_query(site, r_pe, time:seconds + 120, opt:daylight, reach, opt:within_hours, craft, opt:descent_shape, may_move).
+    // #521: with no pass, the failure names the change_orbit plane changes that reach the site; land never flies them.
+    site_query:add("plane_changes", true).
+    set plan to land_pass_plan(addons:claudia:landingpass(site_query), site, r_pe).
   }
   if plan:error <> "" {
     set extra:shape_range to land_or(plan, "shape_range", "").

@@ -76,7 +76,9 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>arrive_ut</c>, <c>correction_dv</c>, <c>cross_m</c>, <c>sun</c> (degrees; -90 where not asked), <c>next_pass_ut</c> (the
         /// next pass's touchdown; -1 for none), <c>fall_s</c>, <c>window_hours</c> (how far it looked, with daylight's reach) and
         /// <c>passes</c> (each pass looked at: <c>burn_ut</c>, <c>arrive_ut</c>, <c>cross_km</c>, <c>correction_dv</c>, <c>sun</c>,
-        /// <c>verdict</c>). With no pass, <c>error</c> says why, with <c>passes</c> and <c>next_pass_ut</c> -1; a search that could not
+        /// <c>verdict</c>). With no pass, <c>error</c> says why, with <c>passes</c> and <c>next_pass_ut</c> -1; asked with
+        /// <c>plane_changes</c> true (and no shape), it also gives the plane changes that reach the site (<see cref="PlaneChanges"/>,
+        /// #521) in <c>error</c> and as <c>change_orbit</c> calls in <c>plane_changes</c> (empty otherwise). A search that could not
         /// run gives only <c>error</c>.
         /// </summary>
         public static IDictionary<string, object> LandingPass(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body)
@@ -104,7 +106,7 @@ namespace ClaudiaKermin.Core.Tools
             if (shapeProblem != null) return Error(shapeProblem);
             object move;
             ask.TryGetValue("move_site", out move);
-            var found = Tools.LandingPass.Find(at, conic, snapshot.Ut, new LandingPassAsk
+            var passAsk = new LandingPassAsk
             {
                 Latitude = Number(ask, "lat", 0),
                 Longitude = Number(ask, "lng", 0),
@@ -117,8 +119,25 @@ namespace ClaudiaKermin.Core.Tools
                 Shape = shape,
                 Margin = Number(ask, "burn_margin", 1.1),
                 MoveSite = move is bool && (bool)move,
-            }, body);
+            };
+            var found = Tools.LandingPass.Find(at, conic, snapshot.Ut, passAsk, body);
             if (!found.Ran) return Error(found.Error);
+            // #521: with no pass, the plane changes that reach the site (find_landing_site's), for the report; land never flies them.
+            object wantChanges;
+            ask.TryGetValue("plane_changes", out wantChanges);
+            var changes = new List<object>();
+            var error = found.Error;
+            if (error != null && wantChanges is bool && (bool)wantChanges && !shape.HasValue && passAsk.Craft != null)
+            {
+                var offered = PlaneChanges.Find(at, conic, snapshot.Ut, passAsk, body, double.NaN, false);
+                var lines = new List<string>();
+                foreach (var change in offered.Options)
+                {
+                    changes.Add(change.Call);
+                    lines.Add(change.Line(snapshot.Ut));
+                }
+                if (lines.Count > 0) error += "; plane changes that reach it (fly one as its own step, then land again): " + string.Join("; ", lines.ToArray());
+            }
             var passes = new List<object>();
             foreach (var pass in found.Passes)
                 passes.Add(new Dictionary<string, object>
@@ -133,7 +152,8 @@ namespace ClaudiaKermin.Core.Tools
                 });
             var result = new Dictionary<string, object>
             {
-                { "error", found.Error ?? "" },
+                { "error", error ?? "" },
+                { "plane_changes", changes },
                 { "burn_ut", found.BurnUt },
                 { "arrive_ut", found.ArriveUt },
                 { "correction_dv", found.CorrectionDv },

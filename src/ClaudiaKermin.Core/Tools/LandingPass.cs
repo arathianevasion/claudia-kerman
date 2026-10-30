@@ -36,6 +36,13 @@ namespace ClaudiaKermin.Core.Tools
         public double Margin = 1.1;
         /// <summary>A site no shape clears on a pass may move to the nearest that clears within 5 km (a site given as coordinates).</summary>
         public bool MoveSite;
+        /// <summary>
+        /// For the plane-change search's coarse pass (#521): the shapes searched (null for all of <see cref="BrakePath.Shapes"/>),
+        /// a descent plan kept across searches (null: one per search), and how finely it tells headings apart, degrees.
+        /// </summary>
+        public IList<double> Shapes;
+        public Dictionary<string, DescentChoice> Planned;
+        public double HeadingStepDeg = 1;
     }
 
     /// <summary>One pass over the site the search looked at, for <c>land</c>'s trace.</summary>
@@ -259,7 +266,7 @@ namespace ClaudiaKermin.Core.Tools
             string terrain = null;
             if (planning)
             {
-                var planned = new Dictionary<string, DescentChoice>();
+                var planned = ask.Planned ?? new Dictionary<string, DescentChoice>();
                 clearing = new List<LandingPassLine>();
                 foreach (var pass in eligible)
                 {
@@ -371,11 +378,12 @@ namespace ClaudiaKermin.Core.Tools
             double heading, vRot;
             DescentApproach.Heading(orbit.W, site, speed, body.Radius, body.RotationPeriod, handed, out heading, out vRot);
             pass.Heading = heading;
-            var key = string.Format(CultureInfo.InvariantCulture, "{0:0.0000},{1:0.0000},{2:0}", lat, lng, heading);
+            var step = ask.HeadingStepDeg;
+            var key = string.Format(CultureInfo.InvariantCulture, "{0:0.0000},{1:0.0000},{2:0}", lat, lng, Math.Round(heading / step) * step % 360);
             DescentChoice choice;
             if (!planned.TryGetValue(key, out choice))
             {
-                choice = DescentApproach.Plan(ask.Craft, body, api, orbit.A, lat, lng, heading, vRot, ask.Shape, ask.Margin);
+                choice = DescentApproach.Plan(ask.Craft, body, api, orbit.A, lat, lng, heading, vRot, ask.Shape, ask.Margin, ask.Shapes);
                 if (choice.Best != null) choice.Best.Heading = heading;
                 planned[key] = choice;
             }

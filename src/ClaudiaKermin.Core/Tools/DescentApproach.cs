@@ -98,11 +98,12 @@ namespace ClaudiaKermin.Core.Tools
         /// The plan-time search over the approach to (<paramref name="lat"/>, <paramref name="lng"/>) on <paramref name="heading"/>
         /// from an orbit of radius <paramref name="r0"/> (#511): periapsis heights from the highest ground on the final stretch (where
         /// braking flies) plus the margin, in 500 m steps up to 10 km over the site's terrain and 1 km under the orbit, against the
-        /// Descent Shapes (only <paramref name="shape"/> if given), passing over a periapsis whose fall from the deorbit burn comes
-        /// inside the margin over the ground before braking is due (#530). Without a clearing pair, <see cref="DescentChoice.Error"/> says so.
+        /// Descent Shapes (only <paramref name="shape"/> if given, else <paramref name="shapes"/>, a coarse grid, if given), passing
+        /// over a periapsis whose fall from the deorbit burn comes inside the margin over the ground before braking is due (#530).
+        /// Without a clearing pair, <see cref="DescentChoice.Error"/> says so.
         /// </summary>
         public static DescentChoice Plan(BrakeCraft craft, SnapshotBody body, IPlanningBody api, double r0, double lat, double lng, double heading,
-            double vRotAlong, double? shape, double margin = 1.1)
+            double vRotAlong, double? shape, double margin = 1.1, IList<double> shapes = null)
         {
             var vPeMost = Math.Sqrt(body.Gm * (2 / body.Radius - 2 / (r0 + body.Radius)));
             var far = BrakePath.FallFrom(craft, body.Gm, body.Radius, vPeMost, margin) + 2000;
@@ -129,8 +130,7 @@ namespace ClaudiaKermin.Core.Tools
                 world.FallGround = Read(api, body.Name, body.Radius, lat, lng, heading, fallFar, out error, FallStep);
                 if (world.FallGround == null) return new DescentChoice { Error = error };
             }
-            var shapes = shape.HasValue ? new[] { shape.Value } : null;
-            var choice = BrakePath.Search(craft, world, r0, vRotAlong, lowest, highest, shapes);
+            var choice = BrakePath.Search(craft, world, r0, vRotAlong, lowest, highest, shape.HasValue ? new[] { shape.Value } : shapes);
             if (shape.HasValue && choice.Best == null)
             {
                 // The range that clears, for the refusal.
