@@ -104,6 +104,83 @@ namespace ClaudiaKermin.Core.Tests
             Assert.True(soonest.ArriveUt <= cheapest.ArriveUt);
         }
 
+        /// <summary>
+        /// A wall <paramref name="height"/> m high, 4 to 25 km from the site, on bearings within 3 degrees of <paramref name="bearing"/>
+        /// from it: an approach on heading <paramref name="bearing"/> - 180 crosses it; one 4 degrees off misses it.
+        /// </summary>
+        private static Func<double, double, double> Wall(double siteLat, double siteLng, double bearing, double height)
+        {
+            return (lat, lng) =>
+            {
+                var d = LandingSiteSearch.ArcDegrees(lat, lng, siteLat, siteLng) * MPerDeg;
+                if (d < 4000 || d > 25000) return 0;
+                var from = Math.Atan2((lng - siteLng) * Math.Cos(siteLat * Math.PI / 180), lat - siteLat) * 180 / Math.PI;
+                return Math.Abs(LandingSiteSearch.Wrap180(from - bearing)) < 3 ? height : 0;
+            };
+        }
+
+        [Theory]
+        [InlineData(8000, true)]
+        [InlineData(1000, false)]
+        public void A_reachable_site_whose_approach_crosses_a_wall_gets_a_saving_plane_change_only_when_it_saves_20_m_s_net(double height, bool offered)
+        {
+            // An equatorial orbit approaches (0, 30) from the west, across the wall. 8 km of wall costs the descent about 150 m/s
+            // over flat ground; a 4 degree plane change (about 37 m/s) misses it. 1 km costs about 30 m/s, less than any plane
+            // change that misses it.
+            var terrain = new Terrain { At = Wall(0, 30, 270, height) };
+            var ask = Ask(0, 30);
+            ask.MoveSite = false;
+            var orbit = Orbit(0);
+            var current = LandingPass.Find(Mun, orbit, Now, ask, terrain);
+            Assert.Null(current.Error);
+            var found = PlaneChanges.Find(Mun, orbit, Now, ask, terrain, current.LandingDv, current.Moved);
+            Show(found);
+            _out.WriteLine("current " + current.LandingDv.ToString("0"));
+            if (!offered)
+            {
+                Assert.Empty(found.Options);
+                return;
+            }
+            var saving = found.Options.Single();
+            Assert.Equal("saving", saving.Option);
+            Assert.True(current.LandingDv - saving.TotalDv >= PlaneChanges.SavingDv, saving.TotalDv + " against " + current.LandingDv);
+            Assert.True(Math.Abs(LandingSiteSearch.Wrap180(saving.Heading - 90)) > 3, "heading " + saving.Heading);
+        }
+
+        [Fact]
+        public void No_plane_change_offered_has_an_approach_that_fails_the_clearance_check()
+        {
+            // The cheapest plane change's approach to (20, 30) from the 10 degree orbit runs about 85 degrees: a wall no shape
+            // clears on it, so the plane changes offered come in on other headings, and each clears when land plans it again.
+            var plain = PlaneChanges.Find(Mun, Orbit(10), Now, Ask(20, 30), new Terrain(), double.NaN, false);
+            var blocked = plain.Options.First().Heading;
+            var terrain = new Terrain { At = Wall(20, 30, blocked + 180, 12000) };
+            var ask = Ask(20, 30);
+            ask.MoveSite = false;
+            var found = PlaneChanges.Find(Mun, Orbit(10), Now, ask, terrain, double.NaN, false);
+            Show(found);
+            Assert.NotEmpty(found.Options);
+            foreach (var option in found.Options)
+            {
+                var land = Without(ask, option.BurnUt);
+                land.Craft = Lander();
+                land.LatestUt = option.ArriveUt + 60;
+                var again = LandingPass.Find(Mun, option.After, Now, land, terrain);
+                Assert.Null(again.Error);
+                Assert.True(again.Descent.Result.Clears);
+                Assert.True(again.Descent.Result.LeastSpare >= 0);
+                Assert.True(Math.Abs(LandingSiteSearch.Wrap180(option.Heading - blocked)) > 3, option.Heading + " against " + blocked);
+            }
+        }
+
+        [Fact]
+        public void The_search_stays_within_about_2_s_on_the_Mun_with_a_full_window()
+        {
+            // A full window: a turn of the Mun, 38.6 h, rough ground, a site above the orbit's inclination.
+            var terrain = new Terrain { At = (lat, lng) => 600 * Math.Sin(lat * 7) * Math.Cos(lng * 5) };
+            Timing.Within(PlaneChanges.BudgetMs, () => Assert.NotEmpty(PlaneChanges.Find(Mun, Orbit(10), Now, Ask(20, 30), terrain, double.NaN, false).Options));
+        }
+
         private static LandingPassAsk Without(LandingPassAsk ask, double burn)
         {
             return new LandingPassAsk
