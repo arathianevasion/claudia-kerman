@@ -63,12 +63,12 @@ namespace ClaudiaKermin.Core.Tools
                 + " m/s in all), touching down at UT " + Whole(ArriveUt) + ", in " + Tenths((ArriveUt - now) / 3600) + " h";
         }
 
-        internal static string Whole(double x)
+        private static string Whole(double x)
         {
             return Math.Round(x, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture);
         }
 
-        internal static string Tenths(double x)
+        private static string Tenths(double x)
         {
             return Math.Round(x, 1, MidpointRounding.AwayFromZero).ToString("0.#", CultureInfo.InvariantCulture);
         }
@@ -89,7 +89,7 @@ namespace ClaudiaKermin.Core.Tools
     /// the plane change plus the landing it sets up, that landing being <c>land</c>'s own plan on the orbit after the burn
     /// (<see cref="LandingPass.Find"/>, which plans each pass's descent over the terrain under its approach with
     /// <see cref="BrakePath.Search"/>). Burns are tried round the next orbit at inclinations near the site's latitude and near the
-    /// orbit's own; each orbit's first pass in reach is planned on a coarse shape grid, with one descent per few degrees of
+    /// orbit's own; each orbit's first pass in reach (or, if no shape clears it, its next that clears) is planned on a coarse shape grid, with one descent per few degrees of
     /// heading, and the best few again on every shape over the pass <c>land</c> would take. Only planes whose approach clears the
     /// terrain come back. Unreachable on the orbit as it is, it offers the cheapest (least in all, whatever the wait) and the
     /// soonest (least in all among those landing within an orbit of the earliest landing any plane gives); reachable, a plane
@@ -106,12 +106,13 @@ namespace ClaudiaKermin.Core.Tools
         private const int BurnsPerOrbit = 16;
         /// <summary>The coarse pass's heading step, degrees, and how many planes are planned again on every shape.</summary>
         private const double CoarseHeadingDeg = 3;
-        private const int Refined = 3;
+        private const int RefinedPlanes = 3;
         /// <summary>The most planes whose first pass gets a coarse descent.</summary>
-        private const int Coarse = 48;
+        private const int CoarsePlanes = 48;
         /// <summary>Inclinations tried, degrees: over the site's latitude, and either side of the orbit's own.</summary>
         private static readonly double[] OverLatitude = { -2, -1, 0, 0.5, 1, 2, 3, 5, 8, 12, 18, 25, 35 };
         private static readonly double[] RoundOrbit = { -8, -4, -2, -1, -0.5, 0.5, 1, 2, 4, 8 };
+        private const string NoneClears = "no plane change tried has an approach to the site that clears the terrain";
 
         /// <summary>The coarse shape grid: four of <see cref="BrakePath.Shapes"/>, from the steepest to the shallowest.</summary>
         private static IList<double> CoarseShapes
@@ -148,7 +149,7 @@ namespace ClaudiaKermin.Core.Tools
                     var dv = OrbitChange.ChangeInclination(r, v, inc, out why);
                     if (!dv.HasValue || dv.Value.Length < 1) continue;
                     var after = Conic.FromState(orbit.Mu, r, v + dv.Value, burn);
-                    var scan = LandingPass.Find(body, after, now, Copy(ask, burn, null), api);
+                    var scan = LandingPass.Find(body, after, now, ForOrbitAfter(ask, burn, null), api);
                     result.Planes++;
                     if (scan.Error != null) continue;
                     planes.Add(new PlaneChange { Inclination = inc, BurnUt = burn, PlaneDv = dv.Value.Length, ArriveUt = scan.ArriveUt, After = after });
@@ -161,34 +162,36 @@ namespace ClaudiaKermin.Core.Tools
             }
 
             // The coarse descent over each plane's first pass, one per few degrees of heading: the cheapest plane changes and the
-            // soonest landings in turn, up to Coarse planes, so neither option is left out however many planes reach the site.
+            // soonest landings in turn, up to CoarsePlanes of them, so neither option is left out however many planes reach the site.
             var coarse = new Dictionary<string, DescentChoice>();
             var planned = new List<PlaneChange>();
-            foreach (var plane in Alternate(planes.OrderBy(p => p.PlaneDv), planes.OrderBy(p => p.ArriveUt)).Take(Coarse))
+            foreach (var plane in Alternate(planes.OrderBy(p => p.PlaneDv), planes.OrderBy(p => p.ArriveUt)).Take(CoarsePlanes))
             {
-                var pass = Land(body, plane, now, ask, api, plane.ArriveUt + 60, CoarseShapes, coarse);
+                // A first pass no shape clears gives way to the plane's later passes in the window, as in land.
+                var pass = PlanLanding(body, plane, now, ask, api, plane.ArriveUt + 60, CoarseShapes, coarse)
+                    ?? PlanLanding(body, plane, now, ask, api, ask.LatestUt, CoarseShapes, coarse);
                 if (pass != null) planned.Add(pass);
             }
             if (planned.Count == 0)
             {
-                result.Note = "no plane change tried has an approach to the site that clears the terrain";
+                result.Note = NoneClears;
                 return Done(result, watch);
             }
 
             // The best few planned again on every shape, over the pass land would take on that plane.
             var earliest = planned.Min(p => p.ArriveUt);
             var soon = earliest + orbit.Period;
-            var picks = planned.OrderBy(p => p.TotalDv).Take(Refined).ToList();
-            if (!reachable) picks = picks.Concat(planned.Where(p => p.ArriveUt <= soon).OrderBy(p => p.TotalDv).Take(Refined - 1)).Distinct().ToList();
+            var picks = planned.OrderBy(p => p.TotalDv).Take(RefinedPlanes).ToList();
+            if (!reachable) picks = picks.Concat(planned.Where(p => p.ArriveUt <= soon).OrderBy(p => p.TotalDv).Take(RefinedPlanes - 1)).Distinct().ToList();
             var refined = new List<PlaneChange>();
             foreach (var pick in picks)
             {
-                var pass = Land(body, pick, now, ask, api, pick.ArriveUt + 60, null, null);
+                var pass = PlanLanding(body, pick, now, ask, api, pick.ArriveUt + 60, null, null);
                 if (pass != null) refined.Add(pass);
             }
             if (refined.Count == 0)
             {
-                result.Note = "no plane change tried has an approach to the site that clears the terrain";
+                result.Note = NoneClears;
                 return Done(result, watch);
             }
 
@@ -227,10 +230,10 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>land</c>'s plan on the plane's orbit, deorbit burns from <see cref="LandingPass.LeadS"/> after the plane change up to
         /// <paramref name="latest"/>: the plane with its landing, or null when no approach clears.
         /// </summary>
-        private static PlaneChange Land(SnapshotBody body, PlaneChange plane, double now, LandingPassAsk ask, IPlanningBody api, double latest,
+        private static PlaneChange PlanLanding(SnapshotBody body, PlaneChange plane, double now, LandingPassAsk ask, IPlanningBody api, double latest,
             IList<double> shapes, Dictionary<string, DescentChoice> planned)
         {
-            var landAsk = Copy(ask, plane.BurnUt, ask.Craft);
+            var landAsk = ForOrbitAfter(ask, plane.BurnUt, ask.Craft);
             landAsk.LatestUt = Math.Min(ask.LatestUt, latest);
             landAsk.Shapes = shapes;
             landAsk.Planned = planned;
@@ -246,7 +249,7 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary><paramref name="ask"/> for the orbit after a plane change at <paramref name="burn"/>: deorbit burns from <see cref="LandingPass.LeadS"/> after it.</summary>
-        private static LandingPassAsk Copy(LandingPassAsk ask, double burn, BrakeCraft craft)
+        private static LandingPassAsk ForOrbitAfter(LandingPassAsk ask, double burn, BrakeCraft craft)
         {
             return new LandingPassAsk
             {

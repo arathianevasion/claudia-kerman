@@ -21,4 +21,4 @@
 The cost:
 - **A second copy of the guidance.** The simulation runs the braking laws in C#, which must match the kOS ones. A test pins them together.
 - **More delta-v over rough ground.** Steeper shapes over cratered sites cost more, and the pre-deorbit delta-v check now uses the simulated figure times `burn_margin`.
-- **Planning and pre-burn time.** About 200 ms per pass in `land`, and up to about 2 s in `find_landing_site` across candidate planes.
+- **Planning and pre-burn time.** About 200 ms per pass in `land`, and up to about 2 s in `find_landing_site` across candidate planes. `land` spends that 2 s too, once, when a site is out of reach and it fails naming the plane changes (#521).

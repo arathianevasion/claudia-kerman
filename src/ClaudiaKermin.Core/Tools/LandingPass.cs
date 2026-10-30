@@ -378,7 +378,7 @@ namespace ClaudiaKermin.Core.Tools
             double heading, vRot;
             DescentApproach.Heading(orbit.W, site, speed, body.Radius, body.RotationPeriod, handed, out heading, out vRot);
             pass.Heading = heading;
-            var step = ask.HeadingStepDeg > 0 ? ask.HeadingStepDeg : 1;
+            var step = ask.HeadingStepDeg;
             var key = string.Format(CultureInfo.InvariantCulture, "{0:0.0000},{1:0.0000},{2:0}", lat, lng, Math.Round(heading / step) * step % 360);
             DescentChoice choice;
             if (!planned.TryGetValue(key, out choice))
