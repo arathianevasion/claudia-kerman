@@ -474,8 +474,9 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         [Fact]
         public void Land_descends_no_faster_than_it_can_stop_and_touches_down_at_touchdown_speed()
         {
-            // Far above the approach height: limited by what it can stop from (2 m/s^2 over 1000 m).
-            Assert.Equal("-63.246", One("round(land_vv_target(1000, 0, 2, 2), 3)"));
+            // Far above the approach height: limited by what it can stop from (2 m/s^2 over 1000 m, by land_h_end over the
+            // ground after 2 s of reaction: land_sink_limit, #547; it was the 63.246 that stops at the ground).
+            Assert.Equal("-52.71", One("round(land_vv_target(1000, 0, 2, 2), 3)"));
             // At the ground: the touchdown speed.
             Assert.Equal("-2", One("land_vv_target(1, 0, 2, 2)"));
             Assert.Equal("-2", One("land_vv_target(100, 90, 2, 2)"));
@@ -484,6 +485,44 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
             Assert.Equal("5", One("land_vv_target(950, 1000, 2, 2)"));
             // However high and however hard it can stop: never over 100 m/s down (#365's ran to 240).
             Assert.Equal("-100", One("land_vv_target(20000, 0, 5, 2)"));
+        }
+
+        [Fact]
+        public void Lands_sink_limit_stops_the_descent_by_h_end_over_the_ground_after_2_s_of_reaction()
+        {
+            // #547: 1000 m over the ground at 2 m/s^2: 2 s at the speed, then stopping, uses the 800 m down to land_h_end.
+            Assert.Equal("52.71", One("round(land_sink_limit(1000, 2), 3)"));
+            Assert.Equal("800", One("round(2 * land_sink_limit(1000, 2) + land_sink_limit(1000, 2) ^ 2 / (2 * 2), 6)"));
+            // Under twice h_end it stops by half the height, so the terminal descent still reaches the ground; nothing at it.
+            Assert.Equal("150", One("round(2 * land_sink_limit(300, 2) + land_sink_limit(300, 2) ^ 2 / (2 * 2), 6)"));
+            Assert.Equal("0", One("land_sink_limit(0, 2)"));
+            Assert.Equal("0", One("land_sink_limit(-50, 2)"));
+            // A slower turn reacts later: Mun Shot v2's lander on the stack's 7.3 s turn lag, the 800 m used the same way; never
+            // under the 2 s.
+            Assert.Equal("800", One("round(7.3 * land_sink_limit(1000, 2, 7.3) + land_sink_limit(1000, 2, 7.3) ^ 2 / (2 * 2), 6)"));
+            Assert.Equal("True", One("land_sink_limit(1000, 2, 7.3) < land_sink_limit(1000, 2) and land_sink_limit(1000, 2, 1) = land_sink_limit(1000, 2)"));
+            // More height, or more to stop with, allows more.
+            Assert.Equal("True", One("land_sink_limit(2000, 2) > land_sink_limit(1000, 2) and land_sink_limit(1000, 4) > land_sink_limit(1000, 2)"));
+            // The C# port BRAKEPATH predicts with.
+            foreach (var c in new[] { new[] { 1000, 2.0, 2 }, new[] { 300, 2.0, 2 }, new[] { 2697, 3.37, 2.6 }, new[] { 50, 6.0, 1 }, new[] { 0, 2.0, 2 }, new[] { 1000, 2.0, 7.3 } })
+                Assert.Equal(double.Parse(One(string.Format(CultureInfo.InvariantCulture, "land_sink_limit({0}, {1}, {2})", c[0], c[1], c[2])), CultureInfo.InvariantCulture),
+                    Core.Tools.BrakeGuidance.SinkLimit(c[0], c[1], c[2]), 9);
+        }
+
+        [Fact]
+        public void Braking_far_over_its_descent_shape_near_the_site_is_seen_and_braking_on_its_shape_isnt()
+        {
+            // #547, m20261031-022433-3dc5: 321 m out at 63.6 m/s, 2697 m up with h_ref 216 and vv_want -100. At 100 m/s it loses
+            // 1 km in the 10 s it has left across the ground, not the 2.5 km it is over its shape.
+            Assert.Equal("True", One("land_over_shape(2697, 216, 321, 63.6, 100)"));
+            // 2.8 km out at 218 m/s, 3 km over its shape: 26 s left, 2.6 km at 100 m/s.
+            Assert.Equal("True", One("land_over_shape(3476, 490, 2842, 218.1, 100)"));
+            // 10.6 km out at 426 m/s, 2.3 km over: 50 s left, time enough.
+            Assert.Equal("False", One("land_over_shape(3860, 1593, 10584, 425.6, 100)"));
+            // Where braking began, under its shape; on it, nearer in; and the terminal descent, which has no shape left.
+            Assert.Equal("False", One("land_over_shape(3206, 3310, 21870, 599.5, 100)"));
+            Assert.Equal("False", One("land_over_shape(450, 400, 1500, 90, 40)"));
+            Assert.Equal("False", One("land_over_shape(2000, 0, 10, 0.5, 100)"));
         }
 
         [Fact]
@@ -1120,7 +1159,7 @@ function tsim {
     if h_start < 0 { set h_start to max(land_h_end(), h). }
     set v_top to land_v_top(v_top, abs(vx)).
     local w is land_guide(lexicon(""s"", site_x - x, ""c"", 0, ""v_al"", vx, ""v_cr"", 0, ""v_up"", vy, ""h"", h, ""h_start"", h_start,
-      ""v0"", v0, ""shape"", shape, ""v_top"", v_top, ""a_max"", a_max, ""g"", g, ""radius"", rad + y), 2, margin).
+      ""v0"", v0, ""shape"", shape, ""v_top"", v_top, ""a_max"", a_max, ""g"", g, ""radius"", rad + y, ""lag"", lag), 2, margin).
     set to_go to w:to_go.
     set dir to land_steer(w, dir, lexicon(""al"", vx, ""cr"", 0, ""up"", vy), a_max).
     local mag is min(a_max, dir:mag).
@@ -1242,6 +1281,26 @@ function tsim {
             Assert.InRange(flown.DvUsed, 150, 300);
             // Never back over its starting height plus the arrest of its fall above circular speed (BrakePathTests), let alone 2.4 km.
             Assert.True(alts.Max() < 2097 + 300, string.Join(", ", alts));
+        }
+
+        /// <summary>The Twin Craters approach from m20261031-022433-3dc5's braking start (BrakePathTests' recorded ground): 965 m there, the site's hollow at 400 m.</summary>
+        private const string TwinCratersProfile = "list(list(-563, 980), list(21870, 400), list(30000, 400))";
+
+        [Fact]
+        public void From_the_78_km_twin_craters_braking_start_kOS_and_brakepath_fly_the_same_drop_and_land_on_the_site()
+        {
+            // #547: braking 21.9 km out at 599.5 m/s and 9 m/s down, 4309 m up (3344 m over the ground), shape 2.35, Mun Shot v2's
+            // lander (60 kN, 5 t, TURNTIME's 9.9 s at up to 59.5 deg/s). It holds about 3.4 km to within a km of the site, then comes
+            // down no faster than land_sink_limit lets it, and touches down softly on the site, the same in both.
+            var lag = Core.Tools.BrakePath.TurnLag(59.5, 9.9);
+            var kos = Run(TerrainSimulation + string.Format(CultureInfo.InvariantCulture, "tsim({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}).",
+                TwinCratersProfile, 21870, 4309, 2.345, 599.5, -9, 900, 6.5138398e10, 200000, 5000, 60000, lag));
+            List<double> alts;
+            var flown = FlyOverInCSharp(Corners(TwinCratersProfile), 21870, 4309, 2.345, out alts, 599.5, -9, 6.5138398e10, 200000, 5000, 60000, lag);
+            AssertTheSameFlight(kos, flown, alts);
+            Assert.InRange(double.Parse(kos[2], CultureInfo.InvariantCulture), -300, 300);
+            Assert.InRange(double.Parse(kos[1], CultureInfo.InvariantCulture), 0, 100);
+            Assert.True(flown.LeastStopRoom >= Core.Tools.BrakeGuidance.HEnd / 2, "least room to stop " + Math.Round(flown.LeastStopRoom) + " m");
         }
 
         [Fact]

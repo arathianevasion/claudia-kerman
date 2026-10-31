@@ -141,6 +141,11 @@ namespace ClaudiaKermin.Core.Tools
         public double BrakeEndAgl = double.NaN;
         /// <summary>m to the site where the braking descent first came down to <see cref="BrakeGuidance.HEnd"/> over the ground; NaN if it never did.</summary>
         public double HEndS = double.NaN;
+        /// <summary>
+        /// The least height over the ground the braking descent would stop at, falling, if it thrust fully from now after its turn
+        /// lag, m, while over <see cref="BrakeGuidance.HEnd"/> (#547); infinite if it never fell there.
+        /// </summary>
+        public double LeastStopRoom = double.PositiveInfinity;
         /// <summary>The least height over the terrain before braking ended, m.</summary>
         public double LowestClearance = double.PositiveInfinity;
         /// <summary>The least height over the terrain less its margin (<see cref="BrakeGuidance.ClearMargin"/>) before braking ended, m.</summary>
@@ -154,10 +159,10 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>Why it didn't come down softly near the site, or null.</summary>
         public string Failure;
 
-        /// <summary>The path stays the margin over the terrain while braking and touches down softly.</summary>
+        /// <summary>The path stays the margin over the terrain while braking, could always stop its fall over the ground (#547), and touches down softly.</summary>
         public bool Clears
         {
-            get { return Failure == null && LeastSpare >= 0; }
+            get { return Failure == null && LeastSpare >= 0 && LeastStopRoom >= 0; }
         }
     }
 
@@ -278,7 +283,7 @@ namespace ClaudiaKermin.Core.Tools
                 if (braking)
                 {
                     vTop = BrakeGuidance.VTop(vTop, Math.Abs(vx));
-                    var w = BrakeGuidance.Guide(s, vx, vy, h, hStart, v0, shape, vTop, Math.Max(aMax, 1e-6), g, world.Radius + y, world.Touchdown, margin);
+                    var w = BrakeGuidance.Guide(s, vx, vy, h, hStart, v0, shape, vTop, Math.Max(aMax, 1e-6), g, world.Radius + y, world.Touchdown, margin, craft.LagS);
                     toGo = w.ToGo;
                     double mag;
                     BrakeGuidance.Steer(w.Along, w.Up, dirAl, dirUp, vx, vy, aMax, out dirAl, out dirUp, out mag);
@@ -320,6 +325,9 @@ namespace ClaudiaKermin.Core.Tools
                     result.BrakeEndS = s;
                     result.BrakeEndAgl = radar;
                 }
+                // Where a fall stopped at full thrust after the turn lag would end, over the ground (#547).
+                if (braking && vy < 0 && aMax > g && radar > BrakeGuidance.HEnd)
+                    result.LeastStopRoom = Math.Min(result.LeastStopRoom, radar + vy * craft.LagS - vy * vy / (2 * (aMax - g)));
                 if (braking && double.IsNaN(result.HEndS) && radar <= BrakeGuidance.HEnd) result.HEndS = s;
                 if (s <= nextPoint)
                 {

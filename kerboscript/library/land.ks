@@ -448,16 +448,28 @@ function land_clearance {
   return h.
 }
 
+// The fastest descent (m/s, down positive) a_stop m/s^2 can stop h m over the terrain under the path (#547): the craft's
+// turn lag (s, land_turn_lag's; never under 2) at that speed while the thrust turns and throttles up, then stopping, by
+// land_h_end over the ground, where the terminal descent takes over; under twice that, by half the height, so the terminal
+// descent still reaches the ground. Stopping at the ground itself, the Descent Shape's last drop on Twin Craters (3 km at
+// 93 m/s, 321 m from the site) left 7 m to spare at full thrust after a 2.6 s turn. Pure.
+function land_sink_limit {
+  parameter h, a_stop, lag is 2.
+  local react is max(2, lag).
+  local room is max(0, h - min(land_h_end(), 0.5 * h)).
+  return a_stop * (sqrt(react ^ 2 + 2 * room / a_stop) - react).
+}
+
 // Vertical speed (m/s, up positive) at h m above the terrain, aiming for h_ref: climbs back (up to
 // 20 m/s) when below it, and descends at a tenth of the height to lose per second when above,
-// never slower than touchdown speed and never faster than it can stop from at a_stop (m/s^2), nor
-// than 100 m/s, about a free fall from the descent's planned 3 km (#365).
+// never slower than touchdown speed and never faster than it can stop from at a_stop (m/s^2,
+// land_sink_limit, after lag s), nor than 100 m/s, about a free fall from the descent's planned 3 km (#365).
 function land_vv_target {
-  parameter h, h_ref, a_stop, touchdown.
+  parameter h, h_ref, a_stop, touchdown, lag is 2.
   if h < h_ref {
     return min(20, 0.1 * (h_ref - h)).
   }
-  local fastest is max(touchdown, min(100, sqrt(2 * a_stop * max(0, h)))).
+  local fastest is max(touchdown, min(100, land_sink_limit(h, a_stop, lag))).
   return -min(fastest, max(touchdown, 0.1 * (h - h_ref))).
 }
 
@@ -538,13 +550,14 @@ function land_cross_accel {
 // velocity when braking began (carried round the body), and across it. st holds s (m to the site along the axis, negative once
 // past it), c (m to it across), v_al and v_cr (m/s along and across), v_up (m/s), h (m above the
 // terrain), h_start (h when braking began), v0 (m/s across the ground then), shape (the Descent Shape), v_top (the most m/s
-// along the axis), a_max (m/s^2 the engines give), g (m/s^2) and radius (m from the body's centre). It holds the Descent
+// along the axis), a_max (m/s^2 the engines give), g (m/s^2), radius (m from the body's centre) and, if given, lag (s, the
+// turn lag land_sink_limit allows for; 2 if not). It holds the Descent
 // Shape's height (land_shape_ref) down to where it stops, the site or its stopping distance on, so it comes straight down
 // once it has stopped; gives the vertical acceleration first, brakes along the axis with what is left (land_axis_accel) and
 // closes across it with the rest, upright near the ground. Climbing faster than it wants while still fast, it brakes along at
 // least land_climb_braking's rate (#511, #530): only slowing brings an orbiting craft down, and holding its speed there left it
 // coasting up out of periapsis at zero throttle. Returns lexicon("al", "cr", "up"): m/s^2 wanted, with, for the trace,
-// "h_ref" (m), "vh" and "vv" (m/s) it aims for and "to_go" (m to where it stops).
+// "h_ref" (m), "vh" and "vv" (m/s) it aims for, "to_go" (m to where it stops) and "sink" (m/s, the fastest it may descend).
 function land_guide {
   parameter st, touchdown, margin.
   local v_h is sqrt(st:v_al ^ 2 + st:v_cr ^ 2).
@@ -558,7 +571,8 @@ function land_guide {
   local braking_needs is a_ok * v_h / (v_h + 2 * a_ok).
   local a_stop is max(0.2, 0.5 * (sqrt(max(0, a_most ^ 2 - braking_needs ^ 2)) - st:g)).
   local h_ref is land_shape_ref(to_go, v_h, st:v0, st:h_start, st:shape).
-  local vv_want is land_vv_target(st:h, h_ref, a_stop, touchdown).
+  local lag is land_or(st, "lag", 2).
+  local vv_want is land_vv_target(st:h, h_ref, a_stop, touchdown, lag).
   local split is land_split_accel(a_most, g_eff + 0.5 * (vv_want - st:v_up), a_most).
   local al is land_axis_accel(st:s, st:v_al, split:h, margin, st:v_top).
   if v_h > 50 and st:v_up > 0 and vv_want < st:v_up and st:v_al > 0 {
@@ -575,7 +589,7 @@ function land_guide {
     }
   }
   return lexicon("al", al, "cr", cr, "up", split:v, "h_ref", h_ref, "vv", vv_want,
-    "vh", min(st:v_top, land_vh_target(st:s, split:h, margin)), "to_go", to_go).
+    "vh", min(st:v_top, land_vh_target(st:s, split:h, margin)), "to_go", to_go, "sink", max(touchdown, min(100, land_sink_limit(st:h, a_stop, lag)))).
 }
 
 // The descent's phase, for its trace: "fall" before braking, "braking" while over 50 m/s across the
@@ -689,6 +703,17 @@ function land_path_guard {
     return "braking climbed off its predicted path: " + round(over / 1000, 1) + " km over it".
   }
   return "".
+}
+
+// Whether braking is too far over its Descent Shape to come down to it before it stops (#547): h m over the terrain, more
+// over h_ref (m; 0, the terminal descent, has no shape left) than sink m/s (land_guide's fastest descent) loses in the time
+// it has left across the ground, to_go m at v_h m/s slowing to a stop. Above circular speed a craft can't sink with a large
+// shape: on Twin Craters it came 321 m from the site 2.5 km over its shape. land_descend then comes down on the sink limit,
+// guarding against a climb from where it was, not against the predicted path: that path's last drop, sampled along the
+// track, read 1 km under it 238 m from the site, and the abort's burn to orbit from there flew it into the ground. Pure.
+function land_over_shape {
+  parameter h, h_ref, to_go, v_h, sink.
+  return h_ref > 0 and h - h_ref > sink * 2 * to_go / max(1, v_h).
 }
 
 // The steering for a demanded acceleration (#511), in the braking frame (lexicons of al, cr, up: the demand
@@ -2255,6 +2280,9 @@ function land_descend {
   // The Underhang (#427): still to drop, and where it was predicted to hit once dropped ("" until then).
   local drop_pending is under:plan:decouplers:length > 0.
   local drop_impact is "".
+  // Too far over its Descent Shape to come down to it before it stops (land_over_shape, #547): from then the path guard
+  // measures against where it was then (lexicon alt, ground), not the predicted path; "" until then.
+  local over_from is "".
 
   until status = "LANDED" or status = "SPLASHED" {
     local up_v is ship:up:vector.
@@ -2414,6 +2442,9 @@ function land_descend {
       // Braking that raises periapsis, or climbs off the predicted path, is making things worse: stop, and leave the
       // rest of the fuel in the tanks (#431, #511).
       local on_path is land_path_at(predicted, s).
+      if not over_from:istype("String") {
+        set on_path to over_from.
+      }
       local tripped is land_brake_guard(pe_start, ship:orbit:periapsis).
       if tripped = "" {
         set tripped to land_path_guard(altitude, on_path).
@@ -2447,12 +2478,18 @@ function land_descend {
       }
       set v_top to land_v_top(v_top, v_h:mag).
       set want to land_guide(lexicon("s", s_guide, "c", fig:across, "v_al", v_ahead, "v_cr", vdot(v_h, across),
-        "v_up", v_v, "h", h, "h_start", h_start, "v0", v_h_start, "shape", shape, "v_top", v_top, "a_max", a_max, "g", g, "radius", radius_now),
+        "v_up", v_v, "h", h, "h_start", h_start, "v0", v_h_start, "shape", shape, "v_top", v_top, "a_max", a_max, "g", g, "radius", radius_now,
+        "lag", land_turn_lag(turn:top_rate, turn:turn_s)),
         opt:touchdown_speed, opt:burn_margin).
       if turn_left <= 0 and want:al < -0.1 {
         set first_turn to false.
       }
       set to_go to want:to_go.
+      if over_from:istype("String") and land_over_shape(h, want:h_ref, want:to_go, v_h:mag, want:sink) {
+        set over_from to lexicon("alt", altitude, "ground", altitude - radar).
+        addons:claudia:blocktrace("land", lexicon("phase", "over_shape", "h", round(h), "h_ref", round(want:h_ref), "s", round(s),
+          "v_h", round(v_h:mag, 1), "v_down", round(-v_v, 1), "sink", round(want:sink, 1), "alt", round(altitude))).
+      }
       // Within 45 degrees of surface retrograde, and still for a demand under 5% of the engines' (#511).
       set dir to land_steer(want, dir, lexicon("al", v_ahead, "cr", vdot(v_h, across), "up", v_v), a_max).
       local pointing is ahead * dir:al + across * dir:cr + up_v * dir:up.
