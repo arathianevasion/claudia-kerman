@@ -101,7 +101,7 @@ namespace ClaudiaKermin.Core.Tests
                 var debrief = schema.GetProperty("properties").GetProperty("debrief").GetProperty("anyOf")[0];
                 var required = debrief.GetProperty("required").EnumerateArray().Select(e => e.GetString()).ToList();
                 var properties = debrief.GetProperty("properties").EnumerateObject().Select(p => p.Name).ToList();
-                foreach (var name in new[] { "outcome_vs_target", "plan_margin", "science", "goal_checklist", "follow_up", "follow_up_text" })
+                foreach (var name in new[] { "outcome_vs_target", "plan_margin", "science", "goal_steps_done", "follow_up", "follow_up_text" })
                 {
                     Assert.Contains(name, required);
                     Assert.Contains(name, properties);

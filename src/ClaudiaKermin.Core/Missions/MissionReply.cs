@@ -47,6 +47,8 @@ namespace ClaudiaKermin.Core.Missions
         public double? MissionTimeSeconds;
         /// <summary>The player asked to change the Mission Goal: the new goal in their words, applied on Approval; null when the goal stays.</summary>
         public string NewGoal;
+        /// <summary>The Mission Goal as short steps, in order, which each Debrief ticks by number (#581); empty in plans from before it.</summary>
+        public List<string> GoalSteps = new List<string>();
     }
 
     /// <summary>Claudia's proposal for the next Maneuver Sequence, with its Mission Script.</summary>
@@ -102,7 +104,9 @@ namespace ClaudiaKermin.Core.Missions
         public string PlanMargin = "";
         /// <summary>The science collected, in her words.</summary>
         public string Science = "";
-        /// <summary>The Mission Goal as steps, each done or not.</summary>
+        /// <summary>The steps of the Mission Plan's goal_steps done so far, 1 for the first (#581).</summary>
+        public List<int> GoalStepsDone = new List<int>();
+        /// <summary>The Mission Goal as steps, each done or not, as a Debrief from before #581 restated them inline; empty since.</summary>
         public List<GoalItem> Checklist = new List<GoalItem>();
         /// <summary>What she proposes next (see <see cref="FollowUps"/>); "" or "none" when nothing more is proposed.</summary>
         public string FollowUp = "";
@@ -231,8 +235,9 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The Mission Plan part: propose_mission_plan's input schema, and what a reply from before ADR 0012 carried inline.</summary>
         internal const string MissionPlanSchema =
             "{\"type\":\"object\",\"additionalProperties\":false,"
-            + "\"required\":[\"why\",\"sequences\",\"total_delta_v\",\"expected_duration\",\"mission_time_s\",\"new_goal\",\"child_vessels\"],\"properties\":{"
+            + "\"required\":[\"why\",\"sequences\",\"total_delta_v\",\"expected_duration\",\"mission_time_s\",\"new_goal\",\"child_vessels\",\"goal_steps\"],\"properties\":{"
             + "\"why\":{\"type\":\"string\",\"description\":\"One short sentence.\"},"
+            + "\"goal_steps\":{\"type\":\"array\",\"description\":\"The Mission Goal as a few short steps, in order; each Debrief ticks them by number.\",\"items\":{\"type\":\"string\"}},"
             + "\"child_vessels\":{\"type\":\"array\",\"description\":\"The Child Vessels you plan to fly, each named once; separated vessels not named here are ignored.\","
             + "\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"name\",\"separation_stage\",\"vessel_id\"],\"properties\":{"
             + "\"name\":{\"type\":\"string\",\"description\":\"Your name for it, used as the vessel of its sequences.\"},"
@@ -285,7 +290,7 @@ namespace ClaudiaKermin.Core.Missions
 
         private const string DebriefSchema =
             "{\"type\":\"object\",\"additionalProperties\":false,"
-            + "\"required\":[\"outcome\",\"why\",\"what_happened\",\"goal_reached\",\"next\",\"eva_science\",\"outcome_vs_target\",\"plan_margin\",\"science\",\"goal_checklist\",\"follow_up\",\"follow_up_text\"],\"properties\":{"
+            + "\"required\":[\"outcome\",\"why\",\"what_happened\",\"goal_reached\",\"next\",\"eva_science\",\"outcome_vs_target\",\"plan_margin\",\"science\",\"goal_steps_done\",\"follow_up\",\"follow_up_text\"],\"properties\":{"
             + "\"outcome\":{\"type\":\"string\",\"enum\":[\"Nominal\",\"Off-Nominal\",\"Failed\"]},"
             + "\"why\":{\"type\":\"string\",\"description\":\"One short sentence.\"},"
             + "\"what_happened\":{\"type\":\"string\"},"
@@ -295,8 +300,7 @@ namespace ClaudiaKermin.Core.Missions
             + "\"outcome_vs_target\":{\"type\":\"string\",\"description\":\"The outcome against the Sequence Plan's target and tolerances, from the script's report and the mod's events, with the numbers.\"},"
             + "\"plan_margin\":{\"type\":\"string\",\"description\":\"The delta-v and resources left against the rest of the Mission Plan, using the mod's margin recheck.\"},"
             + "\"science\":{\"type\":\"string\",\"description\":\"The science collected in this sequence and what is still to gain; empty if none.\"},"
-            + "\"goal_checklist\":{\"type\":\"array\",\"description\":\"The Mission Goal as its steps, each done or not yet.\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,"
-            + "\"required\":[\"item\",\"done\"],\"properties\":{\"item\":{\"type\":\"string\"},\"done\":{\"type\":\"boolean\"}}}},"
+            + "\"goal_steps_done\":{\"type\":\"array\",\"description\":\"The numbers of the Mission Plan's goal_steps done so far, 1 for the first.\",\"items\":{\"type\":\"integer\"}},"
             + "\"follow_up\":{\"type\":\"string\",\"enum\":[\"none\",\"corrective_sequence\",\"revised_plan\",\"reduced_goal\",\"end_mission\"],"
             + "\"description\":\"Off-Nominal: corrective_sequence or revised_plan. Failed: reduced_goal (the player must approve it) or end_mission. Nominal: none.\"},"
             + "\"follow_up_text\":{\"type\":\"string\",\"description\":\"The corrective sequence or the revised Mission Plan in a few words; for reduced_goal, the reduced Mission Goal itself; otherwise empty.\"}}}";
@@ -340,6 +344,7 @@ namespace ClaudiaKermin.Core.Missions
                     ExpectedDuration = JsonNode.Str(plan["expected_duration"]) ?? "",
                     MissionTimeSeconds = NonNegative(plan["mission_time_s"]),
                     NewGoal = Goal(JsonNode.Str(plan["new_goal"])),
+                    GoalSteps = Strings(plan["goal_steps"]).Select(t => t.Trim()).Where(t => t.Length > 0).ToList(),
                 };
                 var sequences = plan["sequences"];
                 if (sequences != null)
@@ -425,6 +430,7 @@ namespace ClaudiaKermin.Core.Missions
                     OutcomeVsTarget = (JsonNode.Str(debrief["outcome_vs_target"]) ?? "").Trim(),
                     PlanMargin = (JsonNode.Str(debrief["plan_margin"]) ?? "").Trim(),
                     Science = (JsonNode.Str(debrief["science"]) ?? "").Trim(),
+                    GoalStepsDone = Numbers(debrief["goal_steps_done"]),
                     Checklist = Checklist(debrief["goal_checklist"]),
                     FollowUp = (JsonNode.Str(debrief["follow_up"]) ?? "").Trim(),
                     FollowUpText = (JsonNode.Str(debrief["follow_up_text"]) ?? "").Trim(),
@@ -488,6 +494,13 @@ namespace ClaudiaKermin.Core.Missions
                 });
             }
             return checks;
+        }
+
+        /// <summary>The whole numbers in an array; anything else is left out.</summary>
+        private static List<int> Numbers(JsonNode node)
+        {
+            if (node == null) return new List<int>();
+            return node.Items.Select(JsonNode.Long).Where(n => n.HasValue).Select(n => (int)System.Math.Max(int.MinValue, System.Math.Min(int.MaxValue, n.Value))).ToList();
         }
 
         private static List<GoalItem> Checklist(JsonNode node)

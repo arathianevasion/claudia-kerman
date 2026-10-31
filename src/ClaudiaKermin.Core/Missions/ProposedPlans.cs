@@ -69,10 +69,14 @@ namespace ClaudiaKermin.Core.Missions
             var accepted = new HashSet<string>(list.SelectMany(m => m.Content.OfType<ToolResultBlock>())
                 .Where(r => !r.IsError && r.Content == AcceptedJson).Select(r => r.ToolUseId));
             var use = list.SelectMany(m => m.Content.OfType<ToolUseBlock>()).LastOrDefault(u => u.Name == ToolName && u.InputIsValid && accepted.Contains(u.Id ?? ""));
-            return use != null ? Read(use.InputJson, new List<string>()) : null;
+            // Checked when it was accepted: read again with today's schema, a call from before goal_steps (#581) would lose its plan.
+            return use != null ? Read(use.InputJson, null) : null;
         }
 
-        /// <summary>The plan in a call's input, read as a reply's mission_plan part is; null, with the problem, when it doesn't fit the schema.</summary>
+        /// <summary>
+        /// The plan in a call's input, read as a reply's mission_plan part is; null, with the problem, when it doesn't fit the
+        /// schema. With <paramref name="problems"/> null (a call already accepted) the schema is not checked again.
+        /// </summary>
         private static MissionPlan Read(string inputJson, List<string> problems)
         {
             JsonNode input;
@@ -82,10 +86,10 @@ namespace ClaudiaKermin.Core.Missions
             }
             catch (JsonException)
             {
-                problems.Add("the input is not valid JSON");
+                if (problems != null) problems.Add("the input is not valid JSON");
                 return null;
             }
-            var problem = ToolSchema.Check(JsonReader.Parse(MissionReply.MissionPlanSchema), input, "input");
+            var problem = problems != null ? ToolSchema.Check(JsonReader.Parse(MissionReply.MissionPlanSchema), input, "input") : null;
             if (problem != null)
             {
                 problems.Add(problem);

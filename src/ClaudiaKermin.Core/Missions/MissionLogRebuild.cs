@@ -27,6 +27,14 @@ namespace ClaudiaKermin.Core.Missions
         /// <param name="notices">The mod's own notices the Mission folder kept, each placed by the conversation's length when it was written.</param>
         public static List<LogEntry> From(StoredTranscript transcript, string goal, string craftName, PlayerConfig config, IList<SavedNotice> notices = null)
         {
+            List<GoalItem> steps;
+            return From(transcript, goal, craftName, config, notices, out steps);
+        }
+
+        /// <param name="steps">The Mission Goal's steps as the transcript leaves them (<see cref="GoalSteps"/>), as the loop kept them; empty when no plan gave any.</param>
+        public static List<LogEntry> From(StoredTranscript transcript, string goal, string craftName, PlayerConfig config, IList<SavedNotice> notices, out List<GoalItem> steps)
+        {
+            steps = new List<GoalItem>();
             var log = new List<LogEntry>();
             if (!string.IsNullOrEmpty(goal)) log.Add(new LogEntry { Kind = LogKind.Player, Text = "Mission Goal: " + goal });
             if (transcript == null) return log;
@@ -45,13 +53,13 @@ namespace ClaudiaKermin.Core.Missions
                     previousUser = Text(message);
                     var said = PlayerLine(previousUser);
                     if (said != null) log.Add(new LogEntry { Kind = LogKind.Player, Text = said });
-                    AddModDebrief(log, previousUser);
+                    AddModDebrief(log, previousUser, steps);
                 }
                 else if (message.Role == Role.Assistant)
                 {
                     var reply = MissionReply.Parse(Text(message));
                     if (reply == null) continue;
-                    Add(log, reply.WithProposed(ProposedPlans.LastAccepted(sinceReply)), previousUser, craftName, config);
+                    steps = Add(log, reply.WithProposed(ProposedPlans.LastAccepted(sinceReply)), previousUser, craftName, config, steps);
                     sinceReply.Clear();
                 }
             }
@@ -108,19 +116,23 @@ namespace ClaudiaKermin.Core.Missions
             return false;
         }
 
-        private static void Add(List<LogEntry> log, MissionReply reply, string userText, string craftName, PlayerConfig config)
+        /// <summary>Adds the reply's entries; returns the Mission Goal's steps after it.</summary>
+        private static List<GoalItem> Add(List<LogEntry> log, MissionReply reply, string userText, string craftName, PlayerConfig config, List<GoalItem> steps)
         {
             var plan = reply.MissionPlan;
             if (reply.Kind == MissionReply.AlertKind && reply.Alert != null)
             {
                 log.Add(new LogEntry { Kind = LogKind.Claudia, Text = "Alert: " + (reply.Alert.Abort ? "Abort recommended. " : "carry on. ") + reply.Say });
-                return;
+                return steps;
             }
             var declined = plan != null && plan.Sequences.Count == 0 && !string.IsNullOrWhiteSpace(plan.Why);
             log.Add(new LogEntry { Kind = LogKind.Claudia, Text = declined ? reply.Say + " " + plan.Why : reply.Say });
 
             if (reply.Kind == MissionReply.MissionPlanKind && plan != null && plan.Sequences.Count > 0)
+            {
                 log.Add(new LogEntry { Kind = LogKind.MissionPlan, Title = "Mission Plan", Text = MissionCards.MissionPlanBody(plan, craftName), Why = plan.Why });
+                steps = GoalSteps.Replace(steps, plan.GoalSteps);
+            }
             else if (reply.Kind == MissionReply.SequencePlanKind && reply.SequencePlan != null && (reply.SequencePlan.Manual || reply.SequencePlan.Script.Trim().Length > 0))
             {
                 var sequence = reply.SequencePlan;
@@ -135,10 +147,15 @@ namespace ClaudiaKermin.Core.Missions
                     CustomScriptReason = sequence.CustomScriptReason,
                 });
             }
-            else if (reply.Kind == MissionReply.DebriefKind && reply.Debrief != null) AddDebrief(log, reply.Debrief, userText);
+            else if (reply.Kind == MissionReply.DebriefKind && reply.Debrief != null)
+            {
+                steps = GoalSteps.After(steps, reply.Debrief);
+                AddDebrief(log, reply.Debrief, userText, steps);
+            }
+            return steps;
         }
 
-        private static void AddDebrief(List<LogEntry> log, Debrief debrief, string userText)
+        private static void AddDebrief(List<LogEntry> log, Debrief debrief, string userText, List<GoalItem> steps)
         {
             // The turn that asked for it listed the Telemetry Checks crossed; a standing one rules out Nominal, as the loop rated it.
             var crossings = Crossings(userText);
@@ -155,19 +172,18 @@ namespace ClaudiaKermin.Core.Missions
                 Text = MissionCards.DebriefBody(debrief, crossings),
                 Why = debrief.Why,
                 Outcome = outcome,
-                Debrief = MissionCards.DebriefDetail(debrief),
+                Debrief = MissionCards.DebriefDetail(debrief, steps),
             });
             if (debrief.GoalReached) log.Add(new LogEntry { Kind = LogKind.Notice, Text = "Mission Goal met: the Mission is over." });
             else if (outcome == "Failed") log.Add(new LogEntry { Kind = LogKind.Notice, Text = "The Mission Goal can't be reached as stated: the Mission has ended." });
         }
 
-        /// <summary>The Debrief card the mod wrote itself for a run refused before any burn (#579), from its fact in the transcript; the checklist is the last Debrief's.</summary>
-        private static void AddModDebrief(List<LogEntry> log, string userText)
+        /// <summary>The Debrief card the mod wrote itself for a run refused before any burn (#579), from its fact in the transcript; the steps are as they stood.</summary>
+        private static void AddModDebrief(List<LogEntry> log, string userText, List<GoalItem> steps)
         {
             string sequence, reason;
             if (!PreBurnRefusal.ReadFact(userText, out sequence, out reason)) return;
-            var last = log.LastOrDefault(e => e.Kind == LogKind.Debrief && e.Debrief != null);
-            var debrief = PreBurnRefusal.Debrief(reason, last != null ? last.Debrief.Checklist : null);
+            var debrief = PreBurnRefusal.Debrief(reason);
             log.Add(new LogEntry
             {
                 Kind = LogKind.Debrief,
@@ -175,7 +191,7 @@ namespace ClaudiaKermin.Core.Missions
                 Text = MissionCards.DebriefBody(debrief, ""),
                 Why = PreBurnRefusal.CardWhy,
                 Outcome = debrief.Outcome,
-                Debrief = MissionCards.DebriefDetail(debrief),
+                Debrief = MissionCards.DebriefDetail(debrief, steps),
             });
         }
 

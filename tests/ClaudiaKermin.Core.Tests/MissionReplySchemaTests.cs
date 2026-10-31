@@ -72,9 +72,10 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void TheMissionSchemaIsTheOneTheProbeCompiled()
         {
-            // tools/ClaudiaKermin.SchemaProbe/schemas/534-mission.json, sent by mission-grammar on 2026-10-31.
+            // tools/ClaudiaKermin.SchemaProbe/schemas/534-mission.json, sent by mission-grammar on 2026-10-31, at size 80; #581's
+            // goal_steps_done in place of goal_checklist took it to 78 (SchemaProbeTests pins the difference).
             Assert.Equal(ClaudiaKermin.SchemaProbe.Probes.MissionSchema(), MissionReply.MissionSchemaJson);
-            Assert.Equal(80, SchemaComplexity.Size(MissionReply.MissionSchemaJson));
+            Assert.Equal(78, SchemaComplexity.Size(MissionReply.MissionSchemaJson));
         }
 
         [Fact]

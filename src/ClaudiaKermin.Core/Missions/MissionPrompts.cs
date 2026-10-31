@@ -274,10 +274,12 @@ namespace ClaudiaKermin.Core.Missions
             "The Maneuver Sequence has ended. Debrief it now: reply with kind \"debrief\" and debrief filled in. Rate it "
             + "against the Sequence Plan's target and tolerances (finished_short is Nominal when the target is met), and set goal_reached to true only if the whole Mission "
             + "Goal is now met. If it isn't, the mod will ask you for the next Sequence Plan. A standing "
-            + "Telemetry Check crossing rules out Nominal, a recovered one doesn't; list each with its verdict in what_happened. Fill the whole Debrief: outcome_vs_target (the "
+            + "Telemetry Check crossing rules out Nominal, a recovered one doesn't; list each with its verdict in what_happened. Always fill outcome, why, next and "
+            + "goal_steps_done. For Nominal leave what_happened, outcome_vs_target, plan_margin and science empty (the card shows the mod's events, margin "
+            + "bar and science) unless a check was crossed or the script printed an error. Otherwise fill them: outcome_vs_target (the "
             + "script's report and the events the mod logged, against the target and tolerances, with numbers), plan_margin (the "
             + "delta-v and resources left against the Maneuver Sequences still to fly, using the mod's margin recheck), science, "
-            + "goal_checklist (the Mission Goal as its steps, each done or not), and follow_up with follow_up_text: for Off-Nominal "
+            + "and follow_up with follow_up_text: for Off-Nominal "
             + "corrective_sequence or revised_plan; for Failed reduced_goal (follow_up_text is the reduced Mission Goal, which the "
             + "player must approve) or end_mission; for Nominal none. If the script printed an error, quote what matters of it in what_happened.";
 

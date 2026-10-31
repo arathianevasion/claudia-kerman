@@ -290,6 +290,8 @@ namespace ClaudiaKermin.Core.Missions
 
         public string MissionId = "";
         public string Goal = "";
+        /// <summary>The Mission Goal's steps, each ticked or not, for the list under the pinned goal; empty when no Mission Plan gave any (#581).</summary>
+        public IList<GoalItem> GoalSteps = new List<GoalItem>();
         public string Model = "";
         public decimal SpendingCap;
         /// <summary>Cost so far from real usage, USD. With <see cref="HeldCharges"/> and <see cref="PendingCharge"/> it is what counts against the Spending Cap.</summary>

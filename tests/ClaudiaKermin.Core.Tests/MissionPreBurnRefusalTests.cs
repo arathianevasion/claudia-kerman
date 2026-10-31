@@ -97,7 +97,9 @@ namespace ClaudiaKermin.Core.Tests
             // The margin bar and the Margin check line are the mod's (#574), from the snapshot.
             Assert.NotNull(detail.Margin);
             Assert.NotEqual("", detail.RecheckSummary);
-            Assert.Empty(detail.Checklist);
+            // The Mission Goal's steps as the Mission Plan stored them (#581): the refusal ticks none.
+            Assert.Equal(new[] { "Prove the link", "Go on" }, detail.Checklist.Select(i => i.Item));
+            Assert.Equal(0, detail.ChecklistDone);
         }
 
         [Fact]
@@ -143,14 +145,22 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void The_card_keeps_the_last_Debriefs_goal_checklist()
+        public void The_card_has_the_steps_a_Debrief_before_it_ticked_and_the_rebuild_has_them_too()
         {
-            var checklist = new[] { new GoalItem { Item = "Reach orbit", Done = true }, new GoalItem { Item = "Land on the Mun", Done = false } };
-            var debrief = PreBurnRefusal.Debrief(Reason, checklist);
+            var rig = new Rig(this, debriefFirst: true, debriefTicks: "[1]");
+            var start = rig.RunToRunning();
+            rig.Mission.Send(new KosRunEnded(Refused(817), start.RunId));
+            rig.DrainUntil(v => rig.Transport.Requests.Count == 4 && v.Stage == MissionStage.AwaitingSequenceApproval && !v.Busy);
+            rig.Mission.Send(new Approve());
+            var second = rig.Mission.TakeCommands().OfType<StartScript>().Single();
+            rig.Mission.Send(new KosRunEnded(Refused(0), second.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.AwaitingSequenceApproval && !v.Busy && v.Log.Count(e => e.Kind == LogKind.Debrief) == 2);
 
-            Assert.Equal(new[] { "Reach orbit", "Land on the Mun" }, debrief.Checklist.Select(i => i.Item));
-            Assert.Equal(new[] { true, false }, debrief.Checklist.Select(i => i.Done));
-            Assert.NotSame(checklist[0], debrief.Checklist[0]);
+            var live = rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief;
+            Assert.Equal(new[] { true, false }, live.Checklist.Select(i => i.Done));
+            var rebuilt = MissionLogRebuild.From(MissionStore.ReadTranscript(rig.Folder), Goal, "", new PlayerConfig()).Last(e => e.Kind == LogKind.Debrief).Debrief;
+            Assert.Equal(new[] { true, false }, rebuilt.Checklist.Select(i => i.Done));
+            Assert.Equal(new[] { true, false }, rig.Mission.View.GoalSteps.Select(i => i.Done));
         }
 
         [Fact]
@@ -242,11 +252,14 @@ namespace ClaudiaKermin.Core.Tests
             public readonly CraftCheckRouter Router;
             public readonly MissionControl Mission;
 
-            public Rig(MissionPreBurnRefusalTests tests, bool debriefFirst = false, bool modDebriefs = true)
+            /// <param name="debriefTicks">Claudia's Debrief's goal_steps_done, as JSON; none when null.</param>
+            public Rig(MissionPreBurnRefusalTests tests, bool debriefFirst = false, bool modDebriefs = true, string debriefTicks = null)
             {
                 _tests = tests;
                 Transport = new StreamingFakeTransport(PlanReply(), SequenceReply());
-                if (debriefFirst) Transport.Add(Reply(DebriefReply));
+                if (debriefFirst) Transport.Add(Reply(debriefTicks == null ? DebriefReply : DebriefReply.Replace("\"eva_science\":\"\"", "\"eva_science\":\"\",\"goal_steps_done\":" + debriefTicks)));
+                Transport.Add(SequenceReply());
+                // A second Sequence Plan, for a test that flies again.
                 Transport.Add(SequenceReply());
                 Router = new CraftCheckRouter(Transport);
                 var client = new ClaudeClient(Router, () => "sk-ant-test", l => { });
@@ -264,7 +277,7 @@ namespace ClaudiaKermin.Core.Tests
                     + "\"mission_plan\":{\"why\":\"Two legs.\",\"sequences\":["
                     + "{\"name\":\"Link check\",\"intent\":\"Prove the link.\",\"delta_v\":0,\"timing\":\"now\",\"due_time_ut\":-1,\"manual\":false},"
                     + "{\"name\":\"Second leg\",\"intent\":\"Go on.\",\"delta_v\":1000,\"timing\":\"after\",\"due_time_ut\":-1,\"manual\":false}],"
-                    + "\"total_delta_v\":1000,\"expected_duration\":\"short\",\"mission_time_s\":-1}}");
+                    + "\"total_delta_v\":1000,\"expected_duration\":\"short\",\"mission_time_s\":-1,\"goal_steps\":[\"Prove the link\",\"Go on\"]}}");
             }
 
             private static ScriptedResponse SequenceReply()

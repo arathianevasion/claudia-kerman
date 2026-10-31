@@ -816,7 +816,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             return "{\"why\":\"Prove the link.\",\"sequences\":[{\"name\":\"" + name + "\",\"intent\":\"Report from the pad.\",\"delta_v\":0,\"timing\":\"right away\","
                 + "\"due_time_ut\":-1,\"manual\":false,\"vessel\":\"craft\"}],\"total_delta_v\":0,\"expected_duration\":\"a minute\",\"mission_time_s\":-1,"
-                + "\"new_goal\":\"\",\"child_vessels\":" + childVessels + "}";
+                + "\"new_goal\":\"\",\"child_vessels\":" + childVessels + ",\"goal_steps\":[\"Prove the link\"]}";
         }
 
         private static ScriptedResponse Propose(string tag, string plan)

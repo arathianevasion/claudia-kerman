@@ -352,7 +352,9 @@ namespace ClaudiaKermin.Core.Missions
                     .Field("mission_time_s", mission.MissionTimeSeconds).Field("new_goal", mission.NewGoal).Name("child_vessels").BeginArray();
                 foreach (var c in mission.ChildVessels)
                     json.BeginObject().Field("name", c.Name).Field("separation_stage", c.SeparationStage).Field("vessel_id", c.VesselId).EndObject();
-                json.EndArray().EndObject();
+                json.EndArray();
+                Strings(json, "goal_steps", mission.GoalSteps);
+                json.EndObject();
             }
             json.Name("sequence_plan");
             if (sequence == null) json.Null();

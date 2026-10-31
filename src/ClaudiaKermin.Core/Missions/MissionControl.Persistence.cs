@@ -469,7 +469,10 @@ namespace ClaudiaKermin.Core.Missions
                 mission.LastMessageId = transcript.LastMessageId;
                 mission.Effort = SentEffort(mission);
                 // The Mission log is the transcript's again: the player's words, Claudia's lines, the plan cards and the Debriefs.
-                mission.Log.AddRange(MissionLogRebuild.From(transcript, state.Goal, mission.VesselName, _config, MissionStore.ReadNotices(mission.Folder)));
+                // The Mission Goal's steps too: the transcript holds every plan and Debrief, so they tick as they did (#581).
+                List<GoalItem> steps;
+                mission.Log.AddRange(MissionLogRebuild.From(transcript, state.Goal, mission.VesselName, _config, MissionStore.ReadNotices(mission.Folder), out steps));
+                mission.GoalSteps = steps;
                 mission.LogRebuilt = transcript.Messages.Count > 0;
             }
             else
