@@ -110,7 +110,7 @@ namespace ClaudiaKermin.Core.Missions
             else if (input is EditSettings) SettingsEdited(((EditSettings)input).Settings);
             else if (input is WarpToDueTime) WarpRequested();
             else if (input is GoToVessel) GoToRequested();
-            else if (input is ClaudiaKilled) Killed(((ClaudiaKilled)input).VesselId);
+            else if (input is ClaudiaKilled) Killed(((ClaudiaKilled)input).VesselId, ((ClaudiaKilled)input).Traced);
             else if (input is KosRunBlocked) RunBlocked((KosRunBlocked)input);
             else if (input is KosBlockStarted) BlockStarted((KosBlockStarted)input);
             else if (input is KosBlockEnded) BlockEnded((KosBlockEnded)input);
@@ -842,13 +842,14 @@ namespace ClaudiaKermin.Core.Missions
         /// Spending Cap. Late run events carry a run id the Mission no longer holds, so they are ignored. A remote
         /// Mission never had her aboard and carries on.
         /// </summary>
-        private void Killed(string vesselId)
+        private void Killed(string vesselId, Kos.TracedBlock traced)
         {
             var mission = _mission;
             if (MissionOver || mission.Remote) return;
             // She died aboard some other craft: not this Mission's loss.
             if (vesselId.Length > 0 && mission.VesselId.Length > 0 && vesselId != mission.VesselId) return;
             var doing = LostDoing(mission);
+            var wasRunning = IsRunning(mission);
             if (mission.InFlight) mission.Pending.Cancel.Cancel();
             else mission.Pending = null;
             CancelCompaction(mission);
@@ -872,7 +873,10 @@ namespace ClaudiaKermin.Core.Missions
 
             mission.LatestLine = "Mission Control: we have lost Claudia. The Mission is Lost.";
             Note(LogKind.Claudia, mission.LatestLine);
-            LostDebrief(mission, doing);
+            // Only a run that was going on at her death has a last word; a trace carried for any other stage is not the Mission's.
+            var lastTrace = traced != null && wasRunning ? Kos.BlockTrace.Describe(traced) : "";
+            if (lastTrace.Length > 0) Note(LogKind.Notice, "Last traced state of the running block: " + lastTrace + ".");
+            LostDebrief(mission, doing, lastTrace);
             NeedsPlayer("Claudia was killed aboard. The Mission is Lost.");
             Note(LogKind.Notice, "Claudia was killed aboard the craft: the Mission is over.");
             RecordFinished(mission);
@@ -895,9 +899,9 @@ namespace ClaudiaKermin.Core.Missions
         /// The final Debrief from Mission Control. Its Debrief outcome is Failed (the Mission Goal can't be reached as
         /// stated); the Mission's outcome is Lost.
         /// </summary>
-        private void LostDebrief(Mission mission, string doing)
+        private void LostDebrief(Mission mission, string doing, string traced = "")
         {
-            var card = AddCard(mission, LogKind.Debrief, MissionCards.LostTitle, MissionCards.LostBody(mission.Goal, doing, mission.Spent, mission.SpendingCap), MissionCards.LostWhy);
+            var card = AddCard(mission, LogKind.Debrief, MissionCards.LostTitle, MissionCards.LostBody(mission.Goal, doing, mission.Spent, mission.SpendingCap, traced: traced), MissionCards.LostWhy);
             card.Outcome = "Failed";
         }
 
