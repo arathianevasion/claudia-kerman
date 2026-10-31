@@ -119,6 +119,130 @@ namespace ClaudiaKermin.Core.Tests
             Assert.True(flown.LowestClearance > 300);
         }
 
+        // ---- Twin Craters as flown (#546, m20261031-022433-3dc5) ----
+
+        /// <summary>
+        /// The ground under Mun Shot v2's fall into Twin Craters, recorded: the transfer's height less ALT:RADAR at each fall trace
+        /// (m before the site, m above sea level). A highland plateau about 4 km up out to 94 km (held there beyond), falling to
+        /// the site's hollow at 400 m.
+        /// </summary>
+        private static readonly double[,] TwinCratersRecorded =
+        {
+            { -3000, 400 }, { 0, 400 }, { 22433, 980 }, { 23606, 1108 }, { 24780, 1461 }, { 27126, 1614 }, { 30643, 2450 },
+            { 47016, 3674 }, { 50514, 3511 }, { 54008, 3939 }, { 56335, 4166 }, { 59821, 3701 }, { 64462, 4050 }, { 70250, 4293 },
+            { 73930, 4379 }, { 77430, 4370 }, { 84411, 3906 }, { 93724, 4317 },
+        };
+
+        private static double TwinCratersAsFlown(double d)
+        {
+            var last = TwinCratersRecorded.GetLength(0) - 1;
+            if (d <= TwinCratersRecorded[0, 0]) return TwinCratersRecorded[0, 1];
+            for (var i = 1; i <= last; i++)
+                if (d <= TwinCratersRecorded[i, 0])
+                    return TwinCratersRecorded[i - 1, 1] + (TwinCratersRecorded[i, 1] - TwinCratersRecorded[i - 1, 1])
+                        * (d - TwinCratersRecorded[i - 1, 0]) / (TwinCratersRecorded[i, 0] - TwinCratersRecorded[i - 1, 0]);
+            return TwinCratersRecorded[last, 1];
+        }
+
+        /// <summary>
+        /// Mun Shot v2 as land measured it in orbit before the stack was staged off: the Swivel stage (215 kN, about 12 t with the
+        /// lander) and TURNTIME's 190 degrees in 27.7 s at up to 21.3 deg/s, the Underhang dropping at 2000 m to the 60 kN, 6.1 t lander.
+        /// </summary>
+        private static BrakeCraft MunShotStack()
+        {
+            return new BrakeCraft
+            {
+                ThrustN = 215000, MassKg = 12000, Isp = 320, LagS = BrakePath.TurnLag(21.3, 27.7),
+                DropAgl = 2000, LanderThrustN = 60000, LanderMassKg = 6100, LanderIsp = 345,
+            };
+        }
+
+        /// <summary>
+        /// The craft that brakes once land stages that short Swivel stage off before the fall, Underhang and all (#382): the lander
+        /// alone, 60 kN, 6.1 t, still flying the stack's turn lag (TURNTIME read it before staging).
+        /// </summary>
+        private static BrakeCraft MunShotLander()
+        {
+            return new BrakeCraft { ThrustN = 60000, MassKg = 6100, Isp = 345, LagS = BrakePath.TurnLag(21.3, 27.7) };
+        }
+
+        [Fact]
+        public void A_Twin_Craters_pass_from_a_30_km_orbit_is_planned_for_the_lander_over_a_fall_that_clears_the_plateau_by_the_margin()
+        {
+            // #546: every pass was refused as terrain on the approach, planned for the stack that land then staged off before the
+            // fall. The stack, braking until its Underhang drops 2 km up, hit the ground on its last drop from every periapsis.
+            // Since #547's sink limit it comes down slowly enough for the lander to stop after the drop, so it plans too; the
+            // refusal over periapses whose fall is too low still says it was the fall, not the braking.
+            var terrain = new Terrain { Before = TwinCratersAsFlown };
+            var stack = DescentApproach.Plan(MunShotStack(), Mun, terrain, MunR + 30000, 0, 0, 90, 9, null);
+            Assert.Null(stack.Error);
+            Assert.True(stack.Best.Result.LeastStopRoom >= 0 && stack.Best.Result.TouchdownSpeed <= 5,
+                "room " + Math.Round(stack.Best.Result.LeastStopRoom) + " m, touchdown " + stack.Best.Result.TouchdownSpeed + " m/s");
+            var world = new BrakeWorld
+            {
+                Mu = MunGm, Radius = MunR, Ground = DescentApproach.Read(terrain, "Mun", MunR, 0, 0, 90, 100000, out _),
+                FallGround = DescentApproach.Read(terrain, "Mun", MunR, 0, 0, 90, 200000, out _, DescentApproach.FallProfileStep),
+            };
+            var low = BrakePath.Search(MunShotStack(), world, MunR + 30000, 9, 1500, 4000);
+            Assert.NotNull(low.Error);
+            Assert.Contains("from a periapsis under 4500 m", low.Error);
+            // The lander that brakes is planned.
+            var plan = DescentApproach.Plan(MunShotLander(), Mun, new Terrain { Before = TwinCratersAsFlown }, MunR + 30000, 0, 0, 90, 9, null);
+            Assert.Null(plan.Error);
+            Assert.True(plan.Best.Result.Clears);
+            // The fall to that periapsis, by hand down the transfer: over the plateau 74 km out, where the in-game fall to 3 km came
+            // within 329 m and set off the safety net, it keeps the margin and the slack (400 m).
+            var rPe = MunR + plan.Best.PeAlt;
+            var r0 = MunR + 30000;
+            var e = (r0 - rPe) / (r0 + rPe);
+            var alt74 = rPe * (1 + e) / (1 + e * Math.Cos(74000.0 / MunR)) - MunR;
+            Assert.True(alt74 - 4379 >= 400, "periapsis " + plan.Best.PeAlt + " m: " + Math.Round(alt74 - 4379) + " m over the plateau 74 km out");
+        }
+
+        [Fact]
+        public void On_Twin_Craters_braking_predicted_again_where_the_fall_brings_it_due_clears_as_the_plan_did()
+        {
+            // #546: the braking-start re-check accepts what the plan accepted when nothing changed, the lander planned and flown.
+            // The plan flew the fall in the flat frame, about 1 m/s down off the conic at braking start: there 850 m/s against
+            // the re-check's 1155. It now brakes from where the fall on the conic brings braking due, as the block does.
+            var terrain = new Terrain { Before = TwinCratersAsFlown };
+            var plan = DescentApproach.Plan(MunShotLander(), Mun, terrain, MunR + 30000, 0, 0, 90, 9, null);
+            Assert.Null(plan.Error);
+            var fall = DescentApproach.Read(terrain, "Mun", MunR, 0, 0, 90, 200000, out _, DescentApproach.FallProfileStep);
+            bool early;
+            var at = BrakePath.FallDue(MunShotLander(), new BrakeWorld { Mu = MunGm, Radius = MunR, Ground = fall }, MunR + 30000, MunR + plan.Best.PeAlt, 9, 200000, out early);
+            Assert.False(early);
+            Assert.True(Math.Abs(at.S - plan.Best.Result.BrakeStartS) <= 500, "braking due " + Math.Round(at.S) + " m out, planned " + Math.Round(plan.Best.Result.BrakeStartS));
+            var again = BlockCalls.BrakePathCall(new Dictionary<string, object>
+            {
+                { "lat", 0.0 }, { "lng", 0.0 }, { "heading", 90.0 }, { "s", at.S }, { "alt", at.Alt }, { "v_h", at.VH }, { "v_up", at.VUp },
+                { "thrust", 60.0 }, { "mass", 6.1 }, { "isp", 345.0 }, { "turn_lag", MunShotLander().LagS }, { "shape", plan.Best.Shape },
+            }, MunOrbit(), terrain);
+            Assert.Equal("", again["error"]);
+            Assert.Equal(true, again["clears"]);
+            Assert.InRange((double)again["brake_dv"] / plan.Best.Result.DvUsed, 0.95, 1.05);
+        }
+
+        [Theory]
+        [InlineData(5000.0)]
+        [InlineData(6000.0)]
+        public void From_the_78_km_twin_craters_braking_start_the_last_drop_keeps_room_to_stop_over_the_ground_and_lands_on_the_site(double massKg)
+        {
+            // #547, m20261031-022433-3dc5 from a 78 km orbit: periapsis 4.1 km, shape 2.35, braking 21.9 km out at 599.5 m/s and 9 m/s
+            // down, 3344 m over the ground (h 3206, h_ref 3310), Mun Shot v2's lander (60 kN, about 5 to 6 t, TURNTIME's 190 degrees
+            // in 9.9 s at up to 59.5 deg/s). Above circular speed it can't sink with its shape, so it holds about 3.4 km to within a
+            // km of the site and drops 3 km there at about 90 m/s. The sink rate wanted stopped it at the ground: falling, full thrust
+            // after the 2.6 s turn would have stopped it 7 m up. Now it keeps the room to stop by about h_end.
+            var ground = DescentApproach.Read(new Terrain { Before = TwinCratersAsFlown }, "Mun", MunR, 0, 0, 90, 30000, out _);
+            var world = new BrakeWorld { Mu = MunGm, Radius = MunR, Ground = ground };
+            var craft = new BrakeCraft { ThrustN = 60000, MassKg = massKg, Isp = 345, LagS = BrakePath.TurnLag(59.5, 9.9) };
+            var start = new BrakeStart { S = 21870, Alt = 3344 + TwinCratersAsFlown(21870), VH = 599.5, VUp = -9, Braking = true };
+            var flown = BrakePath.Simulate(craft, world, start, 2.345);
+            Assert.True(flown.Clears, flown.Failure + ", least spare " + flown.LeastSpare);
+            Assert.InRange(flown.StopS, -300, 300);
+            Assert.True(flown.LeastStopRoom >= BrakeGuidance.HEnd / 2, "least room to stop " + Math.Round(flown.LeastStopRoom) + " m");
+        }
+
         // ---- Minmus Flats (#530, m20261030-013514-be46) ----
 
         private const double MinmusGm = 1.7658e9;

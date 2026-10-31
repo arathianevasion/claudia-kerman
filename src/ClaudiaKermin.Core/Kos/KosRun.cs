@@ -65,6 +65,19 @@ namespace ClaudiaKermin.Core.Kos
         }
     }
 
+    /// <summary>An open block's last traced state (<see cref="KosRun.BlockTraced"/>), including the "ut" it was traced at.</summary>
+    public sealed class TracedBlock
+    {
+        public string Block { get; private set; }
+        public IDictionary<string, object> State { get; private set; }
+
+        public TracedBlock(string block, IDictionary<string, object> state)
+        {
+            Block = block;
+            State = state;
+        }
+    }
+
     /// <summary>
     /// One mod-started program on one kOS processor, from start to its outcome. The adapter feeds it
     /// kOS events; it decides how the run ended.
@@ -81,8 +94,7 @@ namespace ClaudiaKermin.Core.Kos
         private IDictionary<string, object> _report;
         private string _abortReason;
         private string _interruptReason;
-        private string _tracedBlock;
-        private IDictionary<string, object> _tracedState;
+        private readonly List<TracedBlock> _traced = new List<TracedBlock>();
 
         /// <param name="terminalBefore">The processor's terminal lines when the run started.</param>
         public KosRun(IList<string> terminalBefore)
@@ -99,21 +111,36 @@ namespace ClaudiaKermin.Core.Kos
             if (!HasEnded) _report = report;
         }
 
-        /// <summary>A block traced its state (<c>ADDONS:CLAUDIA:BLOCKTRACE</c>, #365) at ut; the latest is kept until the block returns.
-        /// With keep false (the RCS Use trace and the SAS-off note, #407) the line is for KSP.log only and the kept state stays as it was.</summary>
+        /// <summary>A block traced its state (<c>ADDONS:CLAUDIA:BLOCKTRACE</c>, #365) at ut; the latest is kept until that block returns.
+        /// Traced state is kept per open block, in the order the blocks first traced (outermost first). A block that traces again keeps
+        /// its place and replaces its own state; a repeated name (recursion, or the same block twice) is one block as far as the trace
+        /// goes, so its ending drops that name's state. With keep false (the RCS Use trace and the SAS-off note, #407) the line is for
+        /// KSP.log only and nothing kept changes.</summary>
         public void BlockTraced(string block, double ut, IDictionary<string, object> state, bool keep = true)
         {
             if (HasEnded || !keep) return;
             var kept = new Dictionary<string, object>(state ?? new Dictionary<string, object>());
             kept["ut"] = ut;
-            _tracedBlock = block ?? "";
-            _tracedState = kept;
+            var name = block ?? "";
+            var entry = new TracedBlock(name, kept);
+            var i = _traced.FindIndex(t => t.Block == name);
+            if (i >= 0) _traced[i] = entry;
+            else _traced.Add(entry);
         }
 
-        /// <summary>A block returned its result (<c>BLOCKRESULT</c>): its traced state is no longer the run's last word.</summary>
+        /// <summary>A block returned its result (<c>BLOCKRESULT</c>): only its own traced state goes; the blocks around it keep theirs.
+        /// A block that ends having never traced changes nothing.</summary>
         public void BlockEnded(string block)
         {
-            if (_tracedState != null && _tracedBlock == (block ?? "")) _tracedState = null;
+            var name = block ?? "";
+            _traced.RemoveAll(t => t.Block == name);
+        }
+
+        /// <summary>The innermost open block that has traced, with its last traced state; null when no open block has.
+        /// What the stand-in report (#365) names, and what a Lost Mission can record (#375).</summary>
+        public TracedBlock InnermostTraced
+        {
+            get { return _traced.Count == 0 ? null : _traced[_traced.Count - 1]; }
         }
 
         /// <summary>True once kOS has popped the program context.</summary>
@@ -157,16 +184,18 @@ namespace ClaudiaKermin.Core.Kos
             return new RunOutcome(RunOutcomeKind.NoReport, traced, printed, "", false, Trace);
         }
 
-        /// <summary>What a run that ended mid-block, with no Script Result, says for it: the block's last traced state; null with none.</summary>
+        /// <summary>What a run that ended mid-block, with no Script Result, says for it: the innermost open block that traced and its
+        /// last traced state (the outer blocks' states are not listed); null with none.</summary>
         private IDictionary<string, object> TracedReport()
         {
-            if (_tracedState == null) return null;
+            var innermost = InnermostTraced;
+            if (innermost == null) return null;
             return new Dictionary<string, object>
             {
                 { "success", false },
-                { "block", _tracedBlock },
-                { "reason", "the run ended inside " + _tracedBlock + " with no Script Result; last_state is the block's last traced state, from the mod" },
-                { "last_state", _tracedState },
+                { "block", innermost.Block },
+                { "reason", "the run ended inside " + innermost.Block + " with no Script Result; last_state is the block's last traced state, from the mod" },
+                { "last_state", innermost.State },
             };
         }
     }

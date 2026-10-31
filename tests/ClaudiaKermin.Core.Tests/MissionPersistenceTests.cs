@@ -617,7 +617,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void ACrashMidRequestCountsTheWorstCaseAsKeptInAFreshGame()
+        public void ARequestLostAcrossALoadHoldsOnlyItsInputCost()
         {
             var held = ScriptedResponse.Fixture("mission-plan-priced.sse", 64);
             held.PauseAt = 100;
@@ -634,7 +634,10 @@ namespace ClaudiaKermin.Core.Tests
             // The resumed game has no snapshot yet, so the unanswered turn waits; nothing is sent to settle it.
             var resumed = Control(new StreamingFakeTransport());
             resumed.Send(new MissionsRestored(_save.Path, saved));
-            Assert.Equal(worstCase, resumed.View.HeldCharges);
+            // No response came, so no output was billed: only the input cost stays held (#535).
+            var input = worstCase - new PlayerConfig().Prices.OutputCost("claude-sonnet-5-5", MissionPrompts.MaxTokens);
+            Assert.True(input > 0m && input < worstCase);
+            Assert.Equal(input, resumed.View.HeldCharges);
             Assert.Equal(0m, resumed.View.Spent);
         }
 

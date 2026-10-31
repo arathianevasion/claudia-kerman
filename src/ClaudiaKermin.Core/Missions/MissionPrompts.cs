@@ -63,8 +63,8 @@ namespace ClaudiaKermin.Core.Missions
             + "\"success\" (boolean) and \"reason\" (string), plus any figures the Debrief needs (for example \"apoapsis\", "
             + "\"periapsis\", \"dv_used\", \"situation\"). A script that ends without reporting counts as failed. Keep "
             + "scripts short and safe: lock steering and throttle explicitly, unlock them and set the throttle to zero "
-            + "before reporting, and stage only as the plan says. The mod turns SAS off when a script starts, because SAS "
-            + "fights kOS steering. Blocks manage RCS themselves (RCS Use, which includes big turns even with time to spare): leave it to them, or use claudia_rcs_translate for "
+            + "before reporting. No bare stage. (refused): use drop_parts or stage_limit. Never loop on nextnode:prograde to search: "
+            + "tune_pe and solve_burn do. The mod turns SAS off when a script starts. Blocks manage RCS themselves (RCS Use, which includes big turns even with time to spare): leave it to them, or use claudia_rcs_translate for "
             + "translation. Never switch SAS on: the Script Check rejects it, because SAS fights kOS steering and fires RCS through holds. "
             + "SET a:b[c] TO v crashes kOS: use local x is a:b. set x[c] to v.\n\n"
             + "Forbidden in every script: saving, loading, reverting or quickloading the game; switching or launching "
@@ -227,25 +227,10 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The Mission Settings in words, as Claudia must apply them.</summary>
         public static string SettingsText(MissionSettingsValues settings)
         {
-            var time = settings.TimeVersusDeltaV == TimeVersusDeltaV.Fastest
-                ? "Fastest: never wait for a better window; take the next one."
-                : settings.TimeVersusDeltaV == TimeVersusDeltaV.MostEfficient
-                    ? "Most efficient: wait for the cheapest window, however long (the script warps there)."
-                    : "Balanced: wait up to 6 h to save delta-v; do not wait longer than that for a better window.";
-            return "Mission Settings. Daylight landing: " + (settings.DaylightLanding
-                    ? "on. Set the land block's daylight option to true and prefer a daylight landing."
-                    : "off. Do not wait for daylight.")
-                + " Time versus delta-v, " + time + "\n" + PhysicsWarpText(settings);
-        }
-
-        /// <summary>The Physics warp on Coasts line of the Mission Settings (#348); with the config off, only the config turns it back on.</summary>
-        public static string PhysicsWarpText(MissionSettingsValues settings)
-        {
-            if (settings.PhysicsWarpOn)
-                return "Physics warp on Coasts: on. Blocks warp through Coasts with physics warp where rails can't; use the warp helpers for your own Coasts.";
-            return "Physics warp on Coasts: off. The mod refuses physics warp. "
-                + (settings.ConfigAllowsPhysicsWarp ? "" : "Only the player's config can turn it back on. ")
-                + "Where rails can't warp, Coasts run at 1×, so plan for the extra real time.";
+            var text = new System.Text.StringBuilder("Mission Settings.");
+            foreach (var setting in MissionSettingsValues.All)
+                text.Append(setting.OwnLine ? "\n" : " ").Append(setting.Prompt(settings));
+            return text.ToString();
         }
 
         public static string SettingsChanged(MissionSettingsValues settings)

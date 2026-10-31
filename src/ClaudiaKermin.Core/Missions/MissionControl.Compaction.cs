@@ -49,6 +49,8 @@ namespace ClaudiaKermin.Core.Missions
             public CompactionRun Compacting;
             /// <summary>The worst case of the compaction in flight. It counts against the Spending Cap beside a turn sent meanwhile.</summary>
             public decimal CompactionCharge;
+            /// <summary>The input part of <see cref="CompactionCharge"/>, all it holds if it is cancelled or lost with no reply.</summary>
+            public decimal CompactionInput;
             /// <summary>The conversation's length when a compaction was last skipped after its retry; -1 when none was.</summary>
             public int CompactionSkippedAt = -1;
             /// <summary>The Spending Cap deferred a compaction: the ceiling stops asking until the next start of Running.</summary>
@@ -173,8 +175,9 @@ namespace ClaudiaKermin.Core.Missions
             var run = new CompactionRun { Covers = mission.Conversation.Count, Attempt = attempt, Why = why, Cancel = new CancellationTokenSource() };
             mission.Compacting = run;
             mission.CompactionCharge = worst;
+            mission.CompactionInput = RequestCharge.InputCost(_config.Prices, mission.Model, request, worst);
             mission.Requests++;
-            LogCost(mission, "pending", worst, "compaction");
+            LogCost(mission, "pending", worst, "compaction", mission.CompactionInput);
             Event(mission, "compaction", why + ": " + mission.ContextTokens + " tokens, " + run.Covers + " messages" + (attempt > 1 ? ", second try" : ""));
             var cancel = run.Cancel.Token;
             var dump = mission.Dump;
@@ -196,8 +199,9 @@ namespace ClaudiaKermin.Core.Missions
             if (mission.Compacting != run) return;
             mission.Compacting = null;
             run.Cancel.Dispose();
-            var settlement = RequestCharge.Settle(_config.Prices, mission.CompactionCharge, result, mission.Model);
+            var settlement = RequestCharge.Settle(_config.Prices, mission.CompactionCharge, result, mission.Model, mission.CompactionInput);
             mission.CompactionCharge = 0m;
+            mission.CompactionInput = 0m;
             mission.Spent += settlement.Spent;
             mission.Held += settlement.Held;
             var block = Block(result);

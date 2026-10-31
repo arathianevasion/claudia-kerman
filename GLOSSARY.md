@@ -225,7 +225,7 @@ A script Claudia writes for one Mission to carry out a Maneuver Sequence, kept w
 _Avoid_: generated script, glue script
 
 **Custom Script**:
-A Mission Script with flight logic of its own beyond running Building Blocks in order, branching on their Script Results, staging, adding the maneuver node an exec_node call flies, and reporting (e.g. a hand-written landing-site search before a land call), used where no Building Block fits; a script that calls no Building Block at all is one too.
+A Mission Script with flight logic of its own beyond running Building Blocks in order, branching on their Script Results, adding the maneuver node an exec_node call flies, and reporting (e.g. a hand-written landing-site search before a land call; never a bare stage., which the Script Check refuses), used where no Building Block fits; a script that calls no Building Block at all is one too.
 _Avoid_: raw script, freeform script
 
 **Script Result**:

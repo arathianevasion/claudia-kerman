@@ -203,7 +203,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void ACancelledRequestKeepsItsWorstCaseChargeInTheLog()
+        public void ACancelledRequestWithNoResponseKeepsOnlyItsInputCostInTheLog()
         {
             var plan = ScriptedResponse.Fixture("mission-plan-priced.sse");
             plan.PauseAt = 200;
@@ -226,7 +226,11 @@ namespace ClaudiaKermin.Core.Tests
                 .Select(l => JsonDocument.Parse(l).RootElement.Clone())
                 .Where(l => !l.GetProperty("event").GetString().StartsWith("craft_check_")).ToArray();
             Assert.Equal(new[] { "pending", "kept" },lines.Select(l => l.GetProperty("event").GetString()).ToArray());
-            Assert.Equal(pending, lines[1].GetProperty("amount").GetDecimal());
+            var input = pending - new PlayerConfig().Prices.OutputCost(Sonnet, MissionPrompts.MaxTokens);
+            Assert.Equal(pending, lines[0].GetProperty("amount").GetDecimal());
+            Assert.Equal(input, lines[0].GetProperty("input").GetDecimal());
+            Assert.Equal(input, lines[1].GetProperty("amount").GetDecimal());
+            Assert.Equal(input, lines[1].GetProperty("held").GetDecimal());
             Assert.Equal("cancelled", lines[1].GetProperty("outcome").GetString());
         }
 
@@ -251,6 +255,12 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(held, mission.View.HeldCharges);
             Assert.Equal(0.54m, mission.View.Spent);
             Assert.Equal(new[] { "pending", "kept", "pending", "paid" }, Events(CostLog(mission.View.MissionId)));
+
+            // #539: the stream broke after partial output, so the request keeps its whole worst case, not just its input cost.
+            var lines = CostLog(mission.View.MissionId).Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(l => JsonDocument.Parse(l).RootElement.Clone()).Where(l => !l.GetProperty("event").GetString().StartsWith("craft_check_")).ToArray();
+            Assert.Equal(lines[0].GetProperty("amount").GetDecimal(), lines[1].GetProperty("amount").GetDecimal());
+            Assert.Equal(lines[0].GetProperty("amount").GetDecimal(), held);
         }
 
         [Fact]

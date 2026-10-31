@@ -126,6 +126,26 @@ namespace ClaudiaKermin.Core.Missions
             if (table.Length > 0) MissionFolder.ReplaceAtomically(Path.Combine(folder, BodyTableFile), table);
         }
 
+        public const string AscentPlanSnapshotFile = "ascent-plan-snapshot.json";
+        public const string AscentPlanInputFile = "ascent-plan-input.json";
+
+        /// <summary>
+        /// Saves what the Craft Check's plan_ascent flew from (#531): the Game Snapshot it read and the call's input, so a Mission's
+        /// ascent can be flown again offline and set against the launch's trace. Nothing is written when the check planned no ascent.
+        /// </summary>
+        public static void WriteAscentPlan(string folder, string inputJson, string snapshotJson)
+        {
+            if (snapshotJson.Length == 0)
+            {
+                // A folder reused for a check that planned none must not keep an older craft's plan for the replay.
+                foreach (var stale in new[] { AscentPlanSnapshotFile, AscentPlanInputFile })
+                    if (File.Exists(Path.Combine(folder, stale))) File.Delete(Path.Combine(folder, stale));
+                return;
+            }
+            MissionFolder.ReplaceAtomically(Path.Combine(folder, AscentPlanSnapshotFile), snapshotJson);
+            MissionFolder.ReplaceAtomically(Path.Combine(folder, AscentPlanInputFile), inputJson.Length > 0 ? inputJson : "{}");
+        }
+
         /// <summary>The saved body table; "" when none was saved (an older Mission, or the game's bodies weren't read).</summary>
         public static string ReadBodyTable(string folder)
         {
@@ -301,8 +321,8 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <summary>
         /// Spent and Held as the cost log last recorded them: the log is append-only and never rewound, so it is
-        /// the truth whatever save is loaded. A pending charge with no settlement after it (a crash mid-request)
-        /// counts as kept. A torn last line (a crash mid-append) is skipped. Zero when there is no log; Unreadable when
+        /// the truth whatever save is loaded. A pending charge with no settlement after it (a crash or a close
+        /// mid-request) counts as kept at its input cost: it got no response, so it can't have billed output. A torn last line (a crash mid-append) is skipped. Zero when there is no log; Unreadable when
         /// there is one that can't be read (an IO or access error), which is not zero spend.
         /// </summary>
         public static CostTotals ReadCostTotals(string folder)
@@ -338,7 +358,13 @@ namespace ClaudiaKermin.Core.Missions
                 totals.Requests = (int)(JsonNode.Long(line["request"]) ?? 0);
                 decimal cap;
                 if (TryDecimal(line["cap"], out cap)) totals.Cap = cap;
-                if (JsonNode.Str(line["event"]) == "pending" && TryDecimal(line["amount"], out amount)) totals.Held += amount;
+                // A request still pending was lost (no response at all): it holds its input cost, not the output it could have billed.
+                // A log line from before input costs were recorded holds the whole worst case.
+                if (JsonNode.Str(line["event"]) == "pending" && TryDecimal(line["amount"], out amount))
+                {
+                    decimal input;
+                    totals.Held += TryDecimal(line["input"], out input) ? System.Math.Min(amount, input) : amount;
+                }
                 return totals;
             }
             return totals;

@@ -86,7 +86,13 @@ namespace ClaudiaKermin.Core.Missions
                 _client.Log("Craft Check Planning Tool " + call.Name + ": " + (call.IsError ? "error: " : "") + call.Summary);
                 // The Mission request carries it (#508), so the Mission Plan step needn't run plan_ascent again.
                 var result = step.Results.Content[i] as ToolResultBlock;
-                if (call.Name == "plan_ascent" && !call.IsError && result != null) _plannedAscent = call.InputJson + ": " + result.Content;
+                if (call.Name == "plan_ascent" && !call.IsError && result != null)
+                {
+                    _plannedAscent = call.InputJson + ": " + result.Content;
+                    // What it flew from, for the Mission's folder: the replay (#531) rebuilds the sim from these.
+                    _plannedAscentInput = call.InputJson;
+                    _plannedAscentSnapshot = _toolSnapshot != null ? _toolSnapshot.ToJson() : "";
+                }
             }
 
             // At the step limit the next request is the last: tool_choice none, tools and system unchanged, as for a Mission turn (#509).
@@ -100,7 +106,7 @@ namespace ClaudiaKermin.Core.Missions
                 return;
             }
             if (_toolLimitSent) _client.Log("Craft Check tool_limit_final after " + _toolSteps + " steps; the reply is asked for with tool_choice none");
-            var next = new CraftCheckCharge { Model = _request.Model, Pending = worstCase };
+            var next = new CraftCheckCharge { Model = _request.Model, Pending = worstCase, Input = RequestCharge.InputCost(_config.Prices, _request.Model, _request, worstCase) };
             var request = _request;
             _background.Run(
                 () => _client.Stream(request, update => { }, cancel.Token),

@@ -110,6 +110,9 @@ namespace ClaudiaKermin.Core.Missions
         private double? _plannedTurnShape;
         /// <summary>The latest check's last plan_ascent call that answered, "input: result"; "" when none did.</summary>
         private string _plannedAscent = "";
+        /// <summary>The last plan_ascent call's input and the Game Snapshot it read, as JSON, for the Mission's folder (#531).</summary>
+        private string _plannedAscentInput = "";
+        private string _plannedAscentSnapshot = "";
 
         /// <param name="completed">Called on the main thread when a request ends, whatever the result.</param>
         public CraftCheckFlow(ClaudeClient client, Background background, PlayerConfig config, Func<bool> hasKey, Action completed)
@@ -251,7 +254,7 @@ namespace ClaudiaKermin.Core.Missions
             _remoteMissing = remote ? RemoteBlocker.Missing(snapshot) : "";
             _staging = ChildVessels.Staging(snapshot, remote, ProcessorFor(snapshot));
             _craftKey = CraftKey(snapshot);
-            var charge = new CraftCheckCharge { Model = request.Model, Pending = worstCase };
+            var charge = new CraftCheckCharge { Model = request.Model, Pending = worstCase, Input = RequestCharge.InputCost(_config.Prices, request.Model, request, worstCase) };
             var cancel = new CancellationTokenSource();
             _cancel = cancel;
             _request = request;
@@ -303,6 +306,8 @@ namespace ClaudiaKermin.Core.Missions
             _goal = null;
             _plannedTurnShape = null;
             _plannedAscent = "";
+            _plannedAscentInput = "";
+            _plannedAscentSnapshot = "";
         }
 
         /// <summary>
@@ -329,6 +334,18 @@ namespace ClaudiaKermin.Core.Missions
             get { return _state == CraftCheckState.Done ? _plannedAscent : ""; }
         }
 
+        /// <summary>The input of the finished check's last plan_ascent call (JSON); "" when none.</summary>
+        public string PlannedAscentInput
+        {
+            get { return _state == CraftCheckState.Done ? _plannedAscentInput : ""; }
+        }
+
+        /// <summary>The Game Snapshot the finished check's last plan_ascent call read (JSON); "" when none.</summary>
+        public string PlannedAscentSnapshot
+        {
+            get { return _state == CraftCheckState.Done ? _plannedAscentSnapshot : ""; }
+        }
+
         /// <summary>This check is replaced or gone: no Mission starts from it, so its charge goes to KSP.log only.</summary>
         private void DropCost()
         {
@@ -349,7 +366,7 @@ namespace ClaudiaKermin.Core.Missions
         private void Finished(CancellationTokenSource cancel, CraftCheckCharge charge, StreamResult result)
         {
             // Settled whatever came of the check, by the rules a Mission request follows.
-            charge.Settlement = RequestCharge.Settle(_config.Prices, charge.Pending, result, charge.Model);
+            charge.Settlement = RequestCharge.Settle(_config.Prices, charge.Pending, result, charge.Model, charge.Input);
             // Superseded (cancelled by Reset or a newer Run) while it ran: its charge is in KSP.log only.
             if (_cancel != cancel || _state != CraftCheckState.Running)
             {

@@ -141,6 +141,11 @@ namespace ClaudiaKermin.Core.Tools
         public double BrakeEndAgl = double.NaN;
         /// <summary>m to the site where the braking descent first came down to <see cref="BrakeGuidance.HEnd"/> over the ground; NaN if it never did.</summary>
         public double HEndS = double.NaN;
+        /// <summary>
+        /// The least height over the ground the braking descent would stop at, falling, if it thrust fully from now after its turn
+        /// lag, m, while over <see cref="BrakeGuidance.HEnd"/> (#547); infinite if it never fell there.
+        /// </summary>
+        public double LeastStopRoom = double.PositiveInfinity;
         /// <summary>The least height over the terrain before braking ended, m.</summary>
         public double LowestClearance = double.PositiveInfinity;
         /// <summary>The least height over the terrain less its margin (<see cref="BrakeGuidance.ClearMargin"/>) before braking ended, m.</summary>
@@ -154,10 +159,10 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>Why it didn't come down softly near the site, or null.</summary>
         public string Failure;
 
-        /// <summary>The path stays the margin over the terrain while braking and touches down softly.</summary>
+        /// <summary>The path stays the margin over the terrain while braking, could always stop its fall over the ground (#547), and touches down softly.</summary>
         public bool Clears
         {
-            get { return Failure == null && LeastSpare >= 0; }
+            get { return Failure == null && LeastSpare >= 0 && LeastStopRoom >= 0; }
         }
     }
 
@@ -197,6 +202,8 @@ namespace ClaudiaKermin.Core.Tools
         /// </summary>
         public int FallBlocked;
         public double FallBlockedS = double.NaN;
+        /// <summary>The highest periapsis passed over for its fall, m above sea level (NaN if none).</summary>
+        public double FallBlockedPe = double.NaN;
     }
 
     /// <summary>
@@ -276,7 +283,7 @@ namespace ClaudiaKermin.Core.Tools
                 if (braking)
                 {
                     vTop = BrakeGuidance.VTop(vTop, Math.Abs(vx));
-                    var w = BrakeGuidance.Guide(s, vx, vy, h, hStart, v0, shape, vTop, Math.Max(aMax, 1e-6), g, world.Radius + y, world.Touchdown, margin);
+                    var w = BrakeGuidance.Guide(s, vx, vy, h, hStart, v0, shape, vTop, Math.Max(aMax, 1e-6), g, world.Radius + y, world.Touchdown, margin, craft.LagS);
                     toGo = w.ToGo;
                     double mag;
                     BrakeGuidance.Steer(w.Along, w.Up, dirAl, dirUp, vx, vy, aMax, out dirAl, out dirUp, out mag);
@@ -318,6 +325,9 @@ namespace ClaudiaKermin.Core.Tools
                     result.BrakeEndS = s;
                     result.BrakeEndAgl = radar;
                 }
+                // Where a fall stopped at full thrust after the turn lag would end, over the ground (#547).
+                if (braking && vy < 0 && aMax > g && radar > BrakeGuidance.HEnd)
+                    result.LeastStopRoom = Math.Min(result.LeastStopRoom, radar + vy * craft.LagS - vy * vy / (2 * (aMax - g)));
                 if (braking && double.IsNaN(result.HEndS) && radar <= BrakeGuidance.HEnd) result.HEndS = s;
                 if (s <= nextPoint)
                 {
@@ -445,8 +455,8 @@ namespace ClaudiaKermin.Core.Tools
 
         /// <summary>
         /// The plan-time search: periapsis heights from <paramref name="peLowest"/> (m above sea level) in 500 m steps to
-        /// <paramref name="peHighest"/>, each against <paramref name="shapes"/> (all of <see cref="Shapes"/> if null), flown
-        /// from the transfer off an orbit of radius <paramref name="r0"/>; it keeps the clearing pair with the least delta-v and
+        /// <paramref name="peHighest"/>, each against <paramref name="shapes"/> (all of <see cref="Shapes"/> if null), braking flown
+        /// from where the fall down the transfer off an orbit of radius <paramref name="r0"/> brings it due (<see cref="FallDue"/>); it keeps the clearing pair with the least delta-v and
         /// stops once clearing pairs stop getting cheaper, or at <paramref name="budgetMs"/>.
         /// </summary>
         public static DescentChoice Search(BrakeCraft craft, BrakeWorld world, double r0, double vRotAlong, double peLowest, double peHighest,
@@ -467,17 +477,18 @@ namespace ClaudiaKermin.Core.Tools
                 {
                     choice.FallBlocked++;
                     choice.FallBlockedS = double.IsNaN(choice.FallBlockedS) ? due.S : Math.Max(choice.FallBlockedS, due.S);
+                    choice.FallBlockedPe = double.IsNaN(choice.FallBlockedPe) ? pe : Math.Max(choice.FallBlockedPe, pe);
                     if (watch.Elapsed.TotalMilliseconds > budgetMs) break;
                     continue;
                 }
-                var vPe = Math.Sqrt(world.Mu * (2 / rPe - 2 / (r0 + rPe)));
-                var before = Math.Min(world.Ground.FarthestS, FallFrom(craft, world.Mu, world.Radius, vPe, world.Margin));
-                var start = OnTransfer(world.Mu, world.Radius, r0, rPe, before, vRotAlong);
+                // Braking flown from where the fall brings it due, on the conic: the state the block predicts again from as braking
+                // begins (BRAKEPATH). The flat frame's fall drifted about 1 m/s off it over 6 km, enough to move the braking's
+                // figure by a third on a rough approach, so the re-check refused what the plan had chosen (#546).
                 var deorbit = DeorbitDv(world.Mu, r0, rPe);
                 DescentTry bestHere = null;
                 foreach (var shape in shapes)
                 {
-                    var flown = Simulate(craft, world, start, shape);
+                    var flown = Simulate(craft, world, due, shape);
                     choice.Tried++;
                     if (!flown.Clears) continue;
                     choice.ShapeLo = double.IsNaN(choice.ShapeLo) ? shape : Math.Min(choice.ShapeLo, shape);
@@ -497,7 +508,9 @@ namespace ClaudiaKermin.Core.Tools
             if (choice.Best == null)
                 choice.Error = "no Descent Shape clears the terrain on the approach by " + BrakeGuidance.ClearMargin(0).ToString("0", System.Globalization.CultureInfo.InvariantCulture)
                     + " m from a periapsis of " + Whole(peLowest) + " to " + Whole(peHighest) + " m"
-                    + (choice.FallBlocked > 0 ? "; the fall from the deorbit burn passes too low over the ground up to " + Whole(choice.FallBlockedS / 1000) + " km before the site" : "");
+                    // #546: which periapses the fall ruled out, so a refusal over higher ones isn't read as the fall's.
+                    + (choice.FallBlocked > 0 ? "; the fall from the deorbit burn passes too low over the ground up to " + Whole(choice.FallBlockedS / 1000)
+                        + " km before the site from a periapsis under " + Whole(choice.FallBlockedPe + PeStep) + " m" : "");
             return choice;
         }
 

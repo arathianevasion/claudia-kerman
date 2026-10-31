@@ -127,6 +127,8 @@ namespace ClaudiaKermin.Core.Tests
             if (_aborted.IsSet) throw new IOException("aborted");
             if (_position == _response.PauseAt && !_response.Gate.Wait(TimeSpan.FromSeconds(30)))
                 throw new TimeoutException("test gate was never opened");
+            // A socket aborted while a read waits delivers nothing more.
+            if (_aborted.IsSet) throw new IOException("aborted");
             var left = _response.Body.Length - _position;
             if (left > 0)
             {

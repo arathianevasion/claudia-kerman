@@ -152,6 +152,11 @@ namespace ClaudiaKermin.Core.Tools
         public double Step = 0.1;
         /// <summary>Records the pitch each 1000 m of climb (the cross-check's track).</summary>
         public bool Track;
+        /// <summary>
+        /// The circularization also stops once the eccentricity stops falling, as <c>circularize</c> asks <c>exec_node</c> to (#532).
+        /// False flies the node's own stops alone, as before.
+        /// </summary>
+        public bool EccStop = true;
     }
 
     /// <summary>The craft when a stage lit.</summary>
@@ -189,6 +194,14 @@ namespace ClaudiaKermin.Core.Tools
         public double BestAp;
         /// <summary>Delta-v spent from the pad to a circular orbit, m/s.</summary>
         public double DeltaVToOrbit;
+        /// <summary>Apoapsis the circularization left, m; 0 until it ends.</summary>
+        public double OrbitAp;
+        /// <summary>Periapsis the circularization left, m; 0 until it ends.</summary>
+        public double OrbitPe;
+        /// <summary>Eccentricity the circularization left; 0 until it ends.</summary>
+        public double OrbitEcc;
+        /// <summary>The stop that ended the circularization, as <c>circularize</c>'s result says it: "node" or "ecc_min"; "" until it ends.</summary>
+        public string CircularizeStop = "";
         /// <summary>Vacuum delta-v left at orbit in the stages the launch may burn (stage_limit and above), m/s.</summary>
         public double DeltaVLeft;
         /// <summary>Vacuum delta-v of the stages stage_limit keeps (below it), m/s.</summary>
@@ -198,10 +211,19 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The lowest vertical speed while a Boost stage burns below the atmosphere top after the turn starts, m/s.</summary>
         public double MinVerticalSpeed = double.PositiveInfinity;
         /// <summary>
-        /// (altitude, pitch and prograde from vertical in degrees, dynamic pressure Pa, throttle) at each 1000 m of the climb
-        /// while burning, when asked for.
+        /// A row at each 1000 m of the climb while burning, when asked for: altitude m, commanded pitch and prograde from vertical
+        /// in degrees, dynamic pressure Pa, throttle, then t s from liftoff, mass t, stage number, apoapsis m, horizontal and
+        /// vertical surface speed m/s, and the phase (an index of <see cref="TrackPhases"/>). <c>launch</c> traces the same fields
+        /// (#531), so a flight's trace and this line up row for row; see <see cref="TrackColumns"/>.
         /// </summary>
         public List<double[]> Track = new List<double[]>();
+
+        /// <summary>The columns of a <see cref="Track"/> row, by index.</summary>
+        public static readonly string[] TrackColumns =
+            { "alt", "pitch", "prograde", "q", "throttle", "t", "mass", "stage", "ap", "h_speed", "v_speed", "phase" };
+
+        /// <summary>The phases of the climb a Track row names, as <c>launch_phase</c> names them (the sim's Track has no coast row).</summary>
+        public static readonly string[] TrackPhases = { "vertical", "turn", "turn_held", "thin_air", "coast" };
     }
 
     /// <summary>
@@ -534,12 +556,18 @@ namespace ClaudiaKermin.Core.Tools
 
                 var prograde = spd > 1 ? Math.Atan2(vertical, horizontal) * 180 / Math.PI : 90;
                 if (turnStartAlt < 0 && spd >= _o.TurnStartSpeed) turnStartAlt = h;
-                if (turnStartAlt >= 0 && TurnHeld(q, _o.MaxQ, ratio)) turnStartAlt = h;
+                var held = turnStartAlt >= 0 && TurnHeld(q, _o.MaxQ, ratio);
+                if (held) turnStartAlt = h;
+                var thin = false;
                 var pitch = 90.0;
                 if (!coasting)
                 {
                     if (turnStartAlt >= 0) pitch = LaunchPitch(h, turnStartAlt, turnEnd, _o.TurnShape);
-                    if (spd > 30 && q <= AeroQ) pitch = Math.Max(pitch, prograde - ThinLead);
+                    if (spd > 30 && q <= AeroQ)
+                    {
+                        thin = prograde - ThinLead > pitch;
+                        pitch = Math.Max(pitch, prograde - ThinLead);
+                    }
                 }
                 else if (spd > 30)
                 {
@@ -557,8 +585,14 @@ namespace ClaudiaKermin.Core.Tools
                     if (turnStartAlt >= 0 && h < top && _flight.Lit[_flight.Lit.Count - 1].Suborbital) _flight.MinVerticalSpeed = Math.Min(_flight.MinVerticalSpeed, vertical);
                     if (_o.Track && h >= nextTrack)
                     {
-                        _flight.Track.Add(new[] { h, 90 - pitch, 90 - prograde, q, throttle });
-                        nextTrack += 1000;
+                        var phase = turnStartAlt < 0 ? 0 : held ? 2 : thin ? 3 : 1;
+                        _flight.Track.Add(new[]
+                        {
+                            h, 90 - pitch, 90 - prograde, q, throttle,
+                            _t, _mass / 1000, stage.Number, ap, horizontal, vertical, phase,
+                        });
+                        // The next 1000 m up from here: a coast between burns can carry it several rows ahead.
+                        nextTrack = (Math.Floor(h / 1000) + 1) * 1000;
                     }
                 }
 
@@ -644,7 +678,8 @@ namespace ClaudiaKermin.Core.Tools
         /// time of half the node's delta-v early; a burn that is late by more than a second takes its node with it (KSP keeps
         /// the node's prograde, so the planned velocity is the coast's there plus that prograde). It steers along what the node
         /// still asks for (as KSP re-solves <c>nd:deltav</c>), throttles down as it closes, stages as before, and stops under
-        /// 0.1 m/s or once it overshoots. Fails if the stages can't give it, run dry, or the craft sinks back where the air matters.
+        /// 0.1 m/s, once it overshoots, or once the eccentricity stops falling (circularize's stop, #532). Fails if the stages
+        /// can't give it, run dry, or the craft sinks back where the air matters.
         /// </summary>
         private AscentFlight Circularize()
         {
@@ -674,11 +709,21 @@ namespace ClaudiaKermin.Core.Tools
             var target = coastV + coastV.Normalized * prograde;
             var initial = target - coastV;
             var steer = initial.Normalized;
+            var roundest = new PastMin();
             while (true)
             {
                 if (_t > end) return Fail("still circularizing after " + MaxOrbitSeconds + " s");
                 var left = target - VelocityAt(nodeUt);
-                if (Vec3.Dot(initial, left) < 0 || left.Length < 0.1) break;
+                if (Vec3.Dot(initial, left) < 0 || left.Length < 0.1)
+                {
+                    _flight.CircularizeStop = "node";
+                    break;
+                }
+                if (_o.EccStop && roundest.Past(Conic.FromState(_o.Gm, Position, Velocity, _t).E, PastMin.EccBand))
+                {
+                    _flight.CircularizeStop = "ecc_min";
+                    break;
+                }
                 if (left.Length > 1) steer = left.Normalized;
                 if (InAirAgain()) return Fail("fell back into the atmosphere while circularizing");
                 var stage = Current;
@@ -694,10 +739,36 @@ namespace ClaudiaKermin.Core.Tools
                 }
             }
             Orbit(out ap, out pe, out toAp);
+            _flight.OrbitAp = ap;
+            _flight.OrbitPe = pe;
+            _flight.OrbitEcc = Conic.FromState(_o.Gm, Position, Velocity, _t).E;
             if (pe < _o.AtmosphereHeight) return Fail("the circularization leaves the periapsis at " + Math.Round(pe) + " m, in the atmosphere");
             _flight.ReachesOrbit = true;
             _flight.DeltaVLeft = DeltaVLeft();
             return _flight;
+        }
+    }
+
+    /// <summary>
+    /// <c>exec_node_past_min</c> (#532), word for word: whether a quantity a burn brings down has stopped falling. It has risen two
+    /// readings running and is over the lowest by more than a band; a single noisy reading, a flat stretch or a kick the burn
+    /// then brings back down doesn't count.
+    /// </summary>
+    internal sealed class PastMin
+    {
+        /// <summary><c>exec_node_min_band</c>: the eccentricity a reading must rise past the lowest by.</summary>
+        public const double EccBand = 0.0001;
+
+        private double _low = 1e30;
+        private double _last = 1e30;
+        private int _rises;
+
+        public bool Past(double value, double band)
+        {
+            _rises = value > _last ? _rises + 1 : 0;
+            _last = value;
+            _low = Math.Min(_low, value);
+            return _rises >= 2 && value > _low + band;
         }
     }
 

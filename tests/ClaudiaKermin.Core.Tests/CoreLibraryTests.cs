@@ -208,8 +208,10 @@ namespace ClaudiaKermin.Core.Tests
             foreach (var option in new[] { "launch_at [\"now\"]", "target_ap [\"auto\"]", "target_inc [0]", "heading [\"lib_lazcalc\"]", "turn_start_speed [60]", "turn_shape [0.45]", "max_aoa [5]", "throttle_max_q [\"none\"]", "g, atm_height, surface_pressure [\"body\"]", "ap_error", "max_q", "coast_ap" })
                 Assert.Contains(option, launch);
             var circularize = CoreLibrary.FullDocs(new[] { "circularize" });
-            foreach (var option in new[] { "at [\"ap\"]", "tolerance [0.01]", "ecc" })
+            foreach (var option in new[] { "at [\"ap\"]", "tolerance [0.01]", "ecc", "stop (\"node\"; \"ecc_min\"", "residual (m/s" })
                 Assert.Contains(option, circularize);
+            // #532: exec_node's eccentricity stop is block-internal; Claudia's docs for it don't name it.
+            Assert.DoesNotContain("stop_at_min", CoreLibrary.FullDocs(new[] { "exec_node" }));
         }
 
         // #214: positionat(ship, t) is the craft at t around its body where the body is NOW, while

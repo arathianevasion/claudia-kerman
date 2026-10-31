@@ -110,7 +110,7 @@ namespace ClaudiaKermin.Core.Missions
             else if (input is EditSettings) SettingsEdited(((EditSettings)input).Settings);
             else if (input is WarpToDueTime) WarpRequested();
             else if (input is GoToVessel) GoToRequested();
-            else if (input is ClaudiaKilled) Killed(((ClaudiaKilled)input).VesselId);
+            else if (input is ClaudiaKilled) Killed(((ClaudiaKilled)input).VesselId, ((ClaudiaKilled)input).Traced);
             else if (input is KosRunBlocked) RunBlocked((KosRunBlocked)input);
             else if (input is KosBlockStarted) BlockStarted((KosBlockStarted)input);
             else if (input is KosBlockEnded) BlockEnded((KosBlockEnded)input);
@@ -286,10 +286,12 @@ namespace ClaudiaKermin.Core.Missions
             // ---- Spending (state #42 snapshots: SpendingCap, Spent, Held) ----
             /// <summary>Cost so far from real usage.</summary>
             public decimal Spent;
-            /// <summary>Worst-case charges kept for cancelled and lost requests; never refunded.</summary>
+            /// <summary>Input costs kept for cancelled and lost requests (a request that got no reply at all can't have billed output; one that returned anything is paid at its usage instead).</summary>
             public decimal Held;
             /// <summary>The worst case of the request in flight; replaced by its real usage.</summary>
             public decimal PendingCharge;
+            /// <summary>The input part of <see cref="PendingCharge"/>: all the request holds if it is cancelled or lost with no reply at all.</summary>
+            public decimal PendingInput;
             public bool Warned;
             /// <summary>Paused because of the Spending Cap, so Raise cap resumes it.</summary>
             public bool PausedForCap;
@@ -388,6 +390,14 @@ namespace ClaudiaKermin.Core.Missions
             catch (Exception e) when (IsFileError(e))
             {
                 Note(LogKind.Notice, "Couldn't write the Mission's body table: " + e.Message);
+            }
+            try
+            {
+                MissionStore.WriteAscentPlan(mission.Folder, _craftCheck.PlannedAscentInput, _craftCheck.PlannedAscentSnapshot);
+            }
+            catch (Exception e) when (IsFileError(e))
+            {
+                Note(LogKind.Notice, "Couldn't write the Mission's ascent plan snapshot: " + e.Message);
             }
             FoldCraftCheckCost(mission, _craftCheck.TakeCost());
             // Started from the editor with her not aboard: the mod puts her in a free seat (the Craft Check made sure there is one).
@@ -832,13 +842,14 @@ namespace ClaudiaKermin.Core.Missions
         /// Spending Cap. Late run events carry a run id the Mission no longer holds, so they are ignored. A remote
         /// Mission never had her aboard and carries on.
         /// </summary>
-        private void Killed(string vesselId)
+        private void Killed(string vesselId, Kos.TracedBlock traced)
         {
             var mission = _mission;
             if (MissionOver || mission.Remote) return;
             // She died aboard some other craft: not this Mission's loss.
             if (vesselId.Length > 0 && mission.VesselId.Length > 0 && vesselId != mission.VesselId) return;
             var doing = LostDoing(mission);
+            var wasRunning = IsRunning(mission);
             if (mission.InFlight) mission.Pending.Cancel.Cancel();
             else mission.Pending = null;
             CancelCompaction(mission);
@@ -862,7 +873,10 @@ namespace ClaudiaKermin.Core.Missions
 
             mission.LatestLine = "Mission Control: we have lost Claudia. The Mission is Lost.";
             Note(LogKind.Claudia, mission.LatestLine);
-            LostDebrief(mission, doing);
+            // Only a run that was going on at her death has a last word; a trace carried for any other stage is not the Mission's.
+            var lastTrace = traced != null && wasRunning ? Kos.BlockTrace.Describe(traced) : "";
+            if (lastTrace.Length > 0) Note(LogKind.Notice, "Last traced state of the running block: " + lastTrace + ".");
+            LostDebrief(mission, doing, lastTrace);
             NeedsPlayer("Claudia was killed aboard. The Mission is Lost.");
             Note(LogKind.Notice, "Claudia was killed aboard the craft: the Mission is over.");
             RecordFinished(mission);
@@ -885,9 +899,9 @@ namespace ClaudiaKermin.Core.Missions
         /// The final Debrief from Mission Control. Its Debrief outcome is Failed (the Mission Goal can't be reached as
         /// stated); the Mission's outcome is Lost.
         /// </summary>
-        private void LostDebrief(Mission mission, string doing)
+        private void LostDebrief(Mission mission, string doing, string traced = "")
         {
-            var card = AddCard(mission, LogKind.Debrief, MissionCards.LostTitle, MissionCards.LostBody(mission.Goal, doing, mission.Spent, mission.SpendingCap), MissionCards.LostWhy);
+            var card = AddCard(mission, LogKind.Debrief, MissionCards.LostTitle, MissionCards.LostBody(mission.Goal, doing, mission.Spent, mission.SpendingCap, traced: traced), MissionCards.LostWhy);
             card.Outcome = "Failed";
         }
 
@@ -998,8 +1012,9 @@ namespace ClaudiaKermin.Core.Missions
 
             // Recorded before sending; replaced by the real usage, or kept if the request is cancelled or lost.
             mission.PendingCharge = worstCase;
+            mission.PendingInput = RequestCharge.InputCost(_config.Prices, mission.Model, request, worstCase);
             mission.Requests++;
-            LogCost(mission, "pending", worstCase, "");
+            LogCost(mission, "pending", worstCase, "", mission.PendingInput);
             mission.InFlight = true;
             mission.Activity = Thinking(turn);
             turn.Stats.Sent();
@@ -1837,8 +1852,9 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>Settles the request's pending charge by <see cref="RequestCharge.Settle"/>, the rules the Craft Check shares.</summary>
         private void Settle(Mission mission, Turn turn, StreamResult result)
         {
-            var settlement = RequestCharge.Settle(_config.Prices, mission.PendingCharge, result, mission.Model);
+            var settlement = RequestCharge.Settle(_config.Prices, mission.PendingCharge, result, mission.Model, mission.PendingInput);
             mission.PendingCharge = 0m;
+            mission.PendingInput = 0m;
             mission.Settled = settlement.Amount;
             mission.Spent += settlement.Spent;
             mission.Held += settlement.Held;
@@ -1920,12 +1936,12 @@ namespace ClaudiaKermin.Core.Missions
             CarryOnIfCapCovers(mission);
         }
 
-        private void LogCost(Mission mission, string kind, decimal amount, string outcome)
+        private void LogCost(Mission mission, string kind, decimal amount, string outcome, decimal? input = null)
         {
             try
             {
                 MissionFolder.AppendCostEvent(mission.Folder, kind, mission.Requests, mission.Model, amount, outcome,
-                    mission.Spent, mission.Held, mission.SpendingCap);
+                    mission.Spent, mission.Held, mission.SpendingCap, input);
             }
             catch (Exception e) when (IsFileError(e))
             {
@@ -2007,6 +2023,7 @@ namespace ClaudiaKermin.Core.Missions
                 view.Remote = mission.Remote;
                 view.AutoMode = mission.AutoMode;
                 view.AutoModeStop = AutoModeStopLine(mission);
+                view.CapRoomStop = view.AutoModeStop.Length > 0 && view.AutoModeStop == mission.AutoModeRoomStop ? view.AutoModeStop : "";
                 view.EvaScience = mission.EvaScience;
                 view.ConfirmPrompt = mission.ConfirmPrompt;
                 view.CapWait = mission.CapWaitText;

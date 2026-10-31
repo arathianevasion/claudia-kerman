@@ -36,7 +36,6 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [Theory]
         [InlineData("circularize().\nfrom {local i is 0.} until i > 20 step {set i to i + 1.} do {\n  local p is latlng(i, 10).\n  print p:terrainheight.\n}\n", "landing-site search")]
         [InlineData("until ship:orbit:nextpatch:periapsis > 30000 {\n  set nextnode:prograde to nextnode:prograde + 1.\n}\n", "next patch")]
-        [InlineData("until false {\n  if stage:liquidfuel < 0.1 { stage. }\n  wait 0.1.\n}\n", "staging loop")]
         public void AReinventionLintWarnsAndTheScriptStillPasses(string script, string warning)
         {
             var result = _check.Check(script);
@@ -48,7 +47,7 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [Fact]
         public void AnOrdinaryScriptHasNoWarnings()
         {
-            var result = _check.Check("local res is lexicon(\"success\", true).\nstage.\nuntil res:success { print 1. }\nlocal p is latlng(1, 2).\n");
+            var result = _check.Check("local res is lexicon(\"success\", true).\nuntil res:success { print 1. }\nlocal p is latlng(1, 2).\n");
             Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
             Assert.Empty(result.Warnings);
         }
@@ -211,7 +210,35 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         // ---- Allowed ----
 
         [Fact]
-        public void Staging() { AssertAllowed("stage.\nwait until stage:ready.\nprint stage:number."); }
+        public void ReadingTheStageIsAllowed() { AssertAllowed("wait until stage:ready.\nprint stage:number."); }
+
+        // #537: a bare stage. threw away a Swivel stage with its fuel aboard; the Core Library's own staging is still allowed.
+        private const string BareStageHint = "a bare stage. can throw away a stage that still holds fuel: drop parts with drop_parts, or set a block's stage_limit for its staging";
+
+        [Theory]
+        [InlineData("stage.")]
+        [InlineData("print 1.\nif ship:altitude > 10 { stage. }")]
+        [InlineData("until false {\n  if stage:liquidfuel < 0.1 { stage. }\n  wait 0.1.\n}\n")]
+        [InlineData("local d is stage@.\nd().")]
+        public void ABareStageIsRefusedWithItsLineAndTheHint(string script)
+        {
+            AssertForbidden(BareStageHint, script);
+            AssertForbidden(BareStageHint, CoreLibrary.Bundle(script));
+        }
+
+        [Fact]
+        public void TheRefusalNamesTheLine()
+        {
+            var result = _check.Check("print 1.\nprint 2.\nstage.\n");
+            Assert.Contains(result.Forbidden, f => f.StartsWith("line 3: STAGE"));
+        }
+
+        [Fact]
+        public void TheCoreLibrarysOwnStagingStillPasses()
+        {
+            Assert.Matches(@"(?m)^\s*stage\.", CoreLibrary.Bundle("").ToLowerInvariant());
+            AssertAllowed(CoreLibrary.Bundle("local res is exec_node(lexicon()).\naddons:claudia:report(res)."));
+        }
 
         [Fact]
         public void ActionGroups() { AssertAllowed("toggle ag1.\nag2 on.\ngear on.\nset brakes to true.\nlights off.\nrcs on.\nsas off."); }

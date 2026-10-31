@@ -351,6 +351,37 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         }
 
         [Theory]
+        // #546, Mun Shot v2 over Twin Craters: the Swivel stage short of the 957 m/s braking need, 2484 m/s in all, and staging
+        // it off drops the whole Underhang: the lander alone brakes, so the search plans with it.
+        [InlineData(800, 2484, 957, "true", "True")]
+        // The stage covers the braking: it brakes, Underhang and all.
+        [InlineData(1100, 2484, 957, "true", "False")]
+        // Staging it off would leave part of the Underhang, or is blocked: it stays.
+        [InlineData(800, 2484, 957, "false", "False")]
+        // Stock reads no delta-v, or the stages below couldn't cover the braking either.
+        [InlineData(800, 0, 957, "true", "False")]
+        [InlineData(800, 1500, 957, "true", "False")]
+        public void Land_plans_with_the_lander_alone_when_the_stage_with_the_Underhang_is_staged_off_before_the_fall(double stageDv, double totalDv, double need, string mayStage, string expected)
+        {
+            Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture, "land_plans_staged({0}, {1}, {2}, {3})", stageDv, totalDv, need, mayStage)));
+        }
+
+        [Fact]
+        public void The_lander_alone_keeps_the_turn_lag_and_margin_and_has_nothing_to_drop()
+        {
+            var printed = Run(
+                "local craft is lexicon(\"thrust\", 215, \"mass\", 12, \"isp\", 320, \"turn_lag\", 7.2, \"burn_margin\", 1.1, \"drop_agl\", 2000,\n"
+                + "  \"lander_thrust\", 60, \"lander_mass\", 6.1, \"lander_isp\", 345).\n"
+                + "local lander is land_lander_craft(craft, lexicon(\"lander_thrust\", 60, \"lander_mass\", 6.1, \"lander_isp\", 345, \"lander_dv\", 3083)).\n"
+                + "print lander:thrust. print lander:mass. print lander:isp. print lander:turn_lag. print lander:burn_margin.\n"
+                + "print lander:haskey(\"drop_agl\"). print lander:haskey(\"lander_thrust\"). print craft:thrust.\n"
+                // Mun Shot v2's lander, 3083 m/s at Isp 345: 6.1 t / e^(3083 / (345 * 9.80665)) = 2.452 t dry.
+                + "print round(lander:dry_mass, 3).\n"
+                + "print land_lander_craft(craft, lexicon(\"lander_thrust\", 60, \"lander_mass\", 6.1, \"lander_isp\", 345, \"lander_dv\", 0)):haskey(\"dry_mass\").");
+            Assert.Equal(new[] { "60", "6.1", "345", "7.2", "1.1", "False", "False", "215", "2.452", "False" }, printed);
+        }
+
+        [Theory]
         // Stage 3, next stage 2 holds engines: fires.
         [InlineData(3, 0, "list(true)", "list(false)", "")]
         // A decoupler-only stage 2 then engines in 1: runs on.
@@ -443,8 +474,9 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         [Fact]
         public void Land_descends_no_faster_than_it_can_stop_and_touches_down_at_touchdown_speed()
         {
-            // Far above the approach height: limited by what it can stop from (2 m/s^2 over 1000 m).
-            Assert.Equal("-63.246", One("round(land_vv_target(1000, 0, 2, 2), 3)"));
+            // Far above the approach height: limited by what it can stop from (2 m/s^2 over 1000 m, by land_h_end over the
+            // ground after 2 s of reaction: land_sink_limit, #547; it was the 63.246 that stops at the ground).
+            Assert.Equal("-52.71", One("round(land_vv_target(1000, 0, 2, 2), 3)"));
             // At the ground: the touchdown speed.
             Assert.Equal("-2", One("land_vv_target(1, 0, 2, 2)"));
             Assert.Equal("-2", One("land_vv_target(100, 90, 2, 2)"));
@@ -453,6 +485,44 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
             Assert.Equal("5", One("land_vv_target(950, 1000, 2, 2)"));
             // However high and however hard it can stop: never over 100 m/s down (#365's ran to 240).
             Assert.Equal("-100", One("land_vv_target(20000, 0, 5, 2)"));
+        }
+
+        [Fact]
+        public void Lands_sink_limit_stops_the_descent_by_h_end_over_the_ground_after_2_s_of_reaction()
+        {
+            // #547: 1000 m over the ground at 2 m/s^2: 2 s at the speed, then stopping, uses the 800 m down to land_h_end.
+            Assert.Equal("52.71", One("round(land_sink_limit(1000, 2), 3)"));
+            Assert.Equal("800", One("round(2 * land_sink_limit(1000, 2) + land_sink_limit(1000, 2) ^ 2 / (2 * 2), 6)"));
+            // Under twice h_end it stops by half the height, so the terminal descent still reaches the ground; nothing at it.
+            Assert.Equal("150", One("round(2 * land_sink_limit(300, 2) + land_sink_limit(300, 2) ^ 2 / (2 * 2), 6)"));
+            Assert.Equal("0", One("land_sink_limit(0, 2)"));
+            Assert.Equal("0", One("land_sink_limit(-50, 2)"));
+            // A slower turn reacts later: Mun Shot v2's lander on the stack's 7.3 s turn lag, the 800 m used the same way; never
+            // under the 2 s.
+            Assert.Equal("800", One("round(7.3 * land_sink_limit(1000, 2, 7.3) + land_sink_limit(1000, 2, 7.3) ^ 2 / (2 * 2), 6)"));
+            Assert.Equal("True", One("land_sink_limit(1000, 2, 7.3) < land_sink_limit(1000, 2) and land_sink_limit(1000, 2, 1) = land_sink_limit(1000, 2)"));
+            // More height, or more to stop with, allows more.
+            Assert.Equal("True", One("land_sink_limit(2000, 2) > land_sink_limit(1000, 2) and land_sink_limit(1000, 4) > land_sink_limit(1000, 2)"));
+            // The C# port BRAKEPATH predicts with.
+            foreach (var c in new[] { new[] { 1000, 2.0, 2 }, new[] { 300, 2.0, 2 }, new[] { 2697, 3.37, 2.6 }, new[] { 50, 6.0, 1 }, new[] { 0, 2.0, 2 }, new[] { 1000, 2.0, 7.3 } })
+                Assert.Equal(double.Parse(One(string.Format(CultureInfo.InvariantCulture, "land_sink_limit({0}, {1}, {2})", c[0], c[1], c[2])), CultureInfo.InvariantCulture),
+                    Core.Tools.BrakeGuidance.SinkLimit(c[0], c[1], c[2]), 9);
+        }
+
+        [Fact]
+        public void Braking_far_over_its_descent_shape_near_the_site_is_seen_and_braking_on_its_shape_isnt()
+        {
+            // #547, m20261031-022433-3dc5: 321 m out at 63.6 m/s, 2697 m up with h_ref 216 and vv_want -100. At 100 m/s it loses
+            // 1 km in the 10 s it has left across the ground, not the 2.5 km it is over its shape.
+            Assert.Equal("True", One("land_over_shape(2697, 216, 321, 63.6, 100)"));
+            // 2.8 km out at 218 m/s, 3 km over its shape: 26 s left, 2.6 km at 100 m/s.
+            Assert.Equal("True", One("land_over_shape(3476, 490, 2842, 218.1, 100)"));
+            // 10.6 km out at 426 m/s, 2.3 km over: 50 s left, time enough.
+            Assert.Equal("False", One("land_over_shape(3860, 1593, 10584, 425.6, 100)"));
+            // Where braking began, under its shape; on it, nearer in; and the terminal descent, which has no shape left.
+            Assert.Equal("False", One("land_over_shape(3206, 3310, 21870, 599.5, 100)"));
+            Assert.Equal("False", One("land_over_shape(450, 400, 1500, 90, 40)"));
+            Assert.Equal("False", One("land_over_shape(2000, 0, 10, 0.5, 100)"));
         }
 
         [Fact]
@@ -1089,7 +1159,7 @@ function tsim {
     if h_start < 0 { set h_start to max(land_h_end(), h). }
     set v_top to land_v_top(v_top, abs(vx)).
     local w is land_guide(lexicon(""s"", site_x - x, ""c"", 0, ""v_al"", vx, ""v_cr"", 0, ""v_up"", vy, ""h"", h, ""h_start"", h_start,
-      ""v0"", v0, ""shape"", shape, ""v_top"", v_top, ""a_max"", a_max, ""g"", g, ""radius"", rad + y), 2, margin).
+      ""v0"", v0, ""shape"", shape, ""v_top"", v_top, ""a_max"", a_max, ""g"", g, ""radius"", rad + y, ""lag"", lag), 2, margin).
     set to_go to w:to_go.
     set dir to land_steer(w, dir, lexicon(""al"", vx, ""cr"", 0, ""up"", vy), a_max).
     local mag is min(a_max, dir:mag).
@@ -1213,6 +1283,26 @@ function tsim {
             Assert.True(alts.Max() < 2097 + 300, string.Join(", ", alts));
         }
 
+        /// <summary>The Twin Craters approach from m20261031-022433-3dc5's braking start (BrakePathTests' recorded ground): 965 m there, the site's hollow at 400 m.</summary>
+        private const string TwinCratersProfile = "list(list(-563, 980), list(21870, 400), list(30000, 400))";
+
+        [Fact]
+        public void From_the_78_km_twin_craters_braking_start_kOS_and_brakepath_fly_the_same_drop_and_land_on_the_site()
+        {
+            // #547: braking 21.9 km out at 599.5 m/s and 9 m/s down, 4309 m up (3344 m over the ground), shape 2.35, Mun Shot v2's
+            // lander (60 kN, 5 t, TURNTIME's 9.9 s at up to 59.5 deg/s). It holds about 3.4 km to within a km of the site, then comes
+            // down no faster than land_sink_limit lets it, and touches down softly on the site, the same in both.
+            var lag = Core.Tools.BrakePath.TurnLag(59.5, 9.9);
+            var kos = Run(TerrainSimulation + string.Format(CultureInfo.InvariantCulture, "tsim({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}).",
+                TwinCratersProfile, 21870, 4309, 2.345, 599.5, -9, 900, 6.5138398e10, 200000, 5000, 60000, lag));
+            List<double> alts;
+            var flown = FlyOverInCSharp(Corners(TwinCratersProfile), 21870, 4309, 2.345, out alts, 599.5, -9, 6.5138398e10, 200000, 5000, 60000, lag);
+            AssertTheSameFlight(kos, flown, alts);
+            Assert.InRange(double.Parse(kos[2], CultureInfo.InvariantCulture), -300, 300);
+            Assert.InRange(double.Parse(kos[1], CultureInfo.InvariantCulture), 0, 100);
+            Assert.True(flown.LeastStopRoom >= Core.Tools.BrakeGuidance.HEnd / 2, "least room to stop " + Math.Round(flown.LeastStopRoom) + " m");
+        }
+
         [Fact]
         public void Land_steers_by_its_height_above_the_highest_ground_ahead()
         {
@@ -1223,6 +1313,39 @@ function tsim {
             // A minute ahead at 100 m/s, but no farther than where it stops.
             Assert.Equal(new[] { "23", "50", "6000", "700" }, Run(
                 "local d is land_lookahead(100, 1e9). print d:length. print d[0]. print d[d:length - 1]. print land_lookahead(100, 700)[22]."));
+        }
+
+        [Fact]
+        public void The_terminal_descent_steers_by_radar_not_the_predicted_paths_ground()
+        {
+            // #562, 6be2 over East Crater: stopped over the site, the predicted path's ground put h at -1 while radar read 26.
+            // Steering by h it climbed 0.1 m/s and hovered 450 s; by radar it comes down.
+            var over = Run(Guide("0, 0, 0, 0, 0, -1").Replace("\"h_start\"", "\"radar\", 26, \"h_start\"") + " print w:h_ref. print w:vv <= -2. print round(w:h).");
+            Assert.Equal(new[] { "0", "True", "26" }, over.Skip(3).ToArray());
+            // Still on its Descent Shape (h_ref over 0), the path's ground still counts.
+            var shaped = Run(Guide("2000, 0, 100, 0, -10, 500").Replace("\"h_start\"", "\"radar\", 900, \"h_start\"") + " print round(w:h).");
+            Assert.Equal("500", shaped[3]);
+            // No radar given (BRAKEPATH's sim): h as before.
+            Assert.Equal("-1", Run(Guide("0, 0, 0, 0, 0, -1") + " print round(w:h).")[3]);
+        }
+
+        [Fact]
+        public void A_terminal_hover_is_caught_after_ten_seconds()
+        {
+            // #562: land_hover_watch(since, phase, v_down, touchdown, thrott, ut) gives the UT the hover began (-1 for none).
+            Assert.Equal("-1", One("land_hover_watch(-1, \"terminal\", 2, 2, 0.1, 100)"));
+            Assert.Equal("100", One("land_hover_watch(-1, \"terminal\", 0.1, 2, 0.1, 100)"));
+            Assert.Equal("100", One("land_hover_watch(100, \"terminal\", 0, 2, 0.1, 105)"));
+            Assert.Equal("-1", One("land_hover_watch(100, \"terminal\", 1.5, 2, 0.1, 105)"));
+            Assert.Equal("-1", One("land_hover_watch(100, \"approach\", 0, 2, 0.1, 105)"));
+            // Throttle 0 (resting on a slope, say) isn't a hover.
+            Assert.Equal("-1", One("land_hover_watch(100, \"terminal\", 0, 2, 0, 105)"));
+            Assert.Equal("False", One("land_hovering(100, 109)"));
+            Assert.Equal("True", One("land_hovering(100, 110)"));
+            Assert.Equal("False", One("land_hovering(-1, 1000)"));
+            // Caught: the descent comes down at touchdown speed whatever h says.
+            Assert.Equal("-2", One("land_vv_target(-1, 0, 2, 2, 2, true)"));
+            Assert.Equal("-2", One("land_vv_target(300, 0, 2, 2, 2, true)"));
         }
 
         [Fact]

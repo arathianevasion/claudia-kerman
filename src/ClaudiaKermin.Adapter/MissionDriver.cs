@@ -171,10 +171,17 @@ namespace ClaudiaKermin.Adapter
         /// </summary>
         public static volatile bool PhysicsWarpAllowed = true;
 
+        /// <summary>
+        /// The Mission's time cap, hours (<see cref="MissionSettingsValues.TimeCapHours"/>), for the block calls' own Game Snapshots
+        /// (#543): <c>land</c>'s pass search defaults its window by it, as <c>find_landing_site</c> does. Refreshed every frame.
+        /// </summary>
+        public static double TimeCapHours = MissionSettingsValues.BalancedWaitHours;
+
         /// <summary>Call each frame, after the background queue has drained.</summary>
         public void Update()
         {
             PhysicsWarpAllowed = _mission.View.PhysicsWarpAllowed;
+            TimeCapHours = _mission.View.Settings.TimeCapHours;
             // A new Game object means a save was loaded: continue, quickload, revert or another save. A scene
             // change keeps the same Game, so it never counts. The core puts the Missions in step with the save.
             if (HighLogic.CurrentGame != null && !ReferenceEquals(HighLogic.CurrentGame, _game))
@@ -359,7 +366,14 @@ namespace ClaudiaKermin.Adapter
         /// <summary>Her death is a game event for the core; only a crewed Mission cares (the core ignores it for a remote one).</summary>
         private void OnKerbalStatusChange(ProtoCrewMember kerbal, ProtoCrewMember.RosterStatus oldStatus, ProtoCrewMember.RosterStatus newStatus)
         {
-            if (newStatus == ProtoCrewMember.RosterStatus.Dead && Roster.RosterGateway.IsClaudia(kerbal)) Send(new ClaudiaKilled(VesselAboard(kerbal)));
+            if (newStatus == ProtoCrewMember.RosterStatus.Dead && Roster.RosterGateway.IsClaudia(kerbal)) Send(new ClaudiaKilled(VesselAboard(kerbal), RunningTrace()));
+        }
+
+        /// <summary>The run's last traced state (#375); her death must reach the Mission even if reading it fails.</summary>
+        private static ClaudiaKermin.Core.Kos.TracedBlock RunningTrace()
+        {
+            try { return ScriptRunner.RunningTrace == null ? null : ScriptRunner.RunningTrace(); }
+            catch (System.Exception) { return null; }
         }
 
         /// <summary>The id of the vessel whose crew still holds her, or "" when none does.</summary>

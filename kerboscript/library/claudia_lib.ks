@@ -43,14 +43,14 @@
 //|   abort_on_part_loss [true]: abort when the craft loses a part other than by the block's own staging.
 //|   stage_limit [0]: flameout staging stops at this stage number (not drop_empty), and never
 //|     fires a stage holding parachutes or heat-shield separation. Out of fuel at the limit fails.
-//|   rcs_tolerance [lexicon("on_deg", 10, "big_deg", 20, "aligned_deg", 2, "aligned_rate", 0.5)]: RCS Use. Blocks switch RCS on when the steering error is over big_deg (a big turn, even with time to spare), or over on_deg and the reaction wheels can't make the turn in time (big_deg at or under on_deg acts as on_deg), and off once the craft is Aligned: within aligned_deg and turning under aligned_rate deg/s, or within aligned_deg for 3 s. Aligned also lets a burn start, so loosening it loosens burn pointing. Give only the keys you change.
-//| A block returns a result lexicon (it does not report). Common fields: success (boolean), reason
+//|   rcs_tolerance [lexicon("on_deg", 10, "big_deg", 20, "aligned_deg", 2, "aligned_rate", 0.5)]: RCS Use. Blocks switch RCS on when the steering error is over big_deg, or over on_deg and the reaction wheels can't make the turn in time (big_deg at or under on_deg acts as on_deg), and off once the craft is Aligned: within aligned_deg and turning under aligned_rate deg/s, or within aligned_deg for 3 s. Aligned also lets a burn start, so loosening it loosens burn pointing.
+//| A block returns a result lexicon. Common fields: success (boolean), reason
 //| ("" on success), dv_used (m/s), dv_remaining (m/s, stock estimate; -1 and a dv_remaining_note at a trickle throttle), duration (s), body,
-//| situation (e.g. "ORBITING"), orbit (lexicon ap, pe in m, inc in degrees) or, when landed,
+//| situation, orbit (lexicon ap, pe in m, inc in degrees) or, when landed,
 //| splashed or on the pad, geo (lexicon lat, lng, alt), and stage (current stage number); plus the
-//| block's extra results. An abort leaves the craft safe (throttle 0, SAS holding attitude) and
+//| block's extra results; a node the block added and left is removed and listed as node_removed (ut, dv). An abort leaves the craft safe and
 //| sets reason "abort <option>: <detail>". Waits use on-rails warp, or physics warp on a Coast (up to 4x, less in
-//| thick air), back at 1x at least 30 s before a burn, and have no cap: a block waits for its window or daylight however long, coast holds
+//| thick air), back at 1x at least 30 s before a burn, and have no cap: a block waits for its window or daylight, coast holds
 //| until a UT, and 10 s before parachutes or a heat-shield drop. Before a burn they plan the node, turn to it, and then warp, one SOI at a time. Warp drops to 1x while the Mission needs the player. Waits re-ask if KSP cuts warp, not once
 //| the player cancels it (ADDONS:CLAUDIA:WARPCANCELLED, until the next wait). To hold until a UT or an event on a Coast in your own script, use claudia_warp_to(ctx, ut, lead[, stop, cap]); fly every burn through exec_node. Never set WARP or WARPMODE yourself. Report the Script Result yourself, once, at the end, e.g.
 //| `addons:claudia:report(res).`, or a lexicon of your own with at least success and reason.
@@ -872,8 +872,16 @@ function claudia_drop_empty {
     }
   }
   // One walk of the craft; judging and firing read what it recorded (#533).
+  local scan_from is time:seconds.
   local scan is claudia_scan_craft(ship:parts, crewed).
-  for step in claudia_scan_plan(scan, auto, wanted, ctx:drop_tried) {
+  local plan is claudia_scan_plan(scan, auto, wanted, ctx:drop_tried).
+  // launch traces what a scan and its plan cost (#531), only in launch: the game seconds they took, which a long one spends over
+  // several physics ticks.
+  if auto and ctx:block = "launch" {
+    addons:claudia:blocknote(ctx:block, lexicon("phase", "drop_scan", "scan_s", round(time:seconds - scan_from, 3),
+      "parts", ship:parts:length, "ipu", config:ipu)).
+  }
+  for step in plan {
     local d is scan:parts[step:uid].
     local gone is step:gone.
     // Nested, not one "and": firing is a side effect and must only follow the guards.
@@ -1792,6 +1800,7 @@ function claudia_begin {
   addons:claudia:blockstart(block).
   return lexicon(
     "block", block,
+    "nodes0", claudia_node_sigs(allnodes),
     "error", checked:error,
     "opt", checked:opt,
     "start_ut", time:seconds,
@@ -1895,10 +1904,51 @@ function claudia_dv_remaining {
   return round(ship:deltav:current, 1).
 }
 
+// A maneuver node's identity for "was it there when the block started" (kOS gives no id): its time and burn, as text.
+function claudia_node_sig {
+  parameter nd.
+  return nd:time + "|" + nd:radialout + "|" + nd:normal + "|" + nd:prograde.
+}
+
+// The sigs of a list of nodes.
+function claudia_node_sigs {
+  parameter nodes.
+  local sigs is list().
+  for nd in nodes {
+    sigs:add(claudia_node_sig(nd)).
+  }
+  return sigs.
+}
+
+// The nodes in the list that were not there (by sig) when the block started. Pure.
+function claudia_node_strays {
+  parameter before, nodes.
+  local strays is list().
+  for nd in nodes {
+    if not before:contains(claudia_node_sig(nd)) {
+      strays:add(nd).
+    }
+  }
+  return strays.
+}
+
+// What a removed node is reported as: lexicon(ut, dv in m/s). Pure.
+function claudia_node_report {
+  parameter nd.
+  return lexicon("ut", round(nd:time, 1), "dv", round(sqrt(nd:radialout ^ 2 + nd:normal ^ 2 + nd:prograde ^ 2), 1)).
+}
+
 // The block's result lexicon: the Script Result's common fields plus extra (the block's own).
+// A node the block added that is still in place is removed and reported as node_removed (a list of lexicon(ut, dv)); nodes
+// there when the block started are left alone (#537).
 function claudia_finish {
   parameter ctx, success, reason, extra.
   claudia_rcs_restore_tuning().
+  local removed is list().
+  for nd in claudia_node_strays(ctx:nodes0, allnodes) {
+    removed:add(claudia_node_report(nd)).
+    remove nd.
+  }
   local result is lexicon(
     "success", success,
     "reason", reason,
@@ -1918,6 +1968,9 @@ function claudia_finish {
   }
   if ctx:dropped:length > 0 {
     set result["dropped"] to ctx:dropped.
+  }
+  if removed:length > 0 {
+    set result["node_removed"] to removed.
   }
   for key in extra:keys {
     set result[key] to extra[key].

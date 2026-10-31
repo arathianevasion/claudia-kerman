@@ -23,6 +23,17 @@ namespace ClaudiaKermin.Core.Kos
                 + string.Join(", ", values.ToArray());
         }
 
+        /// <summary>A run's last traced state in the mod's own words (#375): "land, last traced at UT 428272.4: phase braking, h 450".
+        /// The UT is the one <see cref="KosRun.BlockTraced"/> kept in the state, so it is named once, not listed with the fields.</summary>
+        public static string Describe(TracedBlock traced)
+        {
+            var state = traced.State ?? new Dictionary<string, object>();
+            var fields = state.Where(pair => pair.Key != "ut").Select(pair => pair.Key + " " + Value(pair.Value)).ToArray();
+            object ut;
+            var at = state.TryGetValue("ut", out ut) && ut is double ? " at UT " + ((double)ut).ToString("0.0", CultureInfo.InvariantCulture) : "";
+            return (string.IsNullOrEmpty(traced.Block) ? "?" : traced.Block) + ", last traced" + at + (fields.Length > 0 ? ": " + string.Join(", ", fields) : "");
+        }
+
         private static string Value(object value)
         {
             if (value is bool) return (bool)value ? "true" : "false";
