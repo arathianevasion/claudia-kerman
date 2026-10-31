@@ -351,6 +351,37 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         }
 
         [Theory]
+        // #546, Mun Shot v2 over Twin Craters: the Swivel stage short of the 957 m/s braking need, 2484 m/s in all, and staging
+        // it off drops the whole Underhang: the lander alone brakes, so the search plans with it.
+        [InlineData(800, 2484, 957, "true", "True")]
+        // The stage covers the braking: it brakes, Underhang and all.
+        [InlineData(1100, 2484, 957, "true", "False")]
+        // Staging it off would leave part of the Underhang, or is blocked: it stays.
+        [InlineData(800, 2484, 957, "false", "False")]
+        // Stock reads no delta-v, or the stages below couldn't cover the braking either.
+        [InlineData(800, 0, 957, "true", "False")]
+        [InlineData(800, 1500, 957, "true", "False")]
+        public void Land_plans_with_the_lander_alone_when_the_stage_with_the_Underhang_is_staged_off_before_the_fall(double stageDv, double totalDv, double need, string mayStage, string expected)
+        {
+            Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture, "land_plans_staged({0}, {1}, {2}, {3})", stageDv, totalDv, need, mayStage)));
+        }
+
+        [Fact]
+        public void The_lander_alone_keeps_the_turn_lag_and_margin_and_has_nothing_to_drop()
+        {
+            var printed = Run(
+                "local craft is lexicon(\"thrust\", 215, \"mass\", 12, \"isp\", 320, \"turn_lag\", 7.2, \"burn_margin\", 1.1, \"drop_agl\", 2000,\n"
+                + "  \"lander_thrust\", 60, \"lander_mass\", 6.1, \"lander_isp\", 345).\n"
+                + "local lander is land_lander_craft(craft, lexicon(\"lander_thrust\", 60, \"lander_mass\", 6.1, \"lander_isp\", 345, \"lander_dv\", 3083)).\n"
+                + "print lander:thrust. print lander:mass. print lander:isp. print lander:turn_lag. print lander:burn_margin.\n"
+                + "print lander:haskey(\"drop_agl\"). print lander:haskey(\"lander_thrust\"). print craft:thrust.\n"
+                // Mun Shot v2's lander, 3083 m/s at Isp 345: 6.1 t / e^(3083 / (345 * 9.80665)) = 2.452 t dry.
+                + "print round(lander:dry_mass, 3).\n"
+                + "print land_lander_craft(craft, lexicon(\"lander_thrust\", 60, \"lander_mass\", 6.1, \"lander_isp\", 345, \"lander_dv\", 0)):haskey(\"dry_mass\").");
+            Assert.Equal(new[] { "60", "6.1", "345", "7.2", "1.1", "False", "False", "215", "2.452", "False" }, printed);
+        }
+
+        [Theory]
         // Stage 3, next stage 2 holds engines: fires.
         [InlineData(3, 0, "list(true)", "list(false)", "")]
         // A decoupler-only stage 2 then engines in 1: runs on.

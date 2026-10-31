@@ -197,6 +197,8 @@ namespace ClaudiaKermin.Core.Tools
         /// </summary>
         public int FallBlocked;
         public double FallBlockedS = double.NaN;
+        /// <summary>The highest periapsis passed over for its fall, m above sea level (NaN if none).</summary>
+        public double FallBlockedPe = double.NaN;
     }
 
     /// <summary>
@@ -445,8 +447,8 @@ namespace ClaudiaKermin.Core.Tools
 
         /// <summary>
         /// The plan-time search: periapsis heights from <paramref name="peLowest"/> (m above sea level) in 500 m steps to
-        /// <paramref name="peHighest"/>, each against <paramref name="shapes"/> (all of <see cref="Shapes"/> if null), flown
-        /// from the transfer off an orbit of radius <paramref name="r0"/>; it keeps the clearing pair with the least delta-v and
+        /// <paramref name="peHighest"/>, each against <paramref name="shapes"/> (all of <see cref="Shapes"/> if null), braking flown
+        /// from where the fall down the transfer off an orbit of radius <paramref name="r0"/> brings it due (<see cref="FallDue"/>); it keeps the clearing pair with the least delta-v and
         /// stops once clearing pairs stop getting cheaper, or at <paramref name="budgetMs"/>.
         /// </summary>
         public static DescentChoice Search(BrakeCraft craft, BrakeWorld world, double r0, double vRotAlong, double peLowest, double peHighest,
@@ -467,17 +469,18 @@ namespace ClaudiaKermin.Core.Tools
                 {
                     choice.FallBlocked++;
                     choice.FallBlockedS = double.IsNaN(choice.FallBlockedS) ? due.S : Math.Max(choice.FallBlockedS, due.S);
+                    choice.FallBlockedPe = double.IsNaN(choice.FallBlockedPe) ? pe : Math.Max(choice.FallBlockedPe, pe);
                     if (watch.Elapsed.TotalMilliseconds > budgetMs) break;
                     continue;
                 }
-                var vPe = Math.Sqrt(world.Mu * (2 / rPe - 2 / (r0 + rPe)));
-                var before = Math.Min(world.Ground.FarthestS, FallFrom(craft, world.Mu, world.Radius, vPe, world.Margin));
-                var start = OnTransfer(world.Mu, world.Radius, r0, rPe, before, vRotAlong);
+                // Braking flown from where the fall brings it due, on the conic: the state the block predicts again from as braking
+                // begins (BRAKEPATH). The flat frame's fall drifted about 1 m/s off it over 6 km, enough to move the braking's
+                // figure by a third on a rough approach, so the re-check refused what the plan had chosen (#546).
                 var deorbit = DeorbitDv(world.Mu, r0, rPe);
                 DescentTry bestHere = null;
                 foreach (var shape in shapes)
                 {
-                    var flown = Simulate(craft, world, start, shape);
+                    var flown = Simulate(craft, world, due, shape);
                     choice.Tried++;
                     if (!flown.Clears) continue;
                     choice.ShapeLo = double.IsNaN(choice.ShapeLo) ? shape : Math.Min(choice.ShapeLo, shape);
@@ -497,7 +500,9 @@ namespace ClaudiaKermin.Core.Tools
             if (choice.Best == null)
                 choice.Error = "no Descent Shape clears the terrain on the approach by " + BrakeGuidance.ClearMargin(0).ToString("0", System.Globalization.CultureInfo.InvariantCulture)
                     + " m from a periapsis of " + Whole(peLowest) + " to " + Whole(peHighest) + " m"
-                    + (choice.FallBlocked > 0 ? "; the fall from the deorbit burn passes too low over the ground up to " + Whole(choice.FallBlockedS / 1000) + " km before the site" : "");
+                    // #546: which periapses the fall ruled out, so a refusal over higher ones isn't read as the fall's.
+                    + (choice.FallBlocked > 0 ? "; the fall from the deorbit burn passes too low over the ground up to " + Whole(choice.FallBlockedS / 1000)
+                        + " km before the site from a periapsis under " + Whole(choice.FallBlockedPe + PeStep) + " m" : "");
             return choice;
         }
 
