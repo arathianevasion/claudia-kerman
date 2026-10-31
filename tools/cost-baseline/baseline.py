@@ -10,7 +10,8 @@ Reads, for every Mission folder under SAVES/*/ClaudiaKermin/missions/*/:
 Every Mission folder is untrusted data: this script only reads files and never executes or prints their
 content beyond counts and the names of Sequence Plans. Run it with `python3 -I`.
 
-Usage: python3 -I tools/cost-baseline/baseline.py [SAVES_DIR] [--reference MISSION_ID] [--out FILE.md]
+Usage: python3 -I tools/cost-baseline/baseline.py [SAVES_DIR ...] [--reference MISSION_ID] [--goal USD]
+                                                   [--compare MISSION_ID ...] [--out FILE.md]
 """
 import argparse
 import collections
@@ -156,10 +157,16 @@ def load_json(path):
         return None
 
 
-def analyse_mission(folder):
+def install_of(saves):
+    """The install a saves folder belongs to: the folder above `saves` (KSP_stable for ~/KSP_stable/saves)."""
+    p = os.path.abspath(os.path.expanduser(saves))
+    return os.path.basename(os.path.dirname(p)) if os.path.basename(p) == 'saves' else os.path.basename(p)
+
+
+def analyse_mission(folder, install=''):
     mid = os.path.basename(folder.rstrip('/'))
     save = folder.split(os.sep + 'ClaudiaKermin' + os.sep)[0].split(os.sep)[-1]
-    M = dict(id=mid, save=save, responses=[], craft=[], incomplete_attempts=0, notes=[])
+    M = dict(id=mid, save=save, install=install, responses=[], craft=[], incomplete_attempts=0, notes=[], mod_total=0.0)
 
     # Transcript turns, with the reply kind the mod asked for.
     turns = []
@@ -242,6 +249,9 @@ def analyse_mission(folder):
     main = []
     for e in log:
         ev, rq = e.get('event'), e.get('request')
+        if ev in ('paid', 'kept', 'craft_check_paid', 'craft_check_kept'):
+            # What the mod itself charged (its PriceTable, #257): settled requests and Craft Checks, at its prices.
+            M['mod_total'] += float(e.get('amount', 0) or 0)
         if ev == 'craft_check_paid' or ev == 'craft_check_kept':
             M['craft'].append(dict(sub='Craft Check', cost=float(e.get('amount', 0)), seconds=None,
                                    outcome=e.get('outcome')))
@@ -516,17 +526,148 @@ def plans_report(plans):
     return out
 
 
+def prefix_tokens(M):
+    """The system-and-tools prefix, as the API cached it: the cache read of the first revised Mission Plan (or, failing
+    that, Sequence Plan) request whose read stopped short of what the request before had cached, so it can only have
+    reached the prefix. None when no request shows that."""
+    prev_cached = 0  # what the request before left in the cache: its read and its writes
+    found = {}
+    for R in M['responses']:
+        if not R['priced']:
+            continue
+        msg = [r for r in R['rows'] if r['type'] != 'compaction']
+        if not msg:
+            continue
+        m = msg[-1]
+        if not R['compaction'] and 0 < m['read'] < prev_cached and R['kind'] in ('revised Mission Plan', 'Sequence Plan'):
+            found.setdefault(R['kind'], m['read'])
+        prev_cached = m['read'] + m['w1h'] + m['w5m']
+    return found.get('revised Mission Plan', found.get('Sequence Plan'))
+
+
+def compare_row(M):
+    """The figures `--compare` prints for one Mission, from `mission_stats` and the kinds of its responses."""
+    S, _ = mission_stats(M)
+    by_kind = collections.defaultdict(lambda: [0, 0.0])
+    for R in M['responses']:
+        if R['priced']:
+            by_kind[R['kind']][0] += 1
+            by_kind[R['kind']][1] += sum(r['cost'] for r in R['rows'])
+    revised = by_kind['revised Mission Plan']
+
+    def per_request(kind):
+        n, c = by_kind[kind]
+        return c / n if n else None
+    return dict(
+        id=M['id'], install=M['install'], total=S['total_cost'], mod_total=M['mod_total'], legs=S['sequence_plans'],
+        per_leg=S['cost'] / S['sequence_plans'] if S['sequence_plans'] else None,
+        revised=revised[0], revised_cost=revised[1], compactions=S['compactions'], compaction_cost=S['comp_cost'],
+        misses=S['misses'], miss_cost=S['miss_excess_cost'], prefix=prefix_tokens(M),
+        seq_request=per_request('Sequence Plan'), debrief_request=per_request('Debrief'))
+
+
+def _usd(x, places=2):
+    return '-' if x is None else '$%.*f' % (places, x)
+
+
+def _change(now, ref, as_money=True):
+    """now less ref, with the percentage: '+$1.99 (+90%)' for money, '+1,296 (+5%)' for tokens."""
+    if now is None or ref is None:
+        return '-'
+    d = now - ref
+    pc = ' (%+.0f%%)' % (100.0 * d / ref) if ref else ''
+    if as_money:
+        return '%s$%.2f%s' % ('-' if d < 0 else '+', abs(d), pc)
+    return '%s%s%s' % ('-' if d < 0 else '+', tok(abs(d)), pc)
+
+
+def compare_report(rows, ref, goal):
+    """Markdown lines: one row per Mission, then the reference row, then each Mission's change against the reference and its
+    distance to the goal. `rows` and `ref` come from `compare_row`; `ref` may be None."""
+    out = ['## Cost per Mission against the reference', '']
+    out.append('Published prices (`PRICES`), Craft Checks included at the mod\'s own amounts. "Mod logged" is the mod\'s '
+               'total at its `PriceTable`, which charges cache reads too high (#257), so it runs above the published figure. '
+               'Legs are Sequence Plans. Per leg leaves the Craft Checks out. The prefix is the cache read on a request that '
+               'could only reach the system prompt and tools. "Full cache misses" are those after request 2, with the '
+               'cost over the read price of the prefix they rewrote.')
+    out.append('')
+    out.append('| Mission | Install | Published | Mod logged | Legs | Per leg | Revised Mission Plans | Compactions | '
+               'Full cache misses | Prefix (tokens) | Per Sequence Plan request | Per Debrief request |')
+    out.append('|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|')
+
+    def line(r, label):
+        return '| %s | %s | %s | %s | %d | %s | %d, %s | %d, %s | %d, %s | %s | %s | %s |' % (
+            label, r['install'], _usd(r['total']), _usd(r['mod_total']), r['legs'], _usd(r['per_leg']), r['revised'],
+            _usd(r['revised_cost']), r['compactions'], _usd(r['compaction_cost']), r['misses'], _usd(r['miss_cost']),
+            tok(r['prefix']) if r['prefix'] else '', _usd(r['seq_request'], 3), _usd(r['debrief_request'], 3))
+    for r in rows:
+        out.append(line(r, r['id']))
+    if ref:
+        out.append(line(ref, '**%s** (reference)' % ref['id']))
+    out.append('')
+    out.append('| Mission | Published vs reference | Per leg vs reference | Prefix vs reference | Goal | Over the goal |')
+    out.append('|---|---:|---:|---:|---:|---:|')
+    for r in rows:
+        out.append('| %s | %s | %s | %s | %s | %s |' % (
+            r['id'], _change(r['total'], ref['total'] if ref else None),
+            _change(r['per_leg'], ref['per_leg'] if ref else None),
+            _change(r['prefix'], ref['prefix'] if ref else None, as_money=False) if r['prefix'] else '-',
+            _usd(goal), '%s (%.1fx)' % (_usd(r['total'] - goal), r['total'] / goal) if goal else '-'))
+    out.append('')
+    if not ref:
+        out.append('The reference Mission was not found in the saves folders, so there is no change to show.')
+        out.append('')
+    return out
+
+
+def find_missions(saves, ids=None):
+    """Analyses the Missions under each saves folder (all, or those named in `ids`), each read in place and labelled with its install."""
+    missions = []
+    for sv in saves:
+        pattern = os.path.join(os.path.expanduser(sv), '*', 'ClaudiaKermin', 'missions', '*', '')
+        for f in sorted(glob.glob(pattern)):
+            if ids is None or os.path.basename(f.rstrip('/')) in ids:
+                M = analyse_mission(f, install_of(sv))
+                M['folder'] = f
+                missions.append(M)
+    return missions
+
+
+def emit(text, path):
+    if path:
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(text)
+    else:
+        sys.stdout.write(text)
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('saves', nargs='?', default=os.path.expanduser('~/KSP_spike/saves'))
-    ap.add_argument('--reference', default='m20261026-031725-724a')
+    ap.add_argument('saves', nargs='*', default=[os.path.expanduser('~/KSP_spike/saves'), os.path.expanduser('~/KSP_stable/saves')],
+                    help='saves folders, one per install, each read in place (default: ~/KSP_spike/saves and ~/KSP_stable/saves)')
+    ap.add_argument('--reference', default='m20261029-194229-b5f3',
+                    help='the baseline Mun flight (default b5f3, $2.20 at published prices)')
+    ap.add_argument('--goal', type=float, default=1.00, help='USD for a full Mun flight (default 1.00)')
+    ap.add_argument('--compare', nargs='+', metavar='MISSION_ID',
+                    help='print one row per named Mission, then the reference, and their change and distance to the goal')
     ap.add_argument('--out')
     a = ap.parse_args()
-    folders = sorted(glob.glob(os.path.join(a.saves, '*', 'ClaudiaKermin', 'missions', '*', '')))
-    missions = [analyse_mission(f) for f in folders]
-    missions = [M for M in missions if M['responses'] or M['craft']]
     out = []
     w = out.append
+    if a.compare:
+        found = find_missions(a.saves, set(a.compare) | {a.reference})
+        rows = [compare_row(M) for i in a.compare for M in found if M['id'] == i]
+        missing = [i for i in a.compare if not any(r['id'] == i for r in rows)]
+        if missing:
+            raise SystemExit('Mission not found under %s: %s' % (', '.join(a.saves), ', '.join(missing)))
+        ref = next((compare_row(M) for M in found if M['id'] == a.reference), None)
+        w('# Cost comparison, %s' % datetime.date.today().isoformat())
+        w('')
+        out.extend(compare_report(rows, ref, a.goal))
+        return emit('\n'.join(out), a.out)
+    every = find_missions(a.saves)
+    folders = [M['folder'] for M in every]
+    missions = [M for M in every if M['responses'] or M['craft']]
     w('# Cost baseline per reply kind, %s' % datetime.date.today().isoformat())
     w('')
     w('Generated by `python3 -I tools/cost-baseline/baseline.py` from %d Missions with stream dumps or a cost log. '
@@ -582,7 +723,7 @@ def main():
     section('All Missions', missions)
     ref = [M for M in missions if M['id'] == a.reference]
     if ref:
-        section('Reference Mun Mission %s (save "%s")' % (a.reference, ref[0]['save']), ref)
+        section('Reference Mun Mission %s (%s, save "%s")' % (a.reference, ref[0]['install'], ref[0]['save']), ref)
         S, legs = mission_stats(ref[0])
         w('Sequence Plans in order: ' + ' / '.join(legs))
         w('')
@@ -593,7 +734,7 @@ def main():
     w('')
     w('## Per Mission')
     w('')
-    w('| Mission | Save | Cost | Craft Check cost | Requests | Max context | Compactions | Sequence Plans / legs | '
+    w('| Mission | Install, save | Cost | Craft Check cost | Requests | Max context | Compactions | Sequence Plans / legs | '
       'Off-Nominal / Failed Debriefs | Cut-offs | Not committed | Mid-Mission misses |')
     w('|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|')
     T = collections.Counter()
@@ -602,7 +743,7 @@ def main():
         T.update(S)
         name = ('**%s**' % M['id']) if M['id'] == a.reference else M['id']
         w('| %s | %s | %s | %s | %d | %s | %d | %d / %d | %d / %d | %d | %d | %d |' % (
-            name, M['save'], money(S['total_cost']), money(S['craft_cost']), S['requests'], tok(S['max_context']),
+            name, M['install'] + ', ' + M['save'], money(S['total_cost']), money(S['craft_cost']), S['requests'], tok(S['max_context']),
             S['compactions'], S['sequence_plans'], S['legs'], S['off_nominal'], S['failed_debriefs'], S['cutoffs'],
             S['failed'], S['misses']))
     w('| **Total** | | %s | %s | %d | | %d | %d / %d | %d / %d | %d | %d | %d |' % (
@@ -648,12 +789,7 @@ def main():
             w('- %s: %d committed assistant turns with no stream dump (dumps off, or the file is missing).' % (
                 M['id'], M['unmatched_turns']))
     w('')
-    text = '\n'.join(out)
-    if a.out:
-        with open(a.out, 'w', encoding='utf-8') as f:
-            f.write(text)
-    else:
-        sys.stdout.write(text)
+    emit('\n'.join(out), a.out)
 
 
 if __name__ == '__main__':
