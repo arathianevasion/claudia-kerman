@@ -113,6 +113,9 @@ namespace ClaudiaKermin.Core.Tools
         private const int SlopeBatch = 12;
         /// <summary>With a <c>near</c> point, only track within this many degrees of it is a candidate.</summary>
         private const double NearRadiusDeg = 15;
+        /// <summary>The spacing of the whole-body biome survey for a site off the track (#545), degrees of arc, and the most of its points whose slope is measured.</summary>
+        private const double BiomeGridDeg = 4;
+        private const int MaxOffTrackChecks = 2 * SlopeBatch;
 
         public static LandingSiteResult Find(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, IPlanningBody api)
         {
@@ -287,6 +290,89 @@ namespace ClaudiaKermin.Core.Tools
             site.PredictedDv = pass.LandingDv;
             if (pass.Descent != null) site.DescentShape = pass.Descent.Shape;
             return pass;
+        }
+
+        /// <summary>
+        /// The query's biome's best site off the ground track (#545), for the plane changes when no pass reaches the biome: a survey
+        /// of the whole body every <see cref="BiomeGridDeg"/> degrees finds the biome, and its points are tried, those whose grid
+        /// neighbours are in it too first, then by how far their latitude lies beyond the orbit's inclination
+        /// (<paramref name="inclination"/>, degrees), so the plane change onto the site is the smallest. The first gentle enough
+        /// and the margin inside the biome is the site; without one, the first gentle enough, marked <see cref="LandingSite.AtEdge"/>.
+        /// Its pass fields are unset: no pass reaches it. Null when the survey finds the biome nowhere, or no point tried is gentle enough.
+        /// </summary>
+        public static LandingSite BiomeSite(SnapshotBody body, double inclination, double now, LandingSiteQuery query, IPlanningBody api)
+        {
+            if (string.IsNullOrEmpty(query.Biome)) return null;
+            var rows = new List<List<SiteSample>>();
+            var grid = new List<SiteSample>();
+            for (var lat = -90 + BiomeGridDeg / 2; lat < 90; lat += BiomeGridDeg)
+            {
+                var count = Math.Max(1, (int)Math.Round(360 * Math.Cos(lat * Math.PI / 180) / BiomeGridDeg));
+                var row = new List<SiteSample>(count);
+                for (var k = 0; k < count; k++) row.Add(new SiteSample { Latitude = lat, Longitude = Wrap180(-180 + (k + 0.5) * 360 / count), Ut = now });
+                rows.Add(row);
+                grid.AddRange(row);
+            }
+            api.Survey(body.Name, grid, SiteFacts.Biome);
+
+            var own = inclination > 90 ? 180 - inclination : inclination;
+            var ranked = new List<Candidate>();
+            var interior = new HashSet<SiteSample>();
+            for (var i = 0; i < rows.Count; i++)
+                for (var k = 0; k < rows[i].Count; k++)
+                {
+                    var p = rows[i][k];
+                    if (!SameBiome(p.Biome, query.Biome)) continue;
+                    ranked.Add(new Candidate { Sample = p });
+                    var n = rows[i].Count;
+                    if (In(rows[i][(k + 1) % n], query) && In(rows[i][(k + n - 1) % n], query)
+                        && (i == 0 || In(Nearest(rows[i - 1], p.Longitude), query)) && (i == rows.Count - 1 || In(Nearest(rows[i + 1], p.Longitude), query)))
+                        interior.Add(p);
+                }
+            ranked = ranked.OrderBy(c => interior.Contains(c.Sample) ? 0 : 1).ThenBy(c => Math.Max(0, Math.Abs(c.Sample.Latitude) - own))
+                .Take(MaxOffTrackChecks).ToList();
+
+            LandingSite edgeSite = null;
+            for (var at = 0; at < ranked.Count; at += SlopeBatch)
+            {
+                var batch = ranked.Skip(at).Take(SlopeBatch).ToList();
+                var points = new List<SiteSample>();
+                foreach (var c in batch) points.AddRange(Cross(body, c.Sample));
+                api.Survey(body.Name, points, SiteFacts.Altitude);
+                var gentle = new List<int>();
+                var slopes = new double[batch.Count];
+                for (var i = 0; i < batch.Count; i++)
+                {
+                    var five = points.Skip(i * 5).Take(5).ToList();
+                    if (five.Any(p => double.IsNaN(p.Altitude))) continue;
+                    slopes[i] = Slope(five);
+                    if (slopes[i] <= query.MaxSlopeDeg) gentle.Add(i);
+                }
+                var deep = query.EdgeMarginM > 0 ? DeepInBiome(body, batch, gentle, query, api) : null;
+                foreach (var i in gentle)
+                {
+                    var site = new LandingSite
+                    {
+                        Latitude = batch[i].Sample.Latitude, Longitude = batch[i].Sample.Longitude, Biome = batch[i].Sample.Biome,
+                        Altitude = points[i * 5].Altitude, SlopeDeg = slopes[i], AtEdge = deep != null && !deep.Contains(i),
+                    };
+                    if (!site.AtEdge) return site;
+                    if (edgeSite == null) edgeSite = site;
+                }
+            }
+            return edgeSite;
+        }
+
+        private static bool In(SiteSample sample, LandingSiteQuery query)
+        {
+            return SameBiome(sample.Biome, query.Biome);
+        }
+
+        /// <summary>The point of a survey row nearest a longitude.</summary>
+        private static SiteSample Nearest(List<SiteSample> row, double longitude)
+        {
+            var k = (int)Math.Floor((Wrap180(longitude) + 180) / 360 * row.Count);
+            return row[Math.Max(0, Math.Min(row.Count - 1, k))];
         }
 
         private sealed class Candidate
