@@ -161,6 +161,7 @@ namespace ClaudiaKermin.Core.Tools
             var planes = new List<PlaneChange>();
             foreach (var burn in BurnTimes(orbit, ask.EarliestUt))
             {
+                if (result.OutOfTime) break;
                 Vec3 r, v;
                 orbit.State(burn, out r, out v);
                 foreach (var inc in Inclinations(orbit.Inclination, ask.Latitude))

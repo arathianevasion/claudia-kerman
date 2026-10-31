@@ -204,14 +204,18 @@ namespace ClaudiaKermin.Core.Tests
             return result.TryGetProperty("note", out note) ? note.GetString() : "";
         }
 
-        /// <summary>land's ask of its block call for a biome target, with the tool call's own limits (land_site_query passes them through).</summary>
+        /// <summary>
+        /// land's ask of its block call for a biome target, with the tool call's own limits as land_site_query passes them: all but
+        /// edge_margin_m, which land leaves at the default.
+        /// </summary>
         private static Dictionary<string, object> LandAsk(string input)
         {
             var ask = new Dictionary<string, object> { { "max_correction_dv", 30.0 } };
             using (var doc = JsonDocument.Parse(input))
                 foreach (var field in doc.RootElement.EnumerateObject())
-                    ask[field.Name] = field.Value.ValueKind == JsonValueKind.String ? field.Value.GetString()
-                        : field.Value.ValueKind == JsonValueKind.Number ? (object)field.Value.GetDouble() : field.Value.GetBoolean();
+                    if (field.Name != "edge_margin_m")
+                        ask[field.Name] = field.Value.ValueKind == JsonValueKind.String ? field.Value.GetString()
+                            : field.Value.ValueKind == JsonValueKind.Number ? (object)field.Value.GetDouble() : field.Value.GetBoolean();
             if (!ask.ContainsKey("daylight")) ask["daylight"] = true;
             return ask;
         }
@@ -259,6 +263,8 @@ namespace ClaudiaKermin.Core.Tests
                 return;
             }
             Assert.Equal("", land["error"]);
+            // With another biome margin than land's the sites may differ; that one exists agrees.
+            if (input.Contains("edge_margin_m")) return;
             Assert.Equal(Sites(result)[0].GetProperty("latitude").GetDouble(), (double)land["lat"], 3);
             Assert.Equal(Sites(result)[0].GetProperty("longitude").GetDouble(), (double)land["lng"], 3);
         }

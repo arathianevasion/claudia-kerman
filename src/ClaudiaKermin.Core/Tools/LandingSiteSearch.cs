@@ -74,12 +74,14 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>
         /// The query's deadline passed before the search was done (#536): <see cref="Sites"/> are those found by then, and with the
         /// track in pass order every point before <see cref="SearchedHours"/> (from now) was tried; with a <c>near</c> point,
-        /// <see cref="Tried"/> of the <see cref="Near"/> track points closest to it were.
+        /// <see cref="Tried"/> of the <see cref="NearPoints"/> track points closest to it were.
         /// </summary>
         public bool OutOfTime;
+        /// <summary>Hours from now the track was searched to, when <see cref="OutOfTime"/>.</summary>
         public double SearchedHours;
+        /// <summary>Candidate points tried (in the search's order), and how many there were, when <see cref="OutOfTime"/>.</summary>
         public int Tried;
-        public int Near;
+        public int NearPoints;
     }
 
     /// <summary>
@@ -183,7 +185,7 @@ namespace ClaudiaKermin.Core.Tools
             {
                 result.OutOfTime = true;
                 result.Tried = stoppedAt;
-                result.Near = all.Count;
+                result.NearPoints = all.Count;
                 result.SearchedHours = (all[stoppedAt].Sample.Ut - now) / 3600;
             }
             if (sites.Count == 0) sites = edgeSites;

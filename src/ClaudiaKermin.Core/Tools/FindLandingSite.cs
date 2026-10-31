@@ -81,6 +81,7 @@ namespace ClaudiaKermin.Core.Tools
 
         public ToolOutcome Run(JsonNode input, GameSnapshot snapshot, IPlanningBody api)
         {
+            // The deadline before the wrapper: it times by the body interface's own clock where it keeps one.
             var deadline = BudgetMs.HasValue ? SearchDeadline.After(BudgetMs.Value, api) : SearchDeadline.None;
             api = new FrameReadOnce(api);
             var name = JsonNode.Str(input["body"]);
@@ -150,11 +151,15 @@ namespace ClaudiaKermin.Core.Tools
             json.EndArray();
             json.Field("window_hours", PlanningJson.Round(found.WindowHours, 2));
             if (found.OutOfTime && !query.HasNear) json.Field("searched_hours", PlanningJson.Round(found.SearchedHours, 2));
+            var edge = found.Sites.Count > 0 && found.Sites[0].AtEdge
+                ? "no site more than " + query.EdgeMarginM.ToString("0.##", CultureInfo.InvariantCulture) + " m inside the " + found.Sites[0].Biome
+                    + " biome was reachable in " + (found.OutOfTime ? found.SearchedHours : found.WindowHours).ToString("0.##", CultureInfo.InvariantCulture)
+                    + " h; the sites returned are closer than that to the edge, so a landing may come down outside the biome"
+                : null;
             if (found.OutOfTime)
-                json.Field("note", OutOfTimeNote(query, found));
-            else if (found.Sites.Count > 0 && found.Sites[0].AtEdge)
-                json.Field("note", "no site more than " + query.EdgeMarginM.ToString("0.##", CultureInfo.InvariantCulture) + " m inside the " + found.Sites[0].Biome
-                    + " biome was reachable in " + found.WindowHours.ToString("0.##", CultureInfo.InvariantCulture) + " h; the sites returned are closer than that to the edge, so a landing may come down outside the biome");
+                json.Field("note", OutOfTimeNote(query, found) + (edge != null ? "; " + edge : ""));
+            else if (edge != null)
+                json.Field("note", edge);
             else if (found.Sites.Count == 0)
                 json.Field("note", "no site met the limits; of " + LandingSiteSearch.Count(found.Candidates) + " ground-track points, "
                     + LandingSiteSearch.Count(found.AfterBiome) + " were in the biome, " + LandingSiteSearch.Count(found.AfterDaylight)
@@ -165,6 +170,7 @@ namespace ClaudiaKermin.Core.Tools
                         : "")
                     + "; widen within_hours, the slope or the biome"
                     + (query.HasNear ? "" : ", or give near (the site wanted) for plane changes that reach it")
+                    // Sites at the biome edge are the fallback whatever the margin, so this holds for land's own (the default).
                     + "; land given this biome and these limits and window searches the same ground-track points, so it finds none either, but a site given to land as coordinates may lie off the track, reached by a correction burn");
             if (WithPlaneChanges) PlaneChangesFor(json, body, conic, snapshot.Ut, query, found, api);
             json.EndObject();
@@ -177,14 +183,14 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>A search that ran out of time (#536): how far it got, and that land, searching the whole window, may still find a site.</summary>
-        private static string OutOfTimeNote(LandingSiteQuery query, LandingSiteResult found)
+        private string OutOfTimeNote(LandingSiteQuery query, LandingSiteResult found)
         {
             var how = query.HasNear
-                ? "the " + LandingSiteSearch.Count(found.Tried) + " track points nearest near, of " + LandingSiteSearch.Count(found.Near) + " within 15 degrees of it, were tried"
+                ? LandingSiteSearch.Count(found.Tried) + " of the " + LandingSiteSearch.Count(found.NearPoints) + " track points nearest near were tried"
                 : "the ground track was searched for the first " + found.SearchedHours.ToString("0.#", CultureInfo.InvariantCulture) + " h of the "
                     + found.WindowHours.ToString("0.##", CultureInfo.InvariantCulture) + " h window";
             var sites = found.Sites.Count == 0 ? "no site met the limits there" : "the sites are those found there";
-            return "partial: out of time (" + (ToolBudgetMs / 1000).ToString("0.#", CultureInfo.InvariantCulture) + " s): " + how + ", and " + sites
+            return "partial: out of time (" + (BudgetMs.GetValueOrDefault() / 1000).ToString("0.#", CultureInfo.InvariantCulture) + " s): " + how + ", and " + sites
                 + "; land given this biome and these limits and window searches the whole window"
                 + (found.Sites.Count == 0 ? ", so it may still find a site later in it" : " and takes the first site it finds, the first here");
         }
@@ -254,7 +260,9 @@ namespace ClaudiaKermin.Core.Tools
                 json.EndObject();
             }
             json.EndArray();
-            if (changes.Options.Count == 0)
+            if (changes.Options.Count > 0 && changes.OutOfTime)
+                json.Field("plane_change_note", "partial: out of time, so these are the best of the " + changes.Planes.ToString(CultureInfo.InvariantCulture) + " planes tried");
+            else if (changes.Options.Count == 0)
                 json.Field("plane_change_note", changes.Note ?? (double.IsNaN(currentDv) ? "no plane change tried reaches the site"
                     : "land reaches the site from this orbit, and no plane change saves " + PlaneChanges.SavingDv.ToString("0", CultureInfo.InvariantCulture) + " m/s net"));
         }
