@@ -32,26 +32,6 @@ namespace ClaudiaKermin.Core.Missions
                 Inclination = snapshot.Orbit.Inclination,
             };
         }
-
-        /// <summary>The orbit a Script Result reports (body, situation and orbit's ap, pe and inc, as the blocks write them); null when any is missing.</summary>
-        public static OrbitFix OfReport(IDictionary<string, object> report)
-        {
-            if (report == null) return null;
-            object value;
-            var orbit = report.TryGetValue("orbit", out value) ? value as IDictionary<string, object> : null;
-            var ap = PreBurnRefusal.Number(orbit, "ap");
-            var pe = PreBurnRefusal.Number(orbit, "pe");
-            var inc = PreBurnRefusal.Number(orbit, "inc");
-            if (!ap.HasValue || !pe.HasValue || !inc.HasValue) return null;
-            return new OrbitFix
-            {
-                Body = report.TryGetValue("body", out value) ? value as string ?? "" : "",
-                Situation = report.TryGetValue("situation", out value) ? value as string ?? "" : "",
-                Apoapsis = ap.Value,
-                Periapsis = pe.Value,
-                Inclination = inc.Value,
-            };
-        }
     }
 
     /// <summary>

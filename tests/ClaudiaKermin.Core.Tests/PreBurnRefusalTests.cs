@@ -97,8 +97,8 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void A_run_that_succeeded_was_aborted_or_did_not_report_is_not_one()
         {
-            var before = OrbitFix.OfReport(Report(PlaneChange3dc5));
-            var after = OrbitFix.OfReport(Report(TerrainRefusal1));
+            var before = OrbitOf(Report(PlaneChange3dc5));
+            var after = OrbitOf(Report(TerrainRefusal1));
             Assert.Null(PreBurnRefusal.Reason(new RunOutcome(RunOutcomeKind.Finished, Report(PlaneChange3dc5), "", "", false), before, before, 2518.2, 2518.2, false));
             Assert.Null(PreBurnRefusal.Reason(new RunOutcome(RunOutcomeKind.Finished, Report(TerrainRefusal1), "", "", true), before, after, 2518.2, 2518.2, false));
             Assert.Null(PreBurnRefusal.Reason(new RunOutcome(RunOutcomeKind.NoReport, Report(TerrainRefusal1), "", "", false), before, after, 2518.2, 2518.2, false));
@@ -108,8 +108,8 @@ namespace ClaudiaKermin.Core.Tests
         public void A_crossed_Telemetry_Check_rules_it_out_even_recovered()
         {
             var outcome = new RunOutcome(RunOutcomeKind.Finished, Report(TerrainRefusal1), "", "", false);
-            var before = OrbitFix.OfReport(Report(PlaneChange3dc5));
-            var after = OrbitFix.OfReport(Report(TerrainRefusal1));
+            var before = OrbitOf(Report(PlaneChange3dc5));
+            var after = OrbitOf(Report(TerrainRefusal1));
 
             Assert.NotNull(PreBurnRefusal.Reason(outcome, before, after, 2518.2, 2518.2, false));
             Assert.Null(PreBurnRefusal.Reason(outcome, before, after, 2518.2, 2518.2, true));
@@ -121,8 +121,8 @@ namespace ClaudiaKermin.Core.Tests
             var report = Report(TerrainRefusal1);
             report.Remove("dv_used");
             var outcome = new RunOutcome(RunOutcomeKind.Finished, report, "", "", false);
-            var before = OrbitFix.OfReport(Report(PlaneChange3dc5));
-            var after = OrbitFix.OfReport(report);
+            var before = OrbitOf(Report(PlaneChange3dc5));
+            var after = OrbitOf(report);
 
             Assert.NotNull(PreBurnRefusal.Reason(outcome, before, after, 2518.2, 2516.4, false));
             Assert.Null(PreBurnRefusal.Reason(outcome, before, after, 2518.2, 2515.9, false));
@@ -147,8 +147,22 @@ namespace ClaudiaKermin.Core.Tests
             var start = Report(before);
             var end = Report(run);
             var outcome = new RunOutcome(RunOutcomeKind.Finished, end, "", "", false);
-            return PreBurnRefusal.Reason(outcome, OrbitFix.OfReport(start), OrbitFix.OfReport(end),
+            return PreBurnRefusal.Reason(outcome, OrbitOf(start), OrbitOf(end),
                 PreBurnRefusal.Number(start, "dv_remaining"), PreBurnRefusal.Number(end, "dv_remaining"), false);
+        }
+
+        /// <summary>The orbit a recorded Script Result reports (its body, situation and orbit's ap, pe and inc).</summary>
+        private static OrbitFix OrbitOf(Dictionary<string, object> report)
+        {
+            var orbit = (IDictionary<string, object>)report["orbit"];
+            return new OrbitFix
+            {
+                Body = (string)report["body"],
+                Situation = (string)report["situation"],
+                Apoapsis = PreBurnRefusal.Number(orbit, "ap").Value,
+                Periapsis = PreBurnRefusal.Number(orbit, "pe").Value,
+                Inclination = PreBurnRefusal.Number(orbit, "inc").Value,
+            };
         }
 
         /// <summary>A Script Result as the kOS bridge hands it on: a lexicon of strings, numbers, booleans, lists and lexicons.</summary>

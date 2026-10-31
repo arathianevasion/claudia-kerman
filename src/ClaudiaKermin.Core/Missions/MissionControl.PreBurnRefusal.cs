@@ -30,6 +30,8 @@ namespace ClaudiaKermin.Core.Missions
         {
             // A Paused run's Debrief waits for Resume, a hand-back's is of a manual stretch, and a Child Vessel's is judged from its own report.
             if (!_config.ModDebriefsRefusals || mission.Stage != MissionStage.Running || mission.HandBack || mission.RunningChild.Length > 0) return false;
+            // The fact joins the conversation now, so no other turn may be out or waiting: it would commit after the fact it was sent without.
+            if (mission.Pending != null || mission.Queue.Count > 0 || mission.Compacting != null) return false;
             var plan = mission.PendingSequence;
             var snapshot = MissionVesselSnapshot(mission);
             if (plan == null || snapshot == null) return false;
