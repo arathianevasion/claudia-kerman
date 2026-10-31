@@ -94,8 +94,8 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void TheSchemaRequiresEveryDebriefFieldTheMissionAsksFor()
         {
-            // A Debrief request sends the flight schema (#199).
-            using (var request = JsonDocument.Parse(MissionReply.FlightSchemaJson))
+            // A Debrief request sends the one Mission schema (ADR 0012).
+            using (var request = JsonDocument.Parse(MissionReply.MissionSchemaJson))
             {
                 var schema = request.RootElement;
                 var debrief = schema.GetProperty("properties").GetProperty("debrief").GetProperty("anyOf")[0];

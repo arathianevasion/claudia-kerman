@@ -140,9 +140,10 @@ namespace ClaudiaKermin.Core.Missions
     }
 
     /// <summary>
-    /// One Claudia reply in a Mission; <see cref="Kind"/> says which part is filled in. A request sends one of two
-    /// structured-output schemas (<see cref="PlanningSchemaJson"/>, <see cref="FlightSchemaJson"/>) with only the
-    /// parts it can come back as, and <see cref="Parse"/> reads every part whatever the schema.
+    /// One Claudia reply in a Mission; <see cref="Kind"/> says which part is filled in. Every Mission request sends one
+    /// structured-output schema, <see cref="MissionSchemaJson"/> (ADR 0012); a Mission Plan arrives through the Reply Tool
+    /// propose_mission_plan (<see cref="ProposedPlans"/>), not as a part. <see cref="Parse"/> reads every part whatever the
+    /// schema, so transcripts and saves from before keep their inline Mission Plans.
     /// </summary>
     internal sealed class MissionReply
     {
@@ -165,8 +166,9 @@ namespace ClaudiaKermin.Core.Missions
 
         // Grammar budget (#199): the API compiles the schema to a grammar, and past an internal size limit every
         // request is a 400 ("compiled grammar is too large"). One schema holding all four parts went over it even
-        // with only four unions, so each request sends only the parts it can come back as, in one of two schemas
-        // (two, not one per request, because a changed schema costs the prompt cache). Only the parts are nullable;
+        // with only four unions. A changed schema rewrites the prompt cache (#534), so every Mission request sends the
+        // same one: every kind, the parts but mission_plan, whose input goes through the non-strict propose_mission_plan
+        // tool instead (a non-strict tool adds nothing to the grammar: ADR 0012). Only the parts are nullable;
         // any other "none" is a sentinel (-1, "", "none") that Parse maps back to null. A schema that grows must be
         // probed against the API first (tools/ClaudiaKermin.SchemaProbe); MissionReplySchemaTests holds the budget.
         // Limits: https://platform.claude.com/docs/en/build-with-claude/structured-outputs#schema-complexity-limits
@@ -184,14 +186,11 @@ namespace ClaudiaKermin.Core.Missions
         };
 
         /// <summary>
-        /// Mission Plan, Mission Settings, typed replies and changes to a pending plan, and questions before a Mission
-        /// Plan is approved: an answer, a Mission Plan, or (a revision of a pending one) a Sequence Plan. A reply to a
-        /// pending Sequence Plan uses it too, because it can change the Mission Goal and so come back as a Mission Plan.
+        /// Every Mission request's schema, from the first Mission Plan to the end (ADR 0012): every kind, with the
+        /// sequence_plan, debrief and alert parts. A mission_plan reply carries only say, reply_intent and unsure_because;
+        /// its plan is the last one propose_mission_plan accepted in the turn. The request's notice says which kind to send.
         /// </summary>
-        public static readonly string PlanningSchemaJson = SchemaFor(AnswerKind, MissionPlanKind, SequencePlanKind);
-
-        /// <summary>Sequence Plans, Debriefs, Alerts and questions once a Mission Plan is approved.</summary>
-        public static readonly string FlightSchemaJson = SchemaFor(AnswerKind, SequencePlanKind, DebriefKind, AlertKind);
+        public static readonly string MissionSchemaJson = SchemaFor(AllKinds, new[] { SequencePlanKind, DebriefKind, AlertKind });
 
         /// <summary>
         /// The structured-output schema for a reply that is one of <paramref name="kinds"/>. Each part but answer is
@@ -200,7 +199,13 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         public static string SchemaFor(params string[] kinds)
         {
-            var parts = Parts.Where(p => kinds.Contains(p.Key)).ToList();
+            return SchemaFor(kinds, kinds);
+        }
+
+        /// <summary>The same, with only the parts of <paramref name="partKinds"/>: a kind without its part is handed in some other way.</summary>
+        private static string SchemaFor(string[] kinds, string[] partKinds)
+        {
+            var parts = Parts.Where(p => partKinds.Contains(p.Key)).ToList();
             var nullable = kinds.Distinct().Count() > 1;
             var json = new System.Text.StringBuilder();
             json.Append("{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"kind\",\"say\",\"reply_intent\",\"unsure_because\"");
@@ -223,7 +228,8 @@ namespace ClaudiaKermin.Core.Missions
             + "\"description\":\"Only when classifying the player's typed reply to a pending plan; otherwise none.\"},"
             + SecondLook.FieldJson;
 
-        private const string MissionPlanSchema =
+        /// <summary>The Mission Plan part: propose_mission_plan's input schema, and what a reply from before ADR 0012 carried inline.</summary>
+        internal const string MissionPlanSchema =
             "{\"type\":\"object\",\"additionalProperties\":false,"
             + "\"required\":[\"why\",\"sequences\",\"total_delta_v\",\"expected_duration\",\"mission_time_s\",\"new_goal\",\"child_vessels\"],\"properties\":{"
             + "\"why\":{\"type\":\"string\",\"description\":\"One short sentence.\"},"
@@ -439,6 +445,16 @@ namespace ClaudiaKermin.Core.Missions
                 }
             }
             return reply;
+        }
+
+        /// <summary>
+        /// A mission_plan reply's plan is the one propose_mission_plan accepted in its turn (<paramref name="proposed"/>,
+        /// <see cref="ProposedPlans.LastAccepted"/>); with none it keeps any it carried inline (a reply from before ADR 0012).
+        /// </summary>
+        public MissionReply WithProposed(MissionPlan proposed)
+        {
+            if (Kind == MissionPlanKind && proposed != null) MissionPlan = proposed;
+            return this;
         }
 
         /// <summary>The step a Sequence Plan names, as given (the mod refuses one outside the Mission Plan); null when it names none.</summary>
