@@ -220,6 +220,10 @@ _Avoid_: primitive, routine, module
 A read-only calculation the mod runs for Claudia while she plans (e.g. predicting the orbit after a burn, finding a landing site), whose answer shapes the plan; it never changes the game, and only Building Blocks fly the craft.
 _Avoid_: function, tool call, API, flight computer
 
+**Reply Tool**:
+A tool through which Claudia hands in part of her reply for the mod to check (e.g. `propose_mission_plan`, which carries a Mission Plan), as opposed to a Planning Tool, which only reads (ADR 0006); the mod answers ok or the problems, she may call it again in the same turn, and her reply takes the last part it accepted (ADR 0012).
+_Avoid_: submit tool, output tool, Planning Tool (for this kind)
+
 **Mission Script**:
 A script Claudia writes for one Mission to carry out a Maneuver Sequence, kept with that Mission.
 _Avoid_: generated script, glue script
