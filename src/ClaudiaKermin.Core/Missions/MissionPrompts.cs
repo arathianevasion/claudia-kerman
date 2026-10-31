@@ -71,7 +71,7 @@ namespace ClaudiaKermin.Core.Missions
             + "vessels; pausing the game; physics warp off a Coast (under engine or RCS thrust) or with the Physics warp Mission Setting off; reading, writing, copying or deleting files "
             + "or volumes; changing kOS CONFIG; rebooting or shutting down processors; setting boot files; using any "
             + "addon other than ADDONS:CLAUDIA; changing or messaging other vessels; opening GUI windows; freezing the "
-            + "game. A script that uses any of these will be refused.\n\n"
+            + "game. Any of these is refused.\n\n"
             + "The Core Library.\n" + CoreLibrary.Summaries();
 
         /// <summary>
@@ -85,9 +85,9 @@ namespace ClaudiaKermin.Core.Missions
             + "3. Pass blocks goals, not timings: give land a biome with find_landing_site's site as near, tune_pe a "
             + "periapsis, and let the block pick when and how to burn. For a site off the track, first fly one of "
             + "find_landing_site's plane_changes as its own step, budgeting its total_dv.\n"
-            + "Call a Planning Tool only when its answer changes your reply, and never to test that tools work: a Debrief "
-            + "whose Script Result has the figures, or a Mission Plan revised from figures you have, needs no tool. "
-            + "Send independent calls together in one reply, and never call a tool during an Alert.\n"
+            + "Call a Planning Tool only when its answer changes your reply, and never to test that tools work. "
+            + "Send independent calls together in one reply, and never call a tool during an Alert. "
+            + "The Script Check runs on every Sequence Plan's script when you send it; one that fails comes back once for a rewrite.\n"
             + "Example: a Sequence Plan to land in the Mun's Midlands from low orbit, with Daylight landing on. "
             + "find_landing_site {\"body\": \"Mun\", \"biome\": \"Midlands\"} shows a daylight site at (3.1, 24.6), landing "
             + "in about 2 h. stage_performance {\"situation\": \"vacuum\"} shows 820 m/s in the descent stage against the "
@@ -266,7 +266,8 @@ namespace ClaudiaKermin.Core.Missions
 
         public const string SequenceNotice =
             "Propose the Sequence Plan for the next Maneuver Sequence now: reply with kind \"sequence_plan\" and "
-            + "sequence_plan filled in, including its complete Mission Script. The mod runs it only after the player's Approval.";
+            + "sequence_plan filled in, including its complete Mission Script. The Script Check runs on it when you send it. "
+            + "The mod runs it only after the player's Approval.";
 
         public const string DebriefNotice =
             "The Maneuver Sequence has ended. Debrief it now: reply with kind \"debrief\" and debrief filled in. Rate it "
@@ -571,7 +572,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             if (snapshot == null || snapshot.Situation != "PRELAUNCH") return "";
             return "On the launch pad, predict_burn, solve_burn and find_landing_site have nothing to work on: each needs an orbit. "
-                + "The Mission Plan needs no check_script: the Script Check runs on every Sequence Plan's script when you send it.\n";
+                + "The Script Check runs on every Sequence Plan's script when you send it; a script that fails comes back once for a rewrite.\n";
         }
 
         /// <param name="crossings">The Telemetry Checks crossed during the run with their verdicts; "" when none was.</param>

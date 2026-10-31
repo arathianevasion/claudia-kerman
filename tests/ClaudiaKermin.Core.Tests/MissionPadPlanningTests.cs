@@ -17,7 +17,7 @@ namespace ClaudiaKermin.Core.Tests
 {
     /// <summary>
     /// Pre-launch planning (#508): the Mission request carries the stage table and the pad wording, and Planning Tool calls that
-    /// can't help (the three orbit tools on the pad, check_script on a Mission Plan request, an identical repeat) are refused
+    /// can't help (the three orbit tools on the pad, an identical repeat) are refused
     /// with a reason, logged and counted, while the tools list stays byte for byte what it was.
     /// </summary>
     public sealed class MissionPadPlanningTests : IDisposable
@@ -149,7 +149,7 @@ namespace ClaudiaKermin.Core.Tests
             Assert.DoesNotContain("\"Minmus\"", text.Substring(text.IndexOf("TWR in vacuum", StringComparison.Ordinal)));
             // The pad wording.
             Assert.Contains("On the launch pad, predict_burn, solve_burn and find_landing_site have nothing to work on", text);
-            Assert.Contains("The Mission Plan needs no check_script", text);
+            Assert.Contains("The Script Check runs on every Sequence Plan's script when you send it; a script that fails comes back once for a rewrite.", text);
             Assert.Contains("needs no call", text);
         }
 
@@ -248,6 +248,18 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(golden, Body(transport.Requests[0]).GetProperty("tools").GetRawText());
         }
 
+        [Fact]
+        public void TheMissionToolsListHasNoCheckScriptAndTheCraftCheckOfferIsUnchanged()
+        {
+            var transport = new StreamingFakeTransport(Plan());
+            var mission = Control(transport);
+            Plan(mission);
+
+            var names = Body(transport.Requests[0]).GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("name").GetString()).ToList();
+            Assert.Equal(new[] { "predict_burn", "solve_burn", "stage_performance", "plan_ascent", "find_landing_site", "plan_transfer", "propose_mission_plan" }, names);
+            Assert.Equal(new[] { "stage_performance", "plan_ascent" }, PlanningTools.Default(new PassingScriptCheck()).Definitions(ToolOffer.CraftCheck).Select(t => t.Name).ToArray());
+        }
+
         // ---- Refusals ----
 
         [Fact]
@@ -275,16 +287,6 @@ namespace ClaudiaKermin.Core.Tests
 
             var result = Assert.Single(Results(transport.Requests[1]));
             if (IsError(result)) Assert.DoesNotContain("launch pad", ErrorOf(result));
-        }
-
-        [Fact]
-        public void CheckScriptOnAMissionPlanRequestIsRefused()
-        {
-            var transport = new StreamingFakeTransport(ToolUseStreams.ToolUse("cs", ("check_script", "{\"script\":\"addons:claudia:report(lexicon()).\"}")), Plan());
-            var mission = Control(transport);
-            Plan(mission);
-
-            Assert.Equal("the Mission Plan needs no script check; the Sequence Plan's script is checked when you send it", ErrorOf(Assert.Single(Results(transport.Requests[1]))));
         }
 
         [Fact]
@@ -329,7 +331,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             var transport = new StreamingFakeTransport(
                 ToolUseStreams.ToolUse("a", ("stage_performance", Vacuum), ("predict_burn", "{}")),
-                ToolUseStreams.ToolUse("b", ("stage_performance", Vacuum), ("check_script", "{\"script\":\"print 1.\"}")),
+                ToolUseStreams.ToolUse("b", ("stage_performance", Vacuum), ("solve_burn", "{}")),
                 Plan());
             var mission = Control(transport);
             Plan(mission);
@@ -340,7 +342,7 @@ namespace ClaudiaKermin.Core.Tests
             Assert.EndsWith("(this turn: 1 refused, 0 repeats)", refused[0]);
             Assert.StartsWith("stage_performance {\"situation\":\"vacuum\"} -> you already called this in step 1", refused[1]);
             Assert.EndsWith("(this turn: 1 refused, 1 repeat)", refused[1]);
-            Assert.StartsWith("check_script ", refused[2]);
+            Assert.StartsWith("solve_burn ", refused[2]);
             Assert.EndsWith("(this turn: 2 refused, 1 repeat)", refused[2]);
         }
     }
