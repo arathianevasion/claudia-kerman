@@ -175,13 +175,13 @@ namespace ClaudiaKermin.Adapter
         /// The Mission's time cap, hours (<see cref="MissionSettingsValues.TimeCapHours"/>), for the block calls' own Game Snapshots
         /// (#543): <c>land</c>'s pass search defaults its window by it, as <c>find_landing_site</c> does. Refreshed every frame.
         /// </summary>
-        public static volatile float TimeCapHours = (float)MissionSettingsValues.BalancedWaitHours;
+        public static double TimeCapHours = MissionSettingsValues.BalancedWaitHours;
 
         /// <summary>Call each frame, after the background queue has drained.</summary>
         public void Update()
         {
             PhysicsWarpAllowed = _mission.View.PhysicsWarpAllowed;
-            TimeCapHours = (float)_mission.View.Settings.TimeCapHours;
+            TimeCapHours = _mission.View.Settings.TimeCapHours;
             // A new Game object means a save was loaded: continue, quickload, revert or another save. A scene
             // change keeps the same Game, so it never counts. The core puts the Missions in step with the save.
             if (HighLogic.CurrentGame != null && !ReferenceEquals(HighLogic.CurrentGame, _game))
