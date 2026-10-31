@@ -118,7 +118,10 @@ namespace ClaudiaKermin.Core.Missions
         {
             var uses = message.Content.OfType<ToolUseBlock>().ToList();
             var repeats = ToolRepeats.Of(turn.Messages, message);
-            return use => ToolRefusal(purpose, snapshot, use.Name) ?? repeats[uses.IndexOf(use)];
+            var rows = ToolRepeats.Rows(turn.Messages);
+            return use => ToolRefusal(purpose, snapshot, use.Name)
+                ?? (ToolRepeats.Matches(rows, use) ? "its figures are in the Mission request above" : null)
+                ?? repeats[uses.IndexOf(use)];
         }
 
         /// <summary>
