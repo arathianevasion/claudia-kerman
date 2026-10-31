@@ -266,6 +266,38 @@ namespace ClaudiaKermin.Core.Tests
             Assert.False(AnyMissionFolder());
         }
 
+        // The amount a "Craft Check kept $X" line carries, after one check whose stream the response script ends as given.
+        private decimal KeptAmountAfter(Func<ScriptedResponse> response)
+        {
+            // The client retries a broken stream, so every attempt breaks the same way.
+            var mission = Control(new StreamingFakeTransport(Enumerable.Range(0, 6).Select(i => response()).ToArray()));
+            var before = KspLog().Length;
+            mission.Send(new RunCraftCheck(Goal, 10m, Model));
+            DrainUntil(() => KspLog().Length == before + 1);
+            var line = KspLog()[before];
+            Assert.StartsWith("Craft Check kept $", line);
+            return decimal.Parse(line.Substring("Craft Check kept $".Length, 6), System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        [Fact]
+        public void ACheckWithNoResponseKeepsItsInputCostAndOneThatStreamedOutputKeepsItsFullWorstCase()
+        {
+            // Connection broke before the first content block: nothing came back (#540).
+            var noneKept = KeptAmountAfter(() =>
+            {
+                var none = ScriptedResponse.Fixture("craft-check-pass.sse", 64, StreamEnd.Break);
+                none.Body = none.Body.Take(60).ToArray();
+                return none;
+            });
+
+            // Broke after partial output: the API may have billed it, so the whole worst case stays (#539).
+            var partialKept = KeptAmountAfter(() => ScriptedResponse.Fixture("partial-text.sse", 4096, StreamEnd.Break));
+
+            var outputWorst = new PlayerConfig().Prices.OutputCost(Model, 8000);
+            Assert.Equal(0.08m, outputWorst);
+            Assert.True(partialKept - noneKept >= outputWorst - 0.0002m, "partial " + partialKept + " none " + noneKept);
+        }
+
         // ---- Settled like a Mission request ----
 
         [Fact]
@@ -297,6 +329,17 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(0.2m, RequestCharge.Settle(prices, 0.5m, null, Model, 0.2m).Held);
             Assert.Equal(12m, RequestCharge.Settle(prices, 0.5m, done, Model, 0.2m).Spent);
             Assert.Equal(0m, RequestCharge.Settle(prices, 0.5m, done, Model, 0.2m).Held);
+
+            // #539: a request that streamed any output keeps its full worst case, whether it broke, stalled or was cancelled.
+            foreach (var ended in new[] { StreamStatus.Cancelled, StreamStatus.Failed })
+            {
+                var partial = RequestCharge.Settle(prices, 0.5m, new StreamResult { Status = ended, Failure = StreamFailure.EndedEarly, OutputStreamed = true }, Model, 0.2m);
+                Assert.Equal("kept", partial.Kind);
+                Assert.Equal(0.5m, partial.Held);
+                Assert.Equal(0.5m, partial.Amount);
+            }
+            var brokeEarly = RequestCharge.Settle(prices, 0.5m, new StreamResult { Status = StreamStatus.Failed, Failure = StreamFailure.EndedEarly }, Model, 0.2m);
+            Assert.Equal(0.2m, brokeEarly.Held);
 
             var released = RequestCharge.Settle(prices, 0.5m, new StreamResult { Status = StreamStatus.Failed, Failure = StreamFailure.Unauthorized }, Model);
             Assert.Equal("released", released.Kind);

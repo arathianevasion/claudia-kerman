@@ -254,7 +254,7 @@ namespace ClaudiaKermin.Core.Missions
             _remoteMissing = remote ? RemoteBlocker.Missing(snapshot) : "";
             _staging = ChildVessels.Staging(snapshot, remote, ProcessorFor(snapshot));
             _craftKey = CraftKey(snapshot);
-            var charge = new CraftCheckCharge { Model = request.Model, Pending = worstCase };
+            var charge = new CraftCheckCharge { Model = request.Model, Pending = worstCase, Input = RequestCharge.InputCost(_config.Prices, request.Model, request, worstCase) };
             var cancel = new CancellationTokenSource();
             _cancel = cancel;
             _request = request;
@@ -366,7 +366,7 @@ namespace ClaudiaKermin.Core.Missions
         private void Finished(CancellationTokenSource cancel, CraftCheckCharge charge, StreamResult result)
         {
             // Settled whatever came of the check, by the rules a Mission request follows.
-            charge.Settlement = RequestCharge.Settle(_config.Prices, charge.Pending, result, charge.Model);
+            charge.Settlement = RequestCharge.Settle(_config.Prices, charge.Pending, result, charge.Model, charge.Input);
             // Superseded (cancelled by Reset or a newer Run) while it ran: its charge is in KSP.log only.
             if (_cancel != cancel || _state != CraftCheckState.Running)
             {

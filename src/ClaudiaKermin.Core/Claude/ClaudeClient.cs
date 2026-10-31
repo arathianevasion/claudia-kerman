@@ -122,6 +122,7 @@ namespace ClaudiaKermin.Core.Claude
                 result.ErrorType = attempt.ErrorType;
                 result.ErrorMessage = attempt.ErrorMessage;
                 result.Failure = attempt.Failure;
+                result.OutputStreamed |= attempt.ContentStarted;
 
                 if (attempt.Cancelled || cancel.IsCancellationRequested)
                 {
