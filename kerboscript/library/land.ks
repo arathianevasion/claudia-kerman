@@ -464,8 +464,12 @@ function land_sink_limit {
 // 20 m/s) when below it, and descends at a tenth of the height to lose per second when above,
 // never slower than touchdown speed and never faster than it can stop from at a_stop (m/s^2,
 // land_sink_limit, after lag s), nor than 100 m/s, about a free fall from the descent's planned 3 km (#365).
+// hover (true while land_hovering, #562): it comes down at touchdown speed whatever h says.
 function land_vv_target {
-  parameter h, h_ref, a_stop, touchdown, lag is 2.
+  parameter h, h_ref, a_stop, touchdown, lag is 2, hover is false.
+  if hover {
+    return -touchdown.
+  }
   if h < h_ref {
     return min(20, 0.1 * (h_ref - h)).
   }
@@ -551,13 +555,14 @@ function land_cross_accel {
 // past it), c (m to it across), v_al and v_cr (m/s along and across), v_up (m/s), h (m above the
 // terrain), h_start (h when braking began), v0 (m/s across the ground then), shape (the Descent Shape), v_top (the most m/s
 // along the axis), a_max (m/s^2 the engines give), g (m/s^2), radius (m from the body's centre) and, if given, lag (s, the
-// turn lag land_sink_limit allows for; 2 if not). It holds the Descent
+// turn lag land_sink_limit allows for; 2 if not), radar (m over the ground beneath, which it steers by once h_ref is 0; h if not)
+// and hover (land_hovering's; false if not) (#562). BRAKEPATH's sim gives neither. It holds the Descent
 // Shape's height (land_shape_ref) down to where it stops, the site or its stopping distance on, so it comes straight down
 // once it has stopped; gives the vertical acceleration first, brakes along the axis with what is left (land_axis_accel) and
 // closes across it with the rest, upright near the ground. Climbing faster than it wants while still fast, it brakes along at
 // least land_climb_braking's rate (#511, #530): only slowing brings an orbiting craft down, and holding its speed there left it
 // coasting up out of periapsis at zero throttle. Returns lexicon("al", "cr", "up"): m/s^2 wanted, with, for the trace,
-// "h_ref" (m), "vh" and "vv" (m/s) it aims for, "to_go" (m to where it stops) and "sink" (m/s, the fastest it may descend).
+// "h" (m, the height it steered by), "h_ref" (m), "vh" and "vv" (m/s) it aims for, "to_go" (m to where it stops) and "sink" (m/s, the fastest it may descend).
 function land_guide {
   parameter st, touchdown, margin.
   local v_h is sqrt(st:v_al ^ 2 + st:v_cr ^ 2).
@@ -571,15 +576,20 @@ function land_guide {
   local braking_needs is a_ok * v_h / (v_h + 2 * a_ok).
   local a_stop is max(0.2, 0.5 * (sqrt(max(0, a_most ^ 2 - braking_needs ^ 2)) - st:g)).
   local h_ref is land_shape_ref(to_go, v_h, st:v0, st:h_start, st:shape).
+  // Coming straight down (#562), only the ground beneath matters: radar, if given, not the path's ground ahead.
+  local h is st:h.
+  if h_ref <= 0 {
+    set h to land_or(st, "radar", h).
+  }
   local lag is land_or(st, "lag", 2).
-  local vv_want is land_vv_target(st:h, h_ref, a_stop, touchdown, lag).
+  local vv_want is land_vv_target(h, h_ref, a_stop, touchdown, lag, land_or(st, "hover", false)).
   local split is land_split_accel(a_most, g_eff + 0.5 * (vv_want - st:v_up), a_most).
   local al is land_axis_accel(st:s, st:v_al, split:h, margin, st:v_top).
   if v_h > 50 and st:v_up > 0 and vv_want < st:v_up and st:v_al > 0 {
     set al to min(al, -min(split:h, land_climb_braking(st:s, st:v_al, st:g, st:radius, braking_needs))).
   }
   local cr is land_cross_accel(st:c, st:v_cr, sqrt(max(0, split:h ^ 2 - al ^ 2)), margin).
-  local tilt is land_max_tilt(st:h).
+  local tilt is land_max_tilt(h).
   if tilt < 90 {
     local most is split:v * tan(tilt).
     local sideways is sqrt(al ^ 2 + cr ^ 2).
@@ -588,8 +598,28 @@ function land_guide {
       set cr to cr * most / sideways.
     }
   }
-  return lexicon("al", al, "cr", cr, "up", split:v, "h_ref", h_ref, "vv", vv_want,
-    "vh", min(st:v_top, land_vh_target(st:s, split:h, margin)), "to_go", to_go, "sink", max(touchdown, min(100, land_sink_limit(st:h, a_stop, lag)))).
+  return lexicon("al", al, "cr", cr, "up", split:v, "h_ref", h_ref, "vv", vv_want, "h", h,
+    "vh", min(st:v_top, land_vh_target(st:s, split:h, margin)), "to_go", to_go, "sink", max(touchdown, min(100, land_sink_limit(h, a_stop, lag)))).
+}
+
+// The UT a terminal hover began (#562), from since (the last tick's; -1 for none): the terminal descent coming down slower
+// than a quarter of touchdown (m/s) at v_down (m/s, down positive) with the throttle (thrott, 0 to 1) up at ut. Over East Crater it held 26 m
+// up for 450 s, until the Telemetry Check aborted it with the return leg's fuel spent. Pure.
+function land_hover_watch {
+  parameter since, phase, v_down, touchdown, thrott, ut.
+  if phase <> "terminal" or v_down >= 0.25 * touchdown or thrott <= 0 {
+    return -1.
+  }
+  if since < 0 {
+    return ut.
+  }
+  return since.
+}
+
+// Whether a terminal hover that began at since (UT, land_hover_watch's) has gone on 10 s at ut. Pure.
+function land_hovering {
+  parameter since, ut.
+  return since >= 0 and ut - since >= 10.
 }
 
 // The descent's phase, for its trace: "fall" before braking, "braking" while over 50 m/s across the
@@ -2283,6 +2313,9 @@ function land_descend {
   // Too far over its Descent Shape to come down to it before it stops (land_over_shape, #547): from then the path guard
   // measures against where it was then (lexicon alt, ground), not the predicted path; "" until then.
   local over_from is "".
+  // The UT a terminal hover began (land_hover_watch, #562); -1 for none. Once caught, hovering holds until touchdown.
+  local hover_since is -1.
+  local hovering is false.
 
   until status = "LANDED" or status = "SPLASHED" {
     local up_v is ship:up:vector.
@@ -2479,8 +2512,9 @@ function land_descend {
       set v_top to land_v_top(v_top, v_h:mag).
       set want to land_guide(lexicon("s", s_guide, "c", fig:across, "v_al", v_ahead, "v_cr", vdot(v_h, across),
         "v_up", v_v, "h", h, "h_start", h_start, "v0", v_h_start, "shape", shape, "v_top", v_top, "a_max", a_max, "g", g, "radius", radius_now,
-        "lag", land_turn_lag(turn:top_rate, turn:turn_s)),
+        "lag", land_turn_lag(turn:top_rate, turn:turn_s), "radar", radar, "hover", hovering),
         opt:touchdown_speed, opt:burn_margin).
+      set h to want:h.
       if turn_left <= 0 and want:al < -0.1 {
         set first_turn to false.
       }
@@ -2505,6 +2539,13 @@ function land_descend {
     }
     // The descent trace, for the log: a craft destroyed mid-descent leaves its last line as the block's state.
     local phase is land_phase(braking, v_h:mag, want:h_ref).
+    // A terminal descent not coming down for 10 s is caught (#562): traced, it comes down at touchdown speed from then.
+    set hover_since to land_hover_watch(hover_since, phase, -v_v, opt:touchdown_speed, tset, time:seconds).
+    if not hovering and land_hovering(hover_since, time:seconds) {
+      set hovering to true.
+      addons:claudia:blocktrace("land", lexicon("phase", "hover", "radar", round(radar), "v_down", round(-v_v, 1),
+        "throttle", round(tset, 2), "since_ut", round(hover_since, 1))).
+    }
     if land_trace_due(phase, last_phase, time:seconds, last_trace_ut) {
       addons:claudia:blocktrace("land", lexicon("phase", phase, "h", round(h), "radar", round(radar), "v_h", round(v_h:mag, 1),
         "v_down", round(-v_v, 1), "dist", round(dist), "throttle", round(tset, 2), "h_ref", round(want:h_ref),

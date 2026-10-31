@@ -1316,6 +1316,39 @@ function tsim {
         }
 
         [Fact]
+        public void The_terminal_descent_steers_by_radar_not_the_predicted_paths_ground()
+        {
+            // #562, 6be2 over East Crater: stopped over the site, the predicted path's ground put h at -1 while radar read 26.
+            // Steering by h it climbed 0.1 m/s and hovered 450 s; by radar it comes down.
+            var over = Run(Guide("0, 0, 0, 0, 0, -1").Replace("\"h_start\"", "\"radar\", 26, \"h_start\"") + " print w:h_ref. print w:vv <= -2. print round(w:h).");
+            Assert.Equal(new[] { "0", "True", "26" }, over.Skip(3).ToArray());
+            // Still on its Descent Shape (h_ref over 0), the path's ground still counts.
+            var shaped = Run(Guide("2000, 0, 100, 0, -10, 500").Replace("\"h_start\"", "\"radar\", 900, \"h_start\"") + " print round(w:h).");
+            Assert.Equal("500", shaped[3]);
+            // No radar given (BRAKEPATH's sim): h as before.
+            Assert.Equal("-1", Run(Guide("0, 0, 0, 0, 0, -1") + " print round(w:h).")[3]);
+        }
+
+        [Fact]
+        public void A_terminal_hover_is_caught_after_ten_seconds()
+        {
+            // #562: land_hover_watch(since, phase, v_down, touchdown, thrott, ut) gives the UT the hover began (-1 for none).
+            Assert.Equal("-1", One("land_hover_watch(-1, \"terminal\", 2, 2, 0.1, 100)"));
+            Assert.Equal("100", One("land_hover_watch(-1, \"terminal\", 0.1, 2, 0.1, 100)"));
+            Assert.Equal("100", One("land_hover_watch(100, \"terminal\", 0, 2, 0.1, 105)"));
+            Assert.Equal("-1", One("land_hover_watch(100, \"terminal\", 1.5, 2, 0.1, 105)"));
+            Assert.Equal("-1", One("land_hover_watch(100, \"approach\", 0, 2, 0.1, 105)"));
+            // Throttle 0 (resting on a slope, say) isn't a hover.
+            Assert.Equal("-1", One("land_hover_watch(100, \"terminal\", 0, 2, 0, 105)"));
+            Assert.Equal("False", One("land_hovering(100, 109)"));
+            Assert.Equal("True", One("land_hovering(100, 110)"));
+            Assert.Equal("False", One("land_hovering(-1, 1000)"));
+            // Caught: the descent comes down at touchdown speed whatever h says.
+            Assert.Equal("-2", One("land_vv_target(-1, 0, 2, 2, 2, true)"));
+            Assert.Equal("-2", One("land_vv_target(300, 0, 2, 2, 2, true)"));
+        }
+
+        [Fact]
         public void The_descent_burns_in_every_phase_but_the_fall()
         {
             Assert.Equal("False", One("land_burning(\"fall\")"));
