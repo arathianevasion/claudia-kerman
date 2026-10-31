@@ -12,7 +12,7 @@ namespace ClaudiaKermin.Core.Missions
     /// <summary>
     /// A run refused before any burn (<see cref="PreBurnRefusal"/>, #579) goes straight to the next Sequence Plan. The mod writes
     /// the Debrief card itself (Off-Nominal, the block's reason, the margin bar and the mod's Margin check from the snapshot,
-    /// the goal checklist as the last Debrief left it), logs it in <c>plans.jsonl</c> with <c>by: "mod"</c>, and commits a short
+    /// the Mission Goal's steps as they stand), logs it in <c>plans.jsonl</c> with <c>by: "mod"</c>, and commits a short
     /// user-side fact to the transcript, from which <see cref="MissionLogRebuild"/> builds the card again. No margin recheck and
     /// no Debrief request: the next request is the Sequence Plan, whose text carries the run report and says the craft is
     /// unchanged. The config's <c>mod_debriefs_refusals = false</c> sends every run to Claudia's Debrief as before.
@@ -44,7 +44,7 @@ namespace ClaudiaKermin.Core.Missions
             WriteTranscript(mission);
             Event(mission, "mod_debrief", plan.Name + ": " + reason);
 
-            var debrief = PreBurnRefusal.Debrief(reason, LastChecklist(mission));
+            var debrief = PreBurnRefusal.Debrief(reason);
             var check = MarginCheckOf(mission, snapshot);
             var gate = new DebriefGate { Done = true, RecheckSummary = check.Line() };
             gate.RecheckFindings.AddRange(check.FindingLines());
@@ -65,13 +65,6 @@ namespace ClaudiaKermin.Core.Missions
                 Notice = MissionPrompts.SequenceNotice,
             });
             return true;
-        }
-
-        /// <summary>The goal checklist as the last Debrief card left it; empty before the first.</summary>
-        private static GoalItem[] LastChecklist(Mission mission)
-        {
-            var last = mission.Log.LastOrDefault(e => e.Kind == LogKind.Debrief && e.Debrief != null);
-            return last != null ? last.Debrief.Checklist.ToArray() : new GoalItem[0];
         }
 
         /// <summary>The mod's Debrief on the latest plan's line, with no request and nothing spent.</summary>

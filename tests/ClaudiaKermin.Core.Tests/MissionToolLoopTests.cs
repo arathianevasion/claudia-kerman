@@ -816,7 +816,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             return "{\"why\":\"Prove the link.\",\"sequences\":[{\"name\":\"" + name + "\",\"intent\":\"Report from the pad.\",\"delta_v\":0,\"timing\":\"right away\","
                 + "\"due_time_ut\":-1,\"manual\":false,\"vessel\":\"craft\"}],\"total_delta_v\":0,\"expected_duration\":\"a minute\",\"mission_time_s\":-1,"
-                + "\"new_goal\":\"\",\"child_vessels\":" + childVessels + "}";
+                + "\"new_goal\":\"\",\"child_vessels\":" + childVessels + ",\"goal_steps\":[\"Prove the link\"]}";
         }
 
         private static ScriptedResponse Propose(string tag, string plan)
@@ -1062,6 +1062,25 @@ namespace ClaudiaKermin.Core.Tests
             var log = MissionLogRebuild.From(MissionStore.ReadTranscript(Folder(mission)), Goal, "Craft", new PlayerConfig());
 
             Assert.Contains(log, e => e.Kind == LogKind.MissionPlan && e.Text.Contains("Link check"));
+        }
+
+        [Fact]
+        public void ThePlansGoalStepsAreStoredWithTheMissionAndSurviveASaveAndLoad()
+        {
+            var transport = new StreamingFakeTransport(Propose("p", ProposedPlan("Link check")), Kind("mission_plan"));
+            var mission = Control(transport);
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+            Assert.Equal(new[] { "Prove the link" }, mission.View.GoalSteps.Select(s => s.Item));
+            var saved = mission.ExportStates();
+            Assert.Equal(new[] { "Prove the link" }, saved[0].MissionPlan.GoalSteps);
+
+            // A fresh game reads the save and the Mission folder back.
+            var loaded = Control(new StreamingFakeTransport());
+            loaded.Send(new MissionsRestored(_save.Path, new[] { MissionSaveState.FromValues(saved[0].ToValues()) }));
+            DrainUntil(loaded, v => !v.Busy);
+            Assert.Equal(new[] { "Prove the link" }, loaded.View.GoalSteps.Select(s => s.Item));
+            Assert.False(loaded.View.GoalSteps.Single().Done);
         }
     }
 }

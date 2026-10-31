@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
@@ -99,15 +100,22 @@ namespace ClaudiaKermin.Core.Missions
 
         public static string DebriefBody(Debrief debrief, string crossings)
         {
-            return debrief.WhatHappened + (debrief.Next.Length > 0 ? "\nNext: " + debrief.Next : "")
-                + (crossings.Length > 0 ? "\nTelemetry Checks crossed: " + crossings : "");
+            // A lean Nominal Debrief (#581) leaves what_happened empty: the card then opens with Next.
+            var lines = new[]
+            {
+                debrief.WhatHappened,
+                debrief.Next.Length > 0 ? "Next: " + debrief.Next : "",
+                crossings.Length > 0 ? "Telemetry Checks crossed: " + crossings : "",
+            };
+            return string.Join("\n", lines.Where(l => l.Length > 0).ToArray());
         }
 
         /// <summary>
-        /// The part of a Debrief card's detail that is Claudia's (rating, outcome against target, margin, science, checklist, follow-up),
-        /// so a card rebuilt from the transcript keeps it; what the mod saw during the run is added by the loop.
+        /// The part of a Debrief card's detail that is Claudia's (rating, outcome against target, margin, science, follow-up), with the
+        /// Mission Goal's steps as they stand after it (<paramref name="steps"/>, copied), so a card rebuilt from the transcript keeps it;
+        /// what the mod saw during the run is added by the loop.
         /// </summary>
-        public static DebriefDetail DebriefDetail(Debrief debrief)
+        public static DebriefDetail DebriefDetail(Debrief debrief, IEnumerable<GoalItem> steps)
         {
             return new DebriefDetail
             {
@@ -116,7 +124,7 @@ namespace ClaudiaKermin.Core.Missions
                 PlanMargin = debrief.PlanMargin,
                 Science = debrief.Science,
                 FollowUp = FollowUpOffer(debrief),
-                Checklist = debrief.Checklist.ToList(),
+                Checklist = GoalSteps.Copy(steps),
             };
         }
 

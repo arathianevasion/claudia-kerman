@@ -2,7 +2,9 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using ClaudiaKermin.Core.Missions;
 using ClaudiaKermin.Core.Ui;
 using UnityEngine;
@@ -40,6 +42,8 @@ namespace ClaudiaKermin.Adapter
         // Edit loaded the pinned goal back into the prompt.
         private bool _editingGoal;
         private bool _showAllGoal;
+        // The Mission Goal's steps open under it; Hide steps folds them to their count.
+        private bool _showGoalSteps = true;
         // The goal clamped to 2 lines, kept until the goal or the width changes (measuring it takes a dozen passes).
         private string _clampedFrom = "";
         private float _clampedAt;
@@ -226,8 +230,26 @@ namespace ClaudiaKermin.Adapter
 
             if (goal.Length == 0) GUILayout.Label(settingUp ? "Describe the Mission Goal below." : "No Mission yet.", ClaudiaSkin.Secondary);
             else GUILayout.Label(_showAllGoal ? goal : clamped, ClaudiaSkin.Body);
+            if (!settingUp) DrawGoalSteps(_view.GoalSteps);
             GUILayout.EndVertical();
             ClaudiaSkin.Divider();
+        }
+
+        // The Mission Goal's steps from the Mission Plan (#581), ticked as Debriefs report them: a count that opens to a checkbox
+        // per step. Claudia ticks them, so the boxes don't take clicks. A Mission whose plan gave none (an older save) shows nothing.
+        private void DrawGoalSteps(IList<GoalItem> steps)
+        {
+            if (steps.Count == 0) return;
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Steps: " + steps.Count(s => s.Done) + " of " + steps.Count + " done", ClaudiaSkin.Secondary, GUILayout.ExpandWidth(false));
+            GUILayout.FlexibleSpace();
+            if (ClaudiaSkin.TextButton(_showGoalSteps ? "Hide steps" : "Show steps", GUILayout.ExpandWidth(false))) _showGoalSteps = !_showGoalSteps;
+            GUILayout.EndHorizontal();
+            if (!_showGoalSteps) return;
+            var enabled = GUI.enabled;
+            GUI.enabled = false;
+            foreach (var step in steps) GUILayout.Toggle(step.Done, " " + step.Item);
+            GUI.enabled = enabled;
         }
 
         // ---- Busy line ----

@@ -213,11 +213,11 @@ namespace ClaudiaKermin.Adapter
             ClaudiaSkin.EndCard();
         }
 
-        // The Debrief's full picture under Claudia's account: outcome against target, the margin bar, resources, the margin
-        // recheck, science, the mod's events, the Mission Goal checklist, the follow-up on offer and a failed run's error text.
+        // The Debrief's full picture under Claudia's account. The mod's sections come first (the margin bar, resources, the Margin
+        // check with any margin recheck, the events, the science seen, the Mission Goal's count), so a lean Nominal Debrief (#581) reads complete; then
+        // Claudia's outcome against target, margin and science, the follow-up on offer and a failed run's error text.
         private void DrawDebrief(DebriefDetail detail)
         {
-            if (detail.OutcomeVsTarget.Length > 0) Section("Outcome vs target", detail.OutcomeVsTarget);
             if (detail.Margin != null)
             {
                 GUILayout.Label("Delta-v left vs the rest of the plan", _bold);
@@ -226,7 +226,6 @@ namespace ClaudiaKermin.Adapter
             }
             if (detail.ResourcesLeft.Count > 0) Section("Resources left", string.Join(", ", detail.ResourcesLeft));
             if (detail.RcsState.Length > 0) Section("RCS", detail.RcsState);
-            if (detail.PlanMargin.Length > 0) Section("Against the plan", detail.PlanMargin);
             if (detail.RecheckSummary.Length > 0 || detail.RecheckFindings.Count > 0)
             {
                 Section("Margin recheck", detail.RecheckSummary);
@@ -234,21 +233,22 @@ namespace ClaudiaKermin.Adapter
                 if (detail.RecheckSkipped.Length > 0) GUILayout.Label("Claudia's recheck not run: " + detail.RecheckSkipped + ".", ClaudiaSkin.Secondary);
             }
             else if (detail.RecheckSkipped.Length > 0) Section("Margin recheck", "Not run: " + detail.RecheckSkipped + ".");
-            if (detail.Science.Length > 0 || detail.ScienceSeen.Count > 0)
-            {
-                Section("Science", detail.Science);
-                foreach (var line in detail.ScienceSeen) GUILayout.Label("- " + line, ClaudiaSkin.Secondary);
-            }
             if (detail.Events.Count > 0)
             {
                 GUILayout.Label("Events", _bold);
                 foreach (var line in detail.Events) GUILayout.Label("- " + line, ClaudiaSkin.Secondary);
             }
-            if (detail.HasChecklist)
+            if (detail.ScienceSeen.Count > 0)
             {
-                GUILayout.Label("Mission Goal: " + detail.ChecklistDone + " of " + detail.Checklist.Count, _bold);
-                foreach (var item in detail.Checklist) GUILayout.Label((item.Done ? "[x] " : "[ ] ") + item.Item, ClaudiaSkin.Body);
+                GUILayout.Label("Science seen", _bold);
+                foreach (var line in detail.ScienceSeen) GUILayout.Label("- " + line, ClaudiaSkin.Secondary);
             }
+            // The steps themselves are the list under the pinned Mission Goal.
+            if (detail.HasChecklist)
+                GUILayout.Label("Mission Goal: " + detail.ChecklistDone + " of " + detail.Checklist.Count + " (the steps are under the Mission Goal)", _bold);
+            if (detail.OutcomeVsTarget.Length > 0) Section("Outcome vs target", detail.OutcomeVsTarget);
+            if (detail.PlanMargin.Length > 0) Section("Against the plan", detail.PlanMargin);
+            if (detail.Science.Length > 0) Section("Science", detail.Science);
             if (detail.FollowUp.Length > 0) Section("Next", detail.FollowUp);
             if (detail.ScriptError.Length > 0)
             {

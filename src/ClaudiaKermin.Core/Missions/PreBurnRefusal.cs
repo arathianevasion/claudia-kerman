@@ -147,8 +147,8 @@ namespace ClaudiaKermin.Core.Missions
             return reason.Length > 0;
         }
 
-        /// <summary>The Debrief the mod writes for one: Off-Nominal, the reason, the goal checklist as the last Debrief left it, and the next Sequence Plan to follow.</summary>
-        public static Debrief Debrief(string reason, IEnumerable<GoalItem> checklist)
+        /// <summary>The Debrief the mod writes for one: Off-Nominal, the reason, and the next Sequence Plan to follow. It ticks no Mission Goal step.</summary>
+        public static Debrief Debrief(string reason)
         {
             var said = "Refused before any burn: " + reason;
             return new Debrief
@@ -156,7 +156,6 @@ namespace ClaudiaKermin.Core.Missions
                 Outcome = "Off-Nominal",
                 WhatHappened = said,
                 OutcomeVsTarget = said,
-                Checklist = (checklist ?? Enumerable.Empty<GoalItem>()).Select(i => new GoalItem { Item = i.Item, Done = i.Done }).ToList(),
                 FollowUp = FollowUps.CorrectiveSequence,
                 FollowUpText = FollowUpText,
             };

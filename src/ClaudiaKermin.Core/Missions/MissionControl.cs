@@ -245,6 +245,8 @@ namespace ClaudiaKermin.Core.Missions
             /// <summary>Why the mod stopped the current run ("blocked: …", "timed out"), for its Debrief; null otherwise.</summary>
             public string StopReason;
             public MissionPlan Plan;
+            /// <summary>The Mission Goal's steps (<see cref="GoalSteps"/>, #581): set by a Mission Plan, ticked by Debriefs, rebuilt from the transcript on load.</summary>
+            public List<GoalItem> GoalSteps = new List<GoalItem>();
             public SequencePlan PendingSequence;
             public int SequencesProposed;
             /// <summary>The Maneuver Sequence in hand has had a Sequence Plan offered (so revisions don't count again).</summary>
@@ -1655,6 +1657,8 @@ namespace ClaudiaKermin.Core.Missions
                 HerNews("Claudia can't fly this Mission Goal as stated.");
                 return;
             }
+            // As MissionLogRebuild does with the plan's card, so a load has the same steps.
+            mission.GoalSteps = GoalSteps.Replace(mission.GoalSteps, plan.GoalSteps);
             AddCard(mission, LogKind.MissionPlan, "Mission Plan", MissionCards.MissionPlanBody(plan, mission.VesselName), plan.Why);
             PlanNews("Claudia has a Mission Plan for your Approval.");
         }
@@ -1706,6 +1710,8 @@ namespace ClaudiaKermin.Core.Missions
                 debrief.Outcome = "Off-Nominal";
                 Note(LogKind.Notice, "Rated Off-Nominal, not Nominal: a Telemetry Check was crossed during the run.");
             }
+            // Ticking twice is harmless: a Debrief already in a log rebuilt from the transcript has ticked them once.
+            GoalSteps.Tick(mission.GoalSteps, debrief.GoalStepsDone);
             var rebuiltLog = mission.SuppressCards;
             var entry = AddCard(mission, LogKind.Debrief, "Debrief: " + debrief.Outcome + TakeStopReason(mission),
                 MissionCards.DebriefBody(debrief, crossings), debrief.Why);
@@ -2021,6 +2027,7 @@ namespace ClaudiaKermin.Core.Missions
                 view.Stage = mission.Stage;
                 view.MissionId = mission.Id;
                 view.Goal = mission.Goal;
+                view.GoalSteps = GoalSteps.Copy(mission.GoalSteps);
                 view.Model = mission.Model;
                 view.SpendingCap = mission.SpendingCap;
                 view.Spent = mission.Spent;

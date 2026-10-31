@@ -69,7 +69,17 @@ namespace ClaudiaKermin.Core.Missions
             var accepted = new HashSet<string>(list.SelectMany(m => m.Content.OfType<ToolResultBlock>())
                 .Where(r => !r.IsError && r.Content == AcceptedJson).Select(r => r.ToolUseId));
             var use = list.SelectMany(m => m.Content.OfType<ToolUseBlock>()).LastOrDefault(u => u.Name == ToolName && u.InputIsValid && accepted.Contains(u.Id ?? ""));
-            return use != null ? Read(use.InputJson, new List<string>()) : null;
+            return use != null ? ReadAccepted(use.InputJson) : null;
+        }
+
+        /// <summary>
+        /// An accepted call's plan, not checked against the schema again: it was checked when accepted, and today's schema
+        /// would refuse a call from before goal_steps (#581) and lose its plan.
+        /// </summary>
+        private static MissionPlan ReadAccepted(string inputJson)
+        {
+            var reply = MissionReply.Parse("{\"mission_plan\":" + (string.IsNullOrEmpty(inputJson) ? "{}" : inputJson) + "}");
+            return reply != null ? reply.MissionPlan : null;
         }
 
         /// <summary>The plan in a call's input, read as a reply's mission_plan part is; null, with the problem, when it doesn't fit the schema.</summary>

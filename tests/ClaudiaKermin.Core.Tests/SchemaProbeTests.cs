@@ -22,11 +22,22 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(0, SchemaComplexity.OptionalParameters(schema));
         }
 
+        /// <summary>
+        /// The schema probed on 2026-10-31, with one change since: #581 replaced the Debrief's goal_checklist (an array of objects)
+        /// with goal_steps_done (an array of integers), which only shrinks it (size 80 to 78), so it was not probed again.
+        /// </summary>
         [Fact]
-        public void TheFrozenSchemaFileIsTheOneMissionSchema()
+        public void TheFrozenSchemaFileIsTheOneMissionSchemaButForGoalStepsDone()
         {
             var file = Path.Combine(FindRepoRoot(), "tools", "ClaudiaKermin.SchemaProbe", "schemas", "534-mission.json");
-            Assert.Equal(Probes.MissionSchema(), File.ReadAllText(file).Trim());
+            var probed = File.ReadAllText(file).Trim()
+                .Replace("\"goal_checklist\",", "\"goal_steps_done\",")
+                .Replace("\"goal_checklist\":{\"type\":\"array\",\"description\":\"The Mission Goal as its steps, each done or not yet.\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,"
+                    + "\"required\":[\"item\",\"done\"],\"properties\":{\"item\":{\"type\":\"string\"},\"done\":{\"type\":\"boolean\"}}}}",
+                    "\"goal_steps_done\":{\"type\":\"array\",\"description\":\"The numbers of the Mission Plan's goal_steps done so far, 1 for the first.\",\"items\":{\"type\":\"integer\"}}");
+            Assert.Equal(Probes.MissionSchema(), probed);
+            Assert.Equal(80, SchemaComplexity.Size(File.ReadAllText(file)));
+            Assert.Equal(78, SchemaComplexity.Size(Probes.MissionSchema()));
         }
 
         [Fact]
