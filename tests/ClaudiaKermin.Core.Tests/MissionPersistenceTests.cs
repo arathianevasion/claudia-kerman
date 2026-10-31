@@ -1231,7 +1231,8 @@ namespace ClaudiaKermin.Core.Tests
             transport = new StreamingFakeTransport(responses.ToArray());
             mission = Control(transport);
             var start = ToRunning(mission);
-            var report = new Dictionary<string, object> { { "success", false }, { "reason", "link check" }, { "situation", "PRELAUNCH" } };
+            // It burned, so Claudia debriefs it: a refusal before any burn would get the mod's own Debrief (#579).
+            var report = new Dictionary<string, object> { { "success", false }, { "reason", "link check" }, { "situation", "PRELAUNCH" }, { "dv_used", 40.0 } };
             mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, report, "", "", false), start.RunId));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingReducedGoal);
             mission.Send(new RetryWithNote("Any orbit will do."));
