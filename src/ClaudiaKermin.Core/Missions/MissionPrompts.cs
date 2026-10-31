@@ -272,7 +272,7 @@ namespace ClaudiaKermin.Core.Missions
 
         public const string DebriefNotice =
             "The Maneuver Sequence has ended. Debrief it now: reply with kind \"debrief\" and debrief filled in. Rate it "
-            + "against the Sequence Plan's target and tolerances, and set goal_reached to true only if the whole Mission "
+            + "against the Sequence Plan's target and tolerances (finished_short is Nominal when the target is met), and set goal_reached to true only if the whole Mission "
             + "Goal is now met. If it isn't, the mod will ask you for the next Sequence Plan. A standing "
             + "Telemetry Check crossing rules out Nominal, a recovered one doesn't; list each with its verdict in what_happened. Fill the whole Debrief: outcome_vs_target (the "
             + "script's report and the events the mod logged, against the target and tolerances, with numbers), plan_margin (the "

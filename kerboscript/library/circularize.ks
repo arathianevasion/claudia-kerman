@@ -15,10 +15,12 @@
 //| Options:
 //|   at ["ap"]: where to burn: "ap", "pe" or an altitude in m between pe and ap (the next pass).
 //|   tolerance [0.01]: the eccentricity it must end within; more fails the block.
+//|   finish_fraction [0.05]: as for exec_node, judged by ap and pe within this share of the burn's radius (from the
+//|     body's centre), pe above the atmosphere.
 //|   max_duration ["auto"]: as for exec_node (the wait to the burn, twice the burn, plus 300 s).
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
 //| Extra results: ecc (the eccentricity when the block ended), stop ("node"; "ecc_min": cut short
-//| where the orbit was roundest), residual (m/s the node still needed).
+//| where the orbit was roundest), residual (m/s the node still needed), finished_short.
 //| Succeeds at once, with no burn, if the orbit is already within tolerance. Fails with "no apoapsis"
 //| on an escape orbit (use "pe"), an altitude the orbit doesn't pass, a burn point inside the
 //| atmosphere or below the surface, the reasons exec_node gives (no thrust, out of fuel, an abort), or
@@ -28,7 +30,7 @@
 
 // The block's own options and defaults (max_duration "auto" is resolved by exec_node).
 function circularize_defaults {
-  return lexicon("at", "ap", "tolerance", 0.01).
+  return lexicon("at", "ap", "tolerance", 0.01, "finish_fraction", 0.05).
 }
 
 // "" or why the at option isn't one the block knows.
@@ -87,13 +89,14 @@ function circularize_mean_anomaly {
   return e_anom - ecc * sin(e_anom) * 180 / 3.141592653589793.
 }
 
-// Where and how to burn: lexicon("error", "" or why not, "ut", s, "prograde", m/s, "radial", m/s).
+// Where and how to burn: lexicon("error", "" or why not, "ut", s, "prograde", m/s, "radial", m/s, "rad", the burn
+// point's m from the body's centre, "floor_alt", m the periapsis must stay above).
 function circularize_plan {
   parameter at_opt.
   local o is ship:orbit.
   local mu is ship:body:mu.
   local radius is ship:body:radius.
-  local plan is lexicon("error", "", "ut", 0, "prograde", 0, "radial", 0).
+  local plan is lexicon("error", "", "ut", 0, "prograde", 0, "radial", 0, "rad", 0, "floor_alt", 0).
   local rad is 0.
   local climbing is true.
   if at_opt:istype("String") and at_opt = "ap" {
@@ -133,13 +136,30 @@ function circularize_plan {
   local burn is circularize_burn(mu, rad, o:semimajoraxis, o:eccentricity, climbing).
   set plan:prograde to burn:prograde.
   set plan:radial to burn:radial.
+  set plan:rad to rad.
+  set plan:floor_alt to floor_alt.
   return plan.
 }
 
-// The block's extra results before it burns: stop "" (no burn ended) and residual -1 (no node).
+// The block's extra results before it burns: stop "" (no burn ended), residual -1 (no node), not finished short.
 function circularize_extra {
   parameter ecc.
-  return lexicon("ecc", round(ecc, 5), "stop", "", "residual", -1).
+  return lexicon("ecc", round(ecc, 5), "stop", "", "residual", -1, "finished_short", false).
+}
+
+// Whether an orbit over tolerance still finishes the circularization (#577): apoapsis ap and periapsis pe (m above a
+// body of radius m) both within frac of the burn point's radius rad (m from the body's centre), and pe above floor_alt.
+// An escape orbit's negative ap is never within. Pure.
+function circularize_near {
+  parameter ap, pe, radius, rad, frac, floor_alt.
+  return pe > floor_alt and abs(radius + ap - rad) <= frac * rad and abs(radius + pe - rad) <= frac * rad.
+}
+
+// A node that finishes the circularization where the craft is now (#577): circularize_burn for the orbit as it is.
+function circularize_trim_node {
+  local o is ship:orbit.
+  local burn is circularize_burn(ship:body:mu, ship:body:radius + ship:altitude, o:semimajoraxis, o:eccentricity, ship:verticalspeed >= 0).
+  return node(time:seconds, burn:radial, 0, burn:prograde).
 }
 
 function circularize {
@@ -190,8 +210,27 @@ function circularize {
   if not flown:success {
     return claudia_finish(ctx, false, flown:reason, extra).
   }
+  // A burn a few percent short (#577) is trimmed once at low throttle through a node where the craft is, not failed.
+  if ship:orbit:eccentricity > opt:tolerance and circularize_near(ship:orbit:apoapsis, ship:orbit:periapsis, ship:body:radius, plan:rad, opt:finish_fraction, plan:floor_alt) {
+    // exec_node's staging dropped parts on purpose; the trim's ticks count from here.
+    set ctx:parts to ship:parts:length.
+    set ctx:last_ut to time:seconds.
+    local trim is circularize_trim_node().
+    add trim.
+    local trimmed is claudia_trim(ctx, { return trim:deltav. }, 0.1).
+    remove trim.
+    set extra:ecc to round(ship:orbit:eccentricity, 5).
+    if trimmed <> "" {
+      claudia_make_safe().
+      return claudia_finish(ctx, false, trimmed, extra).
+    }
+    claudia_release_controls().
+  }
   if ship:orbit:eccentricity > opt:tolerance {
-    return claudia_finish(ctx, false, "eccentricity " + round(ship:orbit:eccentricity, 4) + " is over tolerance " + opt:tolerance, extra).
+    if not circularize_near(ship:orbit:apoapsis, ship:orbit:periapsis, ship:body:radius, plan:rad, opt:finish_fraction, plan:floor_alt) {
+      return claudia_finish(ctx, false, "eccentricity " + round(ship:orbit:eccentricity, 4) + " is over tolerance " + opt:tolerance, extra).
+    }
+    set extra:finished_short to true.
   }
   return claudia_finish(ctx, true, "", extra).
 }

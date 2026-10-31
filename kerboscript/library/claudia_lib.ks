@@ -1524,6 +1524,44 @@ function claudia_burn_throttle {
   return min(1, max(0.005, dv_left / max_accel)).
 }
 
+// A trim's throttle (#577): low, taking about 5 s over dv_left at full acceleration max_accel (never below 0.5%; full
+// at no thrust, so the tick stages); 0 while pointing more than max_angle degrees off. Pure.
+function claudia_trim_throttle {
+  parameter dv_left, max_accel, angle_off, max_angle.
+  if angle_off > max_angle {
+    return 0.
+  }
+  return claudia_burn_throttle(dv_left / 5, max_accel, 0).
+}
+
+// Trims a short burn once (#577): turns to the vector remaining() returns as the trim begins and burns along it at a
+// low throttle (claudia_trim_throttle, lit while pointing within rcs_tolerance's aligned_deg) until its share along that
+// direction is under done_dv; any part off it stays. Gives up, with no reason, after 180 s (a 120 s turn and the burn).
+// Leaves throttle at 0 and steering locked. Returns "" or an abort reason.
+function claudia_trim {
+  parameter ctx, remaining, done_dv.
+  local dir is remaining():normalized.
+  lock steering to claudia_keep_roll(dir).
+  local tset is 0.
+  lock throttle to tset.
+  local stop_ut is time:seconds + 180.
+  local reason is "".
+  until time:seconds > stop_ut {
+    local along is vdot(dir, remaining()).
+    if along < done_dv {
+      break.
+    }
+    set tset to claudia_trim_throttle(along, ship:availablethrust / ship:mass, vang(ship:facing:forevector, dir), ctx:opt:rcs_tolerance:aligned_deg).
+    set reason to claudia_tick(ctx, tset).
+    if reason <> "" {
+      break.
+    }
+    wait 0.
+  }
+  set tset to 0.
+  return reason.
+}
+
 // ---- RCS Use ----
 
 // RCS Use (GLOSSARY): blocks own RCS from the moment Claudia takes the craft. It goes on only when the

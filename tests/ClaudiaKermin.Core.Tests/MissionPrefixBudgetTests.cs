@@ -25,11 +25,12 @@ namespace ClaudiaKermin.Core.Tests
         // counts input) for the system prompt and tool definitions of the first Mission request in this test's Mission. The estimate
         // runs low against the API's own count (25,569 in b5f3, 26,865 in 3dc5, whose Mission layer also carried a real body table
         // and goal), so compare this figure only with itself.
-        private const int TodaysEstimate = 21019;
+        private const int TodaysEstimate = 21132;
 
         /// <summary>
         /// Set at 21,500 when the figure was 20,452 (1.05 x 20,452 = 21,475, rounded up to the next hundred), and not raised since:
-        /// #534's propose_mission_plan took the figure to 21,330, and #570's dropping check_script (917 characters, -306) with the Script Check sentence paid for inside HowToPlan (+1) to 21,019.
+        /// #534's propose_mission_plan took the figure to 21,330, and #570's dropping check_script (917 characters, -306) with the Script Check sentence paid for inside HowToPlan (+1) to 21,019, and #577's finish_fraction docs for exec_node and
+        /// circularize (+113) to 21,132: one short burn finished instead of an Off-Nominal Debrief and corrective sequence saves $0.30 to $0.50.
         /// </summary>
         private const int BudgetTokens = 21500;
 
