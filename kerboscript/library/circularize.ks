@@ -15,8 +15,8 @@
 //| Options:
 //|   at ["ap"]: where to burn: "ap", "pe" or an altitude in m between pe and ap (the next pass).
 //|   tolerance [0.01]: the eccentricity it must end within; more fails the block.
-//|   finish_fraction [0.05]: over tolerance, with ap and pe within this fraction of the burn point's radius (from the
-//|     body's centre) and pe above the atmosphere, it trims once at low throttle; if still over, it succeeds with finished_short true.
+//|   finish_fraction [0.05]: as for exec_node, judged by ap and pe within this share of the burn's radius (from the
+//|     body's centre), pe above the atmosphere.
 //|   max_duration ["auto"]: as for exec_node (the wait to the burn, twice the burn, plus 300 s).
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
 //| Extra results: ecc (the eccentricity when the block ended), stop ("node"; "ecc_min": cut short

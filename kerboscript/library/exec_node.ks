@@ -14,8 +14,8 @@
 //|   lead ["half_burn"]: when to start, in seconds before the node; "half_burn" starts early by the
 //|     time it takes to burn half the node's delta-v, over every stage the burn uses.
 //|   rcs_trim [false]: true trims a residual above max_residual with RCS translation (up to 60 s).
-//|   finish_fraction [0.05]: a residual over max_residual but within this fraction of node_dv is trimmed once at
-//|     low throttle; if still over, the block succeeds with finished_short true.
+//|   finish_fraction [0.05]: a residual over max_residual but within this share of node_dv is trimmed once; still
+//|     over, it succeeds with finished_short true.
 //|   max_duration ["auto"]: the wait to the burn plus twice the burn time plus 300 s.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
 //| Extra results: node_dv (m/s the node asked for before the burn), residual (m/s the node still
