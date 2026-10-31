@@ -922,7 +922,7 @@ function claudia_drop_empty {
 
 // ---- Waits and warp ----
 
-// A wait has no cap (ADR 0004): it warps inside the sequence (ADR 0008),, and the
+// A wait has no cap (ADR 0004): it warps inside the sequence (ADR 0008), however long, and the
 // player's Approval of the sequence approved it.
 
 function claudia_on_ground {

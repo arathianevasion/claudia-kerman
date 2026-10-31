@@ -54,7 +54,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [Fact]
         public void A_strays_report_carries_its_UT_and_delta_v()
         {
-            var printed = Run(FakeNodes + "local r is claudia_node_report(mine). print r:ut. print r:dv.");
+            var printed = Run(FakeNodes + "local rep is claudia_node_report(mine). print rep:ut. print rep:dv.");
             Assert.Equal(new[] { "200", "5" }, printed);
         }
 
