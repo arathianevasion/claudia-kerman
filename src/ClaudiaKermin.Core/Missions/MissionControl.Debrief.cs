@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using ClaudiaKermin.Core.Claude;
+using ClaudiaKermin.Core.Config;
 using ClaudiaKermin.Core.Kos;
 using ClaudiaKermin.Core.Tools;
 
@@ -15,9 +16,10 @@ namespace ClaudiaKermin.Core.Missions
 {
     /// <summary>
     /// The full Debrief: what the mod gives Claudia besides the script's report (the events it logged during the run, the
-    /// rest of the Mission Plan, and the margin recheck, a Craft Check of the craft as it is now), and what the Debrief card
-    /// shows. Every Debrief gets the margin recheck, charged to the Mission like any other request and sent only if the
-    /// Spending Cap has room for it and still leaves room for the Debrief itself.
+    /// rest of the Mission Plan, the mod's own Margin check and, when that is tight or short or the player config says always,
+    /// the margin recheck, a Craft Check of the craft as it is now), and what the Debrief card shows. The margin recheck is
+    /// charged to the Mission like any other request and sent only if the Spending Cap has room for it and still leaves room
+    /// for the Debrief itself.
     /// </summary>
     public sealed partial class MissionControl
     {
@@ -112,8 +114,8 @@ namespace ClaudiaKermin.Core.Missions
         // ---- Before the Debrief request goes ----
 
         /// <summary>
-        /// Called as a Debrief turn begins. Adds the mod's facts to it, once, and starts the margin recheck when the
-        /// Spending Cap allows; true while the recheck is in flight (the Debrief request follows it).
+        /// Called as a Debrief turn begins. Adds the mod's facts and Margin check to it, once, and starts the margin recheck when
+        /// the check and the config ask for it and the Spending Cap allows; true while the recheck is in flight (the Debrief request follows it).
         /// </summary>
         private bool PrepareDebrief(Mission mission, Turn turn)
         {
@@ -165,6 +167,14 @@ namespace ClaudiaKermin.Core.Missions
             gate.Done = true;
             var snapshot = _snapshot;
             if (snapshot == null) return Skip(gate, "there is no Game Snapshot of the craft");
+            // The mod's own check goes with every Debrief; Claudia is asked as well only when it is not enough, or always if the config says so.
+            var check = MarginCheckOf(mission, snapshot);
+            gate.RecheckSummary = check.Line();
+            gate.RecheckFindings.AddRange(check.FindingLines());
+            turn.UserText += "\n" + check.Text();
+            if (_config.MarginRecheck == MarginRecheckMode.Never) return Skip(gate, "margin_recheck is never in the player config");
+            // Not a skip: under auto an enough margin needs no recheck, and the card says nothing of one.
+            if (_config.MarginRecheck == MarginRecheckMode.Auto && check.Level == MarginLevel.Enough) return false;
             if (!snapshot.DeltaVSimulator) return Skip(gate, "the stock delta-v simulator is off");
             if (!_hasKey()) return Skip(gate, "there is no API key");
 
@@ -184,6 +194,16 @@ namespace ClaudiaKermin.Core.Missions
             mission.Pending = turn;
             SendRecheck(mission, turn, worst);
             return true;
+        }
+
+        /// <summary>The mod's margin check of the craft as it is now against the rest of the Mission Plan; a manual stretch has no run's monopropellant to go by.</summary>
+        private MarginCheck MarginCheckOf(Mission mission, GameSnapshot snapshot)
+        {
+            double? used = null;
+            // Measured as the run's monopropellant line is, on the Mission's own vessel.
+            var now = LiveReadings.MonopropellantOf(MissionVesselSnapshot(mission));
+            if (!mission.HandBack && mission.RunStartMonopropellant.HasValue && now.HasValue) used = Math.Max(0, mission.RunStartMonopropellant.Value - now.Value);
+            return MarginCheck.Of(snapshot, RestOfPlan(mission), _config.CraftCheckMarginPercent, _config.CheckElectricChargePercent, mission.Remote, used);
         }
 
         /// <summary>Sends the recheck's request (its first, or the next step of its tool loop), charged to the Mission at <paramref name="worst"/>.</summary>
@@ -389,15 +409,19 @@ namespace ClaudiaKermin.Core.Missions
             {
                 gate.RecheckSkipped = "the recheck failed: " + problem;
                 Note(LogKind.Notice, "The margin recheck failed (" + problem + "); the Debrief goes on without it.");
-                turn.UserText += "\nThe mod's margin recheck did not come back (" + problem + "); judge the margin from the Game Snapshot.";
+                turn.UserText += "\nThe mod's margin recheck did not come back (" + problem + "); judge the margin from the mod's margin check and the Game Snapshot.";
             }
             else
             {
-                gate.RecheckSummary = reply.Summary;
-                gate.RecheckFindings.AddRange(reply.Findings.Select(f => (f.Severity == CraftFindingSeverity.Blocker ? "Blocker: " : "Warning: ") + f.Title
-                    + (f.Explanation.Length > 0 ? ". " + f.Explanation : "")));
+                var lines = reply.Findings.Select(f => new MarginFinding { Code = f.Code, Severity = f.Severity, Title = f.Title, Explanation = f.Explanation })
+                    .Select(f => new { Head = f.Head(), Line = f.Describe() }).ToList();
+                var findings = lines.Select(l => l.Line).ToList();
+                // The card keeps the mod's line and findings first; Claudia's follow, less any finding the mod had already made.
+                var mod = gate.RecheckFindings.ToList();
+                gate.RecheckSummary = gate.RecheckSummary.Length > 0 ? gate.RecheckSummary + " Claudia's recheck: " + reply.Summary : reply.Summary;
+                gate.RecheckFindings.AddRange(lines.Where(l => !mod.Any(m => m == l.Head || m.StartsWith(l.Head + ". ", StringComparison.Ordinal))).Select(l => l.Line));
                 turn.UserText += "\nThe mod's margin recheck (a Craft Check of the craft as it is now, against the Maneuver Sequences still to fly; quoted): "
-                    + MissionPrompts.Quoted(reply.Summary + (gate.RecheckFindings.Count > 0 ? " Findings: " + string.Join(" ", gate.RecheckFindings.ToArray()) : " No findings.")) + ".";
+                    + MissionPrompts.Quoted(reply.Summary + (findings.Count > 0 ? " Findings: " + string.Join(" ", findings.ToArray()) : " No findings.")) + ".";
             }
             if (mission.DeferredRestore != null)
             {

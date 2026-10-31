@@ -48,6 +48,10 @@ namespace ClaudiaKermin.Core.Claude
         public string CompactionInstructions;
         /// <summary>Sends <c>tool_choice</c> <c>none</c> with the tools list unchanged: the tool loop's last request (#509), so the reply is text and the cached prefix holds.</summary>
         public bool NoToolChoice;
+        /// <summary>debug_tools only (#569): sends the cache-diagnosis beta and <c>diagnostics.previous_message_id</c>, so a cache miss comes back explained.</summary>
+        public bool Diagnostics;
+        /// <summary>The previous response's id for <see cref="Diagnostics"/>; null on a Mission's first request.</summary>
+        public string PreviousMessageId;
         /// <summary>False sends no <c>cache_control</c> anywhere (#549): the on-demand compaction request, whose cache write nothing would read.</summary>
         public bool Cache = true;
 
@@ -114,6 +118,9 @@ namespace ClaudiaKermin.Core.Claude
                 json.EndObject()
                     .EndArray().EndObject();
             }
+
+            if (Diagnostics)
+                json.Name("diagnostics").BeginObject().Field("previous_message_id", PreviousMessageId).EndObject();
 
             json.Name("messages").BeginArray();
             foreach (var message in Messages)

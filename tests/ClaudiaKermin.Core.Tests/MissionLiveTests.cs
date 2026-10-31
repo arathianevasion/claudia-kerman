@@ -684,6 +684,124 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("delta-v used 100 m/s then 0 m/s over 50 m/s", events);
         }
 
+        // ---- Apsis and inclination checks wait out a burn (#582) ----
+
+        private string EventsOf(MissionControl mission)
+        {
+            return File.ReadAllText(Path.Combine(MissionFolderOf(mission), MissionStore.EventsFile));
+        }
+
+        private static GameSnapshot Reading(double throttle, double periapsis = 80000, double inclination = 0)
+        {
+            return Snapshot(s => { s.Throttle = throttle; s.Orbit.Periapsis = periapsis; s.Orbit.Inclination = inclination; });
+        }
+
+        [Fact]
+        public void APeriapsisCrossedOnlyMidBurnRaisesNoAlertAndLeavesOneEventLine()
+        {
+            var mission = RunningWith(QuantityCheck("periapsis", "below", -100000));
+
+            mission.Send(Reading(0));
+            mission.Send(Reading(1, -150000));
+            mission.Send(Reading(1, -250000));
+            Assert.Equal(0, CrossedLines(mission));
+            mission.Send(Reading(0, 70000));
+            mission.Send(Reading(0, 70000));
+            _background.Drain();
+
+            Assert.Equal(0, CrossedLines(mission));
+            var recovered = EventsOf(mission).Split('\n').Where(l => l.Contains("telemetry_check_recovered")).ToList();
+            Assert.Single(recovered);
+            Assert.Contains("periapsis -250,000 m under -100,000 m mid-burn, 70,000 m after it: no Alert.", recovered[0]);
+        }
+
+        [Fact]
+        public void APeriapsisStillCrossedWhenTheBurnEndsRaisesExactlyOneAlertOnThatReading()
+        {
+            var mission = RunningWith(QuantityCheck("periapsis", "below", -100000));
+
+            mission.Send(Reading(0));
+            mission.Send(Reading(1, -150000));
+            mission.Send(Reading(0, -150000));
+            Assert.Equal(0, CrossedLines(mission));
+            mission.Send(Reading(0, -150000));
+            Assert.Equal(1, CrossedLines(mission, "periapsis"));
+            mission.Send(Reading(0, -160000));
+            Assert.Equal(1, CrossedLines(mission));
+        }
+
+        [Fact]
+        public void AnInclinationCheckWaitsOutTheBurnToo()
+        {
+            var recovers = RunningWith(QuantityCheck("inclination", "above", 5));
+            recovers.Send(Reading(1, inclination: 20));
+            Assert.Equal(0, CrossedLines(recovers));
+            recovers.Send(Reading(0, inclination: 1));
+            recovers.Send(Reading(0, inclination: 1));
+            Assert.Equal(0, CrossedLines(recovers));
+            Assert.Contains("telemetry_check_recovered", EventsOf(recovers));
+        }
+
+        [Fact]
+        public void AnInclinationStillCrossedWhenTheBurnEndsRaisesAnAlert()
+        {
+            var mission = RunningWith(QuantityCheck("inclination", "above", 5));
+            mission.Send(Reading(1, inclination: 20));
+            mission.Send(Reading(0, inclination: 20));
+            Assert.Equal(0, CrossedLines(mission));
+            mission.Send(Reading(0, inclination: 20));
+            Assert.Equal(1, CrossedLines(mission, "inclination"));
+        }
+
+        [Fact]
+        public void AnAltitudeCheckStillCrossesMidBurn()
+        {
+            var mission = RunningWith(AltitudeCheck(100));
+            mission.Send(Snapshot(s => { s.Throttle = 1; s.Altitude = 500; }));
+            Assert.Equal(1, CrossedLines(mission, "altitude"));
+        }
+
+        [Fact]
+        public void ADeltaVUsedCheckStillCrossesMidBurn()
+        {
+            var mission = RunningWith(QuantityCheck("delta_v_used", "above", 50));
+            mission.Send(Snapshot(s => { s.Throttle = 1; s.Stages[0].DeltaVVac = 3100; }));
+            mission.Send(Snapshot(s => { s.Throttle = 1; s.Stages[0].DeltaVVac = 3100; }));
+            Assert.Equal(1, CrossedLines(mission, "delta-v used"));
+        }
+
+        [Fact]
+        public void ASingleZeroThrottleReadingMidBurnDoesNotReleaseTheHeldChecks()
+        {
+            var mission = RunningWith(QuantityCheck("periapsis", "below", -100000));
+
+            mission.Send(Reading(0));
+            mission.Send(Reading(1, -150000));
+            mission.Send(Reading(0, -150000));
+            mission.Send(Reading(1, -150000));
+            Assert.Equal(0, CrossedLines(mission));
+        }
+
+        [Fact]
+        public void ARunThatEndsMidBurnTestsHeldChecksAgainstTheFinalReading()
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                WithSequenceFields(ScriptedResponse.Fixture("mission-sequence-plan.sse"), QuantityCheck("periapsis", "below", -100000)),
+                ScriptedResponse.Fixture("mission-debrief.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission, 10m);
+            mission.TakeCommands();
+
+            mission.Send(Reading(0));
+            mission.Send(Reading(1, -150000));
+            mission.Send(new KosRunEnded(Finished(), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            Assert.Contains("periapsis -150,000 m under -100,000 m: not judged: the run ended first [standing]", LastUserText(transport.Requests[2]));
+            Assert.Equal(0, CrossedLines(mission));
+        }
+
         // ---- Helpers ----
 
         private static string QuantityCheck(string quantity, string direction, double threshold)

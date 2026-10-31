@@ -214,8 +214,8 @@ namespace ClaudiaKermin.Core.Tests
         {
             // predict_burn is refused on the pad; the second stage_performance repeats the first.
             var transport = new StreamingFakeTransport(
-                ToolUseStreams.ToolUse("a", ("stage_performance", "{\"situation\":\"vacuum\"}"), ("predict_burn", "{}")),
-                ToolUseStreams.ToolUse("b", ("stage_performance", "{\"situation\":\"vacuum\"}")),
+                ToolUseStreams.ToolUse("a", ("stage_performance", "{\"body\":\"Kerbin\",\"situation\":\"vacuum\"}"), ("predict_burn", "{}")),
+                ToolUseStreams.ToolUse("b", ("stage_performance", "{\"body\":\"Kerbin\",\"situation\":\"vacuum\"}")),
                 PlanReply());
             var busy = Control(transport);
             busy.Send(new StartMission(Goal, 25m, Sonnet));

@@ -27,7 +27,8 @@ namespace ClaudiaKermin.Core.Tests
     {
         private const string Goal = "Prove the kOS link from the launch pad.";
         private const string Sonnet = "claude-sonnet-5-5";
-        private const string Vacuum = "{\"situation\":\"vacuum\"}";
+        /// <summary>A vacuum call that is no row of the Mission request's stage table (#575), which would be refused.</summary>
+        private const string Vacuum = "{\"body\":\"Kerbin\",\"situation\":\"vacuum\"}";
         private const string CutOffNote = "Your last attempt ran out of room while thinking. Decide with what you have and keep your reasoning short.";
         private readonly Background _background = new Background(e => throw new Exception("background error", e));
         private readonly TempDir _save = new TempDir();
@@ -45,7 +46,8 @@ namespace ClaudiaKermin.Core.Tests
         {
             var client = new ClaudeClient(route ? new CraftCheckRouter(transport) : transport, () => "sk-ant-fake-key-0123456789", l => { });
             client.Timing.Wait = (d, c) => { };
-            var mission = new MissionControl(client, _background, new PlayerConfig(), () => true, check ?? new PassingScriptCheck());
+            // Always, so every Debrief sends the Margin recheck whose requests these tests look at.
+            var mission = new MissionControl(client, _background, new PlayerConfig { MarginRecheck = MarginRecheckMode.Always }, () => true, check ?? new PassingScriptCheck());
             if (tools != null) mission.Tools = tools;
             mission.Send(new SaveLoaded(_save.Path));
             mission.Send(new SceneChanged(GameScene.Flight));
@@ -373,7 +375,7 @@ namespace ClaudiaKermin.Core.Tests
             // Claude's tool_use turn goes back exactly: its thinking signature and its input as streamed.
             var echoed = Messages(transport.Requests[1])[Messages(transport.Requests[1]).Count - 2];
             Assert.Contains("\"signature\":\"c2lnLXRvb2wta\"", echoed);
-            Assert.Contains("\"input\":{\"situation\":\"vacuum\"}", echoed);
+            Assert.Contains("\"input\":" + Vacuum, echoed);
             var result = Assert.Single(Results(transport.Requests[1]));
             Assert.Equal("toolu_a_0", result.GetProperty("tool_use_id").GetString());
             Assert.False(result.TryGetProperty("is_error", out _));
@@ -411,7 +413,7 @@ namespace ClaudiaKermin.Core.Tests
             var lines = ToolLines(mission);
             Assert.Equal(2, lines.Count);
             Assert.Equal("Planning Tool fake ({}): ok", lines[0].Text);
-            Assert.Equal("Planning Tool stage_performance ({\"situation\":\"vacuum\"}): 1 stage, 3200 m/s in all in vacuum at Kerbin", lines[1].Text);
+            Assert.Equal("Planning Tool stage_performance (" + Vacuum + "): 1 stage, 3200 m/s in all in vacuum at Kerbin", lines[1].Text);
             Assert.Equal(2, Count(Events(mission), "\"tool\""));
         }
 
@@ -464,6 +466,83 @@ namespace ClaudiaKermin.Core.Tests
             }
             Assert.Contains("tool_limit_final", Events(mission));
             Assert.Equal(16, ToolLines(mission).Count(l => !l.Text.Contains("error")));
+        }
+
+        [Fact]
+        public void AStepOfOnlyRefusedRepeatsMakesTheNextRequestTheLastWithToolChoiceNone()
+        {
+            // The Mission Plan is accepted first: a turn still owed one gets a step for propose_mission_plan before the stop.
+            var transport = new StreamingFakeTransport(
+                ToolUseStreams.ToolUse("a", ("fake", "{\"n\":1}")),
+                Propose("p", ProposedPlan("Link check")),
+                ToolUseStreams.ToolUse("b", ("fake", "{\"n\":1}")),
+                Kind("mission_plan"));
+            var mission = Control(transport, With(new TestTool()));
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            Assert.Equal(4, transport.Requests.Count);
+            Assert.Equal("{\"type\":\"auto\"}", Body(transport.Requests[2]).GetProperty("tool_choice").GetRawText());
+            Assert.Equal("{\"type\":\"none\"}", Body(transport.Requests[3]).GetProperty("tool_choice").GetRawText());
+            Assert.Equal(ToolsJson(transport.Requests[0]), ToolsJson(transport.Requests[3]));
+            Assert.Equal(Body(transport.Requests[0]).GetProperty("system").GetRawText(), Body(transport.Requests[3]).GetProperty("system").GetRawText());
+            Assert.StartsWith("you already called this in step 1; its result is above. ", ErrorOf(Results(transport.Requests[3]).Last()));
+            Assert.Contains("tool_loop_repeat_stop", Events(mission));
+            Assert.DoesNotContain("tool_limit_final", Events(mission));
+        }
+
+        [Fact]
+        public void ARepeatOnlyStepOnATurnStillOwedAMissionPlanKeepsToolChoiceAutoForTheProposalThenStopsOnASecond()
+        {
+            var transport = new StreamingFakeTransport(
+                ToolUseStreams.ToolUse("a", ("fake", "{\"n\":1}")),
+                ToolUseStreams.ToolUse("b", ("fake", "{\"n\":1}")),
+                Propose("p", ProposedPlan("Link check")),
+                Kind("mission_plan"));
+            var mission = Control(transport, With(new TestTool()));
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+
+            Assert.Equal("{\"type\":\"auto\"}", Body(transport.Requests[2]).GetProperty("tool_choice").GetRawText());
+            Assert.Equal("you already called this in step 1; its result is above. Your next call must be propose_mission_plan: no other tool will be answered", ErrorOf(Assert.Single(Results(transport.Requests[2]))));
+            Assert.Equal(ProposedPlans.AcceptedJson, Assert.Single(Results(transport.Requests[3])).GetProperty("content").GetString());
+            Assert.Equal(new[] { "Link check" }, mission.View.PlanSequences);
+            Assert.DoesNotContain("tool_loop_repeat_stop", Events(mission));
+        }
+
+        [Fact]
+        public void ASecondRepeatOnlyStepOnATurnStillOwedAMissionPlanMakesTheNextRequestTheLast()
+        {
+            var transport = new StreamingFakeTransport(
+                ToolUseStreams.ToolUse("a", ("fake", "{\"n\":1}")),
+                ToolUseStreams.ToolUse("b", ("fake", "{\"n\":1}")),
+                ToolUseStreams.ToolUse("c", ("fake", "{\"n\":1}")),
+                Fixture("mission-plan.sse"));
+            var mission = Control(transport, With(new TestTool()));
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            Assert.Equal(4, transport.Requests.Count);
+
+            Assert.Equal("{\"type\":\"auto\"}", Body(transport.Requests[2]).GetProperty("tool_choice").GetRawText());
+            Assert.Equal("{\"type\":\"none\"}", Body(transport.Requests[3]).GetProperty("tool_choice").GetRawText());
+            Assert.Contains("Your next reply is the last of this turn", ErrorOf(Assert.Single(Results(transport.Requests[3]))));
+            Assert.Contains("tool_loop_repeat_stop", Events(mission));
+        }
+
+        [Fact]
+        public void AStepWithOneAnsweredCallBesideARepeatDoesNotEndTheLoop()
+        {
+            var transport = new StreamingFakeTransport(
+                ToolUseStreams.ToolUse("a", ("fake", "{\"n\":1}")),
+                ToolUseStreams.ToolUse("b", ("fake", "{\"n\":1}"), ("fake", "{\"n\":2}")),
+                Fixture("mission-plan.sse"));
+            var mission = Control(transport, With(new TestTool()));
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            Assert.Equal("{\"type\":\"auto\"}", Body(transport.Requests[2]).GetProperty("tool_choice").GetRawText());
+            Assert.Equal("you already called this in step 1; its result is above", ErrorOf(Results(transport.Requests[2])[0]));
+            Assert.DoesNotContain("tool_loop_repeat_stop", Events(mission));
         }
 
         [Fact]

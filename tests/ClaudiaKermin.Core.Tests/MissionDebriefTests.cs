@@ -452,6 +452,66 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void UnderAutoAnEnoughMarginSendsNoRecheckAndTheDebriefAndCardCarryTheModsCheck()
+        {
+            // 3,200 m/s left against the 1,000 m/s Second leg: enough.
+            var rig = new Rig(this, DebriefJson("Nominal", ""), recheck: MarginRecheckMode.Auto);
+            var start = rig.RunToRunning();
+            var checksBefore = rig.Router.CheckRequests.Count;
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(checksBefore, rig.Router.CheckRequests.Count);
+            Assert.DoesNotContain(rig.CostLog(), c => c.Outcome == "margin_recheck");
+            var text = LastUserText(rig.Transport.Requests[2]);
+            Assert.Contains("The mod's margin check (the craft as it is now against the Maneuver Sequences still to fly): 3,200 m/s left against 1,000 m/s still to fly (+220%; 15% wanted): enough.", text);
+            Assert.DoesNotContain("The mod's margin recheck", text);
+            var detail = rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief;
+            Assert.StartsWith("3,200 m/s left against 1,000 m/s", detail.RecheckSummary);
+            // The on-pad craft generates no electric charge: the start check's Warning, shown again but not making the margin tight.
+            Assert.Contains(detail.RecheckFindings, f => f.StartsWith("Warning: No electric charge generation"));
+            Assert.NotNull(detail.Margin);
+        }
+
+        [Fact]
+        public void UnderAutoATightMarginSendsTheRecheckAndBothReachTheDebrief()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""), recheck: MarginRecheckMode.Auto);
+            rig.Router.Recheck = Reply("{\"summary\":\"Within the legs, not the margin.\",\"findings\":[]}");
+            var start = rig.RunToRunning();
+            var checksBefore = rig.Router.CheckRequests.Count;
+
+            // 1,100 m/s left against 1,000 still to fly: the legs fit, the 15% margin doesn't.
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 1100));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(checksBefore + 1, rig.Router.CheckRequests.Count);
+            Assert.Contains(rig.CostLog(), c => c.Event == "pending" && c.Outcome == "margin_recheck");
+            var text = LastUserText(rig.Transport.Requests[2]);
+            Assert.Contains("1,100 m/s left against 1,000 m/s still to fly (+10%; 15% wanted): tight.", text);
+            Assert.Contains("Blocker: Not enough delta-v", text);
+            Assert.Contains("The mod's margin recheck (a Craft Check of the craft as it is now", text);
+            Assert.Contains("Within the legs, not the margin.", text);
+        }
+
+        [Fact]
+        public void NeverSendsNoRecheckEvenWhenTheMarginIsShort()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""), recheck: MarginRecheckMode.Never);
+            var start = rig.RunToRunning();
+            var checksBefore = rig.Router.CheckRequests.Count;
+
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 500));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(checksBefore, rig.Router.CheckRequests.Count);
+            Assert.Contains("500 m/s left against 1,000 m/s still to fly (-50%; 15% wanted): short.", LastUserText(rig.Transport.Requests[2]));
+        }
+
+        [Fact]
         public void TheMarginRecheckIsSkippedWhenTheSpendingCapHasNoRoomForItBesideTheDebrief()
         {
             // Room for the plan, the sequence and the Debrief, but not for a recheck on top of them.
@@ -665,9 +725,9 @@ namespace ClaudiaKermin.Core.Tests
             rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
 
             var detail = rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief;
-            Assert.Equal("Short by 300 m/s.", detail.RecheckSummary);
-            Assert.Single(detail.RecheckFindings);
-            Assert.Contains("900 m/s left against 1,200 needed.", detail.RecheckFindings[0]);
+            // The mod's own margin line comes first on the card, then Claudia's; her finding follows the mod's.
+            Assert.Equal("3,200 m/s left against 1,000 m/s still to fly (+220%; 15% wanted): enough. Claudia's recheck: Short by 300 m/s.", detail.RecheckSummary);
+            Assert.Contains("900 m/s left against 1,200 needed.", detail.RecheckFindings.Last());
             Assert.Contains("Short by 300 m/s.", LastUserText(rig.Transport.Requests[2]));
         }
 
@@ -1015,7 +1075,8 @@ namespace ClaudiaKermin.Core.Tests
             public readonly CraftCheckRouter Router;
             public readonly MissionControl Mission;
 
-            public Rig(MissionDebriefTests tests, string debrief, ScriptedResponse after = null, decimal cap = 10m)
+            /// <param name="recheck">Always by default: most of these tests are of Claudia's Margin recheck itself, which auto sends only when the mod's margin check is not enough.</param>
+            public Rig(MissionDebriefTests tests, string debrief, ScriptedResponse after = null, decimal cap = 10m, MarginRecheckMode recheck = MarginRecheckMode.Always)
             {
                 _tests = tests;
                 _cap = cap;
@@ -1025,7 +1086,7 @@ namespace ClaudiaKermin.Core.Tests
                 Router = new CraftCheckRouter(Transport);
                 var client = new ClaudeClient(Router, () => "sk-ant-test", l => { });
                 client.Timing.Wait = (d, c) => { };
-                var config = new PlayerConfig { CheckDurationPercent = 1000 };
+                var config = new PlayerConfig { CheckDurationPercent = 1000, MarginRecheck = recheck };
                 Mission = new MissionControl(client, tests._background, config, () => true, new PassingScriptCheck());
                 Mission.Send(new SaveLoaded(tests._save.Path));
                 Mission.Send(new SceneChanged(GameScene.Flight));

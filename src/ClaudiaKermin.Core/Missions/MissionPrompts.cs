@@ -553,9 +553,21 @@ namespace ClaudiaKermin.Core.Missions
                 }
                 text += "TWR in vacuum at the surface gravity of each body the Mission Goal names, per stage: " + json.EndArray() + "\n";
             }
+            var transfers = "";
+            foreach (var body in bodies)
+            {
+                var input = "{\"target\":" + PlanningJson.Quote(body.Name) + ",\"target_pe\":" + TransferPe.ToString(CultureInfo.InvariantCulture) + "}";
+                var transfer = tools.Run("plan_transfer", input, snapshot, null);
+                if (!transfer.IsError) transfers += "plan_transfer " + input + ": " + transfer.Json + "\n";
+            }
+            if (transfers.Length > 0)
+                text += "Transfers to each body the Mission Goal names, as plan_transfer would give them from this Game Snapshot (JSON data). A tool whose figures are here needs no call.\n" + transfers;
             if (!string.IsNullOrEmpty(craftCheckAscent)) text += "The Craft Check's plan_ascent " + craftCheckAscent + "\n";
             return text;
         }
+
+        /// <summary>The periapsis (m) the Mission request's plan_transfer rows arrive at (#575).</summary>
+        private const int TransferPe = 30000;
 
         /// <summary>The bodies of the body table the Mission Goal names, as whole words, in the order it names them.</summary>
         private static List<SnapshotBody> GoalBodies(GameSnapshot snapshot, string goal)
