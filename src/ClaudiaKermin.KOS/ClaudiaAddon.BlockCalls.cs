@@ -253,7 +253,7 @@ namespace ClaudiaKermin.KOS
                 pass = BlockCalls.LandingPass(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel), new PlanningBody());
                 return KosValues.FromPlain(pass);
             }, () => pass.ContainsKey("burn_ut") && pass["error"] as string == ""
-                ? string.Format(CultureInfo.InvariantCulture, "burn at UT {0:0.0}, touchdown at UT {1:0.0}, correction {2:0.0} m/s, next pass {3:0.0}; descent shape {4:0.###}, periapsis {5:0} m, landing {6:0} m/s",
+                ? string.Format(CultureInfo.InvariantCulture, "burn at UT {0:0.0}, touchdown at UT {1:0.0}, correction {2:0.0} m/s, next pass {3:0.0}; descent shape {4:0.###}, periapsis radius {5:0} m, landing {6:0} m/s",
                     pass["burn_ut"], pass["arrive_ut"], pass["correction_dv"], pass["next_pass_ut"], pass["descent_shape"], pass["r_pe"], pass["predicted_dv"])
                 : (string)pass["error"]);
         }

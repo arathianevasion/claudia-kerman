@@ -774,6 +774,31 @@ function land_stage_short {
   return stage_dv < brake_need * margin.
 }
 
+// Whether the pass search plans with the lander alone (#546): the current stage, with stage_dv m/s (vacuum) left of the
+// craft's total_dv (0 or less: stock reads none), can't cover the braking need (m/s, margin included) and the stages
+// below can, and staging it off early drops the whole Underhang (may_stage: land_stage_drops_underhang, and nothing blocks
+// it). Such a stage is staged off before the fall (#382), so the lander alone brakes. Pure.
+function land_plans_staged {
+  parameter stage_dv, total_dv, brake_need, may_stage.
+  return total_dv > 0 and may_stage and land_stage_short(stage_dv, brake_need, 1) and total_dv - stage_dv >= brake_need.
+}
+
+// The craft (land_craft's) as the lander alone (under, land_measure_underhang's) flies it once the Underhang has gone with
+// the stage: its thrust, mass and Isp, nothing to drop; the turn lag and burn_margin stay. Pure.
+function land_lander_craft {
+  parameter craft, under.
+  local lander is lexicon().
+  for key in craft:keys {
+    if not list("drop_agl", "lander_thrust", "lander_mass", "lander_isp", "dry_mass"):contains(key) {
+      lander:add(key, craft[key]).
+    }
+  }
+  set lander["thrust"] to under:lander_thrust.
+  set lander["mass"] to under:lander_mass.
+  set lander["isp"] to under:lander_isp.
+  return lander.
+}
+
 // "" if the stages below the current one can be fired early, else why not: "stage_limit" (the next stage
 // is at or below it), "unsafe" (a stage on the way would fire parachutes or separate a heat shield) or
 // "no engines" (the run of stages never reaches engines). engines_below / unsafe_below as for
@@ -1412,6 +1437,15 @@ function land {
   local craft is land_craft(under, turn, opt).
 
   local approach is 3000.
+  // #546: a stage that can't cover the braking is staged off before the fall (#382); where that drops the whole Underhang,
+  // the lander alone brakes, so the search plans with it. Before a plan, the need is the old estimate's braking part.
+  local plan_stage_dv is ship:stagedeltav(stage:number):vacuum.
+  local may_stage_first is land_stage_drops_underhang(under) and land_stage_early_blocked(ctx) = "".
+  local est_need is 1.2 * land_periapsis_speed(body:mu, ship:orbit:semimajoraxis, body:radius + approach) + 100.
+  local stage_first is land_plans_staged(plan_stage_dv, ship:deltav:current, est_need, may_stage_first).
+  if stage_first {
+    set craft to land_lander_craft(craft, under).
+  }
   local plan is "".
   local r_pe is -1.
   // A site given as coordinates (or "any"'s) may move up to 5 km for terrain; a biome's was already chosen for it (#511).
@@ -1445,6 +1479,15 @@ function land {
     // #521: with no pass, the failure names the change_orbit plane changes that reach the site; land never flies them.
     site_query:add("plane_changes", true).
     set plan to land_pass_plan(addons:claudia:landingpass(site_query), site, r_pe).
+    // A plan whose braking the stage can't cover after all: planned again with the lander that will brake (#546).
+    if plan:error = "" and not stage_first and land_plans_staged(plan_stage_dv, ship:deltav:current, land_dv_needed(plan:brake_dv, opt:burn_margin, est_need),
+        may_stage_first) {
+      set stage_first to true.
+      set craft to land_lander_craft(craft, under).
+      set site_query to land_pass_query(site, r_pe, time:seconds + 120, opt:daylight, reach, opt:within_hours, craft, opt:descent_shape, may_move).
+      site_query:add("plane_changes", true).
+      set plan to land_pass_plan(addons:claudia:landingpass(site_query), site, r_pe).
+    }
   }
   if plan:error <> "" {
     set extra:shape_range to land_or(plan, "shape_range", "").
@@ -1563,10 +1606,11 @@ function land {
   // The braking need is the simulated braking times burn_margin (#511), the same figure as the check before
   // the deorbit burn; without a simulation, the old estimate less the deorbit burn already flown (it carries its
   // own 1.2 x and 100 m/s of margin). It stays put if the craft would not have the braking left without the
-  // stage, or if stock reads no delta-v (as with the check above).
+  // stage, or if stock reads no delta-v (as with the check above). A plan made for the lander alone (stage_first, #546)
+  // stages it off whatever the figures say now, so the craft that brakes is the one planned.
   local brake_need is land_dv_needed(plan:brake_dv, opt:burn_margin, needed - abs(deorbit_dv)).
   local stage_dv is ship:stagedeltav(stage:number):vacuum.
-  if ship:deltav:current > 0 and land_stage_short(stage_dv, brake_need, 1) and ship:deltav:current - stage_dv >= brake_need {
+  if stage_first or (ship:deltav:current > 0 and land_stage_short(stage_dv, brake_need, 1) and ship:deltav:current - stage_dv >= brake_need) {
     local early is land_stage_early(ctx).
     if early:staged {
       set extra:staged_before_braking to true.
@@ -1698,15 +1742,7 @@ function land_stage_early {
   parameter ctx.
   local left is stage:number.
   local limit is ctx:opt:stage_limit.
-  local engines_below is list().
-  local unsafe_below is list().
-  local n is left - 1.
-  until n < 0 or n < limit {
-    engines_below:add(claudia_stage_has_engine(n)).
-    unsafe_below:add(claudia_stage_unsafe(n)).
-    set n to n - 1.
-  }
-  local blocked is land_stage_early_block(left, limit, engines_below, unsafe_below).
+  local blocked is land_stage_early_blocked(ctx).
   if blocked <> "" {
     return lexicon("staged", false, "left", left, "note", "not staged early, carrying on: " + blocked).
   }
@@ -1726,6 +1762,40 @@ function land_stage_early {
   set ctx:parts to ship:parts:length.
   set ctx:last_ut to time:seconds.
   return lexicon("staged", true, "left", left, "note", "staged from stage " + left + " to " + stage:number).
+}
+
+// Why the current stage can't be staged off early (land_stage_early_block's reason), or "" if it can.
+function land_stage_early_blocked {
+  parameter ctx.
+  local limit is ctx:opt:stage_limit.
+  local engines_below is list().
+  local unsafe_below is list().
+  local n is stage:number - 1.
+  until n < 0 or n < limit {
+    engines_below:add(claudia_stage_has_engine(n)).
+    unsafe_below:add(claudia_stage_unsafe(n)).
+    set n to n - 1.
+  }
+  return land_stage_early_block(stage:number, limit, engines_below, unsafe_below).
+}
+
+// Whether staging the current stage off early, on into the next stage with engines, fires every decoupler of the Underhang's
+// drop (under, land_measure_underhang's), so the lander alone is left (#546).
+function land_stage_drops_underhang {
+  parameter under.
+  if under:plan:decouplers:length = 0 {
+    return false.
+  }
+  local next is stage:number - 1.
+  until next < 0 or claudia_stage_has_engine(next) {
+    set next to next - 1.
+  }
+  for d in under:plan:decouplers {
+    if d:stage < next {
+      return false.
+    }
+  }
+  return true.
 }
 
 // How far part p reaches along down (a unit vector): its bounding box's corner furthest that way, in m
