@@ -151,6 +151,8 @@ namespace ClaudiaKermin.Core.Missions
                 Model = mission.Model,
                 MaxTokens = MissionPrompts.CompactionMaxTokens,
                 Compaction = true,
+                // The docs don't say a compaction reads a cached prefix, and its own write is never read (#549): no cache_control at all.
+                Cache = false,
                 CompactionInstructions = MissionPrompts.CompactionInstructions,
             };
             request.Tools.AddRange(_tools.Definitions(ToolOffer.Mission));

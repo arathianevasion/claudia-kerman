@@ -83,7 +83,11 @@ namespace ClaudiaKermin.Core.Tests
             Assert.False(compaction.TryGetProperty("output_config", out _));
             Assert.Equal(MissionPrompts.CompactionMaxTokens, compaction.GetProperty("max_tokens").GetInt32());
             Assert.Equal(sequence.GetProperty("model").GetString(), compaction.GetProperty("model").GetString());
-            Assert.Equal(sequence.GetProperty("system").GetRawText(), compaction.GetProperty("system").GetRawText());
+            // The same layers' text, but it writes nothing to the cache (#549) where the sequence request caches its tail and every layer.
+            Assert.Equal(sequence.GetProperty("system").EnumerateArray().Select(l => l.GetProperty("text").GetString()),
+                compaction.GetProperty("system").EnumerateArray().Select(l => l.GetProperty("text").GetString()));
+            Assert.DoesNotContain("cache_control", transport.Requests[2].Body);
+            Assert.Contains("cache_control", transport.Requests[1].Body);
             Assert.Equal(sequence.GetProperty("tools").GetRawText(), compaction.GetProperty("tools").GetRawText());
             var before = sequence.GetProperty("messages").EnumerateArray().Select(m => m.GetRawText()).ToList();
             var summarized = compaction.GetProperty("messages").EnumerateArray().Select(m => m.GetRawText()).ToList();
