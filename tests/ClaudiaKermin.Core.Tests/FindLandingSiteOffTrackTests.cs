@@ -194,7 +194,7 @@ namespace ClaudiaKermin.Core.Tests
             Assert.NotEmpty(result.GetProperty("plane_changes").EnumerateArray());
             var note = result.GetProperty("plane_change_note").GetString();
             Assert.StartsWith("partial: out of time, so these are the best of the ", note);
-            Assert.Equal(coarse, note.EndsWith(", landing_dv from a coarse plan of the descent"));
+            Assert.Equal(coarse, note.Contains(", landing_dv from a coarse plan of the descent; ask again with near set to the site to plan it fully"));
         }
 
         [Fact]
@@ -202,7 +202,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             var result = Run("{\"body\":\"Mun\",\"biome\":\"Farside Basin\"}", Mun());
             Assert.Empty(result.GetProperty("sites").EnumerateArray());
-            Assert.Contains("a survey of all of Mun found no point in the biome gentle enough to plan plane changes for", result.GetProperty("note").GetString());
+            Assert.Contains("a survey of Mun every 4 degrees found no point in the biome gentle enough to plan plane changes for (give near for a smaller biome)", result.GetProperty("note").GetString());
             Assert.False(result.TryGetProperty("plane_changes", out _));
         }
     }

@@ -174,7 +174,8 @@ namespace ClaudiaKermin.Core.Tools
                         : "")
                     + "; widen within_hours, the slope or the biome"
                     + (offTrack != null ? "; plane_changes are for a site in the biome off the track (plane_change_site)"
-                        : lookOffTrack ? "; a survey of all of " + body.Name + " found no point in the biome gentle enough to plan plane changes for"
+                        : lookOffTrack ? "; a survey of " + body.Name + " every " + LandingSiteSearch.BiomeGridDeg.ToString("0", CultureInfo.InvariantCulture)
+                            + " degrees found no point in the biome gentle enough to plan plane changes for (give near for a smaller biome)"
                         : query.HasNear ? "" : ", or give near (the site wanted) for plane changes that reach it")
                     // Sites at the biome edge are the fallback whatever the margin, so this holds for land's own (the default).
                     + "; land given this biome and these limits and window searches the same ground-track points, so it finds none either, but a site given to land as coordinates may lie off the track, reached by a correction burn");
@@ -212,7 +213,7 @@ namespace ClaudiaKermin.Core.Tools
             LandingSite offTrack, IPlanningBody api)
         {
             if (query.Craft == null || (!query.HasNear && offTrack == null && found.Sites.Count == 0)) return 0;
-            var coordinates = query.HasNear || offTrack != null;
+            var moveSite = query.HasNear || offTrack != null;
             double lat, lng, altitude;
             if (query.HasNear)
             {
@@ -233,13 +234,13 @@ namespace ClaudiaKermin.Core.Tools
             {
                 Latitude = lat, Longitude = lng, PeRadius = body.Radius + Math.Max(0, altitude) + LandingPass.ApproachM, EarliestUt = now + LandingPass.LeadS,
                 LatestUt = now + LandingPass.ReachSeconds(found.WindowHours, query.Daylight, body.RotationPeriod), Daylight = query.Daylight,
-                MaxCorrectionDv = query.MaxCorrectionDv, Craft = query.Craft, MoveSite = coordinates, Deadline = query.Deadline,
+                MaxCorrectionDv = query.MaxCorrectionDv, Craft = query.Craft, MoveSite = moveSite, Deadline = query.Deadline,
             };
             json.Name("plane_change_site").BeginObject().Field("latitude", PlanningJson.Round(lat, 3)).Field("longitude", PlanningJson.Round(lng, 3)).EndObject();
             var currentDv = found.Sites.Count > 0 ? found.Sites[0].PredictedDv : double.NaN;
             var moved = false;
             var late = query.Deadline != null && query.Deadline.Passed;
-            if (coordinates && !late)
+            if (moveSite && !late)
             {
                 var current = LandingPass.Find(body, conic, now, ask, api);
                 late = current.OutOfTime;
@@ -273,7 +274,7 @@ namespace ClaudiaKermin.Core.Tools
             json.EndArray();
             if (changes.Options.Count > 0 && changes.OutOfTime)
                 json.Field("plane_change_note", "partial: out of time, so these are the best of the " + changes.Planes.ToString(CultureInfo.InvariantCulture) + " planes tried"
-                    + (changes.Coarse ? ", landing_dv from a coarse plan of the descent" : ""));
+                    + (changes.Coarse ? ", landing_dv from a coarse plan of the descent; ask again with near set to the site to plan it fully" : ""));
             else if (changes.Options.Count == 0)
                 json.Field("plane_change_note", changes.Note ?? (double.IsNaN(currentDv) ? "no plane change tried reaches the site"
                     : "land reaches the site from this orbit, and no plane change saves " + PlaneChanges.SavingDv.ToString("0", CultureInfo.InvariantCulture) + " m/s net"));

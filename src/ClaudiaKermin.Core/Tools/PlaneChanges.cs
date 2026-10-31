@@ -112,7 +112,7 @@ namespace ClaudiaKermin.Core.Tools
         private const double CoarseHeadingDeg = 3;
         private const int RefinedPlanes = 3;
         /// <summary>
-        /// m between the coarse pass's terrain samples under the fall from the deorbit burn (#545): a quarter of land's, since through
+        /// m between the coarse pass's terrain samples under the fall from the deorbit burn (#545): four times land's, a quarter of the samples, since through
         /// the game that read was most of each coarse descent's time; the planes refined read it as land does.
         /// </summary>
         private const double CoarseFallStepM = 4 * DescentApproach.FallProfileStep;

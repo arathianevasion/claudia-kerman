@@ -114,7 +114,7 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>With a <c>near</c> point, only track within this many degrees of it is a candidate.</summary>
         private const double NearRadiusDeg = 15;
         /// <summary>The spacing of the whole-body biome survey for a site off the track (#545), degrees of arc, and the most of its points whose slope is measured.</summary>
-        private const double BiomeGridDeg = 4;
+        internal const double BiomeGridDeg = 4;
         private const int MaxOffTrackChecks = 2 * SlopeBatch;
 
         public static LandingSiteResult Find(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, IPlanningBody api)
@@ -296,7 +296,7 @@ namespace ClaudiaKermin.Core.Tools
         /// The query's biome's best site off the ground track (#545), for the plane changes when no pass reaches the biome: a survey
         /// of the whole body every <see cref="BiomeGridDeg"/> degrees finds the biome, and its points are tried, those whose grid
         /// neighbours are in it too first, then by how far their latitude lies beyond the orbit's inclination
-        /// (<paramref name="inclination"/>, degrees), so the plane change onto the site is the smallest. The first gentle enough
+        /// (<paramref name="inclination"/>, degrees), so the plane change onto the site is small. The first gentle enough
         /// and the margin inside the biome is the site; without one, the first gentle enough, marked <see cref="LandingSite.AtEdge"/>.
         /// Its pass fields are unset: no pass reaches it. Null when the survey finds the biome nowhere, or no point tried is gentle enough.
         /// </summary>
@@ -322,11 +322,11 @@ namespace ClaudiaKermin.Core.Tools
                 for (var k = 0; k < rows[i].Count; k++)
                 {
                     var p = rows[i][k];
-                    if (!SameBiome(p.Biome, query.Biome)) continue;
+                    if (!InBiome(p, query)) continue;
                     ranked.Add(new Candidate { Sample = p });
                     var n = rows[i].Count;
-                    if (In(rows[i][(k + 1) % n], query) && In(rows[i][(k + n - 1) % n], query)
-                        && (i == 0 || In(Nearest(rows[i - 1], p.Longitude), query)) && (i == rows.Count - 1 || In(Nearest(rows[i + 1], p.Longitude), query)))
+                    if (InBiome(rows[i][(k + 1) % n], query) && InBiome(rows[i][(k + n - 1) % n], query)
+                        && (i == 0 || InBiome(Nearest(rows[i - 1], p.Longitude), query)) && (i == rows.Count - 1 || InBiome(Nearest(rows[i + 1], p.Longitude), query)))
                         interior.Add(p);
                 }
             ranked = ranked.OrderBy(c => interior.Contains(c.Sample) ? 0 : 1).ThenBy(c => Math.Max(0, Math.Abs(c.Sample.Latitude) - own))
@@ -363,7 +363,7 @@ namespace ClaudiaKermin.Core.Tools
             return edgeSite;
         }
 
-        private static bool In(SiteSample sample, LandingSiteQuery query)
+        private static bool InBiome(SiteSample sample, LandingSiteQuery query)
         {
             return SameBiome(sample.Biome, query.Biome);
         }
