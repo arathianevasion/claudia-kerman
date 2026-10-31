@@ -112,8 +112,9 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <summary>
         /// The summarization prompt for on-demand compaction (#268; it replaces the API's default). It names what a long
-        /// Mission must keep word for word; the summary is all Claude has of the compacted turns. The Game Snapshot is resent
-        /// each turn, so the craft's state here is the latest one the conversation shows.
+        /// Mission must keep word for word; the summary is all Claude has of the compacted turns. The craft's state here is the
+        /// latest one the conversation shows; its parts list is sent only when it changes (#256), so the summary keeps it too, and
+        /// the first turn after a compaction sends the full Game Snapshot again.
         /// </summary>
         public const string CompactionInstructions =
             "You are summarizing a long Kerbal Space Program Mission so that Claudia Kermin, the mission controller, can "
@@ -125,7 +126,7 @@ namespace ClaudiaKermin.Core.Missions
             + "- the approved Mission Plan, with each Maneuver Sequence's name, intent, delta-v budget and timing;\n"
             + "- the flown Maneuver Sequences with their Debrief outcomes (Nominal, Off-Nominal or Failed) and figures;\n"
             + "- every player instruction, as the player said it;\n"
-            + "- the craft's state, as the latest Game Snapshot gives it.\n"
+            + "- the craft's state, as the latest Game Snapshot gives it, including its parts list.\n"
             + "Then, briefly: failed attempts and their lessons, and which sequences are still to fly. Drop pleasantries, "
             + "repeated Game Snapshots, full scripts that already ran and anything else not listed. Do not call any tool; "
             + "reply with the summary only.";
