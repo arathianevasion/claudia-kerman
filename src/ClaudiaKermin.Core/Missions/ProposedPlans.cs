@@ -26,7 +26,8 @@ namespace ClaudiaKermin.Core.Missions
             return new ToolDefinition
             {
                 Name = ToolName,
-                Description = "Hand in your Mission Plan. The mod answers ok, or the problems to fix before you call it again. "
+                Description = "Only for a request that asks for a Mission Plan; never a placeholder or a first step on any other request, which you reply to directly. "
+                    + "Hand in your Mission Plan. The mod answers ok, or the problems to fix before you call it again. "
                     + "Then reply with kind mission_plan: the plan is the last one it accepted in this turn.",
                 InputSchemaJson = MissionReply.MissionPlanSchema,
                 Strict = false,

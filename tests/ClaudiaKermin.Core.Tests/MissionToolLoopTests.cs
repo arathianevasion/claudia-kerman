@@ -266,10 +266,12 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("Alert: a Telemetry Check", transport.Requests[3].Body);
             // The Planning Tools, then the Reply Tool (ADR 0012).
             Assert.Equal(new[] { "stage_performance", "predict_burn", "propose_mission_plan" }, ToolNames(transport.Requests[0]));
-            foreach (var request in transport.Requests)
+            for (var i = 0; i < transport.Requests.Count; i++)
             {
+                var request = transport.Requests[i];
                 Assert.Equal(ToolsJson(transport.Requests[0]), ToolsJson(request));
-                Assert.Equal("{\"type\":\"auto\"}", Body(request).GetProperty("tool_choice").GetRawText());
+                // The Alert and the Debrief are answered with no tool (#587).
+                Assert.Equal(i >= 3 ? "{\"type\":\"none\"}" : "{\"type\":\"auto\"}", Body(request).GetProperty("tool_choice").GetRawText());
                 // Non-strict: the module checks the input, so the schemas take none of the reply schema's grammar budget.
                 Assert.All(Body(request).GetProperty("tools").EnumerateArray(), t => Assert.False(t.TryGetProperty("strict", out _)));
             }
@@ -284,6 +286,33 @@ namespace ClaudiaKermin.Core.Tests
                 Assert.Equal(new[] { "stage_performance" }, ToolNames(check));
                 Assert.Equal("{\"type\":\"auto\"}", Body(check).GetProperty("tool_choice").GetRawText());
             }
+        }
+
+        [Fact]
+        public void TheToolDescriptionAndBothRefusalsSayItIsOnlyForARequestThatAsksForAMissionPlan()
+        {
+            const string only = "only for a request that asks for a Mission Plan";
+            Assert.Contains("Only for a request that asks for a Mission Plan", ProposedPlans.Definition().Description);
+
+            var transport = new StreamingFakeTransport(
+                Fixture("mission-plan.sse"),
+                WithSequenceFields(Fixture("mission-sequence-plan.sse"), DeltaVCheck(50)),
+                Propose("alert", ProposedPlan("Something else")),
+                Fixture("mission-alert-carry-on-plain.sse"));
+            var mission = Control(transport);
+            ToRunning(mission);
+            mission.Send(Burned());
+            mission.Send(Burned());
+            DrainUntil(mission, v => !v.Busy && transport.Requests.Count == 4);
+            Assert.Contains(only, ErrorOf(Assert.Single(Results(transport.Requests[3]))));
+
+            var sequence = new StreamingFakeTransport(Fixture("mission-plan.sse"), Propose("seq", ProposedPlan("Something else")), Fixture("mission-sequence-plan.sse"));
+            var other = Control(sequence);
+            Start(other);
+            DrainUntil(other, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            other.Send(new Approve());
+            DrainUntil(other, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            Assert.Contains(only, ErrorOf(Assert.Single(Results(sequence.Requests[2]))));
         }
 
         [Fact]
@@ -863,12 +892,13 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("Alert: a Telemetry Check", transport.Requests[8].Body);
             var first = Body(transport.Requests[0]);
             Assert.Equal(MissionReply.MissionSchemaJson, first.GetProperty("output_config").GetProperty("format").GetProperty("schema").GetRawText());
-            foreach (var request in transport.Requests)
+            for (var i = 0; i < transport.Requests.Count; i++)
             {
-                var body = Body(request);
+                var body = Body(transport.Requests[i]);
                 Assert.Equal(first.GetProperty("output_config").GetProperty("format").GetRawText(), body.GetProperty("output_config").GetProperty("format").GetRawText());
                 Assert.Equal(first.GetProperty("tools").GetRawText(), body.GetProperty("tools").GetRawText());
-                Assert.Equal("{\"type\":\"auto\"}", body.GetProperty("tool_choice").GetRawText());
+                // The Alert (8) and the Debrief (9) send none; every other kind stays on auto (#587).
+                Assert.Equal(i >= 8 ? "{\"type\":\"none\"}" : "{\"type\":\"auto\"}", body.GetProperty("tool_choice").GetRawText());
             }
         }
 
