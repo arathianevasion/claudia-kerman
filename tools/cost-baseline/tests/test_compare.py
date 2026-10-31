@@ -112,6 +112,14 @@ class CompareTests(unittest.TestCase):
         self.assertIn('+20 (+7%)', text)
         self.assertIn('$0.01', text)
 
+    def test_a_mission_under_the_goal_shows_a_negative_amount_with_the_sign_before_the_dollar(self):
+        text = self._run(self.spike, '--reference', 'm-new', '--compare', 'm-new', '--goal', '5')
+        self.assertRegex(text, r'\| -\$\d+\.\d\d \(0\.\dx\) \|')
+
+    def test_a_mission_named_twice_gets_one_row(self):
+        text = self._run(self.spike, '--reference', 'm-gone', '--compare', 'm-new', 'm-new')
+        self.assertEqual(1, sum(1 for l in text.splitlines() if l.startswith('| m-new | KSP_spike')))
+
     def test_the_prefix_is_blank_when_no_request_read_only_the_prefix(self):
         make(self.spike, 'm-flat', FLOWN)
         text = self._run(self.spike, '--reference', 'm-flat', '--compare', 'm-flat')

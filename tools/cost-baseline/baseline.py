@@ -251,7 +251,9 @@ def analyse_mission(folder, install=''):
         ev, rq = e.get('event'), e.get('request')
         if ev in ('paid', 'kept', 'craft_check_paid', 'craft_check_kept'):
             # What the mod itself charged (its PriceTable, #257): settled requests and Craft Checks, at its prices.
-            M['mod_total'] += float(e.get('amount', 0) or 0)
+            amount = e.get('amount')
+            if isinstance(amount, (int, float)) and not isinstance(amount, bool):
+                M['mod_total'] += amount
         if ev == 'craft_check_paid' or ev == 'craft_check_kept':
             M['craft'].append(dict(sub='Craft Check', cost=float(e.get('amount', 0)), seconds=None,
                                    outcome=e.get('outcome')))
@@ -570,12 +572,12 @@ def _usd(x, places=2):
     return '-' if x is None else '$%.*f' % (places, x)
 
 
-def _change(now, ref, as_money=True):
+def _change(now, ref, as_money=True, percent=True):
     """now less ref, with the percentage: '+$1.99 (+90%)' for money, '+1,296 (+5%)' for tokens."""
     if now is None or ref is None:
         return '-'
     d = now - ref
-    pc = ' (%+.0f%%)' % (100.0 * d / ref) if ref else ''
+    pc = ' (%+.0f%%)' % (100.0 * d / ref) if ref and percent else ''
     if as_money:
         return '%s$%.2f%s' % ('-' if d < 0 else '+', abs(d), pc)
     return '%s%s%s' % ('-' if d < 0 else '+', tok(abs(d)), pc)
@@ -612,7 +614,7 @@ def compare_report(rows, ref, goal):
             r['id'], _change(r['total'], ref['total'] if ref else None),
             _change(r['per_leg'], ref['per_leg'] if ref else None),
             _change(r['prefix'], ref['prefix'] if ref else None, as_money=False) if r['prefix'] else '-',
-            _usd(goal), '%s (%.1fx)' % (_usd(r['total'] - goal), r['total'] / goal) if goal else '-'))
+            _usd(goal), '%s (%.1fx)' % (_change(r['total'], goal, percent=False), r['total'] / goal) if goal else '-'))
     out.append('')
     if not ref:
         out.append('The reference Mission was not found in the saves folders, so there is no change to show.')
@@ -655,6 +657,7 @@ def main():
     out = []
     w = out.append
     if a.compare:
+        a.compare = list(dict.fromkeys(a.compare))
         found = find_missions(a.saves, set(a.compare) | {a.reference})
         rows = [compare_row(M) for i in a.compare for M in found if M['id'] == i]
         missing = [i for i in a.compare if not any(r['id'] == i for r in rows)]
