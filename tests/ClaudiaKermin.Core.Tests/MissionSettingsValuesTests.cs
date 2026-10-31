@@ -49,7 +49,7 @@ namespace ClaudiaKermin.Core.Tests
         public void The_timing_layer_still_ends_with_the_settings_text_and_the_chat_rule()
         {
             var settings = Make(true, TimeVersusDeltaV.Balanced, true);
-            var layer = MissionPrompts.TimingLayer(settings);
+            var layer = MissionPrompts.TimingLayer("m1", settings);
             Assert.Contains("\n\n" + MissionPrompts.SettingsText(settings) + "\nAsked in chat to stop or allow physics warp, point the player to that setting; change no plan until they switch it.", layer);
             Assert.EndsWith("change no plan until they switch it.", layer);
         }
