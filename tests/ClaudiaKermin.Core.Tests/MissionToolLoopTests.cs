@@ -918,6 +918,32 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void AQuickloadOfASaveMadeDuringTheToolLoopOffersThePlanTheToolAcceptedWithoutAskingAgain()
+        {
+            var reply = Kind("mission_plan");
+            reply.PauseAt = 100;
+            _gates.Add(reply.Gate);
+            var transport = new StreamingFakeTransport(Propose("p", ProposedPlan("Link check")), reply);
+            var mission = Control(transport);
+            mission.Send(new StartMission(Goal, 25m, Sonnet));
+            DrainUntil(mission, v => transport.Requests.Count == 2);
+            // Saved while the reply after the tool step was out.
+            var saved = mission.ExportStates();
+            Assert.Equal(MissionStage.Planning, saved[0].Stage);
+
+            reply.Gate.Set();
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+            mission.Send(new MissionsRestored(_save.Path, saved));
+            DrainUntil(mission, v => !v.Busy);
+
+            // The turn joined the transcript with its tool loop: the plan is read from the accepted call, and nothing is asked again.
+            Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
+            Assert.Equal(new[] { "Link check" }, mission.View.PlanSequences);
+            Assert.Equal(2, transport.Requests.Count);
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("already been answered"));
+        }
+
+        [Fact]
         public void TheRebuiltLogShowsTheMissionPlanHandedInThroughTheTool()
         {
             var transport = new StreamingFakeTransport(Propose("p", ProposedPlan("Link check")), Kind("mission_plan"));
