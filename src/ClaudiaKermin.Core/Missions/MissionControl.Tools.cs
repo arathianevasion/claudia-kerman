@@ -123,11 +123,11 @@ namespace ClaudiaKermin.Core.Missions
             return use =>
             {
                 var repeat = repeats[uses.IndexOf(use)];
-                return ToolRefusal(purpose, snapshot, use.Name) ?? (allRepeats ? repeat + RepeatStopLine : repeat);
+                return ToolRefusal(purpose, snapshot, use.Name) ?? (allRepeats ? repeat + RepeatStopLine + (TakesMissionPlan(purpose) ? ", with the plan." : ".") : repeat);
             };
         }
 
-        private const string RepeatStopLine = ". Your next reply is the last of this turn and can't call a tool: reply now, with the plan.";
+        private const string RepeatStopLine = ". Your next reply is the last of this turn and can't call a tool: reply now";
 
         private static bool IsRepeat(string refusal, string repeat)
         {
