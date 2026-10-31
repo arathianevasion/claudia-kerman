@@ -19,7 +19,7 @@
 //|     for moving the periapsis) and needs a closed orbit whose apoapsis comes before any sphere-of-influence
 //|     change. If the periapsis is inside the atmosphere (or below the surface) and the craft reaches it
 //|     before that apoapsis, it burns instead as soon as a burn can be led (about 2 minutes on), the
-//|     cheapest point before the periapsis, so the craft is not lost to it; "next" burns halfway to the sphere-of-influence change and aims the periapsis of the orbit
+//|     cheapest point before the periapsis, so the craft is not lost to it; "next" burns near the start or halfway to the sphere-of-influence change (the cheaper) and aims the periapsis of the orbit
 //|     after it (at the Mun before arrival, at Kerbin on the way home), earlier if the burn would not end 60 s before the change.
 //|   tolerance [1000]: m the periapsis may end from value; more fails the block.
 //|   max_dv [50]: m/s the burn may cost; more fails the block before any burn.
@@ -107,6 +107,18 @@ function tune_pe_burn_point {
     set point:error to "the apoapsis comes after the sphere-of-influence change (in " + round(soi_eta) + " s): use patch next".
   }
   return point.
+}
+
+// The burn points (s from now) patch next tries, soi_eta s to the sphere-of-influence change: near the start (300 s on,
+// time to turn and lead) and halfway. An encounter is mostly fixed in timing, which is cheapest early: on f623 (#538) the
+// retrograde fix cost about 25 m/s at 300 s and over 100 halfway. Under 600 s halfway the start is no earlier, so halfway alone.
+function tune_pe_next_times {
+  parameter soi_eta.
+  local mid is soi_eta / 2.
+  if mid >= 600 {
+    return list(300, mid).
+  }
+  return list(mid).
 }
 
 // The prograde burn (m/s, negative to slow down) at the apoapsis, rad_ap m from the body's centre on an
@@ -233,6 +245,45 @@ function tune_pe_place_next {
   }
 }
 
+// Plans nd at each of the burn points times (s from now) with tune_pe_place_next and leaves it at the cheapest burn that
+// reaches the periapsis within tolerance and max_dv; if none does, at the one that came closest. Returns tune_pe_place_next's
+// lexicon for that burn point.
+function tune_pe_place_best {
+  parameter nd, opt, soi_ut, times.
+  local best is lexicon("error", "", "off_by", 0).
+  local best_score is 1e30.
+  local best_time is 0.
+  local best_x is list(0, 0, 0).
+  local now is time:seconds.
+  for t in times {
+    set nd:radialout to 0.
+    set nd:normal to 0.
+    set nd:prograde to 0.
+    set nd:time to now + t.
+    local placed is tune_pe_place_next(nd, opt, soi_ut).
+    local dv is nd:deltav:mag.
+    // A burn that works scores its delta-v; one that doesn't scores above any of those, by how far off it is (a burn that
+    // doesn't fit at all, last).
+    local score is dv.
+    if placed:error <> "" {
+      set score to 1e9.
+    } else if placed:off_by > opt:tolerance or dv > opt:max_dv {
+      set score to 1e6 + placed:off_by.
+    }
+    if score < best_score {
+      set best to placed.
+      set best_score to score.
+      set best_time to nd:time.
+      set best_x to list(nd:radialout, nd:normal, nd:prograde).
+    }
+  }
+  set nd:time to best_time.
+  set nd:radialout to best_x[0].
+  set nd:normal to best_x[1].
+  set nd:prograde to best_x[2].
+  return best.
+}
+
 function tune_pe {
   parameter options is lexicon().
   local extra is lexicon("pe_actual", -1, "burn_ut", -1).
@@ -299,7 +350,7 @@ function tune_pe {
     add nd.
   } else {
     add nd.
-    local placed is tune_pe_place_next(nd, opt, time:seconds + soi_eta).
+    local placed is tune_pe_place_best(nd, opt, time:seconds + soi_eta, tune_pe_next_times(soi_eta)).
     if placed:error <> "" {
       remove nd.
       return claudia_finish(ctx, false, placed:error, extra).
