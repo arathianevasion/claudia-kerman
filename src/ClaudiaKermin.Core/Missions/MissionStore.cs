@@ -301,8 +301,8 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <summary>
         /// Spent and Held as the cost log last recorded them: the log is append-only and never rewound, so it is
-        /// the truth whatever save is loaded. A pending charge with no settlement after it (a crash mid-request)
-        /// counts as kept. A torn last line (a crash mid-append) is skipped. Zero when there is no log; Unreadable when
+        /// the truth whatever save is loaded. A pending charge with no settlement after it (a crash or a close
+        /// mid-request) counts as kept at its input cost: it got no response, so it can't have billed output. A torn last line (a crash mid-append) is skipped. Zero when there is no log; Unreadable when
         /// there is one that can't be read (an IO or access error), which is not zero spend.
         /// </summary>
         public static CostTotals ReadCostTotals(string folder)
@@ -338,7 +338,13 @@ namespace ClaudiaKermin.Core.Missions
                 totals.Requests = (int)(JsonNode.Long(line["request"]) ?? 0);
                 decimal cap;
                 if (TryDecimal(line["cap"], out cap)) totals.Cap = cap;
-                if (JsonNode.Str(line["event"]) == "pending" && TryDecimal(line["amount"], out amount)) totals.Held += amount;
+                // A request still pending was lost (no response at all): it holds its input cost, not the output it could have billed.
+                // A log line from before input costs were recorded holds the whole worst case.
+                if (JsonNode.Str(line["event"]) == "pending" && TryDecimal(line["amount"], out amount))
+                {
+                    decimal input;
+                    totals.Held += TryDecimal(line["input"], out input) ? System.Math.Min(amount, input) : amount;
+                }
                 return totals;
             }
             return totals;

@@ -190,8 +190,9 @@ namespace ClaudiaKermin.Core.Missions
         private void SendRecheck(Mission mission, Turn turn, decimal worst)
         {
             mission.PendingCharge = worst;
+            mission.PendingInput = RequestCharge.InputCost(_config.Prices, mission.Model, turn.Gate.RecheckRequest, worst);
             mission.Requests++;
-            LogCost(mission, "pending", worst, "margin_recheck");
+            LogCost(mission, "pending", worst, "margin_recheck", mission.PendingInput);
             mission.InFlight = true;
             mission.Activity = turn.Gate.RecheckLooked ? SecondLook.Activity : "rechecking margins";
             turn.Cancel = new CancellationTokenSource();

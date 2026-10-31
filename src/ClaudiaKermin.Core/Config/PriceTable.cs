@@ -94,6 +94,12 @@ namespace ClaudiaKermin.Core.Config
             return Cost(model, 0, estimatedInputTokens, 0, maxTokens);
         }
 
+        /// <summary>What a full <paramref name="maxTokens"/> of output would cost: the part of <see cref="WorstCase"/> a request that never answered cannot have used.</summary>
+        public decimal OutputCost(string model, int maxTokens)
+        {
+            return Cost(model, 0, 0, 0, maxTokens);
+        }
+
         /// <summary>The start form's estimate of a whole Mission on this model.</summary>
         public decimal EstimateMission(string model)
         {

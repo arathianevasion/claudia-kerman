@@ -15,7 +15,7 @@ namespace ClaudiaKermin.Core.Missions
         public decimal Amount;
         /// <summary>Added to Spent: the real cost when paid.</summary>
         public decimal Spent;
-        /// <summary>Added to Held: the worst case kept for a cancelled or lost request.</summary>
+        /// <summary>Added to Held: the input cost kept for a cancelled or lost request (its whole worst case when the input cost is not known).</summary>
         public decimal Held;
         /// <summary>"rejected", "cancelled" or "lost" when not paid; null when paid (the caller says how the reply ended).</summary>
         public string Outcome;
@@ -47,12 +47,22 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         /// <summary>
-        /// Replaces a request's pending charge with what it really cost (refused, cut-off and off-schema
-        /// replies are paid too). A cancelled or lost request keeps its worst case instead; only a request
-        /// that was turned away before any reply began (the key rejected, no credit, no network, an HTTP
-        /// error status) is released, because nothing was billed.
+        /// The part of a request's worst case that is its input: what a request that never answered can still have cost,
+        /// the output a full <c>max_tokens</c> would add being released. Never more than <paramref name="worst"/>.
         /// </summary>
-        public static RequestSettlement Settle(PriceTable prices, decimal pending, StreamResult result, string model)
+        public static decimal InputCost(PriceTable prices, string model, MessagesRequest request, decimal worst)
+        {
+            return System.Math.Max(0m, worst - prices.OutputCost(model, request.MaxTokens));
+        }
+
+        /// <summary>
+        /// Replaces a request's pending charge with what it really cost (refused, cut-off and off-schema
+        /// replies are paid too). A cancelled or lost request got no response at all, so it keeps only its
+        /// input cost (<paramref name="pendingInput"/>; the whole worst case when that is null): the output it could
+        /// have billed is released. Only a request that was turned away before any reply began (the key
+        /// rejected, no credit, no network, an HTTP error status) is released entirely, because nothing was billed.
+        /// </summary>
+        public static RequestSettlement Settle(PriceTable prices, decimal pending, StreamResult result, string model, decimal? pendingInput = null)
         {
             if (result != null && result.Status == StreamStatus.Completed && result.Message != null)
             {
@@ -62,9 +72,10 @@ namespace ClaudiaKermin.Core.Missions
             }
             if (result != null && result.Status == StreamStatus.Failed && !MayHaveBilled(result.Failure))
                 return new RequestSettlement { Kind = "released", Amount = pending, Outcome = "rejected" };
+            var kept = pendingInput.HasValue ? System.Math.Min(pending, pendingInput.Value) : pending;
             return new RequestSettlement
             {
-                Kind = "kept", Amount = pending, Held = pending,
+                Kind = "kept", Amount = kept, Held = kept,
                 Outcome = result != null && result.Status == StreamStatus.Cancelled ? "cancelled" : "lost",
             };
         }
