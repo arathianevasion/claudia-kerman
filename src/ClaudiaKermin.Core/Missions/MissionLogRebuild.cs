@@ -134,9 +134,9 @@ namespace ClaudiaKermin.Core.Missions
 
         private static void AddDebrief(List<LogEntry> log, Debrief debrief, string userText)
         {
-            // The turn that asked for it listed the Telemetry Checks crossed; any of them rules out Nominal, as the loop rated it.
+            // The turn that asked for it listed the Telemetry Checks crossed; a standing one rules out Nominal, as the loop rated it.
             var crossings = Crossings(userText);
-            if (crossings.Length > 0 && debrief.Outcome == "Nominal")
+            if (MissionPrompts.RulesOutNominal(crossings) && debrief.Outcome == "Nominal")
             {
                 debrief.Outcome = "Off-Nominal";
                 log.Add(new LogEntry { Kind = LogKind.Notice, Text = "Rated Off-Nominal, not Nominal: a Telemetry Check was crossed during the run." });

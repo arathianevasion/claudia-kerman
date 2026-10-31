@@ -48,6 +48,8 @@ namespace ClaudiaKermin.Core.Missions
             /// <summary>"" until judged; then "carry on", "Abort recommended" or why it was never judged.</summary>
             public string Verdict = "";
             public string Why = "";
+            /// <summary>Set when the Debrief is asked for (#572): carry on and the final reading back on the safe side; null until then.</summary>
+            public bool? Recovered;
 
             public string Describe()
             {
@@ -443,11 +445,14 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         /// <summary>The Debrief's list of crossed checks with their mid-run verdicts; "" when none was crossed.</summary>
-        private static string CrossingsText(Mission mission)
+        private string CrossingsText(Mission mission)
         {
             if (mission.Crossings.Count == 0) return "";
+            var final = Readings(mission);
+            foreach (var c in mission.Crossings.Where(c => !c.Recovered.HasValue))
+                c.Recovered = c.Verdict == "carry on" && final.Of(c.Check).HasValue && !c.Check.Crossed(final.Of(c.Check), c.Threshold);
             return string.Join("; ", mission.Crossings.Select(c => c.Describe() + ": " + (c.Verdict.Length > 0 ? c.Verdict : "not judged yet")
-                + (c.Why.Length > 0 ? " (" + c.Why + ")" : "")).ToArray());
+                + (c.Why.Length > 0 ? " (" + c.Why + ")" : "") + " " + (c.Recovered.Value ? MissionPrompts.RecoveredTag : MissionPrompts.StandingTag)).ToArray());
         }
 
         /// <summary>The crossings for the save file, enough for the Debrief to list them and rule out Nominal; "" when none.</summary>
@@ -456,10 +461,14 @@ namespace ClaudiaKermin.Core.Missions
             if (mission.Crossings.Count == 0) return "";
             var json = new JsonWriter().BeginArray();
             foreach (var c in mission.Crossings)
+            {
                 json.BeginObject().Field("quantity", TelemetryCheck.Key(c.Check.Quantity)).Field("resource", c.Check.Resource)
                     .Field("below", c.Check.Below).Field("default", c.Check.Default).Field("check_why", c.Check.Why)
                     .Field("threshold", c.Threshold).Field("value", c.Value).Field("elapsed_s", c.ElapsedSeconds)
-                    .Field("follow_up", c.FollowUp).Field("verdict", c.Verdict).Field("why", c.Why).EndObject();
+                    .Field("follow_up", c.FollowUp).Field("verdict", c.Verdict).Field("why", c.Why);
+                if (c.Recovered.HasValue) json.Field("recovered", c.Recovered.Value);
+                json.EndObject();
+            }
             return json.EndArray().ToString();
         }
 
@@ -496,6 +505,7 @@ namespace ClaudiaKermin.Core.Missions
                     FollowUp = JsonNode.Bool(node["follow_up"]) ?? false,
                     Verdict = JsonNode.Str(node["verdict"]) ?? "",
                     Why = JsonNode.Str(node["why"]) ?? "",
+                    Recovered = JsonNode.Bool(node["recovered"]),
                 });
             }
         }

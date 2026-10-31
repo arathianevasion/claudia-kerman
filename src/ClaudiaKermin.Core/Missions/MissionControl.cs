@@ -1686,10 +1686,10 @@ namespace ClaudiaKermin.Core.Missions
             mission.ManualPlanned = false;
             mission.ManualOrigin = "";
             mission.HandBackMessage = "";
-            // Any crossed Telemetry Check rules out Nominal (story 107), whatever Claudia rated it; the card lists them all.
+            // A standing crossing rules out Nominal (story 107), whatever Claudia rated it; a recovered one doesn't (#572). The card lists them all.
             var crossings = CrossingsText(mission);
             mission.Crossings.Clear();
-            if (crossings.Length > 0 && debrief.Outcome == "Nominal")
+            if (MissionPrompts.RulesOutNominal(crossings) && debrief.Outcome == "Nominal")
             {
                 debrief.Outcome = "Off-Nominal";
                 Note(LogKind.Notice, "Rated Off-Nominal, not Nominal: a Telemetry Check was crossed during the run.");
