@@ -14,12 +14,14 @@
 //|   lead ["half_burn"]: when to start, in seconds before the node; "half_burn" starts early by the
 //|     time it takes to burn half the node's delta-v, over every stage the burn uses.
 //|   rcs_trim [false]: true trims a residual above max_residual with RCS translation (up to 60 s).
+//|   finish_fraction [0.05]: a residual over max_residual but within this fraction of node_dv is trimmed once at
+//|     low throttle; if still over, the block succeeds with finished_short true.
 //|   max_duration ["auto"]: the wait to the burn plus twice the burn time plus 300 s.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
 //| Extra results: node_dv (m/s the node asked for before the burn), residual (m/s the node still
 //| needed when the block ended), burn_time (s the engines burned), late_start_s (s the burn began
 //| late; its node moves too), turn_s and turn_time (s the turn took, and its prediction), not_aligned (turns
-//| given up after 120 s). It turns to the node before warping, and once Aligned is back at 1x 30 s
+//| given up after 120 s), finished_short. It turns to the node before warping, and once Aligned is back at 1x 30 s
 //| before the Burn Start (its turn time when the turn was given up); a Burn Start over an hour away is
 //| warped to an hour out first, without turning. Fails with "no maneuver node",
 //| "no thrust", "no usable torque" (no reaction wheel running and no RCS on to turn with), a node
@@ -34,7 +36,7 @@
 // orbit's eccentricity stops falling (circularize asks for it), and the result's stop says which stop
 // ended it; "" keeps only the node's.
 function exec_node_defaults {
-  return lexicon("node", "next", "max_residual", 0.5, "lead", "half_burn", "rcs_trim", false, "stop_at_min", "").
+  return lexicon("node", "next", "max_residual", 0.5, "lead", "half_burn", "rcs_trim", false, "finish_fraction", 0.05, "stop_at_min", "").
 }
 
 // "" or why a string value of node or lead isn't one the block knows.
@@ -58,7 +60,7 @@ function exec_node_unreadable {
 
 function exec_node {
   parameter options is lexicon().
-  local extra is lexicon("node_dv", -1, "residual", -1, "burn_time", 0, "late_start_s", 0, "turn_s", 0, "turn_time", 0, "not_aligned", 0).
+  local extra is lexicon("node_dv", -1, "residual", -1, "burn_time", 0, "late_start_s", 0, "turn_s", 0, "turn_time", 0, "not_aligned", 0, "finished_short", false).
   local ctx is claudia_begin("exec_node", options, exec_node_defaults(), "auto").
   if ctx:error <> "" {
     return claudia_finish(ctx, false, ctx:error, extra).
@@ -177,14 +179,39 @@ function exec_node {
     }
   }
 
+  // A burn a few percent short (#577) is finished at low throttle rather than failed.
+  if exec_node_finish(nd:deltav:mag, extra:node_dv, opt:max_residual, opt:finish_fraction) = "short" {
+    local trimmed is claudia_trim(ctx, { return nd:deltav. }, done_dv).
+    if trimmed <> "" {
+      claudia_make_safe().
+      set extra:residual to round(nd:deltav:mag, 3).
+      return claudia_finish(ctx, false, trimmed, extra).
+    }
+  }
+
   local residual is nd:deltav:mag.
   set extra:residual to round(residual, 3).
   claudia_release_controls().
-  if residual > opt:max_residual {
+  local finish is exec_node_finish(residual, extra:node_dv, opt:max_residual, opt:finish_fraction).
+  if finish = "over" {
     return claudia_finish(ctx, false, "residual " + round(residual, 2) + " m/s is over max_residual " + opt:max_residual + " m/s", extra).
   }
+  set extra:finished_short to finish = "short".
   remove nd.
   return claudia_finish(ctx, true, "", extra).
+}
+
+// How a burn that ends residual m/s short of its node of node_dv m/s came out (#577): "done" within max_residual,
+// "short" over it but within fraction of node_dv (a trim finishes it), else "over" (a failure). Pure.
+function exec_node_finish {
+  parameter residual, node_dv, max_residual, fraction.
+  if residual <= max_residual {
+    return "done".
+  }
+  if residual <= fraction * node_dv {
+    return "short".
+  }
+  return "over".
 }
 
 // The UT a burn starting at now should have its node at: lead after the start, which is start_ut
