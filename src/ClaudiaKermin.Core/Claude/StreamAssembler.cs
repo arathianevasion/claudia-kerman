@@ -275,7 +275,9 @@ namespace ClaudiaKermin.Core.Claude
         // Unverified until the in-game flight (#569): wherever the beta puts it, an object named diagnostics is kept as sent.
         private void ReadDiagnostics(JsonNode diagnostics)
         {
-            if (diagnostics != null && diagnostics.Kind == JsonKind.Object) Message.DiagnosticsJson = diagnostics.Raw;
+            // An empty object later in the stream never replaces one already read.
+            if (diagnostics != null && diagnostics.Kind == JsonKind.Object && (Message.DiagnosticsJson == null || diagnostics.Raw.Replace(" ", "") != "{}"))
+                Message.DiagnosticsJson = diagnostics.Raw;
         }
 
         private void Finish()
