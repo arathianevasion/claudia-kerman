@@ -47,12 +47,12 @@ namespace ClaudiaKermin.Core.Tests
         /// </summary>
         internal sealed class GameMun : PlanningBodyBase, IPlanningClock
         {
-            public const double FrameMs = 25;
             public const double SliceMs = 3;
             public const double TerrainMs = 0.03;
             public const double BiomeMs = 0.01;
             public const double SunMs = 0.01;
 
+            public double FrameMs = 25;
             public double LonOffset;
             public int RoundTrips;
             public int Terrain;
@@ -180,30 +180,137 @@ namespace ClaudiaKermin.Core.Tests
             yield return new object[] { "{\"body\":\"Mun\",\"biome\":\"East Crater\",\"within_hours\":46,\"max_slope_deg\":10}" };
         }
 
-        [Fact]
-        public void ProfilePass()
+        private static readonly double TimeoutMs = ToolStep.CallTimeout.TotalMilliseconds;
+
+        private JsonElement Run(string input, GameMun mun)
         {
-            var mun = Mun();
             var watch = Stopwatch.StartNew();
-            var pass = BlockCalls.LandingPass(new Dictionary<string, object>
-            {
-                { "lat", 1.153 }, { "lng", 79.031 }, { "r_pe", MunR + 1000 + 3000.0 }, { "daylight", true }, { "within_hours", 46.0 },
-                { "thrust", 60.0 }, { "mass", 5.58 }, { "isp", 345.0 }, { "turn_lag", 2.0 }, { "max_correction_dv", 30.0 },
-            }, Snapshot(), mun);
-            _out.WriteLine("pass: " + watch.Elapsed.TotalMilliseconds.ToString("0") + " ms CPU, " + mun.Line() + " error " + pass["error"] + " arrive " + pass["arrive_ut"]);
-            _out.WriteLine(string.Join(" ", mun.Asks.GroupBy(a => a).Select(g => g.Key + "x" + g.Count())));
+            var outcome = _tools.Run("find_landing_site", input, Snapshot(), mun);
+            _out.WriteLine(input + ": " + watch.Elapsed.TotalMilliseconds.ToString("0") + " ms of work here, " + mun.Line());
+            _out.WriteLine(string.Join(" ", mun.Asks.GroupBy(a => a).Select(g => g.Key + " x" + g.Count())));
+            _out.WriteLine(outcome.Json);
+            Assert.False(outcome.IsError, outcome.Json);
+            using (var doc = JsonDocument.Parse(outcome.Json)) return doc.RootElement.Clone();
+        }
+
+        private static List<JsonElement> Sites(JsonElement result)
+        {
+            return result.GetProperty("sites").EnumerateArray().ToList();
+        }
+
+        private static string Note(JsonElement result)
+        {
+            JsonElement note;
+            return result.TryGetProperty("note", out note) ? note.GetString() : "";
+        }
+
+        /// <summary>land's ask of its block call for a biome target, with the tool call's own limits (land_site_query passes them through).</summary>
+        private static Dictionary<string, object> LandAsk(string input)
+        {
+            var ask = new Dictionary<string, object> { { "max_correction_dv", 30.0 } };
+            using (var doc = JsonDocument.Parse(input))
+                foreach (var field in doc.RootElement.EnumerateObject())
+                    ask[field.Name] = field.Value.ValueKind == JsonValueKind.String ? field.Value.GetString()
+                        : field.Value.ValueKind == JsonValueKind.Number ? (object)field.Value.GetDouble() : field.Value.GetBoolean();
+            if (!ask.ContainsKey("daylight")) ask["daylight"] = true;
+            return ask;
+        }
+
+        [Fact]
+        public void The_default_call_answers_inside_the_tool_timeout_with_east_crater_sites_from_the_whole_window()
+        {
+            // Before #536 this call made about 1180 round trips (about 30 s in the game), most of them PlaneChanges' 300 pass
+            // scans each reading the frame and the sun; it was cut off at 5 s.
+            var mun = Mun();
+            var result = Run("{\"body\":\"Mun\",\"biome\":\"East Crater\"}", mun);
+            Assert.True(mun.ElapsedMs <= TimeoutMs, mun.Line());
+            Assert.False(result.TryGetProperty("searched_hours", out _));
+            Assert.DoesNotContain("partial", Note(result));
+            Assert.Equal(38.61, result.GetProperty("window_hours").GetDouble());
+            Assert.NotEmpty(Sites(result));
+            Assert.All(Sites(result), s => Assert.Equal("EastCrater", s.GetProperty("biome").GetString()));
+            // land reaches the first site with a 0.1 m/s correction, so there is no plane change to look for.
+            Assert.Contains("least any approach could cost", result.GetProperty("plane_change_note").GetString());
+        }
+
+        [Fact]
+        public void The_default_calls_own_work_is_small_beside_the_games()
+        {
+            // The search's own work runs on the tool's thread while the game serves the reads. Measured at about 120 ms in a Debug
+            // build; Mono in the game is 2 to 3 times slower, so the budget leaves the timeout to the game's reads.
+            Timing.Within(500, () => _tools.Run("find_landing_site", "{\"body\":\"Mun\",\"biome\":\"East Crater\"}", Snapshot(), Mun()));
         }
 
         [Theory]
         [MemberData(nameof(F623Calls))]
-        public void Profile(string input)
+        public void Every_call_f623_made_answers_inside_the_tool_timeout_and_agrees_with_land(string input)
         {
             var mun = Mun();
-            var watch = Stopwatch.StartNew();
-            var outcome = _tools.Run("find_landing_site", input, Snapshot(), mun);
-            _out.WriteLine(input + ": " + watch.Elapsed.TotalMilliseconds.ToString("0") + " ms CPU, " + mun.Line());
-            _out.WriteLine(string.Join(" ", mun.Asks.GroupBy(a => a).Select(g => g.Key + "x" + g.Count())));
-            _out.WriteLine(outcome.Json.Length > 1500 ? outcome.Json.Substring(0, 1500) : outcome.Json);
+            var result = Run(input, mun);
+            Assert.True(mun.ElapsedMs <= TimeoutMs, mun.Line());
+            // land's block call for the biome, with the same limits and window: the same search, run to the end.
+            var land = BlockCalls.LandingSite(LandAsk(input), Snapshot(), Mun());
+            _out.WriteLine("land: " + land["error"]);
+            Assert.DoesNotContain("partial", Note(result));
+            if (Sites(result).Count == 0)
+            {
+                Assert.StartsWith("no site in the East Crater biome", (string)land["error"]);
+                Assert.Contains("land given this biome and these limits and window searches the same ground-track points, so it finds none either", Note(result));
+                return;
+            }
+            Assert.Equal("", land["error"]);
+            Assert.Equal(Sites(result)[0].GetProperty("latitude").GetDouble(), (double)land["lat"], 3);
+            Assert.Equal(Sites(result)[0].GetProperty("longitude").GetDouble(), (double)land["lng"], 3);
+        }
+
+        [Fact]
+        public void A_46_h_window_in_daylight_under_10_degrees_gives_the_east_crater_site_land_flies()
+        {
+            // What Claudia gave land on f623 (land found 1.153, 79.031, slope 5.3, at 723 m/s against 725 predicted).
+            var input = "{\"body\":\"Mun\",\"biome\":\"East Crater\",\"daylight\":true,\"max_slope_deg\":10,\"within_hours\":46}";
+            var mun = Mun();
+            var result = Run(input, mun);
+            Assert.True(mun.ElapsedMs <= TimeoutMs, mun.Line());
+            var site = Sites(result)[0];
+            Assert.Equal("EastCrater", site.GetProperty("biome").GetString());
+            Assert.InRange(site.GetProperty("slope_deg").GetDouble(), 0, 10);
+            Assert.True(site.GetProperty("sun_elevation_deg").GetDouble() > LandingSiteSearch.MinSunElevationDeg);
+            Assert.InRange(site.GetProperty("landing_ut").GetDouble() - Now, 0, 46 * 3600);
+            var land = BlockCalls.LandingSite(LandAsk(input), Snapshot(), Mun());
+            Assert.Equal("", land["error"]);
+            Assert.Equal(site.GetProperty("latitude").GetDouble(), (double)land["lat"], 3);
+            Assert.Equal(site.GetProperty("longitude").GetDouble(), (double)land["lng"], 3);
+            Assert.Equal(site.GetProperty("predicted_dv").GetDouble(), (double)land["predicted_dv"], 0);
+        }
+
+        [Fact]
+        public void A_slow_game_gets_a_partial_answer_saying_how_far_the_track_was_searched_not_an_error()
+        {
+            // 10 frames a second: the reads take four times as long, so the search stops at its deadline and says how far it got.
+            var mun = Mun();
+            mun.FrameMs = 100;
+            var result = Run("{\"body\":\"Mun\",\"biome\":\"East Crater\",\"within_hours\":48,\"max_slope_deg\":10}", mun);
+            Assert.True(mun.ElapsedMs <= TimeoutMs, mun.Line());
+            var searched = result.GetProperty("searched_hours").GetDouble();
+            Assert.InRange(searched, 0.1, result.GetProperty("window_hours").GetDouble() - 0.1);
+            Assert.StartsWith("partial: out of time (3.5 s): the ground track was searched for the first ", Note(result));
+            Assert.EndsWith("no site met the limits there; land given this biome and these limits and window searches the whole window, so it may still find a site later in it", Note(result));
+            Assert.All(Sites(result), s => Assert.InRange(s.GetProperty("pass_ut").GetDouble() - Now, 0, searched * 3600));
+        }
+
+        [Fact]
+        public void Lands_block_call_searches_the_whole_window_however_slow_the_game()
+        {
+            // On the main thread kOS waits for it; it flies what the whole window gives, so it has no deadline.
+            var input = "{\"body\":\"Mun\",\"biome\":\"East Crater\",\"within_hours\":48,\"max_slope_deg\":10}";
+            var slow = Mun();
+            slow.FrameMs = 100;
+            var land = BlockCalls.LandingSite(LandAsk(input), Snapshot(), slow);
+            var fast = BlockCalls.LandingSite(LandAsk(input), Snapshot(), Mun());
+            Assert.Equal("", land["error"]);
+            Assert.Equal(fast["lat"], land["lat"]);
+            Assert.Equal(fast["lng"], land["lng"]);
+            Assert.True(slow.ElapsedMs > TimeoutMs, slow.Line());
         }
     }
 }

@@ -183,9 +183,10 @@ namespace ClaudiaKermin.Core.Tools
                 ? "the " + LandingSiteSearch.Count(found.Tried) + " track points nearest near, of " + LandingSiteSearch.Count(found.Near) + " within 15 degrees of it, were tried"
                 : "the ground track was searched for the first " + found.SearchedHours.ToString("0.#", CultureInfo.InvariantCulture) + " h of the "
                     + found.WindowHours.ToString("0.##", CultureInfo.InvariantCulture) + " h window";
-            var sites = found.Sites.Count == 0 ? "no site met the limits there" : "the sites are those found there, soonest first";
+            var sites = found.Sites.Count == 0 ? "no site met the limits there" : "the sites are those found there";
             return "partial: out of time (" + (ToolBudgetMs / 1000).ToString("0.#", CultureInfo.InvariantCulture) + " s): " + how + ", and " + sites
-                + "; land given this biome and these limits and window searches the whole window, so it takes the first of these sites or may still find one later";
+                + "; land given this biome and these limits and window searches the whole window"
+                + (found.Sites.Count == 0 ? ", so it may still find a site later in it" : " and takes the first site it finds, the first here");
         }
 
         /// <summary>
