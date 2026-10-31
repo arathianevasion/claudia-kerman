@@ -469,6 +469,83 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void AStepOfOnlyRefusedRepeatsMakesTheNextRequestTheLastWithToolChoiceNone()
+        {
+            // The Mission Plan is accepted first: a turn still owed one gets a step for propose_mission_plan before the stop.
+            var transport = new StreamingFakeTransport(
+                ToolUseStreams.ToolUse("a", ("fake", "{\"n\":1}")),
+                Propose("p", ProposedPlan("Link check")),
+                ToolUseStreams.ToolUse("b", ("fake", "{\"n\":1}")),
+                Kind("mission_plan"));
+            var mission = Control(transport, With(new TestTool()));
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            Assert.Equal(4, transport.Requests.Count);
+            Assert.Equal("{\"type\":\"auto\"}", Body(transport.Requests[2]).GetProperty("tool_choice").GetRawText());
+            Assert.Equal("{\"type\":\"none\"}", Body(transport.Requests[3]).GetProperty("tool_choice").GetRawText());
+            Assert.Equal(ToolsJson(transport.Requests[0]), ToolsJson(transport.Requests[3]));
+            Assert.Equal(Body(transport.Requests[0]).GetProperty("system").GetRawText(), Body(transport.Requests[3]).GetProperty("system").GetRawText());
+            Assert.StartsWith("you already called this in step 1; its result is above. ", ErrorOf(Results(transport.Requests[3]).Last()));
+            Assert.Contains("tool_loop_repeat_stop", Events(mission));
+            Assert.DoesNotContain("tool_limit_final", Events(mission));
+        }
+
+        [Fact]
+        public void ARepeatOnlyStepOnATurnStillOwedAMissionPlanKeepsToolChoiceAutoForTheProposalThenStopsOnASecond()
+        {
+            var transport = new StreamingFakeTransport(
+                ToolUseStreams.ToolUse("a", ("fake", "{\"n\":1}")),
+                ToolUseStreams.ToolUse("b", ("fake", "{\"n\":1}")),
+                Propose("p", ProposedPlan("Link check")),
+                Kind("mission_plan"));
+            var mission = Control(transport, With(new TestTool()));
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+
+            Assert.Equal("{\"type\":\"auto\"}", Body(transport.Requests[2]).GetProperty("tool_choice").GetRawText());
+            Assert.Equal("you already called this in step 1; its result is above. Your next call must be propose_mission_plan: no other tool will be answered", ErrorOf(Assert.Single(Results(transport.Requests[2]))));
+            Assert.Equal(ProposedPlans.AcceptedJson, Assert.Single(Results(transport.Requests[3])).GetProperty("content").GetString());
+            Assert.Equal(new[] { "Link check" }, mission.View.PlanSequences);
+            Assert.DoesNotContain("tool_loop_repeat_stop", Events(mission));
+        }
+
+        [Fact]
+        public void ASecondRepeatOnlyStepOnATurnStillOwedAMissionPlanMakesTheNextRequestTheLast()
+        {
+            var transport = new StreamingFakeTransport(
+                ToolUseStreams.ToolUse("a", ("fake", "{\"n\":1}")),
+                ToolUseStreams.ToolUse("b", ("fake", "{\"n\":1}")),
+                ToolUseStreams.ToolUse("c", ("fake", "{\"n\":1}")),
+                Fixture("mission-plan.sse"));
+            var mission = Control(transport, With(new TestTool()));
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            Assert.Equal(4, transport.Requests.Count);
+
+            Assert.Equal("{\"type\":\"auto\"}", Body(transport.Requests[2]).GetProperty("tool_choice").GetRawText());
+            Assert.Equal("{\"type\":\"none\"}", Body(transport.Requests[3]).GetProperty("tool_choice").GetRawText());
+            Assert.Contains("Your next reply is the last of this turn", ErrorOf(Assert.Single(Results(transport.Requests[3]))));
+            Assert.Contains("tool_loop_repeat_stop", Events(mission));
+        }
+
+        [Fact]
+        public void AStepWithOneAnsweredCallBesideARepeatDoesNotEndTheLoop()
+        {
+            var transport = new StreamingFakeTransport(
+                ToolUseStreams.ToolUse("a", ("fake", "{\"n\":1}")),
+                ToolUseStreams.ToolUse("b", ("fake", "{\"n\":1}"), ("fake", "{\"n\":2}")),
+                Fixture("mission-plan.sse"));
+            var mission = Control(transport, With(new TestTool()));
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            Assert.Equal("{\"type\":\"auto\"}", Body(transport.Requests[2]).GetProperty("tool_choice").GetRawText());
+            Assert.Equal("you already called this in step 1; its result is above", ErrorOf(Results(transport.Requests[2])[0]));
+            Assert.DoesNotContain("tool_loop_repeat_stop", Events(mission));
+        }
+
+        [Fact]
         public void AReplyThatStillCallsToolsOnTheToollessRequestFailsTheTurnAndRetrySendsItFromScratch()
         {
             var transport = new StreamingFakeTransport();

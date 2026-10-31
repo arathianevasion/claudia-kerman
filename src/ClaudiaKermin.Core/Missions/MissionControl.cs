@@ -206,6 +206,10 @@ namespace ClaudiaKermin.Core.Missions
             public TurnStats Stats = new TurnStats();
             /// <summary>The step limit is reached and the turn's request goes with tool_choice none (#509): a reply that still calls tools fails the turn.</summary>
             public bool ToolLimitSent;
+            /// <summary>The last tool step was only refused repeats (#571): the next request is the last, as at the step limit.</summary>
+            public bool RepeatStop;
+            /// <summary>The last tool step was only refused repeats on a turn still owed a Mission Plan (#571): the next step may call propose_mission_plan alone.</summary>
+            public bool PlanOnly;
             /// <summary>The Game Snapshot taken for the turn when its messages were built: what its tools calculate from.</summary>
             public GameSnapshot ToolSnapshot;
             /// <summary>
@@ -1075,6 +1079,8 @@ namespace ClaudiaKermin.Core.Missions
             turn.Cancel = null;
             turn.ToolSteps = 0;
             turn.ToolLimitSent = false;
+            turn.RepeatStop = false;
+            turn.PlanOnly = false;
             turn.ToolSnapshot = null;
             RecordUnanswered(mission, turn);
         }

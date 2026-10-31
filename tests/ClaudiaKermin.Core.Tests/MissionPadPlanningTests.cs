@@ -298,6 +298,28 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void AStepOfOnlyCallsWhoseFiguresAreInTheRequestDoesNotCountAsRepeatsAndEndsNothing()
+        {
+            // #571 with #575: a refusal for figures already in the request is not an identical repeat, so it never stops the loop
+            // or turns the next step plan-only, even when the same call comes twice running.
+            var transport = new StreamingFakeTransport(
+                ToolUseStreams.ToolUse("a", ("stage_performance", "{ \"situation\": \"vacuum\" }")),
+                ToolUseStreams.ToolUse("b", ("stage_performance", "{ \"situation\": \"vacuum\" }")),
+                Plan());
+            var mission = Control(transport, Snapshot("mun-shot-v2-kerbin-orbit.json"));
+            Plan(mission);
+
+            Assert.Equal(3, transport.Requests.Count);
+            foreach (var step in new[] { 1, 2 })
+            {
+                Assert.Equal("its figures are in the Mission request above", ErrorOf(Assert.Single(Results(transport.Requests[step]))));
+                Assert.Equal("{\"type\":\"auto\"}", Body(transport.Requests[step]).GetProperty("tool_choice").GetRawText());
+            }
+            Assert.Empty(Events(mission, "tool_loop_repeat_stop"));
+            Assert.EndsWith("0 repeats)", Events(mission, "tool_refused").Last().GetProperty("text").GetString());
+        }
+
+        [Fact]
         public void OnThePadTheThreeOrbitToolsAreRefusedWithWhyAndWhatToUse()
         {
             var transport = new StreamingFakeTransport(
