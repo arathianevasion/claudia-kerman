@@ -286,10 +286,12 @@ namespace ClaudiaKermin.Core.Missions
             // ---- Spending (state #42 snapshots: SpendingCap, Spent, Held) ----
             /// <summary>Cost so far from real usage.</summary>
             public decimal Spent;
-            /// <summary>Worst-case charges kept for cancelled and lost requests; never refunded.</summary>
+            /// <summary>Input costs kept for cancelled and lost requests (a request that got no reply at all can't have billed output; one that returned anything is paid at its usage instead).</summary>
             public decimal Held;
             /// <summary>The worst case of the request in flight; replaced by its real usage.</summary>
             public decimal PendingCharge;
+            /// <summary>The input part of <see cref="PendingCharge"/>: all the request holds if it is cancelled or lost with no reply at all.</summary>
+            public decimal PendingInput;
             public bool Warned;
             /// <summary>Paused because of the Spending Cap, so Raise cap resumes it.</summary>
             public bool PausedForCap;
@@ -998,8 +1000,9 @@ namespace ClaudiaKermin.Core.Missions
 
             // Recorded before sending; replaced by the real usage, or kept if the request is cancelled or lost.
             mission.PendingCharge = worstCase;
+            mission.PendingInput = RequestCharge.InputCost(_config.Prices, mission.Model, request, worstCase);
             mission.Requests++;
-            LogCost(mission, "pending", worstCase, "");
+            LogCost(mission, "pending", worstCase, "", mission.PendingInput);
             mission.InFlight = true;
             mission.Activity = Thinking(turn);
             turn.Stats.Sent();
@@ -1837,8 +1840,9 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>Settles the request's pending charge by <see cref="RequestCharge.Settle"/>, the rules the Craft Check shares.</summary>
         private void Settle(Mission mission, Turn turn, StreamResult result)
         {
-            var settlement = RequestCharge.Settle(_config.Prices, mission.PendingCharge, result, mission.Model);
+            var settlement = RequestCharge.Settle(_config.Prices, mission.PendingCharge, result, mission.Model, mission.PendingInput);
             mission.PendingCharge = 0m;
+            mission.PendingInput = 0m;
             mission.Settled = settlement.Amount;
             mission.Spent += settlement.Spent;
             mission.Held += settlement.Held;
@@ -1920,12 +1924,12 @@ namespace ClaudiaKermin.Core.Missions
             CarryOnIfCapCovers(mission);
         }
 
-        private void LogCost(Mission mission, string kind, decimal amount, string outcome)
+        private void LogCost(Mission mission, string kind, decimal amount, string outcome, decimal? input = null)
         {
             try
             {
                 MissionFolder.AppendCostEvent(mission.Folder, kind, mission.Requests, mission.Model, amount, outcome,
-                    mission.Spent, mission.Held, mission.SpendingCap);
+                    mission.Spent, mission.Held, mission.SpendingCap, input);
             }
             catch (Exception e) when (IsFileError(e))
             {
@@ -2007,6 +2011,7 @@ namespace ClaudiaKermin.Core.Missions
                 view.Remote = mission.Remote;
                 view.AutoMode = mission.AutoMode;
                 view.AutoModeStop = AutoModeStopLine(mission);
+                view.CapRoomStop = view.AutoModeStop.Length > 0 && view.AutoModeStop == mission.AutoModeRoomStop ? view.AutoModeStop : "";
                 view.EvaScience = mission.EvaScience;
                 view.ConfirmPrompt = mission.ConfirmPrompt;
                 view.CapWait = mission.CapWaitText;

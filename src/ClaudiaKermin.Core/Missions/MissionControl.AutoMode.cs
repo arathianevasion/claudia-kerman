@@ -33,6 +33,8 @@ namespace ClaudiaKermin.Core.Missions
             public bool AutoModeReplanned;
             /// <summary>Why Auto Mode is waiting for the player on the plan in hand ("" when it isn't); see <see cref="AutoModeStopLine"/> (not saved).</summary>
             public string AutoModeStop = "";
+            /// <summary>The no-room stop line the last failed room check built, with the amounts it was built from (not saved).</summary>
+            public string AutoModeRoomStop = "";
             /// <summary>The stop line last written to the log, so a wait that lasts through many inputs is logged once (not saved).</summary>
             public string AutoModeStopLogged = "";
         }
@@ -225,7 +227,7 @@ namespace ClaudiaKermin.Core.Missions
                 case AdvanceWait.ManualStretch: mission.AutoModeStop = AutoModeWaitsFor("a Manual stretch"); break;
                 case AdvanceWait.DueTime: mission.AutoModeStop = AutoModeWaitsFor("a Due Time"); break;
                 case AdvanceWait.ScriptFailedAgain: mission.AutoModeStop = AutoModeWaitsFor("the script failed again after a re-plan"); break;
-                case AdvanceWait.NoRoom: mission.AutoModeStop = AutoModeNoRoomStop; break;
+                case AdvanceWait.NoRoom: mission.AutoModeStop = mission.AutoModeRoomStop; break;
             }
         }
 
@@ -241,6 +243,7 @@ namespace ClaudiaKermin.Core.Missions
             var worst = AutoModeReserve(mission);
             if (starts != null) worst += RequestCharge.WorstCase(_config.Prices, mission.Model, BuildRequest(mission, starts));
             if (mission.Committed + worst <= mission.SpendingCap) return true;
+            mission.AutoModeRoomStop = NoRoomStop(mission, worst);
             if (mission.AutoModeHeldFor != inHand)
             {
                 mission.AutoModeHeldFor = inHand;
@@ -288,8 +291,17 @@ namespace ClaudiaKermin.Core.Missions
             _planNews = null;
         }
 
-        /// <summary>Auto Mode stopped because the Spending Cap has no room for the Debrief and next plan request after the plan.</summary>
-        private const string AutoModeNoRoomStop = "Auto Mode stopped: the Spending Cap has no room for this plan's Debrief and the next plan. Approve it yourself or raise the cap.";
+        /// <summary>
+        /// Auto Mode stopped because the Spending Cap has no room for the Debrief and next plan request after the plan: what
+        /// is spent, what is held, the reserve for those requests' worst case, and the cap that would let it carry on (to the cent).
+        /// </summary>
+        private static string NoRoomStop(Mission mission, decimal reserve)
+        {
+            var needed = System.Math.Ceiling((mission.Committed + reserve) * 100m) / 100m;
+            return "Auto Mode stopped: the Spending Cap has no room for this plan's Debrief and the next plan. Spent $" + Dollars(mission.Spent)
+                + ", held $" + Dollars(mission.Held + mission.CompactionCharge) + ", reserve $" + Dollars(reserve)
+                + " for those two requests' worst case: Raise cap to $" + Dollars(needed) + " to carry on, or approve the plan yourself.";
+        }
         /// <summary>Logged after a plan's card when Auto Mode approves it.</summary>
         private const string AutoModeApprovedNote = "Approved by Auto Mode.";
         /// <summary>Logged after the "Couldn't produce a safe script" card when Auto Mode re-plans it.</summary>

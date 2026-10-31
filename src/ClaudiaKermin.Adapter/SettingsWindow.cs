@@ -297,6 +297,7 @@ namespace ClaudiaKermin.Adapter
             }
             GUILayout.Label("Spending Cap", _label);
             if (during) GUILayout.Label("$" + Dollars(_view.Spent + _view.HeldCharges) + " spent so far", ClaudiaSkin.Secondary);
+            if (during && _view.CapRoomStop.Length > 0) GUILayout.Label(_view.CapRoomStop, ClaudiaSkin.Secondary);
             // Judged before the field: typing changes _cap mid-event, and the label below mustn't appear or vanish within one frame's layout.
             var error = CapError();
             GUILayout.BeginHorizontal();

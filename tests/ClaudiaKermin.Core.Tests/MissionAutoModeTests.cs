@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -344,7 +345,16 @@ namespace ClaudiaKermin.Core.Tests
 
         // ---- Stops, hand-backs and attention (#330) ----
 
-        private const string NoRoomStop = "Auto Mode stopped: the Spending Cap has no room for this plan's Debrief and the next plan. Approve it yourself or raise the cap.";
+        /// <summary>The room stop, spelled out from the view's Spent and Held and the reserve the cost log's blocked line recorded; the cap is rounded up to the cent.</summary>
+        private string NoRoomStop(MissionControl mission)
+        {
+            var reserve = CostLines(mission).Last(l => l.GetProperty("event").GetString() == "blocked").GetProperty("amount").GetDecimal();
+            var needed = Math.Ceiling((mission.View.Spent + mission.View.HeldCharges + reserve) * 100m) / 100m;
+            return "Auto Mode stopped: the Spending Cap has no room for this plan's Debrief and the next plan. Spent $"
+                + mission.View.Spent.ToString("0.00", CultureInfo.InvariantCulture) + ", held $" + mission.View.HeldCharges.ToString("0.00", CultureInfo.InvariantCulture)
+                + ", reserve $" + reserve.ToString("0.00", CultureInfo.InvariantCulture) + " for those two requests' worst case: Raise cap to $"
+                + needed.ToString("0.00", CultureInfo.InvariantCulture) + " to carry on, or approve the plan yourself.";
+        }
 
         [Fact]
         public void ARoomCheckFailureStopsWithTheMessageInTheLogAndTheViewAndCallsThePlayerWithItAndAutoModeStaysTicked()
@@ -360,12 +370,12 @@ namespace ClaudiaKermin.Core.Tests
 
             Assert.Contains(QuickReply.Approve, mission.View.QuickReplies);
             Assert.True(mission.View.AutoMode);
-            Assert.Equal(NoRoomStop, mission.View.AutoModeStop);
+            Assert.Equal(NoRoomStop(mission), mission.View.AutoModeStop);
             mission.Send(new UtAdvanced(1300));
-            Assert.Single(mission.View.Log, e => e.Text == NoRoomStop && e.Kind == LogKind.Notice);
+            Assert.Single(mission.View.Log, e => e.Text == NoRoomStop(mission) && e.Kind == LogKind.Notice);
             var alert = watch.Observe(mission.View);
             Assert.Equal(AttentionKind.Approval, alert.Kind);
-            Assert.Equal(NoRoomStop, alert.Text);
+            Assert.Equal(NoRoomStop(mission), alert.Text);
             Assert.Null(watch.Observe(mission.View));
         }
 
@@ -377,7 +387,7 @@ namespace ClaudiaKermin.Core.Tests
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval && !v.Busy);
-            Assert.Equal(NoRoomStop, mission.View.AutoModeStop);
+            Assert.Equal(NoRoomStop(mission), mission.View.AutoModeStop);
             var blocked = CostLines(mission).Single(l => l.GetProperty("event").GetString() == "blocked");
 
             mission.Send(new RaiseCap(mission.View.Spent + mission.View.HeldCharges + blocked.GetProperty("amount").GetDecimal()));
