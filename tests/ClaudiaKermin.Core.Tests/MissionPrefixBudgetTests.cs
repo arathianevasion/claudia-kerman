@@ -30,6 +30,14 @@ namespace ClaudiaKermin.Core.Tests
         /// <summary>About 5% above today's figure (1.05 x 20,452 = 21,475), rounded up to the next hundred.</summary>
         private const int BudgetTokens = 21500;
 
+        // The first Mission request's messages for a Mun goal from Kerbin orbit (same estimate): 5,096 tokens before #575, plus 321 for the
+        // plan_transfer row and its lead line = 5,417. The row replaces a tool step, a whole request of about $0.22 in b5f3, 3dc5 and
+        // 6be2, for about $0.001 of cache write (and a cache read on each later request).
+        private const int FirstTurnEstimate = 5417;
+
+        /// <summary>About 5% above the first turn's figure (1.05 x 5,417 = 5,688), rounded up to the next hundred.</summary>
+        private const int FirstTurnBudgetTokens = 5700;
+
         private readonly Background _background = new Background(e => throw new Exception("background error", e));
         private readonly TempDir _save = new TempDir();
 
@@ -64,6 +72,41 @@ namespace ClaudiaKermin.Core.Tests
         private static int EstimatedTokens(string json)
         {
             return (json.Length + 2) / 3;
+        }
+
+        /// <summary>The first Mission request for a Mun goal from Kerbin orbit, whose messages carry the stage table and the plan_transfer row.</summary>
+        private string FirstMunRequestBody()
+        {
+            var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-priced.sse"));
+            var client = new ClaudeClient(new CraftCheckRouter(transport), () => "sk-ant-test", l => { });
+            client.Timing.Wait = (d, c) => { };
+            var mission = new MissionControl(client, _background, new PlayerConfig(), () => true, new PassingScriptCheck());
+            mission.Send(new SaveLoaded(_save.Path));
+            mission.Send(new SceneChanged(GameScene.Flight));
+            var snapshot = GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "mun-shot-v2-kerbin-orbit.json")));
+            CraftCheckRouter.StartChecked(mission, _background, snapshot, new StartMission("Land on the Mun and return to Kerbin.", 10m, "claude-sonnet-5-5"));
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (transport.Requests.Count == 0 && DateTime.UtcNow < deadline)
+            {
+                _background.Drain();
+                Thread.Sleep(2);
+            }
+            _background.Drain();
+            Assert.NotEmpty(transport.Requests);
+            return transport.Requests[0].Body;
+        }
+
+        [Fact]
+        public void TheMessagesOfTheFirstMissionRequestStayUnderTheBudget()
+        {
+            using (var body = JsonDocument.Parse(FirstMunRequestBody()))
+            {
+                var messages = body.RootElement.GetProperty("messages").GetRawText();
+                var estimate = EstimatedTokens(messages);
+                Assert.True(estimate <= FirstTurnBudgetTokens,
+                    "The first Mission request's messages are now " + estimate + " tokens (estimated), over the budget of " + FirstTurnBudgetTokens
+                    + " (" + FirstTurnEstimate + " when the budget was set): raise it only as a deliberate change, with the cost reason in the PR.");
+            }
         }
 
         [Fact]

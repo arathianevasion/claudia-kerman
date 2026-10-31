@@ -25,6 +25,9 @@ namespace ClaudiaKermin.Core.Tests
         private const string Goal = "Land on the Mun, then return to Kerbin.";
         private const string Sonnet = "claude-sonnet-5-5";
         private const string Vacuum = "{\"situation\":\"vacuum\"}";
+        /// <summary>A stage_performance input that is no row of the stage table, so a repeat of it is a repeat and not a figure already sent.</summary>
+        private const string MunVacuum = "{\"situation\":\"vacuum\",\"body\":\"Mun\"}";
+        private const string MunTransfer = "{\"target\":\"Mun\",\"target_pe\":30000}";
         private readonly Background _background = new Background(e => throw new Exception("background error", e));
         private readonly TempDir _save = new TempDir();
 
@@ -248,13 +251,57 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(golden, Body(transport.Requests[0]).GetProperty("tools").GetRawText());
         }
 
+        // #575: plan_transfer's answer for each body the Mission Goal names rides after the stage table.
+        [Fact]
+        public void AGoalNamingTheMunGetsAPlanTransferRowForTheMunAndAGoalNamingNoBodyGetsNone()
+        {
+            var orbit = Snapshot("mun-shot-v2-kerbin-orbit.json");
+            var transport = new StreamingFakeTransport(Plan());
+            var mission = Control(transport, orbit);
+            Plan(mission);
+
+            var text = Text(transport.Requests[0]);
+            var expected = PlanningTools.Default().Run("plan_transfer", MunTransfer, orbit, null);
+            Assert.False(expected.IsError, expected.Json);
+            Assert.Contains("plan_transfer " + MunTransfer + ": " + expected.Json, text);
+            Assert.Contains("A tool whose figures are here needs no call", text.Substring(text.IndexOf("Transfers to each body", StringComparison.Ordinal)));
+            Assert.True(text.IndexOf("plan_transfer " + MunTransfer, StringComparison.Ordinal) > text.IndexOf("Stage table", StringComparison.Ordinal));
+            Assert.DoesNotContain("plan_transfer {\"target\":\"Minmus\"", text);
+
+            var noBody = new StreamingFakeTransport(Plan());
+            var other = Control(noBody, Snapshot("mun-shot-v2-kerbin-orbit.json"));
+            other.Send(new StartMission("Prove the kOS link.", 25m, Sonnet));
+            DrainUntil(other, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            Assert.DoesNotContain("plan_transfer {", Text(noBody.Requests[0]));
+        }
+
         // ---- Refusals ----
+
+        [Fact]
+        public void AStagePerformanceOrPlanTransferCallWhoseInputIsARowOfTheMissionRequestIsRefusedAndOneForAnotherBodyRuns()
+        {
+            var transport = new StreamingFakeTransport(
+                ToolUseStreams.ToolUse("rows", ("stage_performance", "{ \"situation\": \"vacuum\" }"), ("plan_transfer", "{\"target_pe\":30000,\"target\":\"Mun\"}"),
+                    ("stage_performance", MunVacuum), ("plan_transfer", "{\"target\":\"Minmus\",\"target_pe\":30000}")),
+                Plan());
+            var mission = Control(transport, Snapshot("mun-shot-v2-kerbin-orbit.json"));
+            Plan(mission);
+
+            var results = Results(transport.Requests[1]);
+            Assert.Equal("its figures are in the Mission request above", ErrorOf(results[0]));
+            Assert.Equal("its figures are in the Mission request above", ErrorOf(results[1]));
+            Assert.False(IsError(results[2]));
+            Assert.False(IsError(results[3]));
+            var refused = Events(mission, "tool_refused").Select(e => e.GetProperty("text").GetString()).ToList();
+            Assert.Equal(2, refused.Count);
+            Assert.EndsWith("(this turn: 2 refused, 0 repeats)", refused[1]);
+        }
 
         [Fact]
         public void OnThePadTheThreeOrbitToolsAreRefusedWithWhyAndWhatToUse()
         {
             var transport = new StreamingFakeTransport(
-                ToolUseStreams.ToolUse("pad", ("predict_burn", "{}"), ("solve_burn", "{}"), ("find_landing_site", "{\"body\":\"Mun\"}"), ("stage_performance", Vacuum)),
+                ToolUseStreams.ToolUse("pad", ("predict_burn", "{}"), ("solve_burn", "{}"), ("find_landing_site", "{\"body\":\"Mun\"}"), ("stage_performance", MunVacuum)),
                 Plan());
             var mission = Control(transport);
             Plan(mission);
@@ -291,10 +338,10 @@ namespace ClaudiaKermin.Core.Tests
         public void AnIdenticalRepeatInTheSameTurnIsRefusedAndADifferentInputStillRuns()
         {
             var transport = new StreamingFakeTransport(
-                ToolUseStreams.ToolUse("a", ("stage_performance", Vacuum)),
+                ToolUseStreams.ToolUse("a", ("stage_performance", MunVacuum)),
                 // The same call with its keys in another order and spaced out, a different input, and a second copy in one reply.
-                ToolUseStreams.ToolUse("b", ("stage_performance", "{ \"situation\": \"vacuum\" }"), ("stage_performance", "{\"situation\":\"vacuum\",\"body\":\"Mun\"}"),
-                    ("stage_performance", "{\"body\":\"Mun\",\"situation\":\"vacuum\"}")),
+                ToolUseStreams.ToolUse("b", ("stage_performance", "{ \"body\": \"Mun\", \"situation\": \"vacuum\" }"), ("stage_performance", "{\"situation\":\"vacuum\",\"body\":\"Minmus\"}"),
+                    ("stage_performance", "{\"body\":\"Minmus\",\"situation\":\"vacuum\"}")),
                 Plan());
             var mission = Control(transport);
             Plan(mission);
@@ -314,8 +361,8 @@ namespace ClaudiaKermin.Core.Tests
                 ToolUseStreams.ToolUse("a", ("stage_performance", "{\"situation\":\"surface\"}"), ("stage_performance", "{\"situation\":\"vacuum\",\"body\":\"Mun\"}"),
                     ("stage_performance", "{\"situation\":\"vacuum\",\"body\":\"Minmus\"}"), ("stage_performance", "{\"situation\":\"surface\",\"body\":\"Mun\"}"),
                     ("stage_performance", "{\"situation\":\"surface\",\"body\":\"Minmus\"}"), ("stage_performance", "{\"situation\":\"vacuum\",\"body\":\"Sun\"}"),
-                    ("stage_performance", Vacuum)),
-                ToolUseStreams.ToolUse("b", ("stage_performance", Vacuum)),
+                    ("stage_performance", "{\"body\":\"Kerbin\",\"situation\":\"vacuum\"}")),
+                ToolUseStreams.ToolUse("b", ("stage_performance", "{\"body\":\"Kerbin\",\"situation\":\"vacuum\"}")),
                 Plan());
             var mission = Control(transport);
             Plan(mission);
@@ -328,8 +375,8 @@ namespace ClaudiaKermin.Core.Tests
         public void RefusalsAreLoggedAsToolRefusedEventsWithTheTurnsCounts()
         {
             var transport = new StreamingFakeTransport(
-                ToolUseStreams.ToolUse("a", ("stage_performance", Vacuum), ("predict_burn", "{}")),
-                ToolUseStreams.ToolUse("b", ("stage_performance", Vacuum), ("check_script", "{\"script\":\"print 1.\"}")),
+                ToolUseStreams.ToolUse("a", ("stage_performance", MunVacuum), ("predict_burn", "{}")),
+                ToolUseStreams.ToolUse("b", ("stage_performance", MunVacuum), ("check_script", "{\"script\":\"print 1.\"}")),
                 Plan());
             var mission = Control(transport);
             Plan(mission);
@@ -338,7 +385,7 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(3, refused.Count);
             Assert.StartsWith("predict_burn {} -> the craft is on the launch pad", refused[0]);
             Assert.EndsWith("(this turn: 1 refused, 0 repeats)", refused[0]);
-            Assert.StartsWith("stage_performance {\"situation\":\"vacuum\"} -> you already called this in step 1", refused[1]);
+            Assert.StartsWith("stage_performance " + MunVacuum + " -> you already called this in step 1", refused[1]);
             Assert.EndsWith("(this turn: 1 refused, 1 repeat)", refused[1]);
             Assert.StartsWith("check_script ", refused[2]);
             Assert.EndsWith("(this turn: 2 refused, 1 repeat)", refused[2]);

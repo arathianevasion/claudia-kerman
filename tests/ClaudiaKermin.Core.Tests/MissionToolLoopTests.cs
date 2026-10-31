@@ -27,7 +27,8 @@ namespace ClaudiaKermin.Core.Tests
     {
         private const string Goal = "Prove the kOS link from the launch pad.";
         private const string Sonnet = "claude-sonnet-5-5";
-        private const string Vacuum = "{\"situation\":\"vacuum\"}";
+        /// <summary>A vacuum call that is no row of the Mission request's stage table (#575), which would be refused.</summary>
+        private const string Vacuum = "{\"body\":\"Kerbin\",\"situation\":\"vacuum\"}";
         private const string CutOffNote = "Your last attempt ran out of room while thinking. Decide with what you have and keep your reasoning short.";
         private readonly Background _background = new Background(e => throw new Exception("background error", e));
         private readonly TempDir _save = new TempDir();
@@ -374,7 +375,7 @@ namespace ClaudiaKermin.Core.Tests
             // Claude's tool_use turn goes back exactly: its thinking signature and its input as streamed.
             var echoed = Messages(transport.Requests[1])[Messages(transport.Requests[1]).Count - 2];
             Assert.Contains("\"signature\":\"c2lnLXRvb2wta\"", echoed);
-            Assert.Contains("\"input\":{\"situation\":\"vacuum\"}", echoed);
+            Assert.Contains("\"input\":" + Vacuum, echoed);
             var result = Assert.Single(Results(transport.Requests[1]));
             Assert.Equal("toolu_a_0", result.GetProperty("tool_use_id").GetString());
             Assert.False(result.TryGetProperty("is_error", out _));
@@ -412,7 +413,7 @@ namespace ClaudiaKermin.Core.Tests
             var lines = ToolLines(mission);
             Assert.Equal(2, lines.Count);
             Assert.Equal("Planning Tool fake ({}): ok", lines[0].Text);
-            Assert.Equal("Planning Tool stage_performance ({\"situation\":\"vacuum\"}): 1 stage, 3200 m/s in all in vacuum at Kerbin", lines[1].Text);
+            Assert.Equal("Planning Tool stage_performance (" + Vacuum + "): 1 stage, 3200 m/s in all in vacuum at Kerbin", lines[1].Text);
             Assert.Equal(2, Count(Events(mission), "\"tool\""));
         }
 
