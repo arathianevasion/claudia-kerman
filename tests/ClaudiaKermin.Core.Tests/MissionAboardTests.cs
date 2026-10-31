@@ -461,6 +461,45 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void HerDeathInsideATracedBlockNamesTheBlockAndItsLastTracedStateInTheLogAndTheLostDebrief()
+        {
+            var transport = Replies("mission-plan.sse", "mission-sequence-plan.sse");
+            StartScript script;
+            var mission = Running(transport, remote: false, script: out script);
+            var requests = transport.Requests.Count;
+            var run = new KosRun(new List<string>());
+            run.BlockTraced("land", 428272.4, new Dictionary<string, object> { { "phase", "braking" }, { "h", 450.0 }, { "v_h", 201.5 } });
+
+            mission.Send(new ClaudiaKilled("", run.InnermostTraced));
+
+            Assert.Equal(MissionStage.Lost, mission.View.Stage);
+            var debrief = mission.View.Log.Last(e => e.Kind == LogKind.Debrief);
+            Assert.Equal("Final Debrief: Lost", debrief.Title);
+            Assert.Contains("land, last traced at UT 428272.4: phase braking, h 450, v_h 201.5", debrief.Text);
+            Assert.Contains("Mission Goal not met", debrief.Text);
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("land, last traced at UT 428272.4"));
+            // Still the mod's own card: no request to Claude.
+            Assert.Equal(requests, transport.Requests.Count);
+        }
+
+        [Fact]
+        public void HerDeathWithNoTraceReadsAsTheLostDebriefAlwaysDid()
+        {
+            var transport = Replies("mission-plan.sse", "mission-sequence-plan.sse");
+            StartScript script;
+            var mission = Running(transport, remote: false, script: out script);
+            var noTrace = Running(Replies("mission-plan.sse", "mission-sequence-plan.sse"), remote: false, script: out script);
+
+            mission.Send(new ClaudiaKilled());
+            noTrace.Send(new ClaudiaKilled("", null));
+
+            var plain = mission.View.Log.Last(e => e.Kind == LogKind.Debrief);
+            Assert.DoesNotContain("traced", plain.Text);
+            Assert.Equal(plain.Text, noTrace.View.Log.Last(e => e.Kind == LogKind.Debrief).Text);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text != null && e.Text.Contains("traced"));
+        }
+
+        [Fact]
         public void ALateRunEventAfterLostIsIgnored()
         {
             var transport = Replies("mission-plan.sse", "mission-sequence-plan.sse", "mission-debrief.sse");

@@ -359,7 +359,7 @@ namespace ClaudiaKermin.Adapter
         /// <summary>Her death is a game event for the core; only a crewed Mission cares (the core ignores it for a remote one).</summary>
         private void OnKerbalStatusChange(ProtoCrewMember kerbal, ProtoCrewMember.RosterStatus oldStatus, ProtoCrewMember.RosterStatus newStatus)
         {
-            if (newStatus == ProtoCrewMember.RosterStatus.Dead && Roster.RosterGateway.IsClaudia(kerbal)) Send(new ClaudiaKilled(VesselAboard(kerbal)));
+            if (newStatus == ProtoCrewMember.RosterStatus.Dead && Roster.RosterGateway.IsClaudia(kerbal)) Send(new ClaudiaKilled(VesselAboard(kerbal), ScriptRunner.RunningTrace == null ? null : ScriptRunner.RunningTrace()));
         }
 
         /// <summary>The id of the vessel whose crew still holds her, or "" when none does.</summary>
