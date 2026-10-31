@@ -575,15 +575,15 @@ function launch {
     }
   }
 
-  addons:claudia:blocktrace("launch", lexicon("phase", "end", "alt", round(altitude, 1), "t", round(time:seconds - liftoff_ut, 2),
-    "ap", round(ship:apoapsis), "coast_ap", extra:coast_ap, "max_q", round(q_max), "stage", stage:number, "mass", round(ship:mass, 3),
-    "dv_used", round(ctx:dv_used, 1), "failed", reason <> "")).
   set extra:max_q to round(q_max).
   set extra:lan_actual to round(ship:orbit:lan, 2).
   set extra:ap_error to round(ship:apoapsis - target_ap).
   if extra:coast_ap = 0 {
     set extra:coast_ap to round(ship:apoapsis).
   }
+  addons:claudia:blocktrace("launch", lexicon("phase", "end", "alt", round(altitude, 1), "t", round(time:seconds - liftoff_ut, 2),
+    "ap", round(ship:apoapsis), "coast_ap", extra:coast_ap, "max_q", extra:max_q, "stage", stage:number, "mass", round(ship:mass, 3),
+    "dv_used", round(ctx:dv_used, 1), "failed", reason <> "")).
   if reason <> "" {
     claudia_make_safe().
     return claudia_finish(ctx, false, reason, extra).

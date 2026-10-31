@@ -43,6 +43,36 @@ namespace ClaudiaKermin.Core.Tests
 
         // The fields launch traces, and the sim's Track rows, are the same list (#531): alt, pitch, prograde, q, throttle, t, mass, stage, ap, speeds, phase.
         [Fact]
+        public void ALaunchCallWithBracketsInItsOptionsIsReadWhole()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "replay-transcript-" + Guid.NewGuid().ToString("N") + ".json");
+            try
+            {
+                File.WriteAllText(path, "{\"messages\":[{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"input\":{\"script\":"
+                    + "\"launch(lexicon(\\\"turn_shape\\\", min(0.5, 0.6), \\\"target_ap\\\", 80000, \\\"throttle_max_q\\\", \\\"none\\\")).\"}}]}]}");
+                var call = AscentReplay.LaunchCall(path);
+                Assert.Equal("min(0.5, 0.6)", call.Single(p => p.Key == "turn_shape").Value);
+                Assert.Equal("80000", call.Single(p => p.Key == "target_ap").Value);
+                Assert.Equal("none", call.Single(p => p.Key == "throttle_max_q").Value);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void ALogWithTwoLaunchesIsReadFromTheLastAndNotItsCoast()
+        {
+            var lines = File.ReadLines(Fixture("ksp-trace.txt")).ToList();
+            var twice = lines.Where(l => l.Contains("launch trace") && !l.Contains("phase end")).Concat(lines).ToList();
+            var once = AscentReplay.Run(Path.Combine(AppContext.BaseDirectory, "Fixtures", "ascent-replay"), lines);
+            var both = AscentReplay.Run(Path.Combine(AppContext.BaseDirectory, "Fixtures", "ascent-replay"), twice);
+            Assert.Equal(once.Rows.Select(r => r.GamePitch), both.Rows.Select(r => r.GamePitch));
+            Assert.Equal(once.DivergeAltitude, both.DivergeAltitude);
+        }
+
+        [Fact]
         public void TheSimsTrackRowsCarryTheFieldsLaunchTraces()
         {
             Assert.Equal(new[] { "alt", "pitch", "prograde", "q", "throttle", "t", "mass", "stage", "ap", "h_speed", "v_speed", "phase" }, AscentFlight.TrackColumns);

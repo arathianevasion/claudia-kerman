@@ -875,7 +875,8 @@ function claudia_drop_empty {
   local scan_from is time:seconds.
   local scan is claudia_scan_craft(ship:parts, crewed).
   local plan is claudia_scan_plan(scan, auto, wanted, ctx:drop_tried).
-  // launch traces what a scan costs (#531): the game seconds it took, which a long scan spends over several physics ticks.
+  // launch traces what a scan and its plan cost (#531), only in launch: the game seconds they took, which a long one spends over
+  // several physics ticks.
   if auto and ctx:block = "launch" {
     addons:claudia:blocknote(ctx:block, lexicon("phase", "drop_scan", "scan_s", round(time:seconds - scan_from, 3),
       "parts", ship:parts:length, "ipu", config:ipu)).

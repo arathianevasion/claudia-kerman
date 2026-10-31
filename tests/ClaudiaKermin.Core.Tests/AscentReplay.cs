@@ -125,7 +125,8 @@ namespace ClaudiaKermin.Core.Tests
             PlanAscent.Setup setup;
             var refusal = PlanAscent.Prepare(JsonReader.Parse(MergedInput(saved, call)), snapshot, out setup);
             if (refusal != null) throw new InvalidOperationException("the saved ascent can't be set up: " + refusal.Json);
-            var given = call.ToDictionary(p => p.Key, p => p.Value);
+            var given = new Dictionary<string, string>();
+            foreach (var pair in call) given[pair.Key] = pair.Value;
             report.TurnShape = Number(given, "turn_shape", 0.45);
             report.MaxAoa = Number(given, "max_aoa", 5);
             setup.Options.TurnShape = report.TurnShape;
@@ -140,6 +141,12 @@ namespace ClaudiaKermin.Core.Tests
 
             var lines = logLines.Select(TraceLine.Parse).Where(l => l != null).ToList();
             var climb = lines.Where(l => l.Block == "launch" && l.Text("phase") != "end" && l.Text("phase") != "drop_scan" && !double.IsNaN(l.Num("alt"))).ToList();
+            // A log may hold several launches: the last one's rows (its t starts over), and only its burning, as the sim's Track is.
+            var restart = 0;
+            for (var i = 1; i < climb.Count; i++)
+                if (climb[i].Num("t") < climb[i - 1].Num("t")) restart = i;
+            climb = climb.Skip(restart).ToList();
+            climb = climb.Where(l => l.Text("phase") != "coast").ToList();
             Compare(report, flight, climb);
 
             var end = lines.LastOrDefault(l => l.Block == "launch" && l.Text("phase") == "end");
@@ -275,7 +282,47 @@ namespace ClaudiaKermin.Core.Tests
             return "{" + string.Join(",", fields.Select(f => "\"" + f.Key + "\":" + f.Value).ToArray()) + "}";
         }
 
-        private static readonly Regex Launch = new Regex(@"\blaunch\s*\(\s*lexicon\s*\((?<args>[^)]*)\)", RegexOptions.Compiled);
+        private static readonly Regex Launch = new Regex(@"\blaunch\s*\(\s*lexicon\s*\(", RegexOptions.Compiled);
+
+        /// <summary>The text of the last <c>launch(lexicon(...))</c> call's arguments in script, up to the bracket that closes them; null if none.</summary>
+        private static string LastLaunchArguments(string script)
+        {
+            var match = Launch.Matches(script).Cast<Match>().LastOrDefault();
+            if (match == null) return null;
+            var depth = 1;
+            var inString = false;
+            for (var i = match.Index + match.Length; i < script.Length; i++)
+            {
+                var ch = script[i];
+                if (ch == '"') inString = !inString;
+                else if (!inString && ch == '(') depth++;
+                else if (!inString && ch == ')' && --depth == 0) return script.Substring(match.Index + match.Length, i - match.Index - match.Length);
+            }
+            return null;
+        }
+
+        /// <summary>Splits arguments at the commas outside brackets and strings.</summary>
+        private static List<string> SplitArguments(string args)
+        {
+            var parts = new List<string>();
+            var depth = 0;
+            var inString = false;
+            var start = 0;
+            for (var i = 0; i < args.Length; i++)
+            {
+                var ch = args[i];
+                if (ch == '"') inString = !inString;
+                else if (!inString && ch == '(') depth++;
+                else if (!inString && ch == ')') depth--;
+                else if (!inString && depth == 0 && ch == ',')
+                {
+                    parts.Add(args.Substring(start, i - start).Trim());
+                    start = i + 1;
+                }
+            }
+            parts.Add(args.Substring(start).Trim());
+            return parts;
+        }
 
         /// <summary>
         /// The options of the last <c>launch(lexicon(...))</c> in the transcript, in order: from a tool call's script or from a Mission
@@ -295,13 +342,12 @@ namespace ClaudiaKermin.Core.Tests
                 {
                     foreach (var script in Scripts(block))
                     {
-                        var match = Launch.Matches(script).Cast<Match>().LastOrDefault();
-                        if (match != null) args = match.Groups["args"].Value;
+                        args = LastLaunchArguments(script) ?? args;
                     }
                 }
             }
             if (args == null) return found;
-            var parts = args.Split(',').Select(p => p.Trim()).ToList();
+            var parts = SplitArguments(args);
             for (var i = 0; i + 1 < parts.Count; i += 2)
                 found.Add(new KeyValuePair<string, string>(parts[i].Trim('"'), parts[i + 1].Trim('"')));
             return found;

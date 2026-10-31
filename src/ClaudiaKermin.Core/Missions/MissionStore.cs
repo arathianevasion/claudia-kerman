@@ -135,7 +135,13 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         public static void WriteAscentPlan(string folder, string inputJson, string snapshotJson)
         {
-            if (snapshotJson.Length == 0) return;
+            if (snapshotJson.Length == 0)
+            {
+                // A folder reused for a check that planned none must not keep an older craft's plan for the replay.
+                foreach (var stale in new[] { AscentPlanSnapshotFile, AscentPlanInputFile })
+                    if (File.Exists(Path.Combine(folder, stale))) File.Delete(Path.Combine(folder, stale));
+                return;
+            }
             MissionFolder.ReplaceAtomically(Path.Combine(folder, AscentPlanSnapshotFile), snapshotJson);
             MissionFolder.ReplaceAtomically(Path.Combine(folder, AscentPlanInputFile), inputJson.Length > 0 ? inputJson : "{}");
         }
