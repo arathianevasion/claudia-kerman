@@ -54,6 +54,11 @@ namespace ClaudiaKermin.Core.Tests
             Assert.NotEqual(baseline, steps[2].ToJson());
             Assert.Equal(baseline.Replace("\"tool_choice\":{\"type\":\"auto\"}", "\"tool_choice\":{\"type\":\"none\"}"), steps[3].ToJson());
             Assert.NotEqual(baseline, steps[3].ToJson());
+
+            // The long text is history, not system, and the fifth step changes effort the way a mid-conversation notice does.
+            Assert.Contains("\"content\":[{\"type\":\"text\",\"text\":\"long\"", baseline);
+            Assert.DoesNotContain("\"role\":\"system\"", baseline);
+            Assert.Contains("\"role\":\"system\",\"content\":[],\"output_config\":{\"effort\":\"high\"}", steps[4].ToJson());
         }
 
         [Fact]

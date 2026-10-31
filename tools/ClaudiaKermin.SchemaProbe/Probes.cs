@@ -82,6 +82,7 @@ namespace ClaudiaKermin.SchemaProbe
                 Step("baseline again (should read it)", model, longText, BaselineEffort, false),
                 Step("only effort changed " + BaselineEffort + " -> " + ChangedEffort, model, longText, ChangedEffort, false),
                 Step("only tool_choice changed auto -> none", model, longText, BaselineEffort, true),
+                Step("effort changed by a system message before the last turn (" + ChangedEffort + ")", model, longText, BaselineEffort, false, ChangedEffort),
             };
         }
 
@@ -95,7 +96,12 @@ namespace ClaudiaKermin.SchemaProbe
             return text.ToString();
         }
 
-        private static KeyValuePair<string, MessagesRequest> Step(string label, string model, string longText, string effort, bool toolChoiceNone)
+        /// <remarks>
+        /// The long text sits in the conversation, not the system layer: effort and tool_choice changes are documented to
+        /// drop the cached messages but keep the system prompt and tools, and a Mission's history is what costs.
+        /// </remarks>
+        private static KeyValuePair<string, MessagesRequest> Step(string label, string model, string longText, string effort, bool toolChoiceNone,
+            string systemEffort = null)
         {
             var request = new MessagesRequest
             {
@@ -105,8 +111,13 @@ namespace ClaudiaKermin.SchemaProbe
                 OutputSchemaJson = MissionSchema(),
                 NoToolChoice = toolChoiceNone,
             };
-            request.System.Add(longText);
+            request.System.Add("Cache probe. Reply as the schema says.");
             request.Tools.AddRange(MissionTools(true));
+            request.Messages.Add(Message.UserText(longText));
+            var earlier = new Message { Role = Role.Assistant };
+            earlier.Content.Add(new TextBlock { Text = "{\"kind\":\"answer\",\"say\":\"ok\"}" });
+            request.Messages.Add(earlier);
+            if (systemEffort != null) request.Messages.Add(Message.SystemEffort(systemEffort));
             request.Messages.Add(Message.UserText("Reply with kind answer and say ok."));
             return new KeyValuePair<string, MessagesRequest>(label, request);
         }

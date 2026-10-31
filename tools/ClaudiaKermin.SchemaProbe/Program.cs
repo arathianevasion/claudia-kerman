@@ -52,20 +52,21 @@ namespace ClaudiaKermin.SchemaProbe
         {
             string source = null;
             var model = DefaultModel;
+            var modelGiven = false;
             var countOnly = false;
             var print = false;
             for (var i = 0; i < args.Length; i++)
             {
                 if (args[i] == "--count") countOnly = true;
                 else if (args[i] == "--print") print = true;
-                else if (args[i] == "--model" && i + 1 < args.Length) model = args[++i];
+                else if (args[i] == "--model" && i + 1 < args.Length) { model = args[++i]; modelGiven = true; }
                 else if (source == null && !args[i].StartsWith("--", StringComparison.Ordinal)) source = args[i];
                 else return Fail(Usage);
             }
             if (source == null) return Fail(Usage);
 
             if (source == GrammarSource) return RunGrammar(model, countOnly, print);
-            if (source == CacheSource) return RunCache(model == DefaultModel ? CacheModel : model, countOnly, print);
+            if (source == CacheSource) return RunCache(modelGiven ? model : CacheModel, countOnly, print);
 
             string schema;
             if (source == "mission-one") schema = Probes.MissionSchema();
