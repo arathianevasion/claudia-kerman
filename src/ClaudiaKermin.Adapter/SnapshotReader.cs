@@ -120,7 +120,8 @@ namespace ClaudiaKermin.Adapter
             return new SnapshotCrewMember
             {
                 Name = crew.name ?? "",
-                Trait = crew.experienceTrait != null ? crew.experienceTrait.TypeName : "",
+                // The config name, as RosterGateway.IsClaudia compares: experienceTrait.TypeName gives the title in game ("Super Intelligence").
+                Trait = crew.trait ?? "",
             };
         }
 

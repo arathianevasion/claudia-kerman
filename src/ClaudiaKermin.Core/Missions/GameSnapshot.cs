@@ -205,7 +205,7 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>Crew aboard other than Claudia herself and Tourists: the Kerbals who could really fly the craft.</summary>
         public bool HasOtherCrew
         {
-            get { return Crew.Any(c => c.Trait != Roster.ClaudiaIdentity.TraitName && c.Trait != "Tourist"); }
+            get { return Crew.Any(c => c.Name != ClaudiaIdentity.Name && c.Trait != "Tourist"); }
         }
 
         /// <summary>The kOS processor Claudia would use: the one nearest the root. Null if the craft has none.</summary>
