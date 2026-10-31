@@ -835,8 +835,8 @@ namespace ClaudiaKermin.Core.Tests
             var transport = Replies("mission-plan.sse", "mission-sequence-plan.sse", "mission-debrief-manual.sse", "mission-plan.sse", "mission-sequence-plan.sse");
             var mission = Control(transport);
             ToRunning(mission);
-            // The title KSP's TypeName gives, not the config name.
-            Action<GameSnapshot> claudia = s => s.Crew.Add(new SnapshotCrewMember { Name = ClaudiaKermin.Core.Roster.ClaudiaIdentity.Name, Trait = "Super Intelligence" });
+            // The pad fixture already has her aboard; replace her with the title KSP's TypeName gave before #583, not the config name.
+            Action<GameSnapshot> claudia = s => { s.Crew.Clear(); s.Crew.Add(new SnapshotCrewMember { Name = ClaudiaKermin.Core.Roster.ClaudiaIdentity.Name, Trait = "Super Intelligence" }); };
             var ut = Pad().Ut;
 
             mission.Send(Pad(s => { claudia(s); s.HasLink = false; s.Ut = ut + 1; }));
