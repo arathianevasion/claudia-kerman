@@ -45,7 +45,8 @@ namespace ClaudiaKermin.Core.Tests
         {
             var client = new ClaudeClient(route ? new CraftCheckRouter(transport) : transport, () => "sk-ant-fake-key-0123456789", l => { });
             client.Timing.Wait = (d, c) => { };
-            var mission = new MissionControl(client, _background, new PlayerConfig(), () => true, check ?? new PassingScriptCheck());
+            // Always, so every Debrief sends the Margin recheck whose requests these tests look at.
+            var mission = new MissionControl(client, _background, new PlayerConfig { MarginRecheck = MarginRecheckMode.Always }, () => true, check ?? new PassingScriptCheck());
             if (tools != null) mission.Tools = tools;
             mission.Send(new SaveLoaded(_save.Path));
             mission.Send(new SceneChanged(GameScene.Flight));
