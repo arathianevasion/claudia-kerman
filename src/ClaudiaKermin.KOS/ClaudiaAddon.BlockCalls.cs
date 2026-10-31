@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Globalization;
 using ClaudiaKermin.Adapter;
 using ClaudiaKermin.Core;
+using ClaudiaKermin.Core.Missions;
 using ClaudiaKermin.Core.Tools;
 using kOS.Safe.Encapsulation;
 using kOS.Safe.Encapsulation.Suffixes;
@@ -245,12 +246,19 @@ namespace ClaudiaKermin.KOS
                 : (string)path["error"]);
         }
 
+        /// <summary>The snapshot with the Mission's time cap, as the Planning Tools' snapshots carry it (#543).</summary>
+        private static GameSnapshot WithTimeCap(GameSnapshot snapshot)
+        {
+            snapshot.TimeCapHours = MissionDriver.TimeCapHours;
+            return snapshot;
+        }
+
         private Lexicon LandingPass(Lexicon input)
         {
             System.Collections.Generic.IDictionary<string, object> pass = null;
             return (Lexicon)Guarded("LANDINGPASS", () =>
             {
-                pass = BlockCalls.LandingPass(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel), new PlanningBody());
+                pass = BlockCalls.LandingPass(KosValues.ToDictionary(input), WithTimeCap(SnapshotReader.Read(shared.Vessel)), new PlanningBody());
                 return KosValues.FromPlain(pass);
             }, () => pass.ContainsKey("burn_ut") && pass["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "burn at UT {0:0.0}, touchdown at UT {1:0.0}, correction {2:0.0} m/s, next pass {3:0.0}; descent shape {4:0.###}, periapsis radius {5:0} m, landing {6:0} m/s",

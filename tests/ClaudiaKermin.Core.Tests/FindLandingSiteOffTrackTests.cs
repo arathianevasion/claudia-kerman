@@ -98,6 +98,28 @@ namespace ClaudiaKermin.Core.Tests
             using (var doc = JsonDocument.Parse(outcome.Json)) return doc.RootElement.Clone();
         }
 
+        /// <summary>#543: the same Mission time cap gives the tool's default window and land's auto window (the pass search's) one length.</summary>
+        [Theory]
+        [InlineData(6.0, 38.61)]
+        [InlineData(40.0, 40.0)]
+        [InlineData(60.0, 48.0)]
+        public void The_tools_default_window_and_lands_auto_window_agree_for_a_short_and_a_long_time_cap(double cap, double expected)
+        {
+            var snapshot = Snapshot();
+            snapshot.TimeCapHours = cap;
+            var tool = _tools.Run("find_landing_site", TwinCraters, snapshot, Mun());
+            Assert.False(tool.IsError, tool.Json);
+            double toolWindow;
+            using (var doc = JsonDocument.Parse(tool.Json)) toolWindow = doc.RootElement.GetProperty("window_hours").GetDouble();
+
+            var ask = new Dictionary<string, object> { { "lat", 0.0 }, { "lng", 0.0 }, { "r_pe", 200000.0 + LandingPass.ApproachM }, { "daylight", false } };
+            var land = BlockCalls.LandingPass(ask, snapshot, Mun());
+            var landWindow = Convert.ToDouble(land["window_hours"]);
+
+            Assert.Equal(expected, toolWindow, 2);
+            Assert.Equal(toolWindow, landWindow, 2);
+        }
+
         [Fact]
         public void Twin_craters_off_the_track_gets_cheapest_and_soonest_plane_changes_inside_the_tool_timeout()
         {
