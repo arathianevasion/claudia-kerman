@@ -161,21 +161,24 @@ namespace ClaudiaKermin.SchemaProbe
             var client = NewClient(out var keyError);
             if (client == null) return Fail(keyError);
             Console.WriteLine("model: " + model);
-            var withOk = SendGrammar(client, "with propose_mission_plan", withTool);
-            var controlOk = SendGrammar(client, "control, tool removed", control);
-            Console.WriteLine(withOk == controlOk
-                ? "verdict: the tool " + (withOk ? "adds nothing to the grammar budget (both compiled)" : "is not the cause (both refused)")
-                : "verdict: " + (controlOk ? "THE TOOL ADDS TO THE GRAMMAR BUDGET (only the control compiled)" : "unexpected: only the tool request compiled"));
-            return withOk && controlOk ? 0 : 1;
+            var withOutcome = SendGrammar(client, "with propose_mission_plan", withTool);
+            var controlOutcome = SendGrammar(client, "control, tool removed", control);
+            string verdict;
+            if (withOutcome == "inconclusive" || controlOutcome == "inconclusive") verdict = "inconclusive (a request failed for a reason other than a 2xx or a 400); run it again";
+            else if (withOutcome == controlOutcome) verdict = "the tool " + (withOutcome == "compiled" ? "adds nothing to the grammar budget (both compiled)" : "is not the cause (both refused)");
+            else verdict = controlOutcome == "compiled" ? "THE TOOL ADDS TO THE GRAMMAR BUDGET (only the control compiled)" : "unexpected: only the tool request compiled";
+            Console.WriteLine("verdict: " + verdict);
+            return withOutcome == "compiled" && controlOutcome == "compiled" ? 0 : 1;
         }
 
-        private static bool SendGrammar(ClaudeClient client, string label, MessagesRequest request)
+        /// <summary>compiled (2xx), refused (400: the grammar or the request), or inconclusive (anything else, e.g. a 429 or 5xx).</summary>
+        private static string SendGrammar(ClaudeClient client, string label, MessagesRequest request)
         {
             var result = client.Stream(request, null, CancellationToken.None);
-            var compiled = result.HttpStatus >= 200 && result.HttpStatus < 300;
-            Console.WriteLine(label + ": HTTP " + Number(result.HttpStatus) + (compiled ? " compiled" : " refused")
+            var outcome = result.HttpStatus >= 200 && result.HttpStatus < 300 ? "compiled" : result.HttpStatus == 400 ? "refused" : "inconclusive";
+            Console.WriteLine(label + ": HTTP " + Number(result.HttpStatus) + " " + outcome
                 + (result.ErrorMessage != null ? " error: " + result.ErrorMessage : ""));
-            return compiled;
+            return outcome;
         }
 
         /// <summary>Does changing effort alone, or tool_choice alone, cost the prompt cache? Prints usage only.</summary>
@@ -201,7 +204,7 @@ namespace ClaudiaKermin.SchemaProbe
             foreach (var step in steps)
             {
                 var result = client.Stream(step.Value, null, CancellationToken.None);
-                var usage = result.Message != null ? result.Message.Usage : null;
+                var usage = result.Message != null && result.HttpStatus >= 200 && result.HttpStatus < 300 ? result.Message.Usage : null;
                 Console.WriteLine(step.Key + ": HTTP " + Number(result.HttpStatus) + (usage == null
                     ? " no usage" + (result.ErrorMessage != null ? " error: " + result.ErrorMessage : "")
                     : " cache_creation_input_tokens=" + usage.CacheCreationInputTokens.ToString(CultureInfo.InvariantCulture)
