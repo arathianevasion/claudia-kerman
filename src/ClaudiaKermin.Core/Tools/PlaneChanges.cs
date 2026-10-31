@@ -82,6 +82,8 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The planes tried, and the search's time, ms.</summary>
         public int Planes;
         public double Ms;
+        /// <summary>The ask's deadline passed before the search was done: the options are from what it got through (#536).</summary>
+        public bool OutOfTime;
     }
 
     /// <summary>
@@ -113,6 +115,8 @@ namespace ClaudiaKermin.Core.Tools
         private static readonly double[] OverLatitude = { -2, -1, 0, 0.5, 1, 2, 3, 5, 8, 12, 18, 25, 35 };
         private static readonly double[] RoundOrbit = { -8, -4, -2, -1, -0.5, 0.5, 1, 2, 4, 8 };
         private const string NoneClears = "no plane change tried has an approach to the site that clears the terrain";
+        /// <summary>The step the sun at the site is read at over the window, s, once for every plane's pass search (#536).</summary>
+        private const double SunStepS = 300;
 
         /// <summary>The coarse shape grid: four of <see cref="BrakePath.Shapes"/>, from the steepest to the shallowest.</summary>
         private static IList<double> CoarseShapes
@@ -137,14 +141,32 @@ namespace ClaudiaKermin.Core.Tools
             if (!orbit.Closed || orbit.Period <= 0) return result;
             var reachable = !double.IsNaN(currentDv);
 
+            // #536: a landing land can already fly within SavingDv of the least any approach could cost leaves nothing to save.
+            if (reachable && !currentMoved && !ask.MoveSite)
+            {
+                var least = LeastLandingDv(body, orbit, ask);
+                if (!double.IsNaN(least) && currentDv - least < SavingDv)
+                {
+                    result.Note = "land reaches the site from this orbit for " + Whole(currentDv) + " m/s, within " + Whole(SavingDv)
+                        + " m/s of the least any approach could cost (" + Whole(least) + " m/s over level ground), so no plane change can save that";
+                    return Done(result, watch);
+                }
+            }
+
+            // The sun at the site read once over the window, for every plane's pass search (#536: through the game each survey is a frame).
+            ask = Copy(ask, ask.Craft);
+            if (ask.Daylight) ask.SunAt = SunCurve(body, ask, api);
+
             // Each plane and its first pass in reach (land's pass search without a craft: reach and daylight only).
             var planes = new List<PlaneChange>();
             foreach (var burn in BurnTimes(orbit, ask.EarliestUt))
             {
+                if (result.OutOfTime) break;
                 Vec3 r, v;
                 orbit.State(burn, out r, out v);
                 foreach (var inc in Inclinations(orbit.Inclination, ask.Latitude))
                 {
+                    if (OutOfTime(ask, result)) break;
                     string why;
                     var dv = OrbitChange.ChangeInclination(r, v, inc, out why);
                     if (!dv.HasValue || dv.Value.Length < 1) continue;
@@ -157,7 +179,7 @@ namespace ClaudiaKermin.Core.Tools
             }
             if (planes.Count == 0)
             {
-                result.Note = "no plane change tried reaches the site in the window";
+                result.Note = result.OutOfTime ? OutOfTimeNote(result) : "no plane change tried reaches the site in the window";
                 return Done(result, watch);
             }
 
@@ -167,6 +189,7 @@ namespace ClaudiaKermin.Core.Tools
             var planned = new List<PlaneChange>();
             foreach (var plane in Alternate(planes.OrderBy(p => p.PlaneDv), planes.OrderBy(p => p.ArriveUt)).Take(CoarsePlanes))
             {
+                if (OutOfTime(ask, result)) break;
                 // A first pass no shape clears gives way to the plane's later passes in the window, as in land.
                 var pass = PlanLanding(body, plane, now, ask, api, plane.ArriveUt + 60, CoarseShapes, coarse)
                     ?? PlanLanding(body, plane, now, ask, api, ask.LatestUt, CoarseShapes, coarse);
@@ -174,7 +197,7 @@ namespace ClaudiaKermin.Core.Tools
             }
             if (planned.Count == 0)
             {
-                result.Note = NoneClears;
+                result.Note = result.OutOfTime ? OutOfTimeNote(result) : NoneClears;
                 return Done(result, watch);
             }
 
@@ -186,12 +209,13 @@ namespace ClaudiaKermin.Core.Tools
             var refined = new List<PlaneChange>();
             foreach (var pick in picks)
             {
+                if (OutOfTime(ask, result)) break;
                 var pass = PlanLanding(body, pick, now, ask, api, pick.ArriveUt + 60, null, null);
                 if (pass != null) refined.Add(pass);
             }
             if (refined.Count == 0)
             {
-                result.Note = NoneClears;
+                result.Note = result.OutOfTime ? OutOfTimeNote(result) : NoneClears;
                 return Done(result, watch);
             }
 
@@ -251,11 +275,91 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary><paramref name="ask"/> for the orbit after a plane change at <paramref name="burn"/>: deorbit burns from <see cref="LandingPass.LeadS"/> after it.</summary>
         private static LandingPassAsk ForOrbitAfter(LandingPassAsk ask, double burn, BrakeCraft craft)
         {
+            var after = Copy(ask, craft);
+            after.EarliestUt = Math.Max(ask.EarliestUt, burn + LandingPass.LeadS);
+            return after;
+        }
+
+        private static LandingPassAsk Copy(LandingPassAsk ask, BrakeCraft craft)
+        {
             return new LandingPassAsk
             {
-                Latitude = ask.Latitude, Longitude = ask.Longitude, PeRadius = ask.PeRadius, EarliestUt = Math.Max(ask.EarliestUt, burn + LandingPass.LeadS),
+                Latitude = ask.Latitude, Longitude = ask.Longitude, PeRadius = ask.PeRadius, EarliestUt = ask.EarliestUt,
                 LatestUt = ask.LatestUt, Daylight = ask.Daylight, MaxCorrectionDv = ask.MaxCorrectionDv, Craft = craft, Margin = ask.Margin, MoveSite = ask.MoveSite,
+                SunAt = ask.SunAt, Deadline = ask.Deadline,
             };
+        }
+
+        /// <summary>The sun's elevation at the ask's site by UT over its window, from one survey every <see cref="SunStepS"/> s, between the samples.</summary>
+        private static Func<double, double> SunCurve(SnapshotBody body, LandingPassAsk ask, IPlanningBody api)
+        {
+            var from = ask.EarliestUt;
+            var count = (int)Math.Ceiling(Math.Max(0, ask.LatestUt - from) / SunStepS) + 2;
+            var samples = new List<SiteSample>(count);
+            for (var i = 0; i < count; i++) samples.Add(new SiteSample { Latitude = ask.Latitude, Longitude = ask.Longitude, Ut = from + i * SunStepS });
+            api.Survey(body.Name, samples, SiteFacts.Sun);
+            return ut =>
+            {
+                var k = Math.Max(0, Math.Min(count - 1, (ut - from) / SunStepS));
+                var i = Math.Min(count - 2, (int)k);
+                return samples[i].SunElevation + (samples[i + 1].SunElevation - samples[i].SunElevation) * (k - i);
+            };
+        }
+
+        /// <summary>
+        /// The least landing delta-v any orbit of this one's radius could give the ask's site, m/s: land's descent planned over
+        /// level ground at the site's height (where the lowest periapsis is the least the real ground allows, and nothing needs
+        /// clearing), with no correction and the most the body's turn could take off on the orbit's side of 90 degrees (east
+        /// with the turn: all of it; against it: none, a polar plane). NaN when no descent is planned.
+        /// </summary>
+        private static double LeastLandingDv(SnapshotBody body, Conic orbit, LandingPassAsk ask)
+        {
+            var site = Math.Max(0, ask.PeRadius - body.Radius - LandingPass.ApproachM);
+            var turn = body.RotationPeriod != 0 ? 2 * Math.PI * body.Radius / Math.Abs(body.RotationPeriod) * Math.Cos(ask.Latitude * Math.PI / 180) : 0;
+            var withTurn = body.RotationPeriod > 0 == orbit.Inclination < 90;
+            var choice = DescentApproach.Plan(ask.Craft, body, new LevelGround(site), orbit.A, ask.Latitude, ask.Longitude, 90, withTurn ? turn : 0, null, ask.Margin);
+            return choice.Best != null ? choice.Best.Dv : double.NaN;
+        }
+
+        /// <summary>Ground at one height everywhere, for <see cref="LeastLandingDv"/>.</summary>
+        private sealed class LevelGround : PlanningBodyBase
+        {
+            private readonly double _height;
+
+            public LevelGround(double height)
+            {
+                _height = height;
+            }
+
+            public override double TerrainAltitude(string body, double latitude, double longitude) { return _height; }
+            public override string Biome(string body, double latitude, double longitude) { return ""; }
+            public override double SunElevation(string body, double latitude, double longitude, double ut) { return double.NaN; }
+
+            public override bool SurfaceUnder(string body, double x, double y, double z, out double latitude, out double longitude)
+            {
+                latitude = double.NaN;
+                longitude = double.NaN;
+                return false;
+            }
+        }
+
+        /// <summary>Whether the ask's deadline has passed, marking the result if so.</summary>
+        private static bool OutOfTime(LandingPassAsk ask, PlaneChangeResult result)
+        {
+            if (ask.Deadline == null || !ask.Deadline.Passed) return false;
+            result.OutOfTime = true;
+            return true;
+        }
+
+        private static string OutOfTimeNote(PlaneChangeResult result)
+        {
+            return "out of time before a plane change was worked out (" + result.Planes.ToString(CultureInfo.InvariantCulture)
+                + " planes tried); ask again with near set to the site and a shorter within_hours";
+        }
+
+        private static string Whole(double x)
+        {
+            return Math.Round(x, MidpointRounding.AwayFromZero).ToString("0", CultureInfo.InvariantCulture);
         }
 
         /// <summary>The burn times tried: <see cref="BurnsPerOrbit"/> round the next orbit from <paramref name="earliest"/>.</summary>

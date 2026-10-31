@@ -43,6 +43,13 @@ namespace ClaudiaKermin.Core.Tools
         public IList<double> Shapes;
         public Dictionary<string, DescentChoice> Planned;
         public double HeadingStepDeg = 1;
+        /// <summary>
+        /// The sun's elevation at the site by UT, degrees, for a search that read it once over the window (the plane-change search,
+        /// #536); null to survey it at each search's passes.
+        /// </summary>
+        public Func<double, double> SunAt;
+        /// <summary>When to stop planning descents and answer <see cref="LandingPassResult.OutOfTime"/> (#536); null for never.</summary>
+        public SearchDeadline Deadline;
     }
 
     /// <summary>One pass over the site the search looked at, for <c>land</c>'s trace.</summary>
@@ -98,6 +105,8 @@ namespace ClaudiaKermin.Core.Tools
         public double ShapeHi = double.NaN;
         /// <summary>Passes passed over because no shape cleared their approach (they count as no missed pass).</summary>
         public int TerrainPasses;
+        /// <summary>The ask's deadline passed before every pass had its descent planned: no answer either way (#536).</summary>
+        public bool OutOfTime;
         public readonly List<LandingPassLine> Passes = new List<LandingPassLine>();
     }
 
@@ -242,7 +251,9 @@ namespace ClaudiaKermin.Core.Tools
             }
 
             var inReach = result.Passes.Where(p => p.CorrectionDv <= ask.MaxCorrectionDv).ToList();
-            if (ask.Daylight && inReach.Count > 0)
+            if (ask.Daylight && inReach.Count > 0 && ask.SunAt != null)
+                foreach (var pass in inReach) pass.SunDeg = ask.SunAt(pass.ArriveUt);
+            else if (ask.Daylight && inReach.Count > 0)
             {
                 var samples = inReach.Select(p => new SiteSample { Latitude = ask.Latitude, Longitude = ask.Longitude, Ut = p.ArriveUt }).ToList();
                 api.Survey(body.Name, samples, SiteFacts.Sun);
@@ -270,6 +281,12 @@ namespace ClaudiaKermin.Core.Tools
                 clearing = new List<LandingPassLine>();
                 foreach (var pass in eligible)
                 {
+                    if (ask.Deadline != null && ask.Deadline.Passed)
+                    {
+                        result.OutOfTime = true;
+                        result.Error = "out of time before every pass over the site had its descent planned";
+                        return result;
+                    }
                     var choice = PlanPass(body, orbit, now, ask, api, lonOffset, handed, pass, ask.Latitude, ask.Longitude, planned);
                     if (choice.Best == null && ask.MoveSite && !ask.Shape.HasValue)
                     {

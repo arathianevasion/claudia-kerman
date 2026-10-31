@@ -29,6 +29,8 @@ namespace ClaudiaKermin.Core.Tools
         public double MaxCorrectionDv = LandingPass.MostCorrectionDv;
         /// <summary>The craft that will land (#511): a site is kept only if some Descent Shape clears its pass's approach. Null: no terrain filter.</summary>
         public BrakeCraft Craft;
+        /// <summary>When the search stops and answers with what it has (#536); null to run to the end.</summary>
+        public SearchDeadline Deadline;
     }
 
     internal sealed class LandingSite
@@ -69,6 +71,17 @@ namespace ClaudiaKermin.Core.Tools
         public int Unflyable;
         /// <summary>The window actually searched, hours (the ask, held to what the search can cover).</summary>
         public double WindowHours;
+        /// <summary>
+        /// The query's deadline passed before the search was done (#536): <see cref="Sites"/> are those found by then, and with the
+        /// track in pass order every point before <see cref="SearchedHours"/> (from now) was tried; with a <c>near</c> point,
+        /// <see cref="Tried"/> of the <see cref="NearPoints"/> track points closest to it were.
+        /// </summary>
+        public bool OutOfTime;
+        /// <summary>Hours from now the track was searched to, when <see cref="OutOfTime"/>.</summary>
+        public double SearchedHours;
+        /// <summary>Candidate points tried (in the search's order), and how many there were, when <see cref="OutOfTime"/>.</summary>
+        public int Tried;
+        public int NearPoints;
     }
 
     /// <summary>
@@ -130,29 +143,50 @@ namespace ClaudiaKermin.Core.Tools
 
             var all = Candidates(track, query);
             var wantBiome = !string.IsNullOrEmpty(query.Biome);
-            var facts = (wantBiome ? SiteFacts.Biome : 0) | (query.Daylight ? SiteFacts.Sun : 0);
+            var deadline = query.Deadline ?? SearchDeadline.None;
             var sites = new List<LandingSite>();
             var edgeSites = new List<LandingSite>();
             var checkedSlope = 0;
             var unreadable = 0;
             var passedSlope = 0;
+            var stoppedAt = -1;
             // In rounds of the track in pass order, so a long window keeps the track's resolution and a soon site comes first.
             for (var from = 0; from < all.Count && sites.Count < query.MaxSites && checkedSlope < MaxSlopeChecks; from += MaxCandidates)
             {
-                var candidates = all.Skip(from).Take(MaxCandidates).ToList();
-                if (facts != 0)
+                if (deadline.Passed)
                 {
-                    api.Survey(body.Name, candidates.Select(c => c.Sample).ToList(), facts);
-                    if (wantBiome) candidates = candidates.Where(c => SameBiome(c.Sample.Biome, query.Biome)).ToList();
-                    result.AfterBiome += candidates.Count;
-                    if (query.Daylight) candidates = candidates.Where(c => c.Sample.SunElevation > MinSunElevationDeg).ToList();
+                    stoppedAt = from;
+                    break;
                 }
-                else
+                var round = all.Skip(from).Take(MaxCandidates).ToList();
+                var candidates = round;
+                // The biome first, then the sun only where the biome is right (#536: through the game a read is time a frame can't
+                // spare, and the sun at every track point was most of them).
+                if (wantBiome)
                 {
-                    result.AfterBiome += candidates.Count;
+                    api.Survey(body.Name, candidates.Select(c => c.Sample).ToList(), SiteFacts.Biome);
+                    candidates = candidates.Where(c => SameBiome(c.Sample.Biome, query.Biome)).ToList();
+                }
+                result.AfterBiome += candidates.Count;
+                if (query.Daylight && candidates.Count > 0)
+                {
+                    api.Survey(body.Name, candidates.Select(c => c.Sample).ToList(), SiteFacts.Sun);
+                    candidates = candidates.Where(c => c.Sample.SunElevation > MinSunElevationDeg).ToList();
                 }
                 result.AfterDaylight += candidates.Count;
-                TestRound(body, orbit, now, query, api, candidates, sites, edgeSites, result, ref checkedSlope, ref unreadable, ref passedSlope);
+                var stopped = TestRound(body, orbit, now, query, api, candidates, sites, edgeSites, result, ref checkedSlope, ref unreadable, ref passedSlope);
+                if (stopped != null)
+                {
+                    stoppedAt = all.IndexOf(stopped);
+                    break;
+                }
+            }
+            if (stoppedAt >= 0)
+            {
+                result.OutOfTime = true;
+                result.Tried = stoppedAt;
+                result.NearPoints = all.Count;
+                result.SearchedHours = (all[stoppedAt].Sample.Ut - now) / 3600;
             }
             if (sites.Count == 0) sites = edgeSites;
             result.AfterSlope = passedSlope;
@@ -168,13 +202,16 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>
         /// One round's candidates (already in the biome and the sun) through the slope test in batches, the biome margin and
         /// <c>land</c>'s pass search, adding sites to <paramref name="sites"/> (or <paramref name="edgeSites"/>, at the biome edge).
+        /// Returns the first candidate not tried when the query's deadline passed (#536), or null when the round was done.
         /// </summary>
-        private static void TestRound(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, IPlanningBody api, List<Candidate> candidates,
+        private static Candidate TestRound(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, IPlanningBody api, List<Candidate> candidates,
             List<LandingSite> sites, List<LandingSite> edgeSites, LandingSiteResult result, ref int checkedSlope, ref int unreadable, ref int passedSlope)
         {
             var wantBiome = !string.IsNullOrEmpty(query.Biome);
+            var deadline = query.Deadline ?? SearchDeadline.None;
             for (var at = 0; at < candidates.Count && sites.Count < query.MaxSites && checkedSlope < MaxSlopeChecks; at += SlopeBatch)
             {
+                if (deadline.Passed) return candidates[at];
                 var batch = candidates.Skip(at).Take(Math.Min(SlopeBatch, MaxSlopeChecks - checkedSlope)).ToList();
                 checkedSlope += batch.Count;
                 var points = new List<SiteSample>();
@@ -208,7 +245,9 @@ namespace ClaudiaKermin.Core.Tools
                         Latitude = c.Sample.Latitude, Longitude = c.Sample.Longitude, Biome = five[0].Biome, Altitude = five[0].Altitude,
                         SlopeDeg = slopes[i], PassUt = c.Sample.Ut, SunElevationDeg = five[0].SunElevation, FromNearDeg = c.FromNear, AtEdge = atEdge,
                     };
-                    if (!Flyable(body, orbit, now, query, site, api))
+                    var pass = Fly(body, orbit, now, query, site, api);
+                    if (pass.OutOfTime) return c;
+                    if (pass.Error != null)
                     {
                         result.Unflyable++;
                         continue;
@@ -216,6 +255,7 @@ namespace ClaudiaKermin.Core.Tools
                     list.Add(site);
                 }
             }
+            return null;
         }
 
         /// <summary>
@@ -223,28 +263,30 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>land</c> searches, from the first burn it may plan. Sets the site's <see cref="LandingSite.LandingUt"/> and
         /// <see cref="LandingSite.CorrectionDv"/>. The site is under the track at its own pass, so the search first looks only to just
         /// past that, where the earliest pass <c>land</c> takes must be, and over the rest of the window only if that finds none.
+        /// The pass found (its error null when the site is flyable), or one <see cref="LandingPassResult.OutOfTime"/>.
         /// </summary>
-        private static bool Flyable(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, LandingSite site, IPlanningBody api)
+        private static LandingPassResult Fly(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, LandingSite site, IPlanningBody api)
         {
             var ask = new LandingPassAsk
             {
                 Latitude = site.Latitude, Longitude = site.Longitude, PeRadius = body.Radius + Math.Max(0, site.Altitude) + LandingPass.ApproachM,
                 EarliestUt = now + LandingPass.LeadS, Daylight = query.Daylight, MaxCorrectionDv = query.MaxCorrectionDv, Craft = query.Craft,
+                Deadline = query.Deadline,
             };
             var latest = now + LandingPass.ReachSeconds(Math.Max(0.05, Math.Min(MaxWindowHours, query.WithinHours)), query.Daylight, body.RotationPeriod);
             ask.LatestUt = Math.Min(latest, site.PassUt + 1.5 * orbit.Period);
             var pass = LandingPass.Find(body, orbit, now, ask, api);
-            if (pass.Error != null && ask.LatestUt < latest)
+            if (pass.Error != null && !pass.OutOfTime && ask.LatestUt < latest)
             {
                 ask.LatestUt = latest;
                 pass = LandingPass.Find(body, orbit, now, ask, api);
             }
-            if (pass.Error != null) return false;
+            if (pass.Error != null) return pass;
             site.LandingUt = pass.ArriveUt;
             site.CorrectionDv = pass.CorrectionDv;
             site.PredictedDv = pass.LandingDv;
             if (pass.Descent != null) site.DescentShape = pass.Descent.Shape;
-            return true;
+            return pass;
         }
 
         private sealed class Candidate
