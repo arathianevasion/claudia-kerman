@@ -78,11 +78,22 @@ namespace ClaudiaKermin.Core.Tools
             for (var i = 1; i < 21; i++) yield return Math.Min(most, vH * 3 * i);
         }
 
+        /// <summary>
+        /// land_sink_limit: the fastest descent, m/s, <paramref name="aStop"/> m/s² stops by <see cref="HEnd"/> over the ground after
+        /// the turn lag (<paramref name="lagS"/>, never under 2 s).
+        /// </summary>
+        public static double SinkLimit(double h, double aStop, double lagS = 2)
+        {
+            var react = Math.Max(2, lagS);
+            var room = Math.Max(0, h - Math.Min(HEnd, 0.5 * h));
+            return aStop * (Math.Sqrt(react * react + 2 * room / aStop) - react);
+        }
+
         /// <summary>land_vv_target.</summary>
-        public static double VvTarget(double h, double hRef, double aStop, double touchdown)
+        public static double VvTarget(double h, double hRef, double aStop, double touchdown, double lagS = 2)
         {
             if (h < hRef) return Math.Min(20, 0.1 * (hRef - h));
-            var fastest = Math.Max(touchdown, Math.Min(100, Math.Sqrt(2 * aStop * Math.Max(0, h))));
+            var fastest = Math.Max(touchdown, Math.Min(100, SinkLimit(h, aStop, lagS)));
             return -Math.Min(fastest, Math.Max(touchdown, 0.1 * (h - hRef)));
         }
 
@@ -116,10 +127,10 @@ namespace ClaudiaKermin.Core.Tools
         /// land_guide with the site on the track (c 0, v_cr 0): <paramref name="s"/> m to the site along it, <paramref name="vAl"/>
         /// and <paramref name="vUp"/> m/s, <paramref name="h"/> m of clearance, the braking start's <paramref name="hStart"/> and
         /// <paramref name="v0"/>, the Descent Shape, <paramref name="vTop"/>, <paramref name="aMax"/> and <paramref name="g"/> m/s² and
-        /// <paramref name="radius"/> m from the body's centre.
+        /// <paramref name="radius"/> m from the body's centre, and the craft's turn lag <paramref name="lagS"/>.
         /// </summary>
         public static BrakeDemand Guide(double s, double vAl, double vUp, double h, double hStart, double v0, double shape, double vTop,
-            double aMax, double g, double radius, double touchdown, double margin)
+            double aMax, double g, double radius, double touchdown, double margin, double lagS)
         {
             var vH = Math.Abs(vAl);
             var gEff = g - vH * vH / radius;
@@ -130,7 +141,7 @@ namespace ClaudiaKermin.Core.Tools
             var brakingNeeds = aOk * vH / (vH + 2 * aOk);
             var aStop = Math.Max(0.2, 0.5 * (Math.Sqrt(Math.Max(0, aMost * aMost - brakingNeeds * brakingNeeds)) - g));
             var hRef = ShapeRef(toGo, vH, v0, hStart, shape);
-            var vvWant = VvTarget(h, hRef, aStop, touchdown);
+            var vvWant = VvTarget(h, hRef, aStop, touchdown, lagS);
             // land_split_accel.
             var up = Math.Min(aMost, Math.Max(0, gEff + 0.5 * (vvWant - vUp)));
             var horizontal = Math.Min(aMost, Math.Sqrt(Math.Max(0, aMost * aMost - up * up)));

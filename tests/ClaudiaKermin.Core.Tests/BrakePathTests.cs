@@ -170,11 +170,20 @@ namespace ClaudiaKermin.Core.Tests
         public void A_Twin_Craters_pass_from_a_30_km_orbit_is_planned_for_the_lander_over_a_fall_that_clears_the_plateau_by_the_margin()
         {
             // #546: every pass was refused as terrain on the approach, planned for the stack that land then staged off before the
-            // fall. The stack, braking until its Underhang drops 2 km up, can't stop on the site from any periapsis: the refusal
-            // is right, but says the periapses over the low falls failed for braking, not for the fall.
-            var stack = DescentApproach.Plan(MunShotStack(), Mun, new Terrain { Before = TwinCratersAsFlown }, MunR + 30000, 0, 0, 90, 9, null);
-            Assert.NotNull(stack.Error);
-            Assert.Contains("from a periapsis under 4500 m", stack.Error);
+            // fall. The stack, braking until its Underhang drops 2 km up, hit the ground on its last drop from every periapsis.
+            // Since #547's sink limit it comes down slowly enough for the lander to stop after the drop, so it plans too; the
+            // refusal over periapses whose fall is too low still says it was the fall, not the braking.
+            var terrain = new Terrain { Before = TwinCratersAsFlown };
+            var stack = DescentApproach.Plan(MunShotStack(), Mun, terrain, MunR + 30000, 0, 0, 90, 9, null);
+            Assert.Null(stack.Error);
+            var world = new BrakeWorld
+            {
+                Mu = MunGm, Radius = MunR, Ground = DescentApproach.Read(terrain, "Mun", MunR, 0, 0, 90, 100000, out _),
+                FallGround = DescentApproach.Read(terrain, "Mun", MunR, 0, 0, 90, 200000, out _, DescentApproach.FallProfileStep),
+            };
+            var low = BrakePath.Search(MunShotStack(), world, MunR + 30000, 9, 1500, 4000);
+            Assert.NotNull(low.Error);
+            Assert.Contains("from a periapsis under 4500 m", low.Error);
             // The lander that brakes is planned.
             var plan = DescentApproach.Plan(MunShotLander(), Mun, new Terrain { Before = TwinCratersAsFlown }, MunR + 30000, 0, 0, 90, 9, null);
             Assert.Null(plan.Error);
@@ -210,6 +219,26 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal("", again["error"]);
             Assert.Equal(true, again["clears"]);
             Assert.InRange((double)again["brake_dv"] / plan.Best.Result.DvUsed, 0.95, 1.05);
+        }
+
+        [Theory]
+        [InlineData(5000.0)]
+        [InlineData(6000.0)]
+        public void From_the_78_km_twin_craters_braking_start_the_last_drop_keeps_room_to_stop_over_the_ground_and_lands_on_the_site(double massKg)
+        {
+            // #547, m20261031-022433-3dc5 from a 78 km orbit: periapsis 4.1 km, shape 2.35, braking 21.9 km out at 599.5 m/s and 9 m/s
+            // down, 3344 m over the ground (h 3206, h_ref 3310), Mun Shot v2's lander (60 kN, about 5 to 6 t, TURNTIME's 190 degrees
+            // in 9.9 s at up to 59.5 deg/s). Above circular speed it can't sink with its shape, so it holds about 3.4 km to within a
+            // km of the site and drops 3 km there at about 90 m/s. The sink rate wanted stopped it at the ground: falling, full thrust
+            // after the 2.6 s turn would have stopped it 7 m up. Now it keeps the room to stop by about h_end.
+            var ground = DescentApproach.Read(new Terrain { Before = TwinCratersAsFlown }, "Mun", MunR, 0, 0, 90, 30000, out _);
+            var world = new BrakeWorld { Mu = MunGm, Radius = MunR, Ground = ground };
+            var craft = new BrakeCraft { ThrustN = 60000, MassKg = massKg, Isp = 345, LagS = BrakePath.TurnLag(59.5, 9.9) };
+            var start = new BrakeStart { S = 21870, Alt = 3344 + TwinCratersAsFlown(21870), VH = 599.5, VUp = -9, Braking = true };
+            var flown = BrakePath.Simulate(craft, world, start, 2.345);
+            Assert.True(flown.Clears, flown.Failure + ", least spare " + flown.LeastSpare);
+            Assert.InRange(flown.StopS, -300, 300);
+            Assert.True(flown.LeastStopRoom >= BrakeGuidance.HEnd / 2, "least room to stop " + Math.Round(flown.LeastStopRoom) + " m");
         }
 
         // ---- Minmus Flats (#530, m20261030-013514-be46) ----
