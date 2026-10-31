@@ -477,6 +477,8 @@ namespace ClaudiaKermin.Core.Missions
             }
             else
             {
+                // No transcript to tick them from: the saved plan's steps, none done.
+                if (state.MissionPlan != null) mission.GoalSteps = GoalSteps.Replace(mission.GoalSteps, state.MissionPlan.GoalSteps);
                 mission.System.Add(MissionPrompts.BaseLayer);
                 mission.System.Add(MissionPrompts.MissionLayer(state.Goal, MissionStore.ReadBodyTable(mission.Folder), state.PlannedTurnShape));
                 mission.System.Add(MissionPrompts.TimingLayer(state.Id, MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config))));

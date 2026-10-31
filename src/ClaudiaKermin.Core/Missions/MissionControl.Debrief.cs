@@ -454,7 +454,7 @@ namespace ClaudiaKermin.Core.Missions
             var gate = mission.Gate ?? new DebriefGate();
             mission.Gate = null;
             var snapshot = _snapshot;
-            var detail = MissionCards.DebriefDetail(debrief, mission.GoalSteps);
+            var detail = MissionCards.DebriefDetail(debrief, GoalSteps.ForCard(mission.GoalSteps, debrief));
             detail.RecheckSummary = gate.RecheckSummary;
             detail.RecheckSkipped = gate.RecheckSkipped;
             detail.ScriptError = mission.ScriptError;

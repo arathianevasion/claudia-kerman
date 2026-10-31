@@ -30,14 +30,12 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         /// <summary>
-        /// The steps after a Debrief: an inline goal_checklist (a transcript from before #581) is the list as it stood then;
-        /// otherwise <paramref name="current"/> with goal_steps_done ticked.
+        /// What a Debrief's card counts: an inline goal_checklist (a transcript from before #581) as it stood then, otherwise
+        /// <paramref name="steps"/>. The inline list never becomes the Mission's steps: only a Mission Plan's goal_steps do.
         /// </summary>
-        public static List<GoalItem> After(List<GoalItem> current, Debrief debrief)
+        public static IEnumerable<GoalItem> ForCard(IList<GoalItem> steps, Debrief debrief)
         {
-            if (debrief.Checklist.Count > 0) return Copy(debrief.Checklist);
-            Tick(current, debrief.GoalStepsDone);
-            return current;
+            return debrief.Checklist.Count > 0 ? debrief.Checklist : steps;
         }
 
         public static List<GoalItem> Copy(IEnumerable<GoalItem> steps)

@@ -141,7 +141,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void AnOldTranscriptsInlineGoalChecklistIsTheListAsItStood()
+        public void AnOldTranscriptsInlineGoalChecklistRebuildsItsCardButGivesTheMissionNoSteps()
         {
             List<GoalItem> steps;
             var log = MissionLogRebuild.From(Transcript(
@@ -150,9 +150,11 @@ namespace ClaudiaKermin.Core.Tests
                 Debrief("Nominal", "\"goal_steps_done\":[2]")), "Mun", "Craft", new PlayerConfig(), null, out steps);
 
             var cards = log.Where(e => e.Kind == LogKind.Debrief).Select(e => e.Debrief).ToList();
-            Assert.Equal(new[] { 1, 2 }, cards.Select(c => c.ChecklistDone));
-            Assert.Equal(new[] { "Reach orbit", "Land on the Mun" }, steps.Select(s => s.Item));
-            Assert.Equal(new[] { true, true }, steps.Select(s => s.Done));
+            Assert.Equal(1, cards[0].ChecklistDone);
+            Assert.Equal(new[] { "Reach orbit", "Land on the Mun" }, cards[0].Checklist.Select(s => s.Item));
+            // Until a Mission Plan supplies goal_steps, the Mission has none, so a later Debrief's numbers tick nothing.
+            Assert.False(cards[1].HasChecklist);
+            Assert.Empty(steps);
         }
 
         [Fact]

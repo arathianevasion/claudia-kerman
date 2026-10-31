@@ -69,14 +69,20 @@ namespace ClaudiaKermin.Core.Missions
             var accepted = new HashSet<string>(list.SelectMany(m => m.Content.OfType<ToolResultBlock>())
                 .Where(r => !r.IsError && r.Content == AcceptedJson).Select(r => r.ToolUseId));
             var use = list.SelectMany(m => m.Content.OfType<ToolUseBlock>()).LastOrDefault(u => u.Name == ToolName && u.InputIsValid && accepted.Contains(u.Id ?? ""));
-            // Checked when it was accepted: read again with today's schema, a call from before goal_steps (#581) would lose its plan.
-            return use != null ? Read(use.InputJson, null) : null;
+            return use != null ? ReadAccepted(use.InputJson) : null;
         }
 
         /// <summary>
-        /// The plan in a call's input, read as a reply's mission_plan part is; null, with the problem, when it doesn't fit the
-        /// schema. With <paramref name="problems"/> null (a call already accepted) the schema is not checked again.
+        /// An accepted call's plan, not checked against the schema again: it was checked when accepted, and today's schema
+        /// would refuse a call from before goal_steps (#581) and lose its plan.
         /// </summary>
+        private static MissionPlan ReadAccepted(string inputJson)
+        {
+            var reply = MissionReply.Parse("{\"mission_plan\":" + (string.IsNullOrEmpty(inputJson) ? "{}" : inputJson) + "}");
+            return reply != null ? reply.MissionPlan : null;
+        }
+
+        /// <summary>The plan in a call's input, read as a reply's mission_plan part is; null, with the problem, when it doesn't fit the schema.</summary>
         private static MissionPlan Read(string inputJson, List<string> problems)
         {
             JsonNode input;
@@ -86,10 +92,10 @@ namespace ClaudiaKermin.Core.Missions
             }
             catch (JsonException)
             {
-                if (problems != null) problems.Add("the input is not valid JSON");
+                problems.Add("the input is not valid JSON");
                 return null;
             }
-            var problem = problems != null ? ToolSchema.Check(JsonReader.Parse(MissionReply.MissionPlanSchema), input, "input") : null;
+            var problem = ToolSchema.Check(JsonReader.Parse(MissionReply.MissionPlanSchema), input, "input");
             if (problem != null)
             {
                 problems.Add(problem);

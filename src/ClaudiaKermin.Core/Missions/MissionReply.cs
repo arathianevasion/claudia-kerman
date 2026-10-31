@@ -500,7 +500,7 @@ namespace ClaudiaKermin.Core.Missions
         private static List<int> Numbers(JsonNode node)
         {
             if (node == null) return new List<int>();
-            return node.Items.Select(JsonNode.Long).Where(n => n.HasValue).Select(n => (int)System.Math.Max(int.MinValue, System.Math.Min(int.MaxValue, n.Value))).ToList();
+            return node.Items.Select(PlanStep).Where(n => n.HasValue).Select(n => n.Value).ToList();
         }
 
         private static List<GoalItem> Checklist(JsonNode node)

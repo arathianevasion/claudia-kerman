@@ -149,13 +149,13 @@ namespace ClaudiaKermin.Core.Missions
             }
             else if (reply.Kind == MissionReply.DebriefKind && reply.Debrief != null)
             {
-                steps = GoalSteps.After(steps, reply.Debrief);
-                AddDebrief(log, reply.Debrief, userText, steps);
+                GoalSteps.Tick(steps, reply.Debrief.GoalStepsDone);
+                AddDebrief(log, reply.Debrief, userText, GoalSteps.ForCard(steps, reply.Debrief));
             }
             return steps;
         }
 
-        private static void AddDebrief(List<LogEntry> log, Debrief debrief, string userText, List<GoalItem> steps)
+        private static void AddDebrief(List<LogEntry> log, Debrief debrief, string userText, IEnumerable<GoalItem> steps)
         {
             // The turn that asked for it listed the Telemetry Checks crossed; a standing one rules out Nominal, as the loop rated it.
             var crossings = Crossings(userText);

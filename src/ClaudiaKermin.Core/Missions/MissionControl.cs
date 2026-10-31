@@ -1711,7 +1711,7 @@ namespace ClaudiaKermin.Core.Missions
                 Note(LogKind.Notice, "Rated Off-Nominal, not Nominal: a Telemetry Check was crossed during the run.");
             }
             // Ticking twice is harmless: a Debrief already in a log rebuilt from the transcript has ticked them once.
-            mission.GoalSteps = GoalSteps.After(mission.GoalSteps, debrief);
+            GoalSteps.Tick(mission.GoalSteps, debrief.GoalStepsDone);
             var rebuiltLog = mission.SuppressCards;
             var entry = AddCard(mission, LogKind.Debrief, "Debrief: " + debrief.Outcome + TakeStopReason(mission),
                 MissionCards.DebriefBody(debrief, crossings), debrief.Why);

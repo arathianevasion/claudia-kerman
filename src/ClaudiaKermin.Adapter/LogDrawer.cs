@@ -213,8 +213,8 @@ namespace ClaudiaKermin.Adapter
             ClaudiaSkin.EndCard();
         }
 
-        // The Debrief's full picture under Claudia's account. The mod's sections come first (the margin bar, resources, the margin
-        // recheck, the events, the science seen, the Mission Goal's count), so a lean Nominal Debrief (#581) reads complete; then
+        // The Debrief's full picture under Claudia's account. The mod's sections come first (the margin bar, resources, the Margin
+        // check with any margin recheck, the events, the science seen, the Mission Goal's count), so a lean Nominal Debrief (#581) reads complete; then
         // Claudia's outcome against target, margin and science, the follow-up on offer and a failed run's error text.
         private void DrawDebrief(DebriefDetail detail)
         {
