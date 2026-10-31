@@ -1057,6 +1057,7 @@ namespace ClaudiaKermin.Core.Missions
             request.System.AddRange(mission.System);
             request.Messages.AddRange(Sent(mission, turn.CompactionBase, turn.CompactedBase));
             request.Messages.AddRange(turn.Messages);
+            AddDiagnostics(mission, request);
             return request;
         }
 
@@ -1196,6 +1197,7 @@ namespace ClaudiaKermin.Core.Missions
             // Settled and logged before the reply is applied, which may send the next request.
             var spentBefore = mission.Spent;
             Settle(mission, turn, result);
+            TrackCache(mission, result);
             turn.Stats.Ended(mission.Spent - spentBefore, result != null && result.Status == StreamStatus.Completed ? result.Message : null);
             LogCost(mission, mission.Settlement, mission.Settled, mission.Outcome);
             // The Mission was dropped (End Mission, or another save loaded) while this request ran.
@@ -1811,7 +1813,7 @@ namespace ClaudiaKermin.Core.Missions
             try
             {
                 MissionFolder.WriteTranscript(mission.Folder, mission.Id, mission.Model, mission.System, mission.Conversation,
-                    mission.CompactionBlock, mission.CompactedMessages, mission.ContextTokens);
+                    mission.CompactionBlock, mission.CompactedMessages, mission.ContextTokens, mission.LastMessageId);
             }
             catch (Exception e) when (IsFileError(e))
             {
