@@ -81,9 +81,20 @@ namespace ClaudiaKermin.Adapter
                 while (!Step(guard)) { }
                 return;
             }
+            // A call ToolStep has abandoned (#544) queues nothing more, and one waiting is dropped from the queue.
+            var token = PlanningCancellation.Current;
+            token.ThrowIfCancellationRequested();
             var job = new Job { Step = step };
             lock (_queue) _queue.Enqueue(job);
-            if (!job.Done.Wait(WaitLimit)) job.Abandoned = true;
+            try
+            {
+                if (!job.Done.Wait(WaitLimit, token)) job.Abandoned = true;
+            }
+            catch (OperationCanceledException)
+            {
+                job.Abandoned = true;
+                throw;
+            }
         }
 
         private static CelestialBody Find(string name)
