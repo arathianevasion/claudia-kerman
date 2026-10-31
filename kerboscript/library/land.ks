@@ -784,7 +784,7 @@ function land_plans_staged {
 }
 
 // The craft (land_craft's) as the lander alone (under, land_measure_underhang's) flies it once the Underhang has gone with
-// the stage: its thrust, mass and Isp, nothing to drop; the turn lag and burn_margin stay. Pure.
+// the stage: its thrust, mass, Isp and dry mass, nothing to drop; the turn lag and burn_margin stay. Pure.
 function land_lander_craft {
   parameter craft, under.
   local lander is lexicon().
@@ -796,6 +796,10 @@ function land_lander_craft {
   set lander["thrust"] to under:lander_thrust.
   set lander["mass"] to under:lander_mass.
   set lander["isp"] to under:lander_isp.
+  // The mass it runs dry at (t), from its own delta-v, as land_craft works it out for a craft with nothing to drop.
+  if under:lander_dv > 0 and under:lander_isp > 0 {
+    lander:add("dry_mass", under:lander_mass / 2.718281828459045 ^ (under:lander_dv / (under:lander_isp * 9.80665))).
+  }
   return lander.
 }
 
@@ -1475,18 +1479,27 @@ function land {
     }
     // The pass search is the mod's too (find_landing_site keeps its sites by it, so both choose the
     // same pass), through a block-internal call that stays inline for the same reason (ADR 0007).
-    local site_query is land_pass_query(site, r_pe, time:seconds + 120, opt:daylight, reach, opt:within_hours, craft, opt:descent_shape, may_move).
-    // #521: with no pass, the failure names the change_orbit plane changes that reach the site; land never flies them.
-    site_query:add("plane_changes", true).
-    set plan to land_pass_plan(addons:claudia:landingpass(site_query), site, r_pe).
-    // A plan whose braking the stage can't cover after all: planned again with the lander that will brake (#546).
-    if plan:error = "" and not stage_first and land_plans_staged(plan_stage_dv, ship:deltav:current, land_dv_needed(plan:brake_dv, opt:burn_margin, est_need),
-        may_stage_first) {
-      set stage_first to true.
-      set craft to land_lander_craft(craft, under).
-      set site_query to land_pass_query(site, r_pe, time:seconds + 120, opt:daylight, reach, opt:within_hours, craft, opt:descent_shape, may_move).
+    // #546: a stack whose plan the stage can't cover after all, or that has no plan, is planned again as the lander alone;
+    // that plan stands if the stage can't cover its braking either, so the stage is staged off before the fall.
+    local asked is craft.
+    from { local tries is 0. } until tries >= 2 step { set tries to tries + 1. } do {
+      local site_query is land_pass_query(site, r_pe, time:seconds + 120, opt:daylight, reach, opt:within_hours, asked, opt:descent_shape, may_move).
+      // #521: with no pass, the failure names the change_orbit plane changes that reach the site; land never flies them.
       site_query:add("plane_changes", true).
-      set plan to land_pass_plan(addons:claudia:landingpass(site_query), site, r_pe).
+      local found is land_pass_plan(addons:claudia:landingpass(site_query), site, r_pe).
+      local short is found:error = "" and land_plans_staged(plan_stage_dv, ship:deltav:current,
+        land_dv_needed(found:brake_dv, opt:burn_margin, est_need), may_stage_first).
+      if tries = 0 {
+        set plan to found.
+      } else if short {
+        set plan to found.
+        set craft to asked.
+        set stage_first to true.
+      }
+      if stage_first or not may_stage_first or (found:error = "" and not short) {
+        break.
+      }
+      set asked to land_lander_craft(craft, under).
     }
   }
   if plan:error <> "" {
