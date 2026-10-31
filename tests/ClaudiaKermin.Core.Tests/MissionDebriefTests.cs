@@ -814,6 +814,52 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal("", detail.ScriptError);
         }
 
+        private const string LeanExtras =
+            ",\"outcome_vs_target\":\"\",\"plan_margin\":\"\",\"science\":\"\",\"goal_steps_done\":[1],\"follow_up\":\"none\",\"follow_up_text\":\"\"";
+
+        [Fact]
+        public void ALeanNominalDebriefIsAcceptedAndItsCardHasTheModsSections()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", LeanExtras).Replace("\"what_happened\":\"It went.\"", "\"what_happened\":\"\""));
+            var start = rig.RunToRunning();
+            rig.Mission.Send(new RunEventSeen(RunEventKind.Staging, "Stage 1 separated", ApprovedAt + 20));
+            rig.Mission.Send(new RunEventSeen(RunEventKind.Science, "Mystery Goo on the pad: 3.0 science", ApprovedAt + 31));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.AwaitingSequenceApproval && !v.Busy);
+
+            var card = rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief);
+            Assert.Equal("Debrief: Nominal", card.Title);
+            Assert.Equal("Next: Fly on.", card.Text);
+            var detail = card.Debrief;
+            Assert.Equal("", detail.OutcomeVsTarget);
+            Assert.Equal("", detail.PlanMargin);
+            Assert.Equal("", detail.Science);
+            // The mod's sections carry the card: the margin bar, the Margin check line, its events and the science it saw.
+            Assert.NotNull(detail.Margin);
+            Assert.NotEqual("", detail.RecheckSummary);
+            Assert.Single(detail.Events);
+            Assert.Equal(new[] { "+31 s Mystery Goo on the pad: 3.0 science" }, detail.ScienceSeen);
+            // The plan gave the Mission Goal's steps; the Debrief ticked the first.
+            Assert.Equal(1, detail.ChecklistDone);
+            Assert.Equal(2, detail.Checklist.Count);
+            Assert.Equal(new[] { true, false }, rig.Mission.View.GoalSteps.Select(s => s.Done));
+        }
+
+        [Fact]
+        public void AnOffNominalDebriefWithThoseFieldsEmptyIsHandledAsBefore()
+        {
+            var rig = new Rig(this, DebriefJson("Off-Nominal", LeanExtras.Replace("\"follow_up\":\"none\"", "\"follow_up\":\"corrective_sequence\"")));
+            var start = rig.RunToRunning();
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.AwaitingSequenceApproval && !v.Busy);
+
+            var card = rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief);
+            Assert.Equal("Debrief: Off-Nominal", card.Title);
+            Assert.Equal("It went.\nNext: Fly on.", card.Text);
+            Assert.Equal("", card.Debrief.OutcomeVsTarget);
+            Assert.Equal("Corrective sequence next: Fly on.", card.Debrief.FollowUp);
+        }
+
         [Fact]
         public void AFailedRunsDebriefCardIncludesTheScriptsErrorText()
         {
@@ -1012,7 +1058,7 @@ namespace ClaudiaKermin.Core.Tests
                 + "\"mission_plan\":{\"why\":\"Two legs.\",\"sequences\":["
                 + "{\"name\":\"Link check\",\"intent\":\"Prove the link.\",\"delta_v\":0,\"timing\":\"now\",\"due_time_ut\":-1,\"manual\":false},"
                 + "{\"name\":\"Second leg\",\"intent\":\"Go on.\",\"delta_v\":1000,\"timing\":\"after\",\"due_time_ut\":-1,\"manual\":false}],"
-                + "\"total_delta_v\":1000,\"expected_duration\":\"short\",\"mission_time_s\":-1}}");
+                + "\"total_delta_v\":1000,\"expected_duration\":\"short\",\"mission_time_s\":-1,\"goal_steps\":[\"Prove the link\",\"Go on\"]}}");
         }
 
         /// <summary>A reply as the stream carries it: the JSON as one text block, priced by its usage.</summary>
