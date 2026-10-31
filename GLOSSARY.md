@@ -128,8 +128,12 @@ _Avoid_: alarm (the stock Alarm Clock's word), warning (a Craft Check finding)
 Claudia's chat-based evaluation after a Maneuver Sequence: what happened versus the plan, progress toward the Mission Goal, and the proposed next Maneuver Sequence with its reasoning.
 _Avoid_: report (what a script does with its Script Result), evaluation, review
 
+**Margin check**:
+The mod's own check, with no Claude, inside every Debrief: the craft as it is now (delta-v, thrust over weight where it must land or lift off, electric charge, monopropellant and the Craft Check findings the mod decides itself) against the Maneuver Sequences still to fly in the Mission Plan, ending enough, tight or short. Its line and findings go into the Debrief and onto its card.
+_Avoid_: margin recheck (which is Claudia's)
+
 **Margin recheck**:
-The Craft Check run again inside every Debrief, on the craft as it is now against the Maneuver Sequences still to fly in the Mission Plan; charged to the Mission like any other request, and skipped when the Spending Cap has no room for it beside the Debrief.
+The Craft Check run again inside a Debrief whose Margin check is tight or short (or every Debrief, if the player config asks), on the craft as it is now against the Maneuver Sequences still to fly in the Mission Plan; charged to the Mission like any other request, and skipped when the Spending Cap has no room for it beside the Debrief.
 _Avoid_: second Craft Check, re-check
 
 **Second look**:

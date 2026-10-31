@@ -37,6 +37,18 @@ namespace ClaudiaKermin.Core.Missions
         FuelMargin,
     }
 
+    public static class TelemetryQuantities
+    {
+        /// <summary>
+        /// A burn swings the orbit quantities it is flying (#582), so their checks wait for the burn to end. Every other
+        /// quantity is tested throughout, altitude and vertical speed being the landing safety rails.
+        /// </summary>
+        public static bool IsHeldDuringBurn(this TelemetryQuantity quantity)
+        {
+            return quantity == TelemetryQuantity.Apoapsis || quantity == TelemetryQuantity.Periapsis || quantity == TelemetryQuantity.Inclination;
+        }
+    }
+
     /// <summary>
     /// A Telemetry Check: a quantity the mod measures while Running, and the threshold whose crossing raises an Alert.
     /// Set in the Sequence Plan by Claudia, or a config default (<see cref="TelemetryDefaults"/>).

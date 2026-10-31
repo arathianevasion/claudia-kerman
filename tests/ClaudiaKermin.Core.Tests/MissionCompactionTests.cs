@@ -83,7 +83,11 @@ namespace ClaudiaKermin.Core.Tests
             Assert.False(compaction.TryGetProperty("output_config", out _));
             Assert.Equal(MissionPrompts.CompactionMaxTokens, compaction.GetProperty("max_tokens").GetInt32());
             Assert.Equal(sequence.GetProperty("model").GetString(), compaction.GetProperty("model").GetString());
-            Assert.Equal(sequence.GetProperty("system").GetRawText(), compaction.GetProperty("system").GetRawText());
+            // The same layers' text, but it writes nothing to the cache (#549) where the sequence request caches its tail and every layer.
+            Assert.Equal(sequence.GetProperty("system").EnumerateArray().Select(l => l.GetProperty("text").GetString()),
+                compaction.GetProperty("system").EnumerateArray().Select(l => l.GetProperty("text").GetString()));
+            Assert.DoesNotContain("cache_control", transport.Requests[2].Body);
+            Assert.Contains("cache_control", transport.Requests[1].Body);
             Assert.Equal(sequence.GetProperty("tools").GetRawText(), compaction.GetProperty("tools").GetRawText());
             var before = sequence.GetProperty("messages").EnumerateArray().Select(m => m.GetRawText()).ToList();
             var summarized = compaction.GetProperty("messages").EnumerateArray().Select(m => m.GetRawText()).ToList();
@@ -103,6 +107,8 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal("system", debrief[1].GetProperty("role").GetString());
             Assert.Equal("high", debrief[1].GetProperty("output_config").GetProperty("effort").GetString());
             Assert.Equal("user", debrief[2].GetProperty("role").GetString());
+            // The block left the full Game Snapshot behind, so the turn sends it again, parts and all (#256).
+            Assert.Contains(MissionPrompts.SnapshotHeader, debrief[2].GetProperty("content")[0].GetProperty("text").GetString());
             Assert.Equal(4, debrief.GetArrayLength());
 
             // Billed like any request: its own pending charge, then paid at the compaction iteration's cost.
@@ -117,6 +123,8 @@ namespace ClaudiaKermin.Core.Tests
             {
                 "the Mission Goal", "the Mission Settings", "the Spending Cap", "the approved Mission Plan",
                 "the flown Maneuver Sequences with their Debrief outcomes", "every player instruction", "the craft's state",
+                // The parts list is sent only when it changes (#256): the summary keeps it.
+                "including its parts list",
             })
                 Assert.Contains(kept, text);
             Assert.Contains("word for word", text);

@@ -35,6 +35,10 @@ namespace ClaudiaKermin.Core.Missions
             public double? Pending;
             /// <summary>The same for the follow-up threshold.</summary>
             public double? FollowUpPending;
+            /// <summary>The worst reading past the active threshold while the check was held for a burn (#582); null when none.</summary>
+            public double? HeldWorst;
+            /// <summary>The threshold <see cref="HeldWorst"/> was past.</summary>
+            public double HeldThreshold;
         }
 
         /// <summary>A crossed Telemetry Check, for its Alert and the run's Debrief.</summary>
@@ -70,6 +74,9 @@ namespace ClaudiaKermin.Core.Missions
             /// <summary>Crossings since the last Debrief, which lists them.</summary>
             public readonly List<Crossing> Crossings = new List<Crossing>();
             public LiveReadings Readings;
+            /// <summary>A burn is in progress (#582): the throttle has been over 0 and has not read 0 twice in a row since.</summary>
+            public bool Burning;
+            public int ZeroThrottleReadings;
             /// <summary>The snapshot the stock delta-v checks last judged; another input on the same snapshot is not a second reading.</summary>
             public GameSnapshot JudgedSnapshot;
             /// <summary>The Building Block running now, from the kOS bridge; "" between blocks.</summary>
@@ -115,6 +122,8 @@ namespace ClaudiaKermin.Core.Missions
             foreach (var check in TelemetryDefaults.Fill(plan, _config)) mission.Checks.Add(new LiveCheck { Check = check });
             mission.Crossings.Clear();
             mission.JudgedSnapshot = null;
+            mission.Burning = false;
+            mission.ZeroThrottleReadings = 0;
             mission.CurrentBlock = "";
             mission.BlocksDone = 0;
             mission.AbortRecommendation = "";
@@ -127,8 +136,11 @@ namespace ClaudiaKermin.Core.Missions
         /// question waiting at the cap goes back in the queue, so the run's Debrief goes first and Pauses at the cap as
         /// usual (story 124).
         /// </summary>
-        private static void EndLive(Mission mission)
+        private void EndLive(Mission mission)
         {
+            if (mission.Burning) TestHeldAtRunEnd(mission);
+            mission.Burning = false;
+            mission.ZeroThrottleReadings = 0;
             if (mission.WaitingForCap && !mission.InFlight && mission.Pending != null)
             {
                 var waiting = mission.Pending;
@@ -179,10 +191,20 @@ namespace ClaudiaKermin.Core.Missions
             var snapshot = MissionVesselSnapshot(mission);
             var fresh = !ReferenceEquals(snapshot, mission.JudgedSnapshot);
             mission.JudgedSnapshot = snapshot;
+            if (fresh && snapshot != null) UpdateBurn(mission, snapshot.Throttle);
             foreach (var live in mission.Checks)
             {
                 if (!fresh && live.Check.NeedsConfirmation) continue;
                 var reading = mission.Readings.Of(live.Check);
+                if (live.Check.Quantity.IsHeldDuringBurn())
+                {
+                    if (mission.Burning)
+                    {
+                        HoldDuringBurn(live, reading);
+                        continue;
+                    }
+                    ReleaseAfterBurn(mission, live, reading);
+                }
                 if (!live.Fired)
                 {
                     if (live.Check.NeedsArming && !live.Armed)
@@ -204,6 +226,80 @@ namespace ClaudiaKermin.Core.Missions
                         Crossed(mission, live, live.FollowUp.Value, reading.Value, true);
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// A burn is in progress while the snapshot's throttle is over 0, whatever flies it (#582). It ends on the second
+        /// snapshot in a row at 0, so a one-reading drop (a staging gap) doesn't release the held checks.
+        /// </summary>
+        private static void UpdateBurn(Mission mission, double throttle)
+        {
+            if (throttle > 0)
+            {
+                mission.Burning = true;
+                mission.ZeroThrottleReadings = 0;
+            }
+            else if (mission.Burning && ++mission.ZeroThrottleReadings >= 2)
+            {
+                mission.Burning = false;
+                mission.ZeroThrottleReadings = 0;
+            }
+        }
+
+        /// <summary>The threshold a check is watching now: its own, then its follow-up once judged; null when it has nothing left to fire.</summary>
+        private static double? ActiveThreshold(LiveCheck live)
+        {
+            if (!live.Fired) return live.Check.Threshold;
+            return live.FollowUp.HasValue && !live.FollowUpFired ? live.FollowUp : null;
+        }
+
+        /// <summary>A held check isn't tested mid-burn; its worst reading past the threshold is kept for the line it leaves if it recovers.</summary>
+        private static void HoldDuringBurn(LiveCheck live, double? reading)
+        {
+            var threshold = ActiveThreshold(live);
+            if (!threshold.HasValue || (live.Check.NeedsArming && !live.Armed) || !live.Check.Crossed(reading, threshold.Value)) return;
+            var worse = !live.HeldWorst.HasValue || (live.Check.Below ? reading.Value < live.HeldWorst.Value : reading.Value > live.HeldWorst.Value);
+            if (worse) live.HeldWorst = reading;
+            live.HeldThreshold = threshold.Value;
+        }
+
+        /// <summary>The burn is over: a held check that crossed and is back on the safe side leaves one event line. One still crossed goes on to be tested as usual.</summary>
+        private void ReleaseAfterBurn(Mission mission, LiveCheck live, double? reading)
+        {
+            if (!live.HeldWorst.HasValue) return;
+            var worst = live.HeldWorst.Value;
+            live.HeldWorst = null;
+            if (!reading.HasValue || live.Check.Crossed(reading, live.HeldThreshold)) return;
+            Event(mission, "telemetry_check_recovered", live.Check.Name() + " " + live.Check.Format(worst) + (live.Check.Below ? " under " : " over ")
+                + live.Check.Format(live.HeldThreshold) + " mid-burn, " + live.Check.Format(reading.Value) + " after it: no Alert.");
+        }
+
+        /// <summary>
+        /// The run ended mid-burn: held checks are tested against the final reading, the one the Debrief judges recovery by.
+        /// A still-crossed one is recorded for the Debrief unjudged, since no Alert is left to send.
+        /// </summary>
+        private void TestHeldAtRunEnd(Mission mission)
+        {
+            var final = Readings(mission);
+            foreach (var live in mission.Checks.Where(c => c.Check.Quantity.IsHeldDuringBurn()))
+            {
+                var reading = final.Of(live.Check);
+                var threshold = ActiveThreshold(live);
+                if (threshold.HasValue && (!live.Check.NeedsArming || live.Armed) && live.Check.Crossed(reading, threshold.Value))
+                {
+                    var followUp = live.Fired;
+                    if (followUp) live.FollowUpFired = true;
+                    else live.Fired = true;
+                    var crossing = new Crossing
+                    {
+                        Check = live.Check, Threshold = threshold.Value, Value = reading.Value,
+                        ElapsedSeconds = final.ElapsedSeconds, FollowUp = followUp, Verdict = "not judged: the run ended first",
+                    };
+                    mission.Crossings.Add(crossing);
+                    Event(mission, "telemetry_check", crossing.Describe() + " (run ended mid-burn: recorded, no Alert sent)");
+                }
+                else ReleaseAfterBurn(mission, live, reading);
             }
         }
 

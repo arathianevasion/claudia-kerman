@@ -232,6 +232,12 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         public string ToJson(bool withBodies)
         {
+            return ToJson(withBodies, true);
+        }
+
+        /// <summary>The same; <paramref name="withParts"/> false leaves out craft.parts, for a turn whose parts Claudia already has (#256).</summary>
+        public string ToJson(bool withBodies, bool withParts)
+        {
             var json = new JsonWriter().BeginObject()
                 .Field("ut", Ut)
                 .Field("situation", Situation)
@@ -255,8 +261,8 @@ namespace ClaudiaKermin.Core.Missions
                 .Field("stage", Craft.Stage)
                 .Field("seats", Craft.Seats);
             if (Craft.VesselId.Length > 0) json.Field("vessel_id", Craft.VesselId);
-            json.Name("parts").BeginArray();
-            foreach (var part in Craft.Parts)
+            if (withParts) json.Name("parts").BeginArray();
+            foreach (var part in withParts ? Craft.Parts : Enumerable.Empty<SnapshotPart>())
             {
                 json.BeginObject().Field("id", part.Id).Name("parent");
                 if (part.ParentId.HasValue) json.Number(part.ParentId.Value);
@@ -278,7 +284,7 @@ namespace ClaudiaKermin.Core.Missions
                 foreach (var tag in part.Tags) json.String(tag);
                 json.EndArray().EndObject();
             }
-            json.EndArray();
+            if (withParts) json.EndArray();
             if (withBodies && Craft.NoseDrag.Count > 0)
             {
                 json.Name("nose_drag").BeginArray();

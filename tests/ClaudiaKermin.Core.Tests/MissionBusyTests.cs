@@ -41,7 +41,8 @@ namespace ClaudiaKermin.Core.Tests
         {
             var client = new ClaudeClient(routed ? new CraftCheckRouter(transport) : (IHttpTransport)transport, () => "sk-ant-test", l => { });
             client.Timing.Wait = (d, c) => { };
-            var mission = new MissionControl(client, _background, new PlayerConfig(), () => true, new PassingScriptCheck());
+            // Always, so a Debrief starts with the Margin recheck as these tests expect.
+            var mission = new MissionControl(client, _background, new PlayerConfig { MarginRecheck = MarginRecheckMode.Always }, () => true, new PassingScriptCheck());
             mission.Send(new SaveLoaded(_save.Path));
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(new UtAdvanced(1000));

@@ -466,6 +466,7 @@ namespace ClaudiaKermin.Core.Missions
                 mission.CompactionBlock = transcript.Compaction;
                 mission.CompactedMessages = transcript.CompactedMessages;
                 mission.ContextTokens = transcript.ContextTokens;
+                mission.LastMessageId = transcript.LastMessageId;
                 mission.Effort = SentEffort(mission);
                 // The Mission log is the transcript's again: the player's words, Claudia's lines, the plan cards and the Debriefs.
                 mission.Log.AddRange(MissionLogRebuild.From(transcript, state.Goal, mission.VesselName, _config, MissionStore.ReadNotices(mission.Folder)));

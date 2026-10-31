@@ -118,8 +118,10 @@ namespace ClaudiaKermin.Core.Missions
         {
             var uses = message.Content.OfType<ToolUseBlock>().ToList();
             var repeats = ToolRepeats.Of(turn.Messages, message);
-            // A step of nothing but repeats is the loop's last (#571): its refusals say so.
-            var allRepeats = uses.Count > 0 && uses.Select((u, i) => repeats[i] != null && ToolRefusal(purpose, snapshot, u.Name) == null).All(r => r);
+            var rows = ToolRepeats.Rows(turn.Messages);
+            // A step of nothing but repeats is the loop's last (#571): its refusals say so. A call whose figures are already in
+            // the request (#575) is refused too but is not an identical repeat, so it does not count toward the stop.
+            var allRepeats = uses.Count > 0 && uses.Select((u, i) => repeats[i] != null && ToolRefusal(purpose, snapshot, u.Name) == null && !ToolRepeats.Matches(rows, u)).All(r => r);
             // A Mission Plan not handed in yet keeps the loop open for propose_mission_plan alone, once (#571).
             var planWaits = TakesMissionPlan(purpose) && ProposedPlans.LastAccepted(turn.Messages) == null && turn.ToolSteps + 1 < ToolStep.MaxSteps;
             var plansHere = uses.Where((u, i) => u.Name == ProposedPlans.ToolName && repeats[i] == null).Any();
@@ -129,9 +131,11 @@ namespace ClaudiaKermin.Core.Missions
                 var repeat = repeats[uses.IndexOf(use)];
                 var refused = ToolRefusal(purpose, snapshot, use.Name);
                 if (refused != null) return refused;
+                var inRequest = ToolRepeats.Matches(rows, use) ? "its figures are in the Mission request above" : null;
                 var stopLine = RepeatStopLine + (TakesMissionPlan(purpose) ? ", with the plan." : ".");
                 if (turn.PlanOnly && use.Name != ProposedPlans.ToolName)
-                    return (repeat ?? "only propose_mission_plan is answered now") + (stops ? stopLine : "");
+                    return (inRequest ?? repeat ?? "only propose_mission_plan is answered now") + (stops ? stopLine : "");
+                if (inRequest != null) return inRequest;
                 if (stops) return repeat + stopLine;
                 if (allRepeats && planWaits && !turn.PlanOnly) return repeat + PlanOnlyLine;
                 return repeat;
