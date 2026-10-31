@@ -372,6 +372,74 @@ class CommandLineTests(MissionCase):
         self.assertEqual('0.5', cmd[cmd.index('--max-budget-usd') + 1])
         self.assertEqual('S', cmd[cmd.index('--system-prompt') + 1])
         self.assertEqual('P', seen['input'])
+        # Every flag is in `claude --help` (#567).
+        for flag in ('-p', '--safe-mode', '--no-session-persistence', '--model', '--effort', '--system-prompt',
+                     '--json-schema', '--tools', '--output-format', '--max-budget-usd'):
+            self.assertIn(flag, cmd)
+
+
+class SequencePlanTests(unittest.TestCase):
+    def test_signature_is_the_building_blocks_the_script_calls_and_plan_step(self):
+        script = ('// ascend(1)\nfunction coast { }\nascend(80000).\nlocal s is "land(".\nCoast(10).\n'
+                  'my:ascend(2).\nlaunch_x(1).\n')
+        sig = replay.signature('sequence_plan', fx.seqplan(script, 2))
+        self.assertEqual({'blocks': ['ascend', 'coast'], 'plan_step': 2}, sig)
+        self.assertIsNone(replay.signature('sequence_plan', fx.answer()))
+
+    def test_the_block_names_are_the_library_files(self):
+        names = replay.block_names()
+        self.assertIn('ascend', names)
+        self.assertNotIn('claudia_lib', names)
+
+    def test_the_notice_is_told_apart_from_the_others(self):
+        self.assertEqual('sequence_plan', replay.classify_notice('Reply with kind "sequence_plan".'))
+        self.assertEqual('change', replay.classify_notice('The player wants a change to the pending Sequence Plan'))
+
+
+class ModelScreenTests(MissionCase):
+    def run_main(self, *args, runner=None):
+        out = io.StringIO()
+        code = replay.main([self.root, '--model', 'claude-haiku-5-5'] + list(args), runner=runner, stdout=out)
+        return code, out.getvalue()
+
+    def echo(self, req):
+        return json.loads(json.dumps(self.turns[turn_of(req) - 1][1]))
+
+    def test_each_request_goes_once_to_the_model_at_its_recorded_effort_even_with_a_saved_body(self):
+        runner = FakeRunner(self.echo)
+        code, text = self.run_main(runner=runner)
+        self.assertEqual(0, code)
+        self.assertEqual(6, len(runner.calls))
+        self.assertEqual({'claude-haiku-5-5'}, {r['model'] for r in runner.calls})
+        self.assertEqual({'high'}, {r['effort'] for r in runner.calls})
+        self.assertIn('# Model screen: claude-haiku-5-5', text)
+        self.assertRegex(text, r'\| debrief \| 3 \| high \| 3/3 \(100%\) \| 0 \| \*\*PASS\*\*')
+
+    def test_a_kind_passes_at_19_of_20_and_fails_at_18(self):
+        one = [c for c in self.cases() if c['kind'] == 'debrief' and c['id'].endswith('turn-9')]
+        for misses, ok in ((1, True), (2, False)):
+            seen = []
+
+            def answer(req):
+                seen.append(1)
+                return fx.debrief('Failed') if len(seen) <= misses else fx.debrief('Nominal')
+            s = replay.summarize(replay.run(one, FakeRunner(answer), repeats=20, model='m', model_screen=True))['debrief']
+            self.assertEqual(ok, s['pass'], misses)
+
+    def test_the_report_lists_the_disagreements_and_the_exit_code_follows(self):
+        runner = FakeRunner(lambda req: fx.debrief('Failed') if turn_of(req) == 1 else self.echo(req))
+        code, text = self.run_main(runner=runner)
+        self.assertEqual(1, code)
+        self.assertIn('"outcome": "Failed"', text)
+        self.assertIn('recorded {"outcome": "Nominal"}', text)
+
+    def test_dry_run_prints_what_it_would_replay_per_kind(self):
+        def boom(req):
+            raise AssertionError('dry run must not call the runner')
+        code, text = self.run_main('--dry-run', runner=boom)
+        self.assertEqual(0, code)
+        self.assertIn('- debrief: 3 request(s), 3 replay(s) on claude-haiku-5-5 at the recorded effort (high)', text)
+        self.assertIn('Total Claude Code calls it would make: 6', text)
 
 
 class BlockerListTests(unittest.TestCase):
