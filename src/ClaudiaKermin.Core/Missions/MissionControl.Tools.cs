@@ -121,8 +121,8 @@ namespace ClaudiaKermin.Core.Missions
             // A step of nothing but repeats is the loop's last (#571): its refusals say so.
             var allRepeats = uses.Count > 0 && uses.Select((u, i) => repeats[i] != null && ToolRefusal(purpose, snapshot, u.Name) == null).All(r => r);
             // A Mission Plan not handed in yet keeps the loop open for propose_mission_plan alone, once (#571).
-            var planWaits = TakesMissionPlan(purpose) && ProposedPlans.LastAccepted(turn.Messages) == null;
-            var plansHere = uses.Any(u => u.Name == ProposedPlans.ToolName);
+            var planWaits = TakesMissionPlan(purpose) && ProposedPlans.LastAccepted(turn.Messages) == null && turn.ToolSteps + 1 < ToolStep.MaxSteps;
+            var plansHere = uses.Where((u, i) => u.Name == ProposedPlans.ToolName && repeats[i] == null).Any();
             var stops = turn.PlanOnly ? !plansHere : allRepeats && !planWaits;
             return use =>
             {
@@ -225,7 +225,7 @@ namespace ClaudiaKermin.Core.Missions
                 turn.ToolSteps++;
                 var allRepeats = step.Calls.Count > 0 && step.Calls.Select((c, i) => IsRepeat(c.Refusal, repeats[i])).All(r => r);
                 // On a turn still owed a Mission Plan, a repeat-only step gets one more step for propose_mission_plan alone (#571).
-                var planWaits = TakesMissionPlan(turn.Purpose) && ProposedPlans.LastAccepted(turn.Messages) == null;
+                var planWaits = TakesMissionPlan(turn.Purpose) && ProposedPlans.LastAccepted(turn.Messages) == null && turn.ToolSteps < ToolStep.MaxSteps;
                 if (turn.PlanOnly)
                     turn.RepeatStop = !step.Calls.Select((c, i) => c.Name == ProposedPlans.ToolName && !IsRepeat(c.Refusal, repeats[i])).Any(p => p);
                 else

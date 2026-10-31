@@ -518,7 +518,8 @@ namespace ClaudiaKermin.Core.Tests
                 Fixture("mission-plan.sse"));
             var mission = Control(transport, With(new TestTool()));
             Start(mission);
-            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval || v.Stage == MissionStage.Paused || !v.Busy);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            Assert.Equal(4, transport.Requests.Count);
 
             Assert.Equal("{\"type\":\"auto\"}", Body(transport.Requests[2]).GetProperty("tool_choice").GetRawText());
             Assert.Equal("{\"type\":\"none\"}", Body(transport.Requests[3]).GetProperty("tool_choice").GetRawText());
