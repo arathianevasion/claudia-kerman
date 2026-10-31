@@ -120,12 +120,25 @@ namespace ClaudiaKermin.Core.Missions
             var repeats = ToolRepeats.Of(turn.Messages, message);
             // A step of nothing but repeats is the loop's last (#571): its refusals say so.
             var allRepeats = uses.Count > 0 && uses.Select((u, i) => repeats[i] != null && ToolRefusal(purpose, snapshot, u.Name) == null).All(r => r);
+            // A Mission Plan not handed in yet keeps the loop open for propose_mission_plan alone, once (#571).
+            var planWaits = TakesMissionPlan(purpose) && ProposedPlans.LastAccepted(turn.Messages) == null;
+            var plansHere = uses.Any(u => u.Name == ProposedPlans.ToolName);
+            var stops = turn.PlanOnly ? !plansHere : allRepeats && !planWaits;
             return use =>
             {
                 var repeat = repeats[uses.IndexOf(use)];
-                return ToolRefusal(purpose, snapshot, use.Name) ?? (allRepeats ? repeat + RepeatStopLine + (TakesMissionPlan(purpose) ? ", with the plan." : ".") : repeat);
+                var refused = ToolRefusal(purpose, snapshot, use.Name);
+                if (refused != null) return refused;
+                var stopLine = RepeatStopLine + (TakesMissionPlan(purpose) ? ", with the plan." : ".");
+                if (turn.PlanOnly && use.Name != ProposedPlans.ToolName)
+                    return (repeat ?? "only propose_mission_plan is answered now") + (stops ? stopLine : "");
+                if (stops) return repeat + stopLine;
+                if (allRepeats && planWaits && !turn.PlanOnly) return repeat + PlanOnlyLine;
+                return repeat;
             };
         }
+
+        private const string PlanOnlyLine = ". Your next call must be propose_mission_plan: no other tool will be answered";
 
         private const string RepeatStopLine = ". Your next reply is the last of this turn and can't call a tool: reply now";
 
@@ -210,7 +223,14 @@ namespace ClaudiaKermin.Core.Missions
                 if (turn.ToolSteps + 1 == ToolStep.MaxSteps - 1 && TakesMissionPlan(turn.Purpose) && ProposedPlans.LastAccepted(turn.Messages) == null)
                     step.Results.Content.Add(new TextBlock { Text = MissionPrompts.ProposePlanNow });
                 turn.ToolSteps++;
-                turn.RepeatStop = step.Calls.Count > 0 && step.Calls.Select((c, i) => IsRepeat(c.Refusal, repeats[i])).All(r => r);
+                var allRepeats = step.Calls.Count > 0 && step.Calls.Select((c, i) => IsRepeat(c.Refusal, repeats[i])).All(r => r);
+                // On a turn still owed a Mission Plan, a repeat-only step gets one more step for propose_mission_plan alone (#571).
+                var planWaits = TakesMissionPlan(turn.Purpose) && ProposedPlans.LastAccepted(turn.Messages) == null;
+                if (turn.PlanOnly)
+                    turn.RepeatStop = !step.Calls.Select((c, i) => c.Name == ProposedPlans.ToolName && !IsRepeat(c.Refusal, repeats[i])).Any(p => p);
+                else
+                    turn.RepeatStop = allRepeats && !planWaits;
+                turn.PlanOnly = !turn.PlanOnly && allRepeats && planWaits;
                 for (var i = 0; i < step.Calls.Count; i++)
                 {
                     var call = step.Calls[i];
