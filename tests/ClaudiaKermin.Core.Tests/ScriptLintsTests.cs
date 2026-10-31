@@ -15,7 +15,6 @@ namespace ClaudiaKermin.Core.Tests
         private const string SiteSearch = "circularize().\nlocal best is 0.\nfrom {local i is 0.} until i > 20 step {set i to i + 1.} do {\n"
             + "  local p is latlng(i, 10).\n  if p:terrainheight > best { set best to p:terrainheight. }\n}\nland().\n";
         private const string NudgeLoop = "circularize().\nuntil ship:orbit:nextpatch:periapsis > 30000 {\n  set nextnode:prograde to nextnode:prograde + 1.\n}\n";
-        private const string FuelStaging = "launch().\nuntil false {\n  if stage:liquidfuel < 0.1 { stage. }\n  wait 0.1.\n}\n";
 
         [Fact]
         public void AHandWrittenSiteSearchLoopWarns()
@@ -47,12 +46,11 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void AStagingLoopThatWatchesFuelWarns()
+        public void AStagingLoopThatWatchesFuelIsNotLinted()
         {
-            var warnings = ScriptLints.Warnings(FuelStaging);
-            Assert.Contains(warnings, w => w.Contains("staging loop"));
-            Assert.Single(warnings);
-            Assert.Contains(ScriptLints.Warnings("launch().\nwhen stage:solidfuel < 1 then { stage. }\n"), w => w.Contains("staging loop"));
+            // The Script Check refuses the bare stage. (#537), so there is nothing left for a lint to say.
+            Assert.Empty(ScriptLints.Warnings("launch().\nuntil false {\n  if stage:liquidfuel < 0.1 { stage. }\n  wait 0.1.\n}\n"));
+            Assert.Empty(ScriptLints.Warnings("launch().\nwhen stage:solidfuel < 1 then { stage. }\n"));
         }
 
         [Fact]
@@ -74,8 +72,8 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void ALoopAfterAnotherBlockIsStillRead()
         {
-            Assert.Contains(ScriptLints.Warnings("launch().\nif true { print 1. }\n" + FuelStaging), w => w.Contains("staging loop"));
-            Assert.Contains(ScriptLints.Warnings("local await is 1.\n" + FuelStaging), w => w.Contains("staging loop"));
+            Assert.Contains(ScriptLints.Warnings("launch().\nif true { print 1. }\n" + NudgeLoop), w => w.Contains("next patch"));
+            Assert.Contains(ScriptLints.Warnings("local await is 1.\n" + NudgeLoop), w => w.Contains("next patch"));
         }
 
         [Fact]
@@ -88,8 +86,8 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void AReasonAlreadyHoldingTheLintTextIsNotRepeated()
         {
-            var lint = ScriptLints.Warnings(FuelStaging).Single();
-            var plan = Reply(FuelStaging).SequencePlan;
+            var lint = ScriptLints.Warnings(NudgeLoop).Single();
+            var plan = Reply(NudgeLoop).SequencePlan;
             Assert.Equal(1, plan.CustomScriptReason.Split(new[] { lint }, System.StringSplitOptions.None).Length - 1);
         }
 
@@ -115,14 +113,6 @@ namespace ClaudiaKermin.Core.Tests
             Assert.True(plan.CustomScript);
             Assert.StartsWith("Nothing fits.", plan.CustomScriptReason);
             Assert.Contains("landing-site search", plan.CustomScriptReason);
-        }
-
-        [Fact]
-        public void AFuelWatchingStagingLoopShowsTheBadgeEvenThoughStagingAloneIsBlockUse()
-        {
-            var plan = Reply(FuelStaging).SequencePlan;
-            Assert.True(plan.CustomScript);
-            Assert.Contains("staging loop", plan.CustomScriptReason);
         }
 
         [Fact]
