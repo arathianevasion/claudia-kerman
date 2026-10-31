@@ -54,6 +54,7 @@ def estimate(cases, effort):
         if p is None:
             total['unpriced'].append(c['id'])
             continue
+        p = baseline.tier(p, tokens)
         mx = (c['body'] or {}).get('max_tokens', DEFAULT_MAX_TOKENS)
         out = c.get('recorded_output') or mx
         total['input_tokens'] += tokens

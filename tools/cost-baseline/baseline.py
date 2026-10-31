@@ -32,7 +32,19 @@ PRICES = {
     'claude-opus-5': dict(input=5.00, w5m=6.25, w1h=10.00, read=0.50, output=25.00),
     'claude-sonnet-4-6': dict(input=3.00, w5m=3.75, w1h=6.00, read=0.30, output=15.00),
     'claude-haiku-4-5': dict(input=1.00, w5m=1.25, w1h=2.00, read=0.10, output=5.00),
+    # Haiku 5.5 has two tiers (fetched 2026-10-31): a prompt over LONG_PROMPT_TOKENS is priced by the `long` row.
+    'claude-haiku-5-5': dict(input=0.10, w5m=0.125, w1h=0.20, read=0.01, output=0.50,
+                             long=dict(input=0.50, w5m=0.625, w1h=1.00, read=0.05, output=2.50)),
 }
+
+# A prompt (uncached input plus cache writes plus cache reads) over this many tokens is priced at a model's `long` row.
+LONG_PROMPT_TOKENS = 100000
+
+
+def tier(p, prompt_tokens):
+    """The price row for a request whose prompt is `prompt_tokens` long: the model's `long` row when it has one and the
+    prompt is over LONG_PROMPT_TOKENS, else the row itself."""
+    return p.get('long', p) if prompt_tokens > LONG_PROMPT_TOKENS else p
 
 KINDS = ['Mission Plan', 'revised Mission Plan', 'Sequence Plan', 'Debrief', 'Alert', 'answer', 'Craft Check']
 
@@ -131,6 +143,7 @@ def iteration_rows(usage, model):
         w1h += max(0, it.get('cache_creation_input_tokens', 0) - w1h - w5m)
         r = dict(type=it.get('type'), model=m, input=it.get('input_tokens', 0), w1h=w1h, w5m=w5m,
                  read=it.get('cache_read_input_tokens', 0), output=it.get('output_tokens', 0))
+        p = tier(p, r['input'] + r['w1h'] + r['w5m'] + r['read'])
         r['cost_input'] = r['input'] * p['input'] / 1e6
         r['cost_w'] = (r['w1h'] * p['w1h'] + r['w5m'] * p['w5m']) / 1e6
         r['cost_read'] = r['read'] * p['read'] / 1e6
@@ -405,7 +418,7 @@ def mission_stats(M, prices_total=None):
                 S['miss_write_cost'] += m['cost_w']
                 # The prefix the previous request had cached but this one wrote again: paid at write, not read, price.
                 lost = max(0, prev_context - m['read'])
-                p = PRICES[m['model']]
+                p = tier(PRICES[m['model']], m['input'] + m['w1h'] + m['w5m'] + m['read'])
                 S['miss_rewritten'] += lost
                 S['miss_excess_cost'] += lost * (p['w1h'] - p['read']) / 1e6
         if msg:
@@ -780,7 +793,7 @@ def main():
                 lg = R.get('log')
                 if R['priced'] and lg and lg.get('settle') and lg['settle'].get('event') == 'paid':
                     for r in R['rows']:
-                        p = PRICES[r['model']]
+                        p = tier(PRICES[r['model']], r['input'] + r['w1h'] + r['w5m'] + r['read'])
                         alt += (r['input'] * p['input'] + (r['w1h'] + r['w5m']) * p['input'] * 2
                                 + r['read'] * p['input'] * 0.1 + r['output'] * p['output']) / 1e6
         w('- Re-pricing those responses with cache reads at 0.1x input and every write at the 1h rate gives %s '
