@@ -19,12 +19,10 @@ namespace ClaudiaKermin.Kerboscript.Tests
         // The budget for one scan on the fixture: 40,000 instructions, under the 50k a second holds at IPU 1000.
         // Measured 36,500 here, where each hasmodule is a kOS delegate (about 17 instructions a call); a real part's is a
         // native suffix, so a scan in the game costs less.
+        // The old path, per the ticket: about 1,600 kind checks at about 390 instructions is about 624,000 per scan, so this
+        // budget is more than ten times under it (the ticket's estimate; no test measures the old path).
         private const int ScanBudgetInstructions = 40000;
         private const int Ipu = 100;
-
-        // Measured before #533 (kind check = 390 instructions) and counted on a craft this size (~1,600 kind checks).
-        private const int OldKindCheckInstructions = 390;
-        private const int OldKindChecksPerScan = 1600;
 
         private sealed class Spec
         {
@@ -159,13 +157,13 @@ namespace ClaudiaKermin.Kerboscript.Tests
             // ModuleEngines is the first kind check: at most one per part (a part nothing can use the kind of skips it),
             // and none while judging.
             var kindChecks = int.Parse(printed[0]);
-            Assert.InRange(kindChecks, 40, 76);
-            // 76 parts × (17 kind checks + 3 decoupler checks) is the most the walk can ask.
-            Assert.True(int.Parse(printed[1]) <= 76 * 20, "hasmodule asked " + printed[1] + " times");
+            Assert.Equal(47, kindChecks);
+            // 3 decoupler checks on each of 76 parts, 17 kind checks on the 47 whose kind the scan can use: the most it can ask.
+            Assert.True(int.Parse(printed[1]) <= (76 * 3 + 47 * 17), "hasmodule asked " + printed[1] + " times");
         }
 
         [Fact]
-        public void One_scan_on_the_76_part_fixture_fits_40000_instructions_at_least_ten_times_under_the_old_path()
+        public void One_scan_on_the_76_part_fixture_fits_40000_instructions()
         {
             var script = FixtureScript()
                 + "local scan is claudia_scan_craft(parts, crewed).\n"
@@ -176,7 +174,6 @@ namespace ClaudiaKermin.Kerboscript.Tests
             // Minus the run that only builds the mock parts; the printing of the plan stays in, a few hundred instructions.
             var instructions = (steps - baseline) * Ipu;
             Assert.True(instructions <= ScanBudgetInstructions, "one scan took up to " + instructions + " instructions (fixture alone " + baseline * Ipu + ")");
-            Assert.True(ScanBudgetInstructions * 10 <= OldKindCheckInstructions * OldKindChecksPerScan);
         }
 
         [Fact]
