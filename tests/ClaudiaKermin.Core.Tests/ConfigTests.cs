@@ -88,6 +88,24 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void TheMarginRecheckIsAutoByDefaultAndReadFromTheFile()
+        {
+            using (var dir = new TempDir())
+            {
+                Assert.Equal(MarginRecheckMode.Auto, PlayerConfig.LoadOrCreate(dir.Sub).MarginRecheck);
+                var path = Path.Combine(dir.Sub, PlayerConfig.FileName);
+                Assert.Contains("margin_recheck = auto", File.ReadAllText(path));
+
+                File.WriteAllText(path, "margin_recheck = always\n");
+                Assert.Equal(MarginRecheckMode.Always, PlayerConfig.LoadOrCreate(dir.Sub).MarginRecheck);
+                File.WriteAllText(path, "margin_recheck = Never\n");
+                Assert.Equal(MarginRecheckMode.Never, PlayerConfig.LoadOrCreate(dir.Sub).MarginRecheck);
+                File.WriteAllText(path, "margin_recheck = sometimes\n");
+                Assert.Equal(MarginRecheckMode.Auto, PlayerConfig.LoadOrCreate(dir.Sub).MarginRecheck);
+            }
+        }
+
+        [Fact]
         public void ScriptIpuDefaultsTo1000IsWrittenToTheFileAndClampedTo50To2000()
         {
             using (var dir = new TempDir())

@@ -54,6 +54,9 @@ namespace ClaudiaKermin.Core.Config
         /// <summary>The delta-v margin the Craft Check wants over the Delta-v Map, in percent.</summary>
         public int CraftCheckMarginPercent = 15;
 
+        /// <summary>When a Debrief also asks Claudia for the Margin recheck; the mod's own margin check runs on every Debrief (#574).</summary>
+        public MarginRecheckMode MarginRecheck = MarginRecheckMode.Auto;
+
         /// <summary>Prefilled in the Mission start form: prefer to land in daylight.</summary>
         public bool DefaultDaylightLanding = true;
 
@@ -124,6 +127,8 @@ namespace ClaudiaKermin.Core.Config
             + "default_spending_cap = 10\n"
             + "# Delta-v margin, in percent, the Craft Check wants over the Delta-v Map.\n"
             + "craft_check_margin = 15\n"
+            + "# When a Debrief also asks Claudia for the margin recheck: auto (only when the mod's own margin check is tight or short), always or never.\n"
+            + "margin_recheck = auto\n"
             + "# Input tokens past which a Mission's conversation is compacted at the next long sequence (at least 50000).\n"
             + "compaction_trigger = 150000\n"
             + "# Price table, USD per million tokens (input, output). A model not listed is charged at the highest price here.\n"
@@ -220,6 +225,10 @@ namespace ClaudiaKermin.Core.Config
                         int margin;
                         if (int.TryParse(value.TrimEnd('%'), NumberStyles.Integer, CultureInfo.InvariantCulture, out margin) && margin >= 0 && margin <= 200)
                             config.CraftCheckMarginPercent = margin;
+                        break;
+                    case "margin_recheck":
+                        MarginRecheckMode mode;
+                        if (Enum.TryParse(value, true, out mode) && Enum.IsDefined(typeof(MarginRecheckMode), mode)) config.MarginRecheck = mode;
                         break;
                     case "compaction_trigger":
                         int trigger;
@@ -368,5 +377,14 @@ namespace ClaudiaKermin.Core.Config
             }
             return string.Join(newline, lines) + (endsWithNewline || added ? newline : "");
         }
+    }
+
+    /// <summary>The <c>margin_recheck</c> line: when a Debrief asks Claudia for the Margin recheck besides the mod's own margin check.</summary>
+    public enum MarginRecheckMode
+    {
+        /// <summary>Only when the mod's margin check says tight or short.</summary>
+        Auto,
+        Always,
+        Never,
     }
 }
