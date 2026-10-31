@@ -15,6 +15,17 @@ namespace ClaudiaKermin.Core.Tools
     /// </summary>
     internal sealed class FindLandingSite : IPlanningTool
     {
+        /// <summary>
+        /// The time the tool's search has, ms (#536): it answers with what it found by then, inside <see cref="ToolStep.CallTimeout"/>
+        /// with room for the last read the game is serving and the answer.
+        /// </summary>
+        public const double ToolBudgetMs = 3500;
+
+        /// <summary>The search's time, ms; null to run to the end (land's block call, on the main thread, flies what the whole window gives).</summary>
+        internal double? BudgetMs = ToolBudgetMs;
+        /// <summary>Work out the plane changes; land's block call uses only the site.</summary>
+        internal bool WithPlaneChanges = true;
+
         public string Name
         {
             get { return "find_landing_site"; }
@@ -70,6 +81,8 @@ namespace ClaudiaKermin.Core.Tools
 
         public ToolOutcome Run(JsonNode input, GameSnapshot snapshot, IPlanningBody api)
         {
+            var deadline = BudgetMs.HasValue ? SearchDeadline.After(BudgetMs.Value, api) : SearchDeadline.None;
+            api = new FrameReadOnce(api);
             var name = JsonNode.Str(input["body"]);
             if (snapshot.Bodies.Count == 0) return PlanningJson.Error("the Game Snapshot has no body table");
             var system = new BodySystem(snapshot.Bodies);
@@ -94,6 +107,7 @@ namespace ClaudiaKermin.Core.Tools
                 WithinHours = LandingPass.WindowHours(within, snapshot.TimeCapHours, body.RotationPeriod),
                 MaxCorrectionDv = JsonNode.Double(input["max_correction_dv"]) ?? LandingPass.DefaultMaxCorrectionDv(LanderDv(snapshot)),
                 Craft = DescentApproach.FromSnapshot(snapshot),
+                Deadline = deadline,
             };
             query.EdgeMarginM = JsonNode.Double(input["edge_margin_m"]) ?? LandingSiteSearch.DefaultEdgeMarginM;
             if (query.MaxSlopeDeg <= 0) return PlanningJson.Error("max_slope_deg must be more than 0");
@@ -135,10 +149,13 @@ namespace ClaudiaKermin.Core.Tools
             }
             json.EndArray();
             json.Field("window_hours", PlanningJson.Round(found.WindowHours, 2));
-            if (found.Sites.Count > 0 && found.Sites[0].AtEdge)
+            if (found.OutOfTime && !query.HasNear) json.Field("searched_hours", PlanningJson.Round(found.SearchedHours, 2));
+            if (found.OutOfTime)
+                json.Field("note", OutOfTimeNote(query, found));
+            else if (found.Sites.Count > 0 && found.Sites[0].AtEdge)
                 json.Field("note", "no site more than " + query.EdgeMarginM.ToString("0.##", CultureInfo.InvariantCulture) + " m inside the " + found.Sites[0].Biome
                     + " biome was reachable in " + found.WindowHours.ToString("0.##", CultureInfo.InvariantCulture) + " h; the sites returned are closer than that to the edge, so a landing may come down outside the biome");
-            if (found.Sites.Count == 0)
+            else if (found.Sites.Count == 0)
                 json.Field("note", "no site met the limits; of " + LandingSiteSearch.Count(found.Candidates) + " ground-track points, "
                     + LandingSiteSearch.Count(found.AfterBiome) + " were in the biome, " + LandingSiteSearch.Count(found.AfterDaylight)
                     + " also in daylight, " + LandingSiteSearch.Count(found.AfterSlope) + " also gentle enough"
@@ -147,16 +164,28 @@ namespace ClaudiaKermin.Core.Tools
                         ? "; the sun never gets over " + LandingSiteSearch.MinSunElevationDeg.ToString("0.##", CultureInfo.InvariantCulture) + " degrees there in the window, so try a lower-latitude site, a longer window, or daylight false"
                         : "")
                     + "; widen within_hours, the slope or the biome"
-                    + (query.HasNear ? "" : ", or give near (the site wanted) for plane changes that reach it"));
-            PlaneChangesFor(json, body, conic, snapshot.Ut, query, found, api);
+                    + (query.HasNear ? "" : ", or give near (the site wanted) for plane changes that reach it")
+                    + "; land given this biome and these limits and window searches the same ground-track points, so it finds none either, but a site given to land as coordinates may lie off the track, reached by a correction burn");
+            if (WithPlaneChanges) PlaneChangesFor(json, body, conic, snapshot.Ut, query, found, api);
             json.EndObject();
 
-            return new ToolOutcome
-            {
-                Json = json.ToString(),
-                Summary = found.Sites.Count == 0 ? "no landing site on " + body.Name
-                    : found.Sites.Count + (found.Sites.Count == 1 ? " site" : " sites") + " on " + body.Name + ", the first in the " + found.Sites[0].Biome,
-            };
+            var summary = found.Sites.Count == 0 ? "no landing site on " + body.Name
+                : found.Sites.Count + (found.Sites.Count == 1 ? " site" : " sites") + " on " + body.Name + ", the first in the " + found.Sites[0].Biome;
+            if (found.OutOfTime)
+                summary += query.HasNear ? " (out of time)" : " (out of time at " + found.SearchedHours.ToString("0.#", CultureInfo.InvariantCulture) + " h)";
+            return new ToolOutcome { Json = json.ToString(), Summary = summary };
+        }
+
+        /// <summary>A search that ran out of time (#536): how far it got, and that land, searching the whole window, may still find a site.</summary>
+        private static string OutOfTimeNote(LandingSiteQuery query, LandingSiteResult found)
+        {
+            var how = query.HasNear
+                ? "the " + LandingSiteSearch.Count(found.Tried) + " track points nearest near, of " + LandingSiteSearch.Count(found.Near) + " within 15 degrees of it, were tried"
+                : "the ground track was searched for the first " + found.SearchedHours.ToString("0.#", CultureInfo.InvariantCulture) + " h of the "
+                    + found.WindowHours.ToString("0.##", CultureInfo.InvariantCulture) + " h window";
+            var sites = found.Sites.Count == 0 ? "no site met the limits there" : "the sites are those found there, soonest first";
+            return "partial: out of time (" + (ToolBudgetMs / 1000).ToString("0.#", CultureInfo.InvariantCulture) + " s): " + how + ", and " + sites
+                + "; land given this biome and these limits and window searches the whole window, so it takes the first of these sites or may still find one later";
         }
 
         /// <summary>
@@ -186,18 +215,27 @@ namespace ClaudiaKermin.Core.Tools
             {
                 Latitude = lat, Longitude = lng, PeRadius = body.Radius + Math.Max(0, altitude) + LandingPass.ApproachM, EarliestUt = now + LandingPass.LeadS,
                 LatestUt = now + LandingPass.ReachSeconds(found.WindowHours, query.Daylight, body.RotationPeriod), Daylight = query.Daylight,
-                MaxCorrectionDv = query.MaxCorrectionDv, Craft = query.Craft, MoveSite = query.HasNear,
+                MaxCorrectionDv = query.MaxCorrectionDv, Craft = query.Craft, MoveSite = query.HasNear, Deadline = query.Deadline,
             };
+            json.Name("plane_change_site").BeginObject().Field("latitude", PlanningJson.Round(lat, 3)).Field("longitude", PlanningJson.Round(lng, 3)).EndObject();
             var currentDv = found.Sites.Count > 0 ? found.Sites[0].PredictedDv : double.NaN;
             var moved = false;
-            if (query.HasNear)
+            var late = query.Deadline != null && query.Deadline.Passed;
+            if (query.HasNear && !late)
             {
                 var current = LandingPass.Find(body, conic, now, ask, api);
+                late = current.OutOfTime;
                 currentDv = current.Error == null ? current.LandingDv : double.NaN;
                 moved = current.Error == null && current.Moved;
             }
+            if (late)
+            {
+                // Whether land reaches the site from this orbit isn't known, so neither is which plane changes to offer.
+                json.Name("plane_changes").BeginArray().EndArray();
+                json.Field("plane_change_note", "out of time before the plane changes were worked out; ask again with near set to the site and a shorter within_hours");
+                return;
+            }
             var changes = PlaneChanges.Find(body, conic, now, ask, api, currentDv, moved);
-            json.Name("plane_change_site").BeginObject().Field("latitude", PlanningJson.Round(lat, 3)).Field("longitude", PlanningJson.Round(lng, 3)).EndObject();
             json.Name("plane_changes").BeginArray();
             foreach (var change in changes.Options)
             {

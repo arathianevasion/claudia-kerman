@@ -37,15 +37,36 @@ namespace ClaudiaKermin.Core.Tests
             _out = output;
         }
 
-        /// <summary>The fake Mun, counting what it is asked.</summary>
-        internal sealed class GameMun : PlanningBodyBase
+        /// <summary>
+        /// The fake Mun, counting what it is asked and keeping the time the game's body interface would take for it
+        /// (<see cref="IPlanningClock"/>): the tool runs on a worker thread, so each round trip waits for a frame
+        /// (<see cref="FrameMs"/>, 40 fps), and a frame serves <see cref="SliceMs"/> of samples (the adapter's
+        /// <c>PlanningBody.BudgetMs</c>). A sample's cost is from f623's KSP.log: LANDINGPASS on the main thread took 310 ms for
+        /// the 2892 terrain samples and 54 sun samples this fixture counts for it, about 90 ms of it the search's own work (2 to 3
+        /// times that under Mono), so about 30 µs a terrain sample; a biome or sun read is cheaper, 10 µs.
+        /// </summary>
+        internal sealed class GameMun : PlanningBodyBase, IPlanningClock
         {
+            public const double FrameMs = 25;
+            public const double SliceMs = 3;
+            public const double TerrainMs = 0.03;
+            public const double BiomeMs = 0.01;
+            public const double SunMs = 0.01;
+
             public double LonOffset;
             public int RoundTrips;
             public int Terrain;
             public int Biomes;
             public int Suns;
             public readonly List<string> Asks = new List<string>();
+
+            public double ElapsedMs { get; private set; }
+
+            private void Frames(double sampleMs)
+            {
+                RoundTrips++;
+                ElapsedMs += Math.Max(1, Math.Ceiling(sampleMs / SliceMs)) * FrameMs;
+            }
 
             public override double TerrainAltitude(string body, double latitude, double longitude)
             {
@@ -69,17 +90,30 @@ namespace ClaudiaKermin.Core.Tests
 
             public override void Survey(string body, IList<SiteSample> samples, SiteFacts facts)
             {
-                RoundTrips++;
                 Asks.Add(facts + ":" + samples.Count);
-                if ((facts & SiteFacts.Altitude) != 0) Terrain += samples.Count;
-                if ((facts & SiteFacts.Biome) != 0) Biomes += samples.Count;
-                if ((facts & SiteFacts.Sun) != 0) Suns += samples.Count;
+                var each = 0.0;
+                if ((facts & SiteFacts.Altitude) != 0)
+                {
+                    Terrain += samples.Count;
+                    each += TerrainMs;
+                }
+                if ((facts & SiteFacts.Biome) != 0)
+                {
+                    Biomes += samples.Count;
+                    each += BiomeMs;
+                }
+                if ((facts & SiteFacts.Sun) != 0)
+                {
+                    Suns += samples.Count;
+                    each += SunMs;
+                }
+                Frames(each * samples.Count);
                 base.Survey(body, samples, facts);
             }
 
             public override bool SurfaceUnder(string body, double x, double y, double z, out double latitude, out double longitude)
             {
-                RoundTrips++;
+                Frames(0);
                 var r = Math.Sqrt(x * x + y * y + z * z);
                 latitude = Math.Asin(z / r) * 180 / Math.PI;
                 longitude = LandingSiteSearch.Wrap180(LonOffset + Math.Atan2(y, x) * 180 / Math.PI);
@@ -88,7 +122,7 @@ namespace ClaudiaKermin.Core.Tests
 
             public string Line()
             {
-                return RoundTrips + " round trips, " + Terrain + " terrain, " + Biomes + " biome, " + Suns + " sun samples";
+                return ElapsedMs.ToString("0") + " ms in the game, " + RoundTrips + " round trips, " + Terrain + " terrain, " + Biomes + " biome, " + Suns + " sun samples";
             }
         }
 

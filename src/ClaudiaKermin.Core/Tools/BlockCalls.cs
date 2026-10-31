@@ -33,7 +33,9 @@ namespace ClaudiaKermin.Core.Tools
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
             var orbited = snapshot == null ? "" : snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body;
             ask["body"] = orbited ?? "";
-            var outcome = PlanningTools.Default().Run("find_landing_site", ToolTestGate.InputJson(ask), snapshot, body);
+            // The whole window, with no time limit (#536: land flies what all of it gives), and no plane changes: land uses only the site.
+            var search = new PlanningTools(new IPlanningTool[] { new FindLandingSite { BudgetMs = null, WithPlaneChanges = false } });
+            var outcome = search.Run("find_landing_site", ToolTestGate.InputJson(ask), snapshot, body);
             var result = JsonReader.Parse(outcome.Json);
             if (outcome.IsError) return Error(JsonNode.Str(result["error"]));
 
