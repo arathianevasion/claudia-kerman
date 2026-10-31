@@ -105,6 +105,79 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void AnInnerBlockThatTracedAndEndedLeavesTheOuterBlocksOwnLastState()
+        {
+            var run = new KosRun(Blank);
+            run.BlockTraced("land", 100, Descent("fall", 3000));
+            run.BlockTraced("exec_node", 110, Descent("burn", 1));
+            run.BlockEnded("exec_node");
+            run.Interrupted("the kOS processor was lost");
+            run.ProgramEnded();
+
+            var report = run.Finish(Blank).Report;
+
+            Assert.Equal("land", report["block"]);
+            var last = (IDictionary<string, object>)report["last_state"];
+            Assert.Equal("fall", last["phase"]);
+            Assert.Equal(100.0, last["ut"]);
+        }
+
+        [Fact]
+        public void ARunEndingInsideAnInnerBlockNamesTheInnerBlock()
+        {
+            var run = new KosRun(Blank);
+            run.BlockTraced("land", 100, Descent("fall", 3000));
+            run.BlockTraced("exec_node", 110, Descent("burn", 1));
+            run.Interrupted("the kOS processor was lost");
+            run.ProgramEnded();
+
+            var report = run.Finish(Blank).Report;
+
+            Assert.Equal("exec_node", report["block"]);
+            Assert.Equal("burn", ((IDictionary<string, object>)report["last_state"])["phase"]);
+            Assert.Equal("exec_node", run.InnermostTraced.Block);
+        }
+
+        [Fact]
+        public void TheOuterBlockTracingAgainAfterTheInnerEndedStaysTheInnermost()
+        {
+            var run = new KosRun(Blank);
+            run.BlockTraced("land", 100, Descent("fall", 3000));
+            run.BlockTraced("exec_node", 110, Descent("burn", 1));
+            run.BlockEnded("exec_node");
+            run.BlockTraced("land", 120, Descent("braking", 900));
+
+            Assert.Equal("land", run.InnermostTraced.Block);
+            Assert.Equal("braking", run.InnermostTraced.State["phase"]);
+        }
+
+        [Fact]
+        public void ABlockEndingWithoutEverTracingChangesNothing()
+        {
+            var run = new KosRun(Blank);
+            run.BlockTraced("land", 100, Descent("fall", 3000));
+            run.BlockEnded("circularize");
+
+            Assert.Equal("land", run.InnermostTraced.Block);
+            Assert.Null(new KosRun(Blank).InnermostTraced);
+        }
+
+        [Fact]
+        public void ARepeatedBlockNameIsOneBlockWhoseEndingDropsItsState()
+        {
+            var run = new KosRun(Blank);
+            run.BlockTraced("exec_node", 100, Descent("burn", 1));
+            run.BlockTraced("land", 105, Descent("fall", 3000));
+            run.BlockTraced("exec_node", 110, Descent("burn", 2));
+            run.BlockEnded("exec_node");
+
+            // The same name run twice in a row starts clean.
+            Assert.Equal("land", run.InnermostTraced.Block);
+            run.BlockTraced("exec_node", 130, Descent("burn", 3));
+            Assert.Equal(130.0, run.InnermostTraced.State["ut"]);
+        }
+
+        [Fact]
         public void TheScriptsOwnReportWinsOverATrace()
         {
             var run = new KosRun(Blank);
