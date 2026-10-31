@@ -830,6 +830,34 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void WithOnlyClaudiaAboardAndNoLinkManualControlIsUnavailableAndSheTakesTheCraftBackAfterTheGrace()
+        {
+            var transport = Replies("mission-plan.sse", "mission-sequence-plan.sse", "mission-debrief-manual.sse", "mission-plan.sse", "mission-sequence-plan.sse");
+            var mission = Control(transport);
+            ToRunning(mission);
+            // The title KSP's TypeName gives, not the config name.
+            Action<GameSnapshot> claudia = s => s.Crew.Add(new SnapshotCrewMember { Name = ClaudiaKermin.Core.Roster.ClaudiaIdentity.Name, Trait = "Super Intelligence" });
+            var ut = Pad().Ut;
+
+            mission.Send(Pad(s => { claudia(s); s.HasLink = false; s.Ut = ut + 1; }));
+            mission.TakeCommands();
+            Assert.False(mission.View.ManualControlAllowed);
+            Assert.Equal("no link to Kerbin and no other crew aboard", mission.View.ManualControlUnavailable);
+
+            // The link back and steady for the grace: Manual Control is taken, then the link drops again.
+            mission.Send(Pad(s => { claudia(s); s.Ut = ut + 2; }));
+            mission.Send(Pad(s => { claudia(s); s.Ut = ut + 7; }));
+            mission.Send(new TakeManualControl());
+            Assert.Equal(MissionStage.ManualControl, mission.View.Stage);
+            mission.TakeCommands();
+            mission.Send(Pad(s => { claudia(s); s.HasLink = false; s.Ut = ut + 8; }));
+            Assert.Equal(5, mission.View.LinkLossTakeBackIn);
+            mission.Send(Pad(s => { claudia(s); s.HasLink = false; s.Ut = ut + 14; }));
+
+            Assert.Single(mission.TakeCommands().OfType<MakeCraftSafe>());
+        }
+
+        [Fact]
         public void LosingTheLinkInManualControlWithAnotherCrewMemberAboardChangesNothing()
         {
             var transport = Replies("mission-plan.sse", "mission-sequence-plan.sse");
