@@ -51,8 +51,9 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <param name="refusal">Why this call can't run, by its tool and input, asked in the reply's order; null when it can.</param>
+        /// <param name="answer">The answer to a call the caller handles itself (a Reply Tool, ADR 0012), or null to run it as a Planning Tool.</param>
         public static ToolStepResult Run(PlanningTools tools, AssistantMessage reply, Func<ToolUseBlock, string> refusal, bool atLimit,
-            GameSnapshot snapshot, IPlanningBody body, TimeSpan timeout)
+            GameSnapshot snapshot, IPlanningBody body, TimeSpan timeout, Func<ToolUseBlock, ToolOutcome> answer = null)
         {
             var uses = reply.Content.OfType<ToolUseBlock>().ToList();
             var outcomes = new ToolOutcome[uses.Count];
@@ -65,12 +66,14 @@ namespace ClaudiaKermin.Core.Tools
             {
                 var use = uses[i];
                 var refused = refusal != null ? refusal(use) : null;
+                var answered = !atLimit && refused == null && answer != null ? answer(use) : null;
                 if (atLimit) outcomes[i] = PlanningJson.Error(LimitReached);
                 else if (refused != null)
                 {
                     outcomes[i] = PlanningJson.Error(refused);
                     refusals[i] = refused;
                 }
+                else if (answered != null) outcomes[i] = answered;
                 else if (ran >= MaxCallsPerStep)
                     outcomes[i] = PlanningJson.Error("at most " + MaxCallsPerStep + " calls run in one step; call this again in the next");
                 else

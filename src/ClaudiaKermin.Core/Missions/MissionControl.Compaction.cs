@@ -153,7 +153,7 @@ namespace ClaudiaKermin.Core.Missions
                 Compaction = true,
                 CompactionInstructions = MissionPrompts.CompactionInstructions,
             };
-            request.Tools.AddRange(_tools.Definitions(ToolOffer.Mission));
+            request.Tools.AddRange(MissionTools());
             request.System.AddRange(mission.System);
             request.Messages.AddRange(Sent(mission));
             return request;

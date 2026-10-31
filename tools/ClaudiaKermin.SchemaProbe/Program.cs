@@ -28,8 +28,8 @@ namespace ClaudiaKermin.SchemaProbe
 
         private const string Usage =
             "usage: ClaudiaKermin.SchemaProbe <source> [--model <id>] [--count | --print]\n"
-            + "  mission-reply-planning   the planning schema, as the mod sends it (Mission Plan, Settings, replies, changes)\n"
-            + "  mission-reply-flight     the flight schema, as the mod sends it (Sequence Plan, Debrief, Alert, questions)\n"
+            + "  mission-reply            the one Mission schema, as the mod sends it on every Mission request (ADR 0012)\n"
+            + "  mission-reply-flight     the flight schema #199 sent once a plan was approved (answer, sequence_plan, debrief, alert)\n"
             + "  mission-reply-all        every reply kind in one schema (what #199 replaced)\n"
             + "  mission-reply:<k>,<k>    the schema for these kinds: mission_plan, sequence_plan, debrief, answer, alert\n"
             + "  mission-one              the one Mission schema (#534): the flight schema with mission_plan in kind, no mission_plan part\n"
@@ -70,8 +70,8 @@ namespace ClaudiaKermin.SchemaProbe
 
             string schema;
             if (source == "mission-one") schema = Probes.MissionSchema();
-            else if (source == "mission-reply-planning") schema = MissionReply.PlanningSchemaJson;
-            else if (source == "mission-reply-flight") schema = MissionReply.FlightSchemaJson;
+            else if (source == "mission-reply") schema = MissionReply.MissionSchemaJson;
+            else if (source == "mission-reply-flight") schema = MissionReply.SchemaFor(MissionReply.AnswerKind, MissionReply.SequencePlanKind, MissionReply.DebriefKind, MissionReply.AlertKind);
             else if (source == "mission-reply-all") schema = MissionReply.SchemaFor(MissionReply.AllKinds);
             else if (source.StartsWith(KindsPrefix, StringComparison.Ordinal))
             {

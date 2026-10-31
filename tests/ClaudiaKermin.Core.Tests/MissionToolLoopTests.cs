@@ -262,7 +262,8 @@ namespace ClaudiaKermin.Core.Tests
             // Mission Plan, answer, Sequence Plan, Alert and Debrief: one tools list, byte for byte, and tool_choice auto on all.
             Assert.Equal(5, transport.Requests.Count);
             Assert.Contains("Alert: a Telemetry Check", transport.Requests[3].Body);
-            Assert.Equal(new[] { "stage_performance", "predict_burn" }, ToolNames(transport.Requests[0]));
+            // The Planning Tools, then the Reply Tool (ADR 0012).
+            Assert.Equal(new[] { "stage_performance", "predict_burn", "propose_mission_plan" }, ToolNames(transport.Requests[0]));
             foreach (var request in transport.Requests)
             {
                 Assert.Equal(ToolsJson(transport.Requests[0]), ToolsJson(request));
@@ -678,7 +679,7 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(new[] { "stage_performance" }, ToolNames(transport.Requests[0]));
             var result = Assert.Single(Results(transport.Requests[1]));
             Assert.Contains("\"total_dv\":3200", result.GetProperty("content").GetString());
-            Assert.Equal(new[] { "stage_performance", "predict_burn" }, ToolNames(transport.Requests[2]));
+            Assert.Equal(new[] { "stage_performance", "predict_burn", "propose_mission_plan" }, ToolNames(transport.Requests[2]));
             var costLog = File.ReadAllText(Path.Combine(Folder(mission), MissionFolder.CostLogFile));
             Assert.Equal(2, Count(costLog, "\"craft_check_pending\""));
             Assert.Contains("\"tool_use\"", costLog);

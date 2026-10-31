@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using ClaudiaKermin.Core.Claude;
@@ -56,13 +57,35 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         /// <summary>
+        /// Every Mission request's tools list (ADR 0012): the Planning Tools, then the Reply Tool propose_mission_plan. The same
+        /// on every request, whatever the turn may call, so the cached prefix never changes.
+        /// </summary>
+        private IList<ToolDefinition> MissionTools()
+        {
+            var tools = new List<ToolDefinition>(_tools.Definitions(ToolOffer.Mission));
+            tools.Add(ProposedPlans.Definition());
+            return tools;
+        }
+
+        /// <summary>
+        /// The requests that may come back as a Mission Plan, and so may call propose_mission_plan: the first or a revised plan,
+        /// a reduced goal, the Mission Settings, and the player's typed reply or change (to a pending Mission Plan, or a new goal).
+        /// </summary>
+        private static bool TakesMissionPlan(Purpose purpose)
+        {
+            return purpose == Purpose.MissionPlan || purpose == Purpose.Settings || purpose == Purpose.Reply || purpose == Purpose.Change;
+        }
+
+        /// <summary>
         /// Why a turn may not call <paramref name="tool"/>, or null when it may: no tool during an Alert; on the ground, none of
         /// the tools that need an orbit (#508); no check_script on a request for a Mission Plan (new, or revised for the Mission
-        /// Settings), which has no script.
+        /// Settings), which has no script; propose_mission_plan only on a request that takes a Mission Plan.
         /// </summary>
         private static string ToolRefusal(Purpose purpose, GameSnapshot snapshot, string tool)
         {
             if (purpose == Purpose.Alert) return "not available during an Alert";
+            if (tool == ProposedPlans.ToolName && !TakesMissionPlan(purpose))
+                return "this request doesn't ask for a Mission Plan; reply with the kind the mod asked for";
             var where = snapshot != null ? Grounded(snapshot.Situation) : null;
             if (where != null)
             {
@@ -119,7 +142,7 @@ namespace ClaudiaKermin.Core.Missions
                 return;
             }
             var atLimit = false;
-            var names = message.Content.OfType<ToolUseBlock>().Select(t => _tools.Activity(t.Name)).Distinct().ToArray();
+            var names = message.Content.OfType<ToolUseBlock>().Select(t => t.Name == ProposedPlans.ToolName ? ProposedPlans.Activity : _tools.Activity(t.Name)).Distinct().ToArray();
             mission.InFlight = true;
             mission.Activity = names.Length > 0 ? string.Join(" and ", names) : "calculating";
             turn.Cancel = new CancellationTokenSource();
@@ -135,8 +158,12 @@ namespace ClaudiaKermin.Core.Missions
             var purpose = turn.Purpose;
             var timeout = _toolCallTimeout;
             var refusal = ToolRefusals(purpose, snapshot, turn, message);
+            // The Reply Tool is answered by the mod's own plan checks, from copies taken here: the worker never reads the Mission.
+            var left = new HashSet<string>(mission.LeftTheCraft);
+            var needsNewGoal = mission.Stage != MissionStage.AwaitingPlanApproval && (purpose == Purpose.Reply || purpose == Purpose.Change);
+            Func<ToolUseBlock, ToolOutcome> answer = use => use.Name == ProposedPlans.ToolName ? ProposedPlans.Check(use, left, needsNewGoal) : null;
             _background.Run(
-                () => ToolStep.Run(tools, message, refusal, atLimit, snapshot, body, timeout),
+                () => ToolStep.Run(tools, message, refusal, atLimit, snapshot, body, timeout, answer),
                 step => ToolsAnswered(mission, turn, message, step, atLimit),
                 error => ToolsAnswered(mission, turn, message, null, atLimit));
         }
@@ -164,6 +191,9 @@ namespace ClaudiaKermin.Core.Missions
                 // Byte for byte as Claude sent it, then the results: the next request is this one plus these two messages.
                 turn.Messages.Add(message.ToMessage());
                 turn.Messages.Add(step.Results);
+                // The next request is the last that may call a tool (#509): a Mission Plan not handed in yet is asked for now.
+                if (turn.ToolSteps + 1 == ToolStep.MaxSteps - 1 && IsMissionPlanTurn(mission, turn) && ProposedPlans.LastAccepted(turn.Messages) == null)
+                    step.Results.Content.Add(new TextBlock { Text = MissionPrompts.ProposePlanNow });
                 turn.ToolSteps++;
                 for (var i = 0; i < step.Calls.Count; i++)
                 {

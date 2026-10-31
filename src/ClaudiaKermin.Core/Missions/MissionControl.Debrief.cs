@@ -209,8 +209,8 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>What the Debrief request itself could cost at worst, with slack for the recheck's text.</summary>
         private decimal DebriefReserve(Mission mission, Turn turn)
         {
-            var probe = new MessagesRequest { Model = mission.Model, MaxTokens = MissionPrompts.MaxTokens, OutputSchemaJson = MissionReply.FlightSchemaJson };
-            probe.Tools.AddRange(_tools.Definitions(ToolOffer.Mission));
+            var probe = new MessagesRequest { Model = mission.Model, MaxTokens = MissionPrompts.MaxTokens, OutputSchemaJson = MissionReply.MissionSchemaJson };
+            probe.Tools.AddRange(MissionTools());
             probe.System.AddRange(mission.System);
             probe.Messages.AddRange(Sent(mission));
             probe.Messages.Add(Message.UserText(turn.UserText));
@@ -566,8 +566,8 @@ namespace ClaudiaKermin.Core.Missions
     internal static class DebriefPrompts
     {
         public const string ReducedGoalNotice =
-            "The player has approved your reduced Mission Goal. Revise the Mission Plan for it now: reply with kind \"mission_plan\" and "
-            + "mission_plan filled in, with the sequences already flown first, then those still to fly. The player must approve it before anything runs.";
+            "The player has approved your reduced Mission Goal. Revise the Mission Plan for it now, with the sequences already flown first, "
+            + "then those still to fly: " + MissionPrompts.ProposePlan + ". The player must approve it before anything runs.";
 
         public const string ReducedGoalRetryNotice =
             "The Failed Debrief offered no reduced Mission Goal and the player asks for one. Reply with kind \"debrief\" and debrief filled in "
@@ -575,7 +575,7 @@ namespace ClaudiaKermin.Core.Missions
             + "end_mission if no reduced goal is within reach.";
 
         public const string RevisedPlanAfterOffNominal =
-            "The Debrief was Off-Nominal and you proposed a revised Mission Plan. Write it now: reply with kind \"mission_plan\" and "
-            + "mission_plan filled in, with the sequences already flown first, then those still to fly. The player must approve it before anything runs.";
+            "The Debrief was Off-Nominal and you proposed a revised Mission Plan. Write it now, with the sequences already flown first, "
+            + "then those still to fly: " + MissionPrompts.ProposePlan + ". The player must approve it before anything runs.";
     }
 }
