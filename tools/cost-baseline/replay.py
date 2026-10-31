@@ -83,7 +83,7 @@ def block_names():
 def blocks_called(script, names=None):
     """Building Blocks a script calls, as PlanLog.BlocksCalled counts them (comments and strings dropped, a definition
     is not a call)."""
-    code = re.sub(r'//[^\n]*', '', re.sub(r'"[^"]*"', ' ', script or ''))
+    code = re.sub(r'"(?:[^"]|"")*"|//[^\n]*', lambda m: ' ' if m.group(0)[0] == '"' else '', script or '')
     called = set()
     for name in names if names is not None else block_names():
         for m in re.finditer(r'(?<![:\w])' + re.escape(name) + r'\s*\(', code, re.I):
@@ -310,6 +310,11 @@ def fallback_schema(kind):
             'kind': {'type': 'string', 'enum': ['debrief']},
             'debrief': {'type': 'object', 'additionalProperties': False, 'required': ['outcome'], 'properties': {
                 'outcome': {'type': 'string', 'enum': ['Nominal', 'Off-Nominal', 'Failed']}}}}}
+    if kind == 'sequence_plan':
+        return {'type': 'object', 'required': ['kind', 'sequence_plan'], 'properties': {
+            'kind': {'type': 'string', 'enum': ['sequence_plan']},
+            'sequence_plan': {'type': 'object', 'required': ['name', 'plan_step', 'script'], 'properties': {
+                'name': {'type': 'string'}, 'plan_step': {'type': 'integer'}, 'script': {'type': 'string'}}}}}
     return {'type': 'object'}
 
 
@@ -514,12 +519,12 @@ def report(cases, results, summary, new_effort, tolerance=TOLERANCE):
     return '\n'.join(w)
 
 
-def dry_run_text(cases, chosen, repeats, new_effort, model=None):
+def dry_run_text(cases, chosen, repeats, new_effort, model=None, old_effort=None):
     w = ['Dry run: nothing is sent.', '', 'Requests found %d, usable %d.' % (len(cases), sum(1 for c in cases if c['usable']))]
     for k in KINDS:
         n = sum(1 for c in chosen if c['kind'] == k)
         if n and model:
-            efforts = sorted(set(c['effort'] or 'high' for c in chosen if c['kind'] == k))
+            efforts = sorted(set(old_effort or c['effort'] or 'high' for c in chosen if c['kind'] == k))
             w.append('- %s: %d request(s), %d replay(s) on %s at the recorded effort (%s)' % (
                 k, n, n * repeats, model, ', '.join(efforts)))
         elif n:
@@ -557,7 +562,7 @@ def main(argv=None, runner=None, stdout=None):
     # Calibrate on every request of a Mission, whatever the kinds asked for.
     cases = [c for c in check_rebuilds(cases, a.tolerance) if c['kind'] in kinds]
     if a.dry_run:
-        stdout.write(dry_run_text(cases, pick(cases, a.per_kind), a.repeats, a.new_effort, a.model))
+        stdout.write(dry_run_text(cases, pick(cases, a.per_kind), a.repeats, a.new_effort, a.model, a.old_effort))
         return 0
     results = run(cases, runner or claude_print_runner, a.new_effort, a.old_effort, a.per_kind, a.repeats,
                   a.model or DEFAULT_MODEL, a.max_budget_usd, model_screen=bool(a.model))

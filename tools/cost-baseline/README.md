@@ -146,7 +146,8 @@ python3 -I tools/cost-baseline/replay.py ~/KSP_spike/saves --kinds debrief --new
   them; the names are the files in `kerboscript/library`) plus `plan_step`.
 - **Model screen** (#567). `--model claude-haiku-5-5` replays each chosen request once on that model, overriding the model
   in a saved body, at the effort it was recorded at (`--old-effort` overrides it), and compares with the recorded
-  replies. A kind passes at 19 of 20 (and no Blocker missed for Craft Checks). The report is a per-kind table plus every
+  replies. A kind passes at 95% of its replays (19 of 20, so a kind with fewer than 20 usable requests must agree on all; no Blocker
+  missed for Craft Checks). `--model` now means this screen; the plain effort screen is run without it. The report is a per-kind table plus every
   disagreement with both replies' parsed fields. `--new-effort` is not used. Then confirm a passing kind with
   `batch_confirm.py`.
 
