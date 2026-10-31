@@ -126,7 +126,11 @@ python3 -I tools/cost-baseline/replay.py ~/KSP_spike/saves --kinds debrief --new
   subscription: `claude -p` with model, `--effort`, the Mission system prompt, `--json-schema` (the saved body's, else a
   reduced one), `--tools ""`, the history flattened into the prompt on stdin, and `--max-budget-usd` (1.00 a call, set
   with `--max-budget-usd` here) as the safety net. Requests rebuilt from a transcript, which holds no model, use `--model`.
-  The `claude` flags are untested against a real install: check them with `claude --help` before the first real run.
+  The flags were checked against the installed CLI's `--help` (#567); no real call has been made yet. The fixes: added
+  `--safe-mode` (no CLAUDE.md, hooks, MCP servers, skills or memory reach the model, so only the Mission prompt does) and
+  `--no-session-persistence` (no transcripts left on disk). `--tools ""` is documented as "disable all tools" and
+  `--system-prompt` replaces the default prompt. The reply is read from `structured_output` of the `json` result, else
+  `result`; that field name is unverified until the first real run.
 - **Agreement** is on parsed fields, not wording: Debrief `outcome`; the sets of Blockers and of Warnings for Craft Checks
   and Margin rechecks (Blocker codes are `BLOCKERS`, which a test checks against `CraftCheckRules.cs`); for Change, Reply
   and Settings, whether a revision (a Mission Plan or Sequence Plan) came back and the names of the Maneuver Sequences
@@ -137,6 +141,19 @@ python3 -I tools/cost-baseline/replay.py ~/KSP_spike/saves --kinds debrief --new
   (case, effort, original and replay fields, `unsure_because`, errors) for a person to read, and the final call is theirs.
 - **`unsure_because`** (Second look ticket): for replies that have the field, per kind and effort, how many said they were
   unsure, how many disagreed with the original, and how many of those disagreements were flagged unsure.
+- **`sequence_plan`** (#567) is a kind too: the notice asks for `kind "sequence_plan"` (a pending-plan change or reply
+  stays `change` or `reply`). Agreement is the set of Building Blocks the script calls (as `PlanLog.BlocksCalled` counts
+  them; the names are the files in `kerboscript/library`) plus `plan_step`.
+- **Model screen** (#567). `--model claude-haiku-5-5` replays each chosen request once on that model, overriding the model
+  in a saved body, at the effort it was recorded at (`--old-effort` overrides it), and compares with the recorded
+  replies. A kind passes at 19 of 20 (and no Blocker missed for Craft Checks). The report is a per-kind table plus every
+  disagreement with both replies' parsed fields. `--new-effort` is not used. Then confirm a passing kind with
+  `batch_confirm.py`.
+
+  ```sh
+  python3 -I tools/cost-baseline/replay.py ~/KSP_spike/saves ~/KSP_stable/saves --model claude-haiku-5-5 --dry-run
+  python3 -I tools/cost-baseline/replay.py ~/KSP_spike/saves ~/KSP_stable/saves --model claude-haiku-5-5 --per-kind 20 --out replay-haiku-5-5.md
+  ```
 - **`--dry-run`** reads and checks the requests, prints how many calls it would make, and sends nothing.
 - **Testing.** The runner is injectable (`replay.main(argv, runner=...)`, `replay.run(cases, runner)`), so the tests use
   a fake and never call `claude`.

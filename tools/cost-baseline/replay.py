@@ -13,8 +13,12 @@ Request source, per Mission folder:
   craft-checks/*.json                       {"kind": "craft_check"|"margin_recheck", "body": {...}, "reply": "<text>",
                                             "input_tokens": n}: the mod keeps no other record of those two kinds
 
+Model screen (#567): with --model, each request is replayed once on that model at the effort it was recorded at, and
+the replies are compared with the recorded ones; a kind passes at 19 in 20 (--old-effort/--new-effort do not apply).
+
 Usage: python3 -I tools/cost-baseline/replay.py MISSION_OR_SAVES_DIR... [--new-effort medium] [--kinds debrief,...]
        [--per-kind 20] [--repeats 1] [--dry-run] [--out FILE.md]
+       python3 -I tools/cost-baseline/replay.py MISSION_OR_SAVES_DIR... --model claude-haiku-5-5 [--kinds ...] [--dry-run]
 """
 import argparse
 import fractions
@@ -29,7 +33,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python3 -I leaves the script's folder off the path
 import baseline  # noqa: E402
 
-KINDS = ['debrief', 'craft_check', 'margin_recheck', 'change', 'reply', 'settings']
+KINDS = ['debrief', 'craft_check', 'margin_recheck', 'change', 'reply', 'settings', 'sequence_plan']
 FINDING_KINDS = ('craft_check', 'margin_recheck')
 
 # Craft Check codes that are Blockers (CraftCheckRules.cs); every other code is a Warning. A unittest checks this
@@ -45,6 +49,11 @@ TOLERANCE = 0.15
 MIN_CALIBRATION = 3
 # "Within 1 in 20 of the old effort's agreement."
 PASS_MARGIN = fractions.Fraction(1, 20)
+# A model screen (#567) passes a kind at 19 of 20.
+MODEL_PASS = fractions.Fraction(19, 20)
+DEFAULT_MODEL = 'claude-sonnet-5-5'
+# Building Block names are the file names in kerboscript/library (CoreLibrary.cs); claudia_lib is the shared helpers.
+LIBRARY = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'kerboscript', 'library')
 CLOSING = '\n\nReply now as Claudia to the last message above, as one JSON object that fits the schema.'
 
 
@@ -61,7 +70,27 @@ def classify_notice(text):
         return 'change'
     if 'typed a reply' in t:
         return 'reply'
+    if 'kind "sequence_plan"' in t or 'pending Sequence Plan' in t:
+        return 'sequence_plan'
     return None
+
+
+def block_names():
+    return sorted(os.path.basename(p)[:-3] for p in glob.glob(os.path.join(LIBRARY, '*.ks'))
+                  if os.path.basename(p) != 'claudia_lib.ks')
+
+
+def blocks_called(script, names=None):
+    """Building Blocks a script calls, as PlanLog.BlocksCalled counts them (comments and strings dropped, a definition
+    is not a call)."""
+    code = re.sub(r'//[^\n]*', '', re.sub(r'"[^"]*"', ' ', script or ''))
+    called = set()
+    for name in names if names is not None else block_names():
+        for m in re.finditer(r'(?<![:\w])' + re.escape(name) + r'\s*\(', code, re.I):
+            if not re.search(r'\bfunction\s+$', code[:m.start()], re.I):
+                called.add(name)
+                break
+    return sorted(called)
 
 
 def blocks_text(content):
@@ -243,6 +272,10 @@ def signature(kind, reply):
         return {'blockers': sorted(set(c for c in codes if c in BLOCKERS)),
                 'warnings': sorted(set(c for c in codes if c not in BLOCKERS))}
     mp, sp = reply.get('mission_plan'), reply.get('sequence_plan')
+    if kind == 'sequence_plan':
+        if not isinstance(sp, dict):
+            return None
+        return {'blocks': blocks_called(sp.get('script')), 'plan_step': sp.get('plan_step')}
     names = []
     if isinstance(mp, dict):
         names = [s.get('name') for s in mp.get('sequences') or [] if isinstance(s, dict)]
@@ -282,9 +315,11 @@ def fallback_schema(kind):
 
 def claude_print_runner(req):
     """Claude Code print mode on the subscription. Not run by the tests or by --dry-run."""
-    cmd = ['claude', '-p', '--model', req['model'], '--effort', req['effort'], '--system-prompt', req['system'],
-           '--json-schema', json.dumps(req['schema']), '--tools', '', '--output-format', 'json',
-           '--max-budget-usd', str(req['max_budget_usd'])]
+    # Checked against `claude --help` (#567). --safe-mode leaves out CLAUDE.md, hooks, MCP servers, skills and memory, so
+    # only the Mission prompt reaches the model; --system-prompt replaces the default one; --tools "" turns every tool off.
+    cmd = ['claude', '-p', '--safe-mode', '--no-session-persistence', '--model', req['model'], '--effort', req['effort'],
+           '--system-prompt', req['system'], '--json-schema', json.dumps(req['schema']), '--tools', '',
+           '--output-format', 'json', '--max-budget-usd', str(req['max_budget_usd'])]
     out = subprocess.run(cmd, input=req['prompt'], capture_output=True, text=True, check=True, timeout=900).stdout
     d = json.loads(out)
     if isinstance(d.get('structured_output'), dict):
@@ -304,24 +339,26 @@ def pick(cases, per_kind):
     return chosen
 
 
-def request_for(case, effort, model, budget):
-    return dict(model=case['model'] or model, effort=effort, system='\n\n'.join(case['system']),
+def request_for(case, effort, model, budget, force_model=False):
+    return dict(model=model if force_model else case['model'] or model, effort=effort, system='\n\n'.join(case['system']),
                 prompt=flatten(case['messages']), schema=case['schema'] or fallback_schema(case['kind']),
                 max_budget_usd=budget)
 
 
-def run(cases, runner, new_effort='medium', old_effort=None, per_kind=20, repeats=1, model='claude-sonnet-5-5',
-        budget=1.0):
-    """Replays the chosen cases at both efforts. `runner(request dict) -> reply text` is the injectable seam."""
+def run(cases, runner, new_effort='medium', old_effort=None, per_kind=20, repeats=1, model=DEFAULT_MODEL,
+        budget=1.0, model_screen=False):
+    """Replays the chosen cases at both efforts. `runner(request dict) -> reply text` is the injectable seam. In a model
+    screen (#567) each goes once per repeat to `model` at its recorded effort, labelled 'model'."""
     results = []
     for case in pick(cases, per_kind):
         original = signature(case['kind'], parse_json(case['original_text']))
-        for label, effort in (('old', old_effort or case['effort'] or 'high'), ('new', new_effort)):
+        recorded = old_effort or case['effort'] or 'high'
+        for label, effort in ((('model', recorded),) if model_screen else (('old', recorded), ('new', new_effort))):
             for n in range(repeats):
                 rec = dict(case=case['id'], kind=case['kind'], which=label, effort=effort, run=n, original=original,
                            reply=None, signature=None, error=None, unsure=None)
                 try:
-                    reply = parse_json(runner(request_for(case, effort, model, budget)))
+                    reply = parse_json(runner(request_for(case, effort, model, budget, model_screen)))
                 except Exception as e:  # a failed call is a disagreement, reported; the screen goes on
                     rec['error'] = '%s: %s' % (type(e).__name__, e)
                     reply = None
@@ -350,7 +387,7 @@ def summarize(results):
         if not rs:
             continue
         S = {'cases': len(set(r['case'] for r in rs))}
-        for w in ('old', 'new'):
+        for w in ('model',) if rs[0]['which'] == 'model' else ('old', 'new'):
             ws = [r for r in rs if r['which'] == w]
             dis = [r for r in ws if not r['agree']]
             flagged = [r for r in ws if r['unsure'] is not None]
@@ -359,6 +396,16 @@ def summarize(results):
                         with_unsure=len(flagged), unsure_set=sum(1 for r in flagged if r['unsure']),
                         dis_flagged=sum(1 for r in dis if r['unsure']),
                         dis_with_unsure=sum(1 for r in dis if r['unsure'] is not None))
+        if 'model' in S:
+            m = S['model']
+            reasons = []
+            if fractions.Fraction(m['agree'], m['runs']) < MODEL_PASS:
+                reasons.append('agreement is under 19 in 20')
+            if k in FINDING_KINDS and m['missed']:
+                reasons.append('%d run(s) missed a Blocker' % m['missed'])
+            S['pass'], S['reasons'] = not reasons, reasons
+            out[k] = S
+            continue
         o, n = S['old'], S['new']
         reasons = []
         if not o['runs'] or not n['runs']:
@@ -377,6 +424,34 @@ def summarize(results):
 
 def rate(a, b):
     return '%d/%d (%.0f%%)' % (a, b, 100.0 * a / b) if b else '-'
+
+
+def model_report(cases, results, summary, model):
+    w = ['# Model screen: %s against the recorded replies' % model, '']
+    w.append('Requests found: %d; usable: %d. Each request is replayed at the effort it was recorded at; a kind passes at '
+             '19 in 20 agreeing with the recorded reply on its parsed fields.' % (len(cases), sum(1 for c in cases if c['usable'])))
+    w.append('')
+    w.append('| Kind | Requests | Effort | Agree | Blockers missed | Verdict |')
+    w.append('|---|---:|---|---:|---:|---|')
+    for k, S in summary.items():
+        m = S['model']
+        w.append('| %s | %d | %s | %s | %d | **%s**%s |' % (
+            k, S['cases'], m['effort'], rate(m['agree'], m['runs']), m['missed'], 'PASS' if S['pass'] else 'FAIL',
+            '' if S['pass'] else ' (' + '; '.join(S['reasons']) + ')'))
+    w.append('')
+    w.append('## Disagreements')
+    w.append('')
+    shown = [r for r in results if not r['agree']]
+    for r in shown:
+        w.append('- %s, %s (run %d): recorded %s; replay %s%s%s' % (
+            r['case'], r['kind'], r['run'], json.dumps(r['original'], sort_keys=True),
+            json.dumps(r['signature'], sort_keys=True),
+            ('; MISSED BLOCKERS ' + ', '.join(r['missed'])) if r['missed'] else '',
+            ('; error: ' + json.dumps(r['error'])) if r['error'] else ''))
+    if not shown:
+        w.append('None.')
+    w.append('')
+    return '\n'.join(w)
 
 
 def report(cases, results, summary, new_effort, tolerance=TOLERANCE):
@@ -439,16 +514,20 @@ def report(cases, results, summary, new_effort, tolerance=TOLERANCE):
     return '\n'.join(w)
 
 
-def dry_run_text(cases, chosen, repeats, new_effort):
+def dry_run_text(cases, chosen, repeats, new_effort, model=None):
     w = ['Dry run: nothing is sent.', '', 'Requests found %d, usable %d.' % (len(cases), sum(1 for c in cases if c['usable']))]
     for k in KINDS:
         n = sum(1 for c in chosen if c['kind'] == k)
-        if n:
+        if n and model:
+            efforts = sorted(set(c['effort'] or 'high' for c in chosen if c['kind'] == k))
+            w.append('- %s: %d request(s), %d replay(s) on %s at the recorded effort (%s)' % (
+                k, n, n * repeats, model, ', '.join(efforts)))
+        elif n:
             w.append('- %s: %d request(s), %d replay(s) at the old effort and %d at %s' % (k, n, n * repeats, n * repeats, new_effort))
     for c in cases:
         if not c['usable']:
             w.append('Unusable: %s (%s): %s' % (c['id'], c['kind'], c['reason']))
-    w.append('Total Claude Code calls it would make: %d' % (2 * repeats * len(chosen)))
+    w.append('Total Claude Code calls it would make: %d' % ((1 if model else 2) * repeats * len(chosen)))
     return '\n'.join(w) + '\n'
 
 
@@ -461,7 +540,8 @@ def main(argv=None, runner=None, stdout=None):
     ap.add_argument('--per-kind', type=int, default=20)
     ap.add_argument('--repeats', type=int, default=1, help='replays of each request at each effort')
     ap.add_argument('--tolerance', type=float, default=TOLERANCE)
-    ap.add_argument('--model', default='claude-sonnet-5-5', help='for requests rebuilt from a transcript, which holds no model')
+    ap.add_argument('--model', help='a model screen (#567): replay every request on this model at its recorded effort and '
+                    'compare with the recorded replies (without it, requests rebuilt from a transcript use %s)' % DEFAULT_MODEL)
     ap.add_argument('--max-budget-usd', type=float, default=1.0, help='spend cap per call, a safety net')
     ap.add_argument('--dry-run', action='store_true', help='read and check the requests, send nothing')
     ap.add_argument('--out')
@@ -477,12 +557,13 @@ def main(argv=None, runner=None, stdout=None):
     # Calibrate on every request of a Mission, whatever the kinds asked for.
     cases = [c for c in check_rebuilds(cases, a.tolerance) if c['kind'] in kinds]
     if a.dry_run:
-        stdout.write(dry_run_text(cases, pick(cases, a.per_kind), a.repeats, a.new_effort))
+        stdout.write(dry_run_text(cases, pick(cases, a.per_kind), a.repeats, a.new_effort, a.model))
         return 0
-    results = run(cases, runner or claude_print_runner, a.new_effort, a.old_effort, a.per_kind, a.repeats, a.model,
-                  a.max_budget_usd)
+    results = run(cases, runner or claude_print_runner, a.new_effort, a.old_effort, a.per_kind, a.repeats,
+                  a.model or DEFAULT_MODEL, a.max_budget_usd, model_screen=bool(a.model))
     summary = summarize(results)
-    text = report(cases, results, summary, a.new_effort, a.tolerance)
+    text = (model_report(cases, results, summary, a.model) if a.model
+            else report(cases, results, summary, a.new_effort, a.tolerance))
     if a.out:
         with open(a.out, 'w', encoding='utf-8') as f:
             f.write(text)
