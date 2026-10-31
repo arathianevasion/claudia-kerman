@@ -57,6 +57,9 @@ namespace ClaudiaKermin.Core.Config
         /// <summary>When a Debrief also asks Claudia for the Margin recheck; the mod's own margin check runs on every Debrief (#574).</summary>
         public MarginRecheckMode MarginRecheck = MarginRecheckMode.Auto;
 
+        /// <summary>A run refused before any burn gets the mod's own Off-Nominal Debrief, with no request, and the next Sequence Plan follows (#579).</summary>
+        public bool ModDebriefsRefusals = true;
+
         /// <summary>Prefilled in the Mission start form: prefer to land in daylight.</summary>
         public bool DefaultDaylightLanding = true;
 
@@ -129,6 +132,8 @@ namespace ClaudiaKermin.Core.Config
             + "craft_check_margin = 15\n"
             + "# When a Debrief also asks Claudia for the margin recheck: auto (only when the mod's own margin check is tight or short), always or never.\n"
             + "margin_recheck = auto\n"
+            + "# A run whose block refused before any burn: the mod writes its Off-Nominal Debrief itself and asks straight for the next Sequence Plan.\n"
+            + "mod_debriefs_refusals = true\n"
             + "# Input tokens past which a Mission's conversation is compacted at the next long sequence (at least 50000).\n"
             + "compaction_trigger = 150000\n"
             + "# Price table, USD per million tokens (input, output, cache read). A model not listed is charged at the highest price here.\n"
@@ -241,6 +246,9 @@ namespace ClaudiaKermin.Core.Config
                     case "margin_recheck":
                         MarginRecheckMode mode;
                         if (Enum.TryParse(value, true, out mode) && Enum.IsDefined(typeof(MarginRecheckMode), mode)) config.MarginRecheck = mode;
+                        break;
+                    case "mod_debriefs_refusals":
+                        config.ModDebriefsRefusals = !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
                         break;
                     case "compaction_trigger":
                         int trigger;

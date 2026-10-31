@@ -131,6 +131,10 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The line the fact starts with; <see cref="MissionLogRebuild"/> finds the mod-written card by it.</summary>
         public const string FactPrefix = "The mod debriefed the run itself, with no request: refused before any burn, Off-Nominal (JSON data): ";
         public const string FollowUpText = "next Sequence Plan";
+        /// <summary>The card's why: it is the mod's Debrief, not Claudia's.</summary>
+        public const string CardWhy = "The mod's own Debrief: the block refused before any burn, so the craft is unchanged and no request was made.";
+        /// <summary>Why a margin recheck the Margin check would have asked for was not: the craft is as it was when the plan was offered.</summary>
+        public const string RecheckSkipped = "the run was refused before any burn, so the craft is unchanged";
 
         /// <summary>
         /// The short user-side fact committed to the transcript in place of a Debrief turn: the sequence's name and the reason,
