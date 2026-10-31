@@ -624,19 +624,24 @@ function claudia_note_dropped {
 // "antenna", "wheel", "rcs", "leg", "parachute" or "shield"; "" if it has no other job.
 function claudia_part_kind {
   parameter p.
-  local checks is list(
-    list("engine", "ModuleEngines"), list("engine", "ModuleEnginesFX"), list("command", "ModuleCommand"),
-    list("crew", "ModuleScienceContainer"), list("crew", "KerbalSeat"),
-    list("processor", "kOSProcessor"), list("science", "ModuleScienceExperiment"),
-    list("power", "ModuleGenerator"), list("power", "ModuleDeployableSolarPanel"),
-    list("antenna", "ModuleDataTransmitter"), list("wheel", "ModuleReactionWheel"),
-    list("rcs", "ModuleRCS"), list("rcs", "ModuleRCSFX"), list("leg", "ModuleWheelBase"),
-    list("parachute", "ModuleParachute"), list("parachute", "RealChuteModule"), list("shield", "ModuleAblator")).
-  for c in checks {
-    if p:hasmodule(c[1]) {
-      return c[0].
-    }
-  }
+  // One test per module, no list built per call (#533): a scan asks this of every part.
+  if p:hasmodule("ModuleEngines") { return "engine". }
+  if p:hasmodule("ModuleEnginesFX") { return "engine". }
+  if p:hasmodule("ModuleCommand") { return "command". }
+  if p:hasmodule("ModuleScienceContainer") { return "crew". }
+  if p:hasmodule("KerbalSeat") { return "crew". }
+  if p:hasmodule("kOSProcessor") { return "processor". }
+  if p:hasmodule("ModuleScienceExperiment") { return "science". }
+  if p:hasmodule("ModuleGenerator") { return "power". }
+  if p:hasmodule("ModuleDeployableSolarPanel") { return "power". }
+  if p:hasmodule("ModuleDataTransmitter") { return "antenna". }
+  if p:hasmodule("ModuleReactionWheel") { return "wheel". }
+  if p:hasmodule("ModuleRCS") { return "rcs". }
+  if p:hasmodule("ModuleRCSFX") { return "rcs". }
+  if p:hasmodule("ModuleWheelBase") { return "leg". }
+  if p:hasmodule("ModuleParachute") { return "parachute". }
+  if p:hasmodule("RealChuteModule") { return "parachute". }
+  if p:hasmodule("ModuleAblator") { return "shield". }
   return "".
 }
 
@@ -689,6 +694,158 @@ function claudia_drop_settle {
   return outcome.
 }
 
+// Walks parts for a drop scan (#533): the only place a scan asks a part what it is, so everything after it
+// reads plain data. Returns a lexicon with
+//   recs: one lexicon per part, in order: uid, name, tag, parent (uid or ""), raw (uid of the part kOS
+//         calls its decoupler, or ""), isdec, crewed (it holds a kerbal), kind (claudia_part_kind) and
+//         amounts / caps (its propellant tanks);
+//   decs: uid -> uid of the part's decoupler as claudia_decoupler_of gives it (a heat shield never one), or "";
+//   parents: uid -> parent uid or "";  parts: uid -> the part, for firing.
+// crewed: a lexicon keyed by the uids of the parts holding a kerbal. The kind and the tanks of a part are
+// read only if the scan can use them: it has a decoupler above it, is a decoupler, or is one's decoupler.
+function claudia_scan_craft {
+  parameter parts, crewed.
+  local recs is list().
+  local targets is lexicon().
+  local by_uid is lexicon().
+  for p in parts {
+    local parent_uid is "".
+    if p:hasparent {
+      set parent_uid to p:parent:uid.
+    }
+    local raw_uid is "".
+    local raw is p:decoupler.
+    if not raw:istype("String") {
+      set raw_uid to raw:uid.
+      set targets[raw_uid] to true.
+    }
+    local uid is p:uid.
+    recs:add(lexicon("uid", uid, "name", p:name, "tag", p:tag, "parent", parent_uid, "raw", raw_uid,
+      "isdec", claudia_is_decoupler(p), "crewed", crewed:haskey(uid), "kind", "", "amounts", list(), "caps", list())).
+    by_uid:add(uid, p).
+  }
+  local kinds is lexicon().
+  for i in range(0, recs:length) {
+    local rec is recs[i].
+    if rec:raw <> "" or rec:isdec or targets:haskey(rec:uid) {
+      local p is parts[i].
+      local kind is claudia_part_kind(p).
+      set rec["kind"] to kind.
+      kinds:add(rec:uid, kind).
+      if rec:raw <> "" {
+        local amounts is rec:amounts.
+        local capacities is rec:caps.
+        for res in p:resources {
+          if claudia_is_propellant(res:name) and res:capacity > 0 {
+            amounts:add(res:amount).
+            capacities:add(res:capacity).
+          }
+        }
+      }
+    }
+  }
+  local decs is lexicon().
+  local parents is lexicon().
+  for rec in recs {
+    local d is rec:raw.
+    if d <> "" and kinds:haskey(d) {
+      if kinds[d] = "shield" {
+        set d to "".
+      }
+    }
+    decs:add(rec:uid, d).
+    parents:add(rec:uid, rec:parent).
+  }
+  return lexicon("recs", recs, "decs", decs, "parents", parents, "parts", by_uid).
+}
+
+// The records of the parts leaving with each decoupler, uid -> list in craft order: the parts whose
+// decoupler it is, and those held by a decoupler further out on what it drops (a decoupler's own decoupler
+// is read from its parent). What claudia_dropped_with gives, for every decoupler in one pass.
+function claudia_scan_gone {
+  parameter scan.
+  local gone_by is lexicon().
+  local decs is scan:decs.
+  local parents is scan:parents.
+  for rec in scan:recs {
+    local other is decs[rec:uid].
+    until other = "" {
+      if not gone_by:haskey(other) {
+        gone_by:add(other, list()).
+      }
+      gone_by[other]:add(rec).
+      local above is parents[other].
+      if above = "" or not decs:haskey(above) {
+        set other to "".
+      } else {
+        set other to decs[above].
+      }
+    }
+  }
+  return gone_by.
+}
+
+// The decouplers a drop_empty scan fires, judged on a claudia_scan_craft scan: a list of lexicons with uid
+// and gone (the records leaving with it). auto judges every decoupler on the craft; else wanted names the
+// parts whose decoupler is judged. tried: uids drop_empty is done with.
+function claudia_scan_plan {
+  parameter scan, auto, wanted, tried.
+  local gone_by is claudia_scan_gone(scan).
+  local judged is lexicon().
+  local plan is list().
+  for rec in scan:recs {
+    if auto or claudia_drop_matches(rec:name, rec:tag, wanted) {
+      local d is "".
+      if rec:kind <> "shield" {
+        if rec:isdec {
+          set d to rec:uid.
+        } else {
+          set d to scan:decs[rec:uid].
+        }
+      }
+      if d <> "" and not tried:contains(d) and not judged:haskey(d) {
+        judged:add(d, true).
+        local gone is list().
+        if gone_by:haskey(d) {
+          set gone to gone_by[d].
+        }
+        local amounts is list().
+        local capacities is list().
+        local kinds is list().
+        for g in gone {
+          for a in g:amounts {
+            amounts:add(a).
+          }
+          for c in g:caps {
+            capacities:add(c).
+          }
+          if auto {
+            // Second net for a crew cabin whose modules the kind check does not know: any part holding a kerbal.
+            if g:crewed {
+              kinds:add("crew").
+            } else {
+              kinds:add(g:kind).
+            }
+            if kinds[kinds:length - 1] <> "" {
+              break.
+            }
+          }
+        }
+        local ok is false.
+        if auto {
+          set ok to claudia_auto_drop_fires(kinds, amounts, capacities).
+        } else {
+          set ok to claudia_tanks_empty(amounts, capacities).
+        }
+        if ok {
+          plan:add(lexicon("uid", d, "gone", gone)).
+        }
+      }
+    }
+  }
+  return plan.
+}
+
 // Fires decouplers whose tanks are all empty, together with every other part leaving with them, and
 // notes the names of the parts that left in ctx:dropped. Looks twice a second. drop_empty "auto" judges
 // every decoupler on the craft (claudia_auto_drop_fires); a list judges the decoupler of each part it
@@ -707,61 +864,31 @@ function claudia_drop_empty {
   local fired_uids is list().
   local fired_names is list().
   local fired_groups is list().
-  local judged is list().
-  local crewed is list().
+  local crewed is lexicon().
   if auto {
-    // Second net for a crew cabin whose modules claudia_part_kind does not know: any part holding a kerbal.
     for c in ship:crew {
-      crewed:add(c:part:uid).
+      local seat is c:part:uid.
+      set crewed[seat] to true.
     }
   }
-  for p in ship:parts {
-    if auto or claudia_drop_matches(p:name, p:tag, wanted) {
-      local d is claudia_drop_decoupler(p).
-      if not d:istype("String") and not ctx:drop_tried:contains(d:uid) and not judged:contains(d:uid) {
-        judged:add(d:uid).
-        local gone is claudia_dropped_with(d).
-        local amounts is list().
-        local capacities is list().
-        local kinds is list().
+  // One walk of the craft; judging and firing read what it recorded (#533).
+  local scan is claudia_scan_craft(ship:parts, crewed).
+  for step in claudia_scan_plan(scan, auto, wanted, ctx:drop_tried) {
+    local d is scan:parts[step:uid].
+    local gone is step:gone.
+    // Nested, not one "and": firing is a side effect and must only follow the guards.
+    if not claudia_drop_holds_core(gone) {
+      if claudia_fire_decoupler(d) {
+        fired:add(d:uid).
+        local group is list().
         for g in gone {
-          for res in g:resources {
-            if claudia_is_propellant(res:name) and res:capacity > 0 {
-              amounts:add(res:amount).
-              capacities:add(res:capacity).
-            }
-          }
-          if auto {
-            if crewed:contains(g:uid) {
-              kinds:add("crew").
-            } else {
-              kinds:add(claudia_part_kind(g)).
-            }
-          }
+          fired_uids:add(g:uid).
+          fired_names:add(g:name).
+          group:add(g:uid).
         }
-        local ok is false.
-        if auto {
-          set ok to claudia_auto_drop_fires(kinds, amounts, capacities).
-        } else {
-          set ok to claudia_tanks_empty(amounts, capacities).
-        }
-        // Nested, not one "and": firing is a side effect and must only follow the guards.
-        if ok {
-          if not claudia_drop_holds_core(gone) {
-            if claudia_fire_decoupler(d) {
-              fired:add(d:uid).
-              local group is list().
-              for g in gone {
-                fired_uids:add(g:uid).
-                fired_names:add(g:name).
-                group:add(g:uid).
-              }
-              fired_groups:add(group).
-            } else {
-              ctx:drop_tried:add(d:uid).
-            }
-          }
-        }
+        fired_groups:add(group).
+      } else {
+        ctx:drop_tried:add(d:uid).
       }
     }
   }

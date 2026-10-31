@@ -58,9 +58,23 @@ namespace ClaudiaKermin.Kerboscript.Tests
         /// </summary>
         public static IList<string> Run(string source)
         {
+            int steps;
+            return Run(source, 2000, 20000, out steps);
+        }
+
+        private static int _ipu = 2000;
+
+        /// <summary>
+        /// Runs <paramref name="source"/> with <paramref name="ipu"/> instructions per step and returns what it printed;
+        /// <paramref name="steps"/> is how many steps it took, so <c>steps * ipu</c> is the most instructions it cost
+        /// (kOS stops a step early only when the script ends or waits, so it is within one step of the real count).
+        /// </summary>
+        public static IList<string> Run(string source, int ipu, int maxSteps, out int steps)
+        {
             lock (Gate)
             {
                 Init();
+                _ipu = ipu;
                 var printed = new List<string>();
                 var errors = new List<string>();
                 var shared = NewShared();
@@ -77,9 +91,11 @@ namespace ClaudiaKermin.Kerboscript.Tests
                     source + "\nprint \"" + Done + "\".\n", "test", Options(shared));
                 cpu.GetCurrentContext().AddParts(parts);
 
-                for (var step = 0; step < 20000; step++)
+                steps = 0;
+                for (var step = 0; step < maxSteps; step++)
                 {
                     cpu.KOSFixedUpdate(0.02);
+                    steps = step + 1;
                     if (printed.Contains(Done))
                     {
                         printed.Remove(Done);
@@ -142,7 +158,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
             protected override object Invoke(MethodInfo method, object[] args)
             {
                 var type = method.ReturnType;
-                if (method.Name == "get_InstructionsPerUpdate") return 2000;
+                if (method.Name == "get_InstructionsPerUpdate") return _ipu;
                 if (type == typeof(string)) return "";
                 return type.IsValueType && type != typeof(void) ? Activator.CreateInstance(type) : null;
             }
