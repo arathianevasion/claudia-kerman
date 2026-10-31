@@ -17,11 +17,13 @@
 //|   tolerance [0.01]: the eccentricity it must end within; more fails the block.
 //|   max_duration ["auto"]: as for exec_node (the wait to the burn, twice the burn, plus 300 s).
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
-//| Extra results: ecc (the eccentricity when the block ended). Succeeds at once, with no burn, if the
-//| orbit is already within tolerance. Fails with "no apoapsis" on an escape orbit (use "pe"), an
-//| altitude the orbit doesn't pass, a burn point inside the atmosphere or below the surface, the
-//| reasons exec_node gives (no thrust, out of fuel, an abort), or "eccentricity
-//| <e> is over tolerance <t>"; on failure the node is left in place.
+//| The burn ends when the node is used up or once the eccentricity stops falling, whichever is first.
+//| Extra results: ecc (the eccentricity when the block ended), stop ("node", or "ecc_min" when the
+//| burn ended at its roundest before the node was used up), residual (m/s the node still needed).
+//| Succeeds at once, with no burn, if the orbit is already within tolerance. Fails with "no apoapsis"
+//| on an escape orbit (use "pe"), an altitude the orbit doesn't pass, a burn point inside the
+//| atmosphere or below the surface, the reasons exec_node gives (no thrust, out of fuel, an abort), or
+//| "eccentricity <e> is over tolerance <t>"; on failure the node is left in place.
 //| Example: `local res is launch(lexicon("target_ap", 80000)). if res:success { set res to circularize(). }
 //| addons:claudia:report(res).`
 
@@ -137,7 +139,7 @@ function circularize_plan {
 
 function circularize {
   parameter options is lexicon().
-  local extra is lexicon("ecc", round(ship:orbit:eccentricity, 5)).
+  local extra is lexicon("ecc", round(ship:orbit:eccentricity, 5), "stop", "", "residual", -1).
   local ctx is claudia_begin("circularize", options, circularize_defaults(), "auto").
   if ctx:error <> "" {
     return claudia_finish(ctx, false, ctx:error, extra).
@@ -162,10 +164,17 @@ function circularize {
   set flight:node to nd.
   set flight:max_residual to 1000000.
   set flight:max_duration to opt:max_duration. // circularize hands its own budget on; claudia_common_opts leaves max_duration out
+  // A long burn passes its node half way through and the node swings; stop where the orbit is roundest (#532).
+  set flight:stop_at_min to "ecc".
   local flown is exec_node(flight).
   set ctx:dv_used to flown:dv_used.
   claudia_note_dropped(ctx, flown).
   set extra:ecc to round(ship:orbit:eccentricity, 5).
+  // exec_node says which stop ended the burn once it has read its options.
+  if flown:haskey("stop") {
+    set extra:stop to flown:stop.
+  }
+  set extra:residual to flown:residual.
   if not flown:success {
     return claudia_finish(ctx, false, flown:reason, extra).
   }

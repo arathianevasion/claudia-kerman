@@ -343,6 +343,25 @@ namespace ClaudiaKermin.Kerboscript.Tests
                 Run("local c is claudia_options(lexicon(), circularize_defaults(), \"auto\"). print c:opt:at. print c:opt:tolerance. print c:opt:max_duration. print c:error."));
         }
 
+        // #532: circularize's burn stops once the eccentricity stops falling: the index of the reading it stops on, or -1.
+        [Theory]
+        // Falling to circular, then rising past the 1e-4 band two readings running: it stops on the second rise.
+        [InlineData("0.5, 0.3, 0.1, 0.02, 0.005, 0.0052, 0.012, 0.03", "6")]
+        [InlineData("0.5, 0.3, 0.1, 0.02, 0.005, 0.012, 0.03, 0.05", "6")]
+        // Noise inside the band never stops it, nor does a flat stretch (a turn, a staging gap).
+        [InlineData("0.3, 0.2, 0.2, 0.2, 0.10005, 0.1, 0.10008, 0.10009, 0.1", "-1")]
+        // A single noisy reading past the band, or a kick (staging) that the burn then brings down, doesn't stop it.
+        [InlineData("0.3, 0.2, 0.25, 0.15, 0.1", "-1")]
+        [InlineData("0.3, 0.2, 0.21, 0.21, 0.209, 0.15", "-1")]
+        // Rising from the first reading: the lowest is the first.
+        [InlineData("0.01, 0.02, 0.03", "2")]
+        public void The_burn_stops_once_the_eccentricity_has_risen_two_readings_running_past_a_noise_band(string readings, string expected)
+        {
+            Assert.Equal(expected, Run("local seen is exec_node_min_seen(). local at is -1. local i is 0.\n"
+                + "for e in list(" + readings + ") { if at < 0 and exec_node_past_min(seen, e, 0.0001) { set at to i. } set i to i + 1. }\n"
+                + "print at.").Single());
+        }
+
         /// <summary>printed, rounded to as many decimals as expected has.</summary>
         private static string RoundedLike(string printed, string expected)
         {
