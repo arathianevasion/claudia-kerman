@@ -41,6 +41,7 @@
 //| craft until cutoff, and the craft never steers more than max_aoa off the airflow. With no thrust (a
 //| hop's coast, between stages) only fins and reaction wheels hold it: a craft with neither tumbles in
 //| thick air. Engines are staged into from the pad, and launch clamps released.
+//| It traces the climb to the log (ADDONS:CLAUDIA:BLOCKTRACE) every 2 s and at each change of phase or stage.
 //| Extra results: ap_error (m, apoapsis minus target_ap when the block ended; a hop's shows drag
 //| loss), max_q (Pa, highest dynamic pressure), coast_ap (m, apoapsis at first engine cutoff), lan_actual (degrees, the orbit's LAN at the end).
 //| Fails with "launch starts on the ground", "no atmosphere on <body>: use ascend", "no thrust", a
@@ -134,6 +135,44 @@ function launch_throttle {
     set t to min(t, max(0.05, 1 - (q_now - 0.9 * max_q) / (0.2 * max_q))).
   }
   return min(1, max(t_floor, max(0, t))).
+}
+
+// The phase of the climb, for its trace (#531), named as plan_ascent's sim names it: "coast" with the throttle off; "vertical"
+// before the turn starts; "turn_held" while throttle_max_q holds the turn (see launch_turn_held); "thin_air" when the thin-air rule
+// raised the pitch (launch_thin_pitch); otherwise "turn". Pure.
+function launch_phase {
+  parameter coasting, turn_started, held, thin.
+  if coasting {
+    return "coast".
+  }
+  if not turn_started {
+    return "vertical".
+  }
+  if held {
+    return "turn_held".
+  }
+  if thin {
+    return "thin_air".
+  }
+  return "turn".
+}
+
+// Whether the climb traces a line now (#531), and why: "phase" or "stage" when either changed (no more often than every
+// 0.25 s, so a q that wavers about 500 Pa can't flood the log), "tick" 2 s after the last line, "" if not due. Pure.
+function launch_trace_due {
+  parameter phase, last_phase, stage_now, last_stage, ut, last_ut.
+  if ut >= last_ut + 2 {
+    return "tick".
+  }
+  if ut >= last_ut + 0.25 {
+    if phase <> last_phase {
+      return "phase".
+    }
+    if stage_now <> last_stage {
+      return "stage".
+    }
+  }
+  return "".
 }
 
 // Thick air: pressure above a tenth of the surface pressure.
@@ -380,6 +419,7 @@ function launch {
     return claudia_finish(ctx, false, lit, extra).
   }
   launch_release_clamps(ctx).
+  local liftoff_ut is time:seconds.
 
   // Climb, then coast with the steering held, until out of the atmosphere (or, for a hop, at the top).
   local hop is target_ap <= body_values:atm_height.
@@ -392,9 +432,18 @@ function launch {
   local q_max is 0.
   local reason is "".
   local done is false.
+  // The trace (ADDONS:CLAUDIA:BLOCKTRACE, #531): the last line's phase, stage and UT, and the UT of the last pass of this
+  // loop (the gap between passes is traced, as the nose holds its last aim between them).
+  local last_phase is "".
+  local last_stage is -1.
+  local last_trace_ut is -1e9.
+  local last_pass_ut is time:seconds.
+  local pass_gap is 0.
   // One tick of the climb or the coast: sets tset and aim, and done (with reason if it failed).
   local fly_tick is {
     local q_pa is ship:q * constant:atmtokpa * 1000.
+    set pass_gap to time:seconds - last_pass_ut.
+    set last_pass_ut to time:seconds.
     set q_max to max(q_max, q_pa).
     local spd is ship:velocity:surface:mag.
     local ap is ship:apoapsis.
@@ -443,9 +492,11 @@ function launch {
       set turn_start_alt to altitude.
     }
     // While throttle_max_q holds the throttle back in thick air the turn waits, starting again from vertical here.
-    if turn_start_alt >= 0 and launch_turn_held(q_pa, max_q_pa, ratio) {
+    local held is turn_start_alt >= 0 and launch_turn_held(q_pa, max_q_pa, ratio).
+    if held {
       set turn_start_alt to altitude.
     }
+    local thin is false.
     local want is ship:up:vector.
     if not coasting {
       local pitch is 90.
@@ -456,7 +507,9 @@ function launch {
         set hdg to LAZcalc(laz).
       }
       if spd > 30 {
-        set pitch to launch_thin_pitch(pitch, 90 - vang(ship:srfprograde:vector, ship:up:vector), q_pa, launch_thin_lead()).
+        local lifted is launch_thin_pitch(pitch, 90 - vang(ship:srfprograde:vector, ship:up:vector), q_pa, launch_thin_lead()).
+        set thin to lifted > pitch.
+        set pitch to lifted.
       }
       set want to heading(hdg, pitch):vector.
     } else if spd > 30 {
@@ -470,6 +523,19 @@ function launch {
       set want to launch_limit_aoa(want, ship:srfprograde:vector, launch_allowed_aoa(opt:max_aoa, q_pa, launch_aoa_q_ref())).
     }
     set aim to want.
+
+    // The trace, only when due: the checks are strings and numbers already to hand.
+    local phase is launch_phase(coasting, turn_start_alt >= 0, held, thin).
+    local why is launch_trace_due(phase, last_phase, stage:number, last_stage, time:seconds, last_trace_ut).
+    if why <> "" {
+      set last_phase to phase.
+      set last_stage to stage:number.
+      set last_trace_ut to time:seconds.
+      addons:claudia:blocktrace("launch", lexicon("phase", phase, "why", why, "alt", round(altitude, 1), "t", round(time:seconds - liftoff_ut, 2),
+        "pitch", round(vang(aim, ship:up:vector), 2), "prograde", round(vang(ship:srfprograde:vector, ship:up:vector), 2), "q", round(q_pa),
+        "throttle", round(tset, 3), "mass", round(ship:mass, 3), "stage", stage:number, "ap", round(ap),
+        "h_speed", round(ship:groundspeed, 1), "v_speed", round(ship:verticalspeed, 1), "gap", round(pass_gap, 3))).
+    }
 
     // A craft far off its steering for 3 s in the air has lost control: stop rather than tumble on.
     local off_aim is vang(ship:facing:forevector, aim).
@@ -509,6 +575,9 @@ function launch {
     }
   }
 
+  addons:claudia:blocktrace("launch", lexicon("phase", "end", "alt", round(altitude, 1), "t", round(time:seconds - liftoff_ut, 2),
+    "ap", round(ship:apoapsis), "coast_ap", extra:coast_ap, "max_q", round(q_max), "stage", stage:number, "mass", round(ship:mass, 3),
+    "dv_used", round(ctx:dv_used, 1), "failed", reason <> "")).
   set extra:max_q to round(q_max).
   set extra:lan_actual to round(ship:orbit:lan, 2).
   set extra:ap_error to round(ship:apoapsis - target_ap).

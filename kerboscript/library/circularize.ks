@@ -171,7 +171,14 @@ function circularize {
   set flight:max_duration to opt:max_duration. // circularize hands its own budget on; claudia_common_opts leaves max_duration out
   // A long burn passes its node half way through and the node swings; stop where the orbit is roundest (#532).
   set flight:stop_at_min to "ecc".
+  // The burn is traced to the log (ADDONS:CLAUDIA:BLOCKTRACE, #531): its start, and its end with the delta-v used.
+  addons:claudia:blocktrace("circularize", lexicon("phase", "start", "burn_ut", round(plan:ut, 1), "prograde", round(plan:prograde, 1),
+    "radial", round(plan:radial, 1), "ap", round(ship:orbit:apoapsis), "pe", round(ship:orbit:periapsis), "ecc", round(ship:orbit:eccentricity, 5),
+    "mass", round(ship:mass, 3), "stage", stage:number)).
   local flown is exec_node(flight).
+  addons:claudia:blocktrace("circularize", lexicon("phase", "end", "dv_used", round(flown:dv_used, 1), "ap", round(ship:orbit:apoapsis),
+    "pe", round(ship:orbit:periapsis), "ecc", round(ship:orbit:eccentricity, 5), "mass", round(ship:mass, 3), "stage", stage:number,
+    "ok", flown:success)).
   set ctx:dv_used to flown:dv_used.
   claudia_note_dropped(ctx, flown).
   set extra:ecc to round(ship:orbit:eccentricity, 5).

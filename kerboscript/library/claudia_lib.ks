@@ -872,8 +872,15 @@ function claudia_drop_empty {
     }
   }
   // One walk of the craft; judging and firing read what it recorded (#533).
+  local scan_from is time:seconds.
   local scan is claudia_scan_craft(ship:parts, crewed).
-  for step in claudia_scan_plan(scan, auto, wanted, ctx:drop_tried) {
+  local plan is claudia_scan_plan(scan, auto, wanted, ctx:drop_tried).
+  // launch traces what a scan costs (#531): the game seconds it took, which a long scan spends over several physics ticks.
+  if auto and ctx:block = "launch" {
+    addons:claudia:blocknote(ctx:block, lexicon("phase", "drop_scan", "scan_s", round(time:seconds - scan_from, 3),
+      "parts", ship:parts:length, "ipu", config:ipu)).
+  }
+  for step in plan {
     local d is scan:parts[step:uid].
     local gone is step:gone.
     // Nested, not one "and": firing is a side effect and must only follow the guards.

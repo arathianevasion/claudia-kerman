@@ -188,6 +188,30 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal(held, One("launch_thin_pitch(" + pitch + ", " + prograde + ", " + q + ", " + lead + ")"));
         }
 
+        // #531: the climb's trace names its phase as plan_ascent's sim does; coast wins, then the turn not started, the hold, the thin-air rule.
+        [Theory]
+        [InlineData("true", "true", "true", "true", "coast")]
+        [InlineData("false", "false", "false", "false", "vertical")]
+        [InlineData("false", "true", "true", "true", "turn_held")]
+        [InlineData("false", "true", "false", "true", "thin_air")]
+        [InlineData("false", "true", "false", "false", "turn")]
+        public void The_trace_names_the_phase_of_the_climb(string coasting, string started, string held, string thin, string phase)
+        {
+            Assert.Equal(phase, One("launch_phase(" + coasting + ", " + started + ", " + held + ", " + thin + ")"));
+        }
+
+        // #531: a line every 2 s, and at a change of phase or stage, but no more than one in 0.25 s for a change.
+        [Theory]
+        [InlineData("\"turn\", \"vertical\", 3, 3, 100, 99.9", "")]
+        [InlineData("\"turn\", \"turn\", 3, 3, 102, 100", "tick")]
+        [InlineData("\"turn\", \"vertical\", 3, 3, 100.3, 100", "phase")]
+        [InlineData("\"turn\", \"turn\", 2, 3, 100.3, 100", "stage")]
+        [InlineData("\"thin_air\", \"turn\", 3, 3, 100.1, 100", "")]
+        public void The_trace_is_due_every_two_seconds_and_at_a_change(string arguments, string why)
+        {
+            Assert.Equal(why, One("launch_trace_due(" + arguments + ")"));
+        }
+
         // A slow (70% thrust) craft to a 400 km apoapsis is still burning above 40 km, in the thin air. It has more to burn
         // (2 t dry) since the sim's Coriolis (#370) costs it what it had spare.
         [Fact]
