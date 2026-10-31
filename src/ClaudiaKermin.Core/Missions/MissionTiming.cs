@@ -21,7 +21,7 @@ namespace ClaudiaKermin.Core.Missions
 
     /// <summary>
     /// The Mission Settings: the player's choices for how Claudia meets the Mission Goal. Chosen at start,
-    /// persisted with the Mission (as the name/value pairs of <see cref="ToDictionary"/>), editable later.
+    /// persisted with the Mission (as the name/value pairs of <see cref="WriteTo"/>), editable later.
     /// </summary>
     public sealed class MissionSettingsValues
     {
@@ -29,12 +29,62 @@ namespace ClaudiaKermin.Core.Missions
         public const string TimeKey = "time_vs_dv";
         public const string PhysicsWarpKey = "physics_warp";
 
-        /// <summary>Prefer to land in daylight; drives the <c>land</c> block's <c>daylight</c> option.</summary>
-        public bool DaylightLanding = true;
-        public TimeVersusDeltaV TimeVersusDeltaV = TimeVersusDeltaV.Balanced;
+        /// <summary>
+        /// Every Mission Setting, described once, in the order Claudia reads them. Persistence, the revision check, the prompt
+        /// lines and the board summary all run from this list.
+        /// </summary>
+        public static readonly IList<MissionSettingDescriptor> All = new[]
+        {
+            MissionSettingDescriptor.YesNo(DaylightKey, "Daylight landing", c => c.DefaultDaylightLanding,
+                v => v.DaylightLanding
+                    ? "Daylight landing: on. Set the land block's daylight option to true and prefer a daylight landing."
+                    : "Daylight landing: off. Do not wait for daylight.",
+                v => "Daylight landing: " + (v.DaylightLanding ? "on" : "off")),
+            MissionSettingDescriptor.Choice(TimeKey, "Time versus delta-v", c => c.DefaultTimeVersusDeltaV,
+                v => "Time versus delta-v, " + (v.TimeVersusDeltaV == TimeVersusDeltaV.Fastest
+                    ? "Fastest: never wait for a better window; take the next one."
+                    : v.TimeVersusDeltaV == TimeVersusDeltaV.MostEfficient
+                        ? "Most efficient: wait for the cheapest window, however long (the script warps there)."
+                        : "Balanced: wait up to 6 h to save delta-v; do not wait longer than that for a better window."),
+                v => "time versus delta-v: " + Label(v.TimeVersusDeltaV)),
+            // The player's own choice starts on; the config alone gates it (PhysicsWarpOn), so turning the config back on turns it back on.
+            MissionSettingDescriptor.YesNo(PhysicsWarpKey, "Physics warp on Coasts", c => true,
+                v => v.PhysicsWarpOn
+                    ? "Physics warp on Coasts: on. Blocks warp through Coasts with physics warp where rails can't; use the warp helpers for your own Coasts."
+                    : "Physics warp on Coasts: off. The mod refuses physics warp. "
+                        + (v.ConfigAllowsPhysicsWarp ? "" : "Only the player's config can turn it back on. ")
+                        + "Where rails can't warp, Coasts run at 1×, so plan for the extra real time.",
+                v => "physics warp on Coasts: " + (v.PhysicsWarpOn ? "on" : "off"), ownLine: true),
+        };
 
-        /// <summary>The player's choice of Physics warp on Coasts (ADR 0008); starts as <c>physics_warp</c> in the config.</summary>
-        public bool PhysicsWarp = true;
+        // The saved text of each setting by key; a typed accessor below reads and writes each one that code needs.
+        private readonly Dictionary<string, string> _values = new Dictionary<string, string>();
+
+        public MissionSettingsValues()
+        {
+            var config = new PlayerConfig();
+            foreach (var setting in All) _values[setting.Key] = setting.Default(config);
+        }
+
+        /// <summary>Prefer to land in daylight; drives the <c>land</c> block's <c>daylight</c> option.</summary>
+        public bool DaylightLanding
+        {
+            get { return _values[DaylightKey] == "true"; }
+            set { _values[DaylightKey] = MissionSettingDescriptor.Text(value); }
+        }
+
+        public TimeVersusDeltaV TimeVersusDeltaV
+        {
+            get { return (TimeVersusDeltaV)Enum.Parse(typeof(TimeVersusDeltaV), _values[TimeKey]); }
+            set { _values[TimeKey] = value.ToString(); }
+        }
+
+        /// <summary>The player's choice of Physics warp on Coasts (ADR 0008); starts on, and the config alone gates it (<see cref="PhysicsWarpOn"/>).</summary>
+        public bool PhysicsWarp
+        {
+            get { return _values[PhysicsWarpKey] == "true"; }
+            set { _values[PhysicsWarpKey] = MissionSettingDescriptor.Text(value); }
+        }
 
         /// <summary>
         /// <c>physics_warp</c> in the config is on. Not saved: read from the config each time, so the config alone can turn
@@ -59,49 +109,43 @@ namespace ClaudiaKermin.Core.Missions
 
         public static MissionSettingsValues Defaults(PlayerConfig config)
         {
-            return new MissionSettingsValues
-            {
-                DaylightLanding = config.DefaultDaylightLanding,
-                TimeVersusDeltaV = config.DefaultTimeVersusDeltaV,
-                // The player's own choice starts on; the config alone gates it (PhysicsWarpOn), so turning the config back on turns it back on.
-                PhysicsWarp = true,
-                ConfigAllowsPhysicsWarp = config.PhysicsWarp,
-            };
+            var values = new MissionSettingsValues { ConfigAllowsPhysicsWarp = config.PhysicsWarp };
+            foreach (var setting in All) values._values[setting.Key] = setting.Default(config);
+            return values;
         }
 
         /// <summary>The settings in a Mission's name/value pairs; a missing or unreadable one takes the default.</summary>
         public static MissionSettingsValues FromDictionary(IDictionary<string, string> pairs, MissionSettingsValues defaults)
         {
             var values = defaults.Copy();
-            string text;
-            if (pairs != null && pairs.TryGetValue(DaylightKey, out text) && (text == "true" || text == "false")) values.DaylightLanding = text == "true";
-            TimeVersusDeltaV time;
-            if (pairs != null && pairs.TryGetValue(TimeKey, out text) && Enum.TryParse(text, out time)) values.TimeVersusDeltaV = time;
-            if (pairs != null && pairs.TryGetValue(PhysicsWarpKey, out text) && (text == "true" || text == "false")) values.PhysicsWarp = text == "true";
+            if (pairs == null) return values;
+            foreach (var setting in All)
+            {
+                string text;
+                if (pairs.TryGetValue(setting.Key, out text) && setting.IsValid(text)) values._values[setting.Key] = text;
+            }
             return values;
         }
 
         public void WriteTo(IDictionary<string, string> pairs)
         {
-            pairs[DaylightKey] = DaylightLanding ? "true" : "false";
-            pairs[TimeKey] = TimeVersusDeltaV.ToString();
-            pairs[PhysicsWarpKey] = PhysicsWarp ? "true" : "false";
+            foreach (var setting in All) pairs[setting.Key] = _values[setting.Key];
         }
 
         public MissionSettingsValues Copy()
         {
-            return new MissionSettingsValues
-            {
-                DaylightLanding = DaylightLanding,
-                TimeVersusDeltaV = TimeVersusDeltaV,
-                PhysicsWarp = PhysicsWarp,
-                ConfigAllowsPhysicsWarp = ConfigAllowsPhysicsWarp,
-            };
+            var copy = new MissionSettingsValues { ConfigAllowsPhysicsWarp = ConfigAllowsPhysicsWarp };
+            foreach (var setting in All) copy._values[setting.Key] = _values[setting.Key];
+            return copy;
         }
 
+        /// <summary>No setting that needs a revised plan differs; the check that decides whether an edit asks Claudia to revise.</summary>
         public bool SameAs(MissionSettingsValues other)
         {
-            return other != null && DaylightLanding == other.DaylightLanding && TimeVersusDeltaV == other.TimeVersusDeltaV && PhysicsWarp == other.PhysicsWarp;
+            if (other == null) return false;
+            foreach (var setting in All)
+                if (setting.NeedsRevision && _values[setting.Key] != other._values[setting.Key]) return false;
+            return true;
         }
 
         public static string Label(TimeVersusDeltaV time)
@@ -117,8 +161,9 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The settings in the player's words, for the Mission board.</summary>
         public string Summary()
         {
-            return "Daylight landing: " + (DaylightLanding ? "on" : "off") + "; time versus delta-v: " + Label(TimeVersusDeltaV)
-                + "; physics warp on Coasts: " + (PhysicsWarpOn ? "on" : "off");
+            var parts = new List<string>();
+            foreach (var setting in All) parts.Add(setting.Summary(this));
+            return string.Join("; ", parts);
         }
     }
 

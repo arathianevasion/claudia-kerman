@@ -151,6 +151,24 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void Every_described_setting_is_saved_prompted_and_summarised_without_further_wiring()
+        {
+            var values = MissionSettingsValues.Defaults(new PlayerConfig());
+            var pairs = new Dictionary<string, string>();
+            values.WriteTo(pairs);
+            var prompt = MissionPrompts.SettingsText(values);
+            var summary = values.Summary();
+            Assert.Equal(MissionSettingsValues.All.Count, pairs.Count);
+            foreach (var setting in MissionSettingsValues.All)
+            {
+                Assert.True(setting.IsValid(pairs[setting.Key]), setting.Key);
+                Assert.Contains(setting.Prompt(values), prompt);
+                Assert.Contains(setting.Summary(values), summary);
+                Assert.True(setting.NeedsRevision, setting.Key);
+            }
+        }
+
+        [Fact]
         public void The_time_cap_keeps_its_meaning()
         {
             Assert.Equal(1, Make(true, TimeVersusDeltaV.Fastest, true).TimeCapHours);
