@@ -82,9 +82,12 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         private static string ToolRefusal(Purpose purpose, GameSnapshot snapshot, string tool)
         {
-            if (purpose == Purpose.Alert) return "not available during an Alert";
+            if (purpose == Purpose.Alert)
+                return tool == ProposedPlans.ToolName
+                    ? "not available during an Alert; propose_mission_plan is only for a request that asks for a Mission Plan"
+                    : "not available during an Alert";
             if (tool == ProposedPlans.ToolName && !TakesMissionPlan(purpose))
-                return "this request doesn't ask for a Mission Plan; reply with the kind the mod asked for";
+                return "this request doesn't ask for a Mission Plan; propose_mission_plan is only for a request that asks for a Mission Plan, so reply with the kind the mod asked for";
             var where = snapshot != null ? Grounded(snapshot.Situation) : null;
             if (where != null)
             {

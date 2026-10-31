@@ -954,6 +954,12 @@ namespace ClaudiaKermin.Core.Missions
             return _config.Efforts.For(KindOf(purpose));
         }
 
+        /// <summary>A Debrief and an Alert are answered with no tool (#587): tool_choice none, the tools list unchanged so the cache holds (ADR 0012).</summary>
+        private static bool TakesNoTool(Purpose purpose)
+        {
+            return purpose == Purpose.Debrief || purpose == Purpose.Alert;
+        }
+
         /// <summary>The effort table's key for a turn's reply kind.</summary>
         private static string KindOf(Purpose purpose)
         {
@@ -1056,7 +1062,7 @@ namespace ClaudiaKermin.Core.Missions
                 Model = mission.Model,
                 MaxTokens = MissionPrompts.MaxTokens,
                 OutputSchemaJson = MissionReply.MissionSchemaJson,
-                NoToolChoice = turn.ToolLimitSent,
+                NoToolChoice = turn.ToolLimitSent || TakesNoTool(turn.Purpose),
             };
             request.Tools.AddRange(MissionTools());
             request.System.AddRange(mission.System);
