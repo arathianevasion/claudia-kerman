@@ -1,8 +1,10 @@
 """Tests for the replay screen. Nothing here calls claude or the network: the runner is a fake."""
+import datetime
 import io
 import json
 import os
 import re
+import shutil
 import tempfile
 import unittest
 from unittest import mock
@@ -440,6 +442,148 @@ class ModelScreenTests(MissionCase):
         self.assertEqual(0, code)
         self.assertIn('- debrief: 3 request(s), 3 replay(s) on claude-haiku-5-5 at the recorded effort (high)', text)
         self.assertIn('Total Claude Code calls it would make: 6', text)
+
+
+class PlanStepTests(unittest.TestCase):
+    SCRIPT = 'ascend(80000).\ncoast(10).\n'
+
+    def agree(self, recorded, replayed, script=None):
+        original = replay.signature('sequence_plan', fx.seqplan(self.SCRIPT, recorded))
+        sig = replay.signature('sequence_plan', fx.seqplan(script or self.SCRIPT, replayed))
+        return replay.agrees(original, sig)
+
+    def test_a_recording_with_no_plan_step_is_compared_on_its_blocks_alone(self):
+        self.assertTrue(self.agree(None, 3))
+        self.assertTrue(self.agree(None, None))
+        self.assertFalse(self.agree(None, 3, 'ascend(80000).\n'))
+
+    def test_a_recorded_plan_step_is_still_compared(self):
+        self.assertFalse(self.agree(2, 3))
+        self.assertTrue(self.agree(2, 2))
+        self.assertFalse(self.agree(2, None))
+
+
+class OneMissionOnceTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = self._tmp.name
+        self.turns = [('debrief', fx.debrief('Nominal'), 1.0, False), ('debrief', fx.debrief('Failed'), 1.0, False),
+                      ('change', fx.plan('A'), 1.0, False), ('reply', fx.answer(), 1.0, False)]
+        self.a = self.mission('stable', 'm20261024-100000-aaaa')
+        self.old = os.path.join(self.root, 'spike')
+
+    def missions(self, save):
+        return os.path.join(self.root, save, 'Save', 'ClaudiaKermin', 'missions')
+
+    def mission(self, save, mid, turns=None):
+        return fx.make_mission(self.missions(save), mid, turns or self.turns)
+
+    def copy_to(self, save, mid):
+        dst = os.path.join(self.missions(save), mid)
+        shutil.copytree(os.path.join(self.missions('stable'), mid), dst)
+        return dst
+
+    def paths(self):
+        return [os.path.join(self.root, 'spike'), os.path.join(self.root, 'stable')]
+
+    def test_an_identical_copy_in_another_save_yields_its_requests_once_and_is_reported(self):
+        copy = self.copy_to('spike', 'm20261024-100000-aaaa')
+        found = replay.discover_missions(self.paths())
+        self.assertEqual(['m20261024-100000-aaaa'], [label for _, label in found['folders']])
+        self.assertEqual(1, len(found['copies']))
+        self.assertEqual({copy, self.a}, {os.path.normpath(x) for x in found['copies'][0]})
+        self.assertEqual([], found['conflicts'])
+        out = io.StringIO()
+        replay.main(self.paths() + ['--dry-run'], stdout=out)
+        text = out.getvalue()
+        self.assertIn('Skipped 1 identical copy(ies)', text)
+        self.assertIn(copy, text)
+        self.assertIn(self.a, text)
+        ids = [c['id'] for c in (cs for f, l in found['folders'] for cs in replay.load_cases(f, l))]
+        self.assertEqual(len(ids), len(set(ids)))
+
+    def test_only_the_first_few_copies_name_their_paths(self):
+        for n in range(5):
+            mid = 'm20261024-10000%d-bbbb' % n
+            self.mission('stable', mid)
+            self.copy_to('spike', mid)
+        found = replay.discover_missions(self.paths())
+        self.assertEqual(5, len(found['copies']))
+        lines = replay.found_lines(found)
+        self.assertIn('Skipped 5 identical copy(ies)', ' '.join(lines))
+        self.assertEqual(3, sum(1 for l in lines if l.startswith('- kept')))
+
+    def test_two_folders_with_one_id_and_different_content_are_both_kept_and_said_so(self):
+        self.mission('spike', 'm20261024-100000-aaaa', self.turns[:3])
+        found = replay.discover_missions(self.paths())
+        self.assertEqual(['m20261024-100000-aaaa', 'm20261024-100000-aaaa~2'], sorted(l for _, l in found['folders']))
+        self.assertEqual(1, len(found['conflicts']))
+        self.assertEqual([], found['copies'])
+        self.assertIn('differ in content', ' '.join(replay.found_lines(found)))
+        ids = [c['id'] for f, l in found['folders'] for c in replay.load_cases(f, l)]
+        self.assertEqual(len(ids), len(set(ids)))
+
+    def test_since_drops_missions_started_before_the_date_and_keeps_those_on_or_after_it(self):
+        for mid in ('m20261023-235959-0001', 'm20261028-000000-0002', 'm20261029-120000-0003'):
+            self.mission('stable', mid)
+        found = replay.discover_missions(self.paths(), datetime.date(2026, 10, 28))
+        self.assertEqual(['m20261028-000000-0002', 'm20261029-120000-0003'], sorted(l for _, l in found['folders']))
+        self.assertEqual(2, found['before'])   # m20261023 and the 24 Oct one from setUp
+        out = io.StringIO()
+        replay.main(self.paths() + ['--dry-run', '--since', '2026-10-28'], stdout=out)
+        self.assertIn('filter --since 2026-10-28 (2 earlier Mission(s) left out)', out.getvalue())
+        plain = io.StringIO()
+        replay.main(self.paths() + ['--dry-run'], stdout=plain)
+        self.assertIn('filter --since none (all Missions)', plain.getvalue())
+
+    def test_a_bad_since_date_is_refused(self):
+        with self.assertRaises(SystemExit), mock.patch('sys.stderr', io.StringIO()):
+            replay.main(self.paths() + ['--dry-run', '--since', 'yesterday'])
+
+
+class PerRequestReportTests(MissionCase):
+    def echo(self, req):
+        return json.loads(json.dumps(self.turns[turn_of(req) - 1][1]))
+
+    def test_with_two_repeats_each_request_is_one_row_with_its_runs(self):
+        seen = {}
+
+        def answer(req):   # the new effort gets turn 1 wrong on its second run only
+            key = (turn_of(req), req['effort'])
+            seen[key] = seen.get(key, 0) + 1
+            if req['effort'] == 'medium' and turn_of(req) == 1 and seen[key] == 2:
+                return fx.debrief('Failed')
+            return self.echo(req)
+        runner = FakeRunner(answer)
+        cases = self.cases()
+        results = replay.run(cases, runner, repeats=2)
+        summary = replay.summarize(results)
+        text = replay.report(cases, results, summary, 'medium')
+        self.assertEqual(24, len(runner.calls))
+        d = summary['debrief']
+        self.assertEqual((3, 3), (d['old']['requests'], d['new']['requests']))
+        self.assertEqual((6, 5), (d['old']['runs'], d['new']['agree']))
+        self.assertEqual(2, d['new']['requests_agree'])
+        self.assertEqual(3, d['cases'])
+        self.assertRegex(text, r'\| debrief \| 3 \| high \| 6/6 \(100%\) \| medium \| 5/6 \(83%\) \|')
+        self.assertIn('replayed 2 time(s) per effort', text)
+        lines = [l for l in text.split('## Disagreements')[1].splitlines() if l.startswith('- ')]
+        self.assertEqual(1, len(lines))
+        self.assertEqual(1, lines[0].count('m1/turn-3'))
+        self.assertIn('1 of 2 run(s) disagreed', lines[0])
+        self.assertIn('run 1: replay', lines[0])
+
+    def test_a_request_that_disagrees_in_both_runs_is_still_one_line(self):
+        runner = FakeRunner(lambda req: fx.debrief('Failed') if turn_of(req) == 1 else self.echo(req))
+        cases = self.cases()
+        results = replay.run(cases, runner, repeats=2, model_screen=True)
+        text = replay.model_report(cases, results, replay.summarize(results), 'm')
+        lines = [l for l in text.split('## Disagreements')[1].splitlines() if l.startswith('- ')]
+        self.assertEqual(1, len(lines))
+        self.assertIn('2 of 2 run(s) disagreed', lines[0])
+        self.assertIn('run 0:', lines[0])
+        self.assertIn('run 1:', lines[0])
 
 
 class BlockerListTests(unittest.TestCase):

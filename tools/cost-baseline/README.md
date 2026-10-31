@@ -155,6 +155,19 @@ python3 -I tools/cost-baseline/replay.py ~/KSP_spike/saves --kinds debrief --new
   python3 -I tools/cost-baseline/replay.py ~/KSP_spike/saves ~/KSP_stable/saves --model claude-haiku-5-5 --dry-run
   python3 -I tools/cost-baseline/replay.py ~/KSP_spike/saves ~/KSP_stable/saves --model claude-haiku-5-5 --per-kind 20 --out replay-haiku-5-5.md
   ```
+- **One Mission, once** (#586). A Mission folder found twice (the same Mission id under two saves, or two installs) counts
+  once when the copies are byte-identical; the dry run and the report say how many copies were skipped and name both paths
+  for the first three. Two folders with one id but different contents are both kept (the later one's requests are labelled
+  `id~2`) and the report says so. Nothing is moved or deleted.
+- **`--since YYYY-MM-DD`** (#586) leaves out Missions started before that date, read from the date in the Mission id
+  (`m20261028-...`). The default is all Missions. A Mission whose id has no date is kept. The dry run and the report state
+  the filter used and how many Missions it dropped.
+- **Per request, not per replay** (#586). With `--repeats` over 1 each request is still one row: the disagreements list
+  names a request once, with the runs that disagreed (`1 of 2 run(s) disagreed`). The Agree columns and the pass rule count
+  runs; the report says how many runs each request had.
+- **`plan_step`** (#586). A recording made before `plan_step` existed has none, so a Sequence Plan with no recorded
+  `plan_step` is compared on its Building Blocks alone. A recorded `plan_step` (a recorded 2 against a replayed 3) is still
+  compared.
 - **`--dry-run`** reads and checks the requests, prints how many calls it would make, and sends nothing.
 - **Testing.** The runner is injectable (`replay.main(argv, runner=...)`, `replay.run(cases, runner)`), so the tests use
   a fake and never call `claude`.

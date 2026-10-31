@@ -16,13 +16,18 @@ Request source, per Mission folder:
 Model screen (#567): with --model, each request is replayed once on that model at the effort it was recorded at, and
 the replies are compared with the recorded ones; a kind passes at 19 in 20 (--old-effort/--new-effort do not apply).
 
+A Mission found in more than one folder (one id, identical contents) counts once; --since YYYY-MM-DD leaves out Missions
+started before that date, read from the Mission id (#586).
+
 Usage: python3 -I tools/cost-baseline/replay.py MISSION_OR_SAVES_DIR... [--new-effort medium] [--kinds debrief,...]
-       [--per-kind 20] [--repeats 1] [--dry-run] [--out FILE.md]
+       [--per-kind 20] [--repeats 1] [--since YYYY-MM-DD] [--dry-run] [--out FILE.md]
        python3 -I tools/cost-baseline/replay.py MISSION_OR_SAVES_DIR... --model claude-haiku-5-5 [--kinds ...] [--dry-run]
 """
 import argparse
+import datetime
 import fractions
 import glob
+import hashlib
 import json
 import os
 import re
@@ -155,9 +160,10 @@ def case_from_body(cid, kind, mission, body, original_text, tokens, output=None)
                 recorded_tokens=tokens, recorded_output=output, chars=chars_of(system, messages), body=body)
 
 
-def load_cases(folder):
-    """Every replayable request of one Mission folder, usable or not (see `check_rebuilds`)."""
-    mission = os.path.basename(folder.rstrip(os.sep))
+def load_cases(folder, label=None):
+    """Every replayable request of one Mission folder, usable or not (see `check_rebuilds`). `label` stands in for the
+    folder name in request ids (a second, different folder with the same Mission id gets its own)."""
+    mission = label or os.path.basename(folder.rstrip(os.sep))
     cases = []
     tr = baseline.load_json(os.path.join(folder, 'transcript.json')) or {}
     messages = tr.get('messages') or []
@@ -207,6 +213,7 @@ def load_cases(folder):
 
 
 def find_missions(paths):
+    """Every Mission folder under `paths`, copies and all (batch_confirm.py takes these as they are)."""
     out = []
     for p in paths:
         if os.path.exists(os.path.join(p, 'transcript.json')) or os.path.isdir(os.path.join(p, 'craft-checks')):
@@ -215,6 +222,80 @@ def find_missions(paths):
             out.extend(sorted(glob.glob(os.path.join(p, '*', 'ClaudiaKermin', 'missions', '*', ''))))
             out.extend(sorted(d for d in glob.glob(os.path.join(p, '*', '')) if os.path.exists(os.path.join(d, 'transcript.json'))))
     return out
+
+
+def folder_digest(folder):
+    """A hash of every file's relative path and bytes under the folder (links are not followed)."""
+    h = hashlib.sha256()
+    for root, dirs, files in os.walk(folder):
+        dirs.sort()
+        for name in sorted(files):
+            path = os.path.join(root, name)
+            if os.path.islink(path):
+                continue
+            h.update(os.path.relpath(path, folder).encode('utf-8', 'surrogateescape') + b'\0')
+            with open(path, 'rb') as f:
+                h.update(f.read())
+            h.update(b'\0')
+    return h.hexdigest()
+
+
+def mission_date(mission_id):
+    """The date a Mission id starts with (m20261024-182114-096f), or None."""
+    m = re.match(r'm(\d{4})(\d{2})(\d{2})-', mission_id)
+    try:
+        return datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+    except ValueError:
+        return None
+
+
+def discover_missions(paths, since=None):
+    """The Mission folders under `paths`, as a dict: `folders` (path, label) pairs; `copies` (kept, skipped) pairs for a
+    folder with the id and the contents of one already kept; `conflicts` (kept, other) pairs for the same id with
+    different contents (both are kept, the later labelled `id~2`); `before` how many Missions `since` left out;
+    `undated` how many kept ones have no date in their id (the filter keeps them)."""
+    seen = {}   # Mission id -> [[folder, digest or None], ...] of the folders kept
+    found = dict(folders=[], copies=[], conflicts=[], before=0, undated=0, since=since)
+    for folder in find_missions(paths):
+        mid = os.path.basename(folder.rstrip(os.sep))
+        kept = seen.setdefault(mid, [])
+        label = mid
+        if kept:
+            digest = folder_digest(folder)
+            for k in kept:
+                k[1] = k[1] or folder_digest(k[0])
+            twin = next((k[0] for k in kept if k[1] == digest), None)
+            if twin is not None:
+                found['copies'].append((twin, folder))
+                continue
+            found['conflicts'].append((kept[0][0], folder))
+            label = '%s~%d' % (mid, len(kept) + 1)
+            kept.append([folder, digest])
+        else:
+            kept.append([folder, None])
+        date = mission_date(mid)
+        if since and date and date < since:
+            found['before'] += 1
+            continue
+        found['undated'] += 0 if date else 1
+        found['folders'].append((folder, label))
+    return found
+
+
+def found_lines(found, shown=3):
+    """What discovery skipped and the filter used, for the dry run and the report."""
+    w = ['Missions: %d read; filter --since %s%s.' % (
+        len(found['folders']), found['since'] or 'none (all Missions)',
+        ' (%d earlier Mission(s) left out)' % found['before'] if found['since'] else '')]
+    if found['since'] and found['undated']:
+        w[0] += ' %d Mission(s) with no date in their id are kept.' % found['undated']
+    if found['copies']:
+        w.append('Skipped %d identical copy(ies) of a Mission already read; the first %d:' % (
+            len(found['copies']), min(shown, len(found['copies']))))
+        w.extend('- kept %s; skipped %s' % c for c in found['copies'][:shown])
+    for kept, other in found['conflicts']:
+        w.append('Two folders share a Mission id but differ in content, both kept: %s and %s' % (kept, other))
+    return w
 
 
 def check_rebuilds(cases, tolerance=TOLERANCE):
@@ -282,6 +363,17 @@ def signature(kind, reply):
     elif isinstance(sp, dict):
         names = [sp.get('name')]
     return {'revised': bool(isinstance(mp, dict) or isinstance(sp, dict)), 'sequences': sorted(set(n for n in names if n))}
+
+
+def agrees(original, replay):
+    """Whether a replay's fields match the recorded ones. A recording with no `plan_step` (made before it existed) is
+    compared on the Building Blocks alone."""
+    if replay is None:
+        return False
+    if isinstance(original, dict) and 'plan_step' in original and original['plan_step'] is None:
+        original, replay = dict(original), dict(replay)
+        original.pop('plan_step'), replay.pop('plan_step', None)
+    return replay == original
 
 
 def missed_blockers(original, replay):
@@ -374,7 +466,7 @@ def run(cases, runner, new_effort='medium', old_effort=None, per_kind=20, repeat
                         rec['unsure'] = str(reply['unsure_because'] or '')
                 elif rec['error'] is None:
                     rec['error'] = 'reply was not a JSON object'
-                rec['agree'] = rec['signature'] is not None and rec['signature'] == original
+                rec['agree'] = agrees(original, rec['signature'])
                 if case['kind'] in FINDING_KINDS and original:
                     # A call that failed or came back unusable has found none of the Blockers.
                     rec['missed'] = missed_blockers(original, rec['signature'] or {})
@@ -397,6 +489,8 @@ def summarize(results):
             dis = [r for r in ws if not r['agree']]
             flagged = [r for r in ws if r['unsure'] is not None]
             S[w] = dict(effort=ws[0]['effort'] if ws else None, runs=len(ws), agree=len(ws) - len(dis),
+                        requests=len(set(r['case'] for r in ws)),
+                        requests_agree=len(set(r['case'] for r in ws)) - len(set(r['case'] for r in dis)),
                         missed=sum(1 for r in ws if r['missed']), disagreements=dis,
                         with_unsure=len(flagged), unsure_set=sum(1 for r in flagged if r['unsure']),
                         dis_flagged=sum(1 for r in dis if r['unsure']),
@@ -431,10 +525,32 @@ def rate(a, b):
     return '%d/%d (%.0f%%)' % (a, b, 100.0 * a / b) if b else '-'
 
 
-def model_report(cases, results, summary, model):
+def by_request(results):
+    """The disagreeing runs, grouped per (request, effort) in the order first met, with the runs each had."""
+    groups = {}
+    for r in results:
+        g = groups.setdefault((r['case'], r['which']), dict(runs=0, bad=[]))
+        g['runs'] += 1
+        if not r['agree']:
+            g['bad'].append(r)
+    return [(k, g) for k, g in groups.items() if g['bad']]
+
+
+def runs_note(results):
+    runs = sorted(set(sum(1 for r in results if r['case'] == c and r['which'] == w)
+                      for c, w in set((r['case'], r['which']) for r in results)))
+    return ('Each request is replayed %s time(s) per effort; the Agree columns count runs.' % (
+        '/'.join(str(n) for n in runs))) if runs else ''
+
+
+def model_report(cases, results, summary, model, found=None):
     w = ['# Model screen: %s against the recorded replies' % model, '']
+    if found:
+        w.extend(found_lines(found))
+        w.append('')
     w.append('Requests found: %d; usable: %d. Each request is replayed at the effort it was recorded at; a kind passes at '
-             '19 in 20 agreeing with the recorded reply on its parsed fields.' % (len(cases), sum(1 for c in cases if c['usable'])))
+             '19 in 20 agreeing with the recorded reply on its parsed fields. %s' % (
+                 len(cases), sum(1 for c in cases if c['usable']), runs_note(results)))
     w.append('')
     w.append('| Kind | Requests | Effort | Agree | Blockers missed | Verdict |')
     w.append('|---|---:|---|---:|---:|---|')
@@ -446,23 +562,29 @@ def model_report(cases, results, summary, model):
     w.append('')
     w.append('## Disagreements')
     w.append('')
-    shown = [r for r in results if not r['agree']]
-    for r in shown:
-        w.append('- %s, %s (run %d): recorded %s; replay %s%s%s' % (
-            r['case'], r['kind'], r['run'], json.dumps(r['original'], sort_keys=True),
-            json.dumps(r['signature'], sort_keys=True),
-            ('; MISSED BLOCKERS ' + ', '.join(r['missed'])) if r['missed'] else '',
-            ('; error: ' + json.dumps(r['error'])) if r['error'] else ''))
+    shown = by_request(results)
+    for (case, _), g in shown:
+        first = g['bad'][0]
+        w.append('- %s, %s (%d of %d run(s) disagreed): recorded %s' % (
+            case, first['kind'], len(g['bad']), g['runs'], json.dumps(first['original'], sort_keys=True)))
+        for r in g['bad']:
+            w[-1] += '; run %d: replay %s%s%s' % (
+                r['run'], json.dumps(r['signature'], sort_keys=True),
+                ('; MISSED BLOCKERS ' + ', '.join(r['missed'])) if r['missed'] else '',
+                ('; error: ' + json.dumps(r['error'])) if r['error'] else '')
     if not shown:
         w.append('None.')
     w.append('')
     return '\n'.join(w)
 
 
-def report(cases, results, summary, new_effort, tolerance=TOLERANCE):
+def report(cases, results, summary, new_effort, tolerance=TOLERANCE, found=None):
     w = []
     w.append('# Replay screen: effort cut to %s' % new_effort)
     w.append('')
+    if found:
+        w.extend(found_lines(found))
+        w.append('')
     usable = [c for c in cases if c['usable']]
     w.append('Requests found: %d; usable: %d. A rebuilt request is usable when its characters per recorded input token are '
              'within %.0f%% of its Mission\'s median (at least %d recorded requests); a saved request body always is.' % (
@@ -477,6 +599,9 @@ def report(cases, results, summary, new_effort, tolerance=TOLERANCE):
         w.append('')
     w.append('## Agreement with the originals, per kind')
     w.append('')
+    if runs_note(results):
+        w.append(runs_note(results))
+        w.append('')
     w.append('| Kind | Requests | Old effort | Agree | New effort | Agree | Blockers missed at new | Verdict |')
     w.append('|---|---:|---|---:|---|---:|---:|---|')
     for k, S in summary.items():
@@ -502,25 +627,28 @@ def report(cases, results, summary, new_effort, tolerance=TOLERANCE):
     w.append('')
     w.append('## Disagreements')
     w.append('')
-    shown = 0
-    for r in results:
-        if r['agree']:
-            continue
-        shown += 1
-        w.append('- %s, %s effort %s (run %d): original %s; replay %s%s%s' % (
-            r['case'], r['kind'], r['effort'], r['run'], json.dumps(r['original'], sort_keys=True),
-            json.dumps(r['signature'], sort_keys=True),
-            ('; MISSED BLOCKERS ' + ', '.join(r['missed'])) if r['missed'] else '',
-            ('; unsure_because: ' + json.dumps(r['unsure'])) if r['unsure'] is not None else '') +
-                (('; error: ' + json.dumps(r['error'])) if r['error'] else ''))
+    shown = by_request(results)
+    for (case, _), g in shown:
+        first = g['bad'][0]
+        w.append('- %s, %s effort %s (%d of %d run(s) disagreed): original %s' % (
+            case, first['kind'], first['effort'], len(g['bad']), g['runs'], json.dumps(first['original'], sort_keys=True)))
+        for r in g['bad']:
+            w[-1] += '; run %d: replay %s%s%s' % (
+                r['run'], json.dumps(r['signature'], sort_keys=True),
+                ('; MISSED BLOCKERS ' + ', '.join(r['missed'])) if r['missed'] else '',
+                ('; unsure_because: ' + json.dumps(r['unsure'])) if r['unsure'] is not None else '')
+            w[-1] += ('; error: ' + json.dumps(r['error'])) if r['error'] else ''
     if not shown:
         w.append('None.')
     w.append('')
     return '\n'.join(w)
 
 
-def dry_run_text(cases, chosen, repeats, new_effort, model=None, old_effort=None):
-    w = ['Dry run: nothing is sent.', '', 'Requests found %d, usable %d.' % (len(cases), sum(1 for c in cases if c['usable']))]
+def dry_run_text(cases, chosen, repeats, new_effort, model=None, old_effort=None, found=None):
+    w = ['Dry run: nothing is sent.', '']
+    if found:
+        w.extend(found_lines(found))
+    w.append('Requests found %d, usable %d.' % (len(cases), sum(1 for c in cases if c['usable'])))
     for k in KINDS:
         n = sum(1 for c in chosen if c['kind'] == k)
         if n and model:
@@ -544,6 +672,8 @@ def main(argv=None, runner=None, stdout=None):
     ap.add_argument('--kinds', default=','.join(KINDS))
     ap.add_argument('--per-kind', type=int, default=20)
     ap.add_argument('--repeats', type=int, default=1, help='replays of each request at each effort')
+    ap.add_argument('--since', type=lambda t: datetime.datetime.strptime(t, '%Y-%m-%d').date(), metavar='YYYY-MM-DD',
+                    help='leave out Missions started before this date, read from the Mission id (default: all Missions)')
     ap.add_argument('--tolerance', type=float, default=TOLERANCE)
     ap.add_argument('--model', help='a model screen (#567): replay every request on this model at its recorded effort and '
                     'compare with the recorded replies (without it, requests rebuilt from a transcript use %s)' % DEFAULT_MODEL)
@@ -557,18 +687,19 @@ def main(argv=None, runner=None, stdout=None):
     if bad:
         ap.error('unknown kind %s; kinds are %s' % (', '.join(bad), ', '.join(KINDS)))
     cases = []
-    for folder in find_missions(a.paths):
-        cases.extend(load_cases(folder))
+    found = discover_missions(a.paths, a.since)
+    for folder, label in found['folders']:
+        cases.extend(load_cases(folder, label))
     # Calibrate on every request of a Mission, whatever the kinds asked for.
     cases = [c for c in check_rebuilds(cases, a.tolerance) if c['kind'] in kinds]
     if a.dry_run:
-        stdout.write(dry_run_text(cases, pick(cases, a.per_kind), a.repeats, a.new_effort, a.model, a.old_effort))
+        stdout.write(dry_run_text(cases, pick(cases, a.per_kind), a.repeats, a.new_effort, a.model, a.old_effort, found))
         return 0
     results = run(cases, runner or claude_print_runner, a.new_effort, a.old_effort, a.per_kind, a.repeats,
                   a.model or DEFAULT_MODEL, a.max_budget_usd, model_screen=bool(a.model))
     summary = summarize(results)
-    text = (model_report(cases, results, summary, a.model) if a.model
-            else report(cases, results, summary, a.new_effort, a.tolerance))
+    text = (model_report(cases, results, summary, a.model, found) if a.model
+            else report(cases, results, summary, a.new_effort, a.tolerance, found))
     if a.out:
         with open(a.out, 'w', encoding='utf-8') as f:
             f.write(text)
