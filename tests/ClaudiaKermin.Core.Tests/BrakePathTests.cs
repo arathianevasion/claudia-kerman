@@ -176,6 +176,8 @@ namespace ClaudiaKermin.Core.Tests
             var terrain = new Terrain { Before = TwinCratersAsFlown };
             var stack = DescentApproach.Plan(MunShotStack(), Mun, terrain, MunR + 30000, 0, 0, 90, 9, null);
             Assert.Null(stack.Error);
+            Assert.True(stack.Best.Result.LeastStopRoom >= 0 && stack.Best.Result.TouchdownSpeed <= 5,
+                "room " + Math.Round(stack.Best.Result.LeastStopRoom) + " m, touchdown " + stack.Best.Result.TouchdownSpeed + " m/s");
             var world = new BrakeWorld
             {
                 Mu = MunGm, Radius = MunR, Ground = DescentApproach.Read(terrain, "Mun", MunR, 0, 0, 90, 100000, out _),
