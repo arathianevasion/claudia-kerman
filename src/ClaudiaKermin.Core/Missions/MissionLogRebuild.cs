@@ -34,9 +34,12 @@ namespace ClaudiaKermin.Core.Missions
             var previousUser = "";
             var next = 0;
             var count = 0;
+            // The messages since the last reply: a mission_plan reply's plan is the one propose_mission_plan accepted among them (ADR 0012).
+            var sinceReply = new List<Message>();
             foreach (var message in transcript.Messages)
             {
                 next = AddNotices(log, notices, next, count++);
+                sinceReply.Add(message);
                 if (message.Role == Role.User)
                 {
                     previousUser = Text(message);
@@ -46,7 +49,9 @@ namespace ClaudiaKermin.Core.Missions
                 else if (message.Role == Role.Assistant)
                 {
                     var reply = MissionReply.Parse(Text(message));
-                    if (reply != null) Add(log, reply, previousUser, craftName, config);
+                    if (reply == null) continue;
+                    Add(log, reply.WithProposed(ProposedPlans.LastAccepted(sinceReply)), previousUser, craftName, config);
+                    sinceReply.Clear();
                 }
             }
             AddNotices(log, notices, next, int.MaxValue);

@@ -403,7 +403,7 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void EveryMissionSchemaAndTheCraftCheckSchemaRequireATopLevelUnsureBecauseString()
         {
-            foreach (var schema in new[] { MissionReply.PlanningSchemaJson, MissionReply.FlightSchemaJson, CraftCheckRules.SchemaJson() })
+            foreach (var schema in new[] { MissionReply.MissionSchemaJson, CraftCheckRules.SchemaJson() })
                 using (var doc = JsonDocument.Parse(schema))
                 {
                     Assert.Contains("unsure_because", doc.RootElement.GetProperty("required").EnumerateArray().Select(e => e.GetString()));

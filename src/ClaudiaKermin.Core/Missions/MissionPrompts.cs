@@ -167,10 +167,9 @@ namespace ClaudiaKermin.Core.Missions
         /// Mission likely needs, picked from its Mission Goal (<see cref="BlockSelection"/>). The base layer's
         /// Summaries still name every block.
         /// </summary>
-        public static string MissionLayer(string missionId, string goal, string bodyTable = "", double? plannedTurnShape = null)
+        public static string MissionLayer(string goal, string bodyTable = "", double? plannedTurnShape = null)
         {
-            return "Mission " + missionId + ".\n\n"
-                + "Building Blocks for this Mission, in full (the others are in the summaries above, without their options spelled out). "
+            return "Building Blocks for this Mission, in full (the others are in the summaries above, without their options spelled out). "
                 + "Where no shipped block fits, write a Custom Script.\n\n"
                 + CoreLibrary.FullDocs(BlockSelection.For(goal))
                 + bodyTable
@@ -204,10 +203,11 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>
         /// The timing rules and the Mission Settings as they stood when the Mission started: a system layer,
         /// frozen with the others. Later edits arrive as a notice (<see cref="SettingsChanged"/>), which supersedes it.
+        /// It opens with the Mission id, the one per-Mission fact, kept out of the layer above so that layer's cache entry is shared (#573).
         /// </summary>
-        public static string TimingLayer(MissionSettingsValues settings)
+        public static string TimingLayer(string missionId, MissionSettingsValues settings)
         {
-            return "Timing. Wait for a time-based event (a transfer window, daylight at the landing site, a surface alignment, "
+            return "Mission " + missionId + ".\n\nTiming. Wait for a time-based event (a transfer window, daylight at the landing site, a surface alignment, "
                 + "a phase angle, a hold of a few orbits) inside the Mission Script, however long: the Building Blocks warp on rails "
                 + "(physics warp on a Coast where rails can't) to the time and drop to 1x at least 30 s before any burn, and coast(lexicon(\"until\", ut)) holds a script until "
                 + "a UT the same way. The player's Approval of the sequence approves its wait. Count every wait in "
@@ -239,9 +239,15 @@ namespace ClaudiaKermin.Core.Missions
                 + SettingsText(settings);
         }
 
+        /// <summary>How every request for a Mission Plan asks for it (ADR 0012): the plan goes through the Reply Tool, the reply only names its kind.</summary>
+        public const string ProposePlan = "hand it in with propose_mission_plan, then reply with kind \"mission_plan\"";
+
+        /// <summary>In the tool results of the step before the last that may call a tool (#509), on a request for a Mission Plan not yet handed in.</summary>
+        public const string ProposePlanNow = "Your next step is the last that can call a tool: if you are replying with a Mission Plan, hand it in with propose_mission_plan now.";
+
         public const string SettingsNotice =
-            "Revise the Mission Plan for the new Mission Settings: reply with kind \"mission_plan\" and mission_plan filled in, "
-            + "with the waits, any Due Times and the total Mission time they imply. The player must approve it again.";
+            "Revise the Mission Plan for the new Mission Settings, with the waits, any Due Times and the total Mission time they imply: "
+            + ProposePlan + ". The player must approve it again.";
 
         public static string LateApprovalReplan(double ut, double plannedDv, double? lateDv)
         {
@@ -256,7 +262,7 @@ namespace ClaudiaKermin.Core.Missions
             + "its complete Mission Script, which waits for the next window itself, however far off. The mod runs it only after the player's Approval.";
 
         public const string PlanNotice =
-            "The craft is in Flight. Propose the Mission Plan now: reply with kind \"mission_plan\" and mission_plan filled in.";
+            "The craft is in Flight. Propose the Mission Plan now: " + ProposePlan + ".";
 
         public const string SequenceNotice =
             "Propose the Sequence Plan for the next Maneuver Sequence now: reply with kind \"sequence_plan\" and "
@@ -303,28 +309,33 @@ namespace ClaudiaKermin.Core.Missions
         private static string GoalHint(bool missionPlan)
         {
             return " If the player asks to change the Mission Goal itself, "
-                + (missionPlan ? "" : "reply with kind \"mission_plan\" instead, planning for the new goal, and ")
+                + (missionPlan ? "" : "plan for the new goal instead (" + ProposePlan + "), and in that plan ")
                 + "set new_goal to the new goal in their words; otherwise new_goal is empty.";
         }
 
         public static string ReplyNotice(bool missionPlan)
         {
             var plan = missionPlan ? "Mission Plan" : "Sequence Plan";
-            var kind = missionPlan ? MissionReply.MissionPlanKind : MissionReply.SequencePlanKind;
             return "The player typed a reply to your pending " + plan + ". Classify it in reply_intent: \"approve\" only if "
                 + "it clearly approves the " + plan + " as it stands, \"revise\" if they want something changed, \"question\" "
-                + "if they ask something, and \"unclear\" if you can't tell. For \"revise\", reply with kind \"" + kind
-                + "\" and the revised " + plan + ". Otherwise reply with kind \"answer\" and say a short line (answering any question)."
+                + "if they ask something, and \"unclear\" if you can't tell. For \"revise\", " + Revision(missionPlan)
+                + ". Otherwise reply with kind \"answer\" and say a short line (answering any question)."
                 + ManualHint(missionPlan) + GoalHint(missionPlan);
         }
 
         public static string ChangeNotice(bool missionPlan)
         {
             var plan = missionPlan ? "Mission Plan" : "Sequence Plan";
-            var kind = missionPlan ? MissionReply.MissionPlanKind : MissionReply.SequencePlanKind;
-            return "The player wants a change to your pending " + plan + ". Revise it: reply with kind \"" + kind
-                + "\" and the revised " + plan + ". If the change can't be done, reply with kind \"answer\" and say why."
+            return "The player wants a change to your pending " + plan + ". Revise it: " + Revision(missionPlan)
+                + ". If the change can't be done, reply with kind \"answer\" and say why."
                 + ManualHint(missionPlan) + GoalHint(missionPlan);
+        }
+
+        /// <summary>How a revision of the pending plan comes back: a Mission Plan through propose_mission_plan (ADR 0012), a Sequence Plan in the reply.</summary>
+        private static string Revision(bool missionPlan)
+        {
+            return missionPlan ? "write the revised Mission Plan and " + ProposePlan
+                : "reply with kind \"" + MissionReply.SequencePlanKind + "\" and the revised Sequence Plan";
         }
 
         private static string ManualHint(bool missionPlan)
@@ -359,8 +370,8 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         public const string RevisedPlanNotice =
-            "The player has the craft back. Revise the Mission Plan from the craft's real state now: reply with kind \"mission_plan\" "
-            + "and mission_plan filled in, with the sequences already flown first, then those still to fly. The player must approve it before anything runs.";
+            "The player has the craft back. Revise the Mission Plan from the craft's real state now, with the sequences already flown "
+            + "first, then those still to fly: " + ProposePlan + ". The player must approve it before anything runs.";
 
         public static string ReplanBecauseCraftChanged(string what, bool missionPlan)
         {
@@ -398,8 +409,7 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         public const string ChildVesselNotice =
-            "Reply with kind \"mission_plan\" and a corrected Mission Plan whose Child Vessels name only vessels that have left the craft, "
-            + "or none.";
+            "Correct the Mission Plan so its Child Vessels name only vessels that have left the craft, or none: " + ProposePlan + ".";
 
         /// <summary>Added when the refused turn was the player's typed Reply or Change: the correction is still a revision of the plan.</summary>
         public const string ChildVesselTypedNotice =
