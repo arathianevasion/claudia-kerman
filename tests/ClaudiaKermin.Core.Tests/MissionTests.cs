@@ -132,7 +132,7 @@ namespace ClaudiaKermin.Core.Tests
             mission.Send(new SceneChanged(GameScene.Editor));
             Assert.True(mission.View.StartForm.CanStart);
             Assert.Equal(10m, mission.View.StartForm.DefaultSpendingCap);
-            Assert.Equal(new[] { "claude-sonnet-5-5", "claude-opus-5-5" }, mission.View.StartForm.Models);
+            Assert.Equal(new[] { "claude-sonnet-5-5", "claude-haiku-5-5" }, mission.View.StartForm.Models);
             StartChecked(mission, new StartMission(Goal, 10m, "claude-sonnet-5-5"));
             Assert.Equal(MissionStage.WaitingForFlight, mission.View.Stage);
             Assert.False(mission.View.StartForm.CanStart);
@@ -229,7 +229,7 @@ namespace ClaudiaKermin.Core.Tests
             var mission = Control(transport, config);
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(OnPad());
-            StartChecked(mission, new StartMission(Goal, 25m, "claude-opus-5-5"));
+            StartChecked(mission, new StartMission(Goal, 25m, "claude-haiku-5-5"));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
@@ -243,7 +243,7 @@ namespace ClaudiaKermin.Core.Tests
             foreach (var body in bodies)
             {
                 // The model chosen at Mission start, locked for the Mission.
-                Assert.Equal("claude-opus-5-5", body.GetProperty("model").GetString());
+                Assert.Equal("claude-haiku-5-5", body.GetProperty("model").GetString());
                 var system = body.GetProperty("system");
                 Assert.Equal(3, system.GetArrayLength());
                 foreach (var layer in system.EnumerateArray())

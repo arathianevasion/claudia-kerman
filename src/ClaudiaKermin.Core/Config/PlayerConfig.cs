@@ -24,7 +24,7 @@ namespace ClaudiaKermin.Core.Config
         public bool DebugTools;
 
         /// <summary>The models offered in the Mission start form, default first. Never empty.</summary>
-        public IList<string> Models = new List<string> { "claude-sonnet-5-5", "claude-opus-5-5" };
+        public IList<string> Models = new List<string> { "claude-sonnet-5-5", "claude-haiku-5-5" };
 
         /// <summary>USD.</summary>
         public decimal DefaultSpendingCap = 10m;
@@ -45,7 +45,7 @@ namespace ClaudiaKermin.Core.Config
         /// <summary>A Sequence Plan expecting at least this long gives a compaction time to finish before the Debrief needs the conversation.</summary>
         public double CompactionMinRunSeconds = 120;
 
-        /// <summary>What each model costs; add models with <c>price.&lt;model&gt; = input, output</c> lines (USD per million tokens).</summary>
+        /// <summary>What each model costs; add models with <c>price.&lt;model&gt; = input, output[, cache read]</c> lines, and <c>price.&lt;model&gt;.long</c> for a prompt over 100,000 tokens (USD per million tokens).</summary>
         public PriceTable Prices = PriceTable.Default();
 
         /// <summary>The effort of each reply kind (<c>effort.&lt;kind&gt; = low|medium|high</c>); not a Mission Setting, never shown to the player.</summary>
@@ -119,18 +119,21 @@ namespace ClaudiaKermin.Core.Config
             "# Claudia Kermin player config\n"
             + "debug_tools = false\n"
             + "# Models offered when a Mission starts, default first. Others are at your own risk.\n"
-            + "models = claude-sonnet-5-5, claude-opus-5-5\n"
+            + "models = claude-sonnet-5-5, claude-haiku-5-5\n"
             + "# Spending Cap prefilled in the Mission start form, in USD.\n"
             + "default_spending_cap = 10\n"
             + "# Delta-v margin, in percent, the Craft Check wants over the Delta-v Map.\n"
             + "craft_check_margin = 15\n"
             + "# Input tokens past which a Mission's conversation is compacted at the next long sequence (at least 50000).\n"
             + "compaction_trigger = 150000\n"
-            + "# Price table, USD per million tokens (input, output). A model not listed is charged at the highest price here.\n"
-            + "# Add a model you want to try at your own risk: price.<model> = input, output\n"
-            + "price.claude-sonnet-5-5 = 2, 10\n"
-            + "price.claude-opus-5-5 = 4, 20\n"
-            + "price.claude-sonnet-5 = 2, 10\n"
+            + "# Price table, USD per million tokens (input, output, cache read). A model not listed is charged at the highest price here.\n"
+            + "# Add a model you want to try at your own risk: price.<model> = input, output[, cache read]; the cache read is a tenth of the input when left out.\n"
+            + "# price.<model>.long is the price of a prompt over 100000 tokens, for a model with a second tier.\n"
+            + "price.claude-sonnet-5-5 = 2, 10, 0.10\n"
+            + "price.claude-haiku-5-5 = 0.10, 0.50, 0.01\n"
+            + "price.claude-haiku-5-5.long = 0.50, 2.50, 0.05\n"
+            + "price.claude-opus-5-5 = 4, 20, 0.20\n"
+            + "price.claude-sonnet-5 = 2, 10, 0.20\n"
             + "price.claude-opus-5 = 5, 25\n"
             + "price.claude-opus-4-8 = 5, 25\n"
             + "price.claude-fable-5-1 = 10, 50\n"
@@ -194,12 +197,21 @@ namespace ClaudiaKermin.Core.Config
                 if (name.StartsWith("price.", StringComparison.Ordinal))
                 {
                     var rates = value.Split(',');
-                    decimal input, output;
-                    if (name.Length > "price.".Length && rates.Length == 2
+                    decimal input, output, cacheRead = 0m;
+                    var model = name.Substring("price.".Length);
+                    var isLong = model.EndsWith(".long", StringComparison.Ordinal) && model.Length > ".long".Length;
+                    if (isLong) model = model.Substring(0, model.Length - ".long".Length);
+                    if (model.Length > 0 && (rates.Length == 2 || rates.Length == 3)
                         && decimal.TryParse(rates[0].Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out input)
                         && decimal.TryParse(rates[1].Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out output)
-                        && input > 0 && output > 0)
-                        config.Prices.Set(name.Substring("price.".Length), new ModelPrice(input, output));
+                        && input > 0 && output > 0
+                        && (rates.Length == 2
+                            || (decimal.TryParse(rates[2].Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out cacheRead) && cacheRead > 0)))
+                    {
+                        var price = rates.Length == 2 ? new ModelPrice(input, output) : new ModelPrice(input, output, cacheRead);
+                        if (isLong) config.Prices.SetLong(model, price);
+                        else config.Prices.Set(model, price);
+                    }
                     continue;
                 }
                 switch (name)

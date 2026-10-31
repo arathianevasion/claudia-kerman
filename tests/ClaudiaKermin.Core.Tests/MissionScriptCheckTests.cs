@@ -333,14 +333,14 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void TheAutomaticRewriteIsNotSentWhenItCouldPassTheSpendingCapAndRaisingTheCapSendsIt()
         {
-            // The plan and the failing Sequence Plan cost $0.54 each: $1.08 of $1.20 leaves too little for the rewrite's worst case.
+            // The plan and the failing Sequence Plan cost $0.52 each: $1.04 of $1.20 leaves too little for the rewrite's worst case.
             var transport = Replies("mission-plan-priced.sse", "mission-sequence-plan-unsafe-priced.sse", "mission-sequence-plan-rewritten.sse");
             var mission = Control(transport);
             ApproveMissionPlan(mission, 1.20m);
             DrainUntil(mission, v => v.Stage == MissionStage.Paused);
 
             Assert.Equal(2, transport.Requests.Count);
-            Assert.Equal(1.08m, mission.View.Spent);
+            Assert.Equal(1.04m, mission.View.Spent);
             Assert.Equal(0m, mission.View.PendingCharge);
             Assert.Contains("Spending Cap", mission.View.PauseReason);
             Assert.Equal(new[] { QuickReply.RaiseCap, QuickReply.EndMission }, mission.View.QuickReplies);
@@ -359,7 +359,7 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void RetryAndReplanAfterCouldntProduceASafeScriptAreUnderTheSpendingCapToo()
         {
-            // Three failing replies at $0.54: $1.62 of $1.95 leaves too little for a Retry's worst case.
+            // Three failing replies at $0.52: $1.56 of $1.95 leaves too little for a Retry's worst case.
             var transport = Replies("mission-plan-priced.sse", "mission-sequence-plan-unsafe-priced.sse", "mission-sequence-plan-unsafe-priced.sse",
                 "mission-sequence-plan-rewritten.sse");
             var mission = Control(transport);

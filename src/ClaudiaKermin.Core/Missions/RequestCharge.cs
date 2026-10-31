@@ -44,8 +44,12 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The most the request could cost: about 3 characters a token, rounded up, so the estimate leans high, plus a full <c>max_tokens</c> of output.</summary>
         public static decimal WorstCase(PriceTable prices, string model, MessagesRequest request)
         {
-            var estimatedInput = (request.ToJson().Length + 2) / 3;
-            return prices.WorstCase(model, estimatedInput, request.MaxTokens);
+            return prices.WorstCase(model, EstimatedInputTokens(request), request.MaxTokens);
+        }
+
+        private static long EstimatedInputTokens(MessagesRequest request)
+        {
+            return (request.ToJson().Length + 2) / 3;
         }
 
         /// <summary>
@@ -54,7 +58,7 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         public static decimal InputCost(PriceTable prices, string model, MessagesRequest request, decimal worst)
         {
-            return System.Math.Max(0m, worst - prices.OutputCost(model, request.MaxTokens));
+            return System.Math.Max(0m, worst - prices.OutputCost(model, request.MaxTokens, EstimatedInputTokens(request)));
         }
 
         /// <summary>

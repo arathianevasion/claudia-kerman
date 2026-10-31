@@ -175,14 +175,14 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void PlayerConfigOffersSonnetFirstThenOpusWithATenDollarCap()
+        public void PlayerConfigOffersSonnetFirstThenHaikuWithATenDollarCap()
         {
             using (var dir = new TempDir())
             {
                 PlayerConfig.LoadOrCreate(dir.Sub);
                 var config = PlayerConfig.LoadOrCreate(dir.Sub);
 
-                Assert.Equal(new[] { "claude-sonnet-5-5", "claude-opus-5-5" }, config.Models);
+                Assert.Equal(new[] { "claude-sonnet-5-5", "claude-haiku-5-5" }, config.Models);
                 Assert.Equal("claude-sonnet-5-5", config.DefaultModel);
                 Assert.Equal(10m, config.DefaultSpendingCap);
                 Assert.Equal(150000, config.CompactionTriggerTokens);
@@ -258,7 +258,7 @@ namespace ClaudiaKermin.Core.Tests
             using (var dir = new TempDir())
             {
                 var config = PlayerConfig.LoadOrCreate(dir.Sub);
-                config.SetDefaultModel("claude-opus-5-5");
+                config.SetDefaultModel("claude-haiku-5-5");
                 config.DefaultSpendingCap = 7.5m;
                 config.DefaultDaylightLanding = false;
                 config.DefaultTimeVersusDeltaV = Missions.TimeVersusDeltaV.MostEfficient;
@@ -267,8 +267,8 @@ namespace ClaudiaKermin.Core.Tests
                 config.SaveDefaults(dir.Sub);
 
                 var loaded = PlayerConfig.LoadOrCreate(dir.Sub);
-                Assert.Equal(new[] { "claude-opus-5-5", "claude-sonnet-5-5" }, loaded.Models);
-                Assert.Equal("claude-opus-5-5", loaded.DefaultModel);
+                Assert.Equal(new[] { "claude-haiku-5-5", "claude-sonnet-5-5" }, loaded.Models);
+                Assert.Equal("claude-haiku-5-5", loaded.DefaultModel);
                 Assert.Equal(7.5m, loaded.DefaultSpendingCap);
                 Assert.False(loaded.DefaultDaylightLanding);
                 Assert.Equal(Missions.TimeVersusDeltaV.MostEfficient, loaded.DefaultTimeVersusDeltaV);
