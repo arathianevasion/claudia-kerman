@@ -59,7 +59,8 @@ namespace ClaudiaKermin.Core.Missions
             _hasKey = hasKey;
             _scriptCheck = scriptCheck;
             _craftCheck = new CraftCheckFlow(client, background, config, hasKey, CraftCheckCompleted);
-            Tools = PlanningTools.Default(scriptCheck);
+            // No check_script on Mission turns (#570): the Script Check runs on every Sequence Plan reply anyway.
+            Tools = PlanningTools.Default();
             Rebuild();
         }
 

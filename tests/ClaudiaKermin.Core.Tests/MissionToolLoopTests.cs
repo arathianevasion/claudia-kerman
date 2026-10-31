@@ -325,12 +325,11 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void AScriptThatPassedCheckScriptIsStillCheckedOnTheReply()
+        public void AnUnsafeSequencePlanScriptComesBackOnceForARewriteWithNoCheckScriptCall()
         {
             var check = new QuicksaveCheck();
             var transport = new StreamingFakeTransport(
                 Fixture("mission-plan.sse"),
-                ToolUseStreams.ToolUse("cs", ("check_script", "{\"script\":\"print 1.\"}")),
                 Fixture("mission-sequence-plan-unsafe.sse"),
                 Fixture("mission-sequence-plan-rewritten.sse"));
             var mission = Control(transport, check: check);
@@ -339,13 +338,12 @@ namespace ClaudiaKermin.Core.Tests
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
 
-            // The tool said ok, and the reply with the quicksave was refused anyway and rewritten.
-            Assert.Equal(4, transport.Requests.Count);
-            Assert.Equal("{\"ok\":true}", Assert.Single(Results(transport.Requests[2])).GetProperty("content").GetString());
-            Assert.Contains("line 1: :QUICKSAVE (quicksave)", transport.Requests[3].Body);
+            // The reply with the quicksave was refused and rewritten once; no tool call in between.
+            Assert.Equal(3, transport.Requests.Count);
+            Assert.Contains("line 1: :QUICKSAVE (quicksave)", transport.Requests[2].Body);
             Assert.DoesNotContain(mission.View.Log, e => e.Script.Contains("QUICKSAVE"));
-            // The tool's check, the unsafe reply's, the rewrite's.
-            Assert.Equal(3, check.Calls);
+            // The unsafe reply's check, the rewrite's.
+            Assert.Equal(2, check.Calls);
         }
 
         // ---- One commit, byte-exact steps ----
