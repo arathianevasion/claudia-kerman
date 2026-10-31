@@ -30,6 +30,8 @@ namespace ClaudiaKermin.Core.Missions
         public string Model = "";
         /// <summary>The worst case recorded before sending.</summary>
         public decimal Pending;
+        /// <summary>The input part of <see cref="Pending"/>: all a request that got no response at all keeps.</summary>
+        public decimal Input;
         /// <summary>Set when the request ended.</summary>
         public RequestSettlement Settlement;
         /// <summary>The check's earlier tool-loop steps, each its own request, oldest first; this charge is its last.</summary>
@@ -59,7 +61,7 @@ namespace ClaudiaKermin.Core.Missions
         /// Replaces a request's pending charge with what it really cost (refused, cut-off and off-schema
         /// replies are paid too). A cancelled or lost request got no response at all, so it keeps only its
         /// input cost (<paramref name="pendingInput"/>; the whole worst case when that is null): the output it could
-        /// have billed is released. Only a request that was turned away before any reply began (the key
+        /// have billed is released. One that streamed any output (<see cref="StreamResult.OutputStreamed"/>) keeps its full worst case. Only a request that was turned away before any reply began (the key
         /// rejected, no credit, no network, an HTTP error status) is released entirely, because nothing was billed.
         /// </summary>
         public static RequestSettlement Settle(PriceTable prices, decimal pending, StreamResult result, string model, decimal? pendingInput = null)
@@ -72,7 +74,9 @@ namespace ClaudiaKermin.Core.Missions
             }
             if (result != null && result.Status == StreamStatus.Failed && !MayHaveBilled(result.Failure))
                 return new RequestSettlement { Kind = "released", Amount = pending, Outcome = "rejected" };
-            var kept = pendingInput.HasValue ? System.Math.Min(pending, pendingInput.Value) : pending;
+            // Any streamed output may have been billed, so that request keeps its full worst case (errs safe, #539).
+            var streamed = result != null && result.OutputStreamed;
+            var kept = pendingInput.HasValue && !streamed ? System.Math.Min(pending, pendingInput.Value) : pending;
             return new RequestSettlement
             {
                 Kind = "kept", Amount = kept, Held = kept,

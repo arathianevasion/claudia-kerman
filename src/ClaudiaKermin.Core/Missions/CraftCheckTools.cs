@@ -106,7 +106,7 @@ namespace ClaudiaKermin.Core.Missions
                 return;
             }
             if (_toolLimitSent) _client.Log("Craft Check tool_limit_final after " + _toolSteps + " steps; the reply is asked for with tool_choice none");
-            var next = new CraftCheckCharge { Model = _request.Model, Pending = worstCase };
+            var next = new CraftCheckCharge { Model = _request.Model, Pending = worstCase, Input = RequestCharge.InputCost(_config.Prices, _request.Model, _request, worstCase) };
             var request = _request;
             _background.Run(
                 () => _client.Stream(request, update => { }, cancel.Token),

@@ -255,6 +255,12 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(held, mission.View.HeldCharges);
             Assert.Equal(0.54m, mission.View.Spent);
             Assert.Equal(new[] { "pending", "kept", "pending", "paid" }, Events(CostLog(mission.View.MissionId)));
+
+            // #539: the stream broke after partial output, so the request keeps its whole worst case, not just its input cost.
+            var lines = CostLog(mission.View.MissionId).Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(l => JsonDocument.Parse(l).RootElement.Clone()).Where(l => !l.GetProperty("event").GetString().StartsWith("craft_check_")).ToArray();
+            Assert.Equal(lines[0].GetProperty("amount").GetDecimal(), lines[1].GetProperty("amount").GetDecimal());
+            Assert.Equal(lines[0].GetProperty("amount").GetDecimal(), held);
         }
 
         [Fact]
