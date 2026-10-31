@@ -22,7 +22,13 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>"Blocker: Not enough delta-v. 3,300 m/s left against ...", as the card and the Debrief request show it.</summary>
         public string Describe()
         {
-            return (Severity == CraftFindingSeverity.Blocker ? "Blocker: " : "Warning: ") + Title + (Explanation.Length > 0 ? ". " + Explanation : "");
+            return Head() + (Explanation.Length > 0 ? ". " + Explanation : "");
+        }
+
+        /// <summary>"Blocker: Not enough delta-v".</summary>
+        public string Head()
+        {
+            return (Severity == CraftFindingSeverity.Blocker ? "Blocker: " : "Warning: ") + Title;
         }
     }
 
@@ -46,7 +52,8 @@ namespace ClaudiaKermin.Core.Missions
 
         private static readonly Regex Surface = new Regex(@"\b(land(s|ed|ing)?|touch ?down|ascen(d|ds|t|ding)|lift ?off|take ?off|launch(es|ing)?)\b", RegexOptions.IgnoreCase);
         private static readonly Regex Landing = new Regex(@"\b(land(s|ed|ing)?|touch ?down)\b", RegexOptions.IgnoreCase);
-        private static readonly Regex Return = new Regex(@"\b(return(s|ing)?|re-?ent(er|ry|ers|ering)|splash ?down)\b", RegexOptions.IgnoreCase);
+        private static readonly Regex Reentry = new Regex(@"\b(re-?ent(er|ry|ers|ering)|splash ?down)\b", RegexOptions.IgnoreCase);
+        private static readonly Regex ReturnHome = new Regex(@"\breturn(s|ing)?\b.*\bKerbin\b|\bKerbin\b.*\breturn(s|ing)?\b", RegexOptions.IgnoreCase);
 
         /// <summary>
         /// The check of <paramref name="snapshot"/> against <paramref name="rest"/>, with <paramref name="wantedPercent"/> the Craft
@@ -181,13 +188,19 @@ namespace ClaudiaKermin.Core.Missions
                 var missing = RemoteBlocker.Missing(snapshot);
                 if (missing.Length > 0) Add(RemoteBlocker.Code, MarginLevel.Short, missing.TrimEnd('.'));
             }
-            else if (rest.Any(s => Return.IsMatch(s.Name + " " + s.Intent)) && !snapshot.Craft.Parts.Any(p => p.Tags.Contains("parachute")))
+            else if (rest.Any(s => ReturnsHome(s.Name + " " + s.Intent)) && !snapshot.Craft.Parts.Any(p => p.Tags.Contains("parachute")))
             {
                 Add("no_parachutes_for_return", MarginLevel.Short, "A return is still to fly and no part is a parachute");
             }
             // Claudia counts by name too: a recorded crew list may give her trait by its title ("Super Intelligence").
             if (rest.Any(s => s.Manual) && !snapshot.Crew.Any(c => c.Name != ClaudiaIdentity.Name && c.Trait != ClaudiaIdentity.TraitName && c.Trait != "Tourist"))
                 Add("manual_stretches_without_crew", MarginLevel.Enough, "A manual stretch is still to fly and no Kerbal aboard but Claudia can fly it");
+        }
+
+        /// <summary>A leg that comes down through Kerbin's air: a reentry or splashdown, or a return that names Kerbin.</summary>
+        private static bool ReturnsHome(string words)
+        {
+            return Reentry.IsMatch(words) || ReturnHome.IsMatch(words);
         }
 
         private void Add(string code, MarginLevel level, string explanation)

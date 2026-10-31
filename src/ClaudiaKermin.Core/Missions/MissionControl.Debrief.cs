@@ -173,7 +173,8 @@ namespace ClaudiaKermin.Core.Missions
             gate.RecheckFindings.AddRange(check.FindingLines());
             turn.UserText += "\n" + check.Text();
             if (_config.MarginRecheck == MarginRecheckMode.Never) return Skip(gate, "margin_recheck is never in the player config");
-            if (_config.MarginRecheck == MarginRecheckMode.Auto && check.Level == MarginLevel.Enough) return Skip(gate, "the mod's margin check is enough");
+            // Not a skip: under auto an enough margin needs no recheck, and the card says nothing of one.
+            if (_config.MarginRecheck == MarginRecheckMode.Auto && check.Level == MarginLevel.Enough) return false;
             if (!snapshot.DeltaVSimulator) return Skip(gate, "the stock delta-v simulator is off");
             if (!_hasKey()) return Skip(gate, "there is no API key");
 
@@ -199,7 +200,8 @@ namespace ClaudiaKermin.Core.Missions
         private MarginCheck MarginCheckOf(Mission mission, GameSnapshot snapshot)
         {
             double? used = null;
-            var now = LiveReadings.MonopropellantOf(snapshot);
+            // Measured as the run's monopropellant line is, on the Mission's own vessel.
+            var now = LiveReadings.MonopropellantOf(MissionVesselSnapshot(mission));
             if (!mission.HandBack && mission.RunStartMonopropellant.HasValue && now.HasValue) used = Math.Max(0, mission.RunStartMonopropellant.Value - now.Value);
             return MarginCheck.Of(snapshot, RestOfPlan(mission), _config.CraftCheckMarginPercent, _config.CheckElectricChargePercent, mission.Remote, used);
         }
@@ -407,12 +409,12 @@ namespace ClaudiaKermin.Core.Missions
             {
                 gate.RecheckSkipped = "the recheck failed: " + problem;
                 Note(LogKind.Notice, "The margin recheck failed (" + problem + "); the Debrief goes on without it.");
-                turn.UserText += "\nThe mod's margin recheck did not come back (" + problem + "); judge the margin from the Game Snapshot.";
+                turn.UserText += "\nThe mod's margin recheck did not come back (" + problem + "); judge the margin from the mod's margin check and the Game Snapshot.";
             }
             else
             {
-                var lines = reply.Findings.Select(f => (f.Severity == CraftFindingSeverity.Blocker ? "Blocker: " : "Warning: ") + f.Title)
-                    .Zip(reply.Findings, (head, f) => new { Head = head, Line = head + (f.Explanation.Length > 0 ? ". " + f.Explanation : "") }).ToList();
+                var lines = reply.Findings.Select(f => new MarginFinding { Code = f.Code, Severity = f.Severity, Title = f.Title, Explanation = f.Explanation })
+                    .Select(f => new { Head = f.Head(), Line = f.Describe() }).ToList();
                 var findings = lines.Select(l => l.Line).ToList();
                 // The card keeps the mod's line and findings first; Claudia's follow, less any finding the mod had already made.
                 var mod = gate.RecheckFindings.ToList();

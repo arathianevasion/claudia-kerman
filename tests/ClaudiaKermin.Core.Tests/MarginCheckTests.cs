@@ -195,6 +195,9 @@ namespace ClaudiaKermin.Core.Tests
             foreach (var part in snapshot.Craft.Parts) part.Tags.Remove("parachute");
             Assert.Equal(new[] { "no_parachutes_for_return" }, Codes(Check(snapshot, MunLandingAndReturn())));
             Assert.Equal(MarginLevel.Short, Check(snapshot, MunLandingAndReturn()).Level);
+            // A return that doesn't come down through Kerbin's air needs no parachute.
+            var toOrbit = new List<PlannedSequence> { Leg("Return to orbit", "Ascend from the Mun and return to low Mun orbit.", 600) };
+            Assert.DoesNotContain("no_parachutes_for_return", Codes(Check(snapshot, toOrbit)));
 
             var remote = InKerbinOrbit();
             foreach (var part in remote.Craft.Parts) part.Tags.Remove("probe_core");
