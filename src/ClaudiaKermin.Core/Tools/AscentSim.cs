@@ -152,6 +152,11 @@ namespace ClaudiaKermin.Core.Tools
         public double Step = 0.1;
         /// <summary>Records the pitch each 1000 m of climb (the cross-check's track).</summary>
         public bool Track;
+        /// <summary>
+        /// The circularization also stops once the eccentricity stops falling, as <c>circularize</c> asks <c>exec_node</c> to (#532).
+        /// False flies the node's own stops alone, as before.
+        /// </summary>
+        public bool EccStop = true;
     }
 
     /// <summary>The craft when a stage lit.</summary>
@@ -189,7 +194,12 @@ namespace ClaudiaKermin.Core.Tools
         public double BestAp;
         /// <summary>Delta-v spent from the pad to a circular orbit, m/s.</summary>
         public double DeltaVToOrbit;
-        /// <summary>Vacuum delta-v left at orbit in the stages the launch may burn (stage_limit and above), m/s.</summary>
+        /// <summary>The orbit the circularization left: apoapsis and periapsis (m) and eccentricity; 0 until it ends.</summary>
+        public double OrbitAp;
+        public double OrbitPe;
+        public double OrbitEcc;
+        /// <summary>The stop that ended the circularization, as <c>circularize</c>'s result says it: "node" or "ecc_min".</summary>
+        public string CircularizeStop = "";        /// <summary>Vacuum delta-v left at orbit in the stages the launch may burn (stage_limit and above), m/s.</summary>
         public double DeltaVLeft;
         /// <summary>Vacuum delta-v of the stages stage_limit keeps (below it), m/s.</summary>
         public double DeltaVKept;
@@ -644,7 +654,7 @@ namespace ClaudiaKermin.Core.Tools
         /// time of half the node's delta-v early; a burn that is late by more than a second takes its node with it (KSP keeps
         /// the node's prograde, so the planned velocity is the coast's there plus that prograde). It steers along what the node
         /// still asks for (as KSP re-solves <c>nd:deltav</c>), throttles down as it closes, stages as before, and stops under
-        /// 0.1 m/s or once it overshoots. Fails if the stages can't give it, run dry, or the craft sinks back where the air matters.
+        /// 0.1 m/s, once it overshoots, or once the eccentricity stops falling (circularize's stop, #532). Fails if the stages can't give it, run dry, or the craft sinks back where the air matters.
         /// </summary>
         private AscentFlight Circularize()
         {
@@ -657,8 +667,7 @@ namespace ClaudiaKermin.Core.Tools
             if (double.IsInfinity(BurnTime(prograde)))
                 return Fail("can't circularize: it needs " + Math.Round(prograde) + " m/s at apoapsis and the stages have " + Math.Round(DeltaVLeft()) + " m/s"
                     + (_o.StageLimit > 0 ? " at stage limit " + _o.StageLimit : ""));
-            var lead = BurnTime(prograde / 2);
-            var startUt = _t + toAp - lead;
+            var lead = BurnTime(prograde / 2);            var startUt = _t + toAp - lead;
 
             var dt = 0.1;
             var end = _t + MaxOrbitSeconds;
@@ -674,11 +683,18 @@ namespace ClaudiaKermin.Core.Tools
             var target = coastV + coastV.Normalized * prograde;
             var initial = target - coastV;
             var steer = initial.Normalized;
+            var roundest = new PastMin();
+            _flight.CircularizeStop = "node";
             while (true)
             {
                 if (_t > end) return Fail("still circularizing after " + MaxOrbitSeconds + " s");
                 var left = target - VelocityAt(nodeUt);
                 if (Vec3.Dot(initial, left) < 0 || left.Length < 0.1) break;
+                if (_o.EccStop && roundest.Past(Conic.FromState(_o.Gm, Position, Velocity, _t).E, PastMin.EccBand))
+                {
+                    _flight.CircularizeStop = "ecc_min";
+                    break;
+                }
                 if (left.Length > 1) steer = left.Normalized;
                 if (InAirAgain()) return Fail("fell back into the atmosphere while circularizing");
                 var stage = Current;
@@ -694,10 +710,36 @@ namespace ClaudiaKermin.Core.Tools
                 }
             }
             Orbit(out ap, out pe, out toAp);
+            _flight.OrbitAp = ap;
+            _flight.OrbitPe = pe;
+            _flight.OrbitEcc = Conic.FromState(_o.Gm, Position, Velocity, _t).E;
             if (pe < _o.AtmosphereHeight) return Fail("the circularization leaves the periapsis at " + Math.Round(pe) + " m, in the atmosphere");
             _flight.ReachesOrbit = true;
             _flight.DeltaVLeft = DeltaVLeft();
             return _flight;
+        }
+    }
+
+    /// <summary>
+    /// <c>exec_node_past_min</c> (#532), word for word: whether a quantity a burn brings down has stopped falling. It has risen two
+    /// readings running and is over the lowest by more than a band; a single noisy reading, a flat stretch or a kick the burn
+    /// then brings back down doesn't count.
+    /// </summary>
+    internal sealed class PastMin
+    {
+        /// <summary><c>exec_node_min_band</c>: the eccentricity a reading must rise past the lowest by.</summary>
+        public const double EccBand = 0.0001;
+
+        private double _low = 1e30;
+        private double _last = 1e30;
+        private int _rises;
+
+        public bool Past(double value, double band)
+        {
+            _rises = value > _last ? _rises + 1 : 0;
+            _last = value;
+            _low = Math.Min(_low, value);
+            return _rises >= 2 && value > _low + band;
         }
     }
 
