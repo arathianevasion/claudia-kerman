@@ -207,7 +207,7 @@ namespace ClaudiaKermin.Core.Missions
             mission.CompactionInput = 0m;
             mission.Spent += settlement.Spent;
             mission.Held += settlement.Held;
-            TrackCache(mission, result, false);
+            // No TrackCache: the compaction sends no cache_control (#549), so its empty read is not a miss and it leaves no cache to measure against.
             var block = Block(result);
             LogCost(mission, settlement.Kind, settlement.Amount, settlement.Outcome ?? (block != null ? "compaction" : "compaction_failed"));
             if (mission != _mission || mission.Stage == MissionStage.Lost) return;
