@@ -81,7 +81,8 @@ namespace ClaudiaKermin.Core.Tests
             var full = Turn("Continue the Mission.", MunShotAt(1000));
             var turn = Turn("Continue the Mission.", MunShotAt(2000));
             var shaped = SnapshotDiet.Shape(turn, new[] { full }, false, false);
-            Assert.True(EstimatedTokens(shaped) < 1500, "the dynamic snapshot is " + EstimatedTokens(shaped) + " tokens (estimated)");            // 725 when written; what it saves: the full one is 4,190 by the same estimate.
+            Assert.True(EstimatedTokens(shaped) < 1500, "the dynamic snapshot is " + EstimatedTokens(shaped) + " tokens (estimated)");
+            // 725 when written; what it saves: the full one is 4,190 by the same estimate.
             Assert.True(EstimatedTokens(turn) > 4000, "the full snapshot is " + EstimatedTokens(turn) + " tokens (estimated)");
         }
 
@@ -96,6 +97,28 @@ namespace ClaudiaKermin.Core.Tests
 
             Assert.StartsWith(turn, shaped);
             Assert.EndsWith("\nparts dropped since the Game Snapshot at UT 1000: [" + string.Join(",", dropped) + "]", shaped);
+        }
+
+        [Fact]
+        public void AnotherVesselWithFewerOfTheSamePartsIsNotSaidToHaveDroppedAny()
+        {
+            var full = MunShotAt(1000);
+            var kept = full.Craft.Parts.Take(10).Select(p => p.Id).ToList();
+            var earlier = Turn("Continue the Mission.", full);
+            var child = Turn("Continue the Mission.", MunShotAt(2000, s =>
+            {
+                s.Craft.Parts.RemoveAll(p => !kept.Contains(p.Id));
+                s.Craft.VesselId = "another-vessel";
+            }));
+            Assert.Equal(child, SnapshotDiet.Shape(child, new[] { earlier }, false, false));
+        }
+
+        [Fact]
+        public void APartSwappedForAnotherAtTheSameCountSendsTheFullSnapshot()
+        {
+            var earlier = Turn("Continue the Mission.", MunShotAt(1000));
+            var turn = Turn("Continue the Mission.", MunShotAt(2000, s => s.Craft.Parts[43].Id = 1));
+            Assert.Equal(turn, SnapshotDiet.Shape(turn, new[] { earlier }, false, false));
         }
 
         [Fact]

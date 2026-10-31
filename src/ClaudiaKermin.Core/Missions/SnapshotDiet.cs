@@ -10,7 +10,7 @@ namespace ClaudiaKermin.Core.Missions
     /// <summary>
     /// What of a turn's Game Snapshot Claudia is sent (#256). The craft's parts are nine tenths of a snapshot and change only when
     /// it stages or docks, so the full snapshot goes on the first turn, on every Mission Plan turn and on any turn whose part count
-    /// or craft.stage differs from the last full one the conversation sent; any other turn sends the dynamic snapshot, everything
+    /// or craft.stage differs from the last full one the conversation sent (or whose part ids do, a swap the count misses); any other turn sends the dynamic snapshot, everything
     /// but craft.parts, and says the parts are unchanged. A turn on the same leg as the previous snapshot (no run between, within
     /// 60 s of it, such as the Continue turn right after a Debrief) points back at it instead. Only Claudia's text changes:
     /// Planning Tools read the full <see cref="GameSnapshot"/> the turn was built with.
@@ -47,7 +47,8 @@ namespace ClaudiaKermin.Core.Missions
             if (now.Craft.Stage != lastFull.Craft.Stage || !new HashSet<uint>(ids).SetEquals(lastIds))
             {
                 var dropped = lastIds.Where(id => !ids.Contains(id)).ToList();
-                var droppedOnly = dropped.Count > 0 && ids.All(lastIds.Contains);
+                // Only the same vessel drops parts: a switch to a Child Vessel is a different craft, not a smaller one.
+                var droppedOnly = dropped.Count > 0 && ids.All(lastIds.Contains) && now.Craft.VesselId == lastFull.Craft.VesselId;
                 return droppedOnly ? userText.Insert(end, "\nparts dropped since the Game Snapshot at UT " + Ut(lastFull) + ": [" + string.Join(",", dropped) + "]") : userText;
             }
 
