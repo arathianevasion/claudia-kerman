@@ -29,5 +29,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/ClaudiaKermin.Core/ClaudiaKermin.Core.csproj" />
+    <!-- The #534 probes build their requests in Probes; SchemaProbeTests pins them. -->
+    <ProjectReference Include="../../tools/ClaudiaKermin.SchemaProbe/ClaudiaKermin.SchemaProbe.csproj" />
   </ItemGroup>
 </Project>
