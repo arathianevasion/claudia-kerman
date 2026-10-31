@@ -192,14 +192,14 @@ namespace ClaudiaKermin.Core.Missions
                 turn.Messages.Add(message.ToMessage());
                 turn.Messages.Add(step.Results);
                 // The next request is the last that may call a tool (#509): a Mission Plan not handed in yet is asked for now.
-                if (turn.ToolSteps + 1 == ToolStep.MaxSteps - 1 && IsMissionPlanTurn(mission, turn) && ProposedPlans.LastAccepted(turn.Messages) == null)
+                if (turn.ToolSteps + 1 == ToolStep.MaxSteps - 1 && TakesMissionPlan(turn.Purpose) && ProposedPlans.LastAccepted(turn.Messages) == null)
                     step.Results.Content.Add(new TextBlock { Text = MissionPrompts.ProposePlanNow });
                 turn.ToolSteps++;
                 for (var i = 0; i < step.Calls.Count; i++)
                 {
                     var call = step.Calls[i];
                     turn.Stats.Called(call.Name);
-                    Note(LogKind.Notice, "Planning Tool " + call.Name + " (" + Shorten(call.InputJson) + "): " + (call.IsError ? "error: " : "") + call.Summary);
+                    Note(LogKind.Notice, (call.Name == ProposedPlans.ToolName ? "Reply Tool " : "Planning Tool ") + call.Name + " (" + Shorten(call.InputJson) + "): " + (call.IsError ? "error: " : "") + call.Summary);
                     Event(mission, "tool", call.Name + " " + call.InputJson + " -> " + (call.IsError ? "error: " : "") + call.Summary);
                     if (call.Refusal.Length == 0) continue;
                     turn.Stats.Refused(call.Refusal == repeats[i]);
