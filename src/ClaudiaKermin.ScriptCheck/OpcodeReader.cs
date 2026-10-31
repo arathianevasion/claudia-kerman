@@ -425,6 +425,7 @@ namespace ClaudiaKermin.ScriptCheck
         {
             string item;
             if (ForbiddenList.Functions.TryGetValue(name, out item)) Found(line, what, item);
+            if (name == "stage" && line < _libraryFromLine) Found(line, what, ForbiddenList.BareStage);
         }
 
         private void Found(int line, string what, string item)
