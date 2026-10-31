@@ -207,6 +207,10 @@ namespace ClaudiaKermin.Core.Missions
             public TurnStats Stats = new TurnStats();
             /// <summary>The step limit is reached and the turn's request goes with tool_choice none (#509): a reply that still calls tools fails the turn.</summary>
             public bool ToolLimitSent;
+            /// <summary>The last tool step was only refused repeats (#571): the next request is the last, as at the step limit.</summary>
+            public bool RepeatStop;
+            /// <summary>The last tool step was only refused repeats on a turn still owed a Mission Plan (#571): the next step may call propose_mission_plan alone.</summary>
+            public bool PlanOnly;
             /// <summary>The Game Snapshot taken for the turn when its messages were built: what its tools calculate from.</summary>
             public GameSnapshot ToolSnapshot;
             /// <summary>
@@ -599,6 +603,7 @@ namespace ClaudiaKermin.Core.Missions
             if (plan.DueTimeUt.HasValue) _commands.Add(new ClearDueTimeAlarm(mission.Id));
             mission.RunningProcessor = processor.Value;
             mission.RunId = ++_lastRunId;
+            mission.NoRunSinceSnapshot = false;
             // A new run means the craft was reachable; an owed make-safe must not cut it off later.
             mission.SafePending = "";
             StartRunawayTimer(mission, plan);
@@ -1039,7 +1044,7 @@ namespace ClaudiaKermin.Core.Missions
                 turn.CompactedBase = mission.CompactedMessages;
                 turn.Messages = new List<Message>();
                 if (turn.Effort != mission.Effort) turn.Messages.Add(Message.SystemEffort(turn.Effort));
-                turn.Messages.Add(Message.UserText(turn.UserText));
+                turn.Messages.Add(Message.UserText(ShapedUserText(mission, turn)));
                 var notice = turn.Notice + BlackoutNotice(mission) + (mission.AutoMode ? "\n\n" + MissionPrompts.AutoModeNotice : "");
                 if (turn.CutOffRetry) notice += "\n\n" + MissionPrompts.CutOffNote;
                 if (turn.SecondLookReason.Length > 0) notice += "\n\n" + SecondLook.Note(turn.SecondLookReason);
@@ -1057,6 +1062,7 @@ namespace ClaudiaKermin.Core.Missions
             request.System.AddRange(mission.System);
             request.Messages.AddRange(Sent(mission, turn.CompactionBase, turn.CompactedBase));
             request.Messages.AddRange(turn.Messages);
+            AddDiagnostics(mission, request);
             return request;
         }
 
@@ -1074,6 +1080,8 @@ namespace ClaudiaKermin.Core.Missions
             turn.Cancel = null;
             turn.ToolSteps = 0;
             turn.ToolLimitSent = false;
+            turn.RepeatStop = false;
+            turn.PlanOnly = false;
             turn.ToolSnapshot = null;
             RecordUnanswered(mission, turn);
         }
@@ -1196,6 +1204,7 @@ namespace ClaudiaKermin.Core.Missions
             // Settled and logged before the reply is applied, which may send the next request.
             var spentBefore = mission.Spent;
             Settle(mission, turn, result);
+            TrackCache(mission, result);
             turn.Stats.Ended(mission.Spent - spentBefore, result != null && result.Status == StreamStatus.Completed ? result.Message : null);
             LogCost(mission, mission.Settlement, mission.Settled, mission.Outcome);
             // The Mission was dropped (End Mission, or another save loaded) while this request ran.
@@ -1267,6 +1276,7 @@ namespace ClaudiaKermin.Core.Missions
             foreach (var m in turn.Messages)
                 if (m.Effort != null) mission.Effort = m.Effort;
             mission.Pending = null;
+            SnapshotCommitted(mission, turn);
             TrackContext(mission, turn, message);
             WriteTranscript(mission);
             ClearUnanswered(mission);
@@ -1810,7 +1820,7 @@ namespace ClaudiaKermin.Core.Missions
             try
             {
                 MissionFolder.WriteTranscript(mission.Folder, mission.Id, mission.Model, mission.System, mission.Conversation,
-                    mission.CompactionBlock, mission.CompactedMessages, mission.ContextTokens);
+                    mission.CompactionBlock, mission.CompactedMessages, mission.ContextTokens, mission.LastMessageId);
             }
             catch (Exception e) when (IsFileError(e))
             {

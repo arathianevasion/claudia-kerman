@@ -231,6 +231,7 @@ namespace ClaudiaKermin.Adapter
             {
                 Section("Margin recheck", detail.RecheckSummary);
                 foreach (var finding in detail.RecheckFindings) GUILayout.Label("- " + finding, ClaudiaSkin.Secondary);
+                if (detail.RecheckSkipped.Length > 0) GUILayout.Label("Claudia's recheck not run: " + detail.RecheckSkipped + ".", ClaudiaSkin.Secondary);
             }
             else if (detail.RecheckSkipped.Length > 0) Section("Margin recheck", "Not run: " + detail.RecheckSkipped + ".");
             if (detail.Science.Length > 0 || detail.ScienceSeen.Count > 0)

@@ -126,6 +126,7 @@ namespace ClaudiaKermin.Core.Claude
             if (message == null) return;
             Message.Id = JsonNode.Str(message["id"]);
             Message.Model = JsonNode.Str(message["model"]);
+            ReadDiagnostics(message["diagnostics"]);
             ReadUsage(message["usage"]);
         }
 
@@ -267,7 +268,16 @@ namespace ClaudiaKermin.Core.Claude
                 if (details != null && details.Kind == JsonKind.Object)
                     Message.RefusalCategory = JsonNode.Str(details["category"]);
             }
+            ReadDiagnostics(data["diagnostics"] ?? (delta != null ? delta["diagnostics"] : null));
             ReadUsage(data["usage"]);
+        }
+
+        // Unverified until the in-game flight (#569): wherever the beta puts it, an object named diagnostics is kept as sent.
+        private void ReadDiagnostics(JsonNode diagnostics)
+        {
+            // An empty object later in the stream never replaces one already read.
+            if (diagnostics != null && diagnostics.Kind == JsonKind.Object && (Message.DiagnosticsJson == null || diagnostics.Raw.Replace(" ", "") != "{}"))
+                Message.DiagnosticsJson = diagnostics.Raw;
         }
 
         private void Finish()

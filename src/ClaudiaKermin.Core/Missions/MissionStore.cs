@@ -75,6 +75,8 @@ namespace ClaudiaKermin.Core.Missions
         public int CompactedMessages;
         /// <summary>The conversation's input size as the last committed reply's usage gave it.</summary>
         public long ContextTokens;
+        /// <summary>The last completed response's id, written only under debug_tools (#569); null when none.</summary>
+        public string LastMessageId;
     }
 
     /// <summary>
@@ -403,6 +405,7 @@ namespace ClaudiaKermin.Core.Missions
                 transcript.CompactedMessages = (int)covers.Value;
             }
             transcript.ContextTokens = (long)(JsonNode.Double(root["context_tokens"]) ?? 0);
+            transcript.LastMessageId = JsonNode.Str(root["last_message_id"]);
             return transcript;
         }
 
