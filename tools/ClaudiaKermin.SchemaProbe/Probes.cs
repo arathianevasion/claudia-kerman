@@ -53,10 +53,10 @@ namespace ClaudiaKermin.SchemaProbe
             };
         }
 
-        /// <summary>The Mission tools as the mod sends them (Planning Tools, check_script), plus propose_mission_plan when asked.</summary>
+        /// <summary>The Mission tools as the mod sends them (the Planning Tools; no check_script since #570), plus propose_mission_plan when asked.</summary>
         public static IList<ToolDefinition> MissionTools(bool withPropose)
         {
-            var tools = new List<ToolDefinition>(PlanningTools.Default(new AlwaysPasses()).Definitions(ToolOffer.Mission));
+            var tools = new List<ToolDefinition>(PlanningTools.Default().Definitions(ToolOffer.Mission));
             if (withPropose) tools.Add(ProposeMissionPlan());
             return tools;
         }
@@ -122,13 +122,5 @@ namespace ClaudiaKermin.SchemaProbe
             return new KeyValuePair<string, MessagesRequest>(label, request);
         }
 
-        /// <summary>A script check that accepts anything: only its tool definition is used.</summary>
-        private sealed class AlwaysPasses : IScriptCheck
-        {
-            public ScriptCheckResult Check(string script)
-            {
-                return ScriptCheckResult.Pass();
-            }
-        }
     }
 }
