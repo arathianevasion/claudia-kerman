@@ -45,6 +45,7 @@ namespace ClaudiaKermin.Core.Missions
                     previousUser = Text(message);
                     var said = PlayerLine(previousUser);
                     if (said != null) log.Add(new LogEntry { Kind = LogKind.Player, Text = said });
+                    AddModDebrief(log, previousUser);
                 }
                 else if (message.Role == Role.Assistant)
                 {
@@ -158,6 +159,24 @@ namespace ClaudiaKermin.Core.Missions
             });
             if (debrief.GoalReached) log.Add(new LogEntry { Kind = LogKind.Notice, Text = "Mission Goal met: the Mission is over." });
             else if (outcome == "Failed") log.Add(new LogEntry { Kind = LogKind.Notice, Text = "The Mission Goal can't be reached as stated: the Mission has ended." });
+        }
+
+        /// <summary>The Debrief card the mod wrote itself for a run refused before any burn (#579), from its fact in the transcript; the checklist is the last Debrief's.</summary>
+        private static void AddModDebrief(List<LogEntry> log, string userText)
+        {
+            string sequence, reason;
+            if (!PreBurnRefusal.ReadFact(userText, out sequence, out reason)) return;
+            var last = log.LastOrDefault(e => e.Kind == LogKind.Debrief && e.Debrief != null);
+            var debrief = PreBurnRefusal.Debrief(reason, last != null ? last.Debrief.Checklist : null);
+            log.Add(new LogEntry
+            {
+                Kind = LogKind.Debrief,
+                Title = "Debrief: " + debrief.Outcome,
+                Text = MissionCards.DebriefBody(debrief, ""),
+                Why = PreBurnRefusal.CardWhy,
+                Outcome = debrief.Outcome,
+                Debrief = MissionCards.DebriefDetail(debrief),
+            });
         }
 
         /// <summary>

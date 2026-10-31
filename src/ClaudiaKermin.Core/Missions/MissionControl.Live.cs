@@ -118,6 +118,7 @@ namespace ClaudiaKermin.Core.Missions
             mission.RunStartUt = _ut;
             mission.RunStartDeltaVLeft = LiveReadings.DeltaVLeftOf(MissionVesselSnapshot(mission));
             mission.RunStartMonopropellant = LiveReadings.MonopropellantOf(MissionVesselSnapshot(mission));
+            mission.RunStartOrbit = OrbitFix.Of(MissionVesselSnapshot(mission));
             mission.Checks.Clear();
             foreach (var check in TelemetryDefaults.Fill(plan, _config)) mission.Checks.Add(new LiveCheck { Check = check });
             mission.Crossings.Clear();

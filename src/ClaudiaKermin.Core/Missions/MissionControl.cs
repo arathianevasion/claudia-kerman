@@ -828,6 +828,7 @@ namespace ClaudiaKermin.Core.Missions
             NoteRunOutcome(mission, outcome);
             Notice("The script ended: " + outcome.Summary + ".");
             if (DebriefOnReturn(mission, outcome)) return;
+            if (DebriefedRefusal(mission, outcome)) return;
             var turn = new Turn
             {
                 Purpose = Purpose.Debrief,
