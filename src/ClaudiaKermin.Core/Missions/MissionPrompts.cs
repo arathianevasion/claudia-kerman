@@ -167,10 +167,9 @@ namespace ClaudiaKermin.Core.Missions
         /// Mission likely needs, picked from its Mission Goal (<see cref="BlockSelection"/>). The base layer's
         /// Summaries still name every block.
         /// </summary>
-        public static string MissionLayer(string missionId, string goal, string bodyTable = "", double? plannedTurnShape = null)
+        public static string MissionLayer(string goal, string bodyTable = "", double? plannedTurnShape = null)
         {
-            return "Mission " + missionId + ".\n\n"
-                + "Building Blocks for this Mission, in full (the others are in the summaries above, without their options spelled out). "
+            return "Building Blocks for this Mission, in full (the others are in the summaries above, without their options spelled out). "
                 + "Where no shipped block fits, write a Custom Script.\n\n"
                 + CoreLibrary.FullDocs(BlockSelection.For(goal))
                 + bodyTable
@@ -204,10 +203,11 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>
         /// The timing rules and the Mission Settings as they stood when the Mission started: a system layer,
         /// frozen with the others. Later edits arrive as a notice (<see cref="SettingsChanged"/>), which supersedes it.
+        /// It opens with the Mission id, the one per-Mission fact, kept out of the layer above so that layer's cache entry is shared (#573).
         /// </summary>
-        public static string TimingLayer(MissionSettingsValues settings)
+        public static string TimingLayer(string missionId, MissionSettingsValues settings)
         {
-            return "Timing. Wait for a time-based event (a transfer window, daylight at the landing site, a surface alignment, "
+            return "Mission " + missionId + ".\n\nTiming. Wait for a time-based event (a transfer window, daylight at the landing site, a surface alignment, "
                 + "a phase angle, a hold of a few orbits) inside the Mission Script, however long: the Building Blocks warp on rails "
                 + "(physics warp on a Coast where rails can't) to the time and drop to 1x at least 30 s before any burn, and coast(lexicon(\"until\", ut)) holds a script until "
                 + "a UT the same way. The player's Approval of the sequence approves its wait. Count every wait in "

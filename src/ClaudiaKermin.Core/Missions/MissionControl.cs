@@ -372,11 +372,11 @@ namespace ClaudiaKermin.Core.Missions
             var bodyTable = MissionPrompts.BodyTable(_snapshot != null ? _snapshot.Bodies : null);
             mission.PlannedTurnShape = _craftCheck.PlannedTurnShape;
             mission.PlannedAscent = _craftCheck.PlannedAscent;
-            mission.System.Add(MissionPrompts.MissionLayer(id, goal, bodyTable, mission.PlannedTurnShape));
+            mission.System.Add(MissionPrompts.MissionLayer(goal, bodyTable, mission.PlannedTurnShape));
             var settings = start.Settings != null ? start.Settings.Copy() : MissionSettingsValues.Defaults(_config);
             settings.ConfigAllowsPhysicsWarp = _config.PhysicsWarp;
             settings.WriteTo(mission.Settings);
-            mission.System.Add(MissionPrompts.TimingLayer(settings));
+            mission.System.Add(MissionPrompts.TimingLayer(id, settings));
             // Raw stream dumps are a debug tool: on with debug_tools = true in the player config.
             if (_config.DebugTools) mission.Dump = new FileStreamDump(Path.Combine(mission.Folder, "stream-dumps"));
             _mission = mission;

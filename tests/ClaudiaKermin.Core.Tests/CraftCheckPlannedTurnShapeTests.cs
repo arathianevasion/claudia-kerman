@@ -85,8 +85,8 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void TheMissionLayerCarriesTheShapeOnlyWhenThereIsOne()
         {
-            Assert.Contains(Line, MissionPrompts.MissionLayer("m1", Goal, "", 0.35));
-            Assert.DoesNotContain("planned turn_shape", MissionPrompts.MissionLayer("m1", Goal));
+            Assert.Contains(Line, MissionPrompts.MissionLayer(Goal, "", 0.35));
+            Assert.DoesNotContain("planned turn_shape", MissionPrompts.MissionLayer(Goal));
         }
 
         [Fact]
