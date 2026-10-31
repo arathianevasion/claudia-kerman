@@ -30,8 +30,9 @@
 //| Example: `add node(time:seconds + 600, 0, 0, 120). local res is exec_node(). addons:claudia:report(res).`
 
 // The block's own options and defaults (max_duration "auto" is resolved once the burn is known).
-// stop_at_min is block-internal (#532): "ecc" also stops the burn once the orbit's eccentricity stops
-// falling (circularize asks for it), and the result's stop says which stop ended it; "" keeps only the node's.
+// stop_at_min is for other blocks, so not in Claudia's docs (#532): "ecc" also stops the burn once the
+// orbit's eccentricity stops falling (circularize asks for it), and the result's stop says which stop
+// ended it; "" keeps only the node's.
 function exec_node_defaults {
   return lexicon("node", "next", "max_residual", 0.5, "lead", "half_burn", "rcs_trim", false, "stop_at_min", "").
 }
@@ -68,10 +69,10 @@ function exec_node {
   if unreadable <> "" {
     return claudia_finish(ctx, false, unreadable, extra).
   }
-  // Only a caller that asks for the eccentricity stop is told which stop ended the burn.
+  // Only a caller that asks for the eccentricity stop is told which stop ended the burn ("" if none did).
   local seen is exec_node_min_seen().
   if opt:stop_at_min = "ecc" {
-    set extra:stop to "node".
+    set extra:stop to "".
   }
   local nd is 0.
   if opt:node:istype("String") {
@@ -133,6 +134,9 @@ function exec_node {
     local left is nd:deltav.
     // Overshot (the node now points back) or close enough: stop.
     if vdot(initial, left) < 0 or left:mag < done_dv {
+      if opt:stop_at_min <> "" {
+        set extra:stop to "node".
+      }
       break.
     }
     // Asked for (#532): the orbit is as circular as this burn gets it. A long burn's node swings as the

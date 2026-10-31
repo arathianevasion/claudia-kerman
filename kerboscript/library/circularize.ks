@@ -17,9 +17,8 @@
 //|   tolerance [0.01]: the eccentricity it must end within; more fails the block.
 //|   max_duration ["auto"]: as for exec_node (the wait to the burn, twice the burn, plus 300 s).
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
-//| The burn ends when the node is used up or once the eccentricity stops falling, whichever is first.
-//| Extra results: ecc (the eccentricity when the block ended), stop ("node", or "ecc_min" when the
-//| burn ended at its roundest before the node was used up), residual (m/s the node still needed).
+//| Extra results: ecc (the eccentricity when the block ended), stop ("node"; "ecc_min": cut short
+//| where the orbit was roundest), residual (m/s the node still needed).
 //| Succeeds at once, with no burn, if the orbit is already within tolerance. Fails with "no apoapsis"
 //| on an escape orbit (use "pe"), an altitude the orbit doesn't pass, a burn point inside the
 //| atmosphere or below the surface, the reasons exec_node gives (no thrust, out of fuel, an abort), or
@@ -137,9 +136,15 @@ function circularize_plan {
   return plan.
 }
 
+// The block's extra results before it burns: stop "" (no burn ended) and residual -1 (no node).
+function circularize_extra {
+  parameter ecc.
+  return lexicon("ecc", round(ecc, 5), "stop", "", "residual", -1).
+}
+
 function circularize {
   parameter options is lexicon().
-  local extra is lexicon("ecc", round(ship:orbit:eccentricity, 5), "stop", "", "residual", -1).
+  local extra is circularize_extra(ship:orbit:eccentricity).
   local ctx is claudia_begin("circularize", options, circularize_defaults(), "auto").
   if ctx:error <> "" {
     return claudia_finish(ctx, false, ctx:error, extra).

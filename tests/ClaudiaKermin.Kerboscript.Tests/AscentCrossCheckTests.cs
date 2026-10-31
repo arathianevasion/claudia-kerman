@@ -121,6 +121,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
 
             Assert.True(at > 0, "never stopped: " + text);
             Assert.Equal(at.ToString(CultureInfo.InvariantCulture), kos);
+            Assert.Equal(PastMin.EccBand.ToString(CultureInfo.InvariantCulture), KosHarness.Run(CoreLibrary.Bundle("print exec_node_min_band().")).Single());
         }
 
         [Theory]
