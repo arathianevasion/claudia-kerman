@@ -40,11 +40,13 @@ when true then {
 }
 
 // Raises the apoapsis, then circularizes at it with the burn cut main m/s short (and the trim cut too if trim).
-function circularize_cut {
+function test_circularize_cut {
   parameter m, trim.
   add node(time:seconds + 300, 0, 0, 100).
   local raised is exec_node(lexicon("stage_limit", 2)).
   if not raised:success {
+    // exec_node's result, with the key the report reads (the checks then fail on it).
+    set raised["ecc"] to -1.
     return raised.
   }
   set main to m.
@@ -59,9 +61,9 @@ function circularize_cut {
   return res.
 }
 
-local short_res is circularize_cut(15, true).
-local result is circularize_cut(15, false).
-local over_res is circularize_cut(50, false).
+local short_res is test_circularize_cut(15, true).
+local result is test_circularize_cut(15, false).
+local over_res is test_circularize_cut(50, false).
 set watching to false.
 
 set result["test_cuts"] to cuts.

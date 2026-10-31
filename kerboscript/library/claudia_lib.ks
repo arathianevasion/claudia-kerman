@@ -1535,7 +1535,7 @@ function claudia_trim_throttle {
 }
 
 // Trims a short burn once (#577): turns to the vector remaining() returns as the trim begins and burns along it at a
-// low throttle (claudia_trim_throttle, lit once Aligned within rcs_tolerance's aligned_deg) until its share along that
+// low throttle (claudia_trim_throttle, lit while pointing within rcs_tolerance's aligned_deg) until its share along that
 // direction is under done_dv; any part off it stays. Gives up, with no reason, after 180 s (a 120 s turn and the burn).
 // Leaves throttle at 0 and steering locked. Returns "" or an abort reason.
 function claudia_trim {

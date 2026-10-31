@@ -35,7 +35,7 @@ when true then {
 }
 
 // Flies a 120 m/s prograde node 300 s ahead with the node cut by c m/s (and the normal added if normal).
-function fly_cut {
+function test_fly_cut {
   parameter c, normal.
   set cut to c.
   set add_normal to normal.
@@ -51,10 +51,10 @@ function fly_cut {
   return res.
 }
 
-local result is fly_cut(14, false).
-local short_res is fly_cut(14, true).
+local result is test_fly_cut(14, false).
+local short_res is test_fly_cut(14, true).
 set result["test_normal_added"] to normal_done.
-local over_res is fly_cut(30, false).
+local over_res is test_fly_cut(30, false).
 set watching to false.
 
 set result["test_cuts"] to cuts.
