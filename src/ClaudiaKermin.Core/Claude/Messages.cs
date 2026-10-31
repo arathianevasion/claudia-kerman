@@ -264,6 +264,8 @@ namespace ClaudiaKermin.Core.Claude
         public string RawStopReason;
         /// <summary>The refusal category from <c>stop_details</c>, when there is one.</summary>
         public string RefusalCategory;
+        /// <summary>The response's <c>diagnostics</c> object as JSON text (cache-diagnosis beta, #569), or null when it sent none.</summary>
+        public string DiagnosticsJson;
         public readonly Usage Usage = new Usage();
         public readonly List<ContentBlock> Content = new List<ContentBlock>();
 

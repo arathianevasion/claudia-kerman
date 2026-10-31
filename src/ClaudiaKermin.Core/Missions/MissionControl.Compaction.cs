@@ -156,6 +156,7 @@ namespace ClaudiaKermin.Core.Missions
             request.Tools.AddRange(_tools.Definitions(ToolOffer.Mission));
             request.System.AddRange(mission.System);
             request.Messages.AddRange(Sent(mission));
+            AddDiagnostics(mission, request);
             return request;
         }
 
@@ -204,6 +205,7 @@ namespace ClaudiaKermin.Core.Missions
             mission.CompactionInput = 0m;
             mission.Spent += settlement.Spent;
             mission.Held += settlement.Held;
+            TrackCache(mission, result);
             var block = Block(result);
             LogCost(mission, settlement.Kind, settlement.Amount, settlement.Outcome ?? (block != null ? "compaction" : "compaction_failed"));
             if (mission != _mission || mission.Stage == MissionStage.Lost) return;
