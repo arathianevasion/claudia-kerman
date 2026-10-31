@@ -118,7 +118,20 @@ namespace ClaudiaKermin.Core.Missions
         {
             var uses = message.Content.OfType<ToolUseBlock>().ToList();
             var repeats = ToolRepeats.Of(turn.Messages, message);
-            return use => ToolRefusal(purpose, snapshot, use.Name) ?? repeats[uses.IndexOf(use)];
+            // A step of nothing but repeats is the loop's last (#571): its refusals say so.
+            var allRepeats = uses.Count > 0 && uses.Select((u, i) => repeats[i] != null && ToolRefusal(purpose, snapshot, u.Name) == null).All(r => r);
+            return use =>
+            {
+                var repeat = repeats[uses.IndexOf(use)];
+                return ToolRefusal(purpose, snapshot, use.Name) ?? (allRepeats ? repeat + RepeatStopLine : repeat);
+            };
+        }
+
+        private const string RepeatStopLine = ". Your next reply is the last of this turn and can't call a tool: reply now, with the plan.";
+
+        private static bool IsRepeat(string refusal, string repeat)
+        {
+            return repeat != null && refusal.StartsWith(repeat, StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -138,7 +151,9 @@ namespace ClaudiaKermin.Core.Missions
             }
             if (turn.ToolLimitSent)
             {
-                Failed(mission, turn, "Claudia kept calling Planning Tools after the limit of " + ToolStep.MaxSteps + " steps.");
+                Failed(mission, turn, turn.RepeatStop
+                    ? "Claudia kept calling Planning Tools after a step of only repeated calls."
+                    : "Claudia kept calling Planning Tools after the limit of " + ToolStep.MaxSteps + " steps.");
                 return;
             }
             var atLimit = false;
@@ -195,6 +210,7 @@ namespace ClaudiaKermin.Core.Missions
                 if (turn.ToolSteps + 1 == ToolStep.MaxSteps - 1 && TakesMissionPlan(turn.Purpose) && ProposedPlans.LastAccepted(turn.Messages) == null)
                     step.Results.Content.Add(new TextBlock { Text = MissionPrompts.ProposePlanNow });
                 turn.ToolSteps++;
+                turn.RepeatStop = step.Calls.Count > 0 && step.Calls.Select((c, i) => IsRepeat(c.Refusal, repeats[i])).All(r => r);
                 for (var i = 0; i < step.Calls.Count; i++)
                 {
                     var call = step.Calls[i];
@@ -202,7 +218,7 @@ namespace ClaudiaKermin.Core.Missions
                     Note(LogKind.Notice, (call.Name == ProposedPlans.ToolName ? "Reply Tool " : "Planning Tool ") + call.Name + " (" + Shorten(call.InputJson) + "): " + (call.IsError ? "error: " : "") + call.Summary);
                     Event(mission, "tool", call.Name + " " + call.InputJson + " -> " + (call.IsError ? "error: " : "") + call.Summary);
                     if (call.Refusal.Length == 0) continue;
-                    turn.Stats.Refused(call.Refusal == repeats[i]);
+                    turn.Stats.Refused(IsRepeat(call.Refusal, repeats[i]));
                     Event(mission, "tool_refused", call.Name + " " + call.InputJson + " -> " + call.Refusal + " (this turn: " + turn.Stats.RefusedCalls + " refused, "
                         + turn.Stats.RepeatCalls + (turn.Stats.RepeatCalls == 1 ? " repeat)" : " repeats)"));
                 }
@@ -225,11 +241,12 @@ namespace ClaudiaKermin.Core.Missions
         private void NextStep(Mission mission, Turn turn)
         {
             // At the step limit the next request is the last: tool_choice none, the tools list and system prompt unchanged (#509). The cap check below prices it like any step.
-            turn.ToolLimitSent = turn.ToolSteps >= ToolStep.MaxSteps;
+            turn.ToolLimitSent = turn.ToolSteps >= ToolStep.MaxSteps || turn.RepeatStop;
             var worst = RequestCharge.WorstCase(_config.Prices, mission.Model, BuildRequest(mission, turn));
             if (mission.Committed + worst <= mission.SpendingCap)
             {
-                if (turn.ToolLimitSent) Event(mission, "tool_limit_final", turn.Purpose + " after " + turn.ToolSteps + " steps; the reply is asked for with tool_choice none");
+                if (turn.RepeatStop) Event(mission, "tool_loop_repeat_stop", turn.Purpose + " step " + turn.ToolSteps + ": every call was a refused repeat; the reply is asked for with tool_choice none");
+                else if (turn.ToolLimitSent) Event(mission, "tool_limit_final", turn.Purpose + " after " + turn.ToolSteps + " steps; the reply is asked for with tool_choice none");
                 Send(mission, turn);
                 return;
             }
