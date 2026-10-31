@@ -69,7 +69,8 @@ namespace ClaudiaKermin.Core.Tests
             Assert.InRange(start.Value, 16, 40);
             // Halfway to the sphere-of-influence change (about 8000 s on): over tune_pe's default max_dv of 50.
             var halfway = RetrogradeDv("in 8000");
-            Assert.True(halfway == null || halfway.Value > 50, "halfway costs " + (halfway ?? 0).ToString(CultureInfo.InvariantCulture));
+            Assert.NotNull(halfway);
+            Assert.True(halfway.Value > 50, "halfway costs " + halfway.Value.ToString(CultureInfo.InvariantCulture));
         }
     }
 }
