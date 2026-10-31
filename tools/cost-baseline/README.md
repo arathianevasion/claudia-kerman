@@ -43,9 +43,10 @@ folders before `--compare`, which takes every id after it.
 | Legs, Per leg | Sequence Plans committed, and the dumped cost (Craft Checks left out) divided by them |
 | Revised Mission Plans | count and cost of every request that asked for a revised Mission Plan (#534: each one rewrites the cache) |
 | Compactions | count and cost of the compaction iterations (#549) |
-| Full cache misses | requests after the second whose writes exceed their reads, with what rewriting the lost prefix cost over the read price |
+| Full cache misses | requests after the second whose writes exceed their reads, with what rewriting the lost prefix cost over the read price. When the dump holds the response's cache `diagnostics` (debug_tools, #569) the tier it blamed follows in brackets: model, system, tools or message history |
 | Prefix (tokens) | the system prompt and tools as the API cached them: the cache read of the first revised Mission Plan (else Sequence Plan) request whose read stopped short of what the request before had cached. Blank when no request shows that |
 | Per Sequence Plan request, Per Debrief request | dumped cost of those reply kinds divided by their request count |
+| Snapshot tokens per turn | the median, over turns that are not Mission Plans, of the mod's estimate (characters / 3) of the Game Snapshot text in the turn's user message (#256): a full snapshot, "Game Snapshot without craft.parts" with its `parts` line, or "The craft is as in the Game Snapshot above." each counted as what it is. Turns with no snapshot are left out. Wave 2's pass mark is under 1,500 |
 
 A second table gives each named Mission's change against the reference (published total, cost per leg, prefix) and its
 distance to `--goal`. An unknown Mission id is an error; an unknown reference is said, with no change shown. On
