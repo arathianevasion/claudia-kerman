@@ -726,15 +726,15 @@ function claudia_scan_craft {
   }
   local kinds is lexicon().
   for i in range(0, recs:length) {
-    local r is recs[i].
-    if r:raw <> "" or r:isdec or targets:haskey(r:uid) {
+    local rec is recs[i].
+    if rec:raw <> "" or rec:isdec or targets:haskey(rec:uid) {
       local p is parts[i].
       local kind is claudia_part_kind(p).
-      set r["kind"] to kind.
-      kinds:add(r:uid, kind).
-      if r:raw <> "" {
-        local amounts is r:amounts.
-        local capacities is r:caps.
+      set rec["kind"] to kind.
+      kinds:add(rec:uid, kind).
+      if rec:raw <> "" {
+        local amounts is rec:amounts.
+        local capacities is rec:caps.
         for res in p:resources {
           if claudia_is_propellant(res:name) and res:capacity > 0 {
             amounts:add(res:amount).
@@ -746,15 +746,15 @@ function claudia_scan_craft {
   }
   local decs is lexicon().
   local parents is lexicon().
-  for r in recs {
-    local d is r:raw.
+  for rec in recs {
+    local d is rec:raw.
     if d <> "" and kinds:haskey(d) {
       if kinds[d] = "shield" {
         set d to "".
       }
     }
-    decs:add(r:uid, d).
-    parents:add(r:uid, r:parent).
+    decs:add(rec:uid, d).
+    parents:add(rec:uid, rec:parent).
   }
   return lexicon("recs", recs, "decs", decs, "parents", parents, "parts", by_uid).
 }
@@ -767,13 +767,13 @@ function claudia_scan_gone {
   local gone_by is lexicon().
   local decs is scan:decs.
   local parents is scan:parents.
-  for r in scan:recs {
-    local other is decs[r:uid].
+  for rec in scan:recs {
+    local other is decs[rec:uid].
     until other = "" {
       if not gone_by:haskey(other) {
         gone_by:add(other, list()).
       }
-      gone_by[other]:add(r).
+      gone_by[other]:add(rec).
       local above is parents[other].
       if above = "" or not decs:haskey(above) {
         set other to "".
@@ -793,14 +793,14 @@ function claudia_scan_plan {
   local gone_by is claudia_scan_gone(scan).
   local judged is lexicon().
   local plan is list().
-  for r in scan:recs {
-    if auto or claudia_drop_matches(r:name, r:tag, wanted) {
+  for rec in scan:recs {
+    if auto or claudia_drop_matches(rec:name, rec:tag, wanted) {
       local d is "".
-      if r:kind <> "shield" {
-        if r:isdec {
-          set d to r:uid.
+      if rec:kind <> "shield" {
+        if rec:isdec {
+          set d to rec:uid.
         } else {
-          set d to scan:decs[r:uid].
+          set d to scan:decs[rec:uid].
         }
       }
       if d <> "" and not tried:contains(d) and not judged:haskey(d) {
