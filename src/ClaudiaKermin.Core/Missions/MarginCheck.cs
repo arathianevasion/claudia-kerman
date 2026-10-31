@@ -192,8 +192,7 @@ namespace ClaudiaKermin.Core.Missions
             {
                 Add("no_parachutes_for_return", MarginLevel.Short, "A return is still to fly and no part is a parachute");
             }
-            // Claudia counts by name too: a recorded crew list may give her trait by its title ("Super Intelligence").
-            if (rest.Any(s => s.Manual) && !snapshot.Crew.Any(c => c.Name != ClaudiaIdentity.Name && c.Trait != ClaudiaIdentity.TraitName && c.Trait != "Tourist"))
+            if (rest.Any(s => s.Manual) && !snapshot.HasOtherCrew)
                 Add("manual_stretches_without_crew", MarginLevel.Enough, "A manual stretch is still to fly and no Kerbal aboard but Claudia can fly it");
         }
 
