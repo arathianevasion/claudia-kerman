@@ -391,6 +391,14 @@ namespace ClaudiaKermin.Core.Missions
             {
                 Note(LogKind.Notice, "Couldn't write the Mission's body table: " + e.Message);
             }
+            try
+            {
+                MissionStore.WriteAscentPlan(mission.Folder, _craftCheck.PlannedAscentInput, _craftCheck.PlannedAscentSnapshot);
+            }
+            catch (Exception e) when (IsFileError(e))
+            {
+                Note(LogKind.Notice, "Couldn't write the Mission's ascent plan snapshot: " + e.Message);
+            }
             FoldCraftCheckCost(mission, _craftCheck.TakeCost());
             // Started from the editor with her not aboard: the mod puts her in a free seat (the Craft Check made sure there is one).
             if (!mission.Remote && _scene == GameScene.Editor && _snapshot != null && !_snapshot.ClaudiaAboard && _snapshot.FreeSeats > 0)

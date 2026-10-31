@@ -169,6 +169,38 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("The Craft Check's plan_ascent " + ascent + ": " + expected.Json, Text(transport.Requests[2]));
         }
 
+        // #531: the Mission's folder keeps what the Craft Check's plan_ascent flew from, so the ascent can be replayed offline.
+        [Fact]
+        public void TheMissionFolderKeepsTheGameSnapshotAndInputThePlanAscentCallFlewFrom()
+        {
+            var pad = Snapshot("mun-shot-pad.json");
+            const string ascent = "{\"target_ap\":80000}";
+            var transport = new StreamingFakeTransport(ToolUseStreams.ToolUse("cc", ("plan_ascent", ascent)),
+                ScriptedResponse.Fixture("craft-check-pass-free.sse"), Plan());
+            var mission = Control(transport, pad, route: false);
+            Plan(mission);
+
+            var folder = Assert.Single(Directory.GetDirectories(Path.Combine(MissionFolder.Root(_save.Path), "missions")));
+            Assert.Equal(ascent, File.ReadAllText(Path.Combine(folder, MissionStore.AscentPlanInputFile)));
+            var kept = GameSnapshot.Parse(File.ReadAllText(Path.Combine(folder, MissionStore.AscentPlanSnapshotFile)));
+            Assert.Equal(pad.Ut, kept.Ut);
+            Assert.Equal(pad.Stages.Count, kept.Stages.Count);
+            Assert.Equal(pad.Craft.NoseDrag.Count, kept.Craft.NoseDrag.Count);
+            Assert.Equal(pad.Bodies.Count, kept.Bodies.Count);
+        }
+
+        [Fact]
+        public void ACraftCheckThatPlannedNoAscentLeavesNoSnapshotInTheMissionFolder()
+        {
+            var transport = new StreamingFakeTransport(Plan());
+            var mission = Control(transport);
+            Plan(mission);
+
+            var folder = Assert.Single(Directory.GetDirectories(Path.Combine(MissionFolder.Root(_save.Path), "missions")));
+            Assert.False(File.Exists(Path.Combine(folder, MissionStore.AscentPlanSnapshotFile)));
+            Assert.False(File.Exists(Path.Combine(folder, MissionStore.AscentPlanInputFile)));
+        }
+
         [Fact]
         public void TheMissionRequestFromOrbitHasTheStageTableButNoPadWording()
         {
