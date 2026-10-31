@@ -54,6 +54,8 @@ namespace ClaudiaKermin.Core.Tests
 
             public double FrameMs = 25;
             public double LonOffset;
+            /// <summary>The biome by latitude and longitude; null for f623's East Crater among Highlands.</summary>
+            public Func<double, double, string> BiomeAt;
             public int RoundTrips;
             public int Terrain;
             public int Biomes;
@@ -78,6 +80,7 @@ namespace ClaudiaKermin.Core.Tests
 
             public override string Biome(string body, double latitude, double longitude)
             {
+                if (BiomeAt != null) return BiomeAt(latitude, longitude);
                 return latitude > -0.5 && latitude < 8 && longitude > 68 && longitude < 90 ? "EastCrater" : "Highlands";
             }
 

@@ -99,11 +99,12 @@ namespace ClaudiaKermin.Core.Tools
         /// from an orbit of radius <paramref name="r0"/> (#511): periapsis heights from the highest ground on the final stretch (where
         /// braking flies) plus the margin, in 500 m steps up to 10 km over the site's terrain and 1 km under the orbit, against the
         /// Descent Shapes (only <paramref name="shape"/> if given, else <paramref name="shapes"/>, a coarse grid, if given), passing
-        /// over a periapsis whose fall from the deorbit burn comes inside the margin over the ground before braking is due (#530).
+        /// over a periapsis whose fall from the deorbit burn comes inside the margin over the ground before braking is due (#530),
+        /// that ground read every <paramref name="fallStep"/> m (the plane-change search's coarse pass reads it sparser).
         /// Without a clearing pair, <see cref="DescentChoice.Error"/> says so.
         /// </summary>
         public static DescentChoice Plan(BrakeCraft craft, SnapshotBody body, IPlanningBody api, double r0, double lat, double lng, double heading,
-            double vRotAlong, double? shape, double margin = 1.1, IList<double> shapes = null)
+            double vRotAlong, double? shape, double margin = 1.1, IList<double> shapes = null, double fallStep = FallProfileStep)
         {
             var vPeMost = Math.Sqrt(body.Gm * (2 / body.Radius - 2 / (r0 + body.Radius)));
             var far = BrakePath.FallFrom(craft, body.Gm, body.Radius, vPeMost, margin) + 2000;
@@ -127,7 +128,7 @@ namespace ClaudiaKermin.Core.Tools
             var fallFar = BrakePath.FallReach(body.Radius, r0, body.Radius + lowest, highest);
             if (fallFar > far)
             {
-                world.FallGround = Read(api, body.Name, body.Radius, lat, lng, heading, fallFar, out error, FallProfileStep);
+                world.FallGround = Read(api, body.Name, body.Radius, lat, lng, heading, fallFar, out error, fallStep);
                 if (world.FallGround == null) return new DescentChoice { Error = error };
             }
             var choice = BrakePath.Search(craft, world, r0, vRotAlong, lowest, highest, shape.HasValue ? new[] { shape.Value } : shapes);

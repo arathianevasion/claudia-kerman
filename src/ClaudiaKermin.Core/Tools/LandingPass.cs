@@ -43,6 +43,8 @@ namespace ClaudiaKermin.Core.Tools
         public IList<double> Shapes;
         public Dictionary<string, DescentChoice> Planned;
         public double HeadingStepDeg = 1;
+        /// <summary>m between the terrain samples under the fall from the deorbit burn (#545: the coarse pass reads it sparser).</summary>
+        public double FallStepM = DescentApproach.FallProfileStep;
         /// <summary>
         /// The sun's elevation at the site by UT, degrees, for a search that read it once over the window (the plane-change search,
         /// #536); null to survey it at each search's passes.
@@ -50,6 +52,11 @@ namespace ClaudiaKermin.Core.Tools
         public Func<double, double> SunAt;
         /// <summary>When to stop planning descents and answer <see cref="LandingPassResult.OutOfTime"/> (#536); null for never.</summary>
         public SearchDeadline Deadline;
+        /// <summary>
+        /// Without a craft, stop at the first pass taken (#545: the plane-change search's scan of each plane wants only it); with
+        /// daylight, only where <see cref="SunAt"/> gives the sun there.
+        /// </summary>
+        public bool FirstOnly;
     }
 
     /// <summary>One pass over the site the search looked at, for <c>land</c>'s trace.</summary>
@@ -227,6 +234,7 @@ namespace ClaudiaKermin.Core.Tools
             var steps = (int)Math.Ceiling((lastBurn - ask.EarliestUt) / step) + 2;
             var prev2 = double.NaN;
             var prev = double.NaN;
+            var firstOnly = ask.FirstOnly && ask.Craft == null && (!ask.Daylight || ask.SunAt != null);
             for (var i = 0; i <= steps; i++)
             {
                 var t = ask.EarliestUt + (i - 1) * step;
@@ -239,11 +247,14 @@ namespace ClaudiaKermin.Core.Tools
                     {
                         var arrive = burn + fall;
                         var cross = Math.Abs(Math.Asin(Math.Max(-1, Math.Min(1, Vec3.Dot(orbit.W, siteAt(arrive)))))) * body.Radius;
-                        result.Passes.Add(new LandingPassLine
+                        var line = new LandingPassLine
                         {
                             BurnUt = burn, ArriveUt = arrive, CrossM = cross,
                             CorrectionDv = CorrectionDv(orbit.Mu, orbit.A, ask.PeRadius, cross, body.Radius),
-                        });
+                        };
+                        result.Passes.Add(line);
+                        if (firstOnly && line.CorrectionDv <= ask.MaxCorrectionDv && (!ask.Daylight || ask.SunAt(arrive) > LandingSiteSearch.MinSunElevationDeg))
+                            break;
                     }
                 }
                 prev2 = prev;
@@ -400,7 +411,7 @@ namespace ClaudiaKermin.Core.Tools
             DescentChoice choice;
             if (!planned.TryGetValue(key, out choice))
             {
-                choice = DescentApproach.Plan(ask.Craft, body, api, orbit.A, lat, lng, heading, vRot, ask.Shape, ask.Margin, ask.Shapes);
+                choice = DescentApproach.Plan(ask.Craft, body, api, orbit.A, lat, lng, heading, vRot, ask.Shape, ask.Margin, ask.Shapes, ask.FallStepM);
                 if (choice.Best != null) choice.Best.Heading = heading;
                 planned[key] = choice;
             }
