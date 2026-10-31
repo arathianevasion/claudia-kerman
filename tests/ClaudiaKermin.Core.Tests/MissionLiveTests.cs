@@ -431,7 +431,31 @@ namespace ClaudiaKermin.Core.Tests
             DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
             var debrief = mission.View.Log.Last(e => e.Kind == LogKind.Debrief);
             Assert.Equal("Off-Nominal", debrief.Outcome);
-            Assert.Contains("altitude 500 m over 100 m: carry on (Within margins.); altitude 1,200 m over 1,000 m (follow-up threshold): carry on (Still within margins.)", debrief.Text);
+            Assert.Contains("altitude 500 m over 100 m: carry on (Within margins.) [standing]; altitude 1,200 m over 1,000 m (follow-up threshold): carry on (Still within margins.) [standing]", debrief.Text);
+        }
+
+        [Fact]
+        public void ACarryOnCrossingBackOnTheSafeSideAtTheRunsEndIsRecoveredAndAllowsNominal()
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                WithSequenceFields(ScriptedResponse.Fixture("mission-sequence-plan.sse"), AltitudeCheck(100)),
+                ScriptedResponse.Fixture("mission-alert-carry-on.sse"),
+                ScriptedResponse.Fixture("mission-debrief.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission, 10m);
+            mission.TakeCommands();
+
+            mission.Send(Snapshot(s => s.Altitude = 500));
+            DrainUntil(mission, v => !v.Busy && v.LatestLine.StartsWith("Alert, altitude: carry on."));
+            mission.Send(Snapshot(s => s.Altitude = 50));
+            mission.Send(new KosRunEnded(Finished(), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            Assert.Contains("altitude 500 m over 100 m: carry on (Within margins.) [recovered]", LastUserText(transport.Requests[3]));
+            var debrief = mission.View.Log.Last(e => e.Kind == LogKind.Debrief);
+            Assert.Equal("Nominal", debrief.Outcome);
+            Assert.Contains("Telemetry Checks crossed: altitude 500 m over 100 m: carry on (Within margins.) [recovered]", debrief.Text);
         }
 
         [Fact]

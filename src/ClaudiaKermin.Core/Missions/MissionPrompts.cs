@@ -265,8 +265,8 @@ namespace ClaudiaKermin.Core.Missions
         public const string DebriefNotice =
             "The Maneuver Sequence has ended. Debrief it now: reply with kind \"debrief\" and debrief filled in. Rate it "
             + "against the Sequence Plan's target and tolerances, and set goal_reached to true only if the whole Mission "
-            + "Goal is now met. If it isn't, the mod will ask you for the next Sequence Plan. A crossed Telemetry Check "
-            + "rules out Nominal; list each one with its verdict in what_happened. Fill the whole Debrief: outcome_vs_target (the "
+            + "Goal is now met. If it isn't, the mod will ask you for the next Sequence Plan. A standing "
+            + "Telemetry Check crossing rules out Nominal, a recovered one doesn't; list each with its verdict in what_happened. Fill the whole Debrief: outcome_vs_target (the "
             + "script's report and the events the mod logged, against the target and tolerances, with numbers), plan_margin (the "
             + "delta-v and resources left against the Maneuver Sequences still to fly, using the mod's margin recheck), science, "
             + "goal_checklist (the Mission Goal as its steps, each done or not), and follow_up with follow_up_text: for Off-Nominal "
@@ -481,6 +481,8 @@ namespace ClaudiaKermin.Core.Missions
         public const string ChangedPrefix = "The player wants a change (quoted data): ";
         public const string AskedPrefix = "The player asks (quoted data): ";
         public const string CrossingsMarker = "Telemetry Checks crossed during the run, with your mid-run verdicts: ";
+        public const string RecoveredTag = "[recovered]";
+        public const string StandingTag = "[standing]";
         public const string RunEndedPrefix = "kOS run ended: ";
         public const string UtMarker = "UT: ";
         public const string UtUnit = " s.";
@@ -571,6 +573,12 @@ namespace ClaudiaKermin.Core.Missions
             if (outcome.ErrorText.Length > 0) text += "\nkOS terminal after the run (quoted): " + Quoted(outcome.ErrorText);
             text += CrossedChecks(crossings);
             return text;
+        }
+
+        /// <summary>A crossings line rules out Nominal unless every crossing on it is recovered; a line without tags (an older transcript) does.</summary>
+        public static bool RulesOutNominal(string crossings)
+        {
+            return crossings.Length > 0 && (!crossings.Contains(RecoveredTag) || crossings.Contains(StandingTag));
         }
 
         /// <summary>The line a Debrief request carries about crossed Telemetry Checks; "" when none was.</summary>
