@@ -72,6 +72,18 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void ACompactionRequestWithNoCacheStillCarriesDiagnosticsAndNoCacheControl()
+        {
+            var request = new MessagesRequest { Model = "claude-sonnet-5-5", MaxTokens = 10, Cache = false, Diagnostics = true };
+            request.Messages.Add(Message.UserText("hi"));
+
+            var json = request.ToJson();
+
+            Assert.DoesNotContain("cache_control", json);
+            Assert.Contains("\"diagnostics\":{\"previous_message_id\":null}", json);
+        }
+
+        [Fact]
         public void ACacheReadBelowThePreviousReadPlusWriteWritesTheResponsesDiagnosticsAsAnEvent()
         {
             Fly(true, ScriptedResponse.Fixture("mission-plan.sse"), Missed(ScriptedResponse.Fixture("mission-sequence-plan.sse")));

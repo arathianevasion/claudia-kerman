@@ -28,12 +28,13 @@ namespace ClaudiaKermin.Core.Missions
             request.PreviousMessageId = mission.LastMessageId;
         }
 
-        private void TrackCache(Mission mission, StreamResult result)
+        private void TrackCache(Mission mission, StreamResult result, bool cached = true)
         {
             if (!_config.DebugTools || result == null || result.Status != StreamStatus.Completed) return;
             var message = result.Message;
             var usage = message.Usage;
-            if (usage.CacheReadInputTokens < mission.LastCacheTotal)
+            // The on-demand compaction sends no cache_control (#549): its empty read is by design, not a miss.
+            if (cached && usage.CacheReadInputTokens < mission.LastCacheTotal)
                 Event(mission, "cache_diagnosis", message.DiagnosticsJson ?? "null");
             mission.LastCacheTotal = usage.CacheReadInputTokens + usage.CacheCreationInputTokens;
             if (message.Id != null) mission.LastMessageId = message.Id;

@@ -6,6 +6,7 @@ NOTICES = {
     'debrief': 'The sequence ended. Reply with kind "debrief".',
     'change': 'The player wants a change to the pending plan: use a lower orbit.',
     'reply': 'The player typed a reply to the pending plan: why this orbit?',
+    'sequence_plan': 'The leg is next. Reply with kind "sequence_plan".',
     'settings': 'The player changed the Mission Settings. They now read:\nDaylight landing: on.',
 }
 SYSTEM = ['You are Claudia, mission control. ' * 40, 'Mission Settings. Daylight landing: off. ' * 20]
@@ -17,6 +18,10 @@ def debrief(outcome):
 
 def plan(*names):
     return {'kind': 'mission_plan', 'say': 'ok', 'mission_plan': {'sequences': [{'name': n} for n in names]}}
+
+
+def seqplan(script, step=1):
+    return {'kind': 'sequence_plan', 'say': 'ok', 'sequence_plan': {'name': 'Leg', 'plan_step': step, 'script': script}}
 
 
 def answer():

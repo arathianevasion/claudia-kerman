@@ -52,6 +52,8 @@ namespace ClaudiaKermin.Core.Claude
         public bool Diagnostics;
         /// <summary>The previous response's id for <see cref="Diagnostics"/>; null on a Mission's first request.</summary>
         public string PreviousMessageId;
+        /// <summary>False sends no <c>cache_control</c> anywhere (#549): the on-demand compaction request, whose cache write nothing would read.</summary>
+        public bool Cache = true;
 
         internal string ToJson()
         {
@@ -66,13 +68,16 @@ namespace ClaudiaKermin.Core.Claude
             json.Name("thinking").BeginObject().Field("type", "adaptive").EndObject();
 
             // Automatic tail caching with the 1-hour TTL; an explicit breakpoint also sits on the system prompt.
-            json.Name("cache_control");
-            CacheControl(json);
+            if (Cache)
+            {
+                json.Name("cache_control");
+                CacheControl(json);
+            }
 
             if (System.Count > 0)
             {
                 json.Name("system");
-                WriteSystem(json, System);
+                WriteSystem(json, System, Cache);
             }
 
             if (Tools.Count > 0)
@@ -126,7 +131,7 @@ namespace ClaudiaKermin.Core.Claude
         }
 
         /// <summary>The <c>system</c> array exactly as requests send it.</summary>
-        internal static void WriteSystem(JsonWriter json, IList<string> layers)
+        internal static void WriteSystem(JsonWriter json, IList<string> layers, bool cache = true)
         {
             // The API allows four breakpoints; the automatic tail takes one.
             if (layers.Count > 3) throw new System.ArgumentException("at most three system layers can be cached");
@@ -134,8 +139,12 @@ namespace ClaudiaKermin.Core.Claude
             foreach (var layer in layers)
             {
                 // Each layer is its own breakpoint (at most three, plus the automatic tail: four in all).
-                json.BeginObject().Field("type", "text").Field("text", layer).Name("cache_control");
-                CacheControl(json);
+                json.BeginObject().Field("type", "text").Field("text", layer);
+                if (cache)
+                {
+                    json.Name("cache_control");
+                    CacheControl(json);
+                }
                 json.EndObject();
             }
             json.EndArray();

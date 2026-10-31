@@ -253,9 +253,8 @@ namespace ClaudiaKermin.Core.Tests
                 // Compaction is its own request now (#268): no reply turn carries the threshold edit.
                 Assert.False(body.TryGetProperty("context_management", out _));
             }
-            // Each request carries only the reply parts it can come back as (#199): the Mission Plan the planning
-            // schema; the Sequence Plan, and a question once the Mission Plan is approved, the flight schema.
-            Assert.Equal(new[] { MissionReply.PlanningSchemaJson, MissionReply.FlightSchemaJson, MissionReply.FlightSchemaJson },
+            // Every Mission request sends the one Mission schema (ADR 0012), so a change of request never rewrites the cache.
+            Assert.Equal(new[] { MissionReply.MissionSchemaJson, MissionReply.MissionSchemaJson, MissionReply.MissionSchemaJson },
                 bodies.Select(b => b.GetProperty("output_config").GetProperty("format").GetProperty("schema").GetRawText()).ToArray());
             var baseLayer = bodies[0].GetProperty("system")[0].GetProperty("text").GetString();
             Assert.Contains("Kerbal Space Program", baseLayer);

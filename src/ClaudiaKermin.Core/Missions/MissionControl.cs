@@ -372,11 +372,11 @@ namespace ClaudiaKermin.Core.Missions
             var bodyTable = MissionPrompts.BodyTable(_snapshot != null ? _snapshot.Bodies : null);
             mission.PlannedTurnShape = _craftCheck.PlannedTurnShape;
             mission.PlannedAscent = _craftCheck.PlannedAscent;
-            mission.System.Add(MissionPrompts.MissionLayer(id, goal, bodyTable, mission.PlannedTurnShape));
+            mission.System.Add(MissionPrompts.MissionLayer(goal, bodyTable, mission.PlannedTurnShape));
             var settings = start.Settings != null ? start.Settings.Copy() : MissionSettingsValues.Defaults(_config);
             settings.ConfigAllowsPhysicsWarp = _config.PhysicsWarp;
             settings.WriteTo(mission.Settings);
-            mission.System.Add(MissionPrompts.TimingLayer(settings));
+            mission.System.Add(MissionPrompts.TimingLayer(id, settings));
             // Raw stream dumps are a debug tool: on with debug_tools = true in the player config.
             if (_config.DebugTools) mission.Dump = new FileStreamDump(Path.Combine(mission.Folder, "stream-dumps"));
             _mission = mission;
@@ -598,6 +598,7 @@ namespace ClaudiaKermin.Core.Missions
             if (plan.DueTimeUt.HasValue) _commands.Add(new ClearDueTimeAlarm(mission.Id));
             mission.RunningProcessor = processor.Value;
             mission.RunId = ++_lastRunId;
+            mission.NoRunSinceSnapshot = false;
             // A new run means the craft was reachable; an owed make-safe must not cut it off later.
             mission.SafePending = "";
             StartRunawayTimer(mission, plan);
@@ -1038,7 +1039,7 @@ namespace ClaudiaKermin.Core.Missions
                 turn.CompactedBase = mission.CompactedMessages;
                 turn.Messages = new List<Message>();
                 if (turn.Effort != mission.Effort) turn.Messages.Add(Message.SystemEffort(turn.Effort));
-                turn.Messages.Add(Message.UserText(turn.UserText));
+                turn.Messages.Add(Message.UserText(ShapedUserText(mission, turn)));
                 var notice = turn.Notice + BlackoutNotice(mission) + (mission.AutoMode ? "\n\n" + MissionPrompts.AutoModeNotice : "");
                 if (turn.CutOffRetry) notice += "\n\n" + MissionPrompts.CutOffNote;
                 if (turn.SecondLookReason.Length > 0) notice += "\n\n" + SecondLook.Note(turn.SecondLookReason);
@@ -1049,11 +1050,10 @@ namespace ClaudiaKermin.Core.Missions
             {
                 Model = mission.Model,
                 MaxTokens = MissionPrompts.MaxTokens,
-                OutputSchemaJson = Schema(mission, turn),
+                OutputSchemaJson = MissionReply.MissionSchemaJson,
                 NoToolChoice = turn.ToolLimitSent,
             };
-            // The same tools list on every Mission request, whatever the turn may call, so the cached prefix never changes.
-            request.Tools.AddRange(_tools.Definitions(ToolOffer.Mission));
+            request.Tools.AddRange(MissionTools());
             request.System.AddRange(mission.System);
             request.Messages.AddRange(Sent(mission, turn.CompactionBase, turn.CompactedBase));
             request.Messages.AddRange(turn.Messages);
@@ -1144,28 +1144,6 @@ namespace ClaudiaKermin.Core.Missions
         private bool HasCapRoom(Mission mission, Turn turn)
         {
             return mission.Committed + RequestCharge.WorstCase(_config.Prices, mission.Model, BuildRequest(mission, turn)) <= mission.SpendingCap;
-        }
-
-        /// <summary>
-        /// The reply schema for a turn (#199): one schema with every part is too big for the API to compile, so a
-        /// request carries only the parts its reply can be (<see cref="Mismatch"/>, <see cref="Apply"/>).
-        /// </summary>
-        private static string Schema(Mission mission, Turn turn)
-        {
-            switch (turn.Purpose)
-            {
-                case Purpose.MissionPlan:
-                case Purpose.Settings:
-                case Purpose.Reply:
-                case Purpose.Change:
-                    return MissionReply.PlanningSchemaJson;
-                case Purpose.Question:
-                    // Only an answer: the schema the Mission is in, so the prompt cache holds.
-                    return mission.Stage == MissionStage.Planning || mission.Stage == MissionStage.AwaitingPlanApproval
-                        ? MissionReply.PlanningSchemaJson : MissionReply.FlightSchemaJson;
-                default:
-                    return MissionReply.FlightSchemaJson;
-            }
         }
 
         /// <summary>
@@ -1274,7 +1252,7 @@ namespace ClaudiaKermin.Core.Missions
                 ToolsCalled(mission, turn, message);
                 return;
             }
-            var reply = MissionReply.Parse(message.Text);
+            var reply = ReadReply(turn, message);
             var problem = reply == null ? "it wasn't in the Mission reply format" : Mismatch(turn.Purpose, reply);
             if (problem != null)
             {
@@ -1291,6 +1269,7 @@ namespace ClaudiaKermin.Core.Missions
             foreach (var m in turn.Messages)
                 if (m.Effort != null) mission.Effort = m.Effort;
             mission.Pending = null;
+            SnapshotCommitted(mission, turn);
             TrackContext(mission, turn, message);
             WriteTranscript(mission);
             ClearUnanswered(mission);
@@ -1328,14 +1307,31 @@ namespace ClaudiaKermin.Core.Missions
             SendQueued(mission);
         }
 
+        /// <summary>The turn's reply, its Mission Plan the one propose_mission_plan accepted in the turn; null when it isn't a Mission reply.</summary>
+        private static MissionReply ReadReply(Turn turn, AssistantMessage message)
+        {
+            var reply = MissionReply.Parse(message.Text);
+            return reply != null ? reply.WithProposed(ProposedPlans.LastAccepted(turn.Messages ?? new List<Message>())) : null;
+        }
+
+        /// <summary>
+        /// Why a reply doesn't fit its request (reported as off_schema), or null when it does. The schema takes every kind
+        /// (ADR 0012), so this is where a kind the request can't come back as is refused.
+        /// </summary>
         private static string Mismatch(Purpose purpose, MissionReply reply)
         {
+            if (reply.Kind == MissionReply.MissionPlanKind && reply.MissionPlan == null) return "no Mission Plan was accepted through propose_mission_plan";
             switch (purpose)
             {
                 case Purpose.MissionPlan:
                 case Purpose.Settings:
                     // A Mission Plan with no sequences is valid: it is how Claudia declines a goal that can't be flown.
                     return reply.MissionPlan == null ? "no Mission Plan" : null;
+                case Purpose.Reply:
+                case Purpose.Change:
+                    // A typed reply comes back as an answer, a Sequence Plan or a Mission Plan, never a Debrief or an Alert verdict.
+                    return reply.Kind == MissionReply.DebriefKind || reply.Kind == MissionReply.AlertKind || reply.Debrief != null || reply.Alert != null
+                        ? "a " + reply.Kind + " reply to the player's typed words" : null;
                 case Purpose.SequencePlan:
                     // A manual stretch has no script: the player flies it.
                     return reply.SequencePlan == null || (reply.SequencePlan.Script.Trim().Length == 0 && !reply.SequencePlan.Manual) ? "no Sequence Plan with a script" : null;
@@ -1871,7 +1867,7 @@ namespace ClaudiaKermin.Core.Missions
             if (message.StopReason == StopReason.MaxTokens) return "cut_off";
             if (message.StopReason == StopReason.ToolUse) return "tool_use";
             if (turn.Purpose == Purpose.Margin) return CraftCheckReply.Parse(message.Text) == null ? "off_schema" : "completed";
-            var reply = MissionReply.Parse(message.Text);
+            var reply = ReadReply(turn, message);
             return reply == null || Mismatch(turn.Purpose, reply) != null ? "off_schema" : "completed";
         }
 
