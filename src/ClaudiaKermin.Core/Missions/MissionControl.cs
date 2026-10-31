@@ -598,6 +598,7 @@ namespace ClaudiaKermin.Core.Missions
             if (plan.DueTimeUt.HasValue) _commands.Add(new ClearDueTimeAlarm(mission.Id));
             mission.RunningProcessor = processor.Value;
             mission.RunId = ++_lastRunId;
+            mission.NoRunSinceSnapshot = false;
             // A new run means the craft was reachable; an owed make-safe must not cut it off later.
             mission.SafePending = "";
             StartRunawayTimer(mission, plan);
@@ -1038,7 +1039,7 @@ namespace ClaudiaKermin.Core.Missions
                 turn.CompactedBase = mission.CompactedMessages;
                 turn.Messages = new List<Message>();
                 if (turn.Effort != mission.Effort) turn.Messages.Add(Message.SystemEffort(turn.Effort));
-                turn.Messages.Add(Message.UserText(turn.UserText));
+                turn.Messages.Add(Message.UserText(ShapedUserText(mission, turn)));
                 var notice = turn.Notice + BlackoutNotice(mission) + (mission.AutoMode ? "\n\n" + MissionPrompts.AutoModeNotice : "");
                 if (turn.CutOffRetry) notice += "\n\n" + MissionPrompts.CutOffNote;
                 if (turn.SecondLookReason.Length > 0) notice += "\n\n" + SecondLook.Note(turn.SecondLookReason);
@@ -1266,6 +1267,7 @@ namespace ClaudiaKermin.Core.Missions
             foreach (var m in turn.Messages)
                 if (m.Effort != null) mission.Effort = m.Effort;
             mission.Pending = null;
+            SnapshotCommitted(mission, turn);
             TrackContext(mission, turn, message);
             WriteTranscript(mission);
             ClearUnanswered(mission);
