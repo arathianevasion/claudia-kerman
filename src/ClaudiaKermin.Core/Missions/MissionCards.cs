@@ -91,7 +91,7 @@ namespace ClaudiaKermin.Core.Missions
         public static string LostBody(string goal, string doing, decimal spent, decimal cap, bool spentUnknown = false, string traced = "")
         {
             return "Claudia Kermin was killed aboard the craft" + (doing.Length > 0 ? " " + doing : "") + ".\n"
-                + (traced.Length > 0 ? "The running block's last traced state: " + traced + ".\n" : "")
+                + (!string.IsNullOrEmpty(traced) ? "The running block's last traced state: " + traced + ".\n" : "")
                 + "Mission Goal not met: " + goal + "\n"
                 + (spentUnknown ? "Spent an unknown amount (the cost log can't be read) of the $" : "Spent $" + spent.ToString("0.00", CultureInfo.InvariantCulture) + " of the $") + cap.ToString("0.00", CultureInfo.InvariantCulture)
                 + " Spending Cap. The Mission is Lost.";
