@@ -589,9 +589,10 @@ namespace ClaudiaKermin.Core.Tools
                         _flight.Track.Add(new[]
                         {
                             h, 90 - pitch, 90 - prograde, q, throttle,
-                            _t, _mass, stage.Number, ap, horizontal, vertical, phase,
+                            _t, _mass / 1000, stage.Number, ap, horizontal, vertical, phase,
                         });
-                        nextTrack += 1000;
+                        // The next 1000 m up from here: a coast between burns can carry it several rows ahead.
+                        nextTrack = (Math.Floor(h / 1000) + 1) * 1000;
                     }
                 }
 

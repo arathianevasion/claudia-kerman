@@ -70,8 +70,33 @@ namespace ClaudiaKermin.Core.Tools
             get { return "planning the ascent"; }
         }
 
+        /// <summary>What an ascent is flown from: the body, the launch's options and the craft's tables, all read from a Game Snapshot and a call's input.</summary>
+        internal sealed class Setup
+        {
+            public SnapshotBody Body;
+            public double TargetAp;
+            public LaunchWindow Window;
+            public AscentOptions Options;
+            public BodyAir Air;
+            public Func<double, double> Drag;
+            public List<AscentStage> Stages;
+        }
+
         public ToolOutcome Run(JsonNode input, GameSnapshot snapshot, IPlanningBody planningBody)
         {
+            Setup setup;
+            var refusal = Prepare(input, snapshot, out setup);
+            if (refusal != null) return refusal;
+            return Search(JsonNode.Double(input["turn_shape"]), setup);
+        }
+
+        /// <summary>
+        /// Reads the ascent's set-up from the Game Snapshot and the call's input (everything but turn_shape), or says why there is
+        /// none (the tool's error). The replay of a recorded launch (#531) rebuilds its sim from the same code.
+        /// </summary>
+        internal static ToolOutcome Prepare(JsonNode input, GameSnapshot snapshot, out Setup setup)
+        {
+            setup = null;
             if (snapshot.Bodies.Count == 0) return PlanningJson.Error("the Game Snapshot has no body table");
             var body = snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, snapshot.Body, StringComparison.OrdinalIgnoreCase));
             if (body == null) return PlanningJson.Error("the craft's body " + PlanningJson.Quote(snapshot.Body) + " is not in the body table");
@@ -132,10 +157,29 @@ namespace ClaudiaKermin.Core.Tools
                 StageLimit = (int)(JsonNode.Long(input["stage_limit"]) ?? 0),
             };
 
-            var air = new BodyAir(body);
-            var drag = AscentSim.Table(snapshot.Craft.NoseDrag);
-            var stages = AscentStage.From(snapshot, body);
-            var given = JsonNode.Double(input["turn_shape"]);
+            setup = new Setup
+            {
+                Body = body,
+                TargetAp = targetAp,
+                Window = window,
+                Options = options,
+                Air = new BodyAir(body),
+                Drag = AscentSim.Table(snapshot.Craft.NoseDrag),
+                Stages = AscentStage.From(snapshot, body),
+            };
+            return null;
+        }
+
+        /// <summary>Flies the given turn_shape, or every shape of the search when none is given, and reports the best.</summary>
+        private ToolOutcome Search(double? given, Setup setup)
+        {
+            var body = setup.Body;
+            var targetAp = setup.TargetAp;
+            var window = setup.Window;
+            var options = setup.Options;
+            var air = setup.Air;
+            var drag = setup.Drag;
+            var stages = setup.Stages;
             var shapes = given.HasValue ? new List<double> { given.Value } : Shapes();
             var tried = new List<Tuple<double, AscentFlight>>();
             foreach (var shape in shapes)
