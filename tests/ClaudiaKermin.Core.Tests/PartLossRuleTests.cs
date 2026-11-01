@@ -36,6 +36,7 @@ namespace ClaudiaKermin.Core.Tests
         [InlineData(10.0, 10.0, true)]
         [InlineData(9.0, 10.0, true)]
         [InlineData(11.0, 10.0, true)]
+        [InlineData(12.1, 10.0, false)]
         [InlineData(7.9, 10.0, false)]
         [InlineData(0.0, 10.0, false)]
         public void A_firing_explains_a_break_only_when_it_is_just_before_or_after(double explainedAt, double brokeAt, bool expected)

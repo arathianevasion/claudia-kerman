@@ -25,7 +25,7 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>True when an explaining event at <paramref name="explainedAt"/> is near the break at <paramref name="brokeAt"/> (both in the same clock, seconds).</summary>
         public static bool Explains(double explainedAt, double brokeAt)
         {
-            return explainedAt >= brokeAt - ExplainSeconds;
+            return explainedAt >= brokeAt - ExplainSeconds && explainedAt <= brokeAt + ExplainSeconds;
         }
     }
 }

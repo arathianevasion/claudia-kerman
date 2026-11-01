@@ -89,7 +89,8 @@ namespace ClaudiaKermin.Adapter
         private void OnStage(int stage)
         {
             // Staging acts on the vessel the player is flying, so that is the vessel the stage belongs to.
-            if (IsCraft(FlightGlobals.ActiveVessel)) Report(RunEventKind.Staging, "stage " + stage + " fired");
+            if (!IsCraft(FlightGlobals.ActiveVessel)) return;
+            Report(RunEventKind.Staging, "stage " + stage + " fired");
             _lastExplained = Time.realtimeSinceStartup;
         }
 
@@ -106,7 +107,7 @@ namespace ClaudiaKermin.Adapter
         private void OnJointBreak(PartJoint joint, float breakForce)
         {
             // Only a candidate: the part may stay attached, or leave because a decoupler fired. Re-checked on a later frame.
-            if (joint != null && Flying(joint.Child))
+            if (joint != null && Flying(joint.Child) && !_candidates.Exists(c => c.Part == joint.Child))
                 _candidates.Add(new JointCandidate { Part = joint.Child, Frame = Time.frameCount, At = Time.realtimeSinceStartup });
         }
 
