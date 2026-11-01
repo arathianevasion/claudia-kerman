@@ -12,21 +12,20 @@
 
 @lazyglobal off.
 
-//| ascend(options): from the ground of an airless body (the Mun, Minmus...) or SUB_ORBITAL/FLYING
-//| over it, to a circular orbit at target_alt: stops any fall, a low climb building orbital speed until
-//| apoapsis reaches target_alt, then circularizes there (exec_node). The block for a craft falling with
-//| periapsis under the terrain; a prograde node there points into the ground. ORBITING clear of the
-//| terrain: success, nothing flown.
+//| ascend(options): flies to orbit from the ground of an airless body (Mun, Minmus...) or a fall over it
+//| (SUB_ORBITAL/FLYING): stops any fall, climbs low for orbital speed, then circularizes at
+//| target_alt (exec_node). For a craft falling with periapsis under the terrain (a prograde
+//| node there points into the ground). ORBITING clear of the terrain: success, nothing flown.
 //| Options:
 //|   target_alt ["auto"]: orbit altitude in m; "auto" is 5 km above the body's highest terrain.
 //|     It must be above the highest terrain (ADDONS:CLAUDIA:HIGHESTTERRAIN(body)) and inside the SOI.
 //|   target_inc [0]: orbit inclination in degrees (0 to 180; under 90 is prograde); one below the
-//|     site's latitude gives the nearest. From flight over 10 m/s across, it keeps its heading.
+//|     site's latitude gives the nearest. A moving craft in flight keeps its heading.
 //|   max_duration [900]: seconds.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
 //| Extra results: ap_error (m, apoapsis minus target_alt once in orbit), start (ground, flight, orbit).
-//| Fails with "ascend flies from airless bodies only", ESCAPING, a target_alt it can't use, "no thrust",
-//| thrust-to-weight under 1.05, too little delta-v or thrust to reach orbit before impact, a periapsis
+//| Fails with "ascend flies from airless bodies only", ESCAPING, a bad target_alt, "no thrust",
+//| thrust-to-weight under 1.05, too little delta-v or thrust before impact, periapsis
 //| still under the highest terrain, out of fuel, or an abort.
 //| Example: `local res is ascend(lexicon("target_inc", 0)). addons:claudia:report(res).`
 
