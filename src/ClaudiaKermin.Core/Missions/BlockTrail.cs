@@ -80,8 +80,8 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         /// <summary>
-        /// The Debrief line, or "" with nothing to list. A block whose result the script reported as it was, or with more
-        /// added, is left out: the report already says it.
+        /// The Debrief line, or "" with nothing to list. The latest block whose result the script reported as it was, or with
+        /// more added, is left out: the report already says it.
         /// </summary>
         public string Line(IDictionary<string, object> report)
         {
@@ -92,7 +92,10 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The trail as a JSON array, the collapse line last; null with nothing to list.</summary>
         public string Json(IDictionary<string, object> report)
         {
-            var listed = _entries.Where(e => report == null || !Reported(e.Result, report)).ToList();
+            var listed = _entries.ToList();
+            // One block's result is the report at most: the latest that matches.
+            var reported = report == null ? -1 : listed.FindLastIndex(e => Reported(e.Result, report));
+            if (reported >= 0) listed.RemoveAt(reported);
             int ok = _collapsedOk, failed = _collapsedFailed;
             Collapse(listed, MaxEntries, ref ok, ref failed);
             if (listed.Count == 0 && ok + failed == 0) return null;
