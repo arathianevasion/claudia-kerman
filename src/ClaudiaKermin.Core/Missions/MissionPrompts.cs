@@ -66,7 +66,8 @@ namespace ClaudiaKermin.Core.Missions
             + "before reporting. No bare stage. (refused): use drop_parts or stage_limit. Never loop on nextnode:prograde to search: "
             + "tune_pe and solve_burn do. The mod turns SAS off when a script starts. Blocks manage RCS themselves (RCS Use, which includes big turns even with time to spare): leave it to them, or use claudia_rcs_translate for "
             + "translation. Never switch SAS on: the Script Check rejects it, because SAS fights kOS steering and fires RCS through holds. "
-            + "SET a:b[c] TO v crashes kOS: use local x is a:b. set x[c] to v.\n\n"
+            + "SET a:b[c] TO v crashes kOS: use local x is a:b. set x[c] to v. "
+            + "A Game Snapshot with impact_in_s is of a falling craft: thrust horizontal and up (ascend from flight, or land), never a prograde node.\n\n"
             + "Forbidden in every script: saving, loading, reverting or quickloading the game; switching or launching "
             + "vessels; pausing the game; physics warp off a Coast (under engine or RCS thrust) or with the Physics warp Mission Setting off; reading, writing, copying or deleting files "
             + "or volumes; changing kOS CONFIG; rebooting or shutting down processors; setting boot files; using any "
@@ -261,6 +262,10 @@ namespace ClaudiaKermin.Core.Missions
         public const string LateReplanNotice =
             "Revise the Sequence Plan for the current time: reply with kind \"sequence_plan\" and sequence_plan filled in, including "
             + "its complete Mission Script, which waits for the next window itself, however far off. The mod runs it only after the player's Approval.";
+
+        /// <summary>Added to a Sequence Plan request while the craft is falling (#599).</summary>
+        public const string FallingNotice =
+            "The craft is falling and time is short (impact_in_s in the Game Snapshot): give the plan first, with no tool call you can do without.";
 
         public const string PlanNotice =
             "The craft is in Flight. Propose the Mission Plan now: " + ProposePlan + ".";

@@ -136,6 +136,39 @@ namespace ClaudiaKermin.Core.Missions
         public double VerticalSpeed;
         /// <summary>Null when there is no orbit to read (e.g. in the editor).</summary>
         public SnapshotOrbit Orbit;
+
+        /// <summary>The figure a parsed snapshot carried: Claudia's turns leave out the body table that <see cref="ImpactInS"/> is worked from.</summary>
+        private double? _parsedImpactInS;
+
+        /// <summary>
+        /// Seconds to impact on the current trajectory with no thrust, for a craft that is falling (#599): not landed, coming down
+        /// with its periapsis below sea level, and not in the atmosphere (a Kerbin reentry under parachutes is the normal case). The
+        /// orbit's crossing of the body's sea-level radius, so terrain above sea level makes the real impact earlier; null when not falling.
+        /// </summary>
+        public double? ImpactInS
+        {
+            get { return Bodies.Count > 0 ? FallingImpact() : _parsedImpactInS; }
+        }
+
+        /// <summary>The craft is falling: <see cref="ImpactInS"/> has a figure. Such a craft is sent a fresh snapshot on every turn.</summary>
+        public bool Falling
+        {
+            get { return ImpactInS.HasValue; }
+        }
+
+        private double? FallingImpact()
+        {
+            if (Orbit == null || Situation == "LANDED" || Situation == "SPLASHED" || Situation == "PRELAUNCH") return null;
+            if (Orbit.Periapsis >= 0 || VerticalSpeed >= 0) return null;
+            var name = !string.IsNullOrEmpty(Orbit.Body) ? Orbit.Body : Body;
+            var at = Bodies.FirstOrDefault(b => b.Name == name);
+            if (at == null || at.Radius <= 0) return null;
+            if (at.AtmosphereHeight > 0 && Altitude < at.AtmosphereHeight) return null;
+            var conic = Tools.Conic.FromElements(at.Gm, Orbit.SemiMajorAxis, Orbit.Eccentricity, Orbit.Inclination, Orbit.Lan,
+                Orbit.ArgumentOfPeriapsis, Orbit.MeanAnomalyAtEpoch, Orbit.Epoch);
+            var impact = conic.TimeAtRadius(at.Radius, Ut, false);
+            return impact.HasValue ? System.Math.Round(impact.Value - Ut, 1) : (double?)null;
+        }
         public List<SnapshotResource> Resources = new List<SnapshotResource>();
         /// <summary>The maneuver nodes planned on the craft, soonest first; empty when there are none (#522).</summary>
         public List<SnapshotNode> Nodes = new List<SnapshotNode>();
@@ -253,6 +286,8 @@ namespace ClaudiaKermin.Core.Missions
                 .Field("celestial_longitude", CelestialLongitude)
                 .Field("vertical_speed", VerticalSpeed);
             if (RcsOn.HasValue) json.Field("rcs_on", RcsOn.Value);
+            var impact = ImpactInS;
+            if (impact.HasValue) json.Field("impact_in_s", impact.Value);
             if (DeltaVUnreliable)
                 json.Field("dv_reading", "unreliable at low throttle: stock delta-v reads 0 while an engine is lit at a trickle throttle, so the stages' delta-v is unknown, not 0");
             json.Name("craft").BeginObject()
@@ -420,6 +455,7 @@ namespace ClaudiaKermin.Core.Missions
                 CelestialLongitude = JsonNode.Double(root["celestial_longitude"]) ?? 0,
                 VerticalSpeed = JsonNode.Double(root["vertical_speed"]) ?? 0,
                 RcsOn = JsonNode.Bool(root["rcs_on"]),
+                _parsedImpactInS = JsonNode.Double(root["impact_in_s"]),
             };
             var craft = root["craft"];
             if (craft != null)
