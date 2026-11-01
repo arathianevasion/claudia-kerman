@@ -254,7 +254,7 @@ namespace ClaudiaKermin.Core.Tools
                     : failed;
             }
             if (plan.DeltaV > ask.MaxDv)
-                return Fail("the cheapest burn, at UT " + Num(plan.Ut) + ", needs " + Num(plan.DeltaV) + " m/s, more than the craft's " + Num(ask.MaxDv.Value) + " m/s");
+                return Fail((plan.CheapestUt.HasValue ? "the burn" : "the cheapest burn") + ", at UT " + Num(plan.Ut) + ", needs " + Num(plan.DeltaV) + " m/s, more than the craft's " + Num(ask.MaxDv.Value) + " m/s");
             plan.SearchFrom = from;
             plan.Synodic = synodic;
             return plan;

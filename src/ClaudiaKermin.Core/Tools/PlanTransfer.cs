@@ -112,7 +112,7 @@ namespace ClaudiaKermin.Core.Tools
             PlanningJson.Time(json, "arrive", plan.ArrivalUt, now);
             json.Field("synodic_s", PlanningJson.Round(plan.Synodic, 0));
             if (plan.CheapestUt.HasValue)
-                json.Field("note", "not the cheapest window: the one at UT " + Num(plan.CheapestUt.Value) + " doesn't reach " + name + " on the patched conics; this is the first that does");
+                json.Field("note", "not the cheapest window: the one at UT " + Num(plan.CheapestUt.Value) + " can't be aimed at target_pe on the patched conics; this is the first that can");
             json.EndObject();
             return new ToolOutcome
             {

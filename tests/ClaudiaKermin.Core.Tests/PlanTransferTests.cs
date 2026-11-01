@@ -120,7 +120,7 @@ namespace ClaudiaKermin.Core.Tests
             var result = Run("{\"target\":\"Minmus\",\"target_pe\":30000}", snapshot);
             Assert.InRange(result.GetProperty("target_pe_actual").GetDouble(), 29900, 30100);
             Assert.Equal("not the cheapest window: the one at UT " + Math.Round(cheapest.GetProperty("depart_ut").GetDouble())
-                + " doesn't reach Minmus on the patched conics; this is the first that does", result.GetProperty("note").GetString());
+                + " can't be aimed at target_pe on the patched conics; this is the first that can",result.GetProperty("note").GetString());
         }
 
         [Fact]
