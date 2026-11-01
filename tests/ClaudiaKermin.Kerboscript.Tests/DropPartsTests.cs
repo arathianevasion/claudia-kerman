@@ -269,6 +269,18 @@ namespace ClaudiaKermin.Kerboscript.Tests
         }
 
         [Theory]
+        [InlineData(1784, 0, 2100, 0, "1784")]     // a107 refused: stock's figure, all of it
+        [InlineData(1784, 950, 2100, 1000, "834")] // stock recounted after the drop
+        [InlineData(0, 0, 2100, 0, "2100")]        // stock not yet computed: the proxy's
+        [InlineData(-1, -1, 2100, 0, "2100")]      // a trickle throttle: the proxy's
+        [InlineData(1784, 1784, 2100, 1100, "1000")] // stock not recounted yet: the proxy's
+        [InlineData(950, 990, 1000, 1040, "0")]    // an empty tank dropped gains delta-v: 0
+        public void The_delta_v_a_drop_took_is_stocks_unless_stock_is_unknown_or_stale(int before, int after, int proxyNow, int proxyLeft, string expected)
+        {
+            Assert.Equal(expected, One("drop_parts_dv_taken(" + before + ", " + after + ", " + proxyNow + ", " + proxyLeft + ")"));
+        }
+
+        [Theory]
         [InlineData("Liquid Fuel", "LiquidFuel")]
         [InlineData("MonoPropellant", "Monopropellant")]
         [InlineData("Xenon Gas", "XenonGas")]

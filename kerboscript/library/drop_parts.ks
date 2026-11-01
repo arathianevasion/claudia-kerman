@@ -61,6 +61,17 @@ function drop_parts_strands {
   return atm_height < 0 or pe > atm_height.
 }
 
+// The delta-v (m/s) a drop took: stock's figure before less after (stock_before, stock_after; -1 unknown at
+// a trickle throttle), or, when stock is unknown, reads 0 or has not changed (not recounted yet), the
+// proxy's (proxy_now less proxy_left: drop_parts_dv_left). Never below 0: a dropped empty tank gains. Pure.
+function drop_parts_dv_taken {
+  parameter stock_before, stock_after, proxy_now, proxy_left.
+  if stock_before > 0 and stock_after >= 0 and stock_after <> stock_before {
+    return round(max(0, stock_before - stock_after), 1).
+  }
+  return round(max(0, proxy_now - proxy_left), 1).
+}
+
 // The refusal's reason: the delta-v the drop would take (dv_taken, m/s; -1 unknown) and the periapsis. Pure.
 function drop_parts_strand_reason {
   parameter dv_taken, pe, atm_height.
@@ -77,7 +88,7 @@ function drop_parts_strand_reason {
 
 // The vacuum delta-v (m/s) the craft keeps once plan's parts are gone (a sound proxy, not stock's
 // staged figure): the engines that stay, burning the propellant they use from the parts that stay, as one
-// stage with their mean vacuum isp. 0 when no engine stays or none of its propellant does.
+// stage with their mean vacuum isp; jets don't count. 0 when no engine stays or none of its propellant does.
 function drop_parts_dv_left {
   parameter plan.
   local gone is claudia_drop_uids(plan).
@@ -87,11 +98,16 @@ function drop_parts_dv_left {
   local isps is list().
   local uses is list().
   for e in engs {
-    if not gone:contains(e:uid) {
+    local keys is list().
+    for k in e:consumedresources:keys {
+      keys:add(drop_parts_res_key(k)).
+    }
+    // A jet (it breathes intake air) can't burn in space.
+    if not gone:contains(e:uid) and not keys:contains("intakeair") {
       thrusts:add(e:maxpossiblethrustat(0)).
       isps:add(e:ispat(0)).
-      for k in e:consumedresources:keys {
-        uses:add(drop_parts_res_key(k)).
+      for k in keys {
+        uses:add(k).
       }
     }
   }
@@ -135,6 +151,9 @@ function drop_parts {
   if ctx:error <> "" {
     return claudia_finish(ctx, false, ctx:error, extra).
   }
+  if not ctx:opt:allow_no_engine:istype("Boolean") {
+    return claudia_finish(ctx, false, "allow_no_engine must be true or false", extra).
+  }
   local names is drop_parts_names(ctx:opt:parts).
   if names:istype("String") {
     return claudia_finish(ctx, false, names, extra).
@@ -151,28 +170,20 @@ function drop_parts {
   if ship:body:atm:exists {
     set atm_height to ship:body:atm:height.
   }
-  local allow is ctx:opt:allow_no_engine.
-  if not allow:istype("Boolean") {
-    return claudia_finish(ctx, false, "allow_no_engine must be true or false", extra).
-  }
   local dv_now is drop_parts_dv_left(lexicon("gone", list())).
-  if drop_parts_strands(status, ship:periapsis, atm_height, dv_now, drop_parts_dv_left(plan), allow) {
-    set extra:dropped_dv to dv_before.
-    return claudia_finish(ctx, false, drop_parts_strand_reason(dv_before, ship:periapsis, atm_height), extra).
+  local dv_left is drop_parts_dv_left(plan).
+  if drop_parts_strands(status, ship:periapsis, atm_height, dv_now, dv_left, ctx:opt:allow_no_engine) {
+    // What it would take: nothing is left.
+    set extra:dropped_dv to drop_parts_dv_taken(dv_before, 0, dv_now, dv_left).
+    return claudia_finish(ctx, false, drop_parts_strand_reason(extra:dropped_dv, ship:periapsis, atm_height), extra).
   }
   local before is ship:parts:length.
   local not_fired is claudia_fire_drop(ctx, plan).
   set extra:parts_dropped to before - ship:parts:length.
-  // Stock delta-v is recounted after the parts left; what it lost is what the drop took (a dropped empty
-  // tank gains delta-v: 0). -1: unknown at a trickle throttle.
+  // Stock delta-v is recounted after the parts left; what it lost is what the drop took.
   ship:deltav:forcecalc().
   wait 0.5.
-  local dv_after is claudia_dv_remaining().
-  if dv_before < 0 or dv_after < 0 {
-    set extra:dropped_dv to -1.
-  } else {
-    set extra:dropped_dv to round(max(0, dv_before - dv_after), 1).
-  }
+  set extra:dropped_dv to drop_parts_dv_taken(dv_before, claudia_dv_remaining(), dv_now, dv_left).
   if not_fired <> "" {
     return claudia_finish(ctx, false, not_fired, extra).
   }
