@@ -177,6 +177,32 @@ function tune_pe_actual {
   return ship:orbit:periapsis.
 }
 
+// The lowest periapsis (m) that is safe at a body named name: above its atmosphere (atm_height m, has_atm), or 2 km above
+// its highest peak for the stock airless bodies; -1 for a body whose peaks the block doesn't know. Pure.
+function tune_pe_safe_height {
+  parameter name, has_atm, atm_height.
+  if has_atm {
+    return atm_height.
+  }
+  local peaks is lexicon("Moho", 6817, "Gilly", 6401, "Mun", 7061, "Minmus", 5725, "Ike", 12738, "Dres", 5670, "Vall", 7985,
+    "Tylo", 11290, "Bop", 21757, "Pol", 5585, "Eeloo", 3874).
+  if not peaks:haskey(name) {
+    return -1.
+  }
+  return peaks[name] + 2000.
+}
+
+// What a miss on tolerance adds to the reason (#610): "" or, when the craft is on an encounter (to_moon, claudia_to_moon) whose
+// periapsis pe m at the body named name is above safe m (tune_pe_safe_height; -1, unknown, is never safe), that a capture
+// can still follow (20ac: a script's `if res:success` skipped one at 35.3 km against 30 ± 5). Pure.
+function tune_pe_safe_hint {
+  parameter to_moon, pe, name, safe.
+  if not to_moon or safe < 0 or pe <= safe {
+    return "".
+  }
+  return "; encounter safe: pe " + round(pe / 1000, 1) + " km at " + name + "; a capture can follow".
+}
+
 // Searches nd's burn for the one that puts the next patch's periapsis at value: sets nd's
 // components and returns the m the periapsis is still off by.
 function tune_pe_search {
@@ -379,7 +405,13 @@ function tune_pe {
     return claudia_finish(ctx, false, flown:reason, extra).
   }
   if extra:pe_actual < 0 or abs(extra:pe_actual - opt:value) > opt:tolerance {
-    return claudia_finish(ctx, false, "periapsis " + extra:pe_actual + " m is over tolerance " + opt:tolerance + " m from " + round(opt:value) + " m", extra).
+    local hint is "".
+    if ship:orbit:hasnextpatch {
+      local enc is ship:orbit:nextpatch.
+      local dest is enc:body.
+      set hint to tune_pe_safe_hint(claudia_to_moon(dest), enc:periapsis, dest:name, tune_pe_safe_height(dest:name, dest:atm:exists, dest:atm:height)).
+    }
+    return claudia_finish(ctx, false, "periapsis " + extra:pe_actual + " m is over tolerance " + opt:tolerance + " m from " + round(opt:value) + " m" + hint, extra).
   }
   return claudia_finish(ctx, true, "", extra).
 }

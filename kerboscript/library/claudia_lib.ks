@@ -1361,6 +1361,37 @@ function claudia_soi_leg_ut {
   return start_ut.
 }
 
+// "" or why a burn burn_in s from now, timed on the orbit the craft is on, must not be flown (#610): the orbit changes
+// sphere of influence first, soi_eta s from now (has_next false: it never does), into next_name's; to_moon is true when
+// that is a moon of the body the craft is at (an encounter, claudia_to_moon), false for an escape. Refused before any burn,
+// the craft keeps its path. Pure.
+function claudia_soi_first {
+  parameter has_next, soi_eta, burn_in, next_name, to_moon.
+  if not has_next or soi_eta >= burn_in {
+    return "".
+  }
+  if to_moon {
+    return "an encounter with " + next_name + " comes first (in " + round(soi_eta) + " s): coast to it".
+  }
+  return "an escape to " + next_name + " comes first (in " + round(soi_eta) + " s)".
+}
+
+// claudia_soi_first for a burn at ut on the craft's orbit now.
+function claudia_soi_first_at {
+  parameter ut.
+  local o is ship:orbit.
+  if not o:hasnextpatch {
+    return "".
+  }
+  return claudia_soi_first(true, o:nextpatcheta, ut - time:seconds, o:nextpatch:body:name, claudia_to_moon(o:nextpatch:body)).
+}
+
+// Whether next_body, the body of the craft's next patch, is a moon of the body it is at: an encounter, not an escape.
+function claudia_to_moon {
+  parameter next_body.
+  return next_body:hasbody and next_body:body = ship:body.
+}
+
 // Whether the craft is Aligned with nd's burn vector now, by the block's rcs_tolerance; keeps the hold
 // within tolerance in ctx:burn_within_ut.
 function claudia_aligned_to {

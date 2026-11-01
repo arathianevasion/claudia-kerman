@@ -47,14 +47,27 @@ namespace ClaudiaKermin.Kerboscript.Tests
         /// <summary>change_orbit_run on the rig with options, then each expression printed.</summary>
         private static string[] Fly(string options, params string[] prints)
         {
+            return FlyFirst(NoChange, options, prints);
+        }
+
+        /// <summary>As <see cref="Fly"/>, with first answering whether a sphere-of-influence change comes before the burn.</summary>
+        private static string[] FlyFirst(string first, string options, params string[] prints)
+        {
             return Run("local opt is claudia_options(lexicon(" + options + "), change_orbit_defaults(), \"auto\"):opt.\n"
-                + "local done is change_orbit_run(opt, " + Solve + ", " + FlyIt + ", " + Read + ").\n"
+                + "local done is change_orbit_run(opt, " + Solve + ", " + FlyIt + ", " + Read + ", " + first + ").\n"
                 + string.Join("\n", prints.Select(p => "print " + p + ".")));
         }
 
         private const string Solve = "{ parameter ask. return test_orbitburn(ask). }";
         private const string FlyIt = "{ parameter plan. return test_fly(plan). }";
         private const string Read = "{ parameter element. return test_element(element). }";
+        private const string NoChange = "{ parameter ut. return \"\". }";
+
+        /// <summary>A Mun encounter soiEta s after the rig's UT 0, as claudia_soi_first_at would read it off the orbit.</summary>
+        private static string MunIn(double soiEta)
+        {
+            return "{ parameter ut. return claudia_soi_first(true, " + soiEta.ToString(CultureInfo.InvariantCulture) + ", ut, \"Mun\", true). }";
+        }
 
         // ---- Options ----
 
@@ -196,10 +209,10 @@ namespace ClaudiaKermin.Kerboscript.Tests
                 "local opt is claudia_options(lexicon(\"goal\", \"set_inc\", \"value\", 90), change_orbit_defaults(), \"auto\"):opt.\n"
                 + "local stale is test_orbitburn(change_orbit_ask(opt)).\n"
                 + "test_scene(1).\n"
-                + "local old is change_orbit_run(opt, { parameter ask. return stale. }, " + FlyIt + ", " + Read + ").\n"
+                + "local old is change_orbit_run(opt, { parameter ask. return stale. }, " + FlyIt + ", " + Read + ", " + NoChange + ").\n"
                 + "print old:reason.\n"
                 + "test_scene(1).\n"
-                + "local done is change_orbit_run(opt, " + Solve + ", " + FlyIt + ", " + Read + ").\n"
+                + "local done is change_orbit_run(opt, " + Solve + ", " + FlyIt + ", " + Read + ", " + NoChange + ").\n"
                 + "print done:reason. print done:extra:inc_actual. print done:extra:burn_ut. print stale:ut.");
             Assert.StartsWith("inc ", printed[0]);
             Assert.Contains("is over tolerance 0.5 from 90", printed[0]);
@@ -249,6 +262,28 @@ namespace ClaudiaKermin.Kerboscript.Tests
             var printed = Fly("\"goal\", \"set_inc\", \"value\", 90", "done:reason");
             Assert.StartsWith("inc ", printed[0]);
             Assert.EndsWith("is over tolerance 0.5 from 90", printed[0]);
+        }
+
+        [Fact]
+        public void A_burn_after_a_sphere_of_influence_change_is_refused_before_it_flies()
+        {
+            // #610: the set_inc burn is at the apoapsis about 1000 s on; a Mun encounter at 400 s comes first. The craft stays
+            // on its encounter.
+            OrbitRig.Start(Low());
+            var before = OrbitRig.Now;
+            var printed = FlyFirst(MunIn(400), "\"goal\", \"set_inc\", \"value\", 90", "done:reason", "done:extra:burn_ut");
+            Assert.Equal(new[] { "an encounter with Mun comes first (in 400 s): coast to it", "-1" }, printed);
+            Assert.Equal(0, OrbitRig.Flights);
+            Assert.Same(before, OrbitRig.Now);
+        }
+
+        [Fact]
+        public void A_burn_before_the_sphere_of_influence_change_flies_as_before()
+        {
+            OrbitRig.Start(Low());
+            var printed = FlyFirst(MunIn(5000), "\"goal\", \"set_inc\", \"value\", 90", "done:reason");
+            Assert.Equal("", printed[0]);
+            Assert.Equal(1, OrbitRig.Flights);
         }
 
         [Fact]

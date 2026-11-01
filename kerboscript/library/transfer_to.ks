@@ -227,5 +227,7 @@ function transfer_to {
   }
   set extra:encounter_ut to round(enc:soi_ut).
   set extra:target_pe_actual to round(enc:orbit:periapsis).
+  // It ends before arrival: a capture straight after it would burn at this body's apsis (20ac, #610). Turn text, not docs.
+  set extra:next to "coast to encounter_ut + 60 before a capture".
   return claudia_finish(ctx, true, "", extra).
 }
