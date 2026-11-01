@@ -242,5 +242,25 @@ namespace ClaudiaKermin.Core.Tests
                 Assert.True(System.IO.File.Exists(System.IO.Path.Combine(folder, "test.ks")), path + ": no test.ks");
             }
         }
+
+        [Fact]
+        public void TheMissionScriptMasksCommentsAndStringsKeepingEveryPosition()
+        {
+            var source = "print \"a // b\". // note\nprint 1.\n";
+            var comments = CoreLibrary.MissionScript(source);
+            var strings = CoreLibrary.MissionScript(source, true);
+            Assert.Equal("print \"a // b\".        \nprint 1.\n", comments);
+            Assert.Equal("print \"      \".        \nprint 1.\n", strings);
+            Assert.Equal(source.Length, comments.Length);
+            Assert.Equal(source.Length, strings.Length);
+        }
+
+        [Fact]
+        public void TheMissionScriptOfABundleStopsBeforeTheLibraryAndAnythingElseIsScannedWhole()
+        {
+            var bundle = CoreLibrary.Bundle("circularize().\n// done\n");
+            Assert.Equal("circularize().\n       \n\n", CoreLibrary.MissionScript(bundle).Replace("\n\n\n", "\n\n"));
+            Assert.Equal("local x is 1.\n", CoreLibrary.MissionScript("local x is 1.\n"));
+        }
     }
 }

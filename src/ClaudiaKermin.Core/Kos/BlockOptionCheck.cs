@@ -48,8 +48,8 @@ namespace ClaudiaKermin.Core.Kos
         public static IList<string> Problems(string script)
         {
             var problems = new List<string>();
-            var code = Masked(MissionLines(script ?? ""), false);
-            var masked = Masked(code, true);
+            var code = CoreLibrary.MissionScript(script);
+            var masked = CoreLibrary.MissionScript(script, true);
             foreach (Match m in Call.Value.Matches(masked))
             {
                 if (IsSuffix(masked, m.Index)) continue;
@@ -93,8 +93,8 @@ namespace ClaudiaKermin.Core.Kos
         /// <summary>The keys of the lexicon <paramref name="function"/> returns in <paramref name="source"/>, each true when "required".</summary>
         private static IList<KeyValuePair<string, bool>> Options(string source, string function)
         {
-            var code = Masked(source, false);
-            var masked = Masked(source, true);
+            var code = CoreLibrary.MissionScript(source);
+            var masked = CoreLibrary.MissionScript(source, true);
             var start = Regex.Match(masked, @"\bfunction\s+" + Regex.Escape(function) + @"\s*\{\s*(parameter\b[^.]*\.\s*)?return\s+lexicon\s*\(");
             if (!start.Success) throw new InvalidOperationException(function + " doesn't return lexicon(...) in the bundled library");
             var args = Arguments(masked, code, start.Index + start.Length);
@@ -143,44 +143,6 @@ namespace ClaudiaKermin.Core.Kos
             var i = at - 1;
             while (i >= 0 && char.IsWhiteSpace(masked[i])) i--;
             return i >= 0 && masked[i] == ':';
-        }
-
-        /// <summary>The Mission Script's lines (all of it when it is not a bundle).</summary>
-        private static string MissionLines(string script)
-        {
-            script = script.Replace("\r\n", "\n");
-            var start = CoreLibrary.LibraryStartLine(script);
-            if (start == int.MaxValue) return script;
-            var lines = script.Split('\n');
-            var text = new StringBuilder();
-            for (var i = 0; i < lines.Length && i + 1 < start; i++) text.Append(lines[i]).Append('\n');
-            return text.ToString();
-        }
-
-        /// <summary>
-        /// <paramref name="code"/> with each comment blanked to spaces and, when <paramref name="strings"/>, each string's
-        /// contents too (its quotes kept), so every index still points at the same character.
-        /// </summary>
-        private static string Masked(string code, bool strings)
-        {
-            var text = new StringBuilder(code);
-            var inString = false;
-            for (var i = 0; i < text.Length; i++)
-            {
-                var c = text[i];
-                if (c == '\n') inString = false;
-                else if (c == '"') inString = !inString;
-                else if (inString)
-                {
-                    if (strings) text[i] = ' ';
-                }
-                else if (c == '/' && i + 1 < text.Length && text[i + 1] == '/')
-                {
-                    for (; i < text.Length && text[i] != '\n'; i++) text[i] = ' ';
-                    i--;
-                }
-            }
-            return text.ToString();
         }
     }
 }
