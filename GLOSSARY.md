@@ -241,7 +241,7 @@ The values a Mission Script hands back once, when its Maneuver Sequence ends (e.
 _Avoid_: report (as a noun), outcome (which is a Debrief's), return value
 
 **Script Check**:
-The mod's check of a compiled script against a forbidden list (e.g. save and load, file operations, changing other vessels) before Approval; a script that fails is rewritten or never offered.
+The mod's check of a compiled script against a forbidden list (e.g. save and load, file operations, changing other vessels) before Approval, and of each Building Block call whose inline options lexicon misses a required option or names one the block doesn't take (#606); a script that fails is rewritten or never offered.
 _Avoid_: sandbox, validation
 
 **Couldn't produce a safe script**:

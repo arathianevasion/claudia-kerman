@@ -420,6 +420,34 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             }
         }
 
+        // ---- Building Block options (#606): a call the block would refuse at once fails, before anything flies ----
+
+        [Fact]
+        public void A2d0cTransferMissingTargetPeFailsAndItsRetryPasses()
+        {
+            var failed = _check.Check(CoreLibrary.Bundle("local res is transfer_to(lexicon(\"target\", \"Mun\", \"stage_limit\", 3)).\nprint res.\n"));
+            Assert.Null(failed.CompileError);
+            Assert.False(failed.Passed);
+            var problem = Assert.Single(failed.Problems);
+            Assert.Equal("line 1: transfer_to: missing required option target_pe; options: target*, target_pe*, window, correction (* required), plus the common options", problem);
+
+            AssertAllowed(CoreLibrary.Bundle("local res is transfer_to(lexicon(\"target\", \"Mun\", \"target_pe\", 30000, \"stage_limit\", 3)).\nprint res.\n"));
+        }
+
+        [Fact]
+        public void AnUnknownBlockOptionFailsNamingTheKey()
+        {
+            var result = _check.Check(CoreLibrary.Bundle("transfer_to(lexicon(\"target\",\"Mun\",\"target_pe\",30000,\"pe\",30000))."));
+            Assert.False(result.Passed);
+            Assert.Contains(result.BlockOptions, p => p.StartsWith("line 1: transfer_to: unknown option pe;"));
+        }
+
+        [Fact]
+        public void ABlockTestMayPassOptionsTheBlockRefuses()
+        {
+            Assert.True(new KosScriptCheck(forToolTests: true).Check(CoreLibrary.Bundle("print coast(lexicon()).")).Passed);
+        }
+
         // ---- Block-internal calls (ADR 0006, ADR 0007): the Core Library's, never a Mission Script's ----
 
         [Theory]
