@@ -58,7 +58,18 @@ namespace ClaudiaKermin.Core.Kos
             WasAborted = wasAborted;
         }
 
-        /// <summary>One line for logs and the debug window, e.g. "Aborted (player pressed Abort)".</summary>
+        /// <summary>
+        /// Whether the mod makes the craft safe once the run has ended (#598): an aborted run, and any run that ended without
+        /// a Script Result (a kOS error, a return without reporting, Ctrl+C), since kOS leaves the main throttle where the program
+        /// last set it. A Finished run is the library's own claudia_finish / claudia_make_safe; an Interrupted one
+        /// (scene change, lost processor) has no live craft to steer.
+        /// </summary>
+        public bool MakesCraftSafe
+        {
+            get { return WasAborted || (Kind != RunOutcomeKind.Finished && Kind != RunOutcomeKind.Interrupted); }
+        }
+
+        /// <summary>One line for logs and the debug window, e.g."Aborted (player pressed Abort)".</summary>
         public string Summary
         {
             get { return Kind + (Reason.Length > 0 ? " (" + Reason + ")" : ""); }

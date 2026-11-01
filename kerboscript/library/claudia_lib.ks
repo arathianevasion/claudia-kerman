@@ -594,9 +594,25 @@ function claudia_decoupler_event {
   return "".
 }
 
-// Fires decoupler d. Returns true if one of its modules had an event to fire.
+// True if part p is one of parts (by uid): one event can split the craft, and a part on the other vessel is
+// one the runtime gate refuses (#558).
+function claudia_aboard {
+  parameter p, parts.
+  for other in parts {
+    if other:uid = p:uid {
+      return true.
+    }
+  }
+  return false.
+}
+
+// Fires decoupler d, if it is still on the craft (parts, by default ship:parts). Returns true if one of
+// its modules had an event to fire.
 function claudia_fire_decoupler {
-  parameter d.
+  parameter d, parts is ship:parts.
+  if not claudia_aboard(d, parts) {
+    return false.
+  }
   for module_name in list("ModuleDecouple", "ModuleAnchoredDecoupler", "ModuleJettison") {
     if d:hasmodule(module_name) {
       local m is d:getmodule(module_name).
