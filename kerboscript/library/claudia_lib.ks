@@ -598,8 +598,8 @@ function claudia_decoupler_event {
 // one the runtime gate refuses (#558).
 function claudia_aboard {
   parameter p, parts.
-  for q in parts {
-    if q:uid = p:uid {
+  for other in parts {
+    if other:uid = p:uid {
       return true.
     }
   }
