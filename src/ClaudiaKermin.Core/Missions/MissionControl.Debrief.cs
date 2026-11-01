@@ -46,6 +46,8 @@ namespace ClaudiaKermin.Core.Missions
             public readonly RunEventLog RunEvents = new RunEventLog();
             /// <summary>The current run's RCS switches (RCS Use); cleared when the next run starts.</summary>
             public readonly RcsUseTally RcsUse = new RcsUseTally();
+            /// <summary>The current run's blocks trail (#609); cleared when the next run starts.</summary>
+            public readonly BlockTrail Blocks = new BlockTrail();
             /// <summary>The kOS terminal text of the last run that did not report, for the Debrief card; "" otherwise.</summary>
             public string ScriptError = "";
             /// <summary>The Debrief in hand: the recheck result and the rest, for its card.</summary>
@@ -60,6 +62,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             mission.RunEvents.Clear();
             mission.RcsUse.Clear();
+            mission.Blocks.Clear();
             mission.ScriptError = "";
         }
 

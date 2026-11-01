@@ -603,11 +603,14 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         /// <param name="crossings">The Telemetry Checks crossed during the run with their verdicts; "" when none was.</param>
-        public static string RunReport(SequencePlan plan, RunOutcome outcome, string crossings)
+        /// <param name="blocks">The run's blocks trail (#609), listed after the report; null for none.</param>
+        public static string RunReport(SequencePlan plan, RunOutcome outcome, string crossings, BlockTrail blocks = null)
         {
             var text = "The player approved the Sequence Plan " + Quoted(plan.Name) + " and the mod ran its Mission Script.\n"
                 + RunEndedPrefix + outcome.Kind + (outcome.Reason.Length > 0 ? " (" + outcome.Reason + ")" : "") + ".";
             if (outcome.Report != null) text += "\nReport (JSON data): " + ReportJson(outcome.Report);
+            var trail = blocks == null ? "" : blocks.Line(outcome.Report);
+            if (trail.Length > 0) text += "\n" + trail;
             if (outcome.ErrorText.Length > 0) text += "\nkOS terminal after the run (quoted): " + Quoted(outcome.ErrorText);
             if (outcome.MakesCraftSafe && !outcome.WasAborted) text += "\nThe mod cut the throttle and released steering.";
             text += CrossedChecks(crossings);

@@ -92,6 +92,8 @@ namespace ClaudiaKermin.Core.Missions
         public double? RunStartDeltaVLeft;
         /// <summary>Delta-v (m/s) the run dropped with stages at zero throttle, already taken off <see cref="RunStartDeltaVLeft"/> (#605); 0 for none and in older saves.</summary>
         public double RunDroppedDeltaV;
+        /// <summary>The current or last run's blocks trail (JSON written by BlockTrail.ToJson, #609); "" for none and in older saves.</summary>
+        public string BlockTrail = "";
         /// <summary>The kOS terminal text of the last run that did not report, until its Debrief card; "" otherwise.</summary>
         public string ScriptError = "";
         /// <summary>The craft docked since the pending plan was offered (what with), so Approve is Re-plan; "" for none.</summary>
@@ -175,6 +177,7 @@ namespace ClaudiaKermin.Core.Missions
             if (RunStartMonopropellant.HasValue) values["runStartMonopropellant"] = RunStartMonopropellant.Value.ToString("R", CultureInfo.InvariantCulture);
             if (RunStartDeltaVLeft.HasValue) values["runStartDeltaVLeft"] = RunStartDeltaVLeft.Value.ToString("R", CultureInfo.InvariantCulture);
             if (RunDroppedDeltaV != 0) values["runDroppedDeltaV"] = RunDroppedDeltaV.ToString("R", CultureInfo.InvariantCulture);
+            if (BlockTrail.Length > 0) values["blockTrail"] = BlockTrail;
             if (ScriptError.Length > 0) values["scriptError"] = ScriptError;
             if (Recheck.Length > 0) values["recheck"] = Recheck;
             if (RecheckSince != 0) values["recheckSince"] = RecheckSince.ToString(CultureInfo.InvariantCulture);
@@ -232,6 +235,7 @@ namespace ClaudiaKermin.Core.Missions
                 Crossings = Get(values, "crossings"),
                 RunEvents = Get(values, "runEvents"),
                 RcsUse = Get(values, "rcsUse"),
+                BlockTrail = Get(values, "blockTrail"),
                 ScriptError = Get(values, "scriptError"),
                 Recheck = Get(values, "recheck"),
                 PendingNotice = Get(values, "pendingNotice"),

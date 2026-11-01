@@ -837,7 +837,7 @@ namespace ClaudiaKermin.Core.Missions
             var turn = new Turn
             {
                 Purpose = Purpose.Debrief,
-                UserText = MissionPrompts.RunReport(mission.PendingSequence, outcome, CrossingsText(mission)) + "\n" + ChildRunNote(mission) + MissionPrompts.Facts(_ut, _snapshot),
+                UserText = MissionPrompts.RunReport(mission.PendingSequence, outcome, CrossingsText(mission), mission.Blocks) + "\n" + ChildRunNote(mission) + MissionPrompts.Facts(_ut, _snapshot),
                 Notice = MissionPrompts.DebriefNotice,
             };
             if (mission.Stage == MissionStage.Paused) mission.StageBeforePause = MissionStage.Debriefing;
