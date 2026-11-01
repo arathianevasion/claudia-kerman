@@ -283,6 +283,62 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
             Assert.Equal(expected, One("land_same_biome(\"" + landed + "\", \"" + asked + "\")"));
         }
 
+        // ---- land: a biome's next site after a terrain refusal (#528) ----
+
+        private const string TerrainRefusal = "terrain on the approach: no Descent Shape clears it on any pass in the next 6 h (the ground rises 900 m over the margin)";
+
+        [Theory]
+        // A biome site refused for terrain gives way to the next, up to 5 sites.
+        [InlineData(true, TerrainRefusal, 1, "True")]
+        [InlineData(true, TerrainRefusal, 4, "True")]
+        [InlineData(true, TerrainRefusal, 5, "False")]
+        // A site given as coordinates moved for terrain already (up to 5 km); it doesn't retry.
+        [InlineData(false, TerrainRefusal, 1, "False")]
+        // A plan, and the other failures: plane changes (#545), no thrust, no pass in reach. Unknown biomes (#591) fail at the
+        // site search, before any pass search.
+        [InlineData(true, "", 1, "False")]
+        [InlineData(true, "no pass over the site in the next 6 h; plane changes that reach it (fly one as its own step, then land again): change_orbit inc 4", 1, "False")]
+        [InlineData(true, "thrust and mass are required", 1, "False")]
+        [InlineData(true, "descent_shape 3 doesn't clear the terrain on the approach", 1, "False")]
+        public void A_biome_target_takes_its_next_site_only_after_a_terrain_on_the_approach_refusal(bool byBiome, string error, int tried, string expected)
+        {
+            Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture, "land_next_site({0}, \"{1}\", {2})", byBiome ? "true" : "false", error, tried)));
+        }
+
+        [Fact]
+        public void With_every_site_refused_the_failure_says_how_many_of_the_biomes_sites_were_tried()
+        {
+            Assert.Equal(
+                "terrain on the approach at 5 East Crater sites: no Descent Shape clears it on any pass in the next 6 h (the ground rises 900 m over the margin)",
+                One("land_sites_refused(\"" + TerrainRefusal + "\", 5, \"East Crater\")"));
+            // One site tried (the search had no other), or another failure: the reason as it was.
+            Assert.Equal(TerrainRefusal, One("land_sites_refused(\"" + TerrainRefusal + "\", 1, \"East Crater\")"));
+            Assert.Equal("no pass over the site in the next 6 h", One("land_sites_refused(\"no pass over the site in the next 6 h\", 3, \"East Crater\")"));
+        }
+
+        [Fact]
+        public void A_biome_whose_first_site_is_refused_for_terrain_plans_its_second()
+        {
+            // land's loop over the biome's sites, with the pass search's verdicts given: the first site refused, the second planned.
+            var printed = Run(
+                "local verdicts is list(\"" + TerrainRefusal + "\", \"\", \"\").\n"
+                + "local tried is list().\n"
+                + "local error is \"\".\n"
+                + "until false {\n"
+                + "  tried:add(tried:length + 1).\n"
+                + "  set error to verdicts[tried:length - 1].\n"
+                + "  if not land_next_site(true, error, tried:length) { set error to land_sites_refused(error, tried:length, \"Twin Craters\"). break. }\n"
+                + "}\n"
+                + "print tried:length. print error = \"\".\n"
+                + "set tried to list().\n"
+                + "until false {\n"
+                + "  tried:add(tried:length + 1).\n"
+                + "  if not land_next_site(true, \"" + TerrainRefusal + "\", tried:length) { set error to land_sites_refused(\"" + TerrainRefusal + "\", tried:length, \"Twin Craters\"). break. }\n"
+                + "}\n"
+                + "print tried:length. print error:startswith(\"terrain on the approach at 5 Twin Craters sites: \").");
+            Assert.Equal(new[] { "2", "True", "5", "True" }, printed);
+        }
+
         // ---- land: geometry and orbits ----
 
         [Fact]
