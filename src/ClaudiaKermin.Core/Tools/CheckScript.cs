@@ -104,7 +104,7 @@ namespace ClaudiaKermin.Core.Tools
             };
         }
 
-        /// <summary>The script line a problem names, or 0; a forbidden finding's "line N: " prefix moves into the line field.</summary>
+        /// <summary>The script line a problem names, or 0; a forbidden or option finding's "line N: " prefix moves into the line field.</summary>
         private static long LineOf(string kind, ref string text)
         {
             var match = kind == "compile" ? CompileLine.Match(text) : ForbiddenLine.Match(text);

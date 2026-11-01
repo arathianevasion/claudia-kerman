@@ -14,7 +14,7 @@ namespace ClaudiaKermin.Core.Kos
         ScriptCheckResult Check(string script);
     }
 
-    /// <summary>A pass, or why the script failed: a compile error, the forbidden calls found, or both.</summary>
+    /// <summary>A pass, or why the script failed: a compile error, the forbidden calls found, the Building Block calls a block would refuse, or several.</summary>
     public sealed class ScriptCheckResult
     {
         /// <summary>The compiler's message when the script doesn't compile; null when it does.</summary>

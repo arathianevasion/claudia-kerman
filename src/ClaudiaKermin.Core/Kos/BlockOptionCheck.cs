@@ -25,8 +25,8 @@ namespace ClaudiaKermin.Core.Kos
             Options(CoreLibrary.Files.First(f => !f.IsBlock).Source, "claudia_common_defaults").Select(o => o.Key).ToList());
         private static readonly Lazy<Regex> Call = new Lazy<Regex>(() => new Regex(
             @"\b(?<block>" + string.Join("|", Blocks.Keys.Select(Regex.Escape).ToArray()) + @")\s*\(\s*(lexicon|lex)\s*\(",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant));
-        private static readonly Regex Literal = new Regex("^\"(?<key>[^\"]*)\"$", RegexOptions.CultureInvariant);
+            RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant));
+        private static readonly Regex Literal = new Regex("^\"(?<key>[^\"]*)\"$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         /// <summary>Each block by name, with its own options in <c>_defaults()</c> order, each true when it is required.</summary>
         public static IDictionary<string, IList<KeyValuePair<string, bool>>> Blocks
