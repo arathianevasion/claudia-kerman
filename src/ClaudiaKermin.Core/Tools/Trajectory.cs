@@ -107,6 +107,8 @@ namespace ClaudiaKermin.Core.Tools
             {
                 var patch = Next(body, orbit, startUt, left);
                 patches.Add(patch);
+                // Only an Escape or an Encounter goes on from EndUt (a finite time); any other end, or the last patch asked for, ends the list.
+                if (patches.Count >= maxPatches || (patch.End != PatchEnd.Escape && patch.End != PatchEnd.Encounter)) break;
                 Vec3 r, v;
                 patch.Orbit.State(patch.EndUt, out r, out v);
                 if (patch.End == PatchEnd.Escape)
@@ -126,7 +128,6 @@ namespace ClaudiaKermin.Core.Tools
                     body = patch.Next;
                     orbit = Conic.FromState(body.Gm, r - br, v - bv, patch.EndUt);
                 }
-                else break;
                 startUt = patch.EndUt;
             }
             return patches;

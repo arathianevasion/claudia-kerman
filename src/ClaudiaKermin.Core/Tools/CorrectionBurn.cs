@@ -93,8 +93,8 @@ namespace ClaudiaKermin.Core.Tools
             var free = ask.LatestUt > ask.EarliestUt;
             var startUt = free ? (ask.EarliestUt + ask.LatestUt) / 2 : ask.EarliestUt;
 
-            // Follow only as many patches as the uncorrected path takes to the target (#471: following past a hyperbola round
-            // the star throws), and take a throw, or a path that does not get there in as many, as an undefined point.
+            // Follow only as many patches as the uncorrected path takes to the target (a hyperbola round the star ends the list
+            // without a throw since #471), and take a throw, or a path that does not get there in as many, as an undefined point.
             var needed = PatchesTo(system, from, coast.Orbit, startUt, default(Vec3), target);
             if (needed == 0)
                 return Fail("the trajectory from the burn does not reach " + target.Name + " within " + MaxPatches + " patches: a Course Correction starts from one that does");
@@ -236,8 +236,8 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
-        /// <see cref="BodySystem.Follow"/>, or null where it throws: on a radial path, or when its last patch is a hyperbola round
-        /// the star (#471), as a large trial burn that escapes the planet gives.
+        /// <see cref="BodySystem.Follow"/>, or null where it throws on a radial path (a last patch that is a hyperbola round
+        /// the star no longer throws, #471). The wrapper stays until #497.
         /// </summary>
         private static List<Patch> Follow(BodySystem system, SnapshotBody body, Conic orbit, double ut, int patches)
         {
