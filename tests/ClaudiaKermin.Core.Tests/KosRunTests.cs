@@ -17,6 +17,31 @@ namespace ClaudiaKermin.Core.Tests
             return new Dictionary<string, object> { { key, value } };
         }
 
+        [Theory]
+        [InlineData(RunOutcomeKind.Aborted, true, true)]
+        [InlineData(RunOutcomeKind.NoReport, false, true)]
+        [InlineData(RunOutcomeKind.StoppedByPlayer, false, true)]
+        [InlineData(RunOutcomeKind.Finished, true, true)]
+        [InlineData(RunOutcomeKind.Finished, false, false)]
+        [InlineData(RunOutcomeKind.Interrupted, false, false)]
+        public void OnlyARunWithoutAScriptResultIsMadeSafe(RunOutcomeKind kind, bool aborted, bool expected)
+        {
+            var outcome = new RunOutcome(kind, kind == RunOutcomeKind.Finished ? Report("ok", true) : null, "", "", aborted);
+
+            Assert.Equal(expected, outcome.MakesCraftSafe);
+        }
+
+        [Fact]
+        public void TheRunReportSaysTheModCutTheThrottleOnlyForARunItMadeSafeBesidesAnAbort()
+        {
+            var plan = new SequencePlan { Name = "x" };
+            var noReport = new RunOutcome(RunOutcomeKind.NoReport, null, "error", "", false);
+            var finished = new RunOutcome(RunOutcomeKind.Finished, Report("ok", true), "", "", false);
+
+            Assert.Contains("The mod cut the throttle", MissionPrompts.RunReport(plan, noReport, ""));
+            Assert.DoesNotContain("cut the throttle", MissionPrompts.RunReport(plan, finished, ""));
+        }
+
         [Fact]
         public void AReportBeforeTheProgramEndsMeansFinished()
         {
