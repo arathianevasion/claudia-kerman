@@ -244,6 +244,7 @@ namespace ClaudiaKermin.Core.Missions
                     Note(LogKind.Notice, (call.Name == ProposedPlans.ToolName ? "Reply Tool " : "Planning Tool ") + call.Name + " (" + Shorten(call.InputJson) + "): " + (call.IsError ? "error: " : "") + call.Summary);
                     Event(mission, "tool", call.Name + " " + call.InputJson + " -> " + (call.IsError ? "error: " : "") + call.Summary);
                     if (call.Refusal.Length == 0) continue;
+                    if (call.Name == ProposedPlans.ToolName && !TakesMissionPlan(turn.Purpose)) turn.PlanCallRefused = true;
                     turn.Stats.Refused(IsRepeat(call.Refusal, repeats[i]));
                     Event(mission, "tool_refused", call.Name + " " + call.InputJson + " -> " + call.Refusal + " (this turn: " + turn.Stats.RefusedCalls + " refused, "
                         + turn.Stats.RepeatCalls + (turn.Stats.RepeatCalls == 1 ? " repeat)" : " repeats)"));
