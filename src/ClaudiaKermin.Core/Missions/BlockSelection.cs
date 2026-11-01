@@ -47,7 +47,7 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         private static readonly HashSet<string> Airy = new HashSet<string> { "kerbin", "eve", "duna", "jool", "laythe" };
         private static readonly Regex LandingOn = new Regex(
-            @"(?<![a-z0-9])(?:land(?:ing|s|ed)?|touch(?:ing)?\s?down|set(?:ting)?\s+down)\s+(?:on|at|onto|in)\s+(?:the\s+)?(?:surface\s+of\s+)?([a-z]+)", RegexOptions.Compiled);
+            @"(?<![a-z0-9])(?:land(?:ing|s|ed)?|touch(?:ing)?\s?down|set(?:ting)?\s+down)\s+(?:on|at|onto|in)\s+(?:the\s+)?(?:surface\s+of\s+(?:the\s+)?)?([a-z]+)\b(?!'s)", RegexOptions.Compiled);
 
         private static KeyValuePair<string, string[]> Rule(string block, params string[] words)
         {

@@ -47,6 +47,12 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void ALandingOnAMoonOfAnAirBodyKeepsLand()
+        {
+            Assert.Contains("land", BlockSelection.For("Land on Duna's moon Ike", Shipped));
+        }
+
+        [Fact]
         public void AnAirlessLandingKeepsLandAndNotReentry()
         {
             var picked = BlockSelection.For("land on the Mun", Shipped);
