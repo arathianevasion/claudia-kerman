@@ -1621,11 +1621,13 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <summary>
         /// The Chute Allocation (#626) of the craft as it is now over the Mission Plan's steps not yet begun: at Mission Plan
-        /// Approval, the whole plan; at a Debrief, the steps after the one just flown. Without a Game Snapshot it stays as it was.
+        /// Approval, the whole plan; at a Debrief, the steps after the one just flown. Only in Flight, where the snapshot carries
+        /// the chutes' numbers: elsewhere (or with no Game Snapshot) there is none until the first snapshot in Flight gives one.
         /// </summary>
         private void AllocateChutes(Mission mission)
         {
-            if (_snapshot == null || mission.Plan == null) return;
+            mission.Chutes = null;
+            if (_snapshot == null || mission.Plan == null || _scene != GameScene.Flight) return;
             mission.Chutes = ChuteAllocation.Of(_snapshot, mission.Plan.Sequences, StepsBegun(mission), mission.Remote, mission.ProcessorPartId);
         }
 
