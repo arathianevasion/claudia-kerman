@@ -187,7 +187,7 @@ namespace ClaudiaKermin.Core.Tests
         public void LandAndAscendShipWithDocsOfTheirSpecOptionsAndResults()
         {
             Assert.Contains("\n- land(options): lands on an airless body", CoreLibrary.Summaries());
-            Assert.Contains("\n- ascend(options): flies to orbit from the ground of an airless body (Mun, Minmus...) or a fall over it", CoreLibrary.Summaries());
+            Assert.Contains("\n- ascend(options): from the ground or a fall over an airless body, to a circular orbit", CoreLibrary.Summaries());
             var land = CoreLibrary.FullDocs(new[] { "land" });
             foreach (var text in new[] { "target [\"any\"]", "daylight [true]", "max_slope [8]", "max_divert [300]", "touchdown_speed [2]",
                 "gear_alt [1000]", "burn_margin [1.10]", "slope", "touchdown_speed_actual", "distance_to_target", "best_effort", "geo" })

@@ -12,7 +12,7 @@
 
 @lazyglobal off.
 
-//| ascend(options): flies to orbit from the ground of an airless body (Mun, Minmus...) or a fall over it
+//| ascend(options): from the ground or a fall over an airless body, to a circular orbit
 //| (SUB_ORBITAL/FLYING): stops any fall, climbs low for orbital speed, then circularizes at
 //| target_alt (exec_node). For a craft falling with periapsis under the terrain (a prograde
 //| node there points into the ground). ORBITING clear of the terrain: success, nothing flown.
