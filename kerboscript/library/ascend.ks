@@ -2,13 +2,13 @@
 // Copyright (C) 2026 Andrew Watson
 //
 // Building Block ascend: flies from the surface of an airless body, or from a fall over it (the
-// abort to orbit, #597), to a circular orbit above its highest terrain. Built on claudia_lib.ks and exec_node.ks (which flies the circularization);
-// block-only helpers are prefixed ascend_. The "//|" lines are Claudia's docs for it; the first is
-// its summary.
+// abort to orbit, #597), to a circular orbit above its highest terrain. Built on claudia_lib.ks and
+// exec_node.ks (which flies the circularization); block-only helpers are prefixed ascend_. The "//|"
+// lines are Claudia's docs for it; the first is its summary.
 //
-// The climb: straight up off the ground (from flight, the same pitch law first stops the fall), then the pitch that holds half the vertical speed that
-// would coast it up to target_alt (so most of the thrust goes into orbital speed), until apoapsis
-// reaches it; then a node at apoapsis circularizes.
+// The climb: straight up off the ground (from flight, the same pitch law first stops the fall), then
+// the pitch that holds half the vertical speed that would coast it up to target_alt (so most of the
+// thrust goes into orbital speed), until apoapsis reaches it; then a node at apoapsis circularizes.
 
 @lazyglobal off.
 
@@ -121,7 +121,8 @@ function ascend_start {
   if sit = "SUB_ORBITAL" or sit = "FLYING" {
     return "flight".
   }
-  if (sit = "ORBITING" or sit = "ESCAPING") and pe <= highest {
+  // ESCAPING isn't flown, even into the terrain: past escape speed the climb has no apoapsis to reach.
+  if sit = "ORBITING" and pe <= highest {
     return "flight".
   }
   if sit = "ORBITING" {
@@ -141,11 +142,11 @@ function ascend_climb_pitch {
 }
 
 // The compass heading (degrees) to climb on from flight: the craft's own direction of travel az_travel
-// once its horizontal (orbital) speed v_h is 10 m/s or more, as turning it costs twice that; az_inc
-// (target_inc's) from a hover.
+// once its horizontal (orbital) speed v_h is 20 m/s or more, as turning it costs twice that; az_inc
+// (target_inc's) from a hover (the Mun and Minmus turn about 9 m/s at the equator).
 function ascend_flight_az {
   parameter az_inc, az_travel, v_h.
-  if v_h >= 10 {
+  if v_h >= 20 {
     return az_travel.
   }
   return az_inc.
@@ -220,7 +221,14 @@ function ascend {
     return claudia_finish(ctx, true, "", extra).
   }
 
-  // A craft whose engines aren't lit yet, or whose stage is dry, stages into them (within stage_limit).
+  // A craft whose engines aren't lit yet, or (from flight) whose stage is dry, stages into them (within
+  // stage_limit), so the flight check below judges the engines that will fly the climb.
+  if start = "flight" {
+    local staged is claudia_autostage(ctx).
+    if staged <> "" {
+      return claudia_finish(ctx, false, staged, extra).
+    }
+  }
   local lit is claudia_stage_into_engines(ctx).
   if lit <> "" {
     return claudia_finish(ctx, false, lit, extra).
@@ -254,9 +262,13 @@ function ascend {
   lock throttle to tset.
 
   // From flight the climb aims at least 1 km above the craft (ascend_climb_to), so a fall from above
-  // goal is stopped and apoapsis is still ahead to circularize at.
-  until ship:verticalspeed >= 0 and ship:apoapsis >= ascend_climb_to(start, goal, altitude) {
-    local aim is ascend_climb_to(start, goal, altitude).
+  // goal is stopped and apoapsis is still ahead to circularize at; the aim follows the craft down while
+  // it falls and holds once it climbs.
+  local aim is ascend_climb_to(start, goal, altitude).
+  until ship:verticalspeed >= 0 and ship:apoapsis >= aim {
+    if ship:verticalspeed < 0 {
+      set aim to ascend_climb_to(start, goal, altitude).
+    }
     local v_h is vxcl(ship:up:vector, ship:velocity:orbit):mag.
     local accel is ship:availablethrust / max(0.001, ship:mass).
     if alt:radar < 100 {

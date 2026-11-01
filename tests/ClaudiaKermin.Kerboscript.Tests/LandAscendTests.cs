@@ -1648,7 +1648,8 @@ function estimate {
             Assert.Equal("flight", One("ascend_start(\"FLYING\", false, -59600, 7061, \"Mun\")"));
             // In orbit but the periapsis under the highest terrain: still falling into it.
             Assert.Equal("flight", One("ascend_start(\"ORBITING\", false, 4000, 7061, \"Mun\")"));
-            Assert.Equal("flight", One("ascend_start(\"ESCAPING\", false, 4000, 7061, \"Mun\")"));
+            // Past escape speed there's no apoapsis to climb to, even on a path into the terrain.
+            Assert.Equal("ascend starts landed, flying or sub-orbital, not ESCAPING", One("ascend_start(\"ESCAPING\", false, 4000, 7061, \"Mun\")"));
             // Already safe in orbit: nothing to fly.
             Assert.Equal("orbit", One("ascend_start(\"ORBITING\", false, 12000, 7061, \"Mun\")"));
             Assert.Equal("ascend starts landed, flying or sub-orbital, not ESCAPING", One("ascend_start(\"ESCAPING\", false, 12000, 7061, \"Mun\")"));
@@ -1677,6 +1678,8 @@ function estimate {
         {
             Assert.Equal("200", One("ascend_flight_az(90, 200, 150)"));
             Assert.Equal("90", One("ascend_flight_az(90, 200, 9)"));
+            // A hover drifting a little past the ground's own 9 m/s of turn still flies into target_inc.
+            Assert.Equal("90", One("ascend_flight_az(90, 200, 15)"));
         }
 
         [Fact]
