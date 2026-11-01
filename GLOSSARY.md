@@ -117,8 +117,8 @@ Claudia's proposal for the next Maneuver Sequence: its intent, Building Blocks a
 _Avoid_: maneuver plan, proposal, step plan
 
 **Telemetry Check**:
-A quantity the mod can measure during a Maneuver Sequence (e.g. delta-v used, apoapsis, electric charge) with a threshold, set in the Sequence Plan or by default; while Running, the mod checks it, and crossing it raises an Alert. A crossed Telemetry Check rules out a Nominal Debrief.
-_Avoid_: watch limit, alarm, tripwire
+A quantity the mod can measure during a Maneuver Sequence (e.g. delta-v used, apoapsis, electric charge) with a threshold, set in the Sequence Plan or by default; while Running, the mod checks it, and crossing it raises an Alert. Orbit checks (apoapsis, periapsis, inclination) arm only once a reading is on the safe side, and disarm while the craft is landed, splashed, on the pad or in atmosphere; propulsion checks (delta-v left, delta-v used, fuel margin) disarm once no engine is aboard. A standing crossing rules out a Nominal Debrief; a recovered one doesn't.
+_Avoid_: watch limit, alarm, tripwire, suspended (a disarmed check), held (a check waiting out a burn)
 
 **Alert**:
 The mod's message to Claudia that a Telemetry Check was crossed while Running; she answers by letting the sequence carry on or recommending the player Abort.
