@@ -925,6 +925,193 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(1, DisarmedLines(mission, "SPLASHED"));
         }
 
+        // ---- Delta-v dropped with a stage isn't delta-v used; propulsion checks disarm once no engine is aboard (#605) ----
+
+        /// <summary>The on-pad snapshot out of the atmosphere with <paramref name="deltaV"/> m/s of stock delta-v left.</summary>
+        private static GameSnapshot Left(double deltaV, double throttle = 0, bool engine = true)
+        {
+            return Ascending(s =>
+            {
+                s.Stages[0].DeltaVVac = deltaV;
+                s.Throttle = throttle;
+                if (!engine) s.Craft.Parts.RemoveAll(p => p.Tags.Contains("engine"));
+            });
+        }
+
+        private static string Plan(params string[] checks)
+        {
+            return "\"telemetry_checks\":[" + string.Join(",", checks) + "],";
+        }
+
+        private static string Check(string quantity, string direction, double threshold)
+        {
+            return "{\"quantity\":\"" + quantity + "\",\"resource\":\"\",\"direction\":\"" + direction + "\",\"threshold\":" + threshold + ",\"why\":\"Test.\"}";
+        }
+
+        private int EventLines(MissionControl mission, string kind, string text = "")
+        {
+            return EventsOf(mission).Split('\n').Count(l => l.Contains("\"" + kind + "\"") && l.Contains(text));
+        }
+
+        [Fact]
+        public void TheSwivelStackDroppedAtZeroThrottleOnTheLandingLegIsNotDeltaVUsed()
+        {
+            // 2d0c's landing leg: plan 730 m/s, so the default check is 876 m/s. 692 m/s burned; the Swivel stack dropped at
+            // zero throttle took 197 m/s with it, which read as "delta-v used 889 over 876 (default check)".
+            var mission = RunningWith(Plan(), 730, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Left(2900, throttle: 1));
+            mission.Send(Left(2900));
+            mission.Send(Left(2900));
+            mission.Send(new CraftSeparated());
+            // Right after staging stock misreads the next stage as empty (#520): that reading isn't the fall.
+            mission.Send(Left(878));
+            mission.Send(Left(2703));
+            mission.Send(Left(2703));
+            mission.Send(Left(2600, throttle: 1));
+            mission.Send(Left(2311, throttle: 0.9));
+            mission.Send(Left(2311, throttle: 0.9));
+
+            Assert.Equal(0, CrossedLines(mission));
+            Assert.Equal(692, mission.View.RunProgress.DeltaVUsed);
+            Assert.Equal(1, EventLines(mission, "delta_v_rebased", "197 m/s"));
+            var saved = mission.ExportStates().Single();
+            Assert.Equal(3003, saved.RunStartDeltaVLeft);
+            Assert.Equal(197, saved.RunDroppedDeltaV);
+        }
+
+        [Fact]
+        public void AfterTheLanderStackDropOnTheReturnNoPropulsionCheckCrossesAndEachIsDisarmedOnce()
+        {
+            // 2d0c's return: plan 950 m/s (default check 1,140 m/s), Claudia's "delta-v left under 250 m/s". After 909 m/s of
+            // burns the lander stack, with the last engine and 700 m/s, dropped: stock read 0 left, so everything "used".
+            var mission = RunningWith(Plan(Check("delta_v_left", "below", 250)), 950, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Left(2291, throttle: 1));
+            mission.Send(Left(2291));
+            mission.Send(Left(2291));
+            mission.Send(new CraftSeparated());
+            mission.Send(Left(0, engine: false));
+            mission.Send(Left(0, engine: false));
+            mission.Send(Left(0, engine: false));
+            _background.Drain();
+
+            Assert.Equal(0, CrossedLines(mission));
+            Assert.Equal(909, mission.View.RunProgress.DeltaVUsed);
+            Assert.Equal(1, EventLines(mission, "telemetry_check_disarmed", "delta-v left under 250 m/s: no engine aboard."));
+            Assert.Equal(1, EventLines(mission, "telemetry_check_disarmed", "delta-v used over 1,140 m/s: no engine aboard."));
+            Assert.Equal(1, EventLines(mission, "telemetry_check_disarmed", "needed-fuel margin under -10%: no engine aboard."));
+        }
+
+        [Fact]
+        public void APropulsionCheckStaysDisarmedForTheRestOfTheRunOnceNoEngineIsAboard()
+        {
+            var mission = RunningWith(Plan(Check("delta_v_used", "above", 500)), 0, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Left(3100, engine: false));
+            // A reading back on the safe side doesn't re-arm it, and an engine read again later doesn't either.
+            mission.Send(Left(2000));
+            mission.Send(Left(2000));
+
+            Assert.Equal(0, CrossedLines(mission));
+            Assert.Equal(1, EventLines(mission, "telemetry_check_disarmed", "delta-v used over 500 m/s: no engine aboard."));
+        }
+
+        [Fact]
+        public void AnRcsThrusterIsNotAnEngine()
+        {
+            var mission = RunningWith(Plan(Check("delta_v_left", "below", 250)), 0, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Ascending(s =>
+            {
+                s.Stages[0].DeltaVVac = 100;
+                s.Craft.Parts.RemoveAll(p => p.Tags.Contains("engine"));
+                s.Craft.Parts.Add(new SnapshotPart { Id = 9, Name = "RCSBlock.v2", Title = "RV-105 RCS Thruster Block", Tags = { "rcs" } });
+            }));
+
+            Assert.Equal(0, CrossedLines(mission));
+            Assert.Equal(1, EventLines(mission, "telemetry_check_disarmed", "delta-v left under 250 m/s: no engine aboard."));
+        }
+
+        [Theory]
+        // Haiku 22cc: "delta-v used 483 over 450" during the descent, all of it under throttle.
+        [InlineData(375, 3200 - 483)]
+        // Haiku 44e9: the landing burn's crossing, under throttle too.
+        [InlineData(500, 3200 - 640)]
+        public void OverspendUnderThrottleStillCrosses(double planned, double left)
+        {
+            var mission = RunningWith(Plan(), planned, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Left(left, throttle: 1));
+            mission.Send(Left(left, throttle: 1));
+
+            Assert.Equal(1, CrossedLines(mission, "delta-v used"));
+        }
+
+        [Fact]
+        public void AStageDroppedUnderThrottleStillCountsAsUsed()
+        {
+            var mission = RunningWith(Plan(Check("delta_v_used", "above", 450)), 0, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Left(3000, throttle: 1));
+            mission.Send(new CraftSeparated());
+            mission.Send(Left(2700, throttle: 1));
+            mission.Send(Left(2700, throttle: 1));
+
+            Assert.Equal(1, CrossedLines(mission, "delta-v used"));
+            Assert.Equal(0, EventLines(mission, "delta_v_rebased"));
+        }
+
+        [Fact]
+        public void AStageDroppedAtZeroThrottleIsNotRebasedWhenTheThrottleComesOnBeforeTheReadingsSettle()
+        {
+            var mission = RunningWith(Plan(Check("delta_v_used", "above", 450)), 0, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Left(3000));
+            mission.Send(new CraftSeparated());
+            mission.Send(Left(2700));
+            mission.Send(Left(2690, throttle: 1));
+            mission.Send(Left(2690, throttle: 1));
+
+            Assert.Equal(1, CrossedLines(mission, "delta-v used"));
+            Assert.Equal(0, EventLines(mission, "delta_v_rebased"));
+            Assert.Equal(1, EventLines(mission, "delta_v_not_rebased"));
+        }
+
+        [Fact]
+        public void LaunchStagingOfASpentStageLeavesTheBaselineUnchanged()
+        {
+            var mission = RunningWith(Plan(), 3170, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Left(2400, throttle: 1));
+            mission.Send(Left(2400));
+            mission.Send(new CraftSeparated());
+            mission.Send(Left(2400));
+            mission.Send(Left(2400.4));
+
+            Assert.Equal(0, EventLines(mission, "delta_v_rebased"));
+            Assert.Equal(3200, mission.ExportStates().Single().RunStartDeltaVLeft);
+            Assert.Equal(800, Math.Round(mission.View.RunProgress.DeltaVUsed.Value));
+        }
+
+        [Fact]
+        public void AQuickloadAfterARebaseKeepsTheRebasedBaseline()
+        {
+            var mission = RunningWith(Plan(), 730, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+            mission.Send(Left(2900));
+            mission.Send(new CraftSeparated());
+            mission.Send(Left(2703));
+            mission.Send(Left(2703));
+            var saved = mission.ExportStates().Select(s => MissionSaveState.FromValues(s.ToValues())).ToList();
+
+            var reloaded = Control(new StreamingFakeTransport());
+            reloaded.Send(new MissionsRestored(_save.Path, saved));
+
+            var state = reloaded.ExportStates().Single();
+            Assert.Equal(3003, state.RunStartDeltaVLeft);
+            Assert.Equal(197, state.RunDroppedDeltaV);
+        }
+
         // ---- Helpers ----
 
         private static string QuantityCheck(string quantity, string direction, double threshold)
@@ -933,7 +1120,7 @@ namespace ClaudiaKermin.Core.Tests
                 + "\",\"threshold\":" + threshold + ",\"why\":\"Test.\"}],";
         }
 
-        private MissionControl RunningWith(string check, double expectedDeltaV = 0)
+        private MissionControl RunningWith(string check, double expectedDeltaV = 0, GameSnapshot atStart = null)
         {
             var sequence = WithSequenceFields(ScriptedResponse.Fixture("mission-sequence-plan.sse"), check);
             var text = Encoding.UTF8.GetString(sequence.Body).Replace("expected_delta_v\\\":0", "expected_delta_v\\\":" + expectedDeltaV);
@@ -943,7 +1130,7 @@ namespace ClaudiaKermin.Core.Tests
                 sequence,
                 ScriptedResponse.Fixture("mission-alert-carry-on-plain.sse"));
             var mission = Control(transport);
-            ToRunning(mission, 10m);
+            ToRunning(mission, 10m, atStart);
             return mission;
         }
 
@@ -1013,12 +1200,14 @@ namespace ClaudiaKermin.Core.Tests
             return mission;
         }
 
-        private StartScript ToRunning(MissionControl mission, decimal cap)
+        /// <param name="atStart">The snapshot the run starts from, its baseline; the on-pad one when null.</param>
+        private StartScript ToRunning(MissionControl mission, decimal cap, GameSnapshot atStart = null)
         {
             CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, cap, Sonnet));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            if (atStart != null) mission.Send(atStart);
             mission.Send(new Approve());
             Assert.Equal(MissionStage.Running, mission.View.Stage);
             return mission.TakeCommands().OfType<StartScript>().Single();

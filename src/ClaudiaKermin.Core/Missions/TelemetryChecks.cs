@@ -126,6 +126,12 @@ namespace ClaudiaKermin.Core.Missions
             }
         }
 
+        /// <summary>A propulsion check (delta-v left, delta-v used, needed-fuel margin) is disarmed for the rest of the run once no engine is aboard (#605).</summary>
+        public bool Propulsion
+        {
+            get { return NeedsConfirmation; }
+        }
+
         /// <summary>
         /// An orbit quantity starts wrong on the pad (periapsis far under the surface), so its check watches only once the
         /// reading has been on the safe side of the threshold during the run (#419).
@@ -235,6 +241,13 @@ namespace ClaudiaKermin.Core.Missions
         {
             if (snapshot == null || !snapshot.DeltaVSimulator || snapshot.DeltaVUnreliable) return null;
             return snapshot.Stages.Sum(s => s.DeltaVVac);
+        }
+
+        /// <summary>A part tagged as an engine is aboard (RCS isn't one); true when the snapshot lists no parts, since that says nothing.</summary>
+        public static bool EngineAboard(GameSnapshot snapshot)
+        {
+            var parts = snapshot.Craft.Parts;
+            return parts.Count == 0 || parts.Any(p => p.Tags.Contains("engine"));
         }
 
         /// <summary>The craft's stock MonoPropellant, in units, across all its tanks (0 when it carries none); null when there is no snapshot.</summary>

@@ -72,7 +72,16 @@ namespace ClaudiaKermin.Core.Missions
             /// <summary>Turns waiting for the one in hand, in the order they go: Alerts first, questions last.</summary>
             public readonly List<Turn> Queue = new List<Turn>();
             public double RunStartUt;
+            /// <summary>Stock delta-v left at the run's start, less what the run has since dropped with stages at zero throttle (#605).</summary>
             public double? RunStartDeltaVLeft;
+            /// <summary>The delta-v taken off <see cref="RunStartDeltaVLeft"/> this run (#605), so the Debrief can say so; 0 when none.</summary>
+            public double RunDroppedDeltaV;
+            /// <summary>Stock delta-v left just before a separation at zero throttle, until the readings after it settle; null when none is waiting.</summary>
+            public double? SeparationBefore;
+            /// <summary>The last reading after that separation; null until there is one.</summary>
+            public double? SeparationAfter;
+            /// <summary>A snapshot this run had no engine aboard: its propulsion checks are disarmed for the rest of it (#605).</summary>
+            public bool NoEngineAboard;
             public double? RunStartMonopropellant;
             /// <summary>The current run's Telemetry Checks.</summary>
             public readonly List<LiveCheck> Checks = new List<LiveCheck>();
@@ -122,6 +131,10 @@ namespace ClaudiaKermin.Core.Missions
         {
             mission.RunStartUt = _ut;
             mission.RunStartDeltaVLeft = LiveReadings.DeltaVLeftOf(MissionVesselSnapshot(mission));
+            mission.RunDroppedDeltaV = 0;
+            mission.SeparationBefore = null;
+            mission.SeparationAfter = null;
+            mission.NoEngineAboard = false;
             mission.RunStartMonopropellant = LiveReadings.MonopropellantOf(MissionVesselSnapshot(mission));
             mission.RunStartOrbit = OrbitFix.Of(MissionVesselSnapshot(mission));
             mission.Checks.Clear();
@@ -147,6 +160,8 @@ namespace ClaudiaKermin.Core.Missions
             if (mission.Burning) TestHeldAtRunEnd(mission);
             mission.Burning = false;
             mission.ZeroThrottleReadings = 0;
+            mission.SeparationBefore = null;
+            mission.SeparationAfter = null;
             if (mission.WaitingForCap && !mission.InFlight && mission.Pending != null)
             {
                 var waiting = mission.Pending;
@@ -193,15 +208,32 @@ namespace ClaudiaKermin.Core.Missions
         {
             var mission = _mission;
             if (mission == null || mission.Stage != MissionStage.Running || !mission.RunId.HasValue) return;
-            mission.Readings = Readings(mission);
             var snapshot = MissionVesselSnapshot(mission);
             var fresh = !ReferenceEquals(snapshot, mission.JudgedSnapshot);
             mission.JudgedSnapshot = snapshot;
+            if (fresh && snapshot != null)
+            {
+                SettleSeparation(mission, snapshot);
+                if (!LiveReadings.EngineAboard(snapshot)) mission.NoEngineAboard = true;
+            }
+            mission.Readings = Readings(mission);
             if (fresh && snapshot != null) UpdateBurn(mission, snapshot.Throttle);
             foreach (var live in mission.Checks)
             {
                 if (!fresh && live.Check.NeedsConfirmation) continue;
                 var reading = mission.Readings.Of(live.Check);
+                if (mission.NoEngineAboard && live.Check.Propulsion)
+                {
+                    Disarm(mission, live, "no engine aboard");
+                    continue;
+                }
+                if (mission.SeparationBefore.HasValue && live.Check.NeedsConfirmation)
+                {
+                    // Stock's delta-v isn't settled after a separation (#520): no reading of it counts until it is.
+                    live.Pending = null;
+                    live.FollowUpPending = null;
+                    continue;
+                }
                 if (live.Check.DisarmedIn(mission.Readings.Situation))
                 {
                     Disarm(mission, live, "the craft is " + mission.Readings.Situation);
@@ -261,6 +293,57 @@ namespace ClaudiaKermin.Core.Missions
                 mission.Burning = false;
                 mission.ZeroThrottleReadings = 0;
             }
+        }
+
+        /// <summary>Two stock delta-v readings this close (m/s) agree; a fall no bigger than this is no fall.</summary>
+        private const double SettledDeltaV = 1;
+
+        /// <summary>
+        /// A stage or decoupler fired on the craft (#605). At zero throttle the latest reading is the delta-v left before it, and
+        /// what stock loses across it once settled was dropped, not used. Under throttle nothing is taken: that fall counts as used.
+        /// </summary>
+        private void Separated()
+        {
+            var mission = _mission;
+            if (mission == null || mission.Stage != MissionStage.Running || !mission.RunId.HasValue) return;
+            if (!mission.RunStartDeltaVLeft.HasValue || mission.SeparationBefore.HasValue) return;
+            var snapshot = MissionVesselSnapshot(mission);
+            var left = LiveReadings.DeltaVLeftOf(snapshot);
+            if (!left.HasValue || snapshot.Throttle > 0) return;
+            mission.SeparationBefore = left;
+            mission.SeparationAfter = null;
+        }
+
+        /// <summary>
+        /// A fresh snapshot after a separation at zero throttle. Stock misreads just after staging (#520), so the fall is measured
+        /// to the first of two readings in a row that agree; the run's baseline is lowered by it and the drop logged. If the
+        /// throttle comes on first, nothing is taken off and the fall counts as used.
+        /// </summary>
+        private void SettleSeparation(Mission mission, GameSnapshot snapshot)
+        {
+            if (!mission.SeparationBefore.HasValue) return;
+            var before = mission.SeparationBefore.Value;
+            if (snapshot.Throttle > 0)
+            {
+                mission.SeparationBefore = null;
+                mission.SeparationAfter = null;
+                Event(mission, "delta_v_not_rebased", "the throttle came on before stock's delta-v settled after a separation: any delta-v it dropped counts as used.");
+                return;
+            }
+            var left = LiveReadings.DeltaVLeftOf(snapshot);
+            if (!left.HasValue) return;
+            var previous = mission.SeparationAfter;
+            mission.SeparationAfter = left;
+            if (!previous.HasValue || Math.Abs(previous.Value - left.Value) > SettledDeltaV) return;
+            mission.SeparationBefore = null;
+            mission.SeparationAfter = null;
+            var fall = before - previous.Value;
+            if (fall <= SettledDeltaV) return;
+            mission.RunStartDeltaVLeft -= fall;
+            mission.RunDroppedDeltaV += fall;
+            Event(mission, "delta_v_rebased", "stock delta-v left fell " + fall.ToString("#,0", CultureInfo.InvariantCulture)
+                + " m/s across a separation at zero throttle (" + before.ToString("#,0", CultureInfo.InvariantCulture) + " to "
+                + previous.Value.ToString("#,0", CultureInfo.InvariantCulture) + " m/s): dropped, not counted as delta-v used.");
         }
 
         /// <summary>The threshold a check is watching now: its own, then its follow-up once judged; null when it has nothing left to fire.</summary>

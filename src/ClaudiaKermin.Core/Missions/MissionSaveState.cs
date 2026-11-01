@@ -90,6 +90,8 @@ namespace ClaudiaKermin.Core.Missions
         public double? RunStartMonopropellant;
         /// <summary>Stock delta-v left (m/s) at the run's start; null when unknown, and in older saves.</summary>
         public double? RunStartDeltaVLeft;
+        /// <summary>Delta-v (m/s) the run dropped with stages at zero throttle, already taken off <see cref="RunStartDeltaVLeft"/> (#605); 0 for none and in older saves.</summary>
+        public double RunDroppedDeltaV;
         /// <summary>The kOS terminal text of the last run that did not report, until its Debrief card; "" otherwise.</summary>
         public string ScriptError = "";
         /// <summary>The craft docked since the pending plan was offered (what with), so Approve is Re-plan; "" for none.</summary>
@@ -172,6 +174,7 @@ namespace ClaudiaKermin.Core.Missions
             if (RcsUse.Length > 0) values["rcsUse"] = RcsUse;
             if (RunStartMonopropellant.HasValue) values["runStartMonopropellant"] = RunStartMonopropellant.Value.ToString("R", CultureInfo.InvariantCulture);
             if (RunStartDeltaVLeft.HasValue) values["runStartDeltaVLeft"] = RunStartDeltaVLeft.Value.ToString("R", CultureInfo.InvariantCulture);
+            if (RunDroppedDeltaV != 0) values["runDroppedDeltaV"] = RunDroppedDeltaV.ToString("R", CultureInfo.InvariantCulture);
             if (ScriptError.Length > 0) values["scriptError"] = ScriptError;
             if (Recheck.Length > 0) values["recheck"] = Recheck;
             if (RecheckSince != 0) values["recheckSince"] = RecheckSince.ToString(CultureInfo.InvariantCulture);
@@ -242,6 +245,7 @@ namespace ClaudiaKermin.Core.Missions
             double reading;
             if (double.TryParse(Get(values, "runStartMonopropellant"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.RunStartMonopropellant = reading;
             if (double.TryParse(Get(values, "runStartDeltaVLeft"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.RunStartDeltaVLeft = reading;
+            if (double.TryParse(Get(values, "runDroppedDeltaV"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.RunDroppedDeltaV = reading;
             if (double.TryParse(Get(values, "plannedTurnShape"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.PlannedTurnShape = reading;
             decimal cap;
             if (decimal.TryParse(Get(values, "spendingCap"), NumberStyles.Number, CultureInfo.InvariantCulture, out cap)) state.SpendingCap = cap;
