@@ -28,9 +28,11 @@ namespace ClaudiaKermin.Core.Tests
         {
             public Func<double, double, double, double> Sun = (lat, lon, ut) => 45;
             public Func<double, double, string> BiomeAt = (lat, lon) => "Flats";
+            public string[] Biomes = new string[0];
 
             public override double TerrainAltitude(string body, double latitude, double longitude) { return 0; }
             public override string Biome(string body, double latitude, double longitude) { return BiomeAt(latitude, longitude); }
+            public override System.Collections.Generic.IList<string> BiomeNames(string body) { return Biomes; }
             public override double SunElevation(string body, double latitude, double longitude, double ut) { return Sun(latitude, longitude, ut); }
 
             public override bool SurfaceUnder(string body, double x, double y, double z, out double latitude, out double longitude)
@@ -237,6 +239,15 @@ namespace ClaudiaKermin.Core.Tests
             // at about 1 ms alone in a Debug build; the budget is about 20 times that.
             var snapshot = Mun(10);
             Timing.Within(20, () => Find(snapshot, 3, 77, true, 30));
+        }
+
+        [Fact]
+        public void Land_given_a_biome_the_body_does_not_have_gets_the_tools_error_before_any_search()
+        {
+            var fake = new FakeBody { Biomes = new[] { "East Crater", "Farside Crater", "Midlands" } };
+            var site = BlockCalls.LandingSite(Ask("biome", "Crater", "daylight", false), Mun(10), fake);
+            Assert.Equal("\"Crater\" is not a biome on Mun; closest: East Crater, Farside Crater; its biomes are: East Crater, Farside Crater, Midlands", site["error"]);
+            Assert.False(site.ContainsKey("lat"));
         }
 
         // ---- find_landing_site and land choose the same pass ----

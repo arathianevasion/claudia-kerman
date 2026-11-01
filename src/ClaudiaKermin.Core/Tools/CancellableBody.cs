@@ -77,6 +77,12 @@ namespace ClaudiaKermin.Core.Tools
             return _api.Biome(body, latitude, longitude);
         }
 
+        public IList<string> BiomeNames(string body)
+        {
+            _token.ThrowIfCancellationRequested();
+            return _api.BiomeNames(body);
+        }
+
         public double SunElevation(string body, double latitude, double longitude, double ut)
         {
             _token.ThrowIfCancellationRequested();
