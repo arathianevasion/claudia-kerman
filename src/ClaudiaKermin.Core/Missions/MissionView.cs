@@ -316,6 +316,8 @@ namespace ClaudiaKermin.Core.Missions
         public IList<bool> PlanSequencesManual = new List<bool>();
         /// <summary>Index into <see cref="PlanSequences"/> of the Maneuver Sequence in hand; -1 before the first.</summary>
         public int CurrentSequence = -1;
+        /// <summary>The Chute Allocation (#626) for reentry "auto"; null before Mission Plan Approval.</summary>
+        public ChuteAllocation ChuteAllocation;
 
         /// <summary>While Running, what is running; "" otherwise.</summary>
         public string RunStatus = "";

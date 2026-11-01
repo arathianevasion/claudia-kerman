@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using ClaudiaKermin.Core.Claude;
@@ -51,6 +52,12 @@ namespace ClaudiaKermin.Core.Missions
         public List<double[]> IspCurve = new List<double[]>();
         /// <summary>The electric charge it can store.</summary>
         public double ChargeMax;
+        /// <summary>
+        /// A parachute's own numbers for the reentry predictor, as the adapter's ReentryCraft reads them, held retrograde (#626:
+        /// the Chute Allocation divides the chutes by them); null for other parts, a cut chute, or when not read (the editor).
+        /// Only the recording JSON carries it.
+        /// </summary>
+        public Tools.ReentryChute Chute;
     }
 
     public sealed class SnapshotCraft
@@ -315,6 +322,7 @@ namespace ClaudiaKermin.Core.Missions
                     json.EndArray();
                 }
                 if (part.ChargeMax > 0) json.Field("ec_max", part.ChargeMax);
+                if (withBodies && part.Chute != null) WriteChute(json, part.Chute);
                 json.Name("tags").BeginArray();
                 foreach (var tag in part.Tags) json.String(tag);
                 json.EndArray().EndObject();
@@ -412,6 +420,32 @@ namespace ClaudiaKermin.Core.Missions
             return json.EndObject().ToString();
         }
 
+        private static void WriteChute(JsonWriter json, Tools.ReentryChute chute)
+        {
+            json.Name("chute").BeginObject().Field("drogue", chute.Drogue).Field("state", chute.State.ToString().ToLowerInvariant())
+                .Field("min_atm", chute.MinPressureAtm).Field("deploy_agl", chute.DeployAltitude).Field("semi_m2", chute.SemiArea).Field("full_m2", chute.FullArea)
+                .Field("semi_s", chute.SemiSeconds).Field("full_s", chute.FullSeconds).Field("curve", chute.Curve).EndObject();
+        }
+
+        private static Tools.ReentryChute ReadChute(JsonNode chute)
+        {
+            if (chute == null) return null;
+            Tools.ReentryChuteState state;
+            if (!Enum.TryParse(JsonNode.Str(chute["state"]) ?? "", true, out state)) state = Tools.ReentryChuteState.Stowed;
+            return new Tools.ReentryChute
+            {
+                Drogue = JsonNode.Bool(chute["drogue"]) ?? false,
+                State = state,
+                MinPressureAtm = JsonNode.Double(chute["min_atm"]) ?? 0,
+                DeployAltitude = JsonNode.Double(chute["deploy_agl"]) ?? 0,
+                SemiArea = JsonNode.Double(chute["semi_m2"]) ?? 0,
+                FullArea = JsonNode.Double(chute["full_m2"]) ?? 0,
+                SemiSeconds = JsonNode.Double(chute["semi_s"]) ?? 0,
+                FullSeconds = JsonNode.Double(chute["full_s"]) ?? 0,
+                Curve = JsonNode.Double(chute["curve"]) ?? 1,
+            };
+        }
+
         private static List<double[]> Keys(JsonNode keys)
         {
             if (keys == null) return new List<double[]>();
@@ -493,6 +527,7 @@ namespace ClaudiaKermin.Core.Missions
                             IspVac = JsonNode.Double(part["isp_vac"]) ?? 0,
                             IspCurve = Keys(part["isp_curve"]),
                             ChargeMax = JsonNode.Double(part["ec_max"]) ?? 0,
+                            Chute = ReadChute(part["chute"]),
                         });
                     }
                 }
