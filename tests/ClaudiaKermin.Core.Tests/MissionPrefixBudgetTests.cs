@@ -46,6 +46,7 @@ namespace ClaudiaKermin.Core.Tests
         /// #592's reentry "passes" result and its skip-out failures in one doc phrase (73 characters, +25) to 21,443 on the tree merged with main (21,418 + 25): a craft that skipped out ran
         /// to max_duration and failed (b5f3, 0de6, 44e9), each a failed run, a Debrief and a new Sequence Plan.
         /// #606's Script Check of Building Block options (+0, still 21,443): its problems are turn text, and no doc or tool description changed.
+        /// #609's blocks trail (+0, still 21,443): Debrief turn text of about 20-40 tokens a block (12 at most), and no doc, prompt or schema changed.
         /// </summary>
         private const int BudgetTokens = 21500;
 
