@@ -151,6 +151,25 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void DeltaVDroppedWithAStageAtZeroThrottleIsLeftOutOfTheRunsDeltaVUsedAndTheLineSaysSo()
+        {
+            // 2d0c's landing leg (#605): 692 m/s burned, and the Swivel stack took 197 m/s with it.
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning(s => s.Stages[0].DeltaVVac = 3200);
+
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2900));
+            rig.Mission.Send(new CraftSeparated());
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2703));
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2703));
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2311));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Contains("Delta-v used this run, from stock: 692 m/s (left at start 3,200 m/s, now 2,311 m/s; 197 m/s dropped with stages at zero "
+                + "throttle isn't counted).", LastUserText(rig.Transport.Requests[2]));
+        }
+
+        [Fact]
         public void ADeltaVUsedBelowZeroIsShownAsZero()
         {
             var rig = new Rig(this, DebriefJson("Nominal", ""));

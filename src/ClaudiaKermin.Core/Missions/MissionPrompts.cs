@@ -441,8 +441,12 @@ namespace ClaudiaKermin.Core.Missions
             return string.Join("\n", lines.ToArray());
         }
 
-        /// <summary>The Debrief's line on the delta-v the whole run used, from stock's figures at its start and now; says why when either is unreadable.</summary>
-        public static string RunDeltaVLine(double? startLeft, GameSnapshot now)
+        /// <summary>
+        /// The Debrief's line on the delta-v the whole run used, from stock's figures at its start and now; says why when either
+        /// is unreadable. <paramref name="startLeft"/> is the run's baseline, already less the <paramref name="dropped"/> delta-v
+        /// stages took with them at zero throttle (#605), which the line names so it doesn't read as less than a script burned.
+        /// </summary>
+        public static string RunDeltaVLine(double? startLeft, GameSnapshot now, double dropped = 0)
         {
             var nowLeft = LiveReadings.DeltaVLeftOf(now);
             string why = null;
@@ -452,7 +456,8 @@ namespace ClaudiaKermin.Core.Missions
             else if (!nowLeft.HasValue) why = "a stage's delta-v reading is unreliable now";
             if (why != null) return "Delta-v used this run: unknown (" + why + ").";
             return "Delta-v used this run, from stock: " + Rounded(System.Math.Max(0, startLeft.Value - nowLeft.Value)) + " m/s (left at start "
-                + Rounded(startLeft.Value) + " m/s, now " + Rounded(nowLeft.Value) + " m/s).";
+                + Rounded(startLeft.Value + dropped) + " m/s, now " + Rounded(nowLeft.Value) + " m/s"
+                + (dropped > 0 ? "; " + Rounded(dropped) + " m/s dropped with stages at zero throttle isn't counted" : "") + ").";
         }
 
         /// <summary>
