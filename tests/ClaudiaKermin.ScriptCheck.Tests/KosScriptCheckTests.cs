@@ -60,6 +60,91 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             Assert.Empty(result.Warnings);
         }
 
+        // ---- The stack-drop lint (#557): reentry after return, transfer_to or coast with nothing dropped ----
+
+        // b5f3's "Ascend, return and reentry", as Claudia wrote it.
+        private const string B5f3AscendReturnReentry =
+            "local res is ascend(lexicon(\"target_alt\", 30000, \"target_inc\", 0, \"stage_limit\", 1)).\n"
+            + "if res:success {\n"
+            + "  set res to return(lexicon(\"target_pe\", 35000, \"stage_limit\", 1)).\n"
+            + "  if res:success {\n"
+            + "    if ship:body:name <> \"Kerbin\" {\n"
+            + "      set res to coast(lexicon(\"until\", time:seconds + ship:orbit:nextpatcheta + 60)).\n"
+            + "    }\n"
+            + "    if res:success { set res to reentry(lexicon(\"stage_limit\", 1)). }\n"
+            + "  }\n"
+            + "}\n"
+            + "unlock steering.\n"
+            + "unlock throttle.\n"
+            + "set ship:control:pilotmainthrottle to 0.\n"
+            + "addons:claudia:report(res).";
+
+        // b5f3's "Lower periapsis, drop stack, reenter".
+        private const string B5f3LowerDropReenter =
+            "local res is tune_pe(lexicon(\"value\", 27000, \"tolerance\", 1500, \"max_dv\", 60, \"stage_limit\", 1)).\n"
+            + "if res:success {\n"
+            + "  set res to drop_parts(lexicon(\"parts\", list(\"Decoupler.1\"))).\n"
+            + "  if res:success { set res to reentry(lexicon(\"stage_limit\", 1, \"max_duration\", 12000)). }\n"
+            + "}\n"
+            + "unlock steering.\n"
+            + "unlock throttle.\n"
+            + "set ship:control:pilotmainthrottle to 0.\n"
+            + "addons:claudia:report(res).";
+
+        // 44e9's "Return to Kerbin and reentry".
+        private const string Ksp44e9ReturnReentry =
+            "local k is 0.\n"
+            + "until not hasnode or k > 5 {\n"
+            + "  remove nextnode.\n"
+            + "  set k to k + 1.\n"
+            + "}\n"
+            + "local res is return(lexicon(\"target_pe\", 35000)).\n"
+            + "if res:success {\n"
+            + "  set res to reentry().\n"
+            + "}\n"
+            + "addons:claudia:report(res).";
+
+        private const string StackLint = "with no drop named";
+
+        [Theory]
+        [InlineData(B5f3AscendReturnReentry, "line 8: reentry after return")]
+        [InlineData(Ksp44e9ReturnReentry, "line 8: reentry after return")]
+        public void The_stack_drop_lint_warns_on_b5f3s_and_44e9s_return_then_reentry_and_the_script_still_passes(string script, string warning)
+        {
+            // As the mod checks it: the Mission Script with the Core Library bundled after it, whose lines it skips.
+            var result = _check.Check(CoreLibrary.Bundle(script));
+            Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
+            var lint = Assert.Single(result.Warnings, w => w.Contains(StackLint));
+            Assert.StartsWith(warning, lint);
+            Assert.Contains("separate", lint);
+            Assert.DoesNotContain(result.Problems, p => p.Contains(StackLint));
+        }
+
+        [Fact]
+        public void The_stack_drop_lint_is_quiet_on_b5f3s_lower_periapsis_drop_stack_reenter()
+        {
+            Assert.DoesNotContain(_check.Check(CoreLibrary.Bundle(B5f3LowerDropReenter)).Warnings, w => w.Contains(StackLint));
+        }
+
+        [Theory]
+        [InlineData("local res is transfer_to(lexicon(\"target\", \"Kerbin\")).\nset res to reentry().\n", true)]
+        [InlineData("local res is coast(lexicon(\"until\", time:seconds + 60)).\nset res to reentry().\n", true)]
+        [InlineData("local res is return().\nset res to reentry(lexicon(\"separate\", \"none\")).\n", true)]
+        // Something leaves before the atmosphere: drop_parts, deorbit's separate, or reentry's own.
+        [InlineData("local res is return().\nset res to drop_parts(lexicon(\"parts\", \"Decoupler.1\")).\nset res to reentry().\n", false)]
+        [InlineData("local res is return().\nset res to deorbit(lexicon(\"target\", \"ksc\", \"separate\", 1)).\nset res to reentry().\n", false)]
+        [InlineData("local res is return().\nset res to reentry(lexicon(\"separate\", \"auto\")).\n", false)]
+        [InlineData("local res is return().\nset res to reentry(lexicon(\"separate\", 2)).\n", false)]
+        // No return, transfer_to or coast before it; a reentry before the return; and a comment.
+        [InlineData("local res is reentry(lexicon(\"max_duration\", 20000)).\n", false)]
+        [InlineData("local res is reentry().\nset res to return().\n", false)]
+        [InlineData("// return(lexicon()) then reentry()\nlocal res is reentry().\n", false)]
+        public void The_stack_drop_lint_fires_only_for_a_reentry_after_a_leg_home_with_nothing_dropped(string script, bool fires)
+        {
+            var warnings = _check.Check(script).Warnings;
+            Assert.Equal(fires, warnings.Any(w => w.Contains(StackLint)));
+        }
+
         // ---- Forbidden: one theory per item of the spec's list ----
 
         [Theory]

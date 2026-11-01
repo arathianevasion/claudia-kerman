@@ -604,6 +604,7 @@ namespace ClaudiaKermin.Core.Missions
                 + RunEndedPrefix + outcome.Kind + (outcome.Reason.Length > 0 ? " (" + outcome.Reason + ")" : "") + ".";
             if (outcome.Report != null) text += "\nReport (JSON data): " + ReportJson(outcome.Report);
             if (outcome.ErrorText.Length > 0) text += "\nkOS terminal after the run (quoted): " + Quoted(outcome.ErrorText);
+            if (outcome.MakesCraftSafe && !outcome.WasAborted) text += "\nThe mod cut the throttle and released steering.";
             text += CrossedChecks(crossings);
             return text;
         }
