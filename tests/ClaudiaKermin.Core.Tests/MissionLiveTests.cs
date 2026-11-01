@@ -606,9 +606,9 @@ namespace ClaudiaKermin.Core.Tests
             mission.Send(Snapshot(s => s.Orbit.Periapsis = -598435));
             mission.Send(Snapshot(s => s.Orbit.Periapsis = -598435));
             Assert.Equal(0, CrossedLines(mission));
-            mission.Send(Snapshot(s => s.Orbit.Periapsis = -50000));
+            mission.Send(Ascending(s => s.Orbit.Periapsis = -50000));
             Assert.Equal(0, CrossedLines(mission));
-            mission.Send(Snapshot(s => s.Orbit.Periapsis = -150000));
+            mission.Send(Ascending(s => s.Orbit.Periapsis = -150000));
             Assert.Equal(1, CrossedLines(mission, "periapsis"));
         }
 
@@ -620,8 +620,8 @@ namespace ClaudiaKermin.Core.Tests
 
             mission.Send(Snapshot(s => s.Orbit.Apoapsis = -599073));
             Assert.Equal(0, CrossedLines(mission));
-            mission.Send(Snapshot(s => s.Orbit.Apoapsis = -800000));
-            mission.Send(Snapshot(s => s.Orbit.Apoapsis = -599073));
+            mission.Send(Ascending(s => s.Orbit.Apoapsis = -800000));
+            mission.Send(Ascending(s => s.Orbit.Apoapsis = -599073));
             Assert.Equal(1, CrossedLines(mission, "apoapsis"));
         }
 
@@ -630,9 +630,9 @@ namespace ClaudiaKermin.Core.Tests
         {
             var mission = RunningWith(QuantityCheck("periapsis", "below", -100000));
 
-            mission.Send(Snapshot(s => s.Orbit.Periapsis = 80000));
+            mission.Send(Ascending(s => s.Orbit.Periapsis = 80000));
             Assert.Equal(0, CrossedLines(mission));
-            mission.Send(Snapshot(s => s.Orbit.Periapsis = -150000));
+            mission.Send(Ascending(s => s.Orbit.Periapsis = -150000));
             Assert.Equal(1, CrossedLines(mission, "periapsis"));
         }
 
@@ -693,7 +693,7 @@ namespace ClaudiaKermin.Core.Tests
 
         private static GameSnapshot Reading(double throttle, double periapsis = 80000, double inclination = 0)
         {
-            return Snapshot(s => { s.Throttle = throttle; s.Orbit.Periapsis = periapsis; s.Orbit.Inclination = inclination; });
+            return Ascending(s => { s.Throttle = throttle; s.Orbit.Periapsis = periapsis; s.Orbit.Inclination = inclination; });
         }
 
         [Fact]
@@ -734,6 +734,7 @@ namespace ClaudiaKermin.Core.Tests
         public void AnInclinationCheckWaitsOutTheBurnToo()
         {
             var recovers = RunningWith(QuantityCheck("inclination", "above", 5));
+            recovers.Send(Reading(0));
             recovers.Send(Reading(1, inclination: 20));
             Assert.Equal(0, CrossedLines(recovers));
             recovers.Send(Reading(0, inclination: 1));
@@ -746,6 +747,7 @@ namespace ClaudiaKermin.Core.Tests
         public void AnInclinationStillCrossedWhenTheBurnEndsRaisesAnAlert()
         {
             var mission = RunningWith(QuantityCheck("inclination", "above", 5));
+            mission.Send(Reading(0));
             mission.Send(Reading(1, inclination: 20));
             mission.Send(Reading(0, inclination: 20));
             Assert.Equal(0, CrossedLines(mission));
@@ -802,6 +804,127 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(0, CrossedLines(mission));
         }
 
+        // ---- Orbit checks disarm landed, splashed, on the pad or in atmosphere (#604) ----
+
+        private static GameSnapshot InFlight(string situation, double periapsis, double throttle = 0, string body = "Mun", double inclination = 0)
+        {
+            return Snapshot(s => { s.Situation = situation; s.Body = body; s.Throttle = throttle; s.Orbit.Periapsis = periapsis; s.Orbit.Inclination = inclination; });
+        }
+
+        /// <summary>The run's telemetry_check_disarmed lines giving <paramref name="situation"/>; every run here starts on the pad, which disarms orbit checks once.</summary>
+        private int DisarmedLines(MissionControl mission, string situation = "")
+        {
+            return EventsOf(mission).Split('\n').Count(l => l.Contains("telemetry_check_disarmed") && l.Contains("the craft is " + situation));
+        }
+
+        [Fact]
+        public void APeriapsisCheckArmedInOrbitIsDisarmedByTouchdownWithOneEvent()
+        {
+            // 2d0c: "periapsis under 5,000 m" for the orbit before the descent burn; after touchdown pe read -199,975 m.
+            var mission = RunningWith(QuantityCheck("periapsis", "below", 5000));
+
+            mission.Send(InFlight("ORBITING", 20000));
+            mission.Send(InFlight("LANDED", -199975));
+            mission.Send(InFlight("LANDED", -199975));
+            _background.Drain();
+
+            Assert.Equal(0, CrossedLines(mission));
+            var disarmed = EventsOf(mission).Split('\n').Where(l => l.Contains("telemetry_check_disarmed") && l.Contains("LANDED")).ToList();
+            Assert.Single(disarmed);
+            Assert.Contains("periapsis under 5,000 m: the craft is LANDED.", disarmed[0]);
+        }
+
+        [Fact]
+        public void APeriapsisCheckArmedAtTheMunDoesNotFireOnKerbinReentry()
+        {
+            // 2d0c: "periapsis under 10,000 m" meant for the Mun orbit after ascent; Kerbin reentry read pe 5,282 m, FLYING.
+            var mission = RunningWith(QuantityCheck("periapsis", "below", 10000));
+
+            mission.Send(InFlight("ORBITING", 15000));
+            mission.Send(InFlight("FLYING", 5282, body: "Kerbin"));
+            mission.Send(InFlight("FLYING", 5282, body: "Kerbin"));
+
+            Assert.Equal(0, CrossedLines(mission));
+            Assert.Equal(1, DisarmedLines(mission, "FLYING"));
+        }
+
+        [Fact]
+        public void ACheckDisarmedByALandingReArmsOnlyOnTheSafeSideAfterLiftoffAndThenFires()
+        {
+            var mission = RunningWith(QuantityCheck("periapsis", "below", 10000));
+
+            mission.Send(InFlight("ORBITING", 20000));
+            mission.Send(InFlight("LANDED", -199975));
+            // Just after liftoff periapsis is far under the surface: the check is still disarmed.
+            mission.Send(InFlight("SUB_ORBITAL", -180000, throttle: 1));
+            mission.Send(InFlight("SUB_ORBITAL", -180000));
+            mission.Send(InFlight("SUB_ORBITAL", -180000));
+            Assert.Equal(0, CrossedLines(mission));
+            mission.Send(InFlight("SUB_ORBITAL", 15000, throttle: 1));
+            mission.Send(InFlight("ORBITING", 15000));
+            mission.Send(InFlight("ORBITING", 15000));
+            Assert.Equal(0, CrossedLines(mission));
+
+            mission.Send(InFlight("ORBITING", 8000));
+            Assert.Equal(1, CrossedLines(mission, "periapsis"));
+            Assert.Equal(1, DisarmedLines(mission, "LANDED"));
+        }
+
+        [Fact]
+        public void ASubOrbitalDescentOverAnAirlessBodyStillCrossesAPeriapsisCheck()
+        {
+            // Haiku flights 22cc and 44e9: a low pass over the Mun is SUB_ORBITAL, and still checked.
+            var mission = RunningWith(QuantityCheck("periapsis", "below", 5000));
+
+            mission.Send(InFlight("ORBITING", 20000));
+            mission.Send(InFlight("SUB_ORBITAL", -50000));
+
+            Assert.Equal(1, CrossedLines(mission, "periapsis"));
+            Assert.Equal(1, DisarmedLines(mission, "PRELAUNCH"));
+            Assert.Equal(1, DisarmedLines(mission));
+        }
+
+        [Fact]
+        public void AnInclinationCheckIsDisarmedOnThePadAndInAtmosphereToo()
+        {
+            var mission = RunningWith(QuantityCheck("inclination", "above", 5));
+
+            mission.Send(InFlight("PRELAUNCH", -598435, inclination: 20));
+            mission.Send(InFlight("FLYING", -500000, inclination: 20));
+            Assert.Equal(0, CrossedLines(mission));
+            mission.Send(InFlight("SUB_ORBITAL", -400000, inclination: 20));
+            Assert.Equal(0, CrossedLines(mission));
+            mission.Send(InFlight("SUB_ORBITAL", -300000, inclination: 1));
+            mission.Send(InFlight("ORBITING", 80000, inclination: 20));
+            Assert.Equal(1, CrossedLines(mission, "inclination"));
+            // Disarmed from the pad to the safe reading: one line, not one per reading.
+            Assert.Equal(1, DisarmedLines(mission));
+        }
+
+        [Fact]
+        public void ASplashdownDisarmsAFollowUpThresholdToo()
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                WithSequenceFields(ScriptedResponse.Fixture("mission-sequence-plan.sse"), QuantityCheck("periapsis", "below", 5000)),
+                ScriptedResponse.Fixture("mission-alert-carry-on.sse"),
+                ScriptedResponse.Fixture("mission-debrief.sse"));
+            var mission = Control(transport);
+            ToRunning(mission, 10m);
+            mission.TakeCommands();
+
+            mission.Send(InFlight("ORBITING", 20000));
+            mission.Send(InFlight("ORBITING", 3000));
+            DrainUntil(mission, v => !v.Busy && v.LatestLine.StartsWith("Alert, periapsis: carry on."));
+            // The carry on's follow-up is periapsis under 1,000 m: splashed down it doesn't fire.
+            mission.Send(InFlight("SPLASHED", -590000, body: "Kerbin"));
+            _background.Drain();
+
+            Assert.Equal(1, CrossedLines(mission));
+            Assert.Equal(3, transport.Requests.Count);
+            Assert.Equal(1, DisarmedLines(mission, "SPLASHED"));
+        }
+
         // ---- Helpers ----
 
         private static string QuantityCheck(string quantity, string direction, double threshold)
@@ -852,6 +975,12 @@ namespace ClaudiaKermin.Core.Tests
             var snapshot = OnPad();
             change(snapshot);
             return snapshot;
+        }
+
+        /// <summary>The on-pad Game Snapshot off the pad and out of the atmosphere (SUB_ORBITAL), where orbit checks are armed (#604), changed.</summary>
+        private static GameSnapshot Ascending(Action<GameSnapshot> change)
+        {
+            return Snapshot(s => { s.Situation = "SUB_ORBITAL"; change(s); });
         }
 
         /// <summary>A Sequence Plan stream with extra fields put in before its <c>"script"</c>.</summary>

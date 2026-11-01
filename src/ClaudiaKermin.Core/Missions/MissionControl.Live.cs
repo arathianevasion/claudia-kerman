@@ -28,6 +28,11 @@ namespace ClaudiaKermin.Core.Missions
             public bool Fired;
             /// <summary>An orbit check has seen its reading on the safe side of the threshold this run (#419); until then it can't cross.</summary>
             public bool Armed;
+            /// <summary>
+            /// The check can't cross until a reading is back on the safe side of its active threshold (#604): an orbit check
+            /// while the craft is landed, splashed down, on the pad or in atmosphere. Unlike <see cref="Armed"/>, it covers the follow-up too.
+            /// </summary>
+            public bool Disarmed;
             /// <summary>A carry on's follow-up threshold, armed once the first Alert is judged.</summary>
             public double? FollowUp;
             public bool FollowUpFired;
@@ -197,6 +202,16 @@ namespace ClaudiaKermin.Core.Missions
             {
                 if (!fresh && live.Check.NeedsConfirmation) continue;
                 var reading = mission.Readings.Of(live.Check);
+                if (live.Check.DisarmedIn(mission.Readings.Situation))
+                {
+                    Disarm(mission, live, "the craft is " + mission.Readings.Situation);
+                    continue;
+                }
+                if (live.Disarmed)
+                {
+                    ReArm(live, reading);
+                    continue;
+                }
                 if (live.Check.Quantity.IsHeldDuringBurn())
                 {
                     if (mission.Burning)
@@ -255,6 +270,29 @@ namespace ClaudiaKermin.Core.Missions
             return live.FollowUp.HasValue && !live.FollowUpFired ? live.FollowUp : null;
         }
 
+        /// <summary>
+        /// A check is disarmed for <paramref name="reason"/> (#604): what it held or had pending is dropped, and the run's events
+        /// get one telemetry_check_disarmed line each time it goes from armed to disarmed, not each reading. No Alert, no prompt text.
+        /// </summary>
+        private void Disarm(Mission mission, LiveCheck live, string reason)
+        {
+            live.HeldWorst = null;
+            live.Pending = null;
+            live.FollowUpPending = null;
+            if (live.Disarmed) return;
+            live.Disarmed = true;
+            Event(mission, "telemetry_check_disarmed", live.Check.Describe() + ": " + reason + ".");
+        }
+
+        /// <summary>A disarmed check re-arms on its first reading on the safe side of its active threshold, which arms it for #419 too.</summary>
+        private static void ReArm(LiveCheck live, double? reading)
+        {
+            var threshold = ActiveThreshold(live);
+            if (!threshold.HasValue || !reading.HasValue || live.Check.Crossed(reading, threshold.Value)) return;
+            live.Disarmed = false;
+            if (!live.Fired) live.Armed = true;
+        }
+
         /// <summary>A held check isn't tested mid-burn; its worst reading past the threshold is kept for the line it leaves if it recovers.</summary>
         private static void HoldDuringBurn(LiveCheck live, double? reading)
         {
@@ -287,7 +325,8 @@ namespace ClaudiaKermin.Core.Missions
             {
                 var reading = final.Of(live.Check);
                 var threshold = ActiveThreshold(live);
-                if (threshold.HasValue && (!live.Check.NeedsArming || live.Armed) && live.Check.Crossed(reading, threshold.Value))
+                var disarmed = live.Disarmed || live.Check.DisarmedIn(final.Situation);
+                if (threshold.HasValue && !disarmed && (!live.Check.NeedsArming || live.Armed) && live.Check.Crossed(reading, threshold.Value))
                 {
                     var followUp = live.Fired;
                     if (followUp) live.FollowUpFired = true;

@@ -135,6 +135,16 @@ namespace ClaudiaKermin.Core.Missions
             get { return Quantity == TelemetryQuantity.Periapsis || Quantity == TelemetryQuantity.Apoapsis; }
         }
 
+        /// <summary>
+        /// An orbit quantity is meant to read wrong landed, splashed down, on the pad or flying in atmosphere (a touchdown, a
+        /// reentry), so its check is disarmed there (#604). A low pass over an airless body is SUB_ORBITAL and still checked.
+        /// </summary>
+        public bool DisarmedIn(string situation)
+        {
+            return (Quantity == TelemetryQuantity.Apoapsis || Quantity == TelemetryQuantity.Periapsis || Quantity == TelemetryQuantity.Inclination)
+                && (situation == "LANDED" || situation == "SPLASHED" || situation == "PRELAUNCH" || situation == "FLYING");
+        }
+
         /// <summary>The reading is past <paramref name="threshold"/>; false when the quantity can't be measured now.</summary>
         public bool Crossed(double? reading, double threshold)
         {
@@ -175,6 +185,8 @@ namespace ClaudiaKermin.Core.Missions
     public sealed class LiveReadings
     {
         public double ElapsedSeconds;
+        /// <summary>The craft's situation (e.g. LANDED, ORBITING); "" when there is no snapshot.</summary>
+        public string Situation = "";
         public double? DeltaVUsed;
         public double? DeltaVLeft;
         public double? FuelMarginPercent;
@@ -193,6 +205,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             var readings = new LiveReadings { ElapsedSeconds = Math.Max(0, elapsedSeconds) };
             if (snapshot == null) return readings;
+            readings.Situation = snapshot.Situation ?? "";
             readings.Altitude = snapshot.Altitude;
             readings.VerticalSpeed = snapshot.VerticalSpeed;
             if (snapshot.Orbit != null)
