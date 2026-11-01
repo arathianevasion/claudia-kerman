@@ -26,7 +26,7 @@ namespace ClaudiaKermin.Core.Kos
         /// <summary>One warning per lint that fires, each naming the first line of the loop it found; empty for a clean script.</summary>
         public static IList<string> Warnings(string script)
         {
-            var code = ScriptProvenance.Strip(script ?? "");
+            var code = CoreLibrary.MissionScript(script, true);
             var warnings = new List<string>();
             var siteLine = 0;
             var nudgeLine = 0;

@@ -2,7 +2,6 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System.Collections.Generic;
-using System.Text;
 using System.Text.RegularExpressions;
 using ClaudiaKermin.Core.Kos;
 
@@ -25,7 +24,7 @@ namespace ClaudiaKermin.ScriptCheck
         public static IList<string> Warnings(string script)
         {
             var warnings = new List<string>();
-            var code = MissionLines(script ?? "");
+            var code = CoreLibrary.MissionScript(script);
             if (DropParts.IsMatch(code)) return warnings;
             foreach (Match s in Separate.Matches(code))
                 if (!s.Groups["text"].Success || !s.Groups["text"].Value.Equals("none", System.StringComparison.OrdinalIgnoreCase)) return warnings;
@@ -39,29 +38,6 @@ namespace ClaudiaKermin.ScriptCheck
             warnings.Add("line " + line + ": reentry after " + leg.Groups[1].Value.ToLowerInvariant()
                 + " with no drop named; say what leaves before the atmosphere with reentry's separate (\"auto\", its default, drops the stack below the heat shield) or drop_parts.");
             return warnings;
-        }
-
-        /// <summary>The Mission Script's lines (all of it when it is not a bundle), with comments blanked and strings kept.</summary>
-        private static string MissionLines(string script)
-        {
-            script = script.Replace("\r\n", "\n");
-            var start = CoreLibrary.LibraryStartLine(script);
-            var lines = script.Split('\n');
-            var text = new StringBuilder();
-            for (var i = 0; i < lines.Length && i + 1 < start; i++)
-                text.Append(WithoutComment(lines[i])).Append('\n');
-            return text.ToString();
-        }
-
-        private static string WithoutComment(string line)
-        {
-            var inString = false;
-            for (var i = 0; i < line.Length; i++)
-            {
-                if (line[i] == '"') inString = !inString;
-                else if (!inString && line[i] == '/' && i + 1 < line.Length && line[i + 1] == '/') return line.Substring(0, i);
-            }
-            return line;
         }
     }
 }
