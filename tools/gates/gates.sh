@@ -17,7 +17,7 @@ run kerboscript dotnet test tests/ClaudiaKermin.Kerboscript.Tests --no-build $K
 run scriptcheck dotnet test tests/ClaudiaKermin.ScriptCheck.Tests --no-build $K
 
 # KsCompile runs from the binary the build above made.
-KS=$(ls tools/ClaudiaKermin.KsCompile/bin/*/*/ClaudiaKermin.KsCompile.dll 2>/dev/null | head -1)
+KS=$(ls -t tools/ClaudiaKermin.KsCompile/bin/*/*/ClaudiaKermin.KsCompile.dll 2>/dev/null | head -1)   # newest = the one just built
 if [ -z "$KS" ]; then echo "FAIL ksc-binary not found under tools/ClaudiaKermin.KsCompile/bin"; exit 1; fi
 run blocks dotnet "$KS" kerboscript tests/blocks
 [ -d tests/tools ] && run tools dotnet "$KS" kerboscript tests/tools
@@ -27,7 +27,7 @@ fixtures=$(find tools tests \( -name forbidden-call.ks -o -name syntax-error.ks 
 if [ -n "$fixtures" ]; then
   out=$(dotnet "$KS" $fixtures 2>&1); rc=$?
   for f in $fixtures; do
-    if echo "$out" | grep -q "^FAIL $f\$"; then echo "PASS fixture $f rejected"; else echo "FAIL fixture $f passed"; fail=1; fi
+    if echo "$out" | grep -qxF "FAIL $f"; then echo "PASS fixture $f rejected"; else echo "FAIL fixture $f passed"; fail=1; fi
   done
   [ $rc -ne 1 ] && { echo "FAIL fixtures: KsCompile exited $rc, expected 1"; fail=1; }
 fi

@@ -10,6 +10,7 @@ if ! out=$(dotnet build ClaudiaKermin.sln -warnaserror $K 2>&1); then echo "FAIL
 for attempt in 1 2; do
   out=$(dotnet test tests/ClaudiaKermin.Core.Tests --no-build $K --filter "Category=Timing" 2>&1); rc=$?
   line=$(echo "$out" | grep -E 'Passed!|Failed!' | tail -1)
+  if [ $rc -eq 0 ] && ! echo "$line" | grep -qE 'Passed: +[1-9]'; then echo "FAIL timing: no Category=Timing test ran (tags missing?)"; exit 1; fi
   if [ $rc -eq 0 ]; then echo "PASS timing (attempt $attempt) $line"; exit 0; fi
   echo "FAIL timing (attempt $attempt) $line"; echo "$out" | grep -E '\[FAIL\]' | head -20
 done
