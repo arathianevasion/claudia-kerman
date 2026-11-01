@@ -70,7 +70,7 @@ namespace ClaudiaKermin.Core.Tools
         private const double PeResidual = 10;
         private const double IncResidual = 1e-6;
         private const int MaxIterations = 50;
-        /// <summary>Out of the moon, round the planet: following no further keeps clear of #471 (a last patch round the star throws).</summary>
+        /// <summary>Out of the moon, round the planet: a last patch round the star no longer throws (#471).</summary>
         private const int Patches = 2;
         /// <summary>The seed's search for the burn point: samples over the window.</summary>
         private const int SeedSamples = 360;
@@ -324,7 +324,7 @@ namespace ClaudiaKermin.Core.Tools
             return path[1].Body == planet ? path[1] : null;
         }
 
-        /// <summary><see cref="BodySystem.Follow"/>, or null where it throws (a radial path; #471's hyperbola round the star).</summary>
+        /// <summary><see cref="BodySystem.Follow"/>, or null where it throws (a radial path; the wrapper goes in #497).</summary>
         private static List<Patch> Follow(BodySystem system, SnapshotBody body, Conic orbit, double ut, int patches)
         {
             try
