@@ -191,6 +191,43 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             Assert.Equal(fires, _check.Check(script).Warnings.Any(w => w.Contains(DropLint)));
         }
 
+        // ---- The descent-loop lint (#627): a throttle lock in an until loop that tests alt:radar or LANDED ----
+
+        private const string DescentLint = "a hand-written descent loop";
+
+        // The Duna benchmark's loop shape.
+        private const string DunaDescentLoop =
+            "lock steering to srfretrograde.\n"
+            + "until ship:status = \"LANDED\" {\n"
+            + "  lock throttle to 1.\n"
+            + "  wait 0.1.\n"
+            + "}\n"
+            + "lock throttle to 0.";
+
+        [Theory]
+        [InlineData("until alt:radar < 50 {\n  lock throttle to 0.5.\n}\n", true)]
+        [InlineData("until LANDED { if ship:verticalspeed < -5 { lock throttle to 1. } }\n", true)]
+        // No throttle lock, a condition that tests neither, a comment, or a string.
+        [InlineData("until alt:radar < 50 {\n  wait 0.1.\n}\n", false)]
+        [InlineData("until ship:altitude > 70000 {\n  lock throttle to 1.\n}\n", false)]
+        [InlineData("// until LANDED { lock throttle to 1. }\nprint 1.\n", false)]
+        [InlineData("print \"until LANDED { lock throttle to 1. }\".\n", false)]
+        public void The_descent_loop_lint_fires_on_a_throttle_lock_in_an_until_loop_that_tests_radar_or_landed(string script, bool fires)
+        {
+            var result = _check.Check(script);
+            Assert.Equal(fires, result.Warnings.Any(w => w.Contains(DescentLint)));
+            if (fires) Assert.Contains(result.Warnings, w => w.Contains("use reentry for a landing through air"));
+        }
+
+        [Fact]
+        public void The_descent_loop_lint_warns_on_the_benchmarks_loop_and_never_on_the_bundled_core_library()
+        {
+            Assert.DoesNotContain(_check.Check(CoreLibrary.Bundle("")).Warnings, w => w.Contains(DescentLint));
+            var result = _check.Check(CoreLibrary.Bundle(DunaDescentLoop));
+            Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
+            Assert.Single(result.Warnings, w => w.Contains(DescentLint));
+        }
+
         // ---- Forbidden: one theory per item of the spec's list ----
 
         [Theory]

@@ -34,7 +34,10 @@ namespace ClaudiaKermin.Core.Missions
             Rule("land", "land", "touch down", "touchdown", "set down", "surface"),
             Rule("ascend", "ascend", "leave the", "lift off from", "take off from", "launch from", "back to orbit", "return", "come back", "home"),
             Rule("return", "return", "come back", "home", "back to kerbin", "bring", "recover"),
-            Rule("reentry", "return", "come back", "home", "reentry", "re-entry", "splash", "parachute", "bring", "recover", "land on kerbin", "back to kerbin"),
+            Rule("reentry", "return", "come back", "home", "reentry", "re-entry", "splash", "parachute", "bring", "recover", "land on kerbin", "back to kerbin",
+                // A landing through air (#627): the bodies with an atmosphere, which land refuses.
+                "land on duna", "land on eve", "land on laythe", "land on jool", "landing on duna", "landing on eve", "landing on laythe", "landing on jool",
+                "land at duna", "land at eve", "land at laythe", "touch down on duna", "touch down on eve", "touch down on laythe"),
             // Not "lan" or "plane": they start "land" and "planet". Minmus's orbit is inclined: reaching it starts with a plane match.
             Rule("change_orbit", "inclin", "polar", "plane change", "orbital plane", "plane of", "equatorial", "ascending node", "resonan", "stationary", "synchronous",
                 "eccentric", "semi-major", "minmus"),
