@@ -146,4 +146,12 @@ namespace ClaudiaKermin.Core.Missions
         public readonly double Ut;
         public RunEventSeen(RunEventKind kind, string text, double ut) { Kind = kind; Text = text; Ut = ut; }
     }
+
+    /// <summary>
+    /// A stage or a decoupler fired on the Mission craft during a run (#605), so stock's delta-v left may fall by what was
+    /// dropped. Not logged: the stage's own <see cref="RunEventSeen"/> is. Ignored unless a run is going.
+    /// </summary>
+    public sealed class CraftSeparated : MissionInput
+    {
+    }
 }
