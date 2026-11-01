@@ -496,6 +496,21 @@ namespace ClaudiaKermin.Core.Tools
             return string.Equals(Squash(a), Squash(b), StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>
+        /// Why <paramref name="biome"/> can't be a biome of <paramref name="body"/>, or null when it can (or the body lists none).
+        /// A listed biome that contains the name, or that the name contains, is suggested first.
+        /// </summary>
+        public static string UnknownBiome(string body, string biome, IList<string> names)
+        {
+            if (string.IsNullOrEmpty(biome) || names == null || names.Count == 0 || names.Any(n => SameBiome(n, biome))) return null;
+            var squashed = Squash(biome);
+            var close = squashed.Length == 0 ? new List<string>()
+                : names.Where(n => Squash(n).IndexOf(squashed, StringComparison.OrdinalIgnoreCase) >= 0
+                    || squashed.IndexOf(Squash(n), StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+            return PlanningJson.Quote(biome) + " is not a biome on " + body + (close.Count > 0 ? "; closest: " + string.Join(", ", close.ToArray()) : "")
+                + "; its biomes are: " + string.Join(", ", names.OrderBy(n => n, StringComparer.Ordinal).ToArray());
+        }
+
         private static string Squash(string text)
         {
             return new string((text ?? "").Where(char.IsLetterOrDigit).ToArray());

@@ -21,6 +21,9 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The tool result of an accepted plan; reading a transcript back, a call with this result is the accepted one.</summary>
         public const string AcceptedJson = "{\"ok\":true}";
 
+        /// <summary>The tool result of an accepted plan whose new_goal was ignored (#590); also an accepted call, and its plan carries no new goal.</summary>
+        public const string GoalKeptJson = "{\"ok\":true,\"note\":\"new_goal ignored: the Mission Goal is kept, as the player did not ask to change it.\"}";
+
         public static ToolDefinition Definition()
         {
             return new ToolDefinition
@@ -37,9 +40,10 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>
         /// The answer to one call: <see cref="AcceptedJson"/>, or <c>{"ok":false,"problems":[...]}</c> as check_script answers.
         /// <paramref name="leftTheCraft"/> is the vessel ids that may be Child Vessels; <paramref name="needsNewGoal"/> when the
-        /// request takes a Mission Plan only for a new Mission Goal (a typed reply to a pending Sequence Plan).
+        /// request takes a Mission Plan only for a new Mission Goal (a typed reply to a pending Sequence Plan);
+        /// <paramref name="allowsNewGoal"/> when the player may change the goal (their typed Reply or Change), else a new_goal is ignored (#590).
         /// </summary>
-        public static ToolOutcome Check(ToolUseBlock use, ICollection<string> leftTheCraft, bool needsNewGoal)
+        public static ToolOutcome Check(ToolUseBlock use, ICollection<string> leftTheCraft, bool needsNewGoal, bool allowsNewGoal = true)
         {
             var problems = new List<string>();
             var plan = use.InputIsValid ? Read(use.InputJson, problems) : null;
@@ -52,7 +56,10 @@ namespace ClaudiaKermin.Core.Missions
                 if (needsNewGoal && plan.NewGoal == null)
                     problems.Add("new_goal is empty: while a Sequence Plan is pending, a Mission Plan is only for a new Mission Goal; otherwise reply with a sequence_plan or an answer");
             }
-            if (problems.Count == 0) return new ToolOutcome { Json = AcceptedJson, Summary = "ok" };
+            if (problems.Count == 0)
+                return plan != null && plan.NewGoal != null && !allowsNewGoal
+                    ? new ToolOutcome { Json = GoalKeptJson, Summary = "ok, goal kept" }
+                    : new ToolOutcome { Json = AcceptedJson, Summary = "ok" };
             var json = new JsonWriter().BeginObject().Field("ok", false).Name("problems").BeginArray();
             foreach (var problem in problems) json.String(problem);
             return new ToolOutcome
@@ -66,10 +73,13 @@ namespace ClaudiaKermin.Core.Missions
         public static MissionPlan LastAccepted(IEnumerable<Message> messages)
         {
             var list = messages.ToList();
-            var accepted = new HashSet<string>(list.SelectMany(m => m.Content.OfType<ToolResultBlock>())
-                .Where(r => !r.IsError && r.Content == AcceptedJson).Select(r => r.ToolUseId));
+            var results = list.SelectMany(m => m.Content.OfType<ToolResultBlock>()).Where(r => !r.IsError).ToList();
+            var accepted = new HashSet<string>(results.Where(r => r.Content == AcceptedJson || r.Content == GoalKeptJson).Select(r => r.ToolUseId));
+            var kept = new HashSet<string>(results.Where(r => r.Content == GoalKeptJson).Select(r => r.ToolUseId));
             var use = list.SelectMany(m => m.Content.OfType<ToolUseBlock>()).LastOrDefault(u => u.Name == ToolName && u.InputIsValid && accepted.Contains(u.Id ?? ""));
-            return use != null ? ReadAccepted(use.InputJson) : null;
+            var plan = use != null ? ReadAccepted(use.InputJson) : null;
+            if (plan != null && kept.Contains(use.Id ?? "")) plan.NewGoal = null;
+            return plan;
         }
 
         /// <summary>

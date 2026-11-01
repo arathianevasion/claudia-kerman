@@ -123,6 +123,13 @@ namespace ClaudiaKermin.Core.Tools
                 if (Math.Abs(query.NearLatitude) > 90) return PlanningJson.Error("near.latitude must be between -90 and 90");
             }
 
+            // #591: a biome the body doesn't have is an error naming the body's own, not an empty search.
+            if (!string.IsNullOrEmpty(query.Biome))
+            {
+                var unknown = LandingSiteSearch.UnknownBiome(body.Name, query.Biome, api.BiomeNames(body.Name));
+                if (unknown != null) return PlanningJson.Error(unknown);
+            }
+
             var conic = Conic.FromElements(body.Gm, orbit.SemiMajorAxis, orbit.Eccentricity, orbit.Inclination, orbit.Lan, orbit.ArgumentOfPeriapsis,
                 orbit.MeanAnomalyAtEpoch, orbit.Epoch);
             var found = LandingSiteSearch.Find(body, conic, snapshot.Ut, query, api);

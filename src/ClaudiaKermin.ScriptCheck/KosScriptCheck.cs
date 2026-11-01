@@ -86,7 +86,9 @@ namespace ClaudiaKermin.ScriptCheck
                 sections.Add(part.InitializationCode);
                 sections.Add(part.MainCode);
             }
-            return new ScriptCheckResult(null, OpcodeReader.Read(sections, forToolTests, forCoreLibrary ? 1 : CoreLibrary.LibraryStartLine(script))) { Warnings = ScriptLints.Warnings(script) };
+            var warnings = new List<string>(ScriptLints.Warnings(script));
+            warnings.AddRange(StackDropLint.Warnings(script));
+            return new ScriptCheckResult(null, OpcodeReader.Read(sections, forToolTests, forCoreLibrary ? 1 : CoreLibrary.LibraryStartLine(script))) { Warnings = warnings };
         }
 
         /// <summary>

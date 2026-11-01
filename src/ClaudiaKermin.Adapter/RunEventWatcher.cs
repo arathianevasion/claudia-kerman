@@ -25,6 +25,16 @@ namespace ClaudiaKermin.Adapter
         private readonly Func<string> _child;
         private readonly HashSet<uint> _hot = new HashSet<uint>();
         private float _nextHeat;
+        private readonly List<JointCandidate> _candidates = new List<JointCandidate>();
+        private double _lastExplained = double.NegativeInfinity;
+
+        /// <summary>A joint break waiting for its re-check on a later frame.</summary>
+        private struct JointCandidate
+        {
+            public Part Part;
+            public int Frame;
+            public double At;
+        }
 
         public RunEventWatcher(Action<MissionInput> send, Func<bool> running, Func<string> craftVesselId, Func<string> runningChildVesselId)
         {
@@ -35,6 +45,7 @@ namespace ClaudiaKermin.Adapter
             GameEvents.onStageActivate.Add(OnStage);
             GameEvents.onPartDie.Add(OnPartDie);
             GameEvents.onPartJointBreak.Add(OnJointBreak);
+            GameEvents.onPartDeCoupleNewVesselComplete.Add(OnDecoupled);
             GameEvents.OnExperimentDeployed.Add(OnExperiment);
         }
 
@@ -44,8 +55,10 @@ namespace ClaudiaKermin.Adapter
             if (!_running())
             {
                 _hot.Clear();
+                _candidates.Clear();
                 return;
             }
+            ResolveCandidates();
             if (Time.realtimeSinceStartup < _nextHeat) return;
             _nextHeat = Time.realtimeSinceStartup + HeatSeconds;
             var vessel = FlightGlobals.ActiveVessel;
@@ -76,7 +89,14 @@ namespace ClaudiaKermin.Adapter
         private void OnStage(int stage)
         {
             // Staging acts on the vessel the player is flying, so that is the vessel the stage belongs to.
-            if (IsCraft(FlightGlobals.ActiveVessel)) Report(RunEventKind.Staging, "stage " + stage + " fired");
+            if (!IsCraft(FlightGlobals.ActiveVessel)) return;
+            Report(RunEventKind.Staging, "stage " + stage + " fired");
+            _lastExplained = Time.realtimeSinceStartup;
+        }
+
+        private void OnDecoupled(Vessel original, Vessel made)
+        {
+            _lastExplained = Time.realtimeSinceStartup;
         }
 
         private void OnPartDie(Part part)
@@ -86,7 +106,23 @@ namespace ClaudiaKermin.Adapter
 
         private void OnJointBreak(PartJoint joint, float breakForce)
         {
-            if (joint != null && Flying(joint.Child)) Report(RunEventKind.PartLost, joint.Child.partInfo.title + " broke off");
+            // Only a candidate: the part may stay attached, or leave because a decoupler fired. Re-checked on a later frame.
+            if (joint != null && Flying(joint.Child) && !_candidates.Exists(c => c.Part == joint.Child))
+                _candidates.Add(new JointCandidate { Part = joint.Child, Frame = Time.frameCount, At = Time.realtimeSinceStartup });
+        }
+
+        private void ResolveCandidates()
+        {
+            for (var i = _candidates.Count - 1; i >= 0; i--)
+            {
+                var c = _candidates[i];
+                if (Time.frameCount <= c.Frame) continue;
+                _candidates.RemoveAt(i);
+                if (c.Part == null) continue; // destroyed: onPartDie reports it
+                var stillOnCraft = c.Part.vessel != null && IsCraft(c.Part.vessel);
+                if (PartLossRule.BrokeOff(stillOnCraft, PartLossRule.Explains(_lastExplained, c.At)))
+                    Report(RunEventKind.PartLost, c.Part.partInfo.title + " broke off");
+            }
         }
 
         private void OnExperiment(ScienceData data)

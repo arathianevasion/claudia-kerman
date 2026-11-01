@@ -756,6 +756,10 @@ function land_over_shape {
 function land_steer {
   parameter want, last, vel, a_max.
   local mag is sqrt(want:al ^ 2 + want:cr ^ 2 + want:up ^ 2).
+  // #595: no thrust to steer with, or a demand that is zero or not a number: hold the last direction, never divide by it.
+  if not (a_max > 0) or not (mag > 0) or mag > 1e15 {
+    return lexicon("al", last:al, "cr", last:cr, "up", last:up, "mag", 0).
+  }
   if mag < 0.05 * a_max {
     return lexicon("al", last:al, "cr", last:cr, "up", last:up, "mag", mag).
   }
@@ -821,6 +825,13 @@ function land_circular_dv {
 }
 
 // ---- Pure helpers: staging off a short stage before the fall (#382) ----
+
+// Whether land_descend stages before guidance and steering this pass (#595): braking, no Underhang still to drop
+// (drop_pending), and no thrust (available_thrust, kN), so a stage that ran dry doesn't leave a_max 0. Pure.
+function land_stage_before_guidance {
+  parameter braking, drop_pending, available_thrust.
+  return braking and not drop_pending and available_thrust <= 0.
+}
 
 // Whether the current stage, with stage_dv m/s (vacuum) left, can't cover the braking need (m/s, as land's
 // delta-v check works it out) times margin, so it should be staged off before the fall. Pure.
@@ -1456,6 +1467,9 @@ function land {
   if by_biome {
     local found is addons:claudia:landingsite(land_site_query(opt:target, opt:daylight, opt:max_slope, opt:within_hours, reach)).
     if found:error <> "" {
+      if found:error:contains(" is not a biome on ") {
+        return claudia_finish(ctx, false, found:error, extra).
+      }
       local advice is "raise max_slope, try another biome or near point, or change the orbit's plane".
       if opt:daylight {
         set advice to advice + ", or land with daylight false".
@@ -2318,6 +2332,15 @@ function land_descend {
   local hovering is false.
 
   until status = "LANDED" or status = "SPLASHED" {
+    // #595: a stage that ran dry mid-burn stages into the next engines before guidance and steering use a_max, by claudia_tick's
+    // rule (burning, no Underhang still to drop, within stage_limit); the tick's own call is too late, after the steering.
+    if land_stage_before_guidance(braking, drop_pending, ship:availablethrust) {
+      local staged is claudia_autostage(ctx).
+      if staged <> "" {
+        set tset to 0.
+        return staged.
+      }
+    }
     local up_v is ship:up:vector.
     // The site along the surface (#431), from where the craft is now.
     local here is ship:geoposition.
