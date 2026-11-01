@@ -108,8 +108,8 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal("stable", patch.GetProperty("ends").GetString());
             Assert.Equal(60, patch.GetProperty("start_ut").GetDouble(), 1);
             Assert.Equal("in 60 s", patch.GetProperty("start_in").GetString());
-            // A stable patch ends one period later, as stock's does.
-            Assert.Equal(60 + 2 * Math.PI * Math.Sqrt(a * a * a / KerbinGm), patch.GetProperty("end_ut").GetDouble(), 0);
+            // A stable patch never ends, so it has no end.
+            Assert.False(patch.TryGetProperty("end_ut", out _));
             Assert.Contains("impulsive", result.GetProperty("model").GetString());
         }
 
@@ -210,8 +210,9 @@ namespace ClaudiaKermin.Core.Tests
             var apR = KerbinR + Patches(result)[0].GetProperty("ap").GetDouble();
             Assert.InRange(closest.GetProperty("distance").GetDouble(), MunSma - apR - 1, MunSma - apR + 1000);
             Assert.Equal(closest.GetProperty("distance").GetDouble() - MunR, closest.GetProperty("altitude").GetDouble(), 0);
-            // Apoapsis is half an orbit on.
-            Assert.InRange(closest.GetProperty("at_ut").GetDouble() - Patches(result)[0].GetProperty("end_ut").GetDouble() / 2, -60, 60);
+            // Apoapsis is half an orbit on from the burn at UT 0.
+            var sma = (KerbinR + 100000 + apR) / 2;
+            Assert.InRange(closest.GetProperty("at_ut").GetDouble() - Math.PI * Math.Sqrt(sma * sma * sma / KerbinGm), -60, 60);
         }
 
         [Fact]

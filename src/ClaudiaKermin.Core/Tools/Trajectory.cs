@@ -30,7 +30,7 @@ namespace ClaudiaKermin.Core.Tools
         public SnapshotBody Body;
         public Conic Orbit;
         public double StartUt;
-        /// <summary>When it ends; one period after the start for a stable orbit, as stock has it, and infinity for a hyperbola round the star.</summary>
+        /// <summary>When it ends; infinity for a stable orbit (it repeats) or a hyperbola round the star.</summary>
         public double EndUt;
         public PatchEnd End;
         /// <summary>The body whose sphere of influence it enters, on an encounter.</summary>
@@ -167,7 +167,8 @@ namespace ClaudiaKermin.Core.Tools
                 patch.End = PatchEnd.Escape;
                 patch.EndUt = escape.Value;
             }
-            else patch.EndUt = orbit.Closed ? startUt + orbit.Period : double.PositiveInfinity;
+            // A stable orbit repeats: it never ends (the one-period horizon bounds only the encounter search above).
+            else patch.EndUt = double.PositiveInfinity;
             return patch;
         }
 
@@ -253,7 +254,7 @@ namespace ClaudiaKermin.Core.Tools
         {
             var targetOrbit = OrbitOf(target);
             Func<double, double> gap = t => (patch.Orbit.Position(t) - targetOrbit.Position(t)).Length;
-            var end = double.IsInfinity(patch.EndUt) ? patch.StartUt + targetOrbit.Period : patch.EndUt;
+            var end = double.IsInfinity(patch.EndUt) ? patch.StartUt + (patch.Orbit.Closed ? patch.Orbit.Period : targetOrbit.Period) : patch.EndUt;
             var maxStep = (end - patch.StartUt) / 200;
             double bestT = patch.StartUt, best = gap(patch.StartUt), before = patch.StartUt, after = patch.StartUt;
             var t = patch.StartUt;
