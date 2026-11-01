@@ -302,6 +302,47 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal(-1, Number(string.Format(CultureInfo.InvariantCulture, "reentry_entry_eta(1.2, {0}, {1}, {2}, 180)", D(outSma), D(KerbinMu), D(KerbinRadius + 70000))));
         }
 
+        // ---- reentry: a skip-out (#592) ----
+
+        [Theory]
+        [InlineData("true, 70500, 70000, 12", "1")]
+        [InlineData("true, 69000, 70000, 12", "0")]
+        [InlineData("true, 70500, 70000, -12", "0")]
+        [InlineData("false, 70500, 70000, -12", "0")]
+        [InlineData("false, 72000, 70000, 30", "0")]
+        public void A_skip_out_is_a_craft_that_was_in_the_atmosphere_and_is_now_above_it_and_climbing(string args, string expected)
+        {
+            Assert.Equal(expected == "1" ? "True" : "False", One("reentry_skipped_out(" + args + ")"));
+        }
+
+        [Fact]
+        public void A_skip_out_with_the_periapsis_still_inside_waits_for_the_next_pass_and_the_auto_deadline_grows()
+        {
+            Assert.Equal("", One("reentry_skip_refusal(1, 34800, 70000)"));
+            Assert.Equal("", One("reentry_skip_refusal(2, 34800, 70000)"));
+            // 3 s run, 5000 s to the next entry: the deadline is 3 + 5000 + 1800.
+            Assert.Equal(6803, Number("reentry_next_deadline(true, 1900, 3, 5000)"));
+        }
+
+        [Fact]
+        public void A_fourth_pass_fails_with_the_skipped_out_reason()
+        {
+            Assert.Equal("skipped out of the atmosphere 3 times (periapsis 34800 m)", One("reentry_skip_refusal(3, 34800, 70000)"));
+        }
+
+        [Fact]
+        public void A_skip_out_with_the_periapsis_above_the_atmosphere_fails_at_once()
+        {
+            Assert.Equal("skipped out: periapsis 71000 m is above the atmosphere", One("reentry_skip_refusal(1, 71000, 70000)"));
+            Assert.Equal("skipped out: periapsis 71000 m is above the atmosphere", One("reentry_skip_refusal(3, 71000, 70000)"));
+        }
+
+        [Fact]
+        public void An_explicit_max_duration_stays_a_hard_cap_after_a_skip_out()
+        {
+            Assert.Equal(1900, Number("reentry_next_deadline(false, 1900, 3, 5000)"));
+        }
+
         // ---- science ----
 
         [Fact]

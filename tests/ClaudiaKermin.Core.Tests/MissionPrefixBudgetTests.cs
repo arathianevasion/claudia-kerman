@@ -25,7 +25,7 @@ namespace ClaudiaKermin.Core.Tests
         // counts input) for the system prompt and tool definitions of the first Mission request in this test's Mission. The estimate
         // runs low against the API's own count (25,569 in b5f3, 26,865 in 3dc5, whose Mission layer also carried a real body table
         // and goal), so compare this figure only with itself.
-        private const int TodaysEstimate = 21418;
+        private const int TodaysEstimate = 21443;
 
         /// <summary>
         /// Set at 21,500 when the figure was 20,452 (1.05 x 20,452 = 21,475, rounded up to the next hundred), and not raised since:
@@ -43,6 +43,8 @@ namespace ClaudiaKermin.Core.Tests
         /// Merged with #599 (its +45 on top of 21,335 from main) = 21,380 measured on the merged tree.
         /// #596's drop_underhang option and early-drop rule in land's docs (+38) to 21,418, measured on the tree merged with main: a lander
         /// that drops its transfer stage before the deorbit turns and brakes on its own, instead of hovering a stack dry and failing the leg.
+        /// #592's reentry "passes" result and its skip-out failures in one doc phrase (73 characters, +25) to 21,443 on the tree merged with main (21,418 + 25): a craft that skipped out ran
+        /// to max_duration and failed (b5f3, 0de6, 44e9), each a failed run, a Debrief and a new Sequence Plan.
         /// </summary>
         private const int BudgetTokens = 21500;
 
