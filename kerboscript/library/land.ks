@@ -756,6 +756,10 @@ function land_over_shape {
 function land_steer {
   parameter want, last, vel, a_max.
   local mag is sqrt(want:al ^ 2 + want:cr ^ 2 + want:up ^ 2).
+  // #595: no thrust to steer with, or a demand that is zero or not a number: hold the last direction, never divide by it.
+  if not (a_max > 0) or not (mag > 0) or mag > 1e15 {
+    return lexicon("al", last:al, "cr", last:cr, "up", last:up, "mag", 0).
+  }
   if mag < 0.05 * a_max {
     return lexicon("al", last:al, "cr", last:cr, "up", last:up, "mag", mag).
   }
@@ -2318,6 +2322,15 @@ function land_descend {
   local hovering is false.
 
   until status = "LANDED" or status = "SPLASHED" {
+    // #595: a stage that ran dry mid-burn stages into the next engines before guidance and steering use a_max, by claudia_tick's
+    // rule (burning, no Underhang still to drop, within stage_limit); the tick's own call is too late, after the steering.
+    if braking and not drop_pending and ship:availablethrust <= 0 {
+      local staged is claudia_autostage(ctx).
+      if staged <> "" {
+        set tset to 0.
+        return staged.
+      }
+    }
     local up_v is ship:up:vector.
     // The site along the surface (#431), from where the craft is now.
     local here is ship:geoposition.
