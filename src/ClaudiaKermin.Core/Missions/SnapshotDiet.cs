@@ -12,7 +12,8 @@ namespace ClaudiaKermin.Core.Missions
     /// it stages or docks, so the full snapshot goes on the first turn, on every Mission Plan turn and on any turn whose part count
     /// or craft.stage differs from the last full one the conversation sent (or whose part ids do, a swap the count misses); any other turn sends the dynamic snapshot, everything
     /// but craft.parts, and says the parts are unchanged. A turn on the same leg as the previous snapshot (no run between, within
-    /// 60 s of it, such as the Continue turn right after a Debrief) points back at it instead. Only Claudia's text changes:
+    /// 60 s of it, such as the Continue turn right after a Debrief) points back at it instead, unless the craft is falling (#599):
+    /// its snapshot carries impact_in_s and every turn gets a fresh one, as the picture is old within seconds. Only Claudia's text changes:
     /// Planning Tools read the full <see cref="GameSnapshot"/> the turn was built with.
     /// </summary>
     internal static class SnapshotDiet
@@ -56,7 +57,7 @@ namespace ClaudiaKermin.Core.Missions
             var head = userText.Substring(0, start).TrimEnd('\n');
             var tail = userText.Substring(end);
             var since = now.Ut - last.Ut;
-            if (noRunSince && since >= 0 && since <= SameLegSeconds) return head + "\n" + AsAbove + tail;
+            if (noRunSince && !now.Falling && since >= 0 && since <= SameLegSeconds) return head + "\n" + AsAbove + tail;
             return head + "\n" + DynamicHeader + now.ToJson(false, false)
                 + "\nparts: unchanged since the Game Snapshot at UT " + Ut(lastFull) + " (" + ids.Count.ToString(CultureInfo.InvariantCulture) + " parts)" + tail;
         }

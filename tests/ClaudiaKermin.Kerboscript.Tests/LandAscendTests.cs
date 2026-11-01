@@ -366,6 +366,48 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
             Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture, "land_plans_staged({0}, {1}, {2}, {3})", stageDv, totalDv, need, mayStage)));
         }
 
+        [Theory]
+        // #596, 22cc: Mun Shot v2 in Minmus orbit, the Swivel stage (648 m/s) hanging below the Terrier lander (3,103 m/s), a
+        // 419 m/s need (times burn_margin 1.1 = 460.9): the lander alone has it, so the stage goes before the deorbit burn.
+        [InlineData("early", "true", 3103, 419, "True")]
+        // A lander short of the need, with the margin (450 < 460.9), or well short: it keeps the stack.
+        [InlineData("early", "true", 450, 419, "False")]
+        [InlineData("early", "true", 0, 419, "False")]
+        // Staging off would leave part of the Underhang, or is blocked.
+        [InlineData("early", "false", 3103, 419, "False")]
+        // "late" keeps today's: the stack brakes and the Underhang drops near the ground.
+        [InlineData("late", "true", 3103, 419, "False")]
+        public void Land_stages_the_Underhang_off_before_the_deorbit_when_the_lander_alone_has_the_landing(string drop, string mayStage, double landerDv, double need, string expected)
+        {
+            Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture,
+                "land_drops_before_deorbit(\"{0}\", {1}, {2}, land_dv_needed({3}, 1.1, -1))", drop, mayStage, landerDv, need)));
+        }
+
+        [Fact]
+        public void The_stage_that_covers_the_braking_kept_the_stack_before_596()
+        {
+            // 22cc's figures under #546's rule alone: 648 m/s covers 460.9, so it never staged before the fall.
+            Assert.Equal("False", One("land_plans_staged(648, 3751, land_dv_needed(419, 1.1, -1), true)"));
+        }
+
+        [Fact]
+        public void Drop_underhang_defaults_to_early_and_is_checked()
+        {
+            Assert.Equal("early", One("claudia_options(lexicon(), land_defaults(), \"auto\"):opt:drop_underhang"));
+            Assert.Equal("", One("land_unreadable(claudia_options(lexicon(\"drop_underhang\", \"late\"), land_defaults(), \"auto\"):opt)"));
+            Assert.Equal("drop_underhang must be \"early\" or \"late\"",
+                One("land_unreadable(claudia_options(lexicon(\"drop_underhang\", \"soon\"), land_defaults(), \"auto\"):opt)"));
+        }
+
+        [Fact]
+        public void Land_decides_the_early_drop_on_the_plans_need_with_burn_margin_and_flies_the_lander()
+        {
+            var land = CoreLibrary.Files.Single(f => f.Name == "land").Source;
+            Assert.Contains("local lander_need is land_dv_needed(plan:predicted_dv, opt:burn_margin, land_deorbit_figures(plan):needed).", land);
+            Assert.Contains("if land_drops_before_deorbit(opt:drop_underhang, may_stage_first, under:lander_dv, lander_need) {", land);
+            Assert.Contains("set craft to land_lander_craft(land_craft(under, turn, opt), under).", land);
+        }
+
         [Fact]
         public void The_lander_alone_keeps_the_turn_lag_and_margin_and_has_nothing_to_drop()
         {
@@ -1662,6 +1704,74 @@ function estimate {
         public void Ascend_circularizes_at_apoapsis_by_vis_viva()
         {
             Assert.Equal("15.381", One("round(ascend_circularize_dv(" + MunMu + ", 212000, 201000), 3)"));
+        }
+
+        // #597: ascend also starts from flight, the abort to orbit for a falling craft. 7061 m is the Mun's highest terrain.
+        [Fact]
+        public void Ascend_starts_from_the_ground_or_from_flight_over_an_airless_body()
+        {
+            Assert.Equal("ground", One("ascend_start(\"LANDED\", false, -190000, 7061, \"Mun\")"));
+            Assert.Equal("ground", One("ascend_start(\"SPLASHED\", false, -190000, 7061, \"Mun\")"));
+            Assert.Equal("ground", One("ascend_start(\"PRELAUNCH\", false, -190000, 7061, \"Mun\")"));
+            Assert.Equal("flight", One("ascend_start(\"SUB_ORBITAL\", false, -59600, 7061, \"Mun\")"));
+            Assert.Equal("flight", One("ascend_start(\"FLYING\", false, -59600, 7061, \"Mun\")"));
+            // In orbit but the periapsis under the highest terrain: still falling into it.
+            Assert.Equal("flight", One("ascend_start(\"ORBITING\", false, 4000, 7061, \"Mun\")"));
+            // Past escape speed there's no apoapsis to climb to, even on a path into the terrain.
+            Assert.Equal("ascend starts landed, flying or sub-orbital, not ESCAPING", One("ascend_start(\"ESCAPING\", false, 4000, 7061, \"Mun\")"));
+            // Already safe in orbit: nothing to fly.
+            Assert.Equal("orbit", One("ascend_start(\"ORBITING\", false, 12000, 7061, \"Mun\")"));
+            Assert.Equal("ascend starts landed, flying or sub-orbital, not ESCAPING", One("ascend_start(\"ESCAPING\", false, 12000, 7061, \"Mun\")"));
+            Assert.Equal("ascend starts landed, flying or sub-orbital, not DOCKED", One("ascend_start(\"DOCKED\", false, 12000, 7061, \"Mun\")"));
+            Assert.Equal("ascend flies from airless bodies only; Duna has an atmosphere (use launch)", One("ascend_start(\"LANDED\", true, -300000, 8264, \"Duna\")"));
+            Assert.Equal("ascend flies from airless bodies only; Duna has an atmosphere (use launch)", One("ascend_start(\"SUB_ORBITAL\", true, -300000, 8264, \"Duna\")"));
+        }
+
+        [Fact]
+        public void Ascend_from_a_fall_over_Minmus_first_commands_a_climb()
+        {
+            // 22cc's state, roughly: 2 km over Minmus (radius 60 km), 30 m/s down and 20 m/s across, to "auto" 10,725 m.
+            const string Fall = "1.7658e9, 62000, 20, -30, 2000, 10725, ";
+            // A Terrier lander (6 m/s^2) puts all of it into stopping the fall and climbing.
+            Assert.Equal("90", One("round(ascend_climb_pitch(" + Fall + "6), 3)"));
+            // With more thrust, the rest goes into horizontal speed, still pointing up.
+            var pitch = double.Parse(One("ascend_climb_pitch(" + Fall + "25)"), CultureInfo.InvariantCulture);
+            Assert.InRange(pitch, 30, 89);
+            Assert.True(double.Parse(One("sin(ascend_climb_pitch(" + Fall + "25))"), CultureInfo.InvariantCulture) > 0.5);
+            // No thrust (the stage dry before staging): straight up, never into the ground.
+            Assert.Equal("90", One("ascend_climb_pitch(" + Fall + "0)"));
+        }
+
+        [Fact]
+        public void Ascend_from_flight_keeps_its_direction_of_travel_unless_hovering()
+        {
+            Assert.Equal("200", One("ascend_flight_az(90, 200, 150)"));
+            Assert.Equal("90", One("ascend_flight_az(90, 200, 9)"));
+            // A hover drifting a little past the ground's own 9 m/s of turn still flies into target_inc.
+            Assert.Equal("90", One("ascend_flight_az(90, 200, 15)"));
+        }
+
+        [Fact]
+        public void Ascend_from_flight_climbs_at_least_1_km_above_the_craft_so_apoapsis_is_ahead()
+        {
+            Assert.Equal("10725", One("ascend_climb_to(\"flight\", 10725, 2000)"));
+            Assert.Equal("16000", One("ascend_climb_to(\"flight\", 10725, 15000)"));
+            Assert.Equal("10725", One("ascend_climb_to(\"ground\", 10725, 15000)"));
+        }
+
+        [Fact]
+        public void Ascend_from_flight_fails_cleanly_when_it_cannot_reach_orbit_before_impact()
+        {
+            // 30 m/s down at 2 km over Minmus, 20 m/s across, 160 m/s for the orbit.
+            Assert.Equal("", One("ascend_flight_short(-30, 20, 160, 6, 0.45, 2000, 600)"));
+            // Stock can't say (0): the delta-v isn't judged.
+            Assert.Equal("", One("ascend_flight_short(-30, 20, 160, 6, 0.45, 2000, 0)"));
+            Assert.Equal("too little delta-v to reach orbit before impact: needs at least 170 m/s, 120 m/s left", One("ascend_flight_short(-30, 20, 160, 6, 0.45, 2000, 120)"));
+            // 1.6 m/s^2 against 0.45 stops 150 m/s down in 9,783 m: the ground comes first.
+            Assert.Equal("too little thrust to reach orbit before impact: stopping the fall takes 9783 m, 2000 m above the ground", One("ascend_flight_short(-150, 20, 160, 1.6, 0.45, 2000, 600)"));
+            Assert.Equal("too little thrust to reach orbit before impact: thrust-to-weight 0.8 while falling", One("ascend_flight_short(-30, 20, 160, 0.36, 0.45, 2000, 600)"));
+            // Climbing already: nothing to stop.
+            Assert.Equal("", One("ascend_flight_short(5, 20, 160, 0.36, 0.45, 2000, 600)"));
         }
     }
 }

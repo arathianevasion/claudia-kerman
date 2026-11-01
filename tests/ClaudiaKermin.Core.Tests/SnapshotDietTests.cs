@@ -146,6 +146,74 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal("Continue the Mission.\nUT: 1030 s.\n" + SnapshotDiet.AsAbove, SnapshotDiet.Shape(turn, new[] { debrief }, false, true));
         }
 
+        /// <summary>Minmus (#599, m20261031-225746-22cc): 3,320 m up and just starting to fall, periapsis 59.6 km under the surface, at apoapsis.</summary>
+        private static GameSnapshot MinmusFallAt(double ut, Action<GameSnapshot> change = null)
+        {
+            return MunShotAt(ut, s =>
+            {
+                s.Situation = "SUB_ORBITAL";
+                s.Body = "Minmus";
+                s.Altitude = 3320;
+                s.VerticalSpeed = -0.5;
+                s.Bodies = new System.Collections.Generic.List<SnapshotBody> { new SnapshotBody { Name = "Minmus", Gm = 1.7658e9, Radius = 60000 } };
+                s.Orbit = new SnapshotOrbit
+                {
+                    Body = "Minmus", Apoapsis = 3320, Periapsis = -59600, SemiMajorAxis = 31860, Eccentricity = 0.98744507219083,
+                    MeanAnomalyAtEpoch = Math.PI, Epoch = ut,
+                };
+                if (change != null) change(s);
+            });
+        }
+
+        [Fact]
+        public void TheTimeToImpactIsTheOrbitsFallToSeaLevelRadius()
+        {
+            // Hand-computed from apoapsis 63,320 m from the centre, periapsis 400 m: E = acos((a - R) / (a e)), M = E - e sin E,
+            // (pi - M) / n with n = sqrt(mu / a^3) gives 122.484 s.
+            Assert.Equal(122.5, MinmusFallAt(826833).ImpactInS.Value, 1);
+            Assert.Null(MunShotAt(1000).ImpactInS);
+            Assert.Null(MinmusFallAt(826833, s => s.Situation = "LANDED").ImpactInS);
+            Assert.Null(MinmusFallAt(826833, s => s.Orbit.Periapsis = 20000).ImpactInS);
+        }
+
+        [Fact]
+        public void AKerbinReentryUnderParachutesIsNotFalling()
+        {
+            var kerbin = new SnapshotBody { Name = "Kerbin", Gm = 3.5316e12, Radius = 600000, AtmosphereHeight = 70000, SeaLevelAtm = 1 };
+            var reentry = MinmusFallAt(1000, s =>
+            {
+                s.Body = "Kerbin";
+                s.Bodies = new System.Collections.Generic.List<SnapshotBody> { kerbin };
+                s.Orbit.Body = "Kerbin";
+                s.Orbit.SemiMajorAxis = 3000000;
+                s.Orbit.Eccentricity = 0.9;
+                s.Altitude = 5000;
+                s.Situation = "FLYING";
+            });
+            Assert.False(reentry.Falling);
+        }
+
+        [Fact]
+        public void AFallingCraftGetsAFreshSnapshotWithImpactInSNotAsAbove()
+        {
+            var debrief = Turn("The player approved the Sequence Plan.", MinmusFallAt(826832.7));
+            var plan = Turn("The player asks for a corrective sequence.", MinmusFallAt(826858));
+            var shaped = SnapshotDiet.Shape(plan, new[] { debrief }, false, true);
+            Assert.DoesNotContain(SnapshotDiet.AsAbove, shaped);
+            Assert.Contains(SnapshotDiet.DynamicHeader, shaped);
+            Assert.Contains("\"impact_in_s\":", shaped);
+        }
+
+        [Fact]
+        public void AnOrbitingCraftOnTheSameLegKeepsAsAbove()
+        {
+            var debrief = Turn("The player approved the Sequence Plan.", MunShotAt(1000));
+            var turn = Turn("Continue the Mission.", MunShotAt(1030));
+            var shaped = SnapshotDiet.Shape(turn, new[] { debrief }, false, true);
+            Assert.EndsWith(SnapshotDiet.AsAbove, shaped);
+            Assert.DoesNotContain("impact_in_s", turn);
+        }
+
         [Fact]
         public void OneSnapshotPerLegHoldsOnlyWithin60SecondsOfThePreviousSnapshot()
         {

@@ -92,7 +92,8 @@ namespace ClaudiaKermin.Core.Tests
             // to 11483 (+22) for #510: rule 3 and the worked example pass land the tool's site as near (human approved 2026-10-28, run budget +250)
             // to 11545 (+62) for #523: the SET a:b[c] rule (human approved 2026-10-29)
             // to 11635 (+90) for #521: fly the proposed plane change before land (human approved 2026-10-29)
-            Assert.InRange(MissionPrompts.BaseLayer.Length, 1, 11635);
+            // to 11770 (+135) for #599: a falling craft thrusts horizontal and up, never a prograde node (ticket-mandated, within the run's 60-token prefix allowance)
+            Assert.InRange(MissionPrompts.BaseLayer.Length, 1, 11770);
         }
 
         [Fact]

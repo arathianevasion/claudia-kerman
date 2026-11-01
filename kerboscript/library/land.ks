@@ -59,12 +59,13 @@
 //|     clears. After a guard abort whose report shows terrain or a climb off the predicted path, retry with a smaller shape (e.g. half the
 //|     descent_shape reported); otherwise leave it to the block. A shape that doesn't clear is refused before the deorbit burn, with shape_range.
 //|   underhang_agl [2000]: m above the ground to drop any Underhang.
+//|   drop_underhang ["early"]: "late" keeps the stack.
 //|   max_duration ["auto"]: the wait to the deorbit burn, plus the planned fall and braking, plus 1200 s.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
-//| Stages off a stage that can't cover the braking before the fall (within stage_limit), so plan the deorbit on it if you like.
+//| Stages off a stage taking the Underhang before the deorbit if the lander has the landing's delta-v (its delta-v lost), else one short of braking before the fall.
 //| Drops any Underhang (parts below the landing legs) at underhang_agl [2000] m above the ground during braking, or earlier if it runs dry, then relights on the lander's engines and lands clear of where the Underhang falls. Fails before the deorbit burn if the lander alone can't fly the last underhang_agl m.
 //| Extra results: dropped_underhang (the names of the parts dropped), underhang_kept (Underhang parts it couldn't drop), underhang_drop_agl (m above the ground at the drop; -1 if none),
-//| staged_before_braking (true if it did; stage_left is the stage it left), slope (degrees where it came to rest), touchdown_speed_actual (m/s),
+//| staged_before_deorbit, staged_before_braking (true if it did; stage_left is the stage it left), slope (degrees where it came to rest), touchdown_speed_actual (m/s),
 //| touchdown_h_speed (m/s sideways at touchdown), lean (degrees from upright once settled),
 //| reversals (times the descent turned back after braking began; 0 normally), distance_to_target
 //| (m from the site asked for, or the spot chosen for "any" or a biome), best_effort (true if nothing within
@@ -89,7 +90,7 @@
 function land_defaults {
   return lexicon("target", "any", "daylight", true, "max_slope", 8, "max_divert", 300,
     "max_overshoot", 500, "touchdown_speed", 2, "gear_alt", 1000, "burn_margin", 1.10, "underhang_agl", 2000,
-    "within_hours", "auto", "max_correction_dv", "auto", "descent_shape", "auto").
+    "within_hours", "auto", "max_correction_dv", "auto", "descent_shape", "auto", "drop_underhang", "early").
 }
 
 // The block's extra results at their defaults, before it flies. Pure.
@@ -98,7 +99,8 @@ function land_extra {
     "distance_to_target", -1, "best_effort", false, "burn_start_ut", -1, "braking_began_ut", -1, "impact_ut", -1, "biome", "",
     "staged_before_braking", false, "stage_left", -1, "dropped_underhang", list(), "underhang_kept", list(), "underhang_drop_agl", -1,
     "passes_missed", 0, "next_pass_ut", -1, "descent_shape", -1, "descent_pe", -1, "predicted_dv", -1, "actual_dv", -1,
-    "predicted_clearance", -1, "moved_for_terrain", false, "shape_range", "").
+    "predicted_clearance", -1, "moved_for_terrain", false, "shape_range", "",
+    "staged_before_deorbit", false, "lander_dv", -1, "lander_need", -1).
 }
 
 // "" or why an option's value isn't one the block can use.
@@ -157,6 +159,9 @@ function land_unreadable {
   }
   if not land_auto_or_in(opt:descent_shape, 0.05, 10) {
     return "descent_shape must be " + char(34) + "auto" + char(34) + " or a Descent Shape from 0.05 to 10 (smaller is steeper)".
+  }
+  if not list("early", "late"):contains(opt:drop_underhang) {
+    return "drop_underhang must be " + char(34) + "early" + char(34) + " or " + char(34) + "late" + char(34).
   }
   return "".
 }
@@ -847,6 +852,14 @@ function land_stage_short {
 function land_plans_staged {
   parameter stage_dv, total_dv, brake_need, may_stage.
   return total_dv > 0 and may_stage and land_stage_short(stage_dv, brake_need, 1) and total_dv - stage_dv >= brake_need.
+}
+
+// Whether land stages the Underhang off in orbit before the deorbit burn (#596): drop_underhang (the option) is "early",
+// staging off the current stage drops the whole Underhang (may_stage, as for land_plans_staged), and the lander alone has
+// lander_dv m/s against the landing's need (m/s, burn_margin included: land_dv_needed's), whatever the stage could cover. Pure.
+function land_drops_before_deorbit {
+  parameter drop_underhang, may_stage, lander_dv, need.
+  return drop_underhang = "early" and may_stage and lander_dv >= need.
 }
 
 // The craft (land_craft's) as the lander alone (under, land_measure_underhang's) flies it once the Underhang has gone with
@@ -1574,6 +1587,63 @@ function land {
   if plan:error <> "" {
     set extra:shape_range to land_or(plan, "shape_range", "").
     return claudia_finish(ctx, false, plan:error, extra).
+  }
+  // #596: where staging off the current stage drops the whole Underhang and the lander alone has the landing's delta-v (with
+  // burn_margin), the stage goes now, in orbit before the deorbit burn, even one that could cover the braking: braking on the
+  // whole stack turns slowly and burns the stage's fuel hovering. The lander plans its own pass first (a plan made for the
+  // stack is made again for it), and the stage goes only if that plan stands and the lander covers its need; else the stack flies.
+  if under:plan:decouplers:length > 0 {
+    local lander_need is land_dv_needed(plan:predicted_dv, opt:burn_margin, land_deorbit_figures(plan):needed).
+    local stage_note is "kept the stack: the lander is short of the need".
+    if opt:drop_underhang = "late" {
+      set stage_note to "kept the stack: drop_underhang late".
+    } else if not may_stage_first {
+      set stage_note to "kept the stack: staging off would leave Underhang aboard, or is blocked".
+    }
+    if land_drops_before_deorbit(opt:drop_underhang, may_stage_first, under:lander_dv, lander_need) {
+      local lander_plan is plan.
+      local lander_craft is land_lander_craft(craft, under).
+      local lander_reach is land_reach_dv(opt:max_correction_dv, under:lander_dv).
+      if not stage_first {
+        // The block-internal pass search stays inline (ADR 0007).
+        if site:istype("String") {
+          local any_query is land_pass_query(plan:site, plan:r_pe, plan:burn_ut - 60, opt:daylight, 1000, opt:within_hours, lander_craft, opt:descent_shape, true).
+          any_query:add("latest_ut", plan:arrive_ut + 600).
+          set lander_plan to land_pass_plan(addons:claudia:landingpass(any_query), plan:site, plan:r_pe).
+        } else {
+          local site_query is land_pass_query(site, r_pe, time:seconds + 120, opt:daylight, lander_reach, opt:within_hours, lander_craft, opt:descent_shape, may_move).
+          site_query:add("plane_changes", true).
+          set lander_plan to land_pass_plan(addons:claudia:landingpass(site_query), site, r_pe).
+        }
+      }
+      if lander_plan:error <> "" {
+        set stage_note to "kept the stack: the lander has no plan (" + lander_plan:error + ")".
+      } else {
+        set lander_need to land_dv_needed(lander_plan:predicted_dv, opt:burn_margin, land_deorbit_figures(lander_plan):needed).
+        if land_drops_before_deorbit(opt:drop_underhang, may_stage_first, under:lander_dv, lander_need) {
+          local early is land_stage_early(ctx).
+          set stage_note to early:note.
+          if early:staged {
+            set extra:staged_before_deorbit to true.
+            set extra:stage_left to early:left.
+            set plan to lander_plan.
+            set reach to lander_reach.
+            // The lander's own turn, read now it flies alone (ADR 0007: inline), for the coast, the descent and any re-plan.
+            set turn to addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime)).
+            if turn:error <> "" {
+              set turn to lexicon("error", turn:error, "turn_time", 0, "turn_s", 0, "top_rate", 0).
+            }
+            set craft to land_lander_craft(land_craft(under, turn, opt), under).
+            // Staged already: nothing to stage off before the fall.
+            set stage_first to false.
+          }
+        }
+      }
+    }
+    set extra:lander_dv to round(under:lander_dv).
+    set extra:lander_need to round(lander_need).
+    addons:claudia:blocktrace("land", lexicon("phase", "stage", "when", "before deorbit", "staged", extra:staged_before_deorbit, "note", stage_note,
+      "lander_dv", extra:lander_dv, "lander_need", extra:lander_need)).
   }
   land_note_plan(extra, plan).
   local mu is body:mu.
