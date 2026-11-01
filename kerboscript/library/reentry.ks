@@ -256,12 +256,12 @@ function reentry_entry_eta {
 
 // The heat-shield decoupler modules chosen by jettison ("auto", "none" or a stage number).
 function reentry_shield_modules {
-  parameter jettison.
+  parameter jettison, parts.
   local found is list().
   if jettison:istype("String") and jettison = "none" {
     return found.
   }
-  for p in ship:parts {
+  for p in parts {
     local wanted is false.
     if claudia_is_decoupler(p) {
       if jettison:istype("String") {
@@ -283,6 +283,27 @@ function reentry_shield_modules {
     }
   }
   return found.
+}
+
+// Fires the shield's decouplers one at a time; returns how many events it fired. The list is rebuilt from
+// parts_of() (a delegate to the craft's parts) before each event, so a module on a part that has left, by
+// an earlier event splitting the craft, is not there to fire (#558).
+function reentry_shield_drop {
+  parameter jettison, parts_of.
+  local fired is list().
+  until false {
+    local next is "".
+    for drop in reentry_shield_modules(jettison, parts_of()) {
+      if next:istype("String") and not fired:contains(drop:module:part:uid + drop:event) {
+        set next to drop.
+      }
+    }
+    if next:istype("String") {
+      return fired:length.
+    }
+    fired:add(next:module:part:uid + next:event).
+    next:module:doevent(next:event).
+  }
 }
 
 // True if the decoupler p is a heat shield or sits against one.
@@ -561,7 +582,7 @@ function reentry {
     }
   }
   // The shield's decouplers, found on the craft that is left.
-  local shield is reentry_shield_modules(opt:jettison_stage).
+  local shield is reentry_shield_modules(opt:jettison_stage, ship:parts).
   local shield_gone is shield:length = 0.
   if opt:max_duration:istype("String") {
     set opt:max_duration to entry_in + 1800.
@@ -613,9 +634,7 @@ function reentry {
 
     if reentry_shield_due(shield_gone, last_speed, agl) {
       local count_before is ship:parts:length.
-      for drop in shield {
-        drop:module:doevent(drop:event).
-      }
+      reentry_shield_drop(opt:jettison_stage, { return ship:parts. }).
       set shield_gone to true.
       // The shield leaving is not a part lost: count what is left once it has gone.
       wait 0.5.
