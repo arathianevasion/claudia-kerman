@@ -182,6 +182,12 @@ function circularize {
   if plan:error <> "" {
     return claudia_finish(ctx, false, plan:error, extra).
   }
+  // The burn is timed on this patch: with a sphere-of-influence change before it (transfer_to then circularize, no coast:
+  // 20ac, #610) the craft would fly past its encounter to burn at the old body's apsis. Refuse, leaving it on its path.
+  local first is claudia_soi_first_at(plan:ut).
+  if first <> "" {
+    return claudia_finish(ctx, false, first, extra).
+  }
   local nd is node(plan:ut, plan:radial, 0, plan:prograde).
   add nd.
   // The burn is judged by the eccentricity it leaves, not exec_node's residual.

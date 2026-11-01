@@ -894,6 +894,30 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture, "claudia_soi_leg_ut({0}, {1}, {2}, {3})", now, patch, start, lead)));
         }
 
+        // ---- A capture burn after a sphere-of-influence change (#610) ----
+
+        [Theory]
+        // 20ac: transfer_to then circularize at pe with no coast. Kerbin's periapsis is 9000 s off, the Mun's SOI 4000 s.
+        [InlineData("true, 4000, 9000, \"Mun\", true", "an encounter with Mun comes first (in 4000 s): coast to it")]
+        [InlineData("true, 4000, 9000, \"Kerbin\", false", "an escape to Kerbin comes first (in 4000 s)")]
+        // After a coast into the Mun's SOI: the periapsis comes before the escape, so the burn goes ahead as today.
+        [InlineData("true, 50000, 3000, \"Kerbin\", false", "")]
+        [InlineData("false, 0, 9000, \"\", false", "")]
+        public void A_burn_after_a_sphere_of_influence_change_is_refused(string args, string expected)
+        {
+            Assert.Equal(expected, One("claudia_soi_first(" + args + ")"));
+        }
+
+        [Fact]
+        public void Exec_node_keeps_flying_a_node_past_the_sphere_of_influence_change()
+        {
+            // #610 guards circularize and change_orbit only: exec_node splits its warp at the change (claudia_soi_leg_ut) and flies
+            // a node on the next patch as before.
+            var execNode = CoreLibrary.Files.Single(f => f.Name == "exec_node").Source;
+            Assert.DoesNotContain("claudia_soi_first", execNode);
+            Assert.Equal("401", One("claudia_soi_leg_ut(0, 400, 1000, 20)"));
+        }
+
         [Theory]
         [InlineData(100, 10, 0, "1")]
         [InlineData(2, 10, 0, "0.2")]
