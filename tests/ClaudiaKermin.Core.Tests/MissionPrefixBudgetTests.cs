@@ -25,7 +25,7 @@ namespace ClaudiaKermin.Core.Tests
         // counts input) for the system prompt and tool definitions of the first Mission request in this test's Mission. The estimate
         // runs low against the API's own count (25,569 in b5f3, 26,865 in 3dc5, whose Mission layer also carried a real body table
         // and goal), so compare this figure only with itself.
-        private const int TodaysEstimate = 21189;
+        private const int TodaysEstimate = 21279;
 
         /// <summary>
         /// Set at 21,500 when the figure was 20,452 (1.05 x 20,452 = 21,475, rounded up to the next hundred), and not raised since:
@@ -33,6 +33,8 @@ namespace ClaudiaKermin.Core.Tests
         /// circularize (+113) to 21,132: one short burn finished instead of an Off-Nominal Debrief and corrective sequence saves $0.30 to $0.50.
         /// #581's goal_steps on propose_mission_plan (169 characters, +57) to 21,189: the Mission Goal's steps are written once instead of
         /// restated in every Debrief (about 260 characters each, read back on every later request), and the reply schema shrinks by about 70.
+        /// #599's falling-craft sentence (137 characters, +45) to 21,279: a craft that is falling with impact_in_s is told to thrust horizontal and up, never a
+        /// prograde node (Mission m...22cc died on one). The figure was 21,234 before it: #590 and #591 had added 45 since #581 without a record.
         /// </summary>
         private const int BudgetTokens = 21500;
 
