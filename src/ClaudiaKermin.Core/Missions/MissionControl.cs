@@ -1559,7 +1559,7 @@ namespace ClaudiaKermin.Core.Missions
             var check = _scriptCheck.Check(Bundle(plan));
             var step = PlanStepProblem(mission, plan);
             if (step == null) return check;
-            return new ScriptCheckResult(check.CompileError, check.Forbidden.Concat(new[] { step }).ToList()) { Warnings = check.Warnings };
+            return new ScriptCheckResult(check.CompileError, check.Forbidden.Concat(new[] { step }).ToList()) { Warnings = check.Warnings, BlockOptions = check.BlockOptions };
         }
 
         /// <summary>Retry, Retry with a note (<paramref name="note"/>) or Re-plan, after "Couldn't produce a safe script".</summary>

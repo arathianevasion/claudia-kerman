@@ -76,6 +76,7 @@ namespace ClaudiaKermin.Core.Tools
             var problems = new List<KeyValuePair<string, string>>();
             if (result.CompileError != null) problems.Add(new KeyValuePair<string, string>("compile", result.CompileError));
             foreach (var found in result.Forbidden) problems.Add(new KeyValuePair<string, string>("forbidden", found));
+            foreach (var found in result.BlockOptions) problems.Add(new KeyValuePair<string, string>("option", found));
 
             var json = new JsonWriter().BeginObject().Field("ok", result.Passed);
             if (!result.Passed)
@@ -106,9 +107,9 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The script line a problem names, or 0; a forbidden finding's "line N: " prefix moves into the line field.</summary>
         private static long LineOf(string kind, ref string text)
         {
-            var match = kind == "forbidden" ? ForbiddenLine.Match(text) : CompileLine.Match(text);
+            var match = kind == "compile" ? CompileLine.Match(text) : ForbiddenLine.Match(text);
             if (!match.Success) return 0;
-            if (kind == "forbidden") text = text.Substring(match.Length);
+            if (kind != "compile") text = text.Substring(match.Length);
             long line;
             return long.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out line) ? line : 0;
         }

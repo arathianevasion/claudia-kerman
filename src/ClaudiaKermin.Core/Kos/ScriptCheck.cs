@@ -25,6 +25,9 @@ namespace ClaudiaKermin.Core.Kos
         /// <summary>Lint warnings (see <see cref="ScriptLints"/>); they never make the check fail.</summary>
         public IList<string> Warnings = new List<string>();
 
+        /// <summary>Each Building Block call the block would refuse at once (see <see cref="BlockOptionCheck"/>); they fail the check.</summary>
+        public IList<string> BlockOptions = new List<string>();
+
         public ScriptCheckResult(string compileError, IList<string> forbidden)
         {
             CompileError = compileError;
@@ -38,7 +41,7 @@ namespace ClaudiaKermin.Core.Kos
 
         public bool Passed
         {
-            get { return CompileError == null && Forbidden.Count == 0; }
+            get { return CompileError == null && Forbidden.Count == 0 && BlockOptions.Count == 0; }
         }
 
         /// <summary>One line per problem, for Claude and for the player.</summary>
@@ -49,6 +52,7 @@ namespace ClaudiaKermin.Core.Kos
                 var problems = new List<string>();
                 if (CompileError != null) problems.Add("doesn't compile: " + CompileError);
                 problems.AddRange(Forbidden);
+                problems.AddRange(BlockOptions);
                 return problems;
             }
         }
