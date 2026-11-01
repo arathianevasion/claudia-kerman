@@ -150,6 +150,31 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("Delta-v used this run, from stock: 1,038 m/s (left at start 3,913 m/s, now 2,875 m/s).", LastUserText(rig.Transport.Requests[2]));
         }
 
+        // ---- Data kept on board (#612) ----
+
+        [Fact]
+        public void TheDebriefNoticeSaysTheDataIsAboardOnlyWhenAScienceCallKeptSome()
+        {
+            var kept = new Rig(this, DebriefJson("Nominal", ""));
+            var start = kept.RunToRunning();
+            var result = new Dictionary<string, object>
+            {
+                { "success", true },
+                { "kept", new List<object> { "crewReport: no link; call science with transmit once the link is up, from anywhere" } },
+            };
+            kept.Mission.Send(new KosBlockEnded("science", result, start.RunId));
+            kept.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            kept.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+            Assert.Contains("The data is aboard; sending it needs no new landing.", kept.Transport.Requests[2].Body);
+
+            var sent = new Rig(this, DebriefJson("Nominal", ""));
+            var sentStart = sent.RunToRunning();
+            sent.Mission.Send(new KosBlockEnded("science", new Dictionary<string, object> { { "success", true } }, sentStart.RunId));
+            sent.Mission.Send(new KosRunEnded(Finished(), sentStart.RunId));
+            sent.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+            Assert.DoesNotContain("no new landing", sent.Transport.Requests[2].Body);
+        }
+
         [Fact]
         public void DeltaVDroppedWithAStageAtZeroThrottleIsLeftOutOfTheRunsDeltaVUsedAndTheLineSaysSo()
         {

@@ -124,6 +124,7 @@ namespace ClaudiaKermin.Core.Missions
                 turn.Gate = new DebriefGate();
                 mission.Gate = turn.Gate;
                 turn.UserText += RunFacts(mission);
+                if (mission.ScienceKept && !mission.HandBack) turn.Notice += MissionPrompts.ScienceKeptNoticeLine;
             }
             return !turn.Gate.Done && StartRecheck(mission, turn);
         }

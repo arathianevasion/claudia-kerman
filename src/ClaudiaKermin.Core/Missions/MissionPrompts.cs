@@ -288,6 +288,9 @@ namespace ClaudiaKermin.Core.Missions
             + "corrective_sequence or revised_plan; for Failed reduced_goal (follow_up_text is the reduced Mission Goal, which the "
             + "player must approve) or end_mission; for Nominal none. If the script printed an error, quote what matters of it in what_happened.";
 
+        /// <summary>Added to the Debrief notice when a science call kept data on board (#612): steers the next leg to a transmit-only call.</summary>
+        public const string ScienceKeptNoticeLine = " The data is aboard; sending it needs no new landing.";
+
         // ---- Live supervision ----
 
         /// <summary>An Alert: which Telemetry Check was crossed, during which sequence.</summary>

@@ -411,5 +411,30 @@ namespace ClaudiaKermin.Kerboscript.Tests
         {
             Assert.Equal(expected, One("science_transmit_choice(" + args + ")"));
         }
+
+        // #612: data kept for want of a link or charge gets a hint for a transmit-only call; other keeps get none.
+        [Theory]
+        [InlineData("keep: no antenna or no link", "crewReport: no link; call science with transmit once the link is up, from anywhere")]
+        [InlineData("keep: electric charge is under min_ec_pct", "crewReport: low charge; call science with transmit once charged, from anywhere")]
+        [InlineData("keep: transmit is 'keep'", "")]
+        [InlineData("keep: the craft is returning and transmitting would lose value", "")]
+        [InlineData("transmit", "")]
+        public void Data_kept_for_want_of_a_link_or_charge_carries_a_hint(string choice, string expected)
+        {
+            Assert.Equal(expected, One("science_kept_hint(\"crewReport\", \"" + choice + "\")"));
+        }
+
+        [Fact]
+        public void The_kept_list_appears_in_the_result_only_when_a_hint_is_added()
+        {
+            var lines = KosHarness.Run(CoreLibrary.Bundle(
+                "local extra is lexicon(\"results\", list()).\n"
+                + "science_note_kept(extra, \"\").\n"
+                + "print extra:haskey(\"kept\").\n"
+                + "science_note_kept(extra, \"crewReport: no link\").\n"
+                + "science_note_kept(extra, \"\").\n"
+                + "print extra:kept:length.\n"));
+            Assert.Equal(new[] { "False", "1" }, lines.ToArray());
+        }
     }
 }
