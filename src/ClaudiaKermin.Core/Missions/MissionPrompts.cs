@@ -446,7 +446,7 @@ namespace ClaudiaKermin.Core.Missions
         /// is unreadable. <paramref name="startLeft"/> is the run's baseline, already less the <paramref name="dropped"/> delta-v
         /// stages took with them at zero throttle (#605), which the line names so it doesn't read as less than a script burned.
         /// </summary>
-        public static string RunDeltaVLine(double? startLeft, GameSnapshot now, double dropped = 0)
+        public static string RunDeltaVLine(double? startLeft, GameSnapshot now, double dropped)
         {
             var nowLeft = LiveReadings.DeltaVLeftOf(now);
             string why = null;

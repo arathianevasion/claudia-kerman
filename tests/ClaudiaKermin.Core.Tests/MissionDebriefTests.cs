@@ -170,6 +170,23 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void AStageDroppedJustBeforeTheRunEndsIsStillLeftOutOfTheRunsDeltaVUsed()
+        {
+            // 2d0c's return dropped the lander stack after the last burn: the script can end before two readings agree.
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning(s => s.Stages[0].DeltaVVac = 3200);
+
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2291));
+            rig.Mission.Send(new CraftSeparated());
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 0));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Contains("Delta-v used this run, from stock: 909 m/s (left at start 3,200 m/s, now 0 m/s; 2,291 m/s dropped with stages at zero "
+                + "throttle isn't counted).", LastUserText(rig.Transport.Requests[2]));
+        }
+
+        [Fact]
         public void ADeltaVUsedBelowZeroIsShownAsZero()
         {
             var rig = new Rig(this, DebriefJson("Nominal", ""));

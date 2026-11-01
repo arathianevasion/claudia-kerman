@@ -35,7 +35,8 @@ namespace ClaudiaKermin.Core.Missions
             var plan = mission.PendingSequence;
             var snapshot = MissionVesselSnapshot(mission);
             if (plan == null || snapshot == null) return false;
-            var reason = PreBurnRefusal.Reason(outcome, mission.RunStartOrbit, OrbitFix.Of(snapshot), mission.RunStartDeltaVLeft,
+            // The real start: a stage dropped at zero throttle (#605) still changed the craft.
+            var reason = PreBurnRefusal.Reason(outcome, mission.RunStartOrbit, OrbitFix.Of(snapshot), mission.RunStartDeltaVLeft + mission.RunDroppedDeltaV,
                 LiveReadings.DeltaVLeftOf(snapshot), mission.Crossings.Count > 0);
             if (reason == null) return false;
 
