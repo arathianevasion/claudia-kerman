@@ -18,12 +18,12 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The most entries listed; past that the oldest successful ones collapse into a count.</summary>
         public const int MaxEntries = 12;
         /// <summary>A longer reason is cut to this many characters.</summary>
-        public const int MaxReason = 200;
+        public const int MaxReason = 120;
         /// <summary>The label of the Debrief line, next to "Report (JSON data)".</summary>
         public const string LinePrefix = "Blocks the script ran, oldest first (JSON data): ";
 
         /// <summary>The results named for each block, beside success and reason; any other block has only those.</summary>
-        public static readonly IDictionary<string, string[]> KeyResults = new Dictionary<string, string[]>
+        public static readonly IReadOnlyDictionary<string, string[]> KeyResults = new Dictionary<string, string[]>
         {
             { "transfer_to", new[] { "encounter_ut", "target_pe_actual" } },
             { "return", new[] { "planet_pe", "correction_dv" } },
@@ -73,7 +73,7 @@ namespace ClaudiaKermin.Core.Missions
             string[] keys;
             if (KeyResults.TryGetValue(name, out keys))
                 foreach (var key in keys)
-                    if (result.TryGetValue(key, out value)) json.Name(key).Raw(Value(value));
+                    if (result.TryGetValue(key, out value)) json.Name(key).Raw(ValueJson(value));
             _entries.Add(new Entry { Json = json.EndObject().ToString(), Success = success, Result = result });
             // One spare over the cap: the report's own block may yet come off the list.
             Collapse(_entries, MaxEntries + 1, ref _collapsedOk, ref _collapsedFailed);
@@ -89,7 +89,7 @@ namespace ClaudiaKermin.Core.Missions
             return json == null ? "" : LinePrefix + json;
         }
 
-        /// <summary>The trail as a JSON array, the collapse line last; null with nothing to list.</summary>
+        /// <summary>The trail as a JSON array, the collapse line first (it counts the oldest); null with nothing to list.</summary>
         public string Json(IDictionary<string, object> report)
         {
             var listed = _entries.ToList();
@@ -100,9 +100,9 @@ namespace ClaudiaKermin.Core.Missions
             Collapse(listed, MaxEntries, ref ok, ref failed);
             if (listed.Count == 0 && ok + failed == 0) return null;
             var json = new JsonWriter().BeginArray();
-            foreach (var entry in listed) json.Raw(entry.Json);
             if (ok + failed > 0)
                 json.String(failed == 0 ? ok + " more blocks succeeded" : (ok + failed) + " more blocks: " + ok + " succeeded, " + failed + " failed");
+            foreach (var entry in listed) json.Raw(entry.Json);
             return json.EndArray().ToString();
         }
 
@@ -156,12 +156,12 @@ namespace ClaudiaKermin.Core.Missions
             foreach (var pair in result)
             {
                 object value;
-                if (!report.TryGetValue(pair.Key, out value) || Value(value) != Value(pair.Value)) return false;
+                if (!report.TryGetValue(pair.Key, out value) || ValueJson(value) != ValueJson(pair.Value)) return false;
             }
             return true;
         }
 
-        private static string Value(object value)
+        private static string ValueJson(object value)
         {
             var json = MissionPrompts.ReportJson(new Dictionary<string, object> { { "v", value } });
             return json.Substring(5, json.Length - 6);

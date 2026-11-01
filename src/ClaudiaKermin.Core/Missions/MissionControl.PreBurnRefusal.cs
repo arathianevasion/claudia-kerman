@@ -73,7 +73,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             try
             {
-                PlanLog.SetDebrief(mission.Folder, debrief.Outcome, new TurnStats(), "", null, false, PlanLog.ByMod, mission.Blocks.Json(null));
+                PlanLog.SetDebrief(mission.Folder, debrief.Outcome, new TurnStats(), "", null, false, PlanLog.ByMod, blocks: mission.Blocks.Json(null));
             }
             catch (Exception e) when (IsFileError(e))
             {

@@ -108,10 +108,11 @@ namespace ClaudiaKermin.Core.Tests
 
             Assert.Equal(BlockTrail.MaxEntries + 1, items.Count);
             // The failure is kept; the oldest successes went.
-            Assert.Equal("launch", items[0].GetProperty("block").GetString());
-            Assert.Equal("done 4", items[1].GetProperty("reason").GetString());
-            Assert.Equal("done 14", items[11].GetProperty("reason").GetString());
-            Assert.Equal("4 more blocks succeeded", items[12].GetString());
+            // The collapse line first: it counts the oldest blocks.
+            Assert.Equal("4 more blocks succeeded", items[0].GetString());
+            Assert.Equal("launch", items[1].GetProperty("block").GetString());
+            Assert.Equal("done 4", items[2].GetProperty("reason").GetString());
+            Assert.Equal("done 14", items[12].GetProperty("reason").GetString());
         }
 
         [Fact]
@@ -124,8 +125,8 @@ namespace ClaudiaKermin.Core.Tests
             var items = Entries(trail.Json(null));
 
             Assert.Equal(BlockTrail.MaxEntries + 1, items.Count);
-            Assert.Equal("3 more blocks: 1 succeeded, 2 failed", items[12].GetString());
-            Assert.Equal("failed 2", items[0].GetProperty("reason").GetString());
+            Assert.Equal("3 more blocks: 1 succeeded, 2 failed", items[0].GetString());
+            Assert.Equal("failed 2", items[1].GetProperty("reason").GetString());
         }
 
         [Fact]
