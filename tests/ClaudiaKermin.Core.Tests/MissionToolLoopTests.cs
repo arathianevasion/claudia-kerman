@@ -812,11 +812,11 @@ namespace ClaudiaKermin.Core.Tests
 
         // ---- The Reply Tool propose_mission_plan (ADR 0012) ----
 
-        private static string ProposedPlan(string name, string childVessels = "[]")
+        private static string ProposedPlan(string name, string childVessels = "[]", string newGoal = "")
         {
             return "{\"why\":\"Prove the link.\",\"sequences\":[{\"name\":\"" + name + "\",\"intent\":\"Report from the pad.\",\"delta_v\":0,\"timing\":\"right away\","
                 + "\"due_time_ut\":-1,\"manual\":false,\"vessel\":\"craft\"}],\"total_delta_v\":0,\"expected_duration\":\"a minute\",\"mission_time_s\":-1,"
-                + "\"new_goal\":\"\",\"child_vessels\":" + childVessels + ",\"goal_steps\":[\"Prove the link\"]}";
+                + "\"new_goal\":" + JsonSerializer.Serialize(newGoal) + ",\"child_vessels\":" + childVessels + ",\"goal_steps\":[\"Prove the link\"]}";
         }
 
         private static ScriptedResponse Propose(string tag, string plan)
@@ -942,6 +942,71 @@ namespace ClaudiaKermin.Core.Tests
             }
             Assert.Equal(ProposedPlans.AcceptedJson, Assert.Single(Results(transport.Requests[2])).GetProperty("content").GetString());
             Assert.Equal(new[] { "Second try" }, mission.View.PlanSequences);
+        }
+
+        [Theory]
+        [InlineData("\"\"")]
+        [InlineData("''")]
+        [InlineData("none")]
+        [InlineData(" N/A ")]
+        [InlineData("-")]
+        [InlineData("No change")]
+        public void APlaceholderNewGoalIsNoNewGoal(string newGoal)
+        {
+            var plan = MissionReply.Parse("{\"mission_plan\":" + ProposedPlan("Link check", "[]", newGoal) + "}").MissionPlan;
+            Assert.Null(plan.NewGoal);
+            Assert.Equal("land at Minmus", MissionReply.Parse("{\"mission_plan\":" + ProposedPlan("Link check", "[]", "land at Minmus") + "}").MissionPlan.NewGoal);
+        }
+
+        [Fact]
+        public void ANewGoalOnAFirstMissionPlanIsIgnoredWithOneLineAndTheGoalIsKept()
+        {
+            var transport = new StreamingFakeTransport(Propose("p", ProposedPlan("Link check", "[]", "land at Minmus")), Kind("mission_plan"), Fixture("mission-sequence-plan.sse"));
+            var mission = Control(transport);
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+
+            Assert.Equal(ProposedPlans.GoalKeptJson, Assert.Single(Results(transport.Requests[1])).GetProperty("content").GetString());
+            Assert.Equal(new[] { "Link check" }, mission.View.PlanSequences);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            Assert.Equal(Goal, mission.View.Goal);
+            Assert.DoesNotContain("goal_changed", Events(mission));
+        }
+
+        [Fact]
+        public void ATypedChangeWithANewGoalStillChangesTheGoalOnApproval()
+        {
+            var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), Propose("p", ProposedPlan("Link check", "[]", "land at Minmus")), Kind("mission_plan"), Fixture("mission-sequence-plan.sse"));
+            var mission = Control(transport);
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+            mission.Send(new Reply("new goal: land at Minmus"));
+            DrainUntil(mission, v => !v.Busy && v.PlanSequences.SequenceEqual(new[] { "Link check" }));
+
+            Assert.Equal(ProposedPlans.AcceptedJson, Assert.Single(Results(transport.Requests[2])).GetProperty("content").GetString());
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            Assert.Equal("land at Minmus", mission.View.Goal);
+            Assert.Contains("goal_changed", Events(mission));
+        }
+
+        [Fact]
+        public void ARequestThatDoesNotAllowAGoalChangeKeepsTheGoalWhateverTheAcceptedCallCarried()
+        {
+            var use = new ToolUseBlock { Id = "u", Name = ProposedPlans.ToolName, InputJson = ProposedPlan("Revised", "[]", "land at Minmus"), InputIsValid = true };
+            var kept = ProposedPlans.Check(use, new List<string>(), false, false);
+            Assert.Equal(ProposedPlans.GoalKeptJson, kept.Json);
+            Assert.Equal(ProposedPlans.AcceptedJson, ProposedPlans.Check(use, new List<string>(), false, true).Json);
+
+            var messages = new List<Message>
+            {
+                new Message { Role = Role.Assistant, Content = { use } },
+                new Message { Role = Role.User, Content = { new ToolResultBlock { ToolUseId = "u", Content = kept.Json } } },
+            };
+            var plan = ProposedPlans.LastAccepted(messages);
+            Assert.Equal("Revised", plan.Sequences.Single().Name);
+            Assert.Null(plan.NewGoal);
         }
 
         [Fact]
