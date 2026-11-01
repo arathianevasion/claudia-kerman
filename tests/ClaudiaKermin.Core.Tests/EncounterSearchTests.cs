@@ -55,6 +55,26 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Null(patch.Error);
         }
 
+        [Theory]
+        [InlineData(1)]
+        [InlineData(2)]
+        [InlineData(3)]
+        public void Following_a_Kerbin_escape_onto_a_solar_hyperbola_ends_on_a_stable_patch_without_throwing(int maxPatches)
+        {
+            var system = new BodySystem(Snapshot().Bodies);
+            var kerbin = system.Find("Kerbin");
+            // Fast enough that the craft leaves the Sun's reach too, so the last patch has an infinite end time (#471).
+            var orbit = Conic.FromState(kerbin.Gm, new Vec3(-700000, 0, 0), new Vec3(0, -6000, 0), 0);
+            var patches = system.Follow(kerbin, orbit, 0, maxPatches);
+            Assert.Equal(Math.Min(maxPatches, 2), patches.Count);
+            Assert.Equal("Kerbin", patches[0].Body.Name);
+            if (maxPatches == 1) return;
+            Assert.Equal(PatchEnd.Escape, patches[0].End);
+            Assert.Equal("Sun", patches[1].Body.Name);
+            Assert.Equal(PatchEnd.Stable, patches[1].End);
+            Assert.True(double.IsPositiveInfinity(patches[1].EndUt));
+        }
+
         [Fact]
         [Trait("Category", "Timing")]
         public void Following_a_path_runs_in_milliseconds()
