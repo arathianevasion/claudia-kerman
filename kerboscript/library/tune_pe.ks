@@ -192,12 +192,12 @@ function tune_pe_safe_height {
   return peaks[name] + 2000.
 }
 
-// What a miss on tolerance adds to the reason (#610): "" or, when the craft is on an encounter (encounter) whose periapsis
-// pe m at the body named name is above safe m (tune_pe_safe_height; -1, unknown, is never safe), that a capture can still
-// follow (20ac: a script's `if res:success` skipped one at 35.3 km against 30 ± 5). Pure.
+// What a miss on tolerance adds to the reason (#610): "" or, when the craft is on an encounter (to_moon, claudia_to_moon) whose
+// periapsis pe m at the body named name is above safe m (tune_pe_safe_height; -1, unknown, is never safe), that a capture
+// can still follow (20ac: a script's `if res:success` skipped one at 35.3 km against 30 ± 5). Pure.
 function tune_pe_safe_hint {
-  parameter encounter, pe, name, safe.
-  if not encounter or safe < 0 or pe <= safe {
+  parameter to_moon, pe, name, safe.
+  if not to_moon or safe < 0 or pe <= safe {
     return "".
   }
   return "; encounter safe: pe " + round(pe / 1000, 1) + " km at " + name + "; a capture can follow".
@@ -408,8 +408,8 @@ function tune_pe {
     local hint is "".
     if ship:orbit:hasnextpatch {
       local enc is ship:orbit:nextpatch.
-      set hint to tune_pe_safe_hint(enc:body:hasbody and enc:body:body = ship:body, enc:periapsis, enc:body:name,
-        tune_pe_safe_height(enc:body:name, enc:body:atm:exists, enc:body:atm:height)).
+      local dest is enc:body.
+      set hint to tune_pe_safe_hint(claudia_to_moon(dest), enc:periapsis, dest:name, tune_pe_safe_height(dest:name, dest:atm:exists, dest:atm:height)).
     }
     return claudia_finish(ctx, false, "periapsis " + extra:pe_actual + " m is over tolerance " + opt:tolerance + " m from " + round(opt:value) + " m" + hint, extra).
   }

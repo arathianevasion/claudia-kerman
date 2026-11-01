@@ -186,9 +186,9 @@ function change_orbit_run {
   }
   local flown is lexicon("success", true, "reason", "").
   if plan:dv >= 0.05 {
-    local soi is first(plan:ut).
-    if soi <> "" {
-      set done:reason to soi.
+    local waits is first(plan:ut).
+    if waits <> "" {
+      set done:reason to waits.
       return done.
     }
     set done:extra:burn_ut to round(plan:ut, 1).
