@@ -135,6 +135,52 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("3,200 m/s left against 1,000 m/s to fly: plenty.", request);
         }
 
+        // ---- The blocks trail (#609) ----
+
+        [Fact]
+        public void TheDebriefRequestListsEveryBlocksResultWhateverTheScriptReported()
+        {
+            // 20ac's Sequence Plan 3: transfer_to's encounter was lost when the script reported a lexicon of its own.
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning(s => s.Stages[0].DeltaVVac = 3200);
+            // The ejection burned: not a refusal before any burn, which the mod would Debrief itself.
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2340));
+
+            rig.Mission.Send(new KosBlockEnded("transfer_to", new Dictionary<string, object>
+            {
+                { "success", true }, { "reason", "done" }, { "encounter_ut", 1203456.0 }, { "target_pe_actual", 41200.0 }, { "ejection_wait", 300.0 },
+            }, start.RunId));
+            var own = new Dictionary<string, object> { { "success", false }, { "reason", "transfer ended outside the Mun SOI" } };
+            rig.Mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, own, "", "", false), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            var request = LastUserText(rig.Transport.Requests[2]);
+            Assert.Contains("Report (JSON data): {\"success\":false,\"reason\":\"transfer ended outside the Mun SOI\"}\n" + BlockTrail.LinePrefix
+                + "[{\"block\":\"transfer_to\",\"success\":true,\"reason\":\"done\",\"encounter_ut\":1203456,\"target_pe_actual\":41200}]", request);
+        }
+
+        [Fact]
+        public void ThePlansDebriefRecordCarriesTheBlocksTrail()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning();
+            var launch = new Dictionary<string, object> { { "success", true }, { "reason", "done" }, { "duration", 80.0 } };
+            var circularize = new Dictionary<string, object> { { "success", true }, { "reason", "done" }, { "duration", 41.0 }, { "ecc", 0.002 } };
+
+            rig.Mission.Send(new KosBlockEnded("launch", launch, start.RunId));
+            rig.Mission.Send(new KosBlockEnded("circularize", circularize, start.RunId));
+            rig.Mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, circularize, "", "", false), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            // The Debrief text leaves out the block the script reported; the log keeps every block.
+            Assert.Contains(BlockTrail.LinePrefix + "[{\"block\":\"launch\",\"success\":true,\"reason\":\"done\"}]", LastUserText(rig.Transport.Requests[2]));
+            var path = Path.Combine(_save.Path, "ClaudiaKermin", "missions", rig.Mission.View.MissionId, "plans.jsonl");
+            var plan = File.ReadAllLines(path).Select(l => JsonDocument.Parse(l).RootElement).Single(l => l.GetProperty("event").GetString() == "plan" && l.TryGetProperty("debrief", out _));
+            var blocks = plan.GetProperty("debrief").GetProperty("blocks").EnumerateArray().ToList();
+            Assert.Equal(new[] { "launch", "circularize" }, blocks.Select(b => b.GetProperty("block").GetString()));
+            Assert.Equal(0.002, blocks[1].GetProperty("ecc").GetDouble());
+        }
+
         // ---- The whole run's delta-v (#384) ----
 
         [Fact]

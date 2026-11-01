@@ -1391,6 +1391,46 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void TheBlocksTrailSurvivesAQuickloadAndReachesTheInterruptedDebrief()
+        {
+            // a107's Sequence Plan 5: return's planet_pe must outlive the blocks after it, and a load.
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission);
+            mission.Send(new KosBlockEnded("return", new Dictionary<string, object>
+            {
+                { "success", true }, { "reason", "done" }, { "planet_pe", 32000.0 }, { "correction_dv", 12.4 },
+            }, start.RunId));
+            mission.Send(new KosBlockEnded("drop_parts", new Dictionary<string, object>
+            {
+                { "success", true }, { "reason", "done" }, { "parts_dropped", 3.0 },
+            }, start.RunId));
+            // Through the plain values a ConfigNode holds, as a real save does.
+            var loaded = new List<MissionSaveState> { MissionSaveState.FromValues(Saved(mission)[0].ToValues()) };
+
+            var after = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-debrief.sse"));
+            var resumed = Control(after);
+            resumed.Send(new MissionsRestored(_save.Path, loaded));
+            resumed.Send(new SceneChanged(GameScene.Flight));
+            resumed.Send(OnPad());
+            DrainUntil(resumed, v => v.Stage == MissionStage.Succeeded);
+            var turn = Messages(after.Requests[0]).Where(m => m.GetProperty("role").GetString() == "user").Select(Text).Last();
+            Assert.Contains("Interrupted", turn);
+            Assert.Contains(BlockTrail.LinePrefix + "[{\"block\":\"return\",\"success\":true,\"reason\":\"done\",\"planet_pe\":32000,\"correction_dv\":12.4},"
+                + "{\"block\":\"drop_parts\",\"success\":true,\"reason\":\"done\",\"parts_dropped\":3}]", turn);
+        }
+
+        [Fact]
+        public void ASaveWithoutABlocksTrailLoadsWithNone()
+        {
+            var state = MissionSaveState.FromValues(new Dictionary<string, string> { { "id", "m1" } });
+            Assert.Equal("", state.BlockTrail);
+            Assert.False(state.ToValues().ContainsKey("blockTrail"));
+        }
+
+        [Fact]
         public void TheEventLogStaysCappedAndTheScriptErrorTextRoundTrips()
         {
             var transport = new StreamingFakeTransport(

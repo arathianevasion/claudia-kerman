@@ -62,7 +62,7 @@ namespace ClaudiaKermin.Core.Missions
             Begin(new Turn
             {
                 Purpose = Purpose.SequencePlan,
-                UserText = PreBurnRefusal.NextTurnLead + MissionPrompts.RunReport(plan, outcome, "") + "\n" + MissionPrompts.Facts(_ut, _snapshot),
+                UserText = PreBurnRefusal.NextTurnLead + MissionPrompts.RunReport(plan, outcome, "", mission.Blocks) + "\n" + MissionPrompts.Facts(_ut, _snapshot),
                 Notice = MissionPrompts.SequenceNotice,
             });
             return true;
@@ -73,7 +73,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             try
             {
-                PlanLog.SetDebrief(mission.Folder, debrief.Outcome, new TurnStats(), "", null, false, PlanLog.ByMod);
+                PlanLog.SetDebrief(mission.Folder, debrief.Outcome, new TurnStats(), "", null, false, PlanLog.ByMod, blocks: mission.Blocks.Json(null));
             }
             catch (Exception e) when (IsFileError(e))
             {

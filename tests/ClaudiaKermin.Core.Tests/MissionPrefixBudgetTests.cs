@@ -48,6 +48,7 @@ namespace ClaudiaKermin.Core.Tests
         /// #606's Script Check of Building Block options (+0, still 21,443): its problems are turn text, and no doc or tool description changed.
         /// #610's capture refusal before a sphere-of-influence change and its transfer_to/tune_pe hints (+0, still 21,443): refusal
         /// reasons and result fields are turn text, and no block doc changed.
+        /// #609's blocks trail (+0, still 21,443): Debrief turn text of about 20-40 tokens a block (12 at most), and no doc, prompt or schema changed.
         /// </summary>
         private const int BudgetTokens = 21500;
 
