@@ -295,6 +295,84 @@ namespace ClaudiaKermin.Core.Tests
             Assert.InRange(D(node, "arrival_dv"), 150, 400);
         }
 
+        // ---- Minmus from an equatorial parking orbit (#611, m20261101-140219-a107) ----
+
+        [Theory]
+        [InlineData(true, 1329.045, 837.989, 260.815)]
+        [InlineData(false, 1322.941, 837.508, 259.936)]
+        public void The_coplanar_Mun_answer_is_the_one_before_611(bool capture, double ut, double dv, double arrival)
+        {
+            // From the block test's 100 km orbit, as the solver gave them before #611 (the #452 gate's transfer).
+            var snapshot = BlockTestStart();
+            var node = Solved(snapshot, new Dictionary<string, object> { { "target", "Mun" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 }, { "capture", capture } });
+            Assert.InRange(D(node, "ut"), ut - 0.01, ut + 0.01);
+            Assert.InRange(D(node, "dv"), dv - 0.01, dv + 0.01);
+            Assert.InRange(D(node, "arrival_dv"), arrival - 0.01, arrival + 0.01);
+        }
+
+        /// <summary>a107's 80 km orbit at 0.1° when it asked plan_transfer for Minmus, with Minmus's real elements (inclined 6°).</summary>
+        internal static GameSnapshot A107()
+        {
+            return GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "minmus-a107-kerbin-orbit-80km.json")));
+        }
+
+        [Fact]
+        public void Minmus_inclined_6_degrees_is_reached_from_a107_s_equatorial_orbit_and_the_node_flies_to_target_pe()
+        {
+            var snapshot = A107();
+            var node = Solved(snapshot, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 } });
+            var input = string.Format(CultureInfo.InvariantCulture,
+                "{{\"burns\":[{{\"at\":{0:R},\"dv\":{{\"prograde\":{1:R},\"normal\":{2:R},\"radial\":{3:R}}}}}],\"target\":\"Minmus\"}}",
+                D(node, "ut"), D(node, "prograde"), D(node, "normal"), D(node, "radial"));
+            var outcome = PlanningTools.Default().Run("predict_burn", input, snapshot, new NoPlanningBody());
+            Assert.False(outcome.IsError, outcome.Json);
+            using (var doc = JsonDocument.Parse(outcome.Json))
+                Assert.InRange(doc.RootElement.GetProperty("closest_approach").GetProperty("altitude").GetDouble(), 29900, 30100);
+            // Minmus arrives about 95° past its ascending node, 6° above the craft's plane, so the arc carries the plane change:
+            // about a107's two legs, match_plane's 240 m/s and the in-plane 930 m/s. Its cheapest arc used to dive through Kerbin.
+            Assert.InRange(D(node, "dv"), 1100, 1250);
+        }
+
+        /// <summary>a107 with the Mun parked where the cheapest arc to Minmus crosses its orbit, its sphere of influence swollen to <paramref name="soi"/> m.</summary>
+        internal static GameSnapshot A107MunInTheWay(double soi)
+        {
+            var snapshot = A107();
+            var node = Solved(snapshot, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 } });
+            var ut = D(node, "ut");
+            Vec3 r0, v0;
+            CraftOrbit(snapshot).State(ut, out r0, out v0);
+            var along = v0.Normalized;
+            var up = Vec3.Cross(r0, v0).Normalized;
+            var arc = Conic.FromState(KerbinGm, r0, v0 + along * D(node, "prograde") + up * D(node, "normal") + Vec3.Cross(along, up) * D(node, "radial"), ut);
+            var mun = snapshot.Bodies.Single(b => b.Name == "Mun");
+            var crossing = arc.TimeAtRadius(mun.Sma, ut, true).Value;
+            var there = arc.Position(crossing);
+            // The Mun's orbit is circular and equatorial with its periapsis on the x axis: its mean anomaly is its longitude.
+            mun.MeanAnomalyAtEpoch = Math.Atan2(there.Y, there.X) - crossing * Math.Sqrt(KerbinGm / Math.Pow(mun.Sma, 3));
+            mun.SoiRadius = soi;
+            return snapshot;
+        }
+
+        [Fact]
+        public void When_the_cheapest_window_can_t_be_aimed_the_next_one_that_can_is_given()
+        {
+            // The Mun, at its own sphere of influence, sits across the cheapest window's arc but not the next one's.
+            var snapshot = A107MunInTheWay(2429559.1);
+            var cheapest = Solved(A107(), new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 } });
+            var node = Solved(snapshot, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 } });
+            Assert.NotEqual(D(cheapest, "ut"), D(node, "ut"));
+            Assert.InRange(D(node, "target_pe_actual"), 29900, 30100);
+        }
+
+        [Fact]
+        public void A_target_no_window_can_reach_fails_with_how_far_its_orbit_is_inclined_to_the_craft_s()
+        {
+            // Every window's arc, and every burn tried round it, meets the Mun first.
+            var snapshot = A107MunInTheWay(11000000);
+            var ask = new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 } };
+            Assert.Equal("found no transfer: Minmus's orbit is inclined 6.0° to yours; match_plane first, or try the next window", BlockCalls.EjectionBurn(ask, snapshot)["error"]);
+        }
+
         // ---- the wall clock ----
 
         [Fact]
@@ -309,6 +387,18 @@ namespace ClaudiaKermin.Core.Tests
             Timing.Within(100, () => Solved(snapshot, Inclined("rendezvous")));
             Timing.Within(100, () => Solved(snapshot, Inclined("rendezvous", capture: false)));
             Timing.Within(100, () => Solved(parking, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 20000.0 }, { "earliest_ut", parking.Ut + 30 } }));
+            var a107 = A107();
+            Timing.Within(100, () => Solved(a107, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", a107.Ut + 30 } }));
+        }
+
+        [Fact]
+        public void A_search_that_tries_every_window_and_every_aim_and_fails_runs_under_500_ms()
+        {
+            // The worst case #611 added: three windows, each with the prograde scan at the Lambert normal and six normals round
+            // it, about 1,100 patched-conic trials (before it, one window's 121, about 50 ms). Measured at about 430 ms.
+            var blocked = A107MunInTheWay(11000000);
+            var ask = new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", blocked.Ut + 30 } };
+            Timing.Within(500, () => Assert.NotEqual("", BlockCalls.EjectionBurn(ask, blocked)["error"]));
         }
 
         // ---- failures: "found no transfer: <why>" ----
