@@ -826,6 +826,13 @@ function land_circular_dv {
 
 // ---- Pure helpers: staging off a short stage before the fall (#382) ----
 
+// Whether land_descend stages before guidance and steering this pass (#595): braking, no Underhang still to drop
+// (drop_pending), and no thrust (available_thrust, kN), so a stage that ran dry doesn't leave a_max 0. Pure.
+function land_stage_before_guidance {
+  parameter braking, drop_pending, available_thrust.
+  return braking and not drop_pending and available_thrust <= 0.
+}
+
 // Whether the current stage, with stage_dv m/s (vacuum) left, can't cover the braking need (m/s, as land's
 // delta-v check works it out) times margin, so it should be staged off before the fall. Pure.
 function land_stage_short {
@@ -2324,7 +2331,7 @@ function land_descend {
   until status = "LANDED" or status = "SPLASHED" {
     // #595: a stage that ran dry mid-burn stages into the next engines before guidance and steering use a_max, by claudia_tick's
     // rule (burning, no Underhang still to drop, within stage_limit); the tick's own call is too late, after the steering.
-    if braking and not drop_pending and ship:availablethrust <= 0 {
+    if land_stage_before_guidance(braking, drop_pending, ship:availablethrust) {
       local staged is claudia_autostage(ctx).
       if staged <> "" {
         set tset to 0.

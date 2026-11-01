@@ -898,6 +898,33 @@ print land_brake_estimate(samples, a_brake, 1.1).");
         }
 
         [Fact]
+        public void land_steer_holds_the_last_direction_with_no_thrust_or_a_demand_that_is_zero_or_not_finite()
+        {
+            // #595: a_max 0 divided by zero in a stage that ran dry; a zero or non-finite demand did the same by its magnitude.
+            var cases = new[]
+            {
+                new[] { "0", "0, \"cr\", 0, \"up\", 0" },
+                new[] { "0", "3, \"cr\", 0, \"up\", 4" },
+                new[] { "10", "0, \"cr\", 0, \"up\", 0" },
+                new[] { "10", "1e300 * 1e300, \"cr\", 0, \"up\", 0" },
+            };
+            foreach (var c in cases)
+            {
+                var printed = Run("local d is land_steer(lexicon(\"al\", " + c[1] + "), lexicon(\"al\", -1, \"cr\", 0, \"up\", 0), lexicon(\"al\", 567, \"cr\", 0, \"up\", 13), " + c[0] + ").\n"
+                    + "print d:al. print d:cr. print d:up. print d:mag.");
+                Assert.Equal(new[] { "-1", "0", "0", "0" }, printed);
+            }
+        }
+
+        [Fact]
+        public void The_descent_stages_before_guidance_only_when_braking_dry_with_no_Underhang_pending()
+        {
+            Assert.Equal(new[] { "True", "False", "False", "False" }, Run(
+                "print land_stage_before_guidance(true, false, 0). print land_stage_before_guidance(true, false, 40).\n"
+                + "print land_stage_before_guidance(false, false, 0). print land_stage_before_guidance(true, true, 0)."));
+        }
+
+        [Fact]
         public void A_demand_ahead_over_50_m_s_thrusts_nothing_rather_than_being_turned_up_and_back()
         {
             // #530: on Minmus Flats a push ahead for the starting speed at 50 m/s was laid 45 degrees off retrograde at its full
