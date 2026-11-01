@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 //
-// Building Block reentry: brings a capsule down through an atmosphere. Built on claudia_lib.ks;
-// block-only helpers are prefixed reentry_. The "//|" lines are Claudia's docs for it; the first is
-// its summary.
+// Building Block reentry: brings a capsule down through an atmosphere. Built on claudia_lib.ks (and
+// deorbit.ks's stage drop plan, for separate); block-only helpers are prefixed reentry_. The "//|"
+// lines are Claudia's docs for it; the first is its summary.
 
 @lazyglobal off.
 
-//| reentry(options): brings the craft down through the atmosphere of its body: waits (on rails) for
+//| reentry(options): brings the craft down through the atmosphere of its body: drops the stack below the heat shield, waits (on rails) for
 //| the atmosphere if it is still in space, holds the heat shield forward (surface retrograde), drops
 //| the heat shield once the worst of the heating is over, opens the parachutes only when it is safe
 //| (never staged, never fired by hand), physics-warping the fall (1x below 100 m), and ends once landed or splashed.
@@ -15,19 +15,21 @@
 //|   chute_mode ["safe"]: "safe" opens the parachutes in two stages: drogue chutes first (under 500 m/s,
 //|     over 0.02 atm, or at the latest 3000 m above the ground), then the main parachutes once the drogues
 //|     are out (under 250 m/s, over 0.04 atm, or at the latest 1500 m above the ground); a craft with no
-//|     drogues opens its mains alone. "none" never opens them (for a craft that lands another way).
+//|     drogues opens its mains alone. "none" never opens them.
 //|   jettison_stage ["auto"]: the stage number whose decouplers drop the heat shield, "auto" for the
 //|     decoupler on or beside the heat shield (just above the capsule), or "none" to keep it.
-//|     The decouplers are fired by themselves; other parts of that stage are not staged.
+//|     Its decouplers fire alone; the rest of that stage is not staged.
+//|   separate ["auto"]: drops the stack (service module, tanks) before the atmosphere, never by the
+//|     shield's decoupler; "none" keeps it; or a stage number.
 //|   hold ["retrograde"]: "retrograde" points the craft's forward axis at surface retrograde, so a
 //|     pod's heat shield leads; "none" leaves the attitude alone.
 //|   max_duration ["auto"]: the wait for the atmosphere plus 1800 s.
-//|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block (this block never stages: it holds no burn, so auto-staging never fires).
+//|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block (it never stages).
 //| Extra results: max_g (peak g felt, in g), max_temp_pct (hottest part, in percent of its limit),
 //| geo (lexicon lat, lng, alt where it ended), splashed (true if it ended in water), touchdown_speed
 //| (m/s just before contact; over 15 m/s fails the block), shield_dropped (true if the heat shield's
 //| decoupler fired and the craft lost the part). Fails with "body has no atmosphere", an
-//| orbit that never reaches the atmosphere, an option it can't read, a hard
+//| orbit that never reaches the atmosphere, an option it can't read, "stack attached below the heat shield: <names>", a hard
 //| touchdown, or an abort (a mid-air abort still opens the parachutes if that is safe).
 //| Fly it after a return or a de-orbit burn, with the orbit's periapsis inside the atmosphere. It does
 //| not plan or burn anything. Example: `local res is reentry(). addons:claudia:report(res).`
@@ -311,15 +313,15 @@ function reentry_shield_beside {
 function reentry_stack {
   parameter parts, home_uid.
   local found is lexicon("shielded", false, "parts", list(), "decouplers", list(), "gone", list(), "stuck", list()).
-  local up is lexicon().
+  local parent_of is lexicon().
   local is_dec is lexicon().
   local anchor is home_uid.
   local home is "".
   for p in parts {
     if p:hasparent {
-      set up[p:uid] to p:parent.
+      set parent_of[p:uid] to p:parent.
     } else {
-      set up[p:uid] to "".
+      set parent_of[p:uid] to "".
     }
     local is_shield is p:hasmodule("ModuleAblator").
     // A heat shield is never the decoupler that drops the stack (#516).
@@ -336,12 +338,12 @@ function reentry_stack {
   // no decoupler drops it without taking home too.
   local reversed is false.
   if found:shielded and not home:istype("String") {
-    set reversed to reentry_walk(home, anchor, up, is_dec):under.
+    set reversed to reentry_walk(home, anchor, parent_of, is_dec):under.
   }
   local seen is lexicon().
   for p in parts {
     if p:uid <> anchor {
-      local way is reentry_walk(p, anchor, up, is_dec).
+      local way is reentry_walk(p, anchor, parent_of, is_dec).
       if reversed {
         if not way:under {
           found:parts:add(p).
@@ -368,11 +370,11 @@ function reentry_stack {
   return found.
 }
 
-// Walking up from part p by up (uid -> parent part or ""): lexicon("under", it reaches the part whose uid
+// Walking up from part p by parent_of (uid -> parent part or ""): lexicon("under", it reaches the part whose uid
 // is anchor, "top", the decoupler on the way nearest anchor, p itself included, or "" for none). is_dec:
 // uid -> true for a decoupler that is not a heat shield.
 function reentry_walk {
-  parameter p, anchor, up, is_dec.
+  parameter p, anchor, parent_of, is_dec.
   local top is "".
   local cur is p.
   until cur:istype("String") {
@@ -382,7 +384,7 @@ function reentry_walk {
     if is_dec[cur:uid] {
       set top to cur.
     }
-    set cur to up[cur:uid].
+    set cur to parent_of[cur:uid].
   }
   return lexicon("under", false, "top", "").
 }
@@ -403,20 +405,20 @@ function reentry_names {
 // the stack through its decouplers, or an error if a part of it has none; for a stage number, that
 // stage's decouplers as deorbit's separate drops them (never a heat shield's).
 function reentry_separation {
-  parameter sep, stack.
+  parameter sep, below.
   if sep:istype("Scalar") {
     return deorbit_stage_drop_plan(sep).
   }
   local plan is claudia_drop_plan(list()).
   if sep = "auto" {
-    if stack:stuck:length > 0 {
-      set plan:error to reentry_names(stack:stuck):join(", ") + ": no decoupler between it and the heat shield".
+    if below:stuck:length > 0 {
+      set plan:error to reentry_names(below:stuck):join(", ") + ": no decoupler between it and the heat shield".
       return plan.
     }
-    for d in stack:decouplers {
+    for d in below:decouplers {
       plan:decouplers:add(d).
     }
-    for g in stack:gone {
+    for g in below:gone {
       plan:gone:add(g).
     }
   }
@@ -521,13 +523,23 @@ function reentry {
   if not body_:atm:exists {
     return claudia_finish(ctx, false, "body has no atmosphere", extra).
   }
-  // The stack (#557) goes first, before the atmosphere and any hold: with a service module on, the
-  // craft flies engine first and the shield can't lead. A craft with a heat shield that keeps its stack
-  // fails here, still above the air; one already in the air flies on as it is.
+  set extra:geo to reentry_geo().
+
+  // Wait (on rails) for the atmosphere if the craft is still above it.
+  local entry_in is 0.
+  if ship:altitude > body_:atm:height and not claudia_on_ground() {
+    set entry_in to reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
+    if entry_in < 0 {
+      return claudia_finish(ctx, false, "the orbit never reaches the atmosphere (periapsis " + round(ship:periapsis) + " m)", extra).
+    }
+  }
+  // The stack (#557) goes once the orbit is known to come down, before the atmosphere and any hold:
+  // with a service module on, the craft flies engine first and the shield can't lead. A craft with a
+  // heat shield that keeps its stack fails here, still above the air; one already in the air flies on.
   local home is reentry_home_uid().
-  local stack is reentry_stack(ship:parts, home).
-  if (stack:parts:length > 0 or opt:separate:istype("Scalar")) and not claudia_on_ground() {
-    local drop is reentry_separation(opt:separate, stack).
+  local below is reentry_stack(ship:parts, home).
+  if (below:parts:length > 0 or opt:separate:istype("Scalar")) and not claudia_on_ground() {
+    local drop is reentry_separation(opt:separate, below).
     local drop_error is drop:error.
     if drop_error = "" and claudia_drop_holds_core(drop:gone) {
       set drop_error to "it would drop the part running the script".
@@ -539,9 +551,9 @@ function reentry {
     if drop_error = "" and drop:decouplers:length > 0 {
       set drop_error to claudia_fire_drop(ctx, drop).
     }
-    set stack to reentry_stack(ship:parts, home).
+    set below to reentry_stack(ship:parts, home).
     if ship:altitude > body_:atm:height {
-      local refused is reentry_stack_refusal(stack:shielded, reentry_names(stack:parts), drop_error).
+      local refused is reentry_stack_refusal(below:shielded, reentry_names(below:parts), drop_error).
       if refused <> "" {
         return claudia_finish(ctx, false, refused, extra).
       }
@@ -550,16 +562,6 @@ function reentry {
   // The shield's decouplers, found on the craft that is left.
   local shield is reentry_shield_modules(opt:jettison_stage).
   local shield_gone is shield:length = 0.
-  set extra:geo to reentry_geo().
-
-  // Wait (on rails) for the atmosphere if the craft is still above it.
-  local entry_in is 0.
-  if ship:altitude > body_:atm:height and not claudia_on_ground() {
-    set entry_in to reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
-    if entry_in < 0 {
-      return claudia_finish(ctx, false, "the orbit never reaches the atmosphere (periapsis " + round(ship:periapsis) + " m)", extra).
-    }
-  }
   if opt:max_duration:istype("String") {
     set opt:max_duration to entry_in + 1800.
   }
