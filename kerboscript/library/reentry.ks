@@ -7,8 +7,8 @@
 
 @lazyglobal off.
 
-//| reentry(options): brings the craft down through the atmosphere of its body: drops the stack below the heat shield, waits (on rails) for
-//| the atmosphere if it is still in space, holds the heat shield forward (surface retrograde), drops
+//| reentry(options): brings the craft down through its body's atmosphere: drops the stack below the heat shield, waits (on rails)
+//| for the atmosphere if it is still in space, holds the heat shield forward (surface retrograde), drops
 //| the heat shield once the worst of the heating is over, opens the parachutes only when it is safe
 //| (never staged, never fired by hand), physics-warping the fall (1x below 100 m), and ends once landed or splashed.
 //| Options:
