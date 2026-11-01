@@ -295,6 +295,40 @@ namespace ClaudiaKermin.Core.Tests
             Assert.InRange(D(node, "arrival_dv"), 150, 400);
         }
 
+        // ---- Minmus from an equatorial parking orbit (#611, m20261101-140219-a107) ----
+
+        /// <summary>a107's 80 km orbit at 0.1° when it asked plan_transfer for Minmus, with Minmus's real elements (inclined 6°).</summary>
+        private static GameSnapshot A107()
+        {
+            return GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "minmus-a107-kerbin-orbit-80km.json")));
+        }
+
+        [Fact]
+        public void Minmus_inclined_6_degrees_is_reached_from_a107_s_equatorial_orbit_and_the_node_flies_to_target_pe()
+        {
+            var snapshot = A107();
+            var node = Solved(snapshot, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 } });
+            var input = string.Format(CultureInfo.InvariantCulture,
+                "{{\"burns\":[{{\"at\":{0:R},\"dv\":{{\"prograde\":{1:R},\"normal\":{2:R},\"radial\":{3:R}}}}}],\"target\":\"Minmus\"}}",
+                D(node, "ut"), D(node, "prograde"), D(node, "normal"), D(node, "radial"));
+            var outcome = PlanningTools.Default().Run("predict_burn", input, snapshot, new NoPlanningBody());
+            Assert.False(outcome.IsError, outcome.Json);
+            using (var doc = JsonDocument.Parse(outcome.Json))
+                Assert.InRange(doc.RootElement.GetProperty("closest_approach").GetProperty("altitude").GetDouble(), 29900, 30100);
+            // An in-plane ejection to Minmus from 80 km is about 930 m/s; the 6° the arc takes on at departure costs a little more.
+            Assert.InRange(D(node, "dv"), 900, 1100);
+        }
+
+        [Fact]
+        public void A_target_no_ejection_can_reach_fails_with_how_far_its_orbit_is_inclined_to_the_craft_s()
+        {
+            // A Minmus SOI shrunk to 61 km (1 km above its surface): no burn's patched conics find an encounter.
+            var snapshot = A107();
+            snapshot.Bodies.Single(b => b.Name == "Minmus").SoiRadius = 61000;
+            var result = BlockCalls.EjectionBurn(new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 500.0 }, { "earliest_ut", snapshot.Ut + 30 } }, snapshot);
+            Assert.Equal("found no transfer: Minmus's orbit is inclined 6.0° to yours; match_plane first, or try the next window", result["error"]);
+        }
+
         // ---- the wall clock ----
 
         [Fact]

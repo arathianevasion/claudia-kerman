@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using ClaudiaKermin.Core.Missions;
@@ -93,6 +94,20 @@ namespace ClaudiaKermin.Core.Tests
             Assert.False(alone.GetProperty("capture").GetBoolean());
             Assert.True(alone.GetProperty("departure_dv").GetDouble() < both.GetProperty("departure_dv").GetDouble());
             Assert.True(both.GetProperty("total_dv").GetDouble() < alone.GetProperty("total_dv").GetDouble());
+        }
+
+        [Fact]
+        public void To_Minmus_from_a107_s_equatorial_orbit_capture_true_and_false_both_find_a_transfer()
+        {
+            // a107 (#611): with capture plan_transfer found none, without it 1160 m/s out; both now come to about 930 to 1100.
+            var snapshot = GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "minmus-a107-kerbin-orbit-80km.json")));
+            var both = Run("{\"target\":\"Minmus\",\"target_pe\":30000}", snapshot);
+            var alone = Run("{\"target\":\"Minmus\",\"target_pe\":30000,\"capture\":false}", snapshot);
+            foreach (var result in new[] { both, alone })
+            {
+                Assert.InRange(result.GetProperty("target_pe_actual").GetDouble(), 29900, 30100);
+                Assert.InRange(result.GetProperty("departure_dv").GetDouble(), 900, 1100);
+            }
         }
 
         [Fact]

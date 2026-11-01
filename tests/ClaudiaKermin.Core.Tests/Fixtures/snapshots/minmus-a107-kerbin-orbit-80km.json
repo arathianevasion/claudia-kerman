@@ -1,0 +1,39 @@
+{
+  "ut": 898215.15180790308,
+  "situation": "ORBITING",
+  "body": "Kerbin",
+  "mode": "SANDBOX",
+  "dv_sim": true,
+  "craft": {
+    "name": "a107 Minmus Test",
+    "mass_t": 16.26,
+    "stage": 3,
+    "seats": 1,
+    "parts": []
+  },
+  "stages": [
+    { "stage": 3, "dv_vac": 1731.3, "dv_asl": 1352.6, "thrust_vac_kn": 215.0, "start_mass_t": 16.26, "end_mass_t": 9.37 },
+    { "stage": 2, "dv_vac": 2281.1, "dv_asl": 562.0, "thrust_vac_kn": 60.0, "start_mass_t": 6.13, "end_mass_t": 3.13 }
+  ],
+  "crew": [],
+  "bodies": [
+    { "name": "Sun", "parent": "", "gm": 1.1723327948324905E+18, "radius": 261600000, "atmosphere_height": 600000, "sea_level_atm": 0.15790772267456205, "sma": 0, "inclination": 0, "soi_radius": 0, "rotation_period": 432000, "eccentricity": 0, "lan": 0, "arg_pe": 0, "mean_anomaly_at_epoch": 0, "epoch": 0 },
+    { "name": "Kerbin", "parent": "Sun", "gm": 3531599999999.9995, "radius": 600000, "atmosphere_height": 70000, "sea_level_atm": 0.99999996988149209, "sma": 13599840256, "inclination": 0, "soi_radius": 84159286.479630485, "rotation_period": 21549.425183089825, "eccentricity": 0, "lan": 0, "arg_pe": 0, "mean_anomaly_at_epoch": 3.14000010490417, "epoch": 0 },
+    { "name": "Mun", "parent": "Kerbin", "gm": 65138397520.780693, "radius": 200000, "atmosphere_height": 0, "sea_level_atm": 0, "sma": 12000000, "inclination": 0, "soi_radius": 2429559.1165647474, "rotation_period": 138984.37657447575, "eccentricity": 0, "lan": 0, "arg_pe": 0, "mean_anomaly_at_epoch": 1.70000004768372, "epoch": 0 },
+    { "name": "Minmus", "parent": "Kerbin", "gm": 1765800026.3124719, "radius": 60000, "atmosphere_height": 0, "sea_level_atm": 0, "sma": 47000000, "inclination": 6, "soi_radius": 2247428.3879023045, "rotation_period": 40400, "eccentricity": 0, "lan": 78, "arg_pe": 38, "mean_anomaly_at_epoch": 0.899999976158142, "epoch": 0 }
+  ],
+  "orbit": {
+    "apoapsis": 80108.098408394726,
+    "periapsis": 79827.268326954916,
+    "inclination": 0.095253944907518165,
+    "eccentricity": 0.00020650252086170043,
+    "period": 1874.67731095211,
+    "semi_major_axis": 679967.68336767482,
+    "lan": 331.63933844615963,
+    "arg_pe": 115.30353729707329,
+    "mean_anomaly_at_epoch": 3.5636937090794123,
+    "epoch": 898215.15180790308,
+    "orbit_body": "Kerbin"
+  },
+  "resources": []
+}
