@@ -1038,6 +1038,40 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void ARefusedProposeMissionPlanOnASequencePlanTurnMakesTheNextRequestToolChoiceNoneWithTheSameToolsAndSystem()
+        {
+            var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), Propose("seq", ProposedPlan("Something else")), Fixture("mission-sequence-plan.sse"));
+            var mission = Control(transport);
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal("{\"type\":\"auto\"}", Body(transport.Requests[1]).GetProperty("tool_choice").GetRawText());
+            Assert.Equal("{\"type\":\"none\"}", Body(transport.Requests[2]).GetProperty("tool_choice").GetRawText());
+            Assert.Equal(ToolsJson(transport.Requests[1]), ToolsJson(transport.Requests[2]));
+            Assert.Equal(Body(transport.Requests[1]).GetProperty("system").GetRawText(), Body(transport.Requests[2]).GetProperty("system").GetRawText());
+        }
+
+        [Fact]
+        public void ARefusedPlanningToolRepeatOnASequencePlanTurnKeepsToolChoiceAuto()
+        {
+            var transport = new StreamingFakeTransport(
+                Fixture("mission-plan.sse"),
+                ToolUseStreams.ToolUse("a", ("fake", "{\"n\":1}")),
+                ToolUseStreams.ToolUse("b", ("fake", "{\"n\":1}"), ("fake", "{\"n\":2}")),
+                Fixture("mission-sequence-plan.sse"));
+            var mission = Control(transport, With(new TestTool()));
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal("you already called this in step 1; its result is above", ErrorOf(Results(transport.Requests[3])[0]));
+            Assert.Equal("{\"type\":\"auto\"}", Body(transport.Requests[3]).GetProperty("tool_choice").GetRawText());
+        }
+
+        [Fact]
         public void AMissionPlanReplyWithNoAcceptedPlanIsRefusedOffSchema()
         {
             var transport = new StreamingFakeTransport(

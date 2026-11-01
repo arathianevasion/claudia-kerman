@@ -273,7 +273,7 @@ namespace ClaudiaKermin.Core.Missions
         public const string SequenceNotice =
             "Propose the Sequence Plan for the next Maneuver Sequence now: reply with kind \"sequence_plan\" and "
             + "sequence_plan filled in, including its complete Mission Script. The Script Check runs on it when you send it. "
-            + "The mod runs it only after the player's Approval.";
+            + "The mod runs it only after the player's Approval. Planning Tools are available; propose_mission_plan is not.";
 
         public const string DebriefNotice =
             "The Maneuver Sequence has ended. Debrief it now: reply with kind \"debrief\" and debrief filled in. Rate it "
