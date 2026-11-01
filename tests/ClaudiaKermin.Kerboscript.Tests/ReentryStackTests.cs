@@ -182,13 +182,14 @@ namespace ClaudiaKermin.Kerboscript.Tests
             var pod = t.Add("mk1pod.v2", -1, Command, "pod");
             t.Add("parachuteSingle", pod, new[] { "ModuleParachute" });
             Assert.Equal(new[] { "False", "", "", "", "" }, Run(t, "local below is reentry_stack(parts, \"pod\").\n" + PrintStack));
-            // A stack below a decoupler with no shield anywhere: separate "none" keeps it and is never refused.
+            // A stack below a decoupler with no shield anywhere: "auto" drops nothing and "none" is never refused.
             var u = new Tree();
             var pod2 = u.Add("mk1pod.v2", -1, Command, "pod");
             var dec = u.Add("Decoupler.1", pod2, Decoupler, "dec1");
             u.Add("fuelTank", dec, None);
-            Assert.Equal(new[] { "False", "dec1", "fuelTank", "", "fuelTank", "True" },
+            Assert.Equal(new[] { "False", "dec1", "fuelTank", "", "fuelTank", "0", "True" },
                 Run(u, "local below is reentry_stack(parts, \"pod\").\n" + PrintStack
+                    + "print reentry_separation(\"auto\", below):decouplers:length.\n"
                     + "print reentry_stack_refusal(below:shielded, reentry_names(below:parts), \"\") = \"\".\n"));
         }
 

@@ -104,7 +104,7 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             + "}\n"
             + "addons:claudia:report(res).";
 
-        private const string StackLint = "with nothing dropped first";
+        private const string StackLint = "with no drop named";
 
         [Theory]
         [InlineData(B5f3AscendReturnReentry, "line 8: reentry after return")]

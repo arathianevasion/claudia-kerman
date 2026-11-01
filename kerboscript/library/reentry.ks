@@ -402,15 +402,16 @@ function reentry_names {
 }
 
 // What separate drops of a reentry_stack, as claudia_drop_plan's lexicon: nothing for "none"; for "auto"
-// the stack through its decouplers, or an error if a part of it has none; for a stage number, that
-// stage's decouplers as deorbit's separate drops them (never a heat shield's).
+// the stack through its decouplers, or an error if a part of it has none, and nothing on a craft with no
+// heat shield (as today); for a stage number, that stage's decouplers as deorbit's separate drops them
+// (never a heat shield's).
 function reentry_separation {
   parameter sep, below.
   if sep:istype("Scalar") {
     return deorbit_stage_drop_plan(sep).
   }
   local plan is claudia_drop_plan(list()).
-  if sep = "auto" {
+  if sep = "auto" and below:shielded {
     if below:stuck:length > 0 {
       set plan:error to reentry_names(below:stuck):join(", ") + ": no decoupler between it and the heat shield".
       return plan.
