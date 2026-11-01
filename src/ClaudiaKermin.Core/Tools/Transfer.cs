@@ -87,9 +87,11 @@ namespace ClaudiaKermin.Core.Tools
     /// held at 0); an intercept reaches its orbit anywhere and tries both sides of it, so the descending node is not taken for
     /// the ascending one. In place of MechJeb's alglib call, a grid over departure time and flight time finds the window and
     /// <see cref="BrentMin"/> refines it, over the departure time with the flight time (and an intercept's arrival point)
-    /// minimised inside. To a body, <see cref="PredictBurn"/>'s propagation, as <c>solve_burn</c> uses it, then sizes the
-    /// prograde part of the burn so the patched conics arrive at the periapsis asked for, on a prograde orbit round the target
-    /// where one does; a body's capture is costed as RSVP costs it, a circular orbit at that periapsis. It works on the Game
+    /// minimised inside; an arc that dips into the atmosphere or the ground has no path. To a body, <see cref="PredictBurn"/>'s
+    /// propagation, as <c>solve_burn</c> uses it, then sizes the prograde part of the burn (moving the normal part when that
+    /// alone can't) so the patched conics arrive at the periapsis asked for, on a prograde orbit round the target where one
+    /// does; when it can't, the grid's next windows are tried, cheapest first (#611). A body's capture is costed as RSVP
+    /// costs it, a circular orbit at that periapsis. It works on the Game
     /// Snapshot's detached orbits and only reads. Only the departure node is given; the capture is <c>circularize</c>'s. After
     /// an ejection that misses (#363), <c>transfer_to</c> asks the same search for its correction from the orbit it is on,
     /// within the block's limits (<see cref="TransferAsk.LatestUt"/>, <see cref="TransferAsk.MaxDv"/>).
@@ -378,6 +380,7 @@ namespace ClaudiaKermin.Core.Tools
             private readonly double _peR;
             private readonly bool _capture;
             private readonly bool _intercept;
+            /// <summary>The lowest radius an arc may pass periapsis at: the top of the atmosphere, or the craft's periapsis if lower.</summary>
             private readonly double _floor;
 
             /// <summary>Why the last Lambert solve that failed had no path, for the error when no departure has one.</summary>
@@ -385,13 +388,13 @@ namespace ClaudiaKermin.Core.Tools
 
             public Problem(Conic craft, Conic target, SnapshotBody body, double peR, bool capture, bool intercept, double floor)
             {
-                _floor = floor;
                 _craft = craft;
                 _target = target;
                 _body = body;
                 _peR = peR;
                 _capture = capture;
                 _intercept = intercept;
+                _floor = floor;
             }
 
             public string Name
@@ -439,7 +442,7 @@ namespace ClaudiaKermin.Core.Tools
                 ArrivalState(t, tof, shift, out r2, out vt);
                 var path = Lambert.Solve(_craft.Mu, r1, r2, tof, _craft.W);
                 if (path.Error != null) return new TwoBurns { Error = path.Error };
-                if (Dips(r1, path.V1, t, tof)) return new TwoBurns { Error = "the arc passes below " + Num(_floor) + " m from the centre" };
+                if (Dips(r1, path.V1, t, tof)) return new TwoBurns { Error = "the arc dips into the atmosphere or the ground" };
                 return new TwoBurns { Departure = path.V1 - vc, Arrival = vt - path.V2 };
             }
 

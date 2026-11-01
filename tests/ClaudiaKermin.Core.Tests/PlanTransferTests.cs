@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text.Json;
 using ClaudiaKermin.Core.Missions;
@@ -101,7 +100,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             // a107 (#611): with capture plan_transfer found none, without it 1160 m/s out. Minmus is 6° above the craft's plane
             // when it arrives, so either way the departure carries the plane change, about 1,200 m/s.
-            var snapshot = GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "minmus-a107-kerbin-orbit-80km.json")));
+            var snapshot = TransferTests.A107();
             var both = Run("{\"target\":\"Minmus\",\"target_pe\":30000}", snapshot);
             var alone = Run("{\"target\":\"Minmus\",\"target_pe\":30000,\"capture\":false}", snapshot);
             foreach (var result in new[] { both, alone })
@@ -111,6 +110,17 @@ namespace ClaudiaKermin.Core.Tests
                 Assert.False(result.TryGetProperty("note", out _));
             }
             Assert.True(alone.GetProperty("departure_dv").GetDouble() <= both.GetProperty("departure_dv").GetDouble() + 1);
+        }
+
+        [Fact]
+        public void When_the_cheapest_window_can_t_be_aimed_it_gives_the_first_that_can_and_notes_it()
+        {
+            var snapshot = TransferTests.A107MunInTheWay(2429559.1);
+            var cheapest = Run("{\"target\":\"Minmus\",\"target_pe\":30000}", TransferTests.A107());
+            var result = Run("{\"target\":\"Minmus\",\"target_pe\":30000}", snapshot);
+            Assert.InRange(result.GetProperty("target_pe_actual").GetDouble(), 29900, 30100);
+            Assert.Equal("not the cheapest window: the one at UT " + Math.Round(cheapest.GetProperty("depart_ut").GetDouble())
+                + " doesn't reach Minmus on the patched conics; this is the first that does", result.GetProperty("note").GetString());
         }
 
         [Fact]

@@ -297,8 +297,21 @@ namespace ClaudiaKermin.Core.Tests
 
         // ---- Minmus from an equatorial parking orbit (#611, m20261101-140219-a107) ----
 
+        [Theory]
+        [InlineData(true, 1329.045, 837.989, 260.815)]
+        [InlineData(false, 1322.941, 837.508, 259.936)]
+        public void The_coplanar_Mun_answer_is_the_one_before_611(bool capture, double ut, double dv, double arrival)
+        {
+            // From the block test's 100 km orbit, as the solver gave them before #611 (the #452 gate's transfer).
+            var snapshot = BlockTestStart();
+            var node = Solved(snapshot, new Dictionary<string, object> { { "target", "Mun" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 }, { "capture", capture } });
+            Assert.InRange(D(node, "ut"), ut - 0.01, ut + 0.01);
+            Assert.InRange(D(node, "dv"), dv - 0.01, dv + 0.01);
+            Assert.InRange(D(node, "arrival_dv"), arrival - 0.01, arrival + 0.01);
+        }
+
         /// <summary>a107's 80 km orbit at 0.1° when it asked plan_transfer for Minmus, with Minmus's real elements (inclined 6°).</summary>
-        private static GameSnapshot A107()
+        internal static GameSnapshot A107()
         {
             return GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "minmus-a107-kerbin-orbit-80km.json")));
         }
@@ -321,7 +334,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         /// <summary>a107 with the Mun parked where the cheapest arc to Minmus crosses its orbit, its sphere of influence swollen to <paramref name="soi"/> m.</summary>
-        private static GameSnapshot A107MunInTheWay(double soi)
+        internal static GameSnapshot A107MunInTheWay(double soi)
         {
             var snapshot = A107();
             var node = Solved(snapshot, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 } });
@@ -381,9 +394,11 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void A_search_that_tries_every_window_and_every_aim_and_fails_runs_under_500_ms()
         {
+            // The worst case #611 added: three windows, each with the prograde scan at the Lambert normal and six normals round
+            // it, about 1,100 patched-conic trials (before it, one window's 121, about 50 ms). Measured at about 430 ms.
             var blocked = A107MunInTheWay(11000000);
             var ask = new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", blocked.Ut + 30 } };
-            Timing.Within(500, () => Assert.NotEqual("", BlockCalls.EjectionBurn(ask, blocked)["error"]), 3);
+            Timing.Within(500, () => Assert.NotEqual("", BlockCalls.EjectionBurn(ask, blocked)["error"]));
         }
 
         // ---- failures: "found no transfer: <why>" ----
