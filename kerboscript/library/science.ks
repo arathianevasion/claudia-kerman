@@ -115,6 +115,16 @@ function science_transmit_choice {
   return "transmit".
 }
 
+// "" when held data is left to science_decision (none held, inoperable, or transmit is "keep",
+// which keeps it); else "transmit" or "keep: <why>" for data the part already holds.
+function science_held_choice {
+  parameter has_data, inoperable, mode, returning, loses_value, can_send, ec_pct, min_ec_pct.
+  if not has_data or inoperable or mode = "keep" {
+    return "".
+  }
+  return science_transmit_choice(mode, returning, loses_value, can_send, ec_pct, min_ec_pct).
+}
+
 // The craft comes home: it carries crew or parachutes.
 function science_returning {
   if ship:crew:length > 0 {
@@ -244,8 +254,8 @@ function science {
     extra:results:add(entry).
     if names:length > 0 and not explicit {
       set entry:detail to "not in experiments".
-    } else if m:hasdata and not m:inoperable and opt:transmit <> "keep" {
-      local choice is science_transmit_choice(opt:transmit, science_returning(), science_loses_value(m), science_can_send(), claudia_ec_pct(), opt:min_ec_pct).
+    } else if science_held_choice(m:hasdata, m:inoperable, opt:transmit, science_returning(), science_loses_value(m), science_can_send(), claudia_ec_pct(), opt:min_ec_pct) <> "" {
+      local choice is science_held_choice(m:hasdata, m:inoperable, opt:transmit, science_returning(), science_loses_value(m), science_can_send(), claudia_ec_pct(), opt:min_ec_pct).
       if choice = "transmit" {
         set entry:detail to "held data sent, no new run".
         local sent is science_send(ctx, m, entry).
