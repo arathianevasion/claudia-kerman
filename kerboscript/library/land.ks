@@ -242,15 +242,19 @@ function land_next_site {
   return by_biome and error:startswith("terrain on the approach") and tried < 5.
 }
 
-// A biome's terrain refusal (error) once land has tried more than one of its sites (tried; #528): "terrain on the approach
-// at 5 East Crater sites: ..."; anything else as it is. Pure.
+// A biome's terrain refusal (error) with the count of its sites land tried (tried; #528): "terrain on the approach at 5
+// East Crater sites: ..."; anything else as it is. Pure.
 function land_sites_refused {
   parameter error, tried, biome.
   local prefix is "terrain on the approach".
-  if tried < 2 or not error:startswith(prefix) {
+  if tried < 1 or not error:startswith(prefix) {
     return error.
   }
-  return prefix + " at " + tried + " " + biome + " sites" + error:substring(prefix:length, error:length - prefix:length).
+  local sites is " sites".
+  if tried = 1 {
+    set sites to " site".
+  }
+  return prefix + " at " + tried + " " + biome + sites + error:substring(prefix:length, error:length - prefix:length).
 }
 
 // The m/s land's correction burn onto the site may cost: max_correction_dv, or for "auto" the smaller of
@@ -1534,7 +1538,7 @@ function land {
   }
   local plan is "".
   local r_pe is -1.
-  // A site given as coordinates (or "any"'s) may move up to 5 km for terrain; a biome's was already chosen for it (#511).
+  // A site given as coordinates (or "any"'s) may move up to 5 km for terrain; a biome's is chosen for it (#511), the next site taking its place (#528).
   local may_move is not by_biome.
   if not by_biome and site:istype("String") {
     // "any": the arrival point of the first pass in daylight, then its descent over that pass alone (#511); if no shape

@@ -311,8 +311,9 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
             Assert.Equal(
                 "terrain on the approach at 5 East Crater sites: no Descent Shape clears it on any pass in the next 6 h (the ground rises 900 m over the margin)",
                 One("land_sites_refused(\"" + TerrainRefusal + "\", 5, \"East Crater\")"));
-            // One site tried (the search had no other), or another failure: the reason as it was.
-            Assert.Equal(TerrainRefusal, One("land_sites_refused(\"" + TerrainRefusal + "\", 1, \"East Crater\")"));
+            // One site tried (the search had no other) says so; another failure is the reason as it was.
+            Assert.StartsWith("terrain on the approach at 1 East Crater site: no Descent Shape clears it",
+                One("land_sites_refused(\"" + TerrainRefusal + "\", 1, \"East Crater\")"));
             Assert.Equal("no pass over the site in the next 6 h", One("land_sites_refused(\"no pass over the site in the next 6 h\", 3, \"East Crater\")"));
         }
 

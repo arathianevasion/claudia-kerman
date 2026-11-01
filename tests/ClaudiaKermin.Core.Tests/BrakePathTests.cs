@@ -595,14 +595,15 @@ namespace ClaudiaKermin.Core.Tests
         public void From_the_snapshot_without_a_droppable_stage_the_whole_craft_brakes_on_the_firing_stage()
         {
             // No engine below the firing stage, or one short of the landing's delta-v: the whole craft on the firing stage, as
-            // before, and now dry once that stage burns its 2 t.
-            foreach (var snapshot in new[] { Stacked(0, 1700), Stacked(20, 300) })
+            // before, and now dry once it burns all the stages' delta-v at the firing stage's Isp, as land_craft has it.
+            foreach (var below in new[] { 1700.0, 300 })
             {
-                var craft = DescentApproach.FromSnapshot(snapshot);
+                var craft = DescentApproach.FromSnapshot(Stacked(below == 1700 ? 0 : 20, below));
+                var isp = 900 / (9.80665 * Math.Log(8 / 6.0));
                 Assert.Equal(60000, craft.ThrustN, 6);
                 Assert.Equal(8000, craft.MassKg, 6);
-                Assert.Equal(6000, craft.DryMassKg, 6);
-                Assert.Equal(900 / (9.80665 * Math.Log(8 / 6.0)), craft.Isp, 6);
+                Assert.Equal(8000 / Math.Exp((900 + below) / (isp * 9.80665)), craft.DryMassKg, 6);
+                Assert.Equal(isp, craft.Isp, 6);
                 Assert.Equal(2, craft.LagS, 6);
             }
         }
