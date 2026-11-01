@@ -232,6 +232,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void It_solves_in_milliseconds()
         {
             var flight = HohmannFlight();

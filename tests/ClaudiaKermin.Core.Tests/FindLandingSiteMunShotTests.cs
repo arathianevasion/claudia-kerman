@@ -241,6 +241,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void The_default_calls_own_work_is_small_beside_the_games()
         {
             // The search's own work runs on the tool's thread while the game serves the reads. Measured at about 120 ms in a Debug

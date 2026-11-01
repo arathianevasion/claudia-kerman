@@ -193,6 +193,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void The_calls_own_work_is_small_beside_the_games()
         {
             // As f623's default call (FindLandingSiteMunShotTests): the search's own work, the plane changes' most of it, leaves the

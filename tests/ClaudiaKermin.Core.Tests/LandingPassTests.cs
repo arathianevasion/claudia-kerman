@@ -233,6 +233,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void It_runs_in_milliseconds()
         {
             // The longest search land makes on the Mun: daylight's 46 h reach, about 80 passes with the sun asked at each. Measured

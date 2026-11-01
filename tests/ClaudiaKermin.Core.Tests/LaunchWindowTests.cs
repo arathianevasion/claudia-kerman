@@ -182,6 +182,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void It_runs_in_milliseconds()
         {
             var snapshot = Snapshot(KscLatitude, 10);

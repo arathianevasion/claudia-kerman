@@ -124,6 +124,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void It_runs_under_100_ms()
         {
             Timing.Within(100, () => Run("{\"target\":\"Mun\",\"target_pe\":30000}"));
