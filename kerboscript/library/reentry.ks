@@ -738,7 +738,7 @@ function reentry {
     } else {
       set entry_in to reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
       if entry_in < 0 {
-        set fell to "skipped out: periapsis " + round(ship:periapsis) + " m is above the atmosphere".
+        set fell to "skipped out onto an orbit that never reaches the atmosphere again (periapsis " + round(ship:periapsis) + " m)".
       } else {
         set opt:max_duration to reentry_next_deadline(auto_duration, opt:max_duration, time:seconds - ctx:start_ut, entry_in).
         set fell to claudia_wait_until(ctx, time:seconds + entry_in).
