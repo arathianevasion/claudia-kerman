@@ -146,7 +146,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.True(body.IndexOf("the orbit never reaches the atmosphere", StringComparison.Ordinal) < body.IndexOf("claudia_fire_drop(ctx, drop)", StringComparison.Ordinal));
             Assert.True(refusal < body.IndexOf("lock steering to srfretrograde", StringComparison.Ordinal));
             Assert.True(refusal < body.IndexOf("claudia_wait_until(", StringComparison.Ordinal));
-            Assert.True(refusal < body.IndexOf("reentry_shield_modules(opt:jettison_stage)", StringComparison.Ordinal));
+            Assert.True(refusal < body.IndexOf("reentry_shield_modules(opt:jettison_stage, ship:parts)", StringComparison.Ordinal));
             // The refusal is only above the atmosphere: a craft already in the air flies on.
             Assert.Contains("if ship:altitude > body_:atm:height {\n      local refused is reentry_stack_refusal(", body);
         }
