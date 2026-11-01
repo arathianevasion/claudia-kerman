@@ -100,9 +100,9 @@ function drop_parts_dv_left {
   for p in ship:parts {
     if not gone:contains(p:uid) {
       set wet to wet + p:mass.
-      for r in p:resources {
-        if claudia_is_propellant(r:name) and uses:contains(drop_parts_res_key(r:name)) {
-          set prop to prop + r:amount * r:density.
+      for res in p:resources {
+        if claudia_is_propellant(res:name) and uses:contains(drop_parts_res_key(res:name)) {
+          set prop to prop + res:amount * res:density.
         }
       }
     }

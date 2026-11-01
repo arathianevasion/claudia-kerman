@@ -25,7 +25,7 @@ namespace ClaudiaKermin.Core.Tests
         // counts input) for the system prompt and tool definitions of the first Mission request in this test's Mission. The estimate
         // runs low against the API's own count (25,569 in b5f3, 26,865 in 3dc5, whose Mission layer also carried a real body table
         // and goal), so compare this figure only with itself.
-        private const int TodaysEstimate = 21443;
+        private const int TodaysEstimate = 21432;
 
         /// <summary>
         /// Set at 21,500 when the figure was 20,452 (1.05 x 20,452 = 21,475, rounded up to the next hundred), and not raised since:
@@ -46,6 +46,8 @@ namespace ClaudiaKermin.Core.Tests
         /// #592's reentry "passes" result and its skip-out failures in one doc phrase (73 characters, +25) to 21,443 on the tree merged with main (21,418 + 25): a craft that skipped out ran
         /// to max_duration and failed (b5f3, 0de6, 44e9), each a failed run, a Debrief and a new Sequence Plan.
         /// #606's Script Check of Building Block options (+0, still 21,443): its problems are turn text, and no doc or tool description changed.
+        /// #608's drop_parts allow_no_engine option, its stranding refusal and dropped_dv (-11, paid for by trimming drop_parts' own docs: two
+        /// self-evident failure strings and wordier lines) to 21,432: the refusal's detail is turn text. a107 dropped its engine with the periapsis at 601 km.
         /// </summary>
         private const int BudgetTokens = 21500;
 
