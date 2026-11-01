@@ -315,18 +315,49 @@ namespace ClaudiaKermin.Core.Tests
             Assert.False(outcome.IsError, outcome.Json);
             using (var doc = JsonDocument.Parse(outcome.Json))
                 Assert.InRange(doc.RootElement.GetProperty("closest_approach").GetProperty("altitude").GetDouble(), 29900, 30100);
-            // An in-plane ejection to Minmus from 80 km is about 930 m/s; the 6° the arc takes on at departure costs a little more.
-            Assert.InRange(D(node, "dv"), 900, 1100);
+            // Minmus arrives about 95° past its ascending node, 6° above the craft's plane, so the arc carries the plane change:
+            // about a107's two legs, match_plane's 240 m/s and the in-plane 930 m/s. Its cheapest arc used to dive through Kerbin.
+            Assert.InRange(D(node, "dv"), 1100, 1250);
+        }
+
+        /// <summary>a107 with the Mun parked where the cheapest arc to Minmus crosses its orbit, its sphere of influence swollen to <paramref name="soi"/> m.</summary>
+        private static GameSnapshot A107MunInTheWay(double soi)
+        {
+            var snapshot = A107();
+            var node = Solved(snapshot, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 } });
+            var ut = D(node, "ut");
+            Vec3 r0, v0;
+            CraftOrbit(snapshot).State(ut, out r0, out v0);
+            var along = v0.Normalized;
+            var up = Vec3.Cross(r0, v0).Normalized;
+            var arc = Conic.FromState(KerbinGm, r0, v0 + along * D(node, "prograde") + up * D(node, "normal") + Vec3.Cross(along, up) * D(node, "radial"), ut);
+            var mun = snapshot.Bodies.Single(b => b.Name == "Mun");
+            var crossing = arc.TimeAtRadius(mun.Sma, ut, true).Value;
+            var there = arc.Position(crossing);
+            // The Mun's orbit is circular and equatorial with its periapsis on the x axis: its mean anomaly is its longitude.
+            mun.MeanAnomalyAtEpoch = Math.Atan2(there.Y, there.X) - crossing * Math.Sqrt(KerbinGm / Math.Pow(mun.Sma, 3));
+            mun.SoiRadius = soi;
+            return snapshot;
         }
 
         [Fact]
-        public void A_target_no_ejection_can_reach_fails_with_how_far_its_orbit_is_inclined_to_the_craft_s()
+        public void When_the_cheapest_window_can_t_be_aimed_the_next_one_that_can_is_given()
         {
-            // A Minmus SOI shrunk to 61 km (1 km above its surface): no burn's patched conics find an encounter.
-            var snapshot = A107();
-            snapshot.Bodies.Single(b => b.Name == "Minmus").SoiRadius = 61000;
-            var result = BlockCalls.EjectionBurn(new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 500.0 }, { "earliest_ut", snapshot.Ut + 30 } }, snapshot);
-            Assert.Equal("found no transfer: Minmus's orbit is inclined 6.0° to yours; match_plane first, or try the next window", result["error"]);
+            // The Mun, at its own sphere of influence, sits across the cheapest window's arc but not the next one's.
+            var snapshot = A107MunInTheWay(2429559.1);
+            var cheapest = Solved(A107(), new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 } });
+            var node = Solved(snapshot, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 } });
+            Assert.NotEqual(D(cheapest, "ut"), D(node, "ut"));
+            Assert.InRange(D(node, "target_pe_actual"), 29900, 30100);
+        }
+
+        [Fact]
+        public void A_target_no_window_can_reach_fails_with_how_far_its_orbit_is_inclined_to_the_craft_s()
+        {
+            // Every window's arc, and every burn tried round it, meets the Mun first.
+            var snapshot = A107MunInTheWay(11000000);
+            var ask = new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 } };
+            Assert.Equal("found no transfer: Minmus's orbit is inclined 6.0° to yours; match_plane first, or try the next window", BlockCalls.EjectionBurn(ask, snapshot)["error"]);
         }
 
         // ---- the wall clock ----
@@ -343,6 +374,16 @@ namespace ClaudiaKermin.Core.Tests
             Timing.Within(100, () => Solved(snapshot, Inclined("rendezvous")));
             Timing.Within(100, () => Solved(snapshot, Inclined("rendezvous", capture: false)));
             Timing.Within(100, () => Solved(parking, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 20000.0 }, { "earliest_ut", parking.Ut + 30 } }));
+            var a107 = A107();
+            Timing.Within(100, () => Solved(a107, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", a107.Ut + 30 } }));
+        }
+
+        [Fact]
+        public void A_search_that_tries_every_window_and_every_aim_and_fails_runs_under_500_ms()
+        {
+            var blocked = A107MunInTheWay(11000000);
+            var ask = new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", blocked.Ut + 30 } };
+            Timing.Within(500, () => Assert.NotEqual("", BlockCalls.EjectionBurn(ask, blocked)["error"]), 3);
         }
 
         // ---- failures: "found no transfer: <why>" ----

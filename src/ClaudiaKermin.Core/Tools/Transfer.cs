@@ -75,6 +75,8 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The search: from this UT, the synodic period (s) between the craft's orbit and the target's.</summary>
         public double SearchFrom;
         public double Synodic;
+        /// <summary>The cheapest window's departure UT when the patched conics couldn't aim it and this is a later one; null when this is the cheapest.</summary>
+        public double? CheapestUt;
     }
 
     /// <summary>
@@ -125,6 +127,17 @@ namespace ClaudiaKermin.Core.Tools
         private const double PeClose = 10;
         private const double PeNear = 100;
         private const int Bisections = 60;
+        /// <summary>
+        /// When no prograde part passes inside the goal, the normal part is moved <see cref="NormalStep"/> m/s each way, doubled
+        /// <see cref="NormalScans"/> times, and the fine prograde scan run again at each, <see cref="NormalScanSteps"/> each way.
+        /// </summary>
+        private const double NormalStep = 1;
+        private const int NormalScans = 3;
+        private const int NormalScanSteps = 20;
+        /// <summary>A body's windows tried, cheapest first, before the search gives up.</summary>
+        private const int Windows = 3;
+        /// <summary>From this relative inclination, deg, a body no window reaches is put down to its orbit's tilt.</summary>
+        private const double InclinedDegrees = 1;
 
         public static TransferPlan Find(GameSnapshot snapshot, TransferAsk ask)
         {
@@ -171,7 +184,7 @@ namespace ClaudiaKermin.Core.Tools
                 return Fail("the burn must come by UT " + Num(until) + ", before the earliest it can be, UT " + Num(from));
             // With the arrival point free, every departure point comes round once an orbit of the craft.
             var span = Math.Min(intercept ? craft.Period : synodic, until - from);
-            var transfer = new Problem(craft, targetOrbit, body, peR, ask.Capture, intercept);
+            var transfer = new Problem(craft, targetOrbit, body, peR, ask.Capture, intercept, Math.Min(home.Radius + home.AtmosphereHeight, craft.PeR));
 
             // The grid: a departure every span / Seeds from one step before the start (so a window just before it is a
             // falling edge, not a minimum) to a quarter span past the end, each at its cheapest time of flight.
@@ -196,45 +209,76 @@ namespace ClaudiaKermin.Core.Tools
                     }
                 }
             }
-            var picks = intercept ? InterceptPicks(cheapest, step, span, craft.Period) : RendezvousPick(cheapest, step, span, ask.LatestUt.HasValue);
+            var picks = intercept ? InterceptPicks(cheapest, step, span, craft.Period) : RendezvousPicks(cheapest, step, span, ask.LatestUt.HasValue);
             if (picks.Count == 0)
                 return Fail("no departure in the " + Num(span) + " s from UT " + Num(from) + " has a path to " + transfer.Name
                     + (transfer.LambertError != null ? " (Lambert: " + transfer.LambertError + ")" : ""));
 
-            // BrentMin from each pick, never before the start or past the grid's end (or the latest UT); the cheapest wins.
+            // BrentMin from a pick, never before the start or past the grid's end (or the latest UT).
             var last = Math.Min(from + (count - 2) * step, until);
             var scale = Scale.Create(home.Gm, Math.Sqrt(craft.A * targetOrbit.A));
-            Point best = null;
-            foreach (var pick in picks)
+            Func<int, Point> refine = pick =>
             {
                 var seed = new Point { T = from + (pick - 1) * step, Tof = flight[pick], Cost = cheapest[pick] };
-                var found = transfer.Refine(seed, Math.Max(from, seed.T - step), Math.Min(last, seed.T + step),
+                return transfer.Refine(seed, Math.Max(from, seed.T - step), Math.Min(last, seed.T + step),
                     FlightReach * hohmann[pick] * (FlightHigh - FlightLow) / (Flights - 1), scale.TimeScale);
-                if (best == null || found.Cost < best.Cost) best = found;
+            };
+            // An intercept's two sides: the cheaper wins. A body's windows, cheapest first: the first the patched conics can aim wins.
+            Point cheapestWindow = null;
+            if (intercept)
+                foreach (var pick in picks)
+                {
+                    var found = refine(pick);
+                    if (cheapestWindow == null || found.Cost < cheapestWindow.Cost) cheapestWindow = found;
+                }
+            TransferPlan plan = null, failed = null;
+            var reached = false;
+            for (var n = 0; n < (intercept ? 1 : picks.Count) && plan == null; n++)
+            {
+                var window = intercept ? cheapestWindow : refine(picks[n]);
+                if (n == 0) cheapestWindow = window;
+                bool got;
+                var tried = Depart(setup, transfer, body, targetOrbit, window, ask.TargetPe, out got);
+                reached |= got;
+                if (tried.Error == null) plan = tried;
+                else if (failed == null) failed = tried;
+                if (plan != null && n > 0) plan.CheapestUt = cheapestWindow.T;
             }
+            if (plan == null)
+            {
+                var inclined = Math.Acos(Math.Max(-1, Math.Min(1, Vec3.Dot(craft.W, targetOrbit.W)))) * 180 / Math.PI;
+                return body != null && !reached && inclined >= InclinedDegrees
+                    ? Fail(body.Name + "'s orbit is inclined " + inclined.ToString("0.0", CultureInfo.InvariantCulture) + "° to yours; match_plane first, or try the next window")
+                    : failed;
+            }
+            if (plan.DeltaV > ask.MaxDv)
+                return Fail("the cheapest burn, at UT " + Num(plan.Ut) + ", needs " + Num(plan.DeltaV) + " m/s, more than the craft's " + Num(ask.MaxDv.Value) + " m/s");
+            plan.SearchFrom = from;
+            plan.Synodic = synodic;
+            return plan;
+        }
 
-            var leg = transfer.Leg(best.T, best.Tof, best.Shift);
-            if (leg.Error != null) return Fail("the cheapest departure, at UT " + Num(best.T) + ", has no Lambert path: " + leg.Error);
+        /// <summary>
+        /// The departure node at <paramref name="window"/>: the Lambert burn, aimed on the patched conics to a body;
+        /// <paramref name="reached"/> is whether any burn tried there met it.
+        /// </summary>
+        private static TransferPlan Depart(PredictBurn.Setup setup, Problem transfer, SnapshotBody body, Conic targetOrbit, Point window, double targetPe, out bool reached)
+        {
+            reached = false;
+            var leg = transfer.Leg(window.T, window.Tof, window.Shift);
+            if (leg.Error != null) return Fail("the cheapest departure, at UT " + Num(window.T) + ", has no Lambert path: " + leg.Error);
             Vec3 r, v;
-            craft.State(best.T, out r, out v);
+            setup.Start.State(window.T, out r, out v);
             var along = v.Normalized;
             var up = Vec3.Cross(r, v).Normalized;
             var outward = Vec3.Cross(along, up);
             double prograde = Vec3.Dot(leg.Departure, along), normal = Vec3.Dot(leg.Departure, up), radial = Vec3.Dot(leg.Departure, outward);
-
-            var plan = body != null
-                ? Aim(setup, body, targetOrbit, best.T, prograde, normal, radial, ask.TargetPe)
-                : new TransferPlan
-                {
-                    Ut = best.T, Prograde = prograde, Normal = normal, Radial = radial, DeltaV = leg.Departure.Length,
-                    ArrivalDv = leg.Arrival.Length, EncounterUt = best.T + best.Tof, ArrivalUt = best.T + best.Tof,
-                };
-            if (plan.Error != null) return plan;
-            if (plan.DeltaV > ask.MaxDv)
-                return Fail("the cheapest burn, at UT " + Num(best.T) + ", needs " + Num(plan.DeltaV) + " m/s, more than the craft's " + Num(ask.MaxDv.Value) + " m/s");
-            plan.SearchFrom = from;
-            plan.Synodic = synodic;
-            return plan;
+            if (body != null) return Aim(setup, body, targetOrbit, window.T, prograde, normal, radial, targetPe, out reached);
+            return new TransferPlan
+            {
+                Ut = window.T, Prograde = prograde, Normal = normal, Radial = radial, DeltaV = leg.Departure.Length,
+                ArrivalDv = leg.Arrival.Length, EncounterUt = window.T + window.Tof, ArrivalUt = window.T + window.Tof,
+            };
         }
 
         /// <summary>Seconds between one departure window and the next for orbits of these periods; the longer period if they are the same.</summary>
@@ -257,13 +301,15 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
-        /// A rendezvous's window: a dip in the grid, the cheapest one inside the span, or else the one just past it (the span's
-        /// start cut a window); with a latest UT the span may hold no dip (the cost still falling at its end): its cheapest departure, then.
+        /// A rendezvous's windows: first a dip in the grid, the cheapest one inside the span, or else the one just past it (the
+        /// span's start cut a window); with a latest UT the span may hold no dip (the cost still falling at its end): its cheapest
+        /// departure, then. After it, the grid's other dips, cheapest first (none past a latest UT), up to <see cref="Windows"/> in all.
         /// </summary>
-        private static List<int> RendezvousPick(double[] cheapest, double step, double span, bool latest)
+        private static List<int> RendezvousPicks(double[] cheapest, double step, double span, bool latest)
         {
             var count = cheapest.Length;
             int pick = -1, late = -1;
+            var dips = new List<int>();
             for (var i = 1; i < count - 1; i++)
             {
                 if (double.IsInfinity(cheapest[i]) || !(cheapest[i] < cheapest[i - 1] && cheapest[i] <= cheapest[i + 1])) continue;
@@ -272,10 +318,15 @@ namespace ClaudiaKermin.Core.Tools
                     if (pick < 0 || cheapest[i] < cheapest[pick]) pick = i;
                 }
                 else if (late < 0 || cheapest[i] < cheapest[late]) late = i;
+                if (!latest || (i - 1) * step <= span) dips.Add(i);
             }
             if (pick < 0 && !latest) pick = late;
             if (pick < 0 && latest) pick = CheapestInSpan(cheapest, step, span, i => true);
-            return pick < 0 ? new List<int>() : new List<int> { pick };
+            if (pick < 0) return new List<int>();
+            dips.Remove(pick);
+            dips.Sort((a, b) => cheapest[a].CompareTo(cheapest[b]));
+            dips.Insert(0, pick);
+            return dips.GetRange(0, Math.Min(Windows, dips.Count));
         }
 
         /// <summary>
@@ -327,12 +378,14 @@ namespace ClaudiaKermin.Core.Tools
             private readonly double _peR;
             private readonly bool _capture;
             private readonly bool _intercept;
+            private readonly double _floor;
 
             /// <summary>Why the last Lambert solve that failed had no path, for the error when no departure has one.</summary>
             public string LambertError;
 
-            public Problem(Conic craft, Conic target, SnapshotBody body, double peR, bool capture, bool intercept)
+            public Problem(Conic craft, Conic target, SnapshotBody body, double peR, bool capture, bool intercept, double floor)
             {
+                _floor = floor;
                 _craft = craft;
                 _target = target;
                 _body = body;
@@ -386,7 +439,22 @@ namespace ClaudiaKermin.Core.Tools
                 ArrivalState(t, tof, shift, out r2, out vt);
                 var path = Lambert.Solve(_craft.Mu, r1, r2, tof, _craft.W);
                 if (path.Error != null) return new TwoBurns { Error = path.Error };
+                if (Dips(r1, path.V1, t, tof)) return new TwoBurns { Error = "the arc passes below " + Num(_floor) + " m from the centre" };
                 return new TwoBurns { Departure = path.V1 - vc, Arrival = vt - path.V2 };
+            }
+
+            /// <summary>Whether the arc leaving <paramref name="r"/> at <paramref name="v"/> passes its periapsis below the floor within <paramref name="tof"/> s.</summary>
+            private bool Dips(Vec3 r, Vec3 v, double t, double tof)
+            {
+                var mu = _craft.Mu;
+                var h = Vec3.Cross(r, v).Length;
+                var energy = Vec3.Dot(v, v) / 2 - mu / r.Length;
+                var e = Math.Sqrt(Math.Max(0, 1 + 2 * energy * h * h / (mu * mu)));
+                var pe = h * h / mu / (1 + e);
+                if (pe >= _floor) return false;
+                var arc = Conic.FromState(mu, r, v, t);
+                var at = arc.NextPeriapsis(t);
+                return at.HasValue && at.Value <= t + tof;
             }
 
             /// <summary>
@@ -470,9 +538,10 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>
         /// The Lambert burn aims at the target's centre, without its gravity: scans its prograde part each way on the patched
         /// conics until the periapsis at the target crosses the one asked for, bisects each crossing, and keeps the one that
-        /// orbits the target prograde (else the smaller burn).
+        /// orbits the target prograde (else the smaller burn). When no prograde part passes inside that periapsis, the normal
+        /// part is moved a little each way and the scan run again (#611). <paramref name="reached"/> is whether any burn tried met the target.
         /// </summary>
-        private static TransferPlan Aim(PredictBurn.Setup setup, SnapshotBody target, Conic targetOrbit, double ut, double prograde, double normal, double radial, double goal)
+        private static TransferPlan Aim(PredictBurn.Setup setup, SnapshotBody target, Conic targetOrbit, double ut, double prograde, double normal, double radial, double goal, out bool reached)
         {
             var at = JsonReader.Parse(ut.ToString("R", CultureInfo.InvariantCulture));
             Func<double, Arrival> arrive = p =>
@@ -497,21 +566,29 @@ namespace ClaudiaKermin.Core.Tools
                 };
             };
 
-            // A burn that passes inside the periapsis asked for: the Lambert burn itself, or one a little either side of it.
-            var start = arrive(prograde);
-            var reached = start != null;
-            double? inside = start != null && start.Pe < goal ? prograde : (double?)null;
-            for (var k = 1; k <= ScanSteps && !inside.HasValue; k++)
+            // A burn that passes inside the periapsis asked for: the Lambert burn itself, or one a little either side of it; else
+            // the same with the normal part moved, nearest first, keeping the normal part it was found at.
+            var lambertNormal = normal;
+            reached = false;
+            double? inside = null;
+            for (var j = 0; j <= 2 * NormalScans && !inside.HasValue; j++)
             {
-                foreach (var way in new[] { 1.0, -1.0 })
+                normal = lambertNormal + (j == 0 ? 0 : (j % 2 == 1 ? 1 : -1) * NormalStep * Math.Pow(2, (j - 1) / 2));
+                var start = arrive(prograde);
+                reached |= start != null;
+                if (start != null && start.Pe < goal) inside = prograde;
+                for (var k = 1; k <= (j == 0 ? ScanSteps : NormalScanSteps) && !inside.HasValue; k++)
                 {
-                    var p = prograde + way * k * FineStep;
-                    var got = arrive(p);
-                    reached |= got != null;
-                    if (got != null && got.Pe < goal)
+                    foreach (var way in new[] { 1.0, -1.0 })
                     {
-                        inside = p;
-                        break;
+                        var p = prograde + way * k * FineStep;
+                        var got = arrive(p);
+                        reached |= got != null;
+                        if (got != null && got.Pe < goal)
+                        {
+                            inside = p;
+                            break;
+                        }
                     }
                 }
             }

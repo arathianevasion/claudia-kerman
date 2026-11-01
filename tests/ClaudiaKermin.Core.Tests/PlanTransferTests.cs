@@ -99,15 +99,18 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void To_Minmus_from_a107_s_equatorial_orbit_capture_true_and_false_both_find_a_transfer()
         {
-            // a107 (#611): with capture plan_transfer found none, without it 1160 m/s out; both now come to about 930 to 1100.
+            // a107 (#611): with capture plan_transfer found none, without it 1160 m/s out. Minmus is 6° above the craft's plane
+            // when it arrives, so either way the departure carries the plane change, about 1,200 m/s.
             var snapshot = GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "minmus-a107-kerbin-orbit-80km.json")));
             var both = Run("{\"target\":\"Minmus\",\"target_pe\":30000}", snapshot);
             var alone = Run("{\"target\":\"Minmus\",\"target_pe\":30000,\"capture\":false}", snapshot);
             foreach (var result in new[] { both, alone })
             {
                 Assert.InRange(result.GetProperty("target_pe_actual").GetDouble(), 29900, 30100);
-                Assert.InRange(result.GetProperty("departure_dv").GetDouble(), 900, 1100);
+                Assert.InRange(result.GetProperty("departure_dv").GetDouble(), 1100, 1250);
+                Assert.False(result.TryGetProperty("note", out _));
             }
+            Assert.True(alone.GetProperty("departure_dv").GetDouble() <= both.GetProperty("departure_dv").GetDouble() + 1);
         }
 
         [Fact]
