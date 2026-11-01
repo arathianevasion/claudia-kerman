@@ -240,6 +240,10 @@ _Avoid_: raw script, freeform script
 The values a Mission Script hands back once, when its Maneuver Sequence ends (e.g. apoapsis, delta-v used, situation), which the mod passes to Claudia as data for her Debrief; a script that ends without one has failed. The script is said to report it.
 _Avoid_: report (as a noun), outcome (which is a Debrief's), return value
 
+**Blocks trail**:
+The mod's compact list of every Building Block result in a Mission Script's run, one entry per block (e.g. transfer_to's encounter_ut, science's kept), whatever Script Result the script reports; it goes in the Debrief turn text ("Blocks the script ran, oldest first"), into plans.jsonl as debrief.blocks, and into the save as blockTrail, so a hand-made lexicon can't hide what the blocks did (#609).
+_Avoid_: block log, block history, results list
+
 **Script Check**:
 The mod's check of a compiled script against a forbidden list (e.g. save and load, file operations, changing other vessels) before Approval, and of each Building Block call whose inline options lexicon misses a required option or names one the block doesn't take (#606); a script that fails is rewritten or never offered.
 _Avoid_: sandbox, validation
