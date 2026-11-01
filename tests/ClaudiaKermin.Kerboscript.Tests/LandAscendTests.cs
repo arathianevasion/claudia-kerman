@@ -340,6 +340,27 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
             Assert.Equal(new[] { "2", "True", "5", "True" }, printed);
         }
 
+        // ---- land: an unknown biome is refused before staging (#622) ----
+
+        [Fact]
+        public void An_unknown_biome_is_refused_before_land_stages_and_other_errors_wait_for_the_search()
+        {
+            // land fails with this text before claudia_stage_into_engines, so the stage count is unchanged.
+            const string Unknown = "Crater is not a biome on Mun; its biomes are: East Crater, Midlands";
+            Assert.Equal(Unknown, One("land_unknown_biome(lexicon(\"error\", \"" + Unknown + "\"))"));
+            Assert.Equal("", One("land_unknown_biome(lexicon(\"error\", \"no site in the Midlands biome on Mun under the next 6 h of ground track\"))"));
+            Assert.Equal("", One("land_unknown_biome(lexicon(\"error\", \"\"))"));
+        }
+
+        [Fact]
+        public void A_biome_with_no_site_says_when_land_has_already_staged()
+        {
+            const string Advice = "raise max_slope, try another biome or near point, or change the orbit's plane";
+            Assert.Equal(Advice + ", or land with daylight false", One("land_no_site_advice(true, false)"));
+            Assert.Equal(Advice, One("land_no_site_advice(false, false)"));
+            Assert.Equal(Advice + " (land has already staged into its engines, so the stack is not as it was)", One("land_no_site_advice(false, true)"));
+        }
+
         // ---- land: geometry and orbits ----
 
         [Fact]
