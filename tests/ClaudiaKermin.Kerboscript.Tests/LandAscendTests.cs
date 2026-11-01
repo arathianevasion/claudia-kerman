@@ -366,6 +366,48 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
             Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture, "land_plans_staged({0}, {1}, {2}, {3})", stageDv, totalDv, need, mayStage)));
         }
 
+        [Theory]
+        // #596, 22cc: Mun Shot v2 in Minmus orbit, the Swivel stage (648 m/s) hanging below the Terrier lander (3,103 m/s), a
+        // 419 m/s need (times burn_margin 1.1 = 460.9): the lander alone has it, so the stage goes before the deorbit burn.
+        [InlineData("early", "true", 3103, 419, "True")]
+        // A lander short of the need, with the margin (450 < 460.9), or well short: it keeps the stack.
+        [InlineData("early", "true", 450, 419, "False")]
+        [InlineData("early", "true", 0, 419, "False")]
+        // Staging off would leave part of the Underhang, or is blocked.
+        [InlineData("early", "false", 3103, 419, "False")]
+        // "late" keeps today's: the stack brakes and the Underhang drops near the ground.
+        [InlineData("late", "true", 3103, 419, "False")]
+        public void Land_stages_the_Underhang_off_before_the_deorbit_when_the_lander_alone_has_the_landing(string drop, string mayStage, double landerDv, double need, string expected)
+        {
+            Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture,
+                "land_drops_before_deorbit(\"{0}\", {1}, {2}, land_dv_needed({3}, 1.1, -1))", drop, mayStage, landerDv, need)));
+        }
+
+        [Fact]
+        public void The_stage_that_covers_the_braking_kept_the_stack_before_596()
+        {
+            // 22cc's figures under #546's rule alone: 648 m/s covers 460.9, so it never staged before the fall.
+            Assert.Equal("False", One("land_plans_staged(648, 3751, land_dv_needed(419, 1.1, -1), true)"));
+        }
+
+        [Fact]
+        public void Drop_underhang_defaults_to_early_and_is_checked()
+        {
+            Assert.Equal("early", One("claudia_options(lexicon(), land_defaults(), \"auto\"):opt:drop_underhang"));
+            Assert.Equal("", One("land_unreadable(claudia_options(lexicon(\"drop_underhang\", \"late\"), land_defaults(), \"auto\"):opt)"));
+            Assert.Equal("drop_underhang must be \"early\" or \"late\"",
+                One("land_unreadable(claudia_options(lexicon(\"drop_underhang\", \"soon\"), land_defaults(), \"auto\"):opt)"));
+        }
+
+        [Fact]
+        public void Land_decides_the_early_drop_on_the_plans_need_with_burn_margin_and_flies_the_lander()
+        {
+            var land = CoreLibrary.Files.Single(f => f.Name == "land").Source;
+            Assert.Contains("local lander_need is land_dv_needed(plan:predicted_dv, opt:burn_margin, land_deorbit_figures(plan):needed).", land);
+            Assert.Contains("if land_drops_before_deorbit(opt:drop_underhang, may_stage_first, under:lander_dv, lander_need) {", land);
+            Assert.Contains("set craft to land_lander_craft(land_craft(under, turn, opt), under).", land);
+        }
+
         [Fact]
         public void The_lander_alone_keeps_the_turn_lag_and_margin_and_has_nothing_to_drop()
         {

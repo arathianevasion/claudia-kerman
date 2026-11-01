@@ -20,6 +20,10 @@ A Kerbal Space Program mod that adds **Claudia**, an AI mission controller. You 
 
 Claudia is also a Kerbal: a female crew member with the **Super Intelligence** role, which combines Pilot, Engineer and Scientist. She flies aboard crewed craft, or remotely from Mission Control for probes. If she dies aboard, the Mission is Lost, and she returns to the roster later.
 
+### Landing with a stage below the legs
+
+Some craft hang their transfer stage below the lander's legs, the Underhang. If staging that stage off drops all of it, and the lander alone has the delta-v for the landing with `land`'s `burn_margin`, `land` stages it off in orbit before the deorbit burn. The lander then plans and flies the descent on its own, which turns and brakes far better than the whole stack. Whatever delta-v the stage had left is lost, so plan the Mission's delta-v without it. The Script Result shows `staged_before_deorbit`, `stage_left`, and the lander's delta-v against the need (`lander_dv`, `lander_need`). If the lander can't cover the landing alone, the stack brakes together and the Underhang drops near the ground, as `land(lexicon("drop_underhang", "late"))` always does.
+
 ### You stay in charge
 
 - No script runs without your Approval. The one exception is a **Blackout**: with no link to Kerbin, Claudia flies the Mission Plan you already approved, and shows you any changes she made when the link returns.
