@@ -29,13 +29,23 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>pass_ut</c>, <c>sun_elevation_deg</c>, <c>near_edge</c> (true if nothing deeper in the biome was reachable). With no site, or a search that could not run, only <c>error</c>, saying why.
         /// Two inputs are the block's alone, not the tool's (#528): <c>craft</c>, the craft the pass search will fly (<see cref="CraftOf"/>'s keys;
         /// without thrust and mass, the Game Snapshot's), whose descents keep the sites; and <c>exclude</c>, the sites tried already (lexicons of
-        /// <c>lat</c>, <c>lng</c>), none of whose neighbours comes back.
+        /// <c>lat</c>, <c>lng</c>), none of whose neighbours comes back; and <c>check_only</c> (#622), true to check <c>biome</c> alone, before the
+        /// craft stages: <c>error</c> "" if the body orbited has it (or the check can't tell), else the tool's unknown-biome error.
         /// </summary>
         public static IDictionary<string, object> LandingSite(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
             var orbited = snapshot == null ? "" : snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body;
             ask["body"] = orbited ?? "";
+            object checkOnly;
+            if (ask.TryGetValue("check_only", out checkOnly) && checkOnly is bool && (bool)checkOnly)
+            {
+                object named;
+                ask.TryGetValue("biome", out named);
+                var unknown = LandingSiteSearch.UnknownBiome(orbited, Convert.ToString(named, CultureInfo.InvariantCulture), body.BiomeNames(orbited ?? ""));
+                return unknown == null ? new Dictionary<string, object> { { "error", "" } } : Error(unknown);
+            }
+            ask.Remove("check_only");
             object craft, exclude;
             ask.TryGetValue("craft", out craft);
             ask.TryGetValue("exclude", out exclude);
