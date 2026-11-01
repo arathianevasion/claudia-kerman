@@ -439,7 +439,7 @@ namespace ClaudiaKermin.KOS
             var outcome = run.Run.Finish(ReadTerminal(run.Addon));
             if (run.RunId >= 0) IpuGuard.RunEnded(outcome);
             // kOS hands controls back as the program ends, so make safe again once it has.
-            if (outcome.WasAborted) CraftSafety.MakeSafe(run.Vessel);
+            if (outcome.MakesCraftSafe) CraftSafety.MakeSafe(run.Vessel);
             try { ManeuverPlan.RunEnded(run.Vessel, run.NodesAtStart, run.Label, outcome); }
             catch (Exception e) { Debug.LogWarning(ModInfo.LogTag + " couldn't tidy the maneuver nodes of '" + run.Label + "': " + e.Message); }
             Debug.Log(ModInfo.LogTag + " '" + run.Label + "' ended: " + outcome.Summary +
