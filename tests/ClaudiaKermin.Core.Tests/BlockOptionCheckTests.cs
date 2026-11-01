@@ -15,7 +15,7 @@ namespace ClaudiaKermin.Core.Tests
     public sealed class BlockOptionCheckTests
     {
         // Mun flight m20261101-132742-2d0c: the transfer leg's script, which the block refused at once in flight.
-        private const string Script2d0c = "local res is transfer_to(lexicon(\"target\", \"Mun\", \"stage_limit\", 3)).\nreturn res.\n";
+        private const string Script2d0c = "local res is transfer_to(lexicon(\"target\", \"Mun\", \"stage_limit\", 3)).\nprint res.\n";
 
         private static IList<string> Problems(string script)
         {

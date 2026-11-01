@@ -425,13 +425,13 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [Fact]
         public void A2d0cTransferMissingTargetPeFailsAndItsRetryPasses()
         {
-            var failed = _check.Check(CoreLibrary.Bundle("local res is transfer_to(lexicon(\"target\", \"Mun\", \"stage_limit\", 3)).\nreturn res.\n"));
+            var failed = _check.Check(CoreLibrary.Bundle("local res is transfer_to(lexicon(\"target\", \"Mun\", \"stage_limit\", 3)).\nprint res.\n"));
             Assert.Null(failed.CompileError);
             Assert.False(failed.Passed);
             var problem = Assert.Single(failed.Problems);
             Assert.Equal("line 1: transfer_to: missing required option target_pe; options: target*, target_pe*, window, correction (* required), plus the common options", problem);
 
-            AssertAllowed(CoreLibrary.Bundle("local res is transfer_to(lexicon(\"target\", \"Mun\", \"target_pe\", 30000, \"stage_limit\", 3)).\nreturn res.\n"));
+            AssertAllowed(CoreLibrary.Bundle("local res is transfer_to(lexicon(\"target\", \"Mun\", \"target_pe\", 30000, \"stage_limit\", 3)).\nprint res.\n"));
         }
 
         [Fact]
