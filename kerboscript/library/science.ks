@@ -15,17 +15,17 @@
 //|     addon knows how much); in Sandbox nothing is tracked, so it runs each experiment once. Or a
 //|     list of experiment ids ("temperatureScan") or part titles/names, run whether or not science
 //|     is left. A name that matches no experiment part fails the block.
-//|   transmit ["auto"]: "keep" leaves the data in the experiment; "transmit" sends it home (it stays
-//|     if the craft has no antenna or no link); "auto" transmits unless the craft is returning
+//|   transmit ["auto"]: "keep" leaves the data in the experiment; "transmit" sends it home, data a part
+//|     already holds too, with no new run (it stays if there is no antenna or link; see kept); "auto" transmits unless the craft is returning
 //|     (it carries crew or parachutes) and transmitting would lose value, then keeps it.
 //|   max_duration [1800]: seconds, transmission waits included.
-//|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block (this block never stages: it holds no burn, so auto-staging never fires).
-//|   Data is never transmitted while electric charge is under min_ec_pct; it is kept.
+//|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block (it never stages).
+//|   Data is kept while electric charge is under min_ec_pct.
 //| Extra results: results (a list with one lexicon per experiment part: experiment, part, action
-//| "ran" or "skipped", detail, and transmit "transmitted", "kept" or "" when it did not run).
-//| Data left on board after "keep" comes home with the craft; recover it. Fails on an option it can't
-//| read, a name matching no experiment, or an abort. Nothing to run is a success with every
-//| experiment skipped. EVA reports and samples are the player's job.
+//| "ran", "sent held data" or "skipped", detail, and transmit "transmitted", "kept" or ""), and
+//| kept: hints for data kept for want of a link or charge. Data left on board after "keep" comes home
+//| with the craft; recover it. Fails on an option it can't read, a name matching no experiment, or an
+//| abort. Nothing to run is a success. EVA reports and samples are the player's job.
 //| Example: `local res is science(lexicon("transmit", "keep")). addons:claudia:report(res).`
 
 // The block's own options and defaults.
@@ -115,6 +115,16 @@ function science_transmit_choice {
   return "transmit".
 }
 
+// "" when held data is left to science_decision (none held, inoperable, or transmit is "keep",
+// which keeps it); else "transmit" or "keep: <why>" for data the part already holds.
+function science_held_choice {
+  parameter has_data, inoperable, mode, returning, loses_value, can_send, ec_pct, min_ec_pct.
+  if not has_data or inoperable or mode = "keep" {
+    return "".
+  }
+  return science_transmit_choice(mode, returning, loses_value, can_send, ec_pct, min_ec_pct).
+}
+
 // The craft comes home: it carries crew or parachutes.
 function science_returning {
   if ship:crew:length > 0 {
@@ -140,6 +150,30 @@ function science_can_send {
   return false.
 }
 
+// "" or the hint for data kept because it couldn't be sent now: no link or antenna, or low charge.
+function science_kept_hint {
+  parameter experiment, choice.
+  if choice = "keep: no antenna or no link" {
+    return experiment + ": no link; call science with transmit once the link is up, from anywhere".
+  }
+  if choice = "keep: electric charge is under min_ec_pct" {
+    return experiment + ": low charge; call science with transmit once charged, from anywhere".
+  }
+  return "".
+}
+
+// Adds hint (if any) to the result's kept list.
+function science_note_kept {
+  parameter extra, hint.
+  if hint = "" {
+    return.
+  }
+  if not extra:haskey("kept") {
+    extra:add("kept", list()).
+  }
+  extra:kept:add(hint).
+}
+
 // True if sending the data in module m would be worth less than keeping it.
 function science_loses_value {
   parameter m.
@@ -162,6 +196,24 @@ function science_wait_data {
       return ticked.
     }
     wait 0.
+  }
+  return "".
+}
+
+// Sends the data in m and notes it in entry. Returns "" or an abort reason; entry:transmit is
+// "transmitted" or, when the transmission did not finish, "kept".
+function science_send {
+  parameter ctx, m, entry.
+  m:transmit().
+  local sent is science_wait_data(ctx, m, false, 120).
+  if sent <> "" {
+    return sent.
+  }
+  if m:hasdata {
+    set entry:transmit to "kept".
+    set entry:detail to entry:detail + "; transmission did not finish, data kept".
+  } else {
+    set entry:transmit to "transmitted".
   }
   return "".
 }
@@ -202,6 +254,25 @@ function science {
     extra:results:add(entry).
     if names:length > 0 and not explicit {
       set entry:detail to "not in experiments".
+    } else if science_held_choice(m:hasdata, m:inoperable, opt:transmit, science_returning(), science_loses_value(m), science_can_send(), claudia_ec_pct(), opt:min_ec_pct) <> "" {
+      local choice is science_held_choice(m:hasdata, m:inoperable, opt:transmit, science_returning(), science_loses_value(m), science_can_send(), claudia_ec_pct(), opt:min_ec_pct).
+      if choice = "transmit" {
+        set entry:detail to "held data sent, no new run".
+        local sent is science_send(ctx, m, entry).
+        if sent <> "" {
+          claudia_make_safe().
+          return claudia_finish(ctx, false, sent, extra).
+        }
+        if entry:transmit = "transmitted" {
+          set entry:action to "sent held data".
+        } else {
+          science_note_kept(extra, info:experiment + ": transmission did not finish; call science with transmit again, from anywhere").
+        }
+      } else {
+        set entry:transmit to "kept".
+        set entry:detail to "holds data, so it was not overwritten; " + choice:substring(6, choice:length - 6).
+        science_note_kept(extra, science_kept_hint(info:experiment, choice)).
+      }
     } else {
       local decision is science_decision(explicit, m:rerunnable, m:hasdata, m:inoperable, info:available, info:tracked, info:left).
       if decision <> "run" {
@@ -220,21 +291,18 @@ function science {
           set entry:detail to info:situation + " at " + info:biome.
           local choice is science_transmit_choice(opt:transmit, science_returning(), science_loses_value(m), science_can_send(), claudia_ec_pct(), opt:min_ec_pct).
           if choice = "transmit" {
-            m:transmit().
-            local sent is science_wait_data(ctx, m, false, 120).
+            local sent is science_send(ctx, m, entry).
             if sent <> "" {
               claudia_make_safe().
               return claudia_finish(ctx, false, sent, extra).
             }
-            if m:hasdata {
-              set entry:transmit to "kept".
-              set entry:detail to entry:detail + "; transmission did not finish, data kept".
-            } else {
-              set entry:transmit to "transmitted".
+            if entry:transmit = "kept" {
+              science_note_kept(extra, info:experiment + ": transmission did not finish; call science with transmit again, from anywhere").
             }
           } else {
             set entry:transmit to "kept".
             set entry:detail to entry:detail + "; " + choice:substring(6, choice:length - 6).
+            science_note_kept(extra, science_kept_hint(info:experiment, choice)).
           }
         }
       }

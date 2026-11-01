@@ -22,6 +22,14 @@ for entry in first:results {
     }
   }
 }
+// #612: the kept data is still aboard; asking to transmit sends it (with a link) or says why not (kept hint).
+local third is science(lexicon("transmit", "transmit")).
+local sent_held is 0.
+for entry in third:results {
+  if entry:action = "sent held data" {
+    set sent_held to sent_held + 1.
+  }
+}
 local ran_again is 0.
 for entry in second:results {
   if entry:action = "ran" {
@@ -33,6 +41,8 @@ set first["kept"] to kept.
 // The checker compares a field with a literal only, so the comparison of two counts is reported.
 set first["kept_all"] to kept = ran.
 set first["ran_again"] to ran_again.
+set first["sent_held"] to sent_held.
+set first["third_kept"] to third:haskey("kept").
 set first["success_again"] to second:success.
 print "science test: success " + first:success + ", ran " + ran + ", kept " + kept + ", ran again " + ran_again + ", " + first:reason.
 addons:claudia:report(first).

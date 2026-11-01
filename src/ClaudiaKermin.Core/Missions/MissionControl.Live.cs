@@ -76,6 +76,8 @@ namespace ClaudiaKermin.Core.Missions
             public double? RunStartDeltaVLeft;
             /// <summary>The delta-v taken off <see cref="RunStartDeltaVLeft"/> this run (#605), so the Debrief can say so; 0 when none.</summary>
             public double RunDroppedDeltaV;
+            /// <summary>A science call this run kept data on board for want of a link or charge (#612); the Debrief notice then says so. Not saved.</summary>
+            public bool ScienceKept;
             /// <summary>Stock delta-v left just before a separation at zero throttle, until the readings after it settle; null when none is waiting.</summary>
             public double? SeparationBefore;
             /// <summary>The last reading after that separation; null until there is one.</summary>
@@ -132,6 +134,7 @@ namespace ClaudiaKermin.Core.Missions
             mission.RunStartUt = _ut;
             mission.RunStartDeltaVLeft = LiveReadings.DeltaVLeftOf(MissionVesselSnapshot(mission));
             mission.RunDroppedDeltaV = 0;
+            mission.ScienceKept = false;
             ClearSeparation(mission);
             mission.NoEngineAboard = false;
             mission.RunStartMonopropellant = LiveReadings.MonopropellantOf(MissionVesselSnapshot(mission));
@@ -608,6 +611,7 @@ namespace ClaudiaKermin.Core.Missions
             mission.Blocks.Add(ended.Block, ended.Result);
             var line = BlockLine(ended.Block, ended.Result);
             Note(LogKind.Notice, line);
+            if (ended.Block == "science" && ended.Result != null && ended.Result.ContainsKey("kept")) mission.ScienceKept = true;
             if (!BlockSucceeded(ended.Result)) mission.RunEvents.Add(_ut, RunEventKind.BlockAborted, line.TrimEnd('.'));
         }
 

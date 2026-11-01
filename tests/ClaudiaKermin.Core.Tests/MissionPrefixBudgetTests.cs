@@ -49,6 +49,8 @@ namespace ClaudiaKermin.Core.Tests
         /// #610's capture refusal before a sphere-of-influence change and its transfer_to/tune_pe hints (+0, still 21,443): refusal
         /// reasons and result fields are turn text, and no block doc changed.
         /// #609's blocks trail (+0, still 21,443): Debrief turn text of about 20-40 tokens a block (12 at most), and no doc, prompt or schema changed.
+        /// #612's science sends data already held (+0, still 21,443): the new transmit, action and kept text in science's docs is paid for by trimming
+        /// the same block's docs (1,766 characters of //| lines before and after); the kept hints and the Debrief notice line are turn text.
         /// </summary>
         private const int BudgetTokens = 21500;
 
