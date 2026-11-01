@@ -154,7 +154,10 @@ namespace ClaudiaKermin.Core.Tools
 
         /// <summary>
         /// The craft as the Game Snapshot has it, for <c>find_landing_site</c>: the highest stage with thrust (the one that fires
-        /// next), its Isp from its delta-v and masses, and the craft's mass; null when the stages give no thrust.
+        /// next), its Isp from its delta-v and masses, the craft's mass and the mass it runs dry at; null when the stages give no
+        /// thrust. Where a stage with thrust lies below it and the stages below have the landing's delta-v (land's estimate before a
+        /// plan), land stages the firing one off before the deorbit burn as a droppable Underhang (#596), so the craft is the
+        /// lander alone: that stage's thrust and Isp, and the masses it starts and runs dry at (#528).
         /// </summary>
         public static BrakeCraft FromSnapshot(GameSnapshot snapshot)
         {
@@ -163,12 +166,47 @@ namespace ClaudiaKermin.Core.Tools
             foreach (var stage in snapshot.Stages)
                 if (stage.ThrustVacKn > 0 && (firing == null || stage.Number > firing.Number)) firing = stage;
             if (firing == null) return null;
+            SnapshotStage lander = null;
+            var belowDv = 0.0;
+            foreach (var stage in snapshot.Stages)
+            {
+                if (stage.Number >= firing.Number) continue;
+                if (!stage.DeltaVUnreliable) belowDv += stage.DeltaVVac;
+                if (stage.ThrustVacKn > 0 && (lander == null || stage.Number > lander.Number)) lander = stage;
+            }
+            var need = LanderNeed(snapshot);
+            if (lander != null && lander.StartMassT > 0 && need > 0 && belowDv >= need) return StageCraft(lander, lander.StartMassT);
             var mass = snapshot.Craft != null && snapshot.Craft.MassTonnes > 0 ? snapshot.Craft.MassTonnes : firing.StartMassT;
             if (mass <= 0) return null;
-            var isp = firing.EndMassT > 0 && firing.StartMassT > firing.EndMassT && firing.DeltaVVac > 0
-                ? firing.DeltaVVac / (9.80665 * Math.Log(firing.StartMassT / firing.EndMassT))
+            return StageCraft(firing, mass);
+        }
+
+        /// <summary>A stage's craft at <paramref name="massT"/> t: its thrust, its Isp from its figures (else 300 s), and dry once it burns what its figures say it holds.</summary>
+        private static BrakeCraft StageCraft(SnapshotStage stage, double massT)
+        {
+            var burns = stage.EndMassT > 0 && stage.StartMassT > stage.EndMassT;
+            var isp = burns && stage.DeltaVVac > 0
+                ? stage.DeltaVVac / (9.80665 * Math.Log(stage.StartMassT / stage.EndMassT))
                 : 300;
-            return new BrakeCraft { ThrustN = firing.ThrustVacKn * 1000, MassKg = mass * 1000, Isp = isp, LagS = 2 };
+            var dry = burns ? massT - (stage.StartMassT - stage.EndMassT) : 0;
+            return new BrakeCraft { ThrustN = stage.ThrustVacKn * 1000, MassKg = massT * 1000, Isp = isp, DryMassKg = dry > 0 ? dry * 1000 : 0, LagS = 2 };
+        }
+
+        /// <summary>
+        /// land's delta-v estimate for the landing before it has a plan, m/s: the deorbit burn from the orbit's semi-major axis to
+        /// a periapsis <see cref="LandingPass.ApproachM"/> up, plus 1.2 times the speed there and 100; 0 where the snapshot has no
+        /// orbit round a body it knows.
+        /// </summary>
+        private static double LanderNeed(GameSnapshot snapshot)
+        {
+            var orbit = snapshot.Orbit;
+            if (orbit == null || orbit.SemiMajorAxis <= 0) return 0;
+            var at = new BodySystem(snapshot.Bodies).Find(string.IsNullOrEmpty(orbit.Body) ? snapshot.Body : orbit.Body);
+            if (at == null || at.Gm <= 0) return 0;
+            double r0 = orbit.SemiMajorAxis, rPe = at.Radius + LandingPass.ApproachM;
+            if (rPe >= r0) return 0;
+            var deorbit = Math.Sqrt(at.Gm / r0) - Math.Sqrt(at.Gm * (2 / r0 - 2 / (r0 + rPe)));
+            return deorbit + 1.2 * Math.Sqrt(at.Gm * (2 / rPe - 2 / (r0 + rPe))) + 100;
         }
 
         private static string Whole(double x)

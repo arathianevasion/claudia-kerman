@@ -31,6 +31,8 @@ namespace ClaudiaKermin.Core.Tools
         public BrakeCraft Craft;
         /// <summary>When the search stops and answers with what it has (#536); null to run to the end.</summary>
         public SearchDeadline Deadline;
+        /// <summary>Sites already tried (#528: <c>land</c>'s, refused for terrain), as latitude and longitude, degrees: no site within <see cref="LandingSiteSearch.MinSeparationDeg"/> of one.</summary>
+        public List<double[]> Exclude = new List<double[]>();
     }
 
     internal sealed class LandingSite
@@ -435,6 +437,8 @@ namespace ClaudiaKermin.Core.Tools
                 Sample = new SiteSample { Latitude = t.Latitude, Longitude = t.Longitude, Ut = t.Ut },
                 FromNear = query.HasNear ? ArcDegrees(t.Latitude, t.Longitude, query.NearLatitude, query.NearLongitude) : double.NaN,
             });
+            if (query.Exclude.Count > 0)
+                all = all.Where(c => !query.Exclude.Any(x => ArcDegrees(x[0], x[1], c.Sample.Latitude, c.Sample.Longitude) < MinSeparationDeg));
             if (query.HasNear)
                 return all.Where(c => c.FromNear <= NearRadiusDeg).OrderBy(c => c.FromNear).Take(MaxCandidates).ToList();
             return all.ToList();

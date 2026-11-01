@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using ClaudiaKermin.Core.Claude;
 using ClaudiaKermin.Core.Missions;
@@ -25,6 +26,10 @@ namespace ClaudiaKermin.Core.Tools
         internal double? BudgetMs = ToolBudgetMs;
         /// <summary>Work out the plane changes; land's block call uses only the site.</summary>
         internal bool WithPlaneChanges = true;
+        /// <summary>The craft land will fly (#528: land_craft's, through its block call); null for the Game Snapshot's (<see cref="DescentApproach.FromSnapshot"/>).</summary>
+        internal BrakeCraft Craft;
+        /// <summary>Sites land has tried already (#528), skipped as <see cref="LandingSiteQuery.Exclude"/>; none for the tool.</summary>
+        internal List<double[]> Exclude;
 
         public string Name
         {
@@ -107,9 +112,10 @@ namespace ClaudiaKermin.Core.Tools
                 MaxSlopeDeg = JsonNode.Double(input["max_slope_deg"]) ?? 5,
                 WithinHours = LandingPass.WindowHours(within, snapshot.TimeCapHours, body.RotationPeriod),
                 MaxCorrectionDv = JsonNode.Double(input["max_correction_dv"]) ?? LandingPass.DefaultMaxCorrectionDv(LanderDv(snapshot)),
-                Craft = DescentApproach.FromSnapshot(snapshot),
+                Craft = Craft ?? DescentApproach.FromSnapshot(snapshot),
                 Deadline = deadline,
             };
+            if (Exclude != null) query.Exclude.AddRange(Exclude);
             query.EdgeMarginM = JsonNode.Double(input["edge_margin_m"]) ?? LandingSiteSearch.DefaultEdgeMarginM;
             if (query.MaxSlopeDeg <= 0) return PlanningJson.Error("max_slope_deg must be more than 0");
             if (!(query.EdgeMarginM >= 0 && query.EdgeMarginM <= 50000)) return PlanningJson.Error("edge_margin_m must be from 0 to 50000");

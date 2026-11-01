@@ -27,14 +27,37 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>max_slope_deg</c>, <c>within_hours</c>, <c>near</c>). Gives the first site, the soonest pass or the nearest the
         /// <c>near</c> point: <c>error</c> "", <c>lat</c>, <c>lng</c>, <c>biome</c>, <c>terrain_altitude</c>, <c>slope_deg</c>,
         /// <c>pass_ut</c>, <c>sun_elevation_deg</c>, <c>near_edge</c> (true if nothing deeper in the biome was reachable). With no site, or a search that could not run, only <c>error</c>, saying why.
+        /// Two inputs are the block's alone, not the tool's (#528): <c>craft</c>, the craft the pass search will fly (<see cref="CraftOf"/>'s keys;
+        /// without thrust and mass, the Game Snapshot's), whose descents keep the sites; and <c>exclude</c>, the sites tried already (lexicons of
+        /// <c>lat</c>, <c>lng</c>), none of whose neighbours comes back.
         /// </summary>
         public static IDictionary<string, object> LandingSite(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
             var orbited = snapshot == null ? "" : snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body;
             ask["body"] = orbited ?? "";
+            object craft, exclude;
+            ask.TryGetValue("craft", out craft);
+            ask.TryGetValue("exclude", out exclude);
+            ask.Remove("craft");
+            ask.Remove("exclude");
+            var tried = new List<double[]>();
+            var excluded = exclude as IEnumerable<object>;
+            if (excluded != null)
+                foreach (var point in excluded)
+                {
+                    var at = point as IDictionary<string, object>;
+                    if (at != null && NumberOrNull(at, "lat").HasValue && NumberOrNull(at, "lng").HasValue) tried.Add(new[] { Number(at, "lat", 0), Number(at, "lng", 0) });
+                }
             // The whole window, with no time limit (#536: land flies what all of it gives), and no plane changes: land uses only the site.
-            var search = new PlanningTools(new IPlanningTool[] { new FindLandingSite { BudgetMs = null, WithPlaneChanges = false } });
+            var search = new PlanningTools(new IPlanningTool[]
+            {
+                new FindLandingSite
+                {
+                    BudgetMs = null, WithPlaneChanges = false, Exclude = tried,
+                    Craft = craft is IDictionary<string, object> ? CraftOf(new Dictionary<string, object>((IDictionary<string, object>)craft, StringComparer.OrdinalIgnoreCase)) : null,
+                },
+            });
             var outcome = search.Run("find_landing_site", ToolTestGate.InputJson(ask), snapshot, body);
             var result = JsonReader.Parse(outcome.Json);
             if (outcome.IsError) return Error(JsonNode.Str(result["error"]));
