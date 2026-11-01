@@ -117,7 +117,7 @@ Claudia's proposal for the next Maneuver Sequence: its intent, Building Blocks a
 _Avoid_: maneuver plan, proposal, step plan
 
 **Telemetry Check**:
-A quantity the mod can measure during a Maneuver Sequence (e.g. delta-v used, apoapsis, electric charge) with a threshold, set in the Sequence Plan or by default; while Running, the mod checks it, and crossing it raises an Alert. A crossed Telemetry Check rules out a Nominal Debrief.
+A quantity the mod can measure during a Maneuver Sequence (e.g. delta-v used, apoapsis, electric charge) with a threshold, set in the Sequence Plan or by default; while Running, the mod checks it, and crossing it raises an Alert. A crossed Telemetry Check rules out a Nominal Debrief. An apoapsis or periapsis check is armed once its reading has been on the safe side of the threshold. An orbit check (apoapsis, periapsis, inclination) is disarmed while the craft is landed, splashed down, on the pad or flying in atmosphere; a disarmed check can't be crossed until a reading is back on the safe side.
 _Avoid_: watch limit, alarm, tripwire
 
 **Alert**:
