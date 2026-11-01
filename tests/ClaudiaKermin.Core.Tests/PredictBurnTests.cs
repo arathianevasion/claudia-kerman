@@ -215,6 +215,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void It_runs_in_milliseconds()
         {
             // A closest approach to the Mun with no encounter, an escape to a patch round the Sun, and two burns on one patch.

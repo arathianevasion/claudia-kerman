@@ -124,6 +124,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void It_runs_in_milliseconds()
         {
             // The deorbit block's search to KSC from the 80 km orbit, and one too far off the track (every pass refined). Measured

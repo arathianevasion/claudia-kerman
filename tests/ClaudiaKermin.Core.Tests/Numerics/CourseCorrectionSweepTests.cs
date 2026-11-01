@@ -54,6 +54,7 @@ namespace ClaudiaKermin.Core.Tests.Numerics
             get { return Sweep.Seeds; }
         }
 
+        [Trait("Category", "Timing")]
         [Theory]
         [MemberData(nameof(Seeds))]
         public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_in_under_100_ms(int seed)
@@ -61,6 +62,7 @@ namespace ClaudiaKermin.Core.Tests.Numerics
             Corrects(seed, Arrival.AnyInclination, true);
         }
 
+        [Trait("Category", "Timing")]
         [Theory]
         [MemberData(nameof(Seeds))]
         public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_and_an_inclined_arrival(int seed)
@@ -68,6 +70,7 @@ namespace ClaudiaKermin.Core.Tests.Numerics
             Corrects(seed, Arrival.Inclined, true);
         }
 
+        [Trait("Category", "Timing")]
         [Theory]
         [MemberData(nameof(Seeds))]
         public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_and_an_equatorial_arrival(int seed)
@@ -76,6 +79,7 @@ namespace ClaudiaKermin.Core.Tests.Numerics
         }
 
         [Theory]
+        [Trait("Category", "Timing")]
         [MemberData(nameof(Seeds))]
         public void A_perturbed_Mun_transfer_is_corrected_to_target_pe_with_a_free_burn_time(int seed)
         {

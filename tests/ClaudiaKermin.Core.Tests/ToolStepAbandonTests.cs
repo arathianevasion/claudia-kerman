@@ -129,6 +129,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void A_later_call_is_not_slowed_by_an_abandoned_one()
         {
             Timing.Within(10 * Lane.ServeMs, () =>

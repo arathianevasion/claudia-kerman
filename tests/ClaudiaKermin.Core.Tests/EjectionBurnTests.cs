@@ -126,6 +126,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void It_runs_in_milliseconds()
         {
             Timing.Within(500, () =>
@@ -248,6 +249,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void From_the_golden_snapshot_it_runs_in_milliseconds()
         {
             // Measured at about 21 ms alone in a Debug build; the same budget as the hand-written cases.

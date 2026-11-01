@@ -87,6 +87,7 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(SearchStatus.NonFinite, BrentRoot.Solve(x => x < 1 ? -1 : (x < 2 ? double.NaN : 1), 0, 3, 1e-9, 10).Status);
         }
 
+        [Trait("Category", "Timing")]
         [Fact]
         public void BrentRoot_runs_in_milliseconds()
         {
@@ -151,6 +152,7 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(SearchStatus.NonFinite, BrentMin.Solve(x => double.NaN, 0, 1, 1e-9, 10).Status);
         }
 
+        [Trait("Category", "Timing")]
         [Fact]
         public void BrentMin_runs_in_milliseconds()
         {
@@ -217,6 +219,7 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(SearchStatus.InvalidInput, Newton.SolveBracketed(Cubic, x => 1, double.NaN, 3, 1e-9, 10).Status);
         }
 
+        [Trait("Category", "Timing")]
         [Fact]
         public void Newton_runs_in_milliseconds()
         {

@@ -10,6 +10,7 @@ namespace ClaudiaKermin.Core.Tests.Numerics
     public sealed class SweepTimingTests
     {
         [Fact]
+        [Trait("Category", "Timing")]
         public void The_whole_sweep_runs_in_seconds()
         {
             // Every seed of every sweep, as the Theories run them. Measured at about 0.5 s alone in a Debug build, and about 1 s with the Course Correction sweep (#447),

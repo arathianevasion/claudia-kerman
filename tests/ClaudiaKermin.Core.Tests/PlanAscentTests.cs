@@ -130,6 +130,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void It_runs_in_milliseconds()
         {
             // Every turn shape for a strong craft, and for one that falls whatever the shape. Measured at about 25 ms alone in a

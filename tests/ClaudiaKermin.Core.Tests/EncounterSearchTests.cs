@@ -56,6 +56,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void Following_a_path_runs_in_milliseconds()
         {
             // The patched conics of the golden in-orbit snapshot (#441): its own orbit, stable, searched for an encounter over a

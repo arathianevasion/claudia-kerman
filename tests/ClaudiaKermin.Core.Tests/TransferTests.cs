@@ -376,6 +376,7 @@ namespace ClaudiaKermin.Core.Tests
         // ---- the wall clock ----
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void Each_solve_runs_under_100_ms()
         {
             var snapshot = Circular();
@@ -392,6 +393,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void A_search_that_tries_every_window_and_every_aim_and_fails_runs_under_500_ms()
         {
             // The worst case #611 added: three windows, each with the prograde scan at the Lambert normal and six normals round

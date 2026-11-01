@@ -375,6 +375,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void The_search_takes_about_200_ms_a_pass_at_most()
         {
             Timing.Within(BrakePath.BudgetMs, () => Plan(Crater));
