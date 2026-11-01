@@ -1456,6 +1456,9 @@ function land {
   if by_biome {
     local found is addons:claudia:landingsite(land_site_query(opt:target, opt:daylight, opt:max_slope, opt:within_hours, reach)).
     if found:error <> "" {
+      if found:error:contains(" is not a biome on ") {
+        return claudia_finish(ctx, false, found:error, extra).
+      }
       local advice is "raise max_slope, try another biome or near point, or change the orbit's plane".
       if opt:daylight {
         set advice to advice + ", or land with daylight false".

@@ -117,6 +117,19 @@ namespace ClaudiaKermin.Adapter
             return sample.Biome;
         }
 
+        public override IList<string> BiomeNames(string body)
+        {
+            var names = new List<string>();
+            Run(() =>
+            {
+                var celestial = Find(body);
+                if (celestial != null && celestial.BiomeMap != null && celestial.BiomeMap.Attributes != null)
+                    names.AddRange(celestial.BiomeMap.Attributes.Select(a => a.name));
+                return true;
+            });
+            return names;
+        }
+
         public override double SunElevation(string body, double latitude, double longitude, double ut)
         {
             var sample = new SiteSample { Latitude = latitude, Longitude = longitude, Ut = ut };
