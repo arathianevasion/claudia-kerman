@@ -88,6 +88,7 @@ namespace ClaudiaKermin.ScriptCheck
             }
             var warnings = new List<string>(ScriptLints.Warnings(script));
             warnings.AddRange(StackDropLint.Warnings(script));
+            warnings.AddRange(DropBeforeReentryLint.Warnings(script));
             // A block test (tests/tools) or a library file may pass a block an option it refuses, to test the refusal.
             var blockOptions = forToolTests || forCoreLibrary ? new List<string>() : BlockOptionCheck.Problems(script);
             return new ScriptCheckResult(null, OpcodeReader.Read(sections, forToolTests, forCoreLibrary ? 1 : CoreLibrary.LibraryStartLine(script)))

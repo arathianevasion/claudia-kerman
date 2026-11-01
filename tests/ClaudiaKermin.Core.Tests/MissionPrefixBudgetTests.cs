@@ -25,7 +25,7 @@ namespace ClaudiaKermin.Core.Tests
         // counts input) for the system prompt and tool definitions of the first Mission request in this test's Mission. The estimate
         // runs low against the API's own count (25,569 in b5f3, 26,865 in 3dc5, whose Mission layer also carried a real body table
         // and goal), so compare this figure only with itself.
-        private const int TodaysEstimate = 21443;
+        private const int TodaysEstimate = 21432;
 
         /// <summary>
         /// Set at 21,500 when the figure was 20,452 (1.05 x 20,452 = 21,475, rounded up to the next hundred), and not raised since:
@@ -51,6 +51,8 @@ namespace ClaudiaKermin.Core.Tests
         /// #609's blocks trail (+0, still 21,443): Debrief turn text of about 20-40 tokens a block (12 at most), and no doc, prompt or schema changed.
         /// #612's science sends data already held (+0, still 21,443): the new transmit, action and kept text in science's docs is paid for by trimming
         /// the same block's docs (1,766 characters of //| lines before and after); the kept hints and the Debrief notice line are turn text.
+        /// #608's drop_parts allow_no_engine option, its stranding refusal and dropped_dv (-11, paid for by trimming drop_parts' own docs: two
+        /// self-evident failure strings and wordier lines) to 21,432: the refusal's detail is turn text. a107 dropped its engine with the periapsis at 601 km.
         /// </summary>
         private const int BudgetTokens = 21500;
 
