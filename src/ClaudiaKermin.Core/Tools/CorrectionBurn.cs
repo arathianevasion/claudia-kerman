@@ -236,7 +236,7 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
-        /// <see cref="BodySystem.Follow"/>, or null where it throws: on a radial path, (a last patch that is a hyperbola round
+        /// <see cref="BodySystem.Follow"/>, or null where it throws on a radial path (a last patch that is a hyperbola round
         /// the star no longer throws, #471). The wrapper stays until #497.
         /// </summary>
         private static List<Patch> Follow(BodySystem system, SnapshotBody body, Conic orbit, double ut, int patches)
