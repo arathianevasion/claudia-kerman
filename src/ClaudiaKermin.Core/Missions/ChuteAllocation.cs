@@ -240,7 +240,8 @@ namespace ClaudiaKermin.Core.Missions
                     Judge(entry);
                     if (Covered(entry)) continue;
                     entry.Chutes.Clear();
-                    foreach (var chute in kept) Take(entry, chute);
+                    entry.Chutes.AddRange(kept);
+                    foreach (var chute in kept) _taken.Add(chute.PartId);
                     Judge(entry);
                 }
             }
