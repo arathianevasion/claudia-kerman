@@ -27,7 +27,7 @@
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block (it never stages).
 //| Extra results: max_g (peak g felt, in g), max_temp_pct (hottest part, in percent of its limit),
 //| geo (lexicon lat, lng, alt where it ended), splashed (true if it ended in water), touchdown_speed
-//| (m/s just before contact; over 15 m/s fails the block), shield_dropped (true if the heat shield's
+//| (m/s just before contact; over 15 m/s fails the block), passes (max 3; a skip-out waits for the next, else "skipped out ..."), shield_dropped (true if the heat shield's
 //| decoupler fired and the craft lost the part). Fails with "body has no atmosphere", an
 //| orbit that never reaches the atmosphere, an option it can't read, "stack attached below the heat shield: <names>", a hard
 //| touchdown, or an abort (a mid-air abort still opens the parachutes if that is safe).
@@ -252,6 +252,39 @@ function reentry_g_felt {
 function reentry_entry_eta {
   parameter ecc, sma, mu, r_entry, ta.
   return claudia_fall_eta(ecc, sma, mu, r_entry, ta).
+}
+
+// Passes through the atmosphere reentry flies before it fails a craft that keeps skipping out (#592).
+function reentry_max_passes { return 3. }
+
+// True if the craft has left the atmosphere on a pass: it was in it (in_air), is above it (height, atm_h in
+// m) and is climbing (vspeed, m/s).
+function reentry_skipped_out {
+  parameter in_air, height, atm_h, vspeed.
+  return in_air and height > atm_h and vspeed > 0.
+}
+
+// "" or why a skip-out is the end: pe (m) is above the atmosphere, so there is no next pass, or the
+// craft has flown passes (counting this one) of the most it flies.
+function reentry_skip_refusal {
+  parameter passes, pe, atm_h.
+  if pe >= atm_h {
+    return "skipped out: periapsis " + round(pe) + " m is above the atmosphere".
+  }
+  if passes >= reentry_max_passes() {
+    return "skipped out of the atmosphere " + passes + " times (periapsis " + round(pe) + " m)".
+  }
+  return "".
+}
+
+// max_duration "auto" after a skip-out: the time already run (elapsed, s), the wait for the next entry
+// (entry_in, s) and 1800 s. An explicit max_duration (a number the caller gave) stays: auto is whether it was "auto".
+function reentry_next_deadline {
+  parameter auto, current, elapsed, entry_in.
+  if auto {
+    return elapsed + entry_in + 1800.
+  }
+  return current.
 }
 
 // The heat-shield decoupler modules chosen by jettison ("auto", "none" or a stage number).
@@ -531,7 +564,7 @@ function reentry_abort {
 
 function reentry {
   parameter options is lexicon().
-  local extra is lexicon("max_g", 0, "max_temp_pct", 0, "geo", lexicon(), "splashed", false, "touchdown_speed", -1, "shield_dropped", false).
+  local extra is lexicon("max_g", 0, "max_temp_pct", 0, "geo", lexicon(), "splashed", false, "touchdown_speed", -1, "passes", 0, "shield_dropped", false).
   local ctx is claudia_begin("reentry", options, reentry_defaults(), "auto").
   if ctx:error <> "" {
     return claudia_finish(ctx, false, ctx:error, extra).
@@ -584,7 +617,8 @@ function reentry {
   // The shield's decouplers, found on the craft that is left.
   local shield is reentry_shield_modules(opt:jettison_stage, ship:parts).
   local shield_gone is shield:length = 0.
-  if opt:max_duration:istype("String") {
+  local auto_duration is opt:max_duration:istype("String").
+  if auto_duration {
     set opt:max_duration to entry_in + 1800.
   }
   local held is opt:hold = "retrograde".
@@ -609,6 +643,9 @@ function reentry {
   local decel is 0.
   local hot is 0.
   local event_eta is -1.
+  local passes is 0.
+  local in_air is false.
+  local skipped is false.
 
   // One tick of the fall; true once the craft is on the ground. The wait loop (claudia_warp_to) calls it
   // each tick as its stop and physics-warps the fall under reentry_warp_cap.
@@ -618,6 +655,16 @@ function reentry {
     }
     local now is time:seconds.
     set last_speed to ship:velocity:surface:mag.
+    if ship:altitude <= body_:atm:height and not in_air {
+      set in_air to true.
+      set passes to passes + 1.
+      set extra:passes to passes.
+    }
+    // Out of the atmosphere again: end the wait so the pass loop below can wait for the next.
+    if reentry_skipped_out(in_air, ship:altitude, body_:atm:height, ship:verticalspeed) {
+      set skipped to true.
+      return true.
+    }
     local agl is reentry_agl().
     local pressure is body_:atm:altitudepressure(ship:altitude).
 
@@ -673,8 +720,34 @@ function reentry {
     }
     return claudia_on_ground().
   }.
-  local cap is { return reentry_warp_cap(hot, drogues_out, mains_out, reentry_agl(), event_eta). }.
+  // Physics warp is never used above the atmosphere.
+  local cap is {
+    if ship:altitude > body_:atm:height {
+      return 1.
+    }
+    return reentry_warp_cap(hot, drogues_out, mains_out, reentry_agl(), event_eta).
+  }.
   local fell is claudia_warp_to(ctx, time:seconds + opt:max_duration + 3600, 0, fall_tick, cap).
+  // A skip-out waits on rails for the next entry, then falls again (#592).
+  until fell <> "" or not skipped {
+    set skipped to false.
+    set in_air to false.
+    local refusal is reentry_skip_refusal(passes, ship:periapsis, body_:atm:height).
+    if refusal <> "" {
+      set fell to refusal.
+    } else {
+      set entry_in to reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
+      if entry_in < 0 {
+        set fell to "skipped out: periapsis " + round(ship:periapsis) + " m is above the atmosphere".
+      } else {
+        set opt:max_duration to reentry_next_deadline(auto_duration, opt:max_duration, time:seconds - ctx:start_ut, entry_in).
+        set fell to claudia_wait_until(ctx, time:seconds + entry_in).
+        if fell = "" {
+          set fell to claudia_warp_to(ctx, time:seconds + opt:max_duration + 3600, 0, fall_tick, cap).
+        }
+      }
+    }
+  }
   if fell <> "" {
     reentry_abort(opt).
     set extra:max_temp_pct to round(max(extra:max_temp_pct, reentry_hottest()), 1).

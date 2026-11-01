@@ -25,7 +25,7 @@ namespace ClaudiaKermin.Core.Tests
         // counts input) for the system prompt and tool definitions of the first Mission request in this test's Mission. The estimate
         // runs low against the API's own count (25,569 in b5f3, 26,865 in 3dc5, whose Mission layer also carried a real body table
         // and goal), so compare this figure only with itself.
-        private const int TodaysEstimate = 21288;
+        private const int TodaysEstimate = 21313;
 
         /// <summary>
         /// Set at 21,500 when the figure was 20,452 (1.05 x 20,452 = 21,475, rounded up to the next hundred), and not raised since:
@@ -36,6 +36,8 @@ namespace ClaudiaKermin.Core.Tests
         /// #557's reentry separate option, its failure and "drops the stack below the heat shield" in the catalog line (+54, paid down
         /// by trimming reentry's own docs) to 21,288, measured against 21,234 for bece0db here: a reentry flown with the service module
         /// on lost two Missions and cost b5f3 and 0de6 a corrective sequence each.
+        /// #592's reentry "passes" result and its skip-out failures in one doc phrase (73 characters, +25) to 21,313: a craft that skipped out ran
+        /// to max_duration and failed (b5f3, 0de6, 44e9), each a failed run, a Debrief and a new Sequence Plan.
         /// </summary>
         private const int BudgetTokens = 21500;
 
