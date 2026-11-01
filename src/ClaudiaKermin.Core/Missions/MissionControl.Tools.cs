@@ -193,7 +193,9 @@ namespace ClaudiaKermin.Core.Missions
             // The Reply Tool is answered by the mod's own plan checks, from copies taken here: the worker never reads the Mission.
             var left = new HashSet<string>(mission.LeftTheCraft);
             var needsNewGoal = mission.Stage != MissionStage.AwaitingPlanApproval && (purpose == Purpose.Reply || purpose == Purpose.Change);
-            Func<ToolUseBlock, ToolOutcome> answer = use => use.Name == ProposedPlans.ToolName ? ProposedPlans.Check(use, left, needsNewGoal) : null;
+            // Only the player's typed Reply or Change may change the Mission Goal (#590); on any other request a new_goal is ignored.
+            var allowsNewGoal = purpose == Purpose.Reply || purpose == Purpose.Change;
+            Func<ToolUseBlock, ToolOutcome> answer = use => use.Name == ProposedPlans.ToolName ? ProposedPlans.Check(use, left, needsNewGoal, allowsNewGoal) : null;
             _background.Run(
                 () => ToolStep.Run(tools, message, refusal, atLimit, snapshot, body, timeout, answer),
                 step => ToolsAnswered(mission, turn, message, step, atLimit),

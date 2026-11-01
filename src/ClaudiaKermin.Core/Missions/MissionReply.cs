@@ -532,10 +532,15 @@ namespace ClaudiaKermin.Core.Missions
             return set == false ? null : JsonNode.Double(alert["follow_up_threshold"]);
         }
 
+        private static readonly string[] NoGoalWords = { "none", "n/a", "na", "null", "no change", "unchanged", "-" };
+
+        /// <summary>A new_goal as text, or null for none: blank, quote marks only, or a placeholder word such as "none" (#590).</summary>
         private static string Goal(string text)
         {
             text = (text ?? "").Trim();
-            return text.Length == 0 ? null : text;
+            var bare = text.Trim('"', '\'', '`', '\u201C', '\u201D', '\u2018', '\u2019', ' ', '\t', '\r', '\n').Trim();
+            if (bare.Length == 0 || NoGoalWords.Contains(bare.ToLowerInvariant())) return null;
+            return text;
         }
 
         private static JsonNode Object(JsonNode node)
