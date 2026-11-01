@@ -1590,46 +1590,60 @@ function land {
   }
   // #596: where staging off the current stage drops the whole Underhang and the lander alone has the landing's delta-v (with
   // burn_margin), the stage goes now, in orbit before the deorbit burn, even one that could cover the braking: braking on the
-  // whole stack turns slowly and burns the stage's fuel hovering. The lander then plans the pass again and flies it.
+  // whole stack turns slowly and burns the stage's fuel hovering. The lander plans its own pass first (a plan made for the
+  // stack is made again for it), and the stage goes only if that plan stands and the lander covers its need; else the stack flies.
   if under:plan:decouplers:length > 0 {
     local lander_need is land_dv_needed(plan:predicted_dv, opt:burn_margin, land_deorbit_figures(plan):needed).
-    set extra:lander_dv to round(under:lander_dv).
-    set extra:lander_need to round(lander_need).
-    local stage_note is "kept the stack (drop_underhang " + opt:drop_underhang + ")".
+    local stage_note is "kept the stack: the lander is short of the need".
+    if opt:drop_underhang = "late" {
+      set stage_note to "kept the stack: drop_underhang late".
+    } else if not may_stage_first {
+      set stage_note to "kept the stack: staging off would leave Underhang aboard, or is blocked".
+    }
     if land_drops_before_deorbit(opt:drop_underhang, may_stage_first, under:lander_dv, lander_need) {
-      local early is land_stage_early(ctx).
-      set stage_note to early:note.
-      if early:staged {
-        set extra:staged_before_deorbit to true.
-        set extra:stage_left to early:left.
-        // The lander's own turn, reach and craft; a plan made for the stack is made again for it (ADR 0007: inline).
-        set turn to addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime)).
-        if turn:error <> "" {
-          set turn to lexicon("error", turn:error, "turn_time", 0, "turn_s", 0, "top_rate", 0).
+      local lander_plan is plan.
+      local lander_craft is land_lander_craft(craft, under).
+      local lander_reach is land_reach_dv(opt:max_correction_dv, under:lander_dv).
+      if not stage_first {
+        // The block-internal pass search stays inline (ADR 0007).
+        if site:istype("String") {
+          local any_query is land_pass_query(plan:site, plan:r_pe, plan:burn_ut - 60, opt:daylight, 1000, opt:within_hours, lander_craft, opt:descent_shape, true).
+          any_query:add("latest_ut", plan:arrive_ut + 600).
+          set lander_plan to land_pass_plan(addons:claudia:landingpass(any_query), plan:site, plan:r_pe).
+        } else {
+          local site_query is land_pass_query(site, r_pe, time:seconds + 120, opt:daylight, lander_reach, opt:within_hours, lander_craft, opt:descent_shape, may_move).
+          site_query:add("plane_changes", true).
+          set lander_plan to land_pass_plan(addons:claudia:landingpass(site_query), site, r_pe).
         }
-        set reach to land_reach_dv(opt:max_correction_dv, ship:deltav:current).
-        set craft to land_lander_craft(land_craft(under, turn, opt), under).
-        if not stage_first {
-          if site:istype("String") {
-            local any_query is land_pass_query(plan:site, plan:r_pe, plan:burn_ut - 60, opt:daylight, 1000, opt:within_hours, craft, opt:descent_shape, true).
-            any_query:add("latest_ut", plan:arrive_ut + 600).
-            set plan to land_pass_plan(addons:claudia:landingpass(any_query), plan:site, plan:r_pe).
-          } else {
-            local site_query is land_pass_query(site, r_pe, time:seconds + 120, opt:daylight, reach, opt:within_hours, craft, opt:descent_shape, may_move).
-            site_query:add("plane_changes", true).
-            set plan to land_pass_plan(addons:claudia:landingpass(site_query), site, r_pe).
+      }
+      if lander_plan:error <> "" {
+        set stage_note to "kept the stack: the lander has no plan (" + lander_plan:error + ")".
+      } else {
+        set lander_need to land_dv_needed(lander_plan:predicted_dv, opt:burn_margin, land_deorbit_figures(lander_plan):needed).
+        if land_drops_before_deorbit(opt:drop_underhang, may_stage_first, under:lander_dv, lander_need) {
+          local early is land_stage_early(ctx).
+          set stage_note to early:note.
+          if early:staged {
+            set extra:staged_before_deorbit to true.
+            set extra:stage_left to early:left.
+            set plan to lander_plan.
+            set reach to lander_reach.
+            // The lander's own turn, read now it flies alone (ADR 0007: inline), for the coast, the descent and any re-plan.
+            set turn to addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime)).
+            if turn:error <> "" {
+              set turn to lexicon("error", turn:error, "turn_time", 0, "turn_s", 0, "top_rate", 0).
+            }
+            set craft to land_lander_craft(land_craft(under, turn, opt), under).
+            // Staged already: nothing to stage off before the fall.
+            set stage_first to false.
           }
         }
-        // Staged already: nothing to stage off before the fall.
-        set stage_first to false.
       }
     }
+    set extra:lander_dv to round(under:lander_dv).
+    set extra:lander_need to round(lander_need).
     addons:claudia:blocktrace("land", lexicon("phase", "stage", "when", "before deorbit", "staged", extra:staged_before_deorbit, "note", stage_note,
-      "lander_dv", extra:lander_dv, "need", extra:lander_need)).
-    if plan:error <> "" {
-      set extra:shape_range to land_or(plan, "shape_range", "").
-      return claudia_finish(ctx, false, plan:error, extra).
-    }
+      "lander_dv", extra:lander_dv, "lander_need", extra:lander_need)).
   }
   land_note_plan(extra, plan).
   local mu is body:mu.
