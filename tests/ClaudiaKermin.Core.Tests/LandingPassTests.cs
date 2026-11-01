@@ -251,6 +251,17 @@ namespace ClaudiaKermin.Core.Tests
             Assert.False(site.ContainsKey("lat"));
         }
 
+        [Fact]
+        public void Land_checks_a_biome_name_alone_before_it_stages()
+        {
+            var fake = new FakeBody { Biomes = new[] { "East Crater", "Farside Crater", "Midlands" } };
+            var unknown = BlockCalls.LandingSite(Ask("biome", "Crater", "check_only", true), Mun(10), fake);
+            Assert.Equal("\"Crater\" is not a biome on Mun; closest: East Crater, Farside Crater; its biomes are: East Crater, Farside Crater, Midlands", unknown["error"]);
+            Assert.Equal("", BlockCalls.LandingSite(Ask("biome", "midlands", "check_only", true), Mun(10), fake)["error"]);
+            // A body that lists no biomes can't be told apart, so the check passes.
+            Assert.Equal("", BlockCalls.LandingSite(Ask("biome", "Anywhere", "check_only", true), Mun(10), new FakeBody())["error"]);
+        }
+
         // ---- find_landing_site and land choose the same pass ----
 
         [Fact]
