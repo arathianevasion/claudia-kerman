@@ -274,6 +274,36 @@ namespace ClaudiaKermin.Kerboscript.Tests
                 One("tune_pe_apoapsis_burn(3.5316e12, 1600000, 1200000, 1700000):error"));
         }
 
+        // ---- the next-patch burn, by ADDONS:CLAUDIA:CORRECTIONBURN (#484) ----
+
+        [Fact]
+        public void The_next_patch_burn_asks_for_a_fixed_time_correction_within_the_tolerance()
+        {
+            Assert.Equal("Mun|50000|1234.5|1234.5|1000", One("tune_pe_ask(\"Mun\", 50000, 1000, 1234.5):values:join(\"|\")"));
+        }
+
+        [Fact]
+        public void A_correction_within_tolerance_gives_its_node_components()
+        {
+            Assert.Equal("||1|-2|3", One("tune_pe_found(lexicon(\"error\", \"\", \"ut\", 9, \"prograde\", 3, \"normal\", -2, \"radial\", 1, \"dv\", 3.7))"
+                + ":values:join(\"|\")"));
+        }
+
+        [Fact]
+        public void A_best_burn_over_tolerance_gives_its_components_and_why_as_the_miss()
+        {
+            Assert.Equal("|found no correction: the best burn (5 m/s) arrives at periapsis 9000 m|0|0|-5",
+                One("tune_pe_found(lexicon(\"error\", \"found no correction: the best burn (5 m/s) arrives at periapsis 9000 m\", \"prograde\", -5, \"normal\", 0, \"radial\", 0, \"dv\", 5))"
+                + ":values:join(\"|\")"));
+        }
+
+        [Fact]
+        public void A_correction_that_could_not_start_is_the_error_with_no_burn()
+        {
+            Assert.Equal("found no correction: target is required||0|0|0",
+                One("tune_pe_found(lexicon(\"error\", \"found no correction: target is required\")):values:join(\"|\")"));
+        }
+
         // ---- the budget ----
 
         [Theory]
