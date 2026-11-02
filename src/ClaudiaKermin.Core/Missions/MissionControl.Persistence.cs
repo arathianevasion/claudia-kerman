@@ -92,6 +92,8 @@ namespace ClaudiaKermin.Core.Missions
                 RcsUse = mission.RcsUse.ToJson(),
                 RunStartMonopropellant = mission.RunStartMonopropellant,
                 RunStartDeltaVLeft = mission.RunStartDeltaVLeft,
+                RunDroppedDeltaV = mission.RunDroppedDeltaV,
+                BlockTrail = mission.Blocks.ToJson(),
                 ScriptError = mission.ScriptError ?? "",
                 Recheck = mission.Recheck,
                 RecheckSince = mission.RecheckSince,
@@ -289,7 +291,7 @@ namespace ClaudiaKermin.Core.Missions
                 turn = mission.HandBack ? HandBackTurn(mission) : new Turn
                 {
                     Purpose = Purpose.Debrief,
-                    UserText = MissionPrompts.RunReport(plan, StoppedOutcome(mission, mission.OwedOutcome), CrossingsText(mission)) + "\n" + MissionPrompts.Facts(_ut, _snapshot),
+                    UserText = MissionPrompts.RunReport(plan, StoppedOutcome(mission, mission.OwedOutcome), CrossingsText(mission), mission.Blocks) + "\n" + MissionPrompts.Facts(_ut, _snapshot),
                     Notice = MissionPrompts.DebriefNotice,
                 };
             }
@@ -454,6 +456,8 @@ namespace ClaudiaKermin.Core.Missions
             mission.RcsUse.Restore(state.RcsUse);
             mission.RunStartMonopropellant = state.RunStartMonopropellant;
             mission.RunStartDeltaVLeft = state.RunStartDeltaVLeft;
+            mission.RunDroppedDeltaV = state.RunDroppedDeltaV;
+            mission.Blocks.Restore(state.BlockTrail);
             mission.ScriptError = state.ScriptError ?? "";
 
             // The conversation is the transcript's, whole: turns past the save's marker are kept.
@@ -466,16 +470,22 @@ namespace ClaudiaKermin.Core.Missions
                 mission.CompactionBlock = transcript.Compaction;
                 mission.CompactedMessages = transcript.CompactedMessages;
                 mission.ContextTokens = transcript.ContextTokens;
+                mission.LastMessageId = transcript.LastMessageId;
                 mission.Effort = SentEffort(mission);
                 // The Mission log is the transcript's again: the player's words, Claudia's lines, the plan cards and the Debriefs.
-                mission.Log.AddRange(MissionLogRebuild.From(transcript, state.Goal, mission.VesselName, _config, MissionStore.ReadNotices(mission.Folder)));
+                // The Mission Goal's steps too: the transcript holds every plan and Debrief, so they tick as they did (#581).
+                List<GoalItem> steps;
+                mission.Log.AddRange(MissionLogRebuild.From(transcript, state.Goal, mission.VesselName, _config, MissionStore.ReadNotices(mission.Folder), out steps));
+                mission.GoalSteps = steps;
                 mission.LogRebuilt = transcript.Messages.Count > 0;
             }
             else
             {
+                // No transcript to tick them from: the saved plan's steps, none done.
+                if (state.MissionPlan != null) mission.GoalSteps = GoalSteps.Replace(mission.GoalSteps, state.MissionPlan.GoalSteps);
                 mission.System.Add(MissionPrompts.BaseLayer);
-                mission.System.Add(MissionPrompts.MissionLayer(state.Id, state.Goal, MissionStore.ReadBodyTable(mission.Folder), state.PlannedTurnShape));
-                mission.System.Add(MissionPrompts.TimingLayer(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config))));
+                mission.System.Add(MissionPrompts.MissionLayer(state.Goal, MissionStore.ReadBodyTable(mission.Folder), state.PlannedTurnShape));
+                mission.System.Add(MissionPrompts.TimingLayer(state.Id, MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config))));
             }
             RestoreBlackout(mission, state);
             if (_config.DebugTools) mission.Dump = new FileStreamDump(Path.Combine(mission.Folder, "stream-dumps"));
@@ -682,11 +692,14 @@ namespace ClaudiaKermin.Core.Missions
             else if (inFlight == MissionStage.Debriefing && !paused) purpose = Purpose.Debrief;
             else return false;
 
-            // The in-flight turn joined the conversation after the save, with its reply: the first assistant message past the marker.
+            // The in-flight turn joined the conversation after the save, with its reply: the first assistant message past the marker
+            // that calls no tool, its Mission Plan the one propose_mission_plan accepted in the tool loop before it (ADR 0012).
             var messages = mission.Conversation;
-            var first = messages.Skip(state.TranscriptMarker).FirstOrDefault(m => m.Role == Role.Assistant);
-            if (first == null) return false;
-            var reply = MissionReply.Parse(string.Concat(first.Content.OfType<TextBlock>().Select(b => b.Text)));
+            var turn = messages.Skip(state.TranscriptMarker).ToList();
+            var at = turn.FindIndex(m => m.Role == Role.Assistant && !m.Content.OfType<ToolUseBlock>().Any());
+            if (at < 0) return false;
+            var reply = MissionReply.Parse(string.Concat(turn[at].Content.OfType<TextBlock>().Select(b => b.Text)));
+            if (reply != null) reply.WithProposed(ProposedPlans.LastAccepted(turn.Take(at)));
             if (reply == null || Mismatch(purpose, reply) != null) return false;
             if (purpose == Purpose.SequencePlan && !reply.SequencePlan.Manual && !CheckScript(mission, reply.SequencePlan).Passed) return false;
 

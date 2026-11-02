@@ -47,6 +47,8 @@ namespace ClaudiaKermin.Core.Missions
         public double? MissionTimeSeconds;
         /// <summary>The player asked to change the Mission Goal: the new goal in their words, applied on Approval; null when the goal stays.</summary>
         public string NewGoal;
+        /// <summary>The Mission Goal as short steps, in order, which each Debrief ticks by number (#581); empty in plans from before it.</summary>
+        public List<string> GoalSteps = new List<string>();
     }
 
     /// <summary>Claudia's proposal for the next Maneuver Sequence, with its Mission Script.</summary>
@@ -102,7 +104,9 @@ namespace ClaudiaKermin.Core.Missions
         public string PlanMargin = "";
         /// <summary>The science collected, in her words.</summary>
         public string Science = "";
-        /// <summary>The Mission Goal as steps, each done or not.</summary>
+        /// <summary>The steps of the Mission Plan's goal_steps done so far, 1 for the first (#581).</summary>
+        public List<int> GoalStepsDone = new List<int>();
+        /// <summary>The Mission Goal as steps, each done or not, as a Debrief from before #581 restated them inline; empty since.</summary>
         public List<GoalItem> Checklist = new List<GoalItem>();
         /// <summary>What she proposes next (see <see cref="FollowUps"/>); "" or "none" when nothing more is proposed.</summary>
         public string FollowUp = "";
@@ -140,9 +144,10 @@ namespace ClaudiaKermin.Core.Missions
     }
 
     /// <summary>
-    /// One Claudia reply in a Mission; <see cref="Kind"/> says which part is filled in. A request sends one of two
-    /// structured-output schemas (<see cref="PlanningSchemaJson"/>, <see cref="FlightSchemaJson"/>) with only the
-    /// parts it can come back as, and <see cref="Parse"/> reads every part whatever the schema.
+    /// One Claudia reply in a Mission; <see cref="Kind"/> says which part is filled in. Every Mission request sends one
+    /// structured-output schema, <see cref="MissionSchemaJson"/> (ADR 0012); a Mission Plan arrives through the Reply Tool
+    /// propose_mission_plan (<see cref="ProposedPlans"/>), not as a part. <see cref="Parse"/> reads every part whatever the
+    /// schema, so transcripts and saves from before keep their inline Mission Plans.
     /// </summary>
     internal sealed class MissionReply
     {
@@ -165,8 +170,9 @@ namespace ClaudiaKermin.Core.Missions
 
         // Grammar budget (#199): the API compiles the schema to a grammar, and past an internal size limit every
         // request is a 400 ("compiled grammar is too large"). One schema holding all four parts went over it even
-        // with only four unions, so each request sends only the parts it can come back as, in one of two schemas
-        // (two, not one per request, because a changed schema costs the prompt cache). Only the parts are nullable;
+        // with only four unions. A changed schema rewrites the prompt cache (#534), so every Mission request sends the
+        // same one: every kind, the parts but mission_plan, whose input goes through the non-strict propose_mission_plan
+        // tool instead (a non-strict tool adds nothing to the grammar: ADR 0012). Only the parts are nullable;
         // any other "none" is a sentinel (-1, "", "none") that Parse maps back to null. A schema that grows must be
         // probed against the API first (tools/ClaudiaKermin.SchemaProbe); MissionReplySchemaTests holds the budget.
         // Limits: https://platform.claude.com/docs/en/build-with-claude/structured-outputs#schema-complexity-limits
@@ -184,14 +190,11 @@ namespace ClaudiaKermin.Core.Missions
         };
 
         /// <summary>
-        /// Mission Plan, Mission Settings, typed replies and changes to a pending plan, and questions before a Mission
-        /// Plan is approved: an answer, a Mission Plan, or (a revision of a pending one) a Sequence Plan. A reply to a
-        /// pending Sequence Plan uses it too, because it can change the Mission Goal and so come back as a Mission Plan.
+        /// Every Mission request's schema, from the first Mission Plan to the end (ADR 0012): every kind, with the
+        /// sequence_plan, debrief and alert parts. A mission_plan reply carries only say, reply_intent and unsure_because;
+        /// its plan is the last one propose_mission_plan accepted in the turn. The request's notice says which kind to send.
         /// </summary>
-        public static readonly string PlanningSchemaJson = SchemaFor(AnswerKind, MissionPlanKind, SequencePlanKind);
-
-        /// <summary>Sequence Plans, Debriefs, Alerts and questions once a Mission Plan is approved.</summary>
-        public static readonly string FlightSchemaJson = SchemaFor(AnswerKind, SequencePlanKind, DebriefKind, AlertKind);
+        public static readonly string MissionSchemaJson = SchemaFor(AllKinds, new[] { SequencePlanKind, DebriefKind, AlertKind });
 
         /// <summary>
         /// The structured-output schema for a reply that is one of <paramref name="kinds"/>. Each part but answer is
@@ -200,7 +203,13 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         public static string SchemaFor(params string[] kinds)
         {
-            var parts = Parts.Where(p => kinds.Contains(p.Key)).ToList();
+            return SchemaFor(kinds, kinds);
+        }
+
+        /// <summary>The same, with only the parts of <paramref name="partKinds"/>: a kind without its part is handed in some other way.</summary>
+        private static string SchemaFor(string[] kinds, string[] partKinds)
+        {
+            var parts = Parts.Where(p => partKinds.Contains(p.Key)).ToList();
             var nullable = kinds.Distinct().Count() > 1;
             var json = new System.Text.StringBuilder();
             json.Append("{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"kind\",\"say\",\"reply_intent\",\"unsure_because\"");
@@ -223,10 +232,12 @@ namespace ClaudiaKermin.Core.Missions
             + "\"description\":\"Only when classifying the player's typed reply to a pending plan; otherwise none.\"},"
             + SecondLook.FieldJson;
 
-        private const string MissionPlanSchema =
+        /// <summary>The Mission Plan part: propose_mission_plan's input schema, and what a reply from before ADR 0012 carried inline.</summary>
+        internal const string MissionPlanSchema =
             "{\"type\":\"object\",\"additionalProperties\":false,"
-            + "\"required\":[\"why\",\"sequences\",\"total_delta_v\",\"expected_duration\",\"mission_time_s\",\"new_goal\",\"child_vessels\"],\"properties\":{"
+            + "\"required\":[\"why\",\"sequences\",\"total_delta_v\",\"expected_duration\",\"mission_time_s\",\"new_goal\",\"child_vessels\",\"goal_steps\"],\"properties\":{"
             + "\"why\":{\"type\":\"string\",\"description\":\"One short sentence.\"},"
+            + "\"goal_steps\":{\"type\":\"array\",\"description\":\"The Mission Goal as a few short steps, in order; each Debrief ticks them by number.\",\"items\":{\"type\":\"string\"}},"
             + "\"child_vessels\":{\"type\":\"array\",\"description\":\"The Child Vessels you plan to fly, each named once; separated vessels not named here are ignored.\","
             + "\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"name\",\"separation_stage\",\"vessel_id\"],\"properties\":{"
             + "\"name\":{\"type\":\"string\",\"description\":\"Your name for it, used as the vessel of its sequences.\"},"
@@ -261,7 +272,8 @@ namespace ClaudiaKermin.Core.Missions
             + "\"telemetry_checks\":{\"type\":\"array\",\"description\":\"What the mod watches while the sequence runs; crossing one sends you an Alert. "
             + "Units: delta_v_used, delta_v_left and vertical_speed m/s; duration s since the start; apoapsis, periapsis and altitude m; inclination degrees; "
             + "resource percent of capacity; fuel_margin percent of delta-v left over what the Mission Plan still needs. Config defaults fill any quantity you leave out. "
-            + "A periapsis or apoapsis check starts watching once the reading is on the safe side of its threshold, so a launch's periapsis under X won't fire on the pad.\","
+            + "Apoapsis, periapsis and inclination checks are tested between burns, not during them, so set them for the orbit after a burn. "
+            + "A periapsis or apoapsis check starts watching once its reading is on the safe side, so a launch's periapsis under X won't fire on the pad.\","
             + "\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"quantity\",\"resource\",\"direction\",\"threshold\",\"why\"],\"properties\":{"
             + "\"quantity\":{\"type\":\"string\",\"enum\":[\"delta_v_used\",\"delta_v_left\",\"duration\",\"apoapsis\",\"periapsis\",\"inclination\",\"altitude\",\"vertical_speed\",\"resource\",\"fuel_margin\"]},"
             + "\"resource\":{\"type\":\"string\",\"description\":\"The resource name for quantity resource, e.g. ElectricCharge; otherwise empty.\"},"
@@ -278,7 +290,7 @@ namespace ClaudiaKermin.Core.Missions
 
         private const string DebriefSchema =
             "{\"type\":\"object\",\"additionalProperties\":false,"
-            + "\"required\":[\"outcome\",\"why\",\"what_happened\",\"goal_reached\",\"next\",\"eva_science\",\"outcome_vs_target\",\"plan_margin\",\"science\",\"goal_checklist\",\"follow_up\",\"follow_up_text\"],\"properties\":{"
+            + "\"required\":[\"outcome\",\"why\",\"what_happened\",\"goal_reached\",\"next\",\"eva_science\",\"outcome_vs_target\",\"plan_margin\",\"science\",\"goal_steps_done\",\"follow_up\",\"follow_up_text\"],\"properties\":{"
             + "\"outcome\":{\"type\":\"string\",\"enum\":[\"Nominal\",\"Off-Nominal\",\"Failed\"]},"
             + "\"why\":{\"type\":\"string\",\"description\":\"One short sentence.\"},"
             + "\"what_happened\":{\"type\":\"string\"},"
@@ -288,8 +300,7 @@ namespace ClaudiaKermin.Core.Missions
             + "\"outcome_vs_target\":{\"type\":\"string\",\"description\":\"The outcome against the Sequence Plan's target and tolerances, from the script's report and the mod's events, with the numbers.\"},"
             + "\"plan_margin\":{\"type\":\"string\",\"description\":\"The delta-v and resources left against the rest of the Mission Plan, using the mod's margin recheck.\"},"
             + "\"science\":{\"type\":\"string\",\"description\":\"The science collected in this sequence and what is still to gain; empty if none.\"},"
-            + "\"goal_checklist\":{\"type\":\"array\",\"description\":\"The Mission Goal as its steps, each done or not yet.\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,"
-            + "\"required\":[\"item\",\"done\"],\"properties\":{\"item\":{\"type\":\"string\"},\"done\":{\"type\":\"boolean\"}}}},"
+            + "\"goal_steps_done\":{\"type\":\"array\",\"description\":\"The numbers of the Mission Plan's goal_steps done so far, 1 for the first.\",\"items\":{\"type\":\"integer\"}},"
             + "\"follow_up\":{\"type\":\"string\",\"enum\":[\"none\",\"corrective_sequence\",\"revised_plan\",\"reduced_goal\",\"end_mission\"],"
             + "\"description\":\"Off-Nominal: corrective_sequence or revised_plan. Failed: reduced_goal (the player must approve it) or end_mission. Nominal: none.\"},"
             + "\"follow_up_text\":{\"type\":\"string\",\"description\":\"The corrective sequence or the revised Mission Plan in a few words; for reduced_goal, the reduced Mission Goal itself; otherwise empty.\"}}}";
@@ -333,6 +344,7 @@ namespace ClaudiaKermin.Core.Missions
                     ExpectedDuration = JsonNode.Str(plan["expected_duration"]) ?? "",
                     MissionTimeSeconds = NonNegative(plan["mission_time_s"]),
                     NewGoal = Goal(JsonNode.Str(plan["new_goal"])),
+                    GoalSteps = Strings(plan["goal_steps"]).Select(t => t.Trim()).Where(t => t.Length > 0).ToList(),
                 };
                 var sequences = plan["sequences"];
                 if (sequences != null)
@@ -418,6 +430,7 @@ namespace ClaudiaKermin.Core.Missions
                     OutcomeVsTarget = (JsonNode.Str(debrief["outcome_vs_target"]) ?? "").Trim(),
                     PlanMargin = (JsonNode.Str(debrief["plan_margin"]) ?? "").Trim(),
                     Science = (JsonNode.Str(debrief["science"]) ?? "").Trim(),
+                    GoalStepsDone = Numbers(debrief["goal_steps_done"]),
                     Checklist = Checklist(debrief["goal_checklist"]),
                     FollowUp = (JsonNode.Str(debrief["follow_up"]) ?? "").Trim(),
                     FollowUpText = (JsonNode.Str(debrief["follow_up_text"]) ?? "").Trim(),
@@ -439,6 +452,16 @@ namespace ClaudiaKermin.Core.Missions
                 }
             }
             return reply;
+        }
+
+        /// <summary>
+        /// A mission_plan reply's plan is the one propose_mission_plan accepted in its turn (<paramref name="proposed"/>,
+        /// <see cref="ProposedPlans.LastAccepted"/>); with none it keeps any it carried inline (a reply from before ADR 0012).
+        /// </summary>
+        public MissionReply WithProposed(MissionPlan proposed)
+        {
+            if (Kind == MissionPlanKind && proposed != null) MissionPlan = proposed;
+            return this;
         }
 
         /// <summary>The step a Sequence Plan names, as given (the mod refuses one outside the Mission Plan); null when it names none.</summary>
@@ -473,6 +496,13 @@ namespace ClaudiaKermin.Core.Missions
             return checks;
         }
 
+        /// <summary>The whole numbers in an array; anything else is left out.</summary>
+        private static List<int> Numbers(JsonNode node)
+        {
+            if (node == null) return new List<int>();
+            return node.Items.Select(PlanStep).Where(n => n.HasValue).Select(n => n.Value).ToList();
+        }
+
         private static List<GoalItem> Checklist(JsonNode node)
         {
             var items = new List<GoalItem>();
@@ -502,10 +532,15 @@ namespace ClaudiaKermin.Core.Missions
             return set == false ? null : JsonNode.Double(alert["follow_up_threshold"]);
         }
 
+        private static readonly string[] NoGoalWords = { "none", "n/a", "na", "null", "no change", "unchanged", "-" };
+
+        /// <summary>A new_goal as text, or null for none: blank, quote marks only, or a placeholder word such as "none" (#590).</summary>
         private static string Goal(string text)
         {
             text = (text ?? "").Trim();
-            return text.Length == 0 ? null : text;
+            var bare = text.Trim('"', '\'', '`', '\u201C', '\u201D', '\u2018', '\u2019', ' ', '\t', '\r', '\n').Trim();
+            if (bare.Length == 0 || NoGoalWords.Contains(bare.ToLowerInvariant())) return null;
+            return text;
         }
 
         private static JsonNode Object(JsonNode node)

@@ -100,6 +100,10 @@ _Avoid_: upper stage, insertion stage, sustainer
 The parts of a craft that reach below its landing legs' feet when it stands upright, such as a spent transfer stage under a lander. A landing drops them before touchdown, so the craft comes down on its legs.
 _Avoid_: parts below the legs, lower stage
 
+**Descent Shape**:
+The one number that sets how a landing's braking trades height for speed: a small shape holds height until the craft is nearly stopped and then drops steeply, and a large one sinks early. `land` picks it from the terrain under its approach (ADR 0011).
+_Avoid_: glide slope, descent profile (as a name for the number), approach angle
+
 **Mission Plan**:
 The ordered list of Maneuver Sequences Claudia intends to fly to reach a Mission Goal, each with its delta-v budget and Due Time or rough timing; approved once to start the Mission and revised as Debriefs require.
 _Avoid_: flight plan, roadmap
@@ -113,8 +117,8 @@ Claudia's proposal for the next Maneuver Sequence: its intent, Building Blocks a
 _Avoid_: maneuver plan, proposal, step plan
 
 **Telemetry Check**:
-A quantity the mod can measure during a Maneuver Sequence (e.g. delta-v used, apoapsis, electric charge) with a threshold, set in the Sequence Plan or by default; while Running, the mod checks it, and crossing it raises an Alert. A crossed Telemetry Check rules out a Nominal Debrief.
-_Avoid_: watch limit, alarm, tripwire
+A quantity the mod can measure during a Maneuver Sequence (e.g. delta-v used, apoapsis, electric charge) with a threshold, set in the Sequence Plan or by default; while Running, the mod checks it, and crossing it raises an Alert. Orbit checks (apoapsis, periapsis, inclination) arm only once a reading is on the safe side, and disarm while the craft is landed, splashed, on the pad or in atmosphere; propulsion checks (delta-v left, delta-v used, fuel margin) disarm once no engine is aboard. A standing crossing rules out a Nominal Debrief; a recovered one doesn't.
+_Avoid_: watch limit, alarm, tripwire, suspended (a disarmed check), held (a check waiting out a burn)
 
 **Alert**:
 The mod's message to Claudia that a Telemetry Check was crossed while Running; she answers by letting the sequence carry on or recommending the player Abort.
@@ -124,8 +128,12 @@ _Avoid_: alarm (the stock Alarm Clock's word), warning (a Craft Check finding)
 Claudia's chat-based evaluation after a Maneuver Sequence: what happened versus the plan, progress toward the Mission Goal, and the proposed next Maneuver Sequence with its reasoning.
 _Avoid_: report (what a script does with its Script Result), evaluation, review
 
+**Margin check**:
+The mod's own check, with no Claude, inside every Debrief: the craft as it is now (delta-v, thrust over weight where it must land or lift off, electric charge, monopropellant and the Craft Check findings the mod decides itself) against the Maneuver Sequences still to fly in the Mission Plan, ending enough, tight or short. Its line and findings go into the Debrief and onto its card.
+_Avoid_: margin recheck (which is Claudia's)
+
 **Margin recheck**:
-The Craft Check run again inside every Debrief, on the craft as it is now against the Maneuver Sequences still to fly in the Mission Plan; charged to the Mission like any other request, and skipped when the Spending Cap has no room for it beside the Debrief.
+The Craft Check run again inside a Debrief whose Margin check is tight or short (or every Debrief, if the player config asks), on the craft as it is now against the Maneuver Sequences still to fly in the Mission Plan; charged to the Mission like any other request, and skipped when the Spending Cap has no room for it beside the Debrief.
 _Avoid_: second Craft Check, re-check
 
 **Second look**:
@@ -216,20 +224,28 @@ _Avoid_: primitive, routine, module
 A read-only calculation the mod runs for Claudia while she plans (e.g. predicting the orbit after a burn, finding a landing site), whose answer shapes the plan; it never changes the game, and only Building Blocks fly the craft.
 _Avoid_: function, tool call, API, flight computer
 
+**Reply Tool**:
+A tool through which Claudia hands in part of her reply for the mod to check (e.g. `propose_mission_plan`, which carries a Mission Plan), as opposed to a Planning Tool, which only reads (ADR 0006); the mod answers ok or the problems, she may call it again in the same turn, and her reply takes the last part it accepted (ADR 0012).
+_Avoid_: submit tool, output tool, Planning Tool (for this kind)
+
 **Mission Script**:
 A script Claudia writes for one Mission to carry out a Maneuver Sequence, kept with that Mission.
 _Avoid_: generated script, glue script
 
 **Custom Script**:
-A Mission Script with flight logic of its own beyond running Building Blocks in order, branching on their Script Results, staging, adding the maneuver node an exec_node call flies, and reporting (e.g. a hand-written landing-site search before a land call), used where no Building Block fits; a script that calls no Building Block at all is one too.
+A Mission Script with flight logic of its own beyond running Building Blocks in order, branching on their Script Results, adding the maneuver node an exec_node call flies, and reporting (e.g. a hand-written landing-site search before a land call; never a bare stage., which the Script Check refuses), used where no Building Block fits; a script that calls no Building Block at all is one too.
 _Avoid_: raw script, freeform script
 
 **Script Result**:
 The values a Mission Script hands back once, when its Maneuver Sequence ends (e.g. apoapsis, delta-v used, situation), which the mod passes to Claudia as data for her Debrief; a script that ends without one has failed. The script is said to report it.
 _Avoid_: report (as a noun), outcome (which is a Debrief's), return value
 
+**Blocks trail**:
+The mod's compact list of every Building Block result in a Mission Script's run, one entry per block (e.g. transfer_to's encounter_ut, science's kept), whatever Script Result the script reports; it goes in the Debrief turn text ("Blocks the script ran, oldest first"), into plans.jsonl as debrief.blocks, and into the save as blockTrail, so a hand-made lexicon can't hide what the blocks did (#609).
+_Avoid_: block log, block history, results list
+
 **Script Check**:
-The mod's check of a compiled script against a forbidden list (e.g. save and load, file operations, changing other vessels) before Approval; a script that fails is rewritten or never offered.
+The mod's check of a compiled script against a forbidden list (e.g. save and load, file operations, changing other vessels) before Approval, and of each Building Block call whose inline options lexicon misses a required option or names one the block doesn't take (#606); a script that fails is rewritten or never offered.
 _Avoid_: sandbox, validation
 
 **Couldn't produce a safe script**:

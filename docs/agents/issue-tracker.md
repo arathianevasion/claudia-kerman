@@ -14,6 +14,49 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
+## The Project: every issue gets an Area
+
+All issues live on the GitHub Project **Claudia Kermin**: <https://github.com/users/arathianevasion/projects/1>, project number 1, owner `arathianevasion`.
+
+- **Labels are the category and the state.** `bug`/`enhancement` and `needs-triage`/`needs-info`/`ready-for-agent`/`ready-for-human`/`wontfix` (see `triage-labels.md`). Every open issue carries exactly one of each.
+- **The Project carries what labels don't:** Area, Priority and Verified in. Leave the built-in Status field alone.
+
+| Field | Values | Set by |
+|---|---|---|
+| **Area** | Launch & Ascent · Orbit & Maneuvers · Transfer & Encounter · Rendezvous & Docking · Descent & Landing · Surface Ops & Ascent · Return & Reentry · UI · LLM Cost Reduction · Claudia's Judgment · kOS Runtime & Performance · Mod Core & Persistence · Test & Tooling | whoever files the issue |
+| **Priority** | P0 (loses a Mission, a craft or money) · P1 (costs a retry or a replan) · P2 (polish) | triage |
+| **Verified in** | Not yet · KSP_spike · KSP_stable | whoever merges, then the player's in-game check |
+
+**Choosing an Area.**
+- **Pick the one the fix lives in, not the one where the symptom showed up.** For example, a Script Check lint goes under Claudia's Judgment, even though it fired on a landing plan.
+- **The flight phases:**
+  - Launch & Ascent: liftoff to the parking orbit, including circularize and plan_ascent;
+  - Orbit & Maneuvers: solve_burn, change_orbit, exec_node, warp and RCS;
+  - Transfer & Encounter: ejections, corrections, Lambert and DeltaVMap;
+  - Rendezvous & Docking: matching and docking with another vessel;
+  - Descent & Landing: land, find_landing_site and braking;
+  - Surface Ops & Ascent: science, EVA, and ascend from a body;
+  - Return & Reentry: return, deorbit, reentry and parachutes.
+- **The areas that cut across phases:**
+  - UI: windows and the plan bar;
+  - LLM Cost Reduction: tokens, cache, effort, compaction, the Spending Cap and charges;
+  - Claudia's Judgment: the prompt, Planning Tools, Script Check and lints, Debriefs, Alerts, Telemetry Checks and the Craft Check;
+  - kOS Runtime & Performance: library instruction budgets, loop stalls, staging and drops;
+  - Mod Core & Persistence: saves, settings, the Game Snapshot, the runtime gate, threading and licensing;
+  - Test & Tooling: tests, the harness, fixtures, baseline tools and in-game checklists.
+
+**Commands.** `gh` needs a token with the `project` scope: use `export GH_TOKEN=$(gh auth token --user arathianevasion)`.
+
+- **Add a new issue to the Project.** Do this straight after `gh issue create`: `gh project item-add 1 --owner arathianevasion --url <issue url> --format json --jq .id` returns the item id.
+- **Set a field:**
+
+  ```sh
+  gh project item-edit --id <item id> --project-id <project id> --field-id <field id> --single-select-option-id <option id>
+  ```
+
+  Look the ids up with `gh project view 1 --owner arathianevasion --format json --jq .id` (the project id) and `gh project field-list 1 --owner arathianevasion --format json` (field and option ids).
+- **Read an issue's fields:** `gh project item-list 1 --owner arathianevasion --format json --limit 500` lists every item with its fields.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_

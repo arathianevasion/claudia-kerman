@@ -45,6 +45,8 @@ namespace ClaudiaKermin.Core.Claude
         /// <summary>The API's error message, for showing the player; never logged.</summary>
         public string ErrorMessage;
         public int Attempts;
+        /// <summary>True when any attempt streamed a content block before it ended: the API may have billed that output, so a lost or cancelled request keeps its full worst case.</summary>
+        public bool OutputStreamed;
         /// <summary>The reply, when <see cref="Status"/> is <see cref="StreamStatus.Completed"/>.</summary>
         public AssistantMessage Message;
     }

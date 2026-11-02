@@ -154,6 +154,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void A_return_started_from_the_grid_with_target_inc_is_solved_in_under_200_ms()
         {
             var snapshot = Orbiting(Mun, 30000, 20);
@@ -208,6 +209,7 @@ namespace ClaudiaKermin.Core.Tests
         // ---- the budget (ADR 0010) ----
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void A_mun_return_is_solved_in_about_100_ms()
         {
             var snapshot = Orbiting(Mun, 30000);
@@ -215,6 +217,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void An_ike_return_is_solved_in_about_100_ms()
         {
             var snapshot = Orbiting(Ike, 30000);
@@ -222,6 +225,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void A_return_with_target_inc_is_solved_in_under_200_ms()
         {
             var snapshot = Orbiting(Mun, 30000, 20);

@@ -431,7 +431,31 @@ namespace ClaudiaKermin.Core.Tests
             DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
             var debrief = mission.View.Log.Last(e => e.Kind == LogKind.Debrief);
             Assert.Equal("Off-Nominal", debrief.Outcome);
-            Assert.Contains("altitude 500 m over 100 m: carry on (Within margins.); altitude 1,200 m over 1,000 m (follow-up threshold): carry on (Still within margins.)", debrief.Text);
+            Assert.Contains("altitude 500 m over 100 m: carry on (Within margins.) [standing]; altitude 1,200 m over 1,000 m (follow-up threshold): carry on (Still within margins.) [standing]", debrief.Text);
+        }
+
+        [Fact]
+        public void ACarryOnCrossingBackOnTheSafeSideAtTheRunsEndIsRecoveredAndAllowsNominal()
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                WithSequenceFields(ScriptedResponse.Fixture("mission-sequence-plan.sse"), AltitudeCheck(100)),
+                ScriptedResponse.Fixture("mission-alert-carry-on.sse"),
+                ScriptedResponse.Fixture("mission-debrief.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission, 10m);
+            mission.TakeCommands();
+
+            mission.Send(Snapshot(s => s.Altitude = 500));
+            DrainUntil(mission, v => !v.Busy && v.LatestLine.StartsWith("Alert, altitude: carry on."));
+            mission.Send(Snapshot(s => s.Altitude = 50));
+            mission.Send(new KosRunEnded(Finished(), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            Assert.Contains("altitude 500 m over 100 m: carry on (Within margins.) [recovered]", LastUserText(transport.Requests[3]));
+            var debrief = mission.View.Log.Last(e => e.Kind == LogKind.Debrief);
+            Assert.Equal("Nominal", debrief.Outcome);
+            Assert.Contains("Telemetry Checks crossed: altitude 500 m over 100 m: carry on (Within margins.) [recovered]", debrief.Text);
         }
 
         [Fact]
@@ -582,9 +606,9 @@ namespace ClaudiaKermin.Core.Tests
             mission.Send(Snapshot(s => s.Orbit.Periapsis = -598435));
             mission.Send(Snapshot(s => s.Orbit.Periapsis = -598435));
             Assert.Equal(0, CrossedLines(mission));
-            mission.Send(Snapshot(s => s.Orbit.Periapsis = -50000));
+            mission.Send(Ascending(s => s.Orbit.Periapsis = -50000));
             Assert.Equal(0, CrossedLines(mission));
-            mission.Send(Snapshot(s => s.Orbit.Periapsis = -150000));
+            mission.Send(Ascending(s => s.Orbit.Periapsis = -150000));
             Assert.Equal(1, CrossedLines(mission, "periapsis"));
         }
 
@@ -596,8 +620,8 @@ namespace ClaudiaKermin.Core.Tests
 
             mission.Send(Snapshot(s => s.Orbit.Apoapsis = -599073));
             Assert.Equal(0, CrossedLines(mission));
-            mission.Send(Snapshot(s => s.Orbit.Apoapsis = -800000));
-            mission.Send(Snapshot(s => s.Orbit.Apoapsis = -599073));
+            mission.Send(Ascending(s => s.Orbit.Apoapsis = -800000));
+            mission.Send(Ascending(s => s.Orbit.Apoapsis = -599073));
             Assert.Equal(1, CrossedLines(mission, "apoapsis"));
         }
 
@@ -606,9 +630,9 @@ namespace ClaudiaKermin.Core.Tests
         {
             var mission = RunningWith(QuantityCheck("periapsis", "below", -100000));
 
-            mission.Send(Snapshot(s => s.Orbit.Periapsis = 80000));
+            mission.Send(Ascending(s => s.Orbit.Periapsis = 80000));
             Assert.Equal(0, CrossedLines(mission));
-            mission.Send(Snapshot(s => s.Orbit.Periapsis = -150000));
+            mission.Send(Ascending(s => s.Orbit.Periapsis = -150000));
             Assert.Equal(1, CrossedLines(mission, "periapsis"));
         }
 
@@ -660,6 +684,434 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("delta-v used 100 m/s then 0 m/s over 50 m/s", events);
         }
 
+        // ---- Apsis and inclination checks wait out a burn (#582) ----
+
+        private string EventsOf(MissionControl mission)
+        {
+            return File.ReadAllText(Path.Combine(MissionFolderOf(mission), MissionStore.EventsFile));
+        }
+
+        private static GameSnapshot Reading(double throttle, double periapsis = 80000, double inclination = 0)
+        {
+            return Ascending(s => { s.Throttle = throttle; s.Orbit.Periapsis = periapsis; s.Orbit.Inclination = inclination; });
+        }
+
+        [Fact]
+        public void APeriapsisCrossedOnlyMidBurnRaisesNoAlertAndLeavesOneEventLine()
+        {
+            var mission = RunningWith(QuantityCheck("periapsis", "below", -100000));
+
+            mission.Send(Reading(0));
+            mission.Send(Reading(1, -150000));
+            mission.Send(Reading(1, -250000));
+            Assert.Equal(0, CrossedLines(mission));
+            mission.Send(Reading(0, 70000));
+            mission.Send(Reading(0, 70000));
+            _background.Drain();
+
+            Assert.Equal(0, CrossedLines(mission));
+            var recovered = EventsOf(mission).Split('\n').Where(l => l.Contains("telemetry_check_recovered")).ToList();
+            Assert.Single(recovered);
+            Assert.Contains("periapsis -250,000 m under -100,000 m mid-burn, 70,000 m after it: no Alert.", recovered[0]);
+        }
+
+        [Fact]
+        public void APeriapsisStillCrossedWhenTheBurnEndsRaisesExactlyOneAlertOnThatReading()
+        {
+            var mission = RunningWith(QuantityCheck("periapsis", "below", -100000));
+
+            mission.Send(Reading(0));
+            mission.Send(Reading(1, -150000));
+            mission.Send(Reading(0, -150000));
+            Assert.Equal(0, CrossedLines(mission));
+            mission.Send(Reading(0, -150000));
+            Assert.Equal(1, CrossedLines(mission, "periapsis"));
+            mission.Send(Reading(0, -160000));
+            Assert.Equal(1, CrossedLines(mission));
+        }
+
+        [Fact]
+        public void AnInclinationCheckWaitsOutTheBurnToo()
+        {
+            var recovers = RunningWith(QuantityCheck("inclination", "above", 5));
+            recovers.Send(Reading(0));
+            recovers.Send(Reading(1, inclination: 20));
+            Assert.Equal(0, CrossedLines(recovers));
+            recovers.Send(Reading(0, inclination: 1));
+            recovers.Send(Reading(0, inclination: 1));
+            Assert.Equal(0, CrossedLines(recovers));
+            Assert.Contains("telemetry_check_recovered", EventsOf(recovers));
+        }
+
+        [Fact]
+        public void AnInclinationStillCrossedWhenTheBurnEndsRaisesAnAlert()
+        {
+            var mission = RunningWith(QuantityCheck("inclination", "above", 5));
+            mission.Send(Reading(0));
+            mission.Send(Reading(1, inclination: 20));
+            mission.Send(Reading(0, inclination: 20));
+            Assert.Equal(0, CrossedLines(mission));
+            mission.Send(Reading(0, inclination: 20));
+            Assert.Equal(1, CrossedLines(mission, "inclination"));
+        }
+
+        [Fact]
+        public void AnAltitudeCheckStillCrossesMidBurn()
+        {
+            var mission = RunningWith(AltitudeCheck(100));
+            mission.Send(Snapshot(s => { s.Throttle = 1; s.Altitude = 500; }));
+            Assert.Equal(1, CrossedLines(mission, "altitude"));
+        }
+
+        [Fact]
+        public void ADeltaVUsedCheckStillCrossesMidBurn()
+        {
+            var mission = RunningWith(QuantityCheck("delta_v_used", "above", 50));
+            mission.Send(Snapshot(s => { s.Throttle = 1; s.Stages[0].DeltaVVac = 3100; }));
+            mission.Send(Snapshot(s => { s.Throttle = 1; s.Stages[0].DeltaVVac = 3100; }));
+            Assert.Equal(1, CrossedLines(mission, "delta-v used"));
+        }
+
+        [Fact]
+        public void ASingleZeroThrottleReadingMidBurnDoesNotReleaseTheHeldChecks()
+        {
+            var mission = RunningWith(QuantityCheck("periapsis", "below", -100000));
+
+            mission.Send(Reading(0));
+            mission.Send(Reading(1, -150000));
+            mission.Send(Reading(0, -150000));
+            mission.Send(Reading(1, -150000));
+            Assert.Equal(0, CrossedLines(mission));
+        }
+
+        [Fact]
+        public void ARunThatEndsMidBurnTestsHeldChecksAgainstTheFinalReading()
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                WithSequenceFields(ScriptedResponse.Fixture("mission-sequence-plan.sse"), QuantityCheck("periapsis", "below", -100000)),
+                ScriptedResponse.Fixture("mission-debrief.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission, 10m);
+            mission.TakeCommands();
+
+            mission.Send(Reading(0));
+            mission.Send(Reading(1, -150000));
+            mission.Send(new KosRunEnded(Finished(), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            Assert.Contains("periapsis -150,000 m under -100,000 m: not judged: the run ended first [standing]", LastUserText(transport.Requests[2]));
+            Assert.Equal(0, CrossedLines(mission));
+        }
+
+        // ---- Orbit checks disarm landed, splashed, on the pad or in atmosphere (#604) ----
+
+        private static GameSnapshot InFlight(string situation, double periapsis, double throttle = 0, string body = "Mun", double inclination = 0)
+        {
+            return Snapshot(s => { s.Situation = situation; s.Body = body; s.Throttle = throttle; s.Orbit.Periapsis = periapsis; s.Orbit.Inclination = inclination; });
+        }
+
+        /// <summary>The run's telemetry_check_disarmed lines giving <paramref name="situation"/>; every run here starts on the pad, which disarms orbit checks once.</summary>
+        private int DisarmedLines(MissionControl mission, string situation = "")
+        {
+            return EventsOf(mission).Split('\n').Count(l => l.Contains("telemetry_check_disarmed") && l.Contains("the craft is " + situation));
+        }
+
+        [Fact]
+        public void APeriapsisCheckArmedInOrbitIsDisarmedByTouchdownWithOneEvent()
+        {
+            // 2d0c: "periapsis under 5,000 m" for the orbit before the descent burn; after touchdown pe read -199,975 m.
+            var mission = RunningWith(QuantityCheck("periapsis", "below", 5000));
+
+            mission.Send(InFlight("ORBITING", 20000));
+            mission.Send(InFlight("LANDED", -199975));
+            mission.Send(InFlight("LANDED", -199975));
+            _background.Drain();
+
+            Assert.Equal(0, CrossedLines(mission));
+            var disarmed = EventsOf(mission).Split('\n').Where(l => l.Contains("telemetry_check_disarmed") && l.Contains("LANDED")).ToList();
+            Assert.Single(disarmed);
+            Assert.Contains("periapsis under 5,000 m: the craft is LANDED.", disarmed[0]);
+        }
+
+        [Fact]
+        public void APeriapsisCheckArmedAtTheMunDoesNotFireOnKerbinReentry()
+        {
+            // 2d0c: "periapsis under 10,000 m" meant for the Mun orbit after ascent; Kerbin reentry read pe 5,282 m, FLYING.
+            var mission = RunningWith(QuantityCheck("periapsis", "below", 10000));
+
+            mission.Send(InFlight("ORBITING", 15000));
+            mission.Send(InFlight("FLYING", 5282, body: "Kerbin"));
+            mission.Send(InFlight("FLYING", 5282, body: "Kerbin"));
+
+            Assert.Equal(0, CrossedLines(mission));
+            Assert.Equal(1, DisarmedLines(mission, "FLYING"));
+        }
+
+        [Fact]
+        public void ACheckDisarmedByALandingReArmsOnlyOnTheSafeSideAfterLiftoffAndThenFires()
+        {
+            var mission = RunningWith(QuantityCheck("periapsis", "below", 10000));
+
+            mission.Send(InFlight("ORBITING", 20000));
+            mission.Send(InFlight("LANDED", -199975));
+            // Just after liftoff periapsis is far under the surface: the check is still disarmed.
+            mission.Send(InFlight("SUB_ORBITAL", -180000, throttle: 1));
+            mission.Send(InFlight("SUB_ORBITAL", -180000));
+            mission.Send(InFlight("SUB_ORBITAL", -180000));
+            Assert.Equal(0, CrossedLines(mission));
+            mission.Send(InFlight("SUB_ORBITAL", 15000, throttle: 1));
+            mission.Send(InFlight("ORBITING", 15000));
+            mission.Send(InFlight("ORBITING", 15000));
+            Assert.Equal(0, CrossedLines(mission));
+
+            mission.Send(InFlight("ORBITING", 8000));
+            Assert.Equal(1, CrossedLines(mission, "periapsis"));
+            Assert.Equal(1, DisarmedLines(mission, "LANDED"));
+        }
+
+        [Fact]
+        public void ASubOrbitalDescentOverAnAirlessBodyStillCrossesAPeriapsisCheck()
+        {
+            // Haiku flights 22cc and 44e9: a low pass over the Mun is SUB_ORBITAL, and still checked.
+            var mission = RunningWith(QuantityCheck("periapsis", "below", 5000));
+
+            mission.Send(InFlight("ORBITING", 20000));
+            mission.Send(InFlight("SUB_ORBITAL", -50000));
+
+            Assert.Equal(1, CrossedLines(mission, "periapsis"));
+            Assert.Equal(1, DisarmedLines(mission, "PRELAUNCH"));
+            Assert.Equal(1, DisarmedLines(mission));
+        }
+
+        [Fact]
+        public void AnInclinationCheckIsDisarmedOnThePadAndInAtmosphereToo()
+        {
+            var mission = RunningWith(QuantityCheck("inclination", "above", 5));
+
+            mission.Send(InFlight("PRELAUNCH", -598435, inclination: 20));
+            mission.Send(InFlight("FLYING", -500000, inclination: 20));
+            Assert.Equal(0, CrossedLines(mission));
+            mission.Send(InFlight("SUB_ORBITAL", -400000, inclination: 20));
+            Assert.Equal(0, CrossedLines(mission));
+            mission.Send(InFlight("SUB_ORBITAL", -300000, inclination: 1));
+            mission.Send(InFlight("ORBITING", 80000, inclination: 20));
+            Assert.Equal(1, CrossedLines(mission, "inclination"));
+            // Disarmed from the pad to the safe reading: one line, not one per reading.
+            Assert.Equal(1, DisarmedLines(mission));
+        }
+
+        [Fact]
+        public void ASplashdownDisarmsAFollowUpThresholdToo()
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                WithSequenceFields(ScriptedResponse.Fixture("mission-sequence-plan.sse"), QuantityCheck("periapsis", "below", 5000)),
+                ScriptedResponse.Fixture("mission-alert-carry-on.sse"),
+                ScriptedResponse.Fixture("mission-debrief.sse"));
+            var mission = Control(transport);
+            ToRunning(mission, 10m);
+            mission.TakeCommands();
+
+            mission.Send(InFlight("ORBITING", 20000));
+            mission.Send(InFlight("ORBITING", 3000));
+            DrainUntil(mission, v => !v.Busy && v.LatestLine.StartsWith("Alert, periapsis: carry on."));
+            // The carry on's follow-up is periapsis under 1,000 m: splashed down it doesn't fire.
+            mission.Send(InFlight("SPLASHED", -590000, body: "Kerbin"));
+            _background.Drain();
+
+            Assert.Equal(1, CrossedLines(mission));
+            Assert.Equal(3, transport.Requests.Count);
+            Assert.Equal(1, DisarmedLines(mission, "SPLASHED"));
+        }
+
+        // ---- Delta-v dropped with a stage isn't delta-v used; propulsion checks disarm once no engine is aboard (#605) ----
+
+        /// <summary>The on-pad snapshot out of the atmosphere with <paramref name="deltaV"/> m/s of stock delta-v left.</summary>
+        private static GameSnapshot Left(double deltaV, double throttle = 0, bool engine = true)
+        {
+            return Ascending(s =>
+            {
+                s.Stages[0].DeltaVVac = deltaV;
+                s.Throttle = throttle;
+                if (!engine) s.Craft.Parts.RemoveAll(p => p.Tags.Contains("engine"));
+            });
+        }
+
+        private static string Plan(params string[] checks)
+        {
+            return "\"telemetry_checks\":[" + string.Join(",", checks) + "],";
+        }
+
+        private static string Check(string quantity, string direction, double threshold)
+        {
+            return "{\"quantity\":\"" + quantity + "\",\"resource\":\"\",\"direction\":\"" + direction + "\",\"threshold\":" + threshold + ",\"why\":\"Test.\"}";
+        }
+
+        private int EventLines(MissionControl mission, string kind, string text = "")
+        {
+            return EventsOf(mission).Split('\n').Count(l => l.Contains("\"" + kind + "\"") && l.Contains(text));
+        }
+
+        [Fact]
+        public void TheSwivelStackDroppedAtZeroThrottleOnTheLandingLegIsNotDeltaVUsed()
+        {
+            // 2d0c's landing leg: plan 730 m/s, so the default check is 876 m/s. 692 m/s burned; the Swivel stack dropped at
+            // zero throttle took 197 m/s with it, which read as "delta-v used 889 over 876 (default check)".
+            var mission = RunningWith(Plan(), 730, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Left(2900, throttle: 1));
+            mission.Send(Left(2900));
+            mission.Send(Left(2900));
+            mission.Send(new CraftSeparated());
+            // Right after staging stock misreads the next stage as empty (#520): that reading isn't the fall.
+            mission.Send(Left(878));
+            mission.Send(Left(2703));
+            mission.Send(Left(2703));
+            mission.Send(Left(2600, throttle: 1));
+            mission.Send(Left(2311, throttle: 0.9));
+            mission.Send(Left(2311, throttle: 0.9));
+
+            Assert.Equal(0, CrossedLines(mission));
+            Assert.Equal(692, mission.View.RunProgress.DeltaVUsed);
+            Assert.Equal(1, EventLines(mission, "delta_v_rebased", "197 m/s"));
+            var saved = mission.ExportStates().Single();
+            Assert.Equal(3003, saved.RunStartDeltaVLeft);
+            Assert.Equal(197, saved.RunDroppedDeltaV);
+        }
+
+        [Fact]
+        public void AfterTheLanderStackDropOnTheReturnNoPropulsionCheckCrossesAndEachIsDisarmedOnce()
+        {
+            // 2d0c's return: plan 950 m/s (default check 1,140 m/s), Claudia's "delta-v left under 250 m/s". After 909 m/s of
+            // burns the lander stack, with the last engine and 700 m/s, dropped: stock read 0 left, so everything "used".
+            var mission = RunningWith(Plan(Check("delta_v_left", "below", 250)), 950, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Left(2291, throttle: 1));
+            mission.Send(Left(2291));
+            mission.Send(Left(2291));
+            mission.Send(new CraftSeparated());
+            mission.Send(Left(0, engine: false));
+            mission.Send(Left(0, engine: false));
+            mission.Send(Left(0, engine: false));
+            _background.Drain();
+
+            Assert.Equal(0, CrossedLines(mission));
+            Assert.Equal(909, mission.View.RunProgress.DeltaVUsed);
+            Assert.Equal(1, EventLines(mission, "telemetry_check_disarmed", "delta-v left under 250 m/s: no engine aboard."));
+            Assert.Equal(1, EventLines(mission, "telemetry_check_disarmed", "delta-v used over 1,140 m/s: no engine aboard."));
+            Assert.Equal(1, EventLines(mission, "telemetry_check_disarmed", "needed-fuel margin under -10%: no engine aboard."));
+        }
+
+        [Fact]
+        public void APropulsionCheckStaysDisarmedForTheRestOfTheRunOnceNoEngineIsAboard()
+        {
+            var mission = RunningWith(Plan(Check("delta_v_used", "above", 500)), 0, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Left(3100, engine: false));
+            // A reading back on the safe side doesn't re-arm it, and an engine read again later doesn't either.
+            mission.Send(Left(2000));
+            mission.Send(Left(2000));
+
+            Assert.Equal(0, CrossedLines(mission));
+            Assert.Equal(1, EventLines(mission, "telemetry_check_disarmed", "delta-v used over 500 m/s: no engine aboard."));
+        }
+
+        [Fact]
+        public void AnRcsThrusterIsNotAnEngine()
+        {
+            var mission = RunningWith(Plan(Check("delta_v_left", "below", 250)), 0, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Ascending(s =>
+            {
+                s.Stages[0].DeltaVVac = 100;
+                s.Craft.Parts.RemoveAll(p => p.Tags.Contains("engine"));
+                s.Craft.Parts.Add(new SnapshotPart { Id = 9, Name = "RCSBlock.v2", Title = "RV-105 RCS Thruster Block", Tags = { "rcs" } });
+            }));
+
+            Assert.Equal(0, CrossedLines(mission));
+            Assert.Equal(1, EventLines(mission, "telemetry_check_disarmed", "delta-v left under 250 m/s: no engine aboard."));
+        }
+
+        [Theory]
+        // Haiku 22cc: "delta-v used 483 over 450" during the descent, all of it under throttle.
+        [InlineData(375, 3200 - 483)]
+        // Haiku 44e9: the landing burn's crossing, under throttle too.
+        [InlineData(500, 3200 - 640)]
+        public void OverspendUnderThrottleStillCrosses(double planned, double left)
+        {
+            var mission = RunningWith(Plan(), planned, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Left(left, throttle: 1));
+            mission.Send(Left(left, throttle: 1));
+
+            Assert.Equal(1, CrossedLines(mission, "delta-v used"));
+        }
+
+        [Fact]
+        public void AStageDroppedUnderThrottleStillCountsAsUsed()
+        {
+            var mission = RunningWith(Plan(Check("delta_v_used", "above", 450)), 0, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Left(3000, throttle: 1));
+            mission.Send(new CraftSeparated());
+            mission.Send(Left(2700, throttle: 1));
+            mission.Send(Left(2700, throttle: 1));
+
+            Assert.Equal(1, CrossedLines(mission, "delta-v used"));
+            Assert.Equal(0, EventLines(mission, "delta_v_rebased"));
+        }
+
+        [Fact]
+        public void AStageDroppedAtZeroThrottleIsNotRebasedWhenTheThrottleComesOnBeforeTheReadingsSettle()
+        {
+            var mission = RunningWith(Plan(Check("delta_v_used", "above", 450)), 0, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Left(3000));
+            mission.Send(new CraftSeparated());
+            mission.Send(Left(2700));
+            mission.Send(Left(2690, throttle: 1));
+            mission.Send(Left(2690, throttle: 1));
+
+            Assert.Equal(1, CrossedLines(mission, "delta-v used"));
+            Assert.Equal(0, EventLines(mission, "delta_v_rebased"));
+            Assert.Equal(1, EventLines(mission, "delta_v_not_rebased"));
+        }
+
+        [Fact]
+        public void LaunchStagingOfASpentStageLeavesTheBaselineUnchanged()
+        {
+            var mission = RunningWith(Plan(), 3170, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Left(2400, throttle: 1));
+            mission.Send(Left(2400));
+            mission.Send(new CraftSeparated());
+            mission.Send(Left(2400));
+            mission.Send(Left(2400.4));
+
+            Assert.Equal(0, EventLines(mission, "delta_v_rebased"));
+            Assert.Equal(3200, mission.ExportStates().Single().RunStartDeltaVLeft);
+            Assert.Equal(800, Math.Round(mission.View.RunProgress.DeltaVUsed.Value));
+        }
+
+        [Fact]
+        public void AQuickloadAfterARebaseKeepsTheRebasedBaseline()
+        {
+            var mission = RunningWith(Plan(), 730, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+            mission.Send(Left(2900));
+            mission.Send(new CraftSeparated());
+            mission.Send(Left(2703));
+            mission.Send(Left(2703));
+            var saved = mission.ExportStates().Select(s => MissionSaveState.FromValues(s.ToValues())).ToList();
+
+            var reloaded = Control(new StreamingFakeTransport());
+            reloaded.Send(new MissionsRestored(_save.Path, saved));
+
+            var state = reloaded.ExportStates().Single();
+            Assert.Equal(3003, state.RunStartDeltaVLeft);
+            Assert.Equal(197, state.RunDroppedDeltaV);
+        }
+
         // ---- Helpers ----
 
         private static string QuantityCheck(string quantity, string direction, double threshold)
@@ -668,7 +1120,7 @@ namespace ClaudiaKermin.Core.Tests
                 + "\",\"threshold\":" + threshold + ",\"why\":\"Test.\"}],";
         }
 
-        private MissionControl RunningWith(string check, double expectedDeltaV = 0)
+        private MissionControl RunningWith(string check, double expectedDeltaV = 0, GameSnapshot atStart = null)
         {
             var sequence = WithSequenceFields(ScriptedResponse.Fixture("mission-sequence-plan.sse"), check);
             var text = Encoding.UTF8.GetString(sequence.Body).Replace("expected_delta_v\\\":0", "expected_delta_v\\\":" + expectedDeltaV);
@@ -678,7 +1130,7 @@ namespace ClaudiaKermin.Core.Tests
                 sequence,
                 ScriptedResponse.Fixture("mission-alert-carry-on-plain.sse"));
             var mission = Control(transport);
-            ToRunning(mission, 10m);
+            ToRunning(mission, 10m, atStart);
             return mission;
         }
 
@@ -712,6 +1164,12 @@ namespace ClaudiaKermin.Core.Tests
             return snapshot;
         }
 
+        /// <summary>The on-pad Game Snapshot off the pad and out of the atmosphere (SUB_ORBITAL), where orbit checks are armed (#604), changed.</summary>
+        private static GameSnapshot Ascending(Action<GameSnapshot> change)
+        {
+            return Snapshot(s => { s.Situation = "SUB_ORBITAL"; change(s); });
+        }
+
         /// <summary>A Sequence Plan stream with extra fields put in before its <c>"script"</c>.</summary>
         private static ScriptedResponse WithSequenceFields(ScriptedResponse response, string fields)
         {
@@ -742,12 +1200,14 @@ namespace ClaudiaKermin.Core.Tests
             return mission;
         }
 
-        private StartScript ToRunning(MissionControl mission, decimal cap)
+        /// <param name="atStart">The snapshot the run starts from, its baseline; the on-pad one when null.</param>
+        private StartScript ToRunning(MissionControl mission, decimal cap, GameSnapshot atStart = null)
         {
             CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, cap, Sonnet));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            if (atStart != null) mission.Send(atStart);
             mission.Send(new Approve());
             Assert.Equal(MissionStage.Running, mission.View.Stage);
             return mission.TakeCommands().OfType<StartScript>().Single();

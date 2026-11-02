@@ -129,6 +129,8 @@ namespace ClaudiaKermin.Core.Tests
 
             var request = transport.Requests.Single();
             var system = SystemText(request);
+            // Still cached as ever (#549): the tail and the system layer, at the 1-hour TTL.
+            Assert.Contains("\"cache_control\":{\"type\":\"ephemeral\",\"ttl\":\"1h\"},\"system\":[{\"type\":\"text\",\"text\":", request.Body);
             foreach (var blocker in new[] { "no_kos_processor", "no_seat_for_claudia", "no_probe_core_or_antenna", "delta_v_short", "twr_below_one",
                 "no_parachutes_for_return", "required_experiments_missing", "child_vessel_problem" })
                 Assert.Contains(blocker, system);
@@ -610,6 +612,63 @@ namespace ClaudiaKermin.Core.Tests
             mission.Send(later);
             Assert.Equal(3102u, mission.View.CraftCheck.ChosenProcessor);
             Assert.False(mission.View.CraftCheck.ChosenExplicitly);
+        }
+
+        private static ScriptedResponse[] StageSteps(int count, int pricedStep = -1)
+        {
+            return Enumerable.Range(0, count).Select(i =>
+            {
+                var call = ("stage_performance", "{\"situation\":\"surface\",\"n\":" + i + "}");
+                return i == pricedStep ? ToolUseStreams.ToolUsePriced("cc" + i, 100000, call) : ToolUseStreams.ToolUse("cc" + i, call);
+            }).ToArray();
+        }
+
+        [Fact]
+        public void AfterEightToolStepsTheCheckSendsOneLastRequestWithToolChoiceNoneAndTheSameToolsAndATextReplyEndsIt()
+        {
+            var transport = new StreamingFakeTransport(StageSteps(8).Concat(new[] { ScriptedResponse.Fixture("craft-check-pass.sse", 64) }).ToArray());
+            var mission = Checked(transport);
+
+            Assert.Equal(CraftCheckState.Done, mission.View.CraftCheck.State);
+            Assert.Equal(CraftVerdict.Pass, mission.View.CraftCheck.Verdict);
+            Assert.Equal(9, transport.Requests.Count);
+            using (var first = JsonDocument.Parse(transport.Requests[0].Body))
+            {
+                for (var step = 0; step < 9; step++)
+                {
+                    using (var doc = JsonDocument.Parse(transport.Requests[step].Body))
+                    {
+                        Assert.Equal(step == 8 ? "{\"type\":\"none\"}" : "{\"type\":\"auto\"}", doc.RootElement.GetProperty("tool_choice").GetRawText());
+                        Assert.Equal(first.RootElement.GetProperty("tools").GetRawText(), doc.RootElement.GetProperty("tools").GetRawText());
+                        Assert.Equal(first.RootElement.GetProperty("system").GetRawText(), doc.RootElement.GetProperty("system").GetRawText());
+                    }
+                }
+            }
+        }
+
+        [Fact]
+        public void ACheckWhoseLastReplyStillCallsToolsFailsAsItDidBefore()
+        {
+            var transport = new StreamingFakeTransport(StageSteps(9));
+            var mission = Checked(transport);
+
+            Assert.Equal(CraftCheckState.Error, mission.View.CraftCheck.State);
+            Assert.StartsWith("Claudia kept calling Planning Tools after the limit of 8 steps.", mission.View.CraftCheck.Message);
+            Assert.Equal(9, transport.Requests.Count);
+        }
+
+        [Fact]
+        public void TheLastRequestAtTheStepLimitIsBlockedByTheSpendingCapAsAnyStepIs()
+        {
+            var transport = new StreamingFakeTransport(StageSteps(8, pricedStep: 7).Concat(new[] { ScriptedResponse.Fixture("craft-check-pass.sse", 64) }).ToArray());
+            var mission = Control(transport);
+            mission.Send(Craft());
+            mission.Send(new RunCraftCheck(Goal, 0.30m, Model));
+            DrainUntil(mission, v => v.CraftCheck.State != CraftCheckState.Running);
+
+            Assert.Equal(CraftCheckState.Error, mission.View.CraftCheck.State);
+            Assert.Contains("Spending Cap", mission.View.CraftCheck.Message);
+            Assert.Equal(8, transport.Requests.Count);
         }
 
         [Fact]

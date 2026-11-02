@@ -107,10 +107,11 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void It_is_offered_on_Mission_turns_but_not_the_Craft_Check()
+        public void It_is_not_on_the_Craft_Check_and_the_Mission_offer_has_none_unless_it_is_registered()
         {
+            // #570: MissionControl no longer registers it, so no Mission request offers it (MissionPadPlanningTests pins the request).
+            Assert.Equal(new[] { "predict_burn", "solve_burn", "stage_performance", "plan_ascent", "find_landing_site", "plan_transfer" }, PlanningTools.Default().Definitions(ToolOffer.Mission).Select(t => t.Name).ToArray());
             var tools = PlanningTools.Default(_check);
-            Assert.Equal(new[] { "predict_burn", "solve_burn", "stage_performance", "plan_ascent", "find_landing_site", "plan_transfer", "check_script" }, tools.Definitions(ToolOffer.Mission).Select(t => t.Name).ToArray());
             Assert.Equal(new[] { "stage_performance", "plan_ascent" }, tools.Definitions(ToolOffer.CraftCheck).Select(t => t.Name).ToArray());
         }
 

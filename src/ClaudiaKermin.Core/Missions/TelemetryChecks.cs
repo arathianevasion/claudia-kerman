@@ -37,6 +37,18 @@ namespace ClaudiaKermin.Core.Missions
         FuelMargin,
     }
 
+    public static class TelemetryQuantities
+    {
+        /// <summary>
+        /// A burn swings the orbit quantities it is flying (#582), so their checks wait for the burn to end. Every other
+        /// quantity is tested throughout, altitude and vertical speed being the landing safety rails.
+        /// </summary>
+        public static bool IsHeldDuringBurn(this TelemetryQuantity quantity)
+        {
+            return quantity == TelemetryQuantity.Apoapsis || quantity == TelemetryQuantity.Periapsis || quantity == TelemetryQuantity.Inclination;
+        }
+    }
+
     /// <summary>
     /// A Telemetry Check: a quantity the mod measures while Running, and the threshold whose crossing raises an Alert.
     /// Set in the Sequence Plan by Claudia, or a config default (<see cref="TelemetryDefaults"/>).
@@ -114,6 +126,12 @@ namespace ClaudiaKermin.Core.Missions
             }
         }
 
+        /// <summary>A propulsion check (delta-v left, delta-v used, needed-fuel margin) is disarmed for the rest of the run once no engine is aboard (#605).</summary>
+        public bool Propulsion
+        {
+            get { return NeedsConfirmation; }
+        }
+
         /// <summary>
         /// An orbit quantity starts wrong on the pad (periapsis far under the surface), so its check watches only once the
         /// reading has been on the safe side of the threshold during the run (#419).
@@ -121,6 +139,16 @@ namespace ClaudiaKermin.Core.Missions
         public bool NeedsArming
         {
             get { return Quantity == TelemetryQuantity.Periapsis || Quantity == TelemetryQuantity.Apoapsis; }
+        }
+
+        /// <summary>
+        /// An orbit quantity is meant to read wrong landed, splashed down, on the pad or flying in atmosphere (a touchdown, a
+        /// reentry), so its check is disarmed there (#604). A low pass over an airless body is SUB_ORBITAL and still checked.
+        /// </summary>
+        public bool DisarmedIn(string situation)
+        {
+            return (Quantity == TelemetryQuantity.Apoapsis || Quantity == TelemetryQuantity.Periapsis || Quantity == TelemetryQuantity.Inclination)
+                && (situation == "LANDED" || situation == "SPLASHED" || situation == "PRELAUNCH" || situation == "FLYING");
         }
 
         /// <summary>The reading is past <paramref name="threshold"/>; false when the quantity can't be measured now.</summary>
@@ -163,6 +191,8 @@ namespace ClaudiaKermin.Core.Missions
     public sealed class LiveReadings
     {
         public double ElapsedSeconds;
+        /// <summary>The craft's situation (e.g. LANDED, ORBITING); "" when there is no snapshot.</summary>
+        public string Situation = "";
         public double? DeltaVUsed;
         public double? DeltaVLeft;
         public double? FuelMarginPercent;
@@ -181,6 +211,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             var readings = new LiveReadings { ElapsedSeconds = Math.Max(0, elapsedSeconds) };
             if (snapshot == null) return readings;
+            readings.Situation = snapshot.Situation ?? "";
             readings.Altitude = snapshot.Altitude;
             readings.VerticalSpeed = snapshot.VerticalSpeed;
             if (snapshot.Orbit != null)
@@ -210,6 +241,13 @@ namespace ClaudiaKermin.Core.Missions
         {
             if (snapshot == null || !snapshot.DeltaVSimulator || snapshot.DeltaVUnreliable) return null;
             return snapshot.Stages.Sum(s => s.DeltaVVac);
+        }
+
+        /// <summary>A part tagged as an engine is aboard (RCS isn't one); true when the snapshot lists no parts, since that says nothing.</summary>
+        public static bool EngineAboard(GameSnapshot snapshot)
+        {
+            var parts = snapshot.Craft.Parts;
+            return parts.Count == 0 || parts.Any(p => p.Tags.Contains("engine"));
         }
 
         /// <summary>The craft's stock MonoPropellant, in units, across all its tanks (0 when it carries none); null when there is no snapshot.</summary>

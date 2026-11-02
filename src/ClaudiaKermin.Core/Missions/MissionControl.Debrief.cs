@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using ClaudiaKermin.Core.Claude;
+using ClaudiaKermin.Core.Config;
 using ClaudiaKermin.Core.Kos;
 using ClaudiaKermin.Core.Tools;
 
@@ -15,9 +16,10 @@ namespace ClaudiaKermin.Core.Missions
 {
     /// <summary>
     /// The full Debrief: what the mod gives Claudia besides the script's report (the events it logged during the run, the
-    /// rest of the Mission Plan, and the margin recheck, a Craft Check of the craft as it is now), and what the Debrief card
-    /// shows. Every Debrief gets the margin recheck, charged to the Mission like any other request and sent only if the
-    /// Spending Cap has room for it and still leaves room for the Debrief itself.
+    /// rest of the Mission Plan, the mod's own Margin check and, when that is tight or short or the player config says always,
+    /// the margin recheck, a Craft Check of the craft as it is now), and what the Debrief card shows. The margin recheck is
+    /// charged to the Mission like any other request and sent only if the Spending Cap has room for it and still leaves room
+    /// for the Debrief itself.
     /// </summary>
     public sealed partial class MissionControl
     {
@@ -44,6 +46,8 @@ namespace ClaudiaKermin.Core.Missions
             public readonly RunEventLog RunEvents = new RunEventLog();
             /// <summary>The current run's RCS switches (RCS Use); cleared when the next run starts.</summary>
             public readonly RcsUseTally RcsUse = new RcsUseTally();
+            /// <summary>The current run's blocks trail (#609); cleared when the next run starts.</summary>
+            public readonly BlockTrail Blocks = new BlockTrail();
             /// <summary>The kOS terminal text of the last run that did not report, for the Debrief card; "" otherwise.</summary>
             public string ScriptError = "";
             /// <summary>The Debrief in hand: the recheck result and the rest, for its card.</summary>
@@ -58,6 +62,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             mission.RunEvents.Clear();
             mission.RcsUse.Clear();
+            mission.Blocks.Clear();
             mission.ScriptError = "";
         }
 
@@ -112,8 +117,8 @@ namespace ClaudiaKermin.Core.Missions
         // ---- Before the Debrief request goes ----
 
         /// <summary>
-        /// Called as a Debrief turn begins. Adds the mod's facts to it, once, and starts the margin recheck when the
-        /// Spending Cap allows; true while the recheck is in flight (the Debrief request follows it).
+        /// Called as a Debrief turn begins. Adds the mod's facts and Margin check to it, once, and starts the margin recheck when
+        /// the check and the config ask for it and the Spending Cap allows; true while the recheck is in flight (the Debrief request follows it).
         /// </summary>
         private bool PrepareDebrief(Mission mission, Turn turn)
         {
@@ -122,6 +127,7 @@ namespace ClaudiaKermin.Core.Missions
                 turn.Gate = new DebriefGate();
                 mission.Gate = turn.Gate;
                 turn.UserText += RunFacts(mission);
+                if (mission.ScienceKept && !mission.HandBack) turn.Notice += MissionPrompts.ScienceKeptNoticeLine;
             }
             return !turn.Gate.Done && StartRecheck(mission, turn);
         }
@@ -132,7 +138,7 @@ namespace ClaudiaKermin.Core.Missions
             var text = mission.RunEvents.DebriefText(mission.RunStartUt);
             var rest = RestOfPlanText(mission);
             // A hand-back Debrief is of a manual stretch, with no scripted run to total.
-            if (!mission.HandBack) text += "\n" + MissionPrompts.RunDeltaVLine(mission.RunStartDeltaVLeft, MissionVesselSnapshot(mission));
+            if (!mission.HandBack) text += "\n" + MissionPrompts.RunDeltaVLine(mission.RunStartDeltaVLeft, MissionVesselSnapshot(mission), mission.RunDroppedDeltaV);
             if (!mission.HandBack) text += RunMonopropellantFact(mission);
             if (!mission.HandBack) text += "\n" + MissionPrompts.RcsUseLine(mission.RcsUse);
             return text + "\nManeuver Sequences still to fly in the Mission Plan (quoted): " + MissionPrompts.Quoted(rest) + ".";
@@ -165,6 +171,14 @@ namespace ClaudiaKermin.Core.Missions
             gate.Done = true;
             var snapshot = _snapshot;
             if (snapshot == null) return Skip(gate, "there is no Game Snapshot of the craft");
+            // The mod's own check goes with every Debrief; Claudia is asked as well only when it is not enough, or always if the config says so.
+            var check = MarginCheckOf(mission, snapshot);
+            gate.RecheckSummary = check.Line();
+            gate.RecheckFindings.AddRange(check.FindingLines());
+            turn.UserText += "\n" + check.Text();
+            if (_config.MarginRecheck == MarginRecheckMode.Never) return Skip(gate, "margin_recheck is never in the player config");
+            // Not a skip: under auto an enough margin needs no recheck, and the card says nothing of one.
+            if (_config.MarginRecheck == MarginRecheckMode.Auto && check.Level == MarginLevel.Enough) return false;
             if (!snapshot.DeltaVSimulator) return Skip(gate, "the stock delta-v simulator is off");
             if (!_hasKey()) return Skip(gate, "there is no API key");
 
@@ -186,12 +200,23 @@ namespace ClaudiaKermin.Core.Missions
             return true;
         }
 
+        /// <summary>The mod's margin check of the craft as it is now against the rest of the Mission Plan; a manual stretch has no run's monopropellant to go by.</summary>
+        private MarginCheck MarginCheckOf(Mission mission, GameSnapshot snapshot)
+        {
+            double? used = null;
+            // Measured as the run's monopropellant line is, on the Mission's own vessel.
+            var now = LiveReadings.MonopropellantOf(MissionVesselSnapshot(mission));
+            if (!mission.HandBack && mission.RunStartMonopropellant.HasValue && now.HasValue) used = Math.Max(0, mission.RunStartMonopropellant.Value - now.Value);
+            return MarginCheck.Of(snapshot, RestOfPlan(mission), _config.CraftCheckMarginPercent, _config.CheckElectricChargePercent, mission.Remote, used);
+        }
+
         /// <summary>Sends the recheck's request (its first, or the next step of its tool loop), charged to the Mission at <paramref name="worst"/>.</summary>
         private void SendRecheck(Mission mission, Turn turn, decimal worst)
         {
             mission.PendingCharge = worst;
+            mission.PendingInput = RequestCharge.InputCost(_config.Prices, mission.Model, turn.Gate.RecheckRequest, worst);
             mission.Requests++;
-            LogCost(mission, "pending", worst, "margin_recheck");
+            LogCost(mission, "pending", worst, "margin_recheck", mission.PendingInput);
             mission.InFlight = true;
             mission.Activity = turn.Gate.RecheckLooked ? SecondLook.Activity : "rechecking margins";
             turn.Cancel = new CancellationTokenSource();
@@ -208,8 +233,8 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>What the Debrief request itself could cost at worst, with slack for the recheck's text.</summary>
         private decimal DebriefReserve(Mission mission, Turn turn)
         {
-            var probe = new MessagesRequest { Model = mission.Model, MaxTokens = MissionPrompts.MaxTokens, OutputSchemaJson = MissionReply.FlightSchemaJson };
-            probe.Tools.AddRange(_tools.Definitions(ToolOffer.Mission));
+            var probe = new MessagesRequest { Model = mission.Model, MaxTokens = MissionPrompts.MaxTokens, OutputSchemaJson = MissionReply.MissionSchemaJson };
+            probe.Tools.AddRange(MissionTools());
             probe.System.AddRange(mission.System);
             probe.Messages.AddRange(Sent(mission));
             probe.Messages.Add(Message.UserText(turn.UserText));
@@ -318,14 +343,13 @@ namespace ClaudiaKermin.Core.Missions
                 RecheckAnswered(mission, turn, null, "Claudia kept calling Planning Tools after the limit of " + ToolStep.MaxSteps + " steps", null);
                 return;
             }
-            var atLimit = gate.RecheckToolSteps >= ToolStep.MaxSteps;
             mission.InFlight = true;
             mission.Activity = _craftCheck.ActivityOf(message);
             turn.Cancel = new CancellationTokenSource();
-            _craftCheck.RunTools(message, gate.RecheckSnapshot, atLimit, step => RecheckToolsAnswered(mission, turn, message, step, atLimit));
+            _craftCheck.RunTools(message, gate.RecheckSnapshot, false, step => RecheckToolsAnswered(mission, turn, message, step));
         }
 
-        private void RecheckToolsAnswered(Mission mission, Turn turn, AssistantMessage message, ToolStepResult step, bool atLimit)
+        private void RecheckToolsAnswered(Mission mission, Turn turn, AssistantMessage message, ToolStepResult step)
         {
             if (mission.Pending != turn || !mission.InFlight) return;
             mission.InFlight = false;
@@ -348,7 +372,6 @@ namespace ClaudiaKermin.Core.Missions
                 gate.RecheckRequest.Messages.Add(message.ToMessage());
                 gate.RecheckRequest.Messages.Add(step.Results);
                 gate.RecheckToolSteps++;
-                if (atLimit) gate.RecheckLimitSent = true;
                 foreach (var call in step.Calls)
                 {
                     Note(LogKind.Notice, "Planning Tool " + call.Name + " for the margin recheck (" + Shorten(call.InputJson) + "): " + (call.IsError ? "error: " : "") + call.Summary);
@@ -360,6 +383,9 @@ namespace ClaudiaKermin.Core.Missions
                     RecheckAnswered(mission, turn, null, "the Mission was Paused", null);
                     return;
                 }
+                // At the step limit the next request is the last: tool_choice none, tools and system unchanged, as for a Mission turn (#509).
+                gate.RecheckLimitSent = gate.RecheckToolSteps >= ToolStep.MaxSteps;
+                gate.RecheckRequest.NoToolChoice = gate.RecheckLimitSent;
                 var worst = RequestCharge.WorstCase(_config.Prices, mission.Model, gate.RecheckRequest);
                 if (mission.Committed + worst + DebriefReserve(mission, turn) > mission.SpendingCap)
                 {
@@ -367,6 +393,7 @@ namespace ClaudiaKermin.Core.Missions
                     RecheckAnswered(mission, turn, null, "its next calculation step could pass the Spending Cap ($" + Dollars(mission.SpendingCap) + ")", null);
                     return;
                 }
+                if (gate.RecheckLimitSent) Event(mission, "tool_limit_final", "margin_recheck after " + gate.RecheckToolSteps + " steps; the reply is asked for with tool_choice none");
                 SendRecheck(mission, turn, worst);
             }
             finally
@@ -386,15 +413,19 @@ namespace ClaudiaKermin.Core.Missions
             {
                 gate.RecheckSkipped = "the recheck failed: " + problem;
                 Note(LogKind.Notice, "The margin recheck failed (" + problem + "); the Debrief goes on without it.");
-                turn.UserText += "\nThe mod's margin recheck did not come back (" + problem + "); judge the margin from the Game Snapshot.";
+                turn.UserText += "\nThe mod's margin recheck did not come back (" + problem + "); judge the margin from the mod's margin check and the Game Snapshot.";
             }
             else
             {
-                gate.RecheckSummary = reply.Summary;
-                gate.RecheckFindings.AddRange(reply.Findings.Select(f => (f.Severity == CraftFindingSeverity.Blocker ? "Blocker: " : "Warning: ") + f.Title
-                    + (f.Explanation.Length > 0 ? ". " + f.Explanation : "")));
+                var lines = reply.Findings.Select(f => new MarginFinding { Code = f.Code, Severity = f.Severity, Title = f.Title, Explanation = f.Explanation })
+                    .Select(f => new { Head = f.Head(), Line = f.Describe() }).ToList();
+                var findings = lines.Select(l => l.Line).ToList();
+                // The card keeps the mod's line and findings first; Claudia's follow, less any finding the mod had already made.
+                var mod = gate.RecheckFindings.ToList();
+                gate.RecheckSummary = gate.RecheckSummary.Length > 0 ? gate.RecheckSummary + " Claudia's recheck: " + reply.Summary : reply.Summary;
+                gate.RecheckFindings.AddRange(lines.Where(l => !mod.Any(m => m == l.Head || m.StartsWith(l.Head + ". ", StringComparison.Ordinal))).Select(l => l.Line));
                 turn.UserText += "\nThe mod's margin recheck (a Craft Check of the craft as it is now, against the Maneuver Sequences still to fly; quoted): "
-                    + MissionPrompts.Quoted(reply.Summary + (gate.RecheckFindings.Count > 0 ? " Findings: " + string.Join(" ", gate.RecheckFindings.ToArray()) : " No findings.")) + ".";
+                    + MissionPrompts.Quoted(reply.Summary + (findings.Count > 0 ? " Findings: " + string.Join(" ", findings.ToArray()) : " No findings.")) + ".";
             }
             if (mission.DeferredRestore != null)
             {
@@ -427,7 +458,7 @@ namespace ClaudiaKermin.Core.Missions
             var gate = mission.Gate ?? new DebriefGate();
             mission.Gate = null;
             var snapshot = _snapshot;
-            var detail = MissionCards.DebriefDetail(debrief);
+            var detail = MissionCards.DebriefDetail(debrief, GoalSteps.ForCard(mission.GoalSteps, debrief));
             detail.RecheckSummary = gate.RecheckSummary;
             detail.RecheckSkipped = gate.RecheckSkipped;
             detail.ScriptError = mission.ScriptError;
@@ -525,7 +556,8 @@ namespace ClaudiaKermin.Core.Missions
             {
                 Purpose = Purpose.MissionPlan,
                 UserText = "The player approved a reduced Mission Goal (quoted data): " + MissionPrompts.Quoted(mission.ReducedGoal)
-                    + " in place of the original (quoted data): " + MissionPrompts.Quoted(mission.Goal) + ".\n" + MissionPrompts.Facts(_ut, _snapshot),
+                    + " in place of the original (quoted data): " + MissionPrompts.Quoted(mission.Goal) + ".\n" + MissionPrompts.Facts(_ut, _snapshot)
+                    + PlanFigures(mission, mission.ReducedGoal),
                 Notice = DebriefPrompts.ReducedGoalNotice,
             };
         }
@@ -539,7 +571,7 @@ namespace ClaudiaKermin.Core.Missions
                 Begin(new Turn
                 {
                     Purpose = Purpose.MissionPlan,
-                    UserText = "Revise the Mission Plan after the Off-Nominal Debrief.\n" + MissionPrompts.Facts(_ut, _snapshot),
+                    UserText = "Revise the Mission Plan after the Off-Nominal Debrief.\n" + MissionPrompts.Facts(_ut, _snapshot) + PlanFigures(mission, mission.Goal),
                     Notice = DebriefPrompts.RevisedPlanAfterOffNominal,
                 });
                 return;
@@ -562,8 +594,8 @@ namespace ClaudiaKermin.Core.Missions
     internal static class DebriefPrompts
     {
         public const string ReducedGoalNotice =
-            "The player has approved your reduced Mission Goal. Revise the Mission Plan for it now: reply with kind \"mission_plan\" and "
-            + "mission_plan filled in, with the sequences already flown first, then those still to fly. The player must approve it before anything runs.";
+            "The player has approved your reduced Mission Goal. Revise the Mission Plan for it now, with the sequences already flown first, "
+            + "then those still to fly: " + MissionPrompts.ProposePlan + ". The player must approve it before anything runs.";
 
         public const string ReducedGoalRetryNotice =
             "The Failed Debrief offered no reduced Mission Goal and the player asks for one. Reply with kind \"debrief\" and debrief filled in "
@@ -571,7 +603,7 @@ namespace ClaudiaKermin.Core.Missions
             + "end_mission if no reduced goal is within reach.";
 
         public const string RevisedPlanAfterOffNominal =
-            "The Debrief was Off-Nominal and you proposed a revised Mission Plan. Write it now: reply with kind \"mission_plan\" and "
-            + "mission_plan filled in, with the sequences already flown first, then those still to fly. The player must approve it before anything runs.";
+            "The Debrief was Off-Nominal and you proposed a revised Mission Plan. Write it now, with the sequences already flown first, "
+            + "then those still to fly: " + MissionPrompts.ProposePlan + ". The player must approve it before anything runs.";
     }
 }

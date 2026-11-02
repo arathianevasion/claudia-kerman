@@ -43,14 +43,14 @@
 //|   abort_on_part_loss [true]: abort when the craft loses a part other than by the block's own staging.
 //|   stage_limit [0]: flameout staging stops at this stage number (not drop_empty), and never
 //|     fires a stage holding parachutes or heat-shield separation. Out of fuel at the limit fails.
-//|   rcs_tolerance [lexicon("on_deg", 10, "big_deg", 20, "aligned_deg", 2, "aligned_rate", 0.5)]: RCS Use. Blocks switch RCS on when the steering error is over big_deg (a big turn, even with time to spare), or over on_deg and the reaction wheels can't make the turn in time (big_deg at or under on_deg acts as on_deg), and off once the craft is Aligned: within aligned_deg and turning under aligned_rate deg/s, or within aligned_deg for 3 s. Aligned also lets a burn start, so loosening it loosens burn pointing. Give only the keys you change.
-//| A block returns a result lexicon (it does not report). Common fields: success (boolean), reason
+//|   rcs_tolerance [lexicon("on_deg", 10, "big_deg", 20, "aligned_deg", 2, "aligned_rate", 0.5)]: RCS Use. Blocks switch RCS on when the steering error is over big_deg, or over on_deg and the reaction wheels can't make the turn in time (big_deg at or under on_deg acts as on_deg), and off once the craft is Aligned: within aligned_deg and turning under aligned_rate deg/s, or within aligned_deg for 3 s. Aligned also lets a burn start, so loosening it loosens burn pointing.
+//| A block returns a result lexicon. Common fields: success (boolean), reason
 //| ("" on success), dv_used (m/s), dv_remaining (m/s, stock estimate; -1 and a dv_remaining_note at a trickle throttle), duration (s), body,
-//| situation (e.g. "ORBITING"), orbit (lexicon ap, pe in m, inc in degrees) or, when landed,
+//| situation, orbit (lexicon ap, pe in m, inc in degrees) or, when landed,
 //| splashed or on the pad, geo (lexicon lat, lng, alt), and stage (current stage number); plus the
-//| block's extra results. An abort leaves the craft safe (throttle 0, SAS holding attitude) and
+//| block's extra results; a node the block added and left is removed and listed as node_removed (ut, dv). An abort leaves the craft safe and
 //| sets reason "abort <option>: <detail>". Waits use on-rails warp, or physics warp on a Coast (up to 4x, less in
-//| thick air), back at 1x at least 30 s before a burn, and have no cap: a block waits for its window or daylight however long, coast holds
+//| thick air), back at 1x at least 30 s before a burn, and have no cap: a block waits for its window or daylight, coast holds
 //| until a UT, and 10 s before parachutes or a heat-shield drop. Before a burn they plan the node, turn to it, and then warp, one SOI at a time. Warp drops to 1x while the Mission needs the player. Waits re-ask if KSP cuts warp, not once
 //| the player cancels it (ADDONS:CLAUDIA:WARPCANCELLED, until the next wait). To hold until a UT or an event on a Coast in your own script, use claudia_warp_to(ctx, ut, lead[, stop, cap]); fly every burn through exec_node. Never set WARP or WARPMODE yourself. Report the Script Result yourself, once, at the end, e.g.
 //| `addons:claudia:report(res).`, or a lexicon of your own with at least success and reason.
@@ -404,14 +404,31 @@ function claudia_is_propellant {
   return res_name <> "ElectricCharge" and res_name <> "IntakeAir" and res_name <> "Ablator".
 }
 
-// The part that separates p from the craft, or "" if it has none.
+// The part that separates p from the craft, or "" if it has none. A heat shield never counts (#516): its
+// omni ModuleDecouple lets go on both sides, and only reentry jettisons it.
 function claudia_decoupler_of {
   parameter p.
   local d is p:decoupler.
-  if d:istype("Part") {
-    return d.
+  if d:istype("String") {
+    return "".
   }
-  return "".
+  if claudia_part_kind(d) = "shield" {
+    return "".
+  }
+  return d.
+}
+
+// The decoupler a drop fires for part p: p itself if it is a decoupler (kOS's p:decoupler is the one above
+// it), else the one holding it; "" if none, or p is a heat shield.
+function claudia_drop_decoupler {
+  parameter p.
+  if claudia_part_kind(p) = "shield" {
+    return "".
+  }
+  if claudia_is_decoupler(p) {
+    return p.
+  }
+  return claudia_decoupler_of(p).
 }
 
 // Every part that leaves with decoupler d: the parts whose decoupler it is, and those held by a
@@ -458,7 +475,11 @@ function claudia_drop_plan {
     for p in ship:parts {
       if claudia_drop_matches(p:name, p:tag, list(wanted)) {
         set matched to true.
-        local d is claudia_decoupler_of(p).
+        if claudia_part_kind(p) = "shield" {
+          set plan:error to p:name + " is a heat shield; reentry drops it".
+          return plan.
+        }
+        local d is claudia_drop_decoupler(p).
         if d:istype("String") {
           set plan:error to wanted + " has no decoupler".
           return plan.
@@ -573,9 +594,25 @@ function claudia_decoupler_event {
   return "".
 }
 
-// Fires decoupler d. Returns true if one of its modules had an event to fire.
+// True if part p is one of parts (by uid): one event can split the craft, and a part on the other vessel is
+// one the runtime gate refuses (#558).
+function claudia_aboard {
+  parameter p, parts.
+  for other in parts {
+    if other:uid = p:uid {
+      return true.
+    }
+  }
+  return false.
+}
+
+// Fires decoupler d, if it is still on the craft (parts, by default ship:parts). Returns true if one of
+// its modules had an event to fire.
 function claudia_fire_decoupler {
-  parameter d.
+  parameter d, parts is ship:parts.
+  if not claudia_aboard(d, parts) {
+    return false.
+  }
   for module_name in list("ModuleDecouple", "ModuleAnchoredDecoupler", "ModuleJettison") {
     if d:hasmodule(module_name) {
       local m is d:getmodule(module_name).
@@ -603,19 +640,24 @@ function claudia_note_dropped {
 // "antenna", "wheel", "rcs", "leg", "parachute" or "shield"; "" if it has no other job.
 function claudia_part_kind {
   parameter p.
-  local checks is list(
-    list("engine", "ModuleEngines"), list("engine", "ModuleEnginesFX"), list("command", "ModuleCommand"),
-    list("crew", "ModuleScienceContainer"), list("crew", "KerbalSeat"),
-    list("processor", "kOSProcessor"), list("science", "ModuleScienceExperiment"),
-    list("power", "ModuleGenerator"), list("power", "ModuleDeployableSolarPanel"),
-    list("antenna", "ModuleDataTransmitter"), list("wheel", "ModuleReactionWheel"),
-    list("rcs", "ModuleRCS"), list("rcs", "ModuleRCSFX"), list("leg", "ModuleWheelBase"),
-    list("parachute", "ModuleParachute"), list("parachute", "RealChuteModule"), list("shield", "ModuleAblator")).
-  for c in checks {
-    if p:hasmodule(c[1]) {
-      return c[0].
-    }
-  }
+  // One test per module, no list built per call (#533): a scan asks this of every part.
+  if p:hasmodule("ModuleEngines") { return "engine". }
+  if p:hasmodule("ModuleEnginesFX") { return "engine". }
+  if p:hasmodule("ModuleCommand") { return "command". }
+  if p:hasmodule("ModuleScienceContainer") { return "crew". }
+  if p:hasmodule("KerbalSeat") { return "crew". }
+  if p:hasmodule("kOSProcessor") { return "processor". }
+  if p:hasmodule("ModuleScienceExperiment") { return "science". }
+  if p:hasmodule("ModuleGenerator") { return "power". }
+  if p:hasmodule("ModuleDeployableSolarPanel") { return "power". }
+  if p:hasmodule("ModuleDataTransmitter") { return "antenna". }
+  if p:hasmodule("ModuleReactionWheel") { return "wheel". }
+  if p:hasmodule("ModuleRCS") { return "rcs". }
+  if p:hasmodule("ModuleRCSFX") { return "rcs". }
+  if p:hasmodule("ModuleWheelBase") { return "leg". }
+  if p:hasmodule("ModuleParachute") { return "parachute". }
+  if p:hasmodule("RealChuteModule") { return "parachute". }
+  if p:hasmodule("ModuleAblator") { return "shield". }
   return "".
 }
 
@@ -650,6 +692,176 @@ function claudia_drop_outcome {
   return "gave_up".
 }
 
+// Counts one more try for the fired decoupler uid in ctx:drop_tries, adds it to ctx:drop_tried unless a
+// retry remains, and returns the outcome (claudia_drop_outcome). The count goes through a local: kOS
+// miscompiles SET a:b[c] TO as an index assignment on the string "b".
+function claudia_drop_settle {
+  parameter ctx, uid, stayed.
+  local counts is ctx:drop_tries.
+  local tries is 1.
+  if counts:haskey(uid) {
+    set tries to counts[uid] + 1.
+  }
+  set counts[uid] to tries.
+  local outcome is claudia_drop_outcome(stayed, tries).
+  if outcome <> "retry" {
+    ctx:drop_tried:add(uid).
+  }
+  return outcome.
+}
+
+// Walks parts for a drop scan (#533): the only place a scan asks a part what it is, so everything after it
+// reads plain data. Returns a lexicon with
+//   recs: one lexicon per part, in order: uid, name, tag, parent (uid or ""), raw (uid of the part kOS
+//         calls its decoupler, or ""), isdec, crewed (it holds a kerbal), kind (claudia_part_kind) and
+//         amounts / caps (its propellant tanks);
+//   decs: uid -> uid of the part's decoupler as claudia_decoupler_of gives it (a heat shield never one), or "";
+//   parents: uid -> parent uid or "";  parts: uid -> the part, for firing.
+// crewed: a lexicon keyed by the uids of the parts holding a kerbal. The kind and the tanks of a part are
+// read only if the scan can use them: it has a decoupler above it, is a decoupler, or is one's decoupler.
+function claudia_scan_craft {
+  parameter parts, crewed.
+  local recs is list().
+  local targets is lexicon().
+  local by_uid is lexicon().
+  for p in parts {
+    local parent_uid is "".
+    if p:hasparent {
+      set parent_uid to p:parent:uid.
+    }
+    local raw_uid is "".
+    local raw is p:decoupler.
+    if not raw:istype("String") {
+      set raw_uid to raw:uid.
+      set targets[raw_uid] to true.
+    }
+    local uid is p:uid.
+    recs:add(lexicon("uid", uid, "name", p:name, "tag", p:tag, "parent", parent_uid, "raw", raw_uid,
+      "isdec", claudia_is_decoupler(p), "crewed", crewed:haskey(uid), "kind", "", "amounts", list(), "caps", list())).
+    by_uid:add(uid, p).
+  }
+  local kinds is lexicon().
+  for i in range(0, recs:length) {
+    local rec is recs[i].
+    if rec:raw <> "" or rec:isdec or targets:haskey(rec:uid) {
+      local p is parts[i].
+      local kind is claudia_part_kind(p).
+      set rec["kind"] to kind.
+      kinds:add(rec:uid, kind).
+      if rec:raw <> "" {
+        local amounts is rec:amounts.
+        local capacities is rec:caps.
+        for res in p:resources {
+          if claudia_is_propellant(res:name) and res:capacity > 0 {
+            amounts:add(res:amount).
+            capacities:add(res:capacity).
+          }
+        }
+      }
+    }
+  }
+  local decs is lexicon().
+  local parents is lexicon().
+  for rec in recs {
+    local d is rec:raw.
+    if d <> "" and kinds:haskey(d) {
+      if kinds[d] = "shield" {
+        set d to "".
+      }
+    }
+    decs:add(rec:uid, d).
+    parents:add(rec:uid, rec:parent).
+  }
+  return lexicon("recs", recs, "decs", decs, "parents", parents, "parts", by_uid).
+}
+
+// The records of the parts leaving with each decoupler, uid -> list in craft order: the parts whose
+// decoupler it is, and those held by a decoupler further out on what it drops (a decoupler's own decoupler
+// is read from its parent). What claudia_dropped_with gives, for every decoupler in one pass.
+function claudia_scan_gone {
+  parameter scan.
+  local gone_by is lexicon().
+  local decs is scan:decs.
+  local parents is scan:parents.
+  for rec in scan:recs {
+    local other is decs[rec:uid].
+    until other = "" {
+      if not gone_by:haskey(other) {
+        gone_by:add(other, list()).
+      }
+      gone_by[other]:add(rec).
+      local above is parents[other].
+      if above = "" or not decs:haskey(above) {
+        set other to "".
+      } else {
+        set other to decs[above].
+      }
+    }
+  }
+  return gone_by.
+}
+
+// The decouplers a drop_empty scan fires, judged on a claudia_scan_craft scan: a list of lexicons with uid
+// and gone (the records leaving with it). auto judges every decoupler on the craft; else wanted names the
+// parts whose decoupler is judged. tried: uids drop_empty is done with.
+function claudia_scan_plan {
+  parameter scan, auto, wanted, tried.
+  local gone_by is claudia_scan_gone(scan).
+  local judged is lexicon().
+  local plan is list().
+  for rec in scan:recs {
+    if auto or claudia_drop_matches(rec:name, rec:tag, wanted) {
+      local d is "".
+      if rec:kind <> "shield" {
+        if rec:isdec {
+          set d to rec:uid.
+        } else {
+          set d to scan:decs[rec:uid].
+        }
+      }
+      if d <> "" and not tried:contains(d) and not judged:haskey(d) {
+        judged:add(d, true).
+        local gone is list().
+        if gone_by:haskey(d) {
+          set gone to gone_by[d].
+        }
+        local amounts is list().
+        local capacities is list().
+        local kinds is list().
+        for g in gone {
+          for a in g:amounts {
+            amounts:add(a).
+          }
+          for c in g:caps {
+            capacities:add(c).
+          }
+          if auto {
+            // Second net for a crew cabin whose modules the kind check does not know: any part holding a kerbal.
+            if g:crewed {
+              kinds:add("crew").
+            } else {
+              kinds:add(g:kind).
+            }
+            if kinds[kinds:length - 1] <> "" {
+              break.
+            }
+          }
+        }
+        local ok is false.
+        if auto {
+          set ok to claudia_auto_drop_fires(kinds, amounts, capacities).
+        } else {
+          set ok to claudia_tanks_empty(amounts, capacities).
+        }
+        if ok {
+          plan:add(lexicon("uid", d, "gone", gone)).
+        }
+      }
+    }
+  }
+  return plan.
+}
+
 // Fires decouplers whose tanks are all empty, together with every other part leaving with them, and
 // notes the names of the parts that left in ctx:dropped. Looks twice a second. drop_empty "auto" judges
 // every decoupler on the craft (claudia_auto_drop_fires); a list judges the decoupler of each part it
@@ -668,61 +880,39 @@ function claudia_drop_empty {
   local fired_uids is list().
   local fired_names is list().
   local fired_groups is list().
-  local judged is list().
-  local crewed is list().
+  local crewed is lexicon().
   if auto {
-    // Second net for a crew cabin whose modules claudia_part_kind does not know: any part holding a kerbal.
     for c in ship:crew {
-      crewed:add(c:part:uid).
+      local seat is c:part:uid.
+      set crewed[seat] to true.
     }
   }
-  for p in ship:parts {
-    if auto or claudia_drop_matches(p:name, p:tag, wanted) {
-      local d is claudia_decoupler_of(p).
-      if not d:istype("String") and not ctx:drop_tried:contains(d:uid) and not judged:contains(d:uid) {
-        judged:add(d:uid).
-        local gone is claudia_dropped_with(d).
-        local amounts is list().
-        local capacities is list().
-        local kinds is list().
+  // One walk of the craft; judging and firing read what it recorded (#533).
+  local scan_from is time:seconds.
+  local scan is claudia_scan_craft(ship:parts, crewed).
+  local plan is claudia_scan_plan(scan, auto, wanted, ctx:drop_tried).
+  // launch traces what a scan and its plan cost (#531), only in launch: the game seconds they took, which a long one spends over
+  // several physics ticks.
+  if auto and ctx:block = "launch" {
+    addons:claudia:blocknote(ctx:block, lexicon("phase", "drop_scan", "scan_s", round(time:seconds - scan_from, 3),
+      "parts", ship:parts:length, "ipu", config:ipu)).
+  }
+  for step in plan {
+    local d is scan:parts[step:uid].
+    local gone is step:gone.
+    // Nested, not one "and": firing is a side effect and must only follow the guards.
+    if not claudia_drop_holds_core(gone) {
+      if claudia_fire_decoupler(d) {
+        fired:add(d:uid).
+        local group is list().
         for g in gone {
-          for res in g:resources {
-            if claudia_is_propellant(res:name) and res:capacity > 0 {
-              amounts:add(res:amount).
-              capacities:add(res:capacity).
-            }
-          }
-          if auto {
-            if crewed:contains(g:uid) {
-              kinds:add("crew").
-            } else {
-              kinds:add(claudia_part_kind(g)).
-            }
-          }
+          fired_uids:add(g:uid).
+          fired_names:add(g:name).
+          group:add(g:uid).
         }
-        local ok is false.
-        if auto {
-          set ok to claudia_auto_drop_fires(kinds, amounts, capacities).
-        } else {
-          set ok to claudia_tanks_empty(amounts, capacities).
-        }
-        // Nested, not one "and": firing is a side effect and must only follow the guards.
-        if ok {
-          if not claudia_drop_holds_core(gone) {
-            if claudia_fire_decoupler(d) {
-              fired:add(d:uid).
-              local group is list().
-              for g in gone {
-                fired_uids:add(g:uid).
-                fired_names:add(g:name).
-                group:add(g:uid).
-              }
-              fired_groups:add(group).
-            } else {
-              ctx:drop_tried:add(d:uid).
-            }
-          }
-        }
+        fired_groups:add(group).
+      } else {
+        ctx:drop_tried:add(d:uid).
       }
     }
   }
@@ -743,15 +933,8 @@ function claudia_drop_empty {
           set stayed to true.
         }
       }
-      local tries is 1.
-      if ctx:drop_tries:haskey(fired[i]) {
-        set tries to ctx:drop_tries[fired[i]] + 1.
-      }
-      set ctx:drop_tries[fired[i]] to tries.
-      local outcome is claudia_drop_outcome(stayed, tries).
-      if outcome <> "retry" {
-        ctx:drop_tried:add(fired[i]).
-      }
+      local outcome is claudia_drop_settle(ctx, fired[i], stayed).
+      local tries is ctx:drop_tries[fired[i]].
       if outcome = "gave_up" {
         addons:claudia:blocknote(ctx:block, lexicon("phase", "drop_empty", "note", "a decoupler fired " + tries + " times and its parts are still aboard: left on")).
       }
@@ -1178,6 +1361,37 @@ function claudia_soi_leg_ut {
   return start_ut.
 }
 
+// "" or why a burn burn_in s from now, timed on the orbit the craft is on, must not be flown (#610): the orbit changes
+// sphere of influence first, soi_eta s from now (has_next false: it never does), into next_name's; to_moon is true when
+// that is a moon of the body the craft is at (an encounter, claudia_to_moon), false for an escape. Refused before any burn,
+// the craft keeps its path. Pure.
+function claudia_soi_first {
+  parameter has_next, soi_eta, burn_in, next_name, to_moon.
+  if not has_next or soi_eta >= burn_in {
+    return "".
+  }
+  if to_moon {
+    return "an encounter with " + next_name + " comes first (in " + round(soi_eta) + " s): coast to it".
+  }
+  return "an escape to " + next_name + " comes first (in " + round(soi_eta) + " s)".
+}
+
+// claudia_soi_first for a burn at ut on the craft's orbit now.
+function claudia_soi_first_at {
+  parameter ut.
+  local o is ship:orbit.
+  if not o:hasnextpatch {
+    return "".
+  }
+  return claudia_soi_first(true, o:nextpatcheta, ut - time:seconds, o:nextpatch:body:name, claudia_to_moon(o:nextpatch:body)).
+}
+
+// Whether next_body, the body of the craft's next patch, is a moon of the body it is at: an encounter, not an escape.
+function claudia_to_moon {
+  parameter next_body.
+  return next_body:hasbody and next_body:body = ship:body.
+}
+
 // Whether the craft is Aligned with nd's burn vector now, by the block's rcs_tolerance; keeps the hold
 // within tolerance in ctx:burn_within_ut.
 function claudia_aligned_to {
@@ -1355,6 +1569,44 @@ function claudia_burn_throttle {
     return 1.
   }
   return min(1, max(0.005, dv_left / max_accel)).
+}
+
+// A trim's throttle (#577): low, taking about 5 s over dv_left at full acceleration max_accel (never below 0.5%; full
+// at no thrust, so the tick stages); 0 while pointing more than max_angle degrees off. Pure.
+function claudia_trim_throttle {
+  parameter dv_left, max_accel, angle_off, max_angle.
+  if angle_off > max_angle {
+    return 0.
+  }
+  return claudia_burn_throttle(dv_left / 5, max_accel, 0).
+}
+
+// Trims a short burn once (#577): turns to the vector remaining() returns as the trim begins and burns along it at a
+// low throttle (claudia_trim_throttle, lit while pointing within rcs_tolerance's aligned_deg) until its share along that
+// direction is under done_dv; any part off it stays. Gives up, with no reason, after 180 s (a 120 s turn and the burn).
+// Leaves throttle at 0 and steering locked. Returns "" or an abort reason.
+function claudia_trim {
+  parameter ctx, remaining, done_dv.
+  local dir is remaining():normalized.
+  lock steering to claudia_keep_roll(dir).
+  local tset is 0.
+  lock throttle to tset.
+  local stop_ut is time:seconds + 180.
+  local reason is "".
+  until time:seconds > stop_ut {
+    local along is vdot(dir, remaining()).
+    if along < done_dv {
+      break.
+    }
+    set tset to claudia_trim_throttle(along, ship:availablethrust / ship:mass, vang(ship:facing:forevector, dir), ctx:opt:rcs_tolerance:aligned_deg).
+    set reason to claudia_tick(ctx, tset).
+    if reason <> "" {
+      break.
+    }
+    wait 0.
+  }
+  set tset to 0.
+  return reason.
 }
 
 // ---- RCS Use ----
@@ -1633,6 +1885,7 @@ function claudia_begin {
   addons:claudia:blockstart(block).
   return lexicon(
     "block", block,
+    "nodes0", claudia_node_sigs(allnodes),
     "error", checked:error,
     "opt", checked:opt,
     "start_ut", time:seconds,
@@ -1736,10 +1989,51 @@ function claudia_dv_remaining {
   return round(ship:deltav:current, 1).
 }
 
+// A maneuver node's identity for "was it there when the block started" (kOS gives no id): its time and burn, as text.
+function claudia_node_sig {
+  parameter nd.
+  return nd:time + "|" + nd:radialout + "|" + nd:normal + "|" + nd:prograde.
+}
+
+// The sigs of a list of nodes.
+function claudia_node_sigs {
+  parameter nodes.
+  local sigs is list().
+  for nd in nodes {
+    sigs:add(claudia_node_sig(nd)).
+  }
+  return sigs.
+}
+
+// The nodes in the list that were not there (by sig) when the block started. Pure.
+function claudia_node_strays {
+  parameter before, nodes.
+  local strays is list().
+  for nd in nodes {
+    if not before:contains(claudia_node_sig(nd)) {
+      strays:add(nd).
+    }
+  }
+  return strays.
+}
+
+// What a removed node is reported as: lexicon(ut, dv in m/s). Pure.
+function claudia_node_report {
+  parameter nd.
+  return lexicon("ut", round(nd:time, 1), "dv", round(sqrt(nd:radialout ^ 2 + nd:normal ^ 2 + nd:prograde ^ 2), 1)).
+}
+
 // The block's result lexicon: the Script Result's common fields plus extra (the block's own).
+// A node the block added that is still in place is removed and reported as node_removed (a list of lexicon(ut, dv)); nodes
+// there when the block started are left alone (#537).
 function claudia_finish {
   parameter ctx, success, reason, extra.
   claudia_rcs_restore_tuning().
+  local removed is list().
+  for nd in claudia_node_strays(ctx:nodes0, allnodes) {
+    removed:add(claudia_node_report(nd)).
+    remove nd.
+  }
   local result is lexicon(
     "success", success,
     "reason", reason,
@@ -1759,6 +2053,9 @@ function claudia_finish {
   }
   if ctx:dropped:length > 0 {
     set result["dropped"] to ctx:dropped.
+  }
+  if removed:length > 0 {
+    set result["node_removed"] to removed.
   }
   for key in extra:keys {
     set result[key] to extra[key].

@@ -250,6 +250,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void It_runs_in_milliseconds()
         {
             // A next_patch_pe search that finds its burn, a full scan that never reaches the goal, and a closed-form goal. Measured

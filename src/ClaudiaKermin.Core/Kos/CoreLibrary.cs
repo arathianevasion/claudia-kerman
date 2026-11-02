@@ -111,6 +111,36 @@ namespace ClaudiaKermin.Core.Kos
             return lines;
         }
 
+        /// <summary>
+        /// Claudia's Mission Script alone: the lines of <paramref name="source"/> before <see cref="LibraryStartLine"/> (all of it
+        /// when it is not a bundle), with each comment blanked to spaces and, when <paramref name="maskStrings"/>, each string's
+        /// contents too (its quotes kept). Every character stays at its position, so offsets and line numbers match the script
+        /// Claudia sent (line endings are normalised to <c>\n</c>).
+        /// </summary>
+        public static string MissionScript(string source, bool maskStrings = false)
+        {
+            source = (source ?? "").Replace("\r\n", "\n");
+            if (LibraryStartLine(source) != int.MaxValue) source = source.Substring(0, source.Length - LibraryTail.Value.Length);
+            var text = new StringBuilder(source);
+            var inString = false;
+            for (var i = 0; i < text.Length; i++)
+            {
+                var c = text[i];
+                if (c == '\n') inString = false;
+                else if (c == '"') inString = !inString;
+                else if (inString)
+                {
+                    if (maskStrings) text[i] = ' ';
+                }
+                else if (c == '/' && i + 1 < text.Length && text[i + 1] == '/')
+                {
+                    for (; i < text.Length && text[i] != '\n'; i++) text[i] = ' ';
+                    i--;
+                }
+            }
+            return text.ToString();
+        }
+
         /// <summary>What <see cref="Bundle"/> appends after the Mission Script and the blank line that ends it.</summary>
         private static readonly Lazy<string> LibraryTail = new Lazy<string>(() => Bundle("").Substring(2));
 

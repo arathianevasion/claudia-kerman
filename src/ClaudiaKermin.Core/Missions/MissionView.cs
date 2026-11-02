@@ -290,11 +290,13 @@ namespace ClaudiaKermin.Core.Missions
 
         public string MissionId = "";
         public string Goal = "";
+        /// <summary>The Mission Goal's steps, each ticked or not, for the list under the pinned goal; empty when no Mission Plan gave any (#581).</summary>
+        public IList<GoalItem> GoalSteps = new List<GoalItem>();
         public string Model = "";
         public decimal SpendingCap;
         /// <summary>Cost so far from real usage, USD. With <see cref="HeldCharges"/> and <see cref="PendingCharge"/> it is what counts against the Spending Cap.</summary>
         public decimal Spent;
-        /// <summary>Worst-case charges kept for cancelled and lost requests; never refunded.</summary>
+        /// <summary>Input costs kept for cancelled and lost requests (one that got no reply at all can't have billed output; one that returned anything is paid at its usage instead).</summary>
         public decimal HeldCharges;
         /// <summary>The worst case of the request in flight, recorded before sending and replaced by the real usage; 0 when none is.</summary>
         public decimal PendingCharge;
@@ -332,6 +334,8 @@ namespace ClaudiaKermin.Core.Missions
         public bool AutoMode;
         /// <summary>Under Auto Mode: why it is waiting for the player (spec #327, Wording), also the text of the attention it raises; "" when it isn't.</summary>
         public string AutoModeStop = "";
+        /// <summary>The Spent, held and reserve breakdown (and the cap to raise to) when Auto Mode stopped for lack of room in the Spending Cap, for the cap view; "" otherwise.</summary>
+        public string CapRoomStop = "";
         /// <summary>While Paused for EVA science: what the player is to do by hand, then Resume; "" otherwise.</summary>
         public string EvaScience = "";
         /// <summary>

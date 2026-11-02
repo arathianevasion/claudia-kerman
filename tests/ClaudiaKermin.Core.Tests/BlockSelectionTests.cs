@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System.Linq;
+using ClaudiaKermin.Core.Config;
 using ClaudiaKermin.Core.Kos;
 using ClaudiaKermin.Core.Missions;
 using Xunit;
@@ -96,12 +97,26 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void TheLayerHasFullDocsOnlyForThePickedBlocksAndTheBaseLayerNamesAll()
         {
-            var layer = MissionPrompts.MissionLayer("m1", "Fly the science experiments in orbit");
+            var layer = MissionPrompts.MissionLayer("Fly the science experiments in orbit");
             var launch = CoreLibrary.Blocks.First(b => b.Name == "launch").Docs;
             var reentry = CoreLibrary.Blocks.First(b => b.Name == "reentry").Docs;
             Assert.Contains(string.Join("\n", launch.ToArray()), layer);
             Assert.DoesNotContain(string.Join("\n", reentry.ToArray()), layer);
             Assert.Contains(reentry[0], MissionPrompts.BaseLayer);
+        }
+
+        [Fact]
+        public void TwoMissionsWithTheSameGoalBodiesAndTurnShapeShareTheirPerMissionLayerAndDifferOnlyInTheTimingLayersId()
+        {
+            const string goal = "Fly the science experiments in orbit";
+            var first = MissionPrompts.MissionLayer(goal, "\n\nBodies", 0.35);
+            Assert.Equal(first, MissionPrompts.MissionLayer(goal, "\n\nBodies", 0.35));
+            Assert.DoesNotContain("m1", first);
+            var settings = MissionSettingsValues.Defaults(new PlayerConfig());
+            var timing1 = MissionPrompts.TimingLayer("m1", settings);
+            var timing2 = MissionPrompts.TimingLayer("m2", settings);
+            Assert.StartsWith("Mission m1.\n\n", timing1);
+            Assert.Equal(timing1.Substring("Mission m1.".Length), timing2.Substring("Mission m2.".Length));
         }
     }
 }

@@ -94,14 +94,14 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void TheSchemaRequiresEveryDebriefFieldTheMissionAsksFor()
         {
-            // A Debrief request sends the flight schema (#199).
-            using (var request = JsonDocument.Parse(MissionReply.FlightSchemaJson))
+            // A Debrief request sends the one Mission schema (ADR 0012).
+            using (var request = JsonDocument.Parse(MissionReply.MissionSchemaJson))
             {
                 var schema = request.RootElement;
                 var debrief = schema.GetProperty("properties").GetProperty("debrief").GetProperty("anyOf")[0];
                 var required = debrief.GetProperty("required").EnumerateArray().Select(e => e.GetString()).ToList();
                 var properties = debrief.GetProperty("properties").EnumerateObject().Select(p => p.Name).ToList();
-                foreach (var name in new[] { "outcome_vs_target", "plan_margin", "science", "goal_checklist", "follow_up", "follow_up_text" })
+                foreach (var name in new[] { "outcome_vs_target", "plan_margin", "science", "goal_steps_done", "follow_up", "follow_up_text" })
                 {
                     Assert.Contains(name, required);
                     Assert.Contains(name, properties);
@@ -135,6 +135,52 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("3,200 m/s left against 1,000 m/s to fly: plenty.", request);
         }
 
+        // ---- The blocks trail (#609) ----
+
+        [Fact]
+        public void TheDebriefRequestListsEveryBlocksResultWhateverTheScriptReported()
+        {
+            // 20ac's Sequence Plan 3: transfer_to's encounter was lost when the script reported a lexicon of its own.
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning(s => s.Stages[0].DeltaVVac = 3200);
+            // The ejection burned: not a refusal before any burn, which the mod would Debrief itself.
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2340));
+
+            rig.Mission.Send(new KosBlockEnded("transfer_to", new Dictionary<string, object>
+            {
+                { "success", true }, { "reason", "done" }, { "encounter_ut", 1203456.0 }, { "target_pe_actual", 41200.0 }, { "ejection_wait", 300.0 },
+            }, start.RunId));
+            var own = new Dictionary<string, object> { { "success", false }, { "reason", "transfer ended outside the Mun SOI" } };
+            rig.Mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, own, "", "", false), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            var request = LastUserText(rig.Transport.Requests[2]);
+            Assert.Contains("Report (JSON data): {\"success\":false,\"reason\":\"transfer ended outside the Mun SOI\"}\n" + BlockTrail.LinePrefix
+                + "[{\"block\":\"transfer_to\",\"success\":true,\"reason\":\"done\",\"encounter_ut\":1203456,\"target_pe_actual\":41200}]", request);
+        }
+
+        [Fact]
+        public void ThePlansDebriefRecordCarriesTheBlocksTrail()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning();
+            var launch = new Dictionary<string, object> { { "success", true }, { "reason", "done" }, { "duration", 80.0 } };
+            var circularize = new Dictionary<string, object> { { "success", true }, { "reason", "done" }, { "duration", 41.0 }, { "ecc", 0.002 } };
+
+            rig.Mission.Send(new KosBlockEnded("launch", launch, start.RunId));
+            rig.Mission.Send(new KosBlockEnded("circularize", circularize, start.RunId));
+            rig.Mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, circularize, "", "", false), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            // The Debrief text leaves out the block the script reported; the log keeps every block.
+            Assert.Contains(BlockTrail.LinePrefix + "[{\"block\":\"launch\",\"success\":true,\"reason\":\"done\"}]", LastUserText(rig.Transport.Requests[2]));
+            var path = Path.Combine(_save.Path, "ClaudiaKermin", "missions", rig.Mission.View.MissionId, "plans.jsonl");
+            var plan = File.ReadAllLines(path).Select(l => JsonDocument.Parse(l).RootElement).Single(l => l.GetProperty("event").GetString() == "plan" && l.TryGetProperty("debrief", out _));
+            var blocks = plan.GetProperty("debrief").GetProperty("blocks").EnumerateArray().ToList();
+            Assert.Equal(new[] { "launch", "circularize" }, blocks.Select(b => b.GetProperty("block").GetString()));
+            Assert.Equal(0.002, blocks[1].GetProperty("ecc").GetDouble());
+        }
+
         // ---- The whole run's delta-v (#384) ----
 
         [Fact]
@@ -148,6 +194,67 @@ namespace ClaudiaKermin.Core.Tests
             rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
 
             Assert.Contains("Delta-v used this run, from stock: 1,038 m/s (left at start 3,913 m/s, now 2,875 m/s).", LastUserText(rig.Transport.Requests[2]));
+        }
+
+        // ---- Data kept on board (#612) ----
+
+        [Fact]
+        public void TheDebriefNoticeSaysTheDataIsAboardOnlyWhenAScienceCallKeptSome()
+        {
+            var kept = new Rig(this, DebriefJson("Nominal", ""));
+            var start = kept.RunToRunning();
+            var result = new Dictionary<string, object>
+            {
+                { "success", true },
+                { "kept", new List<object> { "crewReport: no link; call science with transmit once the link is up, from anywhere" } },
+            };
+            kept.Mission.Send(new KosBlockEnded("science", result, start.RunId));
+            kept.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            kept.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+            Assert.Contains("The data is aboard; sending it needs no new landing.", kept.Transport.Requests[2].Body);
+
+            var sent = new Rig(this, DebriefJson("Nominal", ""));
+            var sentStart = sent.RunToRunning();
+            sent.Mission.Send(new KosBlockEnded("science", new Dictionary<string, object> { { "success", true } }, sentStart.RunId));
+            sent.Mission.Send(new KosRunEnded(Finished(), sentStart.RunId));
+            sent.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+            Assert.DoesNotContain("no new landing", sent.Transport.Requests[2].Body);
+        }
+
+        [Fact]
+        public void DeltaVDroppedWithAStageAtZeroThrottleIsLeftOutOfTheRunsDeltaVUsedAndTheLineSaysSo()
+        {
+            // 2d0c's landing leg (#605): 692 m/s burned, and the Swivel stack took 197 m/s with it.
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning(s => s.Stages[0].DeltaVVac = 3200);
+
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2900));
+            rig.Mission.Send(new CraftSeparated());
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2703));
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2703));
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2311));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Contains("Delta-v used this run, from stock: 692 m/s (left at start 3,200 m/s, now 2,311 m/s; 197 m/s dropped with stages at zero "
+                + "throttle isn't counted).", LastUserText(rig.Transport.Requests[2]));
+        }
+
+        [Fact]
+        public void AStageDroppedJustBeforeTheRunEndsIsStillLeftOutOfTheRunsDeltaVUsed()
+        {
+            // 2d0c's return dropped the lander stack after the last burn: the script can end before two readings agree.
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning(s => s.Stages[0].DeltaVVac = 3200);
+
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2291));
+            rig.Mission.Send(new CraftSeparated());
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 0));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Contains("Delta-v used this run, from stock: 909 m/s (left at start 3,200 m/s, now 0 m/s; 2,291 m/s dropped with stages at zero "
+                + "throttle isn't counted).", LastUserText(rig.Transport.Requests[2]));
         }
 
         [Fact]
@@ -452,6 +559,66 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void UnderAutoAnEnoughMarginSendsNoRecheckAndTheDebriefAndCardCarryTheModsCheck()
+        {
+            // 3,200 m/s left against the 1,000 m/s Second leg: enough.
+            var rig = new Rig(this, DebriefJson("Nominal", ""), recheck: MarginRecheckMode.Auto);
+            var start = rig.RunToRunning();
+            var checksBefore = rig.Router.CheckRequests.Count;
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(checksBefore, rig.Router.CheckRequests.Count);
+            Assert.DoesNotContain(rig.CostLog(), c => c.Outcome == "margin_recheck");
+            var text = LastUserText(rig.Transport.Requests[2]);
+            Assert.Contains("The mod's margin check (the craft as it is now against the Maneuver Sequences still to fly): 3,200 m/s left against 1,000 m/s still to fly (+220%; 15% wanted): enough.", text);
+            Assert.DoesNotContain("The mod's margin recheck", text);
+            var detail = rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief;
+            Assert.StartsWith("3,200 m/s left against 1,000 m/s", detail.RecheckSummary);
+            // The on-pad craft generates no electric charge: the start check's Warning, shown again but not making the margin tight.
+            Assert.Contains(detail.RecheckFindings, f => f.StartsWith("Warning: No electric charge generation"));
+            Assert.NotNull(detail.Margin);
+        }
+
+        [Fact]
+        public void UnderAutoATightMarginSendsTheRecheckAndBothReachTheDebrief()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""), recheck: MarginRecheckMode.Auto);
+            rig.Router.Recheck = Reply("{\"summary\":\"Within the legs, not the margin.\",\"findings\":[]}");
+            var start = rig.RunToRunning();
+            var checksBefore = rig.Router.CheckRequests.Count;
+
+            // 1,100 m/s left against 1,000 still to fly: the legs fit, the 15% margin doesn't.
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 1100));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(checksBefore + 1, rig.Router.CheckRequests.Count);
+            Assert.Contains(rig.CostLog(), c => c.Event == "pending" && c.Outcome == "margin_recheck");
+            var text = LastUserText(rig.Transport.Requests[2]);
+            Assert.Contains("1,100 m/s left against 1,000 m/s still to fly (+10%; 15% wanted): tight.", text);
+            Assert.Contains("Blocker: Not enough delta-v", text);
+            Assert.Contains("The mod's margin recheck (a Craft Check of the craft as it is now", text);
+            Assert.Contains("Within the legs, not the margin.", text);
+        }
+
+        [Fact]
+        public void NeverSendsNoRecheckEvenWhenTheMarginIsShort()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""), recheck: MarginRecheckMode.Never);
+            var start = rig.RunToRunning();
+            var checksBefore = rig.Router.CheckRequests.Count;
+
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 500));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(checksBefore, rig.Router.CheckRequests.Count);
+            Assert.Contains("500 m/s left against 1,000 m/s still to fly (-50%; 15% wanted): short.", LastUserText(rig.Transport.Requests[2]));
+        }
+
+        [Fact]
         public void TheMarginRecheckIsSkippedWhenTheSpendingCapHasNoRoomForItBesideTheDebrief()
         {
             // Room for the plan, the sequence and the Debrief, but not for a recheck on top of them.
@@ -501,6 +668,110 @@ namespace ClaudiaKermin.Core.Tests
                 Assert.True(cap < settled + log[recheck].Amount + debrief.Amount, "the recheck would fit under the derived cap " + cap);
                 return cap;
             }
+        }
+
+        private static void QueueRecheckToolSteps(Rig rig, int count, int pricedStep = -1)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                var call = ("stage_performance", "{\"situation\":\"surface\",\"n\":" + i + "}");
+                rig.Router.Rechecks.Enqueue(i == pricedStep ? ToolUseStreams.ToolUsePriced("rc" + i, 100000, call) : ToolUseStreams.ToolUse("rc" + i, call));
+            }
+        }
+
+        private static string Events(Rig rig)
+        {
+            var path = Path.Combine(rig.Folder, MissionStore.EventsFile);
+            return File.Exists(path) ? File.ReadAllText(path) : "";
+        }
+
+        [Fact]
+        public void AfterEightToolStepsTheMarginRecheckSendsOneLastRequestWithToolChoiceNoneAndTheSameToolsAndATextReplyCompletesIt()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            QueueRecheckToolSteps(rig, 8);
+            rig.Router.Rechecks.Enqueue(Reply("{\"summary\":\"Plenty left.\",\"findings\":[]}"));
+            var start = rig.RunToRunning();
+            var checksBefore = rig.Router.CheckRequests.Count;
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(checksBefore + 9, rig.Router.CheckRequests.Count);
+            using (var first = JsonDocument.Parse(rig.Router.CheckRequests[checksBefore].Body))
+            {
+                for (var step = 0; step < 9; step++)
+                {
+                    using (var doc = JsonDocument.Parse(rig.Router.CheckRequests[checksBefore + step].Body))
+                    {
+                        Assert.Equal(step == 8 ? "{\"type\":\"none\"}" : "{\"type\":\"auto\"}", doc.RootElement.GetProperty("tool_choice").GetRawText());
+                        Assert.Equal(first.RootElement.GetProperty("tools").GetRawText(), doc.RootElement.GetProperty("tools").GetRawText());
+                        Assert.Equal(first.RootElement.GetProperty("system").GetRawText(), doc.RootElement.GetProperty("system").GetRawText());
+                    }
+                }
+            }
+            Assert.Contains("tool_limit_final", Events(rig));
+            Assert.Contains("The mod's margin recheck", LastUserText(rig.Transport.Requests[2]));
+            Assert.Equal("", rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief.RecheckSkipped ?? "");
+        }
+
+        [Fact]
+        public void AMarginRecheckWhoseLastReplyStillCallsToolsEndsWithoutItAsBefore()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            QueueRecheckToolSteps(rig, 9);
+            var start = rig.RunToRunning();
+            var checksBefore = rig.Router.CheckRequests.Count;
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(checksBefore + 9, rig.Router.CheckRequests.Count);
+            Assert.Contains("Claudia kept calling Planning Tools after the limit of 8 steps", rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief.RecheckSkipped);
+        }
+
+        [Fact]
+        public void TheMarginRechecksLastRequestIsBlockedByTheDebriefRoomGateAsAnyStepIs()
+        {
+            // The cap that fits the first eight recheck requests and the Debrief's room, not the ninth.
+            decimal cap;
+            using (var probe = new MissionDebriefTests())
+            {
+                var rig = new Rig(probe, DebriefJson("Nominal", ""));
+                QueueRecheckToolSteps(rig, 8, pricedStep: 7);
+                rig.Router.Rechecks.Enqueue(Reply("{\"summary\":\"Plenty left.\",\"findings\":[]}"));
+                var start = rig.RunToRunning();
+                rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+                rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+                var log = rig.CostLog();
+                var first = log.Select((c, i) => new { c, i }).First(x => x.c.Event == "pending" && x.c.Outcome == "margin_recheck").i;
+                var committed = log.Take(first).Where(c => c.Event == "paid" || c.Event == "craft_check_paid").Sum(c => c.Amount);
+                var reserve = log[first + 18].Amount;
+                Assert.Equal("pending", log[first + 18].Event);
+                decimal low = 0;
+                for (var k = 0; k < 8; k++)
+                {
+                    low = Math.Max(low, committed + log[first + 2 * k].Amount + reserve);
+                    committed += log[first + 2 * k + 1].Amount;
+                }
+                var high = committed + log[first + 16].Amount + reserve;
+                Assert.True(low < high, "no gap for a cap that fits the eight steps but not the last request: " + low + " to " + high);
+                // Just under the last request's gate, so the Debrief itself still fits once the recheck is cut short.
+                cap = high - 0.0001m;
+            }
+
+            var run = new Rig(this, DebriefJson("Nominal", ""), cap: cap);
+            QueueRecheckToolSteps(run, 8, pricedStep: 7);
+            run.Router.Rechecks.Enqueue(Reply("{\"summary\":\"Plenty left.\",\"findings\":[]}"));
+            var started = run.RunToRunning();
+            var before = run.Router.CheckRequests.Count;
+            run.Mission.Send(new KosRunEnded(Finished(), started.RunId));
+            run.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(before + 8, run.Router.CheckRequests.Count);
+            Assert.Contains("Spending Cap", run.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief.RecheckSkipped);
+            Assert.DoesNotContain("tool_limit_final", Events(run));
         }
 
         [Fact]
@@ -561,9 +832,9 @@ namespace ClaudiaKermin.Core.Tests
             rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
 
             var detail = rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief;
-            Assert.Equal("Short by 300 m/s.", detail.RecheckSummary);
-            Assert.Single(detail.RecheckFindings);
-            Assert.Contains("900 m/s left against 1,200 needed.", detail.RecheckFindings[0]);
+            // The mod's own margin line comes first on the card, then Claudia's; her finding follows the mod's.
+            Assert.Equal("3,200 m/s left against 1,000 m/s still to fly (+220%; 15% wanted): enough. Claudia's recheck: Short by 300 m/s.", detail.RecheckSummary);
+            Assert.Contains("900 m/s left against 1,200 needed.", detail.RecheckFindings.Last());
             Assert.Contains("Short by 300 m/s.", LastUserText(rig.Transport.Requests[2]));
         }
 
@@ -650,6 +921,52 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal("", detail.ScriptError);
         }
 
+        private const string LeanExtras =
+            ",\"outcome_vs_target\":\"\",\"plan_margin\":\"\",\"science\":\"\",\"goal_steps_done\":[1],\"follow_up\":\"none\",\"follow_up_text\":\"\"";
+
+        [Fact]
+        public void ALeanNominalDebriefIsAcceptedAndItsCardHasTheModsSections()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", LeanExtras).Replace("\"what_happened\":\"It went.\"", "\"what_happened\":\"\""));
+            var start = rig.RunToRunning();
+            rig.Mission.Send(new RunEventSeen(RunEventKind.Staging, "Stage 1 separated", ApprovedAt + 20));
+            rig.Mission.Send(new RunEventSeen(RunEventKind.Science, "Mystery Goo on the pad: 3.0 science", ApprovedAt + 31));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.AwaitingSequenceApproval && !v.Busy);
+
+            var card = rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief);
+            Assert.Equal("Debrief: Nominal", card.Title);
+            Assert.Equal("Next: Fly on.", card.Text);
+            var detail = card.Debrief;
+            Assert.Equal("", detail.OutcomeVsTarget);
+            Assert.Equal("", detail.PlanMargin);
+            Assert.Equal("", detail.Science);
+            // The mod's sections carry the card: the margin bar, the Margin check line, its events and the science it saw.
+            Assert.NotNull(detail.Margin);
+            Assert.NotEqual("", detail.RecheckSummary);
+            Assert.Single(detail.Events);
+            Assert.Equal(new[] { "+31 s Mystery Goo on the pad: 3.0 science" }, detail.ScienceSeen);
+            // The plan gave the Mission Goal's steps; the Debrief ticked the first.
+            Assert.Equal(1, detail.ChecklistDone);
+            Assert.Equal(2, detail.Checklist.Count);
+            Assert.Equal(new[] { true, false }, rig.Mission.View.GoalSteps.Select(s => s.Done));
+        }
+
+        [Fact]
+        public void AnOffNominalDebriefWithThoseFieldsEmptyIsHandledAsBefore()
+        {
+            var rig = new Rig(this, DebriefJson("Off-Nominal", LeanExtras.Replace("\"follow_up\":\"none\"", "\"follow_up\":\"corrective_sequence\"")));
+            var start = rig.RunToRunning();
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.AwaitingSequenceApproval && !v.Busy);
+
+            var card = rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief);
+            Assert.Equal("Debrief: Off-Nominal", card.Title);
+            Assert.Equal("It went.\nNext: Fly on.", card.Text);
+            Assert.Equal("", card.Debrief.OutcomeVsTarget);
+            Assert.Equal("Corrective sequence next: Fly on.", card.Debrief.FollowUp);
+        }
+
         [Fact]
         public void AFailedRunsDebriefCardIncludesTheScriptsErrorText()
         {
@@ -688,6 +1005,20 @@ namespace ClaudiaKermin.Core.Tests
 
             Assert.Contains("Revise the Mission Plan after the Off-Nominal Debrief", LastUserText(rig.Transport.Requests[3]));
             Assert.Contains("Revised Mission Plan next: Add a second burn.", rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief.FollowUp);
+        }
+
+        [Fact]
+        public void TheRevisedMissionPlanRequestAfterADebriefCarriesTheStageTable()
+        {
+            var rig = new Rig(this, DebriefJson("Off-Nominal", ",\"follow_up\":\"revised_plan\",\"follow_up_text\":\"Add a second burn.\""), PlanReply());
+            var start = rig.RunToRunning();
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => rig.Transport.Requests.Count == 4 && v.Stage == MissionStage.AwaitingPlanApproval);
+
+            var text = LastUserText(rig.Transport.Requests[3]);
+            Assert.Contains("Stage table: these are the figures stage_performance and plan_ascent would give for this craft now", text);
+            Assert.Contains("stage_performance {\"situation\":\"vacuum\"}: ", text);
         }
 
         [Fact]
@@ -834,7 +1165,7 @@ namespace ClaudiaKermin.Core.Tests
                 + "\"mission_plan\":{\"why\":\"Two legs.\",\"sequences\":["
                 + "{\"name\":\"Link check\",\"intent\":\"Prove the link.\",\"delta_v\":0,\"timing\":\"now\",\"due_time_ut\":-1,\"manual\":false},"
                 + "{\"name\":\"Second leg\",\"intent\":\"Go on.\",\"delta_v\":1000,\"timing\":\"after\",\"due_time_ut\":-1,\"manual\":false}],"
-                + "\"total_delta_v\":1000,\"expected_duration\":\"short\",\"mission_time_s\":-1}}");
+                + "\"total_delta_v\":1000,\"expected_duration\":\"short\",\"mission_time_s\":-1,\"goal_steps\":[\"Prove the link\",\"Go on\"]}}");
         }
 
         /// <summary>A reply as the stream carries it: the JSON as one text block, priced by its usage.</summary>
@@ -897,7 +1228,8 @@ namespace ClaudiaKermin.Core.Tests
             public readonly CraftCheckRouter Router;
             public readonly MissionControl Mission;
 
-            public Rig(MissionDebriefTests tests, string debrief, ScriptedResponse after = null, decimal cap = 10m)
+            /// <param name="recheck">Always by default: most of these tests are of Claudia's Margin recheck itself, which auto sends only when the mod's margin check is not enough.</param>
+            public Rig(MissionDebriefTests tests, string debrief, ScriptedResponse after = null, decimal cap = 10m, MarginRecheckMode recheck = MarginRecheckMode.Always)
             {
                 _tests = tests;
                 _cap = cap;
@@ -907,7 +1239,7 @@ namespace ClaudiaKermin.Core.Tests
                 Router = new CraftCheckRouter(Transport);
                 var client = new ClaudeClient(Router, () => "sk-ant-test", l => { });
                 client.Timing.Wait = (d, c) => { };
-                var config = new PlayerConfig { CheckDurationPercent = 1000 };
+                var config = new PlayerConfig { CheckDurationPercent = 1000, MarginRecheck = recheck };
                 Mission = new MissionControl(client, tests._background, config, () => true, new PassingScriptCheck());
                 Mission.Send(new SaveLoaded(tests._save.Path));
                 Mission.Send(new SceneChanged(GameScene.Flight));
@@ -943,6 +1275,11 @@ namespace ClaudiaKermin.Core.Tests
                 }
                 _tests._background.Drain();
                 Assert.True(condition(Mission.View), "never reached; stage is " + Mission.View.Stage + " " + Mission.View.PauseReason);
+            }
+
+            public string Folder
+            {
+                get { return Path.Combine(_tests._save.Path, "ClaudiaKermin", "missions", Mission.View.MissionId); }
             }
 
             public IList<CostLine> CostLog()

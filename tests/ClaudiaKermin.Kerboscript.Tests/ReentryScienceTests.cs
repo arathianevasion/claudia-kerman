@@ -302,6 +302,47 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal(-1, Number(string.Format(CultureInfo.InvariantCulture, "reentry_entry_eta(1.2, {0}, {1}, {2}, 180)", D(outSma), D(KerbinMu), D(KerbinRadius + 70000))));
         }
 
+        // ---- reentry: a skip-out (#592) ----
+
+        [Theory]
+        [InlineData("true, 70500, 70000, 12", "1")]
+        [InlineData("true, 69000, 70000, 12", "0")]
+        [InlineData("true, 70500, 70000, -12", "0")]
+        [InlineData("false, 70500, 70000, -12", "0")]
+        [InlineData("false, 72000, 70000, 30", "0")]
+        public void A_skip_out_is_a_craft_that_was_in_the_atmosphere_and_is_now_above_it_and_climbing(string args, string expected)
+        {
+            Assert.Equal(expected == "1" ? "True" : "False", One("reentry_skipped_out(" + args + ")"));
+        }
+
+        [Fact]
+        public void A_skip_out_with_the_periapsis_still_inside_waits_for_the_next_pass_and_the_auto_deadline_grows()
+        {
+            Assert.Equal("", One("reentry_skip_refusal(1, 34800, 70000)"));
+            Assert.Equal("", One("reentry_skip_refusal(2, 34800, 70000)"));
+            // 3 s run, 5000 s to the next entry: the deadline is 3 + 5000 + 1800.
+            Assert.Equal(6803, Number("reentry_next_deadline(true, 1900, 3, 5000)"));
+        }
+
+        [Fact]
+        public void A_fourth_pass_fails_with_the_skipped_out_reason()
+        {
+            Assert.Equal("skipped out of the atmosphere 3 times (periapsis 34800 m)", One("reentry_skip_refusal(3, 34800, 70000)"));
+        }
+
+        [Fact]
+        public void A_skip_out_with_the_periapsis_above_the_atmosphere_fails_at_once()
+        {
+            Assert.Equal("skipped out: periapsis 71000 m is above the atmosphere", One("reentry_skip_refusal(1, 71000, 70000)"));
+            Assert.Equal("skipped out: periapsis 71000 m is above the atmosphere", One("reentry_skip_refusal(3, 71000, 70000)"));
+        }
+
+        [Fact]
+        public void An_explicit_max_duration_stays_a_hard_cap_after_a_skip_out()
+        {
+            Assert.Equal(1900, Number("reentry_next_deadline(false, 1900, 3, 5000)"));
+        }
+
         // ---- science ----
 
         [Fact]
@@ -369,6 +410,50 @@ namespace ClaudiaKermin.Kerboscript.Tests
         public void Data_is_transmitted_or_kept_by_mode_return_trip_link_and_charge(string args, string expected)
         {
             Assert.Equal(expected, One("science_transmit_choice(" + args + ")"));
+        }
+
+        // #612: science_held_choice(has_data, inoperable, mode, returning, loses_value, can_send, ec_pct, min_ec_pct)
+        [Theory]
+        [InlineData("true, false, \"transmit\", false, false, true, 90, 10", "transmit")]                  // held crewReport, link up: sent
+        [InlineData("true, false, \"auto\", true, true, true, 90, 10", "keep: the craft is returning and transmitting would lose value")]
+        [InlineData("true, false, \"keep\", false, false, true, 90, 10", "")]                              // left to science_decision, which keeps it
+        [InlineData("true, false, \"transmit\", false, false, false, 90, 10", "keep: no antenna or no link")]
+        [InlineData("false, false, \"transmit\", false, false, true, 90, 10", "")]                         // nothing held: a fresh run
+        [InlineData("true, true, \"transmit\", false, false, true, 90, 10", "")]
+        public void Held_data_is_sent_or_kept_by_the_same_rule_as_fresh_data(string args, string expected)
+        {
+            Assert.Equal(expected, One("science_held_choice(" + args + ")"));
+        }
+
+        [Fact]
+        public void With_keep_held_data_is_never_overwritten()
+        {
+            Assert.Equal("skip: holds data, so it was not overwritten", One("science_decision(true, true, true, false, true, true, 30)"));
+        }
+
+        // #612: data kept for want of a link or charge gets a hint for a transmit-only call; other keeps get none.
+        [Theory]
+        [InlineData("keep: no antenna or no link", "crewReport: no link; call science with transmit once the link is up, from anywhere")]
+        [InlineData("keep: electric charge is under min_ec_pct", "crewReport: low charge; call science with transmit once charged, from anywhere")]
+        [InlineData("keep: transmit is 'keep'", "")]
+        [InlineData("keep: the craft is returning and transmitting would lose value", "")]
+        [InlineData("transmit", "")]
+        public void Data_kept_for_want_of_a_link_or_charge_carries_a_hint(string choice, string expected)
+        {
+            Assert.Equal(expected, One("science_kept_hint(\"crewReport\", \"" + choice + "\")"));
+        }
+
+        [Fact]
+        public void The_kept_list_appears_in_the_result_only_when_a_hint_is_added()
+        {
+            var lines = KosHarness.Run(CoreLibrary.Bundle(
+                "local extra is lexicon(\"results\", list()).\n"
+                + "science_note_kept(extra, \"\").\n"
+                + "print extra:haskey(\"kept\").\n"
+                + "science_note_kept(extra, \"crewReport: no link\").\n"
+                + "science_note_kept(extra, \"\").\n"
+                + "print extra:kept:length.\n"));
+            Assert.Equal(new[] { "False", "1" }, lines.ToArray());
         }
     }
 }

@@ -598,18 +598,18 @@ namespace ClaudiaKermin.Core.Tests
             var mission = Control(transport);
             ToMissionPlan(mission, 1.20m);
             var saved = Saved(mission);
-            Assert.Equal(0.54m, mission.View.Spent);
+            Assert.Equal(0.52m, mission.View.Spent);
 
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
-            Assert.Equal(1.08m, mission.View.Spent);
+            Assert.Equal(1.04m, mission.View.Spent);
 
             mission.Send(new MissionsRestored(_save.Path, saved));
             Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
-            Assert.Equal(1.08m, mission.View.Spent);
+            Assert.Equal(1.04m, mission.View.Spent);
             Assert.Equal(0m, mission.View.HeldCharges);
 
-            // $1.08 of $1.20 leaves no room for another request's worst case; at the save's $0.54 there was.
+            // $1.04 of $1.20 leaves no room for another request's worst case; at the save's $0.52 there was.
             mission.Send(new Approve());
             Assert.Equal(2, transport.Requests.Count);
             Assert.Equal(MissionStage.Paused, mission.View.Stage);
@@ -617,7 +617,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void ACrashMidRequestCountsTheWorstCaseAsKeptInAFreshGame()
+        public void ARequestLostAcrossALoadHoldsOnlyItsInputCost()
         {
             var held = ScriptedResponse.Fixture("mission-plan-priced.sse", 64);
             held.PauseAt = 100;
@@ -634,7 +634,10 @@ namespace ClaudiaKermin.Core.Tests
             // The resumed game has no snapshot yet, so the unanswered turn waits; nothing is sent to settle it.
             var resumed = Control(new StreamingFakeTransport());
             resumed.Send(new MissionsRestored(_save.Path, saved));
-            Assert.Equal(worstCase, resumed.View.HeldCharges);
+            // No response came, so no output was billed: only the input cost stays held (#535).
+            var input = worstCase - new PlayerConfig().Prices.OutputCost("claude-sonnet-5-5", MissionPrompts.MaxTokens);
+            Assert.True(input > 0m && input < worstCase);
+            Assert.Equal(input, resumed.View.HeldCharges);
             Assert.Equal(0m, resumed.View.Spent);
         }
 
@@ -644,12 +647,12 @@ namespace ClaudiaKermin.Core.Tests
             var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-priced.sse"));
             var mission = Control(transport);
             ToMissionPlan(mission);
-            Assert.Equal(0.54m, mission.View.Spent);
+            Assert.Equal(0.52m, mission.View.Spent);
 
             var later = Control(new StreamingFakeTransport());
             later.Send(new MissionsRestored(_save.Path, new List<MissionSaveState>()));
             Assert.Equal(mission.View.MissionId, later.View.MissionId);
-            Assert.Equal(0.54m, later.View.Spent);
+            Assert.Equal(0.52m, later.View.Spent);
         }
 
         [Fact]
@@ -694,7 +697,7 @@ namespace ClaudiaKermin.Core.Tests
 
             var later = Control(new StreamingFakeTransport());
             later.Send(new MissionsRestored(_save.Path, new List<MissionSaveState>()));
-            Assert.Equal(0.54m, later.View.Spent);
+            Assert.Equal(0.52m, later.View.Spent);
         }
 
         [Fact]
@@ -720,7 +723,7 @@ namespace ClaudiaKermin.Core.Tests
 
             later.Send(new Retry());
             Assert.Equal(MissionStage.AwaitingPlanApproval, later.View.Stage);
-            Assert.Equal(0.54m, later.View.Spent);
+            Assert.Equal(0.52m, later.View.Spent);
         }
 
         [Fact]
@@ -745,7 +748,7 @@ namespace ClaudiaKermin.Core.Tests
             }
 
             later.Send(new Retry());
-            Assert.Equal(0.54m, later.View.Spent);
+            Assert.Equal(0.52m, later.View.Spent);
         }
 
         [Fact]
@@ -764,7 +767,7 @@ namespace ClaudiaKermin.Core.Tests
             mission.Send(new MissionsRestored(_save.Path, saved));
             sequence.Gate.Set();
             DrainUntil(mission, v => !v.Busy && v.Stage == MissionStage.AwaitingPlanApproval);
-            Assert.Equal(1.08m, mission.View.Spent);
+            Assert.Equal(1.04m, mission.View.Spent);
         }
 
         [Fact]
@@ -1228,7 +1231,8 @@ namespace ClaudiaKermin.Core.Tests
             transport = new StreamingFakeTransport(responses.ToArray());
             mission = Control(transport);
             var start = ToRunning(mission);
-            var report = new Dictionary<string, object> { { "success", false }, { "reason", "link check" }, { "situation", "PRELAUNCH" } };
+            // It burned, so Claudia debriefs it: a refusal before any burn would get the mod's own Debrief (#579).
+            var report = new Dictionary<string, object> { { "success", false }, { "reason", "link check" }, { "situation", "PRELAUNCH" }, { "dv_used", 40.0 } };
             mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, report, "", "", false), start.RunId));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingReducedGoal);
             mission.Send(new RetryWithNote("Any orbit will do."));
@@ -1384,6 +1388,46 @@ namespace ClaudiaKermin.Core.Tests
             var turn = Messages(after.Requests[0]).Where(m => m.GetProperty("role").GetString() == "user").Select(Text).Last();
             Assert.Contains("+12 s staging: stage 1 fired", turn);
             Assert.Contains("+20 s Mystery Goo on the pad: 3.0 science", turn);
+        }
+
+        [Fact]
+        public void TheBlocksTrailSurvivesAQuickloadAndReachesTheInterruptedDebrief()
+        {
+            // a107's Sequence Plan 5: return's planet_pe must outlive the blocks after it, and a load.
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission);
+            mission.Send(new KosBlockEnded("return", new Dictionary<string, object>
+            {
+                { "success", true }, { "reason", "done" }, { "planet_pe", 32000.0 }, { "correction_dv", 12.4 },
+            }, start.RunId));
+            mission.Send(new KosBlockEnded("drop_parts", new Dictionary<string, object>
+            {
+                { "success", true }, { "reason", "done" }, { "parts_dropped", 3.0 },
+            }, start.RunId));
+            // Through the plain values a ConfigNode holds, as a real save does.
+            var loaded = new List<MissionSaveState> { MissionSaveState.FromValues(Saved(mission)[0].ToValues()) };
+
+            var after = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-debrief.sse"));
+            var resumed = Control(after);
+            resumed.Send(new MissionsRestored(_save.Path, loaded));
+            resumed.Send(new SceneChanged(GameScene.Flight));
+            resumed.Send(OnPad());
+            DrainUntil(resumed, v => v.Stage == MissionStage.Succeeded);
+            var turn = Messages(after.Requests[0]).Where(m => m.GetProperty("role").GetString() == "user").Select(Text).Last();
+            Assert.Contains("Interrupted", turn);
+            Assert.Contains(BlockTrail.LinePrefix + "[{\"block\":\"return\",\"success\":true,\"reason\":\"done\",\"planet_pe\":32000,\"correction_dv\":12.4},"
+                + "{\"block\":\"drop_parts\",\"success\":true,\"reason\":\"done\",\"parts_dropped\":3}]", turn);
+        }
+
+        [Fact]
+        public void ASaveWithoutABlocksTrailLoadsWithNone()
+        {
+            var state = MissionSaveState.FromValues(new Dictionary<string, string> { { "id", "m1" } });
+            Assert.Equal("", state.BlockTrail);
+            Assert.False(state.ToValues().ContainsKey("blockTrail"));
         }
 
         [Fact]

@@ -1,0 +1,235 @@
+: attempt 1
+event: message_start
+data: {"type":"message_start","message":{"model":"claude-sonnet-5-5","id":"msg_011CgcYtr8VMZsEiLdXEg3fH","type":"message","role":"assistant","content":[],"container":null,"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":2,"cache_creation_input_tokens":3389,"cache_read_input_tokens":146186,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":3389},"output_tokens":8,"service_tier":"standard","inference_geo":"global","speed":"standard"},"diagnostics":null,"context_management":null}}
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}   }
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"CAQSsgcKEAgTGAI4AUIIdGhpbmtpbmcSDDCMlWlZucPQipLG/hoM35bqKWcFeQFf1m+MIjBjLDZTMwk5lOFfuzjfjH0jtU2D8DMHRnBmDsYX+AntyNm/zTyFy0aIqIhjs4XTdOAqzwblVSL3tqyIrBXi73yeELsNkIUXtR/PGYMvIBTK+k7n/4dsiddoTJzIz3/5xCC0eG6We/n/2D9aCyiXyOQ1hssPiCgmSBdfVhPUfu4ufpx+TCGurAtb8Onx0O8mvUeBy5wK+fT8Z2Z1WHFuDVtSTWClatQtStFf6abQzKbKSJ98eRiwyhVnMTIgJ6HNNwpF2tfWCyO1GKh0TSoea5kTjxlqZqTRZciZg1t3/e53Z0sZypfq+w2x3+ODqOaHfDGPXZcdtElwCEtTTom7jck7Xxv8teVaLWWoRGR9IzTQ5XBtIs/ZzHWfbxeykgMDLDcn50B9cjWFfMmT97KggLKB1ASaDNXSCzq+eDnIpGK9Nuq/lFcp4LE+Svm2zrDdl4IQGK9U2OWQkihbIGUnm5+KgAFT76SQUKcCvwWg9mD19NxNT2vgORzFk6NRx9MgQeAel3fKt2JKH39CjoXgVMFrawJl4ccBgdlLN9rqb9XV9ce980mHt5xLgblAJJ82kyXB40nG/uAaJwhQpy3LG6CnaT4lHvANXndY+ajnBLKXOk0Mx7E989kBdp+jCGkkF7F5A2DQcX04+lMxoooumvnjQfpwBKCB41IGxdnYP2kwXPfCLib3UPJttwFYQFEXD11G+D+N0WZ72yZb+AYPhSSTuwvHQQa+m7youl+8GsVqy2nQJKwbzqaTHNk3+SNxDVKPAvbNZuCJZVAub6jcIM+SCLernXbcAb4TR4hyXl9+spAZpfA/QfRc09/OaROG/d3fCeBz5hPUeKfC9YcLW7XCvaUSCmK/yU407yiuuVPb+NfOyPXsi8SSzz4W0i5e69NG6x8gwDHS7xRwDoGP5j98fu492CNUdQ+g4WQWH7TNRjFch4na4PMh2JTyFY2ZuzsncJWRlbpeWYJ8sN5N4eoQpmYK1vS7eVPE2nBehSu2YIntv1wul1AJliPiqlAvnRZ7Q+qa9IJuptKmqE5SYeMSnps0C+F//KbHfd4TMGxA7Yt+JCyknZNwGfHTpqtC11DUUzPqxvvuNnSDcEKAU4Vz7mZxIx/4xStw0C99/7DYPe5SjzUZhfRVRAMjzFMAOlld/VM072iHNAMD90E95N8Bf9dOTGE6xAm2zwRbCBaHA3aeGAE="}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0 }
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"{\"kind\":\"debr"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ief\",\"say\":\"The"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" craft is inside Duna"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"'s sphere of influence on"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" a"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" h"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"yperbolic approach with"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" a "}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"94."}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"2 km periapsis,"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" using"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" "}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"0 m/s because"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" the ear"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"lier tr"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"im"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" had already put"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" it in"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" tolerance. The approach"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" is retrograde (incl"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ination 152 "}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"degrees), which"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" is fine for"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" capture"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" and landing. 3007"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" m/s is left against "}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"1550 m/s for cap"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ture and landing.\",\"reply"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"_int"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ent\":\""}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"none\",\"unsure_because"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\":\""}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\",\"s"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"equence_plan\":null,"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"debrief\":{\"out"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"come\":\"Nominal"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\",\"why\":\""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Periapsis 94 km"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" is within tolerance of "}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"110 km pl"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"us or"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" minus 40 km and the"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" craft is in"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" the"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Duna sphere of influ"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ence.\",\"what"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"_happened\":\"\",\"go"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"al_reached\":false,\""}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"next\":\"Capture at the"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" periapsis into"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" a low"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" circ"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ular Duna orbit with"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" the circularize block, about "}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"700"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" m/"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"s."}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\",\"e"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"va_science"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\":\"\",\"outcome_v"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"s_target\":\"\",\"plan"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"_margin\":\"\",\"science\":"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"\",\"goal_steps_"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"done\":[1,2,3"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"],\"follow_up\":\""}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"none\",\"follow_up_text"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\":\"\"},"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"alert\":null}"}    }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1     }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"container":null},"usage":{"input_tokens":2,"cache_creation_input_tokens":3389,"cache_read_input_tokens":146186,"output_tokens":416,"output_tokens_details":{"thinking_tokens":66},"iterations":[{"input_tokens":2,"output_tokens":416,"cache_read_input_tokens":146186,"cache_creation_input_tokens":3389,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":3389},"type":"message","model":null}]},"context_management":{"applied_edits":[]}     }
+
+event: message_stop
+data: {"type":"message_stop"           }
+

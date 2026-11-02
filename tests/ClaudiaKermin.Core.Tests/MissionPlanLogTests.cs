@@ -128,8 +128,18 @@ namespace ClaudiaKermin.Core.Tests
                 + "\"total_delta_v\":1000,\"expected_duration\":\"short\",\"mission_time_s\":-1}}");
         }
 
-        /// <summary>The log's lines, parsed.</summary>
+        /// <summary>The log's Sequence Plan lines, parsed (the Mission Plan turns' lines are <see cref="MissionPlanLines"/>).</summary>
         private List<JsonElement> PlanLines(MissionControl mission)
+        {
+            return Lines(mission).Where(l => l.GetProperty("event").GetString() == "plan").ToList();
+        }
+
+        private List<JsonElement> MissionPlanLines(MissionControl mission)
+        {
+            return Lines(mission).Where(l => l.GetProperty("event").GetString() == "mission_plan").ToList();
+        }
+
+        private List<JsonElement> Lines(MissionControl mission)
         {
             var path = Path.Combine(_save.Path, "ClaudiaKermin", "missions", mission.View.MissionId, "plans.jsonl");
             return File.ReadAllText(path).Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
@@ -180,6 +190,63 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(2, after.GetProperty("tools").GetProperty("stage_performance").GetInt32());
             Assert.True(after.GetProperty("debrief").GetProperty("cost").GetDecimal() > 0m);
             Assert.Equal(1, after.GetProperty("debrief").GetProperty("requests").GetInt32());
+        }
+
+        [Fact]
+        public void ACleanMissionPlanTurnRecordsZeroCalls()
+        {
+            var clean = Control(new StreamingFakeTransport(PlanReply()));
+            clean.Send(new StartMission(Goal, 25m, Sonnet));
+            DrainUntil(clean, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            var zero = Assert.Single(MissionPlanLines(clean));
+            Assert.Equal("MissionPlan", zero.GetProperty("purpose").GetString());
+            Assert.Equal(0, zero.GetProperty("tool_calls").GetInt32());
+            Assert.Equal(0, zero.GetProperty("refused_calls").GetInt32());
+            Assert.Equal(0, zero.GetProperty("repeat_calls").GetInt32());
+            Assert.Equal(0, zero.GetProperty("tool_steps").GetInt32());
+            Assert.False(zero.GetProperty("discarded").GetBoolean());
+            Assert.Empty(PlanLines(clean));
+        }
+
+        [Fact]
+        public void AMissionPlanTurnWithOneRefusedCallAndOneRepeatRecordsOneEach()
+        {
+            // predict_burn is refused on the pad; the second stage_performance repeats the first.
+            var transport = new StreamingFakeTransport(
+                ToolUseStreams.ToolUse("a", ("stage_performance", "{\"body\":\"Kerbin\",\"situation\":\"vacuum\"}"), ("predict_burn", "{}")),
+                ToolUseStreams.ToolUse("b", ("stage_performance", "{\"body\":\"Kerbin\",\"situation\":\"vacuum\"}")),
+                PlanReply());
+            var busy = Control(transport);
+            busy.Send(new StartMission(Goal, 25m, Sonnet));
+            DrainUntil(busy, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            var line = Assert.Single(MissionPlanLines(busy));
+            Assert.Equal(1, line.GetProperty("refused_calls").GetInt32());
+            Assert.Equal(1, line.GetProperty("repeat_calls").GetInt32());
+            Assert.Equal(3, line.GetProperty("tool_calls").GetInt32());
+            Assert.Equal(2, line.GetProperty("tool_steps").GetInt32());
+            Assert.Equal(3, line.GetProperty("requests").GetInt32());
+            Assert.Equal(3, line.GetProperty("tools").GetProperty("stage_performance").GetInt32() + line.GetProperty("tools").GetProperty("predict_burn").GetInt32());
+        }
+
+        [Fact]
+        public void ARevisedMissionPlanTurnRecordsItsOwnLineAndTheDebriefStillJoinsTheSequencePlanLine()
+        {
+            var transport = new StreamingFakeTransport(PlanReply(), Fixture("mission-sequence-plan-blocks.sse"), Fixture("mission-debrief.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission);
+            Assert.Single(MissionPlanLines(mission));
+
+            mission.Send(new KosRunEnded(Finished(), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            // The Mission Plan's line came first and stays as it was; the Debrief joined the Sequence Plan's.
+            var all = Lines(mission);
+            Assert.Equal(new[] { "mission_plan", "plan" }, all.Select(l => l.GetProperty("event").GetString()).ToArray());
+            Assert.False(all[0].TryGetProperty("debrief", out _));
+            Assert.Equal(1, all[1].GetProperty("plan").GetInt32());
+            Assert.Equal("Nominal", all[1].GetProperty("debrief").GetProperty("outcome").GetString());
         }
 
         [Fact]

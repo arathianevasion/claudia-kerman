@@ -25,9 +25,13 @@
     <None Include="Fixtures/**/*.json" CopyToOutputDirectory="PreserveNewest" />
     <!-- The kOS documented built-in names (see KosBuiltinNames.cs). -->
     <None Include="Fixtures/kos-builtins-documented.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The launch trace lines of a flight, as KSP.log has them, for the ascent replay (AscentReplay.cs). -->
+    <None Include="Fixtures/ascent-replay/*.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../src/ClaudiaKermin.Core/ClaudiaKermin.Core.csproj" />
+    <!-- The #534 probes build their requests in Probes; SchemaProbeTests pins them. -->
+    <ProjectReference Include="../../tools/ClaudiaKermin.SchemaProbe/ClaudiaKermin.SchemaProbe.csproj" />
   </ItemGroup>
 </Project>

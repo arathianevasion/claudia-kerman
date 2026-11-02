@@ -287,7 +287,7 @@ namespace ClaudiaKermin.Core.Tests
             mission.Send(new VesselsSeen(new List<SeenVessel> { CraftSeen(), ProbeSeen(id: "bystander", name: "Bystander") }));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
 
-            Assert.Contains("corrected Mission Plan", Messages(transport.Requests[1]));
+            Assert.Contains("Correct the Mission Plan", Messages(transport.Requests[1]));
             Assert.DoesNotContain("still the player's revision", Messages(transport.Requests[1]));
         }
 

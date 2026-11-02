@@ -169,10 +169,11 @@ function change_orbit_judge {
 
 // The block's flight, with its three contacts with the game passed in so the kOS harness can fly it: solve(ask) is
 // ORBITBURN's answer for the orbit as it is now, fly(plan) flies its node and returns exec_node's result, read(element)
-// is the element's figure now. Solves first, so the node is the live orbit's, not the plan's. Returns
+// is the element's figure now, first(ut) is "" or why a burn at ut must wait for a sphere-of-influence change
+// (claudia_soi_first, #610). Solves first, so the node is the live orbit's, not the plan's. Returns
 // lexicon("reason", "" or why the block fails, "extra", the block's extra results).
 function change_orbit_run {
-  parameter opt, solve, fly, read.
+  parameter opt, solve, fly, read, first.
   local done is lexicon("reason", "", "extra", lexicon("burn_ut", -1)).
   local plan is solve(change_orbit_ask(opt)).
   if plan:error <> "" {
@@ -185,6 +186,11 @@ function change_orbit_run {
   }
   local flown is lexicon("success", true, "reason", "").
   if plan:dv >= 0.05 {
+    local waits is first(plan:ut).
+    if waits <> "" {
+      set done:reason to waits.
+      return done.
+    }
     set done:extra:burn_ut to round(plan:ut, 1).
     set flown to fly(plan).
   }
@@ -277,6 +283,7 @@ function change_orbit {
       claudia_add_result(ctx, flown).
       return flown.
     },
-    { parameter element. return change_orbit_actual(element, tgt). }).
+    { parameter element. return change_orbit_actual(element, tgt). },
+    { parameter ut. return claudia_soi_first_at(ut). }).
   return claudia_finish(ctx, done:reason = "", done:reason, done:extra).
 }

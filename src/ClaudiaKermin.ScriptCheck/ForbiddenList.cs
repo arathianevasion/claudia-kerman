@@ -10,7 +10,7 @@ namespace ClaudiaKermin.ScriptCheck
 {
     /// <summary>
     /// The forbidden list, in the spec's words (user story 139), and the kOS 1.6 names behind each item.
-    /// Allowed, and so absent here: staging, action groups, DOEVENT and DOACTION on own parts, rails warp,
+    /// Allowed, and so absent here: action groups, DOEVENT and DOACTION on own parts, rails warp,
     /// maneuver nodes, HUDTEXT, VECDRAW, reading other vessels and targeting bodies.
     /// </summary>
     internal static class ForbiddenList
@@ -41,11 +41,18 @@ namespace ClaudiaKermin.ScriptCheck
         public const string BlockInternal = "call block-internal calculations";
         /// <summary>A Mission Script defining a function (or lock) the Core Library defines, which would change a block's code (ADR 0007).</summary>
         public const string RedefineLibrary = "redefine a Core Library function";
+        /// <summary>SET a:b[c] TO x: kOS compiles it as an index assignment on the suffix name, a string, and the run dies.</summary>
+        public const string SetSuffixIndex = "kOS miscompiles SET a:b[c] TO: assign through a local first (local x is a:b. set x[c] to ...)";
         /// <summary>
         /// Switching SAS on (RCS Use): SAS fights kOS steering and fires RCS through holds, so it stays off while a Mission Script runs.
         /// Only Claudia's code is held to it: the Core Library's claudia_make_safe turns SAS on at an abort.
         /// </summary>
         public const string SasOn = "SAS must stay off while a Mission Script runs: it fights kOS steering and fires RCS through holds";
+        /// <summary>
+        /// A bare STAGE. in a Mission Script (#537): it fires whatever stage is next, fuel aboard or not. Only Claudia's code is held
+        /// to it; the Core Library's blocks stage by their own rules (stage_limit, drop_empty).
+        /// </summary>
+        public const string BareStage = "a bare stage. can throw away a stage that still holds fuel: drop parts with drop_parts, or set a block's stage_limit for its staging";
         /// <summary>From the allowed list: <c>makebuiltindelegate</c> is allowed only with a constant argument.</summary>
         public const string ComputedDelegate = "makebuiltindelegate without a constant argument";
 
@@ -69,7 +76,7 @@ namespace ClaudiaKermin.ScriptCheck
             RebootOrShutDown, "deactivate",
             OtherVessels, "sendmessage",
             PlanningTools, "planningtool",
-            BlockInternal, "landingsite landingpass deorbitburn reentryimpact turntime ejectionburn launchwindow correctionburn orbitburn returnburn");
+            BlockInternal, "landingsite landingpass brakepath deorbitburn reentryimpact turntime ejectionburn launchwindow correctionburn orbitburn returnburn");
 
         /// <summary>Suffixes forbidden on another vessel or its parts: they change it. Reading stays allowed.</summary>
         public static readonly HashSet<string> OtherVesselMutators = Set(

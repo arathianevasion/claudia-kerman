@@ -96,6 +96,32 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal("unknown option colour", One("claudia_options(lexicon(\"colour\", 1), tune_pe_defaults(), \"auto\"):error"));
         }
 
+        // ---- a safe encounter after a miss on tolerance (#610) ----
+
+        [Fact]
+        public void A_periapsis_over_tolerance_on_a_safe_encounter_says_a_capture_can_follow()
+        {
+            // 20ac: 35.3 km at the Mun against 30 ± 5 km, well clear of its 7 km peaks.
+            Assert.Equal("; encounter safe: pe 35.3 km at Mun; a capture can follow", One("tune_pe_safe_hint(true, 35300, \"Mun\", tune_pe_safe_height(\"Mun\", false, 0))"));
+        }
+
+        [Theory]
+        [InlineData("true, 5000, \"Mun\", tune_pe_safe_height(\"Mun\", false, 0)")]
+        [InlineData("true, 40000, \"Laythe\", tune_pe_safe_height(\"Laythe\", true, 50000)")]
+        [InlineData("true, 35300, \"Wal\", tune_pe_safe_height(\"Wal\", false, 0)")]
+        [InlineData("false, 35300, \"Kerbin\", tune_pe_safe_height(\"Kerbin\", true, 70000)")]
+        public void An_unsafe_or_unknown_periapsis_or_no_encounter_has_no_hint(string args)
+        {
+            // Below the Mun's peaks, inside Laythe's atmosphere, a body with no known peaks, an escape rather than an encounter.
+            Assert.Equal("", One("tune_pe_safe_hint(" + args + ")"));
+        }
+
+        [Fact]
+        public void The_safe_height_is_the_atmosphere_or_the_highest_peak_plus_a_margin()
+        {
+            Assert.Equal("70000|9061|-1", One("tune_pe_safe_height(\"Kerbin\", true, 70000) + \"|\" + tune_pe_safe_height(\"Mun\", false, 0) + \"|\" + tune_pe_safe_height(\"Wal\", false, 0)"));
+        }
+
         // ---- the burn point ----
 
         [Fact]
@@ -127,6 +153,17 @@ namespace ClaudiaKermin.Kerboscript.Tests
         public void The_next_patch_burns_halfway_to_the_sphere_of_influence_change()
         {
             Assert.Equal("|2500", One("tune_pe_burn_point(\"next\", 0.9, 9000, 500, 20000, false, true, 5000):error + \"|\" + tune_pe_burn_point(\"next\", 0.9, 9000, 500, 20000, false, true, 5000):in"));
+        }
+
+        [Theory]
+        [InlineData(16000, "300,8000")]
+        [InlineData(1200, "300,600")]
+        [InlineData(1000, "500")]
+        [InlineData(400, "200")]
+        public void The_next_patch_tries_a_burn_near_the_start_as_well_as_halfway(double soiEta, string times)
+        {
+            // #538 (f623): halfway out the retrograde fix for a Mun encounter costs over 100 m/s; near the start it costs about 25.
+            Assert.Equal(times, One("tune_pe_next_times(" + soiEta.ToString(CultureInfo.InvariantCulture) + "):join(\",\")"));
         }
 
         [Fact]

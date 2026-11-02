@@ -187,13 +187,13 @@ namespace ClaudiaKermin.Core.Tests
         public void LandAndAscendShipWithDocsOfTheirSpecOptionsAndResults()
         {
             Assert.Contains("\n- land(options): lands on an airless body", CoreLibrary.Summaries());
-            Assert.Contains("\n- ascend(options): flies from the surface of an airless body", CoreLibrary.Summaries());
+            Assert.Contains("\n- ascend(options): from the ground or a fall over an airless body, to a circular orbit", CoreLibrary.Summaries());
             var land = CoreLibrary.FullDocs(new[] { "land" });
             foreach (var text in new[] { "target [\"any\"]", "daylight [true]", "max_slope [8]", "max_divert [300]", "touchdown_speed [2]",
                 "gear_alt [1000]", "burn_margin [1.10]", "slope", "touchdown_speed_actual", "distance_to_target", "best_effort", "geo" })
                 Assert.Contains(text, land);
             var ascend = CoreLibrary.FullDocs(new[] { "ascend" });
-            foreach (var text in new[] { "target_alt [\"auto\"]", "5 km above the body's highest terrain", "target_inc [0]", "ap_error" })
+            foreach (var text in new[] { "target_alt [\"auto\"]", "5 km above the body's highest terrain", "target_inc [0]", "ap_error", "start (ground, flight, orbit)", "node there points into the ground", "ORBITING clear of the terrain: success, nothing flown" })
                 Assert.Contains(text, ascend);
         }
 
@@ -208,8 +208,10 @@ namespace ClaudiaKermin.Core.Tests
             foreach (var option in new[] { "launch_at [\"now\"]", "target_ap [\"auto\"]", "target_inc [0]", "heading [\"lib_lazcalc\"]", "turn_start_speed [60]", "turn_shape [0.45]", "max_aoa [5]", "throttle_max_q [\"none\"]", "g, atm_height, surface_pressure [\"body\"]", "ap_error", "max_q", "coast_ap" })
                 Assert.Contains(option, launch);
             var circularize = CoreLibrary.FullDocs(new[] { "circularize" });
-            foreach (var option in new[] { "at [\"ap\"]", "tolerance [0.01]", "ecc" })
+            foreach (var option in new[] { "at [\"ap\"]", "tolerance [0.01]", "ecc", "stop (\"node\"; \"ecc_min\"", "residual (m/s" })
                 Assert.Contains(option, circularize);
+            // #532: exec_node's eccentricity stop is block-internal; Claudia's docs for it don't name it.
+            Assert.DoesNotContain("stop_at_min", CoreLibrary.FullDocs(new[] { "exec_node" }));
         }
 
         // #214: positionat(ship, t) is the craft at t around its body where the body is NOW, while
@@ -239,6 +241,26 @@ namespace ClaudiaKermin.Core.Tests
                 Assert.True(System.IO.File.Exists(System.IO.Path.Combine(folder, "scenario.sfs")), path + ": no scenario.sfs");
                 Assert.True(System.IO.File.Exists(System.IO.Path.Combine(folder, "test.ks")), path + ": no test.ks");
             }
+        }
+
+        [Fact]
+        public void TheMissionScriptMasksCommentsAndStringsKeepingEveryPosition()
+        {
+            var source = "print \"a // b\". // note\nprint 1.\n";
+            var comments = CoreLibrary.MissionScript(source);
+            var strings = CoreLibrary.MissionScript(source, true);
+            Assert.Equal("print \"a // b\".        \nprint 1.\n", comments);
+            Assert.Equal("print \"      \".        \nprint 1.\n", strings);
+            Assert.Equal(source.Length, comments.Length);
+            Assert.Equal(source.Length, strings.Length);
+        }
+
+        [Fact]
+        public void TheMissionScriptOfABundleStopsBeforeTheLibraryAndAnythingElseIsScannedWhole()
+        {
+            var bundle = CoreLibrary.Bundle("circularize().\n// done\n");
+            Assert.Equal("circularize().\n       \n\n", CoreLibrary.MissionScript(bundle).Replace("\n\n\n", "\n\n"));
+            Assert.Equal("local x is 1.\n", CoreLibrary.MissionScript("local x is 1.\n"));
         }
     }
 }

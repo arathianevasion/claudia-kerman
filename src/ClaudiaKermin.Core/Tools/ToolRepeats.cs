@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using ClaudiaKermin.Core.Claude;
 
 namespace ClaudiaKermin.Core.Tools
@@ -48,6 +49,27 @@ namespace ClaudiaKermin.Core.Tools
                 else if (!inReply.Add(key)) why[i] = "you already called this in this reply; its result is with the first call's";
             }
             return why;
+        }
+
+        private static readonly Regex FigureRow = new Regex(@"^(stage_performance|plan_transfer) (\{[^}\r\n]*\}): ", RegexOptions.Multiline);
+
+        /// <summary>
+        /// The calls whose figures the turn's request text already carries (#575): each "stage_performance {input}: ..." or
+        /// "plan_transfer {input}: ..." row of its user text, as <see cref="Key"/> forms for <see cref="Matches"/>.
+        /// </summary>
+        public static HashSet<string> Rows(IEnumerable<Message> messages)
+        {
+            var rows = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var text in messages.Where(m => m.Role == Role.User).SelectMany(m => m.Content.OfType<TextBlock>()).Select(t => t.Text))
+                foreach (Match row in FigureRow.Matches(text ?? ""))
+                    rows.Add(Key(new ToolUseBlock { Name = row.Groups[1].Value, InputJson = row.Groups[2].Value }));
+            return rows;
+        }
+
+        /// <summary>Whether <paramref name="use"/> is a call one of <paramref name="rows"/> (from <see cref="Rows"/>) already answers.</summary>
+        public static bool Matches(HashSet<string> rows, ToolUseBlock use)
+        {
+            return rows.Contains(Key(use));
         }
 
         /// <summary>The tool and its input in one canonical form: object members sorted, numbers by value, no spacing.</summary>

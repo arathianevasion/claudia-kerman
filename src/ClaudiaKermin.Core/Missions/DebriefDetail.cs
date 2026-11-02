@@ -106,7 +106,7 @@ namespace ClaudiaKermin.Core.Missions
         public string RcsState = "";
         /// <summary>Claudia's reading of what is left against the rest of the plan.</summary>
         public string PlanMargin = "";
-        /// <summary>The margin recheck (a Craft Check on the craft as it is now): its summary, and one line per finding; empty when it didn't run.</summary>
+        /// <summary>The mod's Margin check line, then the margin recheck's summary when Claudia was asked too; one line per finding, the mod's first.</summary>
         public string RecheckSummary = "";
         public IList<string> RecheckFindings = new List<string>();
         /// <summary>Why the margin recheck didn't run ("" when it did).</summary>

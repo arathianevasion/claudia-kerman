@@ -28,6 +28,11 @@ namespace ClaudiaKermin.Core.Missions
             public bool Fired;
             /// <summary>An orbit check has seen its reading on the safe side of the threshold this run (#419); until then it can't cross.</summary>
             public bool Armed;
+            /// <summary>
+            /// The check can't cross until a reading is back on the safe side of its active threshold (#604): an orbit check
+            /// while the craft is landed, splashed down, on the pad or in atmosphere. Unlike <see cref="Armed"/>, it covers the follow-up too.
+            /// </summary>
+            public bool Disarmed;
             /// <summary>A carry on's follow-up threshold, armed once the first Alert is judged.</summary>
             public double? FollowUp;
             public bool FollowUpFired;
@@ -35,6 +40,10 @@ namespace ClaudiaKermin.Core.Missions
             public double? Pending;
             /// <summary>The same for the follow-up threshold.</summary>
             public double? FollowUpPending;
+            /// <summary>The worst reading past the active threshold while the check was held for a burn (#582); null when none.</summary>
+            public double? HeldWorst;
+            /// <summary>The threshold <see cref="HeldWorst"/> was past.</summary>
+            public double HeldThreshold;
         }
 
         /// <summary>A crossed Telemetry Check, for its Alert and the run's Debrief.</summary>
@@ -48,6 +57,8 @@ namespace ClaudiaKermin.Core.Missions
             /// <summary>"" until judged; then "carry on", "Abort recommended" or why it was never judged.</summary>
             public string Verdict = "";
             public string Why = "";
+            /// <summary>Set when the Debrief is asked for (#572): carry on and the final reading back on the safe side; null until then.</summary>
+            public bool? Recovered;
 
             public string Describe()
             {
@@ -61,13 +72,27 @@ namespace ClaudiaKermin.Core.Missions
             /// <summary>Turns waiting for the one in hand, in the order they go: Alerts first, questions last.</summary>
             public readonly List<Turn> Queue = new List<Turn>();
             public double RunStartUt;
+            /// <summary>Stock delta-v left at the run's start, less what the run has since dropped with stages at zero throttle (#605).</summary>
             public double? RunStartDeltaVLeft;
+            /// <summary>The delta-v taken off <see cref="RunStartDeltaVLeft"/> this run (#605), so the Debrief can say so; 0 when none.</summary>
+            public double RunDroppedDeltaV;
+            /// <summary>A science call this run kept data on board for want of a link or charge (#612); the Debrief notice then says so. Not saved.</summary>
+            public bool ScienceKept;
+            /// <summary>Stock delta-v left just before a separation at zero throttle, until the readings after it settle; null when none is waiting.</summary>
+            public double? SeparationBefore;
+            /// <summary>The last reading after that separation; null until there is one.</summary>
+            public double? SeparationAfter;
+            /// <summary>A snapshot this run had no engine aboard: its propulsion checks are disarmed for the rest of it (#605).</summary>
+            public bool NoEngineAboard;
             public double? RunStartMonopropellant;
             /// <summary>The current run's Telemetry Checks.</summary>
             public readonly List<LiveCheck> Checks = new List<LiveCheck>();
             /// <summary>Crossings since the last Debrief, which lists them.</summary>
             public readonly List<Crossing> Crossings = new List<Crossing>();
             public LiveReadings Readings;
+            /// <summary>A burn is in progress (#582): the throttle has been over 0 and has not read 0 twice in a row since.</summary>
+            public bool Burning;
+            public int ZeroThrottleReadings;
             /// <summary>The snapshot the stock delta-v checks last judged; another input on the same snapshot is not a second reading.</summary>
             public GameSnapshot JudgedSnapshot;
             /// <summary>The Building Block running now, from the kOS bridge; "" between blocks.</summary>
@@ -108,11 +133,18 @@ namespace ClaudiaKermin.Core.Missions
         {
             mission.RunStartUt = _ut;
             mission.RunStartDeltaVLeft = LiveReadings.DeltaVLeftOf(MissionVesselSnapshot(mission));
+            mission.RunDroppedDeltaV = 0;
+            mission.ScienceKept = false;
+            ClearSeparation(mission);
+            mission.NoEngineAboard = false;
             mission.RunStartMonopropellant = LiveReadings.MonopropellantOf(MissionVesselSnapshot(mission));
+            mission.RunStartOrbit = OrbitFix.Of(MissionVesselSnapshot(mission));
             mission.Checks.Clear();
             foreach (var check in TelemetryDefaults.Fill(plan, _config)) mission.Checks.Add(new LiveCheck { Check = check });
             mission.Crossings.Clear();
             mission.JudgedSnapshot = null;
+            mission.Burning = false;
+            mission.ZeroThrottleReadings = 0;
             mission.CurrentBlock = "";
             mission.BlocksDone = 0;
             mission.AbortRecommendation = "";
@@ -125,8 +157,13 @@ namespace ClaudiaKermin.Core.Missions
         /// question waiting at the cap goes back in the queue, so the run's Debrief goes first and Pauses at the cap as
         /// usual (story 124).
         /// </summary>
-        private static void EndLive(Mission mission)
+        private void EndLive(Mission mission)
         {
+            if (mission.Burning) TestHeldAtRunEnd(mission);
+            mission.Burning = false;
+            mission.ZeroThrottleReadings = 0;
+            MeasureSeparationAtRunEnd(mission);
+            ClearSeparation(mission);
             if (mission.WaitingForCap && !mission.InFlight && mission.Pending != null)
             {
                 var waiting = mission.Pending;
@@ -173,14 +210,51 @@ namespace ClaudiaKermin.Core.Missions
         {
             var mission = _mission;
             if (mission == null || mission.Stage != MissionStage.Running || !mission.RunId.HasValue) return;
-            mission.Readings = Readings(mission);
             var snapshot = MissionVesselSnapshot(mission);
             var fresh = !ReferenceEquals(snapshot, mission.JudgedSnapshot);
             mission.JudgedSnapshot = snapshot;
+            if (fresh && snapshot != null)
+            {
+                MeasureSeparation(mission, snapshot);
+                if (!LiveReadings.EngineAboard(snapshot)) mission.NoEngineAboard = true;
+            }
+            mission.Readings = Readings(mission);
+            if (fresh && snapshot != null) UpdateBurn(mission, snapshot.Throttle);
             foreach (var live in mission.Checks)
             {
                 if (!fresh && live.Check.NeedsConfirmation) continue;
                 var reading = mission.Readings.Of(live.Check);
+                if (mission.NoEngineAboard && live.Check.Propulsion)
+                {
+                    Disarm(mission, live, "no engine aboard");
+                    continue;
+                }
+                if (mission.SeparationBefore.HasValue && live.Check.NeedsConfirmation)
+                {
+                    // Stock misreads just after a separation (#520): no delta-v reading counts until two agree.
+                    live.Pending = null;
+                    live.FollowUpPending = null;
+                    continue;
+                }
+                if (live.Check.DisarmedIn(mission.Readings.Situation))
+                {
+                    Disarm(mission, live, "the craft is " + mission.Readings.Situation);
+                    continue;
+                }
+                if (live.Disarmed)
+                {
+                    ReArm(live, reading);
+                    continue;
+                }
+                if (live.Check.Quantity.IsHeldDuringBurn())
+                {
+                    if (mission.Burning)
+                    {
+                        HoldDuringBurn(live, reading);
+                        continue;
+                    }
+                    ReleaseAfterBurn(mission, live, reading);
+                }
                 if (!live.Fired)
                 {
                     if (live.Check.NeedsArming && !live.Armed)
@@ -202,6 +276,175 @@ namespace ClaudiaKermin.Core.Missions
                         Crossed(mission, live, live.FollowUp.Value, reading.Value, true);
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// A burn is in progress while the snapshot's throttle is over 0, whatever flies it (#582). It ends on the second
+        /// snapshot in a row at 0, so a one-reading drop (a staging gap) doesn't release the held checks.
+        /// </summary>
+        private static void UpdateBurn(Mission mission, double throttle)
+        {
+            if (throttle > 0)
+            {
+                mission.Burning = true;
+                mission.ZeroThrottleReadings = 0;
+            }
+            else if (mission.Burning && ++mission.ZeroThrottleReadings >= 2)
+            {
+                mission.Burning = false;
+                mission.ZeroThrottleReadings = 0;
+            }
+        }
+
+        /// <summary>Two stock delta-v readings this close (m/s) agree; a fall no bigger than this is no fall.</summary>
+        private const double AgreeingDeltaV = 1;
+
+        /// <summary>
+        /// A stage or decoupler fired on the craft (#605). At zero throttle the latest reading is the delta-v left before it, and
+        /// what stock loses across it, once two readings agree, was dropped, not used. Under throttle nothing is taken: that fall counts as used.
+        /// </summary>
+        private void Separated()
+        {
+            var mission = _mission;
+            if (mission == null || mission.Stage != MissionStage.Running || !mission.RunId.HasValue) return;
+            if (!mission.RunStartDeltaVLeft.HasValue || mission.SeparationBefore.HasValue) return;
+            var snapshot = MissionVesselSnapshot(mission);
+            var left = LiveReadings.DeltaVLeftOf(snapshot);
+            if (!left.HasValue || snapshot.Throttle > 0) return;
+            mission.SeparationBefore = left;
+            mission.SeparationAfter = null;
+        }
+
+        /// <summary>
+        /// A fresh snapshot after a separation at zero throttle. Stock misreads just after staging (#520), so the fall is measured
+        /// to the first of two readings in a row that agree. If the throttle comes on first, nothing is taken off and the fall counts as used.
+        /// </summary>
+        private void MeasureSeparation(Mission mission, GameSnapshot snapshot)
+        {
+            if (!mission.SeparationBefore.HasValue) return;
+            if (snapshot.Throttle > 0)
+            {
+                ClearSeparation(mission);
+                Event(mission, "delta_v_not_rebased", "the throttle came on before stock's delta-v readings agreed after a separation: any delta-v it dropped counts as used.");
+                return;
+            }
+            var left = LiveReadings.DeltaVLeftOf(snapshot);
+            if (!left.HasValue) return;
+            var previous = mission.SeparationAfter;
+            mission.SeparationAfter = left;
+            if (previous.HasValue && Math.Abs(previous.Value - left.Value) <= AgreeingDeltaV) Rebase(mission, previous.Value);
+        }
+
+        /// <summary>
+        /// The run ended with a separation's readings not yet agreeing (a drop after the last burn): the highest reading after it
+        /// stands for them, since stock's misread there reads low (#520). With none, nothing is taken off.
+        /// </summary>
+        private void MeasureSeparationAtRunEnd(Mission mission)
+        {
+            if (!mission.SeparationBefore.HasValue || !mission.SeparationAfter.HasValue) return;
+            var snapshot = MissionVesselSnapshot(mission);
+            var left = snapshot != null && snapshot.Throttle <= 0 ? LiveReadings.DeltaVLeftOf(snapshot) : null;
+            Rebase(mission, Math.Max(mission.SeparationAfter.Value, left ?? double.NegativeInfinity));
+        }
+
+        /// <summary>The fall from before the separation to <paramref name="after"/> comes off the run's baseline, and the drop is logged.</summary>
+        private void Rebase(Mission mission, double after)
+        {
+            var before = mission.SeparationBefore.Value;
+            ClearSeparation(mission);
+            var fall = before - after;
+            if (fall <= AgreeingDeltaV) return;
+            mission.RunStartDeltaVLeft -= fall;
+            mission.RunDroppedDeltaV += fall;
+            Event(mission, "delta_v_rebased", "stock delta-v left fell " + fall.ToString("#,0", CultureInfo.InvariantCulture)
+                + " m/s across a separation at zero throttle (" + before.ToString("#,0", CultureInfo.InvariantCulture) + " to "
+                + after.ToString("#,0", CultureInfo.InvariantCulture) + " m/s): dropped, not counted as delta-v used.");
+        }
+
+        private static void ClearSeparation(Mission mission)
+        {
+            mission.SeparationBefore = null;
+            mission.SeparationAfter = null;
+        }
+
+        /// <summary>The threshold a check is watching now: its own, then its follow-up once judged; null when it has nothing left to fire.</summary>
+        private static double? ActiveThreshold(LiveCheck live)
+        {
+            if (!live.Fired) return live.Check.Threshold;
+            return live.FollowUp.HasValue && !live.FollowUpFired ? live.FollowUp : null;
+        }
+
+        /// <summary>
+        /// A check is disarmed for <paramref name="reason"/> (#604): what it held or had pending is dropped, and the run's events
+        /// get one telemetry_check_disarmed line each time it goes from armed to disarmed, not each reading. No Alert, no prompt text.
+        /// </summary>
+        private void Disarm(Mission mission, LiveCheck live, string reason)
+        {
+            live.HeldWorst = null;
+            live.Pending = null;
+            live.FollowUpPending = null;
+            if (live.Disarmed) return;
+            live.Disarmed = true;
+            Event(mission, "telemetry_check_disarmed", live.Check.Describe() + ": " + reason + ".");
+        }
+
+        /// <summary>A disarmed check re-arms on its first reading on the safe side of its active threshold, which arms it for #419 too.</summary>
+        private static void ReArm(LiveCheck live, double? reading)
+        {
+            var threshold = ActiveThreshold(live);
+            if (!threshold.HasValue || !reading.HasValue || live.Check.Crossed(reading, threshold.Value)) return;
+            live.Disarmed = false;
+            if (!live.Fired) live.Armed = true;
+        }
+
+        /// <summary>A held check isn't tested mid-burn; its worst reading past the threshold is kept for the line it leaves if it recovers.</summary>
+        private static void HoldDuringBurn(LiveCheck live, double? reading)
+        {
+            var threshold = ActiveThreshold(live);
+            if (!threshold.HasValue || (live.Check.NeedsArming && !live.Armed) || !live.Check.Crossed(reading, threshold.Value)) return;
+            var worse = !live.HeldWorst.HasValue || (live.Check.Below ? reading.Value < live.HeldWorst.Value : reading.Value > live.HeldWorst.Value);
+            if (worse) live.HeldWorst = reading;
+            live.HeldThreshold = threshold.Value;
+        }
+
+        /// <summary>The burn is over: a held check that crossed and is back on the safe side leaves one event line. One still crossed goes on to be tested as usual.</summary>
+        private void ReleaseAfterBurn(Mission mission, LiveCheck live, double? reading)
+        {
+            if (!live.HeldWorst.HasValue) return;
+            var worst = live.HeldWorst.Value;
+            live.HeldWorst = null;
+            if (!reading.HasValue || live.Check.Crossed(reading, live.HeldThreshold)) return;
+            Event(mission, "telemetry_check_recovered", live.Check.Name() + " " + live.Check.Format(worst) + (live.Check.Below ? " under " : " over ")
+                + live.Check.Format(live.HeldThreshold) + " mid-burn, " + live.Check.Format(reading.Value) + " after it: no Alert.");
+        }
+
+        /// <summary>
+        /// The run ended mid-burn: held checks are tested against the final reading, the one the Debrief judges recovery by.
+        /// A still-crossed one is recorded for the Debrief unjudged, since no Alert is left to send.
+        /// </summary>
+        private void TestHeldAtRunEnd(Mission mission)
+        {
+            var final = Readings(mission);
+            foreach (var live in mission.Checks.Where(c => c.Check.Quantity.IsHeldDuringBurn()))
+            {
+                var reading = final.Of(live.Check);
+                var threshold = ActiveThreshold(live);
+                var disarmed = live.Disarmed || live.Check.DisarmedIn(final.Situation);
+                if (threshold.HasValue && !disarmed && (!live.Check.NeedsArming || live.Armed) && live.Check.Crossed(reading, threshold.Value))
+                {
+                    var followUp = live.Fired;
+                    if (followUp) live.FollowUpFired = true;
+                    else live.Fired = true;
+                    var crossing = new Crossing
+                    {
+                        Check = live.Check, Threshold = threshold.Value, Value = reading.Value,
+                        ElapsedSeconds = final.ElapsedSeconds, FollowUp = followUp, Verdict = "not judged: the run ended first",
+                    };
+                    mission.Crossings.Add(crossing);
+                    Event(mission, "telemetry_check", crossing.Describe() + " (run ended mid-burn: recorded, no Alert sent)");
+                }
+                else ReleaseAfterBurn(mission, live, reading);
             }
         }
 
@@ -358,15 +601,17 @@ namespace ClaudiaKermin.Core.Missions
             Note(LogKind.Notice, change.Line());
         }
 
-        /// <summary>A Building Block's result: one log row, with no Claude call.</summary>
+        /// <summary>A Building Block's result: one log row and an entry in the run's blocks trail, with no Claude call.</summary>
         private void BlockEnded(KosBlockEnded ended)
         {
             var mission = _mission;
             if (mission == null || !IsRunning(mission) || mission.RunId != ended.RunId) return;
             mission.BlocksDone++;
             mission.CurrentBlock = "";
+            mission.Blocks.Add(ended.Block, ended.Result);
             var line = BlockLine(ended.Block, ended.Result);
             Note(LogKind.Notice, line);
+            if (ended.Block == "science" && ended.Result != null && ended.Result.ContainsKey("kept")) mission.ScienceKept = true;
             if (!BlockSucceeded(ended.Result)) mission.RunEvents.Add(_ut, RunEventKind.BlockAborted, line.TrimEnd('.'));
         }
 
@@ -443,11 +688,14 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         /// <summary>The Debrief's list of crossed checks with their mid-run verdicts; "" when none was crossed.</summary>
-        private static string CrossingsText(Mission mission)
+        private string CrossingsText(Mission mission)
         {
             if (mission.Crossings.Count == 0) return "";
+            var final = Readings(mission);
+            foreach (var c in mission.Crossings.Where(c => !c.Recovered.HasValue))
+                c.Recovered = c.Verdict == "carry on" && final.Of(c.Check).HasValue && !c.Check.Crossed(final.Of(c.Check), c.Threshold);
             return string.Join("; ", mission.Crossings.Select(c => c.Describe() + ": " + (c.Verdict.Length > 0 ? c.Verdict : "not judged yet")
-                + (c.Why.Length > 0 ? " (" + c.Why + ")" : "")).ToArray());
+                + (c.Why.Length > 0 ? " (" + c.Why + ")" : "") + " " + (c.Recovered.Value ? MissionPrompts.RecoveredTag : MissionPrompts.StandingTag)).ToArray());
         }
 
         /// <summary>The crossings for the save file, enough for the Debrief to list them and rule out Nominal; "" when none.</summary>
@@ -456,10 +704,14 @@ namespace ClaudiaKermin.Core.Missions
             if (mission.Crossings.Count == 0) return "";
             var json = new JsonWriter().BeginArray();
             foreach (var c in mission.Crossings)
+            {
                 json.BeginObject().Field("quantity", TelemetryCheck.Key(c.Check.Quantity)).Field("resource", c.Check.Resource)
                     .Field("below", c.Check.Below).Field("default", c.Check.Default).Field("check_why", c.Check.Why)
                     .Field("threshold", c.Threshold).Field("value", c.Value).Field("elapsed_s", c.ElapsedSeconds)
-                    .Field("follow_up", c.FollowUp).Field("verdict", c.Verdict).Field("why", c.Why).EndObject();
+                    .Field("follow_up", c.FollowUp).Field("verdict", c.Verdict).Field("why", c.Why);
+                if (c.Recovered.HasValue) json.Field("recovered", c.Recovered.Value);
+                json.EndObject();
+            }
             return json.EndArray().ToString();
         }
 
@@ -496,6 +748,7 @@ namespace ClaudiaKermin.Core.Missions
                     FollowUp = JsonNode.Bool(node["follow_up"]) ?? false,
                     Verdict = JsonNode.Str(node["verdict"]) ?? "",
                     Why = JsonNode.Str(node["why"]) ?? "",
+                    Recovered = JsonNode.Bool(node["recovered"]),
                 });
             }
         }

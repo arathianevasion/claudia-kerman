@@ -175,6 +175,7 @@ namespace ClaudiaKermin.Core.Tests
         // ---- speed ----
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void It_runs_in_microseconds()
         {
             var r1 = new Vec3(700000, 0, 0);

@@ -38,6 +38,7 @@ namespace ClaudiaKermin.Adapter
             snapshot.Craft.Stage = vessel.currentStage;
             snapshot.RcsOn = vessel.ActionGroups[KSPActionGroup.RCS];
             snapshot.Throttle = vessel.ctrlState.mainThrottle;
+            snapshot.Nodes = ManeuverPlan.ForSnapshot(vessel);
             ReadParts(snapshot, vessel.parts, vessel.VesselDeltaV);
             MarkTrickleStages(snapshot, vessel.parts);
             // plan_ascent's drag, for a launch: only a craft on the ground of a body with air needs it.
@@ -119,7 +120,8 @@ namespace ClaudiaKermin.Adapter
             return new SnapshotCrewMember
             {
                 Name = crew.name ?? "",
-                Trait = crew.experienceTrait != null ? crew.experienceTrait.TypeName : "",
+                // The config name, as RosterGateway.IsClaudia compares: experienceTrait.TypeName gives the title in game ("Super Intelligence").
+                Trait = crew.trait ?? "",
             };
         }
 

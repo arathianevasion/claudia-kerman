@@ -36,7 +36,6 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [Theory]
         [InlineData("circularize().\nfrom {local i is 0.} until i > 20 step {set i to i + 1.} do {\n  local p is latlng(i, 10).\n  print p:terrainheight.\n}\n", "landing-site search")]
         [InlineData("until ship:orbit:nextpatch:periapsis > 30000 {\n  set nextnode:prograde to nextnode:prograde + 1.\n}\n", "next patch")]
-        [InlineData("until false {\n  if stage:liquidfuel < 0.1 { stage. }\n  wait 0.1.\n}\n", "staging loop")]
         public void AReinventionLintWarnsAndTheScriptStillPasses(string script, string warning)
         {
             var result = _check.Check(script);
@@ -48,7 +47,7 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [Fact]
         public void AnOrdinaryScriptHasNoWarnings()
         {
-            var result = _check.Check("local res is lexicon(\"success\", true).\nstage.\nuntil res:success { print 1. }\nlocal p is latlng(1, 2).\n");
+            var result = _check.Check("local res is lexicon(\"success\", true).\nuntil res:success { print 1. }\nlocal p is latlng(1, 2).\n");
             Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
             Assert.Empty(result.Warnings);
         }
@@ -59,6 +58,137 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             var result = _check.Check(ClaudiaKermin.Core.Missions.MissionPrompts.WorkedExampleScript);
             Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
             Assert.Empty(result.Warnings);
+        }
+
+        // ---- The stack-drop lint (#557): reentry after return, transfer_to or coast with nothing dropped ----
+
+        // b5f3's "Ascend, return and reentry", as Claudia wrote it.
+        private const string B5f3AscendReturnReentry =
+            "local res is ascend(lexicon(\"target_alt\", 30000, \"target_inc\", 0, \"stage_limit\", 1)).\n"
+            + "if res:success {\n"
+            + "  set res to return(lexicon(\"target_pe\", 35000, \"stage_limit\", 1)).\n"
+            + "  if res:success {\n"
+            + "    if ship:body:name <> \"Kerbin\" {\n"
+            + "      set res to coast(lexicon(\"until\", time:seconds + ship:orbit:nextpatcheta + 60)).\n"
+            + "    }\n"
+            + "    if res:success { set res to reentry(lexicon(\"stage_limit\", 1)). }\n"
+            + "  }\n"
+            + "}\n"
+            + "unlock steering.\n"
+            + "unlock throttle.\n"
+            + "set ship:control:pilotmainthrottle to 0.\n"
+            + "addons:claudia:report(res).";
+
+        // b5f3's "Lower periapsis, drop stack, reenter".
+        private const string B5f3LowerDropReenter =
+            "local res is tune_pe(lexicon(\"value\", 27000, \"tolerance\", 1500, \"max_dv\", 60, \"stage_limit\", 1)).\n"
+            + "if res:success {\n"
+            + "  set res to drop_parts(lexicon(\"parts\", list(\"Decoupler.1\"))).\n"
+            + "  if res:success { set res to reentry(lexicon(\"stage_limit\", 1, \"max_duration\", 12000)). }\n"
+            + "}\n"
+            + "unlock steering.\n"
+            + "unlock throttle.\n"
+            + "set ship:control:pilotmainthrottle to 0.\n"
+            + "addons:claudia:report(res).";
+
+        // 44e9's "Return to Kerbin and reentry".
+        private const string Ksp44e9ReturnReentry =
+            "local k is 0.\n"
+            + "until not hasnode or k > 5 {\n"
+            + "  remove nextnode.\n"
+            + "  set k to k + 1.\n"
+            + "}\n"
+            + "local res is return(lexicon(\"target_pe\", 35000)).\n"
+            + "if res:success {\n"
+            + "  set res to reentry().\n"
+            + "}\n"
+            + "addons:claudia:report(res).";
+
+        private const string StackLint = "with no drop named";
+
+        [Theory]
+        [InlineData(B5f3AscendReturnReentry, "line 8: reentry after return")]
+        [InlineData(Ksp44e9ReturnReentry, "line 8: reentry after return")]
+        public void The_stack_drop_lint_warns_on_b5f3s_and_44e9s_return_then_reentry_and_the_script_still_passes(string script, string warning)
+        {
+            // As the mod checks it: the Mission Script with the Core Library bundled after it, whose lines it skips.
+            var result = _check.Check(CoreLibrary.Bundle(script));
+            Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
+            var lint = Assert.Single(result.Warnings, w => w.Contains(StackLint));
+            Assert.StartsWith(warning, lint);
+            Assert.Contains("separate", lint);
+            Assert.DoesNotContain(result.Problems, p => p.Contains(StackLint));
+        }
+
+        [Fact]
+        public void The_stack_drop_lint_is_quiet_on_b5f3s_lower_periapsis_drop_stack_reenter()
+        {
+            Assert.DoesNotContain(_check.Check(CoreLibrary.Bundle(B5f3LowerDropReenter)).Warnings, w => w.Contains(StackLint));
+        }
+
+        [Theory]
+        [InlineData("local res is transfer_to(lexicon(\"target\", \"Kerbin\")).\nset res to reentry().\n", true)]
+        [InlineData("local res is coast(lexicon(\"until\", time:seconds + 60)).\nset res to reentry().\n", true)]
+        [InlineData("local res is return().\nset res to reentry(lexicon(\"separate\", \"none\")).\n", true)]
+        // Something leaves before the atmosphere: drop_parts, deorbit's separate, or reentry's own.
+        [InlineData("local res is return().\nset res to drop_parts(lexicon(\"parts\", \"Decoupler.1\")).\nset res to reentry().\n", false)]
+        [InlineData("local res is return().\nset res to deorbit(lexicon(\"target\", \"ksc\", \"separate\", 1)).\nset res to reentry().\n", false)]
+        [InlineData("local res is return().\nset res to reentry(lexicon(\"separate\", \"auto\")).\n", false)]
+        [InlineData("local res is return().\nset res to reentry(lexicon(\"separate\", 2)).\n", false)]
+        // No return, transfer_to or coast before it; a reentry before the return; and a comment.
+        [InlineData("local res is reentry(lexicon(\"max_duration\", 20000)).\n", false)]
+        [InlineData("local res is reentry().\nset res to return().\n", false)]
+        [InlineData("// return(lexicon()) then reentry()\nlocal res is reentry().\n", false)]
+        public void The_stack_drop_lint_fires_only_for_a_reentry_after_a_leg_home_with_nothing_dropped(string script, bool fires)
+        {
+            var warnings = _check.Check(script).Warnings;
+            Assert.Equal(fires, warnings.Any(w => w.Contains(StackLint)));
+        }
+
+        // ---- The drop-before-reentry lint (#608): drop_parts as the block call just before reentry ----
+
+        private const string DropLint = "drop_parts just before reentry";
+
+        // a107's "Return to Kerbin": the drop that took the Terrier stack with the periapsis at 601 km.
+        private const string A107ReturnDropReentry =
+            "local res is return(lexicon(\"target_pe\", 35000)).\n"
+            + "if res:success {\n"
+            + "  set res to drop_parts(lexicon(\"parts\", \"RCSFuelTank\")).\n"
+            + "  if res:success { set res to reentry(). }\n"
+            + "}\n"
+            + "addons:claudia:report(res).";
+
+        [Theory]
+        [InlineData(A107ReturnDropReentry, "line 3: ")]
+        [InlineData(B5f3LowerDropReenter, "line 3: ")]
+        public void The_drop_lint_warns_on_drop_parts_then_reentry_in_a_bundled_mission_script_and_the_script_still_passes(string script, string line)
+        {
+            var result = _check.Check(CoreLibrary.Bundle(script));
+            Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
+            var lint = Assert.Single(result.Warnings, w => w.Contains(DropLint));
+            Assert.StartsWith(line, lint);
+            Assert.Contains("reentry's separate", lint);
+            Assert.DoesNotContain(result.Problems, p => p.Contains(DropLint));
+        }
+
+        [Fact]
+        public void The_drop_lint_never_warns_on_library_lines()
+        {
+            Assert.DoesNotContain(_check.Check(CoreLibrary.Bundle("")).Warnings, w => w.Contains(DropLint));
+            Assert.DoesNotContain(_check.Check(CoreLibrary.Bundle(Ksp44e9ReturnReentry)).Warnings, w => w.Contains(DropLint));
+        }
+
+        [Theory]
+        [InlineData("local res is drop_parts(lexicon(\"parts\", \"x\")).\nset res to reentry().\n", true)]
+        [InlineData("local res is DROP_PARTS(lexicon(\"parts\", \"x\")).\nset res to Reentry ().\n", true)]
+        // Another block between them, reentry first, a comment, or the names inside a string.
+        [InlineData("local res is drop_parts(lexicon(\"parts\", \"x\")).\nset res to tune_pe(lexicon(\"value\", 30000)).\nset res to reentry().\n", false)]
+        [InlineData("local res is reentry().\nset res to drop_parts(lexicon(\"parts\", \"x\")).\n", false)]
+        [InlineData("// drop_parts(lexicon()) then reentry()\nlocal res is reentry().\n", false)]
+        [InlineData("print \"drop_parts(x) reentry(y)\".\nlocal res is reentry().\n", false)]
+        public void The_drop_lint_fires_only_when_reentry_is_the_next_block_call_after_drop_parts(string script, bool fires)
+        {
+            Assert.Equal(fires, _check.Check(script).Warnings.Any(w => w.Contains(DropLint)));
         }
 
         // ---- Forbidden: one theory per item of the spec's list ----
@@ -170,6 +300,31 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         public void OpenGuiWindows(string script) { AssertForbidden("open GUI windows", script); }
 
         [Theory]
+        [InlineData("set a:b[1] to 2.", 1)]
+        [InlineData("local a is lexicon().\nset a:b:c[\"k\"] to 2.", 2)]
+        public void SetOfASuffixIndexIsRefusedWithItsLine(string script, int line)
+        {
+            var result = _check.Check(script);
+            Assert.False(result.Passed);
+            Assert.Contains(result.Forbidden, f => f.StartsWith("line " + line + ": ") && f.Contains("assign through a local"));
+        }
+
+        [Theory]
+        [InlineData("local x is a:b.\nset x[1] to 2.")]
+        [InlineData("local x is lexicon().\nset x[1] to 2.")]
+        [InlineData("print a:b[1].")]
+        [InlineData("local res is lexicon().\nset res[\"k\"] to 2.")]
+        [InlineData("local res is lexicon().\nset res[\"k\"] to status = \"LANDED\" or status = \"SPLASHED\".")]
+        [InlineData("local res is lexicon().\nset res[\"k\"] to status = \"LANDED\".")]
+        public void SetOfALocalsIndexAndReadsOfASuffixIndexPass(string script) { AssertAllowed(script); }
+
+        [Fact]
+        public void TheCoreLibraryBundleHasNoSetOfASuffixIndex()
+        {
+            AssertAllowed(CoreLibrary.Bundle(""));
+        }
+
+        [Theory]
         [InlineData("debugfreezegame(1).")]
         public void FreezeTheGame(string script) { AssertForbidden("freeze the game", script); }
 
@@ -186,7 +341,35 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         // ---- Allowed ----
 
         [Fact]
-        public void Staging() { AssertAllowed("stage.\nwait until stage:ready.\nprint stage:number."); }
+        public void ReadingTheStageIsAllowed() { AssertAllowed("wait until stage:ready.\nprint stage:number."); }
+
+        // #537: a bare stage. threw away a Swivel stage with its fuel aboard; the Core Library's own staging is still allowed.
+        private const string BareStageHint = "a bare stage. can throw away a stage that still holds fuel: drop parts with drop_parts, or set a block's stage_limit for its staging";
+
+        [Theory]
+        [InlineData("stage.")]
+        [InlineData("print 1.\nif ship:altitude > 10 { stage. }")]
+        [InlineData("until false {\n  if stage:liquidfuel < 0.1 { stage. }\n  wait 0.1.\n}\n")]
+        [InlineData("local d is stage@.\nd().")]
+        public void ABareStageIsRefusedWithItsLineAndTheHint(string script)
+        {
+            AssertForbidden(BareStageHint, script);
+            AssertForbidden(BareStageHint, CoreLibrary.Bundle(script));
+        }
+
+        [Fact]
+        public void TheRefusalNamesTheLine()
+        {
+            var result = _check.Check("print 1.\nprint 2.\nstage.\n");
+            Assert.Contains(result.Forbidden, f => f.StartsWith("line 3: STAGE"));
+        }
+
+        [Fact]
+        public void TheCoreLibrarysOwnStagingStillPasses()
+        {
+            Assert.Matches(@"(?m)^\s*stage\.", CoreLibrary.Bundle("").ToLowerInvariant());
+            AssertAllowed(CoreLibrary.Bundle("local res is exec_node(lexicon()).\naddons:claudia:report(res)."));
+        }
 
         [Fact]
         public void ActionGroups() { AssertAllowed("toggle ag1.\nag2 on.\ngear on.\nset brakes to true.\nlights off.\nrcs on.\nsas off."); }
@@ -283,6 +466,34 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             }
         }
 
+        // ---- Building Block options (#606): a call the block would refuse at once fails, before anything flies ----
+
+        [Fact]
+        public void A2d0cTransferMissingTargetPeFailsAndItsRetryPasses()
+        {
+            var failed = _check.Check(CoreLibrary.Bundle("local res is transfer_to(lexicon(\"target\", \"Mun\", \"stage_limit\", 3)).\nprint res.\n"));
+            Assert.Null(failed.CompileError);
+            Assert.False(failed.Passed);
+            var problem = Assert.Single(failed.Problems);
+            Assert.Equal("line 1: transfer_to: missing required option target_pe; options: target*, target_pe*, window, correction (* required), plus the common options", problem);
+
+            AssertAllowed(CoreLibrary.Bundle("local res is transfer_to(lexicon(\"target\", \"Mun\", \"target_pe\", 30000, \"stage_limit\", 3)).\nprint res.\n"));
+        }
+
+        [Fact]
+        public void AnUnknownBlockOptionFailsNamingTheKey()
+        {
+            var result = _check.Check(CoreLibrary.Bundle("transfer_to(lexicon(\"target\",\"Mun\",\"target_pe\",30000,\"pe\",30000))."));
+            Assert.False(result.Passed);
+            Assert.Contains(result.BlockOptions, p => p.StartsWith("line 1: transfer_to: unknown option pe;"));
+        }
+
+        [Fact]
+        public void ABlockTestMayPassOptionsTheBlockRefuses()
+        {
+            Assert.True(new KosScriptCheck(forToolTests: true).Check(CoreLibrary.Bundle("print coast(lexicon()).")).Passed);
+        }
+
         // ---- Block-internal calls (ADR 0006, ADR 0007): the Core Library's, never a Mission Script's ----
 
         [Theory]
@@ -291,6 +502,8 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("local f is addons:claudia:LandingSite@.\nprint f(lexicon()).")]
         [InlineData("local p is addons:claudia:landingpass(lexicon(\"lat\", 0, \"lng\", 20, \"r_pe\", 203000)).\nprint p:burn_ut.")]
         [InlineData("local c is addons:claudia.\nprint c:LandingPass(lexicon()):next_pass_ut.")]
+        [InlineData("local p is addons:claudia:brakepath(lexicon(\"lat\", 0, \"lng\", 20, \"shape\", \"auto\")).\nprint p:descent_shape.")]
+        [InlineData("local c is addons:claudia.\nprint c:BrakePath(lexicon()):clears.")]
         [InlineData("local b is addons:claudia:deorbitburn(lexicon(\"lat\", 0, \"lng\", -74)).")]
         [InlineData("print addons:claudia:reentryimpact(lexicon()):lat.")]
         [InlineData("local c is addons:claudia.\nprint c:ReentryImpact(lexicon()).")]
@@ -466,18 +679,18 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [Fact]
         public void AMissionScriptCannotSwapItsOwnCodeIntoABlockWithALock()
         {
-            // A lock is stored when its line runs, over the library's function of that name: a lock named land_plan would get land's
+            // A lock is stored when its line runs, over the library's function of that name: a lock named land_pass_plan would get land's
             // site from the block-internal search and could keep it without the block flying it.
-            var result = _check.Check(CoreLibrary.Bundle("print 1.\nlock land_plan to lexicon(\"error\", \"x\").\nprint land(lexicon(\"target\", lexicon(\"biome\", \"Midlands\")))."));
-            Assert.Contains("line 2: LAND_PLAN* (redefine a Core Library function)", result.Forbidden);
+            var result = _check.Check(CoreLibrary.Bundle("print 1.\nlock land_pass_plan to lexicon(\"error\", \"x\").\nprint land(lexicon(\"target\", lexicon(\"biome\", \"Midlands\")))."));
+            Assert.Contains("line 2: LAND_PASS_PLAN* (redefine a Core Library function)", result.Forbidden);
         }
 
         [Fact]
         public void AMissionScriptCannotDefineAFunctionTheLibraryDefines()
         {
-            // The Mission Script's function wins over the library's (LandAscendTests shows it on kOS), so land_plan could keep the site.
-            var result = _check.Check(CoreLibrary.Bundle("print 1.\n\nfunction land_plan {\n  parameter a, b, c.\n  return lexicon(\"error\", \"x\").\n}"));
-            Assert.Contains(result.Forbidden, f => f.EndsWith("FUNCTION LAND_PLAN (redefine a Core Library function)"));
+            // The Mission Script's function wins over the library's (LandAscendTests shows it on kOS), so land_pass_plan could keep the site.
+            var result = _check.Check(CoreLibrary.Bundle("print 1.\n\nfunction land_pass_plan {\n  parameter a, b, c.\n  return lexicon(\"error\", \"x\").\n}"));
+            Assert.Contains(result.Forbidden, f => f.EndsWith("FUNCTION LAND_PASS_PLAN (redefine a Core Library function)"));
             Assert.All(result.Forbidden, f => Assert.True(int.Parse(f.Split(' ', ':')[1]) <= 6, f));
             AssertForbidden("redefine a Core Library function", CoreLibrary.Bundle("global function claudia_finish { parameter a, b, c, d. return a. }"));
         }

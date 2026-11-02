@@ -10,9 +10,9 @@ namespace ClaudiaKermin.Core.Kos
 {
     /// <summary>
     /// Warn-only lints in the Mission Script Check for flight logic that re-builds a Building Block or
-    /// Planning Tool: a hand-written landing-site search, a node-and-nextpatch nudge loop, and a staging
-    /// loop that watches fuel. They never refuse a script; their text goes into the Custom Script badge's
-    /// reason. Each reads loops (<c>for</c>, <c>until</c>, <c>from</c>, <c>when</c>) in the script's code,
+    /// Planning Tool: a hand-written landing-site search and a node-and-nextpatch nudge loop. (A fuel-watching
+    /// staging loop is not linted: the Script Check refuses the bare <c>stage.</c> it needs, #537.) They never
+    /// refuse a script; their text goes into the Custom Script badge's reason. Each reads loops (<c>for</c>, <c>until</c>, <c>from</c>, <c>when</c>) in the script's code,
     /// ignoring comments and strings.
     /// </summary>
     public static class ScriptLints
@@ -22,33 +22,25 @@ namespace ClaudiaKermin.Core.Kos
         private static readonly Regex TerrainRead = new Regex(@"\bterrainheight\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex NextPatch = new Regex(@":\s*nextpatch\b|\bnextpatch\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex NodeUse = new Regex(@"\bnode\s*\(|\bnextnode\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex Staging = new Regex(@"\bstage\s*\.", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex FuelWatch = new Regex(
-            @"\bstage\s*:\s*(liquidfuel|oxidizer|solidfuel|resources|deltav)\b|\b(liquidfuel|oxidizer|solidfuel)\b",
-            RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         /// <summary>One warning per lint that fires, each naming the first line of the loop it found; empty for a clean script.</summary>
         public static IList<string> Warnings(string script)
         {
-            var code = ScriptProvenance.Strip(script ?? "");
+            var code = CoreLibrary.MissionScript(script, true);
             var warnings = new List<string>();
             var siteLine = 0;
             var nudgeLine = 0;
-            var fuelLine = 0;
             foreach (var loop in Loops(code))
             {
                 var body = code.Substring(loop.Start, loop.End - loop.Start);
                 var line = 1 + code.Take(loop.Start).Count(c => c == '\n');
                 if (siteLine == 0 && SiteSearch.IsMatch(body) && TerrainRead.IsMatch(body)) siteLine = line;
                 if (nudgeLine == 0 && NextPatch.IsMatch(body) && NodeUse.IsMatch(body)) nudgeLine = line;
-                if (fuelLine == 0 && Staging.IsMatch(body) && FuelWatch.IsMatch(body)) fuelLine = line;
             }
             if (siteLine > 0)
                 warnings.Add("line " + siteLine + ": a hand-written landing-site search loop; a Building Block or Planning Tool may already search for a site.");
             if (nudgeLine > 0)
                 warnings.Add("line " + nudgeLine + ": a loop that nudges a maneuver node while reading the next patch; a Building Block may already shape that orbit.");
-            if (fuelLine > 0)
-                warnings.Add("line " + fuelLine + ": a staging loop that watches fuel; a Building Block's staging option may already stage when tanks run dry.");
             return warnings;
         }
 

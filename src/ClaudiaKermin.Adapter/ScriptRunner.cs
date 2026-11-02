@@ -48,6 +48,12 @@ namespace ClaudiaKermin.Adapter
         public static Action<int, string, IDictionary<string, object>> BlockReported;
 
         /// <summary>
+        /// The innermost traced block of the Mission's run now going on (<see cref="KosRun.InnermostTraced"/>, #375), or null when
+        /// no such run has one. Read when Claudia dies, so the Lost Mission can name it; the kOS bridge sets it.
+        /// </summary>
+        public static Func<TracedBlock> RunningTrace;
+
+        /// <summary>
         /// A block in a Mission's run switched RCS (<c>ADDONS:CLAUDIA:RCSSWITCH</c>): the run id, the switch's lexicon and the UT.
         /// Called on the main thread, in order with the run's other events; the Mission driver sets it.
         /// </summary>

@@ -1,0 +1,220 @@
+: attempt 1
+event: message_start
+data: {"type":"message_start","message":{"model":"claude-sonnet-5-5","id":"msg_011CgcXv45ju2fdk7HWWP7Ng","type":"message","role":"assistant","content":[],"container":null,"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":2,"cache_creation_input_tokens":3734,"cache_read_input_tokens":122152,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":3734},"output_tokens":3,"service_tier":"standard","inference_geo":"global","speed":"standard"},"diagnostics":null,"context_management":null}     }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""} }
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"CAQSoAgKEAgTGAI4AUIIdGhpbmtpbmcSDFsB/pFWG5vMX4R4zBoMk8kNztTwSIwoeb74IjCTkLfgvJwwxXRJ49yMSXxpRgfYxjDdX8IfOhw9DsG6NSRucq/Sv0cKulfLtz+EKosqvQd8xi33K7IXfFfYsxXLhhTac4hEWAfhR8njgwEK/mG6ui2Qh4nqn4Wg/Eu/zL7H95dgWrGSP9Nt5odYr0Sgz+aDbym5b1J29AxnJuqnJT40NEsJllJSUA8x9wu9FgFHyRqTUqn95SCnDkz+EhT6YP2juzVWae1CG4fcv+HFgvvpGDqEZxLp7PaZ5s4fUurHq1l7O+PzcdQ8+IkZfpkyc4Ke8k2eKl8in/EQEeHOwRatDJmgCNX7DCPY9FuEAY8cizPyPsc0NKwQb9ajdQb5AEeP0r5H2mNA0GPjooc2wjXlvMM0LG4T1uHFtBAYMjYxd+JpAyFL9VTugOrVqXAb9th8tp3+Yqu0HyzP8jfl3HAsElbSLnYGxEXMQMaB8SBuPxjNzbd6Jt9qCW5dXp0ky82FqM86C5Cdfos10OS+jS2NaN2qT+LwyY6tMDpP/TuTU+970mlEFwsKKmGCbxJJ0x61vtipIX7XVp6ny+yEyKXVq9NzPeEhKf1YCTm68f4iNlyXPUG/XAQuwqYoCztqrO0w9qzaLzS7d78DAhGWvNcY8x2tqu+dN50X8AmePhtMg6GBD7+we+i5jDneE0u3n5dlCedpSTuhN3uh0+2sFt/Gg27bMsL1idV0yOvdgGMEygD6kY+ZPbmhjHLiTPq425xSoQk3cbVmyh05y0v4gzsGnZcwdLM8PnF+ilYzBmMDDWXZhIQmY34yA+qOL5CXRLRbvVIUqVpcQN+yG/6ZgInI4e7rp6RkB2Sl6R/6uPGwrd0+tE6T0lkS2ubBf5Slzdz5jj2FQ1/UTsh55xhy407zRcX8Aqvt2naBjclnTLIejagwwnu6dc3YNlDRz4aKg9CYxgE95QeZPyGlrqpszJgvmHGPmgmnqM9KTJ2DuggHR5VGKYFmdHlnqih6+k0WQC+KHHhPR7iqDim8+v2jV47bpRhsA+gJEOFvRQCpHo3scJ7H5Fy+7wonCiOkRE3Ur+vvZ41v1tUfKBM0VUXL+pfiMBJQH8+kGanf4qynUrSgmnf9JzWBnwFIFz6lgp2vu0Bc7kjsCCi1AJv2H1BOYm+7WD3ONQQxfuBZvrjK++uSl+5e5JBq4yxnbnN22g/EeJ6qTEzvkPkBXg3G6e3jCvGBHCZLyfpUodrALwTQBK422ocQ7zuJl4fl9TF+8l8Rlwqr2A2G/3v0xnykXey5Kwyc31YtqzFsqkeo3JVHd8H9slicCbBIqXfTD0BXZhsczYk8g+pYDHJzE6J34OUmere1FkJy0zc4rTsZfuSCwgMYAQ=="}    }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0 }
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"{\"kind\":\"debr"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ief\",\"say\":\"Phas"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ing burn done"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":": "}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"324 m/s used against"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" 340 plan"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ned, residual "}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"0.08"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" m/s. The S"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"un orbit is now 12"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":".83 by"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" 19.70 million km alt"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"itude with a "}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"12.33 million s period."}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" 3049"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" m/s is left against "}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"1550 m/s for cap"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ture and landing,"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" plus a small"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Hohmann burn at"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" the next periapsis.\",\""}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"reply_int"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ent\":\""}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"none\",\"un"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"sure_because\":\"\",\"s"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"equence_plan\":null,"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"debrief\":{\"out"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"come\":\"Nominal"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\",\"why\":\"The"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" ap"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"oapsis re"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ached the target and the resid"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ual was 0.08 m"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"/s.\",\"what"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"_happ"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ened\":\"\",\"go"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"al_reached\":false,\""}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"next\":\"Co"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ast to the next periapsis"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" (U"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"T about 24"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":".9 "}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"million) and use"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" the t"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ools to plan the Duna"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Hohmann burn."}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Remove the le"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ftover node before plan"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ning, then capture at"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Duna.\",\"e"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"va_science"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\":\"\",\"out"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"come_v"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"s_target\":\"\",\"pl"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"an_margin\":\"\",\"science"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\":\"\",\"goal_ste"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ps_done"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\":[1,2],"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"follow_up\":\""}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"none\",\"follow_up_text"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\":\"\""}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"},"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"alert\":null}"}     }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1        }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"container":null},"usage":{"input_tokens":2,"cache_creation_input_tokens":3734,"cache_read_input_tokens":122152,"output_tokens":474,"output_tokens_details":{"thinking_tokens":126},"iterations":[{"input_tokens":2,"output_tokens":474,"cache_read_input_tokens":122152,"cache_creation_input_tokens":3734,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":3734},"type":"message","model":null}]},"context_management":{"applied_edits":[]}   }
+
+event: message_stop
+data: {"type":"message_stop"        }
+

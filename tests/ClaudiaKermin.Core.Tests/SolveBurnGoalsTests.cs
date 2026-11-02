@@ -479,6 +479,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Theory]
+        [Trait("Category", "Timing")]
         [MemberData(nameof(Goals))]
         public void Each_goal_solves_in_milliseconds(string goal, string input)
         {

@@ -19,18 +19,10 @@ namespace ClaudiaKermin.Core.Tests
     /// </summary>
     public sealed class GuidanceTests
     {
-        private sealed class PassingCheck : IScriptCheck
-        {
-            public ScriptCheckResult Check(string script)
-            {
-                return ScriptCheckResult.Pass();
-            }
-        }
-
-        /// <summary>Every tool a Mission request offers, check_script included.</summary>
+        /// <summary>Every Planning Tool a Mission request offers (no check_script, #570).</summary>
         private static IList<ToolDefinition> Tools()
         {
-            return PlanningTools.Default(new PassingCheck()).Definitions(ToolOffer.Mission);
+            return PlanningTools.Default().Definitions(ToolOffer.Mission);
         }
 
         [Fact]
@@ -60,7 +52,8 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("Send independent calls together in one reply", layer);
             // #508: the pad-specific wording rides in the Mission request, not the cached base layer.
             Assert.DoesNotContain("launch pad", layer);
-            Assert.DoesNotContain("needs no check_script", layer);
+            Assert.DoesNotContain("The Mission Plan needs no", layer);
+            Assert.Contains("The Script Check runs on every Sequence Plan's script when you send it; one that fails comes back once for a rewrite.", layer);
         }
 
         [Fact]
@@ -76,6 +69,8 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("lexicon(\"biome\", \"Midlands\", \"near\", latlng(3.1, 24.6))", MissionPrompts.WorkedExampleScript);
             Assert.Contains("site at (3.1, 24.6)", plan);
             Assert.Contains("give land a biome with find_landing_site's site as near", plan);
+            // #521: a site off the track takes a plane change, flown first as its own step and budgeted at its total.
+            Assert.Contains("For a site off the track, first fly one of find_landing_site's plane_changes as its own step, budgeting its total_dv.", plan);
             Assert.Contains("\"drop_empty\"", MissionPrompts.WorkedExampleScript);
             Assert.Contains("addons:claudia:report(res).", MissionPrompts.WorkedExampleScript);
             // The example is block use, not a Custom Script, and its Debrief calls no tool.
@@ -95,7 +90,10 @@ namespace ClaudiaKermin.Core.Tests
             // to 11275 (+159) for #415: big_deg in the rcs_tolerance doc and the big-turn wording in the RCS Use sentence (spec-mandated, not yet human-approved);
             // to 11461 (+186) for #421: the one-line claudia_keep_roll doc (human approved the raise, trimming the doc to one line);
             // to 11483 (+22) for #510: rule 3 and the worked example pass land the tool's site as near (human approved 2026-10-28, run budget +250)
-            Assert.InRange(MissionPrompts.BaseLayer.Length, 1, 11483);
+            // to 11545 (+62) for #523: the SET a:b[c] rule (human approved 2026-10-29)
+            // to 11635 (+90) for #521: fly the proposed plane change before land (human approved 2026-10-29)
+            // to 11770 (+135) for #599: a falling craft thrusts horizontal and up, never a prograde node (ticket-mandated, within the run's 60-token prefix allowance)
+            Assert.InRange(MissionPrompts.BaseLayer.Length, 1, 11770);
         }
 
         [Fact]
@@ -118,10 +116,7 @@ namespace ClaudiaKermin.Core.Tests
             var blocks = CoreLibrary.Blocks.Select(b => b.Name).ToList();
             foreach (var tool in Tools())
             {
-                // check_script pairs with whichever blocks the script runs.
-                var named = tool.Name == "check_script"
-                    ? tool.Description.Contains("the one that runs the Building Blocks")
-                    : blocks.Any(b => Regex.IsMatch(tool.Description, "Its blocks? (is|are) [^:]*\\b" + b + "\\b"));
+                var named = blocks.Any(b => Regex.IsMatch(tool.Description, "Its blocks? (is|are) [^:]*\\b" + b + "\\b"));
                 Assert.True(named, tool.Name + " names no Building Block: " + tool.Description);
                 Assert.True(tool.Description.Contains("Don't call it"), tool.Name + " doesn't say when not to call it: " + tool.Description);
             }
@@ -142,13 +137,6 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("\n- change_orbit(options): inclination, plane, LAN, resonance.", MissionPrompts.BaseLayer);
             Assert.Contains("call it rather than hand-write the node", CoreLibrary.FullDocs(new[] { "change_orbit" }));
             Assert.Contains("Its blocks are change_orbit,", Tools().Single(t => t.Name == "solve_burn").Description);
-        }
-
-        [Fact]
-        public void CheckScriptIsNotForTestingThatToolsWork()
-        {
-            var check = Tools().Single(t => t.Name == "check_script").Description;
-            Assert.Contains("never to test that tools work", check);
         }
 
         [Theory]

@@ -37,7 +37,7 @@ namespace ClaudiaKermin.Core.Missions
         /// conversation's input size from the last committed reply.
         /// </summary>
         public static void WriteTranscript(string folder, string missionId, string model, IList<string> system, IEnumerable<Message> messages,
-            CompactionBlock compaction = null, int compactedMessages = 0, long contextTokens = 0)
+            CompactionBlock compaction = null, int compactedMessages = 0, long contextTokens = 0, string lastMessageId = null)
         {
             var json = new JsonWriter().BeginObject()
                 .Field("mission_id", missionId)
@@ -55,6 +55,7 @@ namespace ClaudiaKermin.Core.Missions
                 json.EndObject();
             }
             if (contextTokens > 0) json.Field("context_tokens", contextTokens);
+            if (lastMessageId != null) json.Field("last_message_id", lastMessageId);
             json.EndObject();
             ReplaceAtomically(Path.Combine(folder, TranscriptFile), json.ToString());
         }
@@ -80,15 +81,18 @@ namespace ClaudiaKermin.Core.Missions
         /// lost request, a request refused by the Spending Cap, or a raised cap. Never rewritten.
         /// </summary>
         public static void AppendCostEvent(string folder, string kind, int request, string model, decimal amount, string outcome,
-            decimal spent, decimal held, decimal cap)
+            decimal spent, decimal held, decimal cap, decimal? input = null)
         {
             Directory.CreateDirectory(folder);
+            // A pending line carries its input cost: all a request lost before any reply can have cost (#535).
             var json = new JsonWriter().BeginObject()
                 .Field("event", kind)
                 .Field("request", request)
                 .Field("model", model)
                 .Name("amount").Raw(Dollars(amount))
-                .Field("outcome", outcome)
+                .Field("outcome", outcome);
+            if (input.HasValue) json.Name("input").Raw(Dollars(input.Value));
+            json
                 .Name("spent").Raw(Dollars(spent))
                 .Name("held").Raw(Dollars(held))
                 .Name("cap").Raw(Dollars(cap))

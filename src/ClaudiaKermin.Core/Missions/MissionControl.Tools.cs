@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using ClaudiaKermin.Core.Claude;
@@ -56,13 +57,37 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         /// <summary>
+        /// Every Mission request's tools list (ADR 0012): the Planning Tools, then the Reply Tool propose_mission_plan. The same
+        /// on every request, whatever the turn may call, so the cached prefix never changes.
+        /// </summary>
+        private IList<ToolDefinition> MissionTools()
+        {
+            var tools = new List<ToolDefinition>(_tools.Definitions(ToolOffer.Mission));
+            tools.Add(ProposedPlans.Definition());
+            return tools;
+        }
+
+        /// <summary>
+        /// The requests that may come back as a Mission Plan, and so may call propose_mission_plan: the first or a revised plan,
+        /// a reduced goal, the Mission Settings, and the player's typed reply or change (to a pending Mission Plan, or a new goal).
+        /// </summary>
+        private static bool TakesMissionPlan(Purpose purpose)
+        {
+            return purpose == Purpose.MissionPlan || purpose == Purpose.Settings || purpose == Purpose.Reply || purpose == Purpose.Change;
+        }
+
+        /// <summary>
         /// Why a turn may not call <paramref name="tool"/>, or null when it may: no tool during an Alert; on the ground, none of
-        /// the tools that need an orbit (#508); no check_script on a request for a Mission Plan (new, or revised for the Mission
-        /// Settings), which has no script.
+        /// the tools that need an orbit (#508); propose_mission_plan only on a request that takes a Mission Plan.
         /// </summary>
         private static string ToolRefusal(Purpose purpose, GameSnapshot snapshot, string tool)
         {
-            if (purpose == Purpose.Alert) return "not available during an Alert";
+            if (purpose == Purpose.Alert)
+                return tool == ProposedPlans.ToolName
+                    ? "not available during an Alert; propose_mission_plan is only for a request that asks for a Mission Plan"
+                    : "not available during an Alert";
+            if (tool == ProposedPlans.ToolName && !TakesMissionPlan(purpose))
+                return "this request doesn't ask for a Mission Plan; propose_mission_plan is only for a request that asks for a Mission Plan, so reply with the kind the mod asked for";
             var where = snapshot != null ? Grounded(snapshot.Situation) : null;
             if (where != null)
             {
@@ -73,8 +98,6 @@ namespace ClaudiaKermin.Core.Missions
                 if (tool == "solve_burn") return "the craft is " + where + ", with no orbit to solve a burn from" + launch;
                 if (tool == "find_landing_site") return "the craft is " + where + ", with no orbit and so no ground track to search: plan the landing site once in orbit round the body";
             }
-            if (tool == "check_script" && (purpose == Purpose.MissionPlan || purpose == Purpose.Settings))
-                return "the Mission Plan needs no script check; the Sequence Plan's script is checked when you send it";
             return null;
         }
 
@@ -95,7 +118,37 @@ namespace ClaudiaKermin.Core.Missions
         {
             var uses = message.Content.OfType<ToolUseBlock>().ToList();
             var repeats = ToolRepeats.Of(turn.Messages, message);
-            return use => ToolRefusal(purpose, snapshot, use.Name) ?? repeats[uses.IndexOf(use)];
+            var rows = ToolRepeats.Rows(turn.Messages);
+            // A step of nothing but repeats is the loop's last (#571): its refusals say so. A call whose figures are already in
+            // the request (#575) is refused too but is not an identical repeat, so it does not count toward the stop.
+            var allRepeats = uses.Count > 0 && uses.Select((u, i) => repeats[i] != null && ToolRefusal(purpose, snapshot, u.Name) == null && !ToolRepeats.Matches(rows, u)).All(r => r);
+            // A Mission Plan not handed in yet keeps the loop open for propose_mission_plan alone, once (#571).
+            var planWaits = TakesMissionPlan(purpose) && ProposedPlans.LastAccepted(turn.Messages) == null && turn.ToolSteps + 1 < ToolStep.MaxSteps;
+            var plansHere = uses.Where((u, i) => u.Name == ProposedPlans.ToolName && repeats[i] == null).Any();
+            var stops = turn.PlanOnly ? !plansHere : allRepeats && !planWaits;
+            return use =>
+            {
+                var repeat = repeats[uses.IndexOf(use)];
+                var refused = ToolRefusal(purpose, snapshot, use.Name);
+                if (refused != null) return refused;
+                var inRequest = ToolRepeats.Matches(rows, use) ? "its figures are in the Mission request above" : null;
+                var stopLine = RepeatStopLine + (TakesMissionPlan(purpose) ? ", with the plan." : ".");
+                if (turn.PlanOnly && use.Name != ProposedPlans.ToolName)
+                    return (inRequest ?? repeat ?? "only propose_mission_plan is answered now") + (stops ? stopLine : "");
+                if (inRequest != null) return inRequest;
+                if (stops) return repeat + stopLine;
+                if (allRepeats && planWaits && !turn.PlanOnly) return repeat + PlanOnlyLine;
+                return repeat;
+            };
+        }
+
+        private const string PlanOnlyLine = ". Your next call must be propose_mission_plan: no other tool will be answered";
+
+        private const string RepeatStopLine = ". Your next reply is the last of this turn and can't call a tool: reply now";
+
+        private static bool IsRepeat(string refusal, string repeat)
+        {
+            return repeat != null && refusal.StartsWith(repeat, StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -115,11 +168,13 @@ namespace ClaudiaKermin.Core.Missions
             }
             if (turn.ToolLimitSent)
             {
-                Failed(mission, turn, "Claudia kept calling Planning Tools after the limit of " + ToolStep.MaxSteps + " steps.");
+                Failed(mission, turn, turn.RepeatStop
+                    ? "Claudia kept calling Planning Tools after a step of only repeated calls."
+                    : "Claudia kept calling Planning Tools after the limit of " + ToolStep.MaxSteps + " steps.");
                 return;
             }
             var atLimit = false;
-            var names = message.Content.OfType<ToolUseBlock>().Select(t => _tools.Activity(t.Name)).Distinct().ToArray();
+            var names = message.Content.OfType<ToolUseBlock>().Select(t => t.Name == ProposedPlans.ToolName ? ProposedPlans.Activity : _tools.Activity(t.Name)).Distinct().ToArray();
             mission.InFlight = true;
             mission.Activity = names.Length > 0 ? string.Join(" and ", names) : "calculating";
             turn.Cancel = new CancellationTokenSource();
@@ -135,8 +190,14 @@ namespace ClaudiaKermin.Core.Missions
             var purpose = turn.Purpose;
             var timeout = _toolCallTimeout;
             var refusal = ToolRefusals(purpose, snapshot, turn, message);
+            // The Reply Tool is answered by the mod's own plan checks, from copies taken here: the worker never reads the Mission.
+            var left = new HashSet<string>(mission.LeftTheCraft);
+            var needsNewGoal = mission.Stage != MissionStage.AwaitingPlanApproval && (purpose == Purpose.Reply || purpose == Purpose.Change);
+            // Only the player's typed Reply or Change may change the Mission Goal (#590); on any other request a new_goal is ignored.
+            var allowsNewGoal = purpose == Purpose.Reply || purpose == Purpose.Change;
+            Func<ToolUseBlock, ToolOutcome> answer = use => use.Name == ProposedPlans.ToolName ? ProposedPlans.Check(use, left, needsNewGoal, allowsNewGoal) : null;
             _background.Run(
-                () => ToolStep.Run(tools, message, refusal, atLimit, snapshot, body, timeout),
+                () => ToolStep.Run(tools, message, refusal, atLimit, snapshot, body, timeout, answer),
                 step => ToolsAnswered(mission, turn, message, step, atLimit),
                 error => ToolsAnswered(mission, turn, message, null, atLimit));
         }
@@ -164,15 +225,27 @@ namespace ClaudiaKermin.Core.Missions
                 // Byte for byte as Claude sent it, then the results: the next request is this one plus these two messages.
                 turn.Messages.Add(message.ToMessage());
                 turn.Messages.Add(step.Results);
+                // The next request is the last that may call a tool (#509): a Mission Plan not handed in yet is asked for now.
+                if (turn.ToolSteps + 1 == ToolStep.MaxSteps - 1 && TakesMissionPlan(turn.Purpose) && ProposedPlans.LastAccepted(turn.Messages) == null)
+                    step.Results.Content.Add(new TextBlock { Text = MissionPrompts.ProposePlanNow });
                 turn.ToolSteps++;
+                var allRepeats = step.Calls.Count > 0 && step.Calls.Select((c, i) => IsRepeat(c.Refusal, repeats[i])).All(r => r);
+                // On a turn still owed a Mission Plan, a repeat-only step gets one more step for propose_mission_plan alone (#571).
+                var planWaits = TakesMissionPlan(turn.Purpose) && ProposedPlans.LastAccepted(turn.Messages) == null && turn.ToolSteps < ToolStep.MaxSteps;
+                if (turn.PlanOnly)
+                    turn.RepeatStop = !step.Calls.Select((c, i) => c.Name == ProposedPlans.ToolName && !IsRepeat(c.Refusal, repeats[i])).Any(p => p);
+                else
+                    turn.RepeatStop = allRepeats && !planWaits;
+                turn.PlanOnly = !turn.PlanOnly && allRepeats && planWaits;
                 for (var i = 0; i < step.Calls.Count; i++)
                 {
                     var call = step.Calls[i];
                     turn.Stats.Called(call.Name);
-                    Note(LogKind.Notice, "Planning Tool " + call.Name + " (" + Shorten(call.InputJson) + "): " + (call.IsError ? "error: " : "") + call.Summary);
+                    Note(LogKind.Notice, (call.Name == ProposedPlans.ToolName ? "Reply Tool " : "Planning Tool ") + call.Name + " (" + Shorten(call.InputJson) + "): " + (call.IsError ? "error: " : "") + call.Summary);
                     Event(mission, "tool", call.Name + " " + call.InputJson + " -> " + (call.IsError ? "error: " : "") + call.Summary);
                     if (call.Refusal.Length == 0) continue;
-                    turn.Stats.Refused(call.Refusal == repeats[i]);
+                    if (call.Name == ProposedPlans.ToolName && !TakesMissionPlan(turn.Purpose)) turn.PlanCallRefused = true;
+                    turn.Stats.Refused(IsRepeat(call.Refusal, repeats[i]));
                     Event(mission, "tool_refused", call.Name + " " + call.InputJson + " -> " + call.Refusal + " (this turn: " + turn.Stats.RefusedCalls + " refused, "
                         + turn.Stats.RepeatCalls + (turn.Stats.RepeatCalls == 1 ? " repeat)" : " repeats)"));
                 }
@@ -195,11 +268,12 @@ namespace ClaudiaKermin.Core.Missions
         private void NextStep(Mission mission, Turn turn)
         {
             // At the step limit the next request is the last: tool_choice none, the tools list and system prompt unchanged (#509). The cap check below prices it like any step.
-            turn.ToolLimitSent = turn.ToolSteps >= ToolStep.MaxSteps;
+            turn.ToolLimitSent = turn.ToolSteps >= ToolStep.MaxSteps || turn.RepeatStop;
             var worst = RequestCharge.WorstCase(_config.Prices, mission.Model, BuildRequest(mission, turn));
             if (mission.Committed + worst <= mission.SpendingCap)
             {
-                if (turn.ToolLimitSent) Event(mission, "tool_limit_final", turn.Purpose + " after " + turn.ToolSteps + " steps; the reply is asked for with tool_choice none");
+                if (turn.RepeatStop) Event(mission, "tool_loop_repeat_stop", turn.Purpose + " step " + turn.ToolSteps + ": every call was a refused repeat; the reply is asked for with tool_choice none");
+                else if (turn.ToolLimitSent) Event(mission, "tool_limit_final", turn.Purpose + " after " + turn.ToolSteps + " steps; the reply is asked for with tool_choice none");
                 Send(mission, turn);
                 return;
             }
@@ -216,6 +290,7 @@ namespace ClaudiaKermin.Core.Missions
         private void DiscardLoop(Mission mission, Turn turn)
         {
             if (turn.ToolSteps == 0) return;
+            if (IsMissionPlanTurn(mission, turn)) LogMissionPlan(mission, turn, true);
             Event(mission, "tool_loop_discarded", turn.Purpose + " after " + turn.ToolSteps + " step" + (turn.ToolSteps == 1 ? "" : "s"));
             ResendFromScratch(mission, turn, null);
         }

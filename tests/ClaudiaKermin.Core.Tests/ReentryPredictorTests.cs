@@ -93,6 +93,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void It_runs_in_milliseconds()
         {
             // The reference reentry, and the steepest and shallowest of the research's periapsis sweep. Measured at about 1.5 ms
@@ -106,6 +107,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void A_full_prediction_with_lift_both_kinds_of_chute_and_the_shield_s_drop_runs_in_milliseconds()
         {
             // Every event the predictor has (#462): measured at about 1.2 ms alone in a Debug build, the figure for #463; the

@@ -104,13 +104,26 @@ namespace ClaudiaKermin.Kerboscript.Tests
         }
 
         [Fact]
+        public void A_decoupler_whose_parts_stay_is_counted_to_the_bound_then_left_in_drop_tried_with_no_kOS_error()
+        {
+            var script = "local ctx is lexicon(\"drop_tried\", list(), \"drop_tries\", lexicon()).\n"
+                + "print claudia_drop_settle(ctx, \"u1\", true) + ctx:drop_tries[\"u1\"] + ctx:drop_tried:length.\n"
+                + "print claudia_drop_settle(ctx, \"u1\", true) + ctx:drop_tries[\"u1\"] + ctx:drop_tried:length.\n"
+                + "print claudia_drop_settle(ctx, \"u1\", true) + ctx:drop_tries[\"u1\"] + ctx:drop_tried:length.\n"
+                + "print ctx:drop_tried[0].\n"
+                + "print claudia_drop_settle(ctx, \"u2\", false) + ctx:drop_tries[\"u2\"] + ctx:drop_tried:length.\n";
+            Assert.Equal(new[] { "retry10", "retry20", "gave_up31", "u1", "left12" },
+                KosHarness.Run(CoreLibrary.Bundle(script)).ToArray());
+        }
+
+        [Fact]
         public void Drop_empty_ignores_stage_limit_and_the_bound_ends_in_a_blocknote()
         {
             var source = CoreLibrary.Files.Single(f => f.Name == "claudia_lib").Source;
             var start = source.IndexOf("function claudia_drop_empty {", System.StringComparison.Ordinal);
             var body = source.Substring(start, source.IndexOf("// ---- Waits and warp", start, System.StringComparison.Ordinal) - start);
             Assert.DoesNotContain("stage_limit", body);
-            Assert.Contains("claudia_drop_outcome(stayed, tries)", body);
+            Assert.Contains("claudia_drop_settle(ctx, fired[i], stayed)", body);
             Assert.Contains("blocknote", body);
         }
 
@@ -141,6 +154,52 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal("False", One("claudia_auto_drop_fires(list(claudia_part_kind(" + PlainPart + "), claudia_part_kind(" + cabin + ")), list(0), list(40))"));
         }
 
+        // A part as kOS gives it, by the modules it has; "above" is what its :decoupler answers.
+        private static string Part(string modules, string above)
+        {
+            return "lexicon(\"name\", \"p\", \"decoupler\", " + above + ", \"hasmodule\", { parameter m. return list(" + modules + "):contains(m). })";
+        }
+
+        private const string Shield = "\"ModuleDecouple\", \"ModuleAblator\"";
+
+        [Fact]
+        public void A_heat_shield_is_never_the_decoupler_of_the_part_below_it()
+        {
+            // pod -> battery -> heat shield -> TR-18A -> tank: the TR-18A's decoupler, as kOS gives it, is the shield.
+            var shield = Part(Shield, "\"\"");
+            Assert.Equal("", One("claudia_decoupler_of(" + Part("", shield) + ")"));
+            Assert.Equal("", One("claudia_decoupler_of(" + Part("\"ModuleDecouple\"", shield) + ")"));
+            var trunk = Part("\"ModuleDecouple\"", "\"\"");
+            Assert.Equal("True", One("claudia_decoupler_of(" + Part("", trunk) + "):istype(\"Lexicon\")"));
+        }
+
+        [Fact]
+        public void Naming_a_decoupler_fires_that_decoupler_and_not_the_one_above_it()
+        {
+            var shield = Part(Shield, "\"\"");
+            var tr18 = Part("\"ModuleDecouple\"", shield);
+            Assert.Equal("True", One("claudia_drop_decoupler(" + tr18 + "):hasmodule(\"ModuleDecouple\")"));
+            Assert.Equal("False", One("claudia_drop_decoupler(" + tr18 + "):hasmodule(\"ModuleAblator\")"));
+        }
+
+        [Fact]
+        public void A_heat_shield_is_no_drop_target_even_when_named_or_under_a_tank()
+        {
+            var shield = Part(Shield, "\"\"");
+            Assert.Equal("", One("claudia_drop_decoupler(" + shield + ")"));
+            // An empty tank directly under the shield (no decoupler between): nothing to fire.
+            Assert.Equal("", One("claudia_drop_decoupler(" + Part("", shield) + ")"));
+        }
+
+        [Fact]
+        public void The_drop_plan_refuses_a_named_heat_shield_and_the_stage_plan_skips_it()
+        {
+            var source = CoreLibrary.Files.Single(f => f.Name == "claudia_lib").Source;
+            Assert.Contains("is a heat shield; reentry drops it", source);
+            var deorbit = CoreLibrary.Files.Single(f => f.Name == "deorbit").Source;
+            Assert.Contains("claudia_part_kind(p) <> \"shield\" and p:stage = stage_num", deorbit);
+        }
+
         [Fact]
         public void The_names_of_what_left_come_from_the_uids_and_names_taken_while_aboard()
         {
@@ -165,6 +224,82 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal("2", One("drop_parts_names(list(\"a\", \"b\")):length"));
         }
 
+        // ---- #608: a drop that strands the craft in space is refused ----
+
+        // a107: the drop took the Terrier stack and all 1,784 m/s with Kerbin's periapsis at 601 km (atmosphere 70 km).
+        [Theory]
+        [InlineData("\"ORBITING\"", 601000, 70000, 1784, 0, "false", "True")]   // only engine and all fuel go, pe above the air: refused
+        [InlineData("\"ORBITING\"", 601000, 70000, 1784, 0, "true", "False")]   // allow_no_engine lets it go
+        [InlineData("\"ORBITING\"", 35000, 70000, 1784, 0, "false", "False")]   // periapsis inside the atmosphere: it comes down
+        [InlineData("\"SUB_ORBITAL\"", -200000, 70000, 1784, 0, "false", "False")] // falling into the air
+        [InlineData("\"LANDED\"", -600000, 70000, 1784, 0, "false", "False")]
+        [InlineData("\"SPLASHED\"", -600000, 70000, 1784, 0, "false", "False")]
+        [InlineData("\"LANDED\"", -200000, -1, 900, 0, "false", "False")]      // landed on the Mun
+        [InlineData("\"ORBITING\"", 12000, -1, 900, 0, "false", "True")]        // Mun orbit: no atmosphere to come down in
+        [InlineData("\"ESCAPING\"", 601000, 70000, 1784, 0, "false", "True")]
+        [InlineData("\"ORBITING\"", 601000, 70000, 1784, 950, "false", "False")] // an empty tank or a spent stage, the engine stays
+        [InlineData("\"ORBITING\"", 601000, 70000, 0, 0, "false", "False")]     // no delta-v before it: the drop takes none
+        public void A_drop_is_refused_only_in_space_on_an_orbit_missing_the_air_when_it_takes_the_last_delta_v(
+            string status, int pe, int atm, int dvNow, int dvLeft, string allow, string expected)
+        {
+            Assert.Equal(expected, One("drop_parts_strands(" + status + ", " + pe + ", " + atm + ", " + dvNow + ", " + dvLeft + ", " + allow + ")"));
+        }
+
+        [Fact]
+        public void The_refusal_names_the_delta_v_the_drop_would_take_and_the_way_out()
+        {
+            var reason = One("drop_parts_strand_reason(1784.3, 601234, 70000)");
+            Assert.Contains("all 1784 m/s", reason);
+            Assert.Contains("periapsis 601 km is above the atmosphere", reason);
+            Assert.Contains("reentry's separate", reason);
+            Assert.Contains("allow_no_engine", reason);
+            Assert.Contains("no atmosphere", One("drop_parts_strand_reason(900, 12000, -1)"));
+            Assert.Contains("all the delta-v", One("drop_parts_strand_reason(-1, 601234, 70000)"));
+        }
+
+        [Theory]
+        [InlineData(340, 4.0, 2.0, 2311)]  // Terrier-like: wet 4 t, 2 t of fuel: 340 * g0 * ln 2
+        [InlineData(0, 4.0, 2.0, 0)]       // no engine stays (no isp)
+        [InlineData(340, 4.0, 0, 0)]       // the engine stays, its fuel goes
+        [InlineData(340, 2.0, 2.0, 0)]     // nonsense masses never divide by zero
+        public void The_delta_v_left_is_the_rocket_equation_of_what_stays(int isp, double wet, double prop, int expected)
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            Assert.Equal(expected.ToString(inv), One("round(drop_parts_rocket_dv(" + isp + ", " + wet.ToString(inv) + ", " + prop.ToString(inv) + "))"));
+        }
+
+        [Theory]
+        [InlineData(1784, 0, 2100, 0, "1784")]     // a107 refused: stock's figure, all of it
+        [InlineData(1784, 950, 2100, 1000, "834")] // stock recounted after the drop
+        [InlineData(0, 0, 2100, 0, "2100")]        // stock not yet computed: the proxy's
+        [InlineData(-1, -1, 2100, 0, "2100")]      // a trickle throttle: the proxy's
+        [InlineData(1784, 1784, 2100, 1100, "1000")] // stock not recounted yet: the proxy's
+        [InlineData(950, 990, 1000, 1040, "0")]    // an empty tank dropped gains delta-v: 0
+        public void The_delta_v_a_drop_took_is_stocks_unless_stock_is_unknown_or_stale(int before, int after, int proxyNow, int proxyLeft, string expected)
+        {
+            Assert.Equal(expected, One("drop_parts_dv_taken(" + before + ", " + after + ", " + proxyNow + ", " + proxyLeft + ")"));
+        }
+
+        [Theory]
+        [InlineData("Liquid Fuel", "LiquidFuel")]
+        [InlineData("MonoPropellant", "Monopropellant")]
+        [InlineData("Xenon Gas", "XenonGas")]
+        public void A_part_resource_and_an_engines_consumed_resource_share_a_key(string a, string b)
+        {
+            Assert.Equal("True", One("drop_parts_res_key(\"" + a + "\") = drop_parts_res_key(\"" + b + "\")"));
+        }
+
+        [Fact]
+        public void Drop_parts_checks_the_drop_before_firing_and_reports_dropped_dv()
+        {
+            var source = CoreLibrary.Files.Single(f => f.Name == "drop_parts").Source;
+            var refuse = source.IndexOf("drop_parts_strands(status", System.StringComparison.Ordinal);
+            Assert.True(refuse > 0);
+            Assert.True(refuse < source.IndexOf("claudia_fire_drop(ctx, plan)", System.StringComparison.Ordinal));
+            Assert.Contains("\"allow_no_engine\", false", source);
+            Assert.Contains("set extra:dropped_dv to", source);
+        }
+
         [Fact]
         public void Drop_parts_is_one_of_the_blocks_and_its_docs_name_its_options()
         {
@@ -172,6 +307,8 @@ namespace ClaudiaKermin.Kerboscript.Tests
             var docs = CoreLibrary.FullDocs(new[] { "drop_parts" });
             Assert.Contains("parts [required]", docs);
             Assert.Contains("dropped", docs);
+            Assert.Contains("allow_no_engine (false)", docs);
+            Assert.Contains("dropped_dv", docs);
             Assert.Contains("drop_empty", CoreLibrary.Summaries());
         }
     }

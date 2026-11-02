@@ -16,7 +16,7 @@ namespace ClaudiaKermin.Core.Tests
 {
     /// <summary>
     /// The Spending Cap and cost, driven through the Mission seam with hand-written streams whose
-    /// <c>usage.iterations</c> have known prices (a "priced" reply costs $0.54 on Sonnet 5.5).
+    /// <c>usage.iterations</c> have known prices (a "priced" reply costs $0.52 on Sonnet 5.5).
     /// </summary>
     public sealed class MissionCostTests : IDisposable
     {
@@ -115,12 +115,12 @@ namespace ClaudiaKermin.Core.Tests
         {
             var prices = new PlayerConfig().Prices;
             var usage = new Usage();
-            // Sonnet: 1M fresh input = $2; cache write 1M = $4 (1-hour TTL, twice input); cache read 1M = $0.20; 1M output = $10.
+            // Sonnet: 1M fresh input = $2; cache write 1M = $4 (1-hour TTL, twice input); cache read 1M = $0.10; 1M output = $10.
             usage.Iterations.Add(new UsageIteration
             {
                 Type = "message", InputTokens = 1000000, CacheCreationInputTokens = 1000000, CacheReadInputTokens = 1000000, OutputTokens = 1000000,
             });
-            Assert.Equal(16.2m, prices.CostOf(usage, "claude-sonnet-5-5"));
+            Assert.Equal(16.1m, prices.CostOf(usage, "claude-sonnet-5-5"));
 
             // A compaction attempt without a model is priced at the request's model; a fallback at its own.
             usage.Iterations.Clear();
@@ -167,7 +167,7 @@ namespace ClaudiaKermin.Core.Tests
             plan.Gate.Set();
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             Assert.Equal(0m, mission.View.PendingCharge);
-            Assert.Equal(0.54m, mission.View.Spent);
+            Assert.Equal(0.52m, mission.View.Spent);
             // The worst case covered at least the full 32000-token output ($0.32 on Sonnet).
             Assert.True(pending > 0.32m);
             Assert.Equal(0m, mission.View.HeldCharges);
@@ -203,7 +203,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void ACancelledRequestKeepsItsWorstCaseChargeInTheLog()
+        public void ACancelledRequestWithNoResponseKeepsOnlyItsInputCostInTheLog()
         {
             var plan = ScriptedResponse.Fixture("mission-plan-priced.sse");
             plan.PauseAt = 200;
@@ -226,7 +226,11 @@ namespace ClaudiaKermin.Core.Tests
                 .Select(l => JsonDocument.Parse(l).RootElement.Clone())
                 .Where(l => !l.GetProperty("event").GetString().StartsWith("craft_check_")).ToArray();
             Assert.Equal(new[] { "pending", "kept" },lines.Select(l => l.GetProperty("event").GetString()).ToArray());
-            Assert.Equal(pending, lines[1].GetProperty("amount").GetDecimal());
+            var input = pending - new PlayerConfig().Prices.OutputCost(Sonnet, MissionPrompts.MaxTokens);
+            Assert.Equal(pending, lines[0].GetProperty("amount").GetDecimal());
+            Assert.Equal(input, lines[0].GetProperty("input").GetDecimal());
+            Assert.Equal(input, lines[1].GetProperty("amount").GetDecimal());
+            Assert.Equal(input, lines[1].GetProperty("held").GetDecimal());
             Assert.Equal("cancelled", lines[1].GetProperty("outcome").GetString());
         }
 
@@ -249,8 +253,14 @@ namespace ClaudiaKermin.Core.Tests
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             // The lost request's charge stays; the successful retry adds its real cost.
             Assert.Equal(held, mission.View.HeldCharges);
-            Assert.Equal(0.54m, mission.View.Spent);
+            Assert.Equal(0.52m, mission.View.Spent);
             Assert.Equal(new[] { "pending", "kept", "pending", "paid" }, Events(CostLog(mission.View.MissionId)));
+
+            // #539: the stream broke after partial output, so the request keeps its whole worst case, not just its input cost.
+            var lines = CostLog(mission.View.MissionId).Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(l => JsonDocument.Parse(l).RootElement.Clone()).Where(l => !l.GetProperty("event").GetString().StartsWith("craft_check_")).ToArray();
+            Assert.Equal(lines[0].GetProperty("amount").GetDecimal(), lines[1].GetProperty("amount").GetDecimal());
+            Assert.Equal(lines[0].GetProperty("amount").GetDecimal(), held);
         }
 
         [Fact]
@@ -321,13 +331,13 @@ namespace ClaudiaKermin.Core.Tests
                 ScriptedResponse.Fixture("mission-sequence-plan-priced.sse"),
                 ScriptedResponse.Fixture("mission-debrief-priced.sse"));
             var mission = Control(transport);
-            // A roomy ceiling for the plan and the sequence (about $0.33 each beside $0.54 paid, with $0.12 left); the Debrief's worst
+            // A roomy ceiling for the plan and the sequence (about $0.33 each beside $0.52 paid, with $0.12 left); the Debrief's worst
             // case never fits in $0.12 whatever the tools list, since its 32000 output tokens alone could cost $0.32.
             CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, 1.20m, Sonnet));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
-            Assert.Equal(1.08m, mission.View.Spent);
+            Assert.Equal(1.04m, mission.View.Spent);
             mission.Send(new Approve());
             Assert.Equal(MissionStage.Running, mission.View.Stage);
             var start = mission.TakeCommands().OfType<StartScript>().Single();
@@ -343,7 +353,7 @@ namespace ClaudiaKermin.Core.Tests
             mission.Send(new RaiseCap(10m));
             DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
             Assert.Equal(3, transport.Requests.Count);
-            Assert.Equal(1.62m, mission.View.Spent);
+            Assert.Equal(1.56m, mission.View.Spent);
         }
 
         [Fact]
@@ -376,7 +386,7 @@ namespace ClaudiaKermin.Core.Tests
             var mission = Control(new StreamingFakeTransport());
             var estimates = mission.View.StartForm.Estimates;
             Assert.Equal(2.40m, estimates["claude-sonnet-5-5"]);
-            Assert.InRange(estimates["claude-opus-5-5"], 4.5m, 5.5m);
+            Assert.InRange(estimates["claude-haiku-5-5"], 0.20m, 0.30m);
         }
 
         [Fact]
@@ -388,7 +398,7 @@ namespace ClaudiaKermin.Core.Tests
                 var mission = Control(new StreamingFakeTransport(), config);
 
                 // Saved from the Space Center while the game runs: the next start form has them.
-                config.SetDefaultModel("claude-opus-5-5");
+                config.SetDefaultModel("claude-haiku-5-5");
                 config.DefaultSpendingCap = 6m;
                 config.DefaultDaylightLanding = false;
                 config.DefaultTimeVersusDeltaV = TimeVersusDeltaV.MostEfficient;
@@ -397,8 +407,8 @@ namespace ClaudiaKermin.Core.Tests
                 mission.Send(new UtAdvanced(1));
 
                 var form = mission.View.StartForm;
-                Assert.Equal("claude-opus-5-5", form.DefaultModel);
-                Assert.Equal(new[] { "claude-opus-5-5", "claude-sonnet-5-5" }, form.Models);
+                Assert.Equal("claude-haiku-5-5", form.DefaultModel);
+                Assert.Equal(new[] { "claude-haiku-5-5", "claude-sonnet-5-5" }, form.Models);
                 Assert.Equal(6m, form.DefaultSpendingCap);
                 Assert.False(form.DefaultSettings.DaylightLanding);
                 Assert.Equal(TimeVersusDeltaV.MostEfficient, form.DefaultSettings.TimeVersusDeltaV);
@@ -406,7 +416,7 @@ namespace ClaudiaKermin.Core.Tests
 
                 // And after a restart, from the file.
                 var restarted = Control(new StreamingFakeTransport(), PlayerConfig.LoadOrCreate(dir.Sub));
-                Assert.Equal("claude-opus-5-5", restarted.View.StartForm.DefaultModel);
+                Assert.Equal("claude-haiku-5-5", restarted.View.StartForm.DefaultModel);
                 Assert.True(restarted.View.StartForm.DefaultRemote);
             }
         }

@@ -194,6 +194,7 @@ namespace ClaudiaKermin.Core.Missions
         private void Entered(Mission mission, string how, string line)
         {
             mission.Stage = MissionStage.ManualControl;
+            mission.NoRunSinceSnapshot = false;
             mission.ConfirmPrompt = null;
             Note(LogKind.Notice, line);
             Event(mission, "manual_control", how);
@@ -240,7 +241,7 @@ namespace ClaudiaKermin.Core.Missions
             Begin(new Turn
             {
                 Purpose = Purpose.MissionPlan,
-                UserText = "Revise the Mission Plan.\n" + MissionPrompts.Facts(_ut, _snapshot),
+                UserText = "Revise the Mission Plan.\n" + MissionPrompts.Facts(_ut, _snapshot) + PlanFigures(mission, mission.Goal),
                 Notice = MissionPrompts.RevisedPlanNotice,
                 Waits = true,
             });
@@ -301,7 +302,8 @@ namespace ClaudiaKermin.Core.Missions
             return new Turn
             {
                 Purpose = missionPlan ? Purpose.MissionPlan : Purpose.SequencePlan,
-                UserText = MissionPrompts.ReplanBecauseCraftChanged(stale, missionPlan) + "\n" + MissionPrompts.Facts(_ut, _snapshot),
+                UserText = MissionPrompts.ReplanBecauseCraftChanged(stale, missionPlan) + "\n" + MissionPrompts.Facts(_ut, _snapshot)
+                    + (missionPlan ? PlanFigures(_mission, _mission.Goal) : ""),
                 Notice = missionPlan ? MissionPrompts.PlanNotice : MissionPrompts.SequenceNotice,
             };
         }

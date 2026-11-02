@@ -17,21 +17,22 @@ namespace ClaudiaKermin.Core.Tests
         // The API's grammar limit is internal (https://platform.claude.com/docs/en/build-with-claude/structured-outputs#schema-complexity-limits),
         // so these budgets come from probing it (tools/ClaudiaKermin.SchemaProbe, claude-haiku-5-5). By the
         // SchemaComplexity.Size proxy, sizes 64, 65, 75, 78 and 79 compiled (79 also on claude-sonnet-5-5); 89, 95 and 97
-        // were refused, whatever their union count (97 had only 4). Raise a budget only after the probe shows the bigger
-        // schema, plus one more nullable field, compiles.
+        // were refused, whatever their union count (97 had only 4). On 2026-10-31 the one Mission schema (#534,
+        // SchemaProbe mission-grammar, schemas/534-mission.json) compiled at size 80 with 3 unions on claude-haiku-5-5 and
+        // claude-sonnet-5-5, with the non-strict propose_mission_plan in the tools list and without it. Raise a budget only
+        // after the probe shows the bigger schema compiles.
 
-        /// <summary>The flight schema's three nullable parts (sequence_plan, debrief, alert).</summary>
+        /// <summary>The Mission schema's three nullable parts (sequence_plan, debrief, alert).</summary>
         private const int UnionBudget = 3;
 
-        /// <summary>Just above the largest size probed to compile (79); 89 was refused.</summary>
+        /// <summary>The largest size probed to compile (80, the one Mission schema); 89 was refused.</summary>
         private const int SizeBudget = 80;
 
         public static TheoryData<string, string> Schemas()
         {
             return new TheoryData<string, string>
             {
-                { "planning", MissionReply.PlanningSchemaJson },
-                { "flight", MissionReply.FlightSchemaJson },
+                { "Mission", MissionReply.MissionSchemaJson },
                 { "Craft Check", CraftCheckRules.SchemaJson() },
             };
         }
@@ -54,17 +55,27 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void EveryPartTogetherIsOverTheBudget()
         {
-            // Why there are two schemas: the one #199 found refused, even with sentinels.
+            // Why the mission_plan part goes through propose_mission_plan instead (ADR 0012): with it, the one schema is the
+            // one #199 found refused, even with sentinels.
             Assert.True(SchemaComplexity.Size(MissionReply.SchemaFor(MissionReply.AllKinds)) > SizeBudget);
         }
 
         [Fact]
-        public void EachSchemaOffersTheKindsItsRequestsCanComeBackAs()
+        public void TheMissionSchemaTakesEveryKindAndEveryPartButTheMissionPlan()
         {
-            Assert.Equal(new[] { "mission_plan", "sequence_plan", "answer" }, Kinds(MissionReply.PlanningSchemaJson));
-            Assert.Equal(new[] { "sequence_plan", "debrief", "answer", "alert" }, Kinds(MissionReply.FlightSchemaJson));
-            var planning = JsonReader.Parse(MissionReply.PlanningSchemaJson);
-            Assert.Equal(new[] { "kind", "say", "reply_intent", "unsure_because", "mission_plan", "sequence_plan" }, planning["required"].Items.Select(JsonNode.Str).ToArray());
+            Assert.Equal(new[] { "mission_plan", "sequence_plan", "debrief", "answer", "alert" }, Kinds(MissionReply.MissionSchemaJson));
+            var schema = JsonReader.Parse(MissionReply.MissionSchemaJson);
+            Assert.Equal(new[] { "kind", "say", "reply_intent", "unsure_because", "sequence_plan", "debrief", "alert" }, schema["required"].Items.Select(JsonNode.Str).ToArray());
+            Assert.Null(schema["properties"]["mission_plan"]);
+        }
+
+        [Fact]
+        public void TheMissionSchemaIsTheOneTheProbeCompiled()
+        {
+            // tools/ClaudiaKermin.SchemaProbe/schemas/534-mission.json, sent by mission-grammar on 2026-10-31, at size 80; #581's
+            // goal_steps_done in place of goal_checklist took it to 78 (SchemaProbeTests pins the difference).
+            Assert.Equal(ClaudiaKermin.SchemaProbe.Probes.MissionSchema(), MissionReply.MissionSchemaJson);
+            Assert.Equal(78, SchemaComplexity.Size(MissionReply.MissionSchemaJson));
         }
 
         [Fact]

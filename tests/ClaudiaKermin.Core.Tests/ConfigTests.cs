@@ -88,6 +88,24 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void TheMarginRecheckIsAutoByDefaultAndReadFromTheFile()
+        {
+            using (var dir = new TempDir())
+            {
+                Assert.Equal(MarginRecheckMode.Auto, PlayerConfig.LoadOrCreate(dir.Sub).MarginRecheck);
+                var path = Path.Combine(dir.Sub, PlayerConfig.FileName);
+                Assert.Contains("margin_recheck = auto", File.ReadAllText(path));
+
+                File.WriteAllText(path, "margin_recheck = always\n");
+                Assert.Equal(MarginRecheckMode.Always, PlayerConfig.LoadOrCreate(dir.Sub).MarginRecheck);
+                File.WriteAllText(path, "margin_recheck = Never\n");
+                Assert.Equal(MarginRecheckMode.Never, PlayerConfig.LoadOrCreate(dir.Sub).MarginRecheck);
+                File.WriteAllText(path, "margin_recheck = sometimes\n");
+                Assert.Equal(MarginRecheckMode.Auto, PlayerConfig.LoadOrCreate(dir.Sub).MarginRecheck);
+            }
+        }
+
+        [Fact]
         public void ScriptIpuDefaultsTo1000IsWrittenToTheFileAndClampedTo50To2000()
         {
             using (var dir = new TempDir())
@@ -175,14 +193,14 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void PlayerConfigOffersSonnetFirstThenOpusWithATenDollarCap()
+        public void PlayerConfigOffersSonnetFirstThenHaikuWithATenDollarCap()
         {
             using (var dir = new TempDir())
             {
                 PlayerConfig.LoadOrCreate(dir.Sub);
                 var config = PlayerConfig.LoadOrCreate(dir.Sub);
 
-                Assert.Equal(new[] { "claude-sonnet-5-5", "claude-opus-5-5" }, config.Models);
+                Assert.Equal(new[] { "claude-sonnet-5-5", "claude-haiku-5-5" }, config.Models);
                 Assert.Equal("claude-sonnet-5-5", config.DefaultModel);
                 Assert.Equal(10m, config.DefaultSpendingCap);
                 Assert.Equal(150000, config.CompactionTriggerTokens);
@@ -258,7 +276,7 @@ namespace ClaudiaKermin.Core.Tests
             using (var dir = new TempDir())
             {
                 var config = PlayerConfig.LoadOrCreate(dir.Sub);
-                config.SetDefaultModel("claude-opus-5-5");
+                config.SetDefaultModel("claude-haiku-5-5");
                 config.DefaultSpendingCap = 7.5m;
                 config.DefaultDaylightLanding = false;
                 config.DefaultTimeVersusDeltaV = Missions.TimeVersusDeltaV.MostEfficient;
@@ -267,8 +285,8 @@ namespace ClaudiaKermin.Core.Tests
                 config.SaveDefaults(dir.Sub);
 
                 var loaded = PlayerConfig.LoadOrCreate(dir.Sub);
-                Assert.Equal(new[] { "claude-opus-5-5", "claude-sonnet-5-5" }, loaded.Models);
-                Assert.Equal("claude-opus-5-5", loaded.DefaultModel);
+                Assert.Equal(new[] { "claude-haiku-5-5", "claude-sonnet-5-5" }, loaded.Models);
+                Assert.Equal("claude-haiku-5-5", loaded.DefaultModel);
                 Assert.Equal(7.5m, loaded.DefaultSpendingCap);
                 Assert.False(loaded.DefaultDaylightLanding);
                 Assert.Equal(Missions.TimeVersusDeltaV.MostEfficient, loaded.DefaultTimeVersusDeltaV);

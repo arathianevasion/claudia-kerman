@@ -28,12 +28,44 @@ namespace ClaudiaKermin.Core.Missions
             }
         }
 
+        /// <summary>A Mission Plan turn's line (#514): written when the Mission Plan is accepted, or, with <paramref name="discarded"/>, when its tool loop is dropped.</summary>
+        private void LogMissionPlan(Mission mission, Turn turn, bool discarded)
+        {
+            try
+            {
+                PlanLog.AppendMissionPlan(mission.Folder, turn.Purpose.ToString(), turn.Stats, turn.ToolSteps, turn.Effort,
+                    turn.SecondLookReason, turn.CutOffRetry, discarded);
+            }
+            catch (Exception e) when (IsFileError(e))
+            {
+                // The log is best effort; the Mission goes on.
+            }
+        }
+
+        /// <summary>The Mission Plan turns: the first and a Settings change always, a typed Reply or Change while a Mission Plan waits for Approval.</summary>
+        private static bool IsMissionPlanTurn(Mission mission, Turn turn)
+        {
+            switch (turn.Purpose)
+            {
+                case Purpose.MissionPlan:
+                case Purpose.Settings:
+                    return true;
+                case Purpose.Reply:
+                case Purpose.Change:
+                    return mission.Stage == MissionStage.AwaitingPlanApproval;
+                default:
+                    return false;
+            }
+        }
+
         /// <summary>The Debrief committed with <paramref name="debrief"/>'s outcome (as rated, after any Off-Nominal override): added to the latest plan's line.</summary>
         private void LogDebrief(Mission mission, Turn turn, Debrief debrief)
         {
             try
             {
-                PlanLog.SetDebrief(mission.Folder, debrief.Outcome, turn.Stats, turn.Effort, turn.SecondLookReason, turn.CutOffRetry);
+                // A hand-back Debrief is of a manual stretch: the last run's blocks are not its.
+                PlanLog.SetDebrief(mission.Folder, debrief.Outcome, turn.Stats, turn.Effort, turn.SecondLookReason, turn.CutOffRetry,
+                    blocks: mission.HandBack ? null : mission.Blocks.Json(null));
             }
             catch (Exception e) when (IsFileError(e))
             {

@@ -27,13 +27,38 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>max_slope_deg</c>, <c>within_hours</c>, <c>near</c>). Gives the first site, the soonest pass or the nearest the
         /// <c>near</c> point: <c>error</c> "", <c>lat</c>, <c>lng</c>, <c>biome</c>, <c>terrain_altitude</c>, <c>slope_deg</c>,
         /// <c>pass_ut</c>, <c>sun_elevation_deg</c>, <c>near_edge</c> (true if nothing deeper in the biome was reachable). With no site, or a search that could not run, only <c>error</c>, saying why.
+        /// Two inputs are the block's alone, not the tool's (#528): <c>craft</c>, the craft the pass search will fly (<see cref="CraftOf"/>'s keys;
+        /// without thrust and mass, the Game Snapshot's), whose descents keep the sites; and <c>exclude</c>, the sites tried already (lexicons of
+        /// <c>lat</c>, <c>lng</c>), none of whose neighbours comes back.
         /// </summary>
         public static IDictionary<string, object> LandingSite(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
             var orbited = snapshot == null ? "" : snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body;
             ask["body"] = orbited ?? "";
-            var outcome = PlanningTools.Default().Run("find_landing_site", ToolTestGate.InputJson(ask), snapshot, body);
+            object craft, exclude;
+            ask.TryGetValue("craft", out craft);
+            ask.TryGetValue("exclude", out exclude);
+            ask.Remove("craft");
+            ask.Remove("exclude");
+            var tried = new List<double[]>();
+            var excluded = exclude as IEnumerable<object>;
+            if (excluded != null)
+                foreach (var point in excluded)
+                {
+                    var at = point as IDictionary<string, object>;
+                    if (at != null && NumberOrNull(at, "lat").HasValue && NumberOrNull(at, "lng").HasValue) tried.Add(new[] { Number(at, "lat", 0), Number(at, "lng", 0) });
+                }
+            // The whole window, with no time limit (#536: land flies what all of it gives), and no plane changes: land uses only the site.
+            var search = new PlanningTools(new IPlanningTool[]
+            {
+                new FindLandingSite
+                {
+                    BudgetMs = null, WithPlaneChanges = false, Exclude = tried,
+                    Craft = craft is IDictionary<string, object> ? CraftOf(new Dictionary<string, object>((IDictionary<string, object>)craft, StringComparer.OrdinalIgnoreCase)) : null,
+                },
+            });
+            var outcome = search.Run("find_landing_site", ToolTestGate.InputJson(ask), snapshot, body);
             var result = JsonReader.Parse(outcome.Json);
             if (outcome.IsError) return Error(JsonNode.Str(result["error"]));
 
@@ -62,6 +87,8 @@ namespace ClaudiaKermin.Core.Tools
                 { "pass_ut", JsonNode.Double(site["pass_ut"]) ?? 0 },
                 { "sun_elevation_deg", JsonNode.Double(site["sun_elevation_deg"]) ?? 0 },
                 { "near_edge", site["near_biome_edge"] != null },
+                { "predicted_dv", JsonNode.Double(site["predicted_dv"]) ?? -1 },
+                { "descent_shape", JsonNode.Double(site["descent_shape"]) ?? -1 },
             };
         }
 
@@ -74,7 +101,9 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>arrive_ut</c>, <c>correction_dv</c>, <c>cross_m</c>, <c>sun</c> (degrees; -90 where not asked), <c>next_pass_ut</c> (the
         /// next pass's touchdown; -1 for none), <c>fall_s</c>, <c>window_hours</c> (how far it looked, with daylight's reach) and
         /// <c>passes</c> (each pass looked at: <c>burn_ut</c>, <c>arrive_ut</c>, <c>cross_km</c>, <c>correction_dv</c>, <c>sun</c>,
-        /// <c>verdict</c>). With no pass, <c>error</c> says why, with <c>passes</c> and <c>next_pass_ut</c> -1; a search that could not
+        /// <c>verdict</c>). With no pass, <c>error</c> says why, with <c>passes</c> and <c>next_pass_ut</c> -1; asked with
+        /// <c>plane_changes</c> true (and no shape), it also gives the plane changes that reach the site (<see cref="PlaneChanges"/>,
+        /// #521) in <c>error</c> and as <c>change_orbit</c> calls in <c>plane_changes</c> (empty otherwise). A search that could not
         /// run gives only <c>error</c>.
         /// </summary>
         public static IDictionary<string, object> LandingPass(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body)
@@ -97,17 +126,43 @@ namespace ClaudiaKermin.Core.Tools
             var window = Tools.LandingPass.WindowHours(NumberOrNull(ask, "within_hours"), snapshot.TimeCapHours, at.RotationPeriod);
             var wantDaylight = daylight == null || (bool)daylight;
             var reach = Tools.LandingPass.ReachSeconds(window, wantDaylight, at.RotationPeriod);
-            var found = Tools.LandingPass.Find(at, conic, snapshot.Ut, new LandingPassAsk
+            double? shape;
+            var shapeProblem = ShapeOf(ask, out shape);
+            if (shapeProblem != null) return Error(shapeProblem);
+            object move;
+            ask.TryGetValue("move_site", out move);
+            var passAsk = new LandingPassAsk
             {
                 Latitude = Number(ask, "lat", 0),
                 Longitude = Number(ask, "lng", 0),
                 PeRadius = Number(ask, "r_pe", 0),
                 EarliestUt = Number(ask, "earliest_ut", snapshot.Ut + Tools.LandingPass.LeadS),
-                LatestUt = snapshot.Ut + reach,
+                LatestUt = Math.Min(snapshot.Ut + reach, Number(ask, "latest_ut", double.PositiveInfinity)),
                 Daylight = wantDaylight,
                 MaxCorrectionDv = Number(ask, "max_correction_dv", Tools.LandingPass.MostCorrectionDv),
-            }, body);
+                Craft = CraftOf(ask),
+                Shape = shape,
+                Margin = Number(ask, "burn_margin", 1.1),
+                MoveSite = move is bool && (bool)move,
+            };
+            var found = Tools.LandingPass.Find(at, conic, snapshot.Ut, passAsk, body);
             if (!found.Ran) return Error(found.Error);
+            // #521: with no pass, the plane changes that reach the site (find_landing_site's), for the report; land never flies them.
+            object wantChanges;
+            ask.TryGetValue("plane_changes", out wantChanges);
+            var changes = new List<object>();
+            var error = found.Error;
+            if (error != null && wantChanges is bool && (bool)wantChanges && !shape.HasValue && passAsk.Craft != null)
+            {
+                var offered = PlaneChanges.Find(at, conic, snapshot.Ut, passAsk, body, double.NaN, false);
+                var lines = new List<string>();
+                foreach (var change in offered.Options)
+                {
+                    changes.Add(change.Call);
+                    lines.Add(change.Line(snapshot.Ut));
+                }
+                if (lines.Count > 0) error += "; plane changes that reach it (fly one as its own step, then land again): " + string.Join("; ", lines.ToArray());
+            }
             var passes = new List<object>();
             foreach (var pass in found.Passes)
                 passes.Add(new Dictionary<string, object>
@@ -118,10 +173,12 @@ namespace ClaudiaKermin.Core.Tools
                     { "correction_dv", Math.Round(pass.CorrectionDv, 1) },
                     { "sun", double.IsNaN(pass.SunDeg) ? -90.0 : Math.Round(pass.SunDeg, 1) },
                     { "verdict", pass.Verdict },
+                    { "landing_dv", double.IsNaN(pass.LandingDv) ? -1.0 : Math.Round(pass.LandingDv, 1) },
                 });
-            return new Dictionary<string, object>
+            var result = new Dictionary<string, object>
             {
-                { "error", found.Error ?? "" },
+                { "error", error ?? "" },
+                { "plane_changes", changes },
                 { "burn_ut", found.BurnUt },
                 { "arrive_ut", found.ArriveUt },
                 { "correction_dv", found.CorrectionDv },
@@ -131,7 +188,137 @@ namespace ClaudiaKermin.Core.Tools
                 { "fall_s", found.FallS },
                 { "window_hours", reach / 3600 },
                 { "passes", passes },
+                { "r_pe", found.PeRadius },
+                { "lat", found.Error == null ? found.SiteLat : Number(ask, "lat", 0) },
+                { "lng", found.Error == null ? found.SiteLng : Number(ask, "lng", 0) },
+                { "moved_for_terrain", found.Moved },
+                { "terrain_passes", found.TerrainPasses },
+                { "shape_lo", double.IsNaN(found.ShapeLo) ? -1.0 : found.ShapeLo },
+                { "shape_hi", double.IsNaN(found.ShapeHi) ? -1.0 : found.ShapeHi },
             };
+            Descent(result, found.Descent, found.LandingDv);
+            return result;
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:BRAKEPATH</c>, for <c>land</c> as braking begins (#511): its descent simulated (<see cref="BrakePath"/>) from
+        /// the craft's state, braking from now, onto the site <c>lat</c>, <c>lng</c> (degrees) <c>s</c> m ahead along the track on
+        /// <c>heading</c> (degrees across the ground), at <c>alt</c> m above sea level moving <c>v_h</c> m/s across the ground and
+        /// <c>v_up</c> m/s up, for the craft (<see cref="CraftOf"/>), on <c>shape</c> (a Descent Shape, or "auto" for the cheapest
+        /// that clears). Gives <c>error</c> "", <c>clears</c>, <c>descent_shape</c>, <c>shape_lo</c>, <c>shape_hi</c> (-1: none clears),
+        /// <c>brake_dv</c>, <c>predicted_clearance</c> and <c>path</c> (lexicons of <c>s</c>, <c>alt</c>, <c>ground</c>); not clearing,
+        /// <c>clears</c> false with the shape's own figures and <c>error</c> "". A call that could not run gives only <c>error</c>.
+        /// </summary>
+        public static IDictionary<string, object> BrakePathCall(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            if (snapshot == null) return Error("no Game Snapshot");
+            var name = snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body;
+            var at = new BodySystem(snapshot.Bodies).Find(name);
+            if (at == null) return Error("there is no body named " + PlanningJson.Quote(name));
+            foreach (var key in new[] { "lat", "lng", "heading", "s", "alt", "v_h", "v_up" })
+                if (!NumberOrNull(ask, key).HasValue) return Error(key + " is required");
+            double? shape;
+            var shapeProblem = ShapeOf(ask, out shape);
+            if (shapeProblem != null) return Error(shapeProblem);
+            var craft = CraftOf(ask);
+            if (craft == null) return Error("thrust and mass are required");
+            var s = Number(ask, "s", 0);
+            string error;
+            var ground = DescentApproach.Read(body, at.Name, at.Radius, Number(ask, "lat", 0), Number(ask, "lng", 0), Number(ask, "heading", 0),
+                Math.Max(0, s) + 2000, out error);
+            if (ground == null) return Error(error);
+            var world = new BrakeWorld { Mu = at.Gm, Radius = at.Radius, Ground = ground, Margin = Number(ask, "burn_margin", 1.1) };
+            var start = new BrakeStart { S = s, Alt = Number(ask, "alt", 0), VH = Number(ask, "v_h", 0), VUp = Number(ask, "v_up", 0), Braking = true };
+            var all = BrakePath.FromState(craft, world, start, BrakePath.Shapes);
+            var flown = shape.HasValue ? BrakePath.Simulate(craft, world, start, shape.Value) : all.Best != null ? all.Best.Result : null;
+            var result = new Dictionary<string, object>
+            {
+                { "error", "" },
+                { "clears", flown != null && flown.Clears },
+                { "shape_lo", double.IsNaN(all.ShapeLo) ? -1.0 : all.ShapeLo },
+                { "shape_hi", double.IsNaN(all.ShapeHi) ? -1.0 : all.ShapeHi },
+            };
+            if (flown == null)
+            {
+                result["descent_shape"] = -1.0;
+                return result;
+            }
+            result["descent_shape"] = flown.Shape;
+            result["brake_dv"] = flown.DvUsed;
+            result["predicted_clearance"] = Finite(flown.LowestClearance);
+            result["path"] = PathOf(flown);
+            return result;
+        }
+
+        /// <summary>The descent's figures for <c>land</c>: shape, delta-v, clearance, braking start and the path.</summary>
+        private static void Descent(Dictionary<string, object> result, DescentTry descent, double landingDv)
+        {
+            if (descent == null)
+            {
+                result["descent_shape"] = -1.0;
+                result["predicted_dv"] = -1.0;
+                result["path"] = new List<object>();
+                return;
+            }
+            result["descent_shape"] = descent.Shape;
+            result["predicted_dv"] = landingDv;
+            result["deorbit_dv"] = descent.DeorbitDv;
+            result["brake_dv"] = descent.Result.DvUsed;
+            result["predicted_clearance"] = Finite(descent.Result.LowestClearance);
+            result["brake_start_s"] = Finite(descent.Result.BrakeStartS);
+            result["brake_end_agl"] = Finite(descent.Result.BrakeEndAgl);
+            result["heading"] = descent.Heading;
+            result["path"] = PathOf(descent.Result);
+        }
+
+        private static List<object> PathOf(BrakeResult flown)
+        {
+            var path = new List<object>();
+            foreach (var p in flown.Path)
+                path.Add(new Dictionary<string, object> { { "s", Math.Round(p.S) }, { "alt", Math.Round(p.Alt) }, { "ground", Math.Round(p.Ground) } });
+            return path;
+        }
+
+        private static double Finite(double x)
+        {
+            return double.IsNaN(x) || double.IsInfinity(x) ? -1 : x;
+        }
+
+        /// <summary>
+        /// The craft that will brake, as <c>land</c> measures it: <c>thrust</c> (kN), <c>mass</c> (t), <c>isp</c> (s), <c>turn_lag</c>
+        /// (s), <c>dry_mass</c> (t, where the stage runs dry; 0 or missing for never), and with an Underhang <c>drop_agl</c> (m), <c>lander_thrust</c> (kN), <c>lander_mass</c> (t), <c>lander_isp</c> (s);
+        /// null without thrust and mass.
+        /// </summary>
+        internal static BrakeCraft CraftOf(IDictionary<string, object> ask)
+        {
+            var thrust = Number(ask, "thrust", 0);
+            var mass = Number(ask, "mass", 0);
+            if (thrust <= 0 || mass <= 0) return null;
+            return new BrakeCraft
+            {
+                ThrustN = thrust * 1000,
+                MassKg = mass * 1000,
+                Isp = Number(ask, "isp", 300),
+                DryMassKg = Number(ask, "dry_mass", 0) * 1000,
+                LagS = Number(ask, "turn_lag", 1),
+                DropAgl = Number(ask, "drop_agl", -1),
+                LanderThrustN = Number(ask, "lander_thrust", 0) * 1000,
+                LanderMassKg = Number(ask, "lander_mass", 0) * 1000,
+                LanderIsp = Number(ask, "lander_isp", 300),
+            };
+        }
+
+        /// <summary>The Descent Shape asked for: <c>shape</c> a number, or "auto" or missing for none; a problem text otherwise.</summary>
+        private static string ShapeOf(IDictionary<string, object> ask, out double? shape)
+        {
+            shape = null;
+            object value;
+            if (!ask.TryGetValue("shape", out value) || value == null) return null;
+            if (value is string && string.Equals((string)value, "auto", StringComparison.OrdinalIgnoreCase)) return null;
+            if (!(value is double) || (double)value <= 0) return "shape must be \"auto\" or a Descent Shape over 0";
+            shape = (double)value;
+            return null;
         }
 
         /// <summary>

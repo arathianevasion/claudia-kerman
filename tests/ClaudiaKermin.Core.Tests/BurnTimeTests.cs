@@ -361,6 +361,7 @@ namespace ClaudiaKermin.Core.Tests
         // ---- the speed ----
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void Every_reference_resolves_within_a_budget()
         {
             var orbits = Orbits();

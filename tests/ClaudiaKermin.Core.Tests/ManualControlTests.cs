@@ -450,6 +450,24 @@ namespace ClaudiaKermin.Core.Tests
         // ---- Handing back ----
 
         [Fact]
+        public void TheRevisedMissionPlanRequestAfterAHandBackCarriesTheStageTableAndThePadWording()
+        {
+            var transport = Replies("mission-plan.sse", "mission-sequence-plan.sse", "mission-debrief-manual.sse", "mission-plan.sse", "mission-sequence-plan.sse");
+            var mission = Control(transport);
+            ToRunning(mission);
+            mission.Send(new TakeManualControl());
+            mission.TakeCommands();
+
+            mission.Send(new HandBack("by hand"));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            var text = AllText(transport.Requests[3]);
+            Assert.Contains("Stage table: these are the figures stage_performance and plan_ascent would give for this craft now", text);
+            Assert.Contains("stage_performance {\\\"situation\\\":\\\"vacuum\\\"}: ", text);
+            Assert.Contains("On the launch pad, predict_burn", text);
+        }
+
+        [Fact]
         public void HandingBackAfterATakeoverGivesAPlainAccountThenARevisedMissionPlanForApproval()
         {
             var transport = Replies("mission-plan.sse", "mission-sequence-plan.sse", "mission-debrief-manual.sse", "mission-plan.sse", "mission-sequence-plan.sse");
@@ -809,6 +827,34 @@ namespace ClaudiaKermin.Core.Tests
             // A Blackout (#130): the revised Mission Plan and its next sequence fly without Approval.
             DrainUntil(mission, v => v.Stage == MissionStage.Running);
             Assert.Contains("link dropped", AllText(transport.Requests[2]));
+        }
+
+        [Fact]
+        public void WithOnlyClaudiaAboardAndNoLinkManualControlIsUnavailableAndSheTakesTheCraftBackAfterTheGrace()
+        {
+            var transport = Replies("mission-plan.sse", "mission-sequence-plan.sse", "mission-debrief-manual.sse", "mission-plan.sse", "mission-sequence-plan.sse");
+            var mission = Control(transport);
+            ToRunning(mission);
+            // The pad fixture already has her aboard; replace her with the title KSP's TypeName gave before #583, not the config name.
+            Action<GameSnapshot> claudia = s => { s.Crew.Clear(); s.Crew.Add(new SnapshotCrewMember { Name = ClaudiaKermin.Core.Roster.ClaudiaIdentity.Name, Trait = "Super Intelligence" }); };
+            var ut = Pad().Ut;
+
+            mission.Send(Pad(s => { claudia(s); s.HasLink = false; s.Ut = ut + 1; }));
+            mission.TakeCommands();
+            Assert.False(mission.View.ManualControlAllowed);
+            Assert.Equal("no link to Kerbin and no other crew aboard", mission.View.ManualControlUnavailable);
+
+            // The link back and steady for the grace: Manual Control is taken, then the link drops again.
+            mission.Send(Pad(s => { claudia(s); s.Ut = ut + 2; }));
+            mission.Send(Pad(s => { claudia(s); s.Ut = ut + 7; }));
+            mission.Send(new TakeManualControl());
+            Assert.Equal(MissionStage.ManualControl, mission.View.Stage);
+            mission.TakeCommands();
+            mission.Send(Pad(s => { claudia(s); s.HasLink = false; s.Ut = ut + 8; }));
+            Assert.Equal(5, mission.View.LinkLossTakeBackIn);
+            mission.Send(Pad(s => { claudia(s); s.HasLink = false; s.Ut = ut + 14; }));
+
+            Assert.Single(mission.TakeCommands().OfType<MakeCraftSafe>());
         }
 
         [Fact]

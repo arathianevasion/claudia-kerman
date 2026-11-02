@@ -403,7 +403,7 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void EveryMissionSchemaAndTheCraftCheckSchemaRequireATopLevelUnsureBecauseString()
         {
-            foreach (var schema in new[] { MissionReply.PlanningSchemaJson, MissionReply.FlightSchemaJson, CraftCheckRules.SchemaJson() })
+            foreach (var schema in new[] { MissionReply.MissionSchemaJson, CraftCheckRules.SchemaJson() })
                 using (var doc = JsonDocument.Parse(schema))
                 {
                     Assert.Contains("unsure_because", doc.RootElement.GetProperty("required").EnumerateArray().Select(e => e.GetString()));
@@ -546,7 +546,8 @@ namespace ClaudiaKermin.Core.Tests
                 Router = new CraftCheckRouter(Transport);
                 var client = new ClaudeClient(Router, () => "sk-ant-test", l => { });
                 client.Timing.Wait = (d, c) => { };
-                var config = new PlayerConfig { CheckDurationPercent = 1000 };
+                // Always: the Margin recheck's Second look is under test, and auto sends the recheck only when the mod's margin check is not enough.
+                var config = new PlayerConfig { CheckDurationPercent = 1000, MarginRecheck = MarginRecheckMode.Always };
                 foreach (var kind in mediums.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)) config.Efforts.Read(EffortTable.Prefix + kind, "medium");
                 Mission = new MissionControl(client, tests._background, config, () => true, new PassingScriptCheck());
                 Mission.Send(new SaveLoaded(tests._save.Path));
