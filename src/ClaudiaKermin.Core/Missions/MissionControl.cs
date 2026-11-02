@@ -125,7 +125,7 @@ namespace ClaudiaKermin.Core.Missions
             else if (input is VesselUnloaded) Unloaded(((VesselUnloaded)input).VesselId);
             else if (input is FarSwitchConfirmed) FarSwitched(((FarSwitchConfirmed)input).VesselName);
             else if (input is RunEventSeen) EventSeen((RunEventSeen)input);
-            else if (input is CraftSeparated) Separated();
+            else if (input is CraftSeparated) Separated(((CraftSeparated)input).Throttle);
             else if (input is AcceptReducedGoal) ReducedGoalAccepted();
             else if (input is StockAlarmFired) StockAlarmWentOff();
             else if (input is ResumeMission) ResumeRequested(((ResumeMission)input).Id);

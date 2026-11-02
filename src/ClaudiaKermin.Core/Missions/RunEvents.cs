@@ -153,5 +153,8 @@ namespace ClaudiaKermin.Core.Missions
     /// </summary>
     public sealed class CraftSeparated : MissionInput
     {
+        /// <summary>The craft's throttle (0 to 1) at the moment of separation (#615); null when the event carries none, and the last snapshot's stands.</summary>
+        public readonly double? Throttle;
+        public CraftSeparated(double? throttle = null) { Throttle = throttle; }
     }
 }

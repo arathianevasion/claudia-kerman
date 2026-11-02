@@ -218,6 +218,15 @@ function science_send {
   return "".
 }
 
+// #624: the detail of a held send, said once the send has ended (transmit is "transmitted" or "kept").
+function science_held_detail {
+  parameter transmit.
+  if transmit = "transmitted" {
+    return "held data sent, no new run".
+  }
+  return "held data not sent: transmission did not finish, data kept".
+}
+
 function science {
   parameter options is lexicon().
   local extra is lexicon("results", list()).
@@ -257,12 +266,12 @@ function science {
     } else if science_held_choice(m:hasdata, m:inoperable, opt:transmit, science_returning(), science_loses_value(m), science_can_send(), claudia_ec_pct(), opt:min_ec_pct) <> "" {
       local choice is science_held_choice(m:hasdata, m:inoperable, opt:transmit, science_returning(), science_loses_value(m), science_can_send(), claudia_ec_pct(), opt:min_ec_pct).
       if choice = "transmit" {
-        set entry:detail to "held data sent, no new run".
         local sent is science_send(ctx, m, entry).
         if sent <> "" {
           claudia_make_safe().
           return claudia_finish(ctx, false, sent, extra).
         }
+        set entry:detail to science_held_detail(entry:transmit).
         if entry:transmit = "transmitted" {
           set entry:action to "sent held data".
         } else {

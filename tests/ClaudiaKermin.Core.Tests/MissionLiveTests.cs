@@ -1112,6 +1112,70 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(197, state.RunDroppedDeltaV);
         }
 
+        [Fact]
+        public void AQuickloadBetweenTheDropAndTheAgreeingReadingsStillRebasesTheDrop()
+        {
+            var mission = RunningWith(Plan(), 730, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+            mission.Send(Left(2900));
+            mission.Send(new CraftSeparated());
+            mission.Send(Left(878));
+            var saved = mission.ExportStates().Select(s => MissionSaveState.FromValues(s.ToValues())).ToList();
+            Assert.Equal(2900, saved.Single().SeparationBefore);
+            Assert.Equal(878, saved.Single().SeparationAfter);
+
+            var reloaded = Control(new StreamingFakeTransport());
+            reloaded.Send(new MissionsRestored(_save.Path, saved));
+            // The load interrupts the run, so its Debrief finishes the measurement from the craft as it is then.
+            reloaded.Send(Left(2703));
+            _background.Drain();
+
+            var state = reloaded.ExportStates().Single();
+            Assert.Equal(3003, state.RunStartDeltaVLeft);
+            Assert.Equal(197, state.RunDroppedDeltaV);
+            Assert.Null(state.SeparationBefore);
+            Assert.Null(state.SeparationAfter);
+        }
+
+        [Fact]
+        public void ASaveFromBeforeThePendingMeasurementWasSavedLoadsWithNoneAndNothingIsRebased()
+        {
+            var mission = RunningWith(Plan(), 730, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+            mission.Send(Left(2900));
+            var values = mission.ExportStates().Single().ToValues();
+            values.Remove("separationBefore");
+            values.Remove("separationAfter");
+
+            var state = MissionSaveState.FromValues(values);
+
+            Assert.Null(state.SeparationBefore);
+            Assert.Null(state.SeparationAfter);
+        }
+
+        [Fact]
+        public void TheThrottleAtTheSeparationEventDecidesNotTheLastSnapshot()
+        {
+            var mission = RunningWith(Plan(), 730, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+            mission.Send(Left(2900, throttle: 1));
+            mission.Send(new CraftSeparated(0));
+            mission.Send(Left(2703));
+            mission.Send(Left(2703));
+
+            Assert.Equal(1, EventLines(mission, "delta_v_rebased", "197 m/s"));
+            Assert.Equal(197, mission.ExportStates().Single().RunDroppedDeltaV);
+        }
+
+        [Fact]
+        public void AnEventThatCarriesAThrottleAboveZeroIsADropUnderThrust()
+        {
+            var mission = RunningWith(Plan(), 730, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+            mission.Send(Left(2900));
+            mission.Send(new CraftSeparated(1));
+            mission.Send(Left(2703));
+            mission.Send(Left(2703));
+
+            Assert.Equal(0, EventLines(mission, "delta_v_rebased"));
+        }
+
         // ---- Helpers ----
 
         private static string QuantityCheck(string quantity, string direction, double threshold)
