@@ -155,6 +155,8 @@ namespace ClaudiaKermin.Adapter
                 Situation = vessel.situation.ToString(),
             };
             if (vessel.orbit != null) target.Orbit = OrbitOf(vessel.orbit);
+            // Where a landed or splashed target is, for land's "vessel" target (#662).
+            if (target.IsDown) target.Position = new SnapshotPosition { Latitude = vessel.latitude, Longitude = vessel.longitude, Altitude = vessel.altitude };
             if (vessel.loaded) ReadLoadedPorts(target, vessel);
             else if (vessel.protoVessel != null) ReadSavedPorts(target, vessel.protoVessel);
             return target;

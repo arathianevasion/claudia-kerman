@@ -461,6 +461,10 @@ namespace ClaudiaKermin.Core.Missions
                     .Field("lan", orbit.Lan).Field("arg_pe", orbit.ArgumentOfPeriapsis).Field("mean_anomaly_at_epoch", orbit.MeanAnomalyAtEpoch)
                     .Field("epoch", orbit.Epoch).EndObject();
             }
+            // A landed or splashed target's place (#662), to about a metre; an orbiting one's entry is unchanged.
+            if (target.IsDown && target.Position != null)
+                json.Field("lat", Math.Round(target.Position.Latitude, 5)).Field("lng", Math.Round(target.Position.Longitude, 5))
+                    .Field("alt", Math.Round(target.Position.Altitude, 1));
             json.Name("free_ports").BeginObject();
             foreach (var size in target.FreePorts) json.Field(size.Key, size.Value);
             json.EndObject();
@@ -500,6 +504,10 @@ namespace ClaudiaKermin.Core.Missions
                     Body = read.Body,
                 };
             }
+            var lat = JsonNode.Double(target["lat"]);
+            var lng = JsonNode.Double(target["lng"]);
+            if (lat.HasValue && lng.HasValue)
+                read.Position = new SnapshotPosition { Latitude = lat.Value, Longitude = lng.Value, Altitude = JsonNode.Double(target["alt"]) ?? 0 };
             var ports = target["free_ports"];
             if (ports != null && ports.Kind == JsonKind.Object)
                 foreach (var size in ports.Members) read.FreePorts[size.Key] = (int)(JsonNode.Long(size.Value) ?? 0);

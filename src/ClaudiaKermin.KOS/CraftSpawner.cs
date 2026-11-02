@@ -52,6 +52,42 @@ namespace ClaudiaKermin.KOS
         /// <summary>Spawns the craft file onto <paramref name="orbit"/>, as a vessel named <paramref name="name"/> (the craft's own name when null).</summary>
         public static ProtoVessel IntoOrbit(string craftPath, Orbit orbit, string name)
         {
+            float rootHeight;
+            return HighLogic.CurrentGame.AddVessel(VesselNode(craftPath, orbit, name, out rootHeight));
+        }
+
+        /// <summary>
+        /// A block test's second craft landed (#662): upright on <paramref name="body"/> at <paramref name="lat"/>,
+        /// <paramref name="lng"/>, its lowest point a metre over the terrain, named <paramref name="name"/>. KSP settles it on the
+        /// ground when it loads.
+        /// </summary>
+        public static ProtoVessel Landed(string craftPath, CelestialBody body, double lat, double lng, string name)
+        {
+            // A landed vessel's node still carries an orbit; KSP works it out again from the position.
+            var orbit = new Orbit(0, 0, body.Radius + 10000, 0, 0, 0, Planetarium.GetUniversalTime(), body);
+            float rootHeight;
+            var node = VesselNode(craftPath, orbit, name, out rootHeight);
+            var terrain = body.TerrainAltitude(lat, lng, false);
+            // The craft's up (+Y in the editor) along the surface normal: LookRotation turns +Z onto it, and +Y onto +Z first.
+            var up = body.GetRelSurfaceNVector(lat, lng);
+            var rotation = Quaternion.LookRotation(new Vector3((float)up.x, (float)up.y, (float)up.z)) * Quaternion.FromToRotation(Vector3.up, Vector3.forward);
+            node.SetValue("sit", Vessel.Situations.LANDED.ToString(), true);
+            node.SetValue("landed", "True", true);
+            node.SetValue("splashed", "False", true);
+            node.SetValue("lat", lat.ToString("R", System.Globalization.CultureInfo.InvariantCulture), true);
+            node.SetValue("lon", lng.ToString("R", System.Globalization.CultureInfo.InvariantCulture), true);
+            node.SetValue("alt", (terrain + rootHeight + 1).ToString("R", System.Globalization.CultureInfo.InvariantCulture), true);
+            node.SetValue("hgt", (rootHeight + 1).ToString("R", System.Globalization.CultureInfo.InvariantCulture), true);
+            node.SetValue("rot", KSPUtil.WriteQuaternion(rotation), true);
+            return HighLogic.CurrentGame.AddVessel(node);
+        }
+
+        /// <summary>
+        /// The VESSEL node of the craft file on <paramref name="orbit"/>, named <paramref name="name"/> (the craft's own when null), and
+        /// <paramref name="rootHeight"/>: m from its lowest collider up to its root part, as built in the editor.
+        /// </summary>
+        private static ConfigNode VesselNode(string craftPath, Orbit orbit, string name, out float rootHeight)
+        {
             var game = HighLogic.CurrentGame;
             var ship = ShipConstruction.LoadShip(craftPath);
             if (ship == null || ship.parts.Count == 0) throw new InvalidOperationException("KSP wouldn't load " + craftPath);
@@ -69,6 +105,8 @@ namespace ClaudiaKermin.KOS
 
             // As on the launchpad, nothing has fired: the current stage is one past the highest stage a part is in.
             var currentStage = ship.parts.Max(part => part.inverseStage) + 1;
+            var lowest = ship.parts.SelectMany(part => part.GetComponentsInChildren<Collider>()).Select(c => c.bounds.min.y).DefaultIfEmpty(ship.parts[0].transform.position.y).Min();
+            rootHeight = Math.Max(0, ship.parts[0].localRoot.transform.position.y - lowest);
 
             // Snapshot the parts through a throwaway vessel, then let them go.
             var holder = new GameObject("claudia block test spawn");
@@ -89,7 +127,7 @@ namespace ClaudiaKermin.KOS
             var discovery = ProtoVessel.CreateDiscoveryNode(DiscoveryLevels.Owned, UntrackedObjectClass.A, double.PositiveInfinity, double.PositiveInfinity);
             var vesselNode = ProtoVessel.CreateVesselNode(name ?? ship.shipName, VesselType.Probe, orbit, 0, partNodes, discovery);
             vesselNode.SetValue("stg", currentStage, true); // CreateVesselNode writes 0; Vessel.currentStage loads from this
-            return game.AddVessel(vesselNode);
+            return vesselNode;
         }
     }
 }

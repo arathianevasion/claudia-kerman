@@ -72,6 +72,15 @@ namespace ClaudiaKermin.Core.Kos
         public double TargetOrbitNormal { get; private set; }
         public double TargetOrbitRadial { get; private set; }
 
+        /// <summary>
+        /// Whether the second craft is landed instead (#662: <c>land</c>'s <c>"vessel"</c> target): on <c>orbit_body</c> at latitude
+        /// <c>target_landed_lat</c> and <c>target_landed_ahead</c> degrees of longitude east of the point under the craft at the spawn.
+        /// Either key lands it; with the <c>target_orbit_*</c> keys it is refused.
+        /// </summary>
+        public bool TargetLanded { get; private set; }
+        public double TargetLandedLat { get; private set; }
+        public double TargetLandedAhead { get; private set; }
+
         /// <summary>Real seconds the run may take, warp included, before it is aborted and fails.</summary>
         public double TimeoutSeconds { get; private set; }
 
@@ -117,6 +126,8 @@ namespace ClaudiaKermin.Core.Kos
                     case "target_orbit_prograde": spec.TargetOrbitPrograde = Number(name, value); targetKeys = true; break;
                     case "target_orbit_normal": spec.TargetOrbitNormal = Number(name, value); targetKeys = true; break;
                     case "target_orbit_radial": spec.TargetOrbitRadial = Number(name, value); targetKeys = true; break;
+                    case "target_landed_lat": spec.TargetLandedLat = Number(name, value); spec.TargetLanded = true; break;
+                    case "target_landed_ahead": spec.TargetLandedAhead = Number(name, value); spec.TargetLanded = true; break;
                     case "timeout_s": spec.TimeoutSeconds = Number(name, value); break;
                     case "check":
                         Readable(name, value, Split(name, value));
@@ -128,6 +139,10 @@ namespace ClaudiaKermin.Core.Kos
             if (string.IsNullOrEmpty(spec.Block)) throw new FormatException(name + ": no block = ...");
             if (targetKeys && string.IsNullOrEmpty(spec.TargetCraft))
                 throw new FormatException(name + ": target_orbit_* places a second craft, so it needs target_craft = ...");
+            if (spec.TargetLanded && string.IsNullOrEmpty(spec.TargetCraft))
+                throw new FormatException(name + ": target_landed_* places a second craft, so it needs target_craft = ...");
+            if (spec.TargetLanded && targetKeys)
+                throw new FormatException(name + ": the second craft is landed or in orbit: target_landed_* or target_orbit_*, not both");
             if (!string.IsNullOrEmpty(spec.TargetCraft) && spec.Start == BlockTestStart.LaunchPad)
                 throw new FormatException(name + ": target_craft is placed relative to the craft in orbit, not on the launch pad");
             return spec;

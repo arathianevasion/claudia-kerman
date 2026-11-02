@@ -118,5 +118,18 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("target_craft", refused.Message);
             Assert.Throws<FormatException>(() => BlockTestSpec.Parse("t", "block = rendezvous\ntarget_craft = reference.craft\nstart = launchpad\n"));
         }
+
+        [Fact]
+        public void A_spec_lands_the_second_craft_on_the_body_ahead_of_the_craft_with_the_landed_keys()
+        {
+            var spec = BlockTestSpec.Parse("land_vessel", "block = land\norbit_body = Mun\ntarget_craft = target.craft\ntarget_landed_lat = 0.1\ntarget_landed_ahead = 270\n");
+            Assert.True(spec.TargetLanded);
+            Assert.Equal(0.1, spec.TargetLandedLat);
+            Assert.Equal(270.0, spec.TargetLandedAhead);
+            Assert.False(BlockTestSpec.Parse("rendezvous", "block = rendezvous\ntarget_craft = reference.craft\n").TargetLanded);
+            Assert.Contains("target_craft", Assert.Throws<FormatException>(() => BlockTestSpec.Parse("t", "block = land\ntarget_landed_ahead = 90\n")).Message);
+            var both = Assert.Throws<FormatException>(() => BlockTestSpec.Parse("t", "block = land\ntarget_craft = t.craft\ntarget_landed_ahead = 90\ntarget_orbit_along = 5\n"));
+            Assert.Contains("landed or in orbit", both.Message);
+        }
     }
 }
