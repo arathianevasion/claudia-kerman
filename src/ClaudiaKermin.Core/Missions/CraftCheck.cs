@@ -103,6 +103,8 @@ namespace ClaudiaKermin.Core.Missions
         private string _remoteMissing = "";
         /// <summary>The dock block's needs for a goal that docks (#456), the mod's own findings; empty otherwise.</summary>
         private IList<MarginFinding> _docking = new List<MarginFinding>();
+        /// <summary>The chute rules on the Chute Allocation for the goal's air landings and return (#641), the mod's own findings.</summary>
+        private IList<MarginFinding> _chutes = new List<MarginFinding>();
         /// <summary>What the checked craft's staging plan separates, so planned Child Vessels are judged on the mod's own figures.</summary>
         private StagingPlan _staging = new StagingPlan();
         private uint? _preferredProcessor;
@@ -263,6 +265,8 @@ namespace ClaudiaKermin.Core.Missions
             // dock's needs (#456), from the goal's words: the mod's own findings, not in Claude's prompt.
             _docking = SequenceWords.Docking.IsMatch(goal ?? "") ? MarginCheck.Docking(snapshot, "The Mission Goal docks", EntryFor(snapshot, target)) : new List<MarginFinding>();
             _staging = ChildVessels.Staging(snapshot, remote, ProcessorFor(snapshot));
+            var legs = ChuteAllocation.GoalLegs(snapshot, goal);
+            _chutes = MarginCheck.ChuteFindings(snapshot, legs, ChuteAllocation.ForGoal(snapshot, legs, remote, ProcessorFor(snapshot)), goal);
             _craftKey = CraftKey(snapshot);
             var charge = new CraftCheckCharge { Model = request.Model, Pending = worstCase, Input = RequestCharge.InputCost(_config.Prices, request.Model, request, worstCase) };
             var cancel = new CancellationTokenSource();
@@ -466,6 +470,14 @@ namespace ClaudiaKermin.Core.Missions
                     Code = docking.Code, Severity = docking.Severity, Title = docking.Title, Explanation = docking.Explanation,
                     Fix = docking.Code == CraftCheckRules.DockingKit ? "Add a docking port, RCS thrusters and a monopropellant tank."
                         : "Fit a docking port of a size the target has free.",
+                });
+            // One finding per code, as a Warning is acknowledged by its code.
+            foreach (var chute in _chutes.GroupBy(c => c.Code))
+                _findings.Insert(0, new CraftFinding
+                {
+                    Code = chute.Key, Severity = chute.First().Severity, Title = chute.First().Title,
+                    Explanation = string.Join(". ", chute.Select(c => c.Explanation).ToArray()),
+                    Fix = "Add parachutes, or delta-v for the engines to finish the landing.",
                 });
             foreach (var finding in _findings.Where(f => f.Severity == CraftFindingSeverity.Warning && _keptAcknowledgements.Contains(f.Code)))
                 finding.Acknowledged = true;

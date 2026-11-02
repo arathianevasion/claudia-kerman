@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using ClaudiaKermin.Core.Tools;
 
 namespace ClaudiaKermin.Core.Missions
@@ -132,6 +133,38 @@ namespace ClaudiaKermin.Core.Missions
             var division = new Division(snapshot, remote, processorPartId, allocation);
             allocation.Chutes.AddRange(division.All);
             if (allocation.Entries.Count > 0) division.Divide(sequences, Math.Max(0, firstStep));
+            return allocation;
+        }
+
+        /// <summary>
+        /// The Mission Goal as legs for the allocation before any Mission Plan exists (#641): one per clause of the goal (split at
+        /// punctuation, "and" and "then"), read by <see cref="SequenceWords"/> as the plan's legs are. Only a craft on the ground
+        /// has a leg with delta-v: the Delta-v Map's launch from its body, first, so the entries come down at the mass the launch
+        /// leaves. The others carry none (no plan has budgeted them; the Craft Check's delta_v_short judges the route).
+        /// </summary>
+        public static List<PlannedSequence> GoalLegs(GameSnapshot snapshot, string goal)
+        {
+            var legs = new List<PlannedSequence>();
+            if (snapshot == null) return legs;
+            var grounded = snapshot.Situation == "PRELAUNCH" || snapshot.Situation == "LANDED" || snapshot.Situation == "SPLASHED";
+            var launch = grounded ? DeltaVMap.Compute(snapshot.Bodies, snapshot.Body).Leg("launch:" + snapshot.Body) : null;
+            if (launch != null) legs.Add(new PlannedSequence { Name = "Launch from " + snapshot.Body, DeltaV = launch.DeltaV });
+            foreach (var clause in GoalClause.Split(goal ?? ""))
+                if (clause.Trim().Length > 0) legs.Add(new PlannedSequence { Name = clause.Trim() });
+            return legs;
+        }
+
+        private static readonly Regex GoalClause = new Regex(@"[.;:,!?]|\b(?:and|then)\b", RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// The allocation over the goal's <paramref name="legs"/> (<see cref="GoalLegs"/>), made for no plan; null when a parachute
+        /// of the craft has no facts read (the editor before #641, or a cut chute), so the chutes aren't judged on a guess.
+        /// </summary>
+        public static ChuteAllocation ForGoal(GameSnapshot snapshot, IList<PlannedSequence> legs, bool remote, uint? processorPartId)
+        {
+            if (snapshot == null || snapshot.Craft.Parts.Any(p => p.Tags.Contains("parachute") && p.Chute == null)) return null;
+            var allocation = Of(snapshot, legs, 0, remote, processorPartId);
+            allocation.ForPlan = "";
             return allocation;
         }
 
