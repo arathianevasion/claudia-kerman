@@ -75,8 +75,11 @@ namespace ClaudiaKermin.Core.Tools
         public const double OverrideMinStoppingTime = 2;
         public const double OverrideMaxStoppingTime = 10;
 
-        /// <summary>The override's rate gain is this over its stopping time: 80% of the 2 / T that brakes without overshoot.</summary>
-        public const double OverrideKpGain = 1.6;
+        /// <summary>The override's rate gain is this over its stopping time: the 1 / T that brakes without overshoot when the craft slows at under 2/3 of the modelled alpha (#678).</summary>
+        public const double OverrideKpGain = 1.0;
+
+        /// <summary>The override's stopping time is this fraction of sqrt(angle / alpha): a cap of 60% of the full-torque peak, one the lagging craft can brake from (#678).</summary>
+        public const double OverrideTimeFraction = 0.6;
 
         /// <summary>The turn is done when the error is under this (rad): the 2° of the alignment check.</summary>
         private const double DoneRad = 2 * Math.PI / 180;
@@ -146,14 +149,14 @@ namespace ClaudiaKermin.Core.Tools
             };
         }
 
-        /// <summary>The override's <c>maxstoppingtime</c> (s) for a turn of <paramref name="angle"/> at <paramref name="alpha"/> (same angle units): sqrt(angle / alpha), within 2 to 10.</summary>
+        /// <summary>The override's <c>maxstoppingtime</c> (s) for a turn of <paramref name="angle"/> at <paramref name="alpha"/> (same angle units): 0.6 x sqrt(angle / alpha), within 2 to 10.</summary>
         public static double OverrideStoppingTime(double angle, double alpha)
         {
-            var t = alpha > 0 ? Math.Sqrt(Math.Max(0, angle) / alpha) : OverrideMinStoppingTime;
+            var t = alpha > 0 ? OverrideTimeFraction * Math.Sqrt(Math.Max(0, angle) / alpha) : OverrideMinStoppingTime;
             return Math.Min(OverrideMaxStoppingTime, Math.Max(OverrideMinStoppingTime, t));
         }
 
-        // The turn under the override: kOS asks for the rate kp * error (kp = 1.6 / T), no more than alpha * T, and the craft follows
+        // The turn under the override: kOS asks for the rate kp * error (kp = 1 / T), no more than alpha * T, and the craft follows
         // at no more than alpha. So it speeds up to the cap, holds it, then slows as the error shrinks (the linear gain's exponential
         // tail) down to DoneRad. Stepped, as the three stretches overlap on a short turn.
         private static double OverrideTurn(double angle, double alpha, double stopping, out double peak)
