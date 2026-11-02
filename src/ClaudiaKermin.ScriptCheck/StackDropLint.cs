@@ -36,7 +36,7 @@ namespace ClaudiaKermin.ScriptCheck
             for (var i = 0; i < reentry.Index; i++)
                 if (code[i] == '\n') line++;
             warnings.Add("line " + line + ": reentry after " + leg.Groups[1].Value.ToLowerInvariant()
-                + " with no drop named; say what leaves before the atmosphere with reentry's separate (\"auto\", its default, drops the stack below the heat shield) or drop_parts.");
+                + " with no drop named; say what leaves before the atmosphere with reentry's separate (\"auto\", its default, drops the stack below the heat shield).");
             return warnings;
         }
     }

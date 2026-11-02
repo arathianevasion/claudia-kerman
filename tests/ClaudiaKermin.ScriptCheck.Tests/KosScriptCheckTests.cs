@@ -117,6 +117,7 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             var lint = Assert.Single(result.Warnings, w => w.Contains(StackLint));
             Assert.StartsWith(warning, lint);
             Assert.Contains("separate", lint);
+            Assert.DoesNotContain("drop_parts", lint);
             Assert.DoesNotContain(result.Problems, p => p.Contains(StackLint));
         }
 
@@ -169,6 +170,22 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             Assert.StartsWith(line, lint);
             Assert.Contains("reentry's separate", lint);
             Assert.DoesNotContain(result.Problems, p => p.Contains(DropLint));
+        }
+
+        [Fact]
+        public void A_script_that_follows_the_stack_drop_lints_advice_gets_no_drop_lint()
+        {
+            // The stack-drop lint names reentry's separate, not drop_parts: b5f3's return-then-reentry, with the separate it asks for.
+            const string followsAdvice =
+                "local res is return(lexicon(\"target_pe\", 35000)).\n"
+                + "if res:success {\n"
+                + "  set res to reentry(lexicon(\"separate\", \"auto\")).\n"
+                + "}\n"
+                + "addons:claudia:report(res).";
+            var result = _check.Check(CoreLibrary.Bundle(followsAdvice));
+            Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
+            Assert.DoesNotContain(result.Warnings, w => w.Contains(StackLint));
+            Assert.DoesNotContain(result.Warnings, w => w.Contains(DropLint));
         }
 
         [Fact]
