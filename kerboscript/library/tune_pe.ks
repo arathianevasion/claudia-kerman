@@ -5,8 +5,9 @@
 // after a sphere-of-influence change), by planning one maneuver node at a point it chooses and flying it
 // with exec_node. Built on claudia_lib.ks; block-only helpers are prefixed tune_pe_. The "//|" lines
 // are Claudia's docs for it; the first is its summary.
-// It keeps its kerboscript maths rather than ADDONS:CLAUDIA:ORBITBURN (#444): patch "current" is closed form on the
-// live orbit, and patch "next" searches the node against kOS's own patched conics (nextpatch), the path KSP flies.
+// Patch "current" keeps its kerboscript maths rather than ADDONS:CLAUDIA:ORBITBURN (#444): closed form on the live orbit.
+// Patch "next" is a Course Correction, solved by ADDONS:CLAUDIA:CORRECTIONBURN at the node's UT (#484) and checked against
+// kOS's own patched conics (nextpatch), the path KSP flies.
 
 @lazyglobal off.
 
@@ -203,22 +204,43 @@ function tune_pe_safe_hint {
   return "; encounter safe: pe " + round(pe / 1000, 1) + " km at " + name + "; a capture can follow".
 }
 
-// Searches nd's burn for the one that puts the next patch's periapsis at value: sets nd's
-// components and returns the m the periapsis is still off by.
+// What tune_pe asks ADDONS:CLAUDIA:CORRECTIONBURN for the next-patch burn (#484): claudia_correction_ask at ut, to dest_name at
+// value m, within tolerance m. Pure.
+function tune_pe_ask {
+  parameter dest_name, value, tolerance, ut.
+  local ask is claudia_correction_ask(dest_name, value, ut).
+  set ask:pe_tolerance to tolerance.
+  return ask.
+}
+
+// CORRECTIONBURN's answer fix as the node to set: lexicon("error", "" or why there is no burn, "miss", "" or why its best burn
+// is over the tolerance, "radial", "normal", "prograde", m/s, 0 with no burn). Pure.
+function tune_pe_found {
+  parameter fix.
+  local found is lexicon("error", "", "miss", "", "radial", 0, "normal", 0, "prograde", 0).
+  if not fix:haskey("dv") {
+    set found:error to fix:error.
+    return found.
+  }
+  set found:miss to fix:error.
+  set found:radial to fix:radial.
+  set found:normal to fix:normal.
+  set found:prograde to fix:prograde.
+  return found.
+}
+
+// Solves nd's burn at its UT as a Course Correction to the next patch's body at value (ADDONS:CLAUDIA:CORRECTIONBURN) and sets
+// nd's components to it. Returns tune_pe_found's lexicon with "off_by", m the next patch's periapsis is still off by on kOS's
+// own patched conics (the path KSP flies).
 function tune_pe_search {
   parameter nd, value, tolerance.
   local dest is ship:orbit:nextpatch:body.
-  local found is claudia_descend({
-    parameter x.
-    set nd:radialout to x[0].
-    set nd:normal to x[1].
-    set nd:prograde to x[2].
-    return abs(claudia_pe_error(nd:orbit, dest, value)).
-  }, list(0, 0, 0), list(1, 1, 1), 10, tolerance / 4).
-  set nd:radialout to found:x[0].
-  set nd:normal to found:x[1].
-  set nd:prograde to found:x[2].
-  return found:cost.
+  local found is tune_pe_found(addons:claudia:correctionburn(tune_pe_ask(dest:name, value, tolerance, nd:time))).
+  set nd:radialout to found:radial.
+  set nd:normal to found:normal.
+  set nd:prograde to found:prograde.
+  set found:off_by to abs(claudia_pe_error(nd:orbit, dest, value)).
+  return found.
 }
 
 // The next-patch burn's node UT so the burn ends 60 s before the sphere-of-influence change at soi_ut (#291): node_ut
@@ -244,15 +266,22 @@ function tune_pe_fit {
   return fit.
 }
 
-// Places the next-patch burn: searches nd at its UT, then moves it earlier and searches again while the burn would not
+// Places the next-patch burn: solves nd at its UT, then moves it earlier and solves again while the burn would not
 // end before the sphere-of-influence change (tune_pe_fit); a burn still too long after three moves doesn't fit.
-// Returns lexicon("error", "" or why not, "off_by", m the periapsis is still off by).
+// Returns lexicon("error", "" or why not, "miss", "" or CORRECTIONBURN's reason its best burn is off, "off_by", m the
+// periapsis is still off by).
 function tune_pe_place_next {
   parameter nd, opt, soi_ut.
-  local placed is lexicon("error", "", "off_by", 0).
+  local placed is lexicon("error", "", "miss", "", "off_by", 0).
   local tries is 0.
   until false {
-    set placed:off_by to tune_pe_search(nd, opt:value, opt:tolerance).
+    local found is tune_pe_search(nd, opt:value, opt:tolerance).
+    set placed:miss to found:miss.
+    set placed:off_by to found:off_by.
+    if found:error <> "" {
+      set placed:error to found:error.
+      return placed.
+    }
     local timing is claudia_burn_timing(nd:deltav:mag, claudia_burn_stages(opt:stage_limit), nd:eta, "half_burn").
     local fit is tune_pe_fit(time:seconds, nd:time, soi_ut, timing:burn_time, timing:lead).
     if fit:error <> "" {
@@ -276,7 +305,7 @@ function tune_pe_place_next {
 // lexicon for that burn point.
 function tune_pe_place_best {
   parameter nd, opt, soi_ut, times.
-  local best is lexicon("error", "", "off_by", 0).
+  local best is lexicon("error", "", "miss", "", "off_by", 0).
   local best_score is 1e30.
   local best_time is 0.
   local best_x is list(0, 0, 0).
@@ -385,7 +414,11 @@ function tune_pe {
     local off_by is placed:off_by.
     if off_by > opt:tolerance {
       remove nd.
-      return claudia_finish(ctx, false, "found no burn that reaches " + round(opt:value) + " m (best is " + round(off_by) + " m off)", extra).
+      local why is "".
+      if placed:miss <> "" {
+        set why to ": " + placed:miss.
+      }
+      return claudia_finish(ctx, false, "found no burn that reaches " + round(opt:value) + " m (best is " + round(off_by) + " m off)" + why, extra).
     }
     local over is tune_pe_over_budget(nd:deltav:mag, opt:max_dv).
     if over <> "" {

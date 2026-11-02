@@ -95,9 +95,18 @@ namespace ClaudiaKermin.Kerboscript.Tests
         }
 
         [Fact]
-        public void A_max_duration_the_script_gave_leaves_two_minutes_to_burn_the_correction_in()
+        public void A_max_duration_the_script_gave_leaves_the_Course_Correction_its_lead_and_two_minutes()
         {
-            Assert.Equal(new[] { "target,target_pe,earliest_ut,latest_ut,max_dv", "5193", "20880", "412.5" }, CorrectionAsk("20000", "false", "412.5"));
+            // 1000 + 20000 - 120 - (133 + 60): the Course Correction after it needs its 193 s lead and 120 s to burn.
+            Assert.Equal(new[] { "target,target_pe,earliest_ut,latest_ut,max_dv", "5193", "20687", "412.5" }, CorrectionAsk("20000", "false", "412.5"));
+        }
+
+        [Fact]
+        public void A_max_duration_too_short_for_both_burns_asks_for_a_latest_burn_before_the_earliest()
+        {
+            // 1000 + 5300 - 313 = 5987 is past earliest 5193; 1000 + 4400 - 313 = 5087 is before it, so the block fails before burning.
+            Assert.Equal(new[] { "target,target_pe,earliest_ut,latest_ut,max_dv", "5193", "5987", "412.5" }, CorrectionAsk("5300", "false", "412.5"));
+            Assert.Equal(new[] { "target,target_pe,earliest_ut,latest_ut,max_dv", "5193", "5087", "412.5" }, CorrectionAsk("4400", "false", "412.5"));
         }
 
         [Fact]
