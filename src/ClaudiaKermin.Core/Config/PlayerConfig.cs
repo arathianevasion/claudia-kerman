@@ -194,7 +194,7 @@ namespace ClaudiaKermin.Core.Config
             "# Haiku became the shipped default model. This line stops the mod from changing your models line again.";
 
         /// <summary>Loads the file, writing it with defaults first if it does not exist.</summary>
-        public static PlayerConfig LoadOrCreate(string directory)
+        public static PlayerConfig LoadOrCreate(string directory, Action<string> warn = null)
         {
             var path = Path.Combine(directory, FileName);
             if (!File.Exists(path))
@@ -202,7 +202,7 @@ namespace ClaudiaKermin.Core.Config
                 Directory.CreateDirectory(directory);
                 File.WriteAllText(path, DefaultFile);
             }
-            MigrateToHaikuDefault(path);
+            MigrateToHaikuDefault(path, warn);
 
             var config = new PlayerConfig();
             foreach (var raw in File.ReadAllLines(path))
@@ -340,9 +340,9 @@ namespace ClaudiaKermin.Core.Config
         /// The one-time move to Haiku as the default model (#639). A file without <see cref="HaikuDefaultMarker"/> gets it,
         /// at the end; its <c>models</c> line is rewritten to Haiku first only when it is exactly the old shipped line. A
         /// list the player edited is left alone. Every other byte stays as it was. A file that can't be written is read as
-        /// it is, and the move is tried again at the next load.
+        /// it is, the failure is said once to <paramref name="warn"/>, and the move is tried again at the next load.
         /// </summary>
-        private static void MigrateToHaikuDefault(string path)
+        private static void MigrateToHaikuDefault(string path, Action<string> warn)
         {
             try
             {
@@ -361,6 +361,7 @@ namespace ClaudiaKermin.Core.Config
             }
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             {
+                if (warn != null) warn("Couldn't move config.cfg to Haiku first (tried again at the next load): " + e.Message);
             }
         }
 

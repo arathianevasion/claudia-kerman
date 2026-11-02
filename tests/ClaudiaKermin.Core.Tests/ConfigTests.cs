@@ -430,6 +430,32 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void AMigrationThatCannotWriteIsSaidOnceAndTheFileIsReadAsItIs()
+        {
+            using (var dir = new TempDir())
+            {
+                Directory.CreateDirectory(dir.Sub);
+                var path = Path.Combine(dir.Sub, PlayerConfig.FileName);
+                File.WriteAllText(path, OldShipped + "\n");
+                File.SetAttributes(path, FileAttributes.ReadOnly);
+                try
+                {
+                    var warnings = new System.Collections.Generic.List<string>();
+
+                    var config = PlayerConfig.LoadOrCreate(dir.Sub, warnings.Add);
+
+                    Assert.Equal("claude-sonnet-5-5", config.DefaultModel);
+                    Assert.Single(warnings);
+                    Assert.Contains("config.cfg", warnings[0]);
+                }
+                finally
+                {
+                    File.SetAttributes(path, FileAttributes.Normal);
+                }
+            }
+        }
+
+        [Fact]
         public void ANewConfigFileIsMarkedSoItIsNeverMigrated()
         {
             using (var dir = new TempDir())

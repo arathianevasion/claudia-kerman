@@ -7,7 +7,7 @@ namespace ClaudiaKermin.Core.Missions
 {
     /// <summary>
     /// The Claudia Flag (#642): the flag the mod ships, which a Mission's craft and Child Vessels fly, and which is the agency
-    /// flag while a Mission is under way (in play and not Paused; not the glossary's Running, which is a script executing). This decides, from the Mission view; the adapter sets <c>Part.flagURL</c> and the
+    /// flag while a Mission is under way (in play, Paused or not; not the glossary's Running, which is a script executing). This decides, from the Mission view; the adapter sets <c>Part.flagURL</c> and the
     /// game's flag, and reports back what it flew. Save-level state (the player's own agency flag, kept while Claudia's
     /// flies) is the save's, not a Mission's: the adapter keeps it in the scenario node beside the Missions.
     /// </summary>
@@ -22,14 +22,18 @@ namespace ClaudiaKermin.Core.Missions
         private readonly HashSet<string> _flagged = new HashSet<string>();
         private string _flaggedFor = "";
         private bool _wasUnderWay;
+        private readonly Dictionary<string, int> _misses = new Dictionary<string, int>();
+
+        /// <summary>How many times the adapter may fail to find a vessel before the keeper stops asking (until a load, docking or new Mission).</summary>
+        public const int MaxMisses = 600;
 
         /// <summary>The player's agency flag, kept while Claudia's flies in its place; null when nothing is kept.</summary>
         public string SavedAgencyFlag { get; private set; }
 
-        /// <summary>A Mission is under way: one is in play and not Paused (a finished one isn't in play).</summary>
+        /// <summary>A Mission is under way: one is in play (a finished one isn't). Pause and Resume leave the agency flag alone.</summary>
         public static bool UnderWay(MissionView view)
         {
-            return view.CanEndMission && view.Stage != MissionStage.Paused;
+            return view.CanEndMission;
         }
 
         /// <summary>
@@ -40,6 +44,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             SavedAgencyFlag = string.IsNullOrEmpty(savedAgencyFlag) ? null : savedAgencyFlag;
             _flagged.Clear();
+            _misses.Clear();
             _wasUnderWay = false;
         }
 
@@ -57,7 +62,8 @@ namespace ClaudiaKermin.Core.Missions
             if (started)
             {
                 if (current == Url) return null;
-                if (SavedAgencyFlag == null) SavedAgencyFlag = current;
+                // The flag in force now is the player's, so a flag kept by an earlier session is stale.
+                if (!string.IsNullOrEmpty(current) || SavedAgencyFlag == null) SavedAgencyFlag = current;
                 return Url;
             }
             if (running || SavedAgencyFlag == null) return null;
@@ -78,9 +84,10 @@ namespace ClaudiaKermin.Core.Missions
             {
                 _flaggedFor = view.MissionId;
                 _flagged.Clear();
+                _misses.Clear();
             }
             foreach (var id in MissionVessels(view))
-                if (!_flagged.Contains(id) && !ids.Contains(id)) ids.Add(id);
+                if (!_flagged.Contains(id) && !ids.Contains(id) && Misses(id) < MaxMisses) ids.Add(id);
             return ids;
         }
 
@@ -88,14 +95,32 @@ namespace ClaudiaKermin.Core.Missions
         public void Flagged(string vesselId)
         {
             _flagged.Add(vesselId);
+            _misses.Remove(vesselId);
         }
 
-        /// <summary>A docking: when a Mission vessel is one side, the merged vessel flies the flag again, joined parts and all.</summary>
-        public void Docked(MissionView view, string first, string second)
+        /// <summary>The adapter couldn't find this vessel (yet): asked for again, but only <see cref="MaxMisses"/> times, so a vessel that is gone (the one docked away) isn't asked for every frame for good.</summary>
+        public void Missed(string vesselId)
         {
-            if (!IsMissionVessel(view, first) && !IsMissionVessel(view, second)) return;
+            _misses[vesselId] = Misses(vesselId) + 1;
+        }
+
+        private int Misses(string vesselId)
+        {
+            int count;
+            return _misses.TryGetValue(vesselId, out count) ? count : 0;
+        }
+
+        /// <summary>
+        /// A docking: both vessels fly the flag again if they are Mission vessels, joined parts and all. It doesn't read the
+        /// Mission view, so it gives the same answer before or after the Mission has taken the docking in (which may move the
+        /// craft to the merged vessel's id): only Mission vessels are ever asked for.
+        /// </summary>
+        public void Docked(string first, string second)
+        {
             _flagged.Remove(first);
             _flagged.Remove(second);
+            _misses.Remove(first);
+            _misses.Remove(second);
         }
 
         /// <summary>The vessel is the craft or a Child Vessel of the Mission in play (a Kerbal leaving it plants Claudia's flag).</summary>

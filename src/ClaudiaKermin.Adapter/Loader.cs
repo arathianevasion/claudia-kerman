@@ -61,7 +61,7 @@ namespace ClaudiaKermin.Adapter
             CheckKos();
 
             var directory = ConfigDirectory.ResolveCurrent();
-            var config = PlayerConfig.LoadOrCreate(directory);
+            var config = PlayerConfig.LoadOrCreate(directory, warning => Debug.LogWarning(ModInfo.LogTag + " " + warning));
             WindowMemory.Init(directory);
             var store = new ApiKeyStore(directory, System.Environment.GetEnvironmentVariable);
             var client = new ClaudeClient(new HttpWebRequestTransport(), store.Load, Debug.Log);
@@ -80,7 +80,7 @@ namespace ClaudiaKermin.Adapter
             var missions = new MissionControl(client, _background, config, () => store.Load() != null, new KosScriptCheck());
             // Terrain, biome and the sun for the Planning Tools, served on the main thread within a per-frame budget (Update pumps it).
             missions.PlanningBody = _planningBody;
-            _missions = new MissionDriver(missions, config.DebugTools) { SaveConfigDefaults = () => config.TrySaveDefaults(directory) };
+            _missions = new MissionDriver(missions, config.DebugTools) { SaveConfigDefaults = done => _background.Run(() => config.TrySaveDefaults(directory), done) };
             _window = new SettingsWindow(new KeySettings(store, client, _background), _missions, config, directory, _chatWindow);
             _missions.Panel.OpenSettings = () => _window.Visible = true;
 
@@ -125,6 +125,7 @@ namespace ClaudiaKermin.Adapter
             GameEvents.onShowUI.Remove(ShowUI);
             GameEvents.onGameSceneLoadRequested.Remove(SceneChanging);
             RemoveButtons();
+            if (_missions != null) _missions.Detach();
             UnlockAll();
         }
 
