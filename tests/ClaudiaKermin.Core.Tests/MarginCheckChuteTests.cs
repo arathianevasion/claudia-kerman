@@ -65,6 +65,39 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void ARevisedPlanThatAddsAnAirEntryHasTheAllocationWorkedOutAgainAndTheMarginCheckJudgesTheEntry()
+        {
+            var snapshot = Craft();
+            var before = new List<PlannedSequence>
+            {
+                new PlannedSequence { Name = "Mun transfer", Intent = "Transfer to the Mun and capture into low Mun orbit.", DeltaV = 900 },
+                new PlannedSequence { Name = "Land on the Mun", Intent = "Deorbit and land on the Mun.", DeltaV = 600 },
+            };
+            var held = ChuteAllocation.Of(snapshot, before, 0, false, null);
+            Assert.Empty(held.Entries);
+
+            var revised = Plan(3800, 100, 1000);
+            var current = ChuteAllocation.Current(held, snapshot, revised, 0, false, null);
+
+            Assert.NotSame(held, current);
+            Assert.Contains(current.Entries, e => e.Body == "Duna");
+            var check = MarginCheck.Of(snapshot, revised, 15, 10, false, null, current, Home, 0);
+            Assert.Single(check.Findings, f => f.Code == "chutes_short_for_landing");
+        }
+
+        [Fact]
+        public void AnUnchangedPlanReusesTheAllocationAndAFirstStepThatMovesDoesNot()
+        {
+            var snapshot = Craft();
+            var plan = Plan(1800, 100, 1000);
+            var held = ChuteAllocation.Of(snapshot, plan, 0, false, null);
+
+            Assert.Same(held, ChuteAllocation.Current(held, snapshot, Plan(1800, 100, 1000), 0, false, null));
+            Assert.NotSame(held, ChuteAllocation.Current(held, snapshot, plan, 1, false, null));
+            Assert.NotSame(held, ChuteAllocation.Current(held, snapshot, Plan(1800, 150, 1000), 0, false, null));
+        }
+
+        [Fact]
         public void TheBenchmarkCraftWithOneMk16AndNoDeltaVForTheFinishIsABlocker()
         {
             // The legs through the landing take 3,900 of 3,904 m/s: 4 m/s are left for a finish from an unchuted Duna fall.

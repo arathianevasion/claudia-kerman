@@ -71,6 +71,9 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The craft's usable chutes (stowed or armed), whoever has them.</summary>
         public readonly List<AllocatedChute> Chutes = new List<AllocatedChute>();
 
+        /// <summary>The plan this was made for: <see cref="PlanOf"/> of the steps it covered. "" for an allocation made for no plan.</summary>
+        public string ForPlan = "";
+
         /// <summary>The Kerbin return entry, or null for none.</summary>
         public EntryChutes Return
         {
@@ -107,11 +110,30 @@ namespace ClaudiaKermin.Core.Missions
         {
             var allocation = new ChuteAllocation();
             if (snapshot == null || sequences == null) return allocation;
+            allocation.ForPlan = PlanOf(sequences, firstStep);
             allocation.Entries.AddRange(FindEntries(snapshot, sequences, Math.Max(0, firstStep)));
             var division = new Division(snapshot, remote, processorPartId, allocation);
             allocation.Chutes.AddRange(division.All);
             if (allocation.Entries.Count > 0) division.Divide(sequences, Math.Max(0, firstStep));
             return allocation;
+        }
+
+        /// <summary>A fingerprint of the plan from step <paramref name="firstStep"/> on: what the allocation reads of each leg (words, manual, delta-v) and where it starts.</summary>
+        public static string PlanOf(IList<PlannedSequence> sequences, int firstStep)
+        {
+            var first = Math.Max(0, firstStep);
+            return first.ToString(CultureInfo.InvariantCulture) + "|" + string.Join("|", sequences.Skip(first)
+                .Select(s => SequenceWords.Of(s) + "\u001f" + (s.Manual ? "m" : "") + s.DeltaV.ToString("R", CultureInfo.InvariantCulture)).ToArray());
+        }
+
+        /// <summary>
+        /// <paramref name="held"/> when it was made for this plan from this step on, else the allocation worked out again (#645: a
+        /// revision between Approval or a Debrief and a Margin Check leaves the held one stale).
+        /// </summary>
+        public static ChuteAllocation Current(ChuteAllocation held, GameSnapshot snapshot, IList<PlannedSequence> sequences, int firstStep, bool remote, uint? processorPartId)
+        {
+            if (held != null && sequences != null && held.ForPlan == PlanOf(sequences, firstStep)) return held;
+            return Of(snapshot, sequences, firstStep, remote, processorPartId);
         }
 
         /// <summary>
