@@ -219,29 +219,11 @@ namespace ClaudiaKermin.Core.Tools
             var span = Math.Min(intercept ? craft.Period : synodic, until - from);
             var transfer = new Problem(craft, targetOrbit, body, peR, ask.Capture, intercept, Math.Min(home.Radius + home.AtmosphereHeight, craft.PeR));
 
-            // The grid: a departure every span / Seeds from one step before the start (so a window just before it is a
-            // falling edge, not a minimum) to a quarter span past the end, each at its cheapest time of flight.
-            var step = span / Seeds;
-            var count = Seeds + Seeds / 4 + 2;
-            var cheapest = new double[count];
-            var flight = new double[count];
-            var hohmann = new double[count];
-            for (var i = 0; i < count; i++)
-            {
-                var t = from + (i - 1) * step;
-                hohmann[i] = transfer.HohmannTime(t);
-                cheapest[i] = double.PositiveInfinity;
-                for (var j = 0; j < Flights; j++)
-                {
-                    var tof = hohmann[i] * (FlightLow + (FlightHigh - FlightLow) * j / (Flights - 1));
-                    var c = transfer.Cost(t, tof, 0);
-                    if (c < cheapest[i])
-                    {
-                        cheapest[i] = c;
-                        flight[i] = tof;
-                    }
-                }
-            }
+            // The grid (DepartureGrid), shared with BrokenPlane.
+            var grid = DepartureGrid.Build(transfer, from, span);
+            var step = grid.Step;
+            var count = grid.Count;
+            double[] cheapest = grid.Cheapest, flight = grid.Flight, hohmann = grid.Hohmann;
             var picks = intercept ? InterceptPicks(cheapest, step, span, craft.Period) : RendezvousPicks(cheapest, step, span, ask.LatestUt.HasValue);
             if (picks.Count == 0)
                 return Fail("no departure in the " + Num(span) + " s from UT " + Num(from) + " has a path to " + transfer.Name
@@ -300,6 +282,43 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
+        /// The departure grid both <see cref="Find"/> and <see cref="BrokenPlane"/> search: a departure every
+        /// <paramref name="span"/> / Seeds from one step before <paramref name="from"/> (so a window just before it is a falling
+        /// edge, not a minimum) to a quarter span past the end, each at its cheapest time of flight. Build it for any Problem.
+        /// </summary>
+        private sealed class DepartureGrid
+        {
+            public double Step;
+            public int Count;
+            public double[] Cheapest, Flight, Hohmann;
+
+            public static DepartureGrid Build(Problem problem, double from, double span)
+            {
+                var g = new DepartureGrid { Step = span / Seeds, Count = Seeds + Seeds / 4 + 2 };
+                g.Cheapest = new double[g.Count];
+                g.Flight = new double[g.Count];
+                g.Hohmann = new double[g.Count];
+                for (var i = 0; i < g.Count; i++)
+                {
+                    var t = from + (i - 1) * g.Step;
+                    g.Hohmann[i] = problem.HohmannTime(t);
+                    g.Cheapest[i] = double.PositiveInfinity;
+                    for (var j = 0; j < Flights; j++)
+                    {
+                        var tof = g.Hohmann[i] * (FlightLow + (FlightHigh - FlightLow) * j / (Flights - 1));
+                        var c = problem.Cost(t, tof, 0);
+                        if (c < g.Cheapest[i])
+                        {
+                            g.Cheapest[i] = c;
+                            g.Flight[i] = tof;
+                        }
+                    }
+                }
+                return g;
+            }
+        }
+
+        /// <summary>
         /// The departure node at <paramref name="window"/>: the Lambert burn, aimed on the patched conics to a body;
         /// <paramref name="reached"/> is whether any burn tried there met it.
         /// </summary>
@@ -345,27 +364,10 @@ namespace ClaudiaKermin.Core.Tools
         {
             var mu = craft.Mu;
             var flat = new Problem(craft, Turned(targetOrbit, craft.W, from), body, peR, ask.Capture, false, floor);
-            var step = span / Seeds;
-            var count = Seeds + Seeds / 4 + 2;
-            var cheapest = new double[count];
-            var flight = new double[count];
-            var hohmann = new double[count];
-            for (var i = 0; i < count; i++)
-            {
-                var t = from + (i - 1) * step;
-                hohmann[i] = flat.HohmannTime(t);
-                cheapest[i] = double.PositiveInfinity;
-                for (var j = 0; j < Flights; j++)
-                {
-                    var tof = hohmann[i] * (FlightLow + (FlightHigh - FlightLow) * j / (Flights - 1));
-                    var c = flat.Cost(t, tof, 0);
-                    if (c < cheapest[i])
-                    {
-                        cheapest[i] = c;
-                        flight[i] = tof;
-                    }
-                }
-            }
+            var grid = DepartureGrid.Build(flat, from, span);
+            var step = grid.Step;
+            var count = grid.Count;
+            double[] cheapest = grid.Cheapest, flight = grid.Flight, hohmann = grid.Hohmann;
             var picks = RendezvousPicks(cheapest, step, span, ask.LatestUt.HasValue);
             if (picks.Count == 0) return null;
             var pick = picks[0];
