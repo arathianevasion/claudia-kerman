@@ -94,6 +94,25 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void TheEntryStaysCompact()
+        {
+            var snapshot = OnPad();
+            var without = snapshot.ToJson(false).Length;
+            var target = Station();
+            // Orbit elements as KSP reads them, at full precision.
+            target.Orbit = new SnapshotOrbit
+            {
+                Apoapsis = 120384.61538461538, Periapsis = 118922.30769230769, Inclination = 0.10471975511965977, Eccentricity = 0.0010175644531249998,
+                SemiMajorAxis = 719653.4615384615, Lan = 12.566370614359172, ArgumentOfPeriapsis = 80.11061266653972,
+                MeanAnomalyAtEpoch = 1.2566370614359172, Epoch = 51234.567890123456, Body = "Kerbin",
+            };
+            snapshot.Target = target;
+
+            // About 150 tokens by the mod's estimate (characters / 3): the cost of a turn's snapshot for a Mission with a target.
+            Assert.InRange(snapshot.ToJson(false).Length - without, 300, 480);
+        }
+
+        [Fact]
         public void ATargetWithNoTaggedPortsLeavesPortTagsOut()
         {
             var snapshot = OnPad();
