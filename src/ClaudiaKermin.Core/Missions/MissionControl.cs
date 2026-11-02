@@ -600,6 +600,7 @@ namespace ClaudiaKermin.Core.Missions
             if (mission.Stage == MissionStage.AwaitingPlanApproval)
             {
                 Notice("Mission Plan approved.");
+                mission.MissionPlanApproved = true;
                 var newGoal = ApplyGoalChange(mission);
                 mission.Stage = MissionStage.Sequencing;
                 AllocateChutes(mission);

@@ -63,6 +63,8 @@ namespace ClaudiaKermin.Core.Missions
         public bool Remote;
         /// <summary>The Mission is in Auto Mode: the player's Approval is given in advance. A save from before this existed reads as off.</summary>
         public bool AutoMode;
+        /// <summary>The player has approved a Mission Plan (#661), so a revision is never the first one. A save from before this existed reads as not.</summary>
+        public bool MissionPlanApproved;
         /// <summary>While Paused for EVA science: what the player is to do by hand; "" otherwise.</summary>
         public string EvaScience = "";
         /// <summary>In Manual Control (or its Hand back Debrief): the stretch was planned, so its Debrief is judged against the target.</summary>
@@ -202,6 +204,7 @@ namespace ClaudiaKermin.Core.Missions
             if (Recheck.Length > 0) values["recheck"] = Recheck;
             if (RecheckSince != 0) values["recheckSince"] = RecheckSince.ToString(CultureInfo.InvariantCulture);
             if (TargetChange.Length > 0) values["targetChange"] = TargetChange;
+            if (MissionPlanApproved) values["missionPlanApproved"] = "true";
             if (PendingNotice.Length > 0) values["pendingNotice"] = PendingNotice;
             if (PausedCannotFly) values["pausedCannotFly"] = "true";
             if (PausedForCap) values["pausedForCap"] = "true";
@@ -251,6 +254,7 @@ namespace ClaudiaKermin.Core.Missions
                 DueNotified = Get(values, "dueNotified") == "true",
                 Remote = Get(values, "remote") == "true",
                 AutoMode = Get(values, "auto_mode") == "true",
+                MissionPlanApproved = Get(values, "missionPlanApproved") == "true",
                 EvaScience = Get(values, "evaScience"),
                 ManualPlanned = Get(values, "manualPlanned") == "true",
                 ManualOrigin = Get(values, "manualOrigin"),

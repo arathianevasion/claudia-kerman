@@ -19,6 +19,11 @@ namespace ClaudiaKermin.Core.Missions
         {
             /// <summary>The player's Approval is given in advance (Auto Mode); saved with the Mission.</summary>
             public bool AutoMode;
+            /// <summary>
+            /// The player has approved a Mission Plan (#661): a revision is never the first Mission Plan, even when a dropped Sequence
+            /// Plan took <c>SequencesProposed</c> back to 0. Saved; false in older saves, where that count alone decides.
+            /// </summary>
+            public bool MissionPlanApproved;
             /// <summary>The plan the Auto Mode room check last held for the player, so its blocked charge is logged once (not saved).</summary>
             public object AutoModeHeldFor;
             /// <summary>
@@ -118,7 +123,7 @@ namespace ClaudiaKermin.Core.Missions
             var plan = mission.PendingSequence;
             if (missionPlan)
             {
-                if (mission.SequencesProposed == 0)
+                if (mission.SequencesProposed == 0 && !mission.MissionPlanApproved)
                 {
                     WaitsForPlayer(mission, AdvanceWait.FirstMissionPlan, "");
                     return;

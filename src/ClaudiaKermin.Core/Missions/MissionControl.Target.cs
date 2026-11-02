@@ -123,10 +123,16 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         private bool ReviseForTarget(Mission mission, LogKind kind)
         {
-            if (_snapshot == null || TargetUnread(mission, _snapshot)) return false;
+            if (_snapshot == null || TargetUnread(mission, _snapshot))
+            {
+                // The player's own press says why nothing happened; Auto Mode's comes again on the next input.
+                if (kind == LogKind.Player) Note(LogKind.Notice, "Re-plan waits for the next Game Snapshot to read the new Target Vessel.");
+                return false;
+            }
             Note(kind, "Re-plan: the Target Vessel changed (" + mission.TargetChange + ").");
-            foreach (var finding in TargetFindings(mission)) Note(LogKind.Notice, "Craft Check: " + finding.Describe() + ".");
-            var turn = TargetTurn(mission);
+            var findings = TargetFindings(mission);
+            foreach (var finding in findings) Note(LogKind.Notice, "Craft Check: " + finding.Describe() + ".");
+            var turn = TargetTurn(mission, findings);
             mission.TargetChange = "";
             mission.ConfirmPrompt = null;
             mission.PlanBaseline = null;
@@ -144,13 +150,12 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         /// <summary>The revised Mission Plan request for the new Target Vessel; also the probe the Auto Mode room check prices.</summary>
-        private Turn TargetTurn(Mission mission)
+        private Turn TargetTurn(Mission mission, IList<MarginFinding> findings)
         {
-            var findings = TargetFindings(mission).Select(f => f.Describe()).ToList();
             return new Turn
             {
                 Purpose = Purpose.MissionPlan,
-                UserText = MissionPrompts.TargetChanged(mission.Target != null ? mission.Target.Name : null, findings) + "\n"
+                UserText = MissionPrompts.TargetChanged(mission.Target != null ? mission.Target.Name : null, findings.Select(f => f.Describe()).ToList()) + "\n"
                     + MissionPrompts.Facts(_ut, _snapshot) + PlanFigures(mission, mission.Goal),
                 Notice = MissionPrompts.TargetNotice,
             };

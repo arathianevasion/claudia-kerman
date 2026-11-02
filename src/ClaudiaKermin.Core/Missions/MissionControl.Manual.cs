@@ -302,10 +302,13 @@ namespace ClaudiaKermin.Core.Missions
             Begin(ReplanTurn(stale, missionPlan));
         }
 
-        /// <summary>The turn that asks for the stale plan again; also the probe the Auto Mode room check prices.</summary>
+        /// <summary>
+        /// The turn that asks for the stale plan again; also the probe the Auto Mode room check prices. A changed Target Vessel's is
+        /// the revised Mission Plan request whatever the pending plan (MissionControl.Target.cs), so then both arguments are unused.
+        /// </summary>
         private Turn ReplanTurn(string stale, bool missionPlan)
         {
-            if (_mission.TargetChange.Length > 0) return TargetTurn(_mission);
+            if (_mission.TargetChange.Length > 0) return TargetTurn(_mission, TargetFindings(_mission));
             return new Turn
             {
                 Purpose = missionPlan ? Purpose.MissionPlan : Purpose.SequencePlan,

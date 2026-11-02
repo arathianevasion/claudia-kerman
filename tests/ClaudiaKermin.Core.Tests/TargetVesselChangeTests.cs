@@ -94,6 +94,7 @@ namespace ClaudiaKermin.Core.Tests
             mission.Send(new Replan());
             Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
             Assert.Equal(2, transport.Requests.Count);
+            Assert.Equal("Re-plan waits for the next Game Snapshot to read the new Target Vessel.", mission.View.Log.Last().Text);
 
             mission.Send(Snapshot(Tug()));
             Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
@@ -242,6 +243,26 @@ namespace ClaudiaKermin.Core.Tests
             var revised = log.FindLastIndex(e => e.Kind == LogKind.MissionPlan);
             Assert.Equal("Approved by Auto Mode.", log[revised + 1].Text);
             Assert.Single(mission.TakeCommands().OfType<StartScript>());
+        }
+
+        [Fact]
+        public void UnderAutoModeTheRevisionAfterDroppingTheFirstSequencePlanIsStillApproved()
+        {
+            // The first Sequence Plan, never flown, is dropped with the old plan: the player approved a Mission Plan all the same.
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                ScriptedResponse.Fixture("mission-sequence-plan-manual.sse"),
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"));
+            var mission = Control(transport, new PlayerConfig { DefaultAutoMode = true });
+            ToSequencePlan(mission);
+
+            mission.Send(new ChangeTarget(TargetPick.Cleared));
+            mission.Send(new Replan());
+            DrainUntil(mission, v => v.Stage == MissionStage.Running && transport.Requests.Count == 4);
+            var log = mission.View.Log.ToList();
+            Assert.Equal("Approved by Auto Mode.", log[log.FindLastIndex(e => e.Kind == LogKind.MissionPlan) + 1].Text);
+            Assert.True(MissionSaveState.FromValues(mission.ExportStates().Single().ToValues()).MissionPlanApproved);
         }
 
         [Fact]
