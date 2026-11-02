@@ -252,6 +252,7 @@ function reentry_touchdown_ok {
   return speed <= reentry_touchdown_max(powered).
 }
 
+// The touchdown speed (m/s) over which reentry fails: reentry_powered_limit if powered, else reentry_touchdown_limit. Pure.
 function reentry_touchdown_max {
   parameter powered.
   if powered {
@@ -265,7 +266,7 @@ function reentry_touchdown_max {
 // The chutes reentry may open. choice: "auto", "none", "all" or a list of part tags; aboard: the craft's
 // parachutes (anything answering uid and tag); set: addons:claudia:chuteallocation()'s lexicon, read for
 // "auto" (an error or all keeps every chute, as before the Chute Allocation). Returns lexicon("error", ""
-// or the tag no chute carries, "uids", the uids it may open).
+// or the tag no chute carries, "uids", the uids it may open). Pure.
 function reentry_chute_set {
   parameter choice, aboard, set.
   local found is lexicon("error", "", "uids", list()).
@@ -421,7 +422,7 @@ function reentry_brake_height {
   return s + reentry_powered_end() + max(0, v_down) * reentry_powered_lag().
 }
 
-// True if the braking must start now at radar m (reentry_brake_height's figure brake_h).
+// True if the braking must start now at radar m (reentry_brake_height's figure brake_h). Pure.
 function reentry_brake_due {
   parameter radar, brake_h.
   return brake_h < 0 or radar <= brake_h.
@@ -586,10 +587,11 @@ function reentry_shield_beside {
 // has a heat shield, "parts", the stack, "decouplers", those nearest the shield (or home) that drop it,
 // "gone", the parts they take, "stuck", stack parts with no decoupler between them and the shield). A
 // decoupler stays with the part above it, so the one next to the shield is not the stack. keep_engines
-// (a powered touchdown, #628): every part with an engine, the parts between it and the shield (or home)
-// and those hanging on them with no decoupler between are not the stack but "kept". Fires nothing.
+// (a powered touchdown, #628), the uids of the engines it lands on: each of those parts, the parts between it
+// and the shield (or home) and those hanging on them with no decoupler between are not the stack but "kept".
+// Fires nothing.
 function reentry_stack {
-  parameter parts, home_uid, keep_engines is false.
+  parameter parts, home_uid, keep_engines is list().
   local found is lexicon("shielded", false, "parts", list(), "decouplers", list(), "gone", list(), "stuck", list(), "kept", list()).
   local parent_of is lexicon().
   local is_dec is lexicon().
@@ -619,9 +621,9 @@ function reentry_stack {
     set reversed to reentry_walk(home, anchor, parent_of, is_dec):under.
   }
   local kept is lexicon().
-  if keep_engines and not reversed {
+  if not reversed {
     for p in parts {
-      if p:hasmodule("ModuleEngines") or p:hasmodule("ModuleEnginesFX") {
+      if keep_engines:contains(p:uid) {
         if reentry_walk(p, anchor, parent_of, is_dec):under {
           local cur is p.
           until cur:istype("String") or cur:uid = anchor {
@@ -851,7 +853,18 @@ function reentry {
   // with a service module on, the craft flies engine first and the shield can't lead. A craft with a
   // heat shield that keeps its stack fails here, still above the air; one already in the air flies on.
   local home is reentry_home_uid().
-  local below is reentry_stack(ship:parts, home, powered).
+  // A powered touchdown lands on the engines that are lit or ready: not one flamed out in a spent stage.
+  local landing_engines is list().
+  if powered {
+    local engs is list().
+    list engines in engs.
+    for e in engs {
+      if not e:flameout {
+        landing_engines:add(e:uid).
+      }
+    }
+  }
+  local below is reentry_stack(ship:parts, home, landing_engines).
   if (below:parts:length > 0 or opt:separate:istype("Scalar")) and not claudia_on_ground() {
     local drop is reentry_separation(opt:separate, below).
     local drop_error is drop:error.
@@ -865,7 +878,7 @@ function reentry {
     if drop_error = "" and drop:decouplers:length > 0 {
       set drop_error to claudia_fire_drop(ctx, drop).
     }
-    set below to reentry_stack(ship:parts, home, powered).
+    set below to reentry_stack(ship:parts, home, landing_engines).
     if ship:altitude > body_:atm:height {
       local refused is reentry_stack_refusal(below:shielded, reentry_names(below:parts), drop_error).
       if refused <> "" {
@@ -1051,6 +1064,8 @@ function reentry {
     lock steering to steer.
     lock throttle to tset.
     gear on.
+    // RCS stays off while braking unless the craft has no wheel torque, as for land's (#506).
+    set ctx:rcs_braking to true.
     until claudia_on_ground() {
       local up_v is ship:up:vector.
       local vel is ship:velocity:surface.

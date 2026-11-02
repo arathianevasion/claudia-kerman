@@ -252,7 +252,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
             var dec = t.Add("Decoupler.1", shield, Decoupler, "dec1");
             var tank = t.Add("fuelTank", dec, None);
             t.Add("landingLeg1", tank, new[] { "ModuleWheelBase" });
-            var engine = t.Add("liquidEngine3.v2", tank, new[] { "ModuleEnginesFX" });
+            var engine = t.Add("liquidEngine3.v2", tank, new[] { "ModuleEnginesFX" }, "engine");
             var lower = t.Add("Decoupler.2", engine, Decoupler, "dec2");
             t.Add("fuelTankSmall", lower, None);
             return t;
@@ -261,7 +261,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [Fact]
         public void Separate_auto_with_a_powered_touchdown_keeps_the_engine_and_everything_between_it_and_the_shield()
         {
-            var printed = Run(PoweredPod(), "local below is reentry_stack(parts, \"pod\", true).\n" + PrintStack
+            var printed = Run(PoweredPod(), "local below is reentry_stack(parts, \"pod\", list(\"engine\")).\n" + PrintStack
                 + "local plan is reentry_separation(\"auto\", below).\n"
                 + "local decs is list(). for d in plan:decouplers { decs:add(d:uid). }\n"
                 + "print plan:error. print decs:join(\",\"). print reentry_names(below:kept):join(\",\").\n");
@@ -271,6 +271,17 @@ namespace ClaudiaKermin.Kerboscript.Tests
                 "True", "dec2", "fuelTankSmall", "", "fuelTankSmall",
                 "", "dec2", "Decoupler.1,fuelTank,landingLeg1,liquidEngine3.v2",
             }, printed);
+        }
+
+        [Fact]
+        public void A_spent_engine_on_the_drop_tank_is_not_one_the_touchdown_lands_on_so_its_stage_still_goes()
+        {
+            var t = PoweredPod();
+            t.Add("liquidEngine2.v2", t.Parts.Count - 1, new[] { "ModuleEngines" }, "spent");
+            var printed = Run(t, "local below is reentry_stack(parts, \"pod\", list(\"engine\")).\n"
+                + "local decs is list(). for d in reentry_separation(\"auto\", below):decouplers { decs:add(d:uid). }\n"
+                + "print decs:join(\",\"). print reentry_names(below:gone):join(\",\").\n");
+            Assert.Equal(new[] { "dec2", "fuelTankSmall,liquidEngine2.v2" }, printed);
         }
 
         [Fact]
