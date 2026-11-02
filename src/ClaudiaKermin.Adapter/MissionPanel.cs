@@ -42,6 +42,15 @@ namespace ClaudiaKermin.Adapter
         // Edit loaded the pinned goal back into the prompt.
         private bool _editingGoal;
         private bool _showAllGoal;
+        // The start form's Target Vessel (#643): Auto, Clear or the player's pick, which stays through goal edits. It lives only
+        // here, never in the setup saved as the next Mission's defaults (#639); a Mission under way puts it back to Auto.
+        private TargetPick _targetPick = TargetPick.Auto;
+        private bool _choosingTarget;
+        // The line's choice, kept until the goal, the pick or the facts (a new snapshot) change.
+        private string _choiceGoal;
+        private TargetPick _choicePick;
+        private TargetFacts _choiceFacts;
+        private TargetChoice _choice;
         // The Mission Goal's steps open under it; Hide steps folds them to their count.
         private bool _showGoalSteps = true;
         // The goal clamped to 2 lines, kept until the goal or the width changes (measuring it takes a dozen passes).
@@ -117,6 +126,8 @@ namespace ClaudiaKermin.Adapter
             {
                 _goal = "";
                 _editingGoal = false;
+                _targetPick = TargetPick.Auto;
+                _choosingTarget = false;
             }
             var settingUp = _view.StartForm.CanStart;
             _promptFor = MissionWindowRules.ChosenForPlan(_wasAwaiting, _view, _promptFor);
@@ -185,7 +196,7 @@ namespace ClaudiaKermin.Adapter
             _log.SetupRemote = _setup.Remote;
             _log.Estimate = settingUp && form.Estimates.TryGetValue(model, out estimate) ? estimate : (decimal?)null;
             _log.CheckAgain = () => _goal.Length > 0 && form.Models.Count > 0 && _view.CraftCheck.State != CraftCheckState.Running
-                ? new RunCraftCheck(_goal, _setup.SpendingCap, model, _setup.Remote) : null;
+                ? new RunCraftCheck(_goal, _setup.SpendingCap, model, _setup.Remote, _targetPick) : null;
         }
 
         private void Styles(int rightRoom)
@@ -231,9 +242,64 @@ namespace ClaudiaKermin.Adapter
             if (goal.Length == 0) GUILayout.Label(settingUp ? "Describe the Mission Goal below." : "No Mission yet.", ClaudiaSkin.Secondary);
             else GUILayout.Label(_showAllGoal ? goal : clamped, ClaudiaSkin.Body);
             if (!settingUp && _view.TargetVesselName.Length > 0) GUILayout.Label("Target Vessel: " + _view.TargetVesselName, ClaudiaSkin.Secondary);
+            if (settingUp) DrawTargetLine();
+            else MissionDriver.FormTargetId = null;
             if (!settingUp) DrawGoalSteps(_view.GoalSteps);
             GUILayout.EndVertical();
             ClaudiaSkin.Divider();
+        }
+
+        // ---- The start form's Target Vessel (#643) ----
+
+        // The core's choice for the goal as typed so far (the pinned goal once it is set) and the pick; the same function Start runs.
+        private TargetChoice TargetChoiceNow()
+        {
+            var goal = _goal.Length > 0 && !_editingGoal ? _goal : _typed;
+            var facts = _view.StartForm.Targets;
+            if (_choice == null || goal != _choiceGoal || !ReferenceEquals(_targetPick, _choicePick) || !ReferenceEquals(facts, _choiceFacts))
+            {
+                _choiceGoal = goal;
+                _choicePick = _targetPick;
+                _choiceFacts = facts;
+                _choice = TargetVessel.Choose(goal, _targetPick, facts);
+            }
+            return _choice;
+        }
+
+        // Under the Mission Goal, only for a goal that needs a target: the target (or why there is none), Choose, Clear and Auto.
+        private void DrawTargetLine()
+        {
+            var choice = TargetChoiceNow();
+            MissionDriver.FormTargetId = choice.Target != null ? choice.Target.Id : (uint?)null;
+            if (!choice.Needed)
+            {
+                _choosingTarget = false;
+                return;
+            }
+            // Drawn from the state as the event began, so a click never adds or drops a control within the event.
+            var pick = _targetPick;
+            var choosing = _choosingTarget;
+            var next = pick;
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(choice.Line, ClaudiaSkin.Secondary, GUILayout.ExpandWidth(true));
+            if (ClaudiaSkin.TextButton(choosing ? "Close" : "Choose", GUILayout.ExpandWidth(false))) _choosingTarget = !choosing;
+            if (pick.Kind != TargetPickKind.Cleared && ClaudiaSkin.TextButton("Clear", GUILayout.ExpandWidth(false))) next = TargetPick.Cleared;
+            if (pick.Kind != TargetPickKind.Auto && ClaudiaSkin.TextButton("Auto", GUILayout.ExpandWidth(false))) next = TargetPick.Auto;
+            GUILayout.EndHorizontal();
+            if (choosing) next = DrawTargetList(next);
+            if (ReferenceEquals(next, pick)) return;
+            _targetPick = next;
+            _choosingTarget = false;
+        }
+
+        // The vessels the player may pick, name · body · situation, the craft's own body first; returns the pick a click made.
+        private TargetPick DrawTargetList(TargetPick pick)
+        {
+            var options = TargetVessel.Options(_view.StartForm.Targets);
+            if (options.Count == 0) GUILayout.Label("No vessel in the save can be the Target Vessel.", ClaudiaSkin.Muted);
+            foreach (var vessel in options)
+                if (ClaudiaSkin.TextButton(TargetVessel.Describe(vessel), GUILayout.ExpandWidth(false))) pick = TargetPick.Of(vessel);
+            return pick;
         }
 
         // The Mission Goal's steps from the Mission Plan (#581), ticked as Debriefs report them: a count that opens to a checkbox
@@ -480,7 +546,7 @@ namespace ClaudiaKermin.Adapter
             {
                 // The goal stays until the Mission has actually started: the Craft Check may still hold it back.
                 if (ClaudiaSkin.PrimaryButton("Start Mission", GUILayout.ExpandWidth(true), GUILayout.MinWidth(0)))
-                    _send(new StartMission(_goal, _setup.SpendingCap, _setup.ModelFor(form), _setup.Settings.Copy(), _setup.Remote));
+                    _send(new StartMission(_goal, _setup.SpendingCap, _setup.ModelFor(form), _setup.Settings.Copy(), _setup.Remote, _targetPick));
             }
             else
             {
@@ -488,7 +554,7 @@ namespace ClaudiaKermin.Adapter
             }
             GUI.enabled = _goal.Length > 0 && form.Models.Count > 0 && check.State != CraftCheckState.Running;
             if (ClaudiaSkin.SecondaryButton(check.State == CraftCheckState.None ? "Check craft" : "Check again", GUILayout.ExpandWidth(false)))
-                _send(new RunCraftCheck(_goal, _setup.SpendingCap, _setup.ModelFor(form), _setup.Remote));
+                _send(new RunCraftCheck(_goal, _setup.SpendingCap, _setup.ModelFor(form), _setup.Remote, _targetPick));
             GUI.enabled = true;
             GUILayout.Space(ClaudiaSkin.Padding);
             GUILayout.EndHorizontal();
