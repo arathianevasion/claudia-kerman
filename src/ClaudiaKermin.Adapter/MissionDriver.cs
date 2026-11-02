@@ -214,6 +214,12 @@ namespace ClaudiaKermin.Adapter
         public static uint? BlockTestTargetId;
 
         /// <summary>
+        /// The start form's Target Vessel before Start (#643), read into the snapshot so the Craft Check judges the craft against
+        /// it. Set by the <see cref="MissionPanel"/> as it draws the form; null while a Mission is under way or the goal needs none.
+        /// </summary>
+        public static uint? FormTargetId;
+
+        /// <summary>
         /// The Mission in play is flown remotely (Claudia at Mission Control), for <c>dock</c>'s Child Vessel link test of the
         /// Target Vessel (#456): remote, the target needs a link home; aboard, a link to the craft. Refreshed every frame.
         /// </summary>
@@ -227,6 +233,7 @@ namespace ClaudiaKermin.Adapter
             ChuteAllocation = _mission.View.ChuteAllocation;
             CurrentSequence = _mission.View.CurrentSequence;
             TargetVesselId = _mission.View.TargetVesselId;
+            if (!_mission.View.StartForm.CanStart) FormTargetId = null;
             Remote = _mission.View.Remote;
             // A new Game object means a save was loaded: continue, quickload, revert or another save. A scene
             // change keeps the same Game, so it never counts. The core puts the Missions in step with the save.
