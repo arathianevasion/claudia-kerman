@@ -61,24 +61,25 @@ namespace ClaudiaKermin.Core.Tools
         {
             get
             {
-                return "The burn to an orbit goal: maneuver-node components, "
-                    + "magnitude, burn time, the element reached and the predict_burn result. at: ap, pe, altitude, eq_an, eq_dn, eq_nearest, "
-                    + "eq_highest, rel_an, rel_dn, closest_approach or a UT. Goals (altitudes in m above sea level): "
+                return "The burn to a goal: node components, magnitude, burn time, what it reaches and the predict_burn result. "
+                    + "at: ap, pe, altitude, eq_an, eq_dn, eq_nearest, eq_highest, rel_an, rel_dn, closest_approach or a UT. "
+                    + "Goals (altitudes in m above sea level): "
                     + "circularize: at ap or pe; "
                     + "set_ap, set_pe: value; "
                     + "next_patch_pe: value above the next body, at default in 60 s; "
-                    + "set_sma (value m from the centre), set_ecc: value, at default pe; "
+                    + "set_sma: value m from the centre, at default pe; "
+                    + "set_ecc: value, at default pe; "
                     + "ellipticize: pe and ap, at default in 60 s; "
                     + "set_inc: value degrees, at default eq_highest; "
-                    + "match_plane: target's plane, at the cheaper of rel_an and rel_dn; "
+                    + "match_plane: target's plane, at the cheaper rel node; "
                     + "shift_lan: value degrees, default where the planes cross; "
                     + "resonant: value orbits while target (default this orbit) makes of, at default pe; "
                     + "stationary: synchronous circle; "
                     + "intercept_at: Lambert arc, arrive_ut or tof; exec_node only; "
-                    + "match_velocities: Target Vessel's velocity, at default closest_approach; "
-                    + "course_correction: value m closest approach to it, at default in 60 s. "
-                    + "Budget the burn of change_orbit, circularize or tune_pe with it, then "
-                    + "pass the block the goal, or exec_node the node. Not to check a burn (predict_burn) or for delta-v (stage_performance).";
+                    + "match_velocities: Target Vessel's velocity, default closest_approach; "
+                    + "course_correction: value m closest approach to it, default in 60 s. "
+                    + "Its blocks are change_orbit, circularize, exec_node and tune_pe: pass the block the goal, or exec_node the node. "
+                    + "Don't call it to check a burn (predict_burn) or for delta-v (stage_performance).";
             }
         }
 
