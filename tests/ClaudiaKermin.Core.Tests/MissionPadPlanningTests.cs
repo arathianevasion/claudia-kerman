@@ -287,6 +287,28 @@ namespace ClaudiaKermin.Core.Tests
             Assert.DoesNotContain("plan_transfer {", Text(noBody.Requests[0]));
         }
 
+        // #458: a goal naming a planet gets its row too, with the Soonest and Optimal windows and the setting's pick; Kerbin, the
+        // planet the craft orbits, gets none.
+        [Fact]
+        public void AGoalNamingDunaGetsAPlanTransferRowWithItsSoonestAndOptimalWindows()
+        {
+            var orbit = Snapshot("mun-shot-v2-kerbin-orbit.json");
+            var transport = new StreamingFakeTransport(Plan());
+            var mission = Control(transport, orbit);
+            mission.Send(new StartMission("Fly to Duna, then return to Kerbin.", 25m, Sonnet));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            var text = Text(transport.Requests[0]);
+            const string input = "{\"target\":\"Duna\",\"target_pe\":60000}";
+            var expected = PlanningTools.Default().Run("plan_transfer", input, Snapshot("mun-shot-v2-kerbin-orbit.json"), null);
+            Assert.False(expected.IsError, expected.Json);
+            Assert.Contains("\"soonest\":", expected.Json);
+            Assert.Contains("\"optimal\":", expected.Json);
+            Assert.Contains("\"setting\":\"Balanced\"", expected.Json);
+            Assert.Contains("plan_transfer " + input + ": " + expected.Json, text);
+            Assert.DoesNotContain("plan_transfer {\"target\":\"Kerbin\"", text);
+        }
+
         // ---- Refusals ----
 
         [Fact]

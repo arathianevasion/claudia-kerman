@@ -572,7 +572,9 @@ namespace ClaudiaKermin.Core.Missions
             var transfers = "";
             foreach (var body in bodies)
             {
-                var input = "{\"target\":" + PlanningJson.Quote(body.Name) + ",\"target_pe\":" + TransferPe.ToString(CultureInfo.InvariantCulture) + "}";
+                // A body with air (Duna, Eve) is captured at the Delta-v Map's low orbit, above its atmosphere (#458).
+                var pe = body.AtmosphereHeight > 0 ? System.Math.Round(DeltaVMap.LowOrbit(body) - body.Radius) : TransferPe;
+                var input = "{\"target\":" + PlanningJson.Quote(body.Name) + ",\"target_pe\":" + pe.ToString(CultureInfo.InvariantCulture) + "}";
                 var transfer = tools.Run("plan_transfer", input, snapshot, null);
                 if (!transfer.IsError) transfers += "plan_transfer " + input + ": " + transfer.Json + "\n";
             }
