@@ -494,8 +494,8 @@ namespace ClaudiaKermin.Core.Tools
             /// BrentMin over the departure time in [<paramref name="lo"/>, <paramref name="hi"/>], each departure at its cheapest
             /// flight time within <paramref name="reach"/> s of the seed's: the seed itself when that finds nothing cheaper. An
             /// intercept instead scans that span and the whole target orbit for its cheapest pair of departure and arrival point
-            /// (<see cref="InterceptScan"/>), then searches round it, each arrival point at its own flight times. Times are searched in units of
-            /// <paramref name="timeScale"/> s.
+            /// (<see cref="InterceptScan"/>), then searches round it, each arrival point at its own flight times. Times are
+            /// searched in units of <paramref name="timeScale"/> s.
             /// </summary>
             public Point Refine(Point seed, double lo, double hi, double reach, double timeScale)
             {
