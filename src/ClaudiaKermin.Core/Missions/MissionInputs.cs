@@ -26,17 +26,20 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <summary>The Mission Settings chosen in the form; null takes the defaults from the player config.</summary>
         public readonly MissionSettingsValues Settings;
+        /// <summary>The form's Target Vessel pick (#643); Auto lets the mod choose. Never saved as a default.</summary>
+        public readonly TargetPick Target;
 
-        public StartMission(string goal, decimal spendingCap, string model, bool remote = false)
+        public StartMission(string goal, decimal spendingCap, string model, bool remote = false, TargetPick target = null)
         {
             Goal = goal;
             SpendingCap = spendingCap;
             Model = model;
             Remote = remote;
+            Target = target ?? TargetPick.Auto;
         }
 
-        public StartMission(string goal, decimal spendingCap, string model, MissionSettingsValues settings, bool remote = false)
-            : this(goal, spendingCap, model, remote)
+        public StartMission(string goal, decimal spendingCap, string model, MissionSettingsValues settings, bool remote = false, TargetPick target = null)
+            : this(goal, spendingCap, model, remote, target)
         {
             Settings = settings;
         }
@@ -51,13 +54,16 @@ namespace ClaudiaKermin.Core.Missions
         public readonly string Model;
         /// <summary>The check is for a remote Mission (see <see cref="StartMission.Remote"/>); false is crewed.</summary>
         public readonly bool Remote;
+        /// <summary>The form's Target Vessel pick (#643); the check judges the craft against the target it chooses.</summary>
+        public readonly TargetPick Target;
 
-        public RunCraftCheck(string goal, decimal spendingCap, string model, bool remote = false)
+        public RunCraftCheck(string goal, decimal spendingCap, string model, bool remote = false, TargetPick target = null)
         {
             Goal = goal;
             SpendingCap = spendingCap;
             Model = model;
             Remote = remote;
+            Target = target ?? TargetPick.Auto;
         }
     }
 

@@ -12,12 +12,31 @@ namespace ClaudiaKermin.Core.Missions
     /// </summary>
     public sealed partial class MissionControl
     {
-        private void ChooseTarget(Mission mission, string goal)
+        private GameSnapshot _targetFactsFrom;
+        private TargetFacts _targetFacts = new TargetFacts();
+
+        /// <summary>What the Target Vessel is chosen from, as of the latest snapshot: one object per snapshot, so the form can cache its choice.</summary>
+        private TargetFacts CurrentTargetFacts()
         {
-            string how;
-            mission.Target = TargetVessel.Choose(goal, _snapshot, out how);
-            if (mission.Target != null) Note(LogKind.Notice, "Target Vessel: " + mission.Target.Name + " (" + how + ").");
-            else if (how.Length > 0) Note(LogKind.Notice, "No Target Vessel: " + how + ".");
+            if (!ReferenceEquals(_targetFactsFrom, _snapshot))
+            {
+                _targetFactsFrom = _snapshot;
+                _targetFacts = TargetFacts.Of(_snapshot);
+            }
+            return _targetFacts;
+        }
+
+        /// <summary>The Target Vessel for this goal and the form's pick (#643): the same choice the start form shows.</summary>
+        private TargetChoice ChooseTarget(string goal, TargetPick pick)
+        {
+            return TargetVessel.Choose((goal ?? "").Trim(), pick, CurrentTargetFacts());
+        }
+
+        /// <summary>The Mission takes the target the Craft Check judged, and the log says how it was found or why there is none.</summary>
+        private void TakeTarget(Mission mission, TargetChoice choice)
+        {
+            mission.Target = choice.Target;
+            if (choice.LogLine.Length > 0) Note(LogKind.Notice, choice.LogLine);
             if (_snapshot != null) FitTarget(_snapshot);
         }
 

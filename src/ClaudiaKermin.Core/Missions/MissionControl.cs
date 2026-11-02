@@ -362,11 +362,12 @@ namespace ClaudiaKermin.Core.Missions
                 return;
             }
 
-            // No Mission starts on a craft that hasn't been checked for this goal, or whose check has a Blocker or an open Warning.
-            if (!_craftCheck.IsCurrent(goal, _snapshot, start.Remote))
+            // No Mission starts on a craft that hasn't been checked for this goal and Target Vessel, or whose check has a Blocker or an open Warning.
+            var target = ChooseTarget(goal, start.Target);
+            if (!_craftCheck.IsCurrent(goal, _snapshot, start.Remote, target.Target))
             {
                 _pendingStart = start;
-                _craftCheck.Run(goal, start.Model, _snapshot, start.SpendingCap, start.Remote);
+                _craftCheck.Run(goal, start.Model, _snapshot, start.SpendingCap, start.Remote, target.Target);
                 if (!_craftCheck.Running) _pendingStart = null;
                 return;
             }
@@ -400,7 +401,7 @@ namespace ClaudiaKermin.Core.Missions
             _mission = mission;
             SaveSetupAsDefaults(start);
             Note(LogKind.Player, "Mission Goal: " + goal);
-            ChooseTarget(mission, goal);
+            TakeTarget(mission, target);
             RecordStart(mission);
             LogEffortProblems(mission);
             try
@@ -470,7 +471,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             _pendingStart = null;
             _startRefusal = "";
-            _craftCheck.Run(run.Goal, run.Model, _snapshot, run.SpendingCap, run.Remote);
+            _craftCheck.Run(run.Goal, run.Model, _snapshot, run.SpendingCap, run.Remote, ChooseTarget(run.Goal, run.Target).Target);
         }
 
         /// <summary>A Craft Check request ended: if Start Mission asked for it and it passed outright, the Mission starts now.</summary>
@@ -2080,6 +2081,7 @@ namespace ClaudiaKermin.Core.Missions
             view.PhysicsWarpAllowed = _config.PhysicsWarp;
             view.StartForm.DefaultRemote = _config.DefaultRemote;
             view.StartForm.Refusal = _startRefusal;
+            view.StartForm.Targets = CurrentTargetFacts();
             _craftCheck.Populate(view.CraftCheck, _snapshot);
 
             if (mission != null)

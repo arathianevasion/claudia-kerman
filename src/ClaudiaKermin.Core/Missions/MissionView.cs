@@ -232,6 +232,11 @@ namespace ClaudiaKermin.Core.Missions
         public bool DefaultRemote;
         /// <summary>Why the last Start Mission was turned away before the Craft Check (Claudia Missing for a crewed Mission, no link for a remote one); "" otherwise.</summary>
         public string Refusal = "";
+        /// <summary>
+        /// What the Target Vessel line chooses from (#643), as of the latest snapshot: the form runs <see cref="TargetVessel.Choose"/>
+        /// on it as the goal is typed, and lists <see cref="TargetVessel.Options"/> for Choose. The same object until the next snapshot.
+        /// </summary>
+        public TargetFacts Targets = new TargetFacts();
     }
 
     /// <summary>The Due Time of the Sequence Plan awaiting Approval, for the board and the Capcom strip.</summary>

@@ -91,6 +91,8 @@ namespace ClaudiaKermin.Core.Missions
         private List<CraftFinding> _findings = new List<CraftFinding>();
         private string _craftKey;
         private string _goal;
+        /// <summary>The Target Vessel the result judged the craft against (#643); null for none. A change, like the goal's, makes the result stale.</summary>
+        private uint? _targetId;
         /// <summary>The result is for a remote Mission (Claudia stays at Mission Control); false is crewed.</summary>
         private bool _remote;
         /// <summary>The mod saw for itself that this crewed Mission has no seat for Claudia, so that Blocker doesn't wait on Claude.</summary>
@@ -156,16 +158,16 @@ namespace ClaudiaKermin.Core.Missions
             return _preferredProcessor;
         }
 
-        /// <summary>The result is for this goal and this craft (with this processor), so it still holds.</summary>
-        public bool IsCurrent(string goal, GameSnapshot snapshot, bool remote = false)
+        /// <summary>The result is for this goal, this Target Vessel and this craft (with this processor), so it still holds.</summary>
+        public bool IsCurrent(string goal, GameSnapshot snapshot, bool remote, TargetVessel target)
         {
-            return _state == CraftCheckState.Done && snapshot != null && _goal == goal.Trim() && _remote == remote && _craftKey == CraftKey(snapshot);
+            return _state == CraftCheckState.Done && snapshot != null && _goal == goal.Trim() && _remote == remote && _targetId == IdOf(target)
+                && _craftKey == CraftKey(snapshot);
         }
 
-        /// <summary>A current result with no Blocker and every Warning acknowledged.</summary>
-        public bool Allows(string goal, GameSnapshot snapshot, bool remote = false)
+        private static uint? IdOf(TargetVessel target)
         {
-            return IsCurrent(goal, snapshot, remote) && Cleared;
+            return target != null ? target.Id : (uint?)null;
         }
 
         /// <summary>The check came out Pass, or Pass with Warnings that are all acknowledged.</summary>
@@ -209,12 +211,12 @@ namespace ClaudiaKermin.Core.Missions
         /// Checks the craft. Stops and asks when the stock simulator is off; does nothing without a craft or a goal.
         /// Like a Mission request it is sent only if its worst case fits the Spending Cap the player entered.
         /// </summary>
-        public void Run(string goal, string model, GameSnapshot snapshot, decimal spendingCap, bool remote = false)
+        public void Run(string goal, string model, GameSnapshot snapshot, decimal spendingCap, bool remote, TargetVessel target)
         {
             goal = (goal ?? "").Trim();
             if (snapshot == null || goal.Length == 0 || Running) return;
             // Running the same check again on the same craft doesn't make the player accept the same risks twice.
-            _keptAcknowledgements = IsCurrent(goal, snapshot, remote)
+            _keptAcknowledgements = IsCurrent(goal, snapshot, remote, target)
                 ? _findings.Where(f => f.Acknowledged).Select(f => f.Code).ToList() : new List<string>();
             Forget();
             if (!snapshot.DeltaVSimulator)
@@ -252,10 +254,11 @@ namespace ClaudiaKermin.Core.Missions
             _state = CraftCheckState.Running;
             _goal = goal;
             _remote = remote;
+            _targetId = IdOf(target);
             _noSeat = !remote && !snapshot.ClaudiaAboard && snapshot.FreeSeats == 0;
             _remoteMissing = remote ? RemoteBlocker.Missing(snapshot) : "";
             // dock's needs (#456), from the goal's words: the mod's own findings, not in Claude's prompt.
-            _docking = SequenceWords.Docking.IsMatch(goal ?? "") ? MarginCheck.Docking(snapshot, "The Mission Goal docks") : new List<MarginFinding>();
+            _docking = SequenceWords.Docking.IsMatch(goal ?? "") ? MarginCheck.Docking(snapshot, "The Mission Goal docks", EntryFor(snapshot, target)) : new List<MarginFinding>();
             _staging = ChildVessels.Staging(snapshot, remote, ProcessorFor(snapshot));
             _craftKey = CraftKey(snapshot);
             var charge = new CraftCheckCharge { Model = request.Model, Pending = worstCase, Input = RequestCharge.InputCost(_config.Prices, request.Model, request, worstCase) };
@@ -308,6 +311,7 @@ namespace ClaudiaKermin.Core.Missions
             _findings = new List<CraftFinding>();
             _craftKey = null;
             _goal = null;
+            _targetId = null;
             _plannedTurnShape = null;
             _plannedAscent = "";
             _plannedAscentInput = "";
@@ -552,7 +556,15 @@ namespace ClaudiaKermin.Core.Missions
             else view.StartAllowed = true;
         }
 
-        /// <summary>What a result depends on besides the goal: the craft's parts and delta-v, its crew, Claudia's processor and whether the save has CommNet (it decides the remote Blocker).</summary>
+        /// <summary>The chosen Target Vessel's entry as the adapter read it before Start (the form's target, or KSP's); null when not read.</summary>
+        private static SnapshotTarget EntryFor(GameSnapshot snapshot, TargetVessel target)
+        {
+            if (target == null) return null;
+            if (snapshot.FormTarget != null && snapshot.FormTarget.Id == target.Id) return snapshot.FormTarget;
+            return snapshot.KspTarget != null && snapshot.KspTarget.Id == target.Id ? snapshot.KspTarget : null;
+        }
+
+        /// <summary>What a result depends on besides the goal and the Target Vessel: the craft's parts and delta-v, its crew, Claudia's processor and whether the save has CommNet (it decides the remote Blocker).</summary>
         private string CraftKey(GameSnapshot snapshot)
         {
             var key = new StringBuilder();
