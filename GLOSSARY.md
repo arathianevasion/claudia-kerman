@@ -97,7 +97,7 @@ The arrival burn of a transfer: circular at the target periapsis round a body, o
 _Avoid_: insertion, orbit insertion
 
 **Transfer Window**:
-A departure time and arrival time for a transfer to another planet, with what it costs: the ejection from the parking orbit and, with Capture, the capture at the target periapsis. The window search gives two, Soonest and Optimal, and the Mission Setting Time versus delta-v picks one: Fastest takes Soonest, Most efficient takes Optimal, Balanced takes Soonest unless Optimal saves at least 10%.
+A departure time and arrival time for a transfer to another planet, or to a moon of the craft's planet (#647), with what it costs: the ejection from the parking orbit and, with Capture, the capture at the target periapsis. The window search gives two, Soonest and Optimal, and the Mission Setting Time versus delta-v picks one: Fastest takes Soonest, Most efficient takes Optimal, Balanced takes Soonest unless Optimal saves at least 10%.
 _Avoid_: porkchop (the plot, which the mod never draws), launch window (the time to lift off into a target's plane)
 
 **Soonest**:
@@ -105,7 +105,7 @@ The earliest Transfer Window whose total delta-v is within the Craft Check's mar
 _Avoid_: next window, fastest (a Mission Setting)
 
 **Optimal**:
-The cheapest Transfer Window within one synodic period of the two planets.
+The cheapest Transfer Window within one synodic period of the two planets, or one orbit of the moon. A moon's Optimal is its Soonest unless it saves at least 5 m/s: the Mun, in the parking orbit's plane, costs the same at any departure; Minmus is cheapest near a node.
 _Avoid_: best window, most efficient (a Mission Setting)
 
 **Daylight**:
@@ -129,7 +129,7 @@ The one number that sets how a landing's braking trades height for speed: a smal
 _Avoid_: glide slope, descent profile (as a name for the number), approach angle
 
 **Chute Allocation**:
-The chutes each remaining atmospheric entry may open, by need, with the pod's chutes kept for the return. The mod works it out at Mission Plan Approval and again at each Debrief, from the craft as it is; an entry its chutes can't bring under reentry's touchdown limit is a powered finish. `reentry` reads its entry's set when its chutes are "auto".
+The chutes each remaining atmospheric entry may open, by need, with the pod's chutes kept for the return. The mod works it out at Mission Plan Approval and again at each Debrief, from the craft as it is, and for the Craft Check from the Mission Goal's own words; an entry its chutes can't bring under reentry's touchdown limit is a powered finish. `reentry` reads its entry's set when its chutes are "auto".
 _Avoid_: chute budget, parachute plan
 
 **Mission Plan**:
@@ -137,7 +137,7 @@ The ordered list of Maneuver Sequences Claudia intends to fly to reach a Mission
 _Avoid_: flight plan, roadmap
 
 **Due Time**:
-The earliest time a Maneuver Sequence may start; the player may fly elsewhere until then, and the Mission calls them back at it. Claudia sets one in a Sequence Plan when the wait before it needs the player (e.g. "come back when you've docked"). The mod sets one on the first Maneuver Sequence when it would wait on the pad more than 6 h for a Transfer Window to another planet: the window less the launch lead. A shorter wait for a window, and any wait for daylight or a hold, is not a Due Time: the Mission Script warps through it (ADR 0004 and its amendment).
+The earliest time a Maneuver Sequence may start; the player may fly elsewhere until then, and the Mission calls them back at it. Claudia sets one in a Sequence Plan when the wait before it needs the player (e.g. "come back when you've docked"). The mod sets one on the first Maneuver Sequence when it would wait on the pad more than 6 h for a Transfer Window to another planet or a moon: the window less the launch lead. A shorter wait for a window, and any wait for daylight or a hold, is not a Due Time: the Mission Script warps through it (ADR 0004 and its amendment).
 _Avoid_: window (which is a transfer window), scheduled time
 
 **Sequence Plan**:

@@ -10,7 +10,7 @@ namespace ClaudiaKermin.Core.Missions
     /// A wait for a Transfer Window longer than one Kerbin day is a Due Time (#616, the ADR 0004 amendment): the craft waits on
     /// the pad and the first Maneuver Sequence carries a Due Time at the window less the launch lead, so the player can fly other
     /// Missions meanwhile. A shorter wait stays an in-script warp. The window is #458's (<see cref="TransferWindows"/>), picked by
-    /// the Mission Setting Time versus delta-v as the Mission request's plan_transfer rows pick it.
+    /// the Mission Setting Time versus delta-v as the Mission request's plan_transfer rows pick it; a moon's is the same (#647).
     /// </summary>
     internal static class WindowWaits
     {
@@ -23,14 +23,15 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         public const double LaunchLeadS = 3600;
 
-        /// <summary>The first planet the Mission Goal names that the craft's planet transfers to; null for none.</summary>
+        /// <summary>The first planet the Mission Goal names that the craft's planet transfers to, or moon of the craft's planet (#647); null for none.</summary>
         public static SnapshotBody Planet(GameSnapshot snapshot, string goal)
         {
             if (snapshot == null) return null;
-            return MissionPrompts.GoalBodies(snapshot, goal).FirstOrDefault(b => TransferWindows.IsPlanetTransfer(snapshot, b.Name));
+            return MissionPrompts.GoalBodies(snapshot, goal)
+                .FirstOrDefault(b => TransferWindows.IsPlanetTransfer(snapshot, b.Name) || TransferWindows.IsMoonTransfer(snapshot, b.Name));
         }
 
-        /// <summary>The window to <paramref name="planet"/> from <paramref name="snapshot"/>'s UT, picked by the Mission Setting; null when the search found none.</summary>
+        /// <summary>The window to <paramref name="planet"/> (a planet or a moon) from <paramref name="snapshot"/>'s UT, picked by the Mission Setting; null when the search found none.</summary>
         public static TransferWindow Window(GameSnapshot snapshot, SnapshotBody planet, TimeVersusDeltaV setting, int marginPercent)
         {
             if (snapshot == null || planet == null) return null;
