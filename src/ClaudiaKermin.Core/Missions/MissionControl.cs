@@ -276,6 +276,8 @@ namespace ClaudiaKermin.Core.Missions
             /// <summary>The Mission's vessel (its id and name), noted when the craft is first in Flight; the Go to button switches to it.</summary>
             public string VesselId = "";
             public string VesselName = "";
+            /// <summary>The Target Vessel (ADR 0013), chosen when the Mission starts; null for none.</summary>
+            public TargetVessel Target;
             /// <summary>The Due Time of the Sequence Plan awaiting Approval has been reached and announced (warp dropped, message posted).</summary>
             public bool DueNotified;
             /// <summary>Persistence (MissionControl.Persistence.cs): a turn the loop owes Claudia once the craft is in Flight.</summary>
@@ -393,6 +395,7 @@ namespace ClaudiaKermin.Core.Missions
             if (_config.DebugTools) mission.Dump = new FileStreamDump(Path.Combine(mission.Folder, "stream-dumps"));
             _mission = mission;
             Note(LogKind.Player, "Mission Goal: " + goal);
+            ChooseTarget(mission, goal);
             RecordStart(mission);
             LogEffortProblems(mission);
             try
@@ -461,7 +464,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             var mission = _mission;
             if (mission == null || mission.Stage != MissionStage.WaitingForFlight) return;
-            if (_scene != GameScene.Flight || _snapshot == null) return;
+            if (_scene != GameScene.Flight || _snapshot == null || TargetUnread(mission, _snapshot)) return;
             NoteCraft(mission, _snapshot);
             mission.Stage = MissionStage.Planning;
             Begin(new Turn
@@ -514,6 +517,7 @@ namespace ClaudiaKermin.Core.Missions
             if (snapshot.Ut > _ut) _ut = snapshot.Ut;
             // Another vessel than the craft: the Mission keeps the craft's last facts (MissionControl.Vessels.cs).
             if (!TakeSnapshot(snapshot)) return;
+            FitTarget(snapshot);
             var previous = _snapshot;
             _snapshot = snapshot;
             _craftLink = snapshot.Linked;
@@ -2049,6 +2053,11 @@ namespace ClaudiaKermin.Core.Missions
                 view.Stage = mission.Stage;
                 view.MissionId = mission.Id;
                 view.Goal = mission.Goal;
+                if (!MissionOver && mission.Target != null)
+                {
+                    view.TargetVesselId = mission.Target.Id;
+                    view.TargetVesselName = mission.Target.Name;
+                }
                 view.GoalSteps = GoalSteps.Copy(mission.GoalSteps);
                 view.Model = mission.Model;
                 view.SpendingCap = mission.SpendingCap;
