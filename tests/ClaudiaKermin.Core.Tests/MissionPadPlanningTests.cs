@@ -299,7 +299,7 @@ namespace ClaudiaKermin.Core.Tests
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
 
             var text = Text(transport.Requests[0]);
-            const string input = "{\"target\":\"Duna\",\"target_pe\":30000}";
+            const string input = "{\"target\":\"Duna\",\"target_pe\":60000}";
             var expected = PlanningTools.Default().Run("plan_transfer", input, Snapshot("mun-shot-v2-kerbin-orbit.json"), null);
             Assert.False(expected.IsError, expected.Json);
             Assert.Contains("\"soonest\":", expected.Json);

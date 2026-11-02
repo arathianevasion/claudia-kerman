@@ -75,7 +75,7 @@ namespace ClaudiaKermin.Core.Tools
             if (target != null && !targetPe.HasValue) return PlanningJson.Error("target needs target_pe, the periapsis altitude to arrive at in metres");
             if (orbit != null && targetPe.HasValue) return PlanningJson.Error("target_pe is for a target body; an orbit is reached at its own altitude");
             if (target != null && TransferWindows.IsPlanetTransfer(snapshot, target))
-                {
+            {
                 var capture = JsonNode.Bool(input["capture"]) ?? true;
                 return Windows(TransferWindows.Find(snapshot, target, targetPe.Value, capture, snapshot.MarginPercent), snapshot, capture);
             }

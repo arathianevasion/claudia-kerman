@@ -15,6 +15,7 @@ namespace ClaudiaKermin.Core.Tools
     /// <summary>One Transfer Window: when to leave and arrive, and what it costs.</summary>
     internal sealed class TransferWindow
     {
+        /// <summary>When the ejection burn is made, and when the craft reaches the target, UT s.</summary>
         public double DepartureUt;
         public double ArrivalUt;
         /// <summary>The burn from the parking orbit onto the escape hyperbola, m/s.</summary>
@@ -30,12 +31,15 @@ namespace ClaudiaKermin.Core.Tools
     /// <summary>The Soonest and Optimal windows to a planet, or why there are none (<see cref="Error"/>, with the rest unset).</summary>
     internal sealed class WindowSearch
     {
+        /// <summary>Null when windows were found; otherwise "found no transfer window: why".</summary>
         public string Error;
         /// <summary>The target planet's name as the body table has it.</summary>
         public string Target;
+        /// <summary>The earliest window within the Craft Check margin of <see cref="Optimal"/>'s total; Optimal itself when none is earlier.</summary>
         public TransferWindow Soonest;
+        /// <summary>The cheapest window departing within the horizon.</summary>
         public TransferWindow Optimal;
-        /// <summary>The horizon searched: one synodic period (s) of the two planets from <see cref="From"/>.</summary>
+        /// <summary>The horizon searched: from <see cref="From"/> (UT s) for <see cref="Synodic"/>, one synodic period (s) of the two planets.</summary>
         public double From;
         public double Synodic;
         /// <summary>The parking orbit's periapsis altitude (m) the ejection is costed from, and whether it was assumed (no closed orbit round the planet).</summary>
@@ -80,6 +84,10 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>Balanced takes Optimal only when it saves at least this fraction of Soonest's total.</summary>
         public const double BalancedSaving = 0.10;
 
+        /// <summary>
+        /// The windows from the craft's planet to <paramref name="target"/>, arriving at <paramref name="targetPe"/> (m above its sea
+        /// level), with or without the capture, Soonest within <paramref name="marginPercent"/> % of Optimal.
+        /// </summary>
         public static WindowSearch Find(GameSnapshot snapshot, string target, double targetPe, bool capture, int marginPercent)
         {
             string error;
@@ -110,7 +118,7 @@ namespace ClaudiaKermin.Core.Tools
             }
         }
 
-        /// <summary>The search over a copied <paramref name="problem"/>: it reads nothing else.</summary>
+        /// <summary>The search over a copied <paramref name="problem"/>, Soonest within <paramref name="marginPercent"/> % of Optimal: it reads nothing else.</summary>
         internal static WindowSearch Search(Problem problem, int marginPercent)
         {
             if (marginPercent < 0) return Fail("the Craft Check margin must be 0 % or more");
@@ -210,6 +218,7 @@ namespace ClaudiaKermin.Core.Tools
             return found.TotalDv <= c0 ? found : problem.Cost(t, tof0);
         }
 
+        /// <summary>BrentMin's minimiser of <paramref name="f"/> in [<paramref name="lo"/>, <paramref name="hi"/>] (grid steps), a cell with no path costed <see cref="NoPath"/>.</summary>
         private static double Minimise(Func<double, double> f, double lo, double hi)
         {
             if (!(hi > lo)) return lo;
@@ -228,23 +237,29 @@ namespace ClaudiaKermin.Core.Tools
 
         /// <summary>
         /// One window problem, copied from the Game Snapshot: the two planets' orbits round the star, the parking orbit's periapsis
-        /// and speed there, and the capture's periapsis. Immutable but for <see cref="LambertError"/>.
+        /// and speed there, and the capture's periapsis. The search writes only <see cref="LambertError"/>.
         /// </summary>
         internal sealed class Problem
         {
+            /// <summary>The target planet's name.</summary>
             public string Name;
+            /// <summary>The craft's planet's orbit and the target's, round the star.</summary>
             public Conic Home;
             public Conic Target;
+            /// <summary>The snapshot's UT: the search starts here.</summary>
             public double From;
+            /// <summary>The gravitational parameters of the craft's planet and the target, m³/s².</summary>
             public double HomeGm;
             public double TargetGm;
             /// <summary>The parking orbit's periapsis radius and speed there.</summary>
             public double ParkingR;
             public double ParkingV;
+            /// <summary>The parking orbit's periapsis altitude, m, and whether it is the Delta-v Map's low orbit (the craft has no closed one).</summary>
             public double ParkingPe;
             public bool ParkingAssumed;
             /// <summary>The capture's periapsis radius round the target.</summary>
             public double CaptureR;
+            /// <summary>Whether the capture counts in the total.</summary>
             public bool Capture;
             /// <summary>Why the last Lambert solve that failed had no path.</summary>
             public string LambertError;
