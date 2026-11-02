@@ -129,7 +129,7 @@ The one number that sets how a landing's braking trades height for speed: a smal
 _Avoid_: glide slope, descent profile (as a name for the number), approach angle
 
 **Chute Allocation**:
-The chutes each remaining atmospheric entry may open, by need, with the pod's chutes kept for the return. The mod works it out at Mission Plan Approval and again at each Debrief, from the craft as it is; an entry its chutes can't bring under reentry's touchdown limit is a powered finish. `reentry` reads its entry's set when its chutes are "auto".
+The chutes each remaining atmospheric entry may open, by need, with the pod's chutes kept for the return. The mod works it out at Mission Plan Approval and again at each Debrief, from the craft as it is, and for the Craft Check from the Mission Goal's own words; an entry its chutes can't bring under reentry's touchdown limit is a powered finish. `reentry` reads its entry's set when its chutes are "auto".
 _Avoid_: chute budget, parachute plan
 
 **Mission Plan**:

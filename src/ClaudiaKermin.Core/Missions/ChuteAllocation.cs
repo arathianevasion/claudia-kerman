@@ -158,7 +158,7 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <summary>
         /// The allocation over the goal's <paramref name="legs"/> (<see cref="GoalLegs"/>), made for no plan; null when a parachute
-        /// of the craft has no facts read (the editor before #641, or a cut chute), so the chutes aren't judged on a guess.
+        /// of the craft has no facts read (a cut chute, or a snapshot that read none), so the chutes aren't judged on a guess.
         /// </summary>
         public static ChuteAllocation ForGoal(GameSnapshot snapshot, IList<PlannedSequence> legs, bool remote, uint? processorPartId)
         {
@@ -245,7 +245,7 @@ namespace ClaudiaKermin.Core.Missions
                     int module;
                     if (!leaving.TryGetValue(part.Id, out module)) module = -1;
                     if (module < 0) _podMassKg += part.MassT * 1000;
-                    // A chute open already, or one the adapter couldn't read (cut, or the editor), has nothing to give.
+                    // A chute open already, or one the adapter couldn't read (cut), has nothing to give.
                     var chute = part.Chute;
                     if (chute == null || chute.State == ReentryChuteState.SemiDeployed || chute.State == ReentryChuteState.Deployed) continue;
                     _facts[part.Id] = chute;
