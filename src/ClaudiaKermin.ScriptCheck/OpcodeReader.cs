@@ -65,8 +65,8 @@ namespace ClaudiaKermin.ScriptCheck
         private readonly HashSet<int> _functionScopes = new HashSet<int>();
         /// <summary>Each scope's local names, wherever in it they are declared.</summary>
         private readonly Dictionary<int, HashSet<string>> _declared = new Dictionary<int, HashSet<string>>();
-        /// <summary>The bindings that may hold another vessel, "scope:name".</summary>
-        private readonly HashSet<string> _tainted = new HashSet<string>(StringComparer.Ordinal);
+        /// <summary>The bindings that may hold another vessel: each scope's names.</summary>
+        private readonly Dictionary<int, HashSet<string>> _tainted = new Dictionary<int, HashSet<string>>();
         /// <summary>The names tainted in any scope, and those tainted in every scope.</summary>
         private readonly HashSet<string> _taintedNames = new HashSet<string>(StringComparer.Ordinal);
         private readonly HashSet<string> _taintedEverywhere = new HashSet<string>(StringComparer.Ordinal);
@@ -117,7 +117,7 @@ namespace ClaudiaKermin.ScriptCheck
             return reader._findings;
         }
 
-        /// <summary>Each scope's parent, and which scopes start a function's code.</summary>
+        /// <summary>Each scope's parent, which scopes start a function's code, and the name each function is stored under.</summary>
         private void Scopes(List<List<Opcode>> sections)
         {
             var delegates = new List<string>();
@@ -139,6 +139,15 @@ namespace ClaudiaKermin.ScriptCheck
                 int scope;
                 if (_scopeAtLabel.TryGetValue(label, out scope)) _functionScopes.Add(scope);
             }
+            // A function's body is read before the store that defines it, so its calls need every definition first.
+            foreach (var code in sections)
+                for (var at = 0; at + 1 < code.Count; at++)
+                {
+                    var store = code[at + 1];
+                    if (code[at] is OpcodePushDelegateRelocateLater
+                        && (store is OpcodeStore || store is OpcodeStoreLocal || store is OpcodeStoreGlobal || store is OpcodeStoreExist))
+                        Defined(Lower(((OpcodeIdentifierBase)store).Identifier).TrimStart('$'), ((OpcodePushRelocateLater)code[at]).DestinationLabel ?? "");
+                }
         }
 
         private void Walk(List<Opcode> code)
@@ -341,7 +350,6 @@ namespace ClaudiaKermin.ScriptCheck
                 var stored = Lower(((OpcodeIdentifierBase)op).Identifier).TrimStart('$');
                 if (op is OpcodeStoreGlobal) StoredGlobal(stored, line);
                 else if (op.GetType() == typeof(OpcodeStore) && delegateLabel != null) FunctionStored(stored, delegateLabel, line);
-                if (delegateLabel != null) Defined(stored, delegateLabel);
                 Stored(op, stored, value, line);
                 if (stored == "sas" && !(op is OpcodeStoreLocal) && line < _libraryFromLine && !IsFalse(value))
                     Found(line, "SET SAS", ForbiddenList.SasOn);
@@ -514,8 +522,8 @@ namespace ClaudiaKermin.ScriptCheck
 
         /// <summary>
         /// A store: LOCAL (and PARAMETER) binds the name in the scope the code is in, GLOBAL in the global scope, and SET where kOS
-        /// finds the name: in the innermost scope that has declared it so far, else the global scope. Where the reader can't tell
-        /// which, it taints every binding the name might be.
+        /// finds the name: in the innermost scope that has declared it so far, else the global scope. It taints every binding the
+        /// name might be (see <see cref="Bindings"/>), and where the reader can't tell the scopes, the name everywhere.
         /// </summary>
         private void Stored(Opcode op, string name, Value value, int line)
         {
@@ -543,38 +551,33 @@ namespace ClaudiaKermin.ScriptCheck
                 Learn(_taintedNames.Add(name));
                 return;
             }
-            var declaring = DeclaringFrame(name);
-            if (declaring != null)
-            {
-                Taint(declaring.Id, name);
-                return;
-            }
-            // Not declared yet on this path: a declaration further on in an enclosing scope may still come before at run time.
-            Taint(Global, name);
-            foreach (var frame in _frames)
-                if (DeclaredIn(frame.Id, name)) Taint(frame.Id, name);
+            foreach (var scope in Bindings(name)) Taint(scope, name);
         }
 
-        /// <summary>Whether the variable read here may hold another vessel: the binding kOS would find, or any it might.</summary>
+        /// <summary>Whether the variable read here may hold another vessel: any binding kOS might find.</summary>
         private bool Tainted(string name)
         {
             if (_taintedEverywhere.Contains(name)) return true;
             if (!_taintedNames.Contains(name)) return false;
             if (_frames == null) return true;
-            var declaring = DeclaringFrame(name);
-            if (declaring != null) return _tainted.Contains(Key(declaring.Id, name));
-            if (_tainted.Contains(Key(Global, name))) return true;
-            foreach (var frame in _frames)
-                if (DeclaredIn(frame.Id, name) && _tainted.Contains(Key(frame.Id, name))) return true;
+            foreach (var scope in Bindings(name))
+                if (TaintedIn(scope, name)) return true;
             return false;
         }
 
-        /// <summary>The innermost scope that has declared the name on this path, or null.</summary>
-        private Frame DeclaringFrame(string name)
+        /// <summary>
+        /// The bindings a name used here may be: the innermost scope that has surely declared it on this path, or else the global
+        /// scope; and any scope inside that one that declares it somewhere, since it may have on this path (on one branch, or
+        /// further on in an enclosing scope before this code runs).
+        /// </summary>
+        private List<int> Bindings(string name)
         {
-            for (var i = _frames.Count - 1; i >= 0; i--)
-                if (_frames[i].Declared.Contains(name)) return _frames[i];
-            return null;
+            var sure = _frames.Count - 1;
+            while (sure >= 0 && !_frames[sure].Declared.Contains(name)) sure--;
+            var bindings = new List<int> { sure >= 0 ? _frames[sure].Id : Global };
+            for (var i = sure + 1; i < _frames.Count; i++)
+                if (DeclaredIn(_frames[i].Id, name)) bindings.Add(_frames[i].Id);
+            return bindings;
         }
 
         private bool DeclaredIn(int scope, string name)
@@ -583,15 +586,18 @@ namespace ClaudiaKermin.ScriptCheck
             return _declared.TryGetValue(scope, out names) && names.Contains(name);
         }
 
-        private void Taint(int scope, string name)
+        private bool TaintedIn(int scope, string name)
         {
-            Learn(_tainted.Add(Key(scope, name)));
-            Learn(_taintedNames.Add(name));
+            HashSet<string> names;
+            return _tainted.TryGetValue(scope, out names) && names.Contains(name);
         }
 
-        private static string Key(int scope, string name)
+        private void Taint(int scope, string name)
         {
-            return scope.ToString(CultureInfo.InvariantCulture) + ":" + name;
+            HashSet<string> names;
+            if (!_tainted.TryGetValue(scope, out names)) _tainted[scope] = names = new HashSet<string>(StringComparer.Ordinal);
+            Learn(names.Add(name));
+            Learn(_taintedNames.Add(name));
         }
 
         /// <summary>The scopes code in scope <paramref name="id"/> is in: its parent's, kept from here when the code is in it.</summary>
@@ -677,8 +683,8 @@ namespace ClaudiaKermin.ScriptCheck
             var passed = false;
             foreach (var arg in args) passed |= arg.OtherVessel;
             if (!passed) return;
-            HashSet<int> scopes;
-            if (function == null || !_functions.TryGetValue(function, out scopes) || scopes.Contains(AnyFunction))
+            var scopes = Named(function);
+            if (scopes == null)
             {
                 Learn(ref _anyParameters);
                 return;
@@ -689,12 +695,19 @@ namespace ClaudiaKermin.ScriptCheck
         /// <summary>Whether a call to the function ("name*"; null: one the reader can't name) may return another vessel.</summary>
         private bool Returned(string function)
         {
-            HashSet<int> scopes;
-            if (function == null || !_functions.TryGetValue(function, out scopes) || scopes.Contains(AnyFunction))
-                return _anyReturns || _returnsTainted.Count > 0;
+            var scopes = Named(function);
+            if (scopes == null) return _anyReturns || _returnsTainted.Count > 0;
             foreach (var scope in scopes)
                 if (_returnsTainted.Contains(scope)) return true;
             return false;
+        }
+
+        /// <summary>The scopes of the functions stored under "name*", or null if the reader can't name every one: any may be it.</summary>
+        private HashSet<int> Named(string function)
+        {
+            HashSet<int> scopes;
+            if (function == null || !_functions.TryGetValue(function, out scopes) || scopes.Contains(AnyFunction)) return null;
+            return scopes;
         }
 
         private void Learn(bool added)

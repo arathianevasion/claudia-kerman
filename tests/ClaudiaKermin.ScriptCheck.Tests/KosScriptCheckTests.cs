@@ -989,6 +989,10 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("function outer { parameter a. function inner { set a to target. } inner(). a:parts[0]" + Light + " }\nouter(ship).")]
         [InlineData("function f { parameter a. if a { return 1. } local p is target:parts[0]. p" + Light + " }\nf(true).")]
         [InlineData("function f { parameter a. local p is 0. if a { set p to target. } else { set p to ship. } p:parts[0]" + Light + " }\nf(true).")]
+        [InlineData("local x is ship.\n{\n  if ship:altitude > 1 local x is target.\n  x:parts[0]" + Light + "\n}")]
+        [InlineData("local x is ship.\n{\n  if ship:altitude > 1 print 1. else local x is vessel(\"Other\").\n  x:parts[0]" + Light + "\n}")]
+        [InlineData("function g { local x is ship. { if ship:altitude > 1 local x is target. return x. } }\ng():parts[0]" + Light)]
+        [InlineData("function f { parameter x. { if ship:altitude > 1 local x is target. x:parts[0]" + Light + " } }\nf(ship).")]
         public void AnotherVesselReachedThroughAnyAliasIsStillRefused(string script)
         {
             AssertForbidden("change or message other vessels", script);
@@ -1001,6 +1005,10 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             AssertAllowed("function look { parameter p. print p:name. }\n"
                 + "function deploy { parameter p. p:getmodule(\"ModuleParachute\"):doevent(\"deploy chute\"). }\n"
                 + "look(vessel(\"Other\"):parts[0]).\ndeploy(ship:partstagged(\"chute\")[0]).");
+            // Called from inside a function, whose code is read before the definitions it calls.
+            AssertAllowed("function look { parameter p. print p:name. }\n"
+                + "function deploy { parameter p. p:getmodule(\"ModuleParachute\"):doevent(\"deploy chute\"). }\n"
+                + "function f { look(target). }\nf().\ndeploy(ship:partstagged(\"chute\")[0]).");
         }
 
         [Theory]
