@@ -41,6 +41,43 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void AStartWaitsForADockHoldThatIsStoppingThenStartsOnceItEnds()
+        {
+            var stopping = Ready();
+            stopping.ModRunActive = true;
+            stopping.HoldStopping = true;
+
+            Assert.Equal(StartDecisionKind.Wait, RunStart.Decide(KosCompatibility.Compatible, stopping, 0.1).Kind);
+            Assert.Equal(StartDecisionKind.Start, RunStart.Decide(KosCompatibility.Compatible, Ready(), 0.2).Kind);
+        }
+
+        [Fact]
+        public void ADockHoldThatNeverFinishesStoppingIsRefusedAfterTheBound()
+        {
+            var stopping = Ready();
+            stopping.ModRunActive = true;
+            stopping.HoldStopping = true;
+
+            var decision = RunStart.Decide(KosCompatibility.Compatible, stopping, RunStart.MaxStopWaitSeconds + 1);
+
+            Assert.Equal(StartDecisionKind.Refuse, decision.Kind);
+            Assert.Contains("already has a script", decision.Reason);
+        }
+
+        [Fact]
+        public void ABusyProcessorNotStoppingAHoldIsStillRefusedAtOnce()
+        {
+            var busy = Ready();
+            busy.ModRunActive = true;
+            var foreign = Ready();
+            foreign.Idle = false;
+            foreign.HoldStopping = true;
+
+            Assert.Equal(StartDecisionKind.Refuse, RunStart.Decide(KosCompatibility.Compatible, busy, 0).Kind);
+            Assert.Equal(StartDecisionKind.Refuse, RunStart.Decide(KosCompatibility.Compatible, foreign, 0).Kind);
+        }
+
+        [Fact]
         public void WaitsForTheProcessorsFirstUpdateThenGivesUp()
         {
             var state = Ready();

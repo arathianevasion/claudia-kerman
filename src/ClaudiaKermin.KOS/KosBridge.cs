@@ -182,6 +182,7 @@ namespace ClaudiaKermin.KOS
                 if (!_runs.TryGetValue(partId, out run) || run.Run.HasEnded) return;
                 if (runId.HasValue && run.RunId != runId.Value) return;
                 run.Run.Aborted(reason);
+                run.AbortRequested = true;
                 Debug.Log(ModInfo.LogTag + " aborting '" + run.Label + "': " + reason);
                 if (!run.Addon.IsStale) run.Addon.Shared.Cpu.BreakExecution(true);
                 MakeSafe(run);
@@ -451,6 +452,9 @@ namespace ClaudiaKermin.KOS
         private ProcessorState StateOf(ClaudiaAddon addon, uint partId)
         {
             var state = new ProcessorState { ModRunActive = _runs.ContainsKey(partId) };
+            ActiveRun active;
+            if (state.ModRunActive && _runs.TryGetValue(partId, out active))
+                state.HoldStopping = active.HoldFor.HasValue && (active.AbortRequested || active.Run.HasEnded);
             if (addon == null)
             {
                 // A loaded processor part whose addon kOS hasn't made yet is still starting up
@@ -590,6 +594,8 @@ namespace ClaudiaKermin.KOS
             /// <summary>A dock_hold's: the craft processor whose dock asked for it (#456); null for every other run.</summary>
             public readonly uint? HoldFor;
             public int EndedFrame = int.MaxValue;
+            /// <summary>The mod told this run to stop; kOS pops it a frame later.</summary>
+            public bool AbortRequested;
             /// <summary>The craft's maneuver nodes when the run started: the run's own are the ones not here (#522).</summary>
             public List<ManeuverNode> NodesAtStart = new List<ManeuverNode>();
 
