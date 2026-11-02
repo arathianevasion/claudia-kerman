@@ -60,7 +60,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             var check = new MarginCheck();
             if (rest.Count == 0) return check;
-            var repack = Repack.IsMatch(goal ?? "");
+            var repack = RepackPlan.IsPlanned(goal);
             var finishes = chutes == null ? new List<EntryChutes>() : chutes.Entries.Where(e => !e.Return && e.PoweredFinish && e.TouchdownSpeed >= 0).ToList();
             // A goal that has an Engineer repack the chutes reuses them: the finish it would need is a Warning, not delta-v to carry.
             check.DeltaV(snapshot, rest, wantedPercent, repack ? new List<EntryChutes>() : finishes);
@@ -71,9 +71,6 @@ namespace ClaudiaKermin.Core.Missions
             check.Rules(snapshot, rest, remote);
             return check;
         }
-
-        /// <summary>The Mission Goal has an Engineer repack the chutes (a Kerbal on EVA does it, in stock).</summary>
-        private static readonly Regex Repack = new Regex(@"(?=.*\bengineer)(?=.*\brepack(s|ed|ing)?\b)(?=.*\bchutes?\b|.*\bparachutes?\b)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
         private void DeltaV(GameSnapshot snapshot, IList<PlannedSequence> rest, int wantedPercent, IList<EntryChutes> finishes)
         {
