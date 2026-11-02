@@ -129,7 +129,7 @@ namespace ClaudiaKermin.Core.Missions
                 turn.UserText += RunFacts(mission);
                 // The chutes the entries still to fly may open, from the craft as the run left it (one may be used or lost).
                 AllocateChutes(mission);
-                if (mission.ScienceKept && !mission.HandBack) turn.Notice += MissionPrompts.ScienceKeptNoticeLine;
+                if (mission.ScienceKept.Count > 0 && !mission.HandBack) turn.Notice += MissionPrompts.ScienceKeptNoticeLine;
             }
             return !turn.Gate.Done && StartRecheck(mission, turn);
         }
