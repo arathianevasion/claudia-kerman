@@ -41,6 +41,14 @@ namespace ClaudiaKermin.Core.Missions
             Rule("science", "science", "experiment", "survey", "biome", "sample", "data", "report", "goo", "thermometer"),
         };
 
+        /// <summary>
+        /// The bodies with an atmosphere, which land refuses (#627). Core knows no body table (the atmosphere flag is read in the
+        /// Adapter from the live game), so the names are listed here; the goal's words are all this decision has.
+        /// </summary>
+        private static readonly HashSet<string> Airy = new HashSet<string> { "kerbin", "eve", "duna", "jool", "laythe" };
+        private static readonly Regex LandingOn = new Regex(
+            @"(?<![a-z0-9])(?:land(?:ing|s|ed)?|touch(?:ing)?\s?down|set(?:ting)?\s+down)\s+(?:on|at|onto|in)\s+(?:the\s+)?(?:surface\s+of\s+(?:the\s+)?)?([a-z]+)\b(?!'s)", RegexOptions.Compiled);
+
         private static KeyValuePair<string, string[]> Rule(string block, params string[] words)
         {
             return new KeyValuePair<string, string[]>(block, words);
@@ -52,9 +60,15 @@ namespace ClaudiaKermin.Core.Missions
             var all = allBlocks.ToList();
             var text = (goal ?? "").ToLowerInvariant();
             var picked = new HashSet<string>(Triggers.Where(t => t.Value.Any(w => Regex.IsMatch(text, @"(?<![a-z0-9])" + Regex.Escape(w)))).Select(t => t.Key));
+            // A landing through air is a reentry, not a land (#627): a goal whose every named landing is on a body with an
+            // atmosphere drops land; one that also lands on an airless body keeps both.
+            var landings = LandingOn.Matches(text).Cast<Match>().Select(m => m.Groups[1].Value).ToList();
+            var airOnly = landings.Count > 0 && landings.All(Airy.Contains);
+            if (landings.Any(Airy.Contains)) picked.Add("reentry");
+            if (airOnly) picked.Remove("land");
             // One thin match is not enough to leave blocks out: a goal that points at fewer than two blocks gets them all,
             // but for the blocks only its own words bring.
-            if (picked.Count < 2) return all.Where(b => !OnlyWhenNamed.Contains(b) || picked.Contains(b)).ToList();
+            if (picked.Count < 2) return all.Where(b => (!OnlyWhenNamed.Contains(b) || picked.Contains(b)) && !(airOnly && b == "land")).ToList();
             picked.UnionWith(Always);
             var known = new HashSet<string>(Always.Concat(Triggers.Select(t => t.Key)));
             return all.Where(b => picked.Contains(b) || !known.Contains(b)).ToList();

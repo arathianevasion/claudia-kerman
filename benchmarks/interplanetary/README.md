@@ -63,7 +63,7 @@ Leg 11 was a hand-written suicide-burn loop instead of a landing Building Block:
 - a `coast` to periapsis − 500 s;
 - then a custom `until LANDED` loop with `lock steering to srfretrograde`, a stopping-distance estimate from total speed, legs, and a throttled touchdown.
 
-Claudia flagged its weak points as risks: "Burn may start early because the suicide-burn estimate uses total speed", "Unknown terrain slope", "Daylight is not checked". There are no parachutes and no atmosphere handling: Duna has an atmosphere.
+Claudia flagged its weak points as risks: "Burn may start early because the suicide-burn estimate uses total speed", "Unknown terrain slope", "Daylight is not checked". The craft carried one Mk16 parachute (`parachuteSingle`) and the script never used it; there is no atmosphere handling: Duna has an atmosphere.
 
 ## Compare a later flight against it
 
