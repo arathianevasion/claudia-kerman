@@ -145,6 +145,13 @@ namespace ClaudiaKermin.Core.Missions
     {
     }
 
+    /// <summary>The Mission window's Choose or Clear for the Target Vessel between sequences (#661): a vessel from the list, or Cleared.</summary>
+    public sealed class ChangeTarget : MissionInput
+    {
+        public readonly TargetPick Pick;
+        public ChangeTarget(TargetPick pick) { Pick = pick; }
+    }
+
     /// <summary>
     /// End Mission, after the player confirmed: cancels any request in flight, aborts a running script, marks
     /// the Mission ended in its folder (folder and transcript are kept) and frees the start form.

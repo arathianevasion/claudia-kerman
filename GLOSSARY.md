@@ -195,7 +195,7 @@ A vessel that separated from a Mission's craft during the Mission and carries a 
 _Avoid_: probe, drone, secondary craft
 
 **Target Vessel**:
-The one other vessel a Mission rendezvouses or docks with, only for a Mission Goal that asks for rendezvous or docking or names a vessel: the player's pick in the start form, else the vessel the goal names, else KSP's target. The start form shows it, or why there is none, before Start; changing it makes Start check the craft again. A Child Vessel can be one. The Game Snapshot carries it as one compact entry only when the Mission has one (ADR 0013). It is flown only by the bundled `dock_hold`, never by Claudia's scripts.
+The one other vessel a Mission rendezvouses or docks with, only for a Mission Goal that asks for rendezvous or docking or names a vessel: the player's pick in the start form, else the vessel the goal names, else KSP's target. The start form shows it, or why there is none, before Start; changing it makes Start check the craft again. Between sequences the Mission window's Choose and Clear change it, and the pending plan becomes Re-plan for a revised Mission Plan (#661). A Child Vessel can be one. The Game Snapshot carries it as one compact entry only when the Mission has one (ADR 0013). It is flown only by the bundled `dock_hold`, never by Claudia's scripts.
 _Avoid_: target (alone, which is also a transfer's body or orbit), station, other vessel
 
 **Claudia Flag**:

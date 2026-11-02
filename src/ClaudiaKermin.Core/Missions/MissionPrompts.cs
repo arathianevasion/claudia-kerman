@@ -395,6 +395,23 @@ namespace ClaudiaKermin.Core.Missions
             "The player has the craft back. Revise the Mission Plan from the craft's real state now, with the sequences already flown "
             + "first, then those still to fly: " + ProposePlan + ". The player must approve it before anything runs.";
 
+        /// <summary>
+        /// The player changed the Target Vessel between sequences (#661): the new one (null for cleared) and what the Craft Check's
+        /// target rule found against it, both quoted data.
+        /// </summary>
+        public static string TargetChanged(string name, IList<string> findings)
+        {
+            var text = name != null
+                ? "The player changed the Target Vessel between sequences. It is now (quoted data): " + Quoted(name) + "; the Game Snapshot's target entry is the new one."
+                : "The player cleared the Target Vessel between sequences: the Mission has none now.";
+            if (findings.Count > 0) text += " The Craft Check found (quoted data): " + Quoted(string.Join("; ", findings.ToArray()));
+            return text;
+        }
+
+        public const string TargetNotice =
+            "Revise the Mission Plan for the new Target Vessel, with the sequences already flown first, then those still to fly: "
+            + ProposePlan + ". The player must approve it again.";
+
         public static string ReplanBecauseCraftChanged(string what, bool missionPlan)
         {
             return "The craft changed beyond your pending " + (missionPlan ? "Mission Plan" : "Sequence Plan") + "'s tolerances before the player approved it ("
