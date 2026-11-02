@@ -81,6 +81,17 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void AFinishShortfallIsReportedOnceNotAlsoAsTheMarginsDeltaVShort()
+        {
+            var snapshot = Craft();
+
+            var check = Check(snapshot, Plan(3800, 100, 1000), Home);
+
+            Assert.Single(check.Findings, f => f.Code == "chutes_short_for_landing");
+            Assert.DoesNotContain(check.Findings, f => f.Code == "delta_v_short");
+        }
+
+        [Fact]
         public void TheBenchmarkCraftWithTheDeltaVForTheFinishHasNoChuteFinding()
         {
             var snapshot = Craft();

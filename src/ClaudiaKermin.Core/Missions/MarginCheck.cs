@@ -84,6 +84,9 @@ namespace ClaudiaKermin.Core.Missions
             if (Margin == null) return;
             if (Margin.Level != MarginLevel.Enough)
             {
+                // A shortfall that only the powered finishes cause is the Chute finding's (it names the finish): one finding, not two.
+                var legs = MarginBar.Compute(snapshot.Stages.Sum(s => s.DeltaVVac), rest.Sum(s => s.DeltaV), wantedPercent);
+                if (finishes.Count > 0 && legs != null && legs.Level == MarginLevel.Enough) return;
                 Add("delta_v_short", Margin.Level, Margin.Describe().TrimEnd('.'));
                 return;
             }
