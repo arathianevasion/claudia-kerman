@@ -97,13 +97,13 @@ function dock_cone {
 
 // The relative velocity the craft wants now, in the target port's frame: lexicon("along", m/s out along the port's axis
 // (negative closes), "lat", m/s away from the axis (negative toward it)). s: dock_run's state (along, lat, distance,
-// align_deg). Behind the port's face it first moves dock_clear_m off the axis and then out past the face; off the cone it
+// align_deg). Over a metre behind the port's face it first moves dock_clear_m off the axis and then out past the face; off the cone it
 // holds its distance along (backing out inside 2 m) and moves onto the axis; on the cone it closes at dock_speed, except
 // inside 20 m while its port points over dock_align_deg off the axis. Pure.
 function dock_want {
   parameter s, opt.
   local speed is dock_speed(s:distance, opt).
-  if s:along < 0 {
+  if s:along < -1 {
     if s:lat < dock_clear_m() {
       return lexicon("along", 0, "lat", min(speed, 2)).
     }
@@ -166,7 +166,7 @@ function dock_run {
     local why is "".
     if s:hold = "fault" {
       set why to "dock_hold on " + name + " stopped: " + s:hold_reason.
-    } else if s:hold <> "active" and s:hold <> "starting" and s:hold <> "docked" and s:spin_dps > dock_max_spin() {
+    } else if s:hold <> "active" and s:hold <> "starting" and s:spin_dps > dock_max_spin() {
       set why to name + " turns at " + round(s:spin_dps, 1) + " deg/s, over " + dock_max_spin() + " deg/s, with no dock_hold (" + s:hold_reason + ")".
     } else if s:monoprop <= 0 {
       set done:reason to "out of monopropellant " + round(s:distance, 1) + " m from " + name + "'s port".
@@ -201,14 +201,18 @@ function dock_stopped {
     "monoprop", 0, "hold", "none", "hold_reason", "", "ut", 0).
 }
 
-// The craft's port for option port (a kOS tag, a size, or "auto"): a free (Ready) docking port. Returns lexicon("error",
-// "" or why none, "port", the port).
-function dock_own_port {
+// The craft's ports option port allows (a kOS tag, a size, or "auto"): its free (Ready) docking ports. Returns
+// lexicon("error", "" or why none, "ports", the list); dock pairs them with the target's by size.
+function dock_own_ports {
   parameter which.
+  local found is list().
   for p in ship:dockingports {
     if p:state = "Ready" and (which = "auto" or p:tag = which or p:nodetype = which) {
-      return lexicon("error", "", "port", p).
+      found:add(p).
     }
+  }
+  if found:length > 0 {
+    return lexicon("error", "", "ports", found).
   }
   if which = "auto" {
     return lexicon("error", "the craft has no free docking port").
@@ -249,37 +253,48 @@ function dock {
   if mono0 <= 0 {
     return claudia_finish(ctx, false, "the craft has no monopropellant", extra).
   }
-  local own is dock_own_port(opt:port).
-  if own:error <> "" {
-    return claudia_finish(ctx, false, own:error, extra).
+  local mine is dock_own_ports(opt:port).
+  if mine:error <> "" {
+    return claudia_finish(ctx, false, mine:error, extra).
   }
-  set own to own:port.
-  set extra:port to dock_port_name(own:tag, own:nodetype).
   // The target is read inline, never passed to a function: the Script Check follows another vessel into every function it is
   // passed to (ADR 0003), so every name holding it or its parts starts dk_ and no other code uses one.
   local dk_target is vessel(named:name).
   if not dk_target:loaded {
     return claudia_finish(ctx, false, named:name + " is not loaded (" + round(dk_target:distance) + " m): fly rendezvous first", extra).
   }
+  // The nearest pair of a craft port and a free target port the options allow, of the same size.
+  local own is 0.
   local dk_port is 0.
   local dk_found is false.
   local dk_best is 1e12.
   for dk_p in dk_target:dockingports {
-    local dk_d is (dk_p:nodeposition - own:nodeposition):mag.
-    if dk_p:state = "Ready" and dk_d < dk_best and (dk_p:tag = opt:target_port or dk_p:nodetype = opt:target_port
-      or (opt:target_port = "auto" and dk_p:nodetype = own:nodetype)) {
-      set dk_port to dk_p.
-      set dk_found to true.
-      set dk_best to dk_d.
+    if dk_p:state = "Ready" and (opt:target_port = "auto" or dk_p:tag = opt:target_port or dk_p:nodetype = opt:target_port) {
+      for c in mine:ports {
+        local dk_d is (dk_p:nodeposition - c:nodeposition):mag.
+        if dk_p:nodetype = c:nodetype and dk_d < dk_best {
+          set own to c.
+          set dk_port to dk_p.
+          set dk_found to true.
+          set dk_best to dk_d.
+        }
+      }
     }
   }
   if not dk_found {
-    local wanted is opt:target_port.
-    if wanted = "auto" {
-      set wanted to own:nodetype.
+    local sizes is list().
+    for c in mine:ports {
+      if not sizes:contains(c:nodetype) {
+        sizes:add(c:nodetype).
+      }
     }
-    return claudia_finish(ctx, false, named:name + " has no free docking port tagged or sized " + wanted, extra).
+    local wanted is "".
+    if opt:target_port <> "auto" {
+      set wanted to opt:target_port + " ".
+    }
+    return claudia_finish(ctx, false, named:name + " has no free " + wanted + "docking port of the craft's size (" + sizes:join(", ") + ")", extra).
   }
+  set extra:port to dock_port_name(own:tag, own:nodetype).
   set extra:target_port to dock_port_name("" + dk_port:tag, "" + dk_port:nodetype).
   // The mod starts dock_hold on the target's processor, or says why not (passive); it stops it when this block ends.
   local hold is addons:claudia:dockhold(lexicon("port", "" + dk_port:uid, "toward", own:uid)).

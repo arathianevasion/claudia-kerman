@@ -38,8 +38,9 @@ namespace ClaudiaKermin.Core.Missions
     {
         private const CraftFindingSeverity Blocker = CraftFindingSeverity.Blocker;
         private const CraftFindingSeverity Warning = CraftFindingSeverity.Warning;
-        /// <summary>dock's Blocker and Warning (#456): the mod raises them itself (<see cref="MarginCheck.Docking"/>), at the Craft Check and each Debrief.</summary>
+        /// <summary>dock's Blocker (#456), no docking port, RCS or monopropellant: the mod raises it and the Warning itself (<see cref="MarginCheck.Docking"/>), at the Craft Check and each Debrief.</summary>
         public const string DockingKit = "no_docking_kit";
+        /// <summary>The Warning: no port on the craft is a size the Target Vessel has free.</summary>
         public const string DockingPortSize = "docking_port_size";
 
         public static readonly IList<CraftCheckRule> All = new List<CraftCheckRule>

@@ -103,7 +103,9 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [InlineData(1, 0.5, 0, 0.3, -0.1)]
         // On the cone inside 20 m but pointing 8 degrees off the axis: wait for the turn.
         [InlineData(15, 0, 8, 0, 0)]
-        // Behind the port's face: out to 50 m off the axis first, then out past the face.
+        // Half a metre behind the face at a port's edge, as just before capture: no 50 m detour, back out and line up.
+        [InlineData(-0.5, 0.5, 0, 0.3, -0.1)]
+        // Over a metre behind the port's face: out to 50 m off the axis first, then out past the face.
         [InlineData(-80, 10, 0, 0, 1)]
         [InlineData(-80, 60, 0, 1, 0)]
         public void The_wanted_velocity_lines_up_on_the_axis_before_it_closes(double along, double lat, double align, double wantAlong, double wantLat)

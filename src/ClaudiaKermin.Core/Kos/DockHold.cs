@@ -48,7 +48,7 @@ namespace ClaudiaKermin.Core.Kos
         /// loaded, a kOS processor, electric charge, and a link to the craft or KSC by the Child Vessel link test
         /// (<see cref="Missions.ChildVessels.LinkedToClaudia"/>).
         /// </summary>
-        public static string Passive(bool loaded, bool hasProcessor, bool charged, bool linked)
+        public static string PassiveReason(bool loaded, bool hasProcessor, bool charged, bool linked)
         {
             if (!loaded) return "the target is not loaded";
             if (!hasProcessor) return "the target has no kOS processor";
@@ -83,7 +83,9 @@ namespace ClaudiaKermin.Core.Kos
     {
         /// <summary>No hold for this craft's processor.</summary>
         None,
+        /// <summary>The mod is starting dock_hold (it waits for the processor, up to 10 s).</summary>
         Starting,
+        /// <summary>dock_hold runs, turning the target's port to the craft's.</summary>
         Active,
         /// <summary>No hold: the target is met as it is (why in the reason).</summary>
         Passive,
@@ -103,10 +105,14 @@ namespace ClaudiaKermin.Core.Kos
     {
         private sealed class Hold
         {
+            /// <summary>The craft processor whose dock asked for the hold.</summary>
             public uint Craft;
+            /// <summary>The target's processor running dock_hold; 0 when passive.</summary>
             public uint Part;
+            /// <summary>The hold's run key (never 0); 0 when passive.</summary>
             public int Run;
             public DockHoldState State;
+            /// <summary>Why passive or faulted; "" otherwise.</summary>
             public string Reason = "";
         }
 

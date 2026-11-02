@@ -45,7 +45,7 @@ namespace ClaudiaKermin.Core.Tests
         [InlineData(true, true, true, false, "the target has no link to Claudia")]
         public void Only_a_loaded_powered_linked_target_with_a_processor_gets_a_hold(bool loaded, bool processor, bool charged, bool linked, string why)
         {
-            Assert.Equal(why, DockHold.Passive(loaded, processor, charged, linked));
+            Assert.Equal(why, DockHold.PassiveReason(loaded, processor, charged, linked));
         }
 
         private static DockHolds Running()

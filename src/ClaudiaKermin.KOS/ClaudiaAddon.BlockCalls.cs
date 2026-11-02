@@ -90,7 +90,7 @@ namespace ClaudiaKermin.KOS
             var hasProcessor = target.loaded && target.parts.Any(p => p.FindModuleImplementing<kOS.Module.kOSProcessor>() != null);
             var charged = target.loaded && target.parts.Any(p => p.Resources.Contains("ElectricCharge") && p.Resources["ElectricCharge"].amount > 0.01);
             var linked = SnapshotReader.LinkedToClaudia(target, craft, MissionDriver.Remote);
-            var passive = DockHold.Passive(target.loaded, hasProcessor, charged, linked);
+            var passive = DockHold.PassiveReason(target.loaded, hasProcessor, charged, linked);
             var state = bridge.StartHold(shared.KSPPart.persistentId, target, passive, (string)port, (string)toward);
             string reason;
             bridge.HoldState(shared.KSPPart.persistentId, out reason);
