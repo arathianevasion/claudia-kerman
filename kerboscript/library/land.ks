@@ -1509,7 +1509,7 @@ function land {
     }
   }
   if body:atm:exists {
-    return claudia_finish(ctx, false, "land flies airless bodies only; " + body:name + " has an atmosphere", extra).
+    return claudia_finish(ctx, false, "land flies airless bodies only; " + body:name + " has an atmosphere; use reentry", extra).
   }
   if claudia_on_ground() {
     return claudia_finish(ctx, false, "already down (" + status + ")", extra).
