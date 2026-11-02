@@ -119,6 +119,8 @@ namespace ClaudiaKermin.Core.Tools
             public SnapshotBody Target;
             /// <summary>The Target Vessel when the target named it rather than a body (only where Prepare was asked to look, #454).</summary>
             public VesselTarget Vessel;
+            /// <summary>What the burns aim at: the Target Vessel when there is one, else the body, else null.</summary>
+            public BurnTarget Aim { get { return Vessel != null ? (BurnTarget)Vessel : Target; } }
 
             /// <summary>
             /// The setup, or null with <paramref name="error"/> saying why the snapshot can't be propagated. With
@@ -189,7 +191,7 @@ namespace ClaudiaKermin.Core.Tools
                 var label = "burn " + (i + 1).ToString(CultureInfo.InvariantCulture);
                 var after = burns.Count > 0 ? burns[burns.Count - 1].Ut : now;
                 string problem;
-                var ut = BurnUt(requests[i].At, path, after, now, label, out problem, system, setup.Target, setup.Vessel);
+                var ut = BurnUt(requests[i].At, path, after, now, label, out problem, system, setup.Aim);
                 if (problem != null) return problem;
                 var patch = Containing(path, ut.Value);
                 if (patch == null)
@@ -227,9 +229,9 @@ namespace ClaudiaKermin.Core.Tools
 
         /// <summary>The burn's UT from its <c>at</c> (see <see cref="BurnTime"/>), or why it can't be placed. The system and target are for the relative and closest-approach references.</summary>
         internal static double? BurnUt(JsonNode at, List<Patch> path, double after, double now, string label, out string problem,
-            BodySystem system = null, SnapshotBody target = null, VesselTarget vessel = null)
+            BodySystem system = null, BurnTarget target = null)
         {
-            return BurnTime.Resolve(at, path, after, now, label, system, target, out problem, vessel);
+            return BurnTime.Resolve(at, path, after, now, label, system, target, out problem);
         }
 
         /// <summary>The patch flown at <paramref name="ut"/>; null when the path has ended (an impact, the atmosphere) before it.</summary>
