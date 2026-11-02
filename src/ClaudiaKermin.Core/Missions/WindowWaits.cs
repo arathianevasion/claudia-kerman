@@ -10,7 +10,7 @@ namespace ClaudiaKermin.Core.Missions
     /// A wait for a Transfer Window longer than one Kerbin day is a Due Time (#616, the ADR 0004 amendment): the craft waits on
     /// the pad and the first Maneuver Sequence carries a Due Time at the window less the launch lead, so the player can fly other
     /// Missions meanwhile. A shorter wait stays an in-script warp. The window is #458's (<see cref="TransferWindows"/>), picked by
-    /// the Mission Setting Time versus delta-v as the Mission request's plan_transfer rows pick it.
+    /// the Mission Setting Time versus delta-v as the Mission request's plan_transfer rows pick it; a moon's is the same (#647).
     /// </summary>
     internal static class WindowWaits
     {

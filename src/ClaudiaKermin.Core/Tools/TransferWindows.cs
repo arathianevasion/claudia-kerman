@@ -89,8 +89,11 @@ namespace ClaudiaKermin.Core.Tools
         private const double NoPath = 1e30;
         /// <summary>Balanced takes Optimal only when it saves at least this fraction of Soonest's total.</summary>
         public const double BalancedSaving = 0.10;
-        /// <summary>A moon's Optimal saving less than this over Soonest, m/s, is no saving (a moon in the parking plane costs the same at any departure): Optimal is Soonest.</summary>
-        public const double NoSavingDv = 1;
+        /// <summary>
+        /// A moon's Optimal saving less than this over Soonest, m/s, is no saving and Optimal is Soonest: a moon in the parking
+        /// plane costs the same at any departure, and a few m/s (the Mun from a parking orbit tilted a few degrees) is not worth a wait.
+        /// </summary>
+        public const double NoSavingDv = 5;
         /// <summary>The points on a moon's arc the plane change is tried at.</summary>
         private const int PlanePoints = 32;
 
