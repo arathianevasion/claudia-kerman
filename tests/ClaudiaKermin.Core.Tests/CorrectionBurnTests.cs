@@ -233,6 +233,49 @@ namespace ClaudiaKermin.Core.Tests
             Assert.InRange(D(node, "dv"), 0.5, 20);
         }
 
+        /// <summary>
+        /// tune_pe patch "next" leaving a moon (#484): the craft still round the Mun, its next patch round Kerbin. From a 30 km Mun
+        /// orbit, RETURNBURN's ejection flown 2 m/s long, a burn at a fixed UT halfway to the Mun's sphere-of-influence change finds
+        /// Kerbin by name two patches on and sets the periapsis there.
+        /// </summary>
+        [Fact]
+        public void A_correction_before_leaving_a_moon_sets_the_periapsis_round_its_planet()
+        {
+            const double munGm = 6.5138398e10, munR = 200000;
+            var start = Circular();
+            start.Ut = 1000;
+            start.Body = "Mun";
+            start.Orbit = new SnapshotOrbit { SemiMajorAxis = munR + 30000, Eccentricity = 0, Body = "Mun", Periapsis = 30000, Apoapsis = 30000, Epoch = 1000 };
+            var ejection = BlockCalls.ReturnBurn(new Dictionary<string, object> { { "target_pe", TargetPe } }, start);
+            Assert.Equal("", ejection["error"]);
+            var ut = D(ejection, "ut");
+            Vec3 r, v;
+            Conic.FromElements(munGm, munR + 30000, 0, 0, 0, 0, 0, 1000).State(ut, out r, out v);
+            var along = v.Normalized;
+            var up = Vec3.Cross(r, v).Normalized;
+            var outward = Vec3.Cross(along, up);
+            var burn = along * (D(ejection, "prograde") + 2) + up * D(ejection, "normal") + outward * D(ejection, "radial");
+            var ejected = Conic.FromState(munGm, r, v + burn, ut);
+
+            var coast = new GameSnapshot { Ut = ut + 300, Situation = "ORBITING", Body = "Mun", Orbit = Elements(ejected, "Mun") };
+            coast.Bodies.AddRange(start.Bodies);
+            var system = new BodySystem(coast.Bodies);
+            var leaving = system.Follow(system.Find("Mun"), ejected, coast.Ut, 1)[0];
+            Assert.Equal(PatchEnd.Escape, leaving.End);
+            var mid = (coast.Ut + leaving.EndUt) / 2;
+
+            double missed, inc;
+            Flown(coast, new Dictionary<string, object> { { "ut", mid }, { "prograde", 0.0 }, { "normal", 0.0 }, { "radial", 0.0 } }, "Kerbin", out missed, out inc);
+            Assert.True(Math.Abs(missed - TargetPe) > 2 * PeBound, "2 m/s long moved the periapsis only to " + missed + " m");
+
+            var node = Correct(coast, mid, target: "Kerbin");
+            Assert.Equal("", node["error"]);
+            Assert.Equal(mid, D(node, "ut"), 3);
+            double pe;
+            Flown(coast, node, "Kerbin", out pe, out inc);
+            Assert.InRange(pe, TargetPe - PeBound, TargetPe + PeBound);
+        }
+
         // ---- what it refuses ----
 
         [Theory]
