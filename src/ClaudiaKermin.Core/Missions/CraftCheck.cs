@@ -49,7 +49,7 @@ namespace ClaudiaKermin.Core.Missions
             foreach (var node in root["findings"].Items)
             {
                 var rule = CraftCheckRules.Find(JsonNode.Str(node["code"]) ?? "");
-                if (rule == null) return null;
+                if (rule == null || rule.ModOnly) return null;
                 if (reply.Findings.Any(f => f.Code == rule.Code)) continue;
                 reply.Findings.Add(new CraftFinding
                 {
