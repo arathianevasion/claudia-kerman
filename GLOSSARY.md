@@ -166,6 +166,10 @@ _Avoid_: flight, run, job
 A vessel that separated from a Mission's craft during the Mission and carries a kOS processor, which Claudia may fly with Maneuver Sequences of its own while she has a link to it. The craft stays the vessel Claudia is aboard (or, for a remote Mission, the one with the original processor).
 _Avoid_: probe, drone, secondary craft
 
+**Claudia Flag**:
+The flag the mod ships (`ClaudiaKermin/Flags/ClaudiaFlag`). A Mission's craft and Child Vessels fly it, and it is the agency flag while a Mission is under way (in play and not Paused); the player's own agency flag comes back when none is.
+_Avoid_: Mission flag, mod flag
+
 **Spending Cap**:
 The most a Mission may spend on Claudia's API calls, set by the player when the Mission starts and raisable later.
 _Avoid_: budget (which means delta-v), limit, quota

@@ -176,6 +176,8 @@ namespace ClaudiaKermin.Core.Missions
     public sealed class ChildVesselView
     {
         public string Name = "";
+        /// <summary>Its vessel id once separated, "" before: the adapter flies the Claudia Flag on it (#642).</summary>
+        public string VesselId = "";
         public bool Separated;
         public bool Linked;
         /// <summary>A sequence is running on it now.</summary>

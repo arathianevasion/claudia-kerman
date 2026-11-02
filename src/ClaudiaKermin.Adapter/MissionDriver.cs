@@ -143,6 +143,15 @@ namespace ClaudiaKermin.Adapter
         /// <summary>Writes the player config's Mission defaults; returns the notice when the write failed, "" otherwise. The Loader sets it.</summary>
         public Func<string> SaveConfigDefaults = () => "";
 
+        /// <summary>The Claudia Flag (#642): which Mission vessels fly it, and when the agency flag is Claudia's.</summary>
+        private readonly ClaudiaFlagKeeper _flag = new ClaudiaFlagKeeper();
+
+        /// <summary>The player's agency flag kept while Claudia's flies, for the save (<see cref="MissionScenario"/>); null when none.</summary>
+        public string SavedAgencyFlag
+        {
+            get { return _flag.SavedAgencyFlag; }
+        }
+
         public MissionDriver(MissionControl mission, bool debugTools)
         {
             Current = this;
@@ -152,6 +161,7 @@ namespace ClaudiaKermin.Adapter
             MissionsList = new MissionsWindow(Send);
             Strip = new CapcomStrip(Panel) { TabClicked = () => PanelOpen = !PanelOpen };
             GameEvents.onKerbalStatusChange.Add(OnKerbalStatusChange);
+            GameEvents.onCrewOnEva.Add(OnCrewOnEva);
             _vessels = new VesselWatch(Send);
             _events = new RunEventWatcher(Send, () => _mission.View.Stage == MissionStage.Running,
                 () => _mission.View.CraftVesselId, () => _mission.View.RunningChildVesselId);
@@ -165,6 +175,9 @@ namespace ClaudiaKermin.Adapter
 
         public void Send(MissionInput input)
         {
+            // A docking with a Mission vessel: the merged vessel flies the Claudia Flag again, joined parts and all.
+            var docked = input as VesselsDocked;
+            if (docked != null) _flag.Docked(_mission.View, docked.First.Id, docked.Second.Id);
             _mission.Send(input);
             Carry();
         }
@@ -192,6 +205,7 @@ namespace ClaudiaKermin.Adapter
             {
                 _game = HighLogic.CurrentGame;
                 _saveFolder = HighLogic.SaveFolder;
+                _flag.Load(SavedAgencyFlagIn(_game));
                 Send(new MissionsRestored(SaveDirectory(), Saved(_game)));
             }
             else if (HighLogic.CurrentGame != null && HighLogic.SaveFolder != _saveFolder)
@@ -243,7 +257,27 @@ namespace ClaudiaKermin.Adapter
             // Once a Mission is under way its setup is spent: the next one starts from the defaults.
             if (_mission.View.CanEndMission) Setup.Reset();
             else Setup.SeedFrom(_mission.View.StartForm);
+            FlyClaudiaFlag(scene);
             Carry();
+        }
+
+        /// <summary>The keeper's say on the agency flag (any scene) and, in Flight, the Mission vessels still to fly the Claudia Flag.</summary>
+        private void FlyClaudiaFlag(GameScene scene)
+        {
+            if (HighLogic.CurrentGame == null) return;
+            var view = _mission.View;
+            var agency = _flag.AgencyFlagFor(view, ClaudiaFlags.Agency());
+            if (agency != null) ClaudiaFlags.SetAgency(agency);
+            if (scene != GameScene.Flight || !FlightGlobals.ready) return;
+            foreach (var id in _flag.VesselsToFlag(view))
+                if (ClaudiaFlags.FlyOn(id)) _flag.Flagged(id);
+        }
+
+        /// <summary>A Kerbal leaving a Mission vessel carries the Claudia Flag, so a flag planted on EVA is Claudia's.</summary>
+        private void OnCrewOnEva(GameEvents.FromToAction<Part, Part> action)
+        {
+            if (action.from == null || action.from.vessel == null || action.to == null) return;
+            if (_flag.IsMissionVessel(_mission.View, action.from.vessel.id.ToString("N"))) ClaudiaFlags.Fly(action.to);
         }
 
         public void OnGUI()
@@ -271,6 +305,14 @@ namespace ClaudiaKermin.Adapter
             foreach (var module in game.scenarios)
                 if (module.moduleName == typeof(MissionScenario).Name) states.AddRange(MissionScenario.Read(module.GetData()));
             return states;
+        }
+
+        /// <summary>The agency flag the loaded game's save kept while Claudia's flew; null when none.</summary>
+        private static string SavedAgencyFlagIn(Game game)
+        {
+            foreach (var module in game.scenarios)
+                if (module.moduleName == typeof(MissionScenario).Name) return MissionScenario.ReadSavedAgencyFlag(module.GetData());
+            return null;
         }
 
         private static GameScene Scene()

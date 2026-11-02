@@ -150,6 +150,8 @@ namespace ClaudiaKermin.Core.Tests
             var child = Assert.Single(mission.View.ChildVessels);
             Assert.Equal("Probe", child.Name);
             Assert.False(child.Separated);
+            // No vessel id until it separates: nothing to fly the Claudia Flag on yet (#642).
+            Assert.Equal("", child.VesselId);
         }
 
         [Fact]
@@ -183,6 +185,8 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains(mission.View.Log, e => e.Text.StartsWith("Separated: Pad Test Probe left the craft with 3 parts") && e.Text.EndsWith("It is the planned Child Vessel Probe."));
             mission.Send(new VesselsSeen(new List<SeenVessel> { CraftSeen(), ProbeSeen(linked: false) }));
             Assert.True(mission.View.ChildVessels.Single().Separated);
+            // Separated, it has its vessel id: it flies the Claudia Flag (#642).
+            Assert.Equal(ProbeSeen().Id, mission.View.ChildVessels.Single().VesselId);
             mission.Send(new Approve());
             Assert.Empty(mission.TakeCommands().OfType<StartScript>());
             Assert.Contains(mission.View.Log, e => e.Text.StartsWith("Can't run the script: there is no CommNet path from Claudia to Probe (from the craft)"));
