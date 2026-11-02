@@ -49,7 +49,7 @@ namespace ClaudiaKermin.KOS
             AddSuffix("RETURNBURN", new OneArgsSuffix<Lexicon, Lexicon>(ReturnBurn,
                 "Core Library only (return): the least burn from earliest_ut to latest_ut (one orbit later if missing) that leaves the moon orbited for its planet at target_pe and, if given, target_inc; lexicon error, planet, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted, soi_ut, from_grid"));
             AddSuffix("TARGETVESSEL", new NoArgsSuffix<Lexicon>(TargetVessel,
-                "Core Library only (rendezvous): the Mission's Target Vessel, read live; lexicon error, name, body"));
+                "Core Library only (rendezvous, dock, land): the Mission's Target Vessel, read live; lexicon error, name, body, and lat, lng, alt for a landed or splashed one"));
             AddSuffix("DOCKHOLD", new OneArgsSuffix<Lexicon, Lexicon>(DockHoldStart,
                 "Core Library only (dock): the mod starts its dock_hold on the Target Vessel's kOS processor, turning its port (uid) toward the craft's (toward, uid), or meets the target passive; lexicon error, state (starting or passive), reason"));
             AddSuffix("DOCKHOLDSTATE", new NoArgsSuffix<Lexicon>(DockHoldRead,
