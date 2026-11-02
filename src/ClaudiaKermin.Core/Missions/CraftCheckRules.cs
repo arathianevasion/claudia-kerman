@@ -16,9 +16,12 @@ namespace ClaudiaKermin.Core.Missions
         public readonly string Title;
         /// <summary>When it applies, as Claude is told.</summary>
         public readonly string Condition;
+        /// <summary>Raised only by the mod, never by Claude: left out of the prompt and the findings schema.</summary>
+        public readonly bool ModOnly;
 
-        public CraftCheckRule(string code, CraftFindingSeverity severity, string title, string condition)
+        public CraftCheckRule(string code, CraftFindingSeverity severity, string title, string condition, bool modOnly = false)
         {
+            ModOnly = modOnly;
             Code = code;
             Severity = severity;
             Title = title;
@@ -52,7 +55,7 @@ namespace ClaudiaKermin.Core.Missions
             new CraftCheckRule("no_parachutes_for_return", Blocker, "No parachutes for the return",
                 "a crewed Mission returns to Kerbin and the craft has no parachutes."),
             new CraftCheckRule("chutes_short_for_landing", Blocker, "Chutes short for an air landing",
-                "the mod raises this itself, never you: a powered finish lacks delta-v, or the Kerbin return is uncovered."),
+                "a powered finish lacks delta-v, or the Kerbin return is uncovered.", modOnly: true),
             new CraftCheckRule("required_experiments_missing", Blocker, "Required experiments missing",
                 "the Mission Goal needs experiments the craft has no parts for."),
             new CraftCheckRule("child_vessel_problem", Blocker, "Child Vessel problem",
@@ -67,7 +70,7 @@ namespace ClaudiaKermin.Core.Missions
             new CraftCheckRule("margin_under_25", Warning, "Delta-v margin under 25%",
                 "the delta-v margin over the need is under 25% (not short: a Blocker)."),
             new CraftCheckRule("chutes_thin_for_landing", Warning, "Thin chutes for an air landing",
-                "the mod raises this itself, never you: a powered finish has under 25% spare delta-v, or an Engineer repack is relied on."),
+                "a powered finish has under 25% spare delta-v, or an Engineer repack is relied on.", modOnly: true),
             new CraftCheckRule("no_landing_legs", Warning, "No landing legs",
                 "the Mission Goal includes a landing and the craft has no landing legs."),
             new CraftCheckRule("no_electric_generation_or_low_battery", Warning, "No electric charge generation or a low battery",
@@ -102,10 +105,10 @@ namespace ClaudiaKermin.Core.Missions
         {
             var text = new StringBuilder();
             text.Append("Blockers (the Mission cannot start; the player cannot override them):\n");
-            foreach (var rule in All.Where(r => r.Severity == Blocker))
+            foreach (var rule in All.Where(r => !r.ModOnly && r.Severity == Blocker))
                 text.Append("- ").Append(rule.Code).Append(": ").Append(rule.Title).Append(". Applies when ").Append(rule.Condition).Append('\n');
             text.Append("\nWarnings (the player must acknowledge each before the Mission starts):\n");
-            foreach (var rule in All.Where(r => r.Severity == Warning))
+            foreach (var rule in All.Where(r => !r.ModOnly && r.Severity == Warning))
                 text.Append("- ").Append(rule.Code).Append(": ").Append(rule.Title).Append(". Applies when ").Append(rule.Condition).Append('\n');
             return text.ToString();
         }
@@ -114,7 +117,7 @@ namespace ClaudiaKermin.Core.Missions
         public static string SchemaJson()
         {
             var codes = new JsonWriter().BeginArray();
-            foreach (var rule in All) codes.String(rule.Code);
+            foreach (var rule in All.Where(r => !r.ModOnly)) codes.String(rule.Code);
             codes.EndArray();
             return "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"summary\",\"findings\",\"child_vessel_stages\",\"unsure_because\",\"planned_turn_shape\"],\"properties\":{"
                 + SecondLook.FieldJson + ","
