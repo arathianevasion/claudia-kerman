@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace ClaudiaKermin.Core.Kos
 {
@@ -38,8 +39,18 @@ namespace ClaudiaKermin.Core.Kos
             var firstNew = old.Count - offset;
 
             var lines = now.Skip(firstNew).Where(l => l.Length > 0).ToList();
-            return lines.Skip(System.Math.Max(0, lines.Count - TailLines)).ToList();
+            var tailStart = System.Math.Max(0, lines.Count - TailLines);
+            var tail = lines.Skip(tailStart).ToList();
+            // A long call stack pushes the error itself out of the tail: keep it, with the line after it.
+            var error = lines.FindLastIndex(l => ErrorLine.IsMatch(l));
+            if (error < 0 || error >= tailStart) return tail;
+            var head = lines.Skip(error).Take(System.Math.Min(2, tailStart - error)).ToList();
+            var omitted = tailStart - error - head.Count;
+            if (omitted > 0) head.Add("... (" + omitted + " lines omitted)");
+            return head.Concat(tail).ToList();
         }
+
+        private static readonly Regex ErrorLine = new Regex(@"Exception|^Error|Undefined|not found|Cannot ", RegexOptions.IgnoreCase);
 
         private static bool Overlaps(List<string> old, int offset, List<string> now)
         {

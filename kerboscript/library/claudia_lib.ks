@@ -34,14 +34,14 @@
 //| (r, v, q, node, transfer, ...): kOS won't compile the script. An unknown option fails the block at once
 //| with reason "unknown option <name>". Every block also takes the common options:
 //|   drop_empty ["auto"]: "auto", or part names or tags (e.g. list("fuelTank", "side tanks")); list() is off. The auto-staging
-//|     fires a decoupler once all its tanks are empty, never one holding fuel, below stage_limit or holding the part
+//|     fires a decoupler once all its tanks are empty, whatever stage_limit says, never one holding fuel or the part
 //|     running the script. "auto" judges every decoupler: only empty tanks and trim (cones, ducts, struts) may leave,
 //|     never an engine, crew/command part, processor, science, power, antenna, wheel, RCS, leg, chute, heat shield.
 //|     Burning blocks only; result lists dropped.
 //|   min_ec_pct [10]: abort when electric charge falls below this percent of capacity.
 //|   max_duration [per block]: abort when the block has run this many seconds, waits included.
 //|   abort_on_part_loss [true]: abort when the craft loses a part other than by the block's own staging.
-//|   stage_limit [0]: auto-staging stages on flameout but never below this stage number, and never
+//|   stage_limit [0]: flameout staging stops at this stage number (not drop_empty), and never
 //|     fires a stage holding parachutes or heat-shield separation. Out of fuel at the limit fails.
 //|   rcs_tolerance [lexicon("on_deg", 10, "big_deg", 20, "aligned_deg", 2, "aligned_rate", 0.5)]: RCS Use. Blocks switch RCS on when the steering error is over big_deg (a big turn, even with time to spare), or over on_deg and the reaction wheels can't make the turn in time (big_deg at or under on_deg acts as on_deg), and off once the craft is Aligned: within aligned_deg and turning under aligned_rate deg/s, or within aligned_deg for 3 s. Aligned also lets a burn start, so loosening it loosens burn pointing. Give only the keys you change.
 //| A block returns a result lexicon (it does not report). Common fields: success (boolean), reason
@@ -172,8 +172,8 @@ function claudia_ec_pct {
 }
 
 // Leaves the craft safe: throttle 0, steering released to SAS holding the current attitude. RCS goes
-// off (RCS Use), except on a craft whose wheels have no pitch or yaw torque: there RCS is left on (or
-// switched on, with monoprop) so SAS can hold it.
+// off (RCS Use), except on a craft in flight whose wheels have no pitch or yaw torque: there RCS is left on
+// (or switched on, with monoprop) so SAS can hold it. On the ground (#506) RCS goes off whatever the torque.
 function claudia_make_safe {
   set ship:control:pilotmainthrottle to 0.
   unlock throttle.
@@ -181,12 +181,16 @@ function claudia_make_safe {
   set ship:control:neutralize to true.
   claudia_rcs_restore_tuning().
   local mono is claudia_monoprop().
-  if mono:amount > 0 and claudia_wheels_turn_time() < 0 {
+  if mono:amount > 0 and not claudia_on_ground() and claudia_wheels_turn_time() < 0 {
     if not rcs {
       claudia_rcs_switch(true, "no wheel torque", lexicon("monoprop", round(mono:amount, 1), "monoprop_max", round(mono:capacity, 1))).
     }
   } else {
-    claudia_rcs_off("block end").
+    if claudia_on_ground() {
+      claudia_rcs_off("on the ground").
+    } else {
+      claudia_rcs_off("block end").
+    }
   }
   sas on.
 }
@@ -501,12 +505,30 @@ function claudia_drop_uids {
   return uids.
 }
 
+// The names, of those names, whose uid is no longer in now_uids: what left. Names are taken while the
+// part is on the ship, since a part that has left cannot be read (its vessel may be gone).
+function claudia_names_left {
+  parameter uids, names, now_uids.
+  local left is list().
+  from { local i is 0. } until i >= uids:length step { set i to i + 1. } do {
+    if not now_uids:contains(uids[i]) {
+      left:add(names[i]).
+    }
+  }
+  return left.
+}
+
 // Fires a drop plan's decouplers, lets the parts leave, notes the names of those that really left in
 // ctx:dropped and takes the craft as it now is (a drop the block chose is not part loss). Returns ""
 // or "nothing separated: the decouplers did not fire".
 function claudia_fire_drop {
   parameter ctx, plan.
   local before is ship:parts:length.
+  local gone_uids is claudia_drop_uids(plan).
+  local gone_names is list().
+  for g in plan:gone {
+    gone_names:add(g:name).
+  }
   local fired is 0.
   for d in plan:decouplers {
     if claudia_fire_decoupler(d) {
@@ -525,10 +547,8 @@ function claudia_fire_drop {
   for p in ship:parts {
     left:add(p:uid).
   }
-  for g in plan:gone {
-    if not left:contains(g:uid) {
-      ctx:dropped:add(g:name).
-    }
+  for n in claudia_names_left(gone_uids, gone_names, left) {
+    ctx:dropped:add(n).
   }
   return "".
 }
@@ -585,6 +605,7 @@ function claudia_part_kind {
   parameter p.
   local checks is list(
     list("engine", "ModuleEngines"), list("engine", "ModuleEnginesFX"), list("command", "ModuleCommand"),
+    list("crew", "ModuleScienceContainer"), list("crew", "KerbalSeat"),
     list("processor", "kOSProcessor"), list("science", "ModuleScienceExperiment"),
     list("power", "ModuleGenerator"), list("power", "ModuleDeployableSolarPanel"),
     list("antenna", "ModuleDataTransmitter"), list("wheel", "ModuleReactionWheel"),
@@ -594,9 +615,6 @@ function claudia_part_kind {
     if p:hasmodule(c[1]) {
       return c[0].
     }
-  }
-  if p:crewcapacity > 0 {
-    return "crew".
   }
   return "".
 }
@@ -614,10 +632,30 @@ function claudia_auto_drop_fires {
   return claudia_tanks_empty(amounts, capacities).
 }
 
+// How many times drop_empty fires a decoupler whose parts stay aboard before it gives up.
+function claudia_drop_max_tries {
+  return 3.
+}
+
+// What a fired decoupler's try came to, after tries tries: "left" if its parts went, else "retry" while
+// tries remain, else "gave_up".
+function claudia_drop_outcome {
+  parameter stayed, tries.
+  if not stayed {
+    return "left".
+  }
+  if tries < claudia_drop_max_tries() {
+    return "retry".
+  }
+  return "gave_up".
+}
+
 // Fires decouplers whose tanks are all empty, together with every other part leaving with them, and
 // notes the names of the parts that left in ctx:dropped. Looks twice a second. drop_empty "auto" judges
 // every decoupler on the craft (claudia_auto_drop_fires); a list judges the decoupler of each part it
-// names. A decoupler is tried once (ctx:drop_tried), and never one below stage_limit.
+// names. stage_limit does not apply: it limits flameout staging only. A decoupler whose parts are still
+// aboard after the wait is tried again on a later look, up to claudia_drop_max_tries times (ctx:drop_tries
+// counts them), then a blocknote, and it stays in ctx:drop_tried.
 function claudia_drop_empty {
   parameter ctx.
   local wanted is ctx:opt:drop_empty.
@@ -627,12 +665,21 @@ function claudia_drop_empty {
   }
   set ctx:drop_ut to time:seconds.
   local fired is list().
-  local fired_parts is list().
+  local fired_uids is list().
+  local fired_names is list().
+  local fired_groups is list().
   local judged is list().
+  local crewed is list().
+  if auto {
+    // Second net for a crew cabin whose modules claudia_part_kind does not know: any part holding a kerbal.
+    for c in ship:crew {
+      crewed:add(c:part:uid).
+    }
+  }
   for p in ship:parts {
     if auto or claudia_drop_matches(p:name, p:tag, wanted) {
       local d is claudia_decoupler_of(p).
-      if not d:istype("String") and not ctx:drop_tried:contains(d:uid) and not judged:contains(d:uid) and d:stage >= ctx:opt:stage_limit {
+      if not d:istype("String") and not ctx:drop_tried:contains(d:uid) and not judged:contains(d:uid) {
         judged:add(d:uid).
         local gone is claudia_dropped_with(d).
         local amounts is list().
@@ -646,7 +693,11 @@ function claudia_drop_empty {
             }
           }
           if auto {
-            kinds:add(claudia_part_kind(g)).
+            if crewed:contains(g:uid) {
+              kinds:add("crew").
+            } else {
+              kinds:add(claudia_part_kind(g)).
+            }
           }
         }
         local ok is false.
@@ -658,12 +709,17 @@ function claudia_drop_empty {
         // Nested, not one "and": firing is a side effect and must only follow the guards.
         if ok {
           if not claudia_drop_holds_core(gone) {
-            ctx:drop_tried:add(d:uid).
             if claudia_fire_decoupler(d) {
               fired:add(d:uid).
+              local group is list().
               for g in gone {
-                fired_parts:add(g).
+                fired_uids:add(g:uid).
+                fired_names:add(g:name).
+                group:add(g:uid).
               }
+              fired_groups:add(group).
+            } else {
+              ctx:drop_tried:add(d:uid).
             }
           }
         }
@@ -677,9 +733,27 @@ function claudia_drop_empty {
     for p in ship:parts {
       left:add(p:uid).
     }
-    for g in fired_parts {
-      if not left:contains(g:uid) {
-        ctx:dropped:add(g:name).
+    for n in claudia_names_left(fired_uids, fired_names, left) {
+      ctx:dropped:add(n).
+    }
+    from { local i is 0. } until i >= fired:length step { set i to i + 1. } do {
+      local stayed is false.
+      for u in fired_groups[i] {
+        if left:contains(u) {
+          set stayed to true.
+        }
+      }
+      local tries is 1.
+      if ctx:drop_tries:haskey(fired[i]) {
+        set tries to ctx:drop_tries[fired[i]] + 1.
+      }
+      set ctx:drop_tries[fired[i]] to tries.
+      local outcome is claudia_drop_outcome(stayed, tries).
+      if outcome <> "retry" {
+        ctx:drop_tried:add(fired[i]).
+      }
+      if outcome = "gave_up" {
+        addons:claudia:blocknote(ctx:block, lexicon("phase", "drop_empty", "note", "a decoupler fired " + tries + " times and its parts are still aboard: left on")).
       }
     }
     set ctx:parts to ship:parts:length.
@@ -1293,7 +1367,8 @@ function claudia_burn_throttle {
 // What RCS should do this tick. Pure. s: lexicon rcs (on now), steering (kOS steering enabled), monoprop
 // (units ship-wide), error (|steering error|, degrees), rate (deg/s), held_s (s the error has stayed
 // under aligned_deg), translating (ctx:rcs_translating), gate (the on-gate is due: claudia_rcs_gate_due), wheels_s (the wheels-only turn
-// time, -1 with no wheel torque on pitch or yaw), left_s (s to the deadline ctx:turn_by, -1 for none).
+// time, -1 with no wheel torque on pitch or yaw), left_s (s to the deadline ctx:turn_by, -1 for none),
+// ground (LANDED, SPLASHED or PRELAUNCH: claudia_on_ground), braking (land's braking to touchdown, ctx:rcs_braking).
 // tol: rcs_tolerance. Returns lexicon on (what RCS should be) and reason (why it switched; "" for no switch).
 function claudia_rcs_decide {
   parameter s, tol.
@@ -1303,6 +1378,14 @@ function claudia_rcs_decide {
     // The RCS group still reads on with empty tanks, so this is checked first, and it never goes back on.
     set want to false.
     set reason to "no monoprop".
+  } else if s:ground {
+    // On the ground (#506) RCS never comes on, in any block, whatever the error, wheel torque or reason.
+    set want to false.
+    set reason to "on the ground".
+  } else if s:braking and s:wheels_s >= 0 {
+    // Land's braking to touchdown (#506): off while the wheels have torque; with none, the rule below stands.
+    set want to false.
+    set reason to "braking".
   } else if s:translating {
     // claudia_rcs_translate: RCS stays on, reported once, and nothing else decides.
     set want to true.
@@ -1336,6 +1419,11 @@ function claudia_rcs_decide {
     set reason to "".
   }
   return lexicon("on", want, "reason", reason).
+}
+
+// Whether the craft is on the ground: LANDED, SPLASHED or PRELAUNCH.
+function claudia_on_ground {
+  return status = "LANDED" or status = "SPLASHED" or status = "PRELAUNCH".
 }
 
 // Whether the on-gate is checked this tick: the error (degrees) is over on_deg and either just crossed
@@ -1464,10 +1552,12 @@ function claudia_rcs_tick {
   local left_s is -1.
   if gate {
     set ctx:rcs_gate_ut to now.
-    if ctx:rcs_wheels_parts <> ship:parts:length {
-      set ctx:rcs_wheels_s to claudia_wheels_turn_time().
-      set ctx:rcs_wheels_parts to ship:parts:length.
-    }
+  }
+  if (gate or ctx:rcs_braking) and ctx:rcs_wheels_parts <> ship:parts:length {
+    set ctx:rcs_wheels_s to claudia_wheels_turn_time().
+    set ctx:rcs_wheels_parts to ship:parts:length.
+  }
+  if gate {
     if ctx:turn_by > 0 {
       set left_s to max(0, ctx:turn_by - now).
     }
@@ -1477,7 +1567,8 @@ function claudia_rcs_tick {
     set monoprop to 0.
   }
   local decided is claudia_rcs_decide(lexicon("rcs", rcs, "steering", steer_on, "monoprop", monoprop, "translating", false, "error", error, "rate", rate,
-    "held_s", claudia_held_s(ctx:rcs_within_ut, now), "gate", gate, "wheels_s", ctx:rcs_wheels_s, "left_s", left_s), tol).
+    "held_s", claudia_held_s(ctx:rcs_within_ut, now), "gate", gate, "wheels_s", ctx:rcs_wheels_s, "left_s", left_s,
+    "ground", claudia_on_ground(), "braking", ctx:rcs_braking), tol).
   if decided:reason <> "" {
     local figures is lexicon("rate_dps", round(rate, 2)).
     if steer_on {
@@ -1523,7 +1614,7 @@ function claudia_rcs_translate {
       set monoprop to 0.
     }
     local decided is claudia_rcs_decide(lexicon("rcs", rcs, "steering", steeringmanager:enabled, "monoprop", monoprop,
-      "translating", true), ctx:opt:rcs_tolerance).
+      "translating", true, "ground", claudia_on_ground(), "braking", false, "wheels_s", -1), ctx:opt:rcs_tolerance).
     if decided:reason <> "" {
       claudia_rcs_switch(decided["on"], decided:reason, lexicon("rate_dps", round(ship:angularvel:mag * constant:radtodeg, 2))).
     }
@@ -1550,6 +1641,7 @@ function claudia_begin {
     "parts", ship:parts:length,
     "dropped", list(),
     "drop_tried", list(),
+    "drop_tries", lexicon(),
     "drop_ut", 0,
     // RCS Use (claudia_rcs_tick): turn_by is the UT a turn must be done by (0: no deadline), set around a
     // turn to a burn; while rcs_translating is true RCS stays on and the rule decides nothing.
@@ -1560,6 +1652,7 @@ function claudia_begin {
     "rcs_gate_ut", -1,
     "rcs_within_ut", -1,
     "rcs_wheels_s", -1,
+    "rcs_braking", false,
     "rcs_wheels_parts", -1,
     "rcs_trace_ut", -1,
     "burn_within_ut", -1).
@@ -1800,11 +1893,12 @@ function claudia_geo {
   return lexicon("lat", round(landing:lat, 4), "lng", round(landing:lng, 4)).
 }
 
-// The earliest departure (UT): 5 minutes from now, time to plan, turn and lead the burn, or window
-// if that is a later UT.
+// The earliest departure (UT) of transfer_to's and return's ejection (#346, #357): the block's start_ut plus
+// turn_time (s, ADDONS:CLAUDIA:TURNTIME's), so the craft can have turned to the burn, or window if that is a later UT.
+// Pure.
 function claudia_earliest {
-  parameter now, window.
-  local earliest is now + 300.
+  parameter start_ut, turn_time, window.
+  local earliest is start_ut + turn_time.
   if window:istype("Scalar") {
     set earliest to max(earliest, window).
   }
@@ -1903,83 +1997,57 @@ function claudia_burn {
   return burned.
 }
 
-// km the predicted landing may be from the target before the aimed correction stops looking.
-function claudia_aim_good_km {
-  return 2.
+// ---- Course Corrections: shared by transfer_to and return ----
+
+// m from target_pe within which a predicted arrival needs no Course Correction.
+function claudia_correction_good_m {
+  return 1000.
 }
 
-// What an aimed correction (claudia_correct with aim) lowers for the path orb: the km from the
-// target to where it lands; over any real landing (Kerbin is under 2000 km round) when it misses
-// the atmosphere, so the search first moves towards the air by target_pe, or 1e5 with no path to dest.
-// p is claudia_patch's result for the path.
-function claudia_aim_cost {
-  parameter aim, p, target_pe.
-  if p:istype("String") {
-    return 1e5.
+// The Course Correction's burn UT (#368): mid (halfway to arrival), or sooner when a max_duration the block has as a
+// number ends before then, leaving 120 s of it to burn in, as the correction after a missed ejection is bounded. A burn
+// sooner than lead s from now (the time to turn to it and lead it) can't be flown, so the block fails before it, with the
+// reason. Returns lexicon("reason", "" or why there is no time for it, "ut", the burn's UT). Pure.
+function claudia_correction_ut {
+  parameter mid, now, lead, start_ut, max_duration.
+  local done is lexicon("reason", "", "ut", mid).
+  local bounded is max_duration:istype("Scalar").
+  if bounded {
+    set done:ut to min(mid, start_ut + max_duration - 120).
   }
-  local km is aim(p:orbit, p:soi_ut).
-  if km < 0 {
-    return 1e4 + abs(p:orbit:periapsis - target_pe) / 1000.
+  if done:ut < now + lead {
+    if bounded {
+      set done:reason to "max_duration (" + round(max_duration) + " s) ends at UT " + round(start_ut + max_duration)
+        + ", too soon for the Course Correction: its burn needs " + round(lead + 120) + " s from UT " + round(now).
+    } else {
+      set done:reason to "the arrival comes too soon for the Course Correction".
+    }
   }
-  return km.
+  return done.
 }
 
-// The mid-course correction: a node halfway between now and arrive_ut, aimed at target_pe at dest,
-// flown with exec_node. A sphere-of-influence change before halfway (leaving a moon on the way home)
-// is waited out first (on rails, however long), so the node is placed on the orbit it will be on. Nothing is burned
-// when the prediction is already within 1 km of target_pe or the fix is under 0.1 m/s.
-// aim, when given (a delegate of an orbit patch round dest and the UT it begins, that returns the km
-// its predicted landing is from the target, or -1 if it doesn't come down), makes the correction aim the landing at the
-// target instead: target_pe then only draws a path that misses the atmosphere towards it, and
-// nothing is burned when the landing is already within claudia_aim_good_km() of the target.
-// Returns lexicon("reason", "" or why the block fails, "dv", m/s burned).
-function claudia_correct {
-  parameter ctx, dest, target_pe, arrive_ut, aim is 0.
-  local aiming is not aim:istype("Scalar").
+// What a Course Correction asks ADDONS:CLAUDIA:CORRECTIONBURN: the least burn at ut that brings the path to dest_name at
+// target_pe (m). Pure.
+function claudia_correction_ask {
+  parameter dest_name, target_pe, ut.
+  return lexicon("target", dest_name, "target_pe", target_pe, "earliest_ut", ut, "latest_ut", ut).
+}
+
+// Flies the Course Correction ADDONS:CLAUDIA:CORRECTIONBURN gave (fix) with exec_node. Its error (a solve that found no
+// burn within the tolerance, or a call that threw, #439) is the block's reason, with nothing burned; a burn under 0.1 m/s
+// isn't flown. Returns lexicon("reason", "" or why the block fails, "dv", m/s burned).
+function claudia_fly_correction {
+  parameter ctx, fix.
   local done is lexicon("reason", "", "dv", 0).
-  local mid is (time:seconds + arrive_ut) / 2.
-  if ship:orbit:hasnextpatch {
-    local soi_ut is time:seconds + ship:orbit:nextpatcheta.
-    if soi_ut < mid - 120 {
-      local after is soi_ut + 30.
-      local waited is claudia_wait_until(ctx, after).
-      if waited <> "" {
-        claudia_make_safe().
-        set done:reason to waited.
-        return done.
-      }
-    }
-  }
-  local good is 100.
-  if aiming {
-    set good to claudia_aim_good_km().
-    if claudia_aim_cost(aim, claudia_patch(ship:orbit, dest), target_pe) <= good {
-      return done.
-    }
-  } else if abs(claudia_pe_error(ship:orbit, dest, target_pe)) <= 1000 {
+  if fix:error <> "" {
+    set done:reason to fix:error.
     return done.
   }
-
-  local nd is node(mid, 0, 0, 0).
-  add nd.
-  local found is claudia_descend({
-    parameter x.
-    set nd:radialout to x[0].
-    set nd:normal to x[1].
-    set nd:prograde to x[2].
-    if aiming {
-      return claudia_aim_cost(aim, claudia_patch(nd:orbit, dest), target_pe).
-    }
-    return abs(claudia_pe_error(nd:orbit, dest, target_pe)).
-  }, list(0, 0, 0), list(1, 1, 1), 10, good).
-  set nd:radialout to found:x[0].
-  set nd:normal to found:x[1].
-  set nd:prograde to found:x[2].
-  if nd:deltav:mag < 0.1 {
-    remove nd.
+  if fix:dv < 0.1 {
     return done.
   }
-  local burned is claudia_burn(ctx, nd).
+  add node(fix:ut, fix:radial, fix:normal, fix:prograde).
+  local burned is claudia_burn(ctx, nextnode).
   set done:dv to burned:dv_used.
   if not burned:success {
     set done:reason to burned:reason.

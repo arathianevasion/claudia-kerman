@@ -57,7 +57,7 @@ A stretch of flight with no engine or RCS thrust, in an atmosphere or not (e.g. 
 _Avoid_: drift, glide, cruise
 
 **RCS Use**:
-A stretch on which a Mission Script has RCS switched on, always for a stated reason: a big turn (even with time to spare), turning when the reaction wheels alone can't make the turn in time, settling an attitude error the wheels can't, or translating. Outside RCS Use, RCS is off, whatever the player set before launch, so a craft holding attitude on a Coast doesn't fire thrusters.
+A stretch on which a Mission Script has RCS switched on, always for a stated reason: a big turn (even with time to spare), turning when the reaction wheels alone can't make the turn in time, settling an attitude error the wheels can't, or translating. Outside RCS Use, RCS is off, whatever the player set before launch, so a craft holding attitude on a Coast doesn't fire thrusters. Two exceptions (#506): `land`'s braking to touchdown keeps RCS off unless the craft has no wheel torque, and on the ground (LANDED, SPLASHED or PRELAUNCH) RCS never comes on, in any block.
 _Avoid_: RCS mode, RCS assist
 
 **Aligned**:
@@ -71,6 +71,18 @@ _Avoid_: node time, burn time (the burn's length)
 **Course Correction**:
 A burn between departure and arrival that trims the predicted arrival at a body or vessel to the target periapsis or closest approach, and optionally to the target arrival inclination.
 _Avoid_: mid-course correction, MCC
+
+**Rendezvous**:
+A transfer that meets its target where the target is at arrival: a body, or a vessel's orbit with the vessel on it. A transfer to a body is always one.
+_Avoid_: encounter (the patched-conic event of entering a sphere of influence), meet
+
+**Intercept**:
+A transfer that reaches a target orbit anywhere on it, wherever the target is, such as a parking orbit; free to choose the arrival point, it is never dearer than a Rendezvous with the same orbit.
+_Avoid_: flyby, orbit change (one burn, not a transfer)
+
+**Capture**:
+The arrival burn of a transfer: circular at the target periapsis round a body, or matching the target orbit's velocity. A transfer solved with capture is the cheapest departure and capture together; without, the cheapest departure alone.
+_Avoid_: insertion, orbit insertion
 
 **Daylight**:
 At a landing site, the sun is more than 20° above the horizon there. A daylight landing touches down only in Daylight; a sun lower than that, though up, is not Daylight.

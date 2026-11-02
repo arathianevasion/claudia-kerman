@@ -42,6 +42,55 @@ namespace ClaudiaKermin.Kerboscript.Tests
         }
 
         [Fact]
+        public void Drop_empty_is_taken_and_passed_on_to_the_burn()
+        {
+            // #291: tune_pe takes drop_empty like every burning block, and exec_node gets it with the node.
+            const string options = "claudia_options(lexicon(\"value\", 50000, \"drop_empty\", \"side tanks\"), tune_pe_defaults(), \"auto\")";
+            Assert.Equal("||side tanks", One(options + ":error + \"|\" + tune_pe_unreadable(" + options + ":opt) + \"|\" + claudia_common_opts(" + options + ":opt):drop_empty:join(\",\")"));
+            Assert.Equal("drop_empty must be a list of part names or tags", One("claudia_options(lexicon(\"value\", 50000, \"drop_empty\", 5), tune_pe_defaults(), \"auto\"):error"));
+        }
+
+        // ---- the next-patch burn before the sphere-of-influence change (#291) ----
+
+        private static string Fit(double now, double nodeUt, double soiUt, double burnTime, double lead)
+        {
+            var call = "tune_pe_fit(" + string.Join(", ", new[] { now, nodeUt, soiUt, burnTime, lead }.Select(x => x.ToString(CultureInfo.InvariantCulture))) + ")";
+            return One(call + ":error + \"|\" + " + call + ":ut + \"|\" + " + call + ":moved");
+        }
+
+        [Fact]
+        public void A_next_patch_burn_that_ends_before_the_change_stays_halfway()
+        {
+            // Change in 2000 s, node at 1000 s, a 60 s burn led by 30 s: it ends at 1030 s.
+            Assert.Equal("|1000|False", Fit(0, 1000, 2000, 60, 30));
+        }
+
+        [Fact]
+        public void A_next_patch_burn_that_would_run_into_the_change_moves_earlier()
+        {
+            // Change in 1200 s, node at 600 s. A 900 s burn led by 400 s ends at 1100 s, 100 s before the change: it stays.
+            Assert.Equal("|600|False", Fit(0, 600, 1200, 900, 400));
+            // A 1000 s burn led by 450 s would end at 1150 s, only 50 s before: the node moves to 1200 - 60 - 550 = 590 s,
+            // the burn starting at 140 s, time enough to turn and lead.
+            Assert.Equal("|590|True", Fit(0, 600, 1200, 1000, 450));
+        }
+
+        [Fact]
+        public void A_next_patch_burn_that_cannot_end_before_the_change_is_refused_with_why()
+        {
+            // Change in 1200 s, a 1300 s burn led by 600 s: ending 60 s before the change puts the node at 440 s and the start
+            // at -160 s, under the 120 s a turn and lead need.
+            Assert.Equal("the burn (1300 s from 600 s before its node) does not fit before the sphere-of-influence change in 1200 s|440|True",
+                Fit(0, 600, 1200, 1300, 600));
+        }
+
+        [Fact]
+        public void A_next_patch_burn_of_unknown_length_is_left_where_it_is()
+        {
+            Assert.Equal("|600|False", Fit(0, 600, 1200, -1, 0));
+        }
+
+        [Fact]
         public void An_unknown_option_is_refused_by_the_shared_check()
         {
             Assert.Equal("unknown option colour", One("claudia_options(lexicon(\"colour\", 1), tune_pe_defaults(), \"auto\"):error"));

@@ -100,6 +100,7 @@ namespace ClaudiaKermin.Core.Missions
                 PausedForCap = mission.PausedForCap && mission.Stage == MissionStage.Paused,
                 SafePending = mission.SafePending,
                 PlannedTurnShape = mission.PlannedTurnShape,
+                PlannedAscent = mission.PlannedAscent,
                 MissionPlan = mission.Plan,
                 SequencePlan = mission.PendingSequence,
                 QueuedEntries = mission.Log.Count(e => e.Queued),
@@ -442,6 +443,7 @@ namespace ClaudiaKermin.Core.Missions
                 RecheckSince = state.RecheckSince,
                 SafePending = state.SafePending ?? "",
                 PlannedTurnShape = state.PlannedTurnShape,
+                PlannedAscent = state.PlannedAscent,
             };
             foreach (var setting in state.Settings) mission.Settings[setting.Key] = setting.Value;
             RestoreChildVessels(mission, state.ChildVessels);

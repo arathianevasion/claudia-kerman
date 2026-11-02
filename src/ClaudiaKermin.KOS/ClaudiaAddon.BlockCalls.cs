@@ -23,8 +23,16 @@ namespace ClaudiaKermin.KOS
     {
         private void AddBlockCallSuffixes()
         {
+            AddSuffix("ORBITBURN", new OneArgsSuffix<Lexicon, Lexicon>(OrbitBurn,
+                "Core Library only (change_orbit): solve_burn's burn to goal (with value, at, target, pe, ap, of, direction as it needs) on the orbit as it is now; lexicon error, ut, prograde, normal, radial, dv, burn_time, wanted (element: figure)"));
+            AddSuffix("CORRECTIONBURN", new OneArgsSuffix<Lexicon, Lexicon>(CorrectionBurn,
+                "Core Library only (transfer_to, return): the least burn from earliest_ut to latest_ut that arrives at target (a body's name) at target_pe and, if given, target_inc; lexicon error, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted"));
+            AddSuffix("LAUNCHWINDOW", new OneArgsSuffix<Lexicon, Lexicon>(LaunchWindow,
+                "Core Library only (launch): when the pad next passes under the plane of inc and lan (degrees); lexicon error, wait (s), ut, north, inc (negative southbound), heading"));
             AddSuffix("LANDINGSITE", new OneArgsSuffix<Lexicon, Lexicon>(LandingSite,
                 "Core Library only (land): find_landing_site's search on the body orbited; gives the first site as lexicon error, lat, lng, biome, ..."));
+            AddSuffix("LANDINGPASS", new OneArgsSuffix<Lexicon, Lexicon>(LandingPass,
+                "Core Library only (land): the first pass over lat, lng (r_pe, earliest_ut, daylight, max_correction_dv, within_hours) land may plan for; lexicon error, burn_ut, arrive_ut, correction_dv, next_pass_ut, passes, ..."));
             AddSuffix("DEORBITBURN", new OneArgsSuffix<Lexicon, Lexicon>(DeorbitBurn,
                 "Core Library only (deorbit): the deorbit burn that lands on lat, lng by the reentry predictor; lexicon error, burn_ut, prograde, normal, radial, dv, lat, lng, error_km, ...; leave_out (part UIDs) flies the craft without them"));
             AddSuffix("REENTRYIMPACT", new OneArgsSuffix<Lexicon, Lexicon>(ReentryImpact,
@@ -32,7 +40,24 @@ namespace ClaudiaKermin.KOS
             AddSuffix("TURNTIME", new OneArgsSuffix<Lexicon, Lexicon>(TurnTime,
                 "Core Library only (a block that turns to a burn): the time to leave for a 190 degree turn on the wheels and RCS (if the craft has monoprop, on or off), given max_stopping_time; lexicon error, turn_time, turn_s, top_rate, and wheels_turn_time, wheels_turn_s on the wheels alone (-1: no wheel torque)"));
             AddSuffix("EJECTIONBURN", new OneArgsSuffix<Lexicon, Lexicon>(EjectionBurn,
-                "Core Library only (transfer_to): the cheapest ejection to target (a moon's name) arriving at target_pe, within one synodic period from earliest_ut or window (to latest_ut, refusing over max_dv); lexicon error, ut, prograde, normal, radial, dv, encounter_ut, arrival_ut, target_pe_actual, ..."));
+                "Core Library only (transfer_to): the cheapest departure to target (a moon's name) arriving at target_pe, or to an orbit (target_sma, target_ecc, ...; mode rendezvous or intercept), capture true or false, within one synodic period from earliest_ut or window (to latest_ut, refusing over max_dv); lexicon error, ut, prograde, normal, radial, dv, arrival_dv, encounter_ut, arrival_ut, target_pe_actual, ..."));
+            AddSuffix("RETURNBURN", new OneArgsSuffix<Lexicon, Lexicon>(ReturnBurn,
+                "Core Library only (return): the least burn from earliest_ut to latest_ut (one orbit later if missing) that leaves the moon orbited for its planet at target_pe and, if given, target_inc; lexicon error, planet, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted, soi_ut, from_grid"));
+        }
+
+        private Lexicon ReturnBurn(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> node = null;
+            // The solve's time against ADR 0010's budget (about 100 ms, under 200 ms from the grid), and the node.
+            return (Lexicon)Guarded("RETURNBURN", () =>
+            {
+                node = BlockCalls.ReturnBurn(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel));
+                return KosValues.FromPlain(node);
+            }, () => node.ContainsKey("dv")
+                ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); {5} Pe {6:0} m, inclination {7:0.00}, leaving the moon at UT {8:0}{9}{10}",
+                    node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["planet"], node["pe_predicted"], node["inc_predicted"], node["soi_ut"],
+                    (bool)node["from_grid"] ? " (from the grid)" : "", node["error"] as string == "" ? "" : "; " + node["error"])
+                : (string)node["error"]);
         }
 
         /// <summary>
@@ -78,9 +103,51 @@ namespace ClaudiaKermin.KOS
                 node = BlockCalls.EjectionBurn(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel));
                 return KosValues.FromPlain(node);
             }, () => node["error"] as string == ""
-                ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.0} m/s); Pe {5:0} m at UT {6:0}; searched {7:0} s from UT {8:0.0}",
-                    node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["target_pe_actual"], node["arrival_ut"], node["synodic"], node["search_from"])
+                ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.0} m/s); Pe {5:0} m at UT {6:0}, arrival burn {7:0.0} m/s; synodic period {8:0} s from UT {9:0.0}",
+                    node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["target_pe_actual"], node["arrival_ut"], node["arrival_dv"], node["synodic"], node["search_from"])
                 : (string)node["error"]);
+        }
+
+        private Lexicon OrbitBurn(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> ask = null, node = null;
+            // The goal, the node and what it should leave, so block tests can read predicted against flown from KSP.log.
+            return (Lexicon)Guarded("ORBITBURN", () =>
+            {
+                ask = KosValues.ToDictionary(input);
+                node = BlockCalls.OrbitBurn(ask, SnapshotReader.Read(shared.Vessel));
+                return KosValues.FromPlain(node);
+            }, () => node["error"] as string == ""
+                ? string.Format(CultureInfo.InvariantCulture, "{0} node at UT {1:0.0}, prograde {2:0.00}, normal {3:0.00}, radial {4:0.00} m/s ({5:0.00} m/s, burn {6:0.0} s); wanted {7}",
+                    KosValues.Format(ask), node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["burn_time"], KosValues.Format(node["wanted"]))
+                : (string)node["error"]);
+        }
+
+        private Lexicon CorrectionBurn(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> node = null;
+            return (Lexicon)Guarded("CORRECTIONBURN", () =>
+            {
+                node = BlockCalls.CorrectionBurn(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel));
+                return KosValues.FromPlain(node);
+            }, () => node.ContainsKey("dv")
+                ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); Pe {5:0} m, inclination {6:0.00}{7}",
+                    node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["pe_predicted"], node["inc_predicted"],
+                    node["error"] as string == "" ? "" : "; " + node["error"])
+                : (string)node["error"]);
+        }
+
+        private Lexicon LaunchWindow(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> window = null;
+            return (Lexicon)Guarded("LAUNCHWINDOW", () =>
+            {
+                window = BlockCalls.LaunchWindow(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel));
+                return KosValues.FromPlain(window);
+            }, () => window["error"] as string == ""
+                ? string.Format(CultureInfo.InvariantCulture, "window in {0:0} s at UT {1:0}, {2}bound, inclination {3:0.00}, heading {4:0.0}",
+                    window["wait"], window["ut"], (bool)window["north"] ? "north" : "south", window["inc"], window["heading"])
+                : (string)window["error"]);
         }
 
         private Lexicon TurnTime(Lexicon input)
@@ -111,7 +178,7 @@ namespace ClaudiaKermin.KOS
                 var vessel = shared.Vessel;
                 var ask = KosValues.ToDictionary(input);
                 found = BlockCalls.DeorbitBurn(ask, SnapshotReader.Read(vessel), new PlanningBody(),
-                    new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask)));
+                    new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
                 return KosValues.FromPlain(found);
             }, () => Landing(found));
         }
@@ -124,7 +191,7 @@ namespace ClaudiaKermin.KOS
                 var vessel = shared.Vessel;
                 var ask = KosValues.ToDictionary(input);
                 landing = BlockCalls.ReentryImpact(ask, SnapshotReader.Read(vessel), new PlanningBody(),
-                    new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask)));
+                    new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
                 return KosValues.FromPlain(landing);
             }, () => Landing(landing));
         }
@@ -159,6 +226,19 @@ namespace ClaudiaKermin.KOS
             }, () => site["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "{0} at {1}, {2}", site["biome"], site["lat"], site["lng"])
                 : (string)site["error"]);
+        }
+
+        private Lexicon LandingPass(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> pass = null;
+            return (Lexicon)Guarded("LANDINGPASS", () =>
+            {
+                pass = BlockCalls.LandingPass(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel), new PlanningBody());
+                return KosValues.FromPlain(pass);
+            }, () => pass.ContainsKey("burn_ut") && pass["error"] as string == ""
+                ? string.Format(CultureInfo.InvariantCulture, "burn at UT {0:0.0}, touchdown at UT {1:0.0}, correction {2:0.0} m/s, next pass {3:0.0}",
+                    pass["burn_ut"], pass["arrive_ut"], pass["correction_dv"], pass["next_pass_ut"])
+                : (string)pass["error"]);
         }
     }
 }

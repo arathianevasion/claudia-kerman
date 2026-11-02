@@ -65,6 +65,16 @@ namespace ClaudiaKermin.Core.Missions
             Tools.TryGetValue(tool, out n);
             Tools[tool] = n + 1;
         }
+
+        /// <summary>Calls answered without running (#508): refused for the turn or the craft's state, and identical repeats.</summary>
+        public int RefusedCalls;
+        public int RepeatCalls;
+
+        public void Refused(bool repeat)
+        {
+            if (repeat) RepeatCalls++;
+            else RefusedCalls++;
+        }
     }
 
     /// <summary>
@@ -92,7 +102,9 @@ namespace ClaudiaKermin.Core.Missions
             json.Name("tools").BeginObject();
             foreach (var tool in stats.Tools) json.Field(tool.Key, tool.Value);
             json.EndObject();
-            json.Field("tool_calls", stats.Tools.Values.Sum());
+            json.Field("tool_calls", stats.Tools.Values.Sum())
+                .Field("refused_calls", stats.RefusedCalls)
+                .Field("repeat_calls", stats.RepeatCalls);
             json.Name("blocks").BeginObject();
             foreach (var block in BlocksCalled(plan.Script)) json.Field(block.Key, block.Value);
             json.EndObject();

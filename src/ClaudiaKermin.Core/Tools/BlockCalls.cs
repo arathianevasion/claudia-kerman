@@ -11,13 +11,13 @@ namespace ClaudiaKermin.Core.Tools
 {
     /// <summary>
     /// The block-internal calls (ADR 0006, ADR 0007): the mod's calculations a Building Block makes while it flies, through
-    /// <c>ADDONS:CLAUDIA</c>: the site search, the reentry predictor with the deorbit burn search on it, the turn time, and the
-    /// ejection burn to a moon. They run the same C#
-    /// as the Planning Tools, on a Game Snapshot read at the call (the reentry calls also read the air and the craft's drag cubes
-    /// live, through <see cref="IReentryAir"/> and <see cref="IReentryCraft"/>), and only read. The turn time is the exception:
-    /// it needs no Snapshot, only the craft's torque and moment of inertia, read live into a <see cref="TurnCraft"/>. The
-    /// Script Check lets the Core Library call them and refuses them in a Mission Script. Inputs and results are plain values, as
-    /// <c>KosValues</c> converts a kOS lexicon.
+    /// <c>ADDONS:CLAUDIA</c>: the site search, the reentry predictor with the deorbit burn search on it, the turn time, the
+    /// ejection burn to a moon and the one home from it, the launch window, the Course Correction and solve_burn's orbit
+    /// changes. They run the same C# as the Planning Tools, on a Game Snapshot read at the call (the reentry calls also read the
+    /// air and the craft's drag cubes live, through <see cref="IReentryAir"/> and <see cref="IReentryCraft"/>), and only read. The
+    /// turn time is the exception: it needs no Snapshot, only the craft's torque and moment of inertia, read live into a
+    /// <see cref="TurnCraft"/>. The Script Check lets the Core Library call them and refuses them in a Mission Script. Inputs and
+    /// results are plain values, as <c>KosValues</c> converts a kOS lexicon.
     /// </summary>
     public static class BlockCalls
     {
@@ -66,6 +66,75 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
+        /// <c>ADDONS:CLAUDIA:LANDINGPASS</c>, for <c>land</c> with a site (#510): its pass search (<see cref="Tools.LandingPass"/>)
+        /// over the site <c>lat</c>, <c>lng</c> (degrees) on the body the craft orbits, the one <c>find_landing_site</c> keeps its
+        /// sites by. Takes <c>r_pe</c> (m from the body's centre: the descent's periapsis), <c>earliest_ut</c> (UT; now plus 120 s if
+        /// missing), <c>daylight</c> (default true), <c>max_correction_dv</c> (m/s; 30 if missing) and <c>within_hours</c> (the
+        /// window as <c>find_landing_site</c> takes it; its default if missing). Gives <c>error</c> "", <c>burn_ut</c>,
+        /// <c>arrive_ut</c>, <c>correction_dv</c>, <c>cross_m</c>, <c>sun</c> (degrees; -90 where not asked), <c>next_pass_ut</c> (the
+        /// next pass's touchdown; -1 for none), <c>fall_s</c>, <c>window_hours</c> (how far it looked, with daylight's reach) and
+        /// <c>passes</c> (each pass looked at: <c>burn_ut</c>, <c>arrive_ut</c>, <c>cross_km</c>, <c>correction_dv</c>, <c>sun</c>,
+        /// <c>verdict</c>). With no pass, <c>error</c> says why, with <c>passes</c> and <c>next_pass_ut</c> -1; a search that could not
+        /// run gives only <c>error</c>.
+        /// </summary>
+        public static IDictionary<string, object> LandingPass(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            if (snapshot == null || snapshot.Orbit == null) return Error("the craft is not in orbit, so it has no passes over the site");
+            if (snapshot.Bodies.Count == 0) return Error("the Game Snapshot has no body table");
+            var orbited = !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body;
+            var at = new BodySystem(snapshot.Bodies).Find(orbited);
+            if (at == null) return Error("there is no body named " + PlanningJson.Quote(orbited));
+            if (at.AtmosphereHeight > 0 || at.SeaLevelAtm > 0) return Error(at.Name + " has an atmosphere, and land flies airless bodies only");
+            foreach (var key in new[] { "lat", "lng", "r_pe" })
+                if (!(NumberOrNull(ask, key).HasValue)) return Error(key + " is required");
+            object daylight;
+            if (ask.TryGetValue("daylight", out daylight) && !(daylight is bool)) return Error("daylight must be true or false");
+
+            var orbit = snapshot.Orbit;
+            var conic = Conic.FromElements(at.Gm, orbit.SemiMajorAxis, orbit.Eccentricity, orbit.Inclination, orbit.Lan, orbit.ArgumentOfPeriapsis,
+                orbit.MeanAnomalyAtEpoch, orbit.Epoch);
+            var window = Tools.LandingPass.WindowHours(NumberOrNull(ask, "within_hours"), snapshot.TimeCapHours, at.RotationPeriod);
+            var wantDaylight = daylight == null || (bool)daylight;
+            var reach = Tools.LandingPass.ReachSeconds(window, wantDaylight, at.RotationPeriod);
+            var found = Tools.LandingPass.Find(at, conic, snapshot.Ut, new LandingPassAsk
+            {
+                Latitude = Number(ask, "lat", 0),
+                Longitude = Number(ask, "lng", 0),
+                PeRadius = Number(ask, "r_pe", 0),
+                EarliestUt = Number(ask, "earliest_ut", snapshot.Ut + Tools.LandingPass.LeadS),
+                LatestUt = snapshot.Ut + reach,
+                Daylight = wantDaylight,
+                MaxCorrectionDv = Number(ask, "max_correction_dv", Tools.LandingPass.MostCorrectionDv),
+            }, body);
+            if (!found.Ran) return Error(found.Error);
+            var passes = new List<object>();
+            foreach (var pass in found.Passes)
+                passes.Add(new Dictionary<string, object>
+                {
+                    { "burn_ut", Math.Round(pass.BurnUt, 1) },
+                    { "arrive_ut", Math.Round(pass.ArriveUt, 1) },
+                    { "cross_km", Math.Round(pass.CrossM / 1000, 1) },
+                    { "correction_dv", Math.Round(pass.CorrectionDv, 1) },
+                    { "sun", double.IsNaN(pass.SunDeg) ? -90.0 : Math.Round(pass.SunDeg, 1) },
+                    { "verdict", pass.Verdict },
+                });
+            return new Dictionary<string, object>
+            {
+                { "error", found.Error ?? "" },
+                { "burn_ut", found.BurnUt },
+                { "arrive_ut", found.ArriveUt },
+                { "correction_dv", found.CorrectionDv },
+                { "cross_m", found.CrossM },
+                { "sun", double.IsNaN(found.SunDeg) ? -90.0 : found.SunDeg },
+                { "next_pass_ut", found.NextPassUt },
+                { "fall_s", found.FallS },
+                { "window_hours", reach / 3600 },
+                { "passes", passes },
+            };
+        }
+
+        /// <summary>
         /// <c>ADDONS:CLAUDIA:DEORBITBURN</c>, for <c>deorbit</c>: the deorbit burn search (<see cref="DeorbitBurn"/>) from the craft's
         /// orbit, by the reentry predictor with <paramref name="air"/> and <paramref name="craft"/>. Takes <c>lat</c>, <c>lng</c>
         /// (the target), <c>earliest_ut</c>, <c>max_wait</c> (s), <c>ground_alt</c> (m), <c>accuracy_km</c> and <c>isp</c> (s; 0 or
@@ -89,7 +158,7 @@ namespace ClaudiaKermin.Core.Tools
                 EarliestUt = Number(ask, "earliest_ut", snapshot.Ut),
                 MaxWait = Number(ask, "max_wait", at.RotationPeriod),
                 GroundAltitude = Number(ask, "ground_alt", 0),
-                AccuracyKm = Number(ask, "accuracy_km", 10),
+                AccuracyKm = Number(ask, "accuracy_km", 5),
                 Isp = Number(ask, "isp", 0),
             }, air, craft, frame);
             if (plan.Landing == null || plan.Landing.Error != null) return Error(plan.Error ?? plan.Landing.Error);
@@ -161,29 +230,63 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
-        /// <c>ADDONS:CLAUDIA:EJECTIONBURN</c>, for <c>transfer_to</c>: the ejection burn to a moon of the body the craft orbits
-        /// (<see cref="Tools.EjectionBurn"/>), in place of RSVP's search. Takes <c>target</c> (the moon's name), <c>target_pe</c>
-        /// (m), <c>earliest_ut</c> (UT; now if missing) and <c>window</c> ("next", the default, or a UT): it searches one synodic
-        /// period from the later of the two, so a window sooner than <c>earliest_ut</c> is skipped for the next. <c>latest_ut</c>
-        /// (UT) ends the search there and <c>max_dv</c> (m/s) refuses a dearer burn; both are optional, for the correction after
-        /// an ejection that missed (#363). Gives
-        /// <c>error</c> "", <c>ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver node components), <c>dv</c>,
-        /// <c>encounter_ut</c>, <c>arrival_ut</c> (periapsis at the target), <c>target_pe_actual</c> (m), <c>search_from</c> (UT)
-        /// and <c>synodic</c> (s); or only <c>error</c>, "found no transfer: &lt;why&gt;".
+        /// <c>ADDONS:CLAUDIA:EJECTIONBURN</c>, for <c>transfer_to</c>: the departure burn of a transfer (<see cref="Transfer"/>), in
+        /// place of RSVP's search, to <c>target</c> (the name of a moon of the body the craft orbits) arriving at <c>target_pe</c>
+        /// (m), or to an orbit round the craft's body given as <c>target_sma</c> (m), <c>target_ecc</c>, <c>target_inc</c>,
+        /// <c>target_lan</c>, <c>target_argpe</c>, <c>target_mna</c> (degrees, as kOS gives them) and <c>target_epoch</c> (UT).
+        /// <c>mode</c> is "rendezvous" (the default: meet the target where it is) or "intercept" (an orbit only: reach it anywhere);
+        /// <c>capture</c> (default true) minimises the departure plus the arrival burn, false the departure alone. It takes
+        /// <c>earliest_ut</c> (UT; now if missing) and <c>window</c> ("next", the default, or a UT): it searches one synodic period
+        /// (an intercept, one orbit of the craft) from the later of the two, so a window sooner than <c>earliest_ut</c> is skipped
+        /// for the next. <c>latest_ut</c> (UT) ends the search there and <c>max_dv</c> (m/s) refuses a dearer departure; both are
+        /// optional, for the correction after an ejection that missed (#363). Gives <c>error</c> "", <c>ut</c>, <c>prograde</c>,
+        /// <c>normal</c>, <c>radial</c> (m/s, maneuver node components), <c>dv</c>, <c>arrival_dv</c> (m/s: the circular capture at a
+        /// body's periapsis, or matching an orbit's velocity), <c>encounter_ut</c>, <c>arrival_ut</c> (periapsis at a body; for an
+        /// orbit both are the arrival), <c>target_pe_actual</c> (m; -1 for an orbit), <c>search_from</c> (UT) and <c>synodic</c>
+        /// (s); or only <c>error</c>, "found no transfer: &lt;why&gt;".
         /// </summary>
         public static IDictionary<string, object> EjectionBurn(IDictionary<string, object> input, GameSnapshot snapshot)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
-            object target, window;
+            object target, window, mode, capture;
             ask.TryGetValue("target", out target);
             ask.TryGetValue("window", out window);
-            if (!ask.ContainsKey("target_pe") || !(ask["target_pe"] is double)) return Error(Tools.EjectionBurn.Fail("target_pe is required").Error);
+            ask.TryGetValue("mode", out mode);
+            ask.TryGetValue("capture", out capture);
+            var toOrbit = ask.ContainsKey("target_sma");
+            if (!toOrbit && (!ask.ContainsKey("target_pe") || !(ask["target_pe"] is double))) return Error(Transfer.Fail("target_pe is required").Error);
             if (window != null && !(window is double) && !string.Equals(window as string, "next", StringComparison.OrdinalIgnoreCase))
-                return Error(Tools.EjectionBurn.Fail("window must be \"next\" or a UT, not " + Convert.ToString(window, CultureInfo.InvariantCulture)).Error);
-            if (snapshot == null) return Error(Tools.EjectionBurn.Fail("no Game Snapshot").Error);
-            var plan = Tools.EjectionBurn.Find(snapshot, new EjectionAsk
+                return Error(Transfer.Fail("window must be \"next\" or a UT, not " + Convert.ToString(window, CultureInfo.InvariantCulture)).Error);
+            var intercept = string.Equals(mode as string, "intercept", StringComparison.OrdinalIgnoreCase);
+            if (mode != null && !intercept && !string.Equals(mode as string, "rendezvous", StringComparison.OrdinalIgnoreCase))
+                return Error(Transfer.Fail("mode must be \"rendezvous\" or \"intercept\", not " + Convert.ToString(mode, CultureInfo.InvariantCulture)).Error);
+            if (capture != null && !(capture is bool)) return Error(Transfer.Fail("capture must be true or false").Error);
+            SnapshotOrbit orbit = null;
+            if (toOrbit)
+            {
+                foreach (var key in new[] { "target_sma", "target_ecc", "target_inc", "target_lan", "target_argpe", "target_mna", "target_epoch" })
+                {
+                    if (!ask.ContainsKey(key)) return Error(Transfer.Fail(key + " is required with target_sma: the target orbit takes all seven elements").Error);
+                    if (!(ask[key] is double)) return Error(Transfer.Fail(key + " must be a number").Error);
+                }
+                orbit = new SnapshotOrbit
+                {
+                    SemiMajorAxis = Number(ask, "target_sma", 0),
+                    Eccentricity = Number(ask, "target_ecc", 0),
+                    Inclination = Number(ask, "target_inc", 0),
+                    Lan = Number(ask, "target_lan", 0),
+                    ArgumentOfPeriapsis = Number(ask, "target_argpe", 0),
+                    MeanAnomalyAtEpoch = Number(ask, "target_mna", 0) * Math.PI / 180,
+                    Epoch = Number(ask, "target_epoch", 0),
+                };
+            }
+            if (snapshot == null) return Error(Transfer.Fail("no Game Snapshot").Error);
+            var plan = Transfer.Find(snapshot, new TransferAsk
             {
                 Target = target as string,
+                TargetOrbit = orbit,
+                Mode = intercept ? TransferMode.Intercept : TransferMode.Rendezvous,
+                Capture = capture as bool? ?? true,
                 TargetPe = Number(ask, "target_pe", 0),
                 EarliestUt = Number(ask, "earliest_ut", snapshot.Ut),
                 WindowUt = window as double?,
@@ -199,9 +302,10 @@ namespace ClaudiaKermin.Core.Tools
                 { "normal", plan.Normal },
                 { "radial", plan.Radial },
                 { "dv", plan.DeltaV },
+                { "arrival_dv", plan.ArrivalDv },
                 { "encounter_ut", plan.EncounterUt },
                 { "arrival_ut", plan.ArrivalUt },
-                { "target_pe_actual", plan.PeActual },
+                { "target_pe_actual", double.IsNaN(plan.PeActual) ? -1.0 : plan.PeActual },
                 { "search_from", plan.SearchFrom },
                 { "synodic", plan.Synodic },
             };
@@ -213,9 +317,23 @@ namespace ClaudiaKermin.Core.Tools
         /// </summary>
         public static IList<string> LeftOut(IDictionary<string, object> input)
         {
+            return Uids(input, "leave_out");
+        }
+
+        /// <summary>
+        /// The parts the heat shield's drop takes (#462): <c>shield_drop</c>, kOS UIDs, as <see cref="LeftOut"/>. The adapter builds
+        /// the craft after the drop from it; none (the default) keeps the heat shield to the ground in the prediction.
+        /// </summary>
+        public static IList<string> ShieldDrop(IDictionary<string, object> input)
+        {
+            return Uids(input, "shield_drop");
+        }
+
+        private static IList<string> Uids(IDictionary<string, object> input, string key)
+        {
             var uids = new List<string>();
             object value;
-            if (input == null || !new Dictionary<string, object>(input, StringComparer.OrdinalIgnoreCase).TryGetValue("leave_out", out value) || value == null)
+            if (input == null || !new Dictionary<string, object>(input, StringComparer.OrdinalIgnoreCase).TryGetValue(key, out value) || value == null)
                 return uids;
             var many = value as System.Collections.IEnumerable;
             if (value is string || many == null) many = new[] { value };
@@ -265,6 +383,195 @@ namespace ClaudiaKermin.Core.Tools
                 { "lng", landing.Longitude },
                 { "landing_ut", landing.LandingUt },
                 { "error_km", km },
+            };
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:LAUNCHWINDOW</c>, for <c>launch</c> given a plane to launch into (#464): when the craft's pad next passes
+        /// under the plane of inclination <c>inc</c> and ascending node <c>lan</c> (degrees; the sign of <c>inc</c> is ignored), by
+        /// <see cref="LaunchWindow"/> on the Game Snapshot's pad and body. <c>target_ap</c> (m, default 0) sets the heading's orbital
+        /// speed. Gives <c>error</c> "", <c>wait</c> (s), <c>ut</c>, <c>north</c> (the window launches northward), <c>inc</c> (negative for
+        /// a southbound window) and <c>heading</c> (degrees); or only <c>error</c>, saying why the pad never passes under the plane.
+        /// </summary>
+        public static IDictionary<string, object> LaunchWindow(IDictionary<string, object> input, GameSnapshot snapshot)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            if (snapshot == null) return Error("no Game Snapshot");
+            var inc = NumberOrNull(ask, "inc");
+            var lan = NumberOrNull(ask, "lan");
+            if (!inc.HasValue || !lan.HasValue) return Error("inc and lan are required numbers");
+            var body = new BodySystem(snapshot.Bodies).Find(snapshot.Body);
+            if (body == null) return Error("the body table has no " + snapshot.Body);
+            var window = Tools.LaunchWindow.Find(body, snapshot.Ut, snapshot.Latitude, snapshot.CelestialLongitude, inc.Value, lan.Value, Number(ask, "target_ap", 0));
+            if (window.Error != null) return Error(window.Error);
+            return new Dictionary<string, object>
+            {
+                { "error", "" },
+                { "wait", window.WaitSeconds },
+                { "ut", window.Ut },
+                { "north", window.North },
+                { "inc", window.Inclination },
+                { "heading", window.Heading },
+            };
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:CORRECTIONBURN</c>, for <c>transfer_to</c> and <c>return</c> (#449): the Course Correction, the smallest
+        /// burn that brings the craft's trajectory to <c>target</c> (a body's name) at <c>target_pe</c> (m) and, if given, at
+        /// <c>target_inc</c> (degrees), by <see cref="Tools.CorrectionBurn"/>. <c>earliest_ut</c> (UT; now if missing) and
+        /// <c>latest_ut</c> (UT; earliest_ut if missing) are the burn's window: the same UT burns then, a wider window lets the
+        /// solver choose the time. <c>pe_tolerance</c> (m, default 1000) and <c>inc_tolerance</c> (degrees, default 0.5) are how
+        /// close the answer must be. Gives <c>error</c> "", <c>ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver
+        /// node components), <c>dv</c>, <c>pe_predicted</c> (m) and <c>inc_predicted</c> (degrees); a best burn outside the
+        /// tolerances gives its <c>error</c> with the rest; a solve that could not start, only <c>error</c>, "found no correction: &lt;why&gt;".
+        /// </summary>
+        public static IDictionary<string, object> CorrectionBurn(IDictionary<string, object> input, GameSnapshot snapshot)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            if (snapshot == null) return Error(Tools.CorrectionBurn.Fail("no Game Snapshot").Error);
+            object target;
+            ask.TryGetValue("target", out target);
+            if (!(target is string)) return Error(Tools.CorrectionBurn.Fail("target must be a body's name").Error);
+            var pe = NumberOrNull(ask, "target_pe");
+            if (!pe.HasValue) return Error(Tools.CorrectionBurn.Fail("target_pe is required").Error);
+            if (ask.ContainsKey("target_inc") && !(ask["target_inc"] is double))
+                return Error(Tools.CorrectionBurn.Fail("target_inc must be a number of degrees").Error);
+            var earliest = Number(ask, "earliest_ut", snapshot.Ut);
+            var plan = Tools.CorrectionBurn.Find(snapshot, new CorrectionAsk
+            {
+                Target = (string)target,
+                TargetPe = pe.Value,
+                TargetInc = NumberOrNull(ask, "target_inc"),
+                EarliestUt = earliest,
+                LatestUt = Number(ask, "latest_ut", earliest),
+                PeTolerance = Number(ask, "pe_tolerance", 1000),
+                IncTolerance = Number(ask, "inc_tolerance", 0.5),
+            });
+            if (!plan.HasBurn) return Error(plan.Error);
+            return new Dictionary<string, object>
+            {
+                { "error", plan.Error ?? "" },
+                { "ut", plan.Ut },
+                { "prograde", plan.Prograde },
+                { "normal", plan.Normal },
+                { "radial", plan.Radial },
+                { "dv", plan.DeltaV },
+                { "pe_predicted", plan.PePredicted },
+                { "inc_predicted", plan.IncPredicted },
+            };
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:RETURNBURN</c>, for <c>return</c> (#450): the ejection from the moon the craft orbits to the planet that
+        /// moon orbits, the smallest burn arriving there at <c>target_pe</c> (m) and, if given, at <c>target_inc</c> (degrees), by
+        /// <see cref="Tools.ReturnBurn"/>. <c>earliest_ut</c> (UT; now if missing or past) and <c>latest_ut</c> (UT; one orbit of the craft
+        /// later if missing) are the burn's window. <c>pe_tolerance</c> (m, default 1000) and <c>inc_tolerance</c> (degrees,
+        /// default 0.5) are how close the answer must be. Gives <c>error</c> "", <c>planet</c>, <c>ut</c>, <c>prograde</c>,
+        /// <c>normal</c>, <c>radial</c> (m/s, maneuver node components), <c>dv</c>, <c>pe_predicted</c> (m), <c>inc_predicted</c>
+        /// (degrees), <c>soi_ut</c> (UT the craft leaves the moon) and <c>from_grid</c> (the analytic seed was undefined); a best
+        /// burn outside the tolerances gives its <c>error</c> with the rest; a solve that could not start, only <c>error</c>,
+        /// "found no return: &lt;why&gt;".
+        /// </summary>
+        public static IDictionary<string, object> ReturnBurn(IDictionary<string, object> input, GameSnapshot snapshot)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            if (snapshot == null) return Error(Tools.ReturnBurn.Fail("no Game Snapshot").Error);
+            var pe = NumberOrNull(ask, "target_pe");
+            if (!pe.HasValue) return Error(Tools.ReturnBurn.Fail("target_pe is required").Error);
+            foreach (var key in new[] { "target_inc", "earliest_ut", "latest_ut", "pe_tolerance", "inc_tolerance" })
+                if (ask.ContainsKey(key) && !(ask[key] is double)) return Error(Tools.ReturnBurn.Fail(key + " must be a number").Error);
+            var plan = Tools.ReturnBurn.Find(snapshot, new ReturnAsk
+            {
+                TargetPe = pe.Value,
+                TargetInc = NumberOrNull(ask, "target_inc"),
+                EarliestUt = Number(ask, "earliest_ut", snapshot.Ut),
+                LatestUt = NumberOrNull(ask, "latest_ut"),
+                PeTolerance = Number(ask, "pe_tolerance", 1000),
+                IncTolerance = Number(ask, "inc_tolerance", 0.5),
+            });
+            if (!plan.HasBurn) return Error(plan.Error);
+            return new Dictionary<string, object>
+            {
+                { "error", plan.Error ?? "" },
+                { "planet", plan.Planet },
+                { "ut", plan.Ut },
+                { "prograde", plan.Prograde },
+                { "normal", plan.Normal },
+                { "radial", plan.Radial },
+                { "dv", plan.DeltaV },
+                { "pe_predicted", plan.PePredicted },
+                { "inc_predicted", plan.IncPredicted },
+                { "soi_ut", plan.SoiUt },
+                { "from_grid", plan.FromGrid },
+            };
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:ORBITBURN</c>, for <c>change_orbit</c> (#444): <c>solve_burn</c>'s solve (<see cref="SolveBurn"/>) on the
+        /// craft's orbit as it is at the call, so the node a block flies is solved when it starts, not when Claudia planned. Takes
+        /// <c>solve_burn</c>'s inputs: <c>goal</c>, and as that goal needs them <c>value</c>, <c>at</c> (a word or a UT),
+        /// <c>target</c> (a body's name), <c>pe</c>, <c>ap</c>, <c>of</c> and <c>direction</c>. Gives <c>error</c> "", <c>ut</c>,
+        /// <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver node components), <c>dv</c>, <c>burn_time</c> (s; -1 when
+        /// the craft's stages don't give it) and <c>wanted</c>, a lexicon of each element the goal sets and the figure it aims at
+        /// (<see cref="SolvedBurn.Wanted"/>); or only <c>error</c>, solve_burn's reason. It refuses <c>intercept_at</c>, whose aim is
+        /// an arrival, not an element.
+        /// </summary>
+        public static IDictionary<string, object> OrbitBurn(IDictionary<string, object> input, GameSnapshot snapshot)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            if (snapshot == null) return Error("no Game Snapshot");
+            // change_orbit judges the elements a burn sets (wanted); an intercept aims at an arrival, which no element holds. Checked
+            // before the inputs, so an intercept's own fields (arrive_ut, tof) get this reason, not "unknown input".
+            object goal;
+            if (ask.TryGetValue("goal", out goal) && goal as string == "intercept_at")
+                return Error("ORBITBURN does not solve intercept_at: change_orbit checks the orbit elements a burn sets, and an intercept "
+                    + "aims at an arrival, not an element; exec_node the node solve_burn gives");
+            var json = new JsonWriter().BeginObject();
+            foreach (var entry in ask)
+            {
+                var key = entry.Key.ToLowerInvariant();
+                var text = entry.Value as string;
+                switch (key)
+                {
+                    case "goal":
+                    case "target":
+                    case "direction":
+                        if (text == null) return Error(key + " must be a string, not " + Convert.ToString(entry.Value, CultureInfo.InvariantCulture));
+                        json.Field(key, text);
+                        break;
+                    case "value":
+                    case "pe":
+                    case "ap":
+                    case "of":
+                    case "at":
+                        if (key == "at" && text != null)
+                        {
+                            json.Field(key, text);
+                            break;
+                        }
+                        if (!(entry.Value is double) || double.IsNaN((double)entry.Value) || double.IsInfinity((double)entry.Value))
+                            return Error(key + " must be a finite number" + (key == "at" ? " (a UT) or a word" : "") + ", not " + Convert.ToString(entry.Value, CultureInfo.InvariantCulture));
+                        json.Field(key, (double)entry.Value);
+                        break;
+                    default:
+                        return Error("unknown input " + entry.Key + ": ORBITBURN takes solve_burn's goal, value, at, target, pe, ap, of and direction");
+                }
+            }
+            var solved = new SolvedBurn();
+            var outcome = new SolveBurn().Solve(JsonReader.Parse(json.EndObject().ToString()), snapshot, solved);
+            if (outcome.IsError) return Error(outcome.Summary);
+            var wanted = new Dictionary<string, object>();
+            foreach (var element in solved.Wanted) wanted[element.Key] = element.Value;
+            return new Dictionary<string, object>
+            {
+                { "error", "" },
+                { "ut", solved.Ut },
+                { "prograde", solved.Prograde },
+                { "normal", solved.Normal },
+                { "radial", solved.Radial },
+                { "dv", solved.DeltaV },
+                { "burn_time", solved.BurnTime ?? -1 },
+                { "wanted", wanted },
             };
         }
 

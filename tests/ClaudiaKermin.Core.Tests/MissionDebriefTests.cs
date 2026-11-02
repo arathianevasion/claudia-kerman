@@ -455,7 +455,7 @@ namespace ClaudiaKermin.Core.Tests
         public void TheMarginRecheckIsSkippedWhenTheSpendingCapHasNoRoomForItBesideTheDebrief()
         {
             // Room for the plan, the sequence and the Debrief, but not for a recheck on top of them.
-            var rig = new Rig(this, DebriefJson("Nominal", ""), cap: 0.45m);
+            var rig = new Rig(this, DebriefJson("Nominal", ""), cap: CapWithRoomForTheDebriefButNotARecheck());
             var start = rig.RunToRunning();
             var checksBefore = rig.Router.CheckRequests.Count;
 
@@ -469,6 +469,38 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("Spending Cap", rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief.RecheckSkipped);
             // The Mission is not Paused for a request it did not need.
             Assert.NotEqual(MissionStage.Paused, rig.Mission.View.Stage);
+        }
+
+        /// <summary>
+        /// A Spending Cap measured from the rig's own requests, so it keeps its meaning as the tools list (counted in every
+        /// request's worst case) grows: what the plan and the sequence really cost, plus the Debrief's worst case. A recheck's
+        /// worst case and the Debrief's reserve then no longer fit beside it, while the Debrief itself does.
+        /// </summary>
+        private static decimal CapWithRoomForTheDebriefButNotARecheck()
+        {
+            // A dry run with a roomy cap: the same flow, in its own save, with the recheck allowed.
+            using (var probe = new MissionDebriefTests())
+            {
+                var rig = new Rig(probe, DebriefJson("Nominal", ""));
+                var start = rig.RunToRunning();
+                rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+                rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+                var log = rig.CostLog();
+                var recheck = log.Select((c, i) => new { c, i }).First(x => x.c.Event == "pending" && x.c.Outcome == "margin_recheck").i;
+                // The plan and the sequence settled at their real cost; the Debrief is the request sent after the recheck.
+                var settled = log.Take(recheck).Where(c => c.Event == "paid" || c.Event == "craft_check_paid").Sum(c => c.Amount);
+                var after = log.Skip(recheck + 2).ToList();
+                var debrief = after[0];
+                var next = after.First(c => c.Event == "pending" && !ReferenceEquals(c, debrief));
+                Assert.Equal("pending", debrief.Event);
+                Assert.Equal("paid", after[1].Event);
+                // The Debrief must fit, and then the next Sequence Plan's worst case beside the Debrief's real cost.
+                var cap = settled + Math.Max(debrief.Amount, after[1].Amount + next.Amount);
+                // The recheck's worst case alone must not fit in what the cap leaves over the plan and the sequence.
+                Assert.True(cap < settled + log[recheck].Amount + debrief.Amount, "the recheck would fit under the derived cap " + cap);
+                return cap;
+            }
         }
 
         [Fact]

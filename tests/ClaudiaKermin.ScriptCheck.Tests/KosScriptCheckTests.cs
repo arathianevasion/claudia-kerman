@@ -289,6 +289,8 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("local s is addons:claudia:landingsite(lexicon(\"biome\", \"Midlands\")).")]
         [InlineData("local c is addons:claudia.\nprint c:landingsite(lexicon()).")]
         [InlineData("local f is addons:claudia:LandingSite@.\nprint f(lexicon()).")]
+        [InlineData("local p is addons:claudia:landingpass(lexicon(\"lat\", 0, \"lng\", 20, \"r_pe\", 203000)).\nprint p:burn_ut.")]
+        [InlineData("local c is addons:claudia.\nprint c:LandingPass(lexicon()):next_pass_ut.")]
         [InlineData("local b is addons:claudia:deorbitburn(lexicon(\"lat\", 0, \"lng\", -74)).")]
         [InlineData("print addons:claudia:reentryimpact(lexicon()):lat.")]
         [InlineData("local c is addons:claudia.\nprint c:ReentryImpact(lexicon()).")]
@@ -296,6 +298,13 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("local t is addons:claudia:TurnTime@.\nprint t(lexicon(\"max_stopping_time\", 2)).")]
         [InlineData("local e is addons:claudia:ejectionburn(lexicon(\"target\", \"Mun\", \"target_pe\", 30000)).\nadd node(e:ut, e:radial, e:normal, e:prograde).")]
         [InlineData("local c is addons:claudia.\nprint c:EjectionBurn(lexicon(\"target\", \"Minmus\", \"target_pe\", 20000, \"window\", \"next\")):dv.")]
+        [InlineData("local w is addons:claudia:launchwindow(lexicon(\"inc\", 6, \"lan\", 78)).\nprint w:wait.")]
+        [InlineData("local k is addons:claudia:correctionburn(lexicon(\"target\", \"Mun\", \"target_pe\", 30000)).\nadd node(k:ut, k:radial, k:normal, k:prograde).")]
+        [InlineData("local c is addons:claudia.\nprint c:CorrectionBurn(lexicon(\"target\", \"Kerbin\", \"target_pe\", 35000, \"target_inc\", 0)):dv.")]
+        [InlineData("local o is addons:claudia:orbitburn(lexicon(\"goal\", \"set_inc\", \"value\", 90)).\nadd node(o:ut, o:radial, o:normal, o:prograde).")]
+        [InlineData("local c is addons:claudia.\nprint c:OrbitBurn(lexicon(\"goal\", \"match_plane\", \"target\", \"Minmus\")):dv.")]
+        [InlineData("local h is addons:claudia:returnburn(lexicon(\"target_pe\", 35000)).\nadd node(h:ut, h:radial, h:normal, h:prograde).")]
+        [InlineData("local c is addons:claudia.\nprint c:ReturnBurn(lexicon(\"target_pe\", 35000, \"target_inc\", 30)):dv.")]
         public void ABlockInternalCallInAMissionScriptFails(string script)
         {
             AssertForbidden("call block-internal calculations", script);
@@ -496,6 +505,24 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             Assert.Contains(new KosScriptCheck(forCoreLibrary: true).Check("kuniverse:quicksave().").Forbidden, f => f.EndsWith("(quicksave)"));
         }
 
+        [Fact]
+        public void ChangeOrbitsFileAlonePassesOnlyAsCoreLibrary()
+        {
+            // change_orbit makes ORBITBURN inline (#444): allowed as the library's, refused as a Mission Script's.
+            var block = File.ReadAllText(Path.Combine(RepoRoot(), "kerboscript", "library", "change_orbit.ks"));
+            Assert.True(new KosScriptCheck(forCoreLibrary: true).Check(block).Passed);
+            Assert.Contains(_check.Check(block).Forbidden, f => f.EndsWith(":ORBITBURN (call block-internal calculations)"));
+        }
+
+        [Fact]
+        public void ReturnsFileAlonePassesOnlyAsCoreLibrary()
+        {
+            // return makes RETURNBURN inline (#450): allowed as the library's, refused as a Mission Script's.
+            var block = File.ReadAllText(Path.Combine(RepoRoot(), "kerboscript", "library", "return.ks"));
+            Assert.True(new KosScriptCheck(forCoreLibrary: true).Check(block).Passed);
+            Assert.Contains(_check.Check(block).Forbidden, f => f.EndsWith(":RETURNBURN (call block-internal calculations)"));
+        }
+
         [Theory]
         [InlineData("land_biome_mun")]
         [InlineData("land_biome_minmus")]
@@ -625,9 +652,14 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [Theory]
         [InlineData("transfer_to")]
         [InlineData("return")]
+        [InlineData("return_ike")]
+        [InlineData("change_orbit_inc")]
+        [InlineData("change_orbit_match_minmus")]
+        [InlineData("change_orbit_resonant")]
         public void EachBlockTestScriptBundledWithTheLibraryPasses(string test)
         {
-            // transfer_to calls the ejection solver inline; return calls the block kOS lets be named return.
+            // transfer_to calls the ejection solver inline; return calls the block kOS lets be named return; change_orbit
+            // calls ORBITBURN inline.
             var script = File.ReadAllText(Path.Combine(RepoRoot(), "tests", "blocks", test, "test.ks"));
             AssertAllowed(CoreLibrary.Bundle(script));
         }

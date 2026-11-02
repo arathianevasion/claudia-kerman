@@ -527,7 +527,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
         private static string Decide(string overrides, string tolerance = "claudia_rcs_defaults()")
         {
             return Run("local s is claudia_merge_options(lexicon(" + overrides + "), lexicon(\"rcs\", false, \"steering\", true, \"monoprop\", 30, \"translating\", false,\"error\", 0, "
-                + "\"rate\", 0, \"held_s\", 0, \"gate\", false, \"wheels_s\", 40, \"left_s\", -1)).\n"
+                + "\"rate\", 0, \"held_s\", 0, \"gate\", false, \"wheels_s\", 40, \"left_s\", -1, \"ground\", false, \"braking\", false)).\n"
                 + "local d is claudia_rcs_decide(s, " + tolerance + "). print d[\"on\"] + \"|\" + d:reason.").Single();
         }
 
@@ -553,6 +553,47 @@ namespace ClaudiaKermin.Kerboscript.Tests
         public void RCS_goes_on_over_on_deg_only_when_the_wheels_cannot_make_the_turn(string state, string expected)
         {
             Assert.Equal(expected, Decide(state));
+        }
+
+        [Theory]
+        // On the ground (#506) RCS stays off whatever the error, wheel torque or reason, and goes off if it was on.
+        [InlineData("\"ground\", true, \"error\", 94, \"gate\", true", "False|")]
+        [InlineData("\"ground\", true, \"error\", 94, \"gate\", true, \"wheels_s\", -1", "False|")]
+        [InlineData("\"ground\", true, \"error\", 19, \"gate\", true, \"left_s\", 30", "False|")]
+        [InlineData("\"ground\", true, \"translating\", true", "False|")]
+        [InlineData("\"ground\", true, \"rcs\", true, \"error\", 34, \"rate\", 3", "False|on the ground")]
+        // Braking with wheel torque keeps RCS off at any error, and turns it off if it was on; with none it switches on.
+        [InlineData("\"braking\", true, \"error\", 94, \"gate\", true", "False|")]
+        [InlineData("\"braking\", true, \"error\", 19, \"gate\", true", "False|")]
+        [InlineData("\"braking\", true, \"rcs\", true, \"error\", 34, \"rate\", 3", "False|braking")]
+        [InlineData("\"braking\", true, \"error\", 34, \"gate\", true, \"wheels_s\", -1", "True|no wheel torque")]
+        public void RCS_stays_off_on_the_ground_and_in_braking_unless_the_craft_has_no_wheel_torque(string state, string expected)
+        {
+            Assert.Equal(expected, Decide(state));
+        }
+
+        [Fact]
+        public void Make_safe_leaves_RCS_off_on_the_ground_and_land_braking_feeds_the_rule()
+        {
+            var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null && !System.IO.File.Exists(System.IO.Path.Combine(dir.FullName, "ClaudiaKermin.sln"))) dir = dir.Parent;
+            Assert.NotNull(dir);
+            var lib = System.IO.File.ReadAllText(System.IO.Path.Combine(dir.FullName, "kerboscript", "library", "claudia_lib.ks"));
+            Func<string, string> body = name =>
+            {
+                var start = lib.IndexOf("\nfunction " + name + " {", StringComparison.Ordinal);
+                Assert.True(start >= 0, name);
+                var end = lib.IndexOf("\nfunction ", start + 1, StringComparison.Ordinal);
+                return lib.Substring(start, (end < 0 ? lib.Length : end) - start);
+            };
+            // The no-wheel-torque switch-on is skipped on the ground, so the else branch turns RCS off.
+            Assert.Contains("not claudia_on_ground() and claudia_wheels_turn_time() < 0", body("claudia_make_safe"));
+            Assert.Contains("claudia_rcs_off(\"on the ground\")", body("claudia_make_safe"));
+            // Land marks braking for the tick, which reads the wheels' torque while braking and passes both facts to the rule.
+            var land = System.IO.File.ReadAllText(System.IO.Path.Combine(dir.FullName, "kerboscript", "library", "land.ks"));
+            Assert.Contains("set ctx:rcs_braking to true.", land);
+            Assert.Contains("\"ground\", claudia_on_ground(), \"braking\", ctx:rcs_braking", body("claudia_rcs_tick"));
+            Assert.Contains("(gate or ctx:rcs_braking)", body("claudia_rcs_tick"));
         }
 
         [Theory]

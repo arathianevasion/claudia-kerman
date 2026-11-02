@@ -38,6 +38,20 @@ namespace ClaudiaKermin.Kerboscript.Tests
         }
 
         [Fact]
+        public void The_reentry_predictor_opens_chutes_and_drops_the_shield_by_reentry_s_own_rules()
+        {
+            // #462: the predictor mirrors these in C# (ReentryRules); a change here must be made there too.
+            Assert.Equal(ClaudiaKermin.Core.Tools.ReentryRules.ChuteMaxSpeed, Number("reentry_chute_max_speed()"));
+            Assert.Equal(ClaudiaKermin.Core.Tools.ReentryRules.ChuteMinPressureAtm, Number("reentry_chute_min_pressure()"));
+            Assert.Equal(ClaudiaKermin.Core.Tools.ReentryRules.ChuteLastAgl, Number("reentry_chute_last_agl()"));
+            Assert.Equal(ClaudiaKermin.Core.Tools.ReentryRules.DrogueMaxSpeed, Number("reentry_drogue_max_speed()"));
+            Assert.Equal(ClaudiaKermin.Core.Tools.ReentryRules.DrogueMinPressureAtm, Number("reentry_drogue_min_pressure()"));
+            Assert.Equal(ClaudiaKermin.Core.Tools.ReentryRules.DrogueLastAgl, Number("reentry_drogue_last_agl()"));
+            Assert.Equal(ClaudiaKermin.Core.Tools.ReentryRules.ShieldSpeed, Number("reentry_shield_speed()"));
+            Assert.Equal(ClaudiaKermin.Core.Tools.ReentryRules.ShieldLastAgl, Number("reentry_shield_last_agl()"));
+        }
+
+        [Fact]
         public void The_prompt_docs_name_every_spec_option_and_result()
         {
             var reentry = CoreLibrary.FullDocs(new[] { "reentry" });

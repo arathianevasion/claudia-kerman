@@ -107,6 +107,21 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void ThePolarMunOrbitLegAndItsPlaneChangeReachTheCraftCheckInTheMap()
+        {
+            var transport = Replies("craft-check-pass.sse");
+            Checked(transport);
+
+            var facts = UserFacts(transport.Requests.Single());
+            var polar = DeltaVMap.Compute(Craft().Bodies, CraftCheckFlow.HomeBody).Leg("polar:Mun");
+            Assert.True(polar.PlaneChange > 0);
+            var line = facts.Split('\n').Single(l => l.StartsWith("- polar:Mun:"));
+            Assert.Contains(polar.DeltaV.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture) + " m/s (carries a plane change", line);
+            // Equatorial Mun legs carry none.
+            Assert.DoesNotContain("carries a plane change", facts.Split('\n').Single(l => l.StartsWith("- land:Mun:")));
+        }
+
+        [Fact]
         public void TheRequestCarriesTheFactsTheMapTheFixedListsAndTheMargin()
         {
             var transport = Replies("craft-check-pass.sse");

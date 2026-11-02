@@ -204,7 +204,7 @@ namespace ClaudiaKermin.Core.Missions
             public int ToolSteps;
             /// <summary>What the turn has used over all its requests, for the per-plan log (MissionControl.PlanLog.cs); a rewrite after a failed Script Check carries its turn's on.</summary>
             public TurnStats Stats = new TurnStats();
-            /// <summary>The step limit's "reply now" results have gone: another tool call fails the turn.</summary>
+            /// <summary>The step limit is reached and the turn's request goes with tool_choice none (#509): a reply that still calls tools fails the turn.</summary>
             public bool ToolLimitSent;
             /// <summary>The Game Snapshot taken for the turn when its messages were built: what its tools calculate from.</summary>
             public GameSnapshot ToolSnapshot;
@@ -369,6 +369,7 @@ namespace ClaudiaKermin.Core.Missions
             mission.System.Add(MissionPrompts.BaseLayer);
             var bodyTable = MissionPrompts.BodyTable(_snapshot != null ? _snapshot.Bodies : null);
             mission.PlannedTurnShape = _craftCheck.PlannedTurnShape;
+            mission.PlannedAscent = _craftCheck.PlannedAscent;
             mission.System.Add(MissionPrompts.MissionLayer(id, goal, bodyTable, mission.PlannedTurnShape));
             var settings = start.Settings != null ? start.Settings.Copy() : MissionSettingsValues.Defaults(_config);
             settings.ConfigAllowsPhysicsWarp = _config.PhysicsWarp;
@@ -449,7 +450,8 @@ namespace ClaudiaKermin.Core.Missions
                     + MissionPrompts.ModeFacts(mission.Remote, _snapshot) + "\n"
                     + "Spending Cap: $" + mission.SpendingCap.ToString("0.00", CultureInfo.InvariantCulture) + ".\n"
                     + MissionPrompts.SettingsText(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config))) + "\n"
-                    + MissionPrompts.Facts(_ut, _snapshot) + ChildVesselFacts(mission),
+                    + MissionPrompts.Facts(_ut, _snapshot) + ChildVesselFacts(mission)
+                    + MissionPrompts.StageTable(_snapshot, mission.Goal, mission.PlannedAscent) + MissionPrompts.PadPlanning(_snapshot),
                 Notice = MissionPrompts.PlanNotice,
             });
         }
@@ -1027,6 +1029,7 @@ namespace ClaudiaKermin.Core.Missions
                 Model = mission.Model,
                 MaxTokens = MissionPrompts.MaxTokens,
                 OutputSchemaJson = Schema(mission, turn),
+                NoToolChoice = turn.ToolLimitSent,
             };
             // The same tools list on every Mission request, whatever the turn may call, so the cached prefix never changes.
             request.Tools.AddRange(_tools.Definitions(ToolOffer.Mission));

@@ -27,7 +27,7 @@ namespace ClaudiaKermin.Core.Tests
 
         private static DeorbitPlan Find(double lat, double lng, Conic orbit = null, double maxWait = ReentrySim.RotationPeriod, double atmosphere = ReentrySim.AtmTop)
         {
-            var ask = new DeorbitAsk { TargetLatitude = lat, TargetLongitude = lng, EarliestUt = 120, MaxWait = maxWait, AccuracyKm = 10 };
+            var ask = new DeorbitAsk { TargetLatitude = lat, TargetLongitude = lng, EarliestUt = 120, MaxWait = maxWait, AccuracyKm = 5 };
             return DeorbitBurn.Find(ReentrySim.Kerbin(atmosphere), orbit ?? Circular(), ask, new ReentrySim.Atmosphere(), new ReentrySim.Capsule(), ReentrySim.Frame());
         }
 
@@ -106,7 +106,7 @@ namespace ClaudiaKermin.Core.Tests
         public void A_target_too_far_off_the_ground_track_fails_rather_than_burns_and_says_where_the_best_lands()
         {
             var plan = Find(20, KscLng);
-            Assert.Contains("over accuracy_km 10", plan.Error);
+            Assert.Contains("over accuracy_km 5.0", plan.Error);
             Assert.Contains("too far off the ground track", plan.Error);
             Assert.InRange(plan.ErrorKm, 100, 2500);
             Assert.NotNull(plan.Landing);
@@ -121,6 +121,18 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("the best burn in the next 0.2 h lands", plan.Error);
             Assert.Contains("allow a longer max_wait", plan.Error);
             Assert.InRange(plan.BurnUt, 120, 720);
+        }
+
+        [Fact]
+        public void It_runs_in_milliseconds()
+        {
+            // The deorbit block's search to KSC from the 80 km orbit, and one too far off the track (every pass refined). Measured
+            // at about 35 ms alone in a Debug build; the budget is about 15 times that.
+            Timing.Within(500, () =>
+            {
+                Find(KscLat, KscLng);
+                Find(20, KscLng);
+            });
         }
 
         [Fact]
@@ -189,7 +201,7 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void The_block_call_gives_the_burn_as_node_components_and_its_landing()
         {
-            var found = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "ground_alt", 0.0, "accuracy_km", 10.0),
+            var found = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "ground_alt", 0.0, "accuracy_km", 5.0),
                 Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
             Assert.Equal("", found["error"]);
             Assert.True((double)found["prograde"] < 0);
@@ -208,7 +220,8 @@ namespace ClaudiaKermin.Core.Tests
         public void The_block_call_over_accuracy_gives_the_reason_and_the_best_landing()
         {
             var found = BlockCalls.DeorbitBurn(Ask("lat", 20.0, "lng", KscLng, "earliest_ut", 120.0), Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
-            Assert.Contains("over accuracy_km 10", (string)found["error"]);
+            // The default accuracy, 5 km since #462 (10 before).
+            Assert.Contains("over accuracy_km 5.0", (string)found["error"]);
             Assert.True((double)found["error_km"] > 100);
             Assert.True(found.ContainsKey("lat"));
         }
@@ -283,6 +296,13 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(new[] { "99" }, BlockCalls.LeftOut(Ask("leave_out", "99")));
             Assert.Empty(BlockCalls.LeftOut(Ask("lat", 0.0)));
             Assert.Empty(BlockCalls.LeftOut(null));
+        }
+
+        [Fact]
+        public void The_parts_the_heat_shield_takes_are_the_uids_given_as_shield_drop_and_none_by_default()
+        {
+            Assert.Equal(new[] { "4294512000" }, BlockCalls.ShieldDrop(Ask("shield_drop", new System.Collections.Generic.List<object> { "4294512000" })));
+            Assert.Empty(BlockCalls.ShieldDrop(Ask("leave_out", "99")));
         }
 
         [Fact]

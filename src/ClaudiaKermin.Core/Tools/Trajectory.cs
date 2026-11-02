@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ClaudiaKermin.Core.Missions;
+using ClaudiaKermin.Core.Tools.Numerics;
 
 namespace ClaudiaKermin.Core.Tools
 {
@@ -48,6 +49,9 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The shortest step of the encounter search, s; and the most steps one patch may take before the search gives up.</summary>
         private const double MinStep = 1;
         private const int MaxSteps = 200000;
+        /// <summary>The closest approach's search: its tolerance on the time, s, and its iteration cap.</summary>
+        private const double ClosestTolerance = 1e-3;
+        private const int ClosestIterations = 100;
 
         private readonly int _maxSteps = MaxSteps;
         private readonly List<SnapshotBody> _bodies;
@@ -242,7 +246,7 @@ namespace ClaudiaKermin.Core.Tools
 
         /// <summary>
         /// The craft's closest approach to <paramref name="target"/> over a patch round the target's parent: centre-to-centre
-        /// distance and its UT, found by stepping and then a golden-section search round the nearest step.
+        /// distance and its UT, found by stepping and then <see cref="BrentMin"/> round the nearest step.
         /// </summary>
         public void ClosestApproach(Patch patch, SnapshotBody target, out double distance, out double ut)
         {
@@ -269,21 +273,17 @@ namespace ClaudiaKermin.Core.Tools
                 }
                 t = next;
             }
-            // Golden-section search for the minimum between the steps either side of the nearest one.
-            var golden = (Math.Sqrt(5) - 1) / 2;
-            double a = before, b = after;
-            for (var i = 0; i < 100 && b - a > 1e-3; i++)
+            // Brent's minimisation between the steps either side of the nearest one, in seconds from the first so its relative
+            // term (sqrt(eps) * |x|) stays far under the millisecond asked for at a UT of millions of seconds.
+            if (after - before > ClosestTolerance)
             {
-                var c = b - golden * (b - a);
-                var d = a + golden * (b - a);
-                if (gap(c) < gap(d)) b = d;
-                else a = c;
-            }
-            var mid = (a + b) / 2;
-            if (gap(mid) < best)
-            {
-                best = gap(mid);
-                bestT = mid;
+                var found = BrentMin.Solve(s => gap(before + s), 0, after - before, ClosestTolerance, ClosestIterations);
+                // A search that never got going has NaN here, which is never below the best.
+                if (found.Fx < best)
+                {
+                    best = found.Fx;
+                    bestT = before + found.X;
+                }
             }
             distance = best;
             ut = bestT;

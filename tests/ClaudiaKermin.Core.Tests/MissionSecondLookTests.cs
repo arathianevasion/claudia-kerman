@@ -119,7 +119,7 @@ namespace ClaudiaKermin.Core.Tests
         public void WithNoSpendingCapRoomTheFirstReplyIsKeptAndTheSkipIsNoted()
         {
             // Room for the plan, sequence and Debrief, but not for the Debrief again after the first one's real cost.
-            var rig = new Rig(this, Debrief("hasty draft"), Debrief("never sent", ""), unsure: Reason, mediums: "debrief", cap: 0.6m, firstDebriefOutputTokens: 30000);
+            var rig = new Rig(this, Debrief("hasty draft"), Debrief("never sent", ""), unsure: Reason, mediums: "debrief", cap: CapWithNoRoomForASecondLookAtTheDebrief(), firstDebriefOutputTokens: 30000);
             var start = rig.RunToRunning();
             rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
             rig.DrainUntil(v => v.Stage != MissionStage.Running && !v.Busy);
@@ -229,7 +229,7 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void WithNoRoomForAMarginRecheckSecondLookTheFirstAnswerIsKeptAndTheSkipNoted()
         {
-            var rig = new Rig(this, Debrief("debrief", ""), null, unsure: "", mediums: "margin_recheck", cap: 0.61m); // raised for #349 Claudia's warp guidance (human decision 2026-10-27)
+            var rig = new Rig(this, Debrief("debrief", ""), null, unsure: "", mediums: "margin_recheck", cap: CapWithNoRoomForASecondLookAtTheMarginRecheck());
             rig.Router.Rechecks.Enqueue(CheckReply("thin but usable", Reason, outputTokens: 15000));
             var start = rig.RunToRunning();
             var checksBefore = rig.Router.CheckRequests.Count;
@@ -239,6 +239,90 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(checksBefore + 1, rig.Router.CheckRequests.Count);
             Assert.Contains("thin but usable", LastUserText(rig.Transport.Requests[2]));
             Assert.Contains(rig.Mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("A second look at the margin recheck was skipped"));
+        }
+
+        /// <summary>
+        /// A Spending Cap measured from the rig's own requests, so it keeps its meaning as the tools list (counted in every
+        /// request's worst case) grows: room for the first Debrief's worst case, but not for its second look's worst case on top
+        /// of what the first Debrief really cost.
+        /// </summary>
+        private static decimal CapWithNoRoomForASecondLookAtTheDebrief()
+        {
+            // A dry run with a roomy cap: the same flow, in its own save, with the second look allowed.
+            using (var probe = new MissionSecondLookTests())
+            {
+                var rig = new Rig(probe, Debrief("hasty draft"), Debrief("considered", ""), unsure: Reason, mediums: "debrief", firstDebriefOutputTokens: 30000);
+                var start = rig.RunToRunning();
+                rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+                rig.DrainUntil(v => v.Stage != MissionStage.Running && !v.Busy);
+
+                var log = rig.CostLog();
+                var requests = Requests(log);
+                // Mission Plan, Sequence Plan, margin recheck, the unsure Debrief, its second look.
+                Assert.Equal("margin_recheck", log[requests[2]].Outcome);
+                var debrief = requests[3];
+                var secondLook = requests[4];
+                var settled = SettledBefore(log, debrief);
+                var recheck = requests[2];
+                // The margin recheck must leave room for the Debrief's worst case (its reserve, about that request's own worst case).
+                var low = Math.Max(settled + log[debrief].Amount, SettledBefore(log, recheck) + log[recheck].Amount + log[debrief].Amount);
+                var high = settled + log[debrief + 1].Amount + log[secondLook].Amount;
+                return CapBetween(low, high, "the recheck and the first Debrief's worst case", "the first Debrief's real cost and the second look's worst case");
+            }
+        }
+
+        /// <summary>
+        /// A Spending Cap measured from the rig's own requests: room for the first margin recheck's worst case and the Debrief
+        /// after it, but not for the recheck's second look on top of what the first recheck really cost.
+        /// </summary>
+        private static decimal CapWithNoRoomForASecondLookAtTheMarginRecheck()
+        {
+            using (var probe = new MissionSecondLookTests())
+            {
+                var rig = new Rig(probe, Debrief("debrief", ""), null, unsure: "", mediums: "margin_recheck");
+                rig.Router.Rechecks.Enqueue(CheckReply("thin but usable", Reason, outputTokens: 15000));
+                rig.Router.Rechecks.Enqueue(CheckReply("considered margin", ""));
+                var start = rig.RunToRunning();
+                rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+                rig.DrainUntil(v => v.Stage == MissionStage.AwaitingSequenceApproval || v.Stage == MissionStage.Sequencing);
+
+                var log = rig.CostLog();
+                var requests = Requests(log);
+                // Mission Plan, Sequence Plan, the unsure recheck, its second look, then the Debrief.
+                Assert.Equal("margin_recheck", log[requests[2]].Outcome);
+                Assert.Equal("margin_recheck", log[requests[3]].Outcome);
+                var recheck = requests[2];
+                var secondLook = requests[3];
+                var debrief = requests[4];
+                var settled = SettledBefore(log, recheck);
+                var firstCost = log[recheck + 1].Amount;
+                // A recheck must leave room for the Debrief's worst case (its reserve, about that request's own worst case).
+                var debriefWorst = log[debrief].Amount;
+                var low = settled + Math.Max(log[recheck].Amount, firstCost) + debriefWorst;
+                var high = settled + firstCost + log[secondLook].Amount + debriefWorst;
+                return CapBetween(low, high, "the recheck and then the Debrief's worst case", "the first recheck's real cost, the second look's worst case and the Debrief's");
+            }
+        }
+
+        /// <summary>The cost log indexes of the pending lines, one per request sent.</summary>
+        private static IList<int> Requests(IList<CostLine> log)
+        {
+            return Enumerable.Range(0, log.Count).Where(i => log[i].Event == "pending").ToList();
+        }
+
+        /// <summary>What the Mission has really paid (requests and Craft Checks) before the log line at <paramref name="index"/>.</summary>
+        private static decimal SettledBefore(IList<CostLine> log, int index)
+        {
+            return log.Take(index).Where(c => c.Event == "paid" || c.Event == "craft_check_paid").Sum(c => c.Amount);
+        }
+
+        /// <summary>A cap in the middle of the gap the test means, with the gap itself asserted so it cannot close unnoticed.</summary>
+        private static decimal CapBetween(decimal low, decimal high, string fitsThe, string overrunsThe)
+        {
+            Assert.True(low < high, "no gap under " + high + ": the cap must fit " + fitsThe + " (" + low + ") but not " + overrunsThe);
+            var cap = Math.Round((low + high) / 2, 4);
+            Assert.InRange(cap, low, high - 0.0001m);
+            return cap;
         }
 
         // ---- The Craft Check ----
@@ -427,6 +511,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             public string Event;
             public string Outcome;
+            public decimal Amount;
         }
 
         /// <summary>A Mission with a two-sequence plan, one Sequence Plan, the Debrief under test and the replies after it.</summary>
@@ -517,11 +602,12 @@ namespace ClaudiaKermin.Core.Tests
                 return File.ReadAllText(path).Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries).Select(line =>
                 {
                     var root = JsonDocument.Parse(line).RootElement;
-                    JsonElement outcome;
+                    JsonElement outcome, amount;
                     return new CostLine
                     {
                         Event = root.GetProperty("event").GetString(),
                         Outcome = root.TryGetProperty("outcome", out outcome) ? outcome.GetString() : "",
+                        Amount = root.TryGetProperty("amount", out amount) ? amount.GetDecimal() : 0m,
                     };
                 }).ToList();
             }

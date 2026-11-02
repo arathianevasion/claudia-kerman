@@ -189,7 +189,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
             {
                 "slope=-1", "touchdown_speed_actual=-1", "touchdown_h_speed=-1", "lean=-1", "reversals=0", "distance_to_target=-1", "best_effort=False",
                 "burn_start_ut=-1", "braking_began_ut=-1", "impact_ut=-1", "biome=", "staged_before_braking=False", "stage_left=-1",
-                "0", "0", "-1", "16",
+                "0", "0", "-1", "18",
             }, printed);
         }
 
@@ -203,6 +203,20 @@ namespace ClaudiaKermin.Kerboscript.Tests
             var land = CoreLibrary.Files.Single(f => f.Name == "land").Source;
             Assert.Contains("if under:droppable:length > 0 {\n    local unflyable is land_underhang_unflyable(", land);
             Assert.Contains("local drop_pending is under:plan:decouplers:length > 0.", land);
+        }
+
+        // ---- A part that left before the drop ----
+
+        [Fact]
+        public void A_droppable_part_that_left_before_land_drop_keeps_its_name_without_being_read()
+        {
+            // land_drop takes names and uids at the measuring; a part gone from the ship by the drop is named
+            // from that list (uid 2, "fuelTank"), never by reading the part, which would throw.
+            Assert.Equal("fuelTank", One("claudia_names_left(list(1, 2), list(\"liquidEngine\", \"fuelTank\"), list(1)):join(\",\")"));
+            var land = CoreLibrary.Files.Single(f => f.Name == "land").Source;
+            Assert.DoesNotContain("extra:dropped_underhang:add(p:name)", land);
+            Assert.DoesNotContain("extra:dropped_underhang:add(g:name)", land);
+            Assert.Contains("claudia_names_left(under:droppable_uids, under:droppable_names, on_ship)", land);
         }
 
         // ---- Docs ----

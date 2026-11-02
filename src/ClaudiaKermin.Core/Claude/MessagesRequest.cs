@@ -46,6 +46,8 @@ namespace ClaudiaKermin.Core.Claude
         public bool Compaction;
         /// <summary>Replaces the API's default summarization prompt when compaction runs; null keeps the default.</summary>
         public string CompactionInstructions;
+        /// <summary>Sends <c>tool_choice</c> <c>none</c> with the tools list unchanged: the tool loop's last request (#509), so the reply is text and the cached prefix holds.</summary>
+        public bool NoToolChoice;
 
         internal string ToJson()
         {
@@ -80,7 +82,7 @@ namespace ClaudiaKermin.Core.Claude
                     json.EndObject();
                 }
                 json.EndArray();
-                json.Name("tool_choice").BeginObject().Field("type", "auto").EndObject();
+                json.Name("tool_choice").BeginObject().Field("type", NoToolChoice ? "none" : "auto").EndObject();
             }
 
             if (Effort != null || OutputSchemaJson != null)

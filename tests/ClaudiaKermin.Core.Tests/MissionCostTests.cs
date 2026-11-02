@@ -71,6 +71,25 @@ namespace ClaudiaKermin.Core.Tests
                 .Where(e => !e.StartsWith("craft_check_")).ToArray();
         }
 
+        /// <summary>
+        /// What a plan request really costs, and the worst case it was checked against: a dry run of the Mission Plan with a roomy cap,
+        /// so a test can set its Spending Cap against the rig's own requests as the tools list (counted in every worst case) grows.
+        /// </summary>
+        private static void PlanCost(string fixture, out decimal worstCase, out decimal paid)
+        {
+            using (var probe = new MissionCostTests())
+            {
+                var mission = probe.Control(new StreamingFakeTransport(ScriptedResponse.Fixture(fixture)));
+                CraftCheckRouter.StartChecked(mission, probe._background, OnPad(), new StartMission(Goal, 10m, Sonnet));
+                probe.DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval || v.Stage == MissionStage.Paused);
+                var pending = probe.CostLog(mission.View.MissionId).Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(line => JsonDocument.Parse(line).RootElement)
+                    .First(r => r.GetProperty("event").GetString() == "pending");
+                worstCase = pending.GetProperty("amount").GetDecimal();
+                paid = mission.View.Spent;
+            }
+        }
+
         // ---- Price table ----
 
         [Fact]
@@ -162,7 +181,8 @@ namespace ClaudiaKermin.Core.Tests
         {
             var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-priced.sse"));
             var mission = Control(transport);
-            // 32000 output tokens alone could cost $0.32 on Sonnet; the input estimate is on top.
+            // 32000 output tokens alone could cost $0.32 on Sonnet; the input estimate is on top. A cap under that output alone can only
+            // stay too small however the tools list grows, so it stays a constant.
             CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, 0.30m, Sonnet));
 
             Assert.Empty(transport.Requests);
@@ -276,8 +296,11 @@ namespace ClaudiaKermin.Core.Tests
         {
             var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-priced.sse"));
             var mission = Control(transport);
-            // $0.54 of $0.65 is 83%; the worst case ($0.3x) still fits before sending.
-            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, 0.65m, Sonnet));
+            // The plan's real cost is past 80% of the cap, yet its worst case still fits before sending.
+            decimal worstCase, paid;
+            PlanCost("mission-plan-priced.sse", out worstCase, out paid);
+            var cap = CostLogGap.Between(Math.Max(worstCase, paid), paid / 0.8m, "fits the worst case and is 80% spent");
+            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, cap, Sonnet));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
 
             Assert.True(mission.View.CapWarning);
@@ -298,6 +321,8 @@ namespace ClaudiaKermin.Core.Tests
                 ScriptedResponse.Fixture("mission-sequence-plan-priced.sse"),
                 ScriptedResponse.Fixture("mission-debrief-priced.sse"));
             var mission = Control(transport);
+            // A roomy ceiling for the plan and the sequence (about $0.33 each beside $0.54 paid, with $0.12 left); the Debrief's worst
+            // case never fits in $0.12 whatever the tools list, since its 32000 output tokens alone could cost $0.32.
             CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, 1.20m, Sonnet));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
@@ -326,8 +351,11 @@ namespace ClaudiaKermin.Core.Tests
         {
             var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-big.sse"));
             var mission = Control(transport);
-            // The plan costs $0.80, past the $0.50 cap, though its worst-case estimate fitted.
-            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, 0.50m, Sonnet));
+            // The plan costs $0.80, past the cap, though its worst-case estimate fitted.
+            decimal worstCase, paid;
+            PlanCost("mission-plan-big.sse", out worstCase, out paid);
+            var cap = CostLogGap.Between(worstCase, paid, "fits the worst case but not the real cost");
+            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, cap, Sonnet));
             DrainUntil(mission, v => v.Stage == MissionStage.Paused);
 
             Assert.Equal(0.80m, mission.View.Spent);

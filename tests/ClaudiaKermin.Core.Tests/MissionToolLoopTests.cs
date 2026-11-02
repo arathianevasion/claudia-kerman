@@ -91,7 +91,8 @@ namespace ClaudiaKermin.Core.Tests
         {
             public string Name { get; set; } = "fake";
             public string Description { get { return "A test tool."; } }
-            public string InputSchemaJson { get { return "{\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":false}"; } }
+            /// <summary>An optional <c>n</c>, so calls can differ: an identical repeat in a turn is refused without running (#508).</summary>
+            public string InputSchemaJson { get { return "{\"type\":\"object\",\"properties\":{\"n\":{\"type\":\"integer\"}},\"required\":[],\"additionalProperties\":false}"; } }
             public bool OnCraftCheck { get; set; }
             public string Activity { get; set; } = "faking it";
             public Func<ToolOutcome> Answer = () => new ToolOutcome { Json = "{\"ok\":true}", Summary = "ok" };
@@ -158,6 +159,21 @@ namespace ClaudiaKermin.Core.Tests
         private string Folder(MissionControl mission)
         {
             return Path.Combine(_save.Path, "ClaudiaKermin", "missions", mission.View.MissionId);
+        }
+
+        /// <summary>A Spending Cap measured from a dry run of the same two steps with a roomy cap.</summary>
+        private decimal CapWithRoomForTheFirstStepButNotTheNext()
+        {
+            using (var probe = new MissionToolLoopTests())
+            {
+                var mission = probe.Control(new StreamingFakeTransport(ToolUseStreams.ToolUsePriced("cap", 100000, ("stage_performance", Vacuum)), Fixture("mission-plan.sse")));
+                probe.Start(mission);
+                probe.DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+                var log = File.ReadAllText(Path.Combine(probe.Folder(mission), "cost-log.jsonl"));
+                var worst = CostLogGap.Amounts(log, "pending");
+                var paid = CostLogGap.Amounts(log, "paid");
+                return CostLogGap.Between(worst[0], paid[0] + worst[1], "fits the first step but not the next after its real cost");
+            }
         }
 
         private string Events(MissionControl mission)
@@ -408,7 +424,7 @@ namespace ClaudiaKermin.Core.Tests
                     return new ToolOutcome { Json = "{\"together\":" + (together ? "true" : "false") + "}", Summary = "ok" };
                 },
             };
-            var calls = Enumerable.Range(0, 7).Select(i => ("fake", "{}")).ToArray();
+            var calls = Enumerable.Range(0, 7).Select(i => ("fake", "{\"n\":" + i + "}")).ToArray();
             var transport = new StreamingFakeTransport(ToolUseStreams.ToolUse("par", calls), Fixture("mission-plan.sse"));
             var mission = Control(transport, With(tool));
             Start(mission);
@@ -422,39 +438,77 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void AfterEightStepsEveryResultSaysToReplyNowAndTheReplyIsAccepted()
+        public void AfterEightStepsTheNextRequestIsTheLastWithToolChoiceNoneAndTheSameToolsAndTheReplyIsAccepted()
         {
             var transport = new StreamingFakeTransport();
-            for (var i = 0; i < 9; i++) transport.Add(ToolUseStreams.ToolUse("s" + i, ("stage_performance", Vacuum), ("stage_performance", Vacuum)));
+            for (var i = 0; i < 8; i++) transport.Add(ToolUseStreams.ToolUse("s" + i, ("fake", "{\"n\":" + (2 * i) + "}"), ("fake", "{\"n\":" + (2 * i + 1) + "}")));
             transport.Add(Fixture("mission-plan.sse"));
-            var mission = Control(transport);
+            var mission = Control(transport, With(new TestTool()));
             Start(mission);
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
 
-            Assert.Equal(10, transport.Requests.Count);
+            Assert.Equal(9, transport.Requests.Count);
             for (var step = 1; step <= 8; step++)
+            {
                 Assert.All(Results(transport.Requests[step]), r => Assert.False(r.TryGetProperty("is_error", out _)));
-            var last = Results(transport.Requests[9]);
-            Assert.Equal(2, last.Count);
-            Assert.All(last, r => Assert.Equal("tool limit reached; reply now", ErrorOf(r)));
+                Assert.Equal(step == 8 ? "{\"type\":\"none\"}" : "{\"type\":\"auto\"}", Body(transport.Requests[step]).GetProperty("tool_choice").GetRawText());
+                Assert.Equal(ToolsJson(transport.Requests[0]), ToolsJson(transport.Requests[step]));
+                Assert.Equal(Body(transport.Requests[0]).GetProperty("system").GetRawText(), Body(transport.Requests[step]).GetProperty("system").GetRawText());
+            }
+            Assert.Contains("tool_limit_final", Events(mission));
             Assert.Equal(16, ToolLines(mission).Count(l => !l.Text.Contains("error")));
         }
 
         [Fact]
-        public void AReplyThatStillCallsToolsAfterTheLimitFailsTheTurnAndRetrySendsItFromScratch()
+        public void AReplyThatStillCallsToolsOnTheToollessRequestFailsTheTurnAndRetrySendsItFromScratch()
         {
             var transport = new StreamingFakeTransport();
-            for (var i = 0; i < 10; i++) transport.Add(StagePerformance("s" + i));
+            for (var i = 0; i < 9; i++) transport.Add(StagePerformance("s" + i, "{\"situation\":\"surface\",\"n\":" + i + "}"));
             transport.Add(Fixture("mission-plan.sse"));
             var mission = Control(transport);
             Start(mission);
             DrainUntil(mission, v => v.Stage == MissionStage.Paused);
-            Assert.Equal(10, transport.Requests.Count);
+            Assert.Equal(9, transport.Requests.Count);
             Assert.Equal("Claudia kept calling Planning Tools after the limit of 8 steps.", mission.View.PauseReason);
 
             mission.Send(new Retry());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
-            Assert.Equal(transport.Requests[0].Body, transport.Requests[10].Body);
+            Assert.Equal(transport.Requests[0].Body, transport.Requests[9].Body);
+        }
+
+        [Fact]
+        public void TheToollessRequestAtTheStepLimitIsBlockedByTheSpendingCapAsAnyStepIs()
+        {
+            Func<ScriptedResponse[]> steps = () => Enumerable.Range(0, 8)
+                .Select(i => i == 7 ? ToolUseStreams.ToolUsePriced("cap", 100000, ("stage_performance", Vacuum)) : StagePerformance("s" + i, "{\"situation\":\"surface\",\"n\":" + i + "}"))
+                .Concat(new[] { Fixture("mission-plan.sse") }).ToArray();
+            decimal cap;
+            using (var probe = new MissionToolLoopTests())
+            {
+                var mission = probe.Control(new StreamingFakeTransport(steps()));
+                probe.Start(mission);
+                probe.DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+                var log = File.ReadAllText(Path.Combine(probe.Folder(mission), "cost-log.jsonl"));
+                var worst = CostLogGap.Amounts(log, "pending");
+                var paid = CostLogGap.Amounts(log, "paid");
+                decimal low = 0, committed = 0;
+                for (var k = 0; k < 8; k++)
+                {
+                    low = Math.Max(low, committed + worst[k]);
+                    committed += paid[k];
+                }
+                cap = CostLogGap.Between(low, committed + worst[8], "fits the eight steps but not the last request");
+            }
+
+            var transport = new StreamingFakeTransport(steps());
+            var run = Control(transport);
+            Start(run, cap);
+            DrainUntil(run, v => v.Stage == MissionStage.Paused);
+
+            Assert.Equal(8, transport.Requests.Count);
+            Assert.Contains("Spending Cap", run.View.PauseReason);
+            Assert.Contains("tool_loop_discarded", Events(run));
+            Assert.DoesNotContain("tool_limit_final", Events(run));
         }
 
         [Fact]
@@ -480,10 +534,10 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void AStepWithNoRoomUnderTheSpendingCapPausesTheMissionAndDiscardsTheLoop()
         {
-            // The first request's worst case fits $0.45; after the tool step's $0.20 the next step's no longer does.
+            // The first request's worst case fits the cap; after the tool step's real cost the next step's no longer does.
             var transport = new StreamingFakeTransport(ToolUseStreams.ToolUsePriced("cap", 100000, ("stage_performance", Vacuum)), Fixture("mission-plan.sse"));
             var mission = Control(transport);
-            Start(mission, 0.45m);
+            Start(mission, CapWithRoomForTheFirstStepButNotTheNext());
             DrainUntil(mission, v => v.Stage == MissionStage.Paused);
 
             Assert.Single(transport.Requests);

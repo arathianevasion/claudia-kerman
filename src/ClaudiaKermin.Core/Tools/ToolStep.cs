@@ -18,6 +18,8 @@ namespace ClaudiaKermin.Core.Tools
         public string InputJson = "";
         public string Summary = "";
         public bool IsError;
+        /// <summary>Why the call was refused without running (an Alert, the pad, a repeat); "" when it ran or hit a limit.</summary>
+        public string Refusal = "";
     }
 
     /// <summary>A step's answers: the user message of tool results that follows Claude's tool_use turn, and a record of each call.</summary>
@@ -45,16 +47,28 @@ namespace ClaudiaKermin.Core.Tools
         public static ToolStepResult Run(PlanningTools tools, AssistantMessage reply, Func<string, string> refusal, bool atLimit,
             GameSnapshot snapshot, IPlanningBody body, TimeSpan timeout)
         {
+            return Run(tools, reply, refusal != null ? use => refusal(use.Name) : (Func<ToolUseBlock, string>)null, atLimit, snapshot, body, timeout);
+        }
+
+        /// <param name="refusal">Why this call can't run, by its tool and input, asked in the reply's order; null when it can.</param>
+        public static ToolStepResult Run(PlanningTools tools, AssistantMessage reply, Func<ToolUseBlock, string> refusal, bool atLimit,
+            GameSnapshot snapshot, IPlanningBody body, TimeSpan timeout)
+        {
             var uses = reply.Content.OfType<ToolUseBlock>().ToList();
             var outcomes = new ToolOutcome[uses.Count];
+            var refusals = new string[uses.Count];
             var running = new List<KeyValuePair<int, Task<ToolOutcome>>>();
             var ran = 0;
             for (var i = 0; i < uses.Count; i++)
             {
                 var use = uses[i];
-                var refused = refusal != null ? refusal(use.Name) : null;
+                var refused = refusal != null ? refusal(use) : null;
                 if (atLimit) outcomes[i] = PlanningJson.Error(LimitReached);
-                else if (refused != null) outcomes[i] = PlanningJson.Error(refused);
+                else if (refused != null)
+                {
+                    outcomes[i] = PlanningJson.Error(refused);
+                    refusals[i] = refused;
+                }
                 else if (ran >= MaxCallsPerStep)
                     outcomes[i] = PlanningJson.Error("at most " + MaxCallsPerStep + " calls run in one step; call this again in the next");
                 else
@@ -81,7 +95,7 @@ namespace ClaudiaKermin.Core.Tools
             for (var i = 0; i < uses.Count; i++)
             {
                 result.Results.Content.Add(new ToolResultBlock { ToolUseId = uses[i].Id, Content = outcomes[i].Json, IsError = outcomes[i].IsError });
-                result.Calls.Add(new ToolCallRecord { Name = uses[i].Name ?? "", InputJson = uses[i].InputJson ?? "", Summary = outcomes[i].Summary, IsError = outcomes[i].IsError });
+                result.Calls.Add(new ToolCallRecord { Name = uses[i].Name ?? "", InputJson = uses[i].InputJson ?? "", Summary = outcomes[i].Summary, IsError = outcomes[i].IsError, Refusal = refusals[i] ?? "" });
             }
             return result;
         }

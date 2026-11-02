@@ -38,7 +38,7 @@ namespace ClaudiaKermin.Core.Tools
                     + "else Orbital stage) and the altitude, speed, apoapsis, periapsis and time to apoapsis when it lights; then delta-v "
                     + "to orbit, left and kept by stage_limit, and the margin (marginal when thin). Give turn_shape to fly one shape. "
                     + "Its block is launch: pass launch the turn_shape it gives, with the same target_ap, stage_limit, turn_start_speed "
-                    + "and throttle_max_q. A point-mass sim, not KSP. Don't call it for a body without air (use stage_performance), "
+                    + "and throttle_max_q. target_lan or launch_at adds launch_ut, heading. A point-mass sim, not KSP. Don't call it for a body without air (use stage_performance), "
                     + "or again when the craft and target_ap haven't changed since you last did.";
             }
         }
@@ -53,6 +53,8 @@ namespace ClaudiaKermin.Core.Tools
                     + "\"turn_start_speed\":{\"type\":\"number\",\"description\":\"m/s, as launch (default 60).\"},"
                     + "\"throttle_max_q\":{\"description\":\"Pa, or \\\"none\\\" (default), as launch.\"},"
                     + "\"target_inc\":{\"type\":\"number\",\"description\":\"Inclination, degrees, as launch (default 0): how much of the body's turning helps.\"},"
+                    + "\"target_lan\":{\"type\":\"number\",\"description\":\"LAN, degrees: also gives the launch window into target_inc and it.\"},"
+                    + "\"launch_at\":{\"type\":\"string\",\"description\":\"A moon's name: the window into its plane (as launch).\"},"
                     + "\"turn_shape\":{\"type\":\"number\",\"description\":\"Fly this shape only instead of searching.\"}"
                     + "},\"additionalProperties\":false}";
             }
@@ -95,6 +97,26 @@ namespace ClaudiaKermin.Core.Tools
                 maxQ = JsonNode.Double(maxQNode).Value;
             }
             var inc = JsonNode.Double(input["target_inc"]) ?? 0;
+            LaunchWindow window = null;
+            var lanNode = input["target_lan"];
+            var atNode = input["launch_at"];
+            if (atNode != null || lanNode != null)
+            {
+                double lan;
+                if (atNode != null)
+                {
+                    var moon = snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, JsonNode.Str(atNode), StringComparison.OrdinalIgnoreCase));
+                    if (moon == null || !string.Equals(moon.Parent, body.Name, StringComparison.OrdinalIgnoreCase))
+                        return PlanningJson.Error("launch_at must be a body orbiting " + body.Name + ", not " + PlanningJson.Quote(JsonNode.Str(atNode)));
+                    inc = moon.Inclination;
+                    lan = moon.Lan;
+                }
+                else if (lanNode.Kind == JsonKind.Number) lan = JsonNode.Double(lanNode).Value;
+                else return PlanningJson.Error("target_lan must be degrees");
+                window = LaunchWindow.Find(body, snapshot.Ut, snapshot.Latitude, snapshot.CelestialLongitude, inc, lan, targetAp);
+                if (window.Error != null) return PlanningJson.Error(window.Error);
+                inc = window.Inclination;
+            }
             var grounded = snapshot.Situation == "PRELAUNCH" || snapshot.Situation == "LANDED" || snapshot.Situation == "SPLASHED";
             var options = new AscentOptions
             {
@@ -132,7 +154,12 @@ namespace ClaudiaKermin.Core.Tools
                 .Field("body", body.Name)
                 .Field("target_ap", Math.Round(targetAp))
                 .Field("stage_limit", options.StageLimit)
-                .Field("reaches_orbit", flight.ReachesOrbit)
+                .Field("reaches_orbit", flight.ReachesOrbit);
+            if (window != null)
+                json.Field("launch_ut", Math.Round(window.Ut, 1)).Field("wait_s", Math.Round(window.WaitSeconds))
+                    .Field("window", window.North ? "northbound" : "southbound").Field("target_inc", PlanningJson.Round(window.Inclination, 2))
+                    .Field("heading", PlanningJson.Round(window.Heading, 1));
+            json
                 .Field(flight.ReachesOrbit ? "turn_shape" : "best_turn_shape", PlanningJson.Round(best.Item1, 2));
             if (!flight.ReachesOrbit)
             {

@@ -111,6 +111,19 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void It_runs_in_milliseconds()
+        {
+            // The whole track with every site kept, and a biome search that sweeps the track for its sites. Measured at about
+            // 1.3 ms alone in a Debug build; the budget is about 20 times that.
+            var basin = new FakeBody { BiomeAt = (lat, lon) => lon >= 45.5 ? "EastCrater" : "Highlands" };
+            Timing.Within(25, () =>
+            {
+                Run(Snapshot(inclination: 30), "{\"body\":\"Mun\",\"daylight\":false}", new FakeBody());
+                Run(Snapshot(), "{\"body\":\"Mun\",\"daylight\":false,\"biome\":\"EastCrater\",\"edge_margin_m\":10000}", basin);
+            });
+        }
+
+        [Fact]
         public void The_tool_is_offered_on_mission_turns_only()
         {
             Assert.Contains("find_landing_site", _tools.Definitions(ToolOffer.Mission).Select(t => t.Name));
@@ -356,8 +369,16 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Empty(Sites(Run(snapshot, "{\"body\":\"Mun\"}", fake)));
             snapshot.DaylightLandingDefault = false;
             Assert.NotEmpty(Sites(Run(snapshot, "{\"body\":\"Mun\"}", fake)));
+            // #510: the window is the larger of the time cap and one turn of the body (the Mun's 38.6 h), up to 48 h.
             snapshot.TimeCapHours = 2;
-            Assert.Equal(2, Num(Run(snapshot, "{\"body\":\"Mun\"}", fake), "window_hours"));
+            Assert.Equal(38.61, Num(Run(snapshot, "{\"body\":\"Mun\"}", fake), "window_hours"));
+            snapshot.TimeCapHours = 40;
+            Assert.Equal(40, Num(Run(snapshot, "{\"body\":\"Mun\"}", fake), "window_hours"));
+            snapshot.TimeCapHours = 60;
+            Assert.Equal(48, Num(Run(snapshot, "{\"body\":\"Mun\"}", fake), "window_hours"));
+            var quick = Snapshot(rotationPeriod: 3600);
+            quick.TimeCapHours = 2;
+            Assert.Equal(2, Num(Run(quick, "{\"body\":\"Mun\",\"daylight\":false}", fake), "window_hours"));
             Assert.Equal(3, Num(Run(snapshot, "{\"body\":\"Mun\",\"within_hours\":3}", fake), "window_hours"));
         }
 

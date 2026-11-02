@@ -145,6 +145,23 @@ namespace ClaudiaKermin.Core.Tests
             return File.Exists(path) ? File.ReadAllText(path) : "";
         }
 
+        /// <summary>A Spending Cap measured from a dry run of the same two requests with a roomy cap.</summary>
+        private static decimal CapWithRoomForOnePlanRequest()
+        {
+            using (var probe = new MissionTimingTests())
+            {
+                var mission = probe.Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-priced.sse"), TimedMissionPlan()));
+                probe.StartMission(mission);
+                probe.DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+                mission.Send(new EditSettings(new MissionSettingsValues { DaylightLanding = false }));
+                probe.DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy && CostLogGap.Amounts(probe.CostLog(mission), "paid").Count == 2);
+                var log = probe.CostLog(mission);
+                var worst = CostLogGap.Amounts(log, "pending");
+                var paid = CostLogGap.Amounts(log, "paid");
+                return CostLogGap.Between(Math.Max(worst[0], paid[0]), paid[0] + worst[1], "fits the first plan but not a second request after it");
+            }
+        }
+
         // ---- Due Times in the plans ----
 
         [Fact]
@@ -669,12 +686,12 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void EditingSettingsPausesAtTheSpendingCapLikeAnyOtherRequest()
         {
-            // The first plan costs $0.54, so a second request's worst case no longer fits a $0.65 cap.
+            // The first plan's worst case fits the cap, but after its real cost a second request's worst case no longer does.
             var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-priced.sse"), TimedMissionPlan());
             var mission = Control(transport);
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(OnPad());
-            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, 0.65m, "claude-sonnet-5-5"));
+            CraftCheckRouter.StartChecked(mission, _background, OnPad(), new StartMission(Goal, CapWithRoomForOnePlanRequest(), "claude-sonnet-5-5"));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
 
             mission.Send(new EditSettings(new MissionSettingsValues { DaylightLanding = false }));
