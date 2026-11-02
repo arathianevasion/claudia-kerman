@@ -248,6 +248,8 @@ namespace ClaudiaKermin.Core.Missions
             /// <summary>Why the mod stopped the current run ("blocked: …", "timed out"), for its Debrief; null otherwise.</summary>
             public string StopReason;
             public MissionPlan Plan;
+            /// <summary>The Chute Allocation (#626): worked out at Mission Plan Approval and each Debrief; null before (or with no Game Snapshot then).</summary>
+            public ChuteAllocation Chutes;
             /// <summary>The Mission Goal's steps (<see cref="GoalSteps"/>, #581): set by a Mission Plan, ticked by Debriefs, rebuilt from the transcript on load.</summary>
             public List<GoalItem> GoalSteps = new List<GoalItem>();
             public SequencePlan PendingSequence;
@@ -521,6 +523,8 @@ namespace ClaudiaKermin.Core.Missions
             if (mission == null) return;
             // A plan restored from a save was never offered against a snapshot: the first one after the load is its baseline.
             if (mission.AwaitingApproval && mission.PlanBaseline == null && !mission.InFlight && _scene == GameScene.Flight) mission.PlanBaseline = snapshot;
+            // An approved plan restored from a save has no Chute Allocation yet: the first snapshot of the craft after the load gives it one.
+            if (mission.Chutes == null && mission.Plan != null && mission.Stage != MissionStage.AwaitingPlanApproval && _scene == GameScene.Flight) AllocateChutes(mission);
             CarryOnWhenSceneAllows();
         }
 
@@ -562,6 +566,7 @@ namespace ClaudiaKermin.Core.Missions
                 Notice("Mission Plan approved.");
                 var newGoal = ApplyGoalChange(mission);
                 mission.Stage = MissionStage.Sequencing;
+                AllocateChutes(mission);
                 mission.SequenceCounted = false;
                 Begin(new Turn
                 {
@@ -1615,6 +1620,18 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         /// <summary>
+        /// The Chute Allocation (#626) of the craft as it is now over the Mission Plan's steps not yet begun: at Mission Plan
+        /// Approval, the whole plan; at a Debrief, the steps after the one just flown. Only in Flight, where the snapshot carries
+        /// the chutes' numbers: elsewhere (or with no Game Snapshot) there is none until the first snapshot in Flight gives one.
+        /// </summary>
+        private void AllocateChutes(Mission mission)
+        {
+            mission.Chutes = null;
+            if (_snapshot == null || mission.Plan == null || _scene != GameScene.Flight) return;
+            mission.Chutes = ChuteAllocation.Of(_snapshot, mission.Plan.Sequences, StepsBegun(mission), mission.Remote, mission.ProcessorPartId);
+        }
+
+        /// <summary>
         /// How many Mission Plan steps are begun: the step the Sequence Plan in hand named (#413), or, when it named
         /// none, how many Sequence Plans were counted. The plan bar's current step is the last one begun, and "later"
         /// (the rest-of-plan delta-v, the Debrief's "still to fly") is every step after it.
@@ -2061,6 +2078,7 @@ namespace ClaudiaKermin.Core.Missions
                     view.PlanSequencesManual = mission.Plan.Sequences.Select(s => s.Manual).ToList();
                 }
                 view.CurrentSequence = Math.Min(StepsBegun(mission), view.PlanSequences.Count) - 1;
+                view.ChuteAllocation = mission.Chutes;
                 if (mission.Stage == MissionStage.Running && mission.PendingSequence != null)
                 {
                     view.RunStatus = "Running: " + mission.PendingSequence.Name + (mission.RunningChild.Length > 0 ? " on " + mission.RunningChild : "");

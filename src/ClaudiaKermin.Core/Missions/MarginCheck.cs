@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text.RegularExpressions;
 using ClaudiaKermin.Core.Roster;
 using ClaudiaKermin.Core.Tools;
 
@@ -50,11 +49,6 @@ namespace ClaudiaKermin.Core.Missions
         public string DeltaVUnknown = "";
         public readonly List<MarginFinding> Findings = new List<MarginFinding>();
 
-        private static readonly Regex Surface = new Regex(@"\b(land(s|ed|ing)?|touch ?down|ascen(d|ds|t|ding)|lift ?off|take ?off|launch(es|ing)?)\b", RegexOptions.IgnoreCase);
-        private static readonly Regex Landing = new Regex(@"\b(land(s|ed|ing)?|touch ?down)\b", RegexOptions.IgnoreCase);
-        private static readonly Regex Reentry = new Regex(@"\b(re-?ent(er|ry|ers|ering)|splash ?down)\b", RegexOptions.IgnoreCase);
-        private static readonly Regex ReturnHome = new Regex(@"\breturn(s|ing)?\b.*\bKerbin\b|\bKerbin\b.*\breturn(s|ing)?\b", RegexOptions.IgnoreCase);
-
         /// <summary>
         /// The check of <paramref name="snapshot"/> against <paramref name="rest"/>, with <paramref name="wantedPercent"/> the Craft
         /// Check's margin and <paramref name="chargePercent"/> the electric charge Telemetry Check's line. <paramref name="monopropellantUsed"/>
@@ -98,20 +92,20 @@ namespace ClaudiaKermin.Core.Missions
             if (!snapshot.DeltaVSimulator || snapshot.Stages.Count == 0 || snapshot.Bodies.Count == 0) return;
             var below = new List<string>();
             var low = new List<string>();
-            var body = Body(snapshot, snapshot.Body);
+            var body = SequenceWords.Body(snapshot, snapshot.Body);
             double used = 0;
             foreach (var leg in rest)
             {
-                var words = leg.Name + " " + leg.Intent;
-                body = NamedBody(snapshot, words) ?? body;
+                var words = SequenceWords.Of(leg);
+                body = SequenceWords.NamedBody(snapshot, words) ?? body;
                 var start = used;
                 used += Math.Max(0, leg.DeltaV);
-                if (leg.Manual || body == null || body.SeaLevelAtm > 0 || body.SurfaceGravity <= 0 || !Surface.IsMatch(words)) continue;
+                if (leg.Manual || body == null || body.SeaLevelAtm > 0 || body.SurfaceGravity <= 0 || !SequenceWords.Surface.IsMatch(words)) continue;
                 var twr = LowestTwr(snapshot, body, start, Math.Max(start + 1, used));
                 if (!twr.HasValue) continue;
                 var line = TwrText(twr.Value) + " on " + body.Name + " for \"" + leg.Name + "\"";
                 if (twr.Value < 1) below.Add(line);
-                else if (twr.Value < 1.5 && Landing.IsMatch(words)) low.Add(line);
+                else if (twr.Value < 1.5 && SequenceWords.Landing.IsMatch(words)) low.Add(line);
             }
             if (below.Count > 0) Add("twr_below_one", MarginLevel.Short, "Thrust over weight " + string.Join("; ", below.ToArray()));
             if (low.Count > 0) Add("landing_twr_low", MarginLevel.Enough, "Thrust over weight " + string.Join("; ", low.ToArray()));
@@ -129,27 +123,6 @@ namespace ClaudiaKermin.Core.Missions
                 at = end;
             }
             return lowest;
-        }
-
-        private static SnapshotBody NamedBody(GameSnapshot snapshot, string words)
-        {
-            SnapshotBody first = null;
-            var firstAt = int.MaxValue;
-            foreach (var body in snapshot.Bodies.Where(b => b.Name.Length > 0))
-            {
-                var match = Regex.Match(words, @"\b" + Regex.Escape(body.Name) + @"\b", RegexOptions.IgnoreCase);
-                if (match.Success && match.Index < firstAt)
-                {
-                    first = body;
-                    firstAt = match.Index;
-                }
-            }
-            return first;
-        }
-
-        private static SnapshotBody Body(GameSnapshot snapshot, string name)
-        {
-            return snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>No generation is the start check's Warning; with none, a battery under the Telemetry Check's line is tight and an empty one short.</summary>
@@ -188,18 +161,12 @@ namespace ClaudiaKermin.Core.Missions
                 var missing = RemoteBlocker.Missing(snapshot);
                 if (missing.Length > 0) Add(RemoteBlocker.Code, MarginLevel.Short, missing.TrimEnd('.'));
             }
-            else if (rest.Any(s => ReturnsHome(s.Name + " " + s.Intent)) && !snapshot.Craft.Parts.Any(p => p.Tags.Contains("parachute")))
+            else if (rest.Any(s => SequenceWords.ReturnsHome(SequenceWords.Of(s))) && !snapshot.Craft.Parts.Any(p => p.Tags.Contains("parachute")))
             {
                 Add("no_parachutes_for_return", MarginLevel.Short, "A return is still to fly and no part is a parachute");
             }
             if (rest.Any(s => s.Manual) && !snapshot.HasOtherCrew)
                 Add("manual_stretches_without_crew", MarginLevel.Enough, "A manual stretch is still to fly and no Kerbal aboard but Claudia can fly it");
-        }
-
-        /// <summary>A leg that comes down through Kerbin's air: a reentry or splashdown, or a return that names Kerbin.</summary>
-        private static bool ReturnsHome(string words)
-        {
-            return Reentry.IsMatch(words) || ReturnHome.IsMatch(words);
         }
 
         private void Add(string code, MarginLevel level, string explanation)
