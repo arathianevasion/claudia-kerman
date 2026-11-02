@@ -25,3 +25,7 @@ The cost:
 - **About 650 lines of numerics we own** (as built, more than the 300 first estimated, with input checks, the bounds' active set and a dense solver of its own). It is tested with textbook problems (a constrained quadratic, Rosenbrock with an equality constraint, a scaled two-body problem) and with cases for an active time bound, an equatorial target, backtracking from an undefined region, and a seeded random sweep of perturbed Course Corrections.
 - **Finite differences tie accuracy to `Trajectory`'s encounter tolerance.** Tightening its 1e-3 s bisection, or loosening it, moves the safe step size.
 - **Hard long-way returns may not converge** from the analytic seed or the grid. If they don't, the multiple-shooting route above becomes a ticket.
+
+## Amendment (#619, 2026-11-01)
+
+A broken-plane transfer's plane change is a Course Correction whose uncorrected path misses the target (the departure stays in the craft's plane). For it alone, `CorrectionBurn` may be given `aim_ut`: when zero burn does not reach the target, SQP starts from the burn whose Lambert arc reaches the target's centre then, and solves as before. This is a seed, not a Lambert step in the solve: the formulation, the variables and the single shooting are unchanged, and with zero burn reaching the target the start is zero as before. A correction to the Target Vessel's closest approach (`target_distance`, #454) does not take `aim_ut`.

@@ -72,6 +72,10 @@ _Avoid_: node time, burn time (the burn's length)
 A burn between departure and arrival that trims the predicted arrival at a body or vessel to the target periapsis or closest approach, and optionally to the target arrival inclination.
 _Avoid_: mid-course correction, MCC
 
+**Broken-plane transfer**:
+A transfer to a body far out of the craft's plane whose departure stays in that plane, with a plane change partway out, where the arc is slow, that makes the encounter; its delta-v is reported as `plane_dv`, apart from the Course Corrections' `correction_dv`. `transfer_to` flies it in place of the halfway Course Correction (#619).
+_Avoid_: dog-leg
+
 **Rendezvous**:
 A transfer that meets its target where the target is at arrival: a body, or a vessel's orbit with the vessel on it. A transfer to a body is always one.
 _Avoid_: encounter (the patched-conic event of entering a sphere of influence), meet

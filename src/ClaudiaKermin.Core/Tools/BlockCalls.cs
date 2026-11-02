@@ -436,11 +436,14 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>earliest_ut</c> (UT; now if missing) and <c>window</c> ("next", the default, or a UT): it searches one synodic period
         /// (an intercept, one orbit of the craft) from the later of the two, so a window sooner than <c>earliest_ut</c> is skipped
         /// for the next. <c>latest_ut</c> (UT) ends the search there and <c>max_dv</c> (m/s) refuses a dearer departure; both are
-        /// optional, for the correction after an ejection that missed (#363). Gives <c>error</c> "", <c>ut</c>, <c>prograde</c>,
+        /// optional, for the correction after an ejection that missed (#363), which also gives <c>plane_change</c> false (default
+        /// true): one burn, never a broken-plane plan. Gives <c>error</c> "", <c>ut</c>, <c>prograde</c>,
         /// <c>normal</c>, <c>radial</c> (m/s, maneuver node components), <c>dv</c>, <c>arrival_dv</c> (m/s: the circular capture at a
         /// body's periapsis, or matching an orbit's velocity), <c>encounter_ut</c>, <c>arrival_ut</c> (periapsis at a body; for an
         /// orbit both are the arrival), <c>target_pe_actual</c> (m; -1 for an orbit), <c>search_from</c> (UT) and <c>synodic</c>
-        /// (s); or only <c>error</c>, "found no transfer: &lt;why&gt;".
+        /// (s), and <c>plane_ut</c> (UT; -1 for none), <c>plane_prograde</c>, <c>plane_normal</c>, <c>plane_radial</c> and
+        /// <c>plane_dv</c> (m/s; 0 for none): a broken-plane plan's plane change (#619), which <c>transfer_to</c> flies with
+        /// CORRECTIONBURN at plane_ut, its aim_ut arrival_ut; or only <c>error</c>, "found no transfer: &lt;why&gt;".
         /// </summary>
         public static IDictionary<string, object> EjectionBurn(IDictionary<string, object> input, GameSnapshot snapshot)
         {
@@ -458,6 +461,9 @@ namespace ClaudiaKermin.Core.Tools
             if (mode != null && !intercept && !string.Equals(mode as string, "rendezvous", StringComparison.OrdinalIgnoreCase))
                 return Error(Transfer.Fail("mode must be \"rendezvous\" or \"intercept\", not " + Convert.ToString(mode, CultureInfo.InvariantCulture)).Error);
             if (capture != null && !(capture is bool)) return Error(Transfer.Fail("capture must be true or false").Error);
+            object planeChange;
+            ask.TryGetValue("plane_change", out planeChange);
+            if (planeChange != null && !(planeChange is bool)) return Error(Transfer.Fail("plane_change must be true or false").Error);
             SnapshotOrbit orbit = null;
             if (toOrbit)
             {
@@ -489,6 +495,7 @@ namespace ClaudiaKermin.Core.Tools
                 WindowUt = window as double?,
                 LatestUt = NumberOrNull(ask, "latest_ut"),
                 MaxDv = NumberOrNull(ask, "max_dv"),
+                BrokenPlane = planeChange as bool? ?? true,
             });
             if (plan.Error != null) return Error(plan.Error);
             return new Dictionary<string, object>
@@ -505,6 +512,11 @@ namespace ClaudiaKermin.Core.Tools
                 { "target_pe_actual", double.IsNaN(plan.PeActual) ? -1.0 : plan.PeActual },
                 { "search_from", plan.SearchFrom },
                 { "synodic", plan.Synodic },
+                { "plane_ut", plan.PlaneUt ?? -1.0 },
+                { "plane_prograde", plan.PlanePrograde },
+                { "plane_normal", plan.PlaneNormal },
+                { "plane_radial", plan.PlaneRadial },
+                { "plane_dv", plan.PlaneDv },
             };
         }
 
@@ -618,7 +630,8 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>target_inc</c> (degrees), by <see cref="Tools.CorrectionBurn"/>. <c>earliest_ut</c> (UT; now if missing) and
         /// <c>latest_ut</c> (UT; earliest_ut if missing) are the burn's window: the same UT burns then, a wider window lets the
         /// solver choose the time. <c>pe_tolerance</c> (m, default 1000) and <c>inc_tolerance</c> (degrees, default 0.5) are how
-        /// close the answer must be. Gives <c>error</c> "", <c>ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver
+        /// close the answer must be. <c>aim_ut</c> (UT, optional, #619): when the path without a burn misses the target, the solve
+        /// starts from the burn whose Lambert arc reaches its centre then. Gives <c>error</c> "", <c>ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver
         /// node components), <c>dv</c>, <c>pe_predicted</c> (m) and <c>inc_predicted</c> (degrees); a best burn outside the
         /// tolerances gives its <c>error</c> with the rest; a solve that could not start, only <c>error</c>, "found no correction: &lt;why&gt;".
         /// <para>
@@ -653,6 +666,7 @@ namespace ClaudiaKermin.Core.Tools
                 LatestUt = Number(ask, "latest_ut", earliest),
                 PeTolerance = Number(ask, "pe_tolerance", 1000),
                 IncTolerance = Number(ask, "inc_tolerance", 0.5),
+                AimUt = NumberOrNull(ask, "aim_ut"),
             });
             if (!plan.HasBurn) return Error(plan.Error);
             return new Dictionary<string, object>

@@ -99,28 +99,39 @@ namespace ClaudiaKermin.Core.Tests
         public void To_Minmus_from_a107_s_equatorial_orbit_capture_true_and_false_both_find_a_transfer()
         {
             // a107 (#611): with capture plan_transfer found none, without it 1160 m/s out. Minmus is 6° above the craft's plane
-            // when it arrives, so either way the departure carries the plane change, about 1,200 m/s.
+            // when it arrives: since #619 the departure stays in plane, about 920 m/s, and a plane change where the arc is slow
+            // takes about 40 m/s, in the result alone (plane_ut, plane_in, plane_dv), counted in total_dv.
             var snapshot = TransferTests.A107();
             var both = Run("{\"target\":\"Minmus\",\"target_pe\":30000}", snapshot);
             var alone = Run("{\"target\":\"Minmus\",\"target_pe\":30000,\"capture\":false}", snapshot);
             foreach (var result in new[] { both, alone })
             {
                 Assert.InRange(result.GetProperty("target_pe_actual").GetDouble(), 29900, 30100);
-                Assert.InRange(result.GetProperty("departure_dv").GetDouble(), 1100, 1250);
+                Assert.InRange(result.GetProperty("departure_dv").GetDouble(), 900, 950);
+                Assert.InRange(result.GetProperty("plane_dv").GetDouble(), 20, 80);
+                Assert.True(result.GetProperty("plane_ut").GetDouble() > result.GetProperty("depart_ut").GetDouble());
+                Assert.StartsWith("in ", result.GetProperty("plane_in").GetString());
+                Assert.Equal(result.GetProperty("departure_dv").GetDouble() + result.GetProperty("plane_dv").GetDouble() + result.GetProperty("arrival_dv").GetDouble(),
+                    result.GetProperty("total_dv").GetDouble(), 1);
                 Assert.False(result.TryGetProperty("note", out _));
             }
-            Assert.True(alone.GetProperty("departure_dv").GetDouble() <= both.GetProperty("departure_dv").GetDouble() + 1);
+            Assert.True(alone.GetProperty("departure_dv").GetDouble() + alone.GetProperty("plane_dv").GetDouble()
+                <= both.GetProperty("departure_dv").GetDouble() + both.GetProperty("plane_dv").GetDouble() + 1);
+            // An in-plane target's result has none of them.
+            Assert.False(Run("{\"target\":\"Mun\",\"target_pe\":30000}", snapshot).TryGetProperty("plane_dv", out _));
         }
 
         [Fact]
-        public void When_the_cheapest_window_can_t_be_aimed_it_gives_the_first_that_can_and_notes_it()
+        public void When_the_cheapest_one_burn_window_can_t_be_aimed_the_broken_plane_is_given_with_no_note()
         {
+            // The Mun across the cheapest one-burn window's arc: before #619 the next window, noted ("not the cheapest window:
+            // ..."; EJECTIONBURN with plane_change false still finds it, TransferTests); now the broken plane in plane, cheaper
+            // than either, which nothing was skipped for.
             var snapshot = TransferTests.A107MunInTheWay(2429559.1);
-            var cheapest = Run("{\"target\":\"Minmus\",\"target_pe\":30000}", TransferTests.A107());
             var result = Run("{\"target\":\"Minmus\",\"target_pe\":30000}", snapshot);
             Assert.InRange(result.GetProperty("target_pe_actual").GetDouble(), 29900, 30100);
-            Assert.Equal("not the cheapest window: the one at UT " + Math.Round(cheapest.GetProperty("depart_ut").GetDouble())
-                + " can't be aimed at target_pe on the patched conics; this is the first that can",result.GetProperty("note").GetString());
+            Assert.True(result.TryGetProperty("plane_dv", out _));
+            Assert.False(result.TryGetProperty("note", out _));
         }
 
         [Fact]
