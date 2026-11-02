@@ -111,6 +111,9 @@ namespace ClaudiaKermin.Core.Missions
         public const string CutOffEffort = "medium";
         public const string CutOffNote = "Your last attempt ran out of room while thinking. Decide with what you have and keep your reasoning short.";
 
+        /// <summary>The correction sent once when a reply of kind mission_plan came back without a plan accepted through propose_mission_plan (#667): turn text, never the system prompt.</summary>
+        public const string PlanCallNote = "You replied with kind mission_plan without calling propose_mission_plan, so no plan was accepted. Call propose_mission_plan now with the plan, then end the turn with kind mission_plan.";
+
         /// <summary>
         /// The summarization prompt for on-demand compaction (#268; it replaces the API's default). It names what a long
         /// Mission must keep word for word; the summary is all Claude has of the compacted turns. The craft's state here is the

@@ -195,6 +195,8 @@ namespace ClaudiaKermin.Core.Missions
             /// the cut-off note. At most one automatic retry per turn, and any Retry sends this form, never the identical request.
             /// </summary>
             public bool CutOffRetry;
+            /// <summary>The turn was resent once with <see cref="MissionPrompts.PlanCallNote"/> after a mission_plan reply with no accepted plan (#667); not saved.</summary>
+            public bool PlanCallRetry;
             /// <summary>
             /// The turn is in its Second look (<see cref="SecondLook"/>): high effort and the first reply's reason for doubt added, which
             /// is never "" once set. At most one per turn, and never with a <see cref="CutOffRetry"/>, in either order.
@@ -1322,6 +1324,11 @@ namespace ClaudiaKermin.Core.Missions
             var problem = reply == null ? "it wasn't in the Mission reply format" : Mismatch(turn.Purpose, reply);
             if (problem != null)
             {
+                if (reply != null && PlanNotProposed(reply) && TakesMissionPlan(turn.Purpose) && !turn.PlanCallRetry && mission.DeferredRestore == null)
+                {
+                    PlanCallCorrection(mission, turn, problem);
+                    return;
+                }
                 Failed(mission, turn, "Claudia's reply didn't fit: " + problem + ".");
                 return;
             }
@@ -1380,13 +1387,41 @@ namespace ClaudiaKermin.Core.Missions
             return reply != null ? reply.WithProposed(ProposedPlans.LastAccepted(turn.Messages ?? new List<Message>())) : null;
         }
 
+        /// <summary>A reply of kind mission_plan whose plan no propose_mission_plan call accepted.</summary>
+        private static bool PlanNotProposed(MissionReply reply)
+        {
+            return reply.Kind == MissionReply.MissionPlanKind && reply.MissionPlan == null;
+        }
+
+        /// <summary>
+        /// A mission_plan reply with no accepted plan on a turn that takes one (#667). It is never committed. The turn is resent
+        /// once with the correction after its own messages (a tool loop stays), as the last step that may call propose_mission_plan
+        /// alone, if the Spending Cap has room; otherwise, or after a second refusal, it fails as it always did.
+        /// </summary>
+        private void PlanCallCorrection(Mission mission, Turn turn, string problem)
+        {
+            turn.PlanCallRetry = true;
+            turn.Messages.Add(Message.SystemText(MissionPrompts.PlanCallNote));
+            turn.ToolLimitSent = false;
+            turn.RepeatStop = false;
+            turn.PlanOnly = true;
+            if (!HasCapRoom(mission, turn))
+            {
+                Failed(mission, turn, "Claudia's reply didn't fit: " + problem + ".");
+                return;
+            }
+            Event(mission, "plan_call_retry", turn.Purpose.ToString());
+            mission.Activity = Thinking(turn);
+            Send(mission, turn);
+        }
+
         /// <summary>
         /// Why a reply doesn't fit its request (reported as off_schema), or null when it does. The schema takes every kind
         /// (ADR 0012), so this is where a kind the request can't come back as is refused.
         /// </summary>
         private static string Mismatch(Purpose purpose, MissionReply reply)
         {
-            if (reply.Kind == MissionReply.MissionPlanKind && reply.MissionPlan == null) return "no Mission Plan was accepted through propose_mission_plan";
+            if (PlanNotProposed(reply)) return "no Mission Plan was accepted through propose_mission_plan";
             switch (purpose)
             {
                 case Purpose.MissionPlan:
@@ -1837,6 +1872,7 @@ namespace ClaudiaKermin.Core.Missions
             mission.Stage = MissionStage.Paused;
             mission.PauseCause = PauseCause.Other;
             mission.PauseReason = reason;
+            Event(mission, "paused", reason);
             Note(LogKind.Notice, reason);
             NeedsPlayer("Claudia's Mission is Paused.");
         }
