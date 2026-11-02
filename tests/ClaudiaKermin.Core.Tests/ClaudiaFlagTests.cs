@@ -139,6 +139,12 @@ namespace ClaudiaKermin.Core.Tests
             // The player changed their flag while no Mission was under way (the save's kept one is stale).
             Assert.Equal(Claudia, keeper.AgencyFlagFor(View(MissionStage.WaitingForFlight), Agency));
             Assert.Equal(Agency, keeper.SavedAgencyFlag);
+
+            // An empty read (no game flag yet) never wipes a kept flag.
+            var kept = new ClaudiaFlagKeeper();
+            kept.Load("Old/Flags/kept");
+            Assert.Equal(Claudia, kept.AgencyFlagFor(View(MissionStage.Running), ""));
+            Assert.Equal("Old/Flags/kept", kept.SavedAgencyFlag);
         }
 
         // ---- The Mission's vessels ----

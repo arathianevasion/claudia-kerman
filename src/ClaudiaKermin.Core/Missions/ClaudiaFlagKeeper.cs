@@ -63,7 +63,7 @@ namespace ClaudiaKermin.Core.Missions
             {
                 if (current == Url) return null;
                 // The flag in force now is the player's, so a flag kept by an earlier session is stale.
-                SavedAgencyFlag = current;
+                if (!string.IsNullOrEmpty(current) || SavedAgencyFlag == null) SavedAgencyFlag = current;
                 return Url;
             }
             if (running || SavedAgencyFlag == null) return null;

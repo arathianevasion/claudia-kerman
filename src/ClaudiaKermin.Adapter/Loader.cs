@@ -125,7 +125,7 @@ namespace ClaudiaKermin.Adapter
             GameEvents.onShowUI.Remove(ShowUI);
             GameEvents.onGameSceneLoadRequested.Remove(SceneChanging);
             RemoveButtons();
-            _missions.Detach();
+            if (_missions != null) _missions.Detach();
             UnlockAll();
         }
 
