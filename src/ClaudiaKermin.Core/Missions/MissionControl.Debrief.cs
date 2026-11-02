@@ -137,6 +137,8 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The events the mod logged and the rest of the Mission Plan, for the Debrief request.</summary>
         private string RunFacts(Mission mission)
         {
+            // A run cut off by a load with a drop still being measured (#614) is finished here the way a run's end finishes it.
+            if (!mission.HandBack) { MeasureSeparationAtRunEnd(mission); ClearSeparation(mission); }
             var text = mission.RunEvents.DebriefText(mission.RunStartUt);
             var rest = RestOfPlanText(mission);
             // A hand-back Debrief is of a manual stretch, with no scripted run to total.

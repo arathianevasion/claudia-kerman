@@ -303,15 +303,16 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>
         /// A stage or decoupler fired on the craft (#605). At zero throttle the latest reading is the delta-v left before it, and
         /// what stock loses across it, once two readings agree, was dropped, not used. Under throttle nothing is taken: that fall counts as used.
+        /// The event's own throttle (#615) is read when it carries one, else the last snapshot's.
         /// </summary>
-        private void Separated()
+        private void Separated(double? throttle)
         {
             var mission = _mission;
             if (mission == null || mission.Stage != MissionStage.Running || !mission.RunId.HasValue) return;
             if (!mission.RunStartDeltaVLeft.HasValue || mission.SeparationBefore.HasValue) return;
             var snapshot = MissionVesselSnapshot(mission);
             var left = LiveReadings.DeltaVLeftOf(snapshot);
-            if (!left.HasValue || snapshot.Throttle > 0) return;
+            if (!left.HasValue || (throttle ?? snapshot.Throttle) > 0) return;
             mission.SeparationBefore = left;
             mission.SeparationAfter = null;
         }
