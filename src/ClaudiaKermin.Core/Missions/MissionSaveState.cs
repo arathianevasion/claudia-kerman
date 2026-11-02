@@ -50,6 +50,9 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The Mission's vessel, for the Go to button at a Due Time.</summary>
         public string VesselId = "";
         public string VesselName = "";
+        /// <summary>The Target Vessel's <c>persistentId</c> and name (ADR 0013); null and "" for none, and in older saves.</summary>
+        public uint? TargetVesselId;
+        public string TargetVesselName = "";
         /// <summary>The Due Time of the Sequence Plan in hand has been reached and announced.</summary>
         public bool DueNotified;
         /// <summary>The Mission is remote: Claudia is at Mission Control, not aboard. A save from before this existed reads as crewed.</summary>
@@ -168,6 +171,11 @@ namespace ClaudiaKermin.Core.Missions
             if (StopReason != null) values["stopReason"] = StopReason;
             if (InterruptReason != null) values["interruptReason"] = InterruptReason;
             if (ProcessorPartId.HasValue) values["processorPartId"] = ProcessorPartId.Value.ToString(CultureInfo.InvariantCulture);
+            if (TargetVesselId.HasValue)
+            {
+                values["targetVesselId"] = TargetVesselId.Value.ToString(CultureInfo.InvariantCulture);
+                values["targetVesselName"] = TargetVesselName;
+            }
             if (ChildVessels.Length > 0) values["childVessels"] = ChildVessels;
             if (LeftTheCraft.Length > 0) values["leftTheCraft"] = LeftTheCraft;
             if (Crossings.Length > 0) values["crossings"] = Crossings;
@@ -266,6 +274,12 @@ namespace ClaudiaKermin.Core.Missions
             if (values.TryGetValue("interruptReason", out interruptReason)) state.InterruptReason = interruptReason;
             uint processor;
             if (uint.TryParse(Get(values, "processorPartId"), NumberStyles.Integer, CultureInfo.InvariantCulture, out processor)) state.ProcessorPartId = processor;
+            uint target;
+            if (uint.TryParse(Get(values, "targetVesselId"), NumberStyles.Integer, CultureInfo.InvariantCulture, out target))
+            {
+                state.TargetVesselId = target;
+                state.TargetVesselName = Get(values, "targetVesselName");
+            }
             foreach (var pair in values)
                 if (pair.Key.StartsWith(SettingPrefix, StringComparison.Ordinal)) state.Settings[pair.Key.Substring(SettingPrefix.Length)] = pair.Value;
             // In order: unsafeProblem.0, unsafeProblem.1, ... up to the first one missing.

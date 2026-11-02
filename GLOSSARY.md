@@ -170,6 +170,10 @@ _Avoid_: flight, run, job
 A vessel that separated from a Mission's craft during the Mission and carries a kOS processor, which Claudia may fly with Maneuver Sequences of its own while she has a link to it. The craft stays the vessel Claudia is aboard (or, for a remote Mission, the one with the original processor).
 _Avoid_: probe, drone, secondary craft
 
+**Target Vessel**:
+The one other vessel a Mission rendezvouses or docks with: KSP's target when the Mission starts, or the vessel the Mission Goal names. A Child Vessel can be one. The Game Snapshot carries it as one compact entry only when the Mission has one (ADR 0013). It is flown only by the bundled `dock_hold`, never by Claudia's scripts.
+_Avoid_: target (alone, which is also a transfer's body or orbit), station, other vessel
+
 **Spending Cap**:
 The most a Mission may spend on Claudia's API calls, set by the player when the Mission starts and raisable later.
 _Avoid_: budget (which means delta-v), limit, quota

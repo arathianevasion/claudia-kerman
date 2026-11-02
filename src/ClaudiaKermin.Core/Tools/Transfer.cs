@@ -121,8 +121,13 @@ namespace ClaudiaKermin.Core.Tools
         private const double AngleTolerance = 1e-6;
         private const int RefineIterations = 100;
         private const double FlightReach = 2;
-        /// <summary>How far an intercept's arrival point may move from the point opposite the departure, rad.</summary>
-        private const double ArrivalReach = Math.PI / 3;
+        /// <summary>
+        /// An intercept's refinement scans, before BrentMin narrows the cheapest: departures across its span, arrival points round
+        /// the whole target orbit, and flight times to each.
+        /// </summary>
+        private const int DepartureScans = 13;
+        private const int ArrivalScans = 24;
+        private const int FlightScans = 5;
         /// <summary>The cost of a point with no Lambert path: finite, so BrentMin steps away from it instead of stopping.</summary>
         private const double NoPath = 1e30;
         /// <summary>The bisection on the prograde part: it stops within <see cref="PeClose"/> m of target_pe, and fails beyond <see cref="PeNear"/> m.</summary>
@@ -216,13 +221,16 @@ namespace ClaudiaKermin.Core.Tools
                 return Fail("no departure in the " + Num(span) + " s from UT " + Num(from) + " has a path to " + transfer.Name
                     + (transfer.LambertError != null ? " (Lambert: " + transfer.LambertError + ")" : ""));
 
-            // BrentMin from a pick, never before the start or past the grid's end (or the latest UT).
+            // BrentMin from a pick, never before the start or past the grid's end (or the latest UT): a step either side, or
+            // for an intercept a quarter orbit, so its two sides cover the orbit (the grid's arrival opposite the departure finds
+            // only the nodes of an inclined target, where the cheapest departure may be up to a quarter orbit away).
             var last = Math.Min(from + (count - 2) * step, until);
+            var departureReach = intercept ? craft.Period / 4 : step;
             var scale = Scale.Create(home.Gm, Math.Sqrt(craft.A * targetOrbit.A));
             Func<int, Point> refine = pick =>
             {
                 var seed = new Point { T = from + (pick - 1) * step, Tof = flight[pick], Cost = cheapest[pick] };
-                return transfer.Refine(seed, Math.Max(from, seed.T - step), Math.Min(last, seed.T + step),
+                return transfer.Refine(seed, Math.Max(from, seed.T - departureReach), Math.Min(last, seed.T + departureReach),
                     FlightReach * hohmann[pick] * (FlightHigh - FlightLow) / (Flights - 1), scale.TimeScale);
             };
             // An intercept's two sides: the cheaper wins. A body's windows, cheapest first: the first the patched conics can aim wins.
@@ -451,6 +459,8 @@ namespace ClaudiaKermin.Core.Tools
             {
                 var mu = _craft.Mu;
                 var h = Vec3.Cross(r, v).Length;
+                // Straight up and down (an intercept's arrival point over the departure): it falls back through the floor.
+                if (h < 1e-9 * r.Length * v.Length) return true;
                 var energy = Vec3.Dot(v, v) / 2 - mu / r.Length;
                 var e = Math.Sqrt(Math.Max(0, 1 + 2 * energy * h * h / (mu * mu)));
                 var pe = h * h / mu / (1 + e);
@@ -482,24 +492,91 @@ namespace ClaudiaKermin.Core.Tools
 
             /// <summary>
             /// BrentMin over the departure time in [<paramref name="lo"/>, <paramref name="hi"/>], each departure at its cheapest
-            /// flight time within <paramref name="reach"/> s of the seed's (and an intercept's at its cheapest arrival point): the
-            /// seed itself when that finds nothing cheaper. Times are searched in units of <paramref name="timeScale"/> s.
+            /// flight time within <paramref name="reach"/> s of the seed's: the seed itself when that finds nothing cheaper. An
+            /// intercept instead scans that span and the whole target orbit for its cheapest pair of departure and arrival point
+            /// (<see cref="InterceptScan"/>), then searches round it, each arrival point at its own flight times. Times are
+            /// searched in units of <paramref name="timeScale"/> s.
             /// </summary>
             public Point Refine(Point seed, double lo, double hi, double reach, double timeScale)
             {
                 if (!(hi > lo)) lo = hi = seed.T;
-                var tofLo = Math.Max(seed.Tof - reach, seed.Tof * 0.1);
-                var tofHi = seed.Tof + reach;
-                Func<double, Point> atTime = t =>
+                var centre = seed.T;
+                Func<double, Point> atTime;
+                if (!_intercept)
                 {
-                    if (!_intercept) return Flight(t, 0, tofLo, tofHi, timeScale);
-                    var shift = Minimise(s => Flight(t, s, tofLo, tofHi, timeScale).Cost, -ArrivalReach, ArrivalReach, AngleTolerance);
-                    return Flight(t, shift, tofLo, tofHi, timeScale);
-                };
-                var departure = seed.T;
-                if (hi > lo) departure += timeScale * Minimise(x => atTime(seed.T + timeScale * x).Cost, (lo - seed.T) / timeScale, (hi - seed.T) / timeScale, TimeTolerance);
+                    var tofLo = Math.Max(seed.Tof - reach, seed.Tof * 0.1);
+                    var tofHi = seed.Tof + reach;
+                    atTime = t => Flight(t, 0, tofLo, tofHi, timeScale);
+                }
+                else
+                {
+                    // BrentMin is a local search: it starts from the scan, not from the grid's arrival opposite the departure.
+                    var start = InterceptScan(lo, hi);
+                    if (start == null) return seed;
+                    var dt = (hi - lo) / (DepartureScans - 1);
+                    // The cheapest arrival point moves with the departure, up to as far: two arrival steps hold it a departure step away.
+                    var ds = 2 * 2 * Math.PI / ArrivalScans;
+                    centre = start.T;
+                    lo = Math.Max(lo, centre - dt);
+                    hi = Math.Min(hi, centre + dt);
+                    atTime = t => InterceptFlight(t, Minimise(s => InterceptFlight(t, s, timeScale).Cost, start.Shift - ds, start.Shift + ds, AngleTolerance), timeScale);
+                }
+                var departure = centre;
+                if (hi > lo) departure += timeScale * Minimise(x => atTime(centre + timeScale * x).Cost, (lo - centre) / timeScale, (hi - centre) / timeScale, TimeTolerance);
                 var found = atTime(departure);
                 return found.Cost < seed.Cost ? found : seed;
+            }
+
+            /// <summary>
+            /// An intercept's coarse scan: <see cref="DepartureScans"/> departures across [<paramref name="lo"/>, <paramref name="hi"/>],
+            /// each to <see cref="ArrivalScans"/> arrival points round the target orbit at <see cref="FlightScans"/> flight times;
+            /// the cheapest, or null when none has a path.
+            /// </summary>
+            private Point InterceptScan(double lo, double hi)
+            {
+                Point best = null;
+                for (var i = 0; i < DepartureScans; i++)
+                {
+                    var t = lo + (hi - lo) * i / (DepartureScans - 1);
+                    for (var k = 0; k < ArrivalScans; k++)
+                    {
+                        var shift = 2 * Math.PI * k / ArrivalScans;
+                        double tofLo, tofHi;
+                        InterceptFlights(t, shift, out tofLo, out tofHi);
+                        for (var j = 0; j < FlightScans; j++)
+                        {
+                            var tof = tofLo + (tofHi - tofLo) * j / (FlightScans - 1);
+                            var c = Cost(t, tof, shift);
+                            if (best == null || c < best.Cost) best = new Point { T = t, Tof = tof, Shift = shift, Cost = c };
+                        }
+                    }
+                    if (!(hi > lo)) break;
+                }
+                return best != null && Finite(best.Cost) ? best : null;
+            }
+
+            /// <summary>An intercept's cheapest flight time from <paramref name="t"/> to the arrival point <paramref name="shift"/> rad on, within <see cref="InterceptFlights"/>.</summary>
+            private Point InterceptFlight(double t, double shift, double timeScale)
+            {
+                double tofLo, tofHi;
+                InterceptFlights(t, shift, out tofLo, out tofHi);
+                return Flight(t, shift, tofLo, tofHi, timeScale);
+            }
+
+            /// <summary>
+            /// The flight times an intercept tries from <paramref name="t"/> to the arrival point <paramref name="shift"/> rad on: the
+            /// grid's range of the Hohmann time to that point's radius, scaled by the angle the arc sweeps (half a turn opposite).
+            /// </summary>
+            private void InterceptFlights(double t, double shift, out double tofLo, out double tofHi)
+            {
+                var r1 = _craft.Position(t);
+                var r2 = ArrivalPoint(t, shift);
+                var swept = Math.Atan2(Vec3.Dot(Vec3.Cross(r1, r2), _craft.W), Vec3.Dot(r1, r2));
+                if (swept <= 0) swept += 2 * Math.PI;
+                var a = (r1.Length + r2.Length) / 2;
+                var hohmann = Math.Sqrt(a * a * a / _craft.Mu) * swept;
+                tofLo = FlightLow * hohmann;
+                tofHi = FlightHigh * hohmann;
             }
 
             /// <summary>The cheapest flight time from <paramref name="t"/> in [<paramref name="tofLo"/>, <paramref name="tofHi"/>].</summary>

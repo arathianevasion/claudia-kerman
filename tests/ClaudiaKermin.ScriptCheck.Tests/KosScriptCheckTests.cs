@@ -349,6 +349,18 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("list targets in t.\nt[0]:parts[0]:getmodule(\"ModuleLight\"):doevent(\"lights on\").")]
         public void ChangeOrMessageOtherVessels(string script) { AssertForbidden("change or message other vessels", script); }
 
+        // ADR 0013: the Target Vessel takes no new rule. Reading TARGET and SET TARGET TO pass; changing it stays refused.
+        [Theory]
+        [InlineData("set target to \"Kerbin Station Alpha\".\nprint target:orbit:apoapsis.")]
+        [InlineData("set target to vessel(\"Kerbin Station Alpha\").\nlocal ports is target:dockingports.\nprint ports:length.")]
+        [InlineData("print target:partstagged(\"fore\")[0]:nodetype.\nprint target:position:mag.")]
+        public void ReadingTheTargetAndSettingItPass(string script) { AssertAllowed(script); }
+
+        [Theory]
+        [InlineData("target:partstagged(\"fore\")[0]:getmodule(\"ModuleDockingNode\"):doevent(\"undock\").")]
+        [InlineData("set target:shipname to \"Renamed\".")]
+        public void ChangingTheTargetStaysRefused(string script) { AssertForbidden("change or message other vessels", script); }
+
         [Theory]
         [InlineData("local g is gui(200).\ng:show().")]
         public void OpenGuiWindows(string script) { AssertForbidden("open GUI windows", script); }

@@ -182,6 +182,13 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The RCS switch on the craft: true on, false off, null when it isn't read (the editor). Claudia plans around it; the mod never changes it.</summary>
         public bool? RcsOn;
 
+        /// <summary>The Mission's Target Vessel, read live by its id (ADR 0013); null when the Mission has none, so the JSON has no entry.</summary>
+        public SnapshotTarget Target;
+        /// <summary>KSP's target vessel as the snapshot was read, which a Mission starting now takes; null for none. Not in the JSON.</summary>
+        public SnapshotTarget KspTarget;
+        /// <summary>The other vessels in the game a Mission Goal may name (ADR 0013); empty when not read. Not in the JSON.</summary>
+        public List<SnapshotVessel> Vessels = new List<SnapshotVessel>();
+
         /// <summary>
         /// What the Mission Settings give a Planning Tool for the inputs Claudia leaves out: daylight landing on, and the time cap in
         /// hours. The Mission sets them on the turn's snapshot before a tool runs; they are not part of the snapshot's JSON.
@@ -417,7 +424,71 @@ namespace ClaudiaKermin.Core.Missions
                 }
                 json.EndArray();
             }
+            // The recording form (with bodies) is the one that keeps the target's id.
+            if (Target != null) WriteTarget(json, Target, withBodies);
             return json.EndObject().ToString();
+        }
+
+        /// <summary>The Target Vessel's entry, kept short: its orbit's elements at the snapshot time, free ports as counts by size.</summary>
+        private static void WriteTarget(JsonWriter json, SnapshotTarget target, bool withId)
+        {
+            json.Name("target").BeginObject();
+            if (withId) json.Field("id", target.Id);
+            json.Field("name", target.Name).Field("body", target.Body).Field("situation", target.Situation);
+            if (target.Orbit != null)
+            {
+                var orbit = target.Orbit;
+                json.Name("orbit").BeginObject().Field("apoapsis", orbit.Apoapsis).Field("periapsis", orbit.Periapsis)
+                    .Field("inclination", orbit.Inclination).Field("eccentricity", orbit.Eccentricity).Field("semi_major_axis", orbit.SemiMajorAxis)
+                    .Field("lan", orbit.Lan).Field("arg_pe", orbit.ArgumentOfPeriapsis).Field("mean_anomaly_at_epoch", orbit.MeanAnomalyAtEpoch)
+                    .Field("epoch", orbit.Epoch).EndObject();
+            }
+            json.Name("free_ports").BeginObject();
+            foreach (var size in target.FreePorts) json.Field(size.Key, size.Value);
+            json.EndObject();
+            if (target.PortTags.Count > 0)
+            {
+                json.Name("port_tags").BeginObject();
+                foreach (var tag in target.PortTags) json.Field(tag.Key, tag.Value);
+                json.EndObject();
+            }
+            json.EndObject();
+        }
+
+        private static SnapshotTarget ReadTarget(JsonNode target)
+        {
+            if (target == null || target.Kind != JsonKind.Object) return null;
+            var read = new SnapshotTarget
+            {
+                Id = (uint)(JsonNode.Long(target["id"]) ?? 0),
+                Name = JsonNode.Str(target["name"]) ?? "",
+                Body = JsonNode.Str(target["body"]) ?? "",
+                Situation = JsonNode.Str(target["situation"]) ?? "",
+            };
+            var orbit = target["orbit"];
+            if (orbit != null && orbit.Kind == JsonKind.Object)
+            {
+                read.Orbit = new SnapshotOrbit
+                {
+                    Apoapsis = JsonNode.Double(orbit["apoapsis"]) ?? 0,
+                    Periapsis = JsonNode.Double(orbit["periapsis"]) ?? 0,
+                    Inclination = JsonNode.Double(orbit["inclination"]) ?? 0,
+                    Eccentricity = JsonNode.Double(orbit["eccentricity"]) ?? 0,
+                    SemiMajorAxis = JsonNode.Double(orbit["semi_major_axis"]) ?? 0,
+                    Lan = JsonNode.Double(orbit["lan"]) ?? 0,
+                    ArgumentOfPeriapsis = JsonNode.Double(orbit["arg_pe"]) ?? 0,
+                    MeanAnomalyAtEpoch = JsonNode.Double(orbit["mean_anomaly_at_epoch"]) ?? 0,
+                    Epoch = JsonNode.Double(orbit["epoch"]) ?? 0,
+                    Body = read.Body,
+                };
+            }
+            var ports = target["free_ports"];
+            if (ports != null && ports.Kind == JsonKind.Object)
+                foreach (var size in ports.Members) read.FreePorts[size.Key] = (int)(JsonNode.Long(size.Value) ?? 0);
+            var tags = target["port_tags"];
+            if (tags != null && tags.Kind == JsonKind.Object)
+                foreach (var tag in tags.Members) read.PortTags[tag.Key] = JsonNode.Str(tag.Value) ?? "";
+            return read;
         }
 
         private static void WriteChute(JsonWriter json, Tools.ReentryChute chute)
@@ -490,6 +561,7 @@ namespace ClaudiaKermin.Core.Missions
                 VerticalSpeed = JsonNode.Double(root["vertical_speed"]) ?? 0,
                 RcsOn = JsonNode.Bool(root["rcs_on"]),
                 _parsedImpactInS = JsonNode.Double(root["impact_in_s"]),
+                Target = ReadTarget(root["target"]),
             };
             var craft = root["craft"];
             if (craft != null)

@@ -226,6 +226,68 @@ namespace ClaudiaKermin.Core.Tests
             Assert.True(Math.Abs(Math.Abs(angle) - 90) < 5, "departs at " + angle + "°, not near a node");
         }
 
+        /// <summary>An orbit of e 0.5 from 750 to 2,250 km out, at 10°, its periapsis at its ascending node's quarter turn.</summary>
+        private static Dictionary<string, object> Eccentric()
+        {
+            var input = ToOrbit(0, inc: 10);
+            input["target_sma"] = 1500000.0;
+            input["target_ecc"] = 0.5;
+            input["target_argpe"] = 90.0;
+            return input;
+        }
+
+        [Fact]
+        public void An_intercept_of_an_eccentric_orbit_finds_the_cheapest_arrival_on_the_whole_orbit()
+        {
+            // #494: the arrival point was held within 60° of the point opposite the departure. Here the cheapest arrival is
+            // about 80° from it: a brute force over departure, arrival point and flight time finds about 771 m/s, and over
+            // 10 m/s more within 60° (877 m/s was found before).
+            var snapshot = Circular();
+            var input = Eccentric();
+            var node = Solved(snapshot, input);
+            var found = D(node, "dv") + D(node, "arrival_dv");
+            var craft = CraftOrbit(snapshot);
+            var target = TargetOrbit(input);
+            double best = double.PositiveInfinity, within60 = double.PositiveInfinity;
+            for (var i = 0; i < 36; i++)
+            {
+                var t = craft.Period * i / 36;
+                Vec3 r1, vc;
+                craft.State(t, out r1, out vc);
+                var opposite = Math.Atan2(-Vec3.Dot(r1, target.Q), -Vec3.Dot(r1, target.P));
+                for (var k = 0; k < 72; k++)
+                {
+                    var nu = 2 * Math.PI * k / 72;
+                    Vec3 r2, vt;
+                    target.StateAtTrue(nu, out r2, out vt);
+                    var swept = Math.Atan2(Vec3.Dot(Vec3.Cross(r1, r2), craft.W), Vec3.Dot(r1, r2));
+                    if (swept <= 0) swept += 2 * Math.PI;
+                    var hohmann = Math.Sqrt(Math.Pow((r1.Length + r2.Length) / 2, 3) / KerbinGm) * swept;
+                    for (var j = 0; j < 15; j++)
+                    {
+                        var path = Lambert.Solve(KerbinGm, r1, r2, hohmann * (0.2 + 1.8 * j / 14), craft.W);
+                        if (path.Error != null) continue;
+                        var cost = (path.V1 - vc).Length + (vt - path.V2).Length;
+                        best = Math.Min(best, cost);
+                        if (Math.Abs(Math.IEEERemainder(nu - opposite, 2 * Math.PI)) <= Math.PI / 3) within60 = Math.Min(within60, cost);
+                    }
+                }
+            }
+            Assert.True(found <= best + 1, "found " + found + " m/s, the brute force " + best + " m/s");
+            Assert.True(found < within60 - 10, "found " + found + " m/s, the brute force within 60° " + within60 + " m/s");
+
+            // Flown, it arrives on the target orbit more than 60° from the point opposite the departure, at the arrival burn's speed.
+            Vec3 r, v, r0, v0, rt, vt0;
+            Flown(snapshot, node, out r, out v);
+            craft.State(D(node, "ut"), out r0, out v0);
+            var arrival = Math.Atan2(Vec3.Dot(r, target.Q), Vec3.Dot(r, target.P));
+            var away = Math.Atan2(-Vec3.Dot(r0, target.Q), -Vec3.Dot(r0, target.P));
+            Assert.True(Math.Abs(Math.IEEERemainder(arrival - away, 2 * Math.PI)) > Math.PI / 3, "arrives " + (arrival - away) * 180 / Math.PI + "° from the opposite point");
+            target.StateAtTrue(arrival, out rt, out vt0);
+            Assert.InRange((r - rt).Length, 0, 1000);
+            Assert.InRange((vt0 - v).Length, D(node, "arrival_dv") - 0.5, D(node, "arrival_dv") + 0.5);
+        }
+
         // ---- capture in and out ----
 
         [Fact]
@@ -385,6 +447,8 @@ namespace ClaudiaKermin.Core.Tests
             parking.Orbit.Lan = 40;
             Timing.Within(100, () => Solved(snapshot, ToOrbit(200000)));
             Timing.Within(100, () => Solved(snapshot, Inclined("intercept")));
+            Timing.Within(100, () => Solved(snapshot, Inclined("intercept", capture: false)));
+            Timing.Within(100, () => Solved(snapshot, Eccentric()));
             Timing.Within(100, () => Solved(snapshot, Inclined("rendezvous")));
             Timing.Within(100, () => Solved(snapshot, Inclined("rendezvous", capture: false)));
             Timing.Within(100, () => Solved(parking, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 20000.0 }, { "earliest_ut", parking.Ut + 30 } }));
