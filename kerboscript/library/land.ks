@@ -24,16 +24,17 @@
 //| powered descent that brakes onto it, rejects slopes over max_slope (diverting up to max_divert to
 //| flatter ground) and touches down at about touchdown_speed. Aims for about 5 km of the site.
 //| Options:
-//|   target ["any"]: "any", LATLNG(lat, lng), lexicon("lat", x, "lng", y) or
-//|     lexicon("biome", name) on the body orbited. "any" lands about half an orbit on. A biome target
+//|   target ["any"]: "any", "vessel", LATLNG(lat, lng), lexicon("lat", x, "lng", y) or
+//|     lexicon("biome", name) on the body orbited. "any" lands about half an orbit on. "vessel" lands
+//|     vessel_offset [200] m (50 or more) beside the landed Target Vessel. A biome target
 //|     (e.g. lexicon("biome", "Midlands")), with an optional "near" point (LATLNG or lat/lng lexicon),
 //|     finds its site when it flies, with find_landing_site's search: the soonest pass (or the one
 //|     nearest near) over the biome under the ground track in the window, 5 km inside its edge if it
 //|     can, in daylight if daylight is set, within max_slope. A site, given or found, flies on the
 //|     soonest pass in the window whose correction burn is within max_correction_dv (warping there on
 //|     rails); land solves that pass again shortly before the deorbit burn and, if it missed it, takes the
-//|     next (up to 2 times). Use find_landing_site to see sites when you plan, then pass land the biome
-//|     with the site it showed as near, or that site alone as the target. land never changes the plane: for a site
+//|     next (up to 2 times). Plan with find_landing_site, then pass the biome with its site as near,
+//|     or that site as the target. land never changes the plane: for a site
 //|     off the track, fly a change_orbit from find_landing_site's plane_changes first, as its own step, and budget its total_dv.
 //|   within_hours ["auto"]: the window, hours: the larger of 6 and a turn of the body (11.2 at Minmus,
 //|     38.6 at the Mun), up to 48. Pass the window_hours find_landing_site gave.
@@ -46,9 +47,7 @@
 //|     only on an orbit that runs along the day-night line.
 //|   max_slope [8]: degrees; steeper ground is rejected during final descent.
 //|   max_divert [300]: m it may move off the site to find ground within max_slope.
-//|   max_overshoot [500]: m past the site it may land rather than turn back. The descent brakes
-//|     once and never turns back for the site while it stops within this; stopped farther past, it
-//|     flies back. Set it from the Mission Goal's accuracy (e.g. 50 for "land within 50 m of the
+//|   max_overshoot [500]: m past the site it may land rather than turn back. Set it from the Mission Goal's accuracy (e.g. 50 for "land within 50 m of the
 //|     flag"); a small figure may cost a turn back and its delta-v.
 //|   touchdown_speed [2]: m/s at touchdown.
 //|   gear_alt [1000]: m above the ground to lower the landing gear.
@@ -80,6 +79,7 @@
 //| bodies only", an orbit it can't land from, no pass over the site within max_correction_dv, no daylight pass (both before any burn, naming
 //| the change_orbit plane changes that reach the site, with their delta-v), a missed pass,
 //| "no site in the <biome> biome" (saying how far the search got), landing outside the biome asked for,
+//| for "vessel" no Target Vessel landed on the body (no burn yet),
 //| not enough delta-v, "terrain on the approach" (before the deorbit burn, or as braking begins, keeping its orbit), "deorbit left periapsis" under the plan,
 //| braking that raised periapsis or "climbed off its predicted path" (the report says whether it brought the orbit back to near-circular), "tipped over",
 //| out of fuel, or an abort; a failure in the descent leaves the craft safe but falling, so give it the delta-v (and TWR over 1.5) it needs.
@@ -90,7 +90,7 @@
 function land_defaults {
   return lexicon("target", "any", "daylight", true, "max_slope", 8, "max_divert", 300,
     "max_overshoot", 500, "touchdown_speed", 2, "gear_alt", 1000, "burn_margin", 1.10, "underhang_agl", 2000,
-    "within_hours", "auto", "max_correction_dv", "auto", "descent_shape", "auto", "drop_underhang", "early").
+    "within_hours", "auto", "max_correction_dv", "auto", "descent_shape", "auto", "drop_underhang", "early", "vessel_offset", 200).
 }
 
 // The block's extra results at their defaults, before it flies. Pure.
@@ -107,9 +107,9 @@ function land_extra {
 function land_unreadable {
   parameter opt.
   local t is opt:target.
-  local target_rule is "target must be " + char(34) + "any" + char(34) + ", LATLNG(lat, lng), lexicon(" + char(34) + "lat" + char(34) + ", x, " + char(34) + "lng" + char(34) + ", y) or lexicon(" + char(34) + "biome" + char(34) + ", name), not ".
+  local target_rule is "target must be " + char(34) + "any" + char(34) + ", " + char(34) + "vessel" + char(34) + ", LATLNG(lat, lng), lexicon(" + char(34) + "lat" + char(34) + ", x, " + char(34) + "lng" + char(34) + ", y) or lexicon(" + char(34) + "biome" + char(34) + ", name), not ".
   if t:istype("String") {
-    if t <> "any" {
+    if t <> "any" and t <> "vessel" {
       return target_rule + "'" + t + "'".
     }
   } else if land_is_biome(t) {
@@ -159,6 +159,9 @@ function land_unreadable {
   }
   if not land_auto_or_in(opt:descent_shape, 0.05, 10) {
     return "descent_shape must be " + char(34) + "auto" + char(34) + " or a Descent Shape from 0.05 to 10 (smaller is steeper)".
+  }
+  if not land_number_in(opt:vessel_offset, 50, 2000) {
+    return "vessel_offset must be metres from 50 to 2000: never on top of the Target Vessel".
   }
   if not list("early", "late"):contains(opt:drop_underhang) {
     return "drop_underhang must be " + char(34) + "early" + char(34) + " or " + char(34) + "late" + char(34).
@@ -350,6 +353,22 @@ function land_site_figures {
   local off is land_bearing(lat, lng, site_lat, site_lng) - hdg.
   return lexicon("dist", dist, "along", arctan2(sin(d) * cos(off), cos(d)) * m_per_deg,
     "across", arcsin(max(-1, min(1, sin(d) * sin(off)))) * m_per_deg).
+}
+
+// The site offset m beside a landed vessel at (lat, lng) for land's "vessel" target (#662), on a body of the given radius: at
+// right angles to the ground track an orbit of inclination inc (degrees) flies there, as near as a move due north or due east
+// comes (north while the track runs within 45 degrees of east or west, else east), so a miss along the track still passes
+// the vessel at 0.7 x offset or more, on either pass. Pure.
+function land_beside {
+  parameter lat, lng, offset, inc, radius.
+  local hdg is arcsin(max(-1, min(1, cos(inc) / max(0.0001, cos(lat))))).
+  local brg is 0.
+  if abs(sin(hdg)) < abs(cos(hdg)) {
+    set brg to 90.
+  }
+  local d is offset / (radius * 3.141592653589793 / 180).
+  local lat2 is arcsin(sin(lat) * cos(d) + cos(lat) * sin(d) * cos(brg)).
+  return lexicon("lat", lat2, "lng", land_wrap_lng(lng + arctan2(sin(brg) * sin(d) * cos(lat), cos(d) - sin(lat) * sin(lat2)))).
 }
 
 // The longitude, in today's body-fixed frame, of the point a site at lng will have turned to in dt
@@ -1223,7 +1242,7 @@ function land_fall_samples {
   return out.
 }
 
-// The site's lat and lng from the target option, or "" for "any".
+// The site's lat and lng from the target option, or "" for "any" (and for "vessel", whose site land works out from the Target Vessel).
 function land_site_of {
   parameter target_opt.
   if target_opt:istype("String") {
@@ -1530,6 +1549,28 @@ function land {
   if not by_biome {
     set site to land_site_of(opt:target).
   }
+  // A "vessel" target (#662): the site vessel_offset m beside the landed Target Vessel, read live from the Game Snapshot by a
+  // block-internal call that sits in the block (ADR 0007). keep_clear is the vessel: the site never moves within 50 m of it.
+  local by_vessel is false.
+  if opt:target:istype("String") {
+    set by_vessel to opt:target = "vessel".
+  }
+  local keep_clear is "".
+  if by_vessel {
+    local named is addons:claudia:targetvessel().
+    if not named:haskey("lat") {
+      if named:error <> "" {
+        return claudia_finish(ctx, false, named:error, extra).
+      }
+      return claudia_finish(ctx, false, "the Target Vessel " + named:name + " is in orbit: a " + char(34) + "vessel" + char(34) + " target needs it landed", extra).
+    }
+    if named:body <> body:name {
+      return claudia_finish(ctx, false, "the Target Vessel " + named:name + " is on " + named:body + ", not " + body:name, extra).
+    }
+    set keep_clear to body:geopositionlatlng(named:lat, named:lng).
+    set site to land_beside(named:lat, named:lng, opt:vessel_offset, ship:orbit:inclination, body:radius).
+    addons:claudia:blocktrace("land", lexicon("phase", "site", "note", "beside " + named:name, "lat", round(site:lat, 5), "lng", round(site:lng, 5))).
+  }
 
   // #622: staging can't be undone, so a biome the body doesn't have (#591) is refused before it, by the site search's
   // check-only call (block-internal, ADR 0007). A biome with no site is only known after staging (#528).
@@ -1579,8 +1620,9 @@ function land {
   }
   local plan is "".
   local r_pe is -1.
-  // A site given as coordinates (or "any"'s) may move up to 5 km for terrain; a biome's is chosen for it (#511), the next site taking its place (#528).
-  local may_move is not by_biome.
+  // A site given as coordinates (or "any"'s) may move up to 5 km for terrain; a biome's is chosen for it (#511), the next site taking its place (#528);
+  // a "vessel" target's stays beside the vessel (#662).
+  local may_move is not by_biome and not by_vessel.
   if not by_biome and site:istype("String") {
     // "any": the arrival point of the first pass in daylight, then its descent over that pass alone (#511); if no shape
     // clears it, the next arrival point on, up to 10.
@@ -1895,7 +1937,7 @@ function land {
     }
     return addons:claudia:brakepath(ask).
   }.
-  local landed is land_descend(ctx, aim, extra, turn, under, plan, predict).
+  local landed is land_descend(ctx, aim, extra, turn, under, plan, predict, keep_clear).
   set extra:actual_dv to round(extra:actual_dv).
   if landed <> "" {
     claudia_make_safe().
@@ -2293,9 +2335,10 @@ function land_drop_impact {
 
 // The touchdown point (lat, lng) moved at least 50 m clear of where the Underhang hits (impact, a
 // GeoCoordinates), straight away from it, by no more than max_divert (land_clear_shift); as it was
-// if already clear. track: the way to move if the two are on the same spot. Traces a move.
+// if already clear. track: the way to move if the two are on the same spot. Traces a move as phase ("clear_vessel" when
+// it keeps a "vessel" target's site clear of the Target Vessel the same way, #662).
 function land_clear_site {
-  parameter site, impact, max_divert, track.
+  parameter site, impact, max_divert, track, phase is "clear".
   local dist is land_surface_distance(site:lat, site:lng, impact:lat, impact:lng, body:radius).
   local shift is land_clear_shift(dist, max_divert).
   if shift <= 0 {
@@ -2311,7 +2354,7 @@ function land_clear_site {
     set away to ship:north:vector.
   }
   local spot is body:geopositionof(site_pos + away:normalized * shift).
-  addons:claudia:blocktrace("land", lexicon("phase", "clear", "from_impact", round(dist), "moved", round(shift))).
+  addons:claudia:blocktrace("land", lexicon("phase", phase, "from_impact", round(dist), "moved", round(shift))).
   return lexicon("lat", spot:lat, "lng", spot:lng).
 }
 
@@ -2424,9 +2467,10 @@ function land_recover_under {
 // rest of the predicted path, within 45 degrees of retrograde and holding still for a tiny demand (land_steer),
 // and stops braking that raises periapsis (land_brake_guard) or climbs off the predicted path (land_path_guard):
 // throttle 0, the orbit brought back to near-circular if it must be (land_recover), safe, traced. Adds the
-// braking it flew to actual_dv. Returns "" or why it failed.
+// braking it flew to actual_dv. keep_clear: a "vessel" target's Target Vessel (GeoCoordinates; "" for none), which a site
+// moved for a slope or the Underhang stays 50 m or more from (#662). Returns "" or why it failed.
 function land_descend {
-  parameter ctx, aim, extra, turn, under, plan, predict.
+  parameter ctx, aim, extra, turn, under, plan, predict, keep_clear is "".
   local opt is ctx:opt.
   local site is lexicon("lat", aim:lat, "lng", aim:lng).
   local braking is false.
@@ -2579,6 +2623,9 @@ function land_descend {
         set site to lexicon("lat", spot:lat, "lng", spot:lng).
         if not drop_impact:istype("String") {
           set site to land_clear_site(site, drop_impact, opt:max_divert, fall_ahead).
+        }
+        if not keep_clear:istype("String") {
+          set site to land_clear_site(site, keep_clear, opt:max_divert, fall_ahead, "clear_vessel").
         }
         set extra:best_effort to not spot:flat.
         set dist to land_surface_distance(here:lat, here:lng, site:lat, site:lng, body:radius).
@@ -2739,6 +2786,9 @@ function land_descend {
         if land_drop(ctx, under, extra, radar) {
           set drop_impact to impact.
           set site to land_clear_site(site, drop_impact, opt:max_divert, v_h).
+          if not keep_clear:istype("String") {
+            set site to land_clear_site(site, keep_clear, opt:max_divert, v_h, "clear_vessel").
+          }
         }
       }
     }
