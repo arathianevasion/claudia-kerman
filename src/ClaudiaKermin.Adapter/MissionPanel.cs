@@ -230,6 +230,7 @@ namespace ClaudiaKermin.Adapter
 
             if (goal.Length == 0) GUILayout.Label(settingUp ? "Describe the Mission Goal below." : "No Mission yet.", ClaudiaSkin.Secondary);
             else GUILayout.Label(_showAllGoal ? goal : clamped, ClaudiaSkin.Body);
+            if (!settingUp && _view.TargetVesselName.Length > 0) GUILayout.Label("Target Vessel: " + _view.TargetVesselName, ClaudiaSkin.Secondary);
             if (!settingUp) DrawGoalSteps(_view.GoalSteps);
             GUILayout.EndVertical();
             ClaudiaSkin.Divider();
