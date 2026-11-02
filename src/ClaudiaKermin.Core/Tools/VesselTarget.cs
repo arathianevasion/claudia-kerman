@@ -14,10 +14,11 @@ namespace ClaudiaKermin.Core.Tools
     /// </summary>
     internal sealed class VesselTarget
     {
+        /// <summary>Its vessel name, as the snapshot's entry gives it.</summary>
         public string Name;
         /// <summary>The body it orbits.</summary>
         public SnapshotBody Body;
-        /// <summary>Its orbit round <see cref="Body"/>, in the frame of the craft's own orbit.</summary>
+        /// <summary>Its orbit round <see cref="Body"/>, from the snapshot's elements as the craft's own orbit is (so both are in one frame).</summary>
         public Conic Orbit;
 
         /// <summary>

@@ -27,7 +27,7 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>A step past the start, s, so a reference at the very moment of the last burn finds the next one (as ap and pe always have).</summary>
         private const double Nudge = 1e-3;
         /// <summary>Orbits a closest-approach search looks ahead on a closed orbit: "the next few".</summary>
-        private const int ApproachOrbits = 3;
+        internal const int ApproachOrbits = 3;
         /// <summary>MechJeb's look-ahead on a hyperbola, in units of mean anomaly.</summary>
         private const double HyperbolicMeanAnomalies = 100;
         /// <summary>Plane normals closer than this (a unit cross product, about 6e-5 degrees) are the same plane: there are no nodes.</summary>

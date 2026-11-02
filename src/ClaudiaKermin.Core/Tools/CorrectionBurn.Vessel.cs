@@ -20,8 +20,6 @@ namespace ClaudiaKermin.Core.Tools
     {
         /// <summary>The solver's own tolerance on the approach distance, m.</summary>
         private const double DistanceResidual = 1;
-        /// <summary>Orbits ahead the approach is looked for, as <see cref="BurnTime"/>'s closest_approach.</summary>
-        private const int ApproachOrbits = 3;
 
         /// <summary>The Course Correction to the Game Snapshot's Target Vessel (its name in <see cref="CorrectionAsk.Target"/>, or any when empty).</summary>
         private static CorrectionPlan FindApproach(GameSnapshot snapshot, CorrectionAsk ask)
@@ -56,7 +54,7 @@ namespace ClaudiaKermin.Core.Tools
             var craft = coast.Orbit;
 
             // The approach aimed at, from the uncorrected path, and the span round it every trial burn is measured over.
-            var span = craft.Closed ? ApproachOrbits * craft.Period : vessel.Orbit.Period;
+            var span = craft.Closed ? BurnTime.ApproachOrbits * craft.Period : vessel.Orbit.Period;
             double aimedDistance, aimedUt, aimedSpeed;
             vessel.Approach(system, craft, ask.EarliestUt, Math.Min(coast.EndUt, ask.EarliestUt + span), out aimedDistance, out aimedUt, out aimedSpeed);
             if (aimedUt <= ask.LatestUt)
@@ -147,6 +145,7 @@ namespace ClaudiaKermin.Core.Tools
             return got;
         }
 
+        /// <summary>A closest approach to the vessel: the distance, m, its UT and the relative speed then, m/s.</summary>
         private sealed class Approach
         {
             public double Distance;

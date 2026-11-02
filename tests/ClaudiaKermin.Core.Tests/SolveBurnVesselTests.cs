@@ -32,7 +32,7 @@ namespace ClaudiaKermin.Core.Tests
         /// A craft at its Pe at UT 0 on a 100 by 150 km orbit, and a Target Vessel on a circle at 150 km that is <see cref="Lead"/>
         /// m ahead of the craft when the craft reaches its Ap: a closest approach of a few km half an orbit on.
         /// </summary>
-        private static GameSnapshot Snapshot(string targetBody = "Kerbin", string situation = "ORBITING", bool withTarget = true)
+        private static GameSnapshot Snapshot(string targetBody = "Kerbin", string situation = "ORBITING", bool withTarget = true, double targetInc = 0, double targetLan = 0)
         {
             var snapshot = new GameSnapshot { Ut = 0, Situation = "ORBITING", Body = "Kerbin" };
             var sma = (CraftPe + CraftAp) / 2;
@@ -61,7 +61,9 @@ namespace ClaudiaKermin.Core.Tests
                 Name = "Station", Body = targetBody, Situation = situation,
                 Orbit = new SnapshotOrbit
                 {
-                    SemiMajorAxis = targetBody == "Mun" ? 300000 : TargetR, Eccentricity = 0, Epoch = 0, Body = targetBody,
+                    SemiMajorAxis = targetBody == "Mun" ? 300000 : TargetR, Eccentricity = 0, Epoch = 0, Body = targetBody, Inclination = targetInc, Lan = targetLan,
+                    // The argument of latitude is LAN + argPe + anomaly: keep the target where it is in the plane.
+                    ArgumentOfPeriapsis = (360 - targetLan) % 360,
                     MeanAnomalyAtEpoch = targetBody == "Mun" ? 0 : Math.PI + Lead / TargetR - n * halfOrbit,
                 },
             };
@@ -167,6 +169,29 @@ namespace ClaudiaKermin.Core.Tests
             Assert.True(achieved.TryGetProperty("approach_ut", out _));
             // A small correction: a few km over half an orbit is a few m/s.
             Assert.InRange(result.GetProperty("magnitude").GetDouble(), 0.01, 20);
+        }
+
+        [Fact]
+        public void Course_correction_and_match_velocities_reach_an_inclined_target_out_of_the_craft_plane()
+        {
+            // 0.02 degrees with the nodes 90 degrees from the approach puts the target about 2.6 km out of plane there.
+            var s = Snapshot(targetInc: 0.02, targetLan: 90);
+            var craft = CraftOrbit(s);
+            var result = Run(s, "{\"goal\":\"course_correction\",\"value\":100}");
+            var ut = result.GetProperty("at_ut").GetDouble();
+            Assert.NotEqual(0, Dv(result, "normal"));
+            var after = Burned(craft, ut, Dv(result, "prograde"), Dv(result, "normal"), Dv(result, "radial"));
+            Assert.InRange(Nearest(after, TargetOrbit(s), ut, ut + craft.Period), 90, 110);
+
+            var match = Run(s, "{\"goal\":\"match_velocities\"}");
+            var at = match.GetProperty("at_ut").GetDouble();
+            var matched = Burned(craft, at, Dv(match, "prograde"), Dv(match, "normal"), Dv(match, "radial"));
+            Vec3 r, v, rt, vt;
+            matched.State(at, out r, out v);
+            TargetOrbit(s).State(at, out rt, out vt);
+            Assert.True((v - vt).Length < 0.1, "relative speed " + (v - vt).Length);
+            // The burn is at the closest approach: the distance there is the brute-force nearest to within a metre.
+            Assert.Equal(Nearest(craft, TargetOrbit(s), 0, craft.Period), (r - rt).Length, 0);
         }
 
         [Fact]

@@ -160,7 +160,7 @@ namespace ClaudiaKermin.Core.Tools
             if (problem != null) return PlanningJson.Error(problem);
 
             ToolOutcome error;
-            var setup = PredictBurn.Setup.Prepare(snapshot, target, out error, true);
+            var setup = PredictBurn.Setup.Prepare(snapshot, target, out error, vessels: true);
             if (setup == null) return error;
             if (toVessel && setup.Target != null)
                 return PlanningJson.Error(goal + " is to the Target Vessel, and " + setup.Target.Name + " is a body; leave target out");
@@ -711,7 +711,10 @@ namespace ClaudiaKermin.Core.Tools
     {
         public double Ut, Prograde, Normal, Radial, DeltaV;
         public double? BurnTime;
-        /// <summary>For the goals on the Target Vessel: the closest approach the burn leads to, m, and the relative speed then, m/s.</summary>
+        /// <summary>
+        /// For the goals on the Target Vessel: the distance to it, m, and the relative speed, m/s, at the closest approach the burn
+        /// leads to (course_correction) or at the burn itself (match_velocities, whose default time is the closest approach).
+        /// </summary>
         public double? Distance, RelativeSpeed;
 
         /// <summary>

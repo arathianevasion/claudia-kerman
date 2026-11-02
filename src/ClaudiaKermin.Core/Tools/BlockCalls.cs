@@ -626,7 +626,8 @@ namespace ClaudiaKermin.Core.Tools
         /// in place of target_pe is the Course Correction to that closest approach (<c>distance_tolerance</c>, m, default 10), and
         /// <c>match_velocities</c> true is solve_burn's match_velocities at <c>at</c> (a word or a UT; default closest_approach).
         /// <c>target</c>, if given, is the vessel's name. Either gives <c>error</c>, <c>ut</c>, the components, <c>dv</c>,
-        /// <c>distance_predicted</c> (m) and <c>relative_speed_predicted</c> (m/s).
+        /// <c>distance_predicted</c> (m) and <c>relative_speed_predicted</c> (m/s), at the approach (with <c>approach_ut</c>) for
+        /// target_distance and at the burn for match_velocities.
         /// </para>
         /// </summary>
         public static IDictionary<string, object> CorrectionBurn(IDictionary<string, object> input, GameSnapshot snapshot)
@@ -721,24 +722,24 @@ namespace ClaudiaKermin.Core.Tools
                 switch (key)
                 {
                     case "match_velocities":
-                        if (!(entry.Value is bool) || !(bool)entry.Value) return Error("match_velocities must be true");
+                        if (!(entry.Value is bool) || !(bool)entry.Value) return Error(Tools.CorrectionBurn.Fail("match_velocities must be true").Error);
                         break;
                     case "target":
-                        if (text == null) return Error("target must be the Target Vessel's name");
+                        if (text == null) return Error(Tools.CorrectionBurn.Fail("target must be the Target Vessel's name").Error);
                         json.Field(key, text);
                         break;
                     case "at":
                         if (text != null) json.Field(key, text);
                         else if (entry.Value is double && !double.IsNaN((double)entry.Value) && !double.IsInfinity((double)entry.Value)) json.Field(key, (double)entry.Value);
-                        else return Error("at must be a word or a finite UT, not " + Convert.ToString(entry.Value, CultureInfo.InvariantCulture));
+                        else return Error(Tools.CorrectionBurn.Fail("at must be a word or a finite UT, not " + Convert.ToString(entry.Value, CultureInfo.InvariantCulture)).Error);
                         break;
                     default:
-                        return Error("unknown input " + entry.Key + ": match_velocities takes at and target");
+                        return Error(Tools.CorrectionBurn.Fail("unknown input " + entry.Key + ": match_velocities takes at and target").Error);
                 }
             }
             var solved = new SolvedBurn();
             var outcome = new SolveBurn().Solve(JsonReader.Parse(json.EndObject().ToString()), snapshot, solved);
-            if (outcome.IsError) return Error(outcome.Summary);
+            if (outcome.IsError) return Error(Tools.CorrectionBurn.Fail(outcome.Summary).Error);
             return new Dictionary<string, object>
             {
                 { "error", "" },

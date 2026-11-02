@@ -27,6 +27,7 @@ namespace ClaudiaKermin.Core.Tools
             return setup.Vessel != null ? setup.Vessel.Orbit : setup.System.OrbitOf(setup.Target);
         }
 
+        /// <summary>The target's name: the Target Vessel's, or the body's.</summary>
         private static string TargetName(PredictBurn.Setup setup)
         {
             return setup.Vessel != null ? setup.Vessel.Name : setup.Target.Name;
@@ -81,6 +82,7 @@ namespace ClaudiaKermin.Core.Tools
             });
         }
 
+        /// <summary>The two figures both goals give in achieved, rounded, and kept unrounded in <paramref name="into"/> for CORRECTIONBURN.</summary>
         private static void Predicted(SolvedBurn into, JsonWriter json, double distance, double relativeSpeed)
         {
             into.Distance = distance;
