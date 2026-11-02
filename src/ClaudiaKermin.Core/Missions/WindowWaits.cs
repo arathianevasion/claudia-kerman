@@ -45,10 +45,13 @@ namespace ClaudiaKermin.Core.Missions
             return due - now > LongWaitS ? due : (double?)null;
         }
 
-        /// <summary>The window leaving at <paramref name="departureUt"/> is missed: a launch now would reach orbit after it.</summary>
+        /// <summary>
+        /// The window leaving at <paramref name="departureUt"/> is missed: the player came back after it. Approving late inside the
+        /// launch lead is not a miss: the window is days wide, and the script takes the ejection when it reaches orbit.
+        /// </summary>
         public static bool Missed(double departureUt, double now)
         {
-            return now > departureUt - LaunchLeadS;
+            return now > departureUt;
         }
 
         /// <summary>

@@ -27,8 +27,9 @@ namespace ClaudiaKermin.Core.Missions
             if (window == null) return;
             var due = WindowWaits.DueTime(window.DepartureUt, _ut);
             if (!due.HasValue) return;
-            // A later Due Time of Claudia's own (a wait for the player) stands.
-            if (!plan.DueTimeUt.HasValue || plan.DueTimeUt.Value < due.Value) plan.DueTimeUt = due.Value;
+            // A later Due Time of Claudia's own (a wait for the player) stands, and is not a window's.
+            if (plan.DueTimeUt.HasValue && plan.DueTimeUt.Value >= due.Value) return;
+            plan.DueTimeUt = due.Value;
             mission.WindowPlanet = planet.Name;
             mission.WindowUt = window.DepartureUt;
             mission.WindowDeltaV = window.TotalDv;
@@ -40,17 +41,8 @@ namespace ClaudiaKermin.Core.Missions
         {
             if (planet == null || _snapshot == null) return null;
             var settings = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config));
-            // The search starts at the snapshot's time, which may be older than now (the player is back from another Mission).
-            var taken = _snapshot.Ut;
-            _snapshot.Ut = _ut;
-            try
-            {
-                return WindowWaits.Window(_snapshot, planet, settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent);
-            }
-            finally
-            {
-                _snapshot.Ut = taken;
-            }
+            // The search starts now, not at the snapshot's time, which may be older (the player is back from another Mission).
+            return WindowWaits.Window(_snapshot.At(_ut), planet, settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent);
         }
 
         private static void ClearWindow(Mission mission)

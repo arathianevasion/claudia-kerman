@@ -93,13 +93,13 @@ namespace ClaudiaKermin.Core.Tests
                 + "\"total_delta_v\":5000,\"expected_duration\":\"about a year\",\"mission_time_s\":-1},\"sequence_plan\":null,\"debrief\":null}");
         }
 
-        private static ScriptedResponse LaunchPlan()
+        private static ScriptedResponse LaunchPlan(double due = -1)
         {
             return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: Launch.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
                 + "\"sequence_plan\":{\"name\":\"Launch\",\"intent\":\"Reach a 100 km orbit.\",\"why\":\"First step.\",\"target\":\"100 km orbit\","
                 + "\"tolerances\":\"Ap within 5 km\",\"expected_delta_v\":3400,\"expected_duration_s\":600,\"abort_conditions\":[],\"risks\":[],"
                 + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"print \\\"go\\\".\\n\","
-                + "\"due_time_ut\":-1,\"window_closes_ut\":-1,\"late_window_dv\":-1},\"debrief\":null}");
+                + "\"due_time_ut\":" + due.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"window_closes_ut\":-1,\"late_window_dv\":-1},\"debrief\":null}");
         }
 
         // ---- Harness ----
@@ -268,6 +268,35 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Empty(mission.TakeCommands().OfType<StartScript>());
             Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
             Assert.Equal("Auto Mode is waiting for you: a Due Time.", mission.View.AutoModeStop);
+        }
+
+        [Fact]
+        public void ApprovingAtTheDueTimeOrInsideTheLaunchLeadStartsTheScriptWithNoMiss()
+        {
+            var clock = new FakeAlarmClock();
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), LaunchPlan()));
+            // A craft with no margin at all: a re-check of the budget would raise an Alert.
+            ToLaunchPlan(mission, 1203.48, Budget);
+            clock.Take(mission);
+
+            mission.Send(new UtAdvanced(mission.View.DueTime.Ut + WindowWaits.LaunchLeadS / 2));
+            mission.Send(new Approve());
+
+            Assert.Single(clock.Take(mission).OfType<StartScript>());
+            Assert.Empty(clock.Alarms);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("was missed"));
+        }
+
+        [Fact]
+        public void ALaterDueTimeOfClaudiasOwnStandsAndIsNotAWindowWait()
+        {
+            var later = Window(1203.48).DepartureUt + 10 * Day;
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), LaunchPlan(later)));
+            ToLaunchPlan(mission, 1203.48);
+
+            Assert.Equal(later, mission.View.DueTime.Ut);
+            Assert.Equal("", mission.View.DueTime.WaitsFor);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.StartsWith("Waiting for the Duna window"));
         }
 
         // ---- A missed window ----
