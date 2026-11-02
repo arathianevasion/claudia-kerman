@@ -48,7 +48,7 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void TheFlagIsRestoredWhenNoMissionIsUnderWayAnyMore()
         {
-            foreach (var stop in new[] { MissionStage.Paused, MissionStage.Succeeded, MissionStage.Ended, MissionStage.Lost, MissionStage.None })
+            foreach (var stop in new[] { MissionStage.Succeeded, MissionStage.Ended, MissionStage.Lost, MissionStage.None })
             {
                 var keeper = new ClaudiaFlagKeeper();
                 keeper.AgencyFlagFor(View(MissionStage.Planning), Agency);
@@ -114,8 +114,37 @@ namespace ClaudiaKermin.Core.Tests
         {
             var keeper = new ClaudiaFlagKeeper();
             keeper.Load(Agency);
-            Assert.Equal(Agency, keeper.AgencyFlagFor(View(MissionStage.Paused), Claudia));
+            Assert.Equal(Agency, keeper.AgencyFlagFor(View(MissionStage.Ended), Claudia));
             Assert.Null(keeper.SavedAgencyFlag);
+        }
+
+        [Fact]
+        public void PauseAndResumeLeaveTheAgencyFlagAlone()
+        {
+            var keeper = new ClaudiaFlagKeeper();
+            keeper.AgencyFlagFor(View(MissionStage.Running), Agency);
+
+            Assert.Null(keeper.AgencyFlagFor(View(MissionStage.Paused), Claudia));
+            Assert.Equal(Agency, keeper.SavedAgencyFlag);
+            Assert.Null(keeper.AgencyFlagFor(View(MissionStage.Running), Claudia));
+            Assert.Equal(Agency, keeper.SavedAgencyFlag);
+        }
+
+        [Fact]
+        public void AStaleSavedAgencyFlagIsRefreshedWhenAMissionStartsWithAnotherFlag()
+        {
+            var keeper = new ClaudiaFlagKeeper();
+            keeper.Load("Old/Flags/stale");
+
+            // The player changed their flag while no Mission was under way (the save's kept one is stale).
+            Assert.Equal(Claudia, keeper.AgencyFlagFor(View(MissionStage.WaitingForFlight), Agency));
+            Assert.Equal(Agency, keeper.SavedAgencyFlag);
+
+            // An empty read (no game flag yet) never wipes a kept flag.
+            var kept = new ClaudiaFlagKeeper();
+            kept.Load("Old/Flags/kept");
+            Assert.Equal(Claudia, kept.AgencyFlagFor(View(MissionStage.Running), ""));
+            Assert.Equal("Old/Flags/kept", kept.SavedAgencyFlag);
         }
 
         // ---- The Mission's vessels ----
@@ -149,14 +178,54 @@ namespace ClaudiaKermin.Core.Tests
             keeper.Flagged("craft");
 
             // A docking that doesn't touch a Mission vessel changes nothing.
-            keeper.Docked(view, "station", "tug");
+            keeper.Docked("station", "tug");
             Assert.Empty(keeper.VesselsToFlag(view));
 
-            keeper.Docked(view, "craft", "station");
+            keeper.Docked("craft", "station");
             Assert.Equal(new[] { "craft" }, keeper.VesselsToFlag(view));
             // The merged vessel kept the station's id: that's the craft now.
-            keeper.Docked(view, "station", "craft");
+            keeper.Docked("station", "craft");
             Assert.Equal(new[] { "station" }, keeper.VesselsToFlag(View(MissionStage.Running, "station")));
+        }
+
+        [Fact]
+        public void ADockingDoesNotDependOnWhetherTheMissionHasTakenItInYet()
+        {
+            var keeper = new ClaudiaFlagKeeper();
+            keeper.VesselsToFlag(View(MissionStage.Running, "craft"));
+            keeper.Flagged("craft");
+
+            // After the Mission took the docking in, the craft is the merged vessel (the station's id)...
+            keeper.Docked("craft", "station");
+            Assert.Equal(new[] { "station" }, keeper.VesselsToFlag(View(MissionStage.Running, "station")));
+            keeper.Flagged("station");
+            // ...and before, it is the old id; the same call, the same result.
+            var before = new ClaudiaFlagKeeper();
+            before.VesselsToFlag(View(MissionStage.Running, "craft"));
+            before.Flagged("craft");
+            before.Docked("craft", "station");
+            Assert.Equal(new[] { "craft" }, before.VesselsToFlag(View(MissionStage.Running, "craft")));
+        }
+
+        [Fact]
+        public void AVesselThatIsGoneIsGivenUpOnButAskedForAgainAfterADockingOrALoad()
+        {
+            var keeper = new ClaudiaFlagKeeper();
+            var view = View(MissionStage.Running, "craft", "m1", "gone");
+            keeper.VesselsToFlag(view);
+            keeper.Flagged("craft");
+            for (var i = 0; i < ClaudiaFlagKeeper.MaxMisses; i++)
+            {
+                Assert.Equal(new[] { "gone" }, keeper.VesselsToFlag(view));
+                keeper.Missed("gone");
+            }
+            Assert.Empty(keeper.VesselsToFlag(view));
+
+            keeper.Docked("gone", "station");
+            Assert.Equal(new[] { "gone" }, keeper.VesselsToFlag(view));
+            keeper.Missed("gone");
+            keeper.Load(null);
+            Assert.Equal(new[] { "craft", "gone" }, keeper.VesselsToFlag(view));
         }
 
         [Fact]
