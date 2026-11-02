@@ -188,6 +188,8 @@ namespace ClaudiaKermin.Core.Missions
         public SnapshotTarget Target;
         /// <summary>KSP's target vessel as the snapshot was read, which a Mission starting now takes; null for none. Not in the JSON.</summary>
         public SnapshotTarget KspTarget;
+        /// <summary>The start form's Target Vessel as read before Start (#643), so the Craft Check judges the craft against it; null otherwise. Not in the JSON.</summary>
+        public SnapshotTarget FormTarget;
         /// <summary>The other vessels in the game a Mission Goal may name (ADR 0013); empty when not read. Not in the JSON.</summary>
         public List<SnapshotVessel> Vessels = new List<SnapshotVessel>();
 

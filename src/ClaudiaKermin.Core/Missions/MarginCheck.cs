@@ -231,13 +231,18 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         public static IList<MarginFinding> Docking(GameSnapshot snapshot, string lead)
         {
+            return Docking(snapshot, lead, snapshot.Target ?? snapshot.KspTarget);
+        }
+
+        /// <summary>The same, judged against <paramref name="target"/>'s free ports: the Craft Check's chosen Target Vessel (#643); null judges no port size.</summary>
+        public static IList<MarginFinding> Docking(GameSnapshot snapshot, string lead, SnapshotTarget target)
+        {
             var found = new List<MarginFinding>();
             var sizes = snapshot.Craft.Parts.Where(p => p.Tags.Contains("docking_port")).Select(p => p.PortSize).Distinct().ToList();
             var lacks = new List<string>();
             if (sizes.Count == 0) lacks.Add("docking port");
             if (!snapshot.Craft.Parts.Any(p => p.Tags.Contains("rcs"))) lacks.Add("RCS");
             if ((LiveReadings.MonopropellantOf(snapshot) ?? 0) <= 0) lacks.Add("monopropellant");
-            var target = snapshot.Target ?? snapshot.KspTarget;
             if (lacks.Count > 0)
                 found.Add(Finding(CraftCheckRules.DockingKit, lead + " and the craft has no " + string.Join(", no ", lacks.ToArray())));
             else if (target != null && target.FreePorts.Count > 0 && !sizes.Any(target.FreePorts.ContainsKey))
