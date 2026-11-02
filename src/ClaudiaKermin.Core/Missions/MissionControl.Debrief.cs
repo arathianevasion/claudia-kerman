@@ -211,6 +211,9 @@ namespace ClaudiaKermin.Core.Missions
             // Measured as the run's monopropellant line is, on the Mission's own vessel.
             var now = LiveReadings.MonopropellantOf(MissionVesselSnapshot(mission));
             if (!mission.HandBack && mission.RunStartMonopropellant.HasValue && now.HasValue) used = Math.Max(0, mission.RunStartMonopropellant.Value - now.Value);
+            // A revision since the allocation was made (#645) leaves it stale: it is worked out again for the plan judged.
+            if (mission.Chutes != null && mission.Plan != null)
+                mission.Chutes = ChuteAllocation.Current(mission.Chutes, _snapshot, mission.Plan.Sequences, StepsBegun(mission), mission.Remote, mission.ProcessorPartId);
             return MarginCheck.Of(snapshot, RestOfPlan(mission), _config.CraftCheckMarginPercent, _config.CheckElectricChargePercent, mission.Remote, used, mission.Chutes, mission.Goal, StepsBegun(mission));
         }
 
