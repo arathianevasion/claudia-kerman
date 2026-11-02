@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using ClaudiaKermin.Core.Tools;
 using Xunit;
 
 namespace ClaudiaKermin.Core.Tests
@@ -21,6 +22,15 @@ namespace ClaudiaKermin.Core.Tests
     {
         /// <summary>Asserts that the best of <paramref name="attempts"/> timed runs of <paramref name="work"/> takes at most <paramref name="budgetMs"/>.</summary>
         public static void Within(double budgetMs, Action work, int attempts = 7)
+        {
+            // The real budgets, whatever the assembly default (NoWallClockDeadlines) says.
+            var unlimited = SearchBudget.Unlimited;
+            SearchBudget.Unlimited = false;
+            try { WithinCore(budgetMs, work, attempts); }
+            finally { SearchBudget.Unlimited = unlimited; }
+        }
+
+        private static void WithinCore(double budgetMs, Action work, int attempts)
         {
             work();
             var best = double.PositiveInfinity;

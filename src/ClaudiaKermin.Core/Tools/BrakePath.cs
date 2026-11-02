@@ -463,6 +463,7 @@ namespace ClaudiaKermin.Core.Tools
             IList<double> shapes = null, double budgetMs = BudgetMs)
         {
             var watch = Stopwatch.StartNew();
+            if (SearchBudget.Unlimited) budgetMs = double.PositiveInfinity;
             var choice = new DescentChoice();
             shapes = shapes ?? Shapes;
             double? lastBest = null;
