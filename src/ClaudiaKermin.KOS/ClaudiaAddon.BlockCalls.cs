@@ -219,7 +219,13 @@ namespace ClaudiaKermin.KOS
             return (Lexicon)Guarded("TARGETVESSEL", () =>
             {
                 found = BlockCalls.TargetVessel(SnapshotReader.Read(shared.Vessel));
-                return KosValues.FromPlain(found);
+                var answer = (Lexicon)KosValues.FromPlain(found);
+                // The vessel structure itself, found by persistentId like DOCKHOLD, so the blocks never look the target up by name.
+                var id = MissionDriver.TargetVesselId ?? MissionDriver.BlockTestTargetId;
+                Vessel target = null;
+                if (found["error"] as string == "" && id.HasValue && FlightGlobals.FindVessel(id.Value, out target) && target != null && target != shared.Vessel)
+                    answer.Add(new StringValue("vessel"), kOS.Suffixed.VesselTarget.CreateOrGetExisting(target, shared));
+                return answer;
             }, () => found["error"] as string == "" ? found["name"] + " round " + found["body"] : (string)found["error"]);
         }
 
