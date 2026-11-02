@@ -588,6 +588,8 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("local c is addons:claudia.\nprint c:ChuteAllocation:titles.")]
         [InlineData("local t is addons:claudia:targetvessel().\nprint t:name.")]
         [InlineData("local c is addons:claudia.\nprint c:TargetVessel:body.")]
+        [InlineData("local h is addons:claudia:dockhold(lexicon(\"port\", \"1\", \"toward\", \"2\")).\nprint h:state.")]
+        [InlineData("local c is addons:claudia.\nprint c:DockHoldState:reason.")]
         public void ABlockInternalCallInAMissionScriptFails(string script)
         {
             AssertForbidden("call block-internal calculations", script);
@@ -798,6 +800,37 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         }
 
         [Fact]
+        public void DockFileAlonePassesOnlyAsCoreLibrary()
+        {
+            // dock reads the Target Vessel and its ports inline under dk_ names (#456) and starts dock_hold through the mod:
+            // allowed as the library's, its calls refused as a Mission Script's.
+            var block = File.ReadAllText(Path.Combine(RepoRoot(), "kerboscript", "library", "dock.ks"));
+            Assert.True(new KosScriptCheck(forCoreLibrary: true).Check(block).Passed);
+            var forbidden = _check.Check(block).Forbidden;
+            foreach (var call in new[] { "TARGETVESSEL", "DOCKHOLD", "DOCKHOLDSTATE" })
+                Assert.Contains(forbidden, f => f.EndsWith(":" + call + " (call block-internal calculations)"));
+        }
+
+        [Fact]
+        public void AMissionScriptStillCannotChangeTheTargetVesselsPorts()
+        {
+            // ADR 0003: dock_hold is the mod's program on the target; a Mission Script's own DOEVENT or CONTROLFROM there stays refused.
+            AssertForbidden("change or message other vessels",
+                "local t is vessel(\"Station\").\nfor p in t:dockingports { p:controlfrom(). }");
+            AssertForbidden("change or message other vessels",
+                "for p in target:dockingports { p:getmodule(\"ModuleDockingNode\"):doevent(\"undock\"). }");
+        }
+
+        [Fact]
+        public void TheDockHoldProgramPassesTheCheckAsTheModsOwn()
+        {
+            // The Script Check never reads dock_hold (the mod's program, not Claudia's), but it changes only its own vessel: the
+            // runtime gates it runs under would let it through.
+            var program = ClaudiaKermin.Core.Kos.DockHold.Program("1", "2");
+            Assert.Empty(new KosScriptCheck(forCoreLibrary: true).Check(program).Forbidden);
+        }
+
+        [Fact]
         public void RendezvousFileAlonePassesOnlyAsCoreLibrary()
         {
             // rendezvous makes TARGETVESSEL, ORBITBURN, EJECTIONBURN and CORRECTIONBURN inline (#455), and only reads the Target
@@ -952,6 +985,7 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("change_orbit_match_minmus")]
         [InlineData("change_orbit_resonant")]
         [InlineData("rendezvous")]
+        [InlineData("dock")]
         public void EachBlockTestScriptBundledWithTheLibraryPasses(string test)
         {
             // transfer_to calls the ejection solver inline; return calls the block kOS lets be named return; change_orbit

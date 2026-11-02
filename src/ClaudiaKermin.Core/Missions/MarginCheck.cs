@@ -216,6 +216,40 @@ namespace ClaudiaKermin.Core.Missions
             }
             if (rest.Any(s => s.Manual) && !snapshot.HasOtherCrew)
                 Add("manual_stretches_without_crew", MarginLevel.Enough, "A manual stretch is still to fly and no Kerbal aboard but Claudia can fly it");
+            if (rest.Any(s => !s.Manual && SequenceWords.Docking.IsMatch(SequenceWords.Of(s))))
+                foreach (var finding in Docking(snapshot, "A docking is still to fly"))
+                {
+                    Findings.Add(finding);
+                    Raise(finding.Severity == CraftFindingSeverity.Blocker ? MarginLevel.Short : MarginLevel.Enough);
+                }
+        }
+
+        /// <summary>
+        /// What the dock block needs of the craft (#456), for a docking still to fly (<paramref name="lead"/> says which): a docking
+        /// port, RCS and monopropellant (a Blocker), and a port of a size the Target Vessel has free (a Warning; not judged when the
+        /// snapshot has no target, or one with no free ports read). The Craft Check raises the same for a goal that docks.
+        /// </summary>
+        public static IList<MarginFinding> Docking(GameSnapshot snapshot, string lead)
+        {
+            var found = new List<MarginFinding>();
+            var sizes = snapshot.Craft.Parts.Where(p => p.Tags.Contains("docking_port")).Select(p => p.PortSize).Distinct().ToList();
+            var lacks = new List<string>();
+            if (sizes.Count == 0) lacks.Add("docking port");
+            if (!snapshot.Craft.Parts.Any(p => p.Tags.Contains("rcs"))) lacks.Add("RCS");
+            if ((LiveReadings.MonopropellantOf(snapshot) ?? 0) <= 0) lacks.Add("monopropellant");
+            var target = snapshot.Target ?? snapshot.KspTarget;
+            if (lacks.Count > 0)
+                found.Add(Finding(CraftCheckRules.DockingKit, lead + " and the craft has no " + string.Join(", no ", lacks.ToArray())));
+            else if (target != null && target.FreePorts.Count > 0 && !sizes.Any(target.FreePorts.ContainsKey))
+                found.Add(Finding(CraftCheckRules.DockingPortSize, "The craft's ports (" + string.Join(", ", sizes.ToArray()) + ") match none of "
+                    + target.Name + "'s free ports (" + string.Join(", ", target.FreePorts.Select(f => f.Value + " " + f.Key).ToArray()) + ")"));
+            return found;
+        }
+
+        private static MarginFinding Finding(string code, string explanation)
+        {
+            var rule = CraftCheckRules.Find(code);
+            return new MarginFinding { Code = code, Severity = rule.Severity, Title = rule.Title, Explanation = explanation };
         }
 
         private void Add(string code, MarginLevel level, string explanation)

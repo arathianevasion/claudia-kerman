@@ -18,6 +18,8 @@ namespace ClaudiaKermin.Core.Missions
         public static readonly Regex Ascent = new Regex(@"\b(ascen(d|ds|t|ding)|lift ?off|take ?off|launch(es|ing)?)\b", RegexOptions.IgnoreCase);
         public static readonly Regex Reentry = new Regex(@"\b(re-?ent(er|ry|ers|ering)|splash ?down)\b", RegexOptions.IgnoreCase);
         public static readonly Regex ReturnHome = new Regex(@"\breturn(s|ing)?\b.*\bKerbin\b|\bKerbin\b.*\breturn(s|ing)?\b", RegexOptions.IgnoreCase);
+        /// <summary>Docking with the Target Vessel: the dock block (#456).</summary>
+        public static readonly Regex Docking = new Regex(@"\bdock(s|ed|ing)?\b", RegexOptions.IgnoreCase);
         /// <summary>Aerobraking and aerocapture: through the air, but not down to the ground.</summary>
         public static readonly Regex Aero = new Regex(@"\baero ?(brak(e|es|ed|ing)|captur(e|es|ed|ing))\b", RegexOptions.IgnoreCase);
 

@@ -18,7 +18,7 @@ namespace ClaudiaKermin.Core.Missions
         public string Timing = "";
         /// <summary>The Due Time (UT, s) when the wait before this sequence needs the player; null for "right after the previous one" (ADR 0004).</summary>
         public double? DueTimeUt;
-        /// <summary>A stretch the player flies by hand (docking, EVA science): no script, and its Approval gives the player the controls.</summary>
+        /// <summary>A stretch the player flies by hand (EVA science, say): no script, and its Approval gives the player the controls.</summary>
         public bool Manual;
         /// <summary>The vessel it flies: "" or "craft" for the Mission's craft, otherwise a Child Vessel's name from the Mission Plan.</summary>
         public string Vessel = "";
@@ -249,7 +249,7 @@ namespace ClaudiaKermin.Core.Missions
             + "\"name\":{\"type\":\"string\"},\"intent\":{\"type\":\"string\"},"
             + "\"delta_v\":{\"type\":\"number\",\"description\":\"m/s\"},"
             + "\"timing\":{\"type\":\"string\",\"description\":\"Due Time or rough timing\"},"
-            + "\"due_time_ut\":{\"type\":\"number\",\"description\":\"The Due Time as UT in seconds, only when the wait before this sequence needs the player (e.g. docking or an EVA by hand); otherwise -1. A wait for a window, daylight or a hold goes inside the sequence's script, which warps there.\"},"
+            + "\"due_time_ut\":{\"type\":\"number\",\"description\":\"The Due Time as UT in seconds, only when the wait before this sequence needs the player (e.g. an EVA by hand); otherwise -1. A wait for a window, daylight or a hold goes inside the sequence's script, which warps there.\"},"
             + "\"manual\":{\"type\":\"boolean\",\"description\":\"True for a stretch the player flies by hand.\"}}}},"
             + "\"total_delta_v\":{\"type\":\"number\",\"description\":\"m/s\"},"
             + "\"expected_duration\":{\"type\":\"string\"},"
@@ -286,7 +286,7 @@ namespace ClaudiaKermin.Core.Missions
             + "\"window_closes_ut\":{\"type\":\"number\",\"description\":\"UT in seconds after which the planned window is missed, if the sequence depends on one; otherwise -1.\"},"
             + "\"late_window_dv\":{\"type\":\"number\",\"description\":\"Delta-v in m/s of the next window if the planned one is missed; -1 when there is none.\"},"
             + "\"script\":{\"type\":\"string\",\"description\":\"The complete Mission Script in kerboscript; empty for a manual stretch.\"},"
-            + "\"manual\":{\"type\":\"boolean\",\"description\":\"True when the player flies this stretch by hand (docking, EVA science, or when they say they will fly it): the script is then empty.\"}}}";
+            + "\"manual\":{\"type\":\"boolean\",\"description\":\"True when the player flies this stretch by hand (EVA science, or when they say they will fly it): the script is then empty.\"}}}";
 
         private const string DebriefSchema =
             "{\"type\":\"object\",\"additionalProperties\":false,"

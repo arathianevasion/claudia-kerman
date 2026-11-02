@@ -196,6 +196,12 @@ namespace ClaudiaKermin.Adapter
         /// </summary>
         public static uint? BlockTestTargetId;
 
+        /// <summary>
+        /// The Mission in play is flown remotely (Claudia at Mission Control), for <c>dock</c>'s Child Vessel link test of the
+        /// Target Vessel (#456): remote, the target needs a link home; aboard, a link to the craft. Refreshed every frame.
+        /// </summary>
+        public static bool Remote;
+
         /// <summary>Call each frame, after the background queue has drained.</summary>
         public void Update()
         {
@@ -204,6 +210,7 @@ namespace ClaudiaKermin.Adapter
             ChuteAllocation = _mission.View.ChuteAllocation;
             CurrentSequence = _mission.View.CurrentSequence;
             TargetVesselId = _mission.View.TargetVesselId;
+            Remote = _mission.View.Remote;
             // A new Game object means a save was loaded: continue, quickload, revert or another save. A scene
             // change keeps the same Game, so it never counts. The core puts the Missions in step with the save.
             if (HighLogic.CurrentGame != null && !ReferenceEquals(HighLogic.CurrentGame, _game))

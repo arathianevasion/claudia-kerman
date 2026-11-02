@@ -40,6 +40,8 @@ namespace ClaudiaKermin.KOS
         private readonly Queue<Action> _events = new Queue<Action>();
         /// <summary>Gate keys for runs with no Mission run id (debug tools): negative, so never a core run id.</summary>
         private int _nextUnkeyedRun = -1;
+        /// <summary>dock_hold runs on Target Vessels, by the craft processor whose dock asked for them (#456).</summary>
+        private readonly DockHolds _holds = new DockHolds();
 
         /// <summary>The processor Claudia would use on this vessel: the player's choice if still aboard, else the one nearest the root.</summary>
         public static uint? ChooseProcessor(Vessel vessel, uint? preferred)
@@ -83,6 +85,76 @@ namespace ClaudiaKermin.KOS
             Abort(partId, (int?)runId, reason);
         }
 
+        /// <summary>
+        /// From <c>ADDONS:CLAUDIA:DOCKHOLD</c> (#456): <c>dock</c> on processor <paramref name="craftPart"/> starts. With
+        /// <paramref name="passive"/> "" the mod starts its bundled dock_hold on <paramref name="target"/>'s processor, turning the target
+        /// port <paramref name="portUid"/> toward the craft's port <paramref name="towardUid"/>; otherwise the target is met as it is.
+        /// A hold the craft already had is stopped. Gives "starting" or "passive".
+        /// </summary>
+        public string StartHold(uint craftPart, Vessel target, string passive, string portUid, string towardUid)
+        {
+            uint oldPart;
+            int oldRun;
+            var processor = passive.Length == 0 ? ChooseProcessor(target, null) : null;
+            if (!processor.HasValue)
+            {
+                if (_holds.Passive(craftPart, passive.Length > 0 ? passive : "the target has no kOS processor", out oldPart, out oldRun))
+                    Abort(oldPart, oldRun, "dock started again");
+                return "passive";
+            }
+            var part = processor.Value;
+            var run = _nextUnkeyedRun--;
+            if (_holds.Starting(craftPart, part, run, out oldPart, out oldRun)) Abort(oldPart, oldRun, "dock started again");
+            _pending.Add(new PendingStart(part, run, "dock_hold", DockHold.Program(portUid, towardUid),
+                outcome => _holds.Ended(part, run, outcome),
+                why => _holds.Refused(part, run, why),
+                what => _holds.Faulted(part, run, "blocked: " + what),
+                Time.realtimeSinceStartup) { HoldFor = craftPart });
+            Debug.Log(ModInfo.LogTag + " starting dock_hold on part " + part + " of '" + target.vesselName + "' for dock on part " + craftPart);
+            return "starting";
+        }
+
+        /// <summary>For <c>ADDONS:CLAUDIA:DOCKHOLDSTATE</c>: the hold dock on <paramref name="craftPart"/> started, and why when passive or faulted.</summary>
+        public DockHoldState HoldState(uint craftPart, out string reason)
+        {
+            return _holds.State(craftPart, out reason);
+        }
+
+        /// <summary>dock on <paramref name="craftPart"/> returned, or its run ended: its hold is stopped, however either ended.</summary>
+        private void StopHold(uint craftPart, string reason)
+        {
+            uint part;
+            int run;
+            if (!_holds.Stop(craftPart, out part, out run)) return;
+            Debug.Log(ModInfo.LogTag + " stopping dock_hold on part " + part + ": " + reason);
+            Abort(part, run, reason);
+        }
+
+        /// <summary>A live hold whose processor lost power is a fault for dock, and is stopped.</summary>
+        private void CheckHoldPower()
+        {
+            foreach (var live in _holds.Live())
+            {
+                ActiveRun run;
+                if (!_runs.TryGetValue(live.Key, out run) || run.RunId != live.Value || run.Run.HasEnded || run.Addon.IsStale) continue;
+                if (run.Addon.Processor.ProcessorMode == ProcessorModes.READY) continue;
+                _holds.Faulted(live.Key, live.Value, "its kOS processor lost power");
+                Abort(live.Key, live.Value, "dock_hold's processor lost power");
+            }
+        }
+
+        /// <summary>
+        /// The craft is made safe as a run ends or aborts, except a dock_hold's once its target has docked with the craft that asked
+        /// for it: that vessel is the craft, and its own script flies it.
+        /// </summary>
+        private static void MakeSafe(ActiveRun run)
+        {
+            var vessel = run.Vessel;
+            if (vessel == null) return;
+            if (run.HoldFor.HasValue && vessel.parts.Any(p => p.persistentId == run.HoldFor.Value)) return;
+            CraftSafety.MakeSafe(vessel);
+        }
+
         /// <summary>UNLOCK STEERING and UNLOCK THROTTLE on that processor, without running any Kerboscript.</summary>
         public void ReleaseControls(uint partId)
         {
@@ -112,7 +184,7 @@ namespace ClaudiaKermin.KOS
                 run.Run.Aborted(reason);
                 Debug.Log(ModInfo.LogTag + " aborting '" + run.Label + "': " + reason);
                 if (!run.Addon.IsStale) run.Addon.Shared.Cpu.BreakExecution(true);
-                CraftSafety.MakeSafe(run.Vessel);
+                MakeSafe(run);
             });
         }
 
@@ -126,7 +198,7 @@ namespace ClaudiaKermin.KOS
             ActiveRun run;
             if (!_runs.TryGetValue(partId, out run) || run.RunId != trip.RunId || run.Run.HasEnded) return;
             run.Run.Aborted("blocked: " + trip.What);
-            CraftSafety.MakeSafe(run.Vessel);
+            MakeSafe(run);
             if (run.OnBlocked != null) _events.Enqueue(() => run.OnBlocked(trip.What));
         }
 
@@ -151,6 +223,8 @@ namespace ClaudiaKermin.KOS
         /// </summary>
         public void OnBlock(uint partId, string block, IDictionary<string, object> result)
         {
+            // dock returned, however it ended: the mod stops the dock_hold it started for it (#456).
+            if (result != null && block == DockHold.Block) StopHold(partId, "dock ended");
             ActiveRun run;
             if (!_runs.TryGetValue(partId, out run) || run.Run.HasEnded) return;
             // Every mod-started run's blocks go in its warp trace, the block tests' included.
@@ -331,6 +405,7 @@ namespace ClaudiaKermin.KOS
             // A trip is reported before its run's outcome, which comes at least a frame after the program ends.
             while (_events.Count > 0) Guard(_events.Dequeue());
             Guard(SampleWarp);
+            Guard(CheckHoldPower);
             foreach (var run in _runs.Values.ToList())
             {
                 if (!run.Run.HasEnded && run.Addon.IsStale)
@@ -420,6 +495,7 @@ namespace ClaudiaKermin.KOS
             run.NodesAtStart = ManeuverPlan.Nodes(shared.Vessel);
             _runs[pending.PartId] = run;
             KosGates.Runs.Open(pending.PartId, pending.RunId);
+            if (pending.HoldFor.HasValue) _holds.Started(pending.PartId, pending.RunId);
             if (pending.RunId >= 0) IpuGuard.RunStarted();
             shared.Cpu.AddPopContextNotifyee(run);
             shared.ScriptHandler.ClearContext(ProgramContext);
@@ -439,7 +515,9 @@ namespace ClaudiaKermin.KOS
             var outcome = run.Run.Finish(ReadTerminal(run.Addon));
             if (run.RunId >= 0) IpuGuard.RunEnded(outcome);
             // kOS hands controls back as the program ends, so make safe again once it has.
-            if (outcome.MakesCraftSafe) CraftSafety.MakeSafe(run.Vessel);
+            if (outcome.MakesCraftSafe) MakeSafe(run);
+            // A craft's run that ends inside dock, with no block result, takes its dock_hold down too (#456).
+            if (!run.HoldFor.HasValue) StopHold(run.PartId, "the craft's run ended");
             try { ManeuverPlan.RunEnded(run.Vessel, run.NodesAtStart, run.Label, outcome); }
             catch (Exception e) { Debug.LogWarning(ModInfo.LogTag + " couldn't tidy the maneuver nodes of '" + run.Label + "': " + e.Message); }
             Debug.Log(ModInfo.LogTag + " '" + run.Label + "' ended: " + outcome.Summary +
@@ -480,6 +558,8 @@ namespace ClaudiaKermin.KOS
             /// <summary>What a tripped gate refused; null for debug runs.</summary>
             public readonly Action<string> OnBlocked;
             public readonly float Since;
+            /// <summary>A dock_hold's: the craft processor whose dock asked for it (#456); null for every other run.</summary>
+            public uint? HoldFor;
 
             public PendingStart(uint partId, int runId, string label, string source, Action<RunOutcome> onOutcome, Action<string> onRefused,
                 Action<string> onBlocked, float since)
@@ -507,6 +587,8 @@ namespace ClaudiaKermin.KOS
             public readonly WarpCancel Cancel = new WarpCancel();
             public readonly Action<RunOutcome> OnOutcome;
             public readonly Action<string> OnBlocked;
+            /// <summary>A dock_hold's: the craft processor whose dock asked for it (#456); null for every other run.</summary>
+            public readonly uint? HoldFor;
             public int EndedFrame = int.MaxValue;
             /// <summary>The craft's maneuver nodes when the run started: the run's own are the ones not here (#522).</summary>
             public List<ManeuverNode> NodesAtStart = new List<ManeuverNode>();
@@ -518,6 +600,7 @@ namespace ClaudiaKermin.KOS
                 Label = start.Label;
                 OnOutcome = start.OnOutcome;
                 OnBlocked = start.OnBlocked;
+                HoldFor = start.HoldFor;
                 Addon = addon;
                 Run = new KosRun(terminal) { Trace = new WarpTrace(WarpTracing.Real) };
             }

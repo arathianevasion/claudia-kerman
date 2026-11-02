@@ -227,5 +227,96 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Null(check.Margin);
             Assert.Empty(check.Findings);
         }
+
+        // ---- dock (#456): a docking port, RCS and monopropellant, and port sizes the Target Vessel has free ----
+
+        private static List<PlannedSequence> DockAtTheStation()
+        {
+            return new List<PlannedSequence> { Leg("Dock with the station", "Close from the rendezvous hand-off and dock with Kerbin Station's free port.", 10) };
+        }
+
+        /// <summary>The fixture's craft with a size1 port, RCS and 30 units of monopropellant, and a Target Vessel with free ports.</summary>
+        private static GameSnapshot ReadyToDock(string craftPort = "size1", params string[] targetPorts)
+        {
+            var snapshot = InKerbinOrbit();
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 9001, Name = "dockingPort2", Title = "Clamp-O-Tron Docking Port", PortSize = craftPort, Tags = { "docking_port" } });
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 9002, Name = "RCSBlock.v2", Title = "RV-105 RCS Thruster Block", Tags = { "rcs" } });
+            snapshot.Resources.Add(new SnapshotResource { Name = "MonoPropellant", Amount = 30, Max = 30 });
+            snapshot.Target = new SnapshotTarget { Name = "Kerbin Station", Body = "Kerbin", Situation = "ORBITING" };
+            foreach (var port in targetPorts.Length > 0 ? targetPorts : new[] { "size1", "size2" }) snapshot.Target.FreePorts[port] = 1;
+            return snapshot;
+        }
+
+        [Fact]
+        public void ADockingWithAPortRcsAndMonopropellantOfAMatchingSizeHasNoDockingFinding()
+        {
+            var check = Check(ReadyToDock(), DockAtTheStation());
+            Assert.Empty(check.Findings);
+            Assert.Equal(MarginLevel.Enough, check.Level);
+        }
+
+        [Theory]
+        [InlineData("docking_port", "A docking is still to fly and the craft has no docking port")]
+        [InlineData("rcs", "A docking is still to fly and the craft has no RCS")]
+        [InlineData("MonoPropellant", "A docking is still to fly and the craft has no monopropellant")]
+        public void ADockingWithoutAPortRcsOrMonopropellantIsABlocker(string missing, string explanation)
+        {
+            var snapshot = ReadyToDock();
+            if (missing == "MonoPropellant") snapshot.Resources.RemoveAll(r => r.Name == missing);
+            else snapshot.Craft.Parts.RemoveAll(p => p.Tags.Contains(missing));
+            var check = Check(snapshot, DockAtTheStation());
+            Assert.Equal(MarginLevel.Short, check.Level);
+            var finding = Assert.Single(check.Findings);
+            Assert.Equal(CraftCheckRules.DockingKit, finding.Code);
+            Assert.Equal("Blocker: Nothing to dock with. " + explanation, finding.Describe());
+        }
+
+        [Fact]
+        public void APortSizeTheTargetHasNoneFreeOfIsAWarning()
+        {
+            var check = Check(ReadyToDock("size0", "size1", "size2"), DockAtTheStation());
+            var finding = Assert.Single(check.Findings);
+            Assert.Equal(CraftCheckRules.DockingPortSize, finding.Code);
+            Assert.Equal(CraftFindingSeverity.Warning, finding.Severity);
+            Assert.Equal("Warning: Docking port sizes may not match. The craft's ports (size0) match none of Kerbin Station's free ports (1 size1, 1 size2)", finding.Describe());
+            Assert.Equal(MarginLevel.Enough, check.Level);
+        }
+
+        [Fact]
+        public void OnlyADockingTheBlockFliesIsJudged()
+        {
+            // No docking still to fly, or one the player flies by hand: no dock findings, whatever the craft carries.
+            var bare = InKerbinOrbit();
+            Assert.Empty(Check(bare, MunLandingAndReturn()).Findings);
+            var byHand = new List<PlannedSequence> { Leg("Dock by hand", "The player docks with the station.", 0, manual: true) };
+            Assert.DoesNotContain(CraftCheckRules.DockingKit, Codes(Check(bare, byHand)));
+        }
+
+        [Fact]
+        public void TheDockingRulesAreTheModsOwnAndOutOfClaudesPrompt()
+        {
+            // The mod decides them from the craft's parts and the target's free ports, so the Craft Check prompt doesn't grow.
+            var kit = CraftCheckRules.Find(CraftCheckRules.DockingKit);
+            Assert.Equal(CraftFindingSeverity.Blocker, kit.Severity);
+            Assert.True(kit.ModOnly);
+            var size = CraftCheckRules.Find(CraftCheckRules.DockingPortSize);
+            Assert.Equal(CraftFindingSeverity.Warning, size.Severity);
+            Assert.True(size.ModOnly);
+            // Docking is the dock block's now, not a stretch the player flies by hand (#456).
+            Assert.DoesNotContain("by hand (docking", CraftCheckRules.Describe());
+        }
+
+        [Fact]
+        public void TheCraftChecksDockingFindingsUseKspsTargetBeforeTheMissionHasOne()
+        {
+            var snapshot = ReadyToDock("size0");
+            snapshot.KspTarget = snapshot.Target;
+            snapshot.Target = null;
+            var finding = Assert.Single(MarginCheck.Docking(snapshot, "The Mission Goal docks"));
+            Assert.Equal(CraftCheckRules.DockingPortSize, finding.Code);
+            snapshot.Craft.Parts.RemoveAll(p => p.Tags.Contains("rcs"));
+            Assert.Equal("Blocker: Nothing to dock with. The Mission Goal docks and the craft has no RCS",
+                Assert.Single(MarginCheck.Docking(snapshot, "The Mission Goal docks")).Describe());
+        }
     }
 }

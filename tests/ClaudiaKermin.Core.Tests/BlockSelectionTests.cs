@@ -87,7 +87,7 @@ namespace ClaudiaKermin.Core.Tests
             // Its summary stays in the base layer; its full docs come only with a goal that names an orbit change.
             var names = CoreLibrary.Blocks.Select(b => b.Name).ToList();
             var picked = BlockSelection.For("Prove the kOS link from the launch pad.", names);
-            Assert.Equal(names.Where(n => n != "change_orbit" && n != "rendezvous"), picked);
+            Assert.Equal(names.Where(n => n != "change_orbit" && n != "rendezvous" && n != "dock"), picked);
         }
 
         [Fact]
@@ -100,6 +100,20 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("rendezvous", BlockSelection.For("Meet the tug in low Kerbin orbit", names));
             Assert.DoesNotContain("rendezvous", BlockSelection.For("Land on the Mun", names));
             Assert.DoesNotContain("rendezvous", BlockSelection.For("Put a satellite in a stationary orbit", names));
+        }
+
+        [Fact]
+        public void DockComesOnlyWithAGoalThatDocks()
+        {
+            // #456: a goal that docks gets dock and the rendezvous before it; its summary stays in the base layer for the rest.
+            var names = CoreLibrary.Blocks.Select(b => b.Name).ToList();
+            var picked = BlockSelection.For("Launch, rendezvous and dock with Kerbin Station", names);
+            Assert.Contains("dock", picked);
+            Assert.Contains("rendezvous", picked);
+            Assert.Contains("dock", BlockSelection.For("Docking with the tug", names));
+            Assert.DoesNotContain("dock", BlockSelection.For("Rendezvous with Kerbin Station One", names));
+            Assert.DoesNotContain("dock", BlockSelection.For("Land on the Mun", names));
+            Assert.DoesNotContain("dock", BlockSelection.For("", names));
         }
 
         [Fact]
@@ -131,8 +145,8 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("transfer_to", narrow);
             Assert.Contains("land", narrow);
             Assert.DoesNotContain("reentry", narrow);
-            // change_orbit comes only with a goal that names an orbit change (#444), rendezvous with another vessel (#455).
-            Assert.Equal(names.Count - 2, BlockSelection.For("", names).Count);
+            // change_orbit comes only with a goal that names an orbit change (#444), rendezvous with another vessel (#455), dock with docking (#456).
+            Assert.Equal(names.Count - 3, BlockSelection.For("", names).Count);
         }
 
         [Fact]
