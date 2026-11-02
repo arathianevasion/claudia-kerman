@@ -175,6 +175,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void The_search_stays_within_about_2_s_on_the_Mun_with_a_full_window()
         {
             // A full window: a turn of the Mun, 38.6 h, rough ground, a site above the orbit's inclination.

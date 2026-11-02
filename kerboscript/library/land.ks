@@ -235,6 +235,28 @@ function land_site_query {
   return query.
 }
 
+// True if land takes the biome's next site (#528): a biome target (by_biome) whose site the pass search refused for
+// terrain on the approach (error), with fewer than 5 sites tried (tried). Other failures don't retry. Pure.
+function land_next_site {
+  parameter by_biome, error, tried.
+  return by_biome and error:startswith("terrain on the approach") and tried < 5.
+}
+
+// A biome's terrain refusal (error) with the count of its sites land tried (tried; #528): "terrain on the approach at 5
+// East Crater sites: ..."; anything else as it is. Pure.
+function land_sites_refused {
+  parameter error, tried, biome.
+  local prefix is "terrain on the approach".
+  if tried < 1 or not error:startswith(prefix) {
+    return error.
+  }
+  local sites is " sites".
+  if tried = 1 {
+    set sites to " site".
+  }
+  return prefix + " at " + tried + " " + biome + sites + error:substring(prefix:length, error:length - prefix:length).
+}
+
 // The m/s land's correction burn onto the site may cost: max_correction_dv, or for "auto" the smaller of
 // 30 and 5% of the craft's delta-v (lander_dv, m/s; 0 or less when stock reads none: 30), as
 // LandingPass.DefaultMaxCorrectionDv works it out for find_landing_site. Pure.
@@ -1472,28 +1494,10 @@ function land {
     return claudia_finish(ctx, false, "land needs a near-circular orbit (eccentricity under 0.1); situation " + status + ", eccentricity " + round(ship:orbit:eccentricity, 3), extra).
   }
 
-  // A biome target becomes a site, then flies as a LATLNG would. The site search is the mod's
-  // (find_landing_site's), through a block-internal call the Script Check allows only here in the
-  // Core Library (ADR 0007), so it stays inline rather than in a helper a Mission Script could call.
+  // A biome target becomes a site below, once the craft is measured (#528), then flies as a LATLNG would.
   local site is "".
   local reach is land_reach_dv(opt:max_correction_dv, ship:deltav:current).
-  if by_biome {
-    local found is addons:claudia:landingsite(land_site_query(opt:target, opt:daylight, opt:max_slope, opt:within_hours, reach)).
-    if found:error <> "" {
-      if found:error:contains(" is not a biome on ") {
-        return claudia_finish(ctx, false, found:error, extra).
-      }
-      local advice is "raise max_slope, try another biome or near point, or change the orbit's plane".
-      if opt:daylight {
-        set advice to advice + ", or land with daylight false".
-      }
-      return claudia_finish(ctx, false, found:error + "; " + advice, extra).
-    }
-    set site to lexicon("lat", found:lat, "lng", found:lng).
-    if found:near_edge {
-      addons:claudia:blocktrace("land", lexicon("phase", "site", "note", "at the " + opt:target:biome + " biome edge: nothing deeper reachable")).
-    }
-  } else {
+  if not by_biome {
     set site to land_site_of(opt:target).
   }
 
@@ -1534,9 +1538,9 @@ function land {
   }
   local plan is "".
   local r_pe is -1.
-  // A site given as coordinates (or "any"'s) may move up to 5 km for terrain; a biome's was already chosen for it (#511).
+  // A site given as coordinates (or "any"'s) may move up to 5 km for terrain; a biome's is chosen for it (#511), the next site taking its place (#528).
   local may_move is not by_biome.
-  if site:istype("String") {
+  if not by_biome and site:istype("String") {
     // "any": the arrival point of the first pass in daylight, then its descent over that pass alone (#511); if no shape
     // clears it, the next arrival point on, up to 10.
     local earliest is time:seconds + 120.
@@ -1555,33 +1559,72 @@ function land {
       set earliest to any:burn_ut + ship:orbit:period / 12.
     }
   } else {
-    set r_pe to land_pe_radius(site, approach, ship:orbit:semimajoraxis).
-    if r_pe < 0 {
-      return claudia_finish(ctx, false, land_too_low(site, approach):error, extra).
-    }
-    // The pass search is the mod's too (find_landing_site keeps its sites by it, so both choose the
-    // same pass), through a block-internal call that stays inline for the same reason (ADR 0007).
-    // #546: a stack whose plan the stage can't cover after all, or that has no plan, is planned again as the lander alone;
-    // that plan stands if the stage can't cover its braking either, so the stage is staged off before the fall.
-    local asked is craft.
-    from { local tries is 0. } until tries >= 2 step { set tries to tries + 1. } do {
-      local site_query is land_pass_query(site, r_pe, time:seconds + 120, opt:daylight, reach, opt:within_hours, asked, opt:descent_shape, may_move).
-      // #521: with no pass, the failure names the change_orbit plane changes that reach the site; land never flies them.
-      site_query:add("plane_changes", true).
-      local found is land_pass_plan(addons:claudia:landingpass(site_query), site, r_pe).
-      local short is found:error = "" and land_plans_staged(plan_stage_dv, ship:deltav:current,
-        land_dv_needed(found:brake_dv, opt:burn_margin, est_need), may_stage_first).
-      if tries = 0 {
-        set plan to found.
-      } else if short {
-        set plan to found.
-        set craft to asked.
-        set stage_first to true.
+    // A biome's site is the mod's search (find_landing_site's), with the craft the pass search flies (#528), through a
+    // block-internal call the Script Check allows only here in the Core Library (ADR 0007), so it stays inline. A site
+    // the pass search refuses for terrain on the approach gives way to the biome's next, up to 5 (land_next_site).
+    local tried is list().
+    until false {
+      if by_biome {
+        local site_ask is land_site_query(opt:target, opt:daylight, opt:max_slope, opt:within_hours, reach).
+        site_ask:add("craft", craft).
+        site_ask:add("exclude", tried).
+        local found is addons:claudia:landingsite(site_ask).
+        if found:error <> "" {
+          if tried:length > 0 {
+            set plan:error to land_sites_refused(plan:error, tried:length, opt:target:biome).
+            break.
+          }
+          if found:error:contains(" is not a biome on ") {
+            return claudia_finish(ctx, false, found:error, extra).
+          }
+          local advice is "raise max_slope, try another biome or near point, or change the orbit's plane".
+          if opt:daylight {
+            set advice to advice + ", or land with daylight false".
+          }
+          return claudia_finish(ctx, false, found:error + "; " + advice, extra).
+        }
+        set site to lexicon("lat", found:lat, "lng", found:lng).
+        tried:add(site).
+        if found:near_edge {
+          addons:claudia:blocktrace("land", lexicon("phase", "site", "note", "at the " + opt:target:biome + " biome edge: nothing deeper reachable")).
+        }
       }
-      if stage_first or not may_stage_first or (found:error = "" and not short) {
+      set r_pe to land_pe_radius(site, approach, ship:orbit:semimajoraxis).
+      if r_pe < 0 {
+        return claudia_finish(ctx, false, land_too_low(site, approach):error, extra).
+      }
+      // The pass search is the mod's too (find_landing_site keeps its sites by it, so both choose the
+      // same pass), through a block-internal call that stays inline for the same reason (ADR 0007).
+      // #546: a stack whose plan the stage can't cover after all, or that has no plan, is planned again as the lander alone;
+      // that plan stands if the stage can't cover its braking either, so the stage is staged off before the fall.
+      local asked is craft.
+      from { local tries is 0. } until tries >= 2 step { set tries to tries + 1. } do {
+        local site_query is land_pass_query(site, r_pe, time:seconds + 120, opt:daylight, reach, opt:within_hours, asked, opt:descent_shape, may_move).
+        // #521: with no pass, the failure names the change_orbit plane changes that reach the site; land never flies them.
+        site_query:add("plane_changes", true).
+        local found is land_pass_plan(addons:claudia:landingpass(site_query), site, r_pe).
+        local short is found:error = "" and land_plans_staged(plan_stage_dv, ship:deltav:current,
+          land_dv_needed(found:brake_dv, opt:burn_margin, est_need), may_stage_first).
+        if tries = 0 {
+          set plan to found.
+        } else if short {
+          set plan to found.
+          set craft to asked.
+          set stage_first to true.
+        }
+        if stage_first or not may_stage_first or (found:error = "" and not short) {
+          break.
+        }
+        set asked to land_lander_craft(craft, under).
+      }
+      if not land_next_site(by_biome, plan:error, tried:length) {
+        if by_biome {
+          set plan:error to land_sites_refused(plan:error, tried:length, opt:target:biome).
+        }
         break.
       }
-      set asked to land_lander_craft(craft, under).
+      addons:claudia:blocktrace("land", lexicon("phase", "site", "note", "terrain on the approach at site " + tried:length + " of up to 5; taking the biome's next",
+        "lat", round(site:lat, 4), "lng", round(site:lng, 4))).
     }
   }
   if plan:error <> "" {

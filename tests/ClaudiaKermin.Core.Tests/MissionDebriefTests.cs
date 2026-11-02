@@ -135,6 +135,52 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("3,200 m/s left against 1,000 m/s to fly: plenty.", request);
         }
 
+        // ---- The blocks trail (#609) ----
+
+        [Fact]
+        public void TheDebriefRequestListsEveryBlocksResultWhateverTheScriptReported()
+        {
+            // 20ac's Sequence Plan 3: transfer_to's encounter was lost when the script reported a lexicon of its own.
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning(s => s.Stages[0].DeltaVVac = 3200);
+            // The ejection burned: not a refusal before any burn, which the mod would Debrief itself.
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2340));
+
+            rig.Mission.Send(new KosBlockEnded("transfer_to", new Dictionary<string, object>
+            {
+                { "success", true }, { "reason", "done" }, { "encounter_ut", 1203456.0 }, { "target_pe_actual", 41200.0 }, { "ejection_wait", 300.0 },
+            }, start.RunId));
+            var own = new Dictionary<string, object> { { "success", false }, { "reason", "transfer ended outside the Mun SOI" } };
+            rig.Mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, own, "", "", false), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            var request = LastUserText(rig.Transport.Requests[2]);
+            Assert.Contains("Report (JSON data): {\"success\":false,\"reason\":\"transfer ended outside the Mun SOI\"}\n" + BlockTrail.LinePrefix
+                + "[{\"block\":\"transfer_to\",\"success\":true,\"reason\":\"done\",\"encounter_ut\":1203456,\"target_pe_actual\":41200}]", request);
+        }
+
+        [Fact]
+        public void ThePlansDebriefRecordCarriesTheBlocksTrail()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning();
+            var launch = new Dictionary<string, object> { { "success", true }, { "reason", "done" }, { "duration", 80.0 } };
+            var circularize = new Dictionary<string, object> { { "success", true }, { "reason", "done" }, { "duration", 41.0 }, { "ecc", 0.002 } };
+
+            rig.Mission.Send(new KosBlockEnded("launch", launch, start.RunId));
+            rig.Mission.Send(new KosBlockEnded("circularize", circularize, start.RunId));
+            rig.Mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, circularize, "", "", false), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            // The Debrief text leaves out the block the script reported; the log keeps every block.
+            Assert.Contains(BlockTrail.LinePrefix + "[{\"block\":\"launch\",\"success\":true,\"reason\":\"done\"}]", LastUserText(rig.Transport.Requests[2]));
+            var path = Path.Combine(_save.Path, "ClaudiaKermin", "missions", rig.Mission.View.MissionId, "plans.jsonl");
+            var plan = File.ReadAllLines(path).Select(l => JsonDocument.Parse(l).RootElement).Single(l => l.GetProperty("event").GetString() == "plan" && l.TryGetProperty("debrief", out _));
+            var blocks = plan.GetProperty("debrief").GetProperty("blocks").EnumerateArray().ToList();
+            Assert.Equal(new[] { "launch", "circularize" }, blocks.Select(b => b.GetProperty("block").GetString()));
+            Assert.Equal(0.002, blocks[1].GetProperty("ecc").GetDouble());
+        }
+
         // ---- The whole run's delta-v (#384) ----
 
         [Fact]
@@ -148,6 +194,67 @@ namespace ClaudiaKermin.Core.Tests
             rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
 
             Assert.Contains("Delta-v used this run, from stock: 1,038 m/s (left at start 3,913 m/s, now 2,875 m/s).", LastUserText(rig.Transport.Requests[2]));
+        }
+
+        // ---- Data kept on board (#612) ----
+
+        [Fact]
+        public void TheDebriefNoticeSaysTheDataIsAboardOnlyWhenAScienceCallKeptSome()
+        {
+            var kept = new Rig(this, DebriefJson("Nominal", ""));
+            var start = kept.RunToRunning();
+            var result = new Dictionary<string, object>
+            {
+                { "success", true },
+                { "kept", new List<object> { "crewReport: no link; call science with transmit once the link is up, from anywhere" } },
+            };
+            kept.Mission.Send(new KosBlockEnded("science", result, start.RunId));
+            kept.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            kept.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+            Assert.Contains("The data is aboard; sending it needs no new landing.", kept.Transport.Requests[2].Body);
+
+            var sent = new Rig(this, DebriefJson("Nominal", ""));
+            var sentStart = sent.RunToRunning();
+            sent.Mission.Send(new KosBlockEnded("science", new Dictionary<string, object> { { "success", true } }, sentStart.RunId));
+            sent.Mission.Send(new KosRunEnded(Finished(), sentStart.RunId));
+            sent.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+            Assert.DoesNotContain("no new landing", sent.Transport.Requests[2].Body);
+        }
+
+        [Fact]
+        public void DeltaVDroppedWithAStageAtZeroThrottleIsLeftOutOfTheRunsDeltaVUsedAndTheLineSaysSo()
+        {
+            // 2d0c's landing leg (#605): 692 m/s burned, and the Swivel stack took 197 m/s with it.
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning(s => s.Stages[0].DeltaVVac = 3200);
+
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2900));
+            rig.Mission.Send(new CraftSeparated());
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2703));
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2703));
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2311));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Contains("Delta-v used this run, from stock: 692 m/s (left at start 3,200 m/s, now 2,311 m/s; 197 m/s dropped with stages at zero "
+                + "throttle isn't counted).", LastUserText(rig.Transport.Requests[2]));
+        }
+
+        [Fact]
+        public void AStageDroppedJustBeforeTheRunEndsIsStillLeftOutOfTheRunsDeltaVUsed()
+        {
+            // 2d0c's return dropped the lander stack after the last burn: the script can end before two readings agree.
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning(s => s.Stages[0].DeltaVVac = 3200);
+
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2291));
+            rig.Mission.Send(new CraftSeparated());
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 0));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Contains("Delta-v used this run, from stock: 909 m/s (left at start 3,200 m/s, now 0 m/s; 2,291 m/s dropped with stages at zero "
+                + "throttle isn't counted).", LastUserText(rig.Transport.Requests[2]));
         }
 
         [Fact]

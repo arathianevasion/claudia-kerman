@@ -35,7 +35,8 @@ namespace ClaudiaKermin.Core.Missions
             var plan = mission.PendingSequence;
             var snapshot = MissionVesselSnapshot(mission);
             if (plan == null || snapshot == null) return false;
-            var reason = PreBurnRefusal.Reason(outcome, mission.RunStartOrbit, OrbitFix.Of(snapshot), mission.RunStartDeltaVLeft,
+            // The real start: a stage dropped at zero throttle (#605) still changed the craft.
+            var reason = PreBurnRefusal.Reason(outcome, mission.RunStartOrbit, OrbitFix.Of(snapshot), mission.RunStartDeltaVLeft + mission.RunDroppedDeltaV,
                 LiveReadings.DeltaVLeftOf(snapshot), mission.Crossings.Count > 0);
             if (reason == null) return false;
 
@@ -61,7 +62,7 @@ namespace ClaudiaKermin.Core.Missions
             Begin(new Turn
             {
                 Purpose = Purpose.SequencePlan,
-                UserText = PreBurnRefusal.NextTurnLead + MissionPrompts.RunReport(plan, outcome, "") + "\n" + MissionPrompts.Facts(_ut, _snapshot),
+                UserText = PreBurnRefusal.NextTurnLead + MissionPrompts.RunReport(plan, outcome, "", mission.Blocks) + "\n" + MissionPrompts.Facts(_ut, _snapshot),
                 Notice = MissionPrompts.SequenceNotice,
             });
             return true;
@@ -72,7 +73,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             try
             {
-                PlanLog.SetDebrief(mission.Folder, debrief.Outcome, new TurnStats(), "", null, false, PlanLog.ByMod);
+                PlanLog.SetDebrief(mission.Folder, debrief.Outcome, new TurnStats(), "", null, false, PlanLog.ByMod, blocks: mission.Blocks.Json(null));
             }
             catch (Exception e) when (IsFileError(e))
             {

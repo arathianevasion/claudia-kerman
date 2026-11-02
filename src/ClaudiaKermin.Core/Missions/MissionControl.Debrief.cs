@@ -46,6 +46,8 @@ namespace ClaudiaKermin.Core.Missions
             public readonly RunEventLog RunEvents = new RunEventLog();
             /// <summary>The current run's RCS switches (RCS Use); cleared when the next run starts.</summary>
             public readonly RcsUseTally RcsUse = new RcsUseTally();
+            /// <summary>The current run's blocks trail (#609); cleared when the next run starts.</summary>
+            public readonly BlockTrail Blocks = new BlockTrail();
             /// <summary>The kOS terminal text of the last run that did not report, for the Debrief card; "" otherwise.</summary>
             public string ScriptError = "";
             /// <summary>The Debrief in hand: the recheck result and the rest, for its card.</summary>
@@ -60,6 +62,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             mission.RunEvents.Clear();
             mission.RcsUse.Clear();
+            mission.Blocks.Clear();
             mission.ScriptError = "";
         }
 
@@ -124,6 +127,7 @@ namespace ClaudiaKermin.Core.Missions
                 turn.Gate = new DebriefGate();
                 mission.Gate = turn.Gate;
                 turn.UserText += RunFacts(mission);
+                if (mission.ScienceKept && !mission.HandBack) turn.Notice += MissionPrompts.ScienceKeptNoticeLine;
             }
             return !turn.Gate.Done && StartRecheck(mission, turn);
         }
@@ -134,7 +138,7 @@ namespace ClaudiaKermin.Core.Missions
             var text = mission.RunEvents.DebriefText(mission.RunStartUt);
             var rest = RestOfPlanText(mission);
             // A hand-back Debrief is of a manual stretch, with no scripted run to total.
-            if (!mission.HandBack) text += "\n" + MissionPrompts.RunDeltaVLine(mission.RunStartDeltaVLeft, MissionVesselSnapshot(mission));
+            if (!mission.HandBack) text += "\n" + MissionPrompts.RunDeltaVLine(mission.RunStartDeltaVLeft, MissionVesselSnapshot(mission), mission.RunDroppedDeltaV);
             if (!mission.HandBack) text += RunMonopropellantFact(mission);
             if (!mission.HandBack) text += "\n" + MissionPrompts.RcsUseLine(mission.RcsUse);
             return text + "\nManeuver Sequences still to fly in the Mission Plan (quoted): " + MissionPrompts.Quoted(rest) + ".";

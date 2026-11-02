@@ -145,6 +145,52 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             Assert.Equal(fires, warnings.Any(w => w.Contains(StackLint)));
         }
 
+        // ---- The drop-before-reentry lint (#608): drop_parts as the block call just before reentry ----
+
+        private const string DropLint = "drop_parts just before reentry";
+
+        // a107's "Return to Kerbin": the drop that took the Terrier stack with the periapsis at 601 km.
+        private const string A107ReturnDropReentry =
+            "local res is return(lexicon(\"target_pe\", 35000)).\n"
+            + "if res:success {\n"
+            + "  set res to drop_parts(lexicon(\"parts\", \"RCSFuelTank\")).\n"
+            + "  if res:success { set res to reentry(). }\n"
+            + "}\n"
+            + "addons:claudia:report(res).";
+
+        [Theory]
+        [InlineData(A107ReturnDropReentry, "line 3: ")]
+        [InlineData(B5f3LowerDropReenter, "line 3: ")]
+        public void The_drop_lint_warns_on_drop_parts_then_reentry_in_a_bundled_mission_script_and_the_script_still_passes(string script, string line)
+        {
+            var result = _check.Check(CoreLibrary.Bundle(script));
+            Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
+            var lint = Assert.Single(result.Warnings, w => w.Contains(DropLint));
+            Assert.StartsWith(line, lint);
+            Assert.Contains("reentry's separate", lint);
+            Assert.DoesNotContain(result.Problems, p => p.Contains(DropLint));
+        }
+
+        [Fact]
+        public void The_drop_lint_never_warns_on_library_lines()
+        {
+            Assert.DoesNotContain(_check.Check(CoreLibrary.Bundle("")).Warnings, w => w.Contains(DropLint));
+            Assert.DoesNotContain(_check.Check(CoreLibrary.Bundle(Ksp44e9ReturnReentry)).Warnings, w => w.Contains(DropLint));
+        }
+
+        [Theory]
+        [InlineData("local res is drop_parts(lexicon(\"parts\", \"x\")).\nset res to reentry().\n", true)]
+        [InlineData("local res is DROP_PARTS(lexicon(\"parts\", \"x\")).\nset res to Reentry ().\n", true)]
+        // Another block between them, reentry first, a comment, or the names inside a string.
+        [InlineData("local res is drop_parts(lexicon(\"parts\", \"x\")).\nset res to tune_pe(lexicon(\"value\", 30000)).\nset res to reentry().\n", false)]
+        [InlineData("local res is reentry().\nset res to drop_parts(lexicon(\"parts\", \"x\")).\n", false)]
+        [InlineData("// drop_parts(lexicon()) then reentry()\nlocal res is reentry().\n", false)]
+        [InlineData("print \"drop_parts(x) reentry(y)\".\nlocal res is reentry().\n", false)]
+        public void The_drop_lint_fires_only_when_reentry_is_the_next_block_call_after_drop_parts(string script, bool fires)
+        {
+            Assert.Equal(fires, _check.Check(script).Warnings.Any(w => w.Contains(DropLint)));
+        }
+
         // ---- Forbidden: one theory per item of the spec's list ----
 
         [Theory]
@@ -418,6 +464,34 @@ namespace ClaudiaKermin.ScriptCheck.Tests
                 Assert.True(asTest.Passed, dir + ": " + string.Join("; ", asTest.Problems.ToArray()));
                 Assert.Contains(_check.Check(script).Forbidden, f => f.EndsWith("(call Planning Tools)"));
             }
+        }
+
+        // ---- Building Block options (#606): a call the block would refuse at once fails, before anything flies ----
+
+        [Fact]
+        public void A2d0cTransferMissingTargetPeFailsAndItsRetryPasses()
+        {
+            var failed = _check.Check(CoreLibrary.Bundle("local res is transfer_to(lexicon(\"target\", \"Mun\", \"stage_limit\", 3)).\nprint res.\n"));
+            Assert.Null(failed.CompileError);
+            Assert.False(failed.Passed);
+            var problem = Assert.Single(failed.Problems);
+            Assert.Equal("line 1: transfer_to: missing required option target_pe; options: target*, target_pe*, window, correction (* required), plus the common options", problem);
+
+            AssertAllowed(CoreLibrary.Bundle("local res is transfer_to(lexicon(\"target\", \"Mun\", \"target_pe\", 30000, \"stage_limit\", 3)).\nprint res.\n"));
+        }
+
+        [Fact]
+        public void AnUnknownBlockOptionFailsNamingTheKey()
+        {
+            var result = _check.Check(CoreLibrary.Bundle("transfer_to(lexicon(\"target\",\"Mun\",\"target_pe\",30000,\"pe\",30000))."));
+            Assert.False(result.Passed);
+            Assert.Contains(result.BlockOptions, p => p.StartsWith("line 1: transfer_to: unknown option pe;"));
+        }
+
+        [Fact]
+        public void ABlockTestMayPassOptionsTheBlockRefuses()
+        {
+            Assert.True(new KosScriptCheck(forToolTests: true).Check(CoreLibrary.Bundle("print coast(lexicon()).")).Passed);
         }
 
         // ---- Block-internal calls (ADR 0006, ADR 0007): the Core Library's, never a Mission Script's ----

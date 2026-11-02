@@ -1,0 +1,196 @@
+: attempt 1
+event: message_start
+data: {"type":"message_start","message":{"model":"claude-sonnet-5-5","id":"msg_011CgcZ8GaGKhbVVbEpf1nGn","type":"message","role":"assistant","content":[],"container":null,"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":2,"cache_creation_input_tokens":11046,"cache_read_input_tokens":24919,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":11046},"output_tokens":3,"service_tier":"standard","inference_geo":"global","speed":"standard"},"diagnostics":{"cache_miss_reason":{"type":"unavailable"}},"context_management":null}      }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}      }
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"CAQSgwcKEAgTGAI4AUIIdGhpbmtpbmcSDHMKvvJRBuudQ4yXnxoMAR2q/ETLIZ2FjxxUIjCbMWtVzN4wbQrar0p6dxnv36Jq+6asqFXydfdREq8r96XESDkTqknU/vP2MgvJxcQqoAZiF0kaZ4gYqEzEFYOLcNMDOKabWZQsUV1ejl2ne/83hxgKzBQldfsGPAn64NhUlcBC3Bv9wVjYomHOqcQMa17AYa6TlsOoFuYl97oKqkW3yINRuBxNbX3Zr0ogNe0+S4HrP2PTuxkyGPFK/zFUQSeHhwJ3zOCj1cUpCGn9lkh8ZuhSKN7BW0QBNxmQsZS9fr0TMMlcoYMWlawtjF1b1ili7lPm7UPVc0AZrXitsfIrGjO+0rMNMrOou55kliI1Isz0rZoM8H/T4XSz3ezo/bfd/nMzp+GoisIrXrGEJIcYBSrbiE1ba/WDYanONXgf8OkIzB8Phr5mO8YnH6IWQsMejkTUIm6pjL3EIk9jPwGnJAbGaGKN2ca/zxiqNRkv4NXq+bD0c9WGDsDL+hASyHBQ+UDO/ckc1knTYuvZF2UNrvqu+KEcgr4Qsp5uxM+psJLBj93705KrZWtEIOz2RGZ9i00SxDhGW6ObcICG9IVg5g7Wz0F//17IjcNlF9p4VjHapOREwxpyonJg6ynmUmOe+meZp/Sreog5PDFUFSveK/hfht3I1kSKCbXoUwFNy4H4gfa5xpJAQZ3cwP5O6boTluR2oSH/VxV51tgok2s+heW5810byFd4NRX49d2QD6P+QhiP6kyHRLYBdsBx0hRLbjWo81d8I9QN6hi0Rlvz+f7LrC70Z1QE7GLK9loBgMzzxu74adDP/7VGR8jrAi1VZuI2RxYIfUNXHvSKLZ+lxx8YBuNUYNKJ/4LNSRP599omINpXqPznT2lwWX7Q0sAlHUnp6l24FMizsXTKoqmpPGd6bwZ5hvDnUMPvilfEvBIOb5woDXEFpzSx9/OJ0WCw1XZyD/MBDcpQ3PbMRqwlgqqo+33rJUbzMkxCE8ILljIBdHoWfwmr4/gNTkadSgkkw0c7m3xeetGmCYpsHxF9paRkuhXTgQh/uMNM5pMBPKQdgYdOrHHbkmouHvaKAMRVsWNmMkevLyIeE4kBoOOVMf5fsDHic4DwtuUHyg6L1G45SbOkjL505lLOFhGCmaqDI+9Ni8kPBR2gWRqfEjT3bxgB"}              }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0   }
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"{\"kind\":"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"debrief\",\"say\":\""}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Duna capture is"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Nominal. We're"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" in a 94.9 by"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" 93.9 km orb"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"it at ecc 0."} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"0"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"013, and"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" the burn used "}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"718"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" m/s. 2,"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"288 m/s is"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" left for"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" the "}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"900 m/s landing."}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\",\"reply_intent\":\""}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"none\",\"unsure_because\":"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"\",\"sequence_plan"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\":null,\"debrief\":"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"{\"outcome\":\""}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Nominal\",\"why\":\""}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Ecc 0.0013 "}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"is under the "}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"0.02 limit,"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" the periapsis is"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" well"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" above 60 km, and no"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" telemetry check was"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" crossed.\",\"what_happ"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ened\":\"\",\"goal_re"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ached\":false,\"next\":\""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Pl"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"an the Duna landing:"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" a"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" custom deorbit and pow"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ered descent in"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" daylight, using the"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Terrier, legs and par"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"achute, with"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" stage_"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"limit 2 "}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"so the"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" p"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"od is"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" never separated.\",\"eva_"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"science\":\"\",\"outcome_"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"vs_target\":\"\",\"pl"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"an_margin\":\"\",\"science"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\":\"\",\"goal_steps"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"_done\":[1,2,"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"3,4],\"follow_"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"up\":\"none\",\"follow_"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"up_text\":\"\"},"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"alert\":null}"} }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1        }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"container":null},"usage":{"input_tokens":2,"cache_creation_input_tokens":11046,"cache_read_input_tokens":24919,"output_tokens":428,"output_tokens_details":{"thinking_tokens":96},"iterations":[{"input_tokens":2,"output_tokens":428,"cache_read_input_tokens":24919,"cache_creation_input_tokens":11046,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":11046},"type":"message","model":null}]},"context_management":{"applied_edits":[]}               }
+
+event: message_stop
+data: {"type":"message_stop"     }
+

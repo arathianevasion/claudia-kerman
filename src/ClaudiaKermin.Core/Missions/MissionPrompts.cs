@@ -273,7 +273,7 @@ namespace ClaudiaKermin.Core.Missions
         public const string SequenceNotice =
             "Propose the Sequence Plan for the next Maneuver Sequence now: reply with kind \"sequence_plan\" and "
             + "sequence_plan filled in, including its complete Mission Script. The Script Check runs on it when you send it. "
-            + "The mod runs it only after the player's Approval.";
+            + "The mod runs it only after the player's Approval. Planning Tools are available; propose_mission_plan is not.";
 
         public const string DebriefNotice =
             "The Maneuver Sequence has ended. Debrief it now: reply with kind \"debrief\" and debrief filled in. Rate it "
@@ -287,6 +287,9 @@ namespace ClaudiaKermin.Core.Missions
             + "and follow_up with follow_up_text: for Off-Nominal "
             + "corrective_sequence or revised_plan; for Failed reduced_goal (follow_up_text is the reduced Mission Goal, which the "
             + "player must approve) or end_mission; for Nominal none. If the script printed an error, quote what matters of it in what_happened.";
+
+        /// <summary>Added to the Debrief notice when a science call kept data on board (#612): steers the next leg to a transmit-only call.</summary>
+        public const string ScienceKeptNoticeLine = " The data is aboard; sending it needs no new landing.";
 
         // ---- Live supervision ----
 
@@ -441,8 +444,12 @@ namespace ClaudiaKermin.Core.Missions
             return string.Join("\n", lines.ToArray());
         }
 
-        /// <summary>The Debrief's line on the delta-v the whole run used, from stock's figures at its start and now; says why when either is unreadable.</summary>
-        public static string RunDeltaVLine(double? startLeft, GameSnapshot now)
+        /// <summary>
+        /// The Debrief's line on the delta-v the whole run used, from stock's figures at its start and now; says why when either
+        /// is unreadable. <paramref name="startLeft"/> is the run's baseline, already less the <paramref name="dropped"/> delta-v
+        /// stages took with them at zero throttle (#605), which the line names so it doesn't read as less than a script burned.
+        /// </summary>
+        public static string RunDeltaVLine(double? startLeft, GameSnapshot now, double dropped)
         {
             var nowLeft = LiveReadings.DeltaVLeftOf(now);
             string why = null;
@@ -452,7 +459,8 @@ namespace ClaudiaKermin.Core.Missions
             else if (!nowLeft.HasValue) why = "a stage's delta-v reading is unreliable now";
             if (why != null) return "Delta-v used this run: unknown (" + why + ").";
             return "Delta-v used this run, from stock: " + Rounded(System.Math.Max(0, startLeft.Value - nowLeft.Value)) + " m/s (left at start "
-                + Rounded(startLeft.Value) + " m/s, now " + Rounded(nowLeft.Value) + " m/s).";
+                + Rounded(startLeft.Value + dropped) + " m/s, now " + Rounded(nowLeft.Value) + " m/s"
+                + (dropped > 0 ? "; " + Rounded(dropped) + " m/s dropped with stages at zero throttle isn't counted" : "") + ").";
         }
 
         /// <summary>
@@ -598,11 +606,14 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         /// <param name="crossings">The Telemetry Checks crossed during the run with their verdicts; "" when none was.</param>
-        public static string RunReport(SequencePlan plan, RunOutcome outcome, string crossings)
+        /// <param name="blocks">The run's blocks trail (#609), listed after the report; null for none.</param>
+        public static string RunReport(SequencePlan plan, RunOutcome outcome, string crossings, BlockTrail blocks = null)
         {
             var text = "The player approved the Sequence Plan " + Quoted(plan.Name) + " and the mod ran its Mission Script.\n"
                 + RunEndedPrefix + outcome.Kind + (outcome.Reason.Length > 0 ? " (" + outcome.Reason + ")" : "") + ".";
             if (outcome.Report != null) text += "\nReport (JSON data): " + ReportJson(outcome.Report);
+            var trail = blocks == null ? "" : blocks.Line(outcome.Report);
+            if (trail.Length > 0) text += "\n" + trail;
             if (outcome.ErrorText.Length > 0) text += "\nkOS terminal after the run (quoted): " + Quoted(outcome.ErrorText);
             if (outcome.MakesCraftSafe && !outcome.WasAborted) text += "\nThe mod cut the throttle and released steering.";
             text += CrossedChecks(crossings);

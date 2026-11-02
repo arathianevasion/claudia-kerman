@@ -1,0 +1,55 @@
+: attempt 1
+event: message_start
+data: {"type":"message_start","message":{"model":"claude-sonnet-5-5","id":"msg_011CgcZXLyaMwxXjvTrBdE4Q","type":"message","role":"assistant","content":[],"container":null,"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":2,"cache_creation_input_tokens":369,"cache_read_input_tokens":41602,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":369},"output_tokens":5,"service_tier":"standard","inference_geo":"global","speed":"standard"},"diagnostics":null,"context_management":null}  }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}  }
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"CAQSvgYKEAgTGAI4AUIIdGhpbmtpbmcSDPp0wKYRSkNViUJ+ARoM05wbku9ksRNOMgf9IjB/FDqVDpIyurZjJWx+9aBikh+Sqlv1QbvS1AcUXkhMHFyW3B6XDXdTbLHoFZlYr04q2wVHlNiwjICccCgOsq70Drb5OJ1gGL+yqQltr+XMUUOonJX/ch78ne516KZ1oV7mb1f/a/W96zLgs33tAtMhADSupJmAkC2O6SV75VEvlOaGSdBkFxEyujxEFvBHEm4OiMdmpNLKKbnIhGTmKcUh1AziuVxWEtQMwUWi9s5zBziKuxHRCs0Rup7Co4DveL//2G23zFZfWHCv2RRdg4hM2aFJ94BzJBiJOgNCzy9O9OFHWvfWhExi2Tf/NC0w/kB8lhQVq1Owsx32T+lBK9JaJK4lf3gPiLIoRnQkJHM9ShNyUnmJZWyvSXBZjnPv4gEVrkmmPu1U4bH8F7Oj5g/F6tQ6LbBQgnNO7WRitRyoMDyZmCnE1ajmtyfcX4FJ1swxHhjyTv2gtpZ8rVSwGUXCTSm3s5bfDYzONfM7Cqd9ex0G8+kzEIRVPA7gZGYfeQEV1rcAiCi66rJXFFYL37xgNhBvfhfXS+HDg+chq/Zkr2QptkNbyToJaORpH4GVc+U4axG6eVPK6t5KS5ysxS4iSA+DHScoRpC6trrsw4CLD350ALRXQCHIhxueK7NYh2tkeCLdAhDqbhS1Gj52u51k2PmoFTCCSTejjt1TuNHQhfmwTWC/hG5OfzPG83hLshHT1Urjl5pDvLwY1xdXtNI2KaSOGmhp2qWO0jE7MI/xdzaF47z2P+33UFJ2msQga2AHCYRwuBHiJc5dLpDq512Z0BTMH/Sbs8/63aNKO+gnZu/gCGXOZ9iJUX6v1atZLS54bJCfhLU4e3yaA61ZO6lQuCSAV6d39CG+fwXRF1ouycuT+CxLj8D+xolikRG2+sYxANGwu1dw3VoN0OOuhPmRqrSdC8JA5+YblrKWfaXRd/vQT3uYZQ6B5M3sdIDTRlsT9ytmk3wz9coNVoKdWuWrJx1llygAR2r29OLqUlb6mSWibe1DzFmxx8VcsF4MwFl0uX9ITjhSuUAEhQYJzBgB"}       }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0       }
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01QmYVKs1FkCDxFKkERFa6m7","name":"stage_performance","input":{},"caller":{"type":"direct"}} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":""}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"situa"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"tion\": "}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"surfac"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"e\""}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":", \"body"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\": \"Dun"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"a\"}"}         }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1            }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use","stop_sequence":null,"stop_details":null,"container":null},"usage":{"input_tokens":2,"cache_creation_input_tokens":369,"cache_read_input_tokens":41602,"output_tokens":89,"output_tokens_details":{"thinking_tokens":14},"iterations":[{"input_tokens":2,"output_tokens":89,"cache_read_input_tokens":41602,"cache_creation_input_tokens":369,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":369},"type":"message","model":null}]},"context_management":{"applied_edits":[]}     }
+
+event: message_stop
+data: {"type":"message_stop" }
+

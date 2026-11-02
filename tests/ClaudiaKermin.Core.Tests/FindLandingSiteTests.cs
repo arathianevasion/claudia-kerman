@@ -113,6 +113,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void It_runs_in_milliseconds()
         {
             // The whole track with every site kept, and a biome search that sweeps the track for its sites. Measured at about

@@ -1,0 +1,190 @@
+: attempt 1
+event: message_start
+data: {"type":"message_start","message":{"model":"claude-sonnet-5-5","id":"msg_011CgcYPT2cwvaEQTJEV5mV1","type":"message","role":"assistant","content":[],"container":null,"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":2,"cache_creation_input_tokens":3433,"cache_read_input_tokens":131531,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":3433},"output_tokens":3,"service_tier":"standard","inference_geo":"global","speed":"standard"},"diagnostics":null,"context_management":null}           }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}            }
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"CAQS0AgKEAgTGAI4AUIIdGhpbmtpbmcSDNsz7JNc2RzY54bqixoMARBbzASm97zBfucjIjCM/7nMfZJ8ZOsULUQoSirI90xi41FUYaXHwE1YJ1ZqV4hBIFPzvV4SwgWBUVssq3Mq7QfJfdVKQIvejfE4wfZZrgfOessbAr0GXp5zFTDrR2tpYkSo5leG+NP7Owk3/eika+ZK2tzFs7xtfnjJf1vcX/Vsw3o3elzUfqRPwz6bWhzUlPtwUbla74kJ3KWZ86Wo6AeG0iUvfiYbXQGbuURoa8uk5fjTaBWdnsKB+/5FBuhkb3i+QvyydTVR+fORtiCiuQ/fUJCCnMzLOn74y9gAjuHf/qpz94fR+Y57gYNt36UJQxUXI2eDZXqWUfLcujSBgFUsdmNED/xUCA8zZfR9U1hfCAv6KoHbvT2DX/cEpzPyhHwjHedxUR3ndt8fqUKz8wm7eYpkAOylPkQxW7JI0oaYKkjgQx41NDuuCj8R4QEnIKohTzkjUbkN0OafCbaOGl/yV6aLsKVtxn4e6m8eLbOkg4S9wujUf2b9kIrbHf5knIrronFf4LAVpIcWeO6zxJ6qg1NR5LuwlVVLqHTtlw9gBPrQCY8yx0mBVHA1smoOxKq/FPIBZLC61E9vNIo2fZk2Zib+xLdcKgk1Gcv2nx5S83l8bvMTqLSCr1M1awynJWYm2YAIHg2tpxOfBuO7RK8bwUPg0cTnY4oxHGMFPKJpC+lJR9N/NQ1fKPiNgRyT2fK+LODySn9qV8ZGVXhHCZgDaIoU0UfmiS+dkmWUVxEdvsvQUkC/XEDT7tVMFa7qVTpDel7+UfvB/+9cONojZm8ceqK7nOiytYxf23jNYF2Fx1YNnAuNADB9e/BF+jZHANXWbQ3bDLe91iVdIfh4F1oA/cQiSvM9dYaF+LnjUmY3fFF1HP8Q825dikZVW4mwmdLtLEsTObSXONLhhDiPV9KSWDYMGQjTyu1/5pNX+VS/RGH1iTgGqnwe0ZdXbxuUAEfY1V5fVfURZWne6FaQSIJ/L7/H6mxXTo3/olhXj5RrkCjGu4jHIprK8xxiqpjZDDYApZovO6FdgT25kTCyg1LF8E/zAotJpsVQWuOTpWbwVSQeAijl6C/nlcFx1E5mPLsvaROgNevXkIC/NB51Q09wdrxevff7R3D71tz3qkNk+3GmBHFoVFO1c46A5OglUsp7EBVA8abtUzUdE1PSI6lzdE7cIcEgyqDLWtXGjlI/BRANPfU82bL1wmS+NEMxra61rBVzF3h5U3ebDk8lbOaWcVFJG6UfpAJrkLIzclmwEUzUvI2d/LSGsB8tCkWIOX2wLKCXQiTUPHGFYXhI0fqcUSsoRNvwk5wIw7e/EtPQnDusB+IvsrUrHqgvWgTeSQ3aEtDFh0glEfZzkE4CwzlhU7+aMgLBDsI7g+DH/o3ltHgrAuoVUCHvcxFPQexwexRK9DbztKeD/BufAE0YAQ=="}        }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"{"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"kind\":\"debrief"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\",\"say\":\"Duna enc"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ounter set: the burn used"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" 43.6 m/s"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" (45"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":".7 planned)"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" with a residual of 0."}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"08 m/s,"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" and the next patch is"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Duna,"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" arriving about UT 43"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":".2 million. 3005"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" m/s is left against "}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"1550 m/s for cap"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ture and landing.\",\"reply"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"_intent\":\"none"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\",\"un"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"s"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ure_"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"because\":\""}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\",\"s"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"equence_plan\":null,"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"debrief\":{\"out"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"come\":\"Nominal"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\",\"why\":\"The burn met"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" its"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" target and the craft now"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" has a"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Duna encounter pat"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ch.\",\"what_happened\":"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"\",\"go"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"al_reached\":false,\""}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"next\":\""} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Rem"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ove the leftover node."}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Then"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" tune the"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Duna periapsis to about"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" 100 km in m"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"id-course"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" and coast to Duna."}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\",\"e"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"va_science\":\"\",\"out"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"come_vs_target\":"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"\",\"plan_margin\":"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"\",\"science\":\""}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\",\"goal_ste"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ps_done\":[1,2"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"],\"follow_up\":\""}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"none\",\"follow_up_text"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\":\"\"},"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"alert\":null}"}}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1           }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"container":null},"usage":{"input_tokens":2,"cache_creation_input_tokens":3433,"cache_read_input_tokens":131531,"output_tokens":435,"output_tokens_details":{"thinking_tokens":134},"iterations":[{"input_tokens":2,"output_tokens":435,"cache_read_input_tokens":131531,"cache_creation_input_tokens":3433,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":3433},"type":"message","model":null}]},"context_management":{"applied_edits":[]}              }
+
+event: message_stop
+data: {"type":"message_stop"     }
+

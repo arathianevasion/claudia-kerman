@@ -125,6 +125,7 @@ namespace ClaudiaKermin.Core.Missions
             else if (input is VesselUnloaded) Unloaded(((VesselUnloaded)input).VesselId);
             else if (input is FarSwitchConfirmed) FarSwitched(((FarSwitchConfirmed)input).VesselName);
             else if (input is RunEventSeen) EventSeen((RunEventSeen)input);
+            else if (input is CraftSeparated) Separated();
             else if (input is AcceptReducedGoal) ReducedGoalAccepted();
             else if (input is StockAlarmFired) StockAlarmWentOff();
             else if (input is ResumeMission) ResumeRequested(((ResumeMission)input).Id);
@@ -207,6 +208,8 @@ namespace ClaudiaKermin.Core.Missions
             public TurnStats Stats = new TurnStats();
             /// <summary>The step limit is reached and the turn's request goes with tool_choice none (#509): a reply that still calls tools fails the turn.</summary>
             public bool ToolLimitSent;
+            /// <summary>A propose_mission_plan call was refused on a turn that doesn't ask for a Mission Plan (#607): the turn's later requests go with tool_choice none.</summary>
+            public bool PlanCallRefused;
             /// <summary>The last tool step was only refused repeats (#571): the next request is the last, as at the step limit.</summary>
             public bool RepeatStop;
             /// <summary>The last tool step was only refused repeats on a turn still owed a Mission Plan (#571): the next step may call propose_mission_plan alone.</summary>
@@ -834,7 +837,7 @@ namespace ClaudiaKermin.Core.Missions
             var turn = new Turn
             {
                 Purpose = Purpose.Debrief,
-                UserText = MissionPrompts.RunReport(mission.PendingSequence, outcome, CrossingsText(mission)) + "\n" + ChildRunNote(mission) + MissionPrompts.Facts(_ut, _snapshot),
+                UserText = MissionPrompts.RunReport(mission.PendingSequence, outcome, CrossingsText(mission), mission.Blocks) + "\n" + ChildRunNote(mission) + MissionPrompts.Facts(_ut, _snapshot),
                 Notice = MissionPrompts.DebriefNotice,
             };
             if (mission.Stage == MissionStage.Paused) mission.StageBeforePause = MissionStage.Debriefing;
@@ -1066,7 +1069,7 @@ namespace ClaudiaKermin.Core.Missions
                 Model = mission.Model,
                 MaxTokens = MissionPrompts.MaxTokens,
                 OutputSchemaJson = MissionReply.MissionSchemaJson,
-                NoToolChoice = turn.ToolLimitSent || TakesNoTool(turn.Purpose),
+                NoToolChoice = turn.ToolLimitSent || turn.PlanCallRefused || TakesNoTool(turn.Purpose),
             };
             request.Tools.AddRange(MissionTools());
             request.System.AddRange(mission.System);
@@ -1090,6 +1093,7 @@ namespace ClaudiaKermin.Core.Missions
             turn.Cancel = null;
             turn.ToolSteps = 0;
             turn.ToolLimitSent = false;
+            turn.PlanCallRefused = false;
             turn.RepeatStop = false;
             turn.PlanOnly = false;
             turn.ToolSnapshot = null;
@@ -1559,7 +1563,7 @@ namespace ClaudiaKermin.Core.Missions
             var check = _scriptCheck.Check(Bundle(plan));
             var step = PlanStepProblem(mission, plan);
             if (step == null) return check;
-            return new ScriptCheckResult(check.CompileError, check.Forbidden.Concat(new[] { step }).ToList()) { Warnings = check.Warnings };
+            return new ScriptCheckResult(check.CompileError, check.Forbidden.Concat(new[] { step }).ToList()) { Warnings = check.Warnings, BlockOptions = check.BlockOptions };
         }
 
         /// <summary>Retry, Retry with a note (<paramref name="note"/>) or Re-plan, after "Couldn't produce a safe script".</summary>

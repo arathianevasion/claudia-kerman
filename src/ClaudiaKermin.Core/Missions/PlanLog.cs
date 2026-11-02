@@ -158,7 +158,9 @@ namespace ClaudiaKermin.Core.Missions
         public const string ByMod = "mod";
 
         /// <summary>The Debrief committed: the latest plan's line gains <c>debrief</c>; a Debrief with no plan line before it (or a plan already debriefed) writes nothing.</summary>
-        public static void SetDebrief(string folder, string outcome, TurnStats stats, string effort, string secondLook, bool cutOffRetry, string by = null)
+        /// <param name="blocks">The run's blocks trail (#609), a JSON array (<see cref="BlockTrail.Json"/>); null for none.</param>
+        public static void SetDebrief(string folder, string outcome, TurnStats stats, string effort, string secondLook, bool cutOffRetry, string by = null,
+            string blocks = null)
         {
             var path = Path.Combine(folder, FileName);
             var lines = Lines(path);
@@ -168,6 +170,7 @@ namespace ClaudiaKermin.Core.Missions
             var json = new JsonWriter().BeginObject().Field("outcome", outcome);
             if (by != null) json.Field("by", by);
             Turn(json, effort, stats, secondLook, cutOffRetry);
+            if (blocks != null) json.Name("blocks").Raw(blocks);
             json.EndObject();
             var last = lines[index];
             // The plan line's last field is "at": the debrief goes in front of it, so the order of the line's fields is fixed.

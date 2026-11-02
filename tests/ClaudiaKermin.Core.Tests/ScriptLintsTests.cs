@@ -122,5 +122,19 @@ namespace ClaudiaKermin.Core.Tests
             Assert.False(plan.CustomScript);
             Assert.Equal("", plan.CustomScriptReason);
         }
+
+        [Fact]
+        public void ASiteSearchLoopInTheBundledLibraryDoesNotWarn()
+        {
+            // #601: the bundled library searches for a site itself; a clean Mission Script must not inherit that lint.
+            Assert.Empty(ScriptLints.Warnings(CoreLibrary.Bundle("circularize().\n")));
+        }
+
+        [Fact]
+        public void ASiteSearchLoopInABundlesMissionScriptWarnsAtTheSameLine()
+        {
+            var warnings = ScriptLints.Warnings(CoreLibrary.Bundle(SiteSearch));
+            Assert.Contains(warnings, w => w.StartsWith("line 3:") && w.Contains("landing-site search"));
+        }
     }
 }

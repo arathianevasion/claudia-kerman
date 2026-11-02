@@ -1,0 +1,511 @@
+: attempt 1
+event: message_start
+data: {"type":"message_start","message":{"model":"claude-sonnet-5-5","id":"msg_011CgcYYzzyM2u3j76KTetVn","type":"message","role":"assistant","content":[],"container":null,"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":2,"cache_creation_input_tokens":2840,"cache_read_input_tokens":137799,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":2840},"output_tokens":8,"service_tier":"standard","inference_geo":"global","speed":"standard"},"diagnostics":null,"context_management":null}        }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}  }
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"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"}   }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0               }
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"{\"k"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ind\":\"sequence_pl"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"an\",\"say\":\"The first try"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" mo"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ved the Duna periaps"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"is to only -15 "}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"km, and the block refused it"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" before"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" any further"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" correction. I'"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"m retrying from"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" the current or"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"bit with a wider tol"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"erance,"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" a"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"iming for a 110 km"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" periapsis within"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" 40 km,"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" so"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" the result"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" stays above"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" the "}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"50 km atmosphere"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":". The correction should"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" again"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" be"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" well"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" under 20"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" m/s.\",\"reply"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"_int"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ent\":\"none"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\",\"unsure_because"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\":\""}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\",\"s"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"equence_plan\":{\""}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"plan_step\":3,\""}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"vessel\":\"cra"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ft\",\"name\":\"Duna"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" mid-course ret"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ry\",\"intent\":\"Ra"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ise the Duna periaps"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"is from -15 km to about"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" 110 km with"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" a second mid-course burn"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":", then coast into"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Duna's sphere of"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" influence\",\"why\":\"The"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" first tune left"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" an"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" impact periapsis, so"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" one"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" more small"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" correction is"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" needed before ar"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"rival.\",\"target\":\""}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Duna periapsis 70"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" "}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"to 150 km, craft"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" inside the Duna sph"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ere of influence\",\"toler"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ances\":\"Periapsis"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" within 40 km of 110"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" km; correction under 60"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" m/s\",\"expected_"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"delta_v\":10"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":",\"expected_duration_"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"s\":3200"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"000,\"abort_condit"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ions\":[\"tune_pe"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" fails or needs more than "}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"60 m/s\",\"Peri"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"apsis below 60 km"}         }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" at Duna\",\"Electric"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" charge below 10 percent"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"],\"telemetry_"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"checks\":[{\"quant"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ity\":\"delta_v_"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"used\",\"resource\":\"\",\"dire"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ction\":\"above"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\",\"threshold\":60,\""}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"why\":\"The m"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"id-course correction should be small"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":".\"},{\"quantity\":"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"resource\",\"resource\":\""}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ElectricCharge\",\""}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"direction\":\"below\",\"thresh"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"old\":15,\"why\":\""}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Panels are out; a low"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" charge means a problem.\"}"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"],\"risks\":[\"Time"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" left to corre"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ct is about 3 million s"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":", so a later ret"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ry remains possible.\",\"The"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" previous tune mo"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ved the periapsis by h"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"undreds of km"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" for "}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"0.1"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" m/s, so this one"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" is very sensitive.\"],"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"custom_script_re"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ason\":\""}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Two blocks need a small gl"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ue step to coast to the enc"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ounter time and check the body;"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" no single block covers both.\",\""}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"due_time_ut\":-"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"1,\"window_clos"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"es_ut\":-1,"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"late_window_dv\":"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"-1,\"script"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\":\"local stale is"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" allnodes.\\nf"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"or nd in stale { rem"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ove nd. }\\nl"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ocal res is tune_p"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"e(lexicon(\\"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"value\\\", 110000,"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" \\\"patch\\\", \\\""}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"next\\\", \\\"max_d"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"v\\\", 60, \\\""}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"tolerance\\\", 40"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"000, \\\"stage_lim"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"it\\\", 2)).\\"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"nif res[\\\"success\\"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"] {\\n  local en"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"c is time:seconds +"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" ship:orbit:n"}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"extpatcheta.\\"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"n  set res to"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" coast(lexicon("}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\\\"until\\\", enc +"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" 60, \\\"stage_"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"limit\\\", 2))."}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\\n  set res[\\\""}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"body_now\\\"] to "}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ship:body:"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"name.\\n  set res["}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\\\"periapsis_now"}               }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\\\"] to ship:or"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"bit:periapsis."}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\\n  if res[\\\""}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"success\\\"] and ship:"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"body:name <> \\\""}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Duna\\\" {\\n    "}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"set res[\\\"success\\\""}           }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"] to false.\\n    set"}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" res[\\\"reason\\\""}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"] to \\\"not in the"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" Duna sphere of influence"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\\\".\\n  }\\n"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"}\\naddons:"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"cla"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ud"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ia"}             }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":":report(res).\",\"man"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ual\":false},\"debrief"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\":null,\"alert\":null"} }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"}"}     }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1           }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"container":null},"usage":{"input_tokens":2,"cache_creation_input_tokens":2840,"cache_read_input_tokens":137799,"output_tokens":1903,"output_tokens_details":{"thinking_tokens":894},"iterations":[{"input_tokens":2,"output_tokens":1903,"cache_read_input_tokens":137799,"cache_creation_input_tokens":2840,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":2840},"type":"message","model":null}]},"context_management":{"applied_edits":[]}            }
+
+event: message_stop
+data: {"type":"message_stop"   }
+

@@ -92,6 +92,8 @@ namespace ClaudiaKermin.Core.Missions
                 RcsUse = mission.RcsUse.ToJson(),
                 RunStartMonopropellant = mission.RunStartMonopropellant,
                 RunStartDeltaVLeft = mission.RunStartDeltaVLeft,
+                RunDroppedDeltaV = mission.RunDroppedDeltaV,
+                BlockTrail = mission.Blocks.ToJson(),
                 ScriptError = mission.ScriptError ?? "",
                 Recheck = mission.Recheck,
                 RecheckSince = mission.RecheckSince,
@@ -289,7 +291,7 @@ namespace ClaudiaKermin.Core.Missions
                 turn = mission.HandBack ? HandBackTurn(mission) : new Turn
                 {
                     Purpose = Purpose.Debrief,
-                    UserText = MissionPrompts.RunReport(plan, StoppedOutcome(mission, mission.OwedOutcome), CrossingsText(mission)) + "\n" + MissionPrompts.Facts(_ut, _snapshot),
+                    UserText = MissionPrompts.RunReport(plan, StoppedOutcome(mission, mission.OwedOutcome), CrossingsText(mission), mission.Blocks) + "\n" + MissionPrompts.Facts(_ut, _snapshot),
                     Notice = MissionPrompts.DebriefNotice,
                 };
             }
@@ -454,6 +456,8 @@ namespace ClaudiaKermin.Core.Missions
             mission.RcsUse.Restore(state.RcsUse);
             mission.RunStartMonopropellant = state.RunStartMonopropellant;
             mission.RunStartDeltaVLeft = state.RunStartDeltaVLeft;
+            mission.RunDroppedDeltaV = state.RunDroppedDeltaV;
+            mission.Blocks.Restore(state.BlockTrail);
             mission.ScriptError = state.ScriptError ?? "";
 
             // The conversation is the transcript's, whole: turns past the save's marker are kept.

@@ -177,6 +177,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void A_correction_to_target_pe_and_target_inc_is_solved_in_under_100_ms()
         {
             var coast = Perturbed.Value;
@@ -184,6 +185,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void A_correction_to_target_pe_is_solved_in_under_100_ms()
         {
             var coast = Perturbed.Value;

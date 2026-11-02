@@ -117,8 +117,8 @@ Claudia's proposal for the next Maneuver Sequence: its intent, Building Blocks a
 _Avoid_: maneuver plan, proposal, step plan
 
 **Telemetry Check**:
-A quantity the mod can measure during a Maneuver Sequence (e.g. delta-v used, apoapsis, electric charge) with a threshold, set in the Sequence Plan or by default; while Running, the mod checks it, and crossing it raises an Alert. A crossed Telemetry Check rules out a Nominal Debrief.
-_Avoid_: watch limit, alarm, tripwire
+A quantity the mod can measure during a Maneuver Sequence (e.g. delta-v used, apoapsis, electric charge) with a threshold, set in the Sequence Plan or by default; while Running, the mod checks it, and crossing it raises an Alert. Orbit checks (apoapsis, periapsis, inclination) arm only once a reading is on the safe side, and disarm while the craft is landed, splashed, on the pad or in atmosphere; propulsion checks (delta-v left, delta-v used, fuel margin) disarm once no engine is aboard. A standing crossing rules out a Nominal Debrief; a recovered one doesn't.
+_Avoid_: watch limit, alarm, tripwire, suspended (a disarmed check), held (a check waiting out a burn)
 
 **Alert**:
 The mod's message to Claudia that a Telemetry Check was crossed while Running; she answers by letting the sequence carry on or recommending the player Abort.
@@ -240,8 +240,12 @@ _Avoid_: raw script, freeform script
 The values a Mission Script hands back once, when its Maneuver Sequence ends (e.g. apoapsis, delta-v used, situation), which the mod passes to Claudia as data for her Debrief; a script that ends without one has failed. The script is said to report it.
 _Avoid_: report (as a noun), outcome (which is a Debrief's), return value
 
+**Blocks trail**:
+The mod's compact list of every Building Block result in a Mission Script's run, one entry per block (e.g. transfer_to's encounter_ut, science's kept), whatever Script Result the script reports; it goes in the Debrief turn text ("Blocks the script ran, oldest first"), into plans.jsonl as debrief.blocks, and into the save as blockTrail, so a hand-made lexicon can't hide what the blocks did (#609).
+_Avoid_: block log, block history, results list
+
 **Script Check**:
-The mod's check of a compiled script against a forbidden list (e.g. save and load, file operations, changing other vessels) before Approval; a script that fails is rewritten or never offered.
+The mod's check of a compiled script against a forbidden list (e.g. save and load, file operations, changing other vessels) before Approval, and of each Building Block call whose inline options lexicon misses a required option or names one the block doesn't take (#606); a script that fails is rewritten or never offered.
 _Avoid_: sandbox, validation
 
 **Couldn't produce a safe script**:

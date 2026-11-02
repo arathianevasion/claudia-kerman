@@ -375,6 +375,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
         public void The_search_takes_about_200_ms_a_pass_at_most()
         {
             Timing.Within(BrakePath.BudgetMs, () => Plan(Crater));
@@ -494,6 +495,118 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal("Midlands", next.Biome);
             Assert.True(next.PredictedDv > 0);
             Assert.True(next.DescentShape > 0);
+        }
+
+        private static Dictionary<string, object> BiomeAsk(params object[] more)
+        {
+            var ask = new Dictionary<string, object> { { "biome", "Midlands" }, { "daylight", false }, { "within_hours", 6.0 }, { "edge_margin_m", 0.0 } };
+            for (var i = 0; i < more.Length; i += 2) ask[(string)more[i]] = more[i + 1];
+            return ask;
+        }
+
+        /// <summary>The reference lander as land_craft gives it, turning in <paramref name="turnLag"/> s.</summary>
+        private static Dictionary<string, object> CraftAsk(double turnLag)
+        {
+            return new Dictionary<string, object> { { "thrust", 60.0 }, { "mass", 5.4 }, { "isp", 345.0 }, { "turn_lag", turnLag }, { "burn_margin", 1.1 } };
+        }
+
+        [Fact]
+        public void LANDINGSITE_keeps_the_sites_the_craft_land_will_fly_clears_so_two_craft_that_disagree_get_different_sites()
+        {
+            // #528: a 9 km ring wall 6 to 12 km round the search's first site. The reference lander turning in 1 s clears it and
+            // keeps the site; the same lander turning in 15 s doesn't, and the search gives the biome's next site instead.
+            var plain = BlockCalls.LandingSite(BiomeAsk(), MunOrbit(), new Terrain());
+            Assert.Equal("", plain["error"]);
+            double lat0 = (double)plain["lat"], lng0 = (double)plain["lng"];
+            var ring = new Terrain
+            {
+                At = (lat, lng) =>
+                {
+                    var d = LandingSiteSearch.ArcDegrees(lat, lng, lat0, lng0) * MPerDeg;
+                    return d > 6000 && d < 12000 ? 9000 : 0;
+                },
+            };
+            var quick = BlockCalls.LandingSite(BiomeAsk("craft", CraftAsk(1)), MunOrbit(), ring);
+            var slow = BlockCalls.LandingSite(BiomeAsk("craft", CraftAsk(15)), MunOrbit(), ring);
+            Assert.Equal("", quick["error"]);
+            Assert.Equal("", slow["error"]);
+            Assert.True(LandingSiteSearch.ArcDegrees(lat0, lng0, (double)quick["lat"], (double)quick["lng"]) * MPerDeg < 100);
+            Assert.True(LandingSiteSearch.ArcDegrees(lat0, lng0, (double)slow["lat"], (double)slow["lng"]) * MPerDeg > 5000);
+            Assert.True((double)slow["descent_shape"] > 0);
+        }
+
+        [Fact]
+        public void LANDINGSITE_skips_the_sites_land_has_tried_and_takes_the_biomes_next()
+        {
+            var first = BlockCalls.LandingSite(BiomeAsk("craft", CraftAsk(1)), MunOrbit(), new Terrain());
+            var tried = new List<object> { new Dictionary<string, object> { { "lat", first["lat"] }, { "lng", first["lng"] } } };
+            var second = BlockCalls.LandingSite(BiomeAsk("craft", CraftAsk(1), "exclude", tried), MunOrbit(), new Terrain());
+            Assert.Equal("", second["error"]);
+            tried.Add(new Dictionary<string, object> { { "lat", second["lat"] }, { "lng", second["lng"] } });
+            var third = BlockCalls.LandingSite(BiomeAsk("craft", CraftAsk(1), "exclude", tried), MunOrbit(), new Terrain());
+            Assert.Equal("", third["error"]);
+            foreach (var site in new[] { second, third })
+                foreach (Dictionary<string, object> at in tried.Take(site == second ? 1 : 2))
+                    Assert.True(LandingSiteSearch.ArcDegrees((double)at["lat"], (double)at["lng"], (double)site["lat"], (double)site["lng"]) >= LandingSiteSearch.MinSeparationDeg);
+        }
+
+        [Fact]
+        public void The_find_landing_site_tools_schema_and_description_are_unchanged_by_the_block_inputs()
+        {
+            // #528: craft and exclude are LANDINGSITE's alone; the tool Claude sees is byte-identical to main's before it.
+            var tool = new FindLandingSite();
+            Assert.Equal(ToolTextHash, Sha256(tool.Description + "\u0000" + tool.InputSchemaJson));
+            Assert.DoesNotContain("exclude", tool.InputSchemaJson);
+            Assert.DoesNotContain("\"craft\"", tool.InputSchemaJson);
+        }
+
+        /// <summary>SHA-256 of find_landing_site's description, a NUL and its input schema, as on main at 9c1d0d5.</summary>
+        private const string ToolTextHash = "E66D5DCF9082BE36E59A90379657D201296C23152A54D5E6E9265A0BA1378232";
+
+        private static string Sha256(string text)
+        {
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+                return BitConverter.ToString(sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(text))).Replace("-", "");
+        }
+
+        /// <summary>The Mun orbit with a transfer stage (60 kN, 8 t to 6 t, 900 m/s) over a lander stage (<paramref name="landerThrust"/> kN, 3 t to 1.8 t, <paramref name="landerDv"/> m/s).</summary>
+        private static GameSnapshot Stacked(double landerThrust, double landerDv)
+        {
+            var snapshot = MunOrbit();
+            snapshot.Craft = new SnapshotCraft { MassTonnes = 8 };
+            snapshot.Stages.Add(new SnapshotStage { Number = 2, ThrustVacKn = 60, StartMassT = 8, EndMassT = 6, DeltaVVac = 900 });
+            snapshot.Stages.Add(new SnapshotStage { Number = 1, ThrustVacKn = landerThrust, StartMassT = 3, EndMassT = 1.8, DeltaVVac = landerDv });
+            snapshot.Stages.Add(new SnapshotStage { Number = 0, StartMassT = 1.8, EndMassT = 1.8 });
+            return snapshot;
+        }
+
+        [Fact]
+        public void From_the_snapshot_a_stage_land_would_drop_before_the_deorbit_burn_leaves_the_lander_alone()
+        {
+            // #528 (#596's rule as far as the snapshot has it): an engine below the firing stage, with the landing's delta-v below
+            // it, so land stages the firing one off first and the lander brakes alone, dry at its stage's end mass.
+            var lander = DescentApproach.FromSnapshot(Stacked(20, 1700));
+            Assert.Equal(20000, lander.ThrustN, 6);
+            Assert.Equal(3000, lander.MassKg, 6);
+            Assert.Equal(1800, lander.DryMassKg, 6);
+            Assert.Equal(1700 / (9.80665 * Math.Log(3 / 1.8)), lander.Isp, 6);
+        }
+
+        [Fact]
+        public void From_the_snapshot_without_a_droppable_stage_the_whole_craft_brakes_on_the_firing_stage()
+        {
+            // No engine below the firing stage, or one short of the landing's delta-v: the whole craft on the firing stage, as
+            // before, and now dry once it burns all the stages' delta-v at the firing stage's Isp, as land_craft has it.
+            foreach (var below in new[] { 1700.0, 300 })
+            {
+                var craft = DescentApproach.FromSnapshot(Stacked(below == 1700 ? 0 : 20, below));
+                var isp = 900 / (9.80665 * Math.Log(8 / 6.0));
+                Assert.Equal(60000, craft.ThrustN, 6);
+                Assert.Equal(8000, craft.MassKg, 6);
+                Assert.Equal(8000 / Math.Exp((900 + below) / (isp * 9.80665)), craft.DryMassKg, 6);
+                Assert.Equal(isp, craft.Isp, 6);
+                Assert.Equal(2, craft.LagS, 6);
+            }
         }
 
         [Fact]

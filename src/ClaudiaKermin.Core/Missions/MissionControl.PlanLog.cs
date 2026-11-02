@@ -63,7 +63,9 @@ namespace ClaudiaKermin.Core.Missions
         {
             try
             {
-                PlanLog.SetDebrief(mission.Folder, debrief.Outcome, turn.Stats, turn.Effort, turn.SecondLookReason, turn.CutOffRetry);
+                // A hand-back Debrief is of a manual stretch: the last run's blocks are not its.
+                PlanLog.SetDebrief(mission.Folder, debrief.Outcome, turn.Stats, turn.Effort, turn.SecondLookReason, turn.CutOffRetry,
+                    blocks: mission.HandBack ? null : mission.Blocks.Json(null));
             }
             catch (Exception e) when (IsFileError(e))
             {
