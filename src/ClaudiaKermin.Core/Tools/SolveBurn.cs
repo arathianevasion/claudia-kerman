@@ -448,7 +448,7 @@ namespace ClaudiaKermin.Core.Tools
         {
             patch = null;
             r = v = default(Vec3);
-            var ut = PredictBurn.BurnUt(at, path, setup.Now, setup.Now, "the burn", out problem, setup.System, setup.Target, setup.Vessel);
+            var ut = PredictBurn.BurnUt(at, path, setup.Now, setup.Now, "the burn", out problem, setup.System, setup.Aim);
             if (problem != null) return null;
             patch = PredictBurn.Containing(path, ut.Value);
             if (patch == null)
@@ -487,7 +487,7 @@ namespace ClaudiaKermin.Core.Tools
         {
             var apsis = goal == "circularize" ? at.StringValue.Trim().ToLowerInvariant() : goal == "set_ap" ? "pe" : "ap";
             string problem;
-            var ut = PredictBurn.BurnUt(JsonReader.Parse(PlanningJson.Quote(apsis)), path, setup.Now, setup.Now, "the burn", out problem, setup.System, setup.Target, setup.Vessel);
+            var ut = PredictBurn.BurnUt(JsonReader.Parse(PlanningJson.Quote(apsis)), path, setup.Now, setup.Now, "the burn", out problem, setup.System, setup.Aim);
             if (problem != null) return PlanningJson.Error(problem);
             var patch = PredictBurn.Containing(path, ut.Value);
             if (patch == null) return PlanningJson.Error("the burn is after the craft reaches " + PredictBurn.Ending(path[path.Count - 1]) + "; nothing after that is predicted");
@@ -522,7 +522,7 @@ namespace ClaudiaKermin.Core.Tools
         private ToolOutcome SolvePatchPe(SolvedBurn into, PredictBurn.Setup setup, List<Patch> path, double value, JsonNode at, string direction)
         {
             string problem;
-            var ut = PredictBurn.BurnUt(at ?? JsonReader.Parse(PlanningJson.Quote(DefaultAt)), path, setup.Now, setup.Now, "the burn", out problem, setup.System, setup.Target, setup.Vessel);
+            var ut = PredictBurn.BurnUt(at ?? JsonReader.Parse(PlanningJson.Quote(DefaultAt)), path, setup.Now, setup.Now, "the burn", out problem, setup.System, setup.Aim);
             if (problem != null) return PlanningJson.Error(problem);
             var patch = PredictBurn.Containing(path, ut.Value);
             if (patch == null) return PlanningJson.Error("the burn is after the craft reaches " + PredictBurn.Ending(path[path.Count - 1]) + "; nothing after that is predicted");
