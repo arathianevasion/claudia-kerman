@@ -340,7 +340,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
             return snapshot;
         }
 
-        private static void AddBodies(GameSnapshot snapshot)
+        internal static void AddBodies(GameSnapshot snapshot)
         {
             snapshot.Bodies.Add(new SnapshotBody { Name = "Sun", Gm = 1.1723328e18, Radius = 261600000, RotationPeriod = 432000 });
             snapshot.Bodies.Add(new SnapshotBody
@@ -402,7 +402,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
         }
 
         /// <summary>KSP's elements of <paramref name="orbit"/>, as CorrectionBurnTests builds them.</summary>
-        private static SnapshotOrbit Elements(Conic orbit)
+        internal static SnapshotOrbit Elements(Conic orbit)
         {
             var lan = Math.Atan2(orbit.W.X, -orbit.W.Y);
             var node = new Vec3(Math.Cos(lan), Math.Sin(lan), 0);
