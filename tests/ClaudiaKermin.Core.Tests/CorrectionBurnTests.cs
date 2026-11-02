@@ -89,7 +89,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         /// <summary>KSP's elements of <paramref name="orbit"/>, as the Game Snapshot carries the craft's orbit.</summary>
-        private static SnapshotOrbit Elements(Conic orbit, string body)
+        internal static SnapshotOrbit Elements(Conic orbit, string body)
         {
             var lan = Math.Atan2(orbit.W.X, -orbit.W.Y);
             var node = new Vec3(Math.Cos(lan), Math.Sin(lan), 0);
@@ -117,7 +117,7 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         /// <summary>The periapsis (m) and inclination (degrees) of the first patch round <paramref name="target"/> after flying the node, by predict_burn.</summary>
-        private static void Flown(GameSnapshot snapshot, IDictionary<string, object> node, string target, out double pe, out double inc)
+        internal static void Flown(GameSnapshot snapshot, IDictionary<string, object> node, string target, out double pe, out double inc)
         {
             var input = string.Format(CultureInfo.InvariantCulture,
                 "{{\"burns\":[{{\"at\":{0:R},\"dv\":{{\"prograde\":{1:R},\"normal\":{2:R},\"radial\":{3:R}}}}}]}}",

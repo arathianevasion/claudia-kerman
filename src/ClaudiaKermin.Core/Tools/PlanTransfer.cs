@@ -101,9 +101,15 @@ namespace ClaudiaKermin.Core.Tools
             json.Name("dv").BeginObject()
                 .Field("prograde", PlanningJson.Round(plan.Prograde, 2)).Field("normal", PlanningJson.Round(plan.Normal, 2)).Field("radial", PlanningJson.Round(plan.Radial, 2))
                 .EndObject()
-                .Field("departure_dv", PlanningJson.Round(plan.DeltaV, 1))
-                .Field("arrival_dv", PlanningJson.Round(plan.ArrivalDv, 1))
-                .Field("total_dv", PlanningJson.Round(plan.DeltaV + plan.ArrivalDv, 1));
+                .Field("departure_dv", PlanningJson.Round(plan.DeltaV, 1));
+            // A broken-plane plan (#619): its plane change, in the result alone so the description stays as it was (#565).
+            if (plan.PlaneUt.HasValue)
+            {
+                PlanningJson.Time(json, "plane", plan.PlaneUt.Value, now);
+                json.Field("plane_dv", PlanningJson.Round(plan.PlaneDv, 1));
+            }
+            json.Field("arrival_dv", PlanningJson.Round(plan.ArrivalDv, 1))
+                .Field("total_dv", PlanningJson.Round(plan.Total(true), 1));
             if (orbit == null)
             {
                 PlanningJson.Time(json, "encounter", plan.EncounterUt, now);
@@ -117,7 +123,9 @@ namespace ClaudiaKermin.Core.Tools
             return new ToolOutcome
             {
                 Json = json.ToString(),
-                Summary = name + ": " + Num(plan.DeltaV) + " m/s out at UT " + Num(plan.Ut) + ", " + Num(plan.ArrivalDv) + " m/s on arrival",
+                Summary = name + ": " + Num(plan.DeltaV) + " m/s out at UT " + Num(plan.Ut)
+                    + (plan.PlaneUt.HasValue ? ", " + Num(plan.PlaneDv) + " m/s plane change at UT " + Num(plan.PlaneUt.Value) : "")
+                    + ", " + Num(plan.ArrivalDv) + " m/s on arrival",
             };
         }
 

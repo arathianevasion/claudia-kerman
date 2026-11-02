@@ -378,11 +378,17 @@ namespace ClaudiaKermin.Core.Tests
             return GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "minmus-a107-kerbin-orbit-80km.json")));
         }
 
+        /// <summary>a107's ask for Minmus at 30 km with <c>plane_change</c> false: the one-burn plan alone, as the correction after a miss asks (#619).</summary>
+        internal static Dictionary<string, object> OneBurn(GameSnapshot snapshot)
+        {
+            return new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 }, { "plane_change", false } };
+        }
+
         [Fact]
-        public void Minmus_inclined_6_degrees_is_reached_from_a107_s_equatorial_orbit_and_the_node_flies_to_target_pe()
+        public void Minmus_inclined_6_degrees_is_reached_from_a107_s_equatorial_orbit_in_one_burn_and_the_node_flies_to_target_pe()
         {
             var snapshot = A107();
-            var node = Solved(snapshot, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 } });
+            var node = Solved(snapshot, OneBurn(snapshot));
             var input = string.Format(CultureInfo.InvariantCulture,
                 "{{\"burns\":[{{\"at\":{0:R},\"dv\":{{\"prograde\":{1:R},\"normal\":{2:R},\"radial\":{3:R}}}}}],\"target\":\"Minmus\"}}",
                 D(node, "ut"), D(node, "prograde"), D(node, "normal"), D(node, "radial"));
@@ -395,11 +401,14 @@ namespace ClaudiaKermin.Core.Tests
             Assert.InRange(D(node, "dv"), 1100, 1250);
         }
 
-        /// <summary>a107 with the Mun parked where the cheapest arc to Minmus crosses its orbit, its sphere of influence swollen to <paramref name="soi"/> m.</summary>
-        internal static GameSnapshot A107MunInTheWay(double soi)
+        /// <summary>
+        /// a107 (or <paramref name="snapshot"/>, a variant of it) with the Mun parked where the cheapest one-burn arc to Minmus
+        /// crosses its orbit, its sphere of influence swollen to <paramref name="soi"/> m.
+        /// </summary>
+        internal static GameSnapshot A107MunInTheWay(double soi, GameSnapshot snapshot = null)
         {
-            var snapshot = A107();
-            var node = Solved(snapshot, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 } });
+            snapshot = snapshot ?? A107();
+            var node = Solved(snapshot, OneBurn(snapshot));
             var ut = D(node, "ut");
             Vec3 r0, v0;
             CraftOrbit(snapshot).State(ut, out r0, out v0);
@@ -420,8 +429,8 @@ namespace ClaudiaKermin.Core.Tests
         {
             // The Mun, at its own sphere of influence, sits across the cheapest window's arc but not the next one's.
             var snapshot = A107MunInTheWay(2429559.1);
-            var cheapest = Solved(A107(), new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 } });
-            var node = Solved(snapshot, new Dictionary<string, object> { { "target", "Minmus" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 30 } });
+            var cheapest = Solved(A107(), OneBurn(snapshot));
+            var node = Solved(snapshot, OneBurn(snapshot));
             Assert.NotEqual(D(cheapest, "ut"), D(node, "ut"));
             Assert.InRange(D(node, "target_pe_actual"), 29900, 30100);
         }
