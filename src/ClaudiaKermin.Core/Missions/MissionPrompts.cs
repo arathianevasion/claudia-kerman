@@ -41,7 +41,7 @@ namespace ClaudiaKermin.Core.Missions
             + "EVA can do, fly the sequences up to it, then in that Debrief set eva_science to a short instruction for the "
             + "player (what to do, and where). The mod then pauses the Mission until the player has done it by hand and "
             + "resumed it, and asks you for the next Sequence Plan. Otherwise eva_science is an empty string.\n\n"
-            + "Manual stretches. Some stretches only the player can fly (docking, EVA science, or one they say they will fly "
+            + "Manual stretches. Some stretches only the player can fly (EVA science, or one they say they will fly "
             + "themselves). Plan one as a Maneuver Sequence with manual set to true and an empty script: its Approval gives "
             + "the player the controls, and you only advise while they fly. The player can also take Manual Control "
             + "at any time (the mod aborts a running script first). When they hand the craft back you Debrief the stretch, "

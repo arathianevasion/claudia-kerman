@@ -433,6 +433,13 @@ namespace ClaudiaKermin.Adapter
                 Tag(info, "electric_generator");
             else if (Is(module, "ModuleReactionWheel")) Tag(info, "reaction_wheel");
             else if (Is(module, "ModuleRCS")) Tag(info, "rcs");
+            else if (Is(module, "ModuleDockingNode"))
+            {
+                // Its size as the Target Vessel's free_ports count them (#456): dock and the Craft Check match the two.
+                Tag(info, "docking_port");
+                var port = module as ModuleDockingNode;
+                if (port != null && info.PortSize.Length == 0) info.PortSize = string.IsNullOrEmpty(port.nodeType) ? "unknown" : port.nodeType.Trim();
+            }
             else if (Is(module, "ModuleLiftingSurface")) Tag(info, "aero_stabiliser");
             else if (Is(module, "ModuleGimbal")) Tag(info, "gimbal");
             else if (Is(module, "ModuleEngines"))

@@ -38,6 +38,9 @@ namespace ClaudiaKermin.Core.Missions
     {
         private const CraftFindingSeverity Blocker = CraftFindingSeverity.Blocker;
         private const CraftFindingSeverity Warning = CraftFindingSeverity.Warning;
+        /// <summary>dock's Blocker and Warning (#456): the mod raises them itself (<see cref="MarginCheck.Docking"/>), at the Craft Check and each Debrief.</summary>
+        public const string DockingKit = "no_docking_kit";
+        public const string DockingPortSize = "docking_port_size";
 
         public static readonly IList<CraftCheckRule> All = new List<CraftCheckRule>
         {
@@ -58,6 +61,8 @@ namespace ClaudiaKermin.Core.Missions
                 "a powered finish lacks delta-v, or the Kerbin return is uncovered.", modOnly: true),
             new CraftCheckRule("required_experiments_missing", Blocker, "Required experiments missing",
                 "the Mission Goal needs experiments the craft has no parts for."),
+            new CraftCheckRule(DockingKit, Blocker, "Nothing to dock with",
+                "the Mission Goal docks and the craft lacks a docking port, RCS or monopropellant.", modOnly: true),
             new CraftCheckRule("child_vessel_problem", Blocker, "Child Vessel problem",
                 "a Child Vessel the Mission Goal plans (a vessel in the separations facts, flown by Claudia after it separates) lacks, at its separation stage, a processor, "
                 + "an antenna able to reach Claudia, the delta-v or thrust-to-weight its part of the Mission Goal needs, or electric power. "
@@ -87,8 +92,10 @@ namespace ClaudiaKermin.Core.Missions
             new CraftCheckRule("boot_file_set", Warning, "Boot file set on Claudia's processor",
                 "the processor Claudia will use (chosen_processor) has a boot file set."),
             new CraftCheckRule("manual_stretches_without_crew", Warning, "Manual stretches planned with no other crew aboard",
-                "the Mission Goal plans stretches the player flies by hand (docking, EVA science, flying a sequence) and the crew list has no Kerbal "
+                "the Mission Goal plans stretches the player flies by hand (EVA science, flying a sequence) and the crew list has no Kerbal "
                 + "other than Claudia (trait SuperIntelligence) and Tourists (trait Tourist)."),
+            new CraftCheckRule(DockingPortSize, Warning, "Docking port sizes may not match",
+                "the Mission Goal docks and no port on the craft is a size the Target Vessel has free.", modOnly: true),
             new CraftCheckRule("ascent_cannot_reach_orbit", Warning, "The ascent can't reach orbit",
                 "plan_ascent says reaches_orbit is false for the launch (no turn_shape it tried reaches orbit); name the Boost stage that falls short."),
             new CraftCheckRule("ascent_thin_margin", Warning, "The ascent reaches orbit by a thin margin",

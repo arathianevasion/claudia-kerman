@@ -223,7 +223,7 @@ The player's act, with an optional message about what they did, of giving the cr
 _Avoid_: give back, return control, release
 
 **Manual stretch**:
-A Maneuver Sequence in the Mission Plan that the player flies by hand (e.g. docking, EVA science), so it has no script. Approving it starts Manual Control; the player's Hand back ends it.
+A Maneuver Sequence in the Mission Plan that the player flies by hand (e.g. EVA science; docking is the `dock` block's), so it has no script. Approving it starts Manual Control; the player's Hand back ends it.
 _Avoid_: manual sequence, manual mode (Manual Control is the state)
 
 **Lost**:
