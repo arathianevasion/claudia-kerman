@@ -1,4 +1,5 @@
 # Claudia Kermin
+<img width="839" height="659" alt="Screenshot 2026-11-01 at 9 49 54 PM" src="https://github.com/user-attachments/assets/47f8e2cb-d407-462f-bece-83ce4acdcc33" />
 
 A Kerbal Space Program mod that adds **Claudia**, an AI mission controller. You give her a goal in plain language, such as "Land on the Mun, run 3 experiments, return to Kerbin". She checks your craft, plans the mission, explains each step, asks your go-ahead, flies it through kOS and reports back.
 
