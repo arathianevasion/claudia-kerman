@@ -158,11 +158,14 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <summary>
         /// The allocation over the goal's <paramref name="legs"/> (<see cref="GoalLegs"/>), made for no plan; null when a parachute
-        /// of the craft has no facts read (a cut chute, or a snapshot that read none), so the chutes aren't judged on a guess.
+        /// of the craft has no facts read (a cut chute, or a snapshot that read none), so the chutes aren't judged on a guess, and
+        /// for a craft with no parachute at all (no_parachutes_for_return is Claude's; a powered landing at home isn't refused unasked).
         /// </summary>
         public static ChuteAllocation ForGoal(GameSnapshot snapshot, IList<PlannedSequence> legs, bool remote, uint? processorPartId)
         {
-            if (snapshot == null || snapshot.Craft.Parts.Any(p => p.Tags.Contains("parachute") && p.Chute == null)) return null;
+            if (snapshot == null) return null;
+            var chutes = snapshot.Craft.Parts.Where(p => p.Tags.Contains("parachute")).ToList();
+            if (chutes.Count == 0 || chutes.Any(p => p.Chute == null)) return null;
             var allocation = Of(snapshot, legs, 0, remote, processorPartId);
             allocation.ForPlan = "";
             return allocation;

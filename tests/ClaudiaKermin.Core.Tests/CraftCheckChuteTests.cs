@@ -142,6 +142,17 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void ACraftWithNoParachuteAtAllIsLeftToTheReturnsOwnRule()
+        {
+            var craft = Craft(0.001);
+            craft.Craft.Parts.RemoveAll(p => p.Tags.Contains("parachute"));
+
+            var mission = Checked(craft, Duna);
+
+            Assert.DoesNotContain(mission.View.CraftCheck.Findings, f => f.Code.StartsWith("chutes_"));
+        }
+
+        [Fact]
         public void ChutesTheAdapterCouldNotReadAreNotJudged()
         {
             var craft = Craft(0.001);
