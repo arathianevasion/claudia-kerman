@@ -241,6 +241,47 @@ namespace ClaudiaKermin.Kerboscript.Tests
                 Run(t, "local below is reentry_stack(parts, \"pod\").\n" + PrintStack));
         }
 
+        // ---- A powered touchdown keeps its engines (#628) ----
+
+        /// <summary>A powered pod: pod, shield, Decoupler.1, a tank with legs, its engine, then a decoupler and an empty drop tank below.</summary>
+        private static Tree PoweredPod()
+        {
+            var t = new Tree();
+            var pod = t.Add("mk1pod.v2", -1, Command, "pod");
+            var shield = t.Add("HeatShield1", pod, Shield, "shield");
+            var dec = t.Add("Decoupler.1", shield, Decoupler, "dec1");
+            var tank = t.Add("fuelTank", dec, None);
+            t.Add("landingLeg1", tank, new[] { "ModuleWheelBase" });
+            var engine = t.Add("liquidEngine3.v2", tank, new[] { "ModuleEnginesFX" });
+            var lower = t.Add("Decoupler.2", engine, Decoupler, "dec2");
+            t.Add("fuelTankSmall", lower, None);
+            return t;
+        }
+
+        [Fact]
+        public void Separate_auto_with_a_powered_touchdown_keeps_the_engine_and_everything_between_it_and_the_shield()
+        {
+            var printed = Run(PoweredPod(), "local below is reentry_stack(parts, \"pod\", true).\n" + PrintStack
+                + "local plan is reentry_separation(\"auto\", below).\n"
+                + "local decs is list(). for d in plan:decouplers { decs:add(d:uid). }\n"
+                + "print plan:error. print decs:join(\",\"). print reentry_names(below:kept):join(\",\").\n");
+            Assert.Equal(new[]
+            {
+                // Only the engineless drop tank is the stack, through the decoupler under the engine.
+                "True", "dec2", "fuelTankSmall", "", "fuelTankSmall",
+                "", "dec2", "Decoupler.1,fuelTank,landingLeg1,liquidEngine3.v2",
+            }, printed);
+        }
+
+        [Fact]
+        public void Without_a_powered_touchdown_the_same_craft_drops_everything_below_the_shield()
+        {
+            var printed = Run(PoweredPod(), "local below is reentry_stack(parts, \"pod\").\n"
+                + "local plan is reentry_separation(\"auto\", below).\n"
+                + "print plan:decouplers[0]:uid. print reentry_names(plan:gone):join(\",\"). print below:kept:length.\n");
+            Assert.Equal(new[] { "dec1", "fuelTank,landingLeg1,liquidEngine3.v2,Decoupler.2,fuelTankSmall", "0" }, printed);
+        }
+
         // ---- The option ----
 
         [Fact]

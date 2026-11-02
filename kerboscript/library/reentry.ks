@@ -8,31 +8,29 @@
 @lazyglobal off.
 
 //| reentry(options): brings the craft down through its body's atmosphere: drops the stack below the heat shield, waits (on rails)
-//| for the atmosphere if it is still in space, holds the heat shield forward (surface retrograde), drops
-//| the heat shield once the worst of the heating is over, opens the parachutes only when it is safe
-//| (never staged, never fired by hand), physics-warping the fall (1x below 100 m), and ends once landed or splashed.
+//| for the atmosphere if still in space, holds the heat shield forward (surface retrograde), drops it once
+//| the worst heating is over, opens the parachutes only when safe (never staged), physics-warping the fall
+//| (1x below 100 m), and ends once landed or splashed.
 //| Options:
-//|   chute_mode ["safe"]: "safe" opens the parachutes in two stages: drogue chutes first (under 500 m/s,
-//|     over 0.02 atm, or at the latest 3000 m above the ground), then the main parachutes once the drogues
-//|     are out (under 250 m/s, over 0.04 atm, or at the latest 1500 m above the ground); a craft with no
-//|     drogues opens its mains alone. "none" never opens them.
-//|   jettison_stage ["auto"]: the stage number whose decouplers drop the heat shield, "auto" for the
-//|     decoupler on or beside the heat shield (just above the capsule), or "none" to keep it.
-//|     Its decouplers fire alone; the rest of that stage is not staged.
-//|   separate ["auto"]: drops the stack (service module, tanks) before the atmosphere, never by the
-//|     shield's decoupler; "none" keeps it; or a stage number.
-//|   hold ["retrograde"]: "retrograde" points the craft's forward axis at surface retrograde, so a
-//|     pod's heat shield leads; "none" leaves the attitude alone.
+//|   chute_mode ["safe"]: drogues first (under 500 m/s, over 0.02 atm, or by 3000 m above the ground), then
+//|     mains once they are out (under 250 m/s, over 0.04 atm, or by 1500 m); "none" never opens them.
+//|   chutes ["auto"]: the Chute Allocation's for this entry, "all", "none" or a list of part tags; no other is armed.
+//|   touchdown ["chutes"]: or "powered": falls under its chutes (or none), then brakes on its lit engines by
+//|     radar altitude (the stopping distance counts drag and thrust over weight) to 2 m/s; over 6 m/s fails. With no lit engine it fails at once.
+//|   jettison_stage ["auto"]: the stage whose decouplers drop the heat shield, "auto" for the decoupler on
+//|     or beside it (if powered, not one whose drop takes the engines), or "none". Only its decouplers fire.
+//|   separate ["auto"]: drops the stack (service module, tanks) before the atmosphere, never by the shield's
+//|     decoupler, and if powered only what hangs below the engines; "none" keeps it; or a stage number.
+//|   hold ["retrograde"]: points the craft's forward axis at surface retrograde; "none" leaves it.
 //|   max_duration ["auto"]: the wait for the atmosphere plus 1800 s.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block (it never stages).
-//| Extra results: max_g (peak g felt, in g), max_temp_pct (hottest part, in percent of its limit),
-//| geo (lexicon lat, lng, alt where it ended), splashed (true if it ended in water), touchdown_speed
-//| (m/s just before contact; over 15 m/s fails the block), passes (max 3; a skip-out waits for the next, else "skipped out ..."), shield_dropped (true if the heat shield's
-//| decoupler fired and the craft lost the part). Fails with "body has no atmosphere", an
-//| orbit that never reaches the atmosphere, an option it can't read, "stack attached below the heat shield: <names>", a hard
-//| touchdown, or an abort (a mid-air abort still opens the parachutes if that is safe).
-//| Fly it after a return or a de-orbit burn, with the orbit's periapsis inside the atmosphere. It does
-//| not plan or burn anything. Example: `local res is reentry(). addons:claudia:report(res).`
+//| Extra results: max_g (peak g), max_temp_pct (hottest part, percent of its limit), geo (lat, lng, alt),
+//| splashed, touchdown_speed (m/s at contact; over 15 m/s fails), passes (max 3; a skip-out waits for the
+//| next, else "skipped out ..."), shield_dropped, chutes_used and chutes_kept (titles), powered_dv (m/s).
+//| Fails with "body has no atmosphere", an orbit that never reaches the atmosphere, an option it can't read,
+//| "stack attached below the heat shield: <names>", a hard touchdown, or an abort (a mid-air abort still
+//| opens the parachutes if safe). Fly it after a return or a de-orbit burn, periapsis inside the atmosphere;
+//| it plans no burn. Example: `local res is reentry(). addons:claudia:report(res).`
 
 // Main parachutes: the most speed (m/s) and least air pressure (atm) at which opening is safe, and the
 // height above the ground (m) by which they open regardless. That last resort is not speed-aware on
@@ -408,10 +406,15 @@ function reentry_drag_steps {
 // The radar altitude (m) at which a powered touchdown's braking must start, falling at v_down m/s with
 // a_up m/s^2 of upward thrust at full throttle (reentry_powered_margin held back) against gravity g and
 // the drag in ks (reentry_drag_steps' over radar m): the stopping distance to reentry_powered_soft plus
-// reentry_powered_end and reentry_powered_lag s of the fall. -1 if it can't stop before the ground: brake now. Pure.
+// reentry_powered_end and reentry_powered_lag s of the fall. A craft that only stops in time on all its thrust
+// gets the figure for all of it; -1 if not even that stops it before the ground: brake now. Pure.
 function reentry_brake_height {
   parameter v_down, a_up, g, ks, radar.
-  local s is reentry_stop_distance(v_down, a_up / reentry_powered_margin() - g, ks, radar / max(1, ks:length), reentry_powered_soft()).
+  local step is radar / max(1, ks:length).
+  local s is reentry_stop_distance(v_down, a_up / reentry_powered_margin() - g, ks, step, reentry_powered_soft()).
+  if s < 0 {
+    set s to reentry_stop_distance(v_down, a_up - g, ks, step, reentry_powered_soft()).
+  }
   if s < 0 {
     return -1.
   }
