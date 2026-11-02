@@ -14,9 +14,10 @@
 @lazyglobal off.
 
 //| rendezvous(options): meets the Target Vessel.
-//| From orbit round its body to within its physics range (loaded, about 2.2 km) under 2 m/s relative; then dock. Each step is solved when it starts and flown by exec_node: a plane match over max_rel_inc, a phasing
-//| orbit when the transfer window is over max_phasing_orbits away, the transfer, a Course Correction to about
-//| 300 m, and matching velocities there.
+//| From orbit round its body to within its physics range (loaded, about 2.2 km) under 2 m/s relative; then dock.
+//| Each step is solved when it starts and flown by exec_node: a plane match over max_rel_inc, a phasing orbit when
+//| the transfer window is over max_phasing_orbits away, the transfer, a Course Correction to about 300 m, and
+//| matching velocities there.
 //| Options:
 //|   target ["auto"]: the Mission's Target Vessel; a name given must be its.
 //|   max_rel_inc [0.1]: degrees off the target's plane before the plane match.
@@ -26,7 +27,7 @@
 //|   plus min_ec_pct, abort_on_part_loss, stage_limit and drop_empty as for every block.
 //| Extra results: distance_actual (m), relative_speed_actual (m/s), burns (the steps flown: match_plane, phasing,
 //| transfer, correction, match_velocities, kill_speed).
-//| Fails with "the Mission has no Target Vessel ..." (or it is landed), "<target> is not the Target Vessel <name>",
+//| Fails with "the Game Snapshot has no Target Vessel ..." (or it is landed), "<target> is not the Target Vessel <name>",
 //| the target round another body, "not in orbit", "a maneuver node is already planned: remove it first", a solver's
 //| reason, "needs <dv> m/s, over max_dv", an exec_node failure (its node stays), an abort, or "no hand-off after 8 steps".
 //| Example: `local res is rendezvous(lexicon()). addons:claudia:report(res).`
@@ -222,17 +223,19 @@ function rendezvous_run {
     } else if step = "match_velocities" {
       set plan to approach.
     } else if step = "correction" {
+      if approach:error <> "" {
+        set done:reason to approach:error.
+        return done.
+      }
       local when is rendezvous_correction_ut(s:ut, lead, approach:ut).
-      if approach:error <> "" or when < 0 {
+      if when < 0 {
         set done:reason to "no time for a Course Correction before the closest approach to " + name.
-        if approach:error <> "" {
-          set done:reason to approach:error.
-        }
         return done.
       }
       set plan to ask("correction", lexicon("target_distance", rendezvous_aim_m(), "target", name, "earliest_ut", when, "latest_ut", when)).
     } else {
       set step to rendezvous_transfer_or_phase(s, opt:max_phasing_orbits, phased).
+      // The phasing orbit is weighed once: after it, or after choosing the transfer, the transfer flies.
       set phased to true.
       if step = "transfer" {
         set plan to ask("transfer", rendezvous_transfer_ask(s:orbit, s:ut, lead, s:period, opt:max_phasing_orbits)).
