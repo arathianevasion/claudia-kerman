@@ -251,6 +251,16 @@ namespace ClaudiaKermin.Core.Missions
             "Revise the Mission Plan for the new Mission Settings, with the waits, any Due Times and the total Mission time they imply: "
             + ProposePlan + ". The player must approve it again.";
 
+        /// <summary>The Alert of a missed Transfer Window whose next window doesn't fit the Craft Check budget (#616); <paramref name="what"/> is the mod's line.</summary>
+        public static string WindowMissed(string what)
+        {
+            return "The player came back after the Transfer Window the launch's Due Time waited for, and the mod dropped the Sequence Plan. " + what;
+        }
+
+        public const string WindowMissedNotice =
+            "Revise the Mission Plan for a later window (the transfer rows above are from now): " + ProposePlan + ". If the craft can't fly "
+            + "the goal then, hand in a plan with no sequences whose why proposes a reduced goal. The player must approve it again.";
+
         public static string LateApprovalReplan(double ut, double plannedDv, double? lateDv)
         {
             return "The player approved your Sequence Plan after its window closed (UT now "
@@ -572,9 +582,7 @@ namespace ClaudiaKermin.Core.Missions
             var transfers = "";
             foreach (var body in bodies)
             {
-                // A body with air (Duna, Eve) is captured at the Delta-v Map's low orbit, above its atmosphere (#458).
-                var pe = body.AtmosphereHeight > 0 ? System.Math.Round(DeltaVMap.LowOrbit(body) - body.Radius) : TransferPe;
-                var input = "{\"target\":" + PlanningJson.Quote(body.Name) + ",\"target_pe\":" + pe.ToString(CultureInfo.InvariantCulture) + "}";
+                var input = "{\"target\":" + PlanningJson.Quote(body.Name) + ",\"target_pe\":" + ArrivalPe(body).ToString(CultureInfo.InvariantCulture) + "}";
                 var transfer = tools.Run("plan_transfer", input, snapshot, null);
                 if (!transfer.IsError) transfers += "plan_transfer " + input + ": " + transfer.Json + "\n";
             }
@@ -587,8 +595,14 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The periapsis (m) the Mission request's plan_transfer rows arrive at (#575).</summary>
         private const int TransferPe = 30000;
 
+        /// <summary>The periapsis (m) a transfer to <paramref name="body"/> arrives at: a body with air (Duna, Eve) is captured at the Delta-v Map's low orbit, above its atmosphere (#458).</summary>
+        internal static double ArrivalPe(SnapshotBody body)
+        {
+            return body.AtmosphereHeight > 0 ? System.Math.Round(DeltaVMap.LowOrbit(body) - body.Radius) : TransferPe;
+        }
+
         /// <summary>The bodies of the body table the Mission Goal names, as whole words, in the order it names them.</summary>
-        private static List<SnapshotBody> GoalBodies(GameSnapshot snapshot, string goal)
+        internal static List<SnapshotBody> GoalBodies(GameSnapshot snapshot, string goal)
         {
             goal = goal ?? "";
             return snapshot.Bodies

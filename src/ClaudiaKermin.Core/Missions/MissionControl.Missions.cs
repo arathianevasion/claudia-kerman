@@ -271,6 +271,7 @@ namespace ClaudiaKermin.Core.Missions
                 CanDelete = finished,
             };
             if (finished) entry.FinalDebrief = MissionLogRebuild.FinalDebrief(mission.Log);
+            else MissionHistory.Due(entry, mission.Stage == MissionStage.Paused ? mission.StageBeforePause : mission.Stage, mission.PendingSequence, mission.WindowPlanet);
             return entry;
         }
     }

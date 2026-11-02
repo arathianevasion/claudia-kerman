@@ -278,6 +278,14 @@ namespace ClaudiaKermin.Core.Missions
             return ToJson(true);
         }
 
+        /// <summary>A copy of the snapshot's own fields at <paramref name="ut"/>, sharing its lists: for a search from another time (#616) without touching a snapshot a tool thread may be reading.</summary>
+        internal GameSnapshot At(double ut)
+        {
+            var copy = (GameSnapshot)MemberwiseClone();
+            copy.Ut = ut;
+            return copy;
+        }
+
         /// <summary>
         /// The same; Claudia's turns leave out the bodies (they already carry the Delta-v Map) and the craft's drag table (only
         /// Planning Tools read it).

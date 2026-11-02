@@ -332,9 +332,8 @@ namespace ClaudiaKermin.Adapter
                     SeatClaudia();
                     continue;
                 }
-                if (command is SetDueTimeAlarm) DueTimeActions.SetAlarm((SetDueTimeAlarm)command);
-                else if (command is ClearDueTimeAlarm) DueTimeActions.ClearAlarm(((ClearDueTimeAlarm)command).MissionId);
-                else if (command is WarpToUt) DueTimeActions.WarpTo(((WarpToUt)command).Ut);
+                if (AlarmClockCommands.Apply(command, DueTimeActions.AlarmClock)) continue;
+                if (command is WarpToUt) DueTimeActions.WarpTo(((WarpToUt)command).Ut);
                 else if (command is DropWarp) DueTimeActions.DropWarp();
                 else if (command is HoldScriptWarp) ScriptWarpHold.Apply((HoldScriptWarp)command);
                 else if (command is SwitchToVessel) DueTimeActions.GoToVessel(((SwitchToVessel)command).VesselId);

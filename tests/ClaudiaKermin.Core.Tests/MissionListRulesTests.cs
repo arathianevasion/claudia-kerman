@@ -23,6 +23,17 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void AMissionAtADueTimeIsDueWithItsDayAndAFinishedOneIsNot()
+        {
+            var due = new MissionListEntry { Status = MissionStatus.Paused, DueUt = 21600 * 4 + 100 };
+            Assert.Equal("Due", MissionListRules.Status(due).Text);
+            Assert.Equal("Due Y1 D5", MissionListRules.Due(due));
+            var over = new MissionListEntry { Status = MissionStatus.Ended, DueUt = 100 };
+            Assert.Equal("Ended", MissionListRules.Status(over).Text);
+            Assert.Equal("", MissionListRules.Due(over));
+        }
+
+        [Fact]
         public void CostIsReadAgainstTheSpendingCap()
         {
             Assert.Equal("$1.50 of $10.00", MissionListRules.Cost(new MissionListEntry { Cost = 1.5m, SpendingCap = 10m }));

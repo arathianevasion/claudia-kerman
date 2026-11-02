@@ -248,6 +248,8 @@ namespace ClaudiaKermin.Core.Missions
         public bool Reached;
         /// <summary>The name of the Mission's vessel, for the Go to <i>vessel</i> button; "" when unknown.</summary>
         public string VesselName = "";
+        /// <summary>What the Due Time waits for when it is a Transfer Window's (#616), e.g. "the Duna window"; "" otherwise.</summary>
+        public string WaitsFor = "";
     }
 
     /// <summary>A running Maneuver Sequence's progress for the Capcom strip: the current Building Block, time and the key numbers.</summary>

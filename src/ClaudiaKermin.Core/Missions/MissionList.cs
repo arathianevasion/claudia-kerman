@@ -42,6 +42,9 @@ namespace ClaudiaKermin.Core.Missions
         public bool CanDelete;
         /// <summary>The Mission has a craft the game still has, so the list can switch to its vessel.</summary>
         public bool CanGoToVessel;
+        /// <summary>The Due Time the Mission's Sequence Plan waits for (UT s), null for none; and what it waits for, e.g. "the Duna window", "" when not a window (#616).</summary>
+        public double? DueUt;
+        public string DueFor = "";
 
         public bool Finished
         {
