@@ -535,6 +535,7 @@ namespace ClaudiaKermin.Core.Tools
             /// <summary>Why the last Lambert solve that failed had no path, for the error when no departure has one.</summary>
             public string LambertError;
 
+            /// <summary>The lowest radius an arc may pass periapsis at, for a second problem over the same craft orbit (<see cref="BrokenPlane"/>).</summary>
             public double Floor
             {
                 get { return _floor; }
@@ -855,6 +856,7 @@ namespace ClaudiaKermin.Core.Tools
             };
         }
 
+        /// <summary>A UT as predict_burn's <c>at</c> takes it.</summary>
         private static JsonNode At(double ut)
         {
             return JsonReader.Parse(ut.ToString("R", CultureInfo.InvariantCulture));
