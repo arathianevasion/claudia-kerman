@@ -516,8 +516,8 @@ namespace ClaudiaKermin.Core.Missions
         {
             if (snapshot.Ut > _ut) _ut = snapshot.Ut;
             // Another vessel than the craft: the Mission keeps the craft's last facts (MissionControl.Vessels.cs).
-            if (!TakeSnapshot(snapshot)) return;
             FitTarget(snapshot);
+            if (!TakeSnapshot(snapshot)) return;
             var previous = _snapshot;
             _snapshot = snapshot;
             _craftLink = snapshot.Linked;
