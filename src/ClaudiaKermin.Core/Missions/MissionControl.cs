@@ -390,6 +390,7 @@ namespace ClaudiaKermin.Core.Missions
             // Raw stream dumps are a debug tool: on with debug_tools = true in the player config.
             if (_config.DebugTools) mission.Dump = new FileStreamDump(Path.Combine(mission.Folder, "stream-dumps"));
             _mission = mission;
+            SaveSetupAsDefaults(start);
             Note(LogKind.Player, "Mission Goal: " + goal);
             RecordStart(mission);
             LogEffortProblems(mission);
@@ -416,6 +417,24 @@ namespace ClaudiaKermin.Core.Missions
                 _commands.Add(new SeatClaudia());
                 Note(LogKind.Notice, "Claudia is taking a seat aboard.");
             }
+        }
+
+        /// <summary>
+        /// A started Mission's setup becomes the player's defaults, the set Settings' Apply saves (#639): its model moves to
+        /// the front of the models, and its Spending Cap, Mission type and Mission Settings are the next form's. Auto Mode
+        /// isn't in the setup, so it keeps its default. A setup that never starts never gets here, so it saves nothing.
+        /// </summary>
+        private void SaveSetupAsDefaults(StartMission start)
+        {
+            _config.SetDefaultModel(start.Model);
+            _config.DefaultSpendingCap = start.SpendingCap;
+            _config.DefaultRemote = start.Remote;
+            if (start.Settings != null)
+            {
+                _config.DefaultDaylightLanding = start.Settings.DaylightLanding;
+                _config.DefaultTimeVersusDeltaV = start.Settings.TimeVersusDeltaV;
+            }
+            _commands.Add(new SaveConfigDefaults());
         }
 
         /// <summary>Why this Start Mission can't go ahead before any Craft Check, or "".</summary>
