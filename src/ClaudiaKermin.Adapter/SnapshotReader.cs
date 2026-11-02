@@ -190,6 +190,24 @@ namespace ClaudiaKermin.Adapter
             return vessel.connection != null && vessel.connection.IsConnectedHome;
         }
 
+        /// <summary>
+        /// Whether Claudia can reach <paramref name="target"/> by the Child Vessel link test (<see cref="ChildVessels.LinkedToClaudia"/>):
+        /// remote, its link home; aboard, a CommNet path to <paramref name="craft"/> (both loaded), as VesselWatch reads a Child
+        /// Vessel's. CommNet off links every vessel. For dock's Target Vessel (#456).
+        /// </summary>
+        public static bool LinkedToClaudia(Vessel target, Vessel craft, bool remote)
+        {
+            var craftId = craft.id.ToString("N");
+            var seen = new SeenVessel { Id = target.id.ToString("N"), LinkedHome = LinkedHome(target) };
+            var commNet = CommNet.CommNetScenario.CommNetEnabled && CommNet.CommNetNetwork.Instance != null ? CommNet.CommNetNetwork.Instance.CommNet : null;
+            var from = target.connection != null ? target.connection.Comm : null;
+            var to = craft.connection != null ? craft.connection.Comm : null;
+            if (!CommNet.CommNetScenario.CommNetEnabled
+                || (commNet != null && target.loaded && craft.loaded && from != null && to != null && commNet.FindPath(from, new CommNet.CommPath(), to)))
+                seen.LinkedTo.Add(craftId);
+            return ChildVessels.LinkedToClaudia(remote, craftId, seen);
+        }
+
         /// <summary>The ship being built in the VAB/SPH; null when there is none or it has no parts yet.</summary>
         public static GameSnapshot ReadEditor(ShipConstruct ship)
         {
