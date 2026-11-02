@@ -60,6 +60,31 @@ namespace ClaudiaKermin.Core.Tests
             return ChuteAllocation.Of(snapshot, plan, firstStep, false, null);
         }
 
+        [Fact]
+        public void ADunaHighlandEntryTouchesDownHarderThanTheSameEntryAtSeaLevel()
+        {
+            var plan = DunaLandingAndReturn();
+            var low = Allocate(Craft(landerChutes: 1), plan).Entries.Single(e => e.Body == "Duna");
+            var snapshot = Craft(landerChutes: 1);
+            snapshot.Bodies.Single(b => b.Name == "Duna").TerrainHeight = 6000;
+            var high = Allocate(snapshot, plan).Entries.Single(e => e.Body == "Duna");
+
+            Assert.Equal(6000, high.EndAltitude);
+            Assert.True(high.TouchdownSpeed > low.TouchdownSpeed, high.TouchdownSpeed + " vs " + low.TouchdownSpeed);
+        }
+
+        [Fact]
+        public void AnEntryWithNoSiteEndsAtTheBodysConservativeHeightAndKerbinAtSeaLevel()
+        {
+            var snapshot = Craft(landerChutes: 1);
+            var duna = snapshot.Bodies.Single(b => b.Name == "Duna");
+            var allocation = Allocate(snapshot, DunaLandingAndReturn());
+
+            Assert.Equal(duna.Radius * ChuteAllocation.TerrainShareOfRadius, allocation.Entries.Single(e => e.Body == "Duna").EndAltitude, 6);
+            Assert.True(allocation.Entries.Single(e => e.Body == "Duna").EndAltitude > 0);
+            Assert.Equal(0, allocation.Return.EndAltitude);
+        }
+
         private static IList<string> Titles(EntryChutes entry)
         {
             return entry.Chutes.Select(c => c.Title).ToList();
