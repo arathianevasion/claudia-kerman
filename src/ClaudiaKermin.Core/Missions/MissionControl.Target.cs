@@ -7,7 +7,7 @@ using ClaudiaKermin.Core.Ui;
 namespace ClaudiaKermin.Core.Missions
 {
     /// <summary>
-    /// The Target Vessel (ADR 0013): chosen once, when the Mission starts, from KSP's target or the vessel the Mission Goal names;
+    /// The Target Vessel (ADR 0013, #643): chosen once, when the Mission starts, by the same choice the start form shows;
     /// the adapter reads it live by its id, and only a Mission with one has its entry in the Game Snapshot.
     /// </summary>
     public sealed partial class MissionControl
