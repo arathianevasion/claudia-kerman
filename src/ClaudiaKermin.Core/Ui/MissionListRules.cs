@@ -11,6 +11,8 @@ namespace ClaudiaKermin.Core.Ui
     {
         public static StatusChip Status(MissionListEntry entry)
         {
+            // A Mission waiting for its Due Time is Due, whether in play or parked while the player flies another (#616).
+            if (entry.DueUt.HasValue && !entry.Finished) return new StatusChip("Due", ChipTone.Info);
             switch (entry.Status)
             {
                 case MissionStatus.Active: return new StatusChip("Active", ChipTone.Info);
@@ -33,6 +35,13 @@ namespace ClaudiaKermin.Core.Ui
         {
             if (!entry.Finished) return "";
             return entry.FinalDebrief != null ? entry.FinalDebrief.Title : "No Debrief";
+        }
+
+        /// <summary>The line under a Due Mission's goal: "Due Y2 D140: waiting for the Duna window", or "Due Y2 D140"; "" for none.</summary>
+        public static string Due(MissionListEntry entry)
+        {
+            if (!entry.DueUt.HasValue || entry.Finished) return "";
+            return "Due " + KerbinTime.ShortDate(entry.DueUt.Value) + (entry.DueFor.Length > 0 ? ": waiting for " + entry.DueFor : "");
         }
 
         /// <summary>The empty list says what the list is for.</summary>

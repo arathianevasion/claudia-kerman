@@ -59,5 +59,12 @@ namespace ClaudiaKermin.Core.Ui
             return "Year " + year.ToString(CultureInfo.InvariantCulture) + ", Day " + day.ToString(CultureInfo.InvariantCulture)
                 + ", " + hour.ToString("00", CultureInfo.InvariantCulture) + ":" + minute.ToString("00", CultureInfo.InvariantCulture);
         }
+
+        /// <summary>"Y2 D140": the day a time lands on, short enough for a status line.</summary>
+        public static string ShortDate(double ut)
+        {
+            var total = (long)Math.Floor(Math.Max(0, ut));
+            return "Y" + (total / SecondsPerYear + 1).ToString(CultureInfo.InvariantCulture) + " D" + (total % SecondsPerYear / SecondsPerDay + 1).ToString(CultureInfo.InvariantCulture);
+        }
     }
 }

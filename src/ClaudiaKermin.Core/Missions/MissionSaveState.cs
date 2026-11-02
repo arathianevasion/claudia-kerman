@@ -55,6 +55,10 @@ namespace ClaudiaKermin.Core.Missions
         public string TargetVesselName = "";
         /// <summary>The Due Time of the Sequence Plan in hand has been reached and announced.</summary>
         public bool DueNotified;
+        /// <summary>The Transfer Window the Due Time waits for (#616): planet, departure UT and total delta-v; "" and null for none, and in older saves.</summary>
+        public string WindowPlanet = "";
+        public double? WindowUt;
+        public double? WindowDeltaV;
         /// <summary>The Mission is remote: Claudia is at Mission Control, not aboard. A save from before this existed reads as crewed.</summary>
         public bool Remote;
         /// <summary>The Mission is in Auto Mode: the player's Approval is given in advance. A save from before this existed reads as off.</summary>
@@ -201,6 +205,12 @@ namespace ClaudiaKermin.Core.Missions
             if (SafePending.Length > 0) values["safePending"] = SafePending;
             if (PlannedTurnShape.HasValue) values["plannedTurnShape"] = PlannedTurnShape.Value.ToString("R", CultureInfo.InvariantCulture);
             if (PlannedAscent.Length > 0) values["plannedAscent"] = PlannedAscent;
+            if (WindowPlanet.Length > 0 && WindowUt.HasValue && WindowDeltaV.HasValue)
+            {
+                values["windowPlanet"] = WindowPlanet;
+                values["windowUt"] = WindowUt.Value.ToString("R", CultureInfo.InvariantCulture);
+                values["windowDv"] = WindowDeltaV.Value.ToString("R", CultureInfo.InvariantCulture);
+            }
             foreach (var setting in Settings) values[SettingPrefix + setting.Key] = setting.Value;
             for (var i = 0; i < UnsafeProblems.Count; i++) values[UnsafeProblemPrefix + i.ToString(CultureInfo.InvariantCulture)] = UnsafeProblems[i];
             if (QueuedEntries > 0) values["queuedEntries"] = QueuedEntries.ToString(CultureInfo.InvariantCulture);
@@ -267,6 +277,15 @@ namespace ClaudiaKermin.Core.Missions
             if (double.TryParse(Get(values, "separationBefore"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.SeparationBefore = reading;
             if (double.TryParse(Get(values, "separationAfter"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.SeparationAfter = reading;
             if (double.TryParse(Get(values, "plannedTurnShape"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.PlannedTurnShape = reading;
+            double windowUt, windowDv;
+            if (Get(values, "windowPlanet").Length > 0
+                && double.TryParse(Get(values, "windowUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out windowUt)
+                && double.TryParse(Get(values, "windowDv"), NumberStyles.Float, CultureInfo.InvariantCulture, out windowDv))
+            {
+                state.WindowPlanet = Get(values, "windowPlanet");
+                state.WindowUt = windowUt;
+                state.WindowDeltaV = windowDv;
+            }
             decimal cap;
             if (decimal.TryParse(Get(values, "spendingCap"), NumberStyles.Number, CultureInfo.InvariantCulture, out cap)) state.SpendingCap = cap;
             int number;

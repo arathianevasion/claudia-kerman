@@ -631,6 +631,8 @@ namespace ClaudiaKermin.Core.Ui
                     if (!replies.Contains(QuickReply.Approve)) return "";
                     if (view.Stage == MissionStage.AwaitingPlanApproval) return "Approve the Mission Plan?";
                     if (!view.DueTime.HasDueTime) return "Sequence Plan awaiting Approval";
+                    // A Transfer Window's Due Time names what it waits for and the day (#616).
+                    if (view.DueTime.WaitsFor.Length > 0 && !view.DueTime.Reached) return "Waiting for " + view.DueTime.WaitsFor + ": " + KerbinTime.ShortDate(view.DueTime.Ut);
                     return "Sequence Plan awaiting Approval · Due Time " + (view.DueTime.Reached ? "reached" : "in " + KerbinTime.Span(view.DueTime.SecondsLeft));
                 case MissionStage.Paused:
                     if (replies.Contains(QuickReply.RaiseCap)) return "Paused at the Spending Cap";

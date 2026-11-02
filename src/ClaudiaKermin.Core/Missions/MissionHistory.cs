@@ -61,7 +61,16 @@ namespace ClaudiaKermin.Core.Missions
                 entry.VesselName = state.VesselName;
                 entry.CanGoToVessel = true;
             }
+            if (state != null) Due(entry, state.Stage == MissionStage.Paused ? state.StageBeforePause : state.Stage, state.SequencePlan, state.WindowPlanet);
             return entry;
+        }
+
+        /// <summary>A Mission whose Sequence Plan waits for Approval at a Due Time shows it on the list (#616), with what it waits for when that is a Transfer Window.</summary>
+        internal static void Due(MissionListEntry entry, MissionStage stage, SequencePlan plan, string windowPlanet)
+        {
+            if (stage != MissionStage.AwaitingSequenceApproval || plan == null || !plan.DueTimeUt.HasValue) return;
+            entry.DueUt = plan.DueTimeUt.Value;
+            entry.DueFor = string.IsNullOrEmpty(windowPlanet) ? "" : WindowWaits.WaitsFor(windowPlanet);
         }
 
         /// <summary>A Mission folder that is not over and that no state in the save accounts for.</summary>
