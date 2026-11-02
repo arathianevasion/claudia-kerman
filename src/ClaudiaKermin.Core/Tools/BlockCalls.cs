@@ -685,13 +685,22 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>
         /// <c>ADDONS:CLAUDIA:TARGETVESSEL</c>, for <c>rendezvous</c> (#455): the Mission's Target Vessel (ADR 0013) as the Game Snapshot
         /// reads it live. Gives <c>error</c> "", <c>name</c> and <c>body</c> (the body it orbits); or only <c>error</c>: there is none,
-        /// or it is landed, or its orbit is missing.
+        /// or it is landed, or its orbit is missing. A landed or splashed one with its position read keeps that error, so rendezvous
+        /// and dock still refuse it, and adds <c>name</c>, <c>body</c> (the body it is on) and <c>lat</c>, <c>lng</c>, <c>alt</c>
+        /// for <c>land</c>'s <c>"vessel"</c> target (#662).
         /// </summary>
         public static IDictionary<string, object> TargetVessel(GameSnapshot snapshot)
         {
             if (snapshot == null) return Error("no Game Snapshot");
             string why;
             var vessel = VesselTarget.Read(snapshot, new BodySystem(snapshot.Bodies), null, out why);
+            var entry = snapshot.Target;
+            if (vessel == null && entry != null && entry.IsDown && entry.Position != null)
+                return new Dictionary<string, object>
+                {
+                    { "error", why }, { "name", entry.Name }, { "body", entry.Body },
+                    { "lat", entry.Position.Latitude }, { "lng", entry.Position.Longitude }, { "alt", entry.Position.Altitude },
+                };
             if (vessel == null) return Error(why);
             return new Dictionary<string, object> { { "error", "" }, { "name", vessel.Name }, { "body", vessel.Body.Name } };
         }

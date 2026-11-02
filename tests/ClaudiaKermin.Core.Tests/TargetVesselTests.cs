@@ -145,6 +145,64 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal("size1", read.PortTags["fore"]);
         }
 
+        // ---- A landed target's position (#662) ----
+
+        private static SnapshotTarget MunBase(string situation = "LANDED")
+        {
+            var target = Station();
+            target.Name = "Mun Base";
+            target.Body = "Mun";
+            target.Situation = situation;
+            target.Position = new SnapshotPosition { Latitude = 0.123456789, Longitude = -45.987654321, Altitude = 1234.5678 };
+            return target;
+        }
+
+        [Theory]
+        [InlineData("LANDED")]
+        [InlineData("SPLASHED")]
+        public void ALandedOrSplashedTargetsEntryCarriesLatLngAndAlt(string situation)
+        {
+            var snapshot = OnPad();
+            snapshot.Target = MunBase(situation);
+
+            using (var doc = JsonDocument.Parse(snapshot.ToJson(false)))
+            {
+                var target = doc.RootElement.GetProperty("target");
+                // About a metre's precision is plenty to land beside it.
+                Assert.Equal(0.12346, target.GetProperty("lat").GetDouble());
+                Assert.Equal(-45.98765, target.GetProperty("lng").GetDouble());
+                Assert.Equal(1234.6, target.GetProperty("alt").GetDouble());
+            }
+            Assert.Contains("\"lat\":", snapshot.ToJson(false, false));
+        }
+
+        [Fact]
+        public void AnOrbitingTargetsEntryIsUnchangedEvenWithAPositionRead()
+        {
+            var snapshot = OnPad();
+            snapshot.Target = Station();
+            var before = snapshot.ToJson(false);
+            var orbiting = Station();
+            orbiting.Position = new SnapshotPosition { Latitude = 1, Longitude = 2, Altitude = 3 };
+            snapshot.Target = orbiting;
+
+            Assert.Equal(before, snapshot.ToJson(false));
+        }
+
+        [Fact]
+        public void TheRecordingRoundTripsALandedTargetsPosition()
+        {
+            var snapshot = OnPad();
+            snapshot.Target = MunBase();
+
+            var read = GameSnapshot.Parse(snapshot.ToJson()).Target;
+
+            Assert.Equal(0.12346, read.Position.Latitude);
+            Assert.Equal(-45.98765, read.Position.Longitude);
+            Assert.Equal(1234.6, read.Position.Altitude);
+            Assert.Null(GameSnapshot.Parse(new GameSnapshot { Target = Station() }.ToJson()).Target.Position);
+        }
+
         // ---- Where the target comes from (#643): the pick, then the vessel the goal names, then KSP's target ----
 
         private static TargetChoice Choose(string goal, GameSnapshot snapshot, TargetPick pick = null)

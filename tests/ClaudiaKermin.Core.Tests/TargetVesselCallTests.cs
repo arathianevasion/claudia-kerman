@@ -42,5 +42,31 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("landed, not in orbit", (string)BlockCalls.TargetVessel(Snapshot(Station("LANDED")))["error"]);
             Assert.False(BlockCalls.TargetVessel(Snapshot(null)).ContainsKey("name"));
         }
+
+        [Fact]
+        public void A_landed_target_keeps_its_error_for_rendezvous_and_gives_land_where_it_is()
+        {
+            var landed = Station("LANDED");
+            landed.Body = "Mun";
+            landed.Position = new SnapshotPosition { Latitude = 0.5, Longitude = 22, Altitude = 1500 };
+
+            var got = BlockCalls.TargetVessel(Snapshot(landed));
+
+            Assert.Contains("landed, not in orbit", (string)got["error"]);
+            Assert.Equal("Station", got["name"]);
+            Assert.Equal("Mun", got["body"]);
+            Assert.Equal(0.5, got["lat"]);
+            Assert.Equal(22.0, got["lng"]);
+            Assert.Equal(1500.0, got["alt"]);
+        }
+
+        [Fact]
+        public void An_orbiting_target_gives_no_position()
+        {
+            var orbiting = Station();
+            orbiting.Position = new SnapshotPosition { Latitude = 1, Longitude = 2, Altitude = 3 };
+            Assert.False(BlockCalls.TargetVessel(Snapshot(orbiting)).ContainsKey("lat"));
+            Assert.False(BlockCalls.TargetVessel(Snapshot(Station("LANDED"))).ContainsKey("lat"));
+        }
     }
 }

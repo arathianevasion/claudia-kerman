@@ -216,7 +216,17 @@ namespace ClaudiaKermin.KOS
             var proto = CraftSpawner.IntoOrbit(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.Craft), orbit, null);
             _vesselId = proto.persistentId;
             Note("spawned '" + proto.vesselName + "' in a " + _spec.OrbitAltitude + " m orbit of " + _spec.OrbitBody + "; going to Flight");
-            if (_spec.TargetCraft != null)
+            if (_spec.TargetCraft != null && _spec.TargetLanded)
+            {
+                // #662: landed, target_landed_ahead degrees of longitude east of the point under the craft now.
+                var body = orbit.referenceBody;
+                var lng = body.GetLongitude(orbit.getPositionAtUT(ut)) + _spec.TargetLandedAhead;
+                lng -= 360 * Math.Floor((lng + 180) / 360);
+                var target = CraftSpawner.Landed(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.TargetCraft), body, _spec.TargetLandedLat, lng, TargetName);
+                MissionDriver.BlockTestTargetId = target.persistentId;
+                Note("landed the target '" + TargetName + "' on " + body.bodyName + " at " + _spec.TargetLandedLat.ToString("0.###") + ", " + lng.ToString("0.###"));
+            }
+            else if (_spec.TargetCraft != null)
             {
                 // The second craft (#455): placed relative to the first, and read as the Target Vessel while the test runs.
                 var target = CraftSpawner.Relative(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.TargetCraft), orbit, ut, _spec.TargetOrbitAlong,

@@ -27,6 +27,22 @@ namespace ClaudiaKermin.Core.Missions
         public SortedDictionary<string, int> FreePorts = new SortedDictionary<string, int>(StringComparer.Ordinal);
         /// <summary>The name tags of its free ports, each with the port's size.</summary>
         public SortedDictionary<string, string> PortTags = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        /// <summary>Where it is on <see cref="Body"/>; null when not read. The entry carries it only when <see cref="IsDown"/> (#662).</summary>
+        public SnapshotPosition Position;
+
+        /// <summary>Whether it is landed or splashed, so its position, not its orbit, says where it is (#662).</summary>
+        public bool IsDown
+        {
+            get { return Situation == "LANDED" || Situation == "SPLASHED"; }
+        }
+    }
+
+    /// <summary>A vessel's place on its body: latitude and longitude in degrees, altitude in m above sea level.</summary>
+    public sealed class SnapshotPosition
+    {
+        public double Latitude;
+        public double Longitude;
+        public double Altitude;
     }
 
     /// <summary>A vessel in the game other than the craft, which a Mission Goal may name or the player pick (not in the snapshot's JSON).</summary>
