@@ -93,6 +93,8 @@ namespace ClaudiaKermin.Core.Missions
         private string _goal;
         /// <summary>The Target Vessel the result judged the craft against (#643); null for none. A change, like the goal's, makes the result stale.</summary>
         private uint? _targetId;
+        /// <summary>The target's entry (its free ports) had been read when the check ran: one read later makes the result stale.</summary>
+        private bool _targetRead;
         /// <summary>The result is for a remote Mission (Claudia stays at Mission Control); false is crewed.</summary>
         private bool _remote;
         /// <summary>The mod saw for itself that this crewed Mission has no seat for Claudia, so that Blocker doesn't wait on Claude.</summary>
@@ -162,7 +164,7 @@ namespace ClaudiaKermin.Core.Missions
         public bool IsCurrent(string goal, GameSnapshot snapshot, bool remote, TargetVessel target)
         {
             return _state == CraftCheckState.Done && snapshot != null && _goal == goal.Trim() && _remote == remote && _targetId == IdOf(target)
-                && _craftKey == CraftKey(snapshot);
+                && _targetRead == (EntryFor(snapshot, target) != null) && _craftKey == CraftKey(snapshot);
         }
 
         private static uint? IdOf(TargetVessel target)
@@ -255,6 +257,7 @@ namespace ClaudiaKermin.Core.Missions
             _goal = goal;
             _remote = remote;
             _targetId = IdOf(target);
+            _targetRead = EntryFor(snapshot, target) != null;
             _noSeat = !remote && !snapshot.ClaudiaAboard && snapshot.FreeSeats == 0;
             _remoteMissing = remote ? RemoteBlocker.Missing(snapshot) : "";
             // dock's needs (#456), from the goal's words: the mod's own findings, not in Claude's prompt.
@@ -312,6 +315,7 @@ namespace ClaudiaKermin.Core.Missions
             _craftKey = null;
             _goal = null;
             _targetId = null;
+            _targetRead = false;
             _plannedTurnShape = null;
             _plannedAscent = "";
             _plannedAscentInput = "";

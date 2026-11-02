@@ -51,6 +51,9 @@ namespace ClaudiaKermin.Adapter
         private TargetPick _choicePick;
         private TargetFacts _choiceFacts;
         private TargetChoice _choice;
+        // The Choose list, kept until the next snapshot's facts.
+        private TargetFacts _optionsFacts;
+        private IList<SnapshotVessel> _options;
         // The Mission Goal's steps open under it; Hide steps folds them to their count.
         private bool _showGoalSteps = true;
         // The goal clamped to 2 lines, kept until the goal or the width changes (measuring it takes a dozen passes).
@@ -295,7 +298,13 @@ namespace ClaudiaKermin.Adapter
         // The vessels the player may pick, name · body · situation, the craft's own body first; returns the pick a click made.
         private TargetPick DrawTargetList(TargetPick pick)
         {
-            var options = TargetVessel.Options(_view.StartForm.Targets);
+            var facts = _view.StartForm.Targets;
+            if (_options == null || !ReferenceEquals(facts, _optionsFacts))
+            {
+                _optionsFacts = facts;
+                _options = TargetVessel.Options(facts);
+            }
+            var options = _options;
             if (options.Count == 0) GUILayout.Label("No vessel in the save can be the Target Vessel.", ClaudiaSkin.Muted);
             foreach (var vessel in options)
                 if (ClaudiaSkin.TextButton(TargetVessel.Describe(vessel), GUILayout.ExpandWidth(false))) pick = TargetPick.Of(vessel);

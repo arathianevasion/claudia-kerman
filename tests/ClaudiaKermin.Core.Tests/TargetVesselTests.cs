@@ -289,11 +289,48 @@ namespace ClaudiaKermin.Core.Tests
             snapshot.Craft.Name = "Mun Lander";
             snapshot.Vessels.Add(Vessel(1, "Mun Lander"));
 
-            var choice = Choose("Fly Mun Lander to the Mun and back.", snapshot);
+            var choice = Choose("Rendezvous with Mun Lander.", snapshot);
 
             Assert.True(choice.Needed);
             Assert.Null(choice.Target);
             Assert.Equal("\"Mun Lander\" is the craft's own name", choice.Reason);
+        }
+
+        [Fact]
+        public void TheCraftsOwnNameAsksForNoTargetSoALeftoverKspTargetStaysOut()
+        {
+            var snapshot = OnPad();
+            snapshot.Craft.Name = "Mun Lander";
+            snapshot.KspTarget = Station(7);
+            snapshot.Vessels.Add(Vessel(1, "Mun Lander"));
+            snapshot.Vessels.Add(Vessel(7, "Kerbin Station Alpha"));
+
+            var choice = Choose("Fly Mun Lander to the Mun and back.", snapshot);
+
+            Assert.False(choice.Needed);
+            Assert.Null(choice.Target);
+            // A goal that docks still takes KSP's target, whatever the craft is called.
+            Assert.Equal(7u, Choose("Dock Mun Lander in orbit.", snapshot).Target.Id);
+        }
+
+        [Fact]
+        public void ATargetsPortsReadAfterTheCheckMakeStartCheckAgain()
+        {
+            CraftCheckRouter router;
+            var mission = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse")), out router);
+            var snapshot = OnPad();
+            snapshot.Vessels.Add(Vessel(4242, "Kerbin Station Alpha"));
+            mission.Send(snapshot);
+            mission.Send(new RunCraftCheck(Goal, 10m, "claude-sonnet-5-5"));
+            DrainUntil(mission, v => v.CraftCheck.State == CraftCheckState.Done);
+
+            // The adapter reads the form's target a snapshot after it was chosen: the check that ran without its ports is stale.
+            var read = OnPad();
+            read.Vessels.Add(Vessel(4242, "Kerbin Station Alpha"));
+            read.FormTarget = Station();
+            CraftCheckRouter.StartChecked(mission, _background, read, new StartMission(Goal, 10m, "claude-sonnet-5-5"));
+
+            Assert.Equal(2, router.CheckRequests.Count);
         }
 
         [Fact]

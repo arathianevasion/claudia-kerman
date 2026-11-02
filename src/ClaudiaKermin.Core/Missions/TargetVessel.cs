@@ -151,7 +151,7 @@ namespace ClaudiaKermin.Core.Missions
         private static readonly Regex Rendezvous = new Regex(@"\brendez-?vous(es|ed|ing)?\b", RegexOptions.IgnoreCase);
 
         /// <summary>The goal asks for rendezvous or docking.</summary>
-        public static bool Meets(string goal)
+        public static bool AsksForRendezvousOrDocking(string goal)
         {
             goal = goal ?? "";
             return Rendezvous.IsMatch(goal) || SequenceWords.Docking.IsMatch(goal);
@@ -170,7 +170,8 @@ namespace ClaudiaKermin.Core.Missions
             facts = facts ?? new TargetFacts();
             var craft = facts.CraftName;
             var named = facts.Vessels.Where(v => v.Name.Trim().Length >= ShortestName && Names(goal, v.Name.Trim())).ToList();
-            var choice = new TargetChoice { Needed = Meets(goal) || named.Count > 0 };
+            // The craft's own name ("fly Mun Lander to the Mun") asks for no target, so KSP's target can't slip in on it.
+            var choice = new TargetChoice { Needed = AsksForRendezvousOrDocking(goal) || named.Any(v => !Same(v.Name, craft)) };
             if (!choice.Needed) return choice;
             var options = Options(facts);
 
@@ -233,7 +234,7 @@ namespace ClaudiaKermin.Core.Missions
             choice.Vessel = vessel;
             choice.Reason = how;
             var grounded = vessel.Situation == "LANDED" || vessel.Situation == "SPLASHED" || vessel.Situation == "PRELAUNCH";
-            if (grounded && Meets(goal)) choice.Note = "landed: rendezvous and docking need it in orbit";
+            if (grounded && AsksForRendezvousOrDocking(goal)) choice.Note = "landed: rendezvous and docking need it in orbit";
             return choice;
         }
 
