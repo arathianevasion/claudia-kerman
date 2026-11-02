@@ -100,6 +100,10 @@ _Avoid_: upper stage, insertion stage, sustainer
 The parts of a craft that reach below its landing legs' feet when it stands upright, such as a spent transfer stage under a lander. A landing drops them before touchdown, so the craft comes down on its legs.
 _Avoid_: parts below the legs, lower stage
 
+**Descent Shape**:
+The one number that sets how a landing's braking trades height for speed: a small shape holds height until the craft is nearly stopped and then drops steeply, and a large one sinks early. `land` picks it from the terrain under its approach (ADR 0011).
+_Avoid_: glide slope, descent profile (as a name for the number), approach angle
+
 **Mission Plan**:
 The ordered list of Maneuver Sequences Claudia intends to fly to reach a Mission Goal, each with its delta-v budget and Due Time or rough timing; approved once to start the Mission and revised as Debriefs require.
 _Avoid_: flight plan, roadmap
@@ -221,7 +225,7 @@ A script Claudia writes for one Mission to carry out a Maneuver Sequence, kept w
 _Avoid_: generated script, glue script
 
 **Custom Script**:
-A Mission Script with flight logic of its own beyond running Building Blocks in order, branching on their Script Results, staging, adding the maneuver node an exec_node call flies, and reporting (e.g. a hand-written landing-site search before a land call), used where no Building Block fits; a script that calls no Building Block at all is one too.
+A Mission Script with flight logic of its own beyond running Building Blocks in order, branching on their Script Results, adding the maneuver node an exec_node call flies, and reporting (e.g. a hand-written landing-site search before a land call; never a bare stage., which the Script Check refuses), used where no Building Block fits; a script that calls no Building Block at all is one too.
 _Avoid_: raw script, freeform script
 
 **Script Result**:

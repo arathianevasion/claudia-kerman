@@ -528,10 +528,10 @@ namespace ClaudiaKermin.Core.Tests
             plan.Gate.Set();
             DrainUntil(mission, v => !v.Busy);
 
-            // The reply (if any got through) was not applied; the worst case stays charged.
+            // The reply (if any got through) was not applied; the request got no response, so its input cost stays held.
             Assert.Equal(MissionStage.Lost, mission.View.Stage);
             Assert.DoesNotContain(mission.View.Log, e => e.Kind == LogKind.MissionPlan);
-            Assert.Equal(pending, mission.View.HeldCharges);
+            Assert.Equal(pending - new PlayerConfig().Prices.OutputCost(Sonnet, MissionPrompts.MaxTokens), mission.View.HeldCharges);
             Assert.Equal(0m, mission.View.Spent);
             Assert.Equal(0m, mission.View.PendingCharge);
             Assert.Single(transport.Requests);

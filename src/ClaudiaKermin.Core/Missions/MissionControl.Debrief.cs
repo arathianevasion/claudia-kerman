@@ -190,8 +190,9 @@ namespace ClaudiaKermin.Core.Missions
         private void SendRecheck(Mission mission, Turn turn, decimal worst)
         {
             mission.PendingCharge = worst;
+            mission.PendingInput = RequestCharge.InputCost(_config.Prices, mission.Model, turn.Gate.RecheckRequest, worst);
             mission.Requests++;
-            LogCost(mission, "pending", worst, "margin_recheck");
+            LogCost(mission, "pending", worst, "margin_recheck", mission.PendingInput);
             mission.InFlight = true;
             mission.Activity = turn.Gate.RecheckLooked ? SecondLook.Activity : "rechecking margins";
             turn.Cancel = new CancellationTokenSource();
@@ -318,14 +319,13 @@ namespace ClaudiaKermin.Core.Missions
                 RecheckAnswered(mission, turn, null, "Claudia kept calling Planning Tools after the limit of " + ToolStep.MaxSteps + " steps", null);
                 return;
             }
-            var atLimit = gate.RecheckToolSteps >= ToolStep.MaxSteps;
             mission.InFlight = true;
             mission.Activity = _craftCheck.ActivityOf(message);
             turn.Cancel = new CancellationTokenSource();
-            _craftCheck.RunTools(message, gate.RecheckSnapshot, atLimit, step => RecheckToolsAnswered(mission, turn, message, step, atLimit));
+            _craftCheck.RunTools(message, gate.RecheckSnapshot, false, step => RecheckToolsAnswered(mission, turn, message, step));
         }
 
-        private void RecheckToolsAnswered(Mission mission, Turn turn, AssistantMessage message, ToolStepResult step, bool atLimit)
+        private void RecheckToolsAnswered(Mission mission, Turn turn, AssistantMessage message, ToolStepResult step)
         {
             if (mission.Pending != turn || !mission.InFlight) return;
             mission.InFlight = false;
@@ -348,7 +348,6 @@ namespace ClaudiaKermin.Core.Missions
                 gate.RecheckRequest.Messages.Add(message.ToMessage());
                 gate.RecheckRequest.Messages.Add(step.Results);
                 gate.RecheckToolSteps++;
-                if (atLimit) gate.RecheckLimitSent = true;
                 foreach (var call in step.Calls)
                 {
                     Note(LogKind.Notice, "Planning Tool " + call.Name + " for the margin recheck (" + Shorten(call.InputJson) + "): " + (call.IsError ? "error: " : "") + call.Summary);
@@ -360,6 +359,9 @@ namespace ClaudiaKermin.Core.Missions
                     RecheckAnswered(mission, turn, null, "the Mission was Paused", null);
                     return;
                 }
+                // At the step limit the next request is the last: tool_choice none, tools and system unchanged, as for a Mission turn (#509).
+                gate.RecheckLimitSent = gate.RecheckToolSteps >= ToolStep.MaxSteps;
+                gate.RecheckRequest.NoToolChoice = gate.RecheckLimitSent;
                 var worst = RequestCharge.WorstCase(_config.Prices, mission.Model, gate.RecheckRequest);
                 if (mission.Committed + worst + DebriefReserve(mission, turn) > mission.SpendingCap)
                 {
@@ -367,6 +369,7 @@ namespace ClaudiaKermin.Core.Missions
                     RecheckAnswered(mission, turn, null, "its next calculation step could pass the Spending Cap ($" + Dollars(mission.SpendingCap) + ")", null);
                     return;
                 }
+                if (gate.RecheckLimitSent) Event(mission, "tool_limit_final", "margin_recheck after " + gate.RecheckToolSteps + " steps; the reply is asked for with tool_choice none");
                 SendRecheck(mission, turn, worst);
             }
             finally
@@ -525,7 +528,8 @@ namespace ClaudiaKermin.Core.Missions
             {
                 Purpose = Purpose.MissionPlan,
                 UserText = "The player approved a reduced Mission Goal (quoted data): " + MissionPrompts.Quoted(mission.ReducedGoal)
-                    + " in place of the original (quoted data): " + MissionPrompts.Quoted(mission.Goal) + ".\n" + MissionPrompts.Facts(_ut, _snapshot),
+                    + " in place of the original (quoted data): " + MissionPrompts.Quoted(mission.Goal) + ".\n" + MissionPrompts.Facts(_ut, _snapshot)
+                    + PlanFigures(mission, mission.ReducedGoal),
                 Notice = DebriefPrompts.ReducedGoalNotice,
             };
         }
@@ -539,7 +543,7 @@ namespace ClaudiaKermin.Core.Missions
                 Begin(new Turn
                 {
                     Purpose = Purpose.MissionPlan,
-                    UserText = "Revise the Mission Plan after the Off-Nominal Debrief.\n" + MissionPrompts.Facts(_ut, _snapshot),
+                    UserText = "Revise the Mission Plan after the Off-Nominal Debrief.\n" + MissionPrompts.Facts(_ut, _snapshot) + PlanFigures(mission, mission.Goal),
                     Notice = DebriefPrompts.RevisedPlanAfterOffNominal,
                 });
                 return;

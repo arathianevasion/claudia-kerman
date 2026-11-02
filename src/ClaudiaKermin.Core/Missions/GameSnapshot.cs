@@ -93,6 +93,19 @@ namespace ClaudiaKermin.Core.Missions
         public string Body = "";
     }
 
+    /// <summary>A maneuver node on the craft's flight plan. Delta-v in m/s.</summary>
+    public sealed class SnapshotNode
+    {
+        public double Ut;
+        /// <summary>The burn's total delta-v.</summary>
+        public double DeltaV;
+        public double Prograde;
+        public double Normal;
+        public double Radial;
+        /// <summary>The label of the Mission Script run that added it, when this game session knows it; "" otherwise (the player's, or from before a load).</summary>
+        public string AddedBy = "";
+    }
+
     public sealed class SnapshotResource
     {
         public string Name = "";
@@ -124,6 +137,8 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>Null when there is no orbit to read (e.g. in the editor).</summary>
         public SnapshotOrbit Orbit;
         public List<SnapshotResource> Resources = new List<SnapshotResource>();
+        /// <summary>The maneuver nodes planned on the craft, soonest first; empty when there are none (#522).</summary>
+        public List<SnapshotNode> Nodes = new List<SnapshotNode>();
         /// <summary>The RCS switch on the craft: true on, false off, null when it isn't read (the editor). Claudia plans around it; the mod never changes it.</summary>
         public bool? RcsOn;
 
@@ -341,6 +356,18 @@ namespace ClaudiaKermin.Core.Missions
             foreach (var resource in Resources)
                 json.BeginObject().Field("name", resource.Name).Field("amount", resource.Amount).Field("max", resource.Max).EndObject();
             json.EndArray();
+            if (Nodes.Count > 0)
+            {
+                json.Name("nodes").BeginArray();
+                foreach (var node in Nodes)
+                {
+                    json.BeginObject().Field("ut", node.Ut).Field("dv", node.DeltaV)
+                        .Field("prograde", node.Prograde).Field("normal", node.Normal).Field("radial", node.Radial);
+                    if (node.AddedBy.Length > 0) json.Field("added_by", node.AddedBy);
+                    json.EndObject();
+                }
+                json.EndArray();
+            }
             return json.EndObject().ToString();
         }
 
@@ -519,6 +546,22 @@ namespace ClaudiaKermin.Core.Missions
                         Name = JsonNode.Str(resource["name"]) ?? "",
                         Amount = JsonNode.Double(resource["amount"]) ?? 0,
                         Max = JsonNode.Double(resource["max"]) ?? 0,
+                    });
+                }
+            }
+            var nodes = root["nodes"];
+            if (nodes != null)
+            {
+                foreach (var node in nodes.Items)
+                {
+                    snapshot.Nodes.Add(new SnapshotNode
+                    {
+                        Ut = JsonNode.Double(node["ut"]) ?? 0,
+                        DeltaV = JsonNode.Double(node["dv"]) ?? 0,
+                        Prograde = JsonNode.Double(node["prograde"]) ?? 0,
+                        Normal = JsonNode.Double(node["normal"]) ?? 0,
+                        Radial = JsonNode.Double(node["radial"]) ?? 0,
+                        AddedBy = JsonNode.Str(node["added_by"]) ?? "",
                     });
                 }
             }

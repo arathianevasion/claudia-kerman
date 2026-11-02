@@ -36,7 +36,6 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [Theory]
         [InlineData("circularize().\nfrom {local i is 0.} until i > 20 step {set i to i + 1.} do {\n  local p is latlng(i, 10).\n  print p:terrainheight.\n}\n", "landing-site search")]
         [InlineData("until ship:orbit:nextpatch:periapsis > 30000 {\n  set nextnode:prograde to nextnode:prograde + 1.\n}\n", "next patch")]
-        [InlineData("until false {\n  if stage:liquidfuel < 0.1 { stage. }\n  wait 0.1.\n}\n", "staging loop")]
         public void AReinventionLintWarnsAndTheScriptStillPasses(string script, string warning)
         {
             var result = _check.Check(script);
@@ -48,7 +47,7 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [Fact]
         public void AnOrdinaryScriptHasNoWarnings()
         {
-            var result = _check.Check("local res is lexicon(\"success\", true).\nstage.\nuntil res:success { print 1. }\nlocal p is latlng(1, 2).\n");
+            var result = _check.Check("local res is lexicon(\"success\", true).\nuntil res:success { print 1. }\nlocal p is latlng(1, 2).\n");
             Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
             Assert.Empty(result.Warnings);
         }
@@ -170,6 +169,31 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         public void OpenGuiWindows(string script) { AssertForbidden("open GUI windows", script); }
 
         [Theory]
+        [InlineData("set a:b[1] to 2.", 1)]
+        [InlineData("local a is lexicon().\nset a:b:c[\"k\"] to 2.", 2)]
+        public void SetOfASuffixIndexIsRefusedWithItsLine(string script, int line)
+        {
+            var result = _check.Check(script);
+            Assert.False(result.Passed);
+            Assert.Contains(result.Forbidden, f => f.StartsWith("line " + line + ": ") && f.Contains("assign through a local"));
+        }
+
+        [Theory]
+        [InlineData("local x is a:b.\nset x[1] to 2.")]
+        [InlineData("local x is lexicon().\nset x[1] to 2.")]
+        [InlineData("print a:b[1].")]
+        [InlineData("local res is lexicon().\nset res[\"k\"] to 2.")]
+        [InlineData("local res is lexicon().\nset res[\"k\"] to status = \"LANDED\" or status = \"SPLASHED\".")]
+        [InlineData("local res is lexicon().\nset res[\"k\"] to status = \"LANDED\".")]
+        public void SetOfALocalsIndexAndReadsOfASuffixIndexPass(string script) { AssertAllowed(script); }
+
+        [Fact]
+        public void TheCoreLibraryBundleHasNoSetOfASuffixIndex()
+        {
+            AssertAllowed(CoreLibrary.Bundle(""));
+        }
+
+        [Theory]
         [InlineData("debugfreezegame(1).")]
         public void FreezeTheGame(string script) { AssertForbidden("freeze the game", script); }
 
@@ -186,7 +210,35 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         // ---- Allowed ----
 
         [Fact]
-        public void Staging() { AssertAllowed("stage.\nwait until stage:ready.\nprint stage:number."); }
+        public void ReadingTheStageIsAllowed() { AssertAllowed("wait until stage:ready.\nprint stage:number."); }
+
+        // #537: a bare stage. threw away a Swivel stage with its fuel aboard; the Core Library's own staging is still allowed.
+        private const string BareStageHint = "a bare stage. can throw away a stage that still holds fuel: drop parts with drop_parts, or set a block's stage_limit for its staging";
+
+        [Theory]
+        [InlineData("stage.")]
+        [InlineData("print 1.\nif ship:altitude > 10 { stage. }")]
+        [InlineData("until false {\n  if stage:liquidfuel < 0.1 { stage. }\n  wait 0.1.\n}\n")]
+        [InlineData("local d is stage@.\nd().")]
+        public void ABareStageIsRefusedWithItsLineAndTheHint(string script)
+        {
+            AssertForbidden(BareStageHint, script);
+            AssertForbidden(BareStageHint, CoreLibrary.Bundle(script));
+        }
+
+        [Fact]
+        public void TheRefusalNamesTheLine()
+        {
+            var result = _check.Check("print 1.\nprint 2.\nstage.\n");
+            Assert.Contains(result.Forbidden, f => f.StartsWith("line 3: STAGE"));
+        }
+
+        [Fact]
+        public void TheCoreLibrarysOwnStagingStillPasses()
+        {
+            Assert.Matches(@"(?m)^\s*stage\.", CoreLibrary.Bundle("").ToLowerInvariant());
+            AssertAllowed(CoreLibrary.Bundle("local res is exec_node(lexicon()).\naddons:claudia:report(res)."));
+        }
 
         [Fact]
         public void ActionGroups() { AssertAllowed("toggle ag1.\nag2 on.\ngear on.\nset brakes to true.\nlights off.\nrcs on.\nsas off."); }
@@ -291,6 +343,8 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("local f is addons:claudia:LandingSite@.\nprint f(lexicon()).")]
         [InlineData("local p is addons:claudia:landingpass(lexicon(\"lat\", 0, \"lng\", 20, \"r_pe\", 203000)).\nprint p:burn_ut.")]
         [InlineData("local c is addons:claudia.\nprint c:LandingPass(lexicon()):next_pass_ut.")]
+        [InlineData("local p is addons:claudia:brakepath(lexicon(\"lat\", 0, \"lng\", 20, \"shape\", \"auto\")).\nprint p:descent_shape.")]
+        [InlineData("local c is addons:claudia.\nprint c:BrakePath(lexicon()):clears.")]
         [InlineData("local b is addons:claudia:deorbitburn(lexicon(\"lat\", 0, \"lng\", -74)).")]
         [InlineData("print addons:claudia:reentryimpact(lexicon()):lat.")]
         [InlineData("local c is addons:claudia.\nprint c:ReentryImpact(lexicon()).")]
@@ -466,18 +520,18 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [Fact]
         public void AMissionScriptCannotSwapItsOwnCodeIntoABlockWithALock()
         {
-            // A lock is stored when its line runs, over the library's function of that name: a lock named land_plan would get land's
+            // A lock is stored when its line runs, over the library's function of that name: a lock named land_pass_plan would get land's
             // site from the block-internal search and could keep it without the block flying it.
-            var result = _check.Check(CoreLibrary.Bundle("print 1.\nlock land_plan to lexicon(\"error\", \"x\").\nprint land(lexicon(\"target\", lexicon(\"biome\", \"Midlands\")))."));
-            Assert.Contains("line 2: LAND_PLAN* (redefine a Core Library function)", result.Forbidden);
+            var result = _check.Check(CoreLibrary.Bundle("print 1.\nlock land_pass_plan to lexicon(\"error\", \"x\").\nprint land(lexicon(\"target\", lexicon(\"biome\", \"Midlands\")))."));
+            Assert.Contains("line 2: LAND_PASS_PLAN* (redefine a Core Library function)", result.Forbidden);
         }
 
         [Fact]
         public void AMissionScriptCannotDefineAFunctionTheLibraryDefines()
         {
-            // The Mission Script's function wins over the library's (LandAscendTests shows it on kOS), so land_plan could keep the site.
-            var result = _check.Check(CoreLibrary.Bundle("print 1.\n\nfunction land_plan {\n  parameter a, b, c.\n  return lexicon(\"error\", \"x\").\n}"));
-            Assert.Contains(result.Forbidden, f => f.EndsWith("FUNCTION LAND_PLAN (redefine a Core Library function)"));
+            // The Mission Script's function wins over the library's (LandAscendTests shows it on kOS), so land_pass_plan could keep the site.
+            var result = _check.Check(CoreLibrary.Bundle("print 1.\n\nfunction land_pass_plan {\n  parameter a, b, c.\n  return lexicon(\"error\", \"x\").\n}"));
+            Assert.Contains(result.Forbidden, f => f.EndsWith("FUNCTION LAND_PASS_PLAN (redefine a Core Library function)"));
             Assert.All(result.Forbidden, f => Assert.True(int.Parse(f.Split(' ', ':')[1]) <= 6, f));
             AssertForbidden("redefine a Core Library function", CoreLibrary.Bundle("global function claudia_finish { parameter a, b, c, d. return a. }"));
         }

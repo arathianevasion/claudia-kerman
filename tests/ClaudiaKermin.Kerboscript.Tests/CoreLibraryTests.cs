@@ -30,6 +30,55 @@ namespace ClaudiaKermin.Kerboscript.Tests
             return Math.Round(value, 3).ToString(CultureInfo.InvariantCulture);
         }
 
+        // ---- Nodes a block leaves behind (#537) ----
+
+        // Nodes as kOS reads them: time, radialout, normal, prograde.
+        private const string FakeNodes =
+            "local old is lexicon(\"time\", 100, \"radialout\", 0, \"normal\", 0, \"prograde\", 50).\n"
+            + "local mine is lexicon(\"time\", 200, \"radialout\", 0, \"normal\", 3, \"prograde\", 4).\n"
+            + "local before is claudia_node_sigs(list(old)).\n";
+
+        [Fact]
+        public void A_node_present_before_the_block_started_is_no_stray()
+        {
+            Assert.Equal("0", Run(FakeNodes + "print claudia_node_strays(before, list(old)):length.").Single());
+        }
+
+        [Fact]
+        public void A_node_the_block_added_is_a_stray_and_the_old_one_is_not()
+        {
+            var printed = Run(FakeNodes + "local s is claudia_node_strays(before, list(old, mine)). print s:length. print s[0]:time.");
+            Assert.Equal(new[] { "1", "200" }, printed);
+        }
+
+        [Fact]
+        public void A_strays_report_carries_its_UT_and_delta_v()
+        {
+            var printed = Run(FakeNodes + "local rep is claudia_node_report(mine). print rep:ut. print rep:dv.");
+            Assert.Equal(new[] { "200", "5" }, printed);
+        }
+
+        [Fact]
+        public void Finishing_removes_the_strays_and_reports_them()
+        {
+            var source = LibrarySource();
+            var start = source.IndexOf("\nfunction claudia_finish {", StringComparison.Ordinal);
+            var end = source.IndexOf("\nfunction ", start + 1, StringComparison.Ordinal);
+            var body = source.Substring(start, end - start);
+            Assert.Contains("claudia_node_strays(ctx:nodes0, allnodes)", body);
+            Assert.Contains("remove nd.", body);
+            Assert.Contains("\"node_removed\"", body);
+            Assert.Contains("claudia_node_sigs(allnodes)", source.Substring(source.IndexOf("\nfunction claudia_begin {", StringComparison.Ordinal)));
+        }
+
+        private static string LibrarySource()
+        {
+            var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null && !System.IO.File.Exists(System.IO.Path.Combine(dir.FullName, "ClaudiaKermin.sln"))) dir = dir.Parent;
+            Assert.NotNull(dir);
+            return System.IO.File.ReadAllText(System.IO.Path.Combine(dir.FullName, "kerboscript", "library", "claudia_lib.ks"));
+        }
+
         // ---- The bundle ----
 
         [Fact]

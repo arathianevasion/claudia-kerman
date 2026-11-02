@@ -286,10 +286,12 @@ namespace ClaudiaKermin.Core.Missions
             // ---- Spending (state #42 snapshots: SpendingCap, Spent, Held) ----
             /// <summary>Cost so far from real usage.</summary>
             public decimal Spent;
-            /// <summary>Worst-case charges kept for cancelled and lost requests; never refunded.</summary>
+            /// <summary>Input costs kept for cancelled and lost requests (a request that got no reply at all can't have billed output; one that returned anything is paid at its usage instead).</summary>
             public decimal Held;
             /// <summary>The worst case of the request in flight; replaced by its real usage.</summary>
             public decimal PendingCharge;
+            /// <summary>The input part of <see cref="PendingCharge"/>: all the request holds if it is cancelled or lost with no reply at all.</summary>
+            public decimal PendingInput;
             public bool Warned;
             /// <summary>Paused because of the Spending Cap, so Raise cap resumes it.</summary>
             public bool PausedForCap;
@@ -451,9 +453,15 @@ namespace ClaudiaKermin.Core.Missions
                     + "Spending Cap: $" + mission.SpendingCap.ToString("0.00", CultureInfo.InvariantCulture) + ".\n"
                     + MissionPrompts.SettingsText(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config))) + "\n"
                     + MissionPrompts.Facts(_ut, _snapshot) + ChildVesselFacts(mission)
-                    + MissionPrompts.StageTable(_snapshot, mission.Goal, mission.PlannedAscent) + MissionPrompts.PadPlanning(_snapshot),
+                    + PlanFigures(mission, mission.Goal),
                 Notice = MissionPrompts.PlanNotice,
             });
+        }
+
+        /// <summary>What every request for a Mission Plan carries from its own Game Snapshot (#508, #513): the stage table, and the pad wording while the craft is on the pad.</summary>
+        private string PlanFigures(Mission mission, string goal)
+        {
+            return MissionPrompts.StageTable(_snapshot, goal, mission.PlannedAscent) + MissionPrompts.PadPlanning(_snapshot);
         }
 
         /// <summary>
@@ -770,7 +778,7 @@ namespace ClaudiaKermin.Core.Missions
             Begin(new Turn
             {
                 Purpose = Purpose.Settings,
-                UserText = MissionPrompts.SettingsChanged(edited) + "\n" + MissionPrompts.Facts(_ut, _snapshot),
+                UserText = MissionPrompts.SettingsChanged(edited) + "\n" + MissionPrompts.Facts(_ut, _snapshot) + PlanFigures(mission, mission.Goal),
                 Notice = MissionPrompts.SettingsNotice,
             });
         }
@@ -992,8 +1000,9 @@ namespace ClaudiaKermin.Core.Missions
 
             // Recorded before sending; replaced by the real usage, or kept if the request is cancelled or lost.
             mission.PendingCharge = worstCase;
+            mission.PendingInput = RequestCharge.InputCost(_config.Prices, mission.Model, request, worstCase);
             mission.Requests++;
-            LogCost(mission, "pending", worstCase, "");
+            LogCost(mission, "pending", worstCase, "", mission.PendingInput);
             mission.InFlight = true;
             mission.Activity = Thinking(turn);
             turn.Stats.Sent();
@@ -1386,6 +1395,7 @@ namespace ClaudiaKermin.Core.Missions
                     break;
             }
             if (reply.SequencePlan != null && ReferenceEquals(mission.PendingSequence, reply.SequencePlan)) LogPlan(mission, turn, reply.SequencePlan, checkWarnings);
+            if (reply.MissionPlan != null && ReferenceEquals(mission.Plan, reply.MissionPlan)) LogMissionPlan(mission, turn, false);
         }
 
         /// <summary>The ids a Mission Plan this reply would offer names as Child Vessels without their having left the craft; empty if it offers none.</summary>
@@ -1830,8 +1840,9 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>Settles the request's pending charge by <see cref="RequestCharge.Settle"/>, the rules the Craft Check shares.</summary>
         private void Settle(Mission mission, Turn turn, StreamResult result)
         {
-            var settlement = RequestCharge.Settle(_config.Prices, mission.PendingCharge, result, mission.Model);
+            var settlement = RequestCharge.Settle(_config.Prices, mission.PendingCharge, result, mission.Model, mission.PendingInput);
             mission.PendingCharge = 0m;
+            mission.PendingInput = 0m;
             mission.Settled = settlement.Amount;
             mission.Spent += settlement.Spent;
             mission.Held += settlement.Held;
@@ -1913,12 +1924,12 @@ namespace ClaudiaKermin.Core.Missions
             CarryOnIfCapCovers(mission);
         }
 
-        private void LogCost(Mission mission, string kind, decimal amount, string outcome)
+        private void LogCost(Mission mission, string kind, decimal amount, string outcome, decimal? input = null)
         {
             try
             {
                 MissionFolder.AppendCostEvent(mission.Folder, kind, mission.Requests, mission.Model, amount, outcome,
-                    mission.Spent, mission.Held, mission.SpendingCap);
+                    mission.Spent, mission.Held, mission.SpendingCap, input);
             }
             catch (Exception e) when (IsFileError(e))
             {
@@ -2000,6 +2011,7 @@ namespace ClaudiaKermin.Core.Missions
                 view.Remote = mission.Remote;
                 view.AutoMode = mission.AutoMode;
                 view.AutoModeStop = AutoModeStopLine(mission);
+                view.CapRoomStop = view.AutoModeStop.Length > 0 && view.AutoModeStop == mission.AutoModeRoomStop ? view.AutoModeStop : "";
                 view.EvaScience = mission.EvaScience;
                 view.ConfirmPrompt = mission.ConfirmPrompt;
                 view.CapWait = mission.CapWaitText;

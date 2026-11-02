@@ -96,6 +96,34 @@ namespace ClaudiaKermin.Kerboscript.Tests
             return double.Parse(text, CultureInfo.InvariantCulture);
         }
 
+        // #532: the sim's circularization stops where exec_node's does for circularize. Eccentricities falling to a minimum and
+        // rising again, with jitter of a given size every reading and a kick part way down: both stop on the same reading.
+        [Theory]
+        [InlineData(0.5, 0.0005, 0.00002, 0)]
+        [InlineData(0.5, 0.0005, 0.00008, 0.002)]
+        [InlineData(0.05, 0.0001, 0.00004, 0.0003)]
+        [InlineData(0.9, 0.002, 0.0002, 0.01)]
+        public void The_csharp_sims_circularization_stops_on_the_same_reading_as_exec_node(double start, double step, double jitter, double kick)
+        {
+            var readings = new List<double>();
+            var e = start;
+            for (var i = 0; e > -start; i++, e -= step)
+                readings.Add(Math.Abs(e) + (i % 2 == 0 ? jitter : -jitter) + (i == 40 ? kick : 0));
+            var text = string.Join(", ", readings.Select(Num));
+
+            var seen = new PastMin();
+            var at = -1;
+            for (var i = 0; i < readings.Count && at < 0; i++)
+                if (seen.Past(readings[i], PastMin.EccBand)) at = i;
+            var kos = KosHarness.Run(CoreLibrary.Bundle("local seen is exec_node_min_seen(). local at is -1. local i is 0.\n"
+                + "for e in list(" + text + ") { if at < 0 and exec_node_past_min(seen, e, exec_node_min_band()) { set at to i. } set i to i + 1. }\n"
+                + "print at.")).Single();
+
+            Assert.True(at > 0, "never stopped: " + text);
+            Assert.Equal(at.ToString(CultureInfo.InvariantCulture), kos);
+            Assert.Equal(PastMin.EccBand.ToString(CultureInfo.InvariantCulture), KosHarness.Run(CoreLibrary.Bundle("print exec_node_min_band().")).Single());
+        }
+
         [Theory]
         [InlineData(0.5, 12000, 60000, 1, 2.4)]
         [InlineData(1.0, 12000, 60000, 1, 2.4)]

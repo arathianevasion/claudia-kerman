@@ -64,12 +64,11 @@ namespace ClaudiaKermin.Core.Missions
                 FailLoop("Claudia kept calling Planning Tools after the limit of " + ToolStep.MaxSteps + " steps.");
                 return;
             }
-            var atLimit = _toolSteps >= ToolStep.MaxSteps;
             ToolActivity = ActivityOf(message);
-            RunTools(message, _toolSnapshot, atLimit, step => ToolsAnswered(cancel, message, step, atLimit));
+            RunTools(message, _toolSnapshot, false, step => ToolsAnswered(cancel, message, step));
         }
 
-        private void ToolsAnswered(CancellationTokenSource cancel, AssistantMessage message, ToolStepResult step, bool atLimit)
+        private void ToolsAnswered(CancellationTokenSource cancel, AssistantMessage message, ToolStepResult step)
         {
             if (_cancel != cancel || _state != CraftCheckState.Running) return;
             ToolActivity = "";
@@ -81,7 +80,6 @@ namespace ClaudiaKermin.Core.Missions
             _request.Messages.Add(message.ToMessage());
             _request.Messages.Add(step.Results);
             _toolSteps++;
-            if (atLimit) _toolLimitSent = true;
             for (var i = 0; i < step.Calls.Count; i++)
             {
                 var call = step.Calls[i];
@@ -91,6 +89,9 @@ namespace ClaudiaKermin.Core.Missions
                 if (call.Name == "plan_ascent" && !call.IsError && result != null) _plannedAscent = call.InputJson + ": " + result.Content;
             }
 
+            // At the step limit the next request is the last: tool_choice none, tools and system unchanged, as for a Mission turn (#509).
+            _toolLimitSent = _toolSteps >= ToolStep.MaxSteps;
+            _request.NoToolChoice = _toolLimitSent;
             var worstCase = RequestCharge.WorstCase(_config.Prices, _request.Model, _request);
             var spent = _stepCharges.Sum(c => c.Settlement.Spent + c.Settlement.Held);
             if (spent + worstCase > _spendingCap)
@@ -98,6 +99,7 @@ namespace ClaudiaKermin.Core.Missions
                 FailLoop("The Craft Check's next calculation step could pass the Spending Cap ($" + _spendingCap.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) + "). Raise the Spending Cap, then run it again.");
                 return;
             }
+            if (_toolLimitSent) _client.Log("Craft Check tool_limit_final after " + _toolSteps + " steps; the reply is asked for with tool_choice none");
             var next = new CraftCheckCharge { Model = _request.Model, Pending = worstCase };
             var request = _request;
             _background.Run(

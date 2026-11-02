@@ -30,8 +30,11 @@
 //| Example: `add node(time:seconds + 600, 0, 0, 120). local res is exec_node(). addons:claudia:report(res).`
 
 // The block's own options and defaults (max_duration "auto" is resolved once the burn is known).
+// stop_at_min is for other blocks, so not in Claudia's docs (#532): "ecc" also stops the burn once the
+// orbit's eccentricity stops falling (circularize asks for it), and the result's stop says which stop
+// ended it; "" keeps only the node's.
 function exec_node_defaults {
-  return lexicon("node", "next", "max_residual", 0.5, "lead", "half_burn", "rcs_trim", false).
+  return lexicon("node", "next", "max_residual", 0.5, "lead", "half_burn", "rcs_trim", false, "stop_at_min", "").
 }
 
 // "" or why a string value of node or lead isn't one the block knows.
@@ -46,6 +49,9 @@ function exec_node_unreadable {
     if opt:lead <> "half_burn" {
       return "lead must be 'half_burn' or seconds, not '" + opt:lead + "'".
     }
+  }
+  if opt:stop_at_min <> "" and opt:stop_at_min <> "ecc" {
+    return "stop_at_min must be '' or 'ecc', not '" + opt:stop_at_min + "'".
   }
   return "".
 }
@@ -62,6 +68,11 @@ function exec_node {
   local unreadable is exec_node_unreadable(opt).
   if unreadable <> "" {
     return claudia_finish(ctx, false, unreadable, extra).
+  }
+  // Only a caller that asks for the eccentricity stop is told which stop ended the burn ("" if none did).
+  local seen is exec_node_min_seen().
+  if opt:stop_at_min = "ecc" {
+    set extra:stop to "".
   }
   local nd is 0.
   if opt:node:istype("String") {
@@ -123,6 +134,15 @@ function exec_node {
     local left is nd:deltav.
     // Overshot (the node now points back) or close enough: stop.
     if vdot(initial, left) < 0 or left:mag < done_dv {
+      if opt:stop_at_min <> "" {
+        set extra:stop to "node".
+      }
+      break.
+    }
+    // Asked for (#532): the orbit is as circular as this burn gets it. A long burn's node swings as the
+    // craft passes it, and its own stop comes late.
+    if opt:stop_at_min = "ecc" and exec_node_past_min(seen, ship:orbit:eccentricity, exec_node_min_band()) {
+      set extra:stop to "ecc_min".
       break.
     }
     // Stop chasing the node's direction once it's nearly done; it swings as it shrinks.
@@ -179,6 +199,33 @@ function exec_node_due_ut {
     return start_ut + lead.
   }
   return now + lead.
+}
+
+// What exec_node_past_min has seen of a quantity: the lowest reading, the last, and the rises in a row.
+function exec_node_min_seen {
+  return lexicon("low", 1e30, "last", 1e30, "rises", 0).
+}
+
+// How far over the lowest eccentricity a reading must rise before the burn stops for it: over the
+// jitter of a craft turning under thrust, about a tick of a full-throttle burn near circular.
+function exec_node_min_band {
+  return 0.0001.
+}
+
+// Whether a quantity the burn brings down (the eccentricity, for circularize) has stopped falling: it has
+// risen two readings running and is over the lowest by more than band. A single noisy reading, a flat
+// stretch (a turn, a staging gap) or a kick the burn then brings back down doesn't stop it. Pure but for
+// seen (from exec_node_min_seen), which it updates.
+function exec_node_past_min {
+  parameter seen, value, band.
+  if value > seen:last {
+    set seen:rises to seen:rises + 1.
+  } else {
+    set seen:rises to 0.
+  }
+  set seen:last to value.
+  set seen:low to min(seen:low, value).
+  return seen:rises >= 2 and value > seen:low + band.
 }
 
 function exec_node_burned {

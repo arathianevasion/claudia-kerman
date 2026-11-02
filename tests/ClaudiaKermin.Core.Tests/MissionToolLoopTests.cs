@@ -161,6 +161,12 @@ namespace ClaudiaKermin.Core.Tests
             return Path.Combine(_save.Path, "ClaudiaKermin", "missions", mission.View.MissionId);
         }
 
+        private List<JsonElement> PlansLog(MissionControl mission)
+        {
+            return File.ReadAllLines(Path.Combine(Folder(mission), PlanLog.FileName)).Where(l => l.Length > 0)
+                .Select(l => { using (var doc = JsonDocument.Parse(l)) return doc.RootElement.Clone(); }).ToList();
+        }
+
         /// <summary>A Spending Cap measured from a dry run of the same two steps with a roomy cap.</summary>
         private decimal CapWithRoomForTheFirstStepButNotTheNext()
         {
@@ -545,8 +551,20 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(new[] { QuickReply.RaiseCap, QuickReply.EndMission }, mission.View.QuickReplies.ToArray());
             Assert.Contains("tool_loop_discarded", Events(mission));
 
+            // The discarded loop's counts are in plans.jsonl, marked discarded (#514).
+            var discarded = Assert.Single(PlansLog(mission));
+            Assert.Equal("mission_plan", discarded.GetProperty("event").GetString());
+            Assert.True(discarded.GetProperty("discarded").GetBoolean());
+            Assert.Equal(1, discarded.GetProperty("tool_calls").GetInt32());
+            Assert.Equal(1, discarded.GetProperty("tool_steps").GetInt32());
+            Assert.Equal(0, discarded.GetProperty("refused_calls").GetInt32());
+            Assert.Equal(0, discarded.GetProperty("repeat_calls").GetInt32());
+
             mission.Send(new RaiseCap(25m));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            var accepted = PlansLog(mission).Last();
+            Assert.False(accepted.GetProperty("discarded").GetBoolean());
+            Assert.Equal(0, accepted.GetProperty("tool_steps").GetInt32());
             // Sent again from scratch: the request is the turn's first, with no tool step in it.
             Assert.Equal(transport.Requests[0].Body, transport.Requests[1].Body);
         }

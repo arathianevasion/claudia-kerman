@@ -216,6 +216,7 @@ namespace ClaudiaKermin.Core.Missions
         private void DiscardLoop(Mission mission, Turn turn)
         {
             if (turn.ToolSteps == 0) return;
+            if (IsMissionPlanTurn(mission, turn)) LogMissionPlan(mission, turn, true);
             Event(mission, "tool_loop_discarded", turn.Purpose + " after " + turn.ToolSteps + " step" + (turn.ToolSteps == 1 ? "" : "s"));
             ResendFromScratch(mission, turn, null);
         }

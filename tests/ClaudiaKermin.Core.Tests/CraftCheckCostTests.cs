@@ -290,6 +290,14 @@ namespace ClaudiaKermin.Core.Tests
             }
             Assert.Equal("kept", RequestCharge.Settle(prices, 0.5m, null, Model).Kind);
 
+            // With its input cost known, a request that got no response holds only that; one that returned a reply is paid as before.
+            var inputOnly = RequestCharge.Settle(prices, 0.5m, new StreamResult { Status = StreamStatus.Cancelled }, Model, 0.2m);
+            Assert.Equal(0.2m, inputOnly.Held);
+            Assert.Equal(0.2m, inputOnly.Amount);
+            Assert.Equal(0.2m, RequestCharge.Settle(prices, 0.5m, null, Model, 0.2m).Held);
+            Assert.Equal(12m, RequestCharge.Settle(prices, 0.5m, done, Model, 0.2m).Spent);
+            Assert.Equal(0m, RequestCharge.Settle(prices, 0.5m, done, Model, 0.2m).Held);
+
             var released = RequestCharge.Settle(prices, 0.5m, new StreamResult { Status = StreamStatus.Failed, Failure = StreamFailure.Unauthorized }, Model);
             Assert.Equal("released", released.Kind);
             Assert.Equal(0m, released.Held);

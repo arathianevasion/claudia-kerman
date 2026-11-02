@@ -11,9 +11,62 @@ Fly with `debug_tools` on, so each Mission folder gets `stream-dumps/`. Then, fr
 python3 -I tools/cost-baseline/baseline.py ~/KSP_spike/saves --out docs/research/cost-baseline-<date>.md
 ```
 
-- The saves folder defaults to `~/KSP_spike/saves`. Without `--out` the report goes to stdout.
-- `--reference <mission id>` names the Mission reported on its own (default `m20261026-031725-724a`, the Mun flight).
+- `saves` takes one or more folders, one per install, each read in place. It defaults to `~/KSP_spike/saves` and
+  `~/KSP_stable/saves`. Each install keeps its own logs and the script never copies, merges or writes into a save folder;
+  every Mission row names the install it came from (the folder above `saves`). Without `--out` the report goes to stdout.
+- `--reference <mission id>` names the Mission reported on its own and compared against (default `m20261029-194229-b5f3`,
+  the baseline Mun flight).
+- `--goal <usd>` is what a full Mun flight should cost (default 1.00).
 - Run it with `-I` and keep it outside the save folders: Mission folders are untrusted data. The script only reads them.
+
+## Baseline and goal
+
+The baseline is **b5f3** (`m20261029-194229-b5f3`, KSP_stable): a full Mun flight with return that cost **$2.20** at
+published prices. The goal is **under $1.00** for a full Mun flight. Anything dearer than b5f3 is a regression to explain;
+getting under the goal is the work (#534, #549 and #257 are the known levers, none of them in this tool).
+
+## Comparing Missions (`--compare`, #550)
+
+```sh
+python3 -I tools/cost-baseline/baseline.py --compare m20261031-022433-3dc5
+python3 -I tools/cost-baseline/baseline.py ~/KSP_spike/saves ~/KSP_stable/saves --compare <mission id> [<mission id> ...]
+```
+
+Prints, instead of the full report, one row per named Mission and then the same row for the reference. Put the saves
+folders before `--compare`, which takes every id after it.
+
+| Column | Meaning |
+|---|---|
+| Install | the install the Mission's folder was read from |
+| Published | cost at the published prices in `PRICES`, Craft Checks included at the mod's own amounts |
+| Mod logged | the mod's own total (every `paid` and `kept` line of `cost-log.jsonl`, Craft Checks too), at its `PriceTable`. It runs above Published because the mod prices cache reads too high (#257); the column stays until that lands, so the gap stays visible |
+| Legs, Per leg | Sequence Plans committed, and the dumped cost (Craft Checks left out) divided by them |
+| Revised Mission Plans | count and cost of every request that asked for a revised Mission Plan (#534: each one rewrites the cache) |
+| Compactions | count and cost of the compaction iterations (#549) |
+| Full cache misses | requests after the second whose writes exceed their reads, with what rewriting the lost prefix cost over the read price |
+| Prefix (tokens) | the system prompt and tools as the API cached them: the cache read of the first revised Mission Plan (else Sequence Plan) request whose read stopped short of what the request before had cached. Blank when no request shows that |
+| Per Sequence Plan request, Per Debrief request | dumped cost of those reply kinds divided by their request count |
+
+A second table gives each named Mission's change against the reference (published total, cost per leg, prefix) and its
+distance to `--goal`. An unknown Mission id is an error; an unknown reference is said, with no change shown. On
+2026-10-30 the two flights read: b5f3 $2.20, 6 legs, 1 revised plan for $0.42, no compaction, prefix 25,569; 3dc5
+$4.21, 10 legs, 3 revised plans for $1.04, 1 compaction for $0.66, prefix 26,865.
+
+The prefix also has a test: `MissionPrefixBudgetTests` in `tests/ClaudiaKermin.Core.Tests` builds a Mission request as
+`MissionControl` does and holds the system prompt and tool definitions under a budget about 5% above today's figure
+(chars / 3, the mod's own estimate; it runs lower than the API's count, so compare it only with itself).
+
+## After an in-game check flight
+
+When a build's in-game check includes a Mun flight, add this step to the check: on the flown Mission's install, run
+
+```sh
+python3 -I tools/cost-baseline/baseline.py --compare <the check flight's mission id>
+```
+
+and paste its row, the reference row and the change line into the check's ticket. Flag any rise in per-leg cost,
+revised plans, compactions, full cache misses or prefix size against the reference. The flight needs `debug_tools` on
+so its Mission folder has `stream-dumps/`.
 
 ## How it counts
 
@@ -36,6 +89,10 @@ The mod writes one JSON line per Sequence Plan offered to `plans.jsonl` in the M
 with lints. The log is rewritten, not appended to: when that sequence's Debrief commits, the latest plan's line gains a
 `debrief` object (`outcome`, and the Debrief turn's own `effort`, `requests`, `cost`, `second_look`, ...). The rewrite is atomic.
 A plan whose Debrief has not come shows "not yet".
+
+Each Mission Plan turn (first or revised, #514) also writes a line with `"event":"mission_plan"`: `purpose`, `tools`, `tool_calls`,
+`refused_calls`, `repeat_calls` (zeros included), `tool_steps`, `discarded` (true for a tool loop dropped before the plan came),
+and the turn's figures as for a plan. `baseline.py` reads only the `plan` lines, so these do not change its report.
 
 Fields of a line: `plan` (1, 2, ... in the file), `name`, `purpose` (the turn that made it), `manual`, `tools` and `tool_calls`
 (Planning Tools called, with counts), `blocks` (Building Blocks the script calls, with counts), `custom_script`, `custom_lines`

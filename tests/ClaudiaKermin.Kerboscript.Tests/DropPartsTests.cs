@@ -104,13 +104,26 @@ namespace ClaudiaKermin.Kerboscript.Tests
         }
 
         [Fact]
+        public void A_decoupler_whose_parts_stay_is_counted_to_the_bound_then_left_in_drop_tried_with_no_kOS_error()
+        {
+            var script = "local ctx is lexicon(\"drop_tried\", list(), \"drop_tries\", lexicon()).\n"
+                + "print claudia_drop_settle(ctx, \"u1\", true) + ctx:drop_tries[\"u1\"] + ctx:drop_tried:length.\n"
+                + "print claudia_drop_settle(ctx, \"u1\", true) + ctx:drop_tries[\"u1\"] + ctx:drop_tried:length.\n"
+                + "print claudia_drop_settle(ctx, \"u1\", true) + ctx:drop_tries[\"u1\"] + ctx:drop_tried:length.\n"
+                + "print ctx:drop_tried[0].\n"
+                + "print claudia_drop_settle(ctx, \"u2\", false) + ctx:drop_tries[\"u2\"] + ctx:drop_tried:length.\n";
+            Assert.Equal(new[] { "retry10", "retry20", "gave_up31", "u1", "left12" },
+                KosHarness.Run(CoreLibrary.Bundle(script)).ToArray());
+        }
+
+        [Fact]
         public void Drop_empty_ignores_stage_limit_and_the_bound_ends_in_a_blocknote()
         {
             var source = CoreLibrary.Files.Single(f => f.Name == "claudia_lib").Source;
             var start = source.IndexOf("function claudia_drop_empty {", System.StringComparison.Ordinal);
             var body = source.Substring(start, source.IndexOf("// ---- Waits and warp", start, System.StringComparison.Ordinal) - start);
             Assert.DoesNotContain("stage_limit", body);
-            Assert.Contains("claudia_drop_outcome(stayed, tries)", body);
+            Assert.Contains("claudia_drop_settle(ctx, fired[i], stayed)", body);
             Assert.Contains("blocknote", body);
         }
 
@@ -139,6 +152,52 @@ namespace ClaudiaKermin.Kerboscript.Tests
             var cabin = "lexicon(\"hasmodule\", { parameter m. return m = \"" + module + "\". })";
             Assert.Equal("crew", One("claudia_part_kind(" + cabin + ")"));
             Assert.Equal("False", One("claudia_auto_drop_fires(list(claudia_part_kind(" + PlainPart + "), claudia_part_kind(" + cabin + ")), list(0), list(40))"));
+        }
+
+        // A part as kOS gives it, by the modules it has; "above" is what its :decoupler answers.
+        private static string Part(string modules, string above)
+        {
+            return "lexicon(\"name\", \"p\", \"decoupler\", " + above + ", \"hasmodule\", { parameter m. return list(" + modules + "):contains(m). })";
+        }
+
+        private const string Shield = "\"ModuleDecouple\", \"ModuleAblator\"";
+
+        [Fact]
+        public void A_heat_shield_is_never_the_decoupler_of_the_part_below_it()
+        {
+            // pod -> battery -> heat shield -> TR-18A -> tank: the TR-18A's decoupler, as kOS gives it, is the shield.
+            var shield = Part(Shield, "\"\"");
+            Assert.Equal("", One("claudia_decoupler_of(" + Part("", shield) + ")"));
+            Assert.Equal("", One("claudia_decoupler_of(" + Part("\"ModuleDecouple\"", shield) + ")"));
+            var trunk = Part("\"ModuleDecouple\"", "\"\"");
+            Assert.Equal("True", One("claudia_decoupler_of(" + Part("", trunk) + "):istype(\"Lexicon\")"));
+        }
+
+        [Fact]
+        public void Naming_a_decoupler_fires_that_decoupler_and_not_the_one_above_it()
+        {
+            var shield = Part(Shield, "\"\"");
+            var tr18 = Part("\"ModuleDecouple\"", shield);
+            Assert.Equal("True", One("claudia_drop_decoupler(" + tr18 + "):hasmodule(\"ModuleDecouple\")"));
+            Assert.Equal("False", One("claudia_drop_decoupler(" + tr18 + "):hasmodule(\"ModuleAblator\")"));
+        }
+
+        [Fact]
+        public void A_heat_shield_is_no_drop_target_even_when_named_or_under_a_tank()
+        {
+            var shield = Part(Shield, "\"\"");
+            Assert.Equal("", One("claudia_drop_decoupler(" + shield + ")"));
+            // An empty tank directly under the shield (no decoupler between): nothing to fire.
+            Assert.Equal("", One("claudia_drop_decoupler(" + Part("", shield) + ")"));
+        }
+
+        [Fact]
+        public void The_drop_plan_refuses_a_named_heat_shield_and_the_stage_plan_skips_it()
+        {
+            var source = CoreLibrary.Files.Single(f => f.Name == "claudia_lib").Source;
+            Assert.Contains("is a heat shield; reentry drops it", source);
+            var deorbit = CoreLibrary.Files.Single(f => f.Name == "deorbit").Source;
+            Assert.Contains("claudia_part_kind(p) <> \"shield\" and p:stage = stage_num", deorbit);
         }
 
         [Fact]

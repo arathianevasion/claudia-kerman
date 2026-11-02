@@ -24,6 +24,32 @@ namespace ClaudiaKermin.Core.Tools
         public bool Daylight = true;
         /// <summary>The most the correction burn that puts the ground track over the site may cost, m/s.</summary>
         public double MaxCorrectionDv = LandingPass.MostCorrectionDv;
+        /// <summary>
+        /// The craft that will brake (#511): with one that can fly, each pass's descent is planned over the terrain under its
+        /// approach (<see cref="DescentApproach.Plan"/>), a pass no Descent Shape clears is passed over, and the soonest pass within
+        /// 10% of the cheapest landing is taken. Null plans no descent (the pass search alone).
+        /// </summary>
+        public BrakeCraft Craft;
+        /// <summary>The Descent Shape asked for (<c>descent_shape</c>); null for "auto".</summary>
+        public double? Shape;
+        /// <summary>braking's margin (<c>burn_margin</c>).</summary>
+        public double Margin = 1.1;
+        /// <summary>A site no shape clears on a pass may move to the nearest that clears within 5 km (a site given as coordinates).</summary>
+        public bool MoveSite;
+        /// <summary>
+        /// For the plane-change search's coarse pass (#521): the shapes searched (null for all of <see cref="BrakePath.Shapes"/>),
+        /// a descent plan kept across searches (null: one per search), and how finely it tells headings apart, degrees.
+        /// </summary>
+        public IList<double> Shapes;
+        public Dictionary<string, DescentChoice> Planned;
+        public double HeadingStepDeg = 1;
+        /// <summary>
+        /// The sun's elevation at the site by UT, degrees, for a search that read it once over the window (the plane-change search,
+        /// #536); null to survey it at each search's passes.
+        /// </summary>
+        public Func<double, double> SunAt;
+        /// <summary>When to stop planning descents and answer <see cref="LandingPassResult.OutOfTime"/> (#536); null for never.</summary>
+        public SearchDeadline Deadline;
     }
 
     /// <summary>One pass over the site the search looked at, for <c>land</c>'s trace.</summary>
@@ -39,6 +65,16 @@ namespace ClaudiaKermin.Core.Tools
         public double SunDeg = double.NaN;
         /// <summary>"chosen", "next", or why <c>land</c> won't plan for it.</summary>
         public string Verdict = "";
+        /// <summary>The descent planned over this pass's approach (#511); null if none was planned or none clears.</summary>
+        public DescentTry Descent;
+        /// <summary>The approach's heading across the ground at the site, degrees; NaN where no descent was planned.</summary>
+        public double Heading = double.NaN;
+        /// <summary>The site the descent flies to, moved for terrain if it had to be.</summary>
+        public double SiteLat;
+        public double SiteLng;
+        public bool Moved;
+        /// <summary>The landing's delta-v: deorbit, correction and descent, m/s; NaN without a descent.</summary>
+        public double LandingDv = double.NaN;
     }
 
     internal sealed class LandingPassResult
@@ -56,6 +92,21 @@ namespace ClaudiaKermin.Core.Tools
         public double NextPassUt = -1;
         /// <summary>Seconds from the deorbit burn to periapsis over the site.</summary>
         public double FallS;
+        /// <summary>The chosen pass's descent (#511), its site and landing delta-v; null without a craft.</summary>
+        public DescentTry Descent;
+        public double SiteLat;
+        public double SiteLng;
+        public bool Moved;
+        public double LandingDv = double.NaN;
+        /// <summary>The periapsis flown, m from the body's centre: the ask's, or the descent's.</summary>
+        public double PeRadius;
+        /// <summary>The shapes that clear (a refused <c>descent_shape</c>'s report); NaN when not worked out.</summary>
+        public double ShapeLo = double.NaN;
+        public double ShapeHi = double.NaN;
+        /// <summary>Passes passed over because no shape cleared their approach (they count as no missed pass).</summary>
+        public int TerrainPasses;
+        /// <summary>The ask's deadline passed before every pass had its descent planned: no answer either way (#536).</summary>
+        public bool OutOfTime;
         public readonly List<LandingPassLine> Passes = new List<LandingPassLine>();
     }
 
@@ -200,38 +251,112 @@ namespace ClaudiaKermin.Core.Tools
             }
 
             var inReach = result.Passes.Where(p => p.CorrectionDv <= ask.MaxCorrectionDv).ToList();
-            if (ask.Daylight && inReach.Count > 0)
+            if (ask.Daylight && inReach.Count > 0 && ask.SunAt != null)
+                foreach (var pass in inReach) pass.SunDeg = ask.SunAt(pass.ArriveUt);
+            else if (ask.Daylight && inReach.Count > 0)
             {
                 var samples = inReach.Select(p => new SiteSample { Latitude = ask.Latitude, Longitude = ask.Longitude, Ut = p.ArriveUt }).ToList();
                 api.Survey(body.Name, samples, SiteFacts.Sun);
                 for (var i = 0; i < inReach.Count; i++) inReach[i].SunDeg = samples[i].SunElevation;
             }
 
-            var kept = new List<LandingPassLine>();
+            result.PeRadius = ask.PeRadius;
+            var eligible = new List<LandingPassLine>();
             foreach (var pass in result.Passes)
             {
                 pass.Verdict = Rejected(pass, ask);
-                if (pass.Verdict != "") continue;
-                pass.Verdict = kept.Count == 0 ? "chosen" : "next";
-                kept.Add(pass);
-                if (kept.Count == 2) break;
+                pass.SiteLat = ask.Latitude;
+                pass.SiteLng = ask.Longitude;
+                if (pass.Verdict == "") eligible.Add(pass);
             }
-            // The trace runs to the next pass, past which nothing was decided.
-            if (kept.Count == 2) result.Passes.RemoveRange(result.Passes.IndexOf(kept[1]) + 1, result.Passes.Count - result.Passes.IndexOf(kept[1]) - 1);
-            if (kept.Count > 0)
+
+            // Each pass's descent over the terrain under its approach (#511): northbound and southbound passes cross different
+            // ground, so it is planned per approach (the same heading over the same site is planned once).
+            var planning = ask.Craft != null && ask.Craft.CanFly;
+            var clearing = eligible;
+            string terrain = null;
+            if (planning)
             {
-                var chosen = kept[0];
+                var planned = ask.Planned ?? new Dictionary<string, DescentChoice>();
+                clearing = new List<LandingPassLine>();
+                foreach (var pass in eligible)
+                {
+                    if (ask.Deadline != null && ask.Deadline.Passed)
+                    {
+                        result.OutOfTime = true;
+                        result.Error = "out of time before every pass over the site had its descent planned";
+                        return result;
+                    }
+                    var choice = PlanPass(body, orbit, now, ask, api, lonOffset, handed, pass, ask.Latitude, ask.Longitude, planned);
+                    if (choice.Best == null && ask.MoveSite && !ask.Shape.HasValue)
+                    {
+                        // The nearest site within 5 km that some shape clears on this pass.
+                        foreach (var off in DescentApproach.Neighbours)
+                        {
+                            double nLat, nLng;
+                            DescentApproach.Destination(ask.Latitude, ask.Longitude, off[1], off[0], body.Radius, out nLat, out nLng);
+                            var moved = PlanPass(body, orbit, now, ask, api, lonOffset, handed, pass, nLat, nLng, planned);
+                            if (moved.Best == null) continue;
+                            choice = moved;
+                            pass.SiteLat = nLat;
+                            pass.SiteLng = nLng;
+                            pass.Moved = true;
+                            break;
+                        }
+                    }
+                    if (choice.Best == null)
+                    {
+                        pass.Verdict = choice.Error;
+                        terrain = terrain ?? choice.Error;
+                        if (double.IsNaN(result.ShapeLo)) result.ShapeLo = choice.ShapeLo;
+                        if (double.IsNaN(result.ShapeHi)) result.ShapeHi = choice.ShapeHi;
+                        result.TerrainPasses++;
+                        continue;
+                    }
+                    pass.Descent = choice.Best;
+                    pass.LandingDv = choice.Best.Dv + pass.CorrectionDv;
+                    clearing.Add(pass);
+                }
+            }
+
+            if (clearing.Count > 0)
+            {
+                var chosen = clearing[planning ? ChoosePass(clearing.Select(p => p.LandingDv).ToList()) : 0];
+                var after = clearing.FirstOrDefault(p => p.ArriveUt > chosen.ArriveUt);
+                var cheapest = planning ? clearing.Min(p => p.LandingDv) : 0;
+                foreach (var pass in clearing)
+                    if (pass != chosen && pass != after)
+                        pass.Verdict = "clears, " + Whole(pass.LandingDv) + " m/s: over 10% more than the cheapest pass, " + Whole(cheapest) + " m/s";
+                chosen.Verdict = "chosen";
+                if (after != null) after.Verdict = "next";
+                // The trace runs to the next pass, past which nothing was decided.
+                if (after != null) result.Passes.RemoveRange(result.Passes.IndexOf(after) + 1, result.Passes.Count - result.Passes.IndexOf(after) - 1);
                 result.BurnUt = chosen.BurnUt;
                 result.ArriveUt = chosen.ArriveUt;
                 result.CorrectionDv = chosen.CorrectionDv;
                 result.CrossM = chosen.CrossM;
                 result.SunDeg = chosen.SunDeg;
-                if (kept.Count > 1) result.NextPassUt = kept[1].ArriveUt;
+                result.SiteLat = chosen.SiteLat;
+                result.SiteLng = chosen.SiteLng;
+                result.Moved = chosen.Moved;
+                if (after != null) result.NextPassUt = after.ArriveUt;
+                if (chosen.Descent != null)
+                {
+                    // The descent's own periapsis: the burn stays put, the fall to it lengthens or shortens by seconds.
+                    result.Descent = chosen.Descent;
+                    result.LandingDv = chosen.LandingDv;
+                    result.PeRadius = body.Radius + chosen.Descent.PeAlt;
+                    result.FallS = FallSeconds(orbit.Mu, orbit.A, result.PeRadius);
+                    result.ArriveUt = chosen.BurnUt + result.FallS;
+                }
                 return result;
             }
 
             var hours = Tenths((ask.LatestUt - now) / 3600);
-            if (result.Passes.Count == 0)
+            if (terrain != null)
+                result.Error = ask.Shape.HasValue ? terrain
+                    : "terrain on the approach: no Descent Shape clears it on any pass in the next " + hours + " h (" + terrain.Replace("terrain on the approach: ", "") + ")";
+            else if (result.Passes.Count == 0)
                 result.Error = "no pass over the site in the next " + hours + " h";
             else if (inReach.Count == 0)
             {
@@ -244,6 +369,42 @@ namespace ClaudiaKermin.Core.Tools
                 result.Error = "no daylight pass over the site in the next " + hours + " h on this orbit: the sun never gets over "
                     + Whole(LandingSiteSearch.MinSunElevationDeg) + " degrees there at a pass in reach; pick a lower-latitude site, change the orbit's plane, or land with daylight false";
             return result;
+        }
+
+        /// <summary>
+        /// The pass <c>land</c> takes among those whose descent clears (#511), by their landing delta-v in pass order: the soonest
+        /// within 10% of the cheapest. An index into <paramref name="landingDvs"/>.
+        /// </summary>
+        public static int ChoosePass(IList<double> landingDvs)
+        {
+            var cheapest = landingDvs.Min();
+            for (var i = 0; i < landingDvs.Count; i++)
+                if (landingDvs[i] <= 1.1 * cheapest) return i;
+            return 0;
+        }
+
+        /// <summary>The descent over a pass's approach to (<paramref name="lat"/>, <paramref name="lng"/>), planned once per site and heading.</summary>
+        private static DescentChoice PlanPass(SnapshotBody body, Conic orbit, double now, LandingPassAsk ask, IPlanningBody api, double lonOffset, double handed,
+            LandingPassLine pass, double lat, double lng, Dictionary<string, DescentChoice> planned)
+        {
+            var turnRate = body.RotationPeriod != 0 ? 360 / body.RotationPeriod : 0;
+            var phi = handed * (lng - lonOffset + turnRate * (pass.ArriveUt - now)) * Math.PI / 180;
+            var latR = lat * Math.PI / 180;
+            var site = new Vec3(Math.Cos(latR) * Math.Cos(phi), Math.Cos(latR) * Math.Sin(phi), Math.Sin(latR));
+            var speed = Math.Sqrt(orbit.Mu * (2 / ask.PeRadius - 2 / (orbit.A + ask.PeRadius)));
+            double heading, vRot;
+            DescentApproach.Heading(orbit.W, site, speed, body.Radius, body.RotationPeriod, handed, out heading, out vRot);
+            pass.Heading = heading;
+            var step = ask.HeadingStepDeg;
+            var key = string.Format(CultureInfo.InvariantCulture, "{0:0.0000},{1:0.0000},{2:0}", lat, lng, Math.Round(heading / step) * step % 360);
+            DescentChoice choice;
+            if (!planned.TryGetValue(key, out choice))
+            {
+                choice = DescentApproach.Plan(ask.Craft, body, api, orbit.A, lat, lng, heading, vRot, ask.Shape, ask.Margin, ask.Shapes);
+                if (choice.Best != null) choice.Best.Heading = heading;
+                planned[key] = choice;
+            }
+            return choice;
         }
 
         /// <summary>Why <c>land</c> won't plan for a pass, or "": a correction over the most allowed, or dark with daylight wanted.</summary>
