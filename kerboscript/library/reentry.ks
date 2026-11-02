@@ -16,11 +16,11 @@
 //|     mains once they are out (under 250 m/s, over 0.04 atm, or by 1500 m); "none" never opens them.
 //|   chutes ["auto"]: the Chute Allocation's for this entry, "all", "none" or a list of part tags; no other is armed.
 //|   touchdown ["chutes"]: or "powered": falls under its chutes (or none), then brakes on its lit engines by
-//|     radar altitude (the stopping distance counts drag and thrust over weight) to 2 m/s; over 6 m/s fails. With no lit engine it fails at once.
+//|     radar altitude (the stopping distance counts drag and thrust over weight) to 2 m/s; over 6 m/s fails. Its gear goes down as it brakes; with no lit engine it fails at once.
 //|   jettison_stage ["auto"]: the stage whose decouplers drop the heat shield, "auto" for the decoupler on
 //|     or beside it (if powered, not one whose drop takes the engines), or "none". Only its decouplers fire.
 //|   separate ["auto"]: drops the stack (service module, tanks) before the atmosphere, never by the shield's
-//|     decoupler, and if powered only what hangs below the engines; "none" keeps it; or a stage number.
+//|     decoupler, and if powered only the engineless parts below the engines; "none" keeps it; or a stage number.
 //|   hold ["retrograde"]: points the craft's forward axis at surface retrograde; "none" leaves it.
 //|   max_duration ["auto"]: the wait for the atmosphere plus 1800 s.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block (it never stages).
