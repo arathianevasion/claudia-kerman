@@ -956,6 +956,84 @@ namespace ClaudiaKermin.ScriptCheck.Tests
                 + "deploy(ship:partstagged(\"chute\")[0]).\nprint vessel(\"Other\"):altitude.");
         }
 
+        // #654: the other-vessel taint follows scope. Every route by which another vessel reaches a name still ends in a refusal.
+        private const string Light = ":getmodule(\"ModuleLight\"):doevent(\"lights on\").";
+
+        [Theory]
+        [InlineData("function poke { parameter p. p" + Light + " }\npoke(vessel(\"Other\"):parts[0]).")]
+        [InlineData("function f { local p is target:parts[0]. p" + Light + " }\nf().")]
+        [InlineData("local t is target.\nfunction f { t:parts[0]" + Light + " }\nf().")]
+        [InlineData("function f { global g is target. }\nf().\ng:parts[0]" + Light)]
+        [InlineData("function f { set g to target. }\nf().\nfunction h { g:parts[0]" + Light + " }\nh().")]
+        [InlineData("local x is ship.\nfunction f { set x to target. }\nf().\nx:parts[0]" + Light)]
+        [InlineData("function f { set x to target. local x is ship. print x. }\nf().\nx:parts[0]" + Light)]
+        [InlineData("local a is target.\nlocal b is a.\nset c to b.\nc:parts[0]" + Light)]
+        [InlineData("function keep { parameter x. set kept to x. }\nkeep(target).\nkept:parts[0]" + Light)]
+        [InlineData("lock lk to target.\nlk:parts[0]" + Light)]
+        [InlineData("lock lk to vessel(\"Other\").\nfunction f { lk:parts[0]" + Light + " }\nf().")]
+        [InlineData("function g { return vessel(\"Other\"). }\ng():parts[0]" + Light)]
+        [InlineData("function id { parameter x. return x. }\nid(target):parts[0]" + Light)]
+        [InlineData("function g { return vessel(\"Other\"). }\nlocal d is g@.\nd:call():parts[0]" + Light)]
+        [InlineData("function poke { parameter p. p" + Light + " }\nlocal d is poke@.\nd:call(target:parts[0]).")]
+        [InlineData("function poke { parameter p. p" + Light + " }\npoke@:bind(target:parts[0]):call().")]
+        [InlineData("local f is { parameter o. o" + Light + " }.\nf(target:parts[0]).")]
+        [InlineData("print lexicon(\"f\", { parameter o. o" + Light + " return 0. })[\"f\"]:call(target:parts[0]).")]
+        [InlineData("function outer { parameter a. function inner { a:parts[0]" + Light + " } inner(). }\nouter(target).")]
+        [InlineData("function c { parameter z. z" + Light + " }\nfunction b { parameter y. c(y). }\nb(target:parts[0]).")]
+        [InlineData("function b { parameter y. c(y). }\nfunction c { parameter z. z" + Light + " }\nb(target:parts[0]).")]
+        [InlineData("function f { parameter o is ship. o:parts[0]" + Light + " }\nf(target).")]
+        [InlineData("until false {\n  local p is target:parts[0].\n  if true { local b is 1. break. }\n  p" + Light + "\n}")]
+        [InlineData("local t is target.\nwhen true then { t:parts[0]" + Light + " }")]
+        [InlineData("if true { local p is ship. if true { local n is 1. } set p to target. p:parts[0]" + Light + " }")]
+        [InlineData("function poke { parameter p. p" + Light + " }\nlocal d is poke@.\nd(target:parts[0]).")]
+        [InlineData("function outer { parameter a. function inner { set a to target. } inner(). a:parts[0]" + Light + " }\nouter(ship).")]
+        [InlineData("function f { parameter a. if a { return 1. } local p is target:parts[0]. p" + Light + " }\nf(true).")]
+        [InlineData("function f { parameter a. local p is 0. if a { set p to target. } else { set p to ship. } p:parts[0]" + Light + " }\nf(true).")]
+        [InlineData("local x is ship.\n{\n  if ship:altitude > 1 local x is target.\n  x:parts[0]" + Light + "\n}")]
+        [InlineData("local x is ship.\n{\n  if ship:altitude > 1 print 1. else local x is vessel(\"Other\").\n  x:parts[0]" + Light + "\n}")]
+        [InlineData("function g { local x is ship. { if ship:altitude > 1 local x is target. return x. } }\ng():parts[0]" + Light)]
+        [InlineData("function f { parameter x. { if ship:altitude > 1 local x is target. x:parts[0]" + Light + " } }\nf(ship).")]
+        public void AnotherVesselReachedThroughAnyAliasIsStillRefused(string script)
+        {
+            AssertForbidden("change or message other vessels", script);
+            AssertForbidden("change or message other vessels", CoreLibrary.Bundle(script));
+        }
+
+        [Fact]
+        public void AnUnrelatedFunctionWithTheSameParameterNameIsNotTainted()
+        {
+            AssertAllowed("function look { parameter p. print p:name. }\n"
+                + "function deploy { parameter p. p:getmodule(\"ModuleParachute\"):doevent(\"deploy chute\"). }\n"
+                + "look(vessel(\"Other\"):parts[0]).\ndeploy(ship:partstagged(\"chute\")[0]).");
+            // Called from inside a function, whose code is read before the definitions it calls.
+            AssertAllowed("function look { parameter p. print p:name. }\n"
+                + "function deploy { parameter p. p:getmodule(\"ModuleParachute\"):doevent(\"deploy chute\"). }\n"
+                + "function f { look(target). }\nf().\ndeploy(ship:partstagged(\"chute\")[0]).");
+        }
+
+        [Theory]
+        [InlineData("function a { local p is target. print p:name. }\nfunction b { local p is ship:partstagged(\"chute\")[0]. p:getmodule(\"ModuleParachute\"):doevent(\"deploy chute\"). }\na().\nb().")]
+        [InlineData("if true { local p is target. print p:name. }\nif true { local p is ship:partstagged(\"chute\")[0]. p:getmodule(\"ModuleParachute\"):doevent(\"deploy chute\"). }")]
+        [InlineData("set p to target.\nprint p:name.\nfunction b { local p is ship:partstagged(\"chute\")[0]. p:getmodule(\"ModuleParachute\"):doevent(\"deploy chute\"). }\nb().")]
+        public void ALocalHoldingAnotherVesselIsTrackedInItsOwnScope(string script) { AssertAllowed(script); }
+
+        [Fact]
+        public void PassingAnotherVesselToAMissionScriptFunctionLeavesTheLibrarysParametersAlone()
+        {
+            AssertAllowed(CoreLibrary.Bundle(File.ReadAllText(Path.Combine(RepoRoot(), "tests", "blocks", "exec_node", "test.ks"))
+                + "\nfunction look { parameter p. print p:name. }\nlook(target).\n"));
+        }
+
+        [Fact]
+        public void OnlyTheFunctionGivenAnotherVesselIsRefused()
+        {
+            var result = _check.Check("function look { parameter p. p" + Light + " }\n"
+                + "function deploy { parameter p. p:getmodule(\"ModuleParachute\"):doevent(\"deploy chute\"). }\n"
+                + "look(vessel(\"Other\"):parts[0]).\ndeploy(ship:partstagged(\"chute\")[0]).");
+            Assert.Contains(result.Forbidden, f => f.StartsWith("line 1: :DOEVENT on another vessel"));
+            Assert.DoesNotContain(result.Forbidden, f => f.StartsWith("line 2: "));
+        }
+
         [Fact]
         public void TheShippedDebugScriptsPass()
         {
