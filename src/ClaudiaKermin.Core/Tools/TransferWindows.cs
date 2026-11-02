@@ -174,6 +174,14 @@ namespace ClaudiaKermin.Core.Tools
             if (best < 0)
                 return Fail("no departure in the " + Num(synodic) + " s from UT " + Num(from) + " has a Lambert path to " + problem.Name
                     + (problem.LambertError != null ? " (Lambert: " + problem.LambertError + ")" : ""));
+            // A moon's two nodes an orbit cost about the same: the earliest dip within NoSavingDv of the cheapest is Optimal, not a later twin.
+            if (problem.Moon)
+                for (var i = 0; i < best; i++)
+                    if (rowCost[i] <= rowCost[best] + NoSavingDv && (i == 0 || rowCost[i] <= rowCost[i - 1]) && rowCost[i] <= rowCost[i + 1])
+                    {
+                        best = i;
+                        break;
+                    }
 
             // Optimal: BrentMin over the departure a grid step either side of the cheapest, each at its own cheapest flight time.
             var end = from + synodic;

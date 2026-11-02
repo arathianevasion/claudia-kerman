@@ -199,7 +199,8 @@ namespace ClaudiaKermin.Core.Tools
                 PlanningJson.Time(json, "depart", w.DepartureUt, snapshot.Ut);
                 json.Field("total_dv", PlanningJson.Round(w.TotalDv, 1)).EndObject();
             }
-            json.Field("pick", TransferWindows.Pick(found, snapshot.TimeVersusDeltaV) == found.Optimal ? "optimal" : "soonest");
+            var pick = TransferWindows.Pick(found, snapshot.TimeVersusDeltaV);
+            json.Field("pick", pick == found.Optimal && pick != found.Soonest ? "optimal" : "soonest");
         }
 
         private static void Window(JsonWriter json, string name, TransferWindow w, double now, bool capture)

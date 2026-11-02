@@ -270,7 +270,8 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         // Minmus, 6° out of the parking orbit's plane, from a 100 km orbit at the start of a new game: leaving now pays a plane
-        // change on the way; Optimal waits about 28 days for Minmus to arrive at a node, where there is none. The figures are
+        // change on the way; Optimal waits about 3.5 days for Minmus to arrive at its first node, where there is none (the second,
+        // half an orbit on, costs the same, and the earlier is taken). The figures are
         // the search's own (pinned): the ejection is the known one to Minmus from low Kerbin orbit, about 930 m/s from 80 km.
         [Fact]
         public void Minmus_waits_for_a_node_and_optimal_is_no_dearer_than_soonest()
@@ -279,7 +280,7 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(0, found.Soonest.DepartureUt, 0);
             Assert.InRange(found.Soonest.TotalDv, 1081.6 - 1, 1081.6 + 1);
             Assert.InRange(found.Soonest.PlaneDv, 8.5 - 1, 8.5 + 1);
-            Assert.InRange(found.Optimal.DepartureUt / Day, 28.45 - 0.5, 28.45 + 0.5);
+            Assert.InRange(found.Optimal.DepartureUt / Day, 3.52 - 0.5, 3.52 + 0.5);
             Assert.InRange(found.Optimal.TotalDv, 1068.3 - 1, 1068.3 + 1);
             Assert.InRange(found.Optimal.EjectionDv, 900, 930);
             Assert.True(found.Optimal.TotalDv <= found.Soonest.TotalDv);
