@@ -38,9 +38,19 @@ namespace ClaudiaKermin.Core.Missions
 
         private TransferWindow WindowFor(Mission mission, SnapshotBody planet)
         {
-            if (planet == null) return null;
+            if (planet == null || _snapshot == null) return null;
             var settings = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config));
-            return WindowWaits.Window(_snapshot, planet, settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent);
+            // The search starts at the snapshot's time, which may be older than now (the player is back from another Mission).
+            var taken = _snapshot.Ut;
+            _snapshot.Ut = _ut;
+            try
+            {
+                return WindowWaits.Window(_snapshot, planet, settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent);
+            }
+            finally
+            {
+                _snapshot.Ut = taken;
+            }
         }
 
         private static void ClearWindow(Mission mission)
