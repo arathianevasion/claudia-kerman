@@ -12,7 +12,7 @@ namespace ClaudiaKermin.Core.Missions
     /// Which Building Blocks' full docs go in the per-Mission layer. Every block keeps its Summary in the base
     /// layer, so a block left out here can still be named and its options asked for; this only decides which
     /// ones are spelled out in full. A pure decision from the Mission Goal: a goal that points at nothing
-    /// in particular gets every block but those only its words bring (change_orbit, rendezvous), and a block this table doesn't know is
+    /// in particular gets every block but those only its words bring (change_orbit, rendezvous, dock), and a block this table doesn't know is
     /// always included.
     /// </summary>
     internal static class BlockSelection
@@ -22,9 +22,10 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>
         /// Blocks whose full docs come only when the goal's words point at them, even for a goal that points at nothing in
         /// particular (#444): change_orbit's orbit changes are a goal's own (a polar orbit, Minmus's plane), and its Summary in
-        /// the base layer names it for the rest. So are rendezvous's (#455): only a goal with another vessel in it flies one.
+        /// the base layer names it for the rest. So are rendezvous's (#455): only a goal with another vessel in it flies one; and
+        /// dock's (#456), which only a goal that docks flies.
         /// </summary>
-        private static readonly HashSet<string> OnlyWhenNamed = new HashSet<string> { "change_orbit", "rendezvous" };
+        private static readonly HashSet<string> OnlyWhenNamed = new HashSet<string> { "change_orbit", "rendezvous", "dock" };
 
         /// <summary>Each block's trigger words, matched at the start of a word of the Mission Goal ("land" finds "landing", not "island").</summary>
         private static readonly KeyValuePair<string, string[]>[] Triggers =
@@ -40,6 +41,7 @@ namespace ClaudiaKermin.Core.Missions
                 "eccentric", "semi-major", "minmus"),
             // Docking starts with a rendezvous (#456's dock takes over once the target is loaded).
             Rule("rendezvous", "rendezvous", "dock", "meet", "catch up", "target vessel", "join up"),
+            Rule("dock", "dock", "berth"),
             Rule("science", "science", "experiment", "survey", "biome", "sample", "data", "report", "goo", "thermometer"),
         };
 

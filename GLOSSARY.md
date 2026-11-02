@@ -84,6 +84,10 @@ _Avoid_: encounter (the patched-conic event of entering a sphere of influence), 
 The Building Block that flies the craft from orbit to the Target Vessel's physics range (loaded, about 2.2 km) at under 2 m/s relative, where `dock` takes over: a plane match, a phasing orbit, a Rendezvous transfer, a Course Correction and matching velocities, each step solved when it starts (#455).
 _Avoid_: rendezvous (alone, when the transfer mode could be meant), approach, intercept
 
+**Docking**:
+Joining the craft to the Target Vessel port to port, flown by the `dock` Building Block from `rendezvous`'s hand-off: the craft lines its port up on the target port's axis and closes along it on RCS translation. While it flies, the mod runs its bundled `dock_hold` on the Target Vessel's kOS processor (when it has electric charge and a link by the Child Vessel link test) to turn the target's port to the craft, and stops it when `dock` ends; a target without one is met as it is, and refused if it turns faster than 1°/s (#456).
+_Avoid_: berthing, mating, hard dock (KSP's ports dock on contact)
+
 **Intercept**:
 A transfer that reaches a target orbit anywhere on it, wherever the target is, such as a parking orbit; free to choose the arrival point, it is never dearer than a Rendezvous with the same orbit.
 _Avoid_: flyby, orbit change (one burn, not a transfer)
