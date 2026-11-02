@@ -702,5 +702,15 @@ namespace ClaudiaKermin.Core.Tests
             DescentApproach.Heading(new Vec3(0, -1, 0), new Vec3(1, 0, 0), 584, MunR, MunTurn, 1, out heading, out vRot);
             Assert.InRange(heading, 358, 360);
         }
+
+        [Fact]
+        public void LandingPassRefusesABodyWithAnAtmosphereNamingReentry()
+        {
+            var snapshot = MunOrbit();
+            snapshot.Bodies.Clear();
+            snapshot.Bodies.Add(new SnapshotBody { Name = "Mun", Parent = "Kerbin", Gm = Mun.Gm, Radius = MunR, RotationPeriod = MunTurn, SoiRadius = 2e6, AtmosphereHeight = 70000 });
+            Assert.Equal("land flies airless bodies only; Mun has an atmosphere; use reentry (touchdown \"powered\" when chutes are short)",
+                BlockCalls.LandingPass(Ask(0, 30), snapshot, new Terrain())["error"]);
+        }
     }
 }
