@@ -56,7 +56,7 @@ namespace ClaudiaKermin.Core.Missions
         public double ChargeMax;
         /// <summary>
         /// A parachute's own numbers for the reentry predictor, as the adapter's ReentryCraft reads them, held retrograde (#626:
-        /// the Chute Allocation divides the chutes by them); null for other parts, a cut chute, or when not read (the editor).
+        /// the Chute Allocation divides the chutes by them); null for other parts, a cut chute, or when not read.
         /// Only the recording JSON carries it.
         /// </summary>
         public Tools.ReentryChute Chute;

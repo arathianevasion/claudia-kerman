@@ -138,9 +138,15 @@ namespace ClaudiaKermin.Adapter
         /// </summary>
         public static ReentryChute ChuteOf(Vessel vessel, Part part)
         {
+            return ChuteOf(part, vessel.ReferenceTransform.up);
+        }
+
+        /// <summary>The same for a part of the editor's ship (#641), held with <paramref name="nose"/> (the root part's up) retrograde.</summary>
+        public static ReentryChute ChuteOf(Part part, Vector3 nose)
+        {
             var chute = part.FindModuleImplementing<ModuleParachute>();
             if (chute == null) return null;
-            return ChuteOf(part, chute, part.partTransform.InverseTransformDirection(-vessel.ReferenceTransform.up));
+            return ChuteOf(part, chute, part.partTransform.InverseTransformDirection(-nose));
         }
 
         private static ReentryChute ChuteOf(Part part, ModuleParachute chute, Vector3 local)
