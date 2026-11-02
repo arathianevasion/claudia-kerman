@@ -258,7 +258,7 @@ namespace ClaudiaKermin.Core.Tools
                 if (plan != null && n > 0) plan.CheapestUt = cheapestWindow.T;
             }
             // To a body, the broken-plane plan is costed beside the one-burn one (#619), near the craft's plane too (#653): there
-            // the one-burn arc, near 180°, can take a large normal and radial part, and the cheaper total wins.
+            // the one-burn arc, near 180°, can take a large normal and radial part.
             if (body != null && ask.BrokenPlane)
             {
                 var broken = BrokenPlane(setup, craft, targetOrbit, body, peR, ask, from, span, transfer.Floor);

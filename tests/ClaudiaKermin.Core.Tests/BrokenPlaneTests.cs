@@ -13,9 +13,10 @@ namespace ClaudiaKermin.Core.Tests
 {
     /// <summary>
     /// The broken-plane transfer (#619): to a body, <see cref="Transfer"/> also costs an ejection in the craft's plane with a
-    /// plane change where the arc is slow, and the cheaper total wins (since #653 under 1° out of plane too); <c>transfer_to</c> flies the
-    /// plane change with CORRECTIONBURN at its planned time. a107's geometry (m20261101-140219-a107): the craft at 80 km and 0.1°,
-    /// Minmus arriving about 95° past its ascending node, 6° out of the craft's plane.
+    /// plane change where the arc is slow, and the cheaper total wins (since #653 under 1° out of plane too);
+    /// <c>transfer_to</c> flies the plane change with CORRECTIONBURN at its planned time. a107's geometry
+    /// (m20261101-140219-a107): the craft at 80 km and 0.1°, Minmus arriving about 95° past its ascending node, 6° out of the
+    /// craft's plane.
     /// </summary>
     public sealed class BrokenPlaneTests
     {
