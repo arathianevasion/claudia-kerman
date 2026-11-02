@@ -124,7 +124,7 @@ namespace ClaudiaKermin.Core.Tools
             var orbited = !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body;
             var at = new BodySystem(snapshot.Bodies).Find(orbited);
             if (at == null) return Error("there is no body named " + PlanningJson.Quote(orbited));
-            if (at.AtmosphereHeight > 0 || at.SeaLevelAtm > 0) return Error(at.Name + " has an atmosphere, and land flies airless bodies only");
+            if (at.AtmosphereHeight > 0 || at.SeaLevelAtm > 0) return Error("land flies airless bodies only; " + at.Name + " has an atmosphere; use reentry (touchdown \"powered\" when chutes are short)");
             foreach (var key in new[] { "lat", "lng", "r_pe" })
                 if (!(NumberOrNull(ask, key).HasValue)) return Error(key + " is required");
             object daylight;

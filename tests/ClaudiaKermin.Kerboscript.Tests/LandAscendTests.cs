@@ -23,6 +23,12 @@ namespace ClaudiaKermin.Kerboscript.Tests
             return KosHarness.Run(CoreLibrary.Bundle("print " + expression + ".")).Single();
         }
 
+        [Fact]
+        public void LandRefusesABodyWithAnAtmosphereNamingReentry()
+        {
+            Assert.Equal("land flies airless bodies only; Duna has an atmosphere; use reentry (touchdown \"powered\" when chutes are short)", One("land_atmosphere_reason(\"Duna\")"));
+        }
+
         private static string[] Run(string missionScript)
         {
             return KosHarness.Run(CoreLibrary.Bundle(missionScript)).ToArray();
