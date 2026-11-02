@@ -39,6 +39,8 @@ namespace ClaudiaKermin.Core.Missions
         public double TouchdownSpeed = -1;
         /// <summary>Its chutes can't bring it under <see cref="ChuteAllocation.TouchdownLimit"/>: the engines finish the landing from <see cref="TouchdownSpeed"/>.</summary>
         public bool PoweredFinish;
+        /// <summary>The height above sea level, m, its fall was predicted down to (<see cref="ChuteAllocation.EndAltitudeOf"/>).</summary>
+        public double EndAltitude;
         /// <summary>Why <see cref="TouchdownSpeed"/> is unknown; "" when it is known.</summary>
         public string Unpredicted = "";
     }
@@ -63,6 +65,21 @@ namespace ClaudiaKermin.Core.Missions
         /// open chute it hardly counts.
         /// </summary>
         public const double BodyDragArea = 1;
+
+        /// <summary>The share of a body's radius taken as its highest common terrain when the Game Snapshot gives no figure (Duna's highlands are about 2.5%).</summary>
+        public const double TerrainShareOfRadius = 0.01;
+
+        /// <summary>
+        /// Where an entry on <paramref name="body"/> is predicted to touch down, m above sea level: the body's own terrain
+        /// height from the Game Snapshot when it has one, else sea level for Kerbin (the return lands at KSC) and a conservative
+        /// <see cref="TerrainShareOfRadius"/> of the radius for other bodies, so thinner air never makes the touchdown too soft.
+        /// </summary>
+        public static double EndAltitudeOf(SnapshotBody body)
+        {
+            if (body.TerrainHeight > 0) return body.TerrainHeight;
+            if (string.Equals(body.Name, "Kerbin", StringComparison.OrdinalIgnoreCase)) return 0;
+            return Math.Min(body.Radius * TerrainShareOfRadius, 0.5 * body.AtmosphereHeight);
+        }
 
         /// <summary>The remaining entries, in plan order.</summary>
         public readonly List<EntryChutes> Entries = new List<EntryChutes>();
@@ -323,13 +340,14 @@ namespace ClaudiaKermin.Core.Missions
                     entry.Unpredicted = "the craft's mass is unknown";
                     return;
                 }
+                entry.EndAltitude = EndAltitudeOf(body);
                 var top = body.Radius + body.AtmosphereHeight;
                 var apo = top + Math.Max(5000, 0.1 * body.AtmosphereHeight);
                 var peri = body.Radius + 0.3 * body.AtmosphereHeight;
                 var orbit = Conic.FromElements(body.Gm, (apo + peri) / 2, (apo - peri) / (apo + peri), 0, 0, 0, Math.PI, 0);
                 var frame = new BodyFrame { LonOffset = 0, Handed = 1, Ut = 0, RotationPeriod = body.RotationPeriod };
                 var craft = new FallingCraft(entry.MassKg, chutes);
-                var prediction = ReentryPredictor.Predict(body, orbit, 0, 0, entry.MassKg, new SnapshotAir(body), craft, frame);
+                var prediction = ReentryPredictor.Predict(body, orbit, 0, entry.EndAltitude, entry.MassKg, new SnapshotAir(body), craft, frame);
                 if (prediction.Error != null)
                 {
                     entry.Unpredicted = prediction.Error;
