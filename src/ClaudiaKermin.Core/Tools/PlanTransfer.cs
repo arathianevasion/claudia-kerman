@@ -11,7 +11,9 @@ namespace ClaudiaKermin.Core.Tools
     /// <summary>
     /// <c>plan_transfer</c>: the cheapest two-burn transfer from the craft's orbit (<see cref="Transfer"/>), as <c>transfer_to</c>
     /// would find it, so Claudia can budget the departure and the capture. A body is met where it is (a rendezvous, arriving at
-    /// <c>target_pe</c>); an orbit given by its apsides and plane is reached anywhere on it (an intercept). A separate tool rather
+    /// <c>target_pe</c>); an orbit given by its apsides and plane is reached anywhere on it (an intercept). Another planet of the
+    /// same star gets its Transfer Windows instead (<see cref="TransferWindows"/>, #458): Soonest, Optimal and the Mission
+    /// Setting's pick, costed from the parking orbit (the Delta-v Map's low orbit when the craft has none yet). A separate tool rather
     /// than a <c>solve_burn</c> goal, because its inputs (a target, an orbit, capture) share nothing with that tool's; not
     /// named <c>transfer</c>, which reads as the block <c>transfer_to</c> and is part of that name in the cached block summaries.
     /// </summary>
