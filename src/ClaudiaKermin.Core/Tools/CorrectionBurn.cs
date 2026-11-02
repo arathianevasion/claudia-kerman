@@ -122,7 +122,7 @@ namespace ClaudiaKermin.Core.Tools
                 Constraints = m,
                 Evaluate = (x, c) =>
                 {
-                    var arrival = Arrive(system, from, coast.Orbit, n == 4 ? x[3] : startUt, new Vec3(x[0], x[1], x[2]), target, needed);
+                    var arrival = SingleShooting.Arrive(system, from, coast.Orbit, n == 4 ? x[3] : startUt, new Vec3(x[0], x[1], x[2]), target, needed);
                     if (arrival == null) return false;
                     c[0] = arrival.Orbit.PeR - peR;
                     if (withInc) Sqp.Inclination(Normal(arrival), ask.TargetInc.Value, c, 1);
@@ -136,37 +136,25 @@ namespace ClaudiaKermin.Core.Tools
 
             var ut = free ? result.X[3] : startUt;
             var burn = new Vec3(result.X[0], result.X[1], result.X[2]);
-            var reached = Arrive(system, from, coast.Orbit, ut, burn, target, needed);
+            var reached = SingleShooting.Arrive(system, from, coast.Orbit, ut, burn, target, needed);
             if (reached == null) return Fail("the solver's best burn does not reach " + target.Name);
-            Vec3 r, v;
-            coast.Orbit.State(ut, out r, out v);
-            // Stock's maneuver-node frame, as PredictBurn applies it.
-            var along = v.Normalized;
-            var up = Vec3.Cross(r, v).Normalized;
-            var outward = Vec3.Cross(along, up);
+            double prograde, normal, radial;
+            SingleShooting.NodeFrame(coast.Orbit, ut, burn, out prograde, out normal, out radial);
             var plan = new CorrectionPlan
             {
                 HasBurn = true,
                 Ut = ut,
-                Prograde = Vec3.Dot(burn, along),
-                Normal = Vec3.Dot(burn, up),
-                Radial = Vec3.Dot(burn, outward),
+                Prograde = prograde,
+                Normal = normal,
+                Radial = radial,
                 DeltaV = burn.Length,
                 PePredicted = reached.Orbit.PeR - target.Radius,
                 IncPredicted = reached.Orbit.Inclination,
                 Iterations = result.Iterations,
                 Evaluations = result.Evaluations,
             };
-            // The solver's own status is not the test: the caller's tolerances, in metres and degrees, are.
-            var peOff = Math.Abs(plan.PePredicted - ask.TargetPe);
-            // In degrees, so an equatorial target is not met by arriving the other way round (the normal's pair can't tell).
-            var incOff = withInc ? Math.Abs(plan.IncPredicted - ask.TargetInc.Value) : 0;
-            if (peOff > ask.PeTolerance || incOff > ask.IncTolerance)
-            {
-                plan.Error = Failure + ": the best burn (" + Num(plan.DeltaV) + " m/s) arrives at periapsis " + Num(plan.PePredicted) + " m"
-                    + (withInc ? " and inclination " + Deg(plan.IncPredicted) + "°" : "") + ", not " + Num(ask.TargetPe) + " m"
-                    + (withInc ? " and " + Deg(ask.TargetInc.Value) + "°" : "") + " (" + (result.Reason ?? result.Status.ToString()) + ")";
-            }
+            plan.Error = SingleShooting.ToleranceError(Failure, plan.DeltaV, plan.PePredicted, plan.IncPredicted, ask.TargetPe, ask.TargetInc,
+                ask.PeTolerance, ask.IncTolerance, result.Reason ?? result.Status.ToString());
             return plan;
         }
 
@@ -190,7 +178,7 @@ namespace ClaudiaKermin.Core.Tools
         {
             for (var count = 1; count <= MaxPatches; count++)
             {
-                var path = Follow(system, body, orbit, now, count);
+                var path = SingleShooting.Follow(system, body, orbit, now, count);
                 if (path == null) return null;
                 var last = path[path.Count - 1];
                 if (last.Error != null) return null;
@@ -204,51 +192,8 @@ namespace ClaudiaKermin.Core.Tools
         private static int PatchesTo(BodySystem system, SnapshotBody body, Conic orbit, double ut, Vec3 burn, SnapshotBody target)
         {
             for (var count = 1; count <= MaxPatches; count++)
-                if (Arrive(system, body, orbit, ut, burn, target, count) != null) return count;
+                if (SingleShooting.Arrive(system, body, orbit, ut, burn, target, count) != null) return count;
             return 0;
-        }
-
-        /// <summary>
-        /// The first patch round <paramref name="target"/> after <paramref name="burn"/> (inertial, m/s) at <paramref name="ut"/>
-        /// on <paramref name="orbit"/>, following at most <paramref name="patches"/> patches; null when it does not get there.
-        /// </summary>
-        private static Patch Arrive(BodySystem system, SnapshotBody body, Conic orbit, double ut, Vec3 burn, SnapshotBody target, int patches)
-        {
-            Vec3 r, v;
-            orbit.State(ut, out r, out v);
-            Conic after;
-            try
-            {
-                after = Conic.FromState(body.Gm, r, v + burn, ut);
-            }
-            catch (ArgumentException)
-            {
-                return null;
-            }
-            var path = Follow(system, body, after, ut, patches);
-            if (path == null) return null;
-            foreach (var patch in path)
-            {
-                if (patch.Body == target) return patch;
-                if (patch.Error != null) return null;
-            }
-            return null;
-        }
-
-        /// <summary>
-        /// <see cref="BodySystem.Follow"/>, or null where it throws on a radial path (a last patch that is a hyperbola round
-        /// the star no longer throws, #471). The wrapper stays until #497.
-        /// </summary>
-        private static List<Patch> Follow(BodySystem system, SnapshotBody body, Conic orbit, double ut, int patches)
-        {
-            try
-            {
-                return system.Follow(body, orbit, ut, patches);
-            }
-            catch (ArgumentException)
-            {
-                return null;
-            }
         }
 
         private static Vec3 Normal(Patch patch)
@@ -271,11 +216,6 @@ namespace ClaudiaKermin.Core.Tools
         private static string Num(double x)
         {
             return Math.Round(x).ToString("0", CultureInfo.InvariantCulture);
-        }
-
-        private static string Deg(double x)
-        {
-            return x.ToString("0.00", CultureInfo.InvariantCulture);
         }
     }
 }
