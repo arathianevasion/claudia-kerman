@@ -87,7 +87,19 @@ namespace ClaudiaKermin.Core.Tests
             // Its summary stays in the base layer; its full docs come only with a goal that names an orbit change.
             var names = CoreLibrary.Blocks.Select(b => b.Name).ToList();
             var picked = BlockSelection.For("Prove the kOS link from the launch pad.", names);
-            Assert.Equal(names.Where(n => n != "change_orbit"), picked);
+            Assert.Equal(names.Where(n => n != "change_orbit" && n != "rendezvous"), picked);
+        }
+
+        [Fact]
+        public void RendezvousComesOnlyWithAGoalThatNamesAnotherVessel()
+        {
+            // #455: its full docs come with a rendezvous or a docking, not with every goal; its summary stays in the base layer.
+            var names = CoreLibrary.Blocks.Select(b => b.Name).ToList();
+            Assert.Contains("rendezvous", BlockSelection.For("Rendezvous with Kerbin Station One", names));
+            Assert.Contains("rendezvous", BlockSelection.For("Launch and dock with the station", names));
+            Assert.Contains("rendezvous", BlockSelection.For("Meet the tug in low Kerbin orbit", names));
+            Assert.DoesNotContain("rendezvous", BlockSelection.For("Land on the Mun", names));
+            Assert.DoesNotContain("rendezvous", BlockSelection.For("Put a satellite in a stationary orbit", names));
         }
 
         [Fact]
@@ -119,8 +131,8 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("transfer_to", narrow);
             Assert.Contains("land", narrow);
             Assert.DoesNotContain("reentry", narrow);
-            // change_orbit comes only with a goal that names an orbit change (#444).
-            Assert.Equal(names.Count - 1, BlockSelection.For("", names).Count);
+            // change_orbit comes only with a goal that names an orbit change (#444), rendezvous with another vessel (#455).
+            Assert.Equal(names.Count - 2, BlockSelection.For("", names).Count);
         }
 
         [Fact]

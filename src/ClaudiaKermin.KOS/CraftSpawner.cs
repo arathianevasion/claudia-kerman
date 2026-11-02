@@ -3,24 +3,56 @@
 
 using System;
 using System.Linq;
+using ClaudiaKermin.Core.Kos;
+using ClaudiaKermin.Core.Missions;
 using UnityEngine;
 
 namespace ClaudiaKermin.KOS
 {
     /// <summary>
     /// Puts a <c>.craft</c> into a circular orbit as a new vessel in the current game, for the debug
-    /// block test runner. The parts are built from the craft file (so missing module data takes the
+    /// block test runner, and a test's second craft relative to it (#455). The parts are built from the craft file (so missing module data takes the
     /// part's defaults), snapshotted to PART nodes and added as a ProtoVessel: the way Contract
     /// Configurator spawns craft files.
     /// </summary>
     internal static class CraftSpawner
     {
-        public static ProtoVessel IntoOrbit(string craftPath, string bodyName, double altitude, double inclination, double? periapsis = null)
+        /// <summary>
+        /// A test's orbit at <paramref name="ut"/> (<c>orbit_*</c>): circular at altitude; or, with a periapsis, an orbit whose
+        /// apoapsis is altitude, started at the apoapsis.
+        /// </summary>
+        public static Orbit OrbitFor(string bodyName, double altitude, double inclination, double? periapsis, double ut)
         {
-            var game = HighLogic.CurrentGame;
             var body = FlightGlobals.Bodies.FirstOrDefault(b => b.bodyName == bodyName);
             if (body == null) throw new InvalidOperationException("no body named " + bodyName);
+            var apRadius = body.Radius + altitude;
+            var peRadius = periapsis.HasValue ? body.Radius + periapsis.Value : apRadius;
+            return periapsis.HasValue
+                ? new Orbit(inclination, (apRadius - peRadius) / (apRadius + peRadius), (apRadius + peRadius) / 2, 0, 0, Math.PI, ut, body)
+                : new Orbit(inclination, 0, apRadius, 0, 0, 0, ut, body);
+        }
 
+        /// <summary>
+        /// A block test's second craft (#455): on the orbit <see cref="BlockTestTarget.Place"/> gives relative to the craft on
+        /// <paramref name="craft"/> at <paramref name="ut"/>, named <paramref name="name"/> so <c>vessel(name)</c> finds it and not the craft.
+        /// </summary>
+        public static ProtoVessel Relative(string craftPath, Orbit craft, double ut, double along, double prograde, double normal, double radial, string name)
+        {
+            var at = new SnapshotOrbit
+            {
+                SemiMajorAxis = craft.semiMajorAxis, Eccentricity = craft.eccentricity, Inclination = craft.inclination, Lan = craft.LAN,
+                ArgumentOfPeriapsis = craft.argumentOfPeriapsis, MeanAnomalyAtEpoch = craft.meanAnomalyAtEpoch, Epoch = craft.epoch,
+            };
+            var placed = BlockTestTarget.Place(craft.referenceBody.gravParameter, at, ut, along, prograde, normal, radial);
+            var orbit = new Orbit(placed.Inclination, placed.Eccentricity, placed.SemiMajorAxis, placed.Lan, placed.ArgumentOfPeriapsis,
+                placed.MeanAnomalyAtEpoch, placed.Epoch, craft.referenceBody);
+            return IntoOrbit(craftPath, orbit, name);
+        }
+
+        /// <summary>Spawns the craft file onto <paramref name="orbit"/>, as a vessel named <paramref name="name"/> (the craft's own name when null).</summary>
+        public static ProtoVessel IntoOrbit(string craftPath, Orbit orbit, string name)
+        {
+            var game = HighLogic.CurrentGame;
             var ship = ShipConstruction.LoadShip(craftPath);
             if (ship == null || ship.parts.Count == 0) throw new InvalidOperationException("KSP wouldn't load " + craftPath);
 
@@ -54,14 +86,8 @@ namespace ClaudiaKermin.KOS
             foreach (var part in ship.parts) UnityEngine.Object.Destroy(part.gameObject);
             UnityEngine.Object.Destroy(holder);
 
-            // Circular at altitude; or, with a periapsis, an orbit whose apoapsis is altitude, started at the apoapsis.
-            var apRadius = body.Radius + altitude;
-            var peRadius = periapsis.HasValue ? body.Radius + periapsis.Value : apRadius;
-            var orbit = periapsis.HasValue
-                ? new Orbit(inclination, (apRadius - peRadius) / (apRadius + peRadius), (apRadius + peRadius) / 2, 0, 0, Math.PI, Planetarium.GetUniversalTime(), body)
-                : new Orbit(inclination, 0, apRadius, 0, 0, 0, Planetarium.GetUniversalTime(), body);
             var discovery = ProtoVessel.CreateDiscoveryNode(DiscoveryLevels.Owned, UntrackedObjectClass.A, double.PositiveInfinity, double.PositiveInfinity);
-            var vesselNode = ProtoVessel.CreateVesselNode(ship.shipName, VesselType.Probe, orbit, 0, partNodes, discovery);
+            var vesselNode = ProtoVessel.CreateVesselNode(name ?? ship.shipName, VesselType.Probe, orbit, 0, partNodes, discovery);
             vesselNode.SetValue("stg", currentStage, true); // CreateVesselNode writes 0; Vessel.currentStage loads from this
             return game.AddVessel(vesselNode);
         }

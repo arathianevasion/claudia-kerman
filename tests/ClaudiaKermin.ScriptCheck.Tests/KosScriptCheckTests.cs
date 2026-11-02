@@ -586,6 +586,8 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("local c is addons:claudia.\nprint c:ReturnBurn(lexicon(\"target_pe\", 35000, \"target_inc\", 30)):dv.")]
         [InlineData("local a is addons:claudia:chuteallocation().\nprint a:uids.")]
         [InlineData("local c is addons:claudia.\nprint c:ChuteAllocation:titles.")]
+        [InlineData("local t is addons:claudia:targetvessel().\nprint t:name.")]
+        [InlineData("local c is addons:claudia.\nprint c:TargetVessel:body.")]
         public void ABlockInternalCallInAMissionScriptFails(string script)
         {
             AssertForbidden("call block-internal calculations", script);
@@ -796,6 +798,18 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         }
 
         [Fact]
+        public void RendezvousFileAlonePassesOnlyAsCoreLibrary()
+        {
+            // rendezvous makes TARGETVESSEL, ORBITBURN, EJECTIONBURN and CORRECTIONBURN inline (#455), and only reads the Target
+            // Vessel: allowed as the library's, its calls refused as a Mission Script's.
+            var block = File.ReadAllText(Path.Combine(RepoRoot(), "kerboscript", "library", "rendezvous.ks"));
+            Assert.True(new KosScriptCheck(forCoreLibrary: true).Check(block).Passed);
+            var forbidden = _check.Check(block).Forbidden;
+            foreach (var call in new[] { "TARGETVESSEL", "ORBITBURN", "EJECTIONBURN", "CORRECTIONBURN" })
+                Assert.Contains(forbidden, f => f.EndsWith(":" + call + " (call block-internal calculations)"));
+        }
+
+        [Fact]
         public void ReturnsFileAlonePassesOnlyAsCoreLibrary()
         {
             // return makes RETURNBURN inline (#450): allowed as the library's, refused as a Mission Script's.
@@ -937,6 +951,7 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("change_orbit_inc")]
         [InlineData("change_orbit_match_minmus")]
         [InlineData("change_orbit_resonant")]
+        [InlineData("rendezvous")]
         public void EachBlockTestScriptBundledWithTheLibraryPasses(string test)
         {
             // transfer_to calls the ejection solver inline; return calls the block kOS lets be named return; change_orbit

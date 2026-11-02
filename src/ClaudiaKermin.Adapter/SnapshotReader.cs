@@ -84,7 +84,7 @@ namespace ClaudiaKermin.Adapter
         {
             var ksp = vessel.targetObject != null ? vessel.targetObject.GetVessel() : null;
             if (ksp != null && ksp != vessel) snapshot.KspTarget = TargetOf(ksp);
-            var id = MissionDriver.TargetVesselId;
+            var id = MissionDriver.TargetVesselId ?? MissionDriver.BlockTestTargetId;
             if (id.HasValue && id.Value != vessel.persistentId)
             {
                 Vessel target;

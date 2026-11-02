@@ -77,8 +77,12 @@ A transfer to a body far out of the craft's plane whose departure stays in that 
 _Avoid_: dog-leg
 
 **Rendezvous**:
-A transfer that meets its target where the target is at arrival: a body, or a vessel's orbit with the vessel on it. A transfer to a body is always one.
+A transfer that meets its target where the target is at arrival: a body, or a vessel's orbit with the vessel on it. A transfer to a body is always one. This is the transfer mode (`mode` "rendezvous"); the `rendezvous` Building Block is the whole approach to the Target Vessel, of which such a transfer is one step.
 _Avoid_: encounter (the patched-conic event of entering a sphere of influence), meet
+
+**`rendezvous` (the Building Block)**:
+The Building Block that flies the craft from orbit to the Target Vessel's physics range (loaded, about 2.2 km) at under 2 m/s relative, where `dock` takes over: a plane match, a phasing orbit, a Rendezvous transfer, a Course Correction and matching velocities, each step solved when it starts (#455).
+_Avoid_: rendezvous (alone, when the transfer mode could be meant), approach, intercept
 
 **Intercept**:
 A transfer that reaches a target orbit anywhere on it, wherever the target is, such as a parking orbit; free to choose the arrival point, it is never dearer than a Rendezvous with the same orbit.

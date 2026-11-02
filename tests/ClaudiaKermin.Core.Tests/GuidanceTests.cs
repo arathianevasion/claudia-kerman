@@ -139,6 +139,14 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("Its blocks are change_orbit,", Tools().Single(t => t.Name == "solve_burn").Description);
         }
 
+        [Fact]
+        public void TheBaseLayerPointsATargetVesselAtRendezvousInOneLine()
+        {
+            // #455's guidance line, one line (#212): rendezvous's summary; its full docs say where it hands off to dock.
+            Assert.Contains("\n- rendezvous(options): meets the Target Vessel.", MissionPrompts.BaseLayer);
+            Assert.Contains("under 2 m/s relative; then dock.", CoreLibrary.FullDocs(new[] { "rendezvous" }));
+        }
+
         [Theory]
         [InlineData("land", "find_landing_site")]
         [InlineData("land", "stage_performance")]

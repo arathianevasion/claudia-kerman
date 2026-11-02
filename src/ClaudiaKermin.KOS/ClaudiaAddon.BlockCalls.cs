@@ -46,6 +46,8 @@ namespace ClaudiaKermin.KOS
                 "Core Library only (transfer_to): the cheapest departure to target (a moon's name) arriving at target_pe, or to an orbit (target_sma, target_ecc, ...; mode rendezvous or intercept), capture true or false, within one synodic period from earliest_ut or window (to latest_ut, refusing over max_dv); lexicon error, ut, prograde, normal, radial, dv, arrival_dv, encounter_ut, arrival_ut, target_pe_actual, ..."));
             AddSuffix("RETURNBURN", new OneArgsSuffix<Lexicon, Lexicon>(ReturnBurn,
                 "Core Library only (return): the least burn from earliest_ut to latest_ut (one orbit later if missing) that leaves the moon orbited for its planet at target_pe and, if given, target_inc; lexicon error, planet, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted, soi_ut, from_grid"));
+            AddSuffix("TARGETVESSEL", new NoArgsSuffix<Lexicon>(TargetVessel,
+                "Core Library only (rendezvous): the Mission's Target Vessel, read live; lexicon error, name, body"));
             AddSuffix("CHUTEALLOCATION", new NoArgsSuffix<Lexicon>(ChuteAllocationSet,
                 "Core Library only (reentry): the Chute Allocation's chutes for this entry; lexicon error, all (true: keep every chute), entry, return, uids, titles, powered_finish, touchdown_speed"));
         }
@@ -146,6 +148,16 @@ namespace ClaudiaKermin.KOS
                 ? string.Format(CultureInfo.InvariantCulture, "{0} node at UT {1:0.0}, prograde {2:0.00}, normal {3:0.00}, radial {4:0.00} m/s ({5:0.00} m/s, burn {6:0.0} s); wanted {7}",
                     KosValues.Format(ask), node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["burn_time"], KosValues.Format(node["wanted"]))
                 : (string)node["error"]);
+        }
+
+        private Lexicon TargetVessel()
+        {
+            System.Collections.Generic.IDictionary<string, object> found = null;
+            return (Lexicon)Guarded("TARGETVESSEL", () =>
+            {
+                found = BlockCalls.TargetVessel(SnapshotReader.Read(shared.Vessel));
+                return KosValues.FromPlain(found);
+            }, () => found["error"] as string == "" ? found["name"] + " round " + found["body"] : (string)found["error"]);
         }
 
         private Lexicon CorrectionBurn(Lexicon input)
