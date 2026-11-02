@@ -12,8 +12,8 @@ using Xunit;
 namespace ClaudiaKermin.Core.Tests
 {
     /// <summary>
-    /// The broken-plane transfer (#619): to a body far out of the craft's plane, <see cref="Transfer"/> also costs an ejection in
-    /// the craft's plane with a plane change where the arc is slow, and the cheaper total wins; <c>transfer_to</c> flies the
+    /// The broken-plane transfer (#619): to a body, <see cref="Transfer"/> also costs an ejection in the craft's plane with a
+    /// plane change where the arc is slow, and the cheaper total wins (since #653 under 1° out of plane too); <c>transfer_to</c> flies the
     /// plane change with CORRECTIONBURN at its planned time. a107's geometry (m20261101-140219-a107): the craft at 80 km and 0.1°,
     /// Minmus arriving about 95° past its ascending node, 6° out of the craft's plane.
     /// </summary>
@@ -149,39 +149,64 @@ namespace ClaudiaKermin.Core.Tests
             Assert.InRange(pe, TargetPe - 1000, TargetPe + 1000);
         }
 
-        // ---- in plane: as before ----
+        // ---- near the craft's plane (#653) ----
 
-        public static IEnumerable<object[]> InPlane()
+        /// <summary>a107 with Minmus's orbit tilted <paramref name="inclination"/>° (its line of nodes as it was), as #619's agent tried it.</summary>
+        internal static GameSnapshot A107Tilted(double inclination)
         {
-            yield return new object[] { "Mun", TransferTests.A107() };
-            yield return new object[] { "Minmus", A107AtANode() };
+            var snapshot = TransferTests.A107();
+            snapshot.Bodies.Single(b => b.Name == "Minmus").Inclination = inclination;
+            return snapshot;
         }
 
-        [Theory]
-        [MemberData(nameof(InPlane))]
-        public void An_in_plane_target_chooses_and_costs_exactly_as_the_one_burn_plan(string target, GameSnapshot snapshot)
+        [Fact]
+        public void On_a107_s_geometry_with_Minmus_tilted_half_a_degree_the_broken_plane_is_chosen_under_1_100_m_s()
         {
-            var oneBurn = Solved(snapshot, Ask(snapshot, target, planeChange: false));
-            Assert.True(OutOfPlane(snapshot, D(oneBurn, "arrival_ut")) < 1 || target == "Mun");
+            // #653: under 1° out of the craft's plane the one-burn arc, near 180°, took 950 m/s out (normal -206, radial
+            // -185), 1,112 m/s in all; in plane the ejection is about 921 m/s and the plane change about 3 m/s.
+            var snapshot = A107Tilted(0.5);
+            var oneBurn = Solved(snapshot, Ask(snapshot, planeChange: false));
+            Assert.True(OutOfPlane(snapshot, D(oneBurn, "arrival_ut")) < 1);
+            Assert.InRange(Total(oneBurn), 1100, 1125);
+            Assert.True(Math.Abs(D(oneBurn, "normal")) > 150);
+            var plan = Solved(snapshot, Ask(snapshot));
+            Assert.True(Total(plan) <= 1100, "broken plane " + Total(plan) + " m/s");
+            Assert.True(D(plan, "plane_ut") > D(plan, "ut") && D(plan, "plane_ut") < D(plan, "encounter_ut"));
+            Assert.InRange(Math.Abs(D(plan, "normal")), 0, 0.01);
+            Assert.InRange(D(plan, "plane_dv"), 0.5, 10);
+            Assert.InRange(D(plan, "target_pe_actual"), TargetPe - 100, TargetPe + 100);
+        }
+
+        [Fact]
+        public void Minmus_at_its_node_takes_the_broken_plane_when_it_is_cheaper_than_the_one_burn_plan()
+        {
+            // a107's 6° Minmus moved to arrive at the craft's plane: the one-burn plan still takes about 107 m/s normal (1,118
+            // m/s in all); the broken plane, about 1,095.
+            var snapshot = A107AtANode();
+            var oneBurn = Solved(snapshot, Ask(snapshot, planeChange: false));
+            Assert.True(OutOfPlane(snapshot, D(oneBurn, "arrival_ut")) < 1);
+            var plan = Solved(snapshot, Ask(snapshot));
+            Assert.True(D(plan, "plane_ut") > 0);
+            Assert.True(Total(plan) < Total(oneBurn), "broken plane " + Total(plan) + " m/s against one burn " + Total(oneBurn) + " m/s");
+        }
+
+        // ---- the Mun, in plane: as before ----
+
+        [Fact]
+        public void An_in_plane_Mun_transfer_chooses_and_costs_exactly_as_the_one_burn_plan()
+        {
+            // Its broken plane is costed too (#653), but dearer: the one-burn plan stands.
+            var snapshot = TransferTests.A107();
             foreach (var capture in new[] { true, false })
             {
-                var ask = Ask(snapshot, target);
+                var ask = Ask(snapshot, "Mun");
                 ask["capture"] = capture;
-                var off = Ask(snapshot, target, planeChange: false);
+                var off = Ask(snapshot, "Mun", planeChange: false);
                 off["capture"] = capture;
                 var plan = Solved(snapshot, ask);
                 Assert.Equal(Solved(snapshot, off).OrderBy(kv => kv.Key).ToList(), plan.OrderBy(kv => kv.Key).ToList());
                 Assert.Equal(-1.0, D(plan, "plane_ut"));
             }
-        }
-
-        [Fact]
-        public void The_broken_plane_is_costed_from_1_degree_out_of_plane()
-        {
-            Assert.Equal(1, Transfer.BrokenPlaneDegrees);
-            // Minmus near its node: under the threshold, so the one-burn plan stands (the theory above); at a107's 6°, over it.
-            var near = A107AtANode();
-            Assert.True(OutOfPlane(near, D(Solved(near, Ask(near, planeChange: false)), "arrival_ut")) < Transfer.BrokenPlaneDegrees);
         }
 
         [Fact]
@@ -206,6 +231,8 @@ namespace ClaudiaKermin.Core.Tests
             Timing.Within(100, () => Assert.Equal("", PlaneChange(coast, plan)["error"]));
             var near = A107AtANode();
             Timing.Within(100, () => Solved(near, Ask(near)));
+            var tilted = A107Tilted(0.5);
+            Timing.Within(100, () => Solved(tilted, Ask(tilted)));
         }
     }
 }

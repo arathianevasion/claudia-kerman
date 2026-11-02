@@ -162,11 +162,6 @@ namespace ClaudiaKermin.Core.Tools
         private const int Windows = 3;
         /// <summary>From this relative inclination, deg, a body no window reaches is put down to its orbit's tilt.</summary>
         private const double InclinedDegrees = 1;
-        /// <summary>
-        /// From this angle, deg, between a body at arrival and the craft's plane (between their orbits, with no one-burn plan), a
-        /// broken-plane plan is costed beside the one-burn one (#619): nearer a node, the one-burn plan stands as it was.
-        /// </summary>
-        internal const double BrokenPlaneDegrees = 1;
         /// <summary>The plane change's time on the in-plane arc, as a fraction of its flight time: searched between these.</summary>
         private const double PlaneLow = 0.1;
         private const double PlaneHigh = 0.99;
@@ -262,7 +257,9 @@ namespace ClaudiaKermin.Core.Tools
                 else if (failed == null) failed = tried;
                 if (plan != null && n > 0) plan.CheapestUt = cheapestWindow.T;
             }
-            if (body != null && ask.BrokenPlane && OutOfPlane(craft, targetOrbit, plan) >= BrokenPlaneDegrees)
+            // To a body, the broken-plane plan is costed beside the one-burn one (#619), near the craft's plane too (#653): there
+            // the one-burn arc, near 180°, can take a large normal and radial part, and the cheaper total wins.
+            if (body != null && ask.BrokenPlane)
             {
                 var broken = BrokenPlane(setup, craft, targetOrbit, body, peR, ask, from, span, transfer.Floor);
                 if (broken != null && (plan == null || broken.Total(ask.Capture) < plan.Total(ask.Capture))) plan = broken;
@@ -339,16 +336,6 @@ namespace ClaudiaKermin.Core.Tools
                 Ut = window.T, Prograde = prograde, Normal = normal, Radial = radial, DeltaV = leg.Departure.Length,
                 ArrivalDv = leg.Arrival.Length, EncounterUt = window.T + window.Tof, ArrivalUt = window.T + window.Tof,
             };
-        }
-
-        /// <summary>
-        /// How far, deg, the target is out of the craft's plane: at the one-burn plan's arrival, or with none the angle between
-        /// the two orbits (the most it can be).
-        /// </summary>
-        private static double OutOfPlane(Conic craft, Conic target, TransferPlan plan)
-        {
-            if (plan == null) return Math.Acos(Math.Max(-1, Math.Min(1, Vec3.Dot(craft.W, target.W)))) * 180 / Math.PI;
-            return Math.Abs(Math.Asin(Math.Max(-1, Math.Min(1, Vec3.Dot(target.Position(plan.ArrivalUt).Normalized, craft.W))))) * 180 / Math.PI;
         }
 
         /// <summary>

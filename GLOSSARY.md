@@ -73,7 +73,7 @@ A burn between departure and arrival that trims the predicted arrival at a body 
 _Avoid_: mid-course correction, MCC
 
 **Broken-plane transfer**:
-A transfer to a body far out of the craft's plane whose departure stays in that plane, with a plane change partway out, where the arc is slow, that makes the encounter; its delta-v is reported as `plane_dv`, apart from the Course Corrections' `correction_dv`. `transfer_to` flies it in place of the halfway Course Correction (#619).
+A transfer to a body out of the craft's plane whose departure stays in that plane, with a plane change partway out, where the arc is slow, that makes the encounter; its delta-v is reported as `plane_dv`, apart from the Course Corrections' `correction_dv`. `transfer_to` flies it in place of the halfway Course Correction (#619).
 _Avoid_: dog-leg
 
 **Rendezvous**:
