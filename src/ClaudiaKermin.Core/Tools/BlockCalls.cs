@@ -785,6 +785,59 @@ namespace ClaudiaKermin.Core.Tools
             return ask.TryGetValue(key, out value) && value is double ? (double)value : (double?)null;
         }
 
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:CHUTEALLOCATION</c>, for <c>reentry</c>'s chutes "auto" (#626, #628): the Chute Allocation's set for the
+        /// entry this reentry is, by <see cref="ChuteAllocation.For"/> on the Mission Plan step in hand (<paramref name="step"/>, 0
+        /// first) and the body the craft is at. Takes no input. Gives <c>error</c> "", <c>all</c> (true: no allocation, or no entry
+        /// for this step, so the reentry keeps every chute aboard), <c>entry</c> (the Maneuver Sequence's name; "" when all),
+        /// <c>return</c> (it is the Kerbin return), <c>uids</c> (the kOS part UIDs of the chutes it may open, drogues with their
+        /// mains; every stowed or armed chute aboard when all), <c>titles</c> (their part titles, in the same order),
+        /// <c>powered_finish</c> (its chutes can't bring it under 15 m/s), and <c>touchdown_speed</c> (m/s its chutes leave it
+        /// at, by the predictor; -1 unknown or when all). <paramref name="uidOf"/> gives a part's kOS UID from its
+        /// <c>persistentId</c>, or null when it isn't aboard: a chute no longer aboard is left out.
+        /// </summary>
+        public static IDictionary<string, object> ChuteAllocationCall(ChuteAllocation allocation, int step, GameSnapshot snapshot, Func<uint, string> uidOf)
+        {
+            if (snapshot == null) return Error("there is no Game Snapshot of the craft");
+            var at = snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body;
+            var entry = allocation == null ? null : allocation.For(step, at);
+            var uids = new List<object>();
+            var titles = new List<object>();
+            if (entry == null)
+            {
+                foreach (var part in snapshot.Craft.Parts)
+                {
+                    if (!part.Tags.Contains("parachute")) continue;
+                    if (part.Chute != null && (part.Chute.State == ReentryChuteState.SemiDeployed || part.Chute.State == ReentryChuteState.Deployed)) continue;
+                    var uid = uidOf(part.Id);
+                    if (uid == null) continue;
+                    uids.Add(uid);
+                    titles.Add(part.Title.Length > 0 ? part.Title : part.Name);
+                }
+            }
+            else
+            {
+                foreach (var chute in entry.Chutes)
+                {
+                    var uid = uidOf(chute.PartId);
+                    if (uid == null) continue;
+                    uids.Add(uid);
+                    titles.Add(chute.Title);
+                }
+            }
+            return new Dictionary<string, object>
+            {
+                { "error", "" },
+                { "all", entry == null },
+                { "entry", entry == null ? "" : entry.Sequence },
+                { "return", entry != null && entry.Return },
+                { "uids", uids },
+                { "titles", titles },
+                { "powered_finish", entry != null && entry.PoweredFinish },
+                { "touchdown_speed", entry == null ? -1.0 : entry.TouchdownSpeed },
+            };
+        }
+
         private static IDictionary<string, object> Error(string reason)
         {
             return new Dictionary<string, object> { { "error", reason } };

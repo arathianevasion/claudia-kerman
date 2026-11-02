@@ -518,6 +518,8 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("local c is addons:claudia.\nprint c:OrbitBurn(lexicon(\"goal\", \"match_plane\", \"target\", \"Minmus\")):dv.")]
         [InlineData("local h is addons:claudia:returnburn(lexicon(\"target_pe\", 35000)).\nadd node(h:ut, h:radial, h:normal, h:prograde).")]
         [InlineData("local c is addons:claudia.\nprint c:ReturnBurn(lexicon(\"target_pe\", 35000, \"target_inc\", 30)):dv.")]
+        [InlineData("local a is addons:claudia:chuteallocation().\nprint a:uids.")]
+        [InlineData("local c is addons:claudia.\nprint c:ChuteAllocation:titles.")]
         public void ABlockInternalCallInAMissionScriptFails(string script)
         {
             AssertForbidden("call block-internal calculations", script);
