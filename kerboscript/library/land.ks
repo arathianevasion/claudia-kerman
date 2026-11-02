@@ -1382,6 +1382,12 @@ function land_pass_verdict {
   return "fail".
 }
 
+// land's refusal on a body with an atmosphere; the landing tool (BlockCalls) says the same. Pure.
+function land_atmosphere_reason {
+  parameter body_name.
+  return "land flies airless bodies only; " + body_name + " has an atmosphere; use reentry (touchdown " + char(34) + "powered" + char(34) + " when chutes are short)".
+}
+
 // Why land fails for a missed pass (land_pass_verdict "fail"), with the search's answer now: found_ok and
 // its error (found_error), the touchdown UT of the next pass it found (next_ut), the passes already missed
 // (missed) and the orbit's eccentricity (ecc). Pure.
@@ -1509,7 +1515,7 @@ function land {
     }
   }
   if body:atm:exists {
-    return claudia_finish(ctx, false, "land flies airless bodies only; " + body:name + " has an atmosphere; use reentry", extra).
+    return claudia_finish(ctx, false, land_atmosphere_reason(body:name), extra).
   }
   if claudia_on_ground() {
     return claudia_finish(ctx, false, "already down (" + status + ")", extra).
