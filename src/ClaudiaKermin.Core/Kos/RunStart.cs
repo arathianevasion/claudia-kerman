@@ -22,6 +22,12 @@ namespace ClaudiaKermin.Core.Kos
 
         /// <summary>The mod already has a program running on this processor.</summary>
         public bool ModRunActive { get; set; }
+
+        /// <summary>
+        /// The mod's run on this processor is a dock_hold that has been told to stop (#656) and has not finished: it ends a frame or
+        /// two later. Only meaningful with <see cref="ModRunActive"/>.
+        /// </summary>
+        public bool HoldStopping { get; set; }
     }
 
     public enum StartDecisionKind
@@ -52,11 +58,16 @@ namespace ClaudiaKermin.Core.Kos
         /// <summary>How long to wait for a processor's first update before giving up.</summary>
         public const double MaxWaitSeconds = 10;
 
+        /// <summary>How long a start waits for a dock_hold that is stopping to finish (a few frames' worth, with room for a slow one).</summary>
+        public const double MaxStopWaitSeconds = 2;
+
         public static StartDecision Decide(KosCompatibility kos, ProcessorState processor, double secondsWaited)
         {
             if (!kos.IsCompatible) return Refuse(kos.Message);
             if (!processor.Found) return Refuse("There's no kOS processor to run the script on.");
             if (!processor.Powered) return Refuse("The kOS processor is off or has no power.");
+            if (processor.ModRunActive && processor.HoldStopping && secondsWaited <= MaxStopWaitSeconds)
+                return new StartDecision(StartDecisionKind.Wait, "");
             if (processor.ModRunActive) return Refuse("Claudia already has a script running on this processor.");
             if (!processor.HasUpdated)
             {
