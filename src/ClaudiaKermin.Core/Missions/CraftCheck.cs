@@ -49,7 +49,7 @@ namespace ClaudiaKermin.Core.Missions
             foreach (var node in root["findings"].Items)
             {
                 var rule = CraftCheckRules.Find(JsonNode.Str(node["code"]) ?? "");
-                if (rule == null) return null;
+                if (rule == null || rule.ModOnly) return null;
                 if (reply.Findings.Any(f => f.Code == rule.Code)) continue;
                 reply.Findings.Add(new CraftFinding
                 {
@@ -562,17 +562,16 @@ namespace ClaudiaKermin.Core.Missions
     {
         public static readonly string System =
             "You are Claudia Kermin, the AI mission controller in this game of Kerbal Space Program (KSP). Before a Mission starts, "
-            + "you run a Craft Check: you judge whether the player's craft can achieve the Mission Goal.\n\n"
+            + "you run a Craft Check: can the player's craft achieve the Mission Goal?\n\n"
             + "The mod has already worked out the facts: per-stage delta-v from the game's stock simulator, thrust over weight on each "
             + "body, the part inventory (each part has tags for what it can do), the crew, the experiments with the science still to gain, "
-            + "and the Delta-v Map (the delta-v each leg of travel needs, with no margin). Trust those numbers; do not recompute them "
-            + "from memory of the game. You judge: work out the route the Mission Goal needs, add its legs from the Delta-v Map, "
+            + "and the Delta-v Map (the delta-v each leg of travel needs, with no margin). Trust those numbers. You judge: work out the route the Mission Goal needs, add its legs from the Delta-v Map, "
             + "compare with the craft's delta-v (stages are listed with stage 0 firing last; add up the stages the route can use), "
             + "and apply the margin you are given.\n\n"
-            + "Report only findings from the fixed lists below, by their exact code. Do not report anything else, however sensible: a "
-            + "check that is not on the list is not part of the Craft Check. Report a finding only when its condition really holds for "
-            + "this craft and this Mission Goal. Explain each with the numbers, and give a concrete fix the player could make to the craft "
-            + "(you never edit the craft yourself). If nothing applies, return no findings.\n\n"
+            + "Report only findings from the fixed lists below, by their exact code. Do not report anything else, however sensible. "
+            + "Report a finding only when its condition really holds. "
+            + "Explain each with the numbers and a concrete fix the player could make "
+            + "(you never edit the craft). If nothing applies, return no findings.\n\n"
             + "For a launch from a body with air, call plan_ascent with the Mission Goal's first target_ap and the stage_limit the launch would use; "
             + "report its turn_shape as planned_turn_shape.\n\n"
             + CraftCheckRules.Describe() + "\n"

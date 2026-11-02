@@ -91,21 +91,22 @@ namespace ClaudiaKermin.Adapter
             // Staging acts on the vessel the player is flying, so that is the vessel the stage belongs to.
             if (!IsCraft(FlightGlobals.ActiveVessel)) return;
             Report(RunEventKind.Staging, "stage " + stage + " fired");
-            Separated();
+            Separated(FlightGlobals.ActiveVessel);
             _lastExplained = Time.realtimeSinceStartup;
         }
 
         private void OnDecoupled(Vessel original, Vessel made)
         {
             // A decoupler fired by a block (drop_parts, drop_empty) doesn't stage, but drops delta-v all the same (#605).
-            if (IsCraft(original)) Separated();
+            if (IsCraft(original)) Separated(original);
             _lastExplained = Time.realtimeSinceStartup;
         }
 
         /// <summary>A stage or decoupler fired on the craft: Mission Control measures what stock's delta-v left loses across it (#605).</summary>
-        private void Separated()
+        private void Separated(Vessel vessel)
         {
-            if (_running()) _send(new CraftSeparated());
+            // The throttle as it is now (#615), not the last snapshot's: a script can cut it and stage in the same moment.
+            if (_running()) _send(new CraftSeparated(vessel.ctrlState.mainThrottle));
         }
 
         private void OnPartDie(Part part)

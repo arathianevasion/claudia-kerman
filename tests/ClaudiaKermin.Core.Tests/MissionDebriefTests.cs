@@ -233,12 +233,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             var kept = new Rig(this, DebriefJson("Nominal", ""));
             var start = kept.RunToRunning();
-            var result = new Dictionary<string, object>
-            {
-                { "success", true },
-                { "kept", new List<object> { "crewReport: no link; call science with transmit once the link is up, from anywhere" } },
-            };
-            kept.Mission.Send(new KosBlockEnded("science", result, start.RunId));
+            kept.Mission.Send(new KosBlockEnded("science", ScienceResult(("crewReport", "kept")), start.RunId));
             kept.Mission.Send(new KosRunEnded(Finished(), start.RunId));
             kept.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
             Assert.Contains("The data is aboard; sending it needs no new landing.", kept.Transport.Requests[2].Body);
@@ -249,6 +244,39 @@ namespace ClaudiaKermin.Core.Tests
             sent.Mission.Send(new KosRunEnded(Finished(), sentStart.RunId));
             sent.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
             Assert.DoesNotContain("no new landing", sent.Transport.Requests[2].Body);
+        }
+
+        private static Dictionary<string, object> ScienceResult(params (string Experiment, string Transmit)[] entries)
+        {
+            return new Dictionary<string, object>
+            {
+                { "success", true },
+                { "results", entries.Select(e => (object)new Dictionary<string, object> { { "experiment", e.Experiment }, { "transmit", e.Transmit } }).ToList() },
+            };
+        }
+
+        private static string DebriefAfterScience(MissionDebriefTests test, params Dictionary<string, object>[] calls)
+        {
+            var rig = new Rig(test, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning();
+            foreach (var call in calls) rig.Mission.Send(new KosBlockEnded("science", call, start.RunId));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+            return rig.Transport.Requests[2].Body;
+        }
+
+        [Fact]
+        public void ALaterScienceCallThatTransmitsTheKeptDataTakesTheAboardNoticeAway()
+        {
+            var body = DebriefAfterScience(this, ScienceResult(("crewReport", "kept")), ScienceResult(("crewReport", "transmitted")));
+            Assert.DoesNotContain("no new landing", body);
+        }
+
+        [Fact]
+        public void TheAboardNoticeStaysWhileAnotherExperimentIsStillKept()
+        {
+            var body = DebriefAfterScience(this, ScienceResult(("crewReport", "kept"), ("temperatureScan", "kept")), ScienceResult(("temperatureScan", "transmitted")));
+            Assert.Contains("The data is aboard; sending it needs no new landing.", body);
         }
 
         [Fact]

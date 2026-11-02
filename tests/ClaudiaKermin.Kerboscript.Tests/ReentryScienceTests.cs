@@ -431,6 +431,15 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal("skip: holds data, so it was not overwritten", One("science_decision(true, true, true, false, true, true, 30)"));
         }
 
+        // #624: a held send says "sent" only once the data transmitted; a failed one says it was not sent.
+        [Theory]
+        [InlineData("transmitted", "held data sent, no new run")]
+        [InlineData("kept", "held data not sent: transmission did not finish, data kept")]
+        public void A_held_sends_detail_follows_whether_it_transmitted(string transmit, string expected)
+        {
+            Assert.Equal(expected, One("science_held_detail(\"" + transmit + "\")"));
+        }
+
         // #612: data kept for want of a link or charge gets a hint for a transmit-only call; other keeps get none.
         [Theory]
         [InlineData("keep: no antenna or no link", "crewReport: no link; call science with transmit once the link is up, from anywhere")]
