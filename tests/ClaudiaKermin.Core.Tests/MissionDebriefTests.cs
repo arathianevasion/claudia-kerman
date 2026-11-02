@@ -196,6 +196,36 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("Delta-v used this run, from stock: 1,038 m/s (left at start 3,913 m/s, now 2,875 m/s).", LastUserText(rig.Transport.Requests[2]));
         }
 
+        // ---- The Chute Allocation (#626) ----
+
+        private static Action<GameSnapshot> WithChute(ClaudiaKermin.Core.Tools.ReentryChuteState state)
+        {
+            return s => s.Craft.Parts.Add(new SnapshotPart
+            {
+                Id = 4242, ParentId = s.Craft.Parts[0].Id, Name = "parachuteSingle", Title = "Mk16 Parachute", MassT = 0.1,
+                Tags = new List<string> { "parachute" }, Chute = new ClaudiaKermin.Core.Tools.ReentryChute { State = state, FullArea = 337 },
+            });
+        }
+
+        [Fact]
+        public void TheChuteAllocationIsWorkedOutAtMissionPlanApprovalAndAgainAtEachDebriefFromTheCraftAsItIs()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning(WithChute(ClaudiaKermin.Core.Tools.ReentryChuteState.Stowed));
+            var approved = rig.Mission.View.ChuteAllocation;
+            Assert.NotNull(approved);
+            Assert.Equal(new uint[] { 4242 }, approved.Chutes.Select(c => c.PartId));
+
+            // The run opened the chute: the Debrief's allocation has none left to give.
+            rig.Mission.Send(Craft(WithChute(ClaudiaKermin.Core.Tools.ReentryChuteState.Deployed)));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            var debriefed = rig.Mission.View.ChuteAllocation;
+            Assert.NotSame(approved, debriefed);
+            Assert.Empty(debriefed.Chutes);
+        }
+
         // ---- Data kept on board (#612) ----
 
         [Fact]
