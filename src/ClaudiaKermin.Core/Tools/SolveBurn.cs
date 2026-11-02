@@ -67,8 +67,7 @@ namespace ClaudiaKermin.Core.Tools
                     + "circularize: at ap or pe; "
                     + "set_ap, set_pe: value; "
                     + "next_patch_pe: value above the next body, at default in 60 s; "
-                    + "set_sma: value m from the centre, at default pe; "
-                    + "set_ecc: value, at default pe; "
+                    + "set_sma (value m from the centre), set_ecc: value, at default pe; "
                     + "ellipticize: pe and ap, at default in 60 s; "
                     + "set_inc: value degrees, at default eq_highest; "
                     + "match_plane: target's plane, at the cheaper of rel_an and rel_dn; "
@@ -76,9 +75,9 @@ namespace ClaudiaKermin.Core.Tools
                     + "resonant: value orbits while target (default this orbit) makes of, at default pe; "
                     + "stationary: synchronous circle; "
                     + "intercept_at: Lambert arc, arrive_ut or tof; exec_node only; "
-                    + "match_velocities: zero speed relative to the Target Vessel, at default closest_approach; "
+                    + "match_velocities: Target Vessel's velocity, at default closest_approach; "
                     + "course_correction: value m closest approach to it, at default in 60 s. "
-                    + "Its blocks are change_orbit, circularize, exec_node and tune_pe: call it to budget their burn, then "
+                    + "Budget the burn of change_orbit, circularize or tune_pe with it, then "
                     + "pass the block the goal, or exec_node the node. Not to check a burn (predict_burn) or for delta-v (stage_performance).";
             }
         }
@@ -89,7 +88,7 @@ namespace ClaudiaKermin.Core.Tools
             {
                 return "{\"type\":\"object\",\"properties\":{"
                     + "\"goal\":{\"type\":\"string\",\"enum\":[\"circularize\",\"set_ap\",\"set_pe\",\"next_patch_pe\",\"set_sma\",\"set_ecc\",\"ellipticize\",\"set_inc\",\"match_plane\",\"shift_lan\",\"resonant\",\"stationary\",\"intercept_at\",\"match_velocities\",\"course_correction\"]},"
-                    + "\"at\":{\"description\":\"A word from the description, \\\"altitude <m> [ascending|descending]\\\", a UT in seconds or \\\"in <s>\\\". rel_an, rel_dn and closest_approach use target.\"},"
+                    + "\"at\":{\"description\":\"A word from the description, \\\"altitude <m> [ascending|descending]\\\", a UT or \\\"in <s>\\\". rel_* and closest_approach use target.\"},"
                     + "\"target\":{\"type\":\"string\",\"description\":\"A body or the Target Vessel.\"},"
                     + "\"value\":{\"type\":\"number\"},"
                     + "\"pe\":{\"type\":\"number\"},\"ap\":{\"type\":\"number\"},"
