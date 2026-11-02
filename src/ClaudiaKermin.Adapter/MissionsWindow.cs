@@ -105,6 +105,8 @@ namespace ClaudiaKermin.Adapter
             if (entry.VesselName.Length > 0) GUILayout.Label(entry.VesselName, ClaudiaSkin.Secondary);
             GUILayout.EndHorizontal();
 
+            var due = MissionListRules.Due(entry);
+            if (due.Length > 0) GUILayout.Label(due, ClaudiaSkin.Secondary);
             var debrief = MissionListRules.DebriefTitle(entry);
             if (debrief.Length > 0) GUILayout.Label(debrief, ClaudiaSkin.Secondary);
             if (entry.FinalDebrief != null && _showing == entry.Id)

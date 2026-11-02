@@ -129,7 +129,7 @@ The ordered list of Maneuver Sequences Claudia intends to fly to reach a Mission
 _Avoid_: flight plan, roadmap
 
 **Due Time**:
-The earliest time a Maneuver Sequence may start, set in its Sequence Plan only when the wait before it needs the player (e.g. "come back when you've docked"); the player may fly elsewhere until then. A wait for a window, daylight or a hold is not a Due Time: the Mission Script warps through it (ADR 0004).
+The earliest time a Maneuver Sequence may start; the player may fly elsewhere until then, and the Mission calls them back at it. Claudia sets one in a Sequence Plan when the wait before it needs the player (e.g. "come back when you've docked"). The mod sets one on the first Maneuver Sequence when it would wait on the pad more than 6 h for a Transfer Window to another planet: the window less the launch lead. A shorter wait for a window, and any wait for daylight or a hold, is not a Due Time: the Mission Script warps through it (ADR 0004 and its amendment).
 _Avoid_: window (which is a transfer window), scheduled time
 
 **Sequence Plan**:
@@ -141,7 +141,7 @@ A quantity the mod can measure during a Maneuver Sequence (e.g. delta-v used, ap
 _Avoid_: watch limit, alarm, tripwire, suspended (a disarmed check), held (a check waiting out a burn)
 
 **Alert**:
-The mod's message to Claudia that a Telemetry Check was crossed while Running; she answers by letting the sequence carry on or recommending the player Abort.
+The mod's message to Claudia that a Telemetry Check was crossed while Running; she answers by letting the sequence carry on or recommending the player Abort. Also the mod's message that the player came back after a Due Time's Transfer Window and the next window doesn't fit the Craft Check budget; she answers with a revised Mission Plan or a reduced goal.
 _Avoid_: alarm (the stock Alarm Clock's word), warning (a Craft Check finding)
 
 **Debrief**:

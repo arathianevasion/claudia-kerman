@@ -29,6 +29,13 @@ namespace ClaudiaKermin.Core.Tools
         /// transfer's plane change, #619): the Lambert burn there. Null: the solve starts from zero burn, which must reach it.
         /// </summary>
         public double? AimUt;
+        /// <summary>
+        /// The closest approach to the Target Vessel, m, in place of target_pe (#454): set, the correction is to the Game Snapshot's
+        /// Target Vessel (<see cref="Target"/> its name, or empty for it) and <see cref="TargetPe"/> and <see cref="TargetInc"/> are not read.
+        /// </summary>
+        public double? TargetDistance;
+        /// <summary>How far the answer may be from target_distance, m, before the solve is an error.</summary>
+        public double DistanceTolerance = 10;
     }
 
     /// <summary>The correction node found, or why there is none (<see cref="Error"/>; the rest is set when a best point exists).</summary>
@@ -46,6 +53,11 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The periapsis (m above sea level) and inclination (degrees) the node arrives at round the target.</summary>
         public double PePredicted;
         public double IncPredicted;
+        /// <summary>For a correction to the Target Vessel: the burn (inertial, m/s), and the closest approach it leads to, its distance (m), the relative speed then (m/s) and its UT.</summary>
+        public Vec3 Burn;
+        public double DistancePredicted;
+        public double RelativeSpeedPredicted;
+        public double ApproachUt;
         public int Iterations;
         public int Evaluations;
     }
@@ -58,7 +70,7 @@ namespace ClaudiaKermin.Core.Tools
     /// its short-way/long-way pair: there is no Lambert step to have two ways (ADR 0010). It replaces kerboscript's
     /// <c>claudia_correct</c> for <c>transfer_to</c> and <c>return</c>. It works on detached orbits and only reads.
     /// </summary>
-    internal static class CorrectionBurn
+    internal static partial class CorrectionBurn
     {
         private const string Failure = "found no correction";
         /// <summary>The solver's own tolerances: periapsis (m, as Transfer's PeClose) and the inclination residuals.</summary>
@@ -72,6 +84,7 @@ namespace ClaudiaKermin.Core.Tools
         public static CorrectionPlan Find(GameSnapshot snapshot, CorrectionAsk ask)
         {
             if (snapshot == null) return Fail("no Game Snapshot");
+            if (ask != null && ask.TargetDistance.HasValue) return FindApproach(snapshot, ask);
             if (ask == null || string.IsNullOrEmpty(ask.Target)) return Fail("target is required");
             ToolOutcome error;
             var setup = PredictBurn.Setup.Prepare(snapshot, ask.Target, out error);
