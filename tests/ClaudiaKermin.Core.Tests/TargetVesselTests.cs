@@ -145,80 +145,255 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal("size1", read.PortTags["fore"]);
         }
 
-        // ---- Where the target comes from ----
+        // ---- Where the target comes from (#643): the pick, then the vessel the goal names, then KSP's target ----
 
-        [Fact]
-        public void KspsTargetIsTheTarget()
+        private static TargetChoice Choose(string goal, GameSnapshot snapshot, TargetPick pick = null)
         {
-            var snapshot = OnPad();
-            snapshot.KspTarget = Station(7);
-            snapshot.Vessels.Add(new SnapshotVessel { Id = 9, Name = "Tug" });
+            return TargetVessel.Choose(goal, pick ?? TargetPick.Auto, TargetFacts.Of(snapshot));
+        }
 
-            string how;
-            var target = TargetVessel.Choose("Dock with the Tug.", snapshot, out how);
-
-            Assert.Equal(7u, target.Id);
-            Assert.Equal("KSP's target", how);
+        private static SnapshotVessel Vessel(uint id, string name, string body = "Kerbin", string situation = "ORBITING")
+        {
+            return new SnapshotVessel { Id = id, Name = name, Body = body, Situation = situation };
         }
 
         [Fact]
-        public void WithNoKspTargetTheVesselTheGoalNamesIsTheTarget()
+        public void AGoalThatNeedsNoTargetHasNoLineEvenWithAKspTarget()
         {
             var snapshot = OnPad();
-            snapshot.Vessels.Add(new SnapshotVessel { Id = 1, Name = "Kerbin Station" });
-            snapshot.Vessels.Add(new SnapshotVessel { Id = 2, Name = "Kerbin Station Alpha" });
-            snapshot.Vessels.Add(new SnapshotVessel { Id = 3, Name = "Mun Lander" });
+            snapshot.KspTarget = Station(7);
+            snapshot.Vessels.Add(Vessel(7, "Kerbin Station Alpha"));
 
-            string how;
-            var target = TargetVessel.Choose("Rendezvous with kerbin station alpha, then dock.", snapshot, out how);
+            var choice = Choose("Land on the Mun and take an EVA report.", snapshot);
 
-            // The longest name the goal holds: "Kerbin Station" is inside it too.
-            Assert.Equal(2u, target.Id);
-            Assert.Equal("Kerbin Station Alpha", target.Name);
-            Assert.Equal("named in the Mission Goal", how);
+            Assert.False(choice.Needed);
+            Assert.Null(choice.Target);
+            Assert.Equal("", choice.Line);
+            Assert.Equal("", choice.LogLine);
+        }
+
+        [Fact]
+        public void TheVesselTheGoalNamesComesBeforeKspsTarget()
+        {
+            var snapshot = OnPad();
+            snapshot.KspTarget = Station(7);
+            snapshot.Vessels.Add(Vessel(7, "Kerbin Station Alpha"));
+            snapshot.Vessels.Add(Vessel(9, "Tug"));
+
+            var choice = Choose("Dock with the Tug.", snapshot);
+
+            Assert.Equal(9u, choice.Target.Id);
+            Assert.Equal("named in the Mission Goal", choice.Reason);
+            Assert.Equal("Target Vessel: Tug · Kerbin · orbiting (named in the Mission Goal)", choice.Line);
+        }
+
+        [Fact]
+        public void KspsTargetServesAGoalThatMeetsButNamesNoVessel()
+        {
+            var snapshot = OnPad();
+            snapshot.KspTarget = Station(7);
+            snapshot.Vessels.Add(Vessel(7, "Kerbin Station Alpha"));
+
+            var choice = Choose("Rendezvous with the station in low orbit.", snapshot);
+
+            Assert.Equal(7u, choice.Target.Id);
+            Assert.Equal("KSP's target", choice.Reason);
+            Assert.Equal("Target Vessel: Kerbin Station Alpha (KSP's target).", choice.LogLine);
+        }
+
+        [Fact]
+        public void TheLongestNameTheGoalHoldsIsTheTarget()
+        {
+            var snapshot = OnPad();
+            snapshot.Vessels.Add(Vessel(1, "Kerbin Station"));
+            snapshot.Vessels.Add(Vessel(2, "Kerbin Station Alpha"));
+            snapshot.Vessels.Add(Vessel(3, "Mun Lander"));
+
+            var choice = Choose("Rendezvous with kerbin station alpha, then dock.", snapshot);
+
+            // "Kerbin Station" is inside it too.
+            Assert.Equal(2u, choice.Target.Id);
+            Assert.Equal("Kerbin Station Alpha", choice.Target.Name);
         }
 
         [Fact]
         public void ANameMatchesOnlyWholeWordsAndShortNamesNever()
         {
             var snapshot = OnPad();
-            snapshot.Vessels.Add(new SnapshotVessel { Id = 1, Name = "Tug" });
-            snapshot.Vessels.Add(new SnapshotVessel { Id = 2, Name = "A" });
+            snapshot.Vessels.Add(Vessel(1, "Tug"));
+            snapshot.Vessels.Add(Vessel(2, "A"));
 
-            string how;
-            Assert.Null(TargetVessel.Choose("Tugboat practice: reach a 100 km orbit.", snapshot, out how));
-            Assert.Equal("", how);
+            var choice = Choose("Tugboat practice: reach a 100 km orbit.", snapshot);
+
+            Assert.False(choice.Needed);
+            Assert.Null(choice.Target);
         }
+
+        [Fact]
+        public void AGoalNamingAVesselNeedsATargetWithoutRendezvousOrDocking()
+        {
+            var snapshot = OnPad();
+            snapshot.Vessels.Add(Vessel(1, "Mun Base", "Mun", "LANDED"));
+
+            var choice = Choose("Fly to Mun Base.", snapshot);
+
+            Assert.True(choice.Needed);
+            Assert.Equal(1u, choice.Target.Id);
+            // A landed target shows its situation; the in-orbit note is only for a goal that meets it.
+            Assert.Equal("Target Vessel: Mun Base · Mun · landed (named in the Mission Goal)", choice.Line);
+            Assert.Equal("", choice.Note);
+        }
+
+        [Fact]
+        public void ALandedTargetOfARendezvousGoalSaysItMustBeInOrbit()
+        {
+            var snapshot = OnPad();
+            snapshot.Vessels.Add(Vessel(1, "Mun Base", "Mun", "LANDED"));
+            snapshot.Vessels.Add(Vessel(2, "Sea Lab", "Kerbin", "SPLASHED"));
+            snapshot.Vessels.Add(Vessel(3, "Glider", "Kerbin", "FLYING"));
+
+            var landed = Choose("Rendezvous with Mun Base.", snapshot);
+            Assert.Equal(1u, landed.Target.Id);
+            Assert.Equal("Target Vessel: Mun Base · Mun · landed (named in the Mission Goal); landed: rendezvous and docking need it in orbit", landed.Line);
+            Assert.Equal("landed: rendezvous and docking need it in orbit", Choose("Dock with Sea Lab.", snapshot).Note);
+
+            var flying = Choose("Dock with the Glider.", snapshot);
+            Assert.Equal(3u, flying.Target.Id);
+            Assert.Equal("", flying.Note);
+            Assert.Contains("Glider · Kerbin · flying", flying.Line);
+        }
+
+        // ---- Why there is none ----
 
         [Fact]
         public void AGoalNamingSeveralVesselsOfOneNameHasNoTargetAndSaysWhy()
         {
             var snapshot = OnPad();
-            snapshot.Vessels.Add(new SnapshotVessel { Id = 1, Name = "Relay" });
-            snapshot.Vessels.Add(new SnapshotVessel { Id = 2, Name = "Relay" });
+            snapshot.KspTarget = Station(7);
+            snapshot.Vessels.Add(Vessel(1, "Relay"));
+            snapshot.Vessels.Add(Vessel(2, "Relay"));
+            snapshot.Vessels.Add(Vessel(7, "Kerbin Station Alpha"));
 
-            string how;
-            Assert.Null(TargetVessel.Choose("Dock with the Relay.", snapshot, out how));
-            Assert.Contains("several vessels are named \"Relay\"", how);
+            var choice = Choose("Dock with the Relay.", snapshot);
+
+            Assert.Null(choice.Target);
+            Assert.Equal("several vessels are named \"Relay\"", choice.Reason);
+            Assert.Equal("Target Vessel: none (several vessels are named \"Relay\")", choice.Line);
+            Assert.Equal("No Target Vessel: several vessels are named \"Relay\".", choice.LogLine);
         }
 
         [Fact]
-        public void AVesselNamedAsTheCraftIsNeverTheTarget()
+        public void AVesselNamedAsTheCraftIsNeverTheTargetAndTheLineSaysSo()
         {
             var snapshot = OnPad();
             snapshot.Craft.Name = "Mun Lander";
-            snapshot.Vessels.Add(new SnapshotVessel { Id = 1, Name = "Mun Lander" });
+            snapshot.Vessels.Add(Vessel(1, "Mun Lander"));
 
-            string how;
-            Assert.Null(TargetVessel.Choose("Fly Mun Lander to the Mun and back.", snapshot, out how));
+            var choice = Choose("Fly Mun Lander to the Mun and back.", snapshot);
+
+            Assert.True(choice.Needed);
+            Assert.Null(choice.Target);
+            Assert.Equal("\"Mun Lander\" is the craft's own name", choice.Reason);
         }
 
         [Fact]
-        public void AGoalNamingNoVesselHasNoTarget()
+        public void AGoalThatMeetsButMatchesNoVesselSaysSo()
         {
-            string how;
-            Assert.Null(TargetVessel.Choose(Goal, OnPad(), out how));
-            Assert.Equal("", how);
+            var choice = Choose(Goal, OnPad());
+
+            Assert.True(choice.Needed);
+            Assert.Null(choice.Target);
+            Assert.Equal("no vessel matches", choice.Reason);
+        }
+
+        [Fact]
+        public void KspsTargetWhoseNameAnotherVesselSharesIsNotTaken()
+        {
+            var snapshot = OnPad();
+            snapshot.KspTarget = Station(7);
+            snapshot.Vessels.Add(Vessel(7, "Kerbin Station Alpha"));
+            snapshot.Vessels.Add(Vessel(8, "kerbin station alpha "));
+
+            var choice = Choose("Rendezvous in orbit.", snapshot);
+
+            Assert.Null(choice.Target);
+            Assert.Equal("several vessels are named \"Kerbin Station Alpha\"", choice.Reason);
+        }
+
+        [Fact]
+        public void KspsTargetNamedAsTheCraftIsNotTaken()
+        {
+            var snapshot = OnPad();
+            snapshot.KspTarget = Station(7);
+            snapshot.Craft.Name = "Kerbin Station Alpha";
+
+            Assert.Equal("KSP's target \"Kerbin Station Alpha\" is the craft's own name", Choose("Dock in orbit.", snapshot).Reason);
+        }
+
+        // ---- The player's pick ----
+
+        [Fact]
+        public void ThePickComesFirstAndStaysThroughGoalEdits()
+        {
+            var snapshot = OnPad();
+            snapshot.KspTarget = Station(7);
+            snapshot.Vessels.Add(Vessel(7, "Kerbin Station Alpha"));
+            snapshot.Vessels.Add(Vessel(9, "Tug"));
+            var pick = TargetPick.Of(Vessel(9, "Tug"));
+
+            foreach (var goal in new[] { "Rendezvous with Kerbin Station Alpha.", "Dock in orbit.", "Rendezvous with Kerbin Station Alpha, then dock." })
+            {
+                var choice = Choose(goal, snapshot, pick);
+                Assert.Equal(9u, choice.Target.Id);
+                Assert.Equal("your pick", choice.Reason);
+            }
+            // A goal that needs no target has none, whatever the pick.
+            Assert.Null(Choose("Land on the Mun.", snapshot, pick).Target);
+        }
+
+        [Fact]
+        public void ClearHasNoneAndAutoGoesBackToTheModsChoice()
+        {
+            var snapshot = OnPad();
+            snapshot.Vessels.Add(Vessel(4242, "Kerbin Station Alpha"));
+
+            var cleared = Choose(Goal, snapshot, TargetPick.Cleared);
+            Assert.Null(cleared.Target);
+            Assert.Equal("Target Vessel: none (cleared)", cleared.Line);
+
+            Assert.Equal(4242u, Choose(Goal, snapshot, TargetPick.Auto).Target.Id);
+        }
+
+        [Fact]
+        public void APickNoLongerInTheListHasNoneAndSaysWhy()
+        {
+            var snapshot = OnPad();
+            snapshot.Vessels.Add(Vessel(4242, "Kerbin Station Alpha"));
+
+            var choice = Choose(Goal, snapshot, TargetPick.Of(Vessel(9, "Tug")));
+
+            Assert.Null(choice.Target);
+            Assert.Equal("\"Tug\", your pick, is no longer in the list", choice.Reason);
+        }
+
+        [Fact]
+        public void TheListLeavesOutTheCraftsNameAndSharedNamesAndSortsTheCraftsBodyFirst()
+        {
+            var snapshot = OnPad();
+            snapshot.Body = "Kerbin";
+            snapshot.Craft.Name = "Mun Lander";
+            snapshot.Vessels.Add(Vessel(1, "Mun Lander", "Mun", "LANDED"));
+            snapshot.Vessels.Add(Vessel(2, "Relay", "Kerbin"));
+            snapshot.Vessels.Add(Vessel(3, "relay", "Mun"));
+            snapshot.Vessels.Add(Vessel(4, "Zeta Station", "Kerbin"));
+            snapshot.Vessels.Add(Vessel(5, "Alpha Base", "Mun", "LANDED"));
+            snapshot.Vessels.Add(Vessel(6, "beta Station", "Kerbin"));
+            snapshot.Vessels.Add(Vessel(6, "beta Station", "Kerbin"));
+
+            var options = TargetVessel.Options(TargetFacts.Of(snapshot));
+
+            Assert.Equal(new uint[] { 6, 4, 5 }, options.Select(v => v.Id).ToArray());
+            Assert.Equal("Alpha Base · Mun · landed", TargetVessel.Describe(options[2]));
         }
 
         // ---- Through the Mission ----
@@ -254,6 +429,139 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Null(mission.View.TargetVesselId);
             Assert.Equal("", mission.View.TargetVesselName);
             Assert.DoesNotContain("\"target\"", LastUserText(transport.Requests.Last()));
+        }
+
+        [Fact]
+        public void AGoalThatNeedsNoTargetStartsWithNoneEvenWithAKspTarget()
+        {
+            var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"));
+            var mission = Control(transport);
+            var snapshot = OnPad();
+            snapshot.KspTarget = Station();
+            snapshot.Vessels.Add(Vessel(4242, "Kerbin Station Alpha"));
+            CraftCheckRouter.StartChecked(mission, _background, snapshot, new StartMission("Prove the kOS link from the launch pad.", 10m, "claude-sonnet-5-5"));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+
+            Assert.Null(mission.View.TargetVesselId);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("Target Vessel"));
+        }
+
+        [Fact]
+        public void ThePickIsTheMissionsTargetVesselAndTheLogSaysSo()
+        {
+            var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"));
+            var mission = Control(transport);
+            var snapshot = OnPad();
+            snapshot.KspTarget = Station();
+            snapshot.Vessels.Add(Vessel(4242, "Kerbin Station Alpha"));
+            snapshot.Vessels.Add(Vessel(9, "Tug"));
+            CraftCheckRouter.StartChecked(mission, _background, snapshot,
+                new StartMission(Goal, 10m, "claude-sonnet-5-5", false, TargetPick.Of(Vessel(9, "Tug"))));
+
+            Assert.Equal(9u, mission.View.TargetVesselId);
+            Assert.Equal("Tug", mission.View.TargetVesselName);
+            Assert.Contains(mission.View.Log, e => e.Text == "Target Vessel: Tug (your pick).");
+        }
+
+        [Fact]
+        public void ClearStartsTheMissionWithNoTargetAndTheLogSaysWhy()
+        {
+            var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"));
+            var mission = Control(transport);
+            var snapshot = OnPad();
+            snapshot.KspTarget = Station();
+            CraftCheckRouter.StartChecked(mission, _background, snapshot, new StartMission(Goal, 10m, "claude-sonnet-5-5", false, TargetPick.Cleared));
+
+            Assert.Null(mission.View.TargetVesselId);
+            Assert.Contains(mission.View.Log, e => e.Text == "No Target Vessel: cleared.");
+        }
+
+        [Fact]
+        public void ChangingTheTargetMakesStartCheckTheCraftAgain()
+        {
+            CraftCheckRouter router;
+            var mission = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse")), out router);
+            var snapshot = OnPad();
+            snapshot.Vessels.Add(Vessel(4242, "Kerbin Station Alpha"));
+            snapshot.Vessels.Add(Vessel(9, "Tug"));
+            mission.Send(snapshot);
+            mission.Send(new RunCraftCheck(Goal, 10m, "claude-sonnet-5-5"));
+            DrainUntil(mission, v => v.CraftCheck.State == CraftCheckState.Done);
+            Assert.Single(router.CheckRequests);
+
+            // The check judged the goal's vessel; Start with another target runs it again before the Mission starts.
+            CraftCheckRouter.StartChecked(mission, _background, snapshot,
+                new StartMission(Goal, 10m, "claude-sonnet-5-5", false, TargetPick.Of(Vessel(9, "Tug"))));
+
+            Assert.Equal(2, router.CheckRequests.Count);
+            Assert.Equal(9u, mission.View.TargetVesselId);
+        }
+
+        [Fact]
+        public void TheSameTargetLetsStartGoAheadOnTheCheckThatRan()
+        {
+            CraftCheckRouter router;
+            var mission = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse")), out router);
+            var snapshot = OnPad();
+            snapshot.Vessels.Add(Vessel(4242, "Kerbin Station Alpha"));
+            mission.Send(snapshot);
+            mission.Send(new RunCraftCheck(Goal, 10m, "claude-sonnet-5-5"));
+            DrainUntil(mission, v => v.CraftCheck.State == CraftCheckState.Done);
+
+            mission.Send(new StartMission(Goal, 10m, "claude-sonnet-5-5"));
+
+            Assert.Single(router.CheckRequests);
+            Assert.Equal(4242u, mission.View.TargetVesselId);
+        }
+
+        [Fact]
+        public void TheCraftCheckJudgesPortSizesAgainstTheChosenTargetNotKspsTarget()
+        {
+            var mission = Control(new StreamingFakeTransport());
+            var snapshot = OnPad();
+            // KSP's target has a size1 port free, as the craft does; the Tug the goal names has only size2.
+            snapshot.KspTarget = Station();
+            var tug = Station(9);
+            tug.Name = "Tug";
+            tug.FreePorts.Clear();
+            tug.FreePorts["size2"] = 1;
+            snapshot.FormTarget = tug;
+            snapshot.Vessels.Add(Vessel(4242, "Kerbin Station Alpha"));
+            snapshot.Vessels.Add(Vessel(9, "Tug"));
+            mission.Send(snapshot);
+
+            mission.Send(new RunCraftCheck("Rendezvous with the Tug and dock.", 10m, "claude-sonnet-5-5"));
+            DrainUntil(mission, v => v.CraftCheck.State == CraftCheckState.Done);
+
+            Assert.Contains(mission.View.CraftCheck.Findings, f => f.Code == CraftCheckRules.DockingPortSize && f.Explanation.Contains("Tug"));
+        }
+
+        [Fact]
+        public void TheTargetIsNeverASavedDefault()
+        {
+            using (var dir = new TempDir())
+            {
+                var config = PlayerConfig.LoadOrCreate(dir.Sub);
+                var client = new ClaudeClient(new CraftCheckRouter(new StreamingFakeTransport()), () => "sk-ant-test", l => { });
+                client.Timing.Wait = (d, c) => { };
+                var mission = new MissionControl(client, _background, config, () => true, new PassingScriptCheck());
+                mission.Send(new SaveLoaded(_save.Path));
+                mission.Send(new SceneChanged(GameScene.Editor));
+                var snapshot = OnPad();
+                snapshot.Vessels.Add(Vessel(4242, "Kerbin Station Alpha"));
+                snapshot.Vessels.Add(Vessel(9, "Tugboat Nine"));
+                CraftCheckRouter.StartChecked(mission, _background, snapshot,
+                    new StartMission(Goal, 10m, "claude-sonnet-5-5", false, TargetPick.Of(Vessel(9, "Tugboat Nine"))));
+                Assert.Equal("Tugboat Nine", mission.View.TargetVesselName);
+
+                Assert.Equal("", config.TrySaveDefaults(dir.Sub));
+                foreach (var file in Directory.GetFiles(dir.Sub, "*", SearchOption.AllDirectories))
+                {
+                    var text = File.ReadAllText(file);
+                    Assert.DoesNotContain("Tugboat", text);
+                    Assert.DoesNotContain("Kerbin Station Alpha", text);
+                }
+            }
         }
 
         [Fact]
@@ -346,7 +654,14 @@ namespace ClaudiaKermin.Core.Tests
 
         private MissionControl Control(StreamingFakeTransport transport)
         {
-            var client = new ClaudeClient(new CraftCheckRouter(transport), () => "sk-ant-test", l => { });
+            CraftCheckRouter router;
+            return Control(transport, out router);
+        }
+
+        private MissionControl Control(StreamingFakeTransport transport, out CraftCheckRouter router)
+        {
+            router = new CraftCheckRouter(transport);
+            var client = new ClaudeClient(router, () => "sk-ant-test", l => { });
             client.Timing.Wait = (d, c) => { };
             var mission = new MissionControl(client, _background, new PlayerConfig(), () => true, new PassingScriptCheck());
             mission.Send(new SaveLoaded(_save.Path));
