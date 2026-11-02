@@ -46,6 +46,8 @@ namespace ClaudiaKermin.Adapter
         // here, never in the setup saved as the next Mission's defaults (#639); a Mission under way puts it back to Auto.
         private TargetPick _targetPick = TargetPick.Auto;
         private bool _choosingTarget;
+        // The Mission's Choose list is open (#661): its own flag, since a Mission under way resets the form's every frame.
+        private bool _changingTarget;
         // The line's choice, kept until the goal, the pick or the facts (a new snapshot) change.
         private string _choiceGoal;
         private TargetPick _choicePick;
@@ -244,7 +246,7 @@ namespace ClaudiaKermin.Adapter
 
             if (goal.Length == 0) GUILayout.Label(settingUp ? "Describe the Mission Goal below." : "No Mission yet.", ClaudiaSkin.Secondary);
             else GUILayout.Label(_showAllGoal ? goal : clamped, ClaudiaSkin.Body);
-            if (!settingUp && _view.TargetVesselName.Length > 0) GUILayout.Label("Target Vessel: " + _view.TargetVesselName, ClaudiaSkin.Secondary);
+            if (!settingUp) DrawMissionTargetLine();
             if (settingUp) DrawTargetLine();
             else MissionDriver.FormTargetId = null;
             if (!settingUp) DrawGoalSteps(_view.GoalSteps);
@@ -293,6 +295,41 @@ namespace ClaudiaKermin.Adapter
             if (ReferenceEquals(next, pick)) return;
             _targetPick = next;
             _choosingTarget = false;
+        }
+
+        // ---- The Mission's Target Vessel, changed between sequences (#661) ----
+
+        // Under the pinned goal: the target's name (or none, for a goal that needs one), with Choose and Clear between sequences,
+        // greyed out while Running or Claudia is answering. A change goes to the core, which turns the pending plan into Re-plan.
+        private void DrawMissionTargetLine()
+        {
+            if (!_view.TargetNeeded && _view.TargetVesselName.Length == 0) return;
+            var name = _view.TargetVesselName.Length > 0 ? _view.TargetVesselName : "none";
+            if (!_view.TargetNeeded)
+            {
+                GUILayout.Label("Target Vessel: " + name, ClaudiaSkin.Secondary);
+                return;
+            }
+            // Drawn from the state as the event began, so a click never adds or drops a control within the event.
+            var enabled = _view.CanChangeTarget;
+            var choosing = _changingTarget && enabled;
+            TargetPick picked = null;
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Target Vessel: " + name, ClaudiaSkin.Secondary, GUILayout.ExpandWidth(true));
+            GUI.enabled = enabled;
+            if (ClaudiaSkin.TextButton(choosing ? "Close" : "Choose", GUILayout.ExpandWidth(false))) _changingTarget = !choosing;
+            if (_view.TargetVesselName.Length > 0 && ClaudiaSkin.TextButton("Clear", GUILayout.ExpandWidth(false))) picked = TargetPick.Cleared;
+            GUI.enabled = true;
+            GUILayout.EndHorizontal();
+            if (choosing)
+            {
+                var chosen = DrawTargetList(TargetPick.Auto);
+                if (!ReferenceEquals(chosen, TargetPick.Auto)) picked = chosen;
+            }
+            if (!enabled) _changingTarget = false;
+            if (picked == null) return;
+            _changingTarget = false;
+            _send(new ChangeTarget(picked));
         }
 
         // The vessels the player may pick, name · body · situation, the craft's own body first; returns the pick a click made.
