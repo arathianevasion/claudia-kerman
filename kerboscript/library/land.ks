@@ -47,8 +47,8 @@
 //|     only on an orbit that runs along the day-night line.
 //|   max_slope [8]: degrees; steeper ground is rejected during final descent.
 //|   max_divert [300]: m it may move off the site to find ground within max_slope.
-//|   max_overshoot [500]: m past the site it may land rather than turn back. Set it from the Mission Goal's accuracy (e.g. 50 for "land within 50 m of the
-//|     flag"); a small figure may cost a turn back and its delta-v.
+//|   max_overshoot [500]: m past the site it may land rather than turn back. Set it from the Mission Goal's
+//|     accuracy (e.g. 50 for "land within 50 m of the flag"); a small figure may cost a turn back and its delta-v.
 //|   touchdown_speed [2]: m/s at touchdown.
 //|   gear_alt [1000]: m above the ground to lower the landing gear.
 //|   burn_margin [1.10]: braking starts this much farther out than the stopping distance needs; the delta-v check is the predicted landing's times this.
@@ -369,6 +369,14 @@ function land_beside {
   local d is offset / (radius * 3.141592653589793 / 180).
   local lat2 is arcsin(sin(lat) * cos(d) + cos(lat) * sin(d) * cos(brg)).
   return lexicon("lat", lat2, "lng", land_wrap_lng(lng + arctan2(sin(brg) * sin(d) * cos(lat), cos(d) - sin(lat) * sin(lat2)))).
+}
+
+// The m a "vessel" target's site may move for a slope (#662): max_divert, but no more than keeps it 50 m across the track
+// from the vessel, which land_beside puts it 0.7 x offset or more across, so an overshoot along the track never runs over
+// the vessel. Pure.
+function land_vessel_divert {
+  parameter max_divert, offset.
+  return min(max_divert, max(0, 0.7 * offset - 50)).
 }
 
 // The longitude, in today's body-fixed frame, of the point a site at lng will have turned to in dt
@@ -1569,6 +1577,7 @@ function land {
     }
     set keep_clear to body:geopositionlatlng(named:lat, named:lng).
     set site to land_beside(named:lat, named:lng, opt:vessel_offset, ship:orbit:inclination, body:radius).
+    set opt:max_divert to land_vessel_divert(opt:max_divert, opt:vessel_offset).
     addons:claudia:blocktrace("land", lexicon("phase", "site", "note", "beside " + named:name, "lat", round(site:lat, 5), "lng", round(site:lng, 5))).
   }
 

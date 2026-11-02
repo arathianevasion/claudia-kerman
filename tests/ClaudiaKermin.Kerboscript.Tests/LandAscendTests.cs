@@ -192,6 +192,16 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         }
 
         [Theory]
+        // 200 m beside it: a site moved 90 m for a slope is still 50 m across the track (0.7 x 200 - 90), so an overshoot misses it.
+        [InlineData(300, 200, "90")]
+        [InlineData(40, 200, "40")]
+        [InlineData(300, 50, "0")]
+        public void A_vessel_target_s_divert_keeps_the_site_50_m_across_the_track(double maxDivert, double offset, string expected)
+        {
+            Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture, "round(land_vessel_divert({0}, {1}), 3)", maxDivert, offset)));
+        }
+
+        [Theory]
         // An equatorial orbit's track runs east at the equator: the site is due north, across it.
         [InlineData(0, 22, 0, "0.05730", "22.00000")]
         // A polar orbit's runs north: due east.
