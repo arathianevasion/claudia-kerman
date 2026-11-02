@@ -209,7 +209,7 @@ namespace ClaudiaKermin.Core.Missions
             // Measured as the run's monopropellant line is, on the Mission's own vessel.
             var now = LiveReadings.MonopropellantOf(MissionVesselSnapshot(mission));
             if (!mission.HandBack && mission.RunStartMonopropellant.HasValue && now.HasValue) used = Math.Max(0, mission.RunStartMonopropellant.Value - now.Value);
-            return MarginCheck.Of(snapshot, RestOfPlan(mission), _config.CraftCheckMarginPercent, _config.CheckElectricChargePercent, mission.Remote, used);
+            return MarginCheck.Of(snapshot, RestOfPlan(mission), _config.CraftCheckMarginPercent, _config.CheckElectricChargePercent, mission.Remote, used, mission.Chutes, mission.Goal, StepsBegun(mission));
         }
 
         /// <summary>Sends the recheck's request (its first, or the next step of its tool loop), charged to the Mission at <paramref name="worst"/>.</summary>
