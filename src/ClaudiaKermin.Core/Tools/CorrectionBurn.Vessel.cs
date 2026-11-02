@@ -95,19 +95,16 @@ namespace ClaudiaKermin.Core.Tools
             var dv = new Vec3(result.X[0], result.X[1], result.X[2]);
             var reached = measure(burnUt, dv);
             if (reached == null) return Fail("the solver's best burn leaves " + from.Name + "'s sphere of influence before the approach");
-            Vec3 r, v;
-            craft.State(burnUt, out r, out v);
-            var along = v.Normalized;
-            var up = Vec3.Cross(r, v).Normalized;
-            var outward = Vec3.Cross(along, up);
+            double prograde, normal, radial;
+            SingleShooting.NodeFrame(craft, burnUt, dv, out prograde, out normal, out radial);
             var plan = new CorrectionPlan
             {
                 HasBurn = true,
                 Ut = burnUt,
                 Burn = dv,
-                Prograde = Vec3.Dot(dv, along),
-                Normal = Vec3.Dot(dv, up),
-                Radial = Vec3.Dot(dv, outward),
+                Prograde = prograde,
+                Normal = normal,
+                Radial = radial,
                 DeltaV = dv.Length,
                 DistancePredicted = reached.Distance,
                 RelativeSpeedPredicted = reached.RelativeSpeed,
@@ -135,7 +132,7 @@ namespace ClaudiaKermin.Core.Tools
             {
                 return null;
             }
-            var path = Follow(system, body, after, ut, 1);
+            var path = SingleShooting.Follow(system, body, after, ut, 1);
             if (path == null || path[0].Error != null || path[0].Body != body) return null;
             var start = Math.Max(ut, from);
             var end = Math.Min(path[0].EndUt, to);
