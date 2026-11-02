@@ -34,6 +34,7 @@ namespace ClaudiaKermin.Core.Tools
         private static readonly string[] Goals =
         {
             "circularize", "set_ap", "set_pe", "next_patch_pe", "set_sma", "set_ecc", "ellipticize", "set_inc", "match_plane", "shift_lan", "resonant", "stationary", "intercept_at",
+            "match_velocities", "course_correction",
         };
         /// <summary>BrentRoot's tolerance on the burn size, relative to max(|burn|, 1) m/s: far finer than the metre the Pe is held to.</summary>
         private const double RefineTolerance = 1e-9;
@@ -60,7 +61,7 @@ namespace ClaudiaKermin.Core.Tools
         {
             get
             {
-                return "The burn to an orbit goal, from this turn's Game Snapshot: maneuver-node components (prograde, normal, radial m/s), "
+                return "The burn to an orbit goal: maneuver-node components, "
                     + "magnitude, burn time, the element reached and the predict_burn result. at: ap, pe, altitude, eq_an, eq_dn, eq_nearest, "
                     + "eq_highest, rel_an, rel_dn, closest_approach or a UT. Goals (altitudes in m above sea level): "
                     + "circularize: at ap or pe; "
@@ -74,10 +75,11 @@ namespace ClaudiaKermin.Core.Tools
                     + "shift_lan: value degrees, default where the planes cross; "
                     + "resonant: value orbits while target (default this orbit) makes of, at default pe; "
                     + "stationary: synchronous circle; "
-                    + "intercept_at: Lambert arc, arrive_ut or tof; exec_node only. "
+                    + "intercept_at: Lambert arc, arrive_ut or tof; exec_node only; "
+                    + "match_velocities: zero speed relative to the Target Vessel, at default closest_approach; "
+                    + "course_correction: value m closest approach to it, at default in 60 s. "
                     + "Its blocks are change_orbit, circularize, exec_node and tune_pe: call it to budget their burn, then "
-                    + "pass the block the goal, or exec_node the node. Don't call it to check a burn (predict_burn) or for the craft's "
-                    + "delta-v (stage_performance).";
+                    + "pass the block the goal, or exec_node the node. Not to check a burn (predict_burn) or for delta-v (stage_performance).";
             }
         }
 
@@ -86,14 +88,14 @@ namespace ClaudiaKermin.Core.Tools
             get
             {
                 return "{\"type\":\"object\",\"properties\":{"
-                    + "\"goal\":{\"type\":\"string\",\"enum\":[\"circularize\",\"set_ap\",\"set_pe\",\"next_patch_pe\",\"set_sma\",\"set_ecc\",\"ellipticize\",\"set_inc\",\"match_plane\",\"shift_lan\",\"resonant\",\"stationary\",\"intercept_at\"]},"
+                    + "\"goal\":{\"type\":\"string\",\"enum\":[\"circularize\",\"set_ap\",\"set_pe\",\"next_patch_pe\",\"set_sma\",\"set_ecc\",\"ellipticize\",\"set_inc\",\"match_plane\",\"shift_lan\",\"resonant\",\"stationary\",\"intercept_at\",\"match_velocities\",\"course_correction\"]},"
                     + "\"at\":{\"description\":\"A word from the description, \\\"altitude <m> [ascending|descending]\\\", a UT in seconds or \\\"in <s>\\\". rel_an, rel_dn and closest_approach use target.\"},"
-                    + "\"target\":{\"type\":\"string\",\"description\":\"A body.\"},"
+                    + "\"target\":{\"type\":\"string\",\"description\":\"A body or the Target Vessel.\"},"
                     + "\"value\":{\"type\":\"number\"},"
                     + "\"pe\":{\"type\":\"number\"},\"ap\":{\"type\":\"number\"},"
                     + "\"of\":{\"type\":\"number\",\"description\":\"Default 1.\"},"
                     + "\"arrive_ut\":{\"type\":\"number\"},\"tof\":{\"type\":\"number\"},\"retrograde\":{\"type\":\"boolean\"},\"revolutions\":{\"type\":\"integer\"},"
-                    + "\"direction\":{\"type\":\"string\",\"enum\":[\"prograde\",\"retrograde\"],\"description\":\"next_patch_pe only. Default prograde.\"}"
+                    + "\"direction\":{\"type\":\"string\",\"enum\":[\"prograde\",\"retrograde\"]}"
                     + "},\"required\":[\"goal\"],\"additionalProperties\":false}";
             }
         }
@@ -145,7 +147,8 @@ namespace ClaudiaKermin.Core.Tools
             }
             if (target != null && (goal == "circularize" || goal == "set_ap" || goal == "set_pe" || goal == "stationary"))
                 return PlanningJson.Error("target is for next_patch_pe and the other goals that take at, and for match_plane and resonant; " + goal + " takes none");
-            if (target != null && goal != "match_plane" && goal != "resonant" && word != "rel_an" && word != "rel_dn" && word != "closest_approach" && goal != "intercept_at")
+            var toVessel = goal == "match_velocities" || goal == "course_correction";
+            if (target != null && goal != "match_plane" && goal != "resonant" && word != "rel_an" && word != "rel_dn" && word != "closest_approach" && goal != "intercept_at" && !toVessel)
                 return PlanningJson.Error("target is for at rel_an, rel_dn or closest_approach, or for match_plane and resonant");
             if (target == null && goal == "match_plane") return PlanningJson.Error("match_plane needs target, the body whose orbit plane to match");
             if (at != null && (goal == "set_ap" || goal == "set_pe"))
@@ -157,8 +160,16 @@ namespace ClaudiaKermin.Core.Tools
             if (problem != null) return PlanningJson.Error(problem);
 
             ToolOutcome error;
-            var setup = PredictBurn.Setup.Prepare(snapshot, target, out error);
+            var setup = PredictBurn.Setup.Prepare(snapshot, target, out error, true);
             if (setup == null) return error;
+            if (toVessel && setup.Target != null)
+                return PlanningJson.Error(goal + " is to the Target Vessel, and " + setup.Target.Name + " is a body; leave target out");
+            if (toVessel && setup.Vessel == null)
+            {
+                string why;
+                setup.Vessel = VesselTarget.Read(snapshot, setup.System, null, out why);
+                if (setup.Vessel == null) return PlanningJson.Error(goal + " needs the Target Vessel, and " + why);
+            }
             var path = setup.System.Follow(setup.Body, setup.Start, setup.Now, 8);
             if (path[path.Count - 1].Error != null) return PlanningJson.Error(path[path.Count - 1].Error);
             switch (goal)
@@ -171,6 +182,8 @@ namespace ClaudiaKermin.Core.Tools
                 case "shift_lan": return SolveShiftLan(into, setup, path, value.Value, at);
                 case "stationary": return SolveStationary(into, setup, path);
                 case "intercept_at": return SolveIntercept(into, setup, path, at, arriveUt, tof, retrograde ?? false, (int)(revolutions ?? 0));
+                case "match_velocities": return SolveMatchVelocities(into, setup, path, at);
+                case "course_correction": return SolveCourseCorrection(into, setup, path, value.Value, at);
                 default: return SolveAt(into, setup, path, goal, value, pe, ap, of, at);
             }
         }
@@ -178,7 +191,7 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>Why the goal's own fields don't fit it; null when they do. Every build checks them, unlike MechJeb's Debug-only checks.</summary>
         private static string Inputs(string goal, double? value, double? pe, double? ap, double? of)
         {
-            var takesValue = goal != "circularize" && goal != "ellipticize" && goal != "match_plane" && goal != "stationary" && goal != "intercept_at";
+            var takesValue = goal != "circularize" && goal != "ellipticize" && goal != "match_plane" && goal != "stationary" && goal != "intercept_at" && goal != "match_velocities";
             if (!takesValue && value.HasValue) return goal + " takes no value";
             if (takesValue && !value.HasValue) return goal + " needs a value, " + ValueMeaning(goal);
             if (value.HasValue && (double.IsNaN(value.Value) || double.IsInfinity(value.Value))) return "value must be a finite number";
@@ -192,6 +205,9 @@ namespace ClaudiaKermin.Core.Tools
                     break;
                 case "set_inc":
                     if (!(value >= 0 && value <= 180)) return "set_inc's value is an inclination from 0 to 180 degrees";
+                    break;
+                case "course_correction":
+                    if (!(value > 0)) return "course_correction's value is the closest approach to the Target Vessel in metres, above 0";
                     break;
                 case "resonant":
                     if (!(value > 0)) return "resonant's value is how many orbits the craft makes, above 0";
@@ -215,6 +231,7 @@ namespace ClaudiaKermin.Core.Tools
                 case "set_inc": return "the inclination in degrees";
                 case "shift_lan": return "the longitude of the ascending node in degrees";
                 case "resonant": return "how many orbits the craft makes while the reference makes of";
+                case "course_correction": return "the closest approach to the Target Vessel in metres";
                 default: return "the altitude in metres above sea level";
             }
         }
@@ -296,15 +313,14 @@ namespace ClaudiaKermin.Core.Tools
             why = null;
             period = 0;
             double reference;
-            var target = setup.Target;
-            if (target != null)
+            if (setup.Target != null || setup.Vessel != null)
             {
-                if (!string.Equals(target.Parent, patch.Body.Name, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(TargetParent(setup), patch.Body.Name, StringComparison.OrdinalIgnoreCase))
                 {
-                    why = target.Name + " is not in orbit round " + patch.Body.Name + ", the body the craft is round at that time, so there is no resonance with it";
+                    why = TargetName(setup) + " is not in orbit round " + patch.Body.Name + ", the body the craft is round at that time, so there is no resonance with it";
                     return null;
                 }
-                reference = setup.System.OrbitOf(target).Period;
+                reference = TargetOrbit(setup).Period;
             }
             else
             {
@@ -347,7 +363,7 @@ namespace ClaudiaKermin.Core.Tools
             Vec3 r, v;
             var ut = at != null ? Place(setup, path, at, out patch, out r, out v, out problem) : Slower(setup, path, "rel_an", "rel_dn", out patch, out r, out v, out problem);
             if (!ut.HasValue) return PlanningJson.Error(problem);
-            var dv = OrbitChange.MatchPlane(r, v, setup.System.OrbitOf(setup.Target).W);
+            var dv = OrbitChange.MatchPlane(r, v, TargetOrbit(setup).W);
             into.Want("rel_inc", 0);
             return Answer(into, setup, "match_plane", ut.Value, r, v, dv);
         }
@@ -432,7 +448,7 @@ namespace ClaudiaKermin.Core.Tools
         {
             patch = null;
             r = v = default(Vec3);
-            var ut = PredictBurn.BurnUt(at, path, setup.Now, setup.Now, "the burn", out problem, setup.System, setup.Target);
+            var ut = PredictBurn.BurnUt(at, path, setup.Now, setup.Now, "the burn", out problem, setup.System, setup.Target, setup.Vessel);
             if (problem != null) return null;
             patch = PredictBurn.Containing(path, ut.Value);
             if (patch == null)
@@ -471,7 +487,7 @@ namespace ClaudiaKermin.Core.Tools
         {
             var apsis = goal == "circularize" ? at.StringValue.Trim().ToLowerInvariant() : goal == "set_ap" ? "pe" : "ap";
             string problem;
-            var ut = PredictBurn.BurnUt(JsonReader.Parse(PlanningJson.Quote(apsis)), path, setup.Now, setup.Now, "the burn", out problem, setup.System, setup.Target);
+            var ut = PredictBurn.BurnUt(JsonReader.Parse(PlanningJson.Quote(apsis)), path, setup.Now, setup.Now, "the burn", out problem, setup.System, setup.Target, setup.Vessel);
             if (problem != null) return PlanningJson.Error(problem);
             var patch = PredictBurn.Containing(path, ut.Value);
             if (patch == null) return PlanningJson.Error("the burn is after the craft reaches " + PredictBurn.Ending(path[path.Count - 1]) + "; nothing after that is predicted");
@@ -506,7 +522,7 @@ namespace ClaudiaKermin.Core.Tools
         private ToolOutcome SolvePatchPe(SolvedBurn into, PredictBurn.Setup setup, List<Patch> path, double value, JsonNode at, string direction)
         {
             string problem;
-            var ut = PredictBurn.BurnUt(at ?? JsonReader.Parse(PlanningJson.Quote(DefaultAt)), path, setup.Now, setup.Now, "the burn", out problem, setup.System, setup.Target);
+            var ut = PredictBurn.BurnUt(at ?? JsonReader.Parse(PlanningJson.Quote(DefaultAt)), path, setup.Now, setup.Now, "the burn", out problem, setup.System, setup.Target, setup.Vessel);
             if (problem != null) return PlanningJson.Error(problem);
             var patch = PredictBurn.Containing(path, ut.Value);
             if (patch == null) return PlanningJson.Error("the burn is after the craft reaches " + PredictBurn.Ending(path[path.Count - 1]) + "; nothing after that is predicted");
@@ -596,7 +612,8 @@ namespace ClaudiaKermin.Core.Tools
         /// orbit predict_burn's propagation leaves, and the predict_burn result for it. <paramref name="dv"/> is the velocity
         /// change at (<paramref name="r"/>, <paramref name="v"/>), the craft's state at <paramref name="ut"/>.
         /// </summary>
-        private static ToolOutcome Answer(SolvedBurn into, PredictBurn.Setup setup, string goal, double ut, Vec3 r, Vec3 v, Vec3 dv, Action<JsonWriter> extra = null)
+        private static ToolOutcome Answer(SolvedBurn into, PredictBurn.Setup setup, string goal, double ut, Vec3 r, Vec3 v, Vec3 dv, Action<JsonWriter> extra = null,
+            Action<JsonWriter, PredictBurn.BurnDone> achieved = null)
         {
             double prograde, normal, radial;
             OrbitChange.NodeComponents(r, v, dv, out prograde, out normal, out radial);
@@ -627,7 +644,10 @@ namespace ClaudiaKermin.Core.Tools
                 .Field("burn_time", burn.BurnTime.HasValue ? PlanningJson.Round(burn.BurnTime.Value, 1) : (double?)null);
             if (!burn.BurnTime.HasValue) json.Field("burn_time_note", "the craft's stages don't give it");
             else if (burn.BurnTime.Value > PredictBurn.LongBurnSeconds) json.Field("long_burn", true);
-            Achieved(json.Name("achieved").BeginObject(), setup, goal, burn, path).EndObject();
+            json.Name("achieved").BeginObject();
+            if (achieved != null) achieved(json, burn);
+            else Achieved(json, setup, goal, burn, path);
+            json.EndObject();
             if (extra != null) extra(json);
             json.Name("predict_burn").Raw(predicted.Json).EndObject();
             var along = Math.Abs(prograde) >= magnitude - 1e-6 * Math.Max(1, magnitude);
@@ -662,7 +682,7 @@ namespace ClaudiaKermin.Core.Tools
                 case "set_inc":
                     return json.Field("inclination", PlanningJson.Round(orbit.Inclination, 4));
                 case "match_plane":
-                    var w = setup.System.OrbitOf(setup.Target).W;
+                    var w = TargetOrbit(setup).W;
                     return json.Field("relative_inclination", PlanningJson.Round(Math.Acos(Math.Max(-1, Math.Min(1, Vec3.Dot(orbit.W, w)))) * 180 / Math.PI, 4));
                 case "shift_lan":
                     var node = Vec3.Cross(new Vec3(0, 0, 1), orbit.W);
@@ -691,6 +711,8 @@ namespace ClaudiaKermin.Core.Tools
     {
         public double Ut, Prograde, Normal, Radial, DeltaV;
         public double? BurnTime;
+        /// <summary>For the goals on the Target Vessel: the closest approach the burn leads to, m, and the relative speed then, m/s.</summary>
+        public double? Distance, RelativeSpeed;
 
         /// <summary>
         /// Each element the goal sets with the figure it aims at, in the order set: <c>inc</c>, <c>rel_inc</c> (to the target's

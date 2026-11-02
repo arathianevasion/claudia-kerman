@@ -621,11 +621,20 @@ namespace ClaudiaKermin.Core.Tools
         /// close the answer must be. Gives <c>error</c> "", <c>ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver
         /// node components), <c>dv</c>, <c>pe_predicted</c> (m) and <c>inc_predicted</c> (degrees); a best burn outside the
         /// tolerances gives its <c>error</c> with the rest; a solve that could not start, only <c>error</c>, "found no correction: &lt;why&gt;".
+        /// <para>
+        /// To the Target Vessel (#454), the two goals the <c>rendezvous</c> block re-solves at fly time: <c>target_distance</c> (m)
+        /// in place of target_pe is the Course Correction to that closest approach (<c>distance_tolerance</c>, m, default 10), and
+        /// <c>match_velocities</c> true is solve_burn's match_velocities at <c>at</c> (a word or a UT; default closest_approach).
+        /// <c>target</c>, if given, is the vessel's name. Either gives <c>error</c>, <c>ut</c>, the components, <c>dv</c>,
+        /// <c>distance_predicted</c> (m) and <c>relative_speed_predicted</c> (m/s).
+        /// </para>
         /// </summary>
         public static IDictionary<string, object> CorrectionBurn(IDictionary<string, object> input, GameSnapshot snapshot)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
             if (snapshot == null) return Error(Tools.CorrectionBurn.Fail("no Game Snapshot").Error);
+            if (ask.ContainsKey("match_velocities")) return MatchVelocities(ask, snapshot);
+            if (ask.ContainsKey("target_distance")) return ApproachCorrection(ask, snapshot);
             object target;
             ask.TryGetValue("target", out target);
             if (!(target is string)) return Error(Tools.CorrectionBurn.Fail("target must be a body's name").Error);
@@ -655,6 +664,91 @@ namespace ClaudiaKermin.Core.Tools
                 { "dv", plan.DeltaV },
                 { "pe_predicted", plan.PePredicted },
                 { "inc_predicted", plan.IncPredicted },
+            };
+        }
+
+        /// <summary>CORRECTIONBURN's Course Correction to the Target Vessel's closest approach (<c>target_distance</c>).</summary>
+        private static IDictionary<string, object> ApproachCorrection(Dictionary<string, object> ask, GameSnapshot snapshot)
+        {
+            foreach (var entry in ask)
+            {
+                var key = entry.Key.ToLowerInvariant();
+                if (key == "target")
+                {
+                    if (!(entry.Value is string)) return Error(Tools.CorrectionBurn.Fail("target must be the Target Vessel's name").Error);
+                }
+                else if (key == "target_distance" || key == "earliest_ut" || key == "latest_ut" || key == "distance_tolerance")
+                {
+                    if (!(entry.Value is double)) return Error(Tools.CorrectionBurn.Fail(key + " must be a number").Error);
+                }
+                else
+                    return Error(Tools.CorrectionBurn.Fail("unknown input " + entry.Key + ": a correction to target_distance takes target, earliest_ut, latest_ut and distance_tolerance").Error);
+            }
+            var earliest = Number(ask, "earliest_ut", snapshot.Ut);
+            object target;
+            ask.TryGetValue("target", out target);
+            var plan = Tools.CorrectionBurn.Find(snapshot, new CorrectionAsk
+            {
+                Target = target as string,
+                TargetDistance = (double)ask["target_distance"],
+                EarliestUt = earliest,
+                LatestUt = Number(ask, "latest_ut", earliest),
+                DistanceTolerance = Number(ask, "distance_tolerance", 10),
+            });
+            if (!plan.HasBurn) return Error(plan.Error);
+            return new Dictionary<string, object>
+            {
+                { "error", plan.Error ?? "" },
+                { "ut", plan.Ut },
+                { "prograde", plan.Prograde },
+                { "normal", plan.Normal },
+                { "radial", plan.Radial },
+                { "dv", plan.DeltaV },
+                { "distance_predicted", plan.DistancePredicted },
+                { "relative_speed_predicted", plan.RelativeSpeedPredicted },
+                { "approach_ut", plan.ApproachUt },
+            };
+        }
+
+        /// <summary>CORRECTIONBURN's match_velocities: solve_burn's goal at <c>at</c> (default closest_approach) on the craft's orbit as it is now.</summary>
+        private static IDictionary<string, object> MatchVelocities(Dictionary<string, object> ask, GameSnapshot snapshot)
+        {
+            var json = new JsonWriter().BeginObject().Field("goal", "match_velocities");
+            foreach (var entry in ask)
+            {
+                var key = entry.Key.ToLowerInvariant();
+                var text = entry.Value as string;
+                switch (key)
+                {
+                    case "match_velocities":
+                        if (!(entry.Value is bool) || !(bool)entry.Value) return Error("match_velocities must be true");
+                        break;
+                    case "target":
+                        if (text == null) return Error("target must be the Target Vessel's name");
+                        json.Field(key, text);
+                        break;
+                    case "at":
+                        if (text != null) json.Field(key, text);
+                        else if (entry.Value is double && !double.IsNaN((double)entry.Value) && !double.IsInfinity((double)entry.Value)) json.Field(key, (double)entry.Value);
+                        else return Error("at must be a word or a finite UT, not " + Convert.ToString(entry.Value, CultureInfo.InvariantCulture));
+                        break;
+                    default:
+                        return Error("unknown input " + entry.Key + ": match_velocities takes at and target");
+                }
+            }
+            var solved = new SolvedBurn();
+            var outcome = new SolveBurn().Solve(JsonReader.Parse(json.EndObject().ToString()), snapshot, solved);
+            if (outcome.IsError) return Error(outcome.Summary);
+            return new Dictionary<string, object>
+            {
+                { "error", "" },
+                { "ut", solved.Ut },
+                { "prograde", solved.Prograde },
+                { "normal", solved.Normal },
+                { "radial", solved.Radial },
+                { "dv", solved.DeltaV },
+                { "distance_predicted", solved.Distance ?? -1 },
+                { "relative_speed_predicted", solved.RelativeSpeed ?? -1 },
             };
         }
 
@@ -723,6 +817,8 @@ namespace ClaudiaKermin.Core.Tools
             if (ask.TryGetValue("goal", out goal) && goal as string == "intercept_at")
                 return Error("ORBITBURN does not solve intercept_at: change_orbit checks the orbit elements a burn sets, and an intercept "
                     + "aims at an arrival, not an element; exec_node the node solve_burn gives");
+            if (goal as string == "match_velocities" || goal as string == "course_correction")
+                return Error("ORBITBURN does not solve " + goal + ": it aims at the Target Vessel, not an orbit element; CORRECTIONBURN solves it at fly time");
             var json = new JsonWriter().BeginObject();
             foreach (var entry in ask)
             {
