@@ -173,9 +173,9 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         }
 
         [Fact]
-        public void A_script_that_follows_the_stack_drop_lints_advice_gets_no_drop_lint()
+        public void The_drop_lint_is_quiet_on_a_return_then_reentry_that_follows_the_stack_drop_lints_advice()
         {
-            // The stack-drop lint names reentry's separate, not drop_parts: b5f3's return-then-reentry, with the separate it asks for.
+            // The stack-drop lint names reentry's separate, not drop_parts: a return then reentry with the separate it asks for.
             const string followsAdvice =
                 "local res is return(lexicon(\"target_pe\", 35000)).\n"
                 + "if res:success {\n"
