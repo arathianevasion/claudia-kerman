@@ -129,6 +129,17 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal("|2500", One("tune_pe_burn_point(\"next\", 0.9, 9000, 500, 20000, false, true, 5000):error + \"|\" + tune_pe_burn_point(\"next\", 0.9, 9000, 500, 20000, false, true, 5000):in"));
         }
 
+        [Theory]
+        [InlineData(16000, "300,8000")]
+        [InlineData(1200, "300,600")]
+        [InlineData(1000, "500")]
+        [InlineData(400, "200")]
+        public void The_next_patch_tries_a_burn_near_the_start_as_well_as_halfway(double soiEta, string times)
+        {
+            // #538 (f623): halfway out the retrograde fix for a Mun encounter costs over 100 m/s; near the start it costs about 25.
+            Assert.Equal(times, One("tune_pe_next_times(" + soiEta.ToString(CultureInfo.InvariantCulture) + "):join(\",\")"));
+        }
+
         [Fact]
         public void The_next_patch_fails_without_one()
         {

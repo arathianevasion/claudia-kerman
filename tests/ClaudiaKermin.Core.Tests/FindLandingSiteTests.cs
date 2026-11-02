@@ -30,9 +30,11 @@ namespace ClaudiaKermin.Core.Tests
             /// <summary>Mirrors the frame, as a game with another axis convention would.</summary>
             public bool Mirrored;
             public int Surveys;
+            public string[] Biomes = new string[0];
 
             public override double TerrainAltitude(string body, double latitude, double longitude) { return Terrain(latitude, longitude); }
             public override string Biome(string body, double latitude, double longitude) { return BiomeAt(latitude, longitude); }
+            public override IList<string> BiomeNames(string body) { return Biomes; }
             public override double SunElevation(string body, double latitude, double longitude, double ut) { return Sun(latitude, longitude, ut); }
 
             public override void Survey(string body, IList<SiteSample> samples, SiteFacts facts)
@@ -201,6 +203,44 @@ namespace ClaudiaKermin.Core.Tests
                 Assert.Equal("NorthernBasin", s.GetProperty("biome").GetString());
                 Assert.True(Lon(s) >= -1);
             });
+        }
+
+        // ---- a biome the body doesn't have (#591) ----
+
+        private static readonly string[] Craters = { "East Crater", "Farside Crater", "Midlands" };
+
+        [Fact]
+        public void A_biome_the_body_does_not_have_is_an_error_naming_the_close_ones_and_all_of_them_and_no_search_runs()
+        {
+            var fake = new FakeBody { Biomes = Craters };
+            var error = Error(Snapshot(), "{\"body\":\"Mun\",\"biome\":\"Crater\"}", fake);
+            Assert.Equal("\"Crater\" is not a biome on Mun; closest: East Crater, Farside Crater; its biomes are: East Crater, Farside Crater, Midlands", error);
+            Assert.Equal(0, fake.Surveys);
+        }
+
+        [Fact]
+        public void A_biome_name_in_lower_case_with_a_space_is_accepted_and_the_list_stays_out_of_the_result()
+        {
+            var fake = new FakeBody { Biomes = Craters, BiomeAt = (lat, lon) => lon >= 0 ? "EastCrater" : "Midlands" };
+            var outcome = _tools.Run("find_landing_site", "{\"body\":\"Mun\",\"daylight\":false,\"biome\":\"east crater\"}", Snapshot(), fake);
+            Assert.False(outcome.IsError, outcome.Json);
+            Assert.DoesNotContain("Farside", outcome.Json);
+        }
+
+        [Fact]
+        public void A_body_with_no_biome_list_runs_the_search_as_before()
+        {
+            var fake = new FakeBody { BiomeAt = (lat, lon) => "Craters" };
+            var result = Run(Snapshot(), "{\"body\":\"Mun\",\"daylight\":false,\"biome\":\"Crater\"}", fake);
+            Assert.True(fake.Surveys > 0);
+            Assert.Empty(Sites(result));
+        }
+
+        [Fact]
+        public void A_biome_with_no_close_name_lists_only_the_biomes()
+        {
+            var error = Error(Snapshot(), "{\"body\":\"Mun\",\"biome\":\"Poles\"}", new FakeBody { Biomes = Craters });
+            Assert.Equal("\"Poles\" is not a biome on Mun; its biomes are: East Crater, Farside Crater, Midlands", error);
         }
 
         [Fact]

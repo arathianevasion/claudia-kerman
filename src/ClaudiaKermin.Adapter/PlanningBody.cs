@@ -81,9 +81,20 @@ namespace ClaudiaKermin.Adapter
                 while (!Step(guard)) { }
                 return;
             }
+            // A call ToolStep has abandoned (#544) queues nothing more, and one waiting is dropped from the queue.
+            var token = PlanningCancellation.Current;
+            token.ThrowIfCancellationRequested();
             var job = new Job { Step = step };
             lock (_queue) _queue.Enqueue(job);
-            if (!job.Done.Wait(WaitLimit)) job.Abandoned = true;
+            try
+            {
+                if (!job.Done.Wait(WaitLimit, token)) job.Abandoned = true;
+            }
+            catch (OperationCanceledException)
+            {
+                job.Abandoned = true;
+                throw;
+            }
         }
 
         private static CelestialBody Find(string name)
@@ -104,6 +115,19 @@ namespace ClaudiaKermin.Adapter
             var sample = new SiteSample { Latitude = latitude, Longitude = longitude };
             Survey(body, new List<SiteSample> { sample }, SiteFacts.Biome);
             return sample.Biome;
+        }
+
+        public override IList<string> BiomeNames(string body)
+        {
+            var names = new List<string>();
+            Run(() =>
+            {
+                var celestial = Find(body);
+                if (celestial != null && celestial.BiomeMap != null && celestial.BiomeMap.Attributes != null)
+                    names.AddRange(celestial.BiomeMap.Attributes.Select(a => a.name));
+                return true;
+            });
+            return names;
         }
 
         public override double SunElevation(string body, double latitude, double longitude, double ut)

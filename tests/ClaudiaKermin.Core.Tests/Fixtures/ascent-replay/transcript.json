@@ -1,0 +1,6 @@
+{"mission_id":"m-replay-fixture","model":"claude-sonnet-5-5","system":[],"messages":[
+{"role":"user","content":[{"type":"text","text":"Plan the Mission: Mun Shot v2. launch(lexicon(\"target_ap\", 80000)) is the example in the docs, not the flight."}]},
+{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01","name":"check_script","input":{"script": "local res is launch(lexicon(\"target_ap\", 80000, \"turn_shape\", 0.45, \"stage_limit\", 3)). if res:success { set res to circularize(lexicon(\"at\", \"ap\")). }\naddons:claudia:report(res)."}}]},
+{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"ok"}]},
+{"role":"assistant","content":[{"type":"text","text":"{\"summary\":\"Launch, then circularize.\",\"script\":\"local res is launch(lexicon(\\\"target_ap\\\", 80000, \\\"turn_shape\\\", 0.4, \\\"stage_limit\\\", 3)).\\nif res:success { set res to circularize(lexicon(\\\"at\\\", \\\"ap\\\")). }\\naddons:claudia:report(res).\"}"}]}
+]}

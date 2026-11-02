@@ -84,6 +84,8 @@ namespace ClaudiaKermin.Core.Tools
         public double Ms;
         /// <summary>The ask's deadline passed before the search was done: the options are from what it got through (#536).</summary>
         public bool OutOfTime;
+        /// <summary>Out of time before the options were planned again on every shape: their landings are the coarse pass's (#545).</summary>
+        public bool Coarse;
     }
 
     /// <summary>
@@ -109,6 +111,11 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The coarse pass's heading step, degrees, and how many planes are planned again on every shape.</summary>
         private const double CoarseHeadingDeg = 3;
         private const int RefinedPlanes = 3;
+        /// <summary>
+        /// m between the coarse pass's terrain samples under the fall from the deorbit burn (#545): four times land's, a quarter of the samples, since through
+        /// the game that read was most of each coarse descent's time; the planes refined read it as land does.
+        /// </summary>
+        private const double CoarseFallStepM = 4 * DescentApproach.FallProfileStep;
         /// <summary>The most planes whose first pass gets a coarse descent.</summary>
         private const int CoarsePlanes = 48;
         /// <summary>Inclinations tried, degrees: over the site's latitude, and either side of the orbit's own.</summary>
@@ -159,6 +166,7 @@ namespace ClaudiaKermin.Core.Tools
 
             // Each plane and its first pass in reach (land's pass search without a craft: reach and daylight only).
             var planes = new List<PlaneChange>();
+            var reachDeg = ReachDeg(body, orbit, ask);
             foreach (var burn in BurnTimes(orbit, ask.EarliestUt))
             {
                 if (result.OutOfTime) break;
@@ -171,7 +179,12 @@ namespace ClaudiaKermin.Core.Tools
                     var dv = OrbitChange.ChangeInclination(r, v, inc, out why);
                     if (!dv.HasValue || dv.Value.Length < 1) continue;
                     var after = Conic.FromState(orbit.Mu, r, v + dv.Value, burn);
-                    var scan = LandingPass.Find(body, after, now, ForOrbitAfter(ask, burn, null), api);
+                    // #545: a plane whose track never comes within reach of the site's latitude has no pass to it; most of the
+                    // scan's time went on those.
+                    if (Math.Min(after.Inclination, 180 - after.Inclination) + reachDeg < Math.Abs(ask.Latitude)) continue;
+                    var scanAsk = ForOrbitAfter(ask, burn, null);
+                    scanAsk.FirstOnly = true;
+                    var scan = LandingPass.Find(body, after, now, scanAsk, api);
                     result.Planes++;
                     if (scan.Error != null) continue;
                     planes.Add(new PlaneChange { Inclination = inc, BurnUt = burn, PlaneDv = dv.Value.Length, ArriveUt = scan.ArriveUt, After = after });
@@ -212,6 +225,13 @@ namespace ClaudiaKermin.Core.Tools
                 if (OutOfTime(ask, result)) break;
                 var pass = PlanLanding(body, pick, now, ask, api, pick.ArriveUt + 60, null, null);
                 if (pass != null) refined.Add(pass);
+            }
+            if (refined.Count == 0 && result.OutOfTime && !reachable)
+            {
+                // #545: out of time before any was planned again, a site land can't reach gets the coarse plans: each clears on a
+                // coarse shape, and land plans its own descent before any burn.
+                refined = picks;
+                result.Coarse = true;
             }
             if (refined.Count == 0)
             {
@@ -262,6 +282,7 @@ namespace ClaudiaKermin.Core.Tools
             landAsk.Shapes = shapes;
             landAsk.Planned = planned;
             landAsk.HeadingStepDeg = planned != null ? CoarseHeadingDeg : 1;
+            if (planned != null) landAsk.FallStepM = CoarseFallStepM;
             var found = LandingPass.Find(body, plane.After, now, landAsk, api);
             if (found.Error != null || found.Descent == null) return null;
             return new PlaneChange
@@ -341,6 +362,24 @@ namespace ClaudiaKermin.Core.Tools
                 longitude = double.NaN;
                 return false;
             }
+        }
+
+        /// <summary>
+        /// How far off the track, degrees of arc, a site can be and still be reached by land's correction burn within the ask's
+        /// most (<see cref="LandingPass.CorrectionDv"/> from an orbit of this one's size), with half a degree to spare.
+        /// </summary>
+        private static double ReachDeg(SnapshotBody body, Conic orbit, LandingPassAsk ask)
+        {
+            Func<double, double> dv = deg => LandingPass.CorrectionDv(orbit.Mu, orbit.A, ask.PeRadius, deg * Math.PI / 180 * body.Radius, body.Radius);
+            if (dv(90) <= ask.MaxCorrectionDv) return 90;
+            double lo = 0, hi = 90;
+            for (var i = 0; i < 40; i++)
+            {
+                var mid = (lo + hi) / 2;
+                if (dv(mid) <= ask.MaxCorrectionDv) lo = mid;
+                else hi = mid;
+            }
+            return hi + 0.5;
         }
 
         /// <summary>Whether the ask's deadline has passed, marking the result if so.</summary>

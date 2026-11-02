@@ -55,7 +55,7 @@ namespace ClaudiaKermin.Core.Missions
             _request = request;
             _toolSteps = 0;
             _toolLimitSent = false;
-            var next = new CraftCheckCharge { Model = request.Model, Pending = worstCase };
+            var next = new CraftCheckCharge { Model = request.Model, Pending = worstCase, Input = RequestCharge.InputCost(_config.Prices, request.Model, request, worstCase) };
             _background.Run(
                 () => _client.Stream(request, update => { }, cancel.Token),
                 r => Finished(cancel, next, r),

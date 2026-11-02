@@ -366,6 +366,48 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
             Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture, "land_plans_staged({0}, {1}, {2}, {3})", stageDv, totalDv, need, mayStage)));
         }
 
+        [Theory]
+        // #596, 22cc: Mun Shot v2 in Minmus orbit, the Swivel stage (648 m/s) hanging below the Terrier lander (3,103 m/s), a
+        // 419 m/s need (times burn_margin 1.1 = 460.9): the lander alone has it, so the stage goes before the deorbit burn.
+        [InlineData("early", "true", 3103, 419, "True")]
+        // A lander short of the need, with the margin (450 < 460.9), or well short: it keeps the stack.
+        [InlineData("early", "true", 450, 419, "False")]
+        [InlineData("early", "true", 0, 419, "False")]
+        // Staging off would leave part of the Underhang, or is blocked.
+        [InlineData("early", "false", 3103, 419, "False")]
+        // "late" keeps today's: the stack brakes and the Underhang drops near the ground.
+        [InlineData("late", "true", 3103, 419, "False")]
+        public void Land_stages_the_Underhang_off_before_the_deorbit_when_the_lander_alone_has_the_landing(string drop, string mayStage, double landerDv, double need, string expected)
+        {
+            Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture,
+                "land_drops_before_deorbit(\"{0}\", {1}, {2}, land_dv_needed({3}, 1.1, -1))", drop, mayStage, landerDv, need)));
+        }
+
+        [Fact]
+        public void The_stage_that_covers_the_braking_kept_the_stack_before_596()
+        {
+            // 22cc's figures under #546's rule alone: 648 m/s covers 460.9, so it never staged before the fall.
+            Assert.Equal("False", One("land_plans_staged(648, 3751, land_dv_needed(419, 1.1, -1), true)"));
+        }
+
+        [Fact]
+        public void Drop_underhang_defaults_to_early_and_is_checked()
+        {
+            Assert.Equal("early", One("claudia_options(lexicon(), land_defaults(), \"auto\"):opt:drop_underhang"));
+            Assert.Equal("", One("land_unreadable(claudia_options(lexicon(\"drop_underhang\", \"late\"), land_defaults(), \"auto\"):opt)"));
+            Assert.Equal("drop_underhang must be \"early\" or \"late\"",
+                One("land_unreadable(claudia_options(lexicon(\"drop_underhang\", \"soon\"), land_defaults(), \"auto\"):opt)"));
+        }
+
+        [Fact]
+        public void Land_decides_the_early_drop_on_the_plans_need_with_burn_margin_and_flies_the_lander()
+        {
+            var land = CoreLibrary.Files.Single(f => f.Name == "land").Source;
+            Assert.Contains("local lander_need is land_dv_needed(plan:predicted_dv, opt:burn_margin, land_deorbit_figures(plan):needed).", land);
+            Assert.Contains("if land_drops_before_deorbit(opt:drop_underhang, may_stage_first, under:lander_dv, lander_need) {", land);
+            Assert.Contains("set craft to land_lander_craft(land_craft(under, turn, opt), under).", land);
+        }
+
         [Fact]
         public void The_lander_alone_keeps_the_turn_lag_and_margin_and_has_nothing_to_drop()
         {
@@ -474,8 +516,9 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         [Fact]
         public void Land_descends_no_faster_than_it_can_stop_and_touches_down_at_touchdown_speed()
         {
-            // Far above the approach height: limited by what it can stop from (2 m/s^2 over 1000 m).
-            Assert.Equal("-63.246", One("round(land_vv_target(1000, 0, 2, 2), 3)"));
+            // Far above the approach height: limited by what it can stop from (2 m/s^2 over 1000 m, by land_h_end over the
+            // ground after 2 s of reaction: land_sink_limit, #547; it was the 63.246 that stops at the ground).
+            Assert.Equal("-52.71", One("round(land_vv_target(1000, 0, 2, 2), 3)"));
             // At the ground: the touchdown speed.
             Assert.Equal("-2", One("land_vv_target(1, 0, 2, 2)"));
             Assert.Equal("-2", One("land_vv_target(100, 90, 2, 2)"));
@@ -484,6 +527,44 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
             Assert.Equal("5", One("land_vv_target(950, 1000, 2, 2)"));
             // However high and however hard it can stop: never over 100 m/s down (#365's ran to 240).
             Assert.Equal("-100", One("land_vv_target(20000, 0, 5, 2)"));
+        }
+
+        [Fact]
+        public void Lands_sink_limit_stops_the_descent_by_h_end_over_the_ground_after_2_s_of_reaction()
+        {
+            // #547: 1000 m over the ground at 2 m/s^2: 2 s at the speed, then stopping, uses the 800 m down to land_h_end.
+            Assert.Equal("52.71", One("round(land_sink_limit(1000, 2), 3)"));
+            Assert.Equal("800", One("round(2 * land_sink_limit(1000, 2) + land_sink_limit(1000, 2) ^ 2 / (2 * 2), 6)"));
+            // Under twice h_end it stops by half the height, so the terminal descent still reaches the ground; nothing at it.
+            Assert.Equal("150", One("round(2 * land_sink_limit(300, 2) + land_sink_limit(300, 2) ^ 2 / (2 * 2), 6)"));
+            Assert.Equal("0", One("land_sink_limit(0, 2)"));
+            Assert.Equal("0", One("land_sink_limit(-50, 2)"));
+            // A slower turn reacts later: Mun Shot v2's lander on the stack's 7.3 s turn lag, the 800 m used the same way; never
+            // under the 2 s.
+            Assert.Equal("800", One("round(7.3 * land_sink_limit(1000, 2, 7.3) + land_sink_limit(1000, 2, 7.3) ^ 2 / (2 * 2), 6)"));
+            Assert.Equal("True", One("land_sink_limit(1000, 2, 7.3) < land_sink_limit(1000, 2) and land_sink_limit(1000, 2, 1) = land_sink_limit(1000, 2)"));
+            // More height, or more to stop with, allows more.
+            Assert.Equal("True", One("land_sink_limit(2000, 2) > land_sink_limit(1000, 2) and land_sink_limit(1000, 4) > land_sink_limit(1000, 2)"));
+            // The C# port BRAKEPATH predicts with.
+            foreach (var c in new[] { new[] { 1000, 2.0, 2 }, new[] { 300, 2.0, 2 }, new[] { 2697, 3.37, 2.6 }, new[] { 50, 6.0, 1 }, new[] { 0, 2.0, 2 }, new[] { 1000, 2.0, 7.3 } })
+                Assert.Equal(double.Parse(One(string.Format(CultureInfo.InvariantCulture, "land_sink_limit({0}, {1}, {2})", c[0], c[1], c[2])), CultureInfo.InvariantCulture),
+                    Core.Tools.BrakeGuidance.SinkLimit(c[0], c[1], c[2]), 9);
+        }
+
+        [Fact]
+        public void Braking_far_over_its_descent_shape_near_the_site_is_seen_and_braking_on_its_shape_isnt()
+        {
+            // #547, m20261031-022433-3dc5: 321 m out at 63.6 m/s, 2697 m up with h_ref 216 and vv_want -100. At 100 m/s it loses
+            // 1 km in the 10 s it has left across the ground, not the 2.5 km it is over its shape.
+            Assert.Equal("True", One("land_over_shape(2697, 216, 321, 63.6, 100)"));
+            // 2.8 km out at 218 m/s, 3 km over its shape: 26 s left, 2.6 km at 100 m/s.
+            Assert.Equal("True", One("land_over_shape(3476, 490, 2842, 218.1, 100)"));
+            // 10.6 km out at 426 m/s, 2.3 km over: 50 s left, time enough.
+            Assert.Equal("False", One("land_over_shape(3860, 1593, 10584, 425.6, 100)"));
+            // Where braking began, under its shape; on it, nearer in; and the terminal descent, which has no shape left.
+            Assert.Equal("False", One("land_over_shape(3206, 3310, 21870, 599.5, 100)"));
+            Assert.Equal("False", One("land_over_shape(450, 400, 1500, 90, 40)"));
+            Assert.Equal("False", One("land_over_shape(2000, 0, 10, 0.5, 100)"));
         }
 
         [Fact]
@@ -859,6 +940,33 @@ print land_brake_estimate(samples, a_brake, 1.1).");
         }
 
         [Fact]
+        public void land_steer_holds_the_last_direction_with_no_thrust_or_a_demand_that_is_zero_or_not_finite()
+        {
+            // #595: a_max 0 divided by zero in a stage that ran dry; a zero or non-finite demand did the same by its magnitude.
+            var cases = new[]
+            {
+                new[] { "0", "0, \"cr\", 0, \"up\", 0" },
+                new[] { "0", "3, \"cr\", 0, \"up\", 4" },
+                new[] { "10", "0, \"cr\", 0, \"up\", 0" },
+                new[] { "10", "1e300 * 1e300, \"cr\", 0, \"up\", 0" },
+            };
+            foreach (var c in cases)
+            {
+                var printed = Run("local d is land_steer(lexicon(\"al\", " + c[1] + "), lexicon(\"al\", -1, \"cr\", 0, \"up\", 0), lexicon(\"al\", 567, \"cr\", 0, \"up\", 13), " + c[0] + ").\n"
+                    + "print d:al. print d:cr. print d:up. print d:mag.");
+                Assert.Equal(new[] { "-1", "0", "0", "0" }, printed);
+            }
+        }
+
+        [Fact]
+        public void The_descent_stages_before_guidance_only_when_braking_dry_with_no_Underhang_pending()
+        {
+            Assert.Equal(new[] { "True", "False", "False", "False" }, Run(
+                "print land_stage_before_guidance(true, false, 0). print land_stage_before_guidance(true, false, 40).\n"
+                + "print land_stage_before_guidance(false, false, 0). print land_stage_before_guidance(true, true, 0)."));
+        }
+
+        [Fact]
         public void A_demand_ahead_over_50_m_s_thrusts_nothing_rather_than_being_turned_up_and_back()
         {
             // #530: on Minmus Flats a push ahead for the starting speed at 50 m/s was laid 45 degrees off retrograde at its full
@@ -1120,7 +1228,7 @@ function tsim {
     if h_start < 0 { set h_start to max(land_h_end(), h). }
     set v_top to land_v_top(v_top, abs(vx)).
     local w is land_guide(lexicon(""s"", site_x - x, ""c"", 0, ""v_al"", vx, ""v_cr"", 0, ""v_up"", vy, ""h"", h, ""h_start"", h_start,
-      ""v0"", v0, ""shape"", shape, ""v_top"", v_top, ""a_max"", a_max, ""g"", g, ""radius"", rad + y), 2, margin).
+      ""v0"", v0, ""shape"", shape, ""v_top"", v_top, ""a_max"", a_max, ""g"", g, ""radius"", rad + y, ""lag"", lag), 2, margin).
     set to_go to w:to_go.
     set dir to land_steer(w, dir, lexicon(""al"", vx, ""cr"", 0, ""up"", vy), a_max).
     local mag is min(a_max, dir:mag).
@@ -1244,6 +1352,26 @@ function tsim {
             Assert.True(alts.Max() < 2097 + 300, string.Join(", ", alts));
         }
 
+        /// <summary>The Twin Craters approach from m20261031-022433-3dc5's braking start (BrakePathTests' recorded ground): 965 m there, the site's hollow at 400 m.</summary>
+        private const string TwinCratersProfile = "list(list(-563, 980), list(21870, 400), list(30000, 400))";
+
+        [Fact]
+        public void From_the_78_km_twin_craters_braking_start_kOS_and_brakepath_fly_the_same_drop_and_land_on_the_site()
+        {
+            // #547: braking 21.9 km out at 599.5 m/s and 9 m/s down, 4309 m up (3344 m over the ground), shape 2.35, Mun Shot v2's
+            // lander (60 kN, 5 t, TURNTIME's 9.9 s at up to 59.5 deg/s). It holds about 3.4 km to within a km of the site, then comes
+            // down no faster than land_sink_limit lets it, and touches down softly on the site, the same in both.
+            var lag = Core.Tools.BrakePath.TurnLag(59.5, 9.9);
+            var kos = Run(TerrainSimulation + string.Format(CultureInfo.InvariantCulture, "tsim({0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}, {11}).",
+                TwinCratersProfile, 21870, 4309, 2.345, 599.5, -9, 900, 6.5138398e10, 200000, 5000, 60000, lag));
+            List<double> alts;
+            var flown = FlyOverInCSharp(Corners(TwinCratersProfile), 21870, 4309, 2.345, out alts, 599.5, -9, 6.5138398e10, 200000, 5000, 60000, lag);
+            AssertTheSameFlight(kos, flown, alts);
+            Assert.InRange(double.Parse(kos[2], CultureInfo.InvariantCulture), -300, 300);
+            Assert.InRange(double.Parse(kos[1], CultureInfo.InvariantCulture), 0, 100);
+            Assert.True(flown.LeastStopRoom >= Core.Tools.BrakeGuidance.HEnd / 2, "least room to stop " + Math.Round(flown.LeastStopRoom) + " m");
+        }
+
         [Fact]
         public void Land_steers_by_its_height_above_the_highest_ground_ahead()
         {
@@ -1254,6 +1382,39 @@ function tsim {
             // A minute ahead at 100 m/s, but no farther than where it stops.
             Assert.Equal(new[] { "23", "50", "6000", "700" }, Run(
                 "local d is land_lookahead(100, 1e9). print d:length. print d[0]. print d[d:length - 1]. print land_lookahead(100, 700)[22]."));
+        }
+
+        [Fact]
+        public void The_terminal_descent_steers_by_radar_not_the_predicted_paths_ground()
+        {
+            // #562, 6be2 over East Crater: stopped over the site, the predicted path's ground put h at -1 while radar read 26.
+            // Steering by h it climbed 0.1 m/s and hovered 450 s; by radar it comes down.
+            var over = Run(Guide("0, 0, 0, 0, 0, -1").Replace("\"h_start\"", "\"radar\", 26, \"h_start\"") + " print w:h_ref. print w:vv <= -2. print round(w:h).");
+            Assert.Equal(new[] { "0", "True", "26" }, over.Skip(3).ToArray());
+            // Still on its Descent Shape (h_ref over 0), the path's ground still counts.
+            var shaped = Run(Guide("2000, 0, 100, 0, -10, 500").Replace("\"h_start\"", "\"radar\", 900, \"h_start\"") + " print round(w:h).");
+            Assert.Equal("500", shaped[3]);
+            // No radar given (BRAKEPATH's sim): h as before.
+            Assert.Equal("-1", Run(Guide("0, 0, 0, 0, 0, -1") + " print round(w:h).")[3]);
+        }
+
+        [Fact]
+        public void A_terminal_hover_is_caught_after_ten_seconds()
+        {
+            // #562: land_hover_watch(since, phase, v_down, touchdown, thrott, ut) gives the UT the hover began (-1 for none).
+            Assert.Equal("-1", One("land_hover_watch(-1, \"terminal\", 2, 2, 0.1, 100)"));
+            Assert.Equal("100", One("land_hover_watch(-1, \"terminal\", 0.1, 2, 0.1, 100)"));
+            Assert.Equal("100", One("land_hover_watch(100, \"terminal\", 0, 2, 0.1, 105)"));
+            Assert.Equal("-1", One("land_hover_watch(100, \"terminal\", 1.5, 2, 0.1, 105)"));
+            Assert.Equal("-1", One("land_hover_watch(100, \"approach\", 0, 2, 0.1, 105)"));
+            // Throttle 0 (resting on a slope, say) isn't a hover.
+            Assert.Equal("-1", One("land_hover_watch(100, \"terminal\", 0, 2, 0, 105)"));
+            Assert.Equal("False", One("land_hovering(100, 109)"));
+            Assert.Equal("True", One("land_hovering(100, 110)"));
+            Assert.Equal("False", One("land_hovering(-1, 1000)"));
+            // Caught: the descent comes down at touchdown speed whatever h says.
+            Assert.Equal("-2", One("land_vv_target(-1, 0, 2, 2, 2, true)"));
+            Assert.Equal("-2", One("land_vv_target(300, 0, 2, 2, 2, true)"));
         }
 
         [Fact]
@@ -1543,6 +1704,74 @@ function estimate {
         public void Ascend_circularizes_at_apoapsis_by_vis_viva()
         {
             Assert.Equal("15.381", One("round(ascend_circularize_dv(" + MunMu + ", 212000, 201000), 3)"));
+        }
+
+        // #597: ascend also starts from flight, the abort to orbit for a falling craft. 7061 m is the Mun's highest terrain.
+        [Fact]
+        public void Ascend_starts_from_the_ground_or_from_flight_over_an_airless_body()
+        {
+            Assert.Equal("ground", One("ascend_start(\"LANDED\", false, -190000, 7061, \"Mun\")"));
+            Assert.Equal("ground", One("ascend_start(\"SPLASHED\", false, -190000, 7061, \"Mun\")"));
+            Assert.Equal("ground", One("ascend_start(\"PRELAUNCH\", false, -190000, 7061, \"Mun\")"));
+            Assert.Equal("flight", One("ascend_start(\"SUB_ORBITAL\", false, -59600, 7061, \"Mun\")"));
+            Assert.Equal("flight", One("ascend_start(\"FLYING\", false, -59600, 7061, \"Mun\")"));
+            // In orbit but the periapsis under the highest terrain: still falling into it.
+            Assert.Equal("flight", One("ascend_start(\"ORBITING\", false, 4000, 7061, \"Mun\")"));
+            // Past escape speed there's no apoapsis to climb to, even on a path into the terrain.
+            Assert.Equal("ascend starts landed, flying or sub-orbital, not ESCAPING", One("ascend_start(\"ESCAPING\", false, 4000, 7061, \"Mun\")"));
+            // Already safe in orbit: nothing to fly.
+            Assert.Equal("orbit", One("ascend_start(\"ORBITING\", false, 12000, 7061, \"Mun\")"));
+            Assert.Equal("ascend starts landed, flying or sub-orbital, not ESCAPING", One("ascend_start(\"ESCAPING\", false, 12000, 7061, \"Mun\")"));
+            Assert.Equal("ascend starts landed, flying or sub-orbital, not DOCKED", One("ascend_start(\"DOCKED\", false, 12000, 7061, \"Mun\")"));
+            Assert.Equal("ascend flies from airless bodies only; Duna has an atmosphere (use launch)", One("ascend_start(\"LANDED\", true, -300000, 8264, \"Duna\")"));
+            Assert.Equal("ascend flies from airless bodies only; Duna has an atmosphere (use launch)", One("ascend_start(\"SUB_ORBITAL\", true, -300000, 8264, \"Duna\")"));
+        }
+
+        [Fact]
+        public void Ascend_from_a_fall_over_Minmus_first_commands_a_climb()
+        {
+            // 22cc's state, roughly: 2 km over Minmus (radius 60 km), 30 m/s down and 20 m/s across, to "auto" 10,725 m.
+            const string Fall = "1.7658e9, 62000, 20, -30, 2000, 10725, ";
+            // A Terrier lander (6 m/s^2) puts all of it into stopping the fall and climbing.
+            Assert.Equal("90", One("round(ascend_climb_pitch(" + Fall + "6), 3)"));
+            // With more thrust, the rest goes into horizontal speed, still pointing up.
+            var pitch = double.Parse(One("ascend_climb_pitch(" + Fall + "25)"), CultureInfo.InvariantCulture);
+            Assert.InRange(pitch, 30, 89);
+            Assert.True(double.Parse(One("sin(ascend_climb_pitch(" + Fall + "25))"), CultureInfo.InvariantCulture) > 0.5);
+            // No thrust (the stage dry before staging): straight up, never into the ground.
+            Assert.Equal("90", One("ascend_climb_pitch(" + Fall + "0)"));
+        }
+
+        [Fact]
+        public void Ascend_from_flight_keeps_its_direction_of_travel_unless_hovering()
+        {
+            Assert.Equal("200", One("ascend_flight_az(90, 200, 150)"));
+            Assert.Equal("90", One("ascend_flight_az(90, 200, 9)"));
+            // A hover drifting a little past the ground's own 9 m/s of turn still flies into target_inc.
+            Assert.Equal("90", One("ascend_flight_az(90, 200, 15)"));
+        }
+
+        [Fact]
+        public void Ascend_from_flight_climbs_at_least_1_km_above_the_craft_so_apoapsis_is_ahead()
+        {
+            Assert.Equal("10725", One("ascend_climb_to(\"flight\", 10725, 2000)"));
+            Assert.Equal("16000", One("ascend_climb_to(\"flight\", 10725, 15000)"));
+            Assert.Equal("10725", One("ascend_climb_to(\"ground\", 10725, 15000)"));
+        }
+
+        [Fact]
+        public void Ascend_from_flight_fails_cleanly_when_it_cannot_reach_orbit_before_impact()
+        {
+            // 30 m/s down at 2 km over Minmus, 20 m/s across, 160 m/s for the orbit.
+            Assert.Equal("", One("ascend_flight_short(-30, 20, 160, 6, 0.45, 2000, 600)"));
+            // Stock can't say (0): the delta-v isn't judged.
+            Assert.Equal("", One("ascend_flight_short(-30, 20, 160, 6, 0.45, 2000, 0)"));
+            Assert.Equal("too little delta-v to reach orbit before impact: needs at least 170 m/s, 120 m/s left", One("ascend_flight_short(-30, 20, 160, 6, 0.45, 2000, 120)"));
+            // 1.6 m/s^2 against 0.45 stops 150 m/s down in 9,783 m: the ground comes first.
+            Assert.Equal("too little thrust to reach orbit before impact: stopping the fall takes 9783 m, 2000 m above the ground", One("ascend_flight_short(-150, 20, 160, 1.6, 0.45, 2000, 600)"));
+            Assert.Equal("too little thrust to reach orbit before impact: thrust-to-weight 0.8 while falling", One("ascend_flight_short(-30, 20, 160, 0.36, 0.45, 2000, 600)"));
+            // Climbing already: nothing to stop.
+            Assert.Equal("", One("ascend_flight_short(5, 20, 160, 0.36, 0.45, 2000, 600)"));
         }
     }
 }

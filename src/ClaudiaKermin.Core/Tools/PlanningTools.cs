@@ -24,6 +24,9 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The biome's name at the point; "" when the body has none or can't be read.</summary>
         string Biome(string body, double latitude, double longitude);
 
+        /// <summary>The names of the body's biomes; empty when the body has no biome map or can't be read.</summary>
+        IList<string> BiomeNames(string body);
+
         /// <summary>The sun's elevation above the horizon at the point at <paramref name="ut"/>, degrees; NaN when it can't be read.</summary>
         double SunElevation(string body, double latitude, double longitude, double ut);
 
@@ -72,6 +75,9 @@ namespace ClaudiaKermin.Core.Tools
         public abstract string Biome(string body, double latitude, double longitude);
         public abstract double SunElevation(string body, double latitude, double longitude, double ut);
         public abstract bool SurfaceUnder(string body, double x, double y, double z, out double latitude, out double longitude);
+
+        /// <summary>No biomes listed; a fake that has some overrides it.</summary>
+        public virtual IList<string> BiomeNames(string body) { return new string[0]; }
 
         public virtual void Survey(string body, IList<SiteSample> samples, SiteFacts facts)
         {

@@ -25,10 +25,36 @@ namespace ClaudiaKermin.Core.Tests
         // counts input) for the system prompt and tool definitions of the first Mission request in this test's Mission. The estimate
         // runs low against the API's own count (25,569 in b5f3, 26,865 in 3dc5, whose Mission layer also carried a real body table
         // and goal), so compare this figure only with itself.
-        private const int TodaysEstimate = 20452;
+        private const int TodaysEstimate = 21443;
 
-        /// <summary>About 5% above today's figure (1.05 x 20,452 = 21,475), rounded up to the next hundred.</summary>
+        /// <summary>
+        /// Set at 21,500 when the figure was 20,452 (1.05 x 20,452 = 21,475, rounded up to the next hundred), and not raised since:
+        /// #534's propose_mission_plan took the figure to 21,330, and #570's dropping check_script (917 characters, -306) with the Script Check sentence paid for inside HowToPlan (+1) to 21,019, and #577's finish_fraction docs for exec_node and
+        /// circularize (+113) to 21,132: one short burn finished instead of an Off-Nominal Debrief and corrective sequence saves $0.30 to $0.50.
+        /// #581's goal_steps on propose_mission_plan (169 characters, +57) to 21,189: the Mission Goal's steps are written once instead of
+        /// restated in every Debrief (about 260 characters each, read back on every later request), and the reply schema shrinks by about 70.
+        /// #599's falling-craft sentence (137 characters, +45) to 21,279: a craft that is falling with impact_in_s is told to thrust horizontal and up, never a
+        /// prograde node (Mission m...22cc died on one). The figure was 21,234 before it: #590 and #591 had added 45 since #581 without a record.
+        /// #557's reentry separate option, its failure and "drops the stack below the heat shield" in the catalog line (+54, paid down
+        /// by trimming reentry's own docs) to 21,288, measured against 21,234 for bece0db here: a reentry flown with the service module
+        /// on lost two Missions and cost b5f3 and 0de6 a corrective sequence each.
+        /// #597's ascend from flight (+58; this test read 21,234 on its base, not 21,189) to 21,346 merged with #557, then 21,335 after trimming ascend's summary line (-11) so BaseLayer fits GuidanceTests' cap: the abort to orbit for a falling
+        /// craft, which 22cc lost to a hand-written prograde node into the ground; one saved Mission outweighs a cache read per request.
+        /// Merged with #599 (its +45 on top of 21,335 from main) = 21,380 measured on the merged tree.
+        /// #596's drop_underhang option and early-drop rule in land's docs (+38) to 21,418, measured on the tree merged with main: a lander
+        /// that drops its transfer stage before the deorbit turns and brakes on its own, instead of hovering a stack dry and failing the leg.
+        /// #592's reentry "passes" result and its skip-out failures in one doc phrase (73 characters, +25) to 21,443 on the tree merged with main (21,418 + 25): a craft that skipped out ran
+        /// to max_duration and failed (b5f3, 0de6, 44e9), each a failed run, a Debrief and a new Sequence Plan.
+        /// </summary>
         private const int BudgetTokens = 21500;
+
+        // The first Mission request's messages for a Mun goal from Kerbin orbit (same estimate): 5,096 tokens before #575, plus 321 for the
+        // plan_transfer row and its lead line = 5,417. The row replaces a tool step, a whole request of about $0.22 in b5f3, 3dc5 and
+        // 6be2, for about $0.001 of cache write (and a cache read on each later request).
+        private const int FirstTurnEstimate = 5417;
+
+        /// <summary>About 5% above the first turn's figure (1.05 x 5,417 = 5,688), rounded up to the next hundred.</summary>
+        private const int FirstTurnBudgetTokens = 5700;
 
         private readonly Background _background = new Background(e => throw new Exception("background error", e));
         private readonly TempDir _save = new TempDir();
@@ -64,6 +90,41 @@ namespace ClaudiaKermin.Core.Tests
         private static int EstimatedTokens(string json)
         {
             return (json.Length + 2) / 3;
+        }
+
+        /// <summary>The first Mission request for a Mun goal from Kerbin orbit, whose messages carry the stage table and the plan_transfer row.</summary>
+        private string FirstMunRequestBody()
+        {
+            var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-priced.sse"));
+            var client = new ClaudeClient(new CraftCheckRouter(transport), () => "sk-ant-test", l => { });
+            client.Timing.Wait = (d, c) => { };
+            var mission = new MissionControl(client, _background, new PlayerConfig(), () => true, new PassingScriptCheck());
+            mission.Send(new SaveLoaded(_save.Path));
+            mission.Send(new SceneChanged(GameScene.Flight));
+            var snapshot = GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "mun-shot-v2-kerbin-orbit.json")));
+            CraftCheckRouter.StartChecked(mission, _background, snapshot, new StartMission("Land on the Mun and return to Kerbin.", 10m, "claude-sonnet-5-5"));
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (transport.Requests.Count == 0 && DateTime.UtcNow < deadline)
+            {
+                _background.Drain();
+                Thread.Sleep(2);
+            }
+            _background.Drain();
+            Assert.NotEmpty(transport.Requests);
+            return transport.Requests[0].Body;
+        }
+
+        [Fact]
+        public void TheMessagesOfTheFirstMissionRequestStayUnderTheBudget()
+        {
+            using (var body = JsonDocument.Parse(FirstMunRequestBody()))
+            {
+                var messages = body.RootElement.GetProperty("messages").GetRawText();
+                var estimate = EstimatedTokens(messages);
+                Assert.True(estimate <= FirstTurnBudgetTokens,
+                    "The first Mission request's messages are now " + estimate + " tokens (estimated), over the budget of " + FirstTurnBudgetTokens
+                    + " (" + FirstTurnEstimate + " when the budget was set): raise it only as a deliberate change, with the cost reason in the PR.");
+            }
         }
 
         [Fact]

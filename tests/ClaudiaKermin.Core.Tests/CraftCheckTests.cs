@@ -129,6 +129,8 @@ namespace ClaudiaKermin.Core.Tests
 
             var request = transport.Requests.Single();
             var system = SystemText(request);
+            // Still cached as ever (#549): the tail and the system layer, at the 1-hour TTL.
+            Assert.Contains("\"cache_control\":{\"type\":\"ephemeral\",\"ttl\":\"1h\"},\"system\":[{\"type\":\"text\",\"text\":", request.Body);
             foreach (var blocker in new[] { "no_kos_processor", "no_seat_for_claudia", "no_probe_core_or_antenna", "delta_v_short", "twr_below_one",
                 "no_parachutes_for_return", "required_experiments_missing", "child_vessel_problem" })
                 Assert.Contains(blocker, system);

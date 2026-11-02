@@ -45,6 +45,9 @@ namespace ClaudiaKermin.Core.Claude
         /// </summary>
         public const string BetaHeaders = "server-side-fallback-2026-07-01,compact-2026-01-12,compact-2026-09-04,mid-conversation-output-config-2026-07-01";
 
+        /// <summary>Added to <see cref="BetaHeaders"/> on a request with <see cref="MessagesRequest.Diagnostics"/> (debug_tools only, #569); unverified until the in-game flight.</summary>
+        public const string CacheDiagnosisBeta = "cache-diagnosis-2026-04-07";
+
         public static string UserAgent
         {
             get { return "ClaudiaKermin/" + ModInfo.Version; }
@@ -117,11 +120,12 @@ namespace ClaudiaKermin.Core.Claude
             while (true)
             {
                 result.Attempts++;
-                var attempt = RunAttempt(id, result.Attempts, body, listener, cancel, dump);
+                var attempt = RunAttempt(id, result.Attempts, body, request.Diagnostics, listener, cancel, dump);
                 result.HttpStatus = attempt.HttpStatus;
                 result.ErrorType = attempt.ErrorType;
                 result.ErrorMessage = attempt.ErrorMessage;
                 result.Failure = attempt.Failure;
+                result.OutputStreamed |= attempt.ContentStarted;
 
                 if (attempt.Cancelled || cancel.IsCancellationRequested)
                 {
@@ -179,12 +183,12 @@ namespace ClaudiaKermin.Core.Claude
             public TimeSpan? RetryAfter;
         }
 
-        private Attempt RunAttempt(int id, int number, string body, Action<StreamUpdate> listener, CancellationToken cancel, IRawStreamDump dump)
+        private Attempt RunAttempt(int id, int number, string body, bool diagnostics, Action<StreamUpdate> listener, CancellationToken cancel, IRawStreamDump dump)
         {
             var attempt = new Attempt();
             var request = new HttpRequestSpec { Method = "POST", Url = BaseUrl + MessagesPath, Body = body };
             AddCommonHeaders(request);
-            request.Headers.Add(new KeyValuePair<string, string>("anthropic-beta", BetaHeaders));
+            request.Headers.Add(new KeyValuePair<string, string>("anthropic-beta", diagnostics ? BetaHeaders + "," + CacheDiagnosisBeta : BetaHeaders));
             request.Headers.Add(new KeyValuePair<string, string>("Content-Type", "application/json"));
             request.Headers.Add(new KeyValuePair<string, string>("Accept", "text/event-stream"));
 

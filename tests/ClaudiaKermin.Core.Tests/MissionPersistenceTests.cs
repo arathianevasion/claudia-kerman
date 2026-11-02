@@ -598,18 +598,18 @@ namespace ClaudiaKermin.Core.Tests
             var mission = Control(transport);
             ToMissionPlan(mission, 1.20m);
             var saved = Saved(mission);
-            Assert.Equal(0.54m, mission.View.Spent);
+            Assert.Equal(0.52m, mission.View.Spent);
 
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
-            Assert.Equal(1.08m, mission.View.Spent);
+            Assert.Equal(1.04m, mission.View.Spent);
 
             mission.Send(new MissionsRestored(_save.Path, saved));
             Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
-            Assert.Equal(1.08m, mission.View.Spent);
+            Assert.Equal(1.04m, mission.View.Spent);
             Assert.Equal(0m, mission.View.HeldCharges);
 
-            // $1.08 of $1.20 leaves no room for another request's worst case; at the save's $0.54 there was.
+            // $1.04 of $1.20 leaves no room for another request's worst case; at the save's $0.52 there was.
             mission.Send(new Approve());
             Assert.Equal(2, transport.Requests.Count);
             Assert.Equal(MissionStage.Paused, mission.View.Stage);
@@ -647,12 +647,12 @@ namespace ClaudiaKermin.Core.Tests
             var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-priced.sse"));
             var mission = Control(transport);
             ToMissionPlan(mission);
-            Assert.Equal(0.54m, mission.View.Spent);
+            Assert.Equal(0.52m, mission.View.Spent);
 
             var later = Control(new StreamingFakeTransport());
             later.Send(new MissionsRestored(_save.Path, new List<MissionSaveState>()));
             Assert.Equal(mission.View.MissionId, later.View.MissionId);
-            Assert.Equal(0.54m, later.View.Spent);
+            Assert.Equal(0.52m, later.View.Spent);
         }
 
         [Fact]
@@ -697,7 +697,7 @@ namespace ClaudiaKermin.Core.Tests
 
             var later = Control(new StreamingFakeTransport());
             later.Send(new MissionsRestored(_save.Path, new List<MissionSaveState>()));
-            Assert.Equal(0.54m, later.View.Spent);
+            Assert.Equal(0.52m, later.View.Spent);
         }
 
         [Fact]
@@ -723,7 +723,7 @@ namespace ClaudiaKermin.Core.Tests
 
             later.Send(new Retry());
             Assert.Equal(MissionStage.AwaitingPlanApproval, later.View.Stage);
-            Assert.Equal(0.54m, later.View.Spent);
+            Assert.Equal(0.52m, later.View.Spent);
         }
 
         [Fact]
@@ -748,7 +748,7 @@ namespace ClaudiaKermin.Core.Tests
             }
 
             later.Send(new Retry());
-            Assert.Equal(0.54m, later.View.Spent);
+            Assert.Equal(0.52m, later.View.Spent);
         }
 
         [Fact]
@@ -767,7 +767,7 @@ namespace ClaudiaKermin.Core.Tests
             mission.Send(new MissionsRestored(_save.Path, saved));
             sequence.Gate.Set();
             DrainUntil(mission, v => !v.Busy && v.Stage == MissionStage.AwaitingPlanApproval);
-            Assert.Equal(1.08m, mission.View.Spent);
+            Assert.Equal(1.04m, mission.View.Spent);
         }
 
         [Fact]
@@ -1231,7 +1231,8 @@ namespace ClaudiaKermin.Core.Tests
             transport = new StreamingFakeTransport(responses.ToArray());
             mission = Control(transport);
             var start = ToRunning(mission);
-            var report = new Dictionary<string, object> { { "success", false }, { "reason", "link check" }, { "situation", "PRELAUNCH" } };
+            // It burned, so Claudia debriefs it: a refusal before any burn would get the mod's own Debrief (#579).
+            var report = new Dictionary<string, object> { { "success", false }, { "reason", "link check" }, { "situation", "PRELAUNCH" }, { "dv_used", 40.0 } };
             mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, report, "", "", false), start.RunId));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingReducedGoal);
             mission.Send(new RetryWithNote("Any orbit will do."));

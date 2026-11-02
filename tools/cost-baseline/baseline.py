@@ -32,7 +32,19 @@ PRICES = {
     'claude-opus-5': dict(input=5.00, w5m=6.25, w1h=10.00, read=0.50, output=25.00),
     'claude-sonnet-4-6': dict(input=3.00, w5m=3.75, w1h=6.00, read=0.30, output=15.00),
     'claude-haiku-4-5': dict(input=1.00, w5m=1.25, w1h=2.00, read=0.10, output=5.00),
+    # Haiku 5.5 has two tiers (fetched 2026-10-31): a prompt over LONG_PROMPT_TOKENS is priced by the `long` row.
+    'claude-haiku-5-5': dict(input=0.10, w5m=0.125, w1h=0.20, read=0.01, output=0.50,
+                             long=dict(input=0.50, w5m=0.625, w1h=1.00, read=0.05, output=2.50)),
 }
+
+# A prompt (uncached input plus cache writes plus cache reads) over this many tokens is priced at a model's `long` row.
+LONG_PROMPT_TOKENS = 100000
+
+
+def tier(p, prompt_tokens):
+    """The price row for a request whose prompt is `prompt_tokens` long: the model's `long` row when it has one and the
+    prompt is over LONG_PROMPT_TOKENS, else the row itself."""
+    return p.get('long', p) if prompt_tokens > LONG_PROMPT_TOKENS else p
 
 KINDS = ['Mission Plan', 'revised Mission Plan', 'Sequence Plan', 'Debrief', 'Alert', 'answer', 'Craft Check']
 
@@ -87,7 +99,7 @@ def parse_dump(path):
         for line in f:
             if line.startswith(': attempt'):
                 cur = dict(model=None, usage=None, stop=None, text_len=0, thinking_blocks=0, compaction_blocks=0,
-                           error=None)
+                           error=None, diagnostics=None)
                 attempts.append(cur)
                 continue
             if not line.startswith('data:') or cur is None:
@@ -99,6 +111,7 @@ def parse_dump(path):
             t = d.get('type')
             if t == 'message_start':
                 cur['model'] = d['message'].get('model')
+                cur['diagnostics'] = d['message'].get('diagnostics') or cur['diagnostics']
             elif t == 'content_block_start':
                 bt = d['content_block'].get('type')
                 if bt == 'thinking':
@@ -110,9 +123,68 @@ def parse_dump(path):
             elif t == 'message_delta':
                 cur['usage'] = d.get('usage')
                 cur['stop'] = d['delta'].get('stop_reason')
+                cur['diagnostics'] = d.get('diagnostics') or d['delta'].get('diagnostics') or cur['diagnostics']
             elif t == 'error':
                 cur['error'] = (d.get('error') or {}).get('type')
     return attempts
+
+
+# The cache-diagnosis beta (#569) is unverified until the in-game flight, so the tier is looked for by word anywhere in
+# the diagnostics object (keys and string values), in the order the API names the prompt: model, system, tools, messages.
+TIER_WORDS = (('model', 'model'), ('system', 'system'), ('tool', 'tools'), ('message', 'message history'))
+
+
+def blamed_tier(diagnostics):
+    """The tier (model, system, tools or message history) a response's `diagnostics` object blamed for a cache miss, from
+    the first of its keys or string values that names one; 'unnamed' when it has diagnostics but names none, None without."""
+    if not isinstance(diagnostics, dict):
+        return None
+    words = []
+
+    def walk(x):
+        if isinstance(x, dict):
+            for k, v in x.items():
+                words.append(str(k).lower())
+                walk(v)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v)
+        elif isinstance(x, str):
+            words.append(x.lower())
+    walk(diagnostics)
+    for w in words:
+        for word, name in TIER_WORDS:
+            if word in w:
+                return name
+    return 'unnamed'
+
+
+SNAPSHOT_HEADS = ('Game Snapshot (', 'Game Snapshot without craft.parts')
+SAME_CRAFT = 'The craft is as in the Game Snapshot above.'
+
+
+def snapshot_tokens(text):
+    """The mod's estimate (characters / 3) of the Game Snapshot text in a user turn, or None when it carries none. Three
+    shapes (#256): a full snapshot, 'Game Snapshot without craft.parts' (the JSON, then a `parts` line), and the one-line
+    'The craft is as in the Game Snapshot above.'; each counts as what it is. A flight recorded before #256 is all full.
+    The snapshot is the heading, the JSON object after it and, for the dynamic shape, the `parts` line."""
+    starts = [text.find(h) for h in SNAPSHOT_HEADS if h in text]
+    if starts:
+        start = min(starts)
+        brace = text.find('{', start)
+        if brace < 0:
+            return len(text[start:]) // 3
+        try:
+            _, end = json.JSONDecoder().raw_decode(text, brace)
+        except ValueError:
+            return len(text[start:]) // 3
+        rest = text[end:].lstrip('\n')
+        if rest.startswith('parts'):
+            end = len(text) - len(rest) + len(rest.split('\n', 1)[0])
+        return (end - start) // 3
+    if SAME_CRAFT in text:
+        return len(SAME_CRAFT) // 3
+    return None
 
 
 def iteration_rows(usage, model):
@@ -131,6 +203,7 @@ def iteration_rows(usage, model):
         w1h += max(0, it.get('cache_creation_input_tokens', 0) - w1h - w5m)
         r = dict(type=it.get('type'), model=m, input=it.get('input_tokens', 0), w1h=w1h, w5m=w5m,
                  read=it.get('cache_read_input_tokens', 0), output=it.get('output_tokens', 0))
+        p = tier(p, r['input'] + r['w1h'] + r['w5m'] + r['read'])
         r['cost_input'] = r['input'] * p['input'] / 1e6
         r['cost_w'] = (r['w1h'] * p['w1h'] + r['w5m'] * p['w5m']) / 1e6
         r['cost_read'] = r['read'] * p['read'] / 1e6
@@ -170,11 +243,17 @@ def analyse_mission(folder, install=''):
 
     # Transcript turns, with the reply kind the mod asked for.
     turns = []
+    M['snapshots'] = []  # (reply kind, estimated Game Snapshot tokens) per turn whose user text carried one
     tr = load_json(os.path.join(folder, 'transcript.json'))
     if tr:
         notice = None
+        snap = None
         for i, m in enumerate(tr.get('messages', [])):
-            if m.get('role') == 'system':
+            if m.get('role') == 'user':
+                t = snapshot_tokens(text_of(m.get('content')))
+                if t is not None:
+                    snap = (snap or 0) + t
+            elif m.get('role') == 'system':
                 s = text_of(m.get('content'))
                 k, _ = requested_kind(s)
                 if k:
@@ -191,7 +270,10 @@ def analyse_mission(folder, install=''):
                          'alert': 'Alert', 'answer': 'answer'}.get(reply.get('kind'), 'unknown')
                     sub = 'no notice'
                 turns.append(dict(index=i, text_len=len(txt), kind=k, sub=sub, reply=reply, matched=False))
+                if snap is not None:
+                    M['snapshots'].append((k, snap))
                 notice = None
+                snap = None
     unanswered = load_json(os.path.join(folder, 'unanswered-turn.json'))
     tail_kind = requested_kind((unanswered or {}).get('notice'))
 
@@ -402,10 +484,11 @@ def mission_stats(M, prices_total=None):
             w = m['w1h'] + m['w5m']
             if w > m['read']:
                 S['misses'] += 1
+                R['miss'] = True
                 S['miss_write_cost'] += m['cost_w']
                 # The prefix the previous request had cached but this one wrote again: paid at write, not read, price.
                 lost = max(0, prev_context - m['read'])
-                p = PRICES[m['model']]
+                p = tier(PRICES[m['model']], m['input'] + m['w1h'] + m['w5m'] + m['read'])
                 S['miss_rewritten'] += lost
                 S['miss_excess_cost'] += lost * (p['w1h'] - p['read']) / 1e6
         if msg:
@@ -560,7 +643,10 @@ def compare_row(M):
     def per_request(kind):
         n, c = by_kind[kind]
         return c / n if n else None
+    snaps = [t for k, t in M['snapshots'] if k not in ('Mission Plan', 'revised Mission Plan')]
+    blamed = [blamed_tier((R['attempt'] or {}).get('diagnostics')) for R in M['responses'] if R.get('miss')]
     return dict(
+        snapshot=statistics.median(snaps) if snaps else None, miss_tiers=[b for b in blamed if b],
         id=M['id'], install=M['install'], total=S['total_cost'], mod_total=M['mod_total'], legs=S['sequence_plans'],
         per_leg=S['cost'] / S['sequence_plans'] if S['sequence_plans'] else None,
         revised=revised[0], revised_cost=revised[1], compactions=S['compactions'], compaction_cost=S['comp_cost'],
@@ -591,17 +677,23 @@ def compare_report(rows, ref, goal):
                'total at its `PriceTable`, which charges cache reads too high (#257), so it runs above the published figure. '
                'Legs are Sequence Plans. Per leg leaves the Craft Checks out. The prefix is the cache read on a request that '
                'could only reach the system prompt and tools. "Full cache misses" are those after request 2, with the '
-               'cost over the read price of the prefix they rewrote.')
+               'cost over the read price of the prefix they rewrote, with the tier the cache diagnostics blamed in '
+               'brackets when the dump has them (debug_tools, #569). Snapshot tokens per turn are the median of the '
+               'mod\'s estimate (characters / 3) of the Game Snapshot text in each user turn that carries one, '
+               'leaving out Mission Plan turns (#256).')
     out.append('')
     out.append('| Mission | Install | Published | Mod logged | Legs | Per leg | Revised Mission Plans | Compactions | '
-               'Full cache misses | Prefix (tokens) | Per Sequence Plan request | Per Debrief request |')
-    out.append('|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|')
+               'Full cache misses | Prefix (tokens) | Per Sequence Plan request | Per Debrief request | '
+               'Snapshot tokens per turn |')
+    out.append('|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|')
 
     def line(r, label):
-        return '| %s | %s | %s | %s | %d | %s | %d, %s | %d, %s | %d, %s | %s | %s | %s |' % (
+        blamed = ' (%s)' % ', '.join(r['miss_tiers']) if r['miss_tiers'] else ''
+        return '| %s | %s | %s | %s | %d | %s | %d, %s | %d, %s | %d, %s%s | %s | %s | %s | %s |' % (
             label, r['install'], _usd(r['total']), _usd(r['mod_total']), r['legs'], _usd(r['per_leg']), r['revised'],
             _usd(r['revised_cost']), r['compactions'], _usd(r['compaction_cost']), r['misses'], _usd(r['miss_cost']),
-            tok(r['prefix']) if r['prefix'] else '', _usd(r['seq_request'], 3), _usd(r['debrief_request'], 3))
+            blamed, tok(r['prefix']) if r['prefix'] else '', _usd(r['seq_request'], 3), _usd(r['debrief_request'], 3),
+            tok(r['snapshot']) if r['snapshot'] is not None else '')
     for r in rows:
         out.append(line(r, r['id']))
     if ref:
@@ -780,7 +872,7 @@ def main():
                 lg = R.get('log')
                 if R['priced'] and lg and lg.get('settle') and lg['settle'].get('event') == 'paid':
                     for r in R['rows']:
-                        p = PRICES[r['model']]
+                        p = tier(PRICES[r['model']], r['input'] + r['w1h'] + r['w5m'] + r['read'])
                         alt += (r['input'] * p['input'] + (r['w1h'] + r['w5m']) * p['input'] * 2
                                 + r['read'] * p['input'] * 0.1 + r['output'] * p['output']) / 1e6
         w('- Re-pricing those responses with cache reads at 0.1x input and every write at the 1h rate gives %s '

@@ -51,24 +51,29 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <param name="refusal">Why this call can't run, by its tool and input, asked in the reply's order; null when it can.</param>
+        /// <param name="answer">The answer to a call the caller handles itself (a Reply Tool, ADR 0012), or null to run it as a Planning Tool.</param>
         public static ToolStepResult Run(PlanningTools tools, AssistantMessage reply, Func<ToolUseBlock, string> refusal, bool atLimit,
-            GameSnapshot snapshot, IPlanningBody body, TimeSpan timeout)
+            GameSnapshot snapshot, IPlanningBody body, TimeSpan timeout, Func<ToolUseBlock, ToolOutcome> answer = null)
         {
             var uses = reply.Content.OfType<ToolUseBlock>().ToList();
             var outcomes = new ToolOutcome[uses.Count];
             var refusals = new string[uses.Count];
             var running = new List<KeyValuePair<int, Task<ToolOutcome>>>();
+            // One source per call: abandoning a call at its timeout cancels only that call's reads (#544).
+            var sources = new Dictionary<int, CancellationTokenSource>();
             var ran = 0;
             for (var i = 0; i < uses.Count; i++)
             {
                 var use = uses[i];
                 var refused = refusal != null ? refusal(use) : null;
+                var answered = !atLimit && refused == null && answer != null ? answer(use) : null;
                 if (atLimit) outcomes[i] = PlanningJson.Error(LimitReached);
                 else if (refused != null)
                 {
                     outcomes[i] = PlanningJson.Error(refused);
                     refusals[i] = refused;
                 }
+                else if (answered != null) outcomes[i] = answered;
                 else if (ran >= MaxCallsPerStep)
                     outcomes[i] = PlanningJson.Error("at most " + MaxCallsPerStep + " calls run in one step; call this again in the next");
                 else
@@ -77,7 +82,15 @@ namespace ClaudiaKermin.Core.Tools
                     var input = use.InputIsValid ? use.InputJson : "";
                     // A thread of its own, not the pool's: a busy pool would start a call late and charge the wait to its time limit,
                     // and a call that blocks on the adapter's main thread (the body interface) must not hold up the pool.
-                    running.Add(new KeyValuePair<int, Task<ToolOutcome>>(i, Task.Factory.StartNew(() => tools.Run(use.Name, input, snapshot, body),
+                    var source = new CancellationTokenSource();
+                    sources[i] = source;
+                    var token = source.Token;
+                    var callBody = body != null ? CancellableBody.Wrap(body, token) : null;
+                    running.Add(new KeyValuePair<int, Task<ToolOutcome>>(i, Task.Factory.StartNew(() =>
+                        {
+                            PlanningCancellation.Set(token);
+                            return tools.Run(use.Name, input, snapshot, callBody);
+                        },
                         CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)));
                 }
             }
@@ -87,8 +100,13 @@ namespace ClaudiaKermin.Core.Tools
             foreach (var call in running)
             {
                 var left = deadline - DateTime.UtcNow;
-                outcomes[call.Key] = call.Value.Wait(left > TimeSpan.Zero ? left : TimeSpan.Zero) ? call.Value.Result
-                    : PlanningJson.Error("the calculation took longer than " + timeout.TotalSeconds.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " s");
+                if (call.Value.Wait(left > TimeSpan.Zero ? left : TimeSpan.Zero))
+                    outcomes[call.Key] = call.Value.Result;
+                else
+                {
+                    sources[call.Key].Cancel();
+                    outcomes[call.Key] = PlanningJson.Error("the calculation took longer than " + timeout.TotalSeconds.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " s");
+                }
             }
 
             var result = new ToolStepResult { Results = new Message { Role = Role.User } };

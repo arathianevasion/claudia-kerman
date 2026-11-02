@@ -59,7 +59,8 @@ namespace ClaudiaKermin.Core.Missions
             _hasKey = hasKey;
             _scriptCheck = scriptCheck;
             _craftCheck = new CraftCheckFlow(client, background, config, hasKey, CraftCheckCompleted);
-            Tools = PlanningTools.Default(scriptCheck);
+            // No check_script on Mission turns (#570): the Script Check runs on every Sequence Plan reply anyway.
+            Tools = PlanningTools.Default();
             Rebuild();
         }
 
@@ -110,7 +111,7 @@ namespace ClaudiaKermin.Core.Missions
             else if (input is EditSettings) SettingsEdited(((EditSettings)input).Settings);
             else if (input is WarpToDueTime) WarpRequested();
             else if (input is GoToVessel) GoToRequested();
-            else if (input is ClaudiaKilled) Killed(((ClaudiaKilled)input).VesselId);
+            else if (input is ClaudiaKilled) Killed(((ClaudiaKilled)input).VesselId, ((ClaudiaKilled)input).Traced);
             else if (input is KosRunBlocked) RunBlocked((KosRunBlocked)input);
             else if (input is KosBlockStarted) BlockStarted((KosBlockStarted)input);
             else if (input is KosBlockEnded) BlockEnded((KosBlockEnded)input);
@@ -206,6 +207,10 @@ namespace ClaudiaKermin.Core.Missions
             public TurnStats Stats = new TurnStats();
             /// <summary>The step limit is reached and the turn's request goes with tool_choice none (#509): a reply that still calls tools fails the turn.</summary>
             public bool ToolLimitSent;
+            /// <summary>The last tool step was only refused repeats (#571): the next request is the last, as at the step limit.</summary>
+            public bool RepeatStop;
+            /// <summary>The last tool step was only refused repeats on a turn still owed a Mission Plan (#571): the next step may call propose_mission_plan alone.</summary>
+            public bool PlanOnly;
             /// <summary>The Game Snapshot taken for the turn when its messages were built: what its tools calculate from.</summary>
             public GameSnapshot ToolSnapshot;
             /// <summary>
@@ -240,6 +245,8 @@ namespace ClaudiaKermin.Core.Missions
             /// <summary>Why the mod stopped the current run ("blocked: …", "timed out"), for its Debrief; null otherwise.</summary>
             public string StopReason;
             public MissionPlan Plan;
+            /// <summary>The Mission Goal's steps (<see cref="GoalSteps"/>, #581): set by a Mission Plan, ticked by Debriefs, rebuilt from the transcript on load.</summary>
+            public List<GoalItem> GoalSteps = new List<GoalItem>();
             public SequencePlan PendingSequence;
             public int SequencesProposed;
             /// <summary>The Maneuver Sequence in hand has had a Sequence Plan offered (so revisions don't count again).</summary>
@@ -372,11 +379,11 @@ namespace ClaudiaKermin.Core.Missions
             var bodyTable = MissionPrompts.BodyTable(_snapshot != null ? _snapshot.Bodies : null);
             mission.PlannedTurnShape = _craftCheck.PlannedTurnShape;
             mission.PlannedAscent = _craftCheck.PlannedAscent;
-            mission.System.Add(MissionPrompts.MissionLayer(id, goal, bodyTable, mission.PlannedTurnShape));
+            mission.System.Add(MissionPrompts.MissionLayer(goal, bodyTable, mission.PlannedTurnShape));
             var settings = start.Settings != null ? start.Settings.Copy() : MissionSettingsValues.Defaults(_config);
             settings.ConfigAllowsPhysicsWarp = _config.PhysicsWarp;
             settings.WriteTo(mission.Settings);
-            mission.System.Add(MissionPrompts.TimingLayer(settings));
+            mission.System.Add(MissionPrompts.TimingLayer(id, settings));
             // Raw stream dumps are a debug tool: on with debug_tools = true in the player config.
             if (_config.DebugTools) mission.Dump = new FileStreamDump(Path.Combine(mission.Folder, "stream-dumps"));
             _mission = mission;
@@ -390,6 +397,14 @@ namespace ClaudiaKermin.Core.Missions
             catch (Exception e) when (IsFileError(e))
             {
                 Note(LogKind.Notice, "Couldn't write the Mission's body table: " + e.Message);
+            }
+            try
+            {
+                MissionStore.WriteAscentPlan(mission.Folder, _craftCheck.PlannedAscentInput, _craftCheck.PlannedAscentSnapshot);
+            }
+            catch (Exception e) when (IsFileError(e))
+            {
+                Note(LogKind.Notice, "Couldn't write the Mission's ascent plan snapshot: " + e.Message);
             }
             FoldCraftCheckCost(mission, _craftCheck.TakeCost());
             // Started from the editor with her not aboard: the mod puts her in a free seat (the Craft Check made sure there is one).
@@ -590,6 +605,7 @@ namespace ClaudiaKermin.Core.Missions
             if (plan.DueTimeUt.HasValue) _commands.Add(new ClearDueTimeAlarm(mission.Id));
             mission.RunningProcessor = processor.Value;
             mission.RunId = ++_lastRunId;
+            mission.NoRunSinceSnapshot = false;
             // A new run means the craft was reachable; an owed make-safe must not cut it off later.
             mission.SafePending = "";
             StartRunawayTimer(mission, plan);
@@ -814,6 +830,7 @@ namespace ClaudiaKermin.Core.Missions
             NoteRunOutcome(mission, outcome);
             Notice("The script ended: " + outcome.Summary + ".");
             if (DebriefOnReturn(mission, outcome)) return;
+            if (DebriefedRefusal(mission, outcome)) return;
             var turn = new Turn
             {
                 Purpose = Purpose.Debrief,
@@ -834,13 +851,14 @@ namespace ClaudiaKermin.Core.Missions
         /// Spending Cap. Late run events carry a run id the Mission no longer holds, so they are ignored. A remote
         /// Mission never had her aboard and carries on.
         /// </summary>
-        private void Killed(string vesselId)
+        private void Killed(string vesselId, Kos.TracedBlock traced)
         {
             var mission = _mission;
             if (MissionOver || mission.Remote) return;
             // She died aboard some other craft: not this Mission's loss.
             if (vesselId.Length > 0 && mission.VesselId.Length > 0 && vesselId != mission.VesselId) return;
             var doing = LostDoing(mission);
+            var wasRunning = IsRunning(mission);
             if (mission.InFlight) mission.Pending.Cancel.Cancel();
             else mission.Pending = null;
             CancelCompaction(mission);
@@ -864,7 +882,10 @@ namespace ClaudiaKermin.Core.Missions
 
             mission.LatestLine = "Mission Control: we have lost Claudia. The Mission is Lost.";
             Note(LogKind.Claudia, mission.LatestLine);
-            LostDebrief(mission, doing);
+            // Only a run that was going on at her death has a last word; a trace carried for any other stage is not the Mission's.
+            var lastTrace = traced != null && wasRunning ? Kos.BlockTrace.Describe(traced) : "";
+            if (lastTrace.Length > 0) Note(LogKind.Notice, "Last traced state of the running block: " + lastTrace + ".");
+            LostDebrief(mission, doing, lastTrace);
             NeedsPlayer("Claudia was killed aboard. The Mission is Lost.");
             Note(LogKind.Notice, "Claudia was killed aboard the craft: the Mission is over.");
             RecordFinished(mission);
@@ -887,9 +908,9 @@ namespace ClaudiaKermin.Core.Missions
         /// The final Debrief from Mission Control. Its Debrief outcome is Failed (the Mission Goal can't be reached as
         /// stated); the Mission's outcome is Lost.
         /// </summary>
-        private void LostDebrief(Mission mission, string doing)
+        private void LostDebrief(Mission mission, string doing, string traced = "")
         {
-            var card = AddCard(mission, LogKind.Debrief, MissionCards.LostTitle, MissionCards.LostBody(mission.Goal, doing, mission.Spent, mission.SpendingCap), MissionCards.LostWhy);
+            var card = AddCard(mission, LogKind.Debrief, MissionCards.LostTitle, MissionCards.LostBody(mission.Goal, doing, mission.Spent, mission.SpendingCap, traced: traced), MissionCards.LostWhy);
             card.Outcome = "Failed";
         }
 
@@ -934,6 +955,12 @@ namespace ClaudiaKermin.Core.Missions
         private string EffortFor(Purpose purpose)
         {
             return _config.Efforts.For(KindOf(purpose));
+        }
+
+        /// <summary>A Debrief and an Alert are answered with no tool (#587): tool_choice none, the tools list unchanged so the cache holds (ADR 0012).</summary>
+        private static bool TakesNoTool(Purpose purpose)
+        {
+            return purpose == Purpose.Debrief || purpose == Purpose.Alert;
         }
 
         /// <summary>The effort table's key for a turn's reply kind.</summary>
@@ -1026,8 +1053,9 @@ namespace ClaudiaKermin.Core.Missions
                 turn.CompactedBase = mission.CompactedMessages;
                 turn.Messages = new List<Message>();
                 if (turn.Effort != mission.Effort) turn.Messages.Add(Message.SystemEffort(turn.Effort));
-                turn.Messages.Add(Message.UserText(turn.UserText));
+                turn.Messages.Add(Message.UserText(ShapedUserText(mission, turn)));
                 var notice = turn.Notice + BlackoutNotice(mission) + (mission.AutoMode ? "\n\n" + MissionPrompts.AutoModeNotice : "");
+                if (turn.Purpose == Purpose.SequencePlan && _snapshot != null && _snapshot.Falling) notice += "\n\n" + MissionPrompts.FallingNotice;
                 if (turn.CutOffRetry) notice += "\n\n" + MissionPrompts.CutOffNote;
                 if (turn.SecondLookReason.Length > 0) notice += "\n\n" + SecondLook.Note(turn.SecondLookReason);
                 turn.Messages.Add(Message.SystemText(notice));
@@ -1037,14 +1065,14 @@ namespace ClaudiaKermin.Core.Missions
             {
                 Model = mission.Model,
                 MaxTokens = MissionPrompts.MaxTokens,
-                OutputSchemaJson = Schema(mission, turn),
-                NoToolChoice = turn.ToolLimitSent,
+                OutputSchemaJson = MissionReply.MissionSchemaJson,
+                NoToolChoice = turn.ToolLimitSent || TakesNoTool(turn.Purpose),
             };
-            // The same tools list on every Mission request, whatever the turn may call, so the cached prefix never changes.
-            request.Tools.AddRange(_tools.Definitions(ToolOffer.Mission));
+            request.Tools.AddRange(MissionTools());
             request.System.AddRange(mission.System);
             request.Messages.AddRange(Sent(mission, turn.CompactionBase, turn.CompactedBase));
             request.Messages.AddRange(turn.Messages);
+            AddDiagnostics(mission, request);
             return request;
         }
 
@@ -1062,6 +1090,8 @@ namespace ClaudiaKermin.Core.Missions
             turn.Cancel = null;
             turn.ToolSteps = 0;
             turn.ToolLimitSent = false;
+            turn.RepeatStop = false;
+            turn.PlanOnly = false;
             turn.ToolSnapshot = null;
             RecordUnanswered(mission, turn);
         }
@@ -1134,28 +1164,6 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         /// <summary>
-        /// The reply schema for a turn (#199): one schema with every part is too big for the API to compile, so a
-        /// request carries only the parts its reply can be (<see cref="Mismatch"/>, <see cref="Apply"/>).
-        /// </summary>
-        private static string Schema(Mission mission, Turn turn)
-        {
-            switch (turn.Purpose)
-            {
-                case Purpose.MissionPlan:
-                case Purpose.Settings:
-                case Purpose.Reply:
-                case Purpose.Change:
-                    return MissionReply.PlanningSchemaJson;
-                case Purpose.Question:
-                    // Only an answer: the schema the Mission is in, so the prompt cache holds.
-                    return mission.Stage == MissionStage.Planning || mission.Stage == MissionStage.AwaitingPlanApproval
-                        ? MissionReply.PlanningSchemaJson : MissionReply.FlightSchemaJson;
-                default:
-                    return MissionReply.FlightSchemaJson;
-            }
-        }
-
-        /// <summary>
         /// The Spending Cap's pre-send check: spent + kept charges + the request's estimated input and its
         /// worst-case <c>max_tokens</c> output must fit the cap, or the request is not sent. A request that
         /// <paramref name="waits"/> becomes the waiting call (<see cref="WaitForCap"/>); any other Pauses the
@@ -1206,6 +1214,7 @@ namespace ClaudiaKermin.Core.Missions
             // Settled and logged before the reply is applied, which may send the next request.
             var spentBefore = mission.Spent;
             Settle(mission, turn, result);
+            TrackCache(mission, result);
             turn.Stats.Ended(mission.Spent - spentBefore, result != null && result.Status == StreamStatus.Completed ? result.Message : null);
             LogCost(mission, mission.Settlement, mission.Settled, mission.Outcome);
             // The Mission was dropped (End Mission, or another save loaded) while this request ran.
@@ -1260,7 +1269,7 @@ namespace ClaudiaKermin.Core.Missions
                 ToolsCalled(mission, turn, message);
                 return;
             }
-            var reply = MissionReply.Parse(message.Text);
+            var reply = ReadReply(turn, message);
             var problem = reply == null ? "it wasn't in the Mission reply format" : Mismatch(turn.Purpose, reply);
             if (problem != null)
             {
@@ -1277,6 +1286,7 @@ namespace ClaudiaKermin.Core.Missions
             foreach (var m in turn.Messages)
                 if (m.Effort != null) mission.Effort = m.Effort;
             mission.Pending = null;
+            SnapshotCommitted(mission, turn);
             TrackContext(mission, turn, message);
             WriteTranscript(mission);
             ClearUnanswered(mission);
@@ -1314,14 +1324,31 @@ namespace ClaudiaKermin.Core.Missions
             SendQueued(mission);
         }
 
+        /// <summary>The turn's reply, its Mission Plan the one propose_mission_plan accepted in the turn; null when it isn't a Mission reply.</summary>
+        private static MissionReply ReadReply(Turn turn, AssistantMessage message)
+        {
+            var reply = MissionReply.Parse(message.Text);
+            return reply != null ? reply.WithProposed(ProposedPlans.LastAccepted(turn.Messages ?? new List<Message>())) : null;
+        }
+
+        /// <summary>
+        /// Why a reply doesn't fit its request (reported as off_schema), or null when it does. The schema takes every kind
+        /// (ADR 0012), so this is where a kind the request can't come back as is refused.
+        /// </summary>
         private static string Mismatch(Purpose purpose, MissionReply reply)
         {
+            if (reply.Kind == MissionReply.MissionPlanKind && reply.MissionPlan == null) return "no Mission Plan was accepted through propose_mission_plan";
             switch (purpose)
             {
                 case Purpose.MissionPlan:
                 case Purpose.Settings:
                     // A Mission Plan with no sequences is valid: it is how Claudia declines a goal that can't be flown.
                     return reply.MissionPlan == null ? "no Mission Plan" : null;
+                case Purpose.Reply:
+                case Purpose.Change:
+                    // A typed reply comes back as an answer, a Sequence Plan or a Mission Plan, never a Debrief or an Alert verdict.
+                    return reply.Kind == MissionReply.DebriefKind || reply.Kind == MissionReply.AlertKind || reply.Debrief != null || reply.Alert != null
+                        ? "a " + reply.Kind + " reply to the player's typed words" : null;
                 case Purpose.SequencePlan:
                     // A manual stretch has no script: the player flies it.
                     return reply.SequencePlan == null || (reply.SequencePlan.Script.Trim().Length == 0 && !reply.SequencePlan.Manual) ? "no Sequence Plan with a script" : null;
@@ -1631,6 +1658,8 @@ namespace ClaudiaKermin.Core.Missions
                 HerNews("Claudia can't fly this Mission Goal as stated.");
                 return;
             }
+            // As MissionLogRebuild does with the plan's card, so a load has the same steps.
+            mission.GoalSteps = GoalSteps.Replace(mission.GoalSteps, plan.GoalSteps);
             AddCard(mission, LogKind.MissionPlan, "Mission Plan", MissionCards.MissionPlanBody(plan, mission.VesselName), plan.Why);
             PlanNews("Claudia has a Mission Plan for your Approval.");
         }
@@ -1674,14 +1703,16 @@ namespace ClaudiaKermin.Core.Missions
             mission.ManualPlanned = false;
             mission.ManualOrigin = "";
             mission.HandBackMessage = "";
-            // Any crossed Telemetry Check rules out Nominal (story 107), whatever Claudia rated it; the card lists them all.
+            // A standing crossing rules out Nominal (story 107), whatever Claudia rated it; a recovered one doesn't (#572). The card lists them all.
             var crossings = CrossingsText(mission);
             mission.Crossings.Clear();
-            if (crossings.Length > 0 && debrief.Outcome == "Nominal")
+            if (MissionPrompts.RulesOutNominal(crossings) && debrief.Outcome == "Nominal")
             {
                 debrief.Outcome = "Off-Nominal";
                 Note(LogKind.Notice, "Rated Off-Nominal, not Nominal: a Telemetry Check was crossed during the run.");
             }
+            // Ticking twice is harmless: a Debrief already in a log rebuilt from the transcript has ticked them once.
+            GoalSteps.Tick(mission.GoalSteps, debrief.GoalStepsDone);
             var rebuiltLog = mission.SuppressCards;
             var entry = AddCard(mission, LogKind.Debrief, "Debrief: " + debrief.Outcome + TakeStopReason(mission),
                 MissionCards.DebriefBody(debrief, crossings), debrief.Why);
@@ -1803,7 +1834,7 @@ namespace ClaudiaKermin.Core.Missions
             try
             {
                 MissionFolder.WriteTranscript(mission.Folder, mission.Id, mission.Model, mission.System, mission.Conversation,
-                    mission.CompactionBlock, mission.CompactedMessages, mission.ContextTokens);
+                    mission.CompactionBlock, mission.CompactedMessages, mission.ContextTokens, mission.LastMessageId);
             }
             catch (Exception e) when (IsFileError(e))
             {
@@ -1857,7 +1888,7 @@ namespace ClaudiaKermin.Core.Missions
             if (message.StopReason == StopReason.MaxTokens) return "cut_off";
             if (message.StopReason == StopReason.ToolUse) return "tool_use";
             if (turn.Purpose == Purpose.Margin) return CraftCheckReply.Parse(message.Text) == null ? "off_schema" : "completed";
-            var reply = MissionReply.Parse(message.Text);
+            var reply = ReadReply(turn, message);
             return reply == null || Mismatch(turn.Purpose, reply) != null ? "off_schema" : "completed";
         }
 
@@ -1997,6 +2028,7 @@ namespace ClaudiaKermin.Core.Missions
                 view.Stage = mission.Stage;
                 view.MissionId = mission.Id;
                 view.Goal = mission.Goal;
+                view.GoalSteps = GoalSteps.Copy(mission.GoalSteps);
                 view.Model = mission.Model;
                 view.SpendingCap = mission.SpendingCap;
                 view.Spent = mission.Spent;

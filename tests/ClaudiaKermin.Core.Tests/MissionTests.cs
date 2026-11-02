@@ -132,7 +132,7 @@ namespace ClaudiaKermin.Core.Tests
             mission.Send(new SceneChanged(GameScene.Editor));
             Assert.True(mission.View.StartForm.CanStart);
             Assert.Equal(10m, mission.View.StartForm.DefaultSpendingCap);
-            Assert.Equal(new[] { "claude-sonnet-5-5", "claude-opus-5-5" }, mission.View.StartForm.Models);
+            Assert.Equal(new[] { "claude-sonnet-5-5", "claude-haiku-5-5" }, mission.View.StartForm.Models);
             StartChecked(mission, new StartMission(Goal, 10m, "claude-sonnet-5-5"));
             Assert.Equal(MissionStage.WaitingForFlight, mission.View.Stage);
             Assert.False(mission.View.StartForm.CanStart);
@@ -229,7 +229,7 @@ namespace ClaudiaKermin.Core.Tests
             var mission = Control(transport, config);
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(OnPad());
-            StartChecked(mission, new StartMission(Goal, 25m, "claude-opus-5-5"));
+            StartChecked(mission, new StartMission(Goal, 25m, "claude-haiku-5-5"));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
@@ -243,7 +243,7 @@ namespace ClaudiaKermin.Core.Tests
             foreach (var body in bodies)
             {
                 // The model chosen at Mission start, locked for the Mission.
-                Assert.Equal("claude-opus-5-5", body.GetProperty("model").GetString());
+                Assert.Equal("claude-haiku-5-5", body.GetProperty("model").GetString());
                 var system = body.GetProperty("system");
                 Assert.Equal(3, system.GetArrayLength());
                 foreach (var layer in system.EnumerateArray())
@@ -253,9 +253,8 @@ namespace ClaudiaKermin.Core.Tests
                 // Compaction is its own request now (#268): no reply turn carries the threshold edit.
                 Assert.False(body.TryGetProperty("context_management", out _));
             }
-            // Each request carries only the reply parts it can come back as (#199): the Mission Plan the planning
-            // schema; the Sequence Plan, and a question once the Mission Plan is approved, the flight schema.
-            Assert.Equal(new[] { MissionReply.PlanningSchemaJson, MissionReply.FlightSchemaJson, MissionReply.FlightSchemaJson },
+            // Every Mission request sends the one Mission schema (ADR 0012), so a change of request never rewrites the cache.
+            Assert.Equal(new[] { MissionReply.MissionSchemaJson, MissionReply.MissionSchemaJson, MissionReply.MissionSchemaJson },
                 bodies.Select(b => b.GetProperty("output_config").GetProperty("format").GetProperty("schema").GetRawText()).ToArray());
             var baseLayer = bodies[0].GetProperty("system")[0].GetProperty("text").GetString();
             Assert.Contains("Kerbal Space Program", baseLayer);

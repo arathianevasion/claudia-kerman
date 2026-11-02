@@ -151,11 +151,14 @@ namespace ClaudiaKermin.Core.Missions
                 Model = mission.Model,
                 MaxTokens = MissionPrompts.CompactionMaxTokens,
                 Compaction = true,
+                // The docs don't say a compaction reads a cached prefix, and its own write is never read (#549): no cache_control at all.
+                Cache = false,
                 CompactionInstructions = MissionPrompts.CompactionInstructions,
             };
-            request.Tools.AddRange(_tools.Definitions(ToolOffer.Mission));
+            request.Tools.AddRange(MissionTools());
             request.System.AddRange(mission.System);
             request.Messages.AddRange(Sent(mission));
+            AddDiagnostics(mission, request);
             return request;
         }
 
@@ -204,6 +207,7 @@ namespace ClaudiaKermin.Core.Missions
             mission.CompactionInput = 0m;
             mission.Spent += settlement.Spent;
             mission.Held += settlement.Held;
+            // No TrackCache: the compaction sends no cache_control (#549), so its empty read is not a miss and it leaves no cache to measure against.
             var block = Block(result);
             LogCost(mission, settlement.Kind, settlement.Amount, settlement.Outcome ?? (block != null ? "compaction" : "compaction_failed"));
             if (mission != _mission || mission.Stage == MissionStage.Lost) return;
@@ -239,6 +243,8 @@ namespace ClaudiaKermin.Core.Missions
             mission.CompactedMessages = run.Covers;
             mission.Effort = SentEffort(mission);
             mission.ContextTokens = 0;
+            // The prompt shrank on purpose: the next request's smaller cache read is not a miss to explain (#569).
+            mission.LastCacheTotal = 0;
             KeepTurnsAfterTheBlock(mission);
             WriteTranscript(mission);
             Event(mission, "compacted", run.Why + ": " + run.Covers + " messages, " + before + " tokens, into a summary of " + block.Content.Length + " characters");

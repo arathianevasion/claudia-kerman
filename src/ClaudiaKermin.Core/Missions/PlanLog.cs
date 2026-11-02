@@ -154,8 +154,11 @@ namespace ClaudiaKermin.Core.Missions
             return line.StartsWith("{\"event\":\"" + PlanEvent + "\"", StringComparison.Ordinal);
         }
 
+        /// <summary>The <c>by</c> of a Debrief the mod wrote itself, with no request (#579); Claudia's carry none.</summary>
+        public const string ByMod = "mod";
+
         /// <summary>The Debrief committed: the latest plan's line gains <c>debrief</c>; a Debrief with no plan line before it (or a plan already debriefed) writes nothing.</summary>
-        public static void SetDebrief(string folder, string outcome, TurnStats stats, string effort, string secondLook, bool cutOffRetry)
+        public static void SetDebrief(string folder, string outcome, TurnStats stats, string effort, string secondLook, bool cutOffRetry, string by = null)
         {
             var path = Path.Combine(folder, FileName);
             var lines = Lines(path);
@@ -163,6 +166,7 @@ namespace ClaudiaKermin.Core.Missions
             var index = lines.FindLastIndex(IsPlanLine);
             if (index < 0 || lines[index].Contains(",\"debrief\":")) return;
             var json = new JsonWriter().BeginObject().Field("outcome", outcome);
+            if (by != null) json.Field("by", by);
             Turn(json, effort, stats, secondLook, cutOffRetry);
             json.EndObject();
             var last = lines[index];

@@ -56,6 +56,22 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void ADebriefRequestWithOnlyRecoveredCrossingsKeepsNominal()
+        {
+            var turn = MissionPrompts.CrossedChecks("periapsis 70,000 m under 80,000 m: carry on (Burning.) [recovered]");
+            var debrief = Rebuild(turn, DebriefReply("Nominal")).Single(e => e.Kind == LogKind.Debrief);
+            Assert.Equal("Debrief: Nominal", debrief.Title);
+            Assert.Contains("[recovered]", debrief.Text);
+        }
+
+        [Fact]
+        public void ADebriefRequestWithAStandingCrossingAmongRecoveredOnesRulesOutNominal()
+        {
+            var turn = MissionPrompts.CrossedChecks("a: carry on [recovered]; b: carry on [standing]");
+            Assert.Equal("Debrief: Off-Nominal", Rebuild(turn, DebriefReply("Nominal")).Single(e => e.Kind == LogKind.Debrief).Title);
+        }
+
+        [Fact]
         public void APlanRequestKeepsTheDueTimeSpanAgainstItsUt()
         {
             var log = Rebuild(MissionPrompts.Facts(1000.5, null), SequenceReply(1000.5 + 3600));

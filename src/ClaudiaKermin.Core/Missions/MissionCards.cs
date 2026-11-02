@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
@@ -86,10 +87,12 @@ namespace ClaudiaKermin.Core.Missions
         public const string LostTitle = "Final Debrief: Lost";
         public const string LostWhy = "Claudia was killed aboard the craft.";
 
-        /// <summary>The final Debrief from Mission Control for a Lost Mission; <paramref name="doing"/> is what it was in the middle of, or "".</summary>
-        public static string LostBody(string goal, string doing, decimal spent, decimal cap, bool spentUnknown = false)
+        /// <summary>The final Debrief from Mission Control for a Lost Mission; <paramref name="doing"/> is what it was in the middle of, or "".
+        /// <paramref name="traced"/> is the running block's last traced state (<see cref="Kos.BlockTrace.Describe"/>, #375), or "" when none.</summary>
+        public static string LostBody(string goal, string doing, decimal spent, decimal cap, bool spentUnknown = false, string traced = "")
         {
             return "Claudia Kermin was killed aboard the craft" + (doing.Length > 0 ? " " + doing : "") + ".\n"
+                + (!string.IsNullOrEmpty(traced) ? "The running block's last traced state: " + traced + ".\n" : "")
                 + "Mission Goal not met: " + goal + "\n"
                 + (spentUnknown ? "Spent an unknown amount (the cost log can't be read) of the $" : "Spent $" + spent.ToString("0.00", CultureInfo.InvariantCulture) + " of the $") + cap.ToString("0.00", CultureInfo.InvariantCulture)
                 + " Spending Cap. The Mission is Lost.";
@@ -97,15 +100,22 @@ namespace ClaudiaKermin.Core.Missions
 
         public static string DebriefBody(Debrief debrief, string crossings)
         {
-            return debrief.WhatHappened + (debrief.Next.Length > 0 ? "\nNext: " + debrief.Next : "")
-                + (crossings.Length > 0 ? "\nTelemetry Checks crossed: " + crossings : "");
+            // A lean Nominal Debrief (#581) leaves what_happened empty: the card then opens with Next.
+            var lines = new[]
+            {
+                debrief.WhatHappened,
+                debrief.Next.Length > 0 ? "Next: " + debrief.Next : "",
+                crossings.Length > 0 ? "Telemetry Checks crossed: " + crossings : "",
+            };
+            return string.Join("\n", lines.Where(l => l.Length > 0).ToArray());
         }
 
         /// <summary>
-        /// The part of a Debrief card's detail that is Claudia's (rating, outcome against target, margin, science, checklist, follow-up),
-        /// so a card rebuilt from the transcript keeps it; what the mod saw during the run is added by the loop.
+        /// The part of a Debrief card's detail that is Claudia's (rating, outcome against target, margin, science, follow-up), with the
+        /// Mission Goal's steps as they stand after it (<paramref name="steps"/>, copied), so a card rebuilt from the transcript keeps it;
+        /// what the mod saw during the run is added by the loop.
         /// </summary>
-        public static DebriefDetail DebriefDetail(Debrief debrief)
+        public static DebriefDetail DebriefDetail(Debrief debrief, IEnumerable<GoalItem> steps)
         {
             return new DebriefDetail
             {
@@ -114,7 +124,7 @@ namespace ClaudiaKermin.Core.Missions
                 PlanMargin = debrief.PlanMargin,
                 Science = debrief.Science,
                 FollowUp = FollowUpOffer(debrief),
-                Checklist = debrief.Checklist.ToList(),
+                Checklist = GoalSteps.Copy(steps),
             };
         }
 

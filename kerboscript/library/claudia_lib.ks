@@ -594,9 +594,25 @@ function claudia_decoupler_event {
   return "".
 }
 
-// Fires decoupler d. Returns true if one of its modules had an event to fire.
+// True if part p is one of parts (by uid): one event can split the craft, and a part on the other vessel is
+// one the runtime gate refuses (#558).
+function claudia_aboard {
+  parameter p, parts.
+  for other in parts {
+    if other:uid = p:uid {
+      return true.
+    }
+  }
+  return false.
+}
+
+// Fires decoupler d, if it is still on the craft (parts, by default ship:parts). Returns true if one of
+// its modules had an event to fire.
 function claudia_fire_decoupler {
-  parameter d.
+  parameter d, parts is ship:parts.
+  if not claudia_aboard(d, parts) {
+    return false.
+  }
   for module_name in list("ModuleDecouple", "ModuleAnchoredDecoupler", "ModuleJettison") {
     if d:hasmodule(module_name) {
       local m is d:getmodule(module_name).
@@ -872,8 +888,16 @@ function claudia_drop_empty {
     }
   }
   // One walk of the craft; judging and firing read what it recorded (#533).
+  local scan_from is time:seconds.
   local scan is claudia_scan_craft(ship:parts, crewed).
-  for step in claudia_scan_plan(scan, auto, wanted, ctx:drop_tried) {
+  local plan is claudia_scan_plan(scan, auto, wanted, ctx:drop_tried).
+  // launch traces what a scan and its plan cost (#531), only in launch: the game seconds they took, which a long one spends over
+  // several physics ticks.
+  if auto and ctx:block = "launch" {
+    addons:claudia:blocknote(ctx:block, lexicon("phase", "drop_scan", "scan_s", round(time:seconds - scan_from, 3),
+      "parts", ship:parts:length, "ipu", config:ipu)).
+  }
+  for step in plan {
     local d is scan:parts[step:uid].
     local gone is step:gone.
     // Nested, not one "and": firing is a side effect and must only follow the guards.
@@ -1514,6 +1538,44 @@ function claudia_burn_throttle {
     return 1.
   }
   return min(1, max(0.005, dv_left / max_accel)).
+}
+
+// A trim's throttle (#577): low, taking about 5 s over dv_left at full acceleration max_accel (never below 0.5%; full
+// at no thrust, so the tick stages); 0 while pointing more than max_angle degrees off. Pure.
+function claudia_trim_throttle {
+  parameter dv_left, max_accel, angle_off, max_angle.
+  if angle_off > max_angle {
+    return 0.
+  }
+  return claudia_burn_throttle(dv_left / 5, max_accel, 0).
+}
+
+// Trims a short burn once (#577): turns to the vector remaining() returns as the trim begins and burns along it at a
+// low throttle (claudia_trim_throttle, lit while pointing within rcs_tolerance's aligned_deg) until its share along that
+// direction is under done_dv; any part off it stays. Gives up, with no reason, after 180 s (a 120 s turn and the burn).
+// Leaves throttle at 0 and steering locked. Returns "" or an abort reason.
+function claudia_trim {
+  parameter ctx, remaining, done_dv.
+  local dir is remaining():normalized.
+  lock steering to claudia_keep_roll(dir).
+  local tset is 0.
+  lock throttle to tset.
+  local stop_ut is time:seconds + 180.
+  local reason is "".
+  until time:seconds > stop_ut {
+    local along is vdot(dir, remaining()).
+    if along < done_dv {
+      break.
+    }
+    set tset to claudia_trim_throttle(along, ship:availablethrust / ship:mass, vang(ship:facing:forevector, dir), ctx:opt:rcs_tolerance:aligned_deg).
+    set reason to claudia_tick(ctx, tset).
+    if reason <> "" {
+      break.
+    }
+    wait 0.
+  }
+  set tset to 0.
+  return reason.
 }
 
 // ---- RCS Use ----

@@ -188,6 +188,30 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal(held, One("launch_thin_pitch(" + pitch + ", " + prograde + ", " + q + ", " + lead + ")"));
         }
 
+        // #531: the climb's trace names its phase as plan_ascent's sim does; coast wins, then the turn not started, the hold, the thin-air rule.
+        [Theory]
+        [InlineData("true", "true", "true", "true", "coast")]
+        [InlineData("false", "false", "false", "false", "vertical")]
+        [InlineData("false", "true", "true", "true", "turn_held")]
+        [InlineData("false", "true", "false", "true", "thin_air")]
+        [InlineData("false", "true", "false", "false", "turn")]
+        public void The_trace_names_the_phase_of_the_climb(string coasting, string started, string held, string thin, string phase)
+        {
+            Assert.Equal(phase, One("launch_phase(" + coasting + ", " + started + ", " + held + ", " + thin + ")"));
+        }
+
+        // #531: a line every 2 s, and at a change of phase or stage, but no more than one in 0.25 s for a change.
+        [Theory]
+        [InlineData("\"turn\", \"vertical\", 3, 3, 100, 99.9", "")]
+        [InlineData("\"turn\", \"turn\", 3, 3, 102, 100", "tick")]
+        [InlineData("\"turn\", \"vertical\", 3, 3, 100.3, 100", "phase")]
+        [InlineData("\"turn\", \"turn\", 2, 3, 100.3, 100", "stage")]
+        [InlineData("\"thin_air\", \"turn\", 3, 3, 100.1, 100", "")]
+        public void The_trace_is_due_every_two_seconds_and_at_a_change(string arguments, string why)
+        {
+            Assert.Equal(why, One("launch_trace_due(" + arguments + ")"));
+        }
+
         // A slow (70% thrust) craft to a 400 km apoapsis is still burning above 40 km, in the thin air. It has more to burn
         // (2 t dry) since the sim's Coriolis (#370) costs it what it had spare.
         [Fact]
@@ -343,12 +367,82 @@ namespace ClaudiaKermin.Kerboscript.Tests
                 Run("local c is claudia_options(lexicon(), circularize_defaults(), \"auto\"). print c:opt:at. print c:opt:tolerance. print c:opt:max_duration. print c:error."));
         }
 
-        // #532: ecc as before, plus which stop ended the burn and the node's residual.
+        // #532: ecc as before, plus which stop ended the burn and the node's residual; #577: and whether it finished short.
         [Fact]
-        public void Circularize_results_are_ecc_stop_and_residual()
+        public void Circularize_results_are_ecc_stop_residual_and_finished_short()
         {
-            Assert.Equal(new[] { "ecc=0.12346", "stop=", "residual=-1", "3" },
-                Run("local x is circularize_extra(0.123456). for k in list(\"ecc\", \"stop\", \"residual\") { print k + \"=\" + x[k]. } print x:keys:length."));
+            Assert.Equal(new[] { "ecc=0.12346", "stop=", "residual=-1", "finished_short=False", "4" },
+                Run("local x is circularize_extra(0.123456). for k in list(\"ecc\", \"stop\", \"residual\", \"finished_short\") { print k + \"=\" + x[k]. } print x:keys:length."));
+        }
+
+        [Fact]
+        public void Circularize_finishes_a_short_burn_within_five_percent_by_default()
+        {
+            Assert.Equal("0.05", One("claudia_options(lexicon(), circularize_defaults(), \"auto\"):opt:finish_fraction"));
+        }
+
+        // #577: an orbit over tolerance still finishes the circularization when both apsides are within the fraction of the
+        // burn point's radius (from Kerbin's centre, 600 km) and the periapsis clears the 70 km atmosphere.
+        [Theory]
+        // The ticket's circularize failures, ecc 0.0189 at an 840 km radius: apsides about 16 km either side.
+        [InlineData(255900, 224100, 840000, 0.05, "True")]
+        // On the fraction's edge (42 km of 840 km) both ways, and just past it.
+        [InlineData(282000, 198000, 840000, 0.05, "True")]
+        [InlineData(282001, 240000, 840000, 0.05, "False")]
+        [InlineData(240000, 197999, 840000, 0.05, "False")]
+        // Within the fraction but the periapsis is in the atmosphere: not finished.
+        [InlineData(100000, 69000, 680000, 0.05, "False")]
+        // An escape orbit's apoapsis is negative.
+        [InlineData(-900000, 240000, 840000, 0.05, "False")]
+        // finish_fraction 0 never finishes short.
+        [InlineData(240001, 240000, 840000, 0, "False")]
+        public void A_circularization_over_tolerance_is_finished_when_both_apsides_are_within_the_fraction_of_the_target(
+            double ap, double pe, double rad, double fraction, string expected)
+        {
+            Assert.Equal(expected, One("circularize_near(" + ap + ", " + pe + ", 600000, " + rad + ", " + fraction + ", 70000)"));
+        }
+
+        // ---- exec_node: finishing a short burn (#577) ----
+
+        [Fact]
+        public void Exec_node_finishes_a_short_burn_within_five_percent_by_default()
+        {
+            Assert.Equal("0.05", One("claudia_options(lexicon(), exec_node_defaults(), \"auto\"):opt:finish_fraction"));
+        }
+
+        [Theory]
+        // Within max_residual: done.
+        [InlineData(0.4, 120, 0.5, 0.05, "done")]
+        [InlineData(0.5, 120, 0.5, 0.05, "done")]
+        // Over max_residual, within 5% of the node (6 m/s of 120): short, a trim finishes it.
+        [InlineData(3, 120, 0.5, 0.05, "short")]
+        [InlineData(6, 120, 0.5, 0.05, "short")]
+        // f623's ejection: 24.7 m/s left of an 854 m/s node is 2.9%, within 42.7 m/s.
+        [InlineData(24.7, 854, 0.5, 0.05, "short")]
+        // Over the fraction: a failure, as before.
+        [InlineData(6.01, 120, 0.5, 0.05, "over")]
+        [InlineData(20, 120, 0.5, 0.05, "over")]
+        // finish_fraction 0 keeps the old rule.
+        [InlineData(0.6, 120, 0.5, 0, "over")]
+        public void A_burn_ending_over_max_residual_but_within_the_fraction_of_its_node_is_short_and_past_it_over(
+            double residual, double nodeDv, double maxResidual, double fraction, string expected)
+        {
+            Assert.Equal(expected, One("exec_node_finish(" + residual + ", " + nodeDv + ", " + maxResidual + ", " + fraction + ")"));
+        }
+
+        [Theory]
+        // About 5 s at full acceleration: 3 m/s at 40 m/s^2 is 1.5%.
+        [InlineData(3, 40, 1, 2, "0.015")]
+        // Never under 0.5%, never over full.
+        [InlineData(0.05, 40, 0, 2, "0.005")]
+        [InlineData(100, 5, 0, 2, "1")]
+        // Full at no thrust, so the tick stages into the next engine.
+        [InlineData(3, 0, 0, 2, "1")]
+        // Off by more than the pointing limit: not lit.
+        [InlineData(3, 40, 2.5, 2, "0")]
+        public void A_trim_burns_at_a_low_throttle_once_pointed_within_the_limit(double dvLeft, double maxAccel, double angleOff, double maxAngle, string expected)
+        {
+            Assert.Equal(expected, One("round(claudia_trim_throttle(" + dvLeft + ", " + maxAccel + ", " + angleOff + ", " + maxAngle + "), 4)"));
         }
 
         // #532: exec_node's options for a caller that doesn't ask for the eccentricity stop are as before.

@@ -75,6 +75,8 @@ namespace ClaudiaKermin.Core.Missions
         public int CompactedMessages;
         /// <summary>The conversation's input size as the last committed reply's usage gave it.</summary>
         public long ContextTokens;
+        /// <summary>The last completed response's id, written only under debug_tools (#569); null when none.</summary>
+        public string LastMessageId;
     }
 
     /// <summary>
@@ -124,6 +126,26 @@ namespace ClaudiaKermin.Core.Missions
         public static void WriteBodyTable(string folder, string table)
         {
             if (table.Length > 0) MissionFolder.ReplaceAtomically(Path.Combine(folder, BodyTableFile), table);
+        }
+
+        public const string AscentPlanSnapshotFile = "ascent-plan-snapshot.json";
+        public const string AscentPlanInputFile = "ascent-plan-input.json";
+
+        /// <summary>
+        /// Saves what the Craft Check's plan_ascent flew from (#531): the Game Snapshot it read and the call's input, so a Mission's
+        /// ascent can be flown again offline and set against the launch's trace. Nothing is written when the check planned no ascent.
+        /// </summary>
+        public static void WriteAscentPlan(string folder, string inputJson, string snapshotJson)
+        {
+            if (snapshotJson.Length == 0)
+            {
+                // A folder reused for a check that planned none must not keep an older craft's plan for the replay.
+                foreach (var stale in new[] { AscentPlanSnapshotFile, AscentPlanInputFile })
+                    if (File.Exists(Path.Combine(folder, stale))) File.Delete(Path.Combine(folder, stale));
+                return;
+            }
+            MissionFolder.ReplaceAtomically(Path.Combine(folder, AscentPlanSnapshotFile), snapshotJson);
+            MissionFolder.ReplaceAtomically(Path.Combine(folder, AscentPlanInputFile), inputJson.Length > 0 ? inputJson : "{}");
         }
 
         /// <summary>The saved body table; "" when none was saved (an older Mission, or the game's bodies weren't read).</summary>
@@ -383,6 +405,7 @@ namespace ClaudiaKermin.Core.Missions
                 transcript.CompactedMessages = (int)covers.Value;
             }
             transcript.ContextTokens = (long)(JsonNode.Double(root["context_tokens"]) ?? 0);
+            transcript.LastMessageId = JsonNode.Str(root["last_message_id"]);
             return transcript;
         }
 

@@ -279,6 +279,7 @@ namespace ClaudiaKermin.KOS
             Instance = this;
             // The adapter's Mission driver starts approved scripts through this.
             ScriptRunner.Current = this;
+            ScriptRunner.RunningTrace = RunningTrace;
             IpuGuard.Loaded();
             GameEvents.onGameSceneLoadRequested.Add(OnSceneLoadRequested);
             PlayerWarpWatch.RateChanged += OnRateChanged;
@@ -298,7 +299,20 @@ namespace ClaudiaKermin.KOS
                 Guard(() => Finish(run));
             }
             if (Instance == this) Instance = null;
-            if (ScriptRunner.Current == (IScriptRunner)this) ScriptRunner.Current = null;
+            if (ScriptRunner.Current == (IScriptRunner)this) { ScriptRunner.Current = null; ScriptRunner.RunningTrace = null; }
+        }
+
+        /// <summary>The innermost traced block of a Mission's run still going on (a core run id, not a block test's), or null (#375).
+        /// A run that popped its context a frame before the death is still held until its outcome is delivered, so its trace counts.</summary>
+        private TracedBlock RunningTrace()
+        {
+            foreach (var run in _runs.Values)
+            {
+                if (run.RunId <= 0) continue;
+                var traced = run.Run.InnermostTraced;
+                if (traced != null) return traced;
+            }
+            return null;
         }
 
         private void OnSceneLoadRequested(GameScenes scene)
@@ -425,7 +439,7 @@ namespace ClaudiaKermin.KOS
             var outcome = run.Run.Finish(ReadTerminal(run.Addon));
             if (run.RunId >= 0) IpuGuard.RunEnded(outcome);
             // kOS hands controls back as the program ends, so make safe again once it has.
-            if (outcome.WasAborted) CraftSafety.MakeSafe(run.Vessel);
+            if (outcome.MakesCraftSafe) CraftSafety.MakeSafe(run.Vessel);
             try { ManeuverPlan.RunEnded(run.Vessel, run.NodesAtStart, run.Label, outcome); }
             catch (Exception e) { Debug.LogWarning(ModInfo.LogTag + " couldn't tidy the maneuver nodes of '" + run.Label + "': " + e.Message); }
             Debug.Log(ModInfo.LogTag + " '" + run.Label + "' ended: " + outcome.Summary +

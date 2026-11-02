@@ -194,6 +194,7 @@ namespace ClaudiaKermin.Core.Missions
         private void Entered(Mission mission, string how, string line)
         {
             mission.Stage = MissionStage.ManualControl;
+            mission.NoRunSinceSnapshot = false;
             mission.ConfirmPrompt = null;
             Note(LogKind.Notice, line);
             Event(mission, "manual_control", how);
