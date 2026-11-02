@@ -88,6 +88,18 @@ _Avoid_: flyby, orbit change (one burn, not a transfer)
 The arrival burn of a transfer: circular at the target periapsis round a body, or matching the target orbit's velocity. A transfer solved with capture is the cheapest departure and capture together; without, the cheapest departure alone.
 _Avoid_: insertion, orbit insertion
 
+**Transfer Window**:
+A departure time and arrival time for a transfer to another planet, with what it costs: the ejection from the parking orbit and, with Capture, the capture at the target periapsis. The window search gives two, Soonest and Optimal, and the Mission Setting Time versus delta-v picks one: Fastest takes Soonest, Most efficient takes Optimal, Balanced takes Soonest unless Optimal saves at least 10%.
+_Avoid_: porkchop (the plot, which the mod never draws), launch window (the time to lift off into a target's plane)
+
+**Soonest**:
+The earliest Transfer Window whose total delta-v is within the Craft Check's margin of Optimal's.
+_Avoid_: next window, fastest (a Mission Setting)
+
+**Optimal**:
+The cheapest Transfer Window within one synodic period of the two planets.
+_Avoid_: best window, most efficient (a Mission Setting)
+
 **Daylight**:
 At a landing site, the sun is more than 20° above the horizon there. A daylight landing touches down only in Daylight; a sun lower than that, though up, is not Daylight.
 _Avoid_: lit, sunlit, daytime
