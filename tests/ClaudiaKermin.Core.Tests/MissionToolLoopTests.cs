@@ -1075,14 +1075,102 @@ namespace ClaudiaKermin.Core.Tests
         public void AMissionPlanReplyWithNoAcceptedPlanIsRefusedOffSchema()
         {
             var transport = new StreamingFakeTransport(
-                Propose("bad", ProposedPlan("Link check", "[{\"name\":\"Probe\",\"separation_stage\":-1,\"vessel_id\":\"ghost\"}]")), Kind("mission_plan"));
+                Propose("bad", ProposedPlan("Link check", "[{\"name\":\"Probe\",\"separation_stage\":-1,\"vessel_id\":\"ghost\"}]")), Kind("mission_plan"), Kind("mission_plan"));
             var mission = Control(transport);
             Start(mission);
             DrainUntil(mission, v => v.Stage == MissionStage.Paused);
+            Assert.Equal(3, transport.Requests.Count);
 
             Assert.Contains("propose_mission_plan", mission.View.PauseReason);
             Assert.Empty(mission.View.PlanSequences);
             Assert.Contains("\"outcome\":\"off_schema\"", CostLog(mission));
+        }
+
+        [Fact]
+        public void AMissionPlanReplyWithNoProposeCallIsResentOnceWithACorrectionAndTheMissionCarriesOn()
+        {
+            var transport = new StreamingFakeTransport(Kind("mission_plan"), Propose("p", ProposedPlan("Link check")), Kind("mission_plan"));
+            var mission = Control(transport);
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+
+            Assert.Equal(3, transport.Requests.Count);
+            Assert.Equal(new[] { "Link check" }, mission.View.PlanSequences);
+            Assert.Contains(MissionPrompts.PlanCallNote, Messages(transport.Requests[1]).Last());
+            Assert.Equal("{\"type\":\"auto\"}", Body(transport.Requests[1]).GetProperty("tool_choice").GetRawText());
+            Assert.Equal(ToolsJson(transport.Requests[0]), ToolsJson(transport.Requests[1]));
+            Assert.Contains("plan_call_retry", Events(mission));
+            Assert.Contains("\"outcome\":\"off_schema\"", CostLog(mission));
+        }
+
+        [Fact]
+        public void AFailedCorrectionPausesWithTheReplyDidntFitReasonAndWritesItToEvents()
+        {
+            var transport = new StreamingFakeTransport(Kind("mission_plan"), Kind("mission_plan"), Kind("mission_plan"));
+            var mission = Control(transport);
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.Paused);
+
+            Assert.Equal(2, transport.Requests.Count);
+            Assert.StartsWith("Claudia's reply didn't fit: ", mission.View.PauseReason);
+            Assert.Contains("paused", Events(mission));
+            Assert.Contains("didn't fit", Events(mission));
+        }
+
+        [Fact]
+        public void TheCorrectionAfterTheToolLimitStillLetsProposeMissionPlanBeCalled()
+        {
+            var steps = Enumerable.Range(0, ToolStep.MaxSteps).Select(i => ToolUseStreams.ToolUse("f" + i, ("fake", "{\"n\":" + i + "}")));
+            var transport = new StreamingFakeTransport(steps.Concat(new[] { Kind("mission_plan"), Propose("p", ProposedPlan("Link check")), Kind("mission_plan") }).ToArray());
+            var mission = Control(transport, With(new TestTool()));
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+
+            Assert.Equal("{\"type\":\"none\"}", Body(transport.Requests[ToolStep.MaxSteps]).GetProperty("tool_choice").GetRawText());
+            var correction = transport.Requests[ToolStep.MaxSteps + 1];
+            Assert.Equal("{\"type\":\"auto\"}", Body(correction).GetProperty("tool_choice").GetRawText());
+            Assert.Contains(MissionPrompts.PlanCallNote, Messages(correction).Last());
+            Assert.Equal(new[] { "Link check" }, mission.View.PlanSequences);
+        }
+
+        [Fact]
+        public void ASequencePlanTurnThatComesBackAsAMissionPlanIsNotResentWithTheCorrection()
+        {
+            var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), Kind("mission_plan"), Kind("mission_plan"));
+            var mission = Control(transport);
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.Paused);
+
+            Assert.Equal(2, transport.Requests.Count);
+            Assert.DoesNotContain("plan_call_retry", Events(mission));
+        }
+
+        private decimal CapWithRoomForTheFirstRequestButNotTheCorrection()
+        {
+            using (var probe = new MissionToolLoopTests())
+            {
+                var mission = probe.Control(new StreamingFakeTransport(Kind("mission_plan"), Kind("mission_plan")));
+                probe.Start(mission);
+                probe.DrainUntil(mission, v => v.Stage == MissionStage.Paused);
+                var log = File.ReadAllText(Path.Combine(probe.Folder(mission), "cost-log.jsonl"));
+                var worst = CostLogGap.Amounts(log, "pending");
+                var paid = CostLogGap.Amounts(log, "paid");
+                return CostLogGap.Between(worst[0], paid[0] + worst[1], "fits the first request but not the correction after its real cost");
+            }
+        }
+
+        [Fact]
+        public void WithNoSpendingCapRoomTheCorrectionIsNotSentAndTheMissionPauses()
+        {
+            var transport = new StreamingFakeTransport(Kind("mission_plan"), Propose("p", ProposedPlan("Link check")), Kind("mission_plan"));
+            var mission = Control(transport);
+            Start(mission, CapWithRoomForTheFirstRequestButNotTheCorrection());
+            DrainUntil(mission, v => v.Stage == MissionStage.Paused);
+
+            Assert.Single(transport.Requests);
+            Assert.Contains("didn't fit", mission.View.PauseReason);
         }
 
         [Theory]
