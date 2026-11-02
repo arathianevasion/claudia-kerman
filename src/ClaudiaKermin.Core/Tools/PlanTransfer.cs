@@ -13,7 +13,9 @@ namespace ClaudiaKermin.Core.Tools
     /// would find it, so Claudia can budget the departure and the capture. A body is met where it is (a rendezvous, arriving at
     /// <c>target_pe</c>); an orbit given by its apsides and plane is reached anywhere on it (an intercept). Another planet of the
     /// same star gets its Transfer Windows instead (<see cref="TransferWindows"/>, #458): Soonest, Optimal and the Mission
-    /// Setting's pick, costed from the parking orbit (the Delta-v Map's low orbit when the craft has none yet). A separate tool rather
+    /// Setting's pick, costed from the parking orbit (the Delta-v Map's low orbit when the craft has none yet). A moon of the craft's
+    /// planet that is cheaper to reach later (Minmus near a node, #647) gets its Soonest and Optimal too, under <c>windows</c>, or as
+    /// the whole answer from the pad, where there is no orbit to plan the burn from. A separate tool rather
     /// than a <c>solve_burn</c> goal, because its inputs (a target, an orbit, capture) share nothing with that tool's; not
     /// named <c>transfer</c>, which reads as the block <c>transfer_to</c> and is part of that name in the cached block summaries.
     /// </summary>
@@ -24,6 +26,9 @@ namespace ClaudiaKermin.Core.Tools
 
         public const string WindowModel = "Lambert arcs between the planets round the star, the ejection from the parking orbit's periapsis and the capture "
             + "circular at target_pe; soonest is the first departure within the Craft Check margin of optimal, the cheapest in a synodic period";
+
+        public const string MoonWindowModel = "Lambert arcs round the planet from the parking orbit's plane, the plane change where the arc is slow, the capture "
+            + "circular at target_pe; soonest is the first departure within the Craft Check margin of optimal, the cheapest in one orbit of the moon";
 
         public string Name
         {
@@ -102,7 +107,8 @@ namespace ClaudiaKermin.Core.Tools
                 };
             }
             var plan = Transfer.Find(snapshot, ask);
-            if (plan.Error != null) return PlanningJson.Error(plan.Error);
+            var moon = MoonWindows(snapshot, target, ask);
+            if (plan.Error != null) return moon != null ? Windows(moon, snapshot, ask.Capture) : PlanningJson.Error(plan.Error);
 
             var now = snapshot.Ut;
             var name = target ?? "the orbit";
@@ -130,6 +136,12 @@ namespace ClaudiaKermin.Core.Tools
             json.Field("synodic_s", PlanningJson.Round(plan.Synodic, 0));
             if (plan.CheapestUt.HasValue)
                 json.Field("note", "not the cheapest window: the one at UT " + Num(plan.CheapestUt.Value) + " can't be aimed at target_pe on the patched conics; this is the first that can");
+            if (moon != null)
+            {
+                json.Name("windows").BeginObject();
+                Choice(json, moon, snapshot);
+                json.EndObject();
+            }
             json.EndObject();
             return new ToolOutcome
             {
@@ -140,25 +152,55 @@ namespace ClaudiaKermin.Core.Tools
             };
         }
 
-        /// <summary>A planet's Transfer Windows (#458): Soonest and Optimal, and the one the Mission Setting Time versus delta-v picks.</summary>
+        /// <summary>
+        /// A moon's Transfer Windows (#647) when Optimal saves anything over Soonest; null otherwise (the Mun, in the parking plane,
+        /// costs the same at any departure), so a moon in the plane adds nothing to the answer.
+        /// </summary>
+        private static WindowSearch MoonWindows(GameSnapshot snapshot, string target, TransferAsk ask)
+        {
+            if (target == null || !TransferWindows.IsMoonTransfer(snapshot, target)) return null;
+            var found = TransferWindows.Find(snapshot, target, ask.TargetPe, ask.Capture, snapshot.MarginPercent);
+            return found.Error == null && found.Optimal != found.Soonest ? found : null;
+        }
+
+        /// <summary>A planet's Transfer Windows (#458), or a moon's from the pad (#647): Soonest and Optimal, and the one the Mission Setting Time versus delta-v picks.</summary>
         private static ToolOutcome Windows(WindowSearch found, GameSnapshot snapshot, bool capture)
         {
             if (found.Error != null) return PlanningJson.Error(found.Error);
             var pick = TransferWindows.Pick(found, snapshot.TimeVersusDeltaV);
-            var json = new JsonWriter().BeginObject().Field("model", WindowModel).Field("target", found.Target).Field("capture", capture);
+            var json = new JsonWriter().BeginObject().Field("model", found.Moon ? MoonWindowModel : WindowModel).Field("target", found.Target).Field("capture", capture);
             json.Field("parking_pe", PlanningJson.Round(found.ParkingPe, 0));
             if (found.ParkingAssumed) json.Field("parking_note", "assumed: the craft is not in a closed orbit clear of the atmosphere");
+            if (found.Moon)
+            {
+                Choice(json, found, snapshot);
+                return new ToolOutcome { Json = json.EndObject().ToString(), Summary = Summary(found, pick) };
+            }
             Window(json, "soonest", found.Soonest, snapshot.Ut, capture);
             Window(json, "optimal", found.Optimal, snapshot.Ut, capture);
             json.Field("pick", pick == found.Optimal && pick != found.Soonest ? "optimal" : "soonest")
                 .Field("setting", snapshot.TimeVersusDeltaV == TimeVersusDeltaV.Fastest ? "Fastest" : snapshot.TimeVersusDeltaV == TimeVersusDeltaV.MostEfficient ? "Most efficient" : "Balanced")
                 .Field("synodic_s", PlanningJson.Round(found.Synodic, 0))
                 .EndObject();
-            return new ToolOutcome
+            return new ToolOutcome { Json = json.ToString(), Summary = Summary(found, pick) };
+        }
+
+        private static string Summary(WindowSearch found, TransferWindow pick)
+        {
+            return found.Target + " window: " + Num(pick.TotalDv) + " m/s, leaving at UT " + Num(pick.DepartureUt);
+        }
+
+        /// <summary>A moon's Soonest and Optimal, each its departure and total, and the setting's pick (#647).</summary>
+        private static void Choice(JsonWriter json, WindowSearch found, GameSnapshot snapshot)
+        {
+            foreach (var w in new[] { found.Soonest, found.Optimal })
             {
-                Json = json.ToString(),
-                Summary = found.Target + " window: " + Num(pick.TotalDv) + " m/s, leaving at UT " + Num(pick.DepartureUt),
-            };
+                json.Name(w == found.Soonest ? "soonest" : "optimal").BeginObject();
+                PlanningJson.Time(json, "depart", w.DepartureUt, snapshot.Ut);
+                json.Field("total_dv", PlanningJson.Round(w.TotalDv, 1)).EndObject();
+            }
+            var pick = TransferWindows.Pick(found, snapshot.TimeVersusDeltaV);
+            json.Field("pick", pick == found.Optimal && pick != found.Soonest ? "optimal" : "soonest");
         }
 
         private static void Window(JsonWriter json, string name, TransferWindow w, double now, bool capture)
