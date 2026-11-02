@@ -50,6 +50,8 @@ namespace ClaudiaKermin.Core.Tools
         public double? LatestUt;
         /// <summary>The most delta-v the departure burn may take (the craft's), m/s, or null for no limit.</summary>
         public double? MaxDv;
+        /// <summary>False: only the one-burn plan, as before #619 (the after-a-miss correction, which flies one burn).</summary>
+        public bool BrokenPlane = true;
     }
 
     /// <summary>The departure node found and the arrival burn after it, or why there is none (<see cref="Error"/>, with the rest unset).</summary>
@@ -77,6 +79,21 @@ namespace ClaudiaKermin.Core.Tools
         public double Synodic;
         /// <summary>The cheapest window's departure UT when the patched conics couldn't aim it and this is a later one; null when this is the cheapest.</summary>
         public double? CheapestUt;
+        /// <summary>
+        /// A broken-plane plan's plane change (#619): its UT, null for a one-burn plan; its node components and delta-v, m/s.
+        /// The departure is then in the craft's plane and reaches the target only with it.
+        /// </summary>
+        public double? PlaneUt;
+        public double PlanePrograde;
+        public double PlaneNormal;
+        public double PlaneRadial;
+        public double PlaneDv;
+
+        /// <summary>What the plan costs: the departure (and a broken plane's plane change), plus with capture the arrival burn.</summary>
+        public double Total(bool capture)
+        {
+            return DeltaV + PlaneDv + (capture ? ArrivalDv : 0);
+        }
     }
 
     /// <summary>
@@ -145,6 +162,15 @@ namespace ClaudiaKermin.Core.Tools
         private const int Windows = 3;
         /// <summary>From this relative inclination, deg, a body no window reaches is put down to its orbit's tilt.</summary>
         private const double InclinedDegrees = 1;
+        /// <summary>
+        /// From this angle, deg, between a body at arrival and the craft's plane (between their orbits, with no one-burn plan), a
+        /// broken-plane plan is costed beside the one-burn one (#619): nearer a node, the one-burn plan stands as it was.
+        /// </summary>
+        internal const double BrokenPlaneDegrees = 1;
+        /// <summary>The plane change's time on the in-plane arc, as a fraction of its flight time: searched between these.</summary>
+        private const double PlaneLow = 0.1;
+        private const double PlaneHigh = 0.99;
+        private const double PlaneTolerance = 1e-4;
 
         public static TransferPlan Find(GameSnapshot snapshot, TransferAsk ask)
         {
@@ -254,6 +280,11 @@ namespace ClaudiaKermin.Core.Tools
                 else if (failed == null) failed = tried;
                 if (plan != null && n > 0) plan.CheapestUt = cheapestWindow.T;
             }
+            if (body != null && ask.BrokenPlane && OutOfPlane(craft, targetOrbit, plan) >= BrokenPlaneDegrees)
+            {
+                var broken = BrokenPlane(setup, craft, targetOrbit, body, peR, ask, from, span, transfer.Floor);
+                if (broken != null && (plan == null || broken.Total(ask.Capture) < plan.Total(ask.Capture))) plan = broken;
+            }
             if (plan == null)
             {
                 var inclined = Math.Acos(Math.Max(-1, Math.Min(1, Vec3.Dot(craft.W, targetOrbit.W)))) * 180 / Math.PI;
@@ -261,8 +292,8 @@ namespace ClaudiaKermin.Core.Tools
                     ? Fail(body.Name + "'s orbit is inclined " + inclined.ToString("0.0", CultureInfo.InvariantCulture) + "° to yours; match_plane first, or try the next window")
                     : failed;
             }
-            if (plan.DeltaV > ask.MaxDv)
-                return Fail((plan.CheapestUt.HasValue ? "the burn" : "the cheapest burn") + ", at UT " + Num(plan.Ut) + ", needs " + Num(plan.DeltaV) + " m/s, more than the craft's " + Num(ask.MaxDv.Value) + " m/s");
+            if (plan.DeltaV + plan.PlaneDv > ask.MaxDv)
+                return Fail((plan.CheapestUt.HasValue ? "the burn" : "the cheapest burn") + ", at UT " + Num(plan.Ut) + ", needs " + Num(plan.DeltaV + plan.PlaneDv) + " m/s, more than the craft's " + Num(ask.MaxDv.Value) + " m/s");
             plan.SearchFrom = from;
             plan.Synodic = synodic;
             return plan;
@@ -289,6 +320,116 @@ namespace ClaudiaKermin.Core.Tools
                 Ut = window.T, Prograde = prograde, Normal = normal, Radial = radial, DeltaV = leg.Departure.Length,
                 ArrivalDv = leg.Arrival.Length, EncounterUt = window.T + window.Tof, ArrivalUt = window.T + window.Tof,
             };
+        }
+
+        /// <summary>
+        /// How far, deg, the target is out of the craft's plane: at the one-burn plan's arrival, or with none the angle between
+        /// the two orbits (the most it can be).
+        /// </summary>
+        private static double OutOfPlane(Conic craft, Conic target, TransferPlan plan)
+        {
+            if (plan == null) return Math.Acos(Math.Max(-1, Math.Min(1, Vec3.Dot(craft.W, target.W)))) * 180 / Math.PI;
+            return Math.Abs(Math.Asin(Math.Max(-1, Math.Min(1, Vec3.Dot(target.Position(plan.ArrivalUt).Normalized, craft.W))))) * 180 / Math.PI;
+        }
+
+        /// <summary>
+        /// The broken-plane plan to a body (#619), or null when there is none: the departure in the craft's plane, to where the
+        /// body would arrive with its orbit turned into that plane about the line of nodes; then, where the arc is slow, the
+        /// plane change to the body itself; then the arrival burn. The grid and refinement are the one-burn plan's, on the
+        /// turned orbit, and only its cheapest window is tried; the plane change's time is the one that costs least on two
+        /// Lambert arcs; and <see cref="CorrectionBurn"/>, from the Lambert burn to the body's centre, sizes it on the patched
+        /// conics to arrive at target_pe, as <c>transfer_to</c> flies it.
+        /// </summary>
+        private static TransferPlan BrokenPlane(PredictBurn.Setup setup, Conic craft, Conic targetOrbit, SnapshotBody body, double peR, TransferAsk ask,
+            double from, double span, double floor)
+        {
+            var mu = craft.Mu;
+            var flat = new Problem(craft, Turned(targetOrbit, craft.W, from), body, peR, ask.Capture, false, floor);
+            var step = span / Seeds;
+            var count = Seeds + Seeds / 4 + 2;
+            var cheapest = new double[count];
+            var flight = new double[count];
+            var hohmann = new double[count];
+            for (var i = 0; i < count; i++)
+            {
+                var t = from + (i - 1) * step;
+                hohmann[i] = flat.HohmannTime(t);
+                cheapest[i] = double.PositiveInfinity;
+                for (var j = 0; j < Flights; j++)
+                {
+                    var tof = hohmann[i] * (FlightLow + (FlightHigh - FlightLow) * j / (Flights - 1));
+                    var c = flat.Cost(t, tof, 0);
+                    if (c < cheapest[i])
+                    {
+                        cheapest[i] = c;
+                        flight[i] = tof;
+                    }
+                }
+            }
+            var picks = RendezvousPicks(cheapest, step, span, ask.LatestUt.HasValue);
+            if (picks.Count == 0) return null;
+            var pick = picks[0];
+            var last = Math.Min(from + (count - 2) * step, ask.LatestUt ?? double.PositiveInfinity);
+            var seed = new Point { T = from + (pick - 1) * step, Tof = flight[pick], Cost = cheapest[pick] };
+            var window = flat.Refine(seed, Math.Max(from, seed.T - step), Math.Min(last, seed.T + step),
+                FlightReach * hohmann[pick] * (FlightHigh - FlightLow) / (Flights - 1), Scale.Create(mu, Math.Sqrt(craft.A * targetOrbit.A)).TimeScale);
+            var leg = flat.Leg(window.T, window.Tof, 0);
+            if (leg.Error != null) return null;
+
+            // The arc out, and where on it the plane change costs least (with capture, with the arrival burn it leaves).
+            Vec3 r1, v1;
+            craft.State(window.T, out r1, out v1);
+            var arc = Conic.FromState(mu, r1, v1 + leg.Departure, window.T);
+            var arriveUt = window.T + window.Tof;
+            Vec3 meet, vt;
+            targetOrbit.State(arriveUt, out meet, out vt);
+            Func<double, double> planeCost = f =>
+            {
+                Vec3 rm, vm;
+                var ut = window.T + f * window.Tof;
+                arc.State(ut, out rm, out vm);
+                var second = Lambert.Solve(mu, rm, meet, arriveUt - ut, arc.W);
+                if (second.Error != null) return NoPath;
+                var arriving = (vt - second.V2).Length;
+                return (second.V1 - vm).Length + (ask.Capture ? Math.Sqrt(arriving * arriving + 2 * body.Gm / peR) - Math.Sqrt(body.Gm / peR) : 0);
+            };
+            var found = BrentMin.Solve(planeCost, PlaneLow, PlaneHigh, PlaneTolerance, RefineIterations);
+            var planeUt = window.T + (Finite(found.X) ? found.X : (PlaneLow + PlaneHigh) / 2) * window.Tof;
+
+            var change = CorrectionBurn.Find(setup.System, setup.Body, arc, window.T, new CorrectionAsk
+            {
+                Target = body.Name, TargetPe = ask.TargetPe, EarliestUt = planeUt, LatestUt = planeUt, PeTolerance = PeNear, AimUt = arriveUt,
+            });
+            if (!change.HasBurn || change.Error != null) return null;
+
+            double prograde, normal, radial;
+            SingleShooting.NodeFrame(craft, window.T, leg.Departure, out prograde, out normal, out radial);
+            var reached = Reach(setup, body, targetOrbit, new List<PredictBurn.BurnRequest>
+            {
+                new PredictBurn.BurnRequest { At = At(window.T), Prograde = prograde, Normal = normal, Radial = radial },
+                new PredictBurn.BurnRequest { At = At(planeUt), Prograde = change.Prograde, Normal = change.Normal, Radial = change.Radial },
+            });
+            if (reached == null || Math.Abs(reached.Pe - ask.TargetPe) >= PeNear) return null;
+            return new TransferPlan
+            {
+                Ut = window.T, Prograde = prograde, Normal = normal, Radial = radial, DeltaV = leg.Departure.Length,
+                ArrivalDv = reached.CaptureDv, EncounterUt = reached.EncounterUt, ArrivalUt = reached.PeUt, PeActual = reached.Pe,
+                PlaneUt = planeUt, PlanePrograde = change.Prograde, PlaneNormal = change.Normal, PlaneRadial = change.Radial, PlaneDv = change.DeltaV,
+            };
+        }
+
+        /// <summary><paramref name="orbit"/> turned about its line of nodes with the plane of normal <paramref name="normal"/> into that plane (its state at <paramref name="ut"/>, rotated).</summary>
+        private static Conic Turned(Conic orbit, Vec3 normal, double ut)
+        {
+            var axis = Vec3.Cross(orbit.W, normal);
+            var sin = axis.Length;
+            if (sin < 1e-12) return orbit;
+            var cos = Vec3.Dot(orbit.W, normal);
+            var k = axis / sin;
+            Func<Vec3, Vec3> turn = x => x * cos + Vec3.Cross(k, x) * sin + k * (Vec3.Dot(k, x) * (1 - cos));
+            Vec3 r, v;
+            orbit.State(ut, out r, out v);
+            return Conic.FromState(orbit.Mu, turn(r), turn(v), ut);
         }
 
         /// <summary>Seconds between one departure window and the next for orbits of these periods; the longer period if they are the same.</summary>
@@ -393,6 +534,11 @@ namespace ClaudiaKermin.Core.Tools
 
             /// <summary>Why the last Lambert solve that failed had no path, for the error when no departure has one.</summary>
             public string LambertError;
+
+            public double Floor
+            {
+                get { return _floor; }
+            }
 
             public Problem(Conic craft, Conic target, SnapshotBody body, double peR, bool capture, bool intercept, double floor)
             {
@@ -623,27 +769,12 @@ namespace ClaudiaKermin.Core.Tools
         /// </summary>
         private static TransferPlan Aim(PredictBurn.Setup setup, SnapshotBody target, Conic targetOrbit, double ut, double prograde, double normal, double radial, double goal, out bool reached)
         {
-            var at = JsonReader.Parse(ut.ToString("R", CultureInfo.InvariantCulture));
+            var at = At(ut);
             Func<double, Arrival> arrive = p =>
             {
-                var requests = new List<PredictBurn.BurnRequest> { new PredictBurn.BurnRequest { At = at, Prograde = p, Normal = normal, Radial = radial } };
-                List<PredictBurn.BurnDone> done;
-                List<Patch> after;
-                if (PredictBurn.Simulate(setup, requests, out done, out after, false) != null || after.Count < 2) return null;
-                if (after[0].End != PatchEnd.Encounter || !string.Equals(after[0].Next.Name, target.Name, StringComparison.OrdinalIgnoreCase)) return null;
-                var there = after[1].Orbit;
-                var peUt = there.NextPeriapsis(after[1].StartUt) ?? after[1].StartUt;
-                Vec3 rPe, vPe;
-                there.State(peUt, out rPe, out vPe);
-                return new Arrival
-                {
-                    ProgradeDv = p,
-                    Pe = there.PeR - target.Radius,
-                    OrbitsPrograde = Vec3.Dot(there.W, targetOrbit.W) > 0,
-                    EncounterUt = after[0].EndUt,
-                    PeUt = peUt,
-                    CaptureDv = Math.Abs(vPe.Length - Math.Sqrt(target.Gm / rPe.Length)),
-                };
+                var got = Reach(setup, target, targetOrbit, new List<PredictBurn.BurnRequest> { new PredictBurn.BurnRequest { At = at, Prograde = p, Normal = normal, Radial = radial } });
+                if (got != null) got.ProgradeDv = p;
+                return got;
             };
 
             // A burn that passes inside the periapsis asked for: the Lambert burn itself, or one a little either side of it; else
@@ -701,6 +832,32 @@ namespace ClaudiaKermin.Core.Tools
             return chosen != null
                 ? Plan(ut, normal, radial, chosen)
                 : Fail("the ejection at UT " + Num(ut) + " reaches " + target.Name + ", but no burn there arrives with a periapsis of " + Num(goal) + " m");
+        }
+
+        /// <summary>Where the burns take the craft on the patched conics when the last goes straight into <paramref name="target"/>'s sphere of influence; else null.</summary>
+        private static Arrival Reach(PredictBurn.Setup setup, SnapshotBody target, Conic targetOrbit, List<PredictBurn.BurnRequest> requests)
+        {
+            List<PredictBurn.BurnDone> done;
+            List<Patch> after;
+            if (PredictBurn.Simulate(setup, requests, out done, out after, false) != null || after.Count < 2) return null;
+            if (after[0].End != PatchEnd.Encounter || !string.Equals(after[0].Next.Name, target.Name, StringComparison.OrdinalIgnoreCase)) return null;
+            var there = after[1].Orbit;
+            var peUt = there.NextPeriapsis(after[1].StartUt) ?? after[1].StartUt;
+            Vec3 rPe, vPe;
+            there.State(peUt, out rPe, out vPe);
+            return new Arrival
+            {
+                Pe = there.PeR - target.Radius,
+                OrbitsPrograde = Vec3.Dot(there.W, targetOrbit.W) > 0,
+                EncounterUt = after[0].EndUt,
+                PeUt = peUt,
+                CaptureDv = Math.Abs(vPe.Length - Math.Sqrt(target.Gm / rPe.Length)),
+            };
+        }
+
+        private static JsonNode At(double ut)
+        {
+            return JsonReader.Parse(ut.ToString("R", CultureInfo.InvariantCulture));
         }
 
         /// <summary>
