@@ -134,6 +134,7 @@ namespace ClaudiaKermin.Core.Missions
             else if (input is GoToMissionVessel) GoToMissionVesselRequested(((GoToMissionVessel)input).Id);
             else if (input is CraftLinkSeen) CraftLinkReported((CraftLinkSeen)input);
             else if (input is SetAutoMode) AutoModeSet(((SetAutoMode)input).On);
+            else if (input is ChangeTarget) TargetChanged(((ChangeTarget)input).Pick);
             CheckDue();
             CheckBlackout();
             CheckScriptWarp();
@@ -141,6 +142,7 @@ namespace ClaudiaKermin.Core.Missions
             CheckTelemetry();
             CheckFlyable();
             TryPlan();
+            TryTargetRevision();
             TryOwed();
             Rebuild();
         }
@@ -592,7 +594,7 @@ namespace ClaudiaKermin.Core.Missions
             var stale = StaleBecause(mission);
             if (stale.Length > 0)
             {
-                Note(LogKind.Notice, "The craft has changed since this plan was made (" + stale + "). Re-plan instead.");
+                Note(LogKind.Notice, (mission.TargetChange.Length > 0 ? "The Target Vessel" : "The craft") + " has changed since this plan was made (" + stale + "). Re-plan instead.");
                 return;
             }
             if (mission.Stage == MissionStage.AwaitingPlanApproval)
@@ -2163,6 +2165,9 @@ namespace ClaudiaKermin.Core.Missions
                 view.ManualControlUnavailable = ManualUnavailableBecause();
                 view.LinkLossTakeBackIn = LinkLossTakeBackIn();
                 view.PlanStale = StaleBecause(mission);
+                view.PlanStaleTarget = view.PlanStale.Length > 0 && mission.TargetChange.Length > 0;
+                view.TargetNeeded = TargetNeeded(mission);
+                view.CanChangeTarget = CanChangeTarget;
                 if (mission.Stage == MissionStage.ManualControl)
                     view.QuickReplies = new List<QuickReply> { QuickReply.HandBack };
                 else if (mission.Stage == MissionStage.Running)

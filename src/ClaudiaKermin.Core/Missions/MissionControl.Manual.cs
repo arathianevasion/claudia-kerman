@@ -272,6 +272,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             if (mission == null || !mission.AwaitingApproval || mission.Declined || mission.InFlight) return "";
             if (mission.Stage == MissionStage.AwaitingSequenceApproval && mission.PendingSequence == null) return "";
+            if (mission.TargetChange.Length > 0) return mission.TargetChange;
             if (mission.Recheck.Length > 0) return mission.Recheck;
             return PlanDrift.Exceeded(mission.PlanBaseline, _snapshot, _config.ReplanTolerancePercent);
         }
@@ -288,6 +289,11 @@ namespace ClaudiaKermin.Core.Missions
             }
             var stale = StaleBecause(mission);
             if (stale.Length == 0 || !CanAnswerPlan) return;
+            if (mission.TargetChange.Length > 0)
+            {
+                ReviseForTarget(mission, inAdvance ? LogKind.Notice : LogKind.Player);
+                return;
+            }
             var missionPlan = mission.Stage == MissionStage.AwaitingPlanApproval;
             Note(inAdvance ? LogKind.Notice : LogKind.Player, "Re-plan: the craft changed (" + stale + ").");
             mission.ConfirmPrompt = null;
@@ -299,6 +305,7 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The turn that asks for the stale plan again; also the probe the Auto Mode room check prices.</summary>
         private Turn ReplanTurn(string stale, bool missionPlan)
         {
+            if (_mission.TargetChange.Length > 0) return TargetTurn(_mission);
             return new Turn
             {
                 Purpose = missionPlan ? Purpose.MissionPlan : Purpose.SequencePlan,
