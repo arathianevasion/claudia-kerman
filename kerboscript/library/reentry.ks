@@ -7,10 +7,10 @@
 
 @lazyglobal off.
 
-//| reentry(options): brings the craft down through its body's atmosphere: drops the stack below the heat shield, waits (on rails)
-//| for the atmosphere if still in space, holds the heat shield forward (surface retrograde), drops it once
-//| the worst heating is over, opens the parachutes only when safe (never staged), physics-warping the fall
-//| (1x below 100 m), and ends once landed or splashed.
+//| reentry(options): brings the craft down through its body's atmosphere:
+//| drops the stack below the heat shield, waits (on rails) for the atmosphere if still in space, holds the heat shield
+//| forward (surface retrograde), drops it once the worst heating is over, opens the parachutes only when safe (never
+//| staged), physics-warping the fall (1x below 100 m), and ends once landed or splashed.
 //| Options:
 //|   chute_mode ["safe"]: drogues first (under 500 m/s, over 0.02 atm, or by 3000 m above the ground), then
 //|     mains once they are out (under 250 m/s, over 0.04 atm, or by 1500 m); "none" never opens them.

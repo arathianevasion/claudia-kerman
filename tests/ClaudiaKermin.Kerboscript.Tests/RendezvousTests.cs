@@ -65,7 +65,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [Theory]
         [InlineData("", "")]
         [InlineData("\"target\", \"Station\", \"max_dv\", 500, \"max_phasing_orbits\", 2", "")]
-        [InlineData("\"target\", 3", "target must be the Target Vessel or its name")]
+        [InlineData("\"target\", 3", "target must be the Target Vessel's name")]
         [InlineData("\"max_rel_inc\", 0", "max_rel_inc must be degrees above 0, not 0")]
         [InlineData("\"max_phasing_orbits\", 0", "max_phasing_orbits must be a number of orbits, 1 or more, not 0")]
         [InlineData("\"max_dv\", \"lots\"", "max_dv must be m/s above 0 or 'none', not lots")]

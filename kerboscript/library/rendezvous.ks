@@ -13,13 +13,12 @@
 
 @lazyglobal off.
 
-//| rendezvous(options): meets the Target Vessel in its orbit; then dock.
-//| From orbit round the Target Vessel's body to within its physics range (loaded, about 2.2 km) under 2 m/s
-//| relative. Each step is solved when it starts and flown by exec_node: a plane match over max_rel_inc, a phasing
+//| rendezvous(options): meets the Target Vessel.
+//| From orbit round its body to within its physics range (loaded, about 2.2 km) under 2 m/s relative; then dock. Each step is solved when it starts and flown by exec_node: a plane match over max_rel_inc, a phasing
 //| orbit when the transfer window is over max_phasing_orbits away, the transfer, a Course Correction to about
 //| 300 m, and matching velocities there.
 //| Options:
-//|   target ["auto"]: the Mission's Target Vessel, or its name.
+//|   target ["auto"]: the Mission's Target Vessel; a name given must be its.
 //|   max_rel_inc [0.1]: degrees off the target's plane before the plane match.
 //|   max_phasing_orbits [5]: orbits the craft may wait for the window before it phases.
 //|   max_dv ["none"]: m/s all the burns may cost; a burn past it fails before it flies.
@@ -63,8 +62,8 @@ function rendezvous_handoff_speed {
 // "" or why an option value isn't one the block can use. Pure.
 function rendezvous_unreadable {
   parameter opt.
-  if not opt:target:istype("String") and not opt:target:istype("Vessel") {
-    return "target must be the Target Vessel or its name".
+  if not opt:target:istype("String") {
+    return "target must be the Target Vessel's name".
   }
   if not opt:max_rel_inc:istype("Scalar") or opt:max_rel_inc <= 0 {
     return "max_rel_inc must be degrees above 0, not " + opt:max_rel_inc.
@@ -82,11 +81,11 @@ function rendezvous_unreadable {
   return "".
 }
 
-// Degrees the target leads the craft when a Hohmann transfer from radius r to target_r (m) departs: it arrives as the
+// Degrees the target leads the craft when a Hohmann transfer from radius craft_r to target_r (m) departs: it arrives as the
 // craft does, half a transfer orbit on. target_period (s), mu (m^3/s^2). Pure.
 function rendezvous_lead {
-  parameter r, target_r, target_period, mu.
-  local hohmann is 3.141592653589793 * sqrt(((r + target_r) / 2) ^ 3 / mu).
+  parameter craft_r, target_r, target_period, mu.
+  local hohmann is 3.141592653589793 * sqrt(((craft_r + target_r) / 2) ^ 3 / mu).
   return 180 - 360 * hohmann / target_period.
 }
 
@@ -114,13 +113,13 @@ function rendezvous_transfer_or_phase {
 
 // The resonant phasing orbit (step 2) for ORBITBURN's resonant goal: lexicon("value", orbits, "of", of): the craft makes
 // orbits laps while the target makes of, so that afterwards the target leads the craft by the Hohmann transfer's angle and
-// the transfer's window opens. phase: degrees the target leads the craft at the burn; period, target_period (s); r,
+// the transfer's window opens. phase: degrees the target leads the craft at the burn; period, target_period (s); craft_r,
 // target_r: the craft's radius at the burn and the target's semi-major axis (m); mu (m^3/s^2); min_period: the shortest
 // period whose low point clears the body (s). Of the whole numbers of extra target laps, the one whose period is nearest
 // the craft's own is cheapest. lexicon("value", 0) when no period clears the body. Pure.
 function rendezvous_phasing {
-  parameter phase, period, target_period, r, target_r, mu, min_period, orbits.
-  local frac is claudia_wrap_angle(rendezvous_lead(r, target_r, target_period, mu) - phase) / 360.
+  parameter phase, period, target_period, craft_r, target_r, mu, min_period, orbits.
+  local frac is claudia_wrap_angle(rendezvous_lead(craft_r, target_r, target_period, mu) - phase) / 360.
   local best is lexicon("value", 0).
   local best_off is -1.
   local m0 is round(orbits * period / target_period - frac).
@@ -270,39 +269,38 @@ function rendezvous_run {
   }
 }
 
-// The elements of orbit o as EJECTIONBURN takes a target orbit (degrees and the mean anomaly as kOS gives them).
-function rendezvous_elements {
-  parameter o.
-  return lexicon("target_sma", o:semimajoraxis, "target_ecc", o:eccentricity, "target_inc", o:inclination, "target_lan", o:lan,
-    "target_argpe", o:argumentofperiapsis, "target_mna", o:meananomalyatepoch, "target_epoch", o:epoch).
-}
-
-// The craft against the Target Vessel tgt now, for rendezvous_next: loaded, distance (m), rel_speed (m/s), rel_inc
-// (degrees between the planes), phase (degrees tgt leads the craft round the body), period and target_period (s), r (the
-// craft's semi-major axis) and target_r (tgt's), mu, min_period (the shortest period from here whose low point is 10 km
-// over the air or the surface), body, ut and orbit (tgt's elements). Loading lags a frame behind the range, so a target
-// inside it is given up to 5 s to load.
+// The craft against the Target Vessel named name now, for rendezvous_next: loaded, distance (m), rel_speed (m/s), rel_inc
+// (degrees between the planes), phase (degrees the target leads the craft round the body), period and target_period (s), r
+// (the craft's semi-major axis) and target_r (the target's), mu, min_period (the shortest period from here whose low point
+// is 10 km over the air or the surface), body, ut and orbit (the target's elements as EJECTIONBURN takes a target orbit,
+// degrees and the mean anomaly as kOS gives them). Loading lags a frame behind the range, so a target inside it is given up
+// to 5 s to load. The vessel is only read, and only here, never passed to a function: the Script Check follows another
+// vessel into every function it is passed to (ADR 0003), so rv_target is a name no other code uses.
 function rendezvous_state {
-  parameter tgt.
-  if not tgt:loaded and tgt:distance < 2200 {
+  parameter name.
+  local rv_target is vessel(name).
+  if not rv_target:loaded and rv_target:distance < 2200 {
     local wait_until is time:seconds + 5.
-    wait until tgt:loaded or time:seconds > wait_until.
+    wait until rv_target:loaded or time:seconds > wait_until.
   }
   local rc is ship:position - ship:body:position.
   local vc is ship:velocity:orbit.
-  local rt is tgt:position - ship:body:position.
-  local vt is tgt:velocity:orbit.
+  local rv_tr is rv_target:position - ship:body:position.
+  local rv_tv is rv_target:velocity:orbit.
   local own is vcrs(rc, vc).
-  local phase is vang(rc, rt).
-  if vdot(vcrs(rc, rt), own) < 0 {
+  local phase is vang(rc, rv_tr).
+  if vdot(vcrs(rc, rv_tr), own) < 0 {
     set phase to 360 - phase.
   }
   local low is ship:body:radius + max(0, ship:body:atm:height) + 10000.
   local a is (rc:mag + low) / 2.
-  return lexicon("ut", time:seconds, "loaded", tgt:loaded, "distance", (rt - rc):mag, "rel_speed", (vt - vc):mag,
-    "rel_inc", vang(own, vcrs(rt, vt)), "phase", phase, "period", ship:orbit:period, "target_period", tgt:orbit:period,
-    "r", ship:orbit:semimajoraxis, "target_r", tgt:orbit:semimajoraxis, "mu", ship:body:mu,
-    "min_period", 2 * 3.141592653589793 * sqrt(a ^ 3 / ship:body:mu), "body", ship:body:name, "orbit", rendezvous_elements(tgt:orbit)).
+  local rv_to is rv_target:orbit.
+  return lexicon("ut", time:seconds, "loaded", rv_target:loaded, "distance", (rv_tr - rc):mag, "rel_speed", (rv_tv - vc):mag,
+    "rel_inc", vang(own, vcrs(rv_tr, rv_tv)), "phase", phase, "period", ship:orbit:period, "target_period", rv_to:period,
+    "r", ship:orbit:semimajoraxis, "target_r", rv_to:semimajoraxis, "mu", ship:body:mu,
+    "min_period", 2 * 3.141592653589793 * sqrt(a ^ 3 / ship:body:mu), "body", ship:body:name,
+    "orbit", lexicon("target_sma", rv_to:semimajoraxis, "target_ecc", rv_to:eccentricity, "target_inc", rv_to:inclination, "target_lan", rv_to:lan,
+      "target_argpe", rv_to:argumentofperiapsis, "target_mna", rv_to:meananomalyatepoch, "target_epoch", rv_to:epoch)).
 }
 
 function rendezvous {
@@ -322,12 +320,8 @@ function rendezvous {
   if named:error <> "" {
     return claudia_finish(ctx, false, named:error, extra).
   }
-  local given is opt:target.
-  if given:istype("Vessel") {
-    set given to given:name.
-  }
-  if given <> "auto" and given <> named:name {
-    return claudia_finish(ctx, false, given + " is not the Target Vessel " + named:name, extra).
+  if opt:target <> "auto" and opt:target <> named:name {
+    return claudia_finish(ctx, false, opt:target + " is not the Target Vessel " + named:name, extra).
   }
   if named:body <> ship:body:name {
     return claudia_finish(ctx, false, "the Target Vessel " + named:name + " is round " + named:body + ", not " + ship:body:name + ": transfer there first", extra).
@@ -338,7 +332,6 @@ function rendezvous {
   if hasnode {
     return claudia_finish(ctx, false, "a maneuver node is already planned: remove it first", extra).
   }
-  local tgt is vessel(named:name).
   local turn is addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime)).
   if turn:haskey("error") and turn:error <> "" {
     return claudia_finish(ctx, false, turn:error, extra).
@@ -350,7 +343,7 @@ function rendezvous {
         claudia_make_safe().
         return lexicon("abort", ticked).
       }
-      return rendezvous_state(tgt).
+      return rendezvous_state(named:name).
     },
     {
       parameter kind, input.
