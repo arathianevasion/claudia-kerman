@@ -34,11 +34,11 @@ namespace ClaudiaKermin.Core.Tools
         {
             get
             {
-                // A planet's windows (#458) took the place of "Don't call it for another planet's moons." at the same length (prefix cost).
+                // A planet's windows (#458) were paid for by shorter wording, at the same 457 characters (prefix cost).
                 return "The cheapest two-burn transfer in the next window, from this turn's Game Snapshot: to target (a moon of the "
                     + "craft's body, or a planet) at target_pe (m), or to orbit (ap, pe m; inc, lan deg) anywhere on it. Gives the departure burn "
-                    + "(maneuver-node components) and time, and the arrival burn; to a planet, the soonest and optimal windows. capture false "
-                    + "minimises the departure alone. Its block is transfer_to: call it to budget, then pass the block the target.";
+                    + "(maneuver-node components) and time, and the arrival burn; a planet: soonest and optimal windows. capture false "
+                    + "minimises the departure alone. Its block is transfer_to, given the target. Don't call it for other planets' moons.";
             }
         }
 
