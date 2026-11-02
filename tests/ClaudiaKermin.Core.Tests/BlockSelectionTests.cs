@@ -25,6 +25,41 @@ namespace ClaudiaKermin.Core.Tests
             Assert.DoesNotContain("science", picked);
         }
 
+        [Theory]
+        [InlineData("Land on Duna")]
+        [InlineData("Fly to Duna and land on Duna")]
+        [InlineData("Put a lander on Eve: land on Eve")]
+        public void ALandingOnABodyWithAnAtmosphereGetsReentry(string goal)
+        {
+            Assert.Contains("reentry", BlockSelection.For(goal, Shipped));
+            var names = CoreLibrary.Blocks.Select(b => b.Name).ToList();
+            Assert.Contains("reentry", BlockSelection.For(goal, names));
+            Assert.DoesNotContain("land", BlockSelection.For(goal, Shipped));
+            Assert.DoesNotContain("land", BlockSelection.For(goal, names));
+        }
+
+        [Fact]
+        public void AGoalThatAlsoLandsOnAnAirlessBodyKeepsLandAndGetsReentry()
+        {
+            var picked = BlockSelection.For("Land on the Mun, then land on Duna", Shipped);
+            Assert.Contains("land", picked);
+            Assert.Contains("reentry", picked);
+        }
+
+        [Fact]
+        public void ALandingOnAMoonOfAnAirBodyKeepsLand()
+        {
+            Assert.Contains("land", BlockSelection.For("Land on Duna's moon Ike", Shipped));
+        }
+
+        [Fact]
+        public void AnAirlessLandingKeepsLandAndNotReentry()
+        {
+            var picked = BlockSelection.For("land on the Mun", Shipped);
+            Assert.Contains("land", picked);
+            Assert.DoesNotContain("reentry", picked);
+        }
+
         [Fact]
         public void AReturnTripGetsReentryAndReturn()
         {
