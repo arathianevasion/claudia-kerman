@@ -170,6 +170,7 @@ namespace ClaudiaKermin.Core.Tools
             var pick = TransferWindows.Pick(found, snapshot.TimeVersusDeltaV);
             var json = new JsonWriter().BeginObject().Field("model", found.Moon ? MoonWindowModel : WindowModel).Field("target", found.Target).Field("capture", capture);
             json.Field("parking_pe", PlanningJson.Round(found.ParkingPe, 0));
+            if (found.ParkingAssumed) json.Field("parking_note", "assumed: the craft is not in a closed orbit clear of the atmosphere");
             if (!found.Moon && !found.Fits)
             {
                 // No window fits (#648): the cheapest total against what the craft has, in the result alone (the description is unchanged).
@@ -181,7 +182,6 @@ namespace ClaudiaKermin.Core.Tools
                     Summary = found.Target + ": no window fits, the cheapest " + Num(found.Optimal.TotalDv) + " m/s, the craft has " + Num(found.CraftDv.Value) + " m/s",
                 };
             }
-            if (found.ParkingAssumed) json.Field("parking_note", "assumed: the craft is not in a closed orbit clear of the atmosphere");
             if (found.Moon)
             {
                 Choice(json, found, snapshot);
