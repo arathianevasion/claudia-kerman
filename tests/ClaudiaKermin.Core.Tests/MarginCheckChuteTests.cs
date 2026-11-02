@@ -85,7 +85,11 @@ namespace ClaudiaKermin.Core.Tests
         {
             var snapshot = Craft();
 
-            var check = Check(snapshot, Plan(3800, 100, 1000), Home);
+            // The legs alone leave a healthy margin; only the finish's own delta-v takes it away.
+            var plan = Plan(3500, 100, 0);
+            Assert.True(FinishSpeed(snapshot, plan) > 304);
+
+            var check = MarginCheck.Of(snapshot, plan, 5, 10, false, null, ChuteAllocation.Of(snapshot, plan, 0, false, null), Home, 0);
 
             Assert.Single(check.Findings, f => f.Code == "chutes_short_for_landing");
             Assert.DoesNotContain(check.Findings, f => f.Code == "delta_v_short");
