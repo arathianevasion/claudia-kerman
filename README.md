@@ -1,5 +1,7 @@
 # Claudia Kermin
 
+<img width="839" height="659" alt="Screenshot 2026-11-01 at 9 49 54 PM" src="https://github.com/user-attachments/assets/2b896a26-b0ec-4c88-8790-673a3cd4687a" />
+
 A Kerbal Space Program mod that adds **Claudia**, an AI mission controller. You give her a goal in plain language, such as "Land on the Mun, run 3 experiments, return to Kerbin". She plans the mission, explains each step, asks your go-ahead, flies it through kOS and reports back.
 
 > **Status: design complete, not yet built.** The v1 design is in [Spec: Claudia Kermin v1](https://github.com/arathianevasion/claudia-kermin/issues/36). Only the project skeleton exists so far (see [Building](#building)). The rest describes what v1 will do.
