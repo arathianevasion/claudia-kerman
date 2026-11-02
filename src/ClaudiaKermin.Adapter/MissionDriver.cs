@@ -190,6 +190,12 @@ namespace ClaudiaKermin.Adapter
         /// </summary>
         public static uint? TargetVesselId;
 
+        /// <summary>
+        /// The debug block test runner's spawned target (#455), read as the Target Vessel while no Mission has one: a
+        /// <c>rendezvous</c> or <c>dock</c> test has no Mission. Set and cleared by the runner only.
+        /// </summary>
+        public static uint? BlockTestTargetId;
+
         /// <summary>Call each frame, after the background queue has drained.</summary>
         public void Update()
         {

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using ClaudiaKermin.Adapter;
 using ClaudiaKermin.Core;
 using ClaudiaKermin.Core.Kos;
 using ClaudiaKermin.Core.Tools;
@@ -33,6 +34,8 @@ namespace ClaudiaKermin.KOS
         /// <summary>Planning Tool scenarios (<c>tests/tools/&lt;name&gt;/</c>), run as <c>tools/&lt;name&gt;</c> with the test-only tool bridge open.</summary>
         private const string ToolResourcePrefix = "ClaudiaKermin.KOS.tooltests.";
         private const string ToolTestPrefix = "tools/";
+        /// <summary>The name a test's second craft (<c>target_craft</c>) is spawned with, so a test script finds it by <c>vessel(name)</c>.</summary>
+        private const string TargetName = "Block Test Target";
 
         private enum Stage
         {
@@ -157,6 +160,9 @@ namespace ClaudiaKermin.KOS
                 Directory.CreateDirectory(Path.Combine(SaveDirectory, "Ships/VAB"));
                 File.WriteAllText(Path.Combine(SaveDirectory, "persistent.sfs"), Resource(test, "scenario.sfs"));
                 File.WriteAllText(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.Craft), Resource(test, _spec.Craft));
+                if (_spec.TargetCraft != null)
+                    File.WriteAllText(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.TargetCraft), Resource(test, _spec.TargetCraft));
+                MissionDriver.BlockTestTargetId = null;
 
                 var game = GamePersistence.LoadGame("persistent", SaveFolder, true, false);
                 if (game == null) throw new InvalidOperationException("KSP wouldn't load the scenario save");
@@ -205,10 +211,20 @@ namespace ClaudiaKermin.KOS
                     HighLogic.CurrentGame.flagURL, "LaunchPad", new VesselCrewManifest());
                 return;
             }
-            var proto = CraftSpawner.IntoOrbit(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.Craft),
-                _spec.OrbitBody, _spec.OrbitAltitude, _spec.OrbitInclination, _spec.OrbitPeriapsis);
+            var ut = Planetarium.GetUniversalTime();
+            var orbit = CraftSpawner.OrbitFor(_spec.OrbitBody, _spec.OrbitAltitude, _spec.OrbitInclination, _spec.OrbitPeriapsis, ut);
+            var proto = CraftSpawner.IntoOrbit(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.Craft), orbit, null);
             _vesselId = proto.persistentId;
             Note("spawned '" + proto.vesselName + "' in a " + _spec.OrbitAltitude + " m orbit of " + _spec.OrbitBody + "; going to Flight");
+            if (_spec.TargetCraft != null)
+            {
+                // The second craft (#455): placed relative to the first, and read as the Target Vessel while the test runs.
+                var target = CraftSpawner.Relative(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.TargetCraft), orbit, ut, _spec.TargetOrbitAlong,
+                    _spec.TargetOrbitPrograde, _spec.TargetOrbitNormal, _spec.TargetOrbitRadial, TargetName);
+                MissionDriver.BlockTestTargetId = target.persistentId;
+                Note("spawned the target '" + TargetName + "' " + _spec.TargetOrbitAlong + " m along the track, moving " + _spec.TargetOrbitPrograde + " prograde, "
+                    + _spec.TargetOrbitNormal + " normal, " + _spec.TargetOrbitRadial + " radial m/s relative");
+            }
             GamePersistence.SaveGame("persistent", SaveFolder, SaveMode.OVERWRITE);
             _stage = Stage.WaitingForFlight;
             _sceneFrames = 0;
@@ -282,6 +298,7 @@ namespace ClaudiaKermin.KOS
         {
             _stage = Stage.Idle;
             ToolTestGate.Shared.Close();
+            MissionDriver.BlockTestTargetId = null;
             Note(result.Headline);
             foreach (var line in result.Lines) Note("  " + line);
             try

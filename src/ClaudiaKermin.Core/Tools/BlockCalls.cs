@@ -682,6 +682,20 @@ namespace ClaudiaKermin.Core.Tools
             };
         }
 
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:TARGETVESSEL</c>, for <c>rendezvous</c> (#455): the Mission's Target Vessel (ADR 0013) as the Game Snapshot
+        /// reads it live. Gives <c>error</c> "", <c>name</c> and <c>body</c> (the body it orbits); or only <c>error</c>: there is none,
+        /// or it is landed, or its orbit is missing.
+        /// </summary>
+        public static IDictionary<string, object> TargetVessel(GameSnapshot snapshot)
+        {
+            if (snapshot == null) return Error("no Game Snapshot");
+            string why;
+            var vessel = VesselTarget.Read(snapshot, new BodySystem(snapshot.Bodies), null, out why);
+            if (vessel == null) return Error(why);
+            return new Dictionary<string, object> { { "error", "" }, { "name", vessel.Name }, { "body", vessel.Body.Name } };
+        }
+
         /// <summary>CORRECTIONBURN's Course Correction to the Target Vessel's closest approach (<c>target_distance</c>).</summary>
         private static IDictionary<string, object> ApproachCorrection(Dictionary<string, object> ask, GameSnapshot snapshot)
         {
