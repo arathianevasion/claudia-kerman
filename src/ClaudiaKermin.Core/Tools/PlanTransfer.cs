@@ -20,6 +20,9 @@ namespace ClaudiaKermin.Core.Tools
         public const string Model = "two impulsive burns on a Lambert arc from this turn's Game Snapshot, the next window; to a body, the departure "
             + "is sized on patched conics to arrive at target_pe and the arrival is the burn that circularizes there";
 
+        public const string WindowModel = "Lambert arcs between the planets round the star, the ejection from the parking orbit's periapsis and the capture "
+            + "circular at target_pe; soonest is the first departure within the Craft Check margin of optimal, the cheapest in a synodic period";
+
         public string Name
         {
             get { return "plan_transfer"; }
@@ -29,10 +32,11 @@ namespace ClaudiaKermin.Core.Tools
         {
             get
             {
-                return "The cheapest two-burn transfer in the next window, from this turn's Game Snapshot: to target (a body orbiting the "
-                    + "craft's body) at target_pe (m), or to orbit (ap, pe m; inc, lan deg) anywhere on it. Gives the departure burn "
-                    + "(maneuver-node components) and time, and the arrival burn; capture false minimises the departure alone. Its block "
-                    + "is transfer_to: call it to budget a transfer, then pass the block the target. Don't call it for another planet's moons.";
+                // A planet's windows (#458) took the place of "Don't call it for another planet's moons." at the same length (prefix cost).
+                return "The cheapest two-burn transfer in the next window, from this turn's Game Snapshot: to target (a moon of the "
+                    + "craft's body, or a planet) at target_pe (m), or to orbit (ap, pe m; inc, lan deg) anywhere on it. Gives the departure burn "
+                    + "(maneuver-node components) and time, and the arrival burn; to a planet, the soonest and optimal windows. capture false "
+                    + "minimises the departure alone. Its block is transfer_to: call it to budget, then pass the block the target.";
             }
         }
 
@@ -68,6 +72,11 @@ namespace ClaudiaKermin.Core.Tools
             if (string.IsNullOrEmpty(target) == (orbit == null)) return PlanningJson.Error("give target (a body) or orbit, one of them");
             if (target != null && !targetPe.HasValue) return PlanningJson.Error("target needs target_pe, the periapsis altitude to arrive at in metres");
             if (orbit != null && targetPe.HasValue) return PlanningJson.Error("target_pe is for a target body; an orbit is reached at its own altitude");
+            if (target != null && TransferWindows.IsPlanetTransfer(snapshot, target))
+                {
+                var capture = JsonNode.Bool(input["capture"]) ?? true;
+                return Windows(TransferWindows.Find(snapshot, target, targetPe.Value, capture, snapshot.MarginPercent), snapshot, capture);
+            }
             var ask = new TransferAsk
             {
                 Target = target,
@@ -119,6 +128,38 @@ namespace ClaudiaKermin.Core.Tools
                 Json = json.ToString(),
                 Summary = name + ": " + Num(plan.DeltaV) + " m/s out at UT " + Num(plan.Ut) + ", " + Num(plan.ArrivalDv) + " m/s on arrival",
             };
+        }
+
+        /// <summary>A planet's Transfer Windows (#458): Soonest and Optimal, and the one the Mission Setting Time versus delta-v picks.</summary>
+        private static ToolOutcome Windows(WindowSearch found, GameSnapshot snapshot, bool capture)
+        {
+            if (found.Error != null) return PlanningJson.Error(found.Error);
+            var pick = TransferWindows.Pick(found, snapshot.TimeVersusDeltaV);
+            var json = new JsonWriter().BeginObject().Field("model", WindowModel).Field("target", found.Target).Field("capture", capture);
+            json.Field("parking_pe", PlanningJson.Round(found.ParkingPe, 0));
+            if (found.ParkingAssumed) json.Field("parking_note", "assumed: the craft is not in a closed orbit clear of the atmosphere");
+            Window(json, "soonest", found.Soonest, snapshot.Ut, capture);
+            Window(json, "optimal", found.Optimal, snapshot.Ut, capture);
+            json.Field("pick", pick == found.Optimal && pick != found.Soonest ? "optimal" : "soonest")
+                .Field("setting", snapshot.TimeVersusDeltaV == TimeVersusDeltaV.Fastest ? "Fastest" : snapshot.TimeVersusDeltaV == TimeVersusDeltaV.MostEfficient ? "Most efficient" : "Balanced")
+                .Field("synodic_s", PlanningJson.Round(found.Synodic, 0))
+                .EndObject();
+            return new ToolOutcome
+            {
+                Json = json.ToString(),
+                Summary = found.Target + " window: " + Num(pick.TotalDv) + " m/s, leaving at UT " + Num(pick.DepartureUt),
+            };
+        }
+
+        private static void Window(JsonWriter json, string name, TransferWindow w, double now, bool capture)
+        {
+            json.Name(name).BeginObject();
+            PlanningJson.Time(json, "depart", w.DepartureUt, now);
+            json.Field("arrive_ut", PlanningJson.Round(w.ArrivalUt, 0))
+                .Field("ejection_dv", PlanningJson.Round(w.EjectionDv, 1))
+                .Field("arrival_v_inf", PlanningJson.Round(w.ArrivalVInf, 1));
+            if (capture) json.Field("capture_dv", PlanningJson.Round(w.CaptureDv, 1));
+            json.Field("total_dv", PlanningJson.Round(w.TotalDv, 1)).EndObject();
         }
 
         private static string Num(double value)

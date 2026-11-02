@@ -195,6 +195,9 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         public bool DaylightLandingDefault = true;
         public double TimeCapHours = MissionSettingsValues.BalancedWaitHours;
+        /// <summary>The Mission Setting that picks a planet's Transfer Window (Soonest or Optimal), and the Craft Check's delta-v margin (%) Soonest must fit (PlayerConfig's default).</summary>
+        public TimeVersusDeltaV TimeVersusDeltaV = TimeVersusDeltaV.Balanced;
+        public int MarginPercent = 15;
 
         // ---- Craft Check facts, computed by the adapter from the game ----
 
