@@ -198,6 +198,17 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void AVesselNamedAsTheCraftIsNeverTheTarget()
+        {
+            var snapshot = OnPad();
+            snapshot.Craft.Name = "Mun Lander";
+            snapshot.Vessels.Add(new SnapshotVessel { Id = 1, Name = "Mun Lander" });
+
+            string how;
+            Assert.Null(TargetVessel.Choose("Fly Mun Lander to the Mun and back.", snapshot, out how));
+        }
+
+        [Fact]
         public void AGoalNamingNoVesselHasNoTarget()
         {
             string how;

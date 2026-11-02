@@ -64,7 +64,10 @@ namespace ClaudiaKermin.Core.Missions
                 note = "KSP's target";
                 return new TargetVessel(snapshot.KspTarget.Id, snapshot.KspTarget.Name);
             }
-            var named = snapshot.Vessels.Where(v => v.Name.Trim().Length >= ShortestName && Names(goal ?? "", v.Name.Trim())).ToList();
+            // A vessel named as the craft is is an earlier flight of it, never the one to meet ("fly Mun Lander to the Mun").
+            var craft = snapshot.Craft.Name.Trim();
+            var named = snapshot.Vessels.Where(v => v.Name.Trim().Length >= ShortestName && !string.Equals(v.Name.Trim(), craft, StringComparison.OrdinalIgnoreCase)
+                && Names(goal ?? "", v.Name.Trim())).ToList();
             if (named.Count == 0) return null;
             var longest = named.Max(v => v.Name.Trim().Length);
             var chosen = named.Where(v => v.Name.Trim().Length == longest).GroupBy(v => v.Id).ToList();
