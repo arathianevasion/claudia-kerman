@@ -199,7 +199,7 @@ The one other vessel a Mission rendezvouses or docks with, only for a Mission Go
 _Avoid_: target (alone, which is also a transfer's body or orbit), station, other vessel
 
 **Claudia Flag**:
-The flag the mod ships (`ClaudiaKermin/Flags/ClaudiaFlag`). A Mission's craft and Child Vessels fly it, and it is the agency flag while a Mission is under way (in play and not Paused); the player's own agency flag comes back when none is.
+The flag the mod ships (`ClaudiaKermin/Flags/ClaudiaFlag`). A Mission's craft and Child Vessels fly it, and it is the agency flag while a Mission is under way (in play, Paused or not); the player's own agency flag comes back when none is.
 _Avoid_: Mission flag, mod flag
 
 **Spending Cap**:
