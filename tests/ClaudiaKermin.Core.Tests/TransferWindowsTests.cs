@@ -259,6 +259,132 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal("rendezvous", Run("{\"target\":\"Mun\",\"target_pe\":30000}", Parked()).GetProperty("mode").GetString());
         }
 
+        // ---- A moon of the craft's planet (#647) ----
+
+        private static WindowSearch Moon(string moon, GameSnapshot snapshot = null)
+        {
+            var found = TransferWindows.Find(snapshot ?? Parked(), moon, 30000, true, 15);
+            Assert.True(found.Error == null, found.Error);
+            Assert.True(found.Moon);
+            return found;
+        }
+
+        // Minmus, 6° out of the parking orbit's plane, from a 100 km orbit at the start of a new game: leaving now pays a plane
+        // change on the way; Optimal waits about 3.5 days for Minmus to arrive at its first node, where there is none (the second,
+        // half an orbit on, costs the same, and the earlier is taken). The figures are
+        // the search's own (pinned): the ejection is the known one to Minmus from low Kerbin orbit, about 930 m/s from 80 km.
+        [Fact]
+        public void Minmus_waits_for_a_node_and_optimal_is_no_dearer_than_soonest()
+        {
+            var found = Moon("Minmus");
+            Assert.Equal(0, found.Soonest.DepartureUt, 0);
+            Assert.InRange(found.Soonest.TotalDv, 1081.6 - 1, 1081.6 + 1);
+            Assert.InRange(found.Soonest.PlaneDv, 8.5 - 1, 8.5 + 1);
+            Assert.InRange(found.Optimal.DepartureUt / Day, 3.52 - 0.5, 3.52 + 0.5);
+            Assert.InRange(found.Optimal.TotalDv, 1068.3 - 1, 1068.3 + 1);
+            Assert.InRange(found.Optimal.EjectionDv, 900, 930);
+            Assert.True(found.Optimal.TotalDv <= found.Soonest.TotalDv);
+            Assert.InRange(found.Optimal.PlaneDv, 0, 0.5);
+            // At a node: Minmus arrives in the parking orbit's plane.
+            var minmus = Parked().Bodies.First(b => b.Name == "Minmus");
+            Vec3 r, v;
+            new BodySystem(Parked().Bodies).OrbitOf(minmus).State(found.Optimal.ArrivalUt, out r, out v);
+            Assert.InRange(Math.Abs(r.Z) / r.Length, 0, Math.Sin(0.2 * Math.PI / 180));
+            // The horizon is one orbit of Minmus; Most efficient takes Optimal, and Balanced Soonest (Optimal saves under 10%).
+            Assert.Equal(new BodySystem(Parked().Bodies).OrbitOf(minmus).Period, found.Synodic, 0);
+            Assert.Same(found.Optimal, TransferWindows.Pick(found, TimeVersusDeltaV.MostEfficient));
+            Assert.Same(found.Soonest, TransferWindows.Pick(found, TimeVersusDeltaV.Balanced));
+        }
+
+        // Ten days on, Minmus would arrive far from a node: leaving now pays more, and Optimal is the next node, about 18 days off.
+        [Fact]
+        public void Minmus_ten_days_on_waits_for_the_next_node()
+        {
+            var found = Moon("Minmus", Parked(10 * Day));
+            Assert.Equal(10 * Day, found.Soonest.DepartureUt, 0);
+            Assert.InRange(found.Soonest.TotalDv, 1098.3 - 1, 1098.3 + 1);
+            Assert.InRange((found.Optimal.DepartureUt - 10 * Day) / Day, 18.45 - 0.5, 18.45 + 0.5);
+            Assert.InRange(found.Optimal.TotalDv, 1068.3 - 1, 1068.3 + 1);
+        }
+
+        // The Mun is in the parking orbit's plane and circular: every departure costs the same, so Optimal is Soonest, now.
+        [Fact]
+        public void The_Mun_s_soonest_and_optimal_agree()
+        {
+            foreach (var ut in new[] { 0, 10 * Day })
+            {
+                var found = Moon("Mun", Parked(ut));
+                Assert.InRange(found.Optimal.TotalDv, found.Soonest.TotalDv - TransferWindows.NoSavingDv, found.Soonest.TotalDv);
+                Assert.Equal(ut, found.Soonest.DepartureUt, 0);
+                Assert.Same(found.Soonest, found.Optimal);
+                Assert.Equal(0, found.Soonest.PlaneDv);
+                Assert.InRange(found.Soonest.TotalDv, 1144.7 - 1, 1144.7 + 1);
+            }
+        }
+
+        [Fact]
+        public void A_moon_is_a_moon_transfer_and_a_planet_or_another_planet_s_moon_is_not()
+        {
+            Assert.True(TransferWindows.IsMoonTransfer(Parked(), "Mun"));
+            Assert.True(TransferWindows.IsMoonTransfer(Parked(), "Minmus"));
+            Assert.False(TransferWindows.IsMoonTransfer(Parked(), "Kerbin"));
+            Assert.False(TransferWindows.IsMoonTransfer(Parked(), "Duna"));
+            Assert.False(TransferWindows.IsMoonTransfer(Parked(), "Ike"));
+            Assert.Contains("nor a moon of Kerbin", TransferWindows.Find(Parked(), "Ike", 30000, true, 15).Error);
+        }
+
+        [Fact]
+        [Trait("Category", "Timing")]
+        public void A_moon_search_is_well_inside_the_tool_cap()
+        {
+            var snapshot = Parked();
+            Timing.Within(TransferWindows.BudgetMs, () => Assert.Null(TransferWindows.Find(snapshot, "Minmus", 30000, true, 15).Error));
+        }
+
+        // plan_transfer to Minmus in orbit: the rendezvous as before, and its windows beside it.
+        [Fact]
+        public void Plan_transfer_to_Minmus_carries_its_windows_and_to_the_Mun_none()
+        {
+            var found = Moon("Minmus");
+            var result = Run("{\"target\":\"Minmus\",\"target_pe\":30000}", Parked());
+            Assert.Equal("rendezvous", result.GetProperty("mode").GetString());
+            var windows = result.GetProperty("windows");
+            Assert.Equal(Math.Round(found.Optimal.TotalDv, 1), windows.GetProperty("optimal").GetProperty("total_dv").GetDouble());
+            Assert.Equal(Math.Round(found.Optimal.DepartureUt, 1), windows.GetProperty("optimal").GetProperty("depart_ut").GetDouble());
+            Assert.Equal("in 0 s", windows.GetProperty("soonest").GetProperty("depart_in").GetString());
+            Assert.Equal("soonest", windows.GetProperty("pick").GetString());
+            var efficient = Parked();
+            efficient.TimeVersusDeltaV = TimeVersusDeltaV.MostEfficient;
+            Assert.Equal("optimal", Run("{\"target\":\"Minmus\",\"target_pe\":30000}", efficient).GetProperty("windows").GetProperty("pick").GetString());
+
+            Assert.False(Run("{\"target\":\"Mun\",\"target_pe\":30000}", Parked()).TryGetProperty("windows", out _));
+        }
+
+        // From the pad there is no orbit to plan the burn from: Minmus's answer is its windows, the Mun's the error it always was.
+        [Fact]
+        public void From_the_pad_Minmus_gets_its_windows_and_the_Mun_its_old_error()
+        {
+            var snapshot = Parked();
+            snapshot.Orbit = null;
+            snapshot.Situation = "PRELAUNCH";
+            var result = Run("{\"target\":\"Minmus\",\"target_pe\":30000}", snapshot);
+            Assert.Equal(PlanTransfer.MoonWindowModel, result.GetProperty("model").GetString());
+            Assert.Equal(80000, result.GetProperty("parking_pe").GetDouble());
+            Assert.True(result.TryGetProperty("parking_note", out _));
+            Assert.True(result.GetProperty("optimal").GetProperty("total_dv").GetDouble() <= result.GetProperty("soonest").GetProperty("total_dv").GetDouble());
+            Assert.True(_tools.Run("plan_transfer", "{\"target\":\"Mun\",\"target_pe\":30000}", snapshot, new NoPlanningBody()).IsError);
+        }
+
+        // The Mission request's stage table rows are plan_transfer's answers, so Minmus's carries its windows.
+        [Fact]
+        public void The_stage_table_row_for_Minmus_carries_its_windows()
+        {
+            var table = MissionPrompts.StageTable(Parked(), "Land on Minmus and the Mun.", null);
+            var minmus = table.Split('\n').Single(l => l.StartsWith("plan_transfer {\"target\":\"Minmus\""));
+            Assert.Contains("\"windows\":{\"soonest\":", minmus);
+            Assert.DoesNotContain("\"windows\"", table.Split('\n').Single(l => l.StartsWith("plan_transfer {\"target\":\"Mun\"")));
+        }
+
         [Fact]
         public void A_target_pe_outside_the_planet_s_sphere_of_influence_is_refused()
         {

@@ -104,11 +104,11 @@ namespace ClaudiaKermin.Core.Tests
 
         // ---- Harness ----
 
-        private MissionControl Control(StreamingFakeTransport transport)
+        private MissionControl Control(StreamingFakeTransport transport, PlayerConfig config = null)
         {
             var client = new ClaudeClient(new CraftCheckRouter(transport), () => "sk-ant-test", l => { });
             client.Timing.Wait = (d, c) => { };
-            var mission = new MissionControl(client, _background, new PlayerConfig(), () => true, new PassingScriptCheck());
+            var mission = new MissionControl(client, _background, config ?? new PlayerConfig(), () => true, new PassingScriptCheck());
             mission.Send(new SaveLoaded(_save.Path));
             return mission;
         }
@@ -253,6 +253,37 @@ namespace ClaudiaKermin.Core.Tests
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
 
             Assert.False(mission.View.DueTime.HasDueTime);
+        }
+
+        // #647: a moon's window is the same rule. Minmus, out of the parking plane, is cheapest near a node weeks off: Most
+        // efficient waits for it on the pad; Balanced doesn't (the node saves under 10%).
+        [Fact]
+        public void MostEfficientWaitsOnThePadForTheMinmusWindowAndBalancedDoesNot()
+        {
+            foreach (var setting in new[] { TimeVersusDeltaV.MostEfficient, TimeVersusDeltaV.Balanced })
+            {
+                var mission = Control(new StreamingFakeTransport(DunaPlan(), LaunchPlan()), new PlayerConfig { DefaultTimeVersusDeltaV = setting });
+                mission.Send(new SceneChanged(GameScene.Flight));
+                mission.Send(OnPad(1203.48, 9000));
+                CraftCheckRouter.StartChecked(mission, _background, OnPad(1203.48, 9000), new StartMission("Orbit Minmus.", 10m, "claude-sonnet-5-5"));
+                DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+                mission.Send(new Approve());
+                DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+                var minmus = OnPad(1203.48, 9000).Bodies.Single(b => b.Name == "Minmus");
+                var window = WindowWaits.Window(OnPad(1203.48, 9000), minmus, setting, new PlayerConfig().CraftCheckMarginPercent);
+                if (setting == TimeVersusDeltaV.MostEfficient)
+                {
+                    Assert.True(mission.View.DueTime.HasDueTime);
+                    Assert.Equal(window.DepartureUt - WindowWaits.LaunchLeadS, mission.View.DueTime.Ut, 0);
+                    Assert.Equal("the Minmus window", mission.View.DueTime.WaitsFor);
+                }
+                else
+                {
+                    Assert.Equal(1203.48, window.DepartureUt, 0);
+                    Assert.False(mission.View.DueTime.HasDueTime);
+                }
+            }
         }
 
         [Fact]

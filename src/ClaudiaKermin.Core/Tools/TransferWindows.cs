@@ -24,27 +24,31 @@ namespace ClaudiaKermin.Core.Tools
         public double ArrivalVInf;
         /// <summary>The burn at target_pe from the arrival hyperbola into a circular orbit there, m/s; 0 without capture.</summary>
         public double CaptureDv;
-        /// <summary>Ejection plus capture, or the ejection alone without capture.</summary>
+        /// <summary>A moon's window (#647): the plane change on the way, where the arc is slow, m/s; 0 to a planet.</summary>
+        public double PlaneDv;
+        /// <summary>Ejection plus capture, or the ejection alone without capture (and a moon's plane change).</summary>
         public double TotalDv;
     }
 
-    /// <summary>The Soonest and Optimal windows to a planet, or why there are none (<see cref="Error"/>, with the rest unset).</summary>
+    /// <summary>The Soonest and Optimal windows to a planet or a moon of the craft's planet, or why there are none (<see cref="Error"/>, with the rest unset).</summary>
     internal sealed class WindowSearch
     {
         /// <summary>Null when windows were found; otherwise "found no transfer window: why".</summary>
         public string Error;
-        /// <summary>The target planet's name as the body table has it.</summary>
+        /// <summary>The target's name as the body table has it.</summary>
         public string Target;
         /// <summary>The earliest window within the Craft Check margin of <see cref="Optimal"/>'s total; Optimal itself when none is earlier.</summary>
         public TransferWindow Soonest;
         /// <summary>The cheapest window departing within the horizon.</summary>
         public TransferWindow Optimal;
-        /// <summary>The horizon searched: from <see cref="From"/> (UT s) for <see cref="Synodic"/>, one synodic period (s) of the two planets.</summary>
+        /// <summary>The horizon searched: from <see cref="From"/> (UT s) for <see cref="Synodic"/>, one synodic period (s) of the two planets, or a moon's period.</summary>
         public double From;
         public double Synodic;
         /// <summary>The parking orbit's periapsis altitude (m) the ejection is costed from, and whether it was assumed (no closed orbit round the planet).</summary>
         public double ParkingPe;
         public bool ParkingAssumed;
+        /// <summary>Whether the target is a moon of the craft's planet (#647).</summary>
+        public bool Moon;
     }
 
     /// <summary>
@@ -57,6 +61,8 @@ namespace ClaudiaKermin.Core.Tools
     /// ejection is the Oberth burn at the parking orbit's periapsis in the escape direction's plane, so a parking orbit tilted
     /// from that direction costs more than this says. <see cref="Problem.Of"/> copies what it needs from the Game Snapshot
     /// before the search starts, so the search never reads the snapshot (it runs on a tool thread, ToolStep.cs).
+    /// A moon of the craft's planet (#647) is the same search round the planet over one of the moon's orbits: see
+    /// <see cref="Problem.Cost"/>. A moon out of the parking orbit's plane (Minmus) is cheaper to reach near its nodes.
     /// </summary>
     internal static class TransferWindows
     {
@@ -83,6 +89,13 @@ namespace ClaudiaKermin.Core.Tools
         private const double NoPath = 1e30;
         /// <summary>Balanced takes Optimal only when it saves at least this fraction of Soonest's total.</summary>
         public const double BalancedSaving = 0.10;
+        /// <summary>
+        /// A moon's Optimal saving less than this over Soonest, m/s, is no saving and Optimal is Soonest: a moon in the parking
+        /// plane costs the same at any departure, and a few m/s (the Mun from a parking orbit tilted a few degrees) is not worth a wait.
+        /// </summary>
+        public const double NoSavingDv = 5;
+        /// <summary>The points on a moon's arc the plane change is tried at.</summary>
+        private const int PlanePoints = 32;
 
         /// <summary>
         /// The windows from the craft's planet to <paramref name="target"/>, arriving at <paramref name="targetPe"/> (m above its sea
@@ -106,6 +119,15 @@ namespace ClaudiaKermin.Core.Tools
             return star != null && string.IsNullOrEmpty(star.Parent) && string.Equals(body.Parent, star.Name, StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>Whether <paramref name="target"/> is a moon of the craft's planet (#647): a body orbiting the body the craft orbits or stands on.</summary>
+        public static bool IsMoonTransfer(GameSnapshot snapshot, string target)
+        {
+            var system = new BodySystem(snapshot.Bodies);
+            var home = system.Find(HomeName(snapshot));
+            var body = system.Find(target);
+            return home != null && body != null && body != home && string.Equals(body.Parent, home.Name, StringComparison.OrdinalIgnoreCase);
+        }
+
         /// <summary>The window the setting takes: Fastest Soonest, Most efficient Optimal, Balanced Soonest unless Optimal saves <see cref="BalancedSaving"/>.</summary>
         public static TransferWindow Pick(WindowSearch search, TimeVersusDeltaV setting)
         {
@@ -123,7 +145,7 @@ namespace ClaudiaKermin.Core.Tools
         {
             if (marginPercent < 0) return Fail("the Craft Check margin must be 0 % or more");
             var from = problem.From;
-            var synodic = Transfer.Synodic(problem.Home.Period, problem.Target.Period);
+            var synodic = problem.Moon ? problem.Target.Period : Transfer.Synodic(problem.Home.Period, problem.Target.Period);
             var step = synodic / (Departures - 1);
             var hohmann = problem.HohmannTime();
             var tofLo = FlightLow * hohmann;
@@ -152,6 +174,14 @@ namespace ClaudiaKermin.Core.Tools
             if (best < 0)
                 return Fail("no departure in the " + Num(synodic) + " s from UT " + Num(from) + " has a Lambert path to " + problem.Name
                     + (problem.LambertError != null ? " (Lambert: " + problem.LambertError + ")" : ""));
+            // A moon's two nodes an orbit cost about the same: the earliest dip within NoSavingDv of the cheapest is Optimal, not a later twin.
+            if (problem.Moon)
+                for (var i = 0; i < best; i++)
+                    if (rowCost[i] <= rowCost[best] + NoSavingDv && (i == 0 || rowCost[i] <= rowCost[i - 1]) && rowCost[i] <= rowCost[i + 1])
+                    {
+                        best = i;
+                        break;
+                    }
 
             // Optimal: BrentMin over the departure a grid step either side of the cheapest, each at its own cheapest flight time.
             var end = from + synodic;
@@ -190,11 +220,12 @@ namespace ClaudiaKermin.Core.Tools
                     else early = mid;
                 }
             }
+            if (problem.Moon && soonest.TotalDv - optimal.TotalDv < NoSavingDv) optimal = soonest;
 
             return new WindowSearch
             {
                 Target = problem.Name, Soonest = soonest, Optimal = optimal, From = from, Synodic = synodic,
-                ParkingPe = problem.ParkingPe, ParkingAssumed = problem.ParkingAssumed,
+                ParkingPe = problem.ParkingPe, ParkingAssumed = problem.ParkingAssumed, Moon = problem.Moon,
             };
         }
 
@@ -236,16 +267,19 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
-        /// One window problem, copied from the Game Snapshot: the two planets' orbits round the star, the parking orbit's periapsis
-        /// and speed there, and the capture's periapsis. The search writes only <see cref="LambertError"/>.
+        /// One window problem, copied from the Game Snapshot: the two planets' orbits round the star (or a moon's round the craft's
+        /// planet), the parking orbit's periapsis and speed there, and the capture's periapsis. The search writes only <see cref="LambertError"/>.
         /// </summary>
         internal sealed class Problem
         {
-            /// <summary>The target planet's name.</summary>
+            /// <summary>The target's name.</summary>
             public string Name;
-            /// <summary>The craft's planet's orbit and the target's, round the star.</summary>
+            /// <summary>The craft's planet's orbit and the target's, round the star; to a moon, Home is null and Target is the moon's orbit round the planet.</summary>
             public Conic Home;
             public Conic Target;
+            /// <summary>Whether the target is a moon of the craft's planet, and then the parking orbit's plane: its normal, turned to the moon's sense of motion.</summary>
+            public bool Moon;
+            public Vec3 Plane;
             /// <summary>The snapshot's UT: the search starts here.</summary>
             public double From;
             /// <summary>The gravitational parameters of the craft's planet and the target, m³/s².</summary>
@@ -273,18 +307,20 @@ namespace ClaudiaKermin.Core.Tools
                 var body = system.Find(target ?? "");
                 if (home == null) error = "the body table has no body for the craft's orbit";
                 else if (body == null) error = "no body named " + target + " in the body table";
-                else if (!IsPlanetTransfer(snapshot, target)) error = body.Name + " is not a planet of the star " + home.Name + " orbits";
+                else if (!IsPlanetTransfer(snapshot, target) && !IsMoonTransfer(snapshot, target))
+                    error = body.Name + " is not a planet of the star " + home.Name + " orbits, nor a moon of " + home.Name;
                 else if (!(targetPe >= 0 && targetPe < body.SoiRadius - body.Radius))
                     error = "target_pe must be from 0 to " + Num(body.SoiRadius - body.Radius) + " m, inside " + body.Name + "'s sphere of influence";
                 else if (!Finite(snapshot.Ut)) error = "the Game Snapshot has no time";
                 if (error != null) return null;
 
+                var moon = IsMoonTransfer(snapshot, target);
                 var p = new Problem
                 {
-                    Name = body.Name, Home = system.OrbitOf(home), Target = system.OrbitOf(body), From = snapshot.Ut, HomeGm = home.Gm,
-                    TargetGm = body.Gm, CaptureR = body.Radius + targetPe, Capture = capture,
+                    Name = body.Name, Home = moon ? null : system.OrbitOf(home), Target = system.OrbitOf(body), From = snapshot.Ut, HomeGm = home.Gm,
+                    TargetGm = body.Gm, CaptureR = body.Radius + targetPe, Capture = capture, Moon = moon,
                 };
-                if (!p.Home.Closed || !p.Target.Closed) { error = "the planets' orbits must be closed"; return null; }
+                if (moon ? !p.Target.Closed : !p.Home.Closed || !p.Target.Closed) { error = moon ? "the moon's orbit must be closed" : "the planets' orbits must be closed"; return null; }
                 // The craft's parking orbit when it is in a closed one round the planet clear of its atmosphere; else the Delta-v Map's low orbit.
                 var o = snapshot.Orbit;
                 var floor = home.Radius + home.AtmosphereHeight;
@@ -293,27 +329,39 @@ namespace ClaudiaKermin.Core.Tools
                 {
                     p.ParkingR = o.SemiMajorAxis * (1 - o.Eccentricity);
                     p.ParkingV = Math.Sqrt(home.Gm * (2 / p.ParkingR - 1 / o.SemiMajorAxis));
+                    p.Plane = Conic.FromElements(home.Gm, o.SemiMajorAxis, o.Eccentricity, o.Inclination, o.Lan, o.ArgumentOfPeriapsis, 0, 0).W;
                 }
                 else
                 {
                     p.ParkingR = DeltaVMap.LowOrbit(home);
                     p.ParkingV = Math.Sqrt(home.Gm / p.ParkingR);
                     p.ParkingAssumed = true;
+                    // From the pad, the parking orbit is the equator's: a launch due east.
+                    p.Plane = new Vec3(0, 0, 1);
                 }
                 p.ParkingPe = p.ParkingR - home.Radius;
+                if (Vec3.Dot(p.Plane, p.Target.W) < 0) p.Plane = p.Plane * -1;
                 return p;
             }
 
-            /// <summary>The Hohmann time between the planets' semi-major axes round the star.</summary>
+            /// <summary>The Hohmann time between the planets' semi-major axes round the star, or from the parking orbit to the moon's.</summary>
             public double HohmannTime()
             {
-                var a = (Home.A + Target.A) / 2;
-                return Math.PI * Math.Sqrt(a * a * a / Home.Mu);
+                var a = Moon ? (ParkingR + Target.A) / 2 : (Home.A + Target.A) / 2;
+                return Math.PI * Math.Sqrt(a * a * a / Target.Mu);
             }
 
-            /// <summary>The window leaving at <paramref name="t"/> and taking <paramref name="tof"/> s; its total is infinite when the arc has no path.</summary>
+            /// <summary>
+            /// The window leaving at <paramref name="t"/> and taking <paramref name="tof"/> s; its total is infinite when the arc has no path.
+            /// To a moon, built round the planet as #619's broken plane is: the moon's orbit turned into the parking orbit's plane about
+            /// its line of nodes; a 180° Lambert arc in that plane from the parking orbit (where the craft is within one orbit of
+            /// <paramref name="t"/>) to where the turned moon is at arrival; the plane change on the way at the point of the arc where
+            /// it costs least, tilting the arc's remainder to reach the moon's height out of the plane; and the capture from the
+            /// arrival speed relative to the turned moon. A moon at a node at arrival needs no plane change.
+            /// </summary>
             public TransferWindow Cost(double t, double tof)
             {
+                if (Moon) return MoonCost(t, tof);
                 Vec3 r1, v1, r2, v2;
                 Home.State(t, out r1, out v1);
                 Target.State(t + tof, out r2, out v2);
@@ -331,6 +379,60 @@ namespace ClaudiaKermin.Core.Tools
                 {
                     DepartureUt = t, ArrivalUt = t + tof, EjectionDv = ejection, ArrivalVInf = arriving, CaptureDv = captureDv,
                     TotalDv = ejection + captureDv,
+                };
+            }
+
+            private TransferWindow MoonCost(double t, double tof)
+            {
+                var mu = Target.Mu;
+                Vec3 r2, v2;
+                Target.State(t + tof, out r2, out v2);
+                // The moon's orbit turned into the parking plane about the line of nodes (Transfer.Turned's rotation).
+                var axis = Vec3.Cross(Target.W, Plane);
+                double sin = axis.Length, cos = Vec3.Dot(Target.W, Plane);
+                Func<Vec3, Vec3> turn = x => x;
+                if (sin > 1e-12)
+                {
+                    var k = axis / sin;
+                    turn = x => x * cos + Vec3.Cross(k, x) * sin + k * (Vec3.Dot(k, x) * (1 - cos));
+                }
+                var meet = turn(r2);
+                var r1 = meet.Normalized * -ParkingR;
+                var path = Lambert.Solve(mu, r1, meet, tof, Plane);
+                if (path.Error != null)
+                {
+                    LambertError = path.Error;
+                    return new TransferWindow { DepartureUt = t, ArrivalUt = t + tof, TotalDv = double.PositiveInfinity };
+                }
+                var ejection = (path.V1 - Vec3.Cross(Plane, r1).Normalized * ParkingV).Length;
+                var arriving = (path.V2 - turn(v2)).Length;
+                var captureDv = Capture ? Math.Sqrt(arriving * arriving + 2 * TargetGm / CaptureR) - Math.Sqrt(TargetGm / CaptureR) : 0;
+
+                // The plane change: at a point phi round the arc from the departure, tilting the rest by j lifts the arrival, 180° - phi
+                // further on, to the moon's height delta out of the plane (sin delta = sin j sin(180° - phi)); it turns the horizontal
+                // speed there, h / r, through j.
+                var lift = Math.Abs(Vec3.Dot(r2, Plane)) / r2.Length;
+                var planeDv = 0.0;
+                if (lift > 1e-9)
+                {
+                    var h = Vec3.Cross(r1, path.V1).Length;
+                    var semiLatus = h * h / mu;
+                    double eCos = semiLatus / ParkingR - 1, eSin = Vec3.Dot(r1, path.V1) * h / (mu * ParkingR);
+                    planeDv = double.PositiveInfinity;
+                    for (var n = 1; n < PlanePoints; n++)
+                    {
+                        var phi = Math.PI * n / PlanePoints;
+                        var sinJ = lift / Math.Sin(phi);
+                        if (sinJ >= 1) continue;
+                        var r = semiLatus / (1 + eCos * Math.Cos(phi) - eSin * Math.Sin(phi));
+                        if (!(r > 0)) continue;
+                        planeDv = Math.Min(planeDv, 2 * h / r * Math.Sin(Math.Asin(sinJ) / 2));
+                    }
+                }
+                return new TransferWindow
+                {
+                    DepartureUt = t, ArrivalUt = t + tof, EjectionDv = ejection, ArrivalVInf = arriving, CaptureDv = captureDv, PlaneDv = planeDv,
+                    TotalDv = ejection + planeDv + captureDv,
                 };
             }
         }
