@@ -74,6 +74,33 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void TheChatFollowsThePlayersDefaultModelFromItsNextMessage()
+        {
+            var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("text.sse"), ScriptedResponse.Fixture("text.sse"));
+            var chat = Session(transport);
+            var config = new ClaudiaKermin.Core.Config.PlayerConfig();
+            chat.ModelSource = () => config.DefaultModel;
+            Assert.Equal("claude-haiku-5-5", ChatSession.DefaultModel);
+            Assert.Equal("claude-haiku-5-5", chat.Model);
+
+            Assert.True(chat.Send("First"));
+            DrainUntil(() => !chat.Busy);
+            // Settings' Apply (or a Mission start) makes Sonnet the default: the banner and the next message follow it.
+            config.SetDefaultModel("claude-sonnet-5-5");
+            Assert.Equal("claude-sonnet-5-5", chat.Model);
+            Assert.True(chat.Send("Second"));
+            DrainUntil(() => !chat.Busy);
+
+            Assert.Equal("claude-haiku-5-5", Model(transport.Requests[0]));
+            Assert.Equal("claude-sonnet-5-5", Model(transport.Requests[1]));
+        }
+
+        private static string Model(HttpRequestSpec request)
+        {
+            using (var body = JsonDocument.Parse(request.Body)) return body.RootElement.GetProperty("model").GetString();
+        }
+
+        [Fact]
         public void TheNextMessageCarriesTheWholeConversationIncludingRawBlocks()
         {
             var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("unknown-block.sse"), ScriptedResponse.Fixture("text.sse"));

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using ClaudiaKermin.Core.Missions;
@@ -138,6 +139,9 @@ namespace ClaudiaKermin.Adapter
         {
             return _mission.ExportStates();
         }
+
+        /// <summary>Writes the player config's Mission defaults; returns the notice when the write failed, "" otherwise. The Loader sets it.</summary>
+        public Func<string> SaveConfigDefaults = () => "";
 
         public MissionDriver(MissionControl mission, bool debugTools)
         {
@@ -314,6 +318,17 @@ namespace ClaudiaKermin.Adapter
                 if (command is SeatClaudia)
                 {
                     SeatClaudia();
+                    continue;
+                }
+                if (command is SaveConfigDefaults)
+                {
+                    // A Mission start made its setup the defaults (#639); it has started whether or not this write works.
+                    var error = SaveConfigDefaults();
+                    if (error.Length > 0)
+                    {
+                        Debug.LogWarning(ClaudiaKermin.Core.ModInfo.LogTag + " " + error);
+                        ScreenMessages.PostScreenMessage(error, 8f, ScreenMessageStyle.UPPER_CENTER);
+                    }
                     continue;
                 }
                 if (command is SetDueTimeAlarm) DueTimeActions.SetAlarm((SetDueTimeAlarm)command);
