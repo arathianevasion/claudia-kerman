@@ -424,6 +424,7 @@ namespace ClaudiaKermin.Core.Missions
                 }
                 json.EndArray();
             }
+            // The recording form (with bodies) is the one that keeps the target's id.
             if (Target != null) WriteTarget(json, Target, withBodies);
             return json.EndObject().ToString();
         }

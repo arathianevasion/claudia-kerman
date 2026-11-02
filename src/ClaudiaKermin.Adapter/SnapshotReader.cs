@@ -154,12 +154,13 @@ namespace ClaudiaKermin.Adapter
                 string tag = null;
                 foreach (var module in part.modules)
                     if (module.moduleName == NameTagModule && module.moduleValues != null) tag = module.moduleValues.GetValue(NameTagField);
+                // Saved modules go by class name, a docking port's subclass included: pair them in order with the prefab's ports.
                 var index = 0;
                 foreach (var module in part.modules)
                 {
-                    if (module.moduleName != "ModuleDockingNode") continue;
+                    if (index >= ports.Count || module.moduleName != ports[index].moduleName) continue;
                     var state = module.moduleValues != null ? module.moduleValues.GetValue("state") : null;
-                    if (index < ports.Count && Free(state)) AddPort(target, ports[index].nodeType, tag);
+                    if (Free(state)) AddPort(target, ports[index].nodeType, tag);
                     index++;
                 }
             }
