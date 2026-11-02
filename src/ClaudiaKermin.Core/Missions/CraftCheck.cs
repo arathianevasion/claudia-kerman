@@ -472,11 +472,11 @@ namespace ClaudiaKermin.Core.Missions
                         : "Fit a docking port of a size the target has free.",
                 });
             // One finding per code, as a Warning is acknowledged by its code.
-            foreach (var chute in _chutes.GroupBy(c => c.Code))
+            foreach (var rule in _chutes.GroupBy(c => c.Code))
                 _findings.Insert(0, new CraftFinding
                 {
-                    Code = chute.Key, Severity = chute.First().Severity, Title = chute.First().Title,
-                    Explanation = string.Join(". ", chute.Select(c => c.Explanation).ToArray()),
+                    Code = rule.Key, Severity = rule.First().Severity, Title = rule.First().Title,
+                    Explanation = string.Join(". ", rule.Select(c => c.Explanation).ToArray()),
                     Fix = "Add parachutes, or delta-v for the engines to finish the landing.",
                 });
             foreach (var finding in _findings.Where(f => f.Severity == CraftFindingSeverity.Warning && _keptAcknowledgements.Contains(f.Code)))
