@@ -252,7 +252,12 @@ namespace ClaudiaKermin.Core.Tools
         /// </summary>
         public void ClosestApproach(Patch patch, SnapshotBody target, out double distance, out double ut)
         {
-            var targetOrbit = OrbitOf(target);
+            ClosestApproach(patch, OrbitOf(target), out distance, out ut);
+        }
+
+        /// <summary>The same, to anything on <paramref name="targetOrbit"/> round the patch's body (a Target Vessel, #454).</summary>
+        public void ClosestApproach(Patch patch, Conic targetOrbit, out double distance, out double ut)
+        {
             Func<double, double> gap = t => (patch.Orbit.Position(t) - targetOrbit.Position(t)).Length;
             var end = double.IsInfinity(patch.EndUt) ? patch.StartUt + (patch.Orbit.Closed ? patch.Orbit.Period : targetOrbit.Period) : patch.EndUt;
             var maxStep = (end - patch.StartUt) / 200;

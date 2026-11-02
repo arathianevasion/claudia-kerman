@@ -155,11 +155,14 @@ namespace ClaudiaKermin.KOS
             {
                 node = BlockCalls.CorrectionBurn(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel));
                 return KosValues.FromPlain(node);
-            }, () => node.ContainsKey("dv")
-                ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); Pe {5:0} m, inclination {6:0.00}{7}",
-                    node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["pe_predicted"], node["inc_predicted"],
+            }, () => !node.ContainsKey("dv") ? (string)node["error"]
+                : node.ContainsKey("distance_predicted")
+                ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); closest approach {5:0.0} m at {6:0.000} m/s{7}",
+                    node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["distance_predicted"], node["relative_speed_predicted"],
                     node["error"] as string == "" ? "" : "; " + node["error"])
-                : (string)node["error"]);
+                : string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); Pe {5:0} m, inclination {6:0.00}{7}",
+                    node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["pe_predicted"], node["inc_predicted"],
+                    node["error"] as string == "" ? "" : "; " + node["error"]));
         }
 
         private Lexicon LaunchWindow(Lexicon input)
