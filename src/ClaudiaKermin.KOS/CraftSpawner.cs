@@ -17,14 +17,9 @@ namespace ClaudiaKermin.KOS
     /// </summary>
     internal static class CraftSpawner
     {
-        public static ProtoVessel IntoOrbit(string craftPath, string bodyName, double altitude, double inclination, double? periapsis = null)
-        {
-            return IntoOrbit(craftPath, OrbitFor(bodyName, altitude, inclination, periapsis, Planetarium.GetUniversalTime()), null);
-        }
-
         /// <summary>
-        /// The orbit <see cref="IntoOrbit(string, string, double, double, double?)"/> spawns into at <paramref name="ut"/>: circular at
-        /// altitude; or, with a periapsis, an orbit whose apoapsis is altitude, started at the apoapsis.
+        /// A test's orbit at <paramref name="ut"/> (<c>orbit_*</c>): circular at altitude; or, with a periapsis, an orbit whose
+        /// apoapsis is altitude, started at the apoapsis.
         /// </summary>
         public static Orbit OrbitFor(string bodyName, double altitude, double inclination, double? periapsis, double ut)
         {

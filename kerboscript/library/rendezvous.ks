@@ -277,14 +277,18 @@ function rendezvous_run {
 // (the craft's semi-major axis) and target_r (the target's), mu, min_period (the shortest period from here whose low point
 // is 10 km over the air or the surface), body, ut and orbit (the target's elements as EJECTIONBURN takes a target orbit,
 // degrees and the mean anomaly as kOS gives them). Loading lags a frame behind the range, so a target inside it is given up
-// to 5 s to load. The vessel is only read, and only here, never passed to a function: the Script Check follows another
+// to 5 s to load, ticking (ctx, the block's context): an abort then gives lexicon("abort", reason). The vessel is only read, and only here, never passed to a function: the Script Check follows another
 // vessel into every function it is passed to (ADR 0003), so rv_target is a name no other code uses.
 function rendezvous_state {
-  parameter name.
+  parameter ctx, name.
   local rv_target is vessel(name).
-  if not rv_target:loaded and rv_target:distance < 2200 {
-    local wait_until is time:seconds + 5.
-    wait until rv_target:loaded or time:seconds > wait_until.
+  local wait_until is time:seconds + 5.
+  until rv_target:loaded or rv_target:distance >= 2200 or time:seconds > wait_until {
+    local ticked is claudia_tick(ctx, 0).
+    if ticked <> "" {
+      return lexicon("abort", ticked).
+    }
+    wait 0.
   }
   local rc is ship:position - ship:body:position.
   local vc is ship:velocity:orbit.
@@ -346,7 +350,7 @@ function rendezvous {
         claudia_make_safe().
         return lexicon("abort", ticked).
       }
-      return rendezvous_state(named:name).
+      return rendezvous_state(ctx, named:name).
     },
     {
       parameter kind, input.

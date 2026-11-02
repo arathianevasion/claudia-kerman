@@ -9,8 +9,14 @@
 
 wait until ship:unpacked.
 local result is rendezvous(lexicon()).
-// The steps flown, as a count a check can compare (all five: match_plane, phasing, transfer, correction, match_velocities).
-set result:test_steps to result:burns:length.
+// Whether each of the five steps flew (match_plane, phasing, transfer, correction, match_velocities); a second correction or
+// a kill_speed besides doesn't fail it.
+set result:test_all_five to true.
+for step in list("match_plane", "phasing", "transfer", "correction", "match_velocities") {
+  if not result:burns:contains(step) {
+    set result:test_all_five to false.
+  }
+}
 print "rendezvous test: success " + result:success + ", " + result:distance_actual + " m at " + result:relative_speed_actual
   + " m/s, burns " + result:burns:join(", ") + ", dv " + result:dv_used + ", " + result:reason.
 addons:claudia:report(result).
