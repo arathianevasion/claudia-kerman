@@ -15,7 +15,7 @@ namespace ClaudiaKermin.Core.Config
     /// add the price table and the rest of the spec's settings. Format: <c>name = value</c> lines,
     /// <c>#</c> comments. A missing or unreadable value keeps its default; a name it doesn't know is ignored, such as
     /// the <c>wait_cap_orbits</c> and <c>wait_cap_ground_s</c> an older file may still hold (ADR 0004). The Mission defaults are written back by
-    /// <see cref="SaveDefaults"/> (the Settings window, in the Space Center).
+    /// <see cref="SaveDefaults"/>: Settings' Apply in the Space Center, and every Mission start (#639).
     /// </summary>
     public sealed class PlayerConfig
     {
@@ -24,7 +24,7 @@ namespace ClaudiaKermin.Core.Config
         public bool DebugTools;
 
         /// <summary>The models offered in the Mission start form, default first. Never empty.</summary>
-        public IList<string> Models = new List<string> { "claude-sonnet-5-5", "claude-haiku-5-5" };
+        public IList<string> Models = new List<string> { "claude-haiku-5-5", "claude-sonnet-5-5" };
 
         /// <summary>USD.</summary>
         public decimal DefaultSpendingCap = 10m;
@@ -125,7 +125,7 @@ namespace ClaudiaKermin.Core.Config
             "# Claudia Kermin player config\n"
             + "debug_tools = false\n"
             + "# Models offered when a Mission starts, default first. Others are at your own risk.\n"
-            + "models = claude-sonnet-5-5, claude-haiku-5-5\n"
+            + "models = " + HaikuFirst + "\n"
             + "# Spending Cap prefilled in the Mission start form, in USD.\n"
             + "default_spending_cap = 10\n"
             + "# Delta-v margin, in percent, the Craft Check wants over the Delta-v Map.\n"
@@ -178,7 +178,20 @@ namespace ClaudiaKermin.Core.Config
             + "script_ipu = 1000\n"
             + "# Effort (low, medium or high) per reply kind; uncomment a line to change one kind. Kinds: mission_plan, sequence_plan, debrief,\n"
             + "# reply, change, settings, craft_check, margin_recheck (all high), question, alert (low). A bad entry keeps the default.\n"
-            + "# effort.debrief = high\n";
+            + "# effort.debrief = high\n"
+            + HaikuDefaultMarkerComment + "\n"
+            + HaikuDefaultMarker + " = true\n";
+
+        private const string HaikuFirst = "claude-haiku-5-5, claude-sonnet-5-5";
+
+        /// <summary>The <c>models</c> value every <c>config.cfg</c> was written with before Haiku became the default (#639).</summary>
+        private const string OldShippedModels = "claude-sonnet-5-5, claude-haiku-5-5";
+
+        /// <summary>The key that says the one-time move to Haiku first has been made (or wasn't needed); its value is ignored.</summary>
+        public const string HaikuDefaultMarker = "haiku_default_migrated";
+
+        public const string HaikuDefaultMarkerComment =
+            "# Haiku became the shipped default model. This line stops the mod from changing your models line again.";
 
         /// <summary>Loads the file, writing it with defaults first if it does not exist.</summary>
         public static PlayerConfig LoadOrCreate(string directory)
@@ -189,6 +202,7 @@ namespace ClaudiaKermin.Core.Config
                 Directory.CreateDirectory(directory);
                 File.WriteAllText(path, DefaultFile);
             }
+            MigrateToHaikuDefault(path);
 
             var config = new PlayerConfig();
             foreach (var raw in File.ReadAllLines(path))
@@ -322,6 +336,63 @@ namespace ClaudiaKermin.Core.Config
             return config;
         }
 
+        /// <summary>
+        /// The one-time move to Haiku as the default model (#639). A file without <see cref="HaikuDefaultMarker"/> gets it,
+        /// at the end; its <c>models</c> line is rewritten to Haiku first only when it is exactly the old shipped line. A
+        /// list the player edited is left alone. Every other byte stays as it was. A file that can't be written is read as
+        /// it is, and the move is tried again at the next load.
+        /// </summary>
+        private static void MigrateToHaikuDefault(string path)
+        {
+            try
+            {
+                var text = File.ReadAllText(path);
+                var lines = Lines(text);
+                if (lines.Any(l => KeyOf(l) == HaikuDefaultMarker)) return;
+                for (var i = 0; i < lines.Count; i++)
+                {
+                    if (KeyOf(lines[i]) != "models") continue;
+                    var value = lines[i].Substring(lines[i].IndexOf('=') + 1).Trim();
+                    if (value == OldShippedModels) lines[i] = Indent(lines[i]) + "models = " + HaikuFirst;
+                }
+                lines.Add(HaikuDefaultMarkerComment);
+                lines.Add(HaikuDefaultMarker + " = true");
+                File.WriteAllText(path, Joined(text, lines, true));
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+            }
+        }
+
+        /// <summary>The file's lines, without the final newline's empty line.</summary>
+        private static List<string> Lines(string text)
+        {
+            var body = text.Replace("\r\n", "\n");
+            if (body.EndsWith("\n", StringComparison.Ordinal)) body = body.Substring(0, body.Length - 1);
+            return body.Length == 0 ? new List<string>() : body.Split('\n').ToList();
+        }
+
+        /// <summary>The lines back in the file's own newline style, ending with a newline if the file did or lines were added.</summary>
+        private static string Joined(string original, List<string> lines, bool added)
+        {
+            var newline = original.Contains("\r\n") ? "\r\n" : "\n";
+            return string.Join(newline, lines) + (original.EndsWith("\n", StringComparison.Ordinal) || added ? newline : "");
+        }
+
+        /// <summary>A setting line's name; null for a blank line, a comment or a line with no <c>=</c>.</summary>
+        private static string KeyOf(string line)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Length == 0 || trimmed[0] == '#') return null;
+            var eq = trimmed.IndexOf('=');
+            return eq < 0 ? null : trimmed.Substring(0, eq).Trim();
+        }
+
+        private static string Indent(string line)
+        {
+            return line.Substring(0, line.Length - line.TrimStart().Length);
+        }
+
         /// <summary>A whole percent ("120%" or "120") from <paramref name="min"/> to <paramref name="max"/>; otherwise <paramref name="current"/>.</summary>
         private static int Percent(string value, int min, int max, int current)
         {
@@ -353,6 +424,23 @@ namespace ClaudiaKermin.Core.Config
             File.WriteAllText(path, WithDefaults(text));
         }
 
+        /// <summary>
+        /// <see cref="SaveDefaults"/>, with a failed write said as the notice the player sees ("Couldn't save config.cfg: …");
+        /// "" when it was written.
+        /// </summary>
+        public string TrySaveDefaults(string directory)
+        {
+            try
+            {
+                SaveDefaults(directory);
+                return "";
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                return "Couldn't save config.cfg: " + e.Message;
+            }
+        }
+
         private string WithDefaults(string text)
         {
             var values = new List<KeyValuePair<string, string>>
@@ -364,25 +452,18 @@ namespace ClaudiaKermin.Core.Config
                 new KeyValuePair<string, string>("default_remote", DefaultRemote ? "true" : "false"),
                 new KeyValuePair<string, string>("default_auto_mode", DefaultAutoMode ? "true" : "false"),
             };
-            var newline = text.Contains("\r\n") ? "\r\n" : "\n";
-            var endsWithNewline = text.EndsWith("\n", StringComparison.Ordinal);
-            var body = text.Replace("\r\n", "\n");
-            if (endsWithNewline) body = body.Substring(0, body.Length - 1);
-            var lines = body.Length == 0 ? new List<string>() : body.Split('\n').ToList();
+            var lines = Lines(text);
 
             var written = new HashSet<string>();
             for (var i = 0; i < lines.Count; i++)
             {
-                var trimmed = lines[i].Trim();
-                if (trimmed.Length == 0 || trimmed[0] == '#') continue;
-                var eq = trimmed.IndexOf('=');
-                if (eq < 0) continue;
-                var name = trimmed.Substring(0, eq).Trim();
+                var name = KeyOf(lines[i]);
+                if (name == null) continue;
                 foreach (var pair in values)
                 {
                     if (pair.Key != name) continue;
                     // The indent is kept; a repeated key is rewritten everywhere, since the last one read wins.
-                    lines[i] = lines[i].Substring(0, lines[i].Length - lines[i].TrimStart().Length) + name + " = " + pair.Value;
+                    lines[i] = Indent(lines[i]) + name + " = " + pair.Value;
                     written.Add(name);
                 }
             }
@@ -395,7 +476,7 @@ namespace ClaudiaKermin.Core.Config
                 lines.Add(pair.Key + " = " + pair.Value);
                 added = true;
             }
-            return string.Join(newline, lines) + (endsWithNewline || added ? newline : "");
+            return Joined(text, lines, added);
         }
     }
 

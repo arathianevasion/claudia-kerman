@@ -263,7 +263,7 @@ namespace ClaudiaKermin.Core.Missions
             if (MissionOver) return new List<ChildVesselView>();
             return mission.Children.Select(c => new ChildVesselView
             {
-                Name = c.Name, Separated = c.Separated, Linked = c.Linked, Running = IsRunning(mission) && mission.RunningChild == c.Name,
+                Name = c.Name, VesselId = c.Separated ? c.VesselId : "", Separated = c.Separated, Linked = c.Linked, Running = IsRunning(mission) && mission.RunningChild == c.Name,
             }).ToList();
         }
 

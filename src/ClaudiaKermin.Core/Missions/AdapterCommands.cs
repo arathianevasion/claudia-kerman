@@ -54,6 +54,15 @@ namespace ClaudiaKermin.Core.Missions
     }
 
     /// <summary>
+    /// Write the player config's Mission defaults to <c>config.cfg</c> (<see cref="Config.PlayerConfig.TrySaveDefaults"/>):
+    /// a Mission has just started, and its setup is now the defaults (#639). The core has already put the setup into the
+    /// player config; the adapter does the write and shows its notice when it fails. The Mission starts either way.
+    /// </summary>
+    public sealed class SaveConfigDefaults : AdapterCommand
+    {
+    }
+
+    /// <summary>
     /// Seat Claudia in the editor's crew manifest, in a free seat, for a crewed Mission that has just started
     /// with her not aboard. The rest of the manifest is left as the player set it: the other Kerbals ride as
     /// passengers.

@@ -193,15 +193,17 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void PlayerConfigOffersSonnetFirstThenHaikuWithATenDollarCap()
+        public void PlayerConfigOffersHaikuFirstThenSonnetWithATenDollarCap()
         {
             using (var dir = new TempDir())
             {
                 PlayerConfig.LoadOrCreate(dir.Sub);
                 var config = PlayerConfig.LoadOrCreate(dir.Sub);
 
-                Assert.Equal(new[] { "claude-sonnet-5-5", "claude-haiku-5-5" }, config.Models);
-                Assert.Equal("claude-sonnet-5-5", config.DefaultModel);
+                Assert.Equal(new[] { "claude-haiku-5-5", "claude-sonnet-5-5" }, config.Models);
+                Assert.Equal("claude-haiku-5-5", config.DefaultModel);
+                Assert.Equal(new[] { "claude-haiku-5-5", "claude-sonnet-5-5" }, new PlayerConfig().Models);
+                Assert.Contains("\nmodels = claude-haiku-5-5, claude-sonnet-5-5\n", File.ReadAllText(Path.Combine(dir.Sub, PlayerConfig.FileName)));
                 Assert.Equal(10m, config.DefaultSpendingCap);
                 Assert.Equal(150000, config.CompactionTriggerTokens);
             }
@@ -222,7 +224,7 @@ namespace ClaudiaKermin.Core.Tests
 
                 File.WriteAllText(Path.Combine(dir.Sub, PlayerConfig.FileName), "models = ,\ndefault_spending_cap = -1\ncompaction_trigger = lots\n");
                 config = PlayerConfig.LoadOrCreate(dir.Sub);
-                Assert.Equal("claude-sonnet-5-5", config.DefaultModel);
+                Assert.Equal("claude-haiku-5-5", config.DefaultModel);
                 Assert.Equal(10m, config.DefaultSpendingCap);
                 Assert.Equal(150000, config.CompactionTriggerTokens);
             }
@@ -339,7 +341,10 @@ namespace ClaudiaKermin.Core.Tests
                     + "time_vs_dv = Fastest\n"
                     + "default_remote = true\n"
                     + "default_auto_mode = true\n"
-                    + "runaway_multiplier = 250%\n",
+                    + "runaway_multiplier = 250%\n"
+                    // Added at the load before: the one-time Haiku move (#639) left this edited list alone.
+                    + PlayerConfig.HaikuDefaultMarkerComment + "\n"
+                    + PlayerConfig.HaikuDefaultMarker + " = true\n",
                     File.ReadAllText(path));
                 Assert.Equal(2.5, PlayerConfig.LoadOrCreate(dir.Sub).RunawayMultiplier);
             }
@@ -366,6 +371,94 @@ namespace ClaudiaKermin.Core.Tests
                     + "# Start new Missions in Auto Mode: Claudia's plans after the first Mission Plan are approved for you while the Spending Cap has room.\r\ndefault_auto_mode = true\r\n", text);
                 Assert.True(PlayerConfig.LoadOrCreate(dir.Sub).DefaultRemote);
                 Assert.True(PlayerConfig.LoadOrCreate(dir.Sub).DefaultAutoMode);
+            }
+        }
+
+        // ---- The one-time move to Haiku as the default model (#639) ----
+
+        private const string OldShipped = "models = claude-sonnet-5-5, claude-haiku-5-5";
+
+        [Fact]
+        public void TheOldShippedModelsLineIsMovedToHaikuFirstOnceAndTheRestOfTheFileIsKept()
+        {
+            using (var dir = new TempDir())
+            {
+                Directory.CreateDirectory(dir.Sub);
+                var path = Path.Combine(dir.Sub, PlayerConfig.FileName);
+                var before = "# Claudia Kermin player config\r\ndebug_tools = true\r\n# Models offered when a Mission starts, default first.\r\n"
+                    + "  " + OldShipped + "\r\nmy_unknown_key = keep me\r\ndefault_spending_cap = 6\r\n";
+                File.WriteAllText(path, before);
+
+                var config = PlayerConfig.LoadOrCreate(dir.Sub);
+
+                Assert.Equal(new[] { "claude-haiku-5-5", "claude-sonnet-5-5" }, config.Models);
+                Assert.True(config.DebugTools);
+                Assert.Equal(6m, config.DefaultSpendingCap);
+                var after = File.ReadAllText(path);
+                Assert.StartsWith(before.Replace(OldShipped, "models = claude-haiku-5-5, claude-sonnet-5-5"), after);
+                Assert.EndsWith(PlayerConfig.HaikuDefaultMarkerComment + "\r\n" + PlayerConfig.HaikuDefaultMarker + " = true\r\n", after);
+
+                // Runs once: the player puts Sonnet first again (the old line, exactly), and it stays.
+                File.WriteAllText(path, after.Replace("models = claude-haiku-5-5, claude-sonnet-5-5", OldShipped));
+                var second = File.ReadAllText(path);
+                Assert.Equal("claude-sonnet-5-5", PlayerConfig.LoadOrCreate(dir.Sub).DefaultModel);
+                Assert.Equal(second, File.ReadAllText(path));
+            }
+        }
+
+        [Fact]
+        public void AModelsLineThePlayerEditedIsLeftAloneAndMarked()
+        {
+            using (var dir = new TempDir())
+            {
+                Directory.CreateDirectory(dir.Sub);
+                var path = Path.Combine(dir.Sub, PlayerConfig.FileName);
+                var before = "debug_tools = false\nmodels = claude-sonnet-5-5, claude-haiku-5-5, claude-opus-5-5\nreplan_tolerance = 30";
+                File.WriteAllText(path, before);
+
+                var config = PlayerConfig.LoadOrCreate(dir.Sub);
+
+                Assert.Equal(new[] { "claude-sonnet-5-5", "claude-haiku-5-5", "claude-opus-5-5" }, config.Models);
+                Assert.Equal(30, config.ReplanTolerancePercent);
+                // Marked, so a later Settings save of exactly the old line is never moved.
+                Assert.Equal(before + "\n" + PlayerConfig.HaikuDefaultMarkerComment + "\n" + PlayerConfig.HaikuDefaultMarker + " = true\n", File.ReadAllText(path));
+
+                config.Models = new System.Collections.Generic.List<string> { "claude-sonnet-5-5", "claude-haiku-5-5" };
+                config.SaveDefaults(dir.Sub);
+                Assert.Equal("claude-sonnet-5-5", PlayerConfig.LoadOrCreate(dir.Sub).DefaultModel);
+            }
+        }
+
+        [Fact]
+        public void ANewConfigFileIsMarkedSoItIsNeverMigrated()
+        {
+            using (var dir = new TempDir())
+            {
+                PlayerConfig.LoadOrCreate(dir.Sub);
+                var path = Path.Combine(dir.Sub, PlayerConfig.FileName);
+                Assert.Contains("\n" + PlayerConfig.HaikuDefaultMarker + " = true\n", File.ReadAllText(path));
+
+                File.WriteAllText(path, File.ReadAllText(path).Replace("models = claude-haiku-5-5, claude-sonnet-5-5", OldShipped));
+                var text = File.ReadAllText(path);
+                Assert.Equal("claude-sonnet-5-5", PlayerConfig.LoadOrCreate(dir.Sub).DefaultModel);
+                Assert.Equal(text, File.ReadAllText(path));
+            }
+        }
+
+        [Fact]
+        public void AFailedSaveOfTheDefaultsSaysWhy()
+        {
+            using (var dir = new TempDir())
+            {
+                // The config folder's path is taken by a file: the write can't happen.
+                Directory.CreateDirectory(dir.Path);
+                File.WriteAllText(dir.Sub, "not a folder");
+                var config = new PlayerConfig();
+
+                var error = config.TrySaveDefaults(dir.Sub);
+
+                Assert.StartsWith("Couldn't save config.cfg: ", error);
+                Assert.True(error.Length > "Couldn't save config.cfg: ".Length);
             }
         }
 

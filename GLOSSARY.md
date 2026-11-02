@@ -198,6 +198,10 @@ _Avoid_: probe, drone, secondary craft
 The one other vessel a Mission rendezvouses or docks with: KSP's target when the Mission starts, or the vessel the Mission Goal names. A Child Vessel can be one. The Game Snapshot carries it as one compact entry only when the Mission has one (ADR 0013). It is flown only by the bundled `dock_hold`, never by Claudia's scripts.
 _Avoid_: target (alone, which is also a transfer's body or orbit), station, other vessel
 
+**Claudia Flag**:
+The flag the mod ships (`ClaudiaKermin/Flags/ClaudiaFlag`). A Mission's craft and Child Vessels fly it, and it is the agency flag while a Mission is under way (in play and not Paused); the player's own agency flag comes back when none is.
+_Avoid_: Mission flag, mod flag
+
 **Spending Cap**:
 The most a Mission may spend on Claudia's API calls, set by the player when the Mission starts and raisable later.
 _Avoid_: budget (which means delta-v), limit, quota

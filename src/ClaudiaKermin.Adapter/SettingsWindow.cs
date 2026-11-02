@@ -3,7 +3,6 @@
 
 using System;
 using System.Globalization;
-using System.IO;
 using ClaudiaKermin.Adapter.Roster;
 using ClaudiaKermin.Core.Config;
 using ClaudiaKermin.Core.Missions;
@@ -574,15 +573,9 @@ namespace ClaudiaKermin.Adapter
                     _config.DefaultSpendingCap = cap;
                     _config.DefaultDaylightLanding = _settings.DaylightLanding;
                     _config.DefaultTimeVersusDeltaV = _settings.TimeVersusDeltaV;
-                    try
-                    {
-                        _config.SaveDefaults(_configDirectory);
-                    }
-                    catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
-                    {
-                        _applyError = "Couldn't save config.cfg: " + e.Message;
-                        return;
-                    }
+                    _applyError = _config.TrySaveDefaults(_configDirectory);
+                    if (_applyError.Length > 0) return;
+                    // The basic chat reads the default model at each message, so it follows from its next one (#639).
                     // The next Mission set up starts from the new defaults.
                     ApplyToSetup(cap);
                     break;
