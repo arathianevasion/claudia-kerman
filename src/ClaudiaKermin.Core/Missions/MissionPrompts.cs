@@ -600,13 +600,43 @@ namespace ClaudiaKermin.Core.Missions
             foreach (var body in bodies)
             {
                 var input = "{\"target\":" + PlanningJson.Quote(body.Name) + ",\"target_pe\":" + ArrivalPe(body).ToString(CultureInfo.InvariantCulture) + "}";
-                var transfer = tools.Run("plan_transfer", input, snapshot, null);
+                var transfer = TransferRow(tools, snapshot, input);
                 if (!transfer.IsError) transfers += "plan_transfer " + input + ": " + transfer.Json + "\n";
             }
             if (transfers.Length > 0)
                 text += "Transfers to each body the Mission Goal names, as plan_transfer would give them from this Game Snapshot (JSON data). A tool whose figures are here needs no call.\n" + transfers;
             if (!string.IsNullOrEmpty(craftCheckAscent)) text += "The Craft Check's plan_ascent " + craftCheckAscent + "\n";
             return text;
+        }
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<GameSnapshot, Dictionary<string, ToolOutcome>> TransferRows
+            = new System.Runtime.CompilerServices.ConditionalWeakTable<GameSnapshot, Dictionary<string, ToolOutcome>>();
+
+        /// <summary>
+        /// plan_transfer's answer for <paramref name="input"/>, solved once per Game Snapshot (#649) so a second Mission Plan request
+        /// from the same snapshot costs the prompt-building thread nothing. Keyed by the call's text and the two snapshot settings
+        /// it reads, never by what the row says, so a change to a row's content needs no change here.
+        /// </summary>
+        /// <summary>How many plan_transfer rows the stage table has solved for <paramref name="snapshot"/>, for the tests (#649).</summary>
+        internal static int TransferSolves(GameSnapshot snapshot)
+        {
+            Dictionary<string, ToolOutcome> rows;
+            if (!TransferRows.TryGetValue(snapshot, out rows)) return 0;
+            lock (rows) return rows.Count;
+        }
+
+        private static ToolOutcome TransferRow(PlanningTools tools, GameSnapshot snapshot, string input)
+        {
+            var rows = TransferRows.GetOrCreateValue(snapshot);
+            var key = snapshot.TimeVersusDeltaV + "|" + snapshot.MarginPercent + "|" + input;
+            lock (rows)
+            {
+                ToolOutcome found;
+                if (rows.TryGetValue(key, out found)) return found;
+            }
+            var outcome = tools.Run("plan_transfer", input, snapshot, null);
+            lock (rows) rows[key] = outcome;
+            return outcome;
         }
 
         /// <summary>The periapsis (m) the Mission request's plan_transfer rows arrive at (#575).</summary>

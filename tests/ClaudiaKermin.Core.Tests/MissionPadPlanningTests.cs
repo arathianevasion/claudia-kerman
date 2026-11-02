@@ -263,6 +263,23 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(new[] { "stage_performance", "plan_ascent" }, PlanningTools.Default(new PassingScriptCheck()).Definitions(ToolOffer.CraftCheck).Select(t => t.Name).ToArray());
         }
 
+        // #649: a second stage table from the same Game Snapshot solves no plan_transfer row again, and its text is the same.
+        [Fact]
+        public void ASecondStageTableFromTheSameSnapshotSolvesNoTransferAgainAndIsByteIdentical()
+        {
+            var orbit = Snapshot("mun-shot-v2-kerbin-orbit.json");
+            var first = MissionPrompts.StageTable(orbit, "Fly to the Mun and Duna.", null);
+            var solved = MissionPrompts.TransferSolves(orbit);
+            var second = MissionPrompts.StageTable(orbit, "Fly to the Mun and Duna.", null);
+            Assert.Equal(first, second);
+            Assert.Equal(solved, MissionPrompts.TransferSolves(orbit));
+            Assert.Contains("plan_transfer " + MunTransfer, first);
+
+            orbit.TimeVersusDeltaV = orbit.TimeVersusDeltaV == TimeVersusDeltaV.Fastest ? TimeVersusDeltaV.MostEfficient : TimeVersusDeltaV.Fastest;
+            MissionPrompts.StageTable(orbit, "Fly to Duna.", null);
+            Assert.True(MissionPrompts.TransferSolves(orbit) > solved);
+        }
+
         // #575: plan_transfer's answer for each body the Mission Goal names rides after the stage table.
         [Fact]
         public void AGoalNamingTheMunGetsAPlanTransferRowForTheMunAndAGoalNamingNoBodyGetsNone()
