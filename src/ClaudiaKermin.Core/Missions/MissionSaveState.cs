@@ -95,6 +95,10 @@ namespace ClaudiaKermin.Core.Missions
         public double? RunStartDeltaVLeft;
         /// <summary>Delta-v (m/s) the run dropped with stages at zero throttle, already taken off <see cref="RunStartDeltaVLeft"/> (#605); 0 for none and in older saves.</summary>
         public double RunDroppedDeltaV;
+        /// <summary>Stock delta-v left (m/s) before a stage drop still being measured (#614); null for none and in older saves.</summary>
+        public double? SeparationBefore;
+        /// <summary>The latest reading after that drop, not yet agreed by a second (#614); null for none and in older saves.</summary>
+        public double? SeparationAfter;
         /// <summary>The current or last run's blocks trail (JSON written by BlockTrail.ToJson, #609); "" for none and in older saves.</summary>
         public string BlockTrail = "";
         /// <summary>The kOS terminal text of the last run that did not report, until its Debrief card; "" otherwise.</summary>
@@ -185,6 +189,8 @@ namespace ClaudiaKermin.Core.Missions
             if (RunStartMonopropellant.HasValue) values["runStartMonopropellant"] = RunStartMonopropellant.Value.ToString("R", CultureInfo.InvariantCulture);
             if (RunStartDeltaVLeft.HasValue) values["runStartDeltaVLeft"] = RunStartDeltaVLeft.Value.ToString("R", CultureInfo.InvariantCulture);
             if (RunDroppedDeltaV != 0) values["runDroppedDeltaV"] = RunDroppedDeltaV.ToString("R", CultureInfo.InvariantCulture);
+            if (SeparationBefore.HasValue) values["separationBefore"] = SeparationBefore.Value.ToString("R", CultureInfo.InvariantCulture);
+            if (SeparationAfter.HasValue) values["separationAfter"] = SeparationAfter.Value.ToString("R", CultureInfo.InvariantCulture);
             if (BlockTrail.Length > 0) values["blockTrail"] = BlockTrail;
             if (ScriptError.Length > 0) values["scriptError"] = ScriptError;
             if (Recheck.Length > 0) values["recheck"] = Recheck;
@@ -258,6 +264,8 @@ namespace ClaudiaKermin.Core.Missions
             if (double.TryParse(Get(values, "runStartMonopropellant"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.RunStartMonopropellant = reading;
             if (double.TryParse(Get(values, "runStartDeltaVLeft"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.RunStartDeltaVLeft = reading;
             if (double.TryParse(Get(values, "runDroppedDeltaV"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.RunDroppedDeltaV = reading;
+            if (double.TryParse(Get(values, "separationBefore"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.SeparationBefore = reading;
+            if (double.TryParse(Get(values, "separationAfter"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.SeparationAfter = reading;
             if (double.TryParse(Get(values, "plannedTurnShape"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.PlannedTurnShape = reading;
             decimal cap;
             if (decimal.TryParse(Get(values, "spendingCap"), NumberStyles.Number, CultureInfo.InvariantCulture, out cap)) state.SpendingCap = cap;
