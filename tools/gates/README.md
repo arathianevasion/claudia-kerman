@@ -2,7 +2,8 @@
 
 | Script | What it does | When |
 |---|---|---|
-| `gates.sh` | One `dotnet build -warnaserror`, then Core (`--filter "Category!=Timing"`), Kerboscript and ScriptCheck tests with `--no-build`, KsCompile over `tests/blocks` and `tests/tools` from the built dll, and every forbidden-call / syntax-error fixture in one KsCompile call. | The merge gate, in a worktree or on main. |
+| `gates.sh` | One `dotnet build -warnaserror`, then Core (`--filter "Category!=Timing"`), Kerboscript (through `kerboscript.sh`) and ScriptCheck tests with `--no-build`, KsCompile over `tests/blocks` and `tests/tools` from the built dll, and every forbidden-call / syntax-error fixture in one KsCompile call. | The merge gate, in a worktree or on main. |
+| `kerboscript.sh` | After a build: lists the Kerboscript tests, deals the test methods out to one test process per performance core (`SHARDS` overrides), runs them at once and checks the total run equals the total listed. kOS.Safe's static state stays isolated per process; inside a process `KosHarness.Gate` still serializes it (#681). | Called by `gates.sh` (#625). CI still runs the project in one `dotnet test`. |
 | `gates-timing.sh` | Builds, then runs only `Category=Timing` (every `Timing.Within` or Stopwatch-budget test). One rerun allowed. | Once per wave, on an idle machine, before an install and before the Phase gates. |
 | `merge-step.sh N "msg"` | Calls `rec-local.sh` (merge, gates, clean up). No Core rerun loop. rc 2 conflict, 3 gate failure. | The orchestrator's merge of one ticket. |
 | `kerboscript-stress.sh` | After a build: runs ChangeOrbitTests, DockTests and RendezvousTests in one test process per run, `RUNS` times (default 20), with about half the cores loaded by `yes`; stops at the first failing run and prints each failing test's message. `FILTER` narrows it. | Repro for #681, or any time a Kerboscript flake is suspected. |

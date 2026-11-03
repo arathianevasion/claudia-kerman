@@ -16,7 +16,7 @@ run build dotnet build ClaudiaKermin.sln -warnaserror $K
 [ $fail -ne 0 ] && exit 1   # nothing below can run on a broken build
 
 run core dotnet test tests/ClaudiaKermin.Core.Tests --no-build $K --filter "Category!=Timing"
-run kerboscript dotnet test tests/ClaudiaKermin.Kerboscript.Tests --no-build $K
+run kerboscript bash tools/gates/kerboscript.sh   # several test processes at once (#625)
 run scriptcheck dotnet test tests/ClaudiaKermin.ScriptCheck.Tests --no-build $K
 
 # KsCompile runs from the binary the build above made.
