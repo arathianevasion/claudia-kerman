@@ -159,8 +159,9 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <summary>The Debrief committed: the latest plan's line gains <c>debrief</c>; a Debrief with no plan line before it (or a plan already debriefed) writes nothing.</summary>
         /// <param name="blocks">The run's blocks trail (#609), a JSON array (<see cref="BlockTrail.Json"/>); null for none.</param>
+        /// <param name="runDeltaV">The run's total delta-v used (#677), written beside blocks when <paramref name="withRunDeltaV"/> (null when unknown).</param>
         public static void SetDebrief(string folder, string outcome, TurnStats stats, string effort, string secondLook, bool cutOffRetry, string by = null,
-            string blocks = null)
+            string blocks = null, double? runDeltaV = null, bool withRunDeltaV = false)
         {
             var path = Path.Combine(folder, FileName);
             var lines = Lines(path);
@@ -171,6 +172,7 @@ namespace ClaudiaKermin.Core.Missions
             if (by != null) json.Field("by", by);
             Turn(json, effort, stats, secondLook, cutOffRetry);
             if (blocks != null) json.Name("blocks").Raw(blocks);
+            if (withRunDeltaV) json.Name("run_dv_used").Raw(runDeltaV.HasValue ? Math.Round(runDeltaV.Value, 1).ToString(CultureInfo.InvariantCulture) : "null");
             json.EndObject();
             var last = lines[index];
             // The plan line's last field is "at": the debrief goes in front of it, so the order of the line's fields is fixed.

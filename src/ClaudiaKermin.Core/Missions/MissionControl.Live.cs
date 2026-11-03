@@ -74,6 +74,8 @@ namespace ClaudiaKermin.Core.Missions
             public double RunStartUt;
             /// <summary>Stock delta-v left at the run's start, less what the run has since dropped with stages at zero throttle (#605).</summary>
             public double? RunStartDeltaVLeft;
+            /// <summary>The run total the Debrief was given (m/s), for plans.jsonl; null when unknown or a hand-back.</summary>
+            public double? RunDeltaVTotal;
             /// <summary>The delta-v taken off <see cref="RunStartDeltaVLeft"/> this run (#605), so the Debrief can say so; 0 when none.</summary>
             public double RunDroppedDeltaV;
             /// <summary>The experiments whose data a science call kept on board this run (#612) and no later call transmitted (#624); the Debrief notice shows while any remain. Not saved.</summary>

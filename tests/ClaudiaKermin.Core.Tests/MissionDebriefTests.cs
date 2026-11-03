@@ -193,7 +193,69 @@ namespace ClaudiaKermin.Core.Tests
             rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
             rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
 
-            Assert.Contains("Delta-v used this run, from stock: 1,038 m/s (left at start 3,913 m/s, now 2,875 m/s).", LastUserText(rig.Transport.Requests[2]));
+            Assert.Contains("Delta-v used by the whole run (all blocks, the mod's own reading from stock; the report's dv_used may be one block's): 1,038 m/s (left at start 3,913 m/s, now 2,875 m/s).", LastUserText(rig.Transport.Requests[2]));
+        }
+
+        private const string RunTotalLabel = "Delta-v used by the whole run (all blocks, the mod's own reading from stock; the report's dv_used may be one block's): ";
+
+        [Fact]
+        public void TheRunTotalComesOnceRightAfterTheReportAndBlocksTrailAndBeforeTheGameSnapshot()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning(s => s.Stages[0].DeltaVVac = 3913.3);
+            var launch = new Dictionary<string, object> { { "success", true }, { "reason", "done" }, { "duration", 80.0 } };
+            var own = new Dictionary<string, object> { { "success", true }, { "reason", "done" }, { "dv_used", 1038.0 } };
+
+            rig.Mission.Send(new KosBlockEnded("launch", launch, start.RunId));
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2875.3));
+            rig.Mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, own, "", "", false), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            var request = LastUserText(rig.Transport.Requests[2]);
+            var trail = request.IndexOf(BlockTrail.LinePrefix, StringComparison.Ordinal);
+            var line = request.IndexOf(RunTotalLabel, StringComparison.Ordinal);
+            Assert.True(trail >= 0 && line > trail);
+            Assert.Equal(line, request.IndexOf("\n", trail, StringComparison.Ordinal) + 1);
+            Assert.Equal(line, request.LastIndexOf(RunTotalLabel, StringComparison.Ordinal));
+            var snap = request.IndexOf("Game Snapshot", line, StringComparison.Ordinal);
+            Assert.True(snap > line, request);
+            Assert.DoesNotContain("differs", request);
+        }
+
+        [Fact]
+        public void AReportsDvUsedFarFromTheRunTotalIsFlaggedAndThePlansDebriefRecordsTheTotal()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning(s => s.Stages[0].DeltaVVac = 3000);
+            var own = new Dictionary<string, object> { { "success", true }, { "reason", "done" }, { "dv_used", 1.5 } };
+
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 2841));
+            rig.Mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, own, "", "", false), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Contains(RunTotalLabel + "159 m/s (left at start 3,000 m/s, now 2,841 m/s). The report's dv_used 2 differs.", LastUserText(rig.Transport.Requests[2]));
+            var path = Path.Combine(_save.Path, "ClaudiaKermin", "missions", rig.Mission.View.MissionId, "plans.jsonl");
+            var plan = File.ReadAllLines(path).Select(l => JsonDocument.Parse(l).RootElement).Single(l => l.GetProperty("event").GetString() == "plan" && l.TryGetProperty("debrief", out _));
+            Assert.Equal(159, plan.GetProperty("debrief").GetProperty("run_dv_used").GetDouble());
+        }
+
+        [Fact]
+        public void ALastEngineDroppedAtZeroThrottleAfterABurnStillGivesTheRunTotalWhateverTheReportSays()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning(s => s.Stages[0].DeltaVVac = 1000);
+            var own = new Dictionary<string, object> { { "success", true }, { "reason", "done" }, { "dv_used", 0.0 }, { "dv_remaining", 0.0 } };
+
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 730));
+            rig.Mission.Send(new CraftSeparated());
+            rig.Mission.Send(Craft(s => s.Stages[0].DeltaVVac = 0));
+            rig.Mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, own, "", "", false), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            var request = LastUserText(rig.Transport.Requests[2]);
+            Assert.Contains(RunTotalLabel + "270 m/s (left at start 1,000 m/s, now 0 m/s; 730 m/s dropped with stages at zero throttle isn't counted). "
+                + "The report's dv_used 0 differs.", request);
+            Assert.DoesNotContain("The report's dv_remaining", request);
         }
 
         // ---- The Chute Allocation (#626) ----
@@ -294,7 +356,7 @@ namespace ClaudiaKermin.Core.Tests
             rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
             rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
 
-            Assert.Contains("Delta-v used this run, from stock: 692 m/s (left at start 3,200 m/s, now 2,311 m/s; 197 m/s dropped with stages at zero "
+            Assert.Contains("Delta-v used by the whole run (all blocks, the mod's own reading from stock; the report's dv_used may be one block's): 692 m/s (left at start 3,200 m/s, now 2,311 m/s; 197 m/s dropped with stages at zero "
                 + "throttle isn't counted).", LastUserText(rig.Transport.Requests[2]));
         }
 
@@ -311,7 +373,7 @@ namespace ClaudiaKermin.Core.Tests
             rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
             rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
 
-            Assert.Contains("Delta-v used this run, from stock: 909 m/s (left at start 3,200 m/s, now 0 m/s; 2,291 m/s dropped with stages at zero "
+            Assert.Contains("Delta-v used by the whole run (all blocks, the mod's own reading from stock; the report's dv_used may be one block's): 909 m/s (left at start 3,200 m/s, now 0 m/s; 2,291 m/s dropped with stages at zero "
                 + "throttle isn't counted).", LastUserText(rig.Transport.Requests[2]));
         }
 
@@ -325,7 +387,7 @@ namespace ClaudiaKermin.Core.Tests
             rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
             rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
 
-            Assert.Contains("Delta-v used this run, from stock: 0 m/s (left at start 2,000 m/s, now 2,100 m/s).", LastUserText(rig.Transport.Requests[2]));
+            Assert.Contains("Delta-v used by the whole run (all blocks, the mod's own reading from stock; the report's dv_used may be one block's): 0 m/s (left at start 2,000 m/s, now 2,100 m/s).", LastUserText(rig.Transport.Requests[2]));
         }
 
         [Theory]
@@ -346,7 +408,7 @@ namespace ClaudiaKermin.Core.Tests
             rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
 
             var request = LastUserText(rig.Transport.Requests[2]);
-            Assert.Contains("Delta-v used this run: unknown (" + why + ").", request);
+            Assert.Contains("Delta-v used by the whole run: unknown (" + why + ").", request);
             Assert.DoesNotContain("Delta-v used this run, from stock", request);
         }
 
@@ -363,7 +425,7 @@ namespace ClaudiaKermin.Core.Tests
 
             var request = LastUserText(rig.Transport.Requests[2]);
             Assert.Contains("took Manual Control", request);
-            Assert.DoesNotContain("Delta-v used this run", request);
+            Assert.DoesNotContain("Delta-v used by the whole run", request);
         }
 
         // ---- The monopropellant the run used (#399) ----
@@ -385,7 +447,7 @@ namespace ClaudiaKermin.Core.Tests
 
             var request = LastUserText(rig.Transport.Requests[2]);
             Assert.Contains("Monopropellant used this run: 12 units (40 at start, 28 now).", request);
-            Assert.True(request.IndexOf("Delta-v used this run", StringComparison.Ordinal) < request.IndexOf("Monopropellant used this run", StringComparison.Ordinal));
+            Assert.True(request.IndexOf("Delta-v used by the whole run", StringComparison.Ordinal) < request.IndexOf("Monopropellant used this run", StringComparison.Ordinal));
         }
 
         [Fact]
