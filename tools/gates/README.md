@@ -5,8 +5,9 @@
 | `gates.sh` | One `dotnet build -warnaserror`, then Core (`--filter "Category!=Timing"`), Kerboscript and ScriptCheck tests with `--no-build`, KsCompile over `tests/blocks` and `tests/tools` from the built dll, and every forbidden-call / syntax-error fixture in one KsCompile call. | The merge gate, in a worktree or on main. |
 | `gates-timing.sh` | Builds, then runs only `Category=Timing` (every `Timing.Within` or Stopwatch-budget test). One rerun allowed. | Once per wave, on an idle machine, before an install and before the Phase gates. |
 | `merge-step.sh N "msg"` | Calls `rec-local.sh` (merge, gates, clean up). No Core rerun loop. rc 2 conflict, 3 gate failure. | The orchestrator's merge of one ticket. |
+| `kerboscript-stress.sh` | After a build: runs ChangeOrbitTests, DockTests and RendezvousTests in one test process per run, `RUNS` times (default 20), with about half the cores loaded by `yes`; stops at the first failing run and prints each failing test's message. `FILTER` narrows it. | Repro for #681, or any time a Kerboscript flake is suspected. |
 
-All three run on the checkout they live in (`GATES_ROOT` overrides). A new wall-clock test must carry `[Trait("Category", "Timing")]`; check with
+All of them run on the checkout they live in (`GATES_ROOT` overrides). A new wall-clock test must carry `[Trait("Category", "Timing")]`; check with
 `grep -rLZ 'Category", "Timing' $(grep -rlE 'Timing\.Within\(' tests --include=*.cs)` (no file besides `Timing.cs` may be listed; a helper that wraps `Timing.Within` needs its callers tagged).
 
 ## Repointing the `.scratch/v1/run-tools/` copies (the orchestrator, after the merge)
