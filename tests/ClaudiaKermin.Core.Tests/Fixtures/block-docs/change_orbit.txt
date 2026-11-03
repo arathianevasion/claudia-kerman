@@ -1,0 +1,20 @@
+change_orbit(options): inclination, plane, LAN, resonance.
+Any of these orbit changes in one burn: call it rather than hand-write the node. The burn is solved from the orbit
+when the block starts and flown by exec_node.
+Options:
+goal [required]: set_inc, match_plane, shift_lan, resonant, stationary, set_sma, set_ecc, ellipticize, set_ap,
+set_pe, circularize or next_patch_pe, with value, at, target, pe, ap, of and direction as solve_burn takes them.
+tolerance ["auto"]: how far the element set may end from the goal, in its units: 1000 m (pe, ap, sma,
+next_patch_pe), 0.01 (ecc), 0.5 degrees (inc, rel_inc, lan), 1% of the period; more fails the block.
+max_dv ["none"]: m/s the burn may cost; more fails the block before any burn.
+max_duration ["auto"]: as for exec_node (the wait to the burn, twice the burn, plus 300 s).
+plus min_ec_pct, abort_on_part_loss, stage_limit and drop_empty as for every block.
+Extra results: <element>_actual for each element the goal sets, when the block ended: inc_actual (set_inc),
+rel_inc_actual (degrees off target's plane: match_plane), lan_actual and inc_actual (kept: shift_lan), period_actual (s:
+resonant, stationary), sma_actual, ecc_actual (also circularize), ap_actual, pe_actual (both: ellipticize),
+next_patch_pe_actual; burn_ut (UT of the burn; -1 if none was needed). Succeeds at once, with no burn, when the
+burn is under 0.05 m/s. Fails with "goal is required", an option value it can't read, "a maneuver node is already
+planned: remove it first", solve_burn's reason for a goal it can't reach, "needs <dv> m/s, over max_dv <max>", the
+reasons exec_node gives (no thrust, out of fuel, an abort; its node stays), or "<element> <x> is over tolerance
+<t> from <goal>".
+Example: `local res is change_orbit(lexicon("goal", "set_inc", "value", 90)). addons:claudia:report(res).`

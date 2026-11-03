@@ -1,0 +1,42 @@
+launch(options): flies from the ground of a body with an atmosphere to a coast out of it; then circularize.
+It ends once the craft is coasting out of the atmosphere with its apoapsis at target_ap; follow it
+with circularize in the same Mission Script (one Maneuver Sequence, one Approval). A target_ap
+below the atmosphere top makes it a hop that ends at the top of the climb.
+Options:
+launch_at ["now"]: "now", a time (UT s) to wait for on the pad, or a body or vessel (e.g. MUN,
+or a body's name: "Minmus") to wait for the pad to pass under the plane of, which also sets
+target_inc to its plane.
+target_ap ["auto"]: apoapsis to reach, m; "auto" is the atmosphere top + 10 km.
+target_inc [0]: inclination, degrees; negative launches southward.
+heading ["lib_lazcalc"]: compass degrees to fly, or "lib_lazcalc" to fly into target_inc.
+turn_start_speed [60]: m/s of airspeed at which the gravity turn starts. Give more than the craft
+will reach (e.g. 100000) to climb straight up.
+turn_shape [0.45]: the turn's pitch is 90 * (1 - f^turn_shape), f the fraction of the way from
+the turn start to the atmosphere top (or target_ap if lower); smaller turns over sooner. The
+turn starts again from vertical wherever throttle_max_q held it. Pass the turn_shape plan_ascent
+gives (the Craft Check's, or a new call if the craft or target_ap changed).
+max_aoa [5]: most degrees the nose may be off the airflow while the air is thick enough to matter
+(over 500 Pa dynamic pressure), all the way up and through the coast; above 8000 Pa the angle
+allowed falls in proportion to q (a tenth of max_aoa at the least).
+In thin air (under 500 Pa) the nose is held no more than 3 degrees below the prograde, so the
+upper turn follows the trajectory instead of the pitch program.
+throttle_max_q ["none"]: Pa of dynamic pressure to throttle back at (to 5% at most; in thick
+air never below the craft's weight). While it holds the throttle back in thick air the turn
+waits: too slow to turn over without falling, the craft climbs as steeply as max_aoa lets it.
+g, atm_height, surface_pressure ["body"]: the body's surface gravity (m/s^2), atmosphere top (m)
+and surface pressure (Pa), to override what the game says.
+max_duration ["auto"]: the wait on the pad plus 900 s.
+plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
+In thick air (over a tenth of surface pressure) the throttle never drops below the weight of the
+craft until cutoff, and the craft never steers more than max_aoa off the airflow. With no thrust (a
+hop's coast, between stages) only fins and reaction wheels hold it: a craft with neither tumbles in
+thick air. Engines are staged into from the pad, and launch clamps released.
+It traces the climb to the log (ADDONS:CLAUDIA:BLOCKTRACE) every 2 s and at each change of phase or stage.
+Extra results: ap_error (m, apoapsis minus target_ap when the block ended; a hop's shows drag
+loss), max_q (Pa, highest dynamic pressure), coast_ap (m, apoapsis at first engine cutoff), lan_actual (degrees, the orbit's LAN at the end).
+Fails with "launch starts on the ground", "no atmosphere on <body>: use ascend", "no thrust", a
+launch_at it can't use, "lost control: ..." (saying whether it was burning or
+coasting, the throttle, q and the nose's angle off the airflow), "fell back into the
+atmosphere: ...", out of fuel, or an abort.
+Example: `local res is launch(lexicon("target_ap", 80000)). if res:success { set res to circularize(lexicon("at", "ap")). }
+addons:claudia:report(res).`

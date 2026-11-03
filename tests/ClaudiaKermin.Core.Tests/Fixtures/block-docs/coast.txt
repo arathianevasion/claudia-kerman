@@ -1,0 +1,13 @@
+coast(options): holds the craft on its path until a UT, warping on rails and back at 1x lead
+seconds before it, so whatever the script does next (a burn, a landing) starts on time. Use it for
+any wait the other blocks don't make themselves: a hold of a few orbits, a phase angle, a set time.
+Options:
+until [required]: the UT (seconds) to hold until, e.g. time:seconds + 3 * ship:orbit:period. A
+UT already past returns at once.
+lead [30]: seconds before until to be back at 1x; never less than 30.
+max_duration ["auto"]: the wait plus 600 s.
+plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
+It doesn't steer or burn: the craft keeps the attitude it holds. Warp drops to 1x when the Mission
+needs the player and resumes after. Extra results: coasted (s held).
+Fails with "until is required", "until must be a UT in seconds", "lead must be seconds", or an abort.
+Example: `local res is coast(lexicon("until", time:seconds + 3 * ship:orbit:period)). if res:success { add node(time:seconds + 300, 0, 0, -40). set res to exec_node(). } addons:claudia:report(res).`
