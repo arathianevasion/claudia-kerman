@@ -792,7 +792,7 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <summary>
         /// #699: the biomes the Mission Goal names, as whole words, case-insensitive, in the order it names them. Only the biomes
-        /// of the bodies it names (<see cref="GoalBodies"/>) count, or the craft's body when it names none; the longest names
+        /// of the bodies it names (<see cref="GoalBodies"/>) count, or the craft's body (not Kerbin) when it names none; the longest names
         /// are matched first, so "Midland Craters" is never read as "Midlands". A name two named bodies share goes to the body
         /// named nearest it in the goal.
         /// </summary>
@@ -801,7 +801,8 @@ namespace ClaudiaKermin.Core.Missions
             goal = goal ?? "";
             if (snapshot == null) return new List<GoalBiome>();
             var bodies = GoalBodies(snapshot, goal);
-            if (bodies.Count == 0) bodies = snapshot.Bodies.Where(b => b.Name == snapshot.Body).ToList();
+            // Never the home body by default: its biomes (Water, Shores) are everyday words, and its landing isn't land's.
+            if (bodies.Count == 0) bodies = snapshot.Bodies.Where(b => b.Name == snapshot.Body && b.Name != CraftCheckFlow.HomeBody).ToList();
             var named = bodies.ToDictionary(b => b.Name, b => Regex.Match(goal, @"\b" + Regex.Escape(b.Name) + @"\b", RegexOptions.IgnoreCase).Index);
             var taken = new bool[goal.Length];
             var found = new List<KeyValuePair<int, GoalBiome>>();

@@ -432,13 +432,11 @@ namespace ClaudiaKermin.Adapter
         private static List<string> BiomeNamesOf(CelestialBody body)
         {
             List<string> names;
-            if (!BiomeNamesRead.TryGetValue(body.bodyName, out names))
-            {
-                names = body.BiomeMap != null && body.BiomeMap.Attributes != null
-                    ? body.BiomeMap.Attributes.Select(a => a.name).ToList()
-                    : new List<string>();
-                BiomeNamesRead[body.bodyName] = names;
-            }
+            if (BiomeNamesRead.TryGetValue(body.bodyName, out names)) return new List<string>(names);
+            // A map not loaded yet is read again next time, never kept as no biomes.
+            if (body.BiomeMap == null || body.BiomeMap.Attributes == null) return new List<string>();
+            names = body.BiomeMap.Attributes.Select(a => a.name).ToList();
+            BiomeNamesRead[body.bodyName] = names;
             return new List<string>(names);
         }
 

@@ -1080,19 +1080,33 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         private string WithGoalBiomes(Mission mission, string text)
         {
-            var biomes = MissionPrompts.GoalBiomes(_snapshot, mission.Goal).Where(b => LandingToFly(mission, b)).ToList();
-            var line = MissionPrompts.GoalBiomeLine(biomes);
+            var line = MissionPrompts.GoalBiomeLine(GoalBiomesToLand(mission));
             if (line.Length == 0 || (text ?? "").Contains(line)) return text;
             return text + "\n" + line;
         }
 
-        private static readonly System.Text.RegularExpressions.Regex LandingStep = new System.Text.RegularExpressions.Regex(@"\bland",
+        /// <summary>The Mission Goal's biomes whose landing is still to fly (<see cref="LandingToFly"/>).</summary>
+        private List<GoalBiome> GoalBiomesToLand(Mission mission)
+        {
+            return MissionPrompts.GoalBiomes(_snapshot, mission.Goal).Where(b => LandingToFly(mission, b)).ToList();
+        }
+
+        private static readonly System.Text.RegularExpressions.Regex LandingStep = new System.Text.RegularExpressions.Regex(@"\bland(ing)?\b",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        /// <summary>
+        /// Before the Mission Plan's steps, always; after, while a step not yet ticked names the biome, or a landing on its body.
+        /// </summary>
+        internal static bool LandingToFly(IList<GoalItem> steps, GoalBiome biome)
+        {
+            if (steps.Count == 0) return true;
+            return steps.Any(s => !s.Done && (s.Item.IndexOf(biome.Biome, StringComparison.OrdinalIgnoreCase) >= 0
+                || (LandingStep.IsMatch(s.Item) && s.Item.IndexOf(biome.Body, StringComparison.OrdinalIgnoreCase) >= 0)));
+        }
 
         private static bool LandingToFly(Mission mission, GoalBiome biome)
         {
-            if (mission.GoalSteps.Count == 0) return true;
-            return mission.GoalSteps.Any(s => !s.Done && (LandingStep.IsMatch(s.Item) || s.Item.IndexOf(biome.Biome, StringComparison.OrdinalIgnoreCase) >= 0));
+            return LandingToFly(mission.GoalSteps, biome);
         }
 
         private void Send(Mission mission, Turn turn)
@@ -1675,9 +1689,10 @@ namespace ClaudiaKermin.Core.Missions
             var findings = new PlanFindings { ExpectedDeltaV = plan.ExpectedDeltaV, ExpectedDurationSeconds = plan.ExpectedDurationSeconds };
             if (plan.Manual) return findings;
             // #699: a landing aimed at another biome than the Mission Goal names, for whichever vessel lands.
+            var craft = FliesCraft(mission, plan.Vessel);
             if (_snapshot != null)
-                findings.BiomeMiss = LandingBiomes.Miss(plan.Script, MissionPrompts.GoalBiomes(_snapshot, mission.Goal), _snapshot, _snapshot.Body, _body.Biome);
-            if (!FliesCraft(mission, plan.Vessel)) return findings;
+                findings.BiomeMiss = LandingBiomes.Miss(plan.Script, GoalBiomesToLand(mission), _snapshot, craft ? _snapshot.Body : "", _body.Biome);
+            if (!craft) return findings;
             var snapshot = MissionVesselSnapshot(mission);
             var start = LiveReadings.DeltaVLeftOf(snapshot);
             findings.StartDeltaV = start ?? 0;

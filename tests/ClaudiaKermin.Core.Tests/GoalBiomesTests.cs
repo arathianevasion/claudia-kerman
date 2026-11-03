@@ -173,6 +173,50 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void ABiomeOfAnotherGoalBodyIsJudgedOnThatBodyNotTheCrafts()
+        {
+            var goal = MissionPrompts.GoalBiomes(OnPad(), "land in twin craters on the mun, then on the greater flats of minmus");
+            Assert.Equal(2, goal.Count);
+            Assert.Null(LandingBiomes.Miss("transfer_to(lexicon(\"target\", \"Minmus\", \"target_pe\", 30000)). land(lexicon(\"target\", lexicon(\"biome\", \"Greater Flats\"))).",
+                goal, OnPad(), "Mun", NoBiomeAt));
+            var miss = LandingBiomes.Miss("land(lexicon(\"target\", lexicon(\"biome\", \"Flats\"))).", goal, OnPad(), "Mun", NoBiomeAt);
+            Assert.Equal("Greater Flats", miss.Goal.Biome);
+        }
+
+        [Fact]
+        public void APointAfterATransferOrForAnotherVesselIsNotJudged()
+        {
+            Func<string, double, double, string> at = (body, lat, lng) => "Midland Craters";
+            Assert.Null(Miss("transfer_to(lexicon(\"target\", \"Mun\", \"target_pe\", 30000)). land(lexicon(\"target\", latlng(-0.5, 22))).", "Mun", at));
+            Assert.Null(Miss("land(lexicon(\"target\", latlng(-0.5, 22))).", "", at));
+        }
+
+        [Fact]
+        public void ALandingIsStillToFlyUntilItsStepIsTicked()
+        {
+            var biome = new GoalBiome { Body = "Mun", Biome = "Twin Craters" };
+            Assert.True(MissionControl.LandingToFly(new List<GoalItem>(), biome));
+            var steps = new List<GoalItem>
+            {
+                new GoalItem { Item = "Land in Twin Craters on the Mun" },
+                new GoalItem { Item = "Return and land on Kerbin" },
+            };
+            Assert.True(MissionControl.LandingToFly(steps, biome));
+            steps[0].Done = true;
+            Assert.False(MissionControl.LandingToFly(steps, biome));
+            Assert.True(MissionControl.LandingToFly(new List<GoalItem> { new GoalItem { Item = "Landing on the Mun" } }, biome));
+            Assert.False(MissionControl.LandingToFly(new List<GoalItem> { new GoalItem { Item = "Send a crew report from the landed Mun lander" } }, biome));
+        }
+
+        [Fact]
+        public void AGoalNamingNoBodyNeverFallsBackToKerbin()
+        {
+            var snapshot = OnPad();
+            snapshot.Bodies.Single(b => b.Name == "Kerbin").BiomeNames.AddRange(new[] { "Water", "Shores" });
+            Assert.Empty(MissionPrompts.GoalBiomes(snapshot, "splash down in the water"));
+        }
+
+        [Fact]
         public void AGoalNamingNoBiomeJudgesNothing()
         {
             Assert.Null(LandingBiomes.Miss("land(lexicon(\"target\", lexicon(\"biome\", \"Midland Craters\"))).",

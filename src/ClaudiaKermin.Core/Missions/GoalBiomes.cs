@@ -41,8 +41,8 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <summary>
         /// The first <c>land</c> call aimed at another biome than the goal names on its body, or null when none is.
-        /// <paramref name="craftBody"/> is the body the craft is at; <paramref name="biomeAt"/> gives the game's biome at a point
-        /// of a body ("" when it can't).
+        /// <paramref name="craftBody"/> is the body the craft is at ("" for a plan flying another vessel); <paramref name="biomeAt"/>
+        /// gives the game's biome at a point of a body ("" when it can't; null judges no point).
         /// </summary>
         public static GoalBiomeMiss Miss(string script, IList<GoalBiome> goal, GameSnapshot snapshot, string craftBody, Func<string, double, double, string> biomeAt)
         {
@@ -51,8 +51,10 @@ namespace ClaudiaKermin.Core.Missions
             {
                 var target = call.Option("target");
                 if (target == null) continue;
+                // A point is read on the craft's body, so only when no block before this one leaves it.
+                var stays = !BlockOptionCheck.Calls(script).Any(c => c.Index < call.Index && (c.Block == "transfer_to" || c.Block == "return"));
                 string body, targeted;
-                if (!Targeted(target.Trim(), goal, snapshot, craftBody, biomeAt, out body, out targeted)) continue;
+                if (!Targeted(target.Trim(), goal, snapshot, craftBody, stays ? biomeAt : null, out body, out targeted)) continue;
                 var here = goal.Where(g => g.Body == body).ToList();
                 if (here.Count == 0 || here.Any(g => string.Equals(g.Biome, targeted, StringComparison.OrdinalIgnoreCase))) continue;
                 return new GoalBiomeMiss { Goal = here[0], Targeted = targeted };
@@ -74,15 +76,13 @@ namespace ClaudiaKermin.Core.Missions
                 var named = Text.Match(options["biome"].Trim());
                 if (!named.Success || named.Groups["s"].Value.Trim().Length == 0) return false;
                 biome = named.Groups["s"].Value.Trim();
-                // Off the goal's body for now (a script that flies there first): the goal body whose biomes include the name.
-                if (goal.All(g => g.Body != at))
-                {
-                    var name = biome;
-                    var owner = goal.Select(g => g.Body).Distinct().FirstOrDefault(b => snapshot != null && snapshot.Bodies.Any(s => s.Name == b
-                        && s.BiomeNames.Contains(name, StringComparer.OrdinalIgnoreCase)));
-                    if (owner == null) return false;
-                    body = owner;
-                }
+                // On the craft's body when it has the name; else (a script that flies there first) the goal body that has it.
+                var name = biome;
+                Func<string, bool> has = b => snapshot != null && snapshot.Bodies.Any(s => s.Name == b && s.BiomeNames.Contains(name, StringComparer.OrdinalIgnoreCase));
+                if (goal.Any(g => g.Body == at) && has(at)) return true;
+                var owner = goal.Select(g => g.Body).Distinct().FirstOrDefault(b => b != at && has(b));
+                if (owner == null) return false;
+                body = owner;
                 return true;
             }
             if (options != null) { if (!Point(options, out lat, out lng)) return false; }
@@ -98,6 +98,7 @@ namespace ClaudiaKermin.Core.Missions
             return biome.Length > 0;
         }
 
+        /// <summary>A lat/lng lexicon of literal numbers.</summary>
         private static bool Point(IDictionary<string, string> options, out double lat, out double lng)
         {
             lat = lng = 0;
