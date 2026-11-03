@@ -22,6 +22,8 @@ namespace ClaudiaKermin.Kerboscript.Tests
         // The old path, per the ticket: about 1,600 kind checks at about 390 instructions is about 624,000 per scan, so this
         // budget is more than ten times under it (the ticket's estimate; no test measures the old path).
         private const int ScanBudgetInstructions = 40000;
+        // A look on a craft that has not changed (#679): the cached scan with its tanks re-read, and the plan judged again.
+        private const int SteadyBudgetInstructions = 5000;
         private const int Ipu = 100;
 
         private sealed class Spec
@@ -174,6 +176,58 @@ namespace ClaudiaKermin.Kerboscript.Tests
             // Minus the run that only builds the mock parts; the printing of the plan stays in, a few hundred instructions.
             var instructions = (steps - baseline) * Ipu;
             Assert.True(instructions <= ScanBudgetInstructions, "one scan took up to " + instructions + " instructions (fixture alone " + baseline * Ipu + ")");
+        }
+
+        // The look claudia_drop_empty makes: the scan (full or cached, claudia_drop_scan) judged by the plan.
+        private const string Ctx = "local ctx is lexicon(\"drop_key\", \"\", \"drop_scan\", 0, \"drop_mode\", \"full\").\n";
+        private const string Look =
+            "set scan to claudia_drop_scan(ctx, parts, list(\"B4n\"), 2).\nset plan to claudia_scan_plan(scan, true, \"auto\", list()).\n";
+        private const string EmptyB3 =
+            "for p in parts { if p:uid = \"B3t\" { local r is p:resources[0]. set r[\"amount\"] to 0. } }\n";
+
+        private static int Cost(string body)
+        {
+            int steps, baseline;
+            KosHarness.Run(CoreLibrary.Bundle(FixtureScript()), Ipu, 5000, out baseline);
+            KosHarness.Run(CoreLibrary.Bundle(FixtureScript() + body), Ipu, 5000, out steps);
+            return (steps - baseline) * Ipu;
+        }
+
+        [Fact]
+        public void A_full_look_fits_the_scan_budget_and_a_steady_state_look_fits_5000_instructions()
+        {
+            const string first = Ctx + "local scan is 0.\nlocal plan is list().\n" + Look;
+            var full = Cost(first);
+            var both = Cost(first + Look);
+            Assert.True(full <= ScanBudgetInstructions, "a full look took " + full + " instructions");
+            Assert.True(both - full <= SteadyBudgetInstructions, "a steady-state look took " + (both - full) + " instructions");
+        }
+
+        [Fact]
+        public void A_look_is_steady_state_until_the_part_count_or_stage_changes_then_full_and_its_plan_matches_a_fresh_scan()
+        {
+            var script = FixtureScript() + Ctx + "local scan is 0.\nlocal plan is list().\n"
+                + Look + "print ctx:drop_mode.\n" + Look + "print ctx:drop_mode.\n"
+                + "set scan to claudia_drop_scan(ctx, parts, list(\"B4n\"), 1).\nprint ctx:drop_mode.\n"
+                + "set scan to claudia_drop_scan(ctx, parts, list(), 1).\nprint ctx:drop_mode.\n"
+                + "local fewer is parts:sublist(0, 70).\nset scan to claudia_drop_scan(ctx, fewer, list(), 1).\nprint ctx:drop_mode.\n"
+                + "set scan to claudia_drop_scan(ctx, fewer, list(), 1).\nprint ctx:drop_mode.\n"
+                + "set plan to claudia_scan_plan(scan, true, \"auto\", list()).\n"
+                + "local fresh is claudia_scan_plan(claudia_scan_craft(fewer, lexicon()), true, \"auto\", list()).\n"
+                + "print plan:length + \" \" + fresh:length.\n";
+            var printed = KosHarness.Run(CoreLibrary.Bundle(script)).ToArray();
+            Assert.Equal(new[] { "full", "steady", "full", "full", "full", "steady" }, printed.Take(6).ToArray());
+            Assert.Equal(printed[6].Split(' ')[1], printed[6].Split(' ')[0]);
+        }
+
+        [Fact]
+        public void A_steady_state_look_fires_a_decoupler_whose_tank_went_empty_since_the_last_look()
+        {
+            var script = FixtureScript() + Ctx + "local scan is 0.\nlocal plan is list().\n" + Look + PrintPlan
+                + "print \"--\".\n" + EmptyB3 + Look + "print ctx:drop_mode.\n" + PrintPlan;
+            var printed = KosHarness.Run(CoreLibrary.Bundle(script)).ToArray();
+            Assert.Equal(new[] { "B1:B1t,B1n", "B2:B2t,B2n,B2b,B2bt,B2bn", "B2b:B2bt,B2bn", "--", "steady" }, printed.Take(5).ToArray());
+            Assert.Contains("B3:B3t,B3n", printed.Skip(5));
         }
 
         [Fact]

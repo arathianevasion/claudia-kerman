@@ -716,7 +716,9 @@ function claudia_drop_settle {
 //         calls its decoupler, or ""), isdec, crewed (it holds a kerbal), kind (claudia_part_kind) and
 //         amounts / caps (its propellant tanks);
 //   decs: uid -> uid of the part's decoupler as claudia_decoupler_of gives it (a heat shield never one), or "";
-//   parents: uid -> parent uid or "";  parts: uid -> the part, for firing.
+//   parents: uid -> parent uid or "";  parts: uid -> the part, for firing;  tanks: the records holding propellant
+//   tanks (claudia_scan_refresh re-reads them);  gone_by: claudia_scan_gone of the scan;
+//   cands: claudia_scan_cands of an auto scan.
 // crewed: a lexicon keyed by the uids of the parts holding a kerbal. The kind and the tanks of a part are
 // read only if the scan can use them: it has a decoupler above it, is a decoupler, or is one's decoupler.
 function claudia_scan_craft {
@@ -741,6 +743,7 @@ function claudia_scan_craft {
     by_uid:add(uid, p).
   }
   local kinds is lexicon().
+  local tanks is list().
   for i in range(0, recs:length) {
     local rec is recs[i].
     if rec:raw <> "" or rec:isdec or targets:haskey(rec:uid) {
@@ -757,6 +760,9 @@ function claudia_scan_craft {
             capacities:add(res:capacity).
           }
         }
+        if rec:caps:length > 0 {
+          tanks:add(rec).
+        }
       }
     }
   }
@@ -772,7 +778,50 @@ function claudia_scan_craft {
     decs:add(rec:uid, d).
     parents:add(rec:uid, rec:parent).
   }
-  return lexicon("recs", recs, "decs", decs, "parents", parents, "parts", by_uid).
+  local scan is lexicon("recs", recs, "decs", decs, "parents", parents, "parts", by_uid, "tanks", tanks).
+  // Who leaves with each decoupler is structure too: kept, so a cached scan is not walked for it again (#679).
+  set scan["gone_by"] to claudia_scan_gone(scan).
+  set scan["cands"] to claudia_scan_cands(scan, true, "auto").
+  return scan.
+}
+
+// Re-reads the propellant amounts and capacities of the tanks a claudia_scan_craft scan recorded (its
+// "tanks" records), in place: the one thing about a craft's structure that changes between looks (#679).
+function claudia_scan_refresh {
+  parameter scan.
+  for rec in scan:tanks {
+    local amounts is list().
+    local capacities is list().
+    for res in scan:parts[rec:uid]:resources {
+      if claudia_is_propellant(res:name) and res:capacity > 0 {
+        amounts:add(res:amount).
+        capacities:add(res:capacity).
+      }
+    }
+    set rec["amounts"] to amounts.
+    set rec["caps"] to capacities.
+  }
+}
+
+// The scan drop_empty judges (#679): a full claudia_scan_craft walk on the block's first look and whenever
+// the craft changes (part count, stage number, who is aboard: seats, the uids of parts holding a kerbal),
+// else the cached scan on ctx with only its tank amounts refreshed. ctx:drop_mode says which it was.
+function claudia_drop_scan {
+  parameter ctx, parts, seats, stage_num.
+  local key is parts:length + ":" + stage_num + ":" + seats:join(",").
+  if ctx:drop_key = key {
+    set ctx:drop_mode to "steady".
+    claudia_scan_refresh(ctx:drop_scan).
+  } else {
+    local crewed is lexicon().
+    for seat in seats {
+      set crewed[seat] to true.
+    }
+    set ctx:drop_scan to claudia_scan_craft(parts, crewed).
+    set ctx:drop_key to key.
+    set ctx:drop_mode to "full".
+  }
+  return ctx:drop_scan.
 }
 
 // The records of the parts leaving with each decoupler, uid -> list in craft order: the parts whose
@@ -801,14 +850,12 @@ function claudia_scan_gone {
   return gone_by.
 }
 
-// The decouplers a drop_empty scan fires, judged on a claudia_scan_craft scan: a list of lexicons with uid
-// and gone (the records leaving with it). auto judges every decoupler on the craft; else wanted names the
-// parts whose decoupler is judged. tried: uids drop_empty is done with.
-function claudia_scan_plan {
-  parameter scan, auto, wanted, tried.
-  local gone_by is claudia_scan_gone(scan).
+// The decouplers a drop_empty scan judges, uids in craft order: auto every decoupler on the craft; else the
+// decoupler of each part wanted names (a heat shield never one).
+function claudia_scan_cands {
+  parameter scan, auto, wanted.
   local judged is lexicon().
-  local plan is list().
+  local cands is list().
   for rec in scan:recs {
     if auto or claudia_drop_matches(rec:name, rec:tag, wanted) {
       local d is "".
@@ -819,43 +866,69 @@ function claudia_scan_plan {
           set d to scan:decs[rec:uid].
         }
       }
-      if d <> "" and not tried:contains(d) and not judged:haskey(d) {
+      if d <> "" and not judged:haskey(d) {
         judged:add(d, true).
-        local gone is list().
-        if gone_by:haskey(d) {
-          set gone to gone_by[d].
+        cands:add(d).
+      }
+    }
+  }
+  return cands.
+}
+
+// The decouplers a drop_empty scan fires, judged on a claudia_scan_craft scan: a list of lexicons with uid
+// and gone (the records leaving with it). auto judges every decoupler on the craft; else wanted names the
+// parts whose decoupler is judged. tried: uids drop_empty is done with.
+function claudia_scan_plan {
+  parameter scan, auto, wanted, tried.
+  local gone_by is 0.
+  if scan:haskey("gone_by") {
+    set gone_by to scan:gone_by.
+  } else {
+    set gone_by to claudia_scan_gone(scan).
+  }
+  local plan is list().
+  local cands is list().
+  if auto and scan:haskey("cands") {
+    set cands to scan:cands.
+  } else {
+    set cands to claudia_scan_cands(scan, auto, wanted).
+  }
+  for d in cands {
+    if not tried:contains(d) {
+      local gone is list().
+      if gone_by:haskey(d) {
+        set gone to gone_by[d].
+      }
+      local amounts is list().
+      local capacities is list().
+      local kinds is list().
+      for g in gone {
+        for a in g:amounts {
+          amounts:add(a).
         }
-        local amounts is list().
-        local capacities is list().
-        local kinds is list().
-        for g in gone {
-          for a in g:amounts {
-            amounts:add(a).
-          }
-          for c in g:caps {
-            capacities:add(c).
-          }
-          if auto {
-            // Second net for a crew cabin whose modules the kind check does not know: any part holding a kerbal.
-            if g:crewed {
-              kinds:add("crew").
-            } else {
-              kinds:add(g:kind).
-            }
-            if kinds[kinds:length - 1] <> "" {
-              break.
-            }
-          }
+        for c in g:caps {
+          capacities:add(c).
         }
-        local ok is false.
         if auto {
-          set ok to claudia_auto_drop_fires(kinds, amounts, capacities).
-        } else {
-          set ok to claudia_tanks_empty(amounts, capacities).
+          // Second net for a crew cabin whose modules the kind check does not know: any part holding a kerbal.
+          if g:crewed {
+            kinds:add("crew").
+          } else {
+            kinds:add(g:kind).
+          }
+          if kinds[kinds:length - 1] <> "" {
+            break.
+          }
         }
-        if ok {
-          plan:add(lexicon("uid", d, "gone", gone)).
-        }
+      }
+      local ok is false.
+      if auto {
+        set ok to claudia_auto_drop_fires(kinds, amounts, capacities).
+      } else {
+        set ok to claudia_tanks_empty(amounts, capacities).
+      }
+      if ok {
+        plan:add(lexicon("uid", d, "gone", gone)).
       }
     }
   }
@@ -880,22 +953,25 @@ function claudia_drop_empty {
   local fired_uids is list().
   local fired_names is list().
   local fired_groups is list().
-  local crewed is lexicon().
+  local seats is list().
   if auto {
     for c in ship:crew {
-      local seat is c:part:uid.
-      set crewed[seat] to true.
+      seats:add(c:part:uid).
     }
   }
-  // One walk of the craft; judging and firing read what it recorded (#533).
+  // One walk of the craft, kept on ctx while it is unchanged; judging and firing read what it recorded (#533, #679).
   local scan_from is time:seconds.
-  local scan is claudia_scan_craft(ship:parts, crewed).
+  local scan is claudia_drop_scan(ctx, ship:parts, seats, stage:number).
   local plan is claudia_scan_plan(scan, auto, wanted, ctx:drop_tried).
   // launch traces what a scan and its plan cost (#531), only in launch: the game seconds they took, which a long one spends over
   // several physics ticks.
   if auto and ctx:block = "launch" {
-    addons:claudia:blocknote(ctx:block, lexicon("phase", "drop_scan", "scan_s", round(time:seconds - scan_from, 3),
+    addons:claudia:blocknote(ctx:block, lexicon("phase", "drop_scan", "scan_s", round(time:seconds - scan_from, 3), "mode", ctx:drop_mode,
       "parts", ship:parts:length, "ipu", config:ipu)).
+  }
+  if plan:length > 0 {
+    // Firing changes the craft: the next look walks it in full.
+    set ctx:drop_key to "".
   }
   for step in plan {
     local d is scan:parts[step:uid].
@@ -1897,6 +1973,9 @@ function claudia_begin {
     "drop_tried", list(),
     "drop_tries", lexicon(),
     "drop_ut", 0,
+    "drop_key", "",
+    "drop_scan", 0,
+    "drop_mode", "full",
     // RCS Use (claudia_rcs_tick): turn_by is the UT a turn must be done by (0: no deadline), set around a
     // turn to a burn; while rcs_translating is true RCS stays on and the rule decides nothing.
     "turn_by", 0,
