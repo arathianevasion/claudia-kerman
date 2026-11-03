@@ -82,6 +82,45 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal("Debrief: Nominal (timed out)", mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Title);
         }
 
+        // #696: the hard stop fired 900 s into a run whose exec_node was warping to a burn 304,000 s out.
+        [Fact]
+        public void ARunStoppedMidWarpIsDebriefedWithTheTimeLeftToItsTarget()
+        {
+            var transport = Transport(plannedSeconds: 300);
+            var mission = InFlight(transport, new PlayerConfig());
+            var start = RunToRunning(mission);
+
+            mission.Send(new UtAdvanced(ApprovedAt + 900));
+            Assert.Single(mission.TakeCommands().OfType<AbortScript>());
+            var trace = new WarpTrace(0);
+            trace.BlockStarted("tune_pe", 0.1);
+            trace.BlockStarted("exec_node", 0.2);
+            trace.Requested(0.3, ApprovedAt + 1, ApprovedAt + 304000, "rails", null, "");
+            mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Aborted, null, "Program aborted.", "timed out", true, trace), start.RunId));
+            mission.Send(AfterTheRun());
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            var text = LastUserText(transport.Requests[2]);
+            Assert.Contains("timed out 303,100 s of game time short of exec_node's warp target, 304,000 s after the run started", text);
+            Assert.Contains("an expected_duration_s of at least 304,180 s would have covered", text);
+        }
+
+        [Fact]
+        public void ARunStoppedOutsideAWarpGetsNoWarpLine()
+        {
+            var transport = Transport(plannedSeconds: 600);
+            var mission = InFlight(transport, new PlayerConfig());
+            var start = RunToRunning(mission);
+            mission.Send(new UtAdvanced(ApprovedAt + 1800));
+            var trace = new WarpTrace(0);
+            trace.Requested(0.3, ApprovedAt + 1, ApprovedAt + 600, "rails", null, "");
+            mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Aborted, null, "Program aborted.", "timed out", true, trace), start.RunId));
+            mission.Send(AfterTheRun());
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            Assert.DoesNotContain("warp target", LastUserText(transport.Requests[2]));
+        }
+
         [Fact]
         public void TheMultiplierComesFromThePlayerConfig()
         {

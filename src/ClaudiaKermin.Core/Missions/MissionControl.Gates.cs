@@ -39,6 +39,17 @@ namespace ClaudiaKermin.Core.Missions
             _commands.Add(new AbortScript(mission.RunningProcessor.Value, RunawayStop.Reason, mission.RunId.Value));
         }
 
+        /// <summary>
+        /// #696: a run the hard stop ended mid-warp gets an event saying how far it was from the warp's target (the warp trace's
+        /// last request) and the duration that would have covered it, for the Debrief and Claudia's retry. Call before the deadline is cleared.
+        /// </summary>
+        private void TimedOutMidWarp(Mission mission, RunOutcome outcome)
+        {
+            if (mission.StopReason != RunawayStop.Reason || !mission.RunDeadlineUt.HasValue || outcome == null) return;
+            var cut = BurnPoints.WarpCutShort(outcome.Trace, mission.RunStartUt, mission.RunDeadlineUt.Value);
+            if (cut != null) mission.RunEvents.Add(mission.RunDeadlineUt.Value, RunEventKind.Stopped, MissionPrompts.TimedOutMidWarp(cut));
+        }
+
         private void RunBlocked(KosRunBlocked blocked)
         {
             var mission = _mission;

@@ -20,6 +20,8 @@ namespace ClaudiaKermin.Core.Missions
         public double WaitSeconds;
         /// <summary>The burn's seconds: the stages' estimate, or <see cref="BurnPoints.BurnAllowanceSeconds"/> without one.</summary>
         public double BurnSeconds;
+        /// <summary>For a run the hard stop cut short (<see cref="BurnPoints.WarpCutShort"/>): game seconds still left to the point.</summary>
+        public double LeftSeconds;
 
         /// <summary>The least <c>expected_duration_s</c> that covers the wait, the burn and the turn to it, rounded up to 10 s.</summary>
         public double MinimumDurationSeconds
@@ -88,6 +90,25 @@ namespace ClaudiaKermin.Core.Missions
                 return wait;
             }
             return null;
+        }
+
+        /// <summary>
+        /// For a run the hard stop ended at <paramref name="stoppedUt"/>: its last warp request (from the warp trace) when that
+        /// request's target was still ahead, as the wait from the run's start to it; null when it wasn't warping to one.
+        /// </summary>
+        public static BurnWait WarpCutShort(WarpTrace trace, double runStartUt, double stoppedUt)
+        {
+            if (trace == null) return null;
+            var last = trace.Entries.LastOrDefault(e => e.Kind == WarpTraceKind.Request);
+            if (last == null || !last.TargetUt.HasValue || last.TargetUt.Value <= stoppedUt) return null;
+            return new BurnWait
+            {
+                Block = last.Block.Length > 0 ? last.Block : "the script",
+                Point = "its warp target",
+                WaitSeconds = last.TargetUt.Value - runStartUt,
+                BurnSeconds = BurnAllowanceSeconds,
+                LeftSeconds = last.TargetUt.Value - stoppedUt,
+            };
         }
 
         /// <summary>The wait for this call's burn point, or null when it has none fixed before the run (or isn't a burn).</summary>
