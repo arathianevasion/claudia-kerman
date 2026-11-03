@@ -305,6 +305,9 @@ function dock {
   own:controlfrom().
   local dk_axis is dk_port:portfacing:forevector.
   local dk_off is v(0, 0, 0).
+  // The last state read, for the dock trace (#706): about once a second, as exec_node's.
+  local seen is dock_stopped("", false).
+  local trace_ut is -1.
   lock steering to claudia_keep_roll(-dk_axis).
   claudia_rcs_translate(ctx, true).
   local done is dock_run(opt, named:name,
@@ -330,20 +333,27 @@ function dock {
       if ctx:rcs_dry {
         set mono to 0.
       }
-      return lexicon("abort", "", "docked", false, "distance", rel:mag, "along", along, "lat", lat, "speed", vel:mag,
+      set seen to lexicon("abort", "", "docked", false, "distance", rel:mag, "along", along, "lat", lat, "speed", vel:mag,
         "align_deg", vang(ship:facing:forevector, -dk_axis), "spin_dps", dk_target:angularvel:mag * constant:radtodeg,
         "monoprop", mono, "hold", held:state, "hold_reason", held:reason, "ut", time:seconds).
+      return seen.
     },
     {
       parameter along, lat.
       // Magnetic capture: the ports pull themselves together, so the block stops pushing.
-      if own:state:startswith("Acquire") {
+      local translating is not own:state:startswith("Acquire").
+      if not translating {
         set ship:control:neutralize to true.
       } else {
         local err is dk_axis * along + dk_off:normalized * lat - (ship:velocity:orbit - dk_target:velocity:orbit).
         set ship:control:fore to max(-1, min(1, vdot(err, ship:facing:forevector) / 0.2)).
         set ship:control:starboard to max(-1, min(1, vdot(err, ship:facing:starvector) / 0.2)).
         set ship:control:top to max(-1, min(1, vdot(err, ship:facing:topvector) / 0.2)).
+      }
+      if time:seconds >= trace_ut + 1 {
+        set trace_ut to time:seconds.
+        addons:claudia:blocknote("dock", lexicon("distance", round(seen:distance, 2), "along", round(seen:along, 2), "lat", round(seen:lat, 2),
+          "align_deg", round(seen:align_deg, 1), "speed", round(seen:speed, 3), "rcs", translating, "monoprop", round(seen:monoprop, 1), "hold", seen:hold)).
       }
       wait 0.
     }).
