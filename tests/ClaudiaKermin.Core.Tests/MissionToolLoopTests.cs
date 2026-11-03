@@ -621,6 +621,7 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(8, transport.Requests.Count);
             Assert.Contains("Spending Cap", run.View.PauseReason);
             Assert.Contains("tool_loop_discarded", Events(run));
+            Assert.DoesNotContain("tool_loop_kept", Events(run));
             Assert.DoesNotContain("tool_limit_final", Events(run));
         }
 
@@ -1209,6 +1210,85 @@ namespace ClaudiaKermin.Core.Tests
             }
             Assert.Equal("{\"type\":\"none\"}", Body(transport.Requests[ToolStep.MaxSteps]).GetProperty("tool_choice").GetRawText());
             Assert.Equal(new[] { "Link check" }, mission.View.PlanSequences);
+        }
+
+        // ---- The final request at the step limit (#668) ----
+
+        private static IEnumerable<ScriptedResponse> FakeSteps(int count)
+        {
+            return Enumerable.Range(0, count).Select(i => ToolUseStreams.ToolUse("f" + i, ("fake", "{\"n\":" + i + "}")));
+        }
+
+        [Fact]
+        public void TheFinalRequestOfASequencePlanTurnAtTheStepLimitEndsWithTheStepLimitLineAfterTheResults()
+        {
+            var transport = new StreamingFakeTransport(new[] { Fixture("mission-plan.sse") }.Concat(FakeSteps(ToolStep.MaxSteps)).Concat(new[] { Fixture("mission-sequence-plan.sse") }).ToArray());
+            var mission = Control(transport, With(new TestTool()));
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            var final = transport.Requests[ToolStep.MaxSteps + 1];
+            Assert.Equal("{\"type\":\"none\"}", Body(final).GetProperty("tool_choice").GetRawText());
+            var last = Body(final).GetProperty("messages").EnumerateArray().Last();
+            var blocks = last.GetProperty("content").EnumerateArray().Select(b => b.GetProperty("type").GetString()).ToList();
+            Assert.Equal("text", blocks.Last());
+            Assert.Equal("tool_result", blocks.First());
+            Assert.Contains(MissionPrompts.StepLimitLine, last.GetRawText());
+            Assert.DoesNotContain(MissionPrompts.StepLimitLine, Messages(transport.Requests[ToolStep.MaxSteps]).Last());
+        }
+
+        [Fact]
+        public void ARefusedFinalReplyAtTheStepLimitPausesAndRetrySendsTheFinalRequestAgainWithTheKeptToolLoop()
+        {
+            var transport = new StreamingFakeTransport(new[] { Fixture("mission-plan.sse") }.Concat(FakeSteps(ToolStep.MaxSteps))
+                .Concat(new[] { Kind("sequence_plan"), Fixture("mission-sequence-plan.sse") }).ToArray());
+            var mission = Control(transport, With(new TestTool()));
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.Paused);
+            var asked = transport.Requests.Count;
+            Assert.Contains("no Sequence Plan with a script", mission.View.PauseReason);
+            Assert.DoesNotContain("tool_loop_discarded", Events(mission));
+
+            mission.Send(new Retry());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            // One request more, no new tool step: every earlier step's blocks stay, and the retry line follows the step-limit line.
+            Assert.Equal(asked + 1, transport.Requests.Count);
+            var retry = transport.Requests.Last();
+            Assert.Equal("{\"type\":\"none\"}", Body(retry).GetProperty("tool_choice").GetRawText());
+            Assert.Equal(ToolStep.MaxSteps, Count(retry.Body, "\\\"type\\\":\\\"tool_use\\\"") + Count(retry.Body, "\"type\":\"tool_use\""));
+            Assert.Equal(ToolStep.MaxSteps, Count(retry.Body, "\"type\":\"tool_result\""));
+            Assert.Contains(MissionPrompts.StepLimitLine, retry.Body);
+            Assert.Contains(MissionPrompts.StepLimitRetryLine, Messages(retry).Last());
+            Assert.Contains("tool_loop_kept", Events(mission));
+            Assert.DoesNotContain("tool_loop_discarded", Events(mission));
+        }
+
+        [Fact]
+        public void ARefusedFinalReplyOnAMissionPlanTurnStillOwedAPlanGetsOneProposeStepOnRetryThenTheFinalRequest()
+        {
+            var transport = new StreamingFakeTransport(FakeSteps(ToolStep.MaxSteps)
+                .Concat(new[] { Kind("mission_plan"), Kind("mission_plan"), Propose("p", ProposedPlan("Link check")), Kind("mission_plan") }).ToArray());
+            var mission = Control(transport, With(new TestTool()));
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.Paused);
+            var asked = transport.Requests.Count;
+            Assert.Equal(ToolStep.MaxSteps + 2, asked);
+            Assert.Contains(MissionPrompts.StepLimitPlanLine, transport.Requests[ToolStep.MaxSteps].Body);
+
+            mission.Send(new Retry());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+
+            Assert.Equal(asked + 2, transport.Requests.Count);
+            Assert.Equal("{\"type\":\"auto\"}", Body(transport.Requests[asked]).GetProperty("tool_choice").GetRawText());
+            Assert.Contains(MissionPrompts.StepLimitRetryLine, Messages(transport.Requests[asked]).Last());
+            Assert.Equal("{\"type\":\"none\"}", Body(transport.Requests[asked + 1]).GetProperty("tool_choice").GetRawText());
+            Assert.Equal(new[] { "Link check" }, mission.View.PlanSequences);
+            Assert.DoesNotContain("tool_loop_discarded", Events(mission));
         }
 
         [Fact]

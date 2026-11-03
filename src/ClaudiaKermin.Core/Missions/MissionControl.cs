@@ -197,6 +197,8 @@ namespace ClaudiaKermin.Core.Missions
             public bool CutOffRetry;
             /// <summary>The turn was resent once with <see cref="MissionPrompts.PlanCallNote"/> after a mission_plan reply with no accepted plan (#667); not saved.</summary>
             public bool PlanCallRetry;
+            /// <summary>The reply to the final request at the step limit was refused off_schema (#668): <see cref="Pause"/> keeps the tool loop and Retry sends the final request again. Memory only.</summary>
+            public bool KeepLoop;
             /// <summary>
             /// The turn is in its Second look (<see cref="SecondLook"/>): high effort and the first reply's reason for doubt added, which
             /// is never "" once set. At most one per turn, and never with a <see cref="CutOffRetry"/>, in either order.
@@ -1143,6 +1145,7 @@ namespace ClaudiaKermin.Core.Missions
             turn.PlanCallRefused = false;
             turn.RepeatStop = false;
             turn.PlanOnly = false;
+            turn.KeepLoop = false;
             turn.ToolSnapshot = null;
             RecordUnanswered(mission, turn);
         }
@@ -1329,6 +1332,7 @@ namespace ClaudiaKermin.Core.Missions
                     PlanCallCorrection(mission, turn, problem);
                     return;
                 }
+                turn.KeepLoop = turn.ToolSteps >= ToolStep.MaxSteps && turn.Messages != null && mission.DeferredRestore == null;
                 Failed(mission, turn, "Claudia's reply didn't fit: " + problem + ".");
                 return;
             }
@@ -1867,7 +1871,8 @@ namespace ClaudiaKermin.Core.Missions
         private void Pause(Mission mission, string reason)
         {
             // A tool loop never survives a Pause: Retry or Resume sends the turn from scratch.
-            if (mission.Pending != null && !mission.InFlight) DiscardLoop(mission, mission.Pending);
+            // Except the one whose final reply at the step limit was refused off_schema (#668): Retry sends that request again.
+            if (mission.Pending != null && !mission.InFlight && !mission.Pending.KeepLoop) DiscardLoop(mission, mission.Pending);
             if (mission.Stage != MissionStage.Paused) mission.StageBeforePause = mission.Stage;
             mission.Stage = MissionStage.Paused;
             mission.PauseCause = PauseCause.Other;
@@ -1875,6 +1880,22 @@ namespace ClaudiaKermin.Core.Missions
             Event(mission, "paused", reason);
             Note(LogKind.Notice, reason);
             NeedsPlayer("Claudia's Mission is Paused.");
+        }
+
+        /// <summary>
+        /// Retry of a turn whose final reply at the step limit was refused (#668): the tool loop is kept, the retry line is added, and
+        /// the final request goes again with tool_choice none. A turn still owed a Mission Plan gets one step first on which only
+        /// propose_mission_plan is answered (#571).
+        /// </summary>
+        private void KeepLoopRetry(Mission mission, Turn turn)
+        {
+            turn.KeepLoop = false;
+            turn.Messages.Add(Message.SystemText(MissionPrompts.StepLimitRetryLine));
+            var planOwed = TakesMissionPlan(turn.Purpose) && ProposedPlans.LastAccepted(turn.Messages) == null;
+            turn.PlanOnly = planOwed;
+            turn.ToolLimitSent = !planOwed;
+            turn.RepeatStop = false;
+            Event(mission, "tool_loop_kept", turn.Purpose + " after " + turn.ToolSteps + " steps; Retry sends the final request again" + (planOwed ? " after one propose_mission_plan step" : ""));
         }
 
         private void Retried()
@@ -1923,6 +1944,7 @@ namespace ClaudiaKermin.Core.Missions
             if (mission.Pending != null)
             {
                 if (mission.Pending.Messages == null) ApplyLoadNotice(mission, mission.Pending);
+                else if (mission.Pending.KeepLoop) KeepLoopRetry(mission, mission.Pending);
                 Send(mission, mission.Pending);
             }
             else SendQueued(mission);

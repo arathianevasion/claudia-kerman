@@ -250,6 +250,18 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>In the tool results of the step before the last that may call a tool (#509), on a request for a Mission Plan not yet handed in.</summary>
         public const string ProposePlanNow = "Your next step is the last that can call a tool: if you are replying with a Mission Plan, hand it in with propose_mission_plan now.";
 
+        /// <summary>After the last tool results of a Sequence Plan or other turn at the step limit (#668): the final request, tool_choice none.</summary>
+        public const string StepLimitLine = "Your tool steps are used up and no tool will be answered. Reply now with the kind this request asked for: for a Sequence Plan, the best plan you can make from the results so far, complete with its script; if you are unsure, send it anyway with unsure_because filled in, not a null plan.";
+
+        /// <summary>The same for a turn that takes a Mission Plan.</summary>
+        public const string StepLimitPlanLine = "Your tool steps are used up and no tool will be answered. Reply now with kind mission_plan: the mod takes the last plan propose_mission_plan accepted.";
+
+        /// <summary>The same for the Craft Check and the margin recheck.</summary>
+        public const string StepLimitVerdictLine = "Your tool steps are used up and no tool will be answered. Reply now with your verdict from the results so far.";
+
+        /// <summary>Retry after the reply to the final request was refused (#668): the kept tool results are sent again.</summary>
+        public const string StepLimitRetryLine = "Your last reply was refused because it didn't fit the reply format. The tool steps are still used up: reply now with the kind this request asked for, built from the results above.";
+
         public const string SettingsNotice =
             "Revise the Mission Plan for the new Mission Settings, with the waits, any Due Times and the total Mission time they imply: "
             + ProposePlan + ". The player must approve it again.";
