@@ -2,8 +2,11 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text.RegularExpressions;
 using ClaudiaKermin.Core.Config;
 using ClaudiaKermin.Core.Missions;
+using ClaudiaKermin.Core.Tools;
 using Xunit;
 
 namespace ClaudiaKermin.Core.Tests
@@ -16,9 +19,9 @@ namespace ClaudiaKermin.Core.Tests
     {
         private const string DaylightOn = "Daylight landing: on. Set the land block's daylight option to true and prefer a daylight landing.";
         private const string DaylightOff = "Daylight landing: off. Do not wait for daylight.";
-        private const string Fastest = "Time versus delta-v, Fastest: never wait for a better window; take the next one.";
-        private const string Balanced = "Time versus delta-v, Balanced: wait up to 6 h to save delta-v; do not wait longer than that for a better window.";
-        private const string Efficient = "Time versus delta-v, Most efficient: wait for the cheapest window, however long (the script warps there).";
+        private const string Fastest = "Time versus delta-v, Fastest: take soonest; never wait for a cheaper window.";
+        private const string Balanced = "Time versus delta-v, Balanced: take soonest unless optimal saves 10% of its delta-v, as plan_transfer picks.";
+        private const string Efficient = "Time versus delta-v, Most efficient: take optimal, the cheapest window, however long the wait.";
         private const string WarpOn = "Physics warp on Coasts: on. Blocks warp through Coasts with physics warp where rails can't; use the warp helpers for your own Coasts.";
         private const string WarpOff = "Physics warp on Coasts: off. The mod refuses physics warp. Where rails can't warp, Coasts run at 1×, so plan for the extra real time.";
         private const string WarpOffConfig = "Physics warp on Coasts: off. The mod refuses physics warp. Only the player's config can turn it back on. Where rails can't warp, Coasts run at 1×, so plan for the extra real time.";
@@ -168,19 +171,53 @@ namespace ClaudiaKermin.Core.Tests
             }
         }
 
+        private static string TimeLine(TimeVersusDeltaV time)
+        {
+            return MissionSettingsValues.All[1].Prompt(Make(true, time, true));
+        }
+
+        [Fact]
+        public void The_balanced_line_states_the_saving_from_BalancedSaving_and_no_wait_cap()
+        {
+            var line = TimeLine(TimeVersusDeltaV.Balanced);
+            Assert.Contains((TransferWindows.BalancedSaving * 100).ToString("0", CultureInfo.InvariantCulture) + "%", line);
+            Assert.DoesNotContain("6 h", line);
+        }
+
+        /// <summary>The rule each prompt line states, read back from its words, takes the same window as TransferWindows.Pick (#669).</summary>
+        [Theory]
+        [InlineData(TimeVersusDeltaV.Fastest, 910)]
+        [InlineData(TimeVersusDeltaV.Fastest, 890)]
+        [InlineData(TimeVersusDeltaV.Balanced, 910)]
+        [InlineData(TimeVersusDeltaV.Balanced, 890)]
+        [InlineData(TimeVersusDeltaV.MostEfficient, 910)]
+        [InlineData(TimeVersusDeltaV.MostEfficient, 890)]
+        public void Each_prompt_line_and_Pick_take_the_same_window(TimeVersusDeltaV time, double optimalDv)
+        {
+            // Soonest 1000 m/s; Optimal 910 saves 9%, 890 saves 11%.
+            var search = new WindowSearch { Soonest = new TransferWindow { TotalDv = 1000 }, Optimal = new TransferWindow { TotalDv = optimalDv } };
+            var rule = Regex.Match(TimeLine(time), @"take (soonest|optimal)(?: unless optimal saves (\d+)% of its delta-v)?");
+            Assert.True(rule.Success, TimeLine(time));
+            var saving = (search.Soonest.TotalDv - search.Optimal.TotalDv) / search.Soonest.TotalDv;
+            var lineTakesOptimal = rule.Groups[2].Success
+                ? saving >= int.Parse(rule.Groups[2].Value, CultureInfo.InvariantCulture) / 100.0
+                : rule.Groups[1].Value == "optimal";
+            Assert.Equal(lineTakesOptimal ? search.Optimal : search.Soonest, TransferWindows.Pick(search, time));
+        }
+
         [Fact]
         public void The_time_cap_keeps_its_meaning()
         {
             Assert.Equal(1, Make(true, TimeVersusDeltaV.Fastest, true).TimeCapHours);
             Assert.Equal(6, Make(true, TimeVersusDeltaV.Balanced, true).TimeCapHours);
             Assert.Equal(24, Make(true, TimeVersusDeltaV.MostEfficient, true).TimeCapHours);
-            Assert.Equal(6, MissionSettingsValues.BalancedWaitHours);
+            Assert.Equal(6, MissionSettingsValues.BalancedSearchHours);
         }
 
         [Fact]
         public void The_board_summary_is_pinned()
         {
-            Assert.Equal("Daylight landing: on; time versus delta-v: Balanced (waits up to 6 h); physics warp on Coasts: on", Make(true, TimeVersusDeltaV.Balanced, true).Summary());
+            Assert.Equal("Daylight landing: on; time versus delta-v: Balanced; physics warp on Coasts: on", Make(true, TimeVersusDeltaV.Balanced, true).Summary());
             Assert.Equal("Daylight landing: off; time versus delta-v: Fastest; physics warp on Coasts: off", Make(false, TimeVersusDeltaV.Fastest, true, false).Summary());
             Assert.Equal("Daylight landing: on; time versus delta-v: Most efficient; physics warp on Coasts: off", Make(true, TimeVersusDeltaV.MostEfficient, false).Summary());
         }

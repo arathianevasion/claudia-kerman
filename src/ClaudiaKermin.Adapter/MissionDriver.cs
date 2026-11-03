@@ -192,7 +192,7 @@ namespace ClaudiaKermin.Adapter
         /// The Mission's time cap, hours (<see cref="MissionSettingsValues.TimeCapHours"/>), for the block calls' own Game Snapshots
         /// (#543): <c>land</c>'s pass search defaults its window by it, as <c>find_landing_site</c> does. Refreshed every frame.
         /// </summary>
-        public static double TimeCapHours = MissionSettingsValues.BalancedWaitHours;
+        public static double TimeCapHours = MissionSettingsValues.BalancedSearchHours;
 
         /// <summary>
         /// The Chute Allocation and the Mission Plan step in hand (0 first; -1 before the first), for reentry's
