@@ -176,6 +176,8 @@ namespace ClaudiaKermin.Core.Missions
             public string Effort;
             public string UserText;
             public string Notice;
+            /// <summary>The script's report, kept so the Debrief's run delta-v line can say when its dv_used differs.</summary>
+            public IDictionary<string, object> Report;
             /// <summary>The player's words of a question asked with a plan pending, which may turn out to be a revision (MissionControl.TypedReply.cs); null otherwise.</summary>
             public string PlayerText;
             /// <summary>A rewrite after a failed Script Check: if this script fails too, there is no further automatic rewrite.</summary>
@@ -893,7 +895,8 @@ namespace ClaudiaKermin.Core.Missions
             var turn = new Turn
             {
                 Purpose = Purpose.Debrief,
-                UserText = MissionPrompts.RunReport(mission.PendingSequence, outcome, CrossingsText(mission), mission.Blocks) + "\n" + ChildRunNote(mission) + MissionPrompts.Facts(_ut, _snapshot),
+                UserText = MissionPrompts.RunReport(mission.PendingSequence, outcome, CrossingsText(mission), mission.Blocks, true) + "\n" + ChildRunNote(mission) + MissionPrompts.Facts(_ut, _snapshot),
+                Report = outcome.Report,
                 Notice = MissionPrompts.DebriefNotice,
             };
             if (mission.Stage == MissionStage.Paused) mission.StageBeforePause = MissionStage.Debriefing;

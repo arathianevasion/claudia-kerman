@@ -307,7 +307,7 @@ namespace ClaudiaKermin.Core.Missions
             + "Telemetry Check crossing rules out Nominal, a recovered one doesn't; list each with its verdict in what_happened. Always fill outcome, why, next and "
             + "goal_steps_done. For Nominal leave what_happened, outcome_vs_target, plan_margin and science empty (the card shows the mod's events, margin "
             + "bar and science) unless a check was crossed or the script printed an error. Otherwise fill them: outcome_vs_target (the "
-            + "script's report and the events the mod logged, against the target and tolerances, with numbers), plan_margin (the "
+            + "report and mod events vs the target, with numbers; delta-v from the run total), plan_margin (run total "
             + "delta-v and resources left against the Maneuver Sequences still to fly, using the mod's margin recheck), science, "
             + "and follow_up with follow_up_text: for Off-Nominal "
             + "corrective_sequence or revised_plan; for Failed reduced_goal (follow_up_text is the reduced Mission Goal, which the "
@@ -527,19 +527,51 @@ namespace ClaudiaKermin.Core.Missions
         /// is unreadable. <paramref name="startLeft"/> is the run's baseline, already less the <paramref name="dropped"/> delta-v
         /// stages took with them at zero throttle (#605), which the line names so it doesn't read as less than a script burned.
         /// </summary>
-        public static string RunDeltaVLine(double? startLeft, GameSnapshot now, double dropped)
+        public static string RunDeltaVLine(double? startLeft, GameSnapshot now, double dropped, IDictionary<string, object> report = null)
         {
             var nowLeft = LiveReadings.DeltaVLeftOf(now);
-            string why = null;
-            if (!startLeft.HasValue) why = "no stock delta-v figure at the run's start";
-            else if (now == null) why = "the craft's readings aren't available now";
-            else if (!now.DeltaVSimulator) why = "the stock delta-v simulator is off now";
-            else if (!nowLeft.HasValue) why = "a stage's delta-v reading is unreliable now";
-            if (why != null) return "Delta-v used this run: unknown (" + why + ").";
-            return "Delta-v used this run, from stock: " + Rounded(System.Math.Max(0, startLeft.Value - nowLeft.Value)) + " m/s (left at start "
+            var used = RunDeltaVUsed(startLeft, now);
+            if (!used.HasValue) return "Delta-v used by the whole run: unknown (" + RunDeltaVWhy(startLeft, now) + ").";
+            return "Delta-v used by the whole run (all blocks, the mod's own reading from stock; the report's dv_used may be one block's): " + Rounded(used.Value) + " m/s (left at start "
                 + Rounded(startLeft.Value + dropped) + " m/s, now " + Rounded(nowLeft.Value) + " m/s"
-                + (dropped > 0 ? "; " + Rounded(dropped) + " m/s dropped with stages at zero throttle isn't counted" : "") + ").";
+                + (dropped > 0 ? "; " + Rounded(dropped) + " m/s dropped with stages at zero throttle isn't counted" : "") + ")."
+                + ReportDiffers(report, used.Value, nowLeft.Value);
         }
+
+        /// <summary>The run's delta-v used from stock's figures; null when a reading is missing.</summary>
+        public static double? RunDeltaVUsed(double? startLeft, GameSnapshot now)
+        {
+            if (RunDeltaVWhy(startLeft, now) != null) return null;
+            return System.Math.Max(0, startLeft.Value - LiveReadings.DeltaVLeftOf(now).Value);
+        }
+
+        private static string RunDeltaVWhy(double? startLeft, GameSnapshot now)
+        {
+            if (!startLeft.HasValue) return "no stock delta-v figure at the run's start";
+            if (now == null) return "the craft's readings aren't available now";
+            if (!now.DeltaVSimulator) return "the stock delta-v simulator is off now";
+            if (!LiveReadings.DeltaVLeftOf(now).HasValue) return "a stage's delta-v reading is unreliable now";
+            return null;
+        }
+
+        private static string ReportDiffers(IDictionary<string, object> report, double used, double left)
+        {
+            var note = "";
+            object value;
+            if (report != null && report.TryGetValue("dv_used", out value) && value is double && System.Math.Abs((double)value - used) > Tolerance(used))
+                note += " The report's dv_used " + Rounded((double)value) + " differs.";
+            if (report != null && report.TryGetValue("dv_remaining", out value) && value is double && System.Math.Abs((double)value - left) > Tolerance(left))
+                note += " The report's dv_remaining " + Rounded((double)value) + " differs.";
+            return note;
+        }
+
+        private static double Tolerance(double figure)
+        {
+            return System.Math.Max(5, 0.05 * figure);
+        }
+
+        /// <summary>Where <see cref="RunReport"/> leaves the run delta-v line of a Debrief turn; filled when the Debrief is prepared.</summary>
+        public const string RunDeltaVSlot = "\n[[run delta-v]]";
 
         /// <summary>
         /// The Debrief's line on the monopropellant the whole run used, from stock's amount at its start and now (dropped
@@ -726,13 +758,14 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <param name="crossings">The Telemetry Checks crossed during the run with their verdicts; "" when none was.</param>
         /// <param name="blocks">The run's blocks trail (#609), listed after the report; null for none.</param>
-        public static string RunReport(SequencePlan plan, RunOutcome outcome, string crossings, BlockTrail blocks = null)
+        public static string RunReport(SequencePlan plan, RunOutcome outcome, string crossings, BlockTrail blocks = null, bool runDeltaV = false)
         {
             var text = "The player approved the Sequence Plan " + Quoted(plan.Name) + " and the mod ran its Mission Script.\n"
                 + RunEndedPrefix + outcome.Kind + (outcome.Reason.Length > 0 ? " (" + outcome.Reason + ")" : "") + ".";
             if (outcome.Report != null) text += "\nReport (JSON data): " + ReportJson(outcome.Report);
             var trail = blocks == null ? "" : blocks.Line(outcome.Report);
             if (trail.Length > 0) text += "\n" + trail;
+            if (runDeltaV) text += RunDeltaVSlot;
             if (outcome.ErrorText.Length > 0) text += "\nkOS terminal after the run (quoted): " + Quoted(outcome.ErrorText);
             if (outcome.MakesCraftSafe && !outcome.WasAborted) text += "\nThe mod cut the throttle and released steering.";
             text += CrossedChecks(crossings);
