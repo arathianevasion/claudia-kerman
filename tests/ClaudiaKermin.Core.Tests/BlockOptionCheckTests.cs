@@ -26,7 +26,7 @@ namespace ClaudiaKermin.Core.Tests
         public void TheMissingTargetPeOf2d0cFailsNamingTheBlockTheOptionAndTheOptionList()
         {
             var problem = Assert.Single(Problems(Script2d0c));
-            Assert.Equal("line 1: transfer_to: missing required option target_pe; options: target*, target_pe*, window, correction (* required), plus the common options", problem);
+            Assert.Equal("line 1: transfer_to: missing required option target_pe; options: target*, target_pe*, window, correction, pe_tolerance (* required), plus the common options", problem);
         }
 
         [Fact]
