@@ -61,19 +61,19 @@ namespace ClaudiaKermin.Core.Tools
         {
             get
             {
-                return "The burn to a goal: node components, magnitude, burn time, what it reaches and the predict_burn result. "
+                return "The burn to a goal: node components, magnitude, burn time, what it reaches, predict_burn result. "
                     + "at: ap, pe, altitude, eq_an, eq_dn, eq_nearest, eq_highest, rel_an, rel_dn, closest_approach or a UT. "
                     + "Goals (altitudes in m above sea level): "
                     + "circularize: at ap or pe; "
                     + "set_ap, set_pe: value; "
-                    + "next_patch_pe: value above the next body, at default in 60 s; "
-                    + "set_sma: value m from the centre, at default pe; "
-                    + "set_ecc: value, at default pe; "
-                    + "ellipticize: pe and ap, at default in 60 s; "
-                    + "set_inc: value degrees, at default eq_highest; "
+                    + "next_patch_pe: value above the next body, default in 60 s; "
+                    + "set_sma: value m from the centre, default pe; "
+                    + "set_ecc: value, default pe; "
+                    + "ellipticize: pe and ap, default in 60 s; "
+                    + "set_inc: value degrees, at eq_nearest unless eq_highest saves 1 m/s; "
                     + "match_plane: target's plane, at the cheaper rel node; "
                     + "shift_lan: value degrees, default where the planes cross; "
-                    + "resonant: value orbits while target (default this orbit) makes of, at default pe; "
+                    + "resonant: value orbits while target (default this orbit) makes of, default pe; "
                     + "stationary: synchronous circle; "
                     + "intercept_at: Lambert arc, arrive_ut or tof; exec_node only; "
                     + "match_velocities: Target Vessel's velocity, default closest_approach; "
@@ -247,7 +247,7 @@ namespace ClaudiaKermin.Core.Tools
                 var first = path[0].Orbit;
                 if (goal == "set_inc")
                     // An equatorial orbit has no equatorial nodes; every point is one, and the apoapsis is the slowest.
-                    at = Vec3.Cross(new Vec3(0, 0, 1), first.W).Length < 1e-6 ? Word(first.Closed ? "ap" : DefaultAt) : Word("eq_highest");
+                    at = Vec3.Cross(new Vec3(0, 0, 1), first.W).Length < 1e-6 ? Word(first.Closed ? "ap" : DefaultAt) : SetIncNode(setup, path, value);
                 else
                     at = Word(goal == "ellipticize" ? DefaultAt : "pe");
             }
@@ -300,6 +300,44 @@ namespace ClaudiaKermin.Core.Tools
                     break;
             }
             return Answer(into, setup, goal, ut.Value, r, v, dv);
+        }
+
+        /// <summary>
+        /// How much cheaper, m/s, the farther equatorial node's set_inc burn must be for the default to wait for it. Under
+        /// exec_node's max_residual (0.5 m/s) burns end 0.1-0.5 m/s off their node, so a smaller saving can't be told from
+        /// execution error; real savings (eccentric orbit, plane change of degrees) are tens of m/s.
+        /// </summary>
+        internal const double FartherNodeSaving = 1;
+
+        /// <summary>
+        /// set_inc's default <c>at</c> with both equatorial nodes ahead on the patch: the nearer node unless the farther one's burn is
+        /// <see cref="FartherNodeSaving"/> cheaper. With fewer than two nodes ahead (or a burn that can't be solved at one),
+        /// <c>eq_highest</c>, which takes the one there is or reports why not.
+        /// </summary>
+        private static JsonNode SetIncNode(PredictBurn.Setup setup, List<Patch> path, double? value)
+        {
+            var nodes = new List<KeyValuePair<double, double>>();
+            foreach (var word in new[] { "eq_an", "eq_dn" })
+            {
+                string problem;
+                Patch patch;
+                Vec3 r, v;
+                var ut = Place(setup, path, Word(word), out patch, out r, out v, out problem);
+                var dv = ut.HasValue ? OrbitChange.ChangeInclination(r, v, value.Value, out problem) : (Vec3?)null;
+                if (!dv.HasValue) return Word("eq_highest");
+                nodes.Add(new KeyValuePair<double, double>(ut.Value, dv.Value.Length));
+            }
+            return Word(PickNode(nodes[0].Key, nodes[0].Value, nodes[1].Key, nodes[1].Value).ToString("R", CultureInfo.InvariantCulture));
+        }
+
+        /// <summary>The UT of the nearer node, unless the farther node's burn is <see cref="FartherNodeSaving"/> or more cheaper.</summary>
+        internal static double PickNode(double utA, double burnA, double utB, double burnB)
+        {
+            var nearUt = Math.Min(utA, utB);
+            var nearBurn = utA <= utB ? burnA : burnB;
+            var farUt = Math.Max(utA, utB);
+            var farBurn = utA <= utB ? burnB : burnA;
+            return nearBurn - farBurn >= FartherNodeSaving ? farUt : nearUt;
         }
 
         /// <summary>
