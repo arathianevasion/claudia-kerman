@@ -40,11 +40,49 @@ namespace ClaudiaKermin.Adapter
                 if (!before.Contains(node)) AddedBy[node] = label;
             foreach (var node in NodeCleanup.ToRemove(atStart, now, outcome))
             {
-                Debug.Log(ModInfo.LogTag + " removing the maneuver node '" + label + "' left at UT " + node.UT.ToString("F1") +
-                          ", " + node.DeltaV.magnitude.ToString("F1") + " m/s (" + outcome.Kind + ")");
-                try { vessel.patchedConicSolver.RemoveManeuverNode(node); }
+                Pending.Add(new Leftover { Vessel = vessel, Node = node, Label = label, Kind = outcome.Kind });
+            }
+            RemovePending();
+        }
+
+        private sealed class Leftover
+        {
+            public Vessel Vessel;
+            public ManeuverNode Node;
+            public string Label;
+            public RunOutcomeKind Kind;
+        }
+
+        /// <summary>Nodes due for removal, waiting for their craft to unpack (#695).</summary>
+        private static readonly List<Leftover> Pending = new List<Leftover>();
+
+        /// <summary>
+        /// Removes the pending leftover nodes whose craft is loaded and unpacked, the way KSP's UI does (<c>RemoveSelf</c>, which also
+        /// detaches the gizmo and map icon). A packed craft's nodes wait; an unloaded craft's are dropped. Call each frame, main thread.
+        /// </summary>
+        public static void RemovePending()
+        {
+            if (Pending.Count == 0) return;
+            foreach (var item in Pending.ToList())
+            {
+                var vessel = item.Vessel;
+                var loaded = vessel != null && vessel.loaded && vessel.patchedConicSolver != null;
+                var decision = NodeCleanup.WhenToRemove(loaded, loaded && vessel.packed);
+                if (decision == NodeCleanup.Removal.Wait) continue;
+                Pending.Remove(item);
+                if (decision == NodeCleanup.Removal.Drop)
+                {
+                    Debug.Log(ModInfo.LogTag + " the craft was unloaded before the maneuver node '" + item.Label + "' could be removed");
+                    AddedBy.Remove(item.Node);
+                    continue;
+                }
+                // The player may have removed it meanwhile.
+                if (!vessel.patchedConicSolver.maneuverNodes.Contains(item.Node)) { AddedBy.Remove(item.Node); continue; }
+                Debug.Log(ModInfo.LogTag + " removing the maneuver node '" + item.Label + "' left at UT " + item.Node.UT.ToString("F1") +
+                          ", " + item.Node.DeltaV.magnitude.ToString("F1") + " m/s (" + item.Kind + ")");
+                try { item.Node.RemoveSelf(); }
                 catch (System.Exception e) { Debug.LogWarning(ModInfo.LogTag + " couldn't remove the maneuver node: " + e.Message); }
-                AddedBy.Remove(node);
+                AddedBy.Remove(item.Node);
             }
         }
 
