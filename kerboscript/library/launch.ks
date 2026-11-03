@@ -533,12 +533,17 @@ function launch {
       local allowed is launch_allowed_aoa(opt:max_aoa, q_pa, launch_aoa_q_ref()).
       local flow is ship:srfprograde:vector.
       local along is heading(hdg, 0):vector.
-      local off_plane is arcsin(min(1, abs(vdot(flow:normalized, vcrs(ship:up:vector, along))))).
-      if coasting or off_plane >= allowed {
+      local normal is vcrs(ship:up:vector, along).
+      local off_plane is arcsin(min(1, abs(vdot(flow:normalized, normal)))).
+      if coasting {
         set want to launch_limit_aoa(want, flow, allowed).
+      } else if off_plane >= allowed {
+        // Further out than allowed: turn from the airflow toward the plane (where the branch below starts).
+        set want to launch_limit_aoa(vxcl(normal, flow), flow, allowed).
       } else {
-        local p is launch_plane_pitch(pitch, arctan2(vdot(flow, ship:up:vector), vdot(flow, along)), off_plane, allowed).
-        set want to ship:up:vector * sin(p) + along * cos(p).
+        // Built by hand, not heading(): the pitch passes 90 when the airflow tips back.
+        local in_plane is launch_plane_pitch(pitch, arctan2(vdot(flow, ship:up:vector), vdot(flow, along)), off_plane, allowed).
+        set want to ship:up:vector * sin(in_plane) + along * cos(in_plane).
       }
     }
     set aim to want.

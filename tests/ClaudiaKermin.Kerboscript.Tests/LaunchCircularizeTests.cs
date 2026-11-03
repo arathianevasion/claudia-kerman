@@ -320,13 +320,15 @@ namespace ClaudiaKermin.Kerboscript.Tests
         }
 
         // The guidance pass uses it while burning, from the airflow's pitch in the plane and its angle out of it, and
-        // keeps launch_limit_aoa for the coast and for an airflow further out of the plane than the angle allowed.
+        // keeps launch_limit_aoa for the coast; an airflow further out of the plane than the angle allowed is turned
+        // toward the plane. kOS.Safe has no vectors, so the call sites are pinned by source (as KeepRollTests does).
         [Fact]
         public void The_climb_limits_the_aim_in_the_heading_plane_and_the_coast_toward_the_airflow()
         {
             var src = System.Text.RegularExpressions.Regex.Replace(CoreLibrary.Files.Single(f => f.Name == "launch").Source, "\\s+", " ");
             Assert.Contains("launch_plane_pitch(pitch, arctan2(vdot(flow, ship:up:vector), vdot(flow, along)), off_plane, allowed)", src);
-            Assert.Contains("if coasting or off_plane >= allowed { set want to launch_limit_aoa(want, flow, allowed). }", src);
+            Assert.Contains("if coasting { set want to launch_limit_aoa(want, flow, allowed). }", src);
+            Assert.Contains("set want to launch_limit_aoa(vxcl(normal, flow), flow, allowed).", src);
         }
 
         // ---- launch: losing control ----
