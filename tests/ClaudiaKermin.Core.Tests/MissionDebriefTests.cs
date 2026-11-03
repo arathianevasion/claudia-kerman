@@ -1081,6 +1081,32 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("stage_performance {\"situation\":\"vacuum\"}: ", text);
         }
 
+        /// <summary>#680 (m20261102-155440-e17d): a revised plan from orbit with the parts unchanged sends neither the parts nor the ascent figures.</summary>
+        [Fact]
+        public void TheRevisedMissionPlanRequestFromOrbitLeavesOutThePartsAndTheAscentFigures()
+        {
+            var rig = new Rig(this, DebriefJson("Off-Nominal", ",\"follow_up\":\"revised_plan\",\"follow_up_text\":\"Add a second burn.\""), PlanReply());
+            var start = rig.RunToRunning();
+            var orbit = Craft(s => { s.Situation = "ORBITING"; s.Ut += 600; });
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            // In orbit by the time the revised plan is asked for (a run's own situation change would raise an Alert).
+            rig.Mission.Send(orbit);
+            rig.DrainUntil(v => rig.Transport.Requests.Count == 4 && v.Stage == MissionStage.AwaitingPlanApproval);
+
+            var text = LastUserText(rig.Transport.Requests[3]);
+            Assert.StartsWith("Revise the Mission Plan after the Off-Nominal Debrief", text);
+            Assert.DoesNotContain("\"parts\":[", text);
+            Assert.True(text.Contains("\nparts: unchanged since the Game Snapshot at UT ") || text.Contains(SnapshotDiet.AsAbove), text);
+            Assert.DoesNotContain("The Craft Check's plan_ascent", text);
+            Assert.DoesNotContain("stage_performance {\"body\":\"Kerbin\",\"situation\":\"surface\"}", text);
+            Assert.Contains("stage_performance {\"situation\":\"vacuum\"}: ", text);
+            // Under #256's rule the request carried the full snapshot and the surface row.
+            var before = "Revise the Mission Plan after the Off-Nominal Debrief.\n" + MissionPrompts.Facts(orbit.Ut, orbit)
+                + MissionPrompts.StageTable(Craft(s => { }), Goal, "");
+            Assert.True(text.Length < before.Length, text.Length + " against " + before.Length);
+        }
+
         [Fact]
         public void AnOffNominalDebriefWithNoRevisedPlanAsksForACorrectiveSequence()
         {

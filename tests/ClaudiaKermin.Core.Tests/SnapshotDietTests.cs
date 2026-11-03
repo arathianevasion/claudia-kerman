@@ -11,7 +11,7 @@ using Xunit;
 namespace ClaudiaKermin.Core.Tests
 {
     /// <summary>
-    /// The Game Snapshot a turn sends Claudia (#256): the full snapshot, parts and all, on the first turn, every Mission Plan turn and
+    /// The Game Snapshot a turn sends Claudia (#256): the full snapshot, parts and all, on the first turn and
     /// any turn whose part count or craft.stage differs from the last full one sent; otherwise everything but craft.parts with a line
     /// saying the parts are unchanged; and one snapshot per leg, so the turn right after a Debrief points back at it.
     /// </summary>
@@ -46,16 +46,52 @@ namespace ClaudiaKermin.Core.Tests
         public void TheFirstTurnSendsTheFullSnapshot()
         {
             var turn = Turn("Continue the Mission.", MunShotAt(1000));
-            Assert.Equal(turn, SnapshotDiet.Shape(turn, new string[0], false, false));
+            Assert.Equal(turn, SnapshotDiet.Shape(turn, new string[0], false));
             Assert.Contains("\"parts\":[", turn);
         }
 
+        /// <summary>#680 reverses #256's rule for plan turns: under ADR 0012 a revised plan turn is appended to the cached conversation like any other.</summary>
         [Fact]
-        public void AMissionPlanTurnSendsTheFullSnapshotEvenWithTheCraftUnchanged()
+        public void AMissionPlanTurnWithTheCraftUnchangedLeavesThePartsOutLikeAnyOther()
         {
             var earlier = Turn("Continue the Mission.", MunShotAt(1000));
             var turn = Turn("Revise the Mission Plan.", MunShotAt(2000));
-            Assert.Equal(turn, SnapshotDiet.Shape(turn, new[] { earlier }, true, false));
+            var shaped = SnapshotDiet.Shape(turn, new[] { earlier }, false);
+            Assert.DoesNotContain("\"parts\"", shaped);
+            Assert.EndsWith("\nparts: unchanged since the Game Snapshot at UT 1000 (44 parts)", shaped);
+        }
+
+        [Fact]
+        public void AMissionPlanTurnAfterTheCraftStagedOrDroppedPartsSendsTheFullSnapshot()
+        {
+            var full = MunShotAt(1000);
+            var earlier = Turn("Continue the Mission.", full);
+            var staged = Turn("Revise the Mission Plan.", MunShotAt(2000, s => s.Craft.Stage = 2));
+            Assert.Equal(staged, SnapshotDiet.Shape(staged, new[] { earlier }, false));
+            var dropped = full.Craft.Parts.Skip(40).Select(p => p.Id).ToList();
+            var smaller = Turn("Revise the Mission Plan.", MunShotAt(2000, s => s.Craft.Parts.RemoveAll(p => dropped.Contains(p.Id))));
+            Assert.EndsWith("\nparts dropped since the Game Snapshot at UT 1000: [" + string.Join(",", dropped) + "]", SnapshotDiet.Shape(smaller, new[] { earlier }, false));
+            var docked = Turn("Revise the Mission Plan.", MunShotAt(2000, s => s.Craft.Parts.Add(new SnapshotPart { Id = 9999 })));
+            Assert.Equal(docked, SnapshotDiet.Shape(docked, new[] { earlier }, false));
+        }
+
+        [Fact]
+        public void APlanTurnOnTheSameLegWithANewTargetVesselSendsTheDynamicSnapshotWithIt()
+        {
+            var debrief = Turn("The player approved the Sequence Plan.", MunShotAt(1000));
+            var plan = Turn("The player changed the Target Vessel.", MunShotAt(1010, s => s.Target = new SnapshotTarget { Name = "Tug", Body = "Kerbin" }));
+            var shaped = SnapshotDiet.Shape(plan, new[] { debrief }, true);
+            Assert.DoesNotContain(SnapshotDiet.AsAbove, shaped);
+            Assert.Contains(SnapshotDiet.DynamicHeader, shaped);
+            Assert.Contains("\"target\":{\"name\":\"Tug\"", shaped);
+        }
+
+        [Fact]
+        public void AMissionPlanTurnAfterACompactionDroppedTheFullSnapshotSendsItInFull()
+        {
+            // What a compaction leaves behind it: the summary block, which holds no Game Snapshot line.
+            var turn = Turn("Revise the Mission Plan.", MunShotAt(2000));
+            Assert.Equal(turn, SnapshotDiet.Shape(turn, new[] { "Summary of the Mission so far." }, false));
         }
 
         [Fact]
@@ -63,7 +99,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             var earlier = Turn("Continue the Mission.", MunShotAt(1000.5));
             var turn = Turn("Continue the Mission.", MunShotAt(2000));
-            var shaped = SnapshotDiet.Shape(turn, new[] { earlier }, false, false);
+            var shaped = SnapshotDiet.Shape(turn, new[] { earlier }, false);
 
             Assert.DoesNotContain("\"parts\"", shaped);
             Assert.StartsWith("Continue the Mission.\nUT: 2000 s.\n", shaped);
@@ -80,7 +116,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             var full = Turn("Continue the Mission.", MunShotAt(1000));
             var turn = Turn("Continue the Mission.", MunShotAt(2000));
-            var shaped = SnapshotDiet.Shape(turn, new[] { full }, false, false);
+            var shaped = SnapshotDiet.Shape(turn, new[] { full }, false);
             Assert.True(EstimatedTokens(shaped) < 1500, "the dynamic snapshot is " + EstimatedTokens(shaped) + " tokens (estimated)");
             // 725 when written; what it saves: the full one is 4,190 by the same estimate.
             Assert.True(EstimatedTokens(turn) > 4000, "the full snapshot is " + EstimatedTokens(turn) + " tokens (estimated)");
@@ -93,7 +129,7 @@ namespace ClaudiaKermin.Core.Tests
             var dropped = full.Craft.Parts.Skip(40).Select(p => p.Id).ToList();
             var earlier = Turn("Continue the Mission.", full);
             var turn = Turn("The player approved the Sequence Plan.", MunShotAt(2000, s => s.Craft.Parts.RemoveAll(p => dropped.Contains(p.Id))));
-            var shaped = SnapshotDiet.Shape(turn, new[] { earlier }, false, false);
+            var shaped = SnapshotDiet.Shape(turn, new[] { earlier }, false);
 
             Assert.StartsWith(turn, shaped);
             Assert.EndsWith("\nparts dropped since the Game Snapshot at UT 1000: [" + string.Join(",", dropped) + "]", shaped);
@@ -110,7 +146,7 @@ namespace ClaudiaKermin.Core.Tests
                 s.Craft.Parts.RemoveAll(p => !kept.Contains(p.Id));
                 s.Craft.VesselId = "another-vessel";
             }));
-            Assert.Equal(child, SnapshotDiet.Shape(child, new[] { earlier }, false, false));
+            Assert.Equal(child, SnapshotDiet.Shape(child, new[] { earlier }, false));
         }
 
         [Fact]
@@ -118,7 +154,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             var earlier = Turn("Continue the Mission.", MunShotAt(1000));
             var turn = Turn("Continue the Mission.", MunShotAt(2000, s => s.Craft.Parts[43].Id = 1));
-            Assert.Equal(turn, SnapshotDiet.Shape(turn, new[] { earlier }, false, false));
+            Assert.Equal(turn, SnapshotDiet.Shape(turn, new[] { earlier }, false));
         }
 
         [Fact]
@@ -126,16 +162,16 @@ namespace ClaudiaKermin.Core.Tests
         {
             var earlier = Turn("Continue the Mission.", MunShotAt(1000));
             var turn = Turn("Continue the Mission.", MunShotAt(2000, s => s.Craft.Stage = 2));
-            Assert.Equal(turn, SnapshotDiet.Shape(turn, new[] { earlier }, false, false));
+            Assert.Equal(turn, SnapshotDiet.Shape(turn, new[] { earlier }, false));
         }
 
         [Fact]
         public void TheLastFullSnapshotIsTheOneComparedNotALaterDynamicOne()
         {
             var full = Turn("Continue the Mission.", MunShotAt(1000));
-            var dynamicTurn = SnapshotDiet.Shape(Turn("Continue the Mission.", MunShotAt(2000)), new[] { full }, false, false);
+            var dynamicTurn = SnapshotDiet.Shape(Turn("Continue the Mission.", MunShotAt(2000)), new[] { full }, false);
             var turn = Turn("Continue the Mission.", MunShotAt(3000));
-            Assert.EndsWith("unchanged since the Game Snapshot at UT 1000 (44 parts)", SnapshotDiet.Shape(turn, new[] { full, "Done.", dynamicTurn }, false, false));
+            Assert.EndsWith("unchanged since the Game Snapshot at UT 1000 (44 parts)", SnapshotDiet.Shape(turn, new[] { full, "Done.", dynamicTurn }, false));
         }
 
         [Fact]
@@ -143,7 +179,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             var debrief = Turn("The player approved the Sequence Plan.", MunShotAt(1000));
             var turn = Turn("Continue the Mission.", MunShotAt(1030));
-            Assert.Equal("Continue the Mission.\nUT: 1030 s.\n" + SnapshotDiet.AsAbove, SnapshotDiet.Shape(turn, new[] { debrief }, false, true));
+            Assert.Equal("Continue the Mission.\nUT: 1030 s.\n" + SnapshotDiet.AsAbove, SnapshotDiet.Shape(turn, new[] { debrief }, true));
         }
 
         /// <summary>Minmus (#599, m20261031-225746-22cc): 3,320 m up and just starting to fall, periapsis 59.6 km under the surface, at apoapsis.</summary>
@@ -198,7 +234,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             var debrief = Turn("The player approved the Sequence Plan.", MinmusFallAt(826832.7));
             var plan = Turn("The player asks for a corrective sequence.", MinmusFallAt(826858));
-            var shaped = SnapshotDiet.Shape(plan, new[] { debrief }, false, true);
+            var shaped = SnapshotDiet.Shape(plan, new[] { debrief }, true);
             Assert.DoesNotContain(SnapshotDiet.AsAbove, shaped);
             Assert.Contains(SnapshotDiet.DynamicHeader, shaped);
             Assert.Contains("\"impact_in_s\":", shaped);
@@ -209,7 +245,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             var debrief = Turn("The player approved the Sequence Plan.", MunShotAt(1000));
             var turn = Turn("Continue the Mission.", MunShotAt(1030));
-            var shaped = SnapshotDiet.Shape(turn, new[] { debrief }, false, true);
+            var shaped = SnapshotDiet.Shape(turn, new[] { debrief }, true);
             Assert.EndsWith(SnapshotDiet.AsAbove, shaped);
             Assert.DoesNotContain("impact_in_s", turn);
         }
@@ -218,28 +254,28 @@ namespace ClaudiaKermin.Core.Tests
         public void OneSnapshotPerLegHoldsOnlyWithin60SecondsOfThePreviousSnapshot()
         {
             var debrief = Turn("The player approved the Sequence Plan.", MunShotAt(1000));
-            var later = SnapshotDiet.Shape(Turn("Continue the Mission.", MunShotAt(1061)), new[] { debrief }, false, true);
+            var later = SnapshotDiet.Shape(Turn("Continue the Mission.", MunShotAt(1061)), new[] { debrief }, true);
             Assert.Contains("parts: unchanged since", later);
             // A load that went back in time is not the same leg either.
-            var earlier = SnapshotDiet.Shape(Turn("Continue the Mission.", MunShotAt(990)), new[] { debrief }, false, true);
+            var earlier = SnapshotDiet.Shape(Turn("Continue the Mission.", MunShotAt(990)), new[] { debrief }, true);
             Assert.Contains("parts: unchanged since", earlier);
         }
 
         [Fact]
-        public void APlanTurnOrAChangedCraftIsNeverPointedBack()
+        public void APlanTurnOnTheSameLegPointsBackButAChangedCraftNever()
         {
             var debrief = Turn("The player approved the Sequence Plan.", MunShotAt(1000));
             var plan = Turn("Revise the Mission Plan.", MunShotAt(1010));
-            Assert.Equal(plan, SnapshotDiet.Shape(plan, new[] { debrief }, true, true));
+            Assert.Equal("Revise the Mission Plan.\nUT: 1010 s.\n" + SnapshotDiet.AsAbove, SnapshotDiet.Shape(plan, new[] { debrief }, true));
             var staged = Turn("Continue the Mission.", MunShotAt(1010, s => s.Craft.Stage = 2));
-            Assert.Equal(staged, SnapshotDiet.Shape(staged, new[] { debrief }, false, true));
+            Assert.Equal(staged, SnapshotDiet.Shape(staged, new[] { debrief }, true));
         }
 
         [Fact]
         public void ATurnWithoutAGameSnapshotIsSentAsItIs()
         {
             var turn = "Continue the Mission.\n" + MissionPrompts.Facts(1000, null);
-            Assert.Equal(turn, SnapshotDiet.Shape(turn, new[] { Turn("Continue the Mission.", MunShotAt(900)) }, false, true));
+            Assert.Equal(turn, SnapshotDiet.Shape(turn, new[] { Turn("Continue the Mission.", MunShotAt(900)) }, true));
         }
 
         [Fact]
@@ -247,7 +283,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             var earlier = Turn("Continue the Mission.", MunShotAt(1000));
             var turn = Turn("Continue the Mission.", MunShotAt(2000)) + "\nChild Vessels: none.";
-            var shaped = SnapshotDiet.Shape(turn, new[] { earlier }, false, false);
+            var shaped = SnapshotDiet.Shape(turn, new[] { earlier }, false);
             Assert.EndsWith("(44 parts)\nChild Vessels: none.", shaped);
         }
     }
