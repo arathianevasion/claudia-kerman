@@ -76,6 +76,7 @@ namespace ClaudiaKermin.Core.Tests
 
             // The bridge stopped the program (BreakExecution, make-safe) and reports the abort.
             mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Aborted, null, "Program aborted.", "timed out", true), start.RunId));
+            mission.Send(AfterTheRun());
             DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
             Assert.Contains("kOS run ended: Aborted (timed out).", LastUserText(transport.Requests[2]));
             Assert.Equal("Debrief: Nominal (timed out)", mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Title);
@@ -211,6 +212,7 @@ namespace ClaudiaKermin.Core.Tests
             var start = RunToRunning(mission);
             mission.Send(new UtAdvanced(ApprovedAt + 1800));
             mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Aborted, null, "Program aborted.", "timed out", true), start.RunId));
+            mission.Send(AfterTheRun());
             DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
 
             AssertSameDebriefAfterALoad(mission, "Debrief: Nominal (timed out)");
@@ -280,6 +282,14 @@ namespace ClaudiaKermin.Core.Tests
             mission.Send(new Approve());
             Assert.Equal(MissionStage.Running, mission.View.Stage);
             return mission.TakeCommands().OfType<StartScript>().Single();
+        }
+
+        /// <summary>A Game Snapshot read after the run ended (#671): the Debrief waits for one newer than the run's end.</summary>
+        private static GameSnapshot AfterTheRun()
+        {
+            var snapshot = OnPad();
+            snapshot.Ut = ApprovedAt + 6000;
+            return snapshot;
         }
 
         private static GameSnapshot OnPad()

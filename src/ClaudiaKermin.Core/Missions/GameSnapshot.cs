@@ -143,6 +143,8 @@ namespace ClaudiaKermin.Core.Missions
         public double CelestialLongitude;
         /// <summary>Vertical speed, m/s, negative going down; 0 in the editor.</summary>
         public double VerticalSpeed;
+        /// <summary>Speed over the surface, vertical included, m/s (#671): a landed craft that has stopped is under half a metre per second. 0 in the editor and in snapshots recorded before it.</summary>
+        public double SurfaceSpeed;
         /// <summary>Null when there is no orbit to read (e.g. in the editor).</summary>
         public SnapshotOrbit Orbit;
 
@@ -316,6 +318,8 @@ namespace ClaudiaKermin.Core.Missions
                 .Field("latitude", Latitude)
                 .Field("celestial_longitude", CelestialLongitude)
                 .Field("vertical_speed", VerticalSpeed);
+            // Claudia's turns never carried it (the Debrief's wait reads it, #671): only the capture and the tools' snapshots write it.
+            if (withBodies) json.Field("surface_speed", SurfaceSpeed);
             if (RcsOn.HasValue) json.Field("rcs_on", RcsOn.Value);
             var impact = ImpactInS;
             if (impact.HasValue) json.Field("impact_in_s", impact.Value);
@@ -585,6 +589,7 @@ namespace ClaudiaKermin.Core.Missions
                 Latitude = JsonNode.Double(root["latitude"]) ?? 0,
                 CelestialLongitude = JsonNode.Double(root["celestial_longitude"]) ?? 0,
                 VerticalSpeed = JsonNode.Double(root["vertical_speed"]) ?? 0,
+                SurfaceSpeed = JsonNode.Double(root["surface_speed"]) ?? 0,
                 RcsOn = JsonNode.Bool(root["rcs_on"]),
                 _parsedImpactInS = JsonNode.Double(root["impact_in_s"]),
                 Target = ReadTarget(root["target"]),
