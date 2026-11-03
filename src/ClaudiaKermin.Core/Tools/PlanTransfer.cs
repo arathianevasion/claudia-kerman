@@ -171,11 +171,23 @@ namespace ClaudiaKermin.Core.Tools
             var json = new JsonWriter().BeginObject().Field("model", found.Moon ? MoonWindowModel : WindowModel).Field("target", found.Target).Field("capture", capture);
             json.Field("parking_pe", PlanningJson.Round(found.ParkingPe, 0));
             if (found.ParkingAssumed) json.Field("parking_note", "assumed: the craft is not in a closed orbit clear of the atmosphere");
+            if (!found.Moon && !found.Fits)
+            {
+                // No window fits (#648): the cheapest total against what the craft has, in the result alone (the description is unchanged).
+                json.Field("fits", false).Field("cheapest_total_dv", PlanningJson.Round(found.Optimal.TotalDv, 1)).Field("craft_dv", PlanningJson.Round(found.CraftDv.Value, 1))
+                    .Field("note", "no window in the next synodic period fits: the cheapest costs more than the craft has");
+                return new ToolOutcome
+                {
+                    Json = json.EndObject().ToString(),
+                    Summary = found.Target + ": no window fits, the cheapest " + Num(found.Optimal.TotalDv) + " m/s, the craft has " + Num(found.CraftDv.Value) + " m/s",
+                };
+            }
             if (found.Moon)
             {
                 Choice(json, found, snapshot);
                 return new ToolOutcome { Json = json.EndObject().ToString(), Summary = Summary(found, pick) };
             }
+            if (found.CraftDv.HasValue) json.Field("fits", true).Field("craft_dv", PlanningJson.Round(found.CraftDv.Value, 1));
             Window(json, "soonest", found.Soonest, snapshot.Ut, capture);
             Window(json, "optimal", found.Optimal, snapshot.Ut, capture);
             json.Field("pick", pick == found.Optimal && pick != found.Soonest ? "optimal" : "soonest")

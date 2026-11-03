@@ -7,6 +7,7 @@
 
 using System;
 using System.Globalization;
+using System.Linq;
 using ClaudiaKermin.Core.Missions;
 using ClaudiaKermin.Core.Tools.Numerics;
 
@@ -49,6 +50,13 @@ namespace ClaudiaKermin.Core.Tools
         public bool ParkingAssumed;
         /// <summary>Whether the target is a moon of the craft's planet (#647).</summary>
         public bool Moon;
+        /// <summary>The craft's delta-v from the Game Snapshot's stage table, m/s; null when the stock simulator gives none (#648).</summary>
+        public double? CraftDv;
+        /// <summary>Whether the craft can afford a window (#648): <see cref="Optimal"/> is the cheapest in the horizon, so no window fits when it exceeds <see cref="CraftDv"/>. True when the craft's figure is unknown.</summary>
+        public bool Fits
+        {
+            get { return !CraftDv.HasValue || Optimal.TotalDv <= CraftDv.Value; }
+        }
     }
 
     /// <summary>
@@ -225,7 +233,7 @@ namespace ClaudiaKermin.Core.Tools
             return new WindowSearch
             {
                 Target = problem.Name, Soonest = soonest, Optimal = optimal, From = from, Synodic = synodic,
-                ParkingPe = problem.ParkingPe, ParkingAssumed = problem.ParkingAssumed, Moon = problem.Moon,
+                ParkingPe = problem.ParkingPe, ParkingAssumed = problem.ParkingAssumed, Moon = problem.Moon, CraftDv = problem.CraftDv,
             };
         }
 
@@ -295,6 +303,8 @@ namespace ClaudiaKermin.Core.Tools
             public double CaptureR;
             /// <summary>Whether the capture counts in the total.</summary>
             public bool Capture;
+            /// <summary>The craft's delta-v from the stage table, m/s; null when unknown (#648).</summary>
+            public double? CraftDv;
             /// <summary>Why the last Lambert solve that failed had no path.</summary>
             public string LambertError;
 
@@ -340,6 +350,7 @@ namespace ClaudiaKermin.Core.Tools
                     p.Plane = new Vec3(0, 0, 1);
                 }
                 p.ParkingPe = p.ParkingR - home.Radius;
+                if (snapshot.DeltaVSimulator && snapshot.Stages.Count > 0 && !snapshot.DeltaVUnreliable) p.CraftDv = snapshot.Stages.Sum(st => st.DeltaVVac);
                 if (Vec3.Dot(p.Plane, p.Target.W) < 0) p.Plane = p.Plane * -1;
                 return p;
             }
