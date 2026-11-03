@@ -479,22 +479,66 @@ namespace ClaudiaKermin.Core.Missions
             + "the Script Check: reply with kind \"sequence_plan\" and sequence_plan filled in, including its complete Mission "
             + "Script. The mod runs it only after the player's Approval.";
 
-        // ---- Predicted crossings (#674) ----
+        // ---- The plan's own figures (#674, #696) ----
 
         /// <summary>
-        /// The one automatic correction's text: the Script Check's problems (none when the script passed) and the Telemetry
-        /// Checks the plan's own figures are certain to cross. Reads right with either alone.
+        /// The one automatic correction's text: the Script Check's problems (none when the script passed), then each of the
+        /// plan's own figures found wrong (<see cref="PlanFindings"/>). Reads right with any one alone.
         /// </summary>
-        public static string PlanCheckFailed(IList<string> scriptProblems, IList<PredictedCrossing> crossings, double startDeltaV, double expectedDeltaV)
+        public static string PlanCheckFailed(PlanFindings findings)
         {
-            var failed = scriptProblems != null && scriptProblems.Count > 0;
-            var text = failed ? ScriptCheckFailed(scriptProblems) : "";
-            if (crossings == null || crossings.Count == 0) return text;
-            var lines = crossings.Select(c => "- " + c.Check.Describe() + ": the plan leaves about " + c.Check.Format(c.PredictedLeft)).ToList();
-            text += (failed ? "\n" : "The mod sent back your Sequence Plan, so the player hasn't seen it; its Mission Script passed the Script Check. ")
-                + "Its own figures are certain to cross these Telemetry Checks (delta-v left starts at " + Metres(startDeltaV)
-                + ", expected_delta_v is " + Metres(expectedDeltaV) + "):\n" + string.Join("\n", lines.ToArray());
-            return text;
+            var failed = findings.ScriptFailed;
+            var text = failed ? ScriptCheckFailed(findings.ScriptProblems) : "";
+            if (!findings.FiguresWrong) return text;
+            var parts = new List<string>();
+            if (findings.Crossings.Count > 0)
+            {
+                var lines = findings.Crossings.Select(c => "- " + c.Check.Describe() + ": the plan leaves about " + c.Check.Format(c.PredictedLeft)).ToList();
+                parts.Add("Its own figures are certain to cross these Telemetry Checks (delta-v left starts at " + Metres(findings.StartDeltaV)
+                    + ", expected_delta_v is " + Metres(findings.ExpectedDeltaV) + "):\n" + string.Join("\n", lines.ToArray()));
+            }
+            if (findings.ShortDuration != null) parts.Add(ShortDuration(findings.ShortDuration, findings.ExpectedDurationSeconds));
+            return text + (failed ? "\n" : "The mod sent back your Sequence Plan, so the player hasn't seen it; its Mission Script passed the Script Check. ")
+                + string.Join("\n", parts.ToArray());
+        }
+
+        /// <summary>The correction's notice: a rewrite for a failed script, with each wrong figure to set.</summary>
+        public static string PlanFixNotice(PlanFindings findings)
+        {
+            var fixes = new List<string>();
+            if (findings.Crossings.Count > 0) fixes.Add("each delta-v left threshold set below what the plan itself leaves");
+            if (findings.ShortDuration != null) fixes.Add("expected_duration_s at least the figure named below");
+            var with = string.Join(" and ", fixes.ToArray());
+            if (findings.ScriptFailed) return fixes.Count == 0 ? RewriteNotice : RewriteNotice + " Also send it with " + with + ", or change the plan.";
+            return "Send the Sequence Plan again with " + with + " (or change the plan): reply with kind \"sequence_plan\" and sequence_plan filled in, "
+                + "with the complete Mission Script. The mod runs it only after the player's Approval.";
+        }
+
+        /// <summary>#696: the plan's expected_duration_s leaves out the wait to its first burn, which the runaway hard stop counts.</summary>
+        private static string ShortDuration(BurnWait wait, double planned)
+        {
+            return "Its expected_duration_s is " + Seconds(planned) + ", but " + wait.Block + " waits about " + Seconds(wait.WaitSeconds) + " (game time, from now) for "
+                + wait.Point + ", then burns about " + Seconds(wait.BurnSeconds) + ". The runaway hard stop counts waits in expected_duration_s: "
+                + "set it to at least " + Seconds(wait.MinimumDurationSeconds) + ".";
+        }
+
+        /// <summary>#696: the Debrief's event for a run the hard stop cut short mid-warp (<see cref="BurnPoints.WarpCutShort"/>).</summary>
+        public static string TimedOutMidWarp(BurnWait cut)
+        {
+            return "timed out " + Seconds(cut.LeftSeconds) + " of game time short of " + cut.Block + "'s warp target, " + Seconds(cut.WaitSeconds)
+                + " after the run started; an expected_duration_s of at least " + Seconds(cut.MinimumDurationSeconds) + " would have covered the wait and the burn";
+        }
+
+        /// <summary>What a duration short of the first burn is logged as in plans.jsonl when the plan is offered anyway.</summary>
+        public static string ShortDurationWarning(BurnWait wait, double planned)
+        {
+            return "duration short of first burn: expected_duration_s " + Seconds(planned) + ", " + wait.Block + " waits " + Seconds(wait.WaitSeconds)
+                + " for " + wait.Point + "; needs at least " + Seconds(wait.MinimumDurationSeconds);
+        }
+
+        private static string Seconds(double value)
+        {
+            return value.ToString("#,0", CultureInfo.InvariantCulture) + " s";
         }
 
         /// <summary>What a crossing the plan predicted for itself is logged as in plans.jsonl when the plan is offered anyway.</summary>
@@ -503,12 +547,6 @@ namespace ClaudiaKermin.Core.Missions
             return "predicted crossing: " + crossing.Check.Describe() + " (starts " + Metres(startDeltaV) + ", expected_delta_v " + Metres(expectedDeltaV)
                 + ", leaves about " + crossing.Check.Format(crossing.PredictedLeft) + ")";
         }
-
-        public const string CrossingNotice =
-            "Send the Sequence Plan again with each delta-v left threshold set below what the plan itself leaves (or change the plan): reply with kind "
-            + "\"sequence_plan\" and sequence_plan filled in, with the complete Mission Script. The mod runs it only after the player's Approval.";
-
-        public const string CrossingAlso = " Also set each delta-v left threshold named below what the plan itself leaves, or change the plan.";
 
         private static string Metres(double value)
         {

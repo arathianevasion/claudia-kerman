@@ -3,6 +3,7 @@
 
 using System;
 using System.Globalization;
+using System.Linq;
 using ClaudiaKermin.Core.Kos;
 
 namespace ClaudiaKermin.Core.Missions
@@ -15,6 +16,8 @@ namespace ClaudiaKermin.Core.Missions
     /// </summary>
     public sealed partial class MissionControl
     {
+        private const string TimedOutEvent = "timed out: the mod stopped the script";
+
         private void StartRunawayTimer(Mission mission, SequencePlan plan)
         {
             mission.StopReason = null;
@@ -35,8 +38,22 @@ namespace ClaudiaKermin.Core.Missions
             Note(LogKind.Notice, text);
             NeedsPlayer(text);
             Event(mission, "timed_out", text);
-            mission.RunEvents.Add(_ut, RunEventKind.Stopped, "timed out: the mod stopped the script");
+            mission.RunEvents.Add(_ut, RunEventKind.Stopped, TimedOutEvent);
             _commands.Add(new AbortScript(mission.RunningProcessor.Value, RunawayStop.Reason, mission.RunId.Value));
+        }
+
+        /// <summary>
+        /// #696: a run the hard stop ended mid-warp gets an event saying how far it was from the warp's target (the warp trace's
+        /// last request) and the duration that would have covered it, for the Debrief and Claudia's retry. Call before the deadline is cleared.
+        /// </summary>
+        private void TimedOutMidWarp(Mission mission, RunOutcome outcome)
+        {
+            if (mission.StopReason != RunawayStop.Reason || !mission.RunDeadlineUt.HasValue || outcome == null) return;
+            // When the stop fired: in warp that can be well past the deadline. The deadline if its event was crowded out.
+            var fired = mission.RunEvents.Events.LastOrDefault(e => e.Kind == RunEventKind.Stopped && e.Text == TimedOutEvent);
+            var stoppedUt = fired != null ? fired.Ut : mission.RunDeadlineUt.Value;
+            var cut = BurnPoints.WarpCutShort(outcome.Trace, mission.RunStartUt, stoppedUt);
+            if (cut != null) mission.RunEvents.Add(stoppedUt, RunEventKind.Stopped, MissionPrompts.TimedOutMidWarp(cut));
         }
 
         private void RunBlocked(KosRunBlocked blocked)

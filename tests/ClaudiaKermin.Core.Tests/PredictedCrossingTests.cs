@@ -137,11 +137,12 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         /// <summary>A Sequence Plan expecting 1,200 m/s with one "delta_v_left below <paramref name="threshold"/>" check.</summary>
-        private static ScriptedResponse Sequence(double threshold, string script = "print \"hop\".")
+        private static ScriptedResponse Sequence(double threshold, string script = "print \"hop\".", double duration = 60)
         {
             return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Plan.\",\"reply_intent\":\"none\",\"unsure_because\":\"\","
                 + "\"mission_plan\":null,\"debrief\":null,\"alert\":null,"
-                + "\"sequence_plan\":{\"name\":\"Hop\",\"intent\":\"Hop.\",\"why\":\"Because.\",\"target\":\"\",\"tolerances\":\"\",\"expected_delta_v\":1200,\"expected_duration_s\":60,"
+                + "\"sequence_plan\":{\"name\":\"Hop\",\"intent\":\"Hop.\",\"why\":\"Because.\",\"target\":\"\",\"tolerances\":\"\",\"expected_delta_v\":1200,\"expected_duration_s\":"
+                + duration.ToString(System.Globalization.CultureInfo.InvariantCulture) + ","
                 + "\"abort_conditions\":[],\"risks\":[],\"telemetry_checks\":[{\"quantity\":\"delta_v_left\",\"direction\":\"below\",\"threshold\":"
                 + threshold.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"resource\":\"\",\"why\":\"Keep a reserve.\"}],"
                 + "\"script\":" + JsonSerializer.Serialize(script) + ",\"custom_script_reason\":\"No block hops.\","
@@ -225,6 +226,83 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(3, transport.Requests.Count);
             Assert.Contains("delta-v left under 2,500 m/s", transport.Requests[2].Body);
             Assert.Single(mission.TakeCommands().OfType<StartScript>());
+        }
+
+        // ---- #696: a duration short of the first burn ----
+
+        /// <summary>Mission m20261103-015018-6567's script: tune_pe at the apoapsis.</summary>
+        private const string RaisePe = "if hasnode { remove nextnode. } local res is tune_pe(lexicon(\"value\", 19780000, \"max_dv\", 5)). addons:claudia:report(res).";
+
+        /// <summary>The craft in orbit, 304,000 s from its apoapsis.</summary>
+        private static GameSnapshot FarFromApoapsis()
+        {
+            var snapshot = OnPad();
+            var far = BurnPointsTests.Orbiting(304000);
+            snapshot.Situation = far.Situation;
+            snapshot.Orbit = far.Orbit;
+            snapshot.Ut = far.Ut;
+            return snapshot;
+        }
+
+        [Fact]
+        public void APlanWhoseDurationLeavesOutTheWaitToItsBurnGoesBackOnceWithTheFigure()
+        {
+            var transport = new StreamingFakeTransport(PlanReply(), Sequence(1500, RaisePe, 300), Sequence(1500, RaisePe, 305000));
+            var mission = Control(transport);
+            ToSequencePlan(mission);
+            mission.Send(FarFromApoapsis());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(3, transport.Requests.Count);
+            var body = transport.Requests[2].Body;
+            Assert.Contains("expected_duration_s is 300 s, but tune_pe waits about 304,000 s", body);
+            Assert.Contains("set it to at least 304,", body);
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("leaves out the wait to the first burn"));
+            var line = Assert.Single(PlanLines(mission));
+            Assert.True(line.GetProperty("script_rewrite").GetBoolean());
+            Assert.DoesNotContain(line.GetProperty("lints").EnumerateArray(), l => l.GetString().Contains("duration short"));
+        }
+
+        [Fact]
+        public void AStillShortCorrectedPlanIsOfferedWithTheWarningLogged()
+        {
+            var transport = new StreamingFakeTransport(PlanReply(), Sequence(1500, RaisePe, 300), Sequence(1500, RaisePe, 330));
+            var mission = Control(transport);
+            ToSequencePlan(mission);
+            mission.Send(FarFromApoapsis());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(3, transport.Requests.Count);
+            var line = Assert.Single(PlanLines(mission));
+            Assert.Contains(line.GetProperty("lints").EnumerateArray(), l => l.GetString().StartsWith("duration short of first burn: expected_duration_s 330 s"));
+        }
+
+        [Fact]
+        public void APlanWithEnoughDurationIsOfferedWithNoRewrite()
+        {
+            var transport = new StreamingFakeTransport(PlanReply(), Sequence(1500, RaisePe, 305000));
+            var mission = Control(transport);
+            ToSequencePlan(mission);
+            mission.Send(FarFromApoapsis());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(2, transport.Requests.Count);
+            Assert.False(Assert.Single(PlanLines(mission)).GetProperty("script_rewrite").GetBoolean());
+        }
+
+        [Fact]
+        public void AShortDurationAndACrossingGoBackInOneCorrection()
+        {
+            var transport = new StreamingFakeTransport(PlanReply(), Sequence(2500, RaisePe, 300), Sequence(1500, RaisePe, 305000));
+            var mission = Control(transport);
+            ToSequencePlan(mission);
+            mission.Send(FarFromApoapsis());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(3, transport.Requests.Count);
+            var body = transport.Requests[2].Body;
+            Assert.Contains("delta-v left under 2,500 m/s", body);
+            Assert.Contains("tune_pe waits about 304,000 s", body);
         }
 
         [Fact]

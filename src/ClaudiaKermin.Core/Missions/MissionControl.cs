@@ -883,6 +883,7 @@ namespace ClaudiaKermin.Core.Missions
                 || (mission.Stage == MissionStage.Paused && mission.StageBeforePause == MissionStage.Running);
             if (!running || mission.RunId != ended.RunId) return;
             mission.RunId = null;
+            TimedOutMidWarp(mission, ended.Outcome);
             mission.RunDeadlineUt = null;
             mission.RcsUse.Close(_ut);
             EndLive(mission);
@@ -1473,15 +1474,15 @@ namespace ClaudiaKermin.Core.Missions
             if (offered != null)
             {
                 var check = CheckScript(mission, offered);
-                // Beside it, the plan's own figures (#674): a delta-v left check it is certain to cross goes back in the same one correction.
-                var start = PlanStartDeltaV(mission, offered);
-                var predicted = PredictedCrossings.Find(offered.TelemetryChecks, offered.ExpectedDeltaV, start);
-                if (!check.Passed || (predicted.Count > 0 && CrossingCorrectionWanted(mission, turn, offered, predicted, start.Value)))
+                // Beside it, the plan's own figures (#674, #696): one wrong by the snapshot goes back in the same one correction.
+                var findings = PlanFigures(mission, offered);
+                if (!check.Passed) findings.ScriptProblems = check.Problems;
+                if (findings.ScriptFailed || (findings.FiguresWrong && FiguresCorrectionWanted(mission, turn, findings)))
                 {
-                    ScriptCheckFailed(mission, turn, offered, check.Passed ? new List<string>() : check.Problems, predicted, start ?? 0);
+                    ScriptCheckFailed(mission, turn, offered, findings);
                     return;
                 }
-                checkWarnings = check.Warnings.Concat(predicted.Select(p => MissionPrompts.PredictedCrossingWarning(p, start.Value, offered.ExpectedDeltaV))).ToList();
+                checkWarnings = check.Warnings.Concat(findings.Warnings()).ToList();
             }
 
             // Only a vessel that left the craft may be a Child Vessel: the player never sees a plan that names another.
@@ -1611,42 +1612,63 @@ namespace ClaudiaKermin.Core.Missions
         /// rewrite, and the player sees neither the plan nor its line. If a rewrite fails too, the plan is shown
         /// as "Couldn't produce a safe script" with Retry, Retry with a note or Re-plan, and nothing can be approved.
         /// </summary>
-        private void ScriptCheckFailed(Mission mission, Turn turn, SequencePlan plan, IList<string> problems, IList<PredictedCrossing> crossings, double startDeltaV)
+        private void ScriptCheckFailed(Mission mission, Turn turn, SequencePlan plan, PlanFindings findings)
         {
             if (!turn.ScriptRewrite)
             {
-                var scriptFailed = problems.Count > 0;
-                Note(LogKind.Notice, scriptFailed
-                    ? "The script didn't pass the Script Check" + (crossings.Count > 0 ? " and a Telemetry Check is certain to cross" : "") + "; Claudia is rewriting it."
-                    : "A Telemetry Check is certain to cross by the plan's own figures; Claudia is revising it.");
-                Begin(new Turn
-                {
-                    Purpose = Purpose.SequencePlan,
-                    ScriptRewrite = true,
-                    Stats = turn.Stats,
-                    UserText = MissionPrompts.PlanCheckFailed(problems, crossings, startDeltaV, plan.ExpectedDeltaV),
-                    Notice = !scriptFailed ? MissionPrompts.CrossingNotice
-                        : crossings.Count > 0 ? MissionPrompts.RewriteNotice + MissionPrompts.CrossingAlso : MissionPrompts.RewriteNotice,
-                });
+                var wrong = FiguresWrongNote(findings);
+                Note(LogKind.Notice, findings.ScriptFailed
+                    ? "The script didn't pass the Script Check" + (findings.FiguresWrong ? " and " + wrong : "") + "; Claudia is rewriting it."
+                    : char.ToUpperInvariant(wrong[0]) + wrong.Substring(1) + "; Claudia is revising it.");
+                Begin(FiguresCorrection(turn, findings));
                 return;
             }
-            ShowUnsafeScript(mission, plan, problems);
+            ShowUnsafeScript(mission, plan, findings.ScriptProblems);
         }
 
-        /// <summary>The delta-v left the plan starts from, read as the run's baseline will be; null when it can't be (no snapshot of the craft, simulator off, an unreliable stage), for a Manual stretch or another vessel.</summary>
-        private double? PlanStartDeltaV(Mission mission, SequencePlan plan)
+        /// <summary>The one automatic correction's turn (also the probe the Spending Cap room check prices).</summary>
+        private static Turn FiguresCorrection(Turn turn, PlanFindings findings)
         {
-            if (plan.Manual || !FliesCraft(mission, plan.Vessel)) return null;
-            return LiveReadings.DeltaVLeftOf(MissionVesselSnapshot(mission));
+            return new Turn
+            {
+                Purpose = Purpose.SequencePlan,
+                ScriptRewrite = true,
+                Stats = turn.Stats,
+                UserText = MissionPrompts.PlanCheckFailed(findings),
+                Notice = MissionPrompts.PlanFixNotice(findings),
+            };
         }
 
-        /// <summary>Whether the plan with predicted crossings goes back: not after a correction already, and only with Spending Cap room for it.</summary>
-        private bool CrossingCorrectionWanted(Mission mission, Turn turn, SequencePlan plan, IList<PredictedCrossing> predicted, double startDeltaV)
+        /// <summary>The log's words for the figures found wrong, e.g. "a Telemetry Check is certain to cross by the plan's own figures".</summary>
+        private static string FiguresWrongNote(PlanFindings findings)
+        {
+            var wrong = new List<string>();
+            if (findings.Crossings.Count > 0) wrong.Add("a Telemetry Check is certain to cross by the plan's own figures");
+            if (findings.ShortDuration != null) wrong.Add("the planned duration leaves out the wait to the first burn");
+            return string.Join(" and ", wrong.ToArray());
+        }
+
+        /// <summary>
+        /// The plan's own figures checked against the Game Snapshot of the craft it flies (#674, #696); nothing is found for a
+        /// Manual stretch, another vessel, or when the snapshot can't give the figure.
+        /// </summary>
+        private PlanFindings PlanFigures(Mission mission, SequencePlan plan)
+        {
+            var findings = new PlanFindings { ExpectedDeltaV = plan.ExpectedDeltaV, ExpectedDurationSeconds = plan.ExpectedDurationSeconds };
+            if (plan.Manual || !FliesCraft(mission, plan.Vessel)) return findings;
+            var snapshot = MissionVesselSnapshot(mission);
+            var start = LiveReadings.DeltaVLeftOf(snapshot);
+            findings.StartDeltaV = start ?? 0;
+            findings.Crossings = PredictedCrossings.Find(plan.TelemetryChecks, plan.ExpectedDeltaV, start);
+            findings.ShortDuration = BurnPoints.ShortOf(plan, snapshot, _ut);
+            return findings;
+        }
+
+        /// <summary>Whether a plan whose figures are wrong goes back: not after a correction already, and only with Spending Cap room for it.</summary>
+        private bool FiguresCorrectionWanted(Mission mission, Turn turn, PlanFindings findings)
         {
             if (turn.ScriptRewrite) return false;
-            var probe = new Turn { Purpose = Purpose.SequencePlan, ScriptRewrite = true, Stats = turn.Stats,
-                UserText = MissionPrompts.PlanCheckFailed(null, predicted, startDeltaV, plan.ExpectedDeltaV), Notice = MissionPrompts.CrossingNotice };
-            return HasCapRoom(mission, probe);
+            return HasCapRoom(mission, FiguresCorrection(turn, findings.FiguresOnly()));
         }
 
         /// <summary>"Couldn't produce a safe script": the plan is dropped, nothing can be approved, and the player chooses Retry, Retry with a note or Re-plan.</summary>
