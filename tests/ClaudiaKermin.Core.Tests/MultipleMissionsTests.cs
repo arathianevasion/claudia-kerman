@@ -309,6 +309,9 @@ namespace ClaudiaKermin.Core.Tests
             mission.Send(new Approve());
             var run = Assert.Single(mission.TakeCommands().OfType<StartScript>());
             mission.Send(new KosRunEnded(Finished(), run.RunId));
+            var afterTheRun = OnPad();
+            afterTheRun.Ut = Due + 2;
+            mission.Send(afterTheRun);
             DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
             var before = Read(mission.View.Log);
             var detail = Detail(mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief);

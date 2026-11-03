@@ -332,6 +332,7 @@ namespace ClaudiaKermin.Core.Tests
             Assert.False(mission.View.Busy);
 
             mission.Send(new KosRunEnded(Finished(), start.RunId));
+            mission.Send(Snapshot(s => s.Ut = 1203.48 + 3));
             Assert.False(mission.View.RunProgress.Running);
         }
 
