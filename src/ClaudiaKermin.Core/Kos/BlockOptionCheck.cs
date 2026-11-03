@@ -120,6 +120,18 @@ namespace ClaudiaKermin.Core.Kos
             return values.Where(v => string.Equals(v.Key, option, StringComparison.OrdinalIgnoreCase)).Select(v => v.Value).FirstOrDefault();
         }
 
+        /// <summary>
+        /// An option's value text read as an inline <c>lexicon(...)</c> of literal keys (#699: land's biome target), key to value
+        /// source text; null when it is anything else.
+        /// </summary>
+        public static IDictionary<string, string> Lexicon(string text)
+        {
+            var code = CoreLibrary.MissionScript(text);
+            var masked = CoreLibrary.MissionScript(text, true);
+            var open = LexiconOpen.Match(masked, 0);
+            return open.Success ? LiteralOptions(Arguments(masked, code, open.Index + open.Length)) : null;
+        }
+
         /// <summary>Key to value text, or null when a key isn't a literal string or the lexicon doesn't pair up.</summary>
         private static IDictionary<string, string> LiteralOptions(IList<string> args)
         {

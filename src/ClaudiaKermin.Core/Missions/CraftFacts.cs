@@ -77,6 +77,12 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The height above sea level, m, of its highest common terrain, for the Chute Allocation's touchdown; 0 when not read.</summary>
         public double TerrainHeight;
 
+        /// <summary>
+        /// Its biomes' names as the game has them (e.g. "Twin Craters"), for the mod's own use only (#699: <see cref="MissionPrompts.GoalBiomes"/>):
+        /// never written into the snapshot's JSON. Empty for a body with no biome map, or when not read.
+        /// </summary>
+        public List<string> BiomeNames = new List<string>();
+
         /// <summary>Surface gravity in m/s².</summary>
         public double SurfaceGravity
         {

@@ -420,8 +420,26 @@ namespace ClaudiaKermin.Adapter
                     MeanAnomalyAtEpoch = orbit != null && body.referenceBody != body ? orbit.meanAnomalyAtEpoch : 0,
                     Epoch = orbit != null && body.referenceBody != body ? orbit.epoch : 0,
                     Air = ReadAir(body),
+                    BiomeNames = BiomeNamesOf(body),
                 });
             }
+        }
+
+        /// <summary>Each body's biome names, read once: they don't change in a game (#699).</summary>
+        private static readonly Dictionary<string, List<string>> BiomeNamesRead = new Dictionary<string, List<string>>();
+
+        /// <summary>The body's biome names (a copy of those read once), as <see cref="PlanningBody.BiomeNames"/> gives them; empty with no biome map.</summary>
+        private static List<string> BiomeNamesOf(CelestialBody body)
+        {
+            List<string> names;
+            if (!BiomeNamesRead.TryGetValue(body.bodyName, out names))
+            {
+                names = body.BiomeMap != null && body.BiomeMap.Attributes != null
+                    ? body.BiomeMap.Attributes.Select(a => a.name).ToList()
+                    : new List<string>();
+                BiomeNamesRead[body.bodyName] = names;
+            }
+            return new List<string>(names);
         }
 
         /// <summary>Rows of the body's air for plan_ascent: every fiftieth of its depth, as <see cref="ReentryAir"/> reads it at the equator.</summary>
