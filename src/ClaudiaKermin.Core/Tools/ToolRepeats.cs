@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using ClaudiaKermin.Core.Claude;
+using ClaudiaKermin.Core.Missions;
 
 namespace ClaudiaKermin.Core.Tools
 {
@@ -14,6 +15,8 @@ namespace ClaudiaKermin.Core.Tools
     /// Identical repeats within one turn's tool loop (#508): the same Planning Tool with the same input (key order and spacing
     /// aside) as an answered call whose result is still in the turn's messages, or as an earlier call of the same reply. Each
     /// is answered with where its result already is, without running; a discarded loop's calls are gone, so they may run again.
+    /// A propose_mission_plan call refused as one of several in a reply, or matching one that a different accepted plan has
+    /// replaced since, is no repeat (#697).
     /// </summary>
     internal static class ToolRepeats
     {
@@ -22,7 +25,11 @@ namespace ClaudiaKermin.Core.Tools
         {
             var messages = earlier.ToList();
             // Only a call that answered counts: one refused, timed out or over a limit has no result above to point to.
-            var answered = new HashSet<string>(messages.SelectMany(m => m.Content.OfType<ToolResultBlock>()).Where(r => !r.IsError).Select(r => r.ToolUseId), StringComparer.Ordinal);
+            var results = messages.SelectMany(m => m.Content.OfType<ToolResultBlock>()).Where(r => !r.IsError).ToList();
+            var answered = new HashSet<string>(results.Where(r => r.Content != ProposedPlans.OnePerReplyJson).Select(r => r.ToolUseId), StringComparer.Ordinal);
+            var accepted = new HashSet<string>(results.Where(r => r.Content == ProposedPlans.AcceptedJson || r.Content == ProposedPlans.GoalKeptJson)
+                .Select(r => r.ToolUseId), StringComparer.Ordinal);
+            var plan = ProposedPlans.ToolName + " ";
             // Each earlier call's step, numbered from 1 by the turn's tool_use replies.
             var steps = new Dictionary<string, int>(StringComparer.Ordinal);
             var step = 0;
@@ -34,6 +41,9 @@ namespace ClaudiaKermin.Core.Tools
                 foreach (var use in uses.Where(u => answered.Contains(u.Id ?? "")))
                 {
                     var key = Key(use);
+                    // An accepted plan is the one in force: the plan calls before it may be checked again.
+                    if (use.Name == ProposedPlans.ToolName && accepted.Contains(use.Id ?? ""))
+                        foreach (var replaced in steps.Keys.Where(k => k != key && k.StartsWith(plan, StringComparison.Ordinal)).ToList()) steps.Remove(replaced);
                     if (!steps.ContainsKey(key)) steps[key] = step;
                 }
             }

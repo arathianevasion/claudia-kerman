@@ -244,6 +244,7 @@ namespace ClaudiaKermin.Core.Missions
                 UserText = "Revise the Mission Plan.\n" + MissionPrompts.Facts(_ut, _snapshot) + PlanFigures(mission, mission.Goal),
                 Notice = MissionPrompts.RevisedPlanNotice,
                 Waits = true,
+                GoalStands = true,
             });
         }
 

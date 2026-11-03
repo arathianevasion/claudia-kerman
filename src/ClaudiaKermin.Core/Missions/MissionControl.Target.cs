@@ -158,6 +158,7 @@ namespace ClaudiaKermin.Core.Missions
                 UserText = MissionPrompts.TargetChanged(mission.Target != null ? mission.Target.Name : null, findings.Select(f => f.Describe()).ToList()) + "\n"
                     + MissionPrompts.Facts(_ut, _snapshot) + PlanFigures(mission, mission.Goal),
                 Notice = MissionPrompts.TargetNotice,
+                GoalStands = true,
             };
         }
     }
