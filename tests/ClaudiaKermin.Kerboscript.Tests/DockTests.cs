@@ -23,7 +23,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
     {
         static DockTests()
         {
-            DockRigFunctions.Register();
+            KosHarness.Register(typeof(DockRigFunctions));
         }
 
         private static string[] Run(string missionScript)
@@ -341,17 +341,6 @@ namespace ClaudiaKermin.Kerboscript.Tests
 
     internal static class DockRigFunctions
     {
-        private static bool _registered;
-
-        public static void Register()
-        {
-            if (_registered) return;
-            foreach (var type in typeof(DockRigFunctions).GetNestedTypes())
-                foreach (FunctionAttribute attribute in type.GetCustomAttributes(typeof(FunctionAttribute), false))
-                    FunctionManager.RegisterMethod(attribute, type);
-            _registered = true;
-        }
-
         [Function("test_dk_state")]
         public class FunctionState : SafeFunctionBase
         {

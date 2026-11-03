@@ -32,6 +32,24 @@ namespace ClaudiaKermin.Kerboscript.Tests
         private const string Done = "__claudia_test_done__";
         private static readonly object Gate = new object();
         private static bool _initialised;
+        private static readonly HashSet<Type> Registered = new HashSet<Type>();
+
+        /// <summary>
+        /// Adds the [Function]s nested in <paramref name="rigFunctions"/> to kOS's function table, once. That table is
+        /// process-wide and unsynchronised, and test classes run in parallel, so this is the only way into it (#681): under
+        /// <see cref="Gate"/>, after <see cref="Init"/>'s own walk, never while a test builds a FunctionManager from it.
+        /// </summary>
+        public static void Register(Type rigFunctions)
+        {
+            lock (Gate)
+            {
+                Init();
+                if (!Registered.Add(rigFunctions)) return;
+                foreach (var type in rigFunctions.GetNestedTypes())
+                    foreach (FunctionAttribute attribute in type.GetCustomAttributes(typeof(FunctionAttribute), false))
+                        FunctionManager.RegisterMethod(attribute, type);
+            }
+        }
 
         /// <summary>Compiles <paramref name="source"/>; returns null or the compiler's message.</summary>
         public static string CompileError(string source)

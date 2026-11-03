@@ -22,15 +22,15 @@ for ((i = 0; i < LOAD; i++)); do yes > /dev/null & pids+=($!); done
 echo "load: $LOAD of $CORES cores; runs: up to $RUNS; filter: $FILTER"
 
 for ((run = 1; run <= RUNS; run++)); do
-  out=$(dotnet test tests/ClaudiaKermin.Kerboscript.Tests --no-build $K --filter "$FILTER" --logger "console;verbosity=normal" 2>&1)
+  out=$(dotnet test tests/ClaudiaKermin.Kerboscript.Tests --no-build $K --filter "$FILTER" 2>&1)
   rc=$?
   summary=$(echo "$out" | grep -E 'Passed!|Failed!' | tail -1)
   if [ $rc -eq 0 ]; then
     echo "run $run PASS $summary"
   else
     echo "run $run FAIL $summary"
-    # Each failing test's name, then its message and the top of its stack.
-    echo "$out" | grep -A 12 -E '^\s*Failed ' | head -200
+    # Each failing test's name, then its message and the top of its stack (as gates.sh prints them).
+    echo "$out" | awk '/^ *Failed [^!]/ { p = 1; s = 0 } p && s && ++n > 3 { p = 0 } p { print } /^ *Stack Trace:/ { s = 1; n = 0 }' | head -300
     exit 1
   fi
 done
