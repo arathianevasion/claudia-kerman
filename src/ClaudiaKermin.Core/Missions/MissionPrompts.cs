@@ -350,14 +350,18 @@ namespace ClaudiaKermin.Core.Missions
                 + "set new_goal to the new goal in their words; otherwise new_goal is empty.";
         }
 
-        public static string ReplyNotice(bool missionPlan)
+        /// <summary>The one line a typed-reply or question request adds while the pending Mission Plan is Claudia's decline (#698).</summary>
+        public const string DeclinedPlanLine =
+            " The pending Mission Plan is your decline (no sequences): approving it does nothing; if the player wants to go on, plan it.";
+
+        public static string ReplyNotice(bool missionPlan, bool declined = false)
         {
             var plan = missionPlan ? "Mission Plan" : "Sequence Plan";
             return "The player typed a reply to your pending " + plan + ". Classify it in reply_intent: \"approve\" only if "
                 + "it clearly approves the " + plan + " as it stands, \"revise\" if they want something changed, \"question\" "
                 + "if they ask something, and \"unclear\" if you can't tell. For \"revise\", " + Revision(missionPlan)
                 + ". Otherwise reply with kind \"answer\" and say a short line (answering any question)."
-                + ManualHint(missionPlan) + GoalHint(missionPlan);
+                + ManualHint(missionPlan) + GoalHint(missionPlan) + (declined ? DeclinedPlanLine : "");
         }
 
         public static string ChangeNotice(bool missionPlan)

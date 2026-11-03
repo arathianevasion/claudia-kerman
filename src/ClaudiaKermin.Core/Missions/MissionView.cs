@@ -406,6 +406,8 @@ namespace ClaudiaKermin.Core.Missions
         public string PlanStale = "";
         /// <summary><see cref="PlanStale"/> is the Target Vessel's change (#661), not the craft's.</summary>
         public bool PlanStaleTarget;
+        /// <summary>The pending Mission Plan is Claudia's decline (no sequences): nothing to approve, Auto Mode leaves it (#698).</summary>
+        public bool PlanDeclined;
 
         /// <summary>The Mission Settings in force.</summary>
         public MissionSettingsValues Settings = new MissionSettingsValues();
