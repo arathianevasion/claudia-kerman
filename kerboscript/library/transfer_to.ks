@@ -92,7 +92,7 @@ function transfer_to_fine_ask {
 }
 
 // m/s the finer Course Correction may leave of its node: tighter than exec_node's 0.5, so a burn of a few m/s hits a
-// kilometre-scale periapsis (#672).
+// kilometre-scale periapsis (#672). Pure.
 function transfer_to_fine_residual {
   return 0.1.
 }
@@ -111,35 +111,6 @@ function transfer_to_miss {
     set miss to miss + ": " + why.
   }
   return miss.
-}
-
-// The finer Course Correction (#672), when the periapsis predicted at dest is outside pe_tolerance after the first (or the
-// plane change): partway to the encounter at soi_ut (claudia_correction_ut's lead and max_duration rules), within
-// pe_tolerance, flown with transfer_to_fine_residual. Returns lexicon("abort", "" or a Pause or abort, "why", "" or why it
-// couldn't be found or flown, "dv", m/s burned).
-function transfer_to_fine_correction {
-  parameter ctx, dest, soi_ut, turn_time.
-  local opt is ctx:opt.
-  local done is lexicon("abort", "", "why", "", "dv", 0).
-  if transfer_to_pe_within(claudia_pe_error(ship:orbit, dest, opt:target_pe), opt:pe_tolerance) {
-    return done.
-  }
-  local ticked is claudia_tick(ctx, 0).
-  if ticked <> "" {
-    claudia_make_safe().
-    set done:abort to ticked.
-    return done.
-  }
-  local when is claudia_correction_ut((time:seconds + soi_ut) / 2, time:seconds, turn_time + 60, ctx:start_ut, opt:max_duration).
-  if when:reason <> "" {
-    set done:why to when:reason.
-    return done.
-  }
-  local fixed is claudia_fly_correction(ctx, addons:claudia:correctionburn(transfer_to_fine_ask(dest:name, opt:target_pe,
-    opt:pe_tolerance, when:ut)), transfer_to_fine_residual()).
-  set done:dv to fixed:dv.
-  set done:why to fixed:reason.
-  return done.
 }
 
 // What the correction after a missed ejection asks ADDONS:CLAUDIA:EJECTIONBURN: the soonest burn the craft can turn to
@@ -332,20 +303,38 @@ function transfer_to {
     }
   }
   if opt:correction {
-    // After the Course Correction or the plane change, a periapsis outside pe_tolerance gets one finer correction (#672).
-    local fine is transfer_to_fine_correction(ctx, dest, enc:soi_ut, turn:turn_time).
-    set extra:correction_dv to round(extra:correction_dv + fine:dv, 2).
-    if fine:abort <> "" {
-      return claudia_finish(ctx, false, fine:abort, extra).
+    // After the Course Correction or the plane change, a periapsis outside pe_tolerance gets one finer correction (#672),
+    // partway to the encounter, within pe_tolerance and a tighter max_residual: a block-internal call (ADR 0007), so in the block.
+    local why is "".
+    if not transfer_to_pe_within(claudia_pe_error(ship:orbit, dest, opt:target_pe), opt:pe_tolerance) {
+      local ticked is claudia_tick(ctx, 0).
+      if ticked <> "" {
+        claudia_make_safe().
+        return claudia_finish(ctx, false, ticked, extra).
+      }
+      local when is claudia_correction_ut((time:seconds + enc:soi_ut) / 2, time:seconds, turn:turn_time + 60, ctx:start_ut, opt:max_duration).
+      set why to when:reason.
+      if why = "" {
+        local fix is addons:claudia:correctionburn(transfer_to_fine_ask(dest:name, opt:target_pe, opt:pe_tolerance, when:ut)).
+        local fine is claudia_fly_correction(ctx, fix, transfer_to_fine_residual()).
+        set extra:correction_dv to round(extra:correction_dv + fine:dv, 2).
+        set why to fine:reason.
+        if why = "" and fine:dv = 0 {
+          set why to "its burn, under 0.1 m/s, isn't flown".
+        }
+      }
     }
     set enc to claudia_patch(ship:orbit, dest).
     if enc:istype("String") {
-      return claudia_finish(ctx, false, "no encounter with " + dest:name + " after the correction", extra).
+      if why <> "" {
+        set why to ": " + why.
+      }
+      return claudia_finish(ctx, false, "no encounter with " + dest:name + " after the correction" + why, extra).
     }
     // Filled on the miss too, so the Debrief sees it.
     set extra:encounter_ut to round(enc:soi_ut).
     set extra:target_pe_actual to round(enc:orbit:periapsis).
-    local miss is transfer_to_miss(dest:name, enc:orbit:periapsis, opt:target_pe, opt:pe_tolerance, fine:why).
+    local miss is transfer_to_miss(dest:name, enc:orbit:periapsis, opt:target_pe, opt:pe_tolerance, why).
     if miss <> "" {
       return claudia_finish(ctx, false, miss, extra).
     }
