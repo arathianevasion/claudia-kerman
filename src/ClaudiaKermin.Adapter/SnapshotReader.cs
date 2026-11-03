@@ -31,6 +31,7 @@ namespace ClaudiaKermin.Adapter
                 Latitude = vessel.latitude,
                 CelestialLongitude = vessel.mainBody != null ? ((vessel.longitude + vessel.mainBody.rotationAngle) % 360 + 360) % 360 : 0,
                 VerticalSpeed = vessel.verticalSpeed,
+                SurfaceSpeed = vessel.srfSpeed,
             };
             snapshot.Craft.Name = vessel.vesselName ?? "";
             snapshot.Craft.VesselId = vessel.id.ToString("N");

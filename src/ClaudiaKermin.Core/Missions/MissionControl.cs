@@ -85,7 +85,7 @@ namespace ClaudiaKermin.Core.Missions
             else if (input is SaveLoaded) Loaded(((SaveLoaded)input).SaveDirectory);
             else if (input is MissionsRestored) Restored((MissionsRestored)input);
             else if (input is SceneChanged) SceneChanging(((SceneChanged)input).Scene);
-            else if (input is UtAdvanced) _ut = ((UtAdvanced)input).Ut;
+            else if (input is UtAdvanced) { _ut = ((UtAdvanced)input).Ut; ContinueRunEnd(); }
             else if (input is StartMission) Start((StartMission)input);
             else if (input is RunCraftCheck) RunCraftCheck((RunCraftCheck)input);
             else if (input is AcknowledgeWarning) _craftCheck.Acknowledge(((AcknowledgeWarning)input).Code);
@@ -559,6 +559,7 @@ namespace ClaudiaKermin.Core.Missions
             LinkSeen(previous, snapshot);
             var mission = _mission;
             if (mission == null) return;
+            ContinueRunEnd(mission);
             // A plan restored from a save was never offered against a snapshot: the first one after the load is its baseline.
             if (mission.AwaitingApproval && mission.PlanBaseline == null && !mission.InFlight && _scene == GameScene.Flight) mission.PlanBaseline = snapshot;
             // An approved plan restored from a save has no Chute Allocation yet: the first snapshot of the craft after the load gives it one.
@@ -880,6 +881,12 @@ namespace ClaudiaKermin.Core.Missions
             NoteRunOutcome(mission, outcome);
             Notice("The script ended: " + outcome.Summary + ".");
             if (DebriefOnReturn(mission, outcome)) return;
+            AwaitPostRunSnapshot(mission, outcome, ended.Ut);
+        }
+
+        /// <summary>The Debrief of the run that ended, from the Game Snapshot read after it (MissionControl.RunSettle.cs).</summary>
+        private void BeginRunDebrief(Mission mission, RunOutcome outcome)
+        {
             if (DebriefedRefusal(mission, outcome)) return;
             var turn = new Turn
             {
