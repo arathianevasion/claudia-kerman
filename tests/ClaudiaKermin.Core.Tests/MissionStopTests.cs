@@ -90,7 +90,8 @@ namespace ClaudiaKermin.Core.Tests
             var mission = InFlight(transport, new PlayerConfig());
             var start = RunToRunning(mission);
 
-            mission.Send(new UtAdvanced(ApprovedAt + 900));
+            // In warp the stop fires on the first UT past the deadline (900 s): here 1,000 s in.
+            mission.Send(new UtAdvanced(ApprovedAt + 1000));
             Assert.Single(mission.TakeCommands().OfType<AbortScript>());
             var trace = new WarpTrace(0);
             trace.BlockStarted("tune_pe", 0.1);
@@ -101,7 +102,7 @@ namespace ClaudiaKermin.Core.Tests
             DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
 
             var text = LastUserText(transport.Requests[2]);
-            Assert.Contains("timed out 303,100 s of game time short of exec_node's warp target, 304,000 s after the run started", text);
+            Assert.Contains("timed out 303,000 s of game time short of exec_node's warp target, 304,000 s after the run started", text);
             Assert.Contains("an expected_duration_s of at least 304,180 s would have covered", text);
         }
 

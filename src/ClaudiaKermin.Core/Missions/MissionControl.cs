@@ -1607,9 +1607,10 @@ namespace ClaudiaKermin.Core.Missions
         {
             if (!turn.ScriptRewrite)
             {
+                var wrong = FiguresWrongNote(findings);
                 Note(LogKind.Notice, findings.ScriptFailed
-                    ? "The script didn't pass the Script Check" + (findings.FiguresWrong ? " and " + FiguresWrongNote(findings) : "") + "; Claudia is rewriting it."
-                    : char.ToUpperInvariant(FiguresWrongNote(findings)[0]) + FiguresWrongNote(findings).Substring(1) + "; Claudia is revising it.");
+                    ? "The script didn't pass the Script Check" + (findings.FiguresWrong ? " and " + wrong : "") + "; Claudia is rewriting it."
+                    : char.ToUpperInvariant(wrong[0]) + wrong.Substring(1) + "; Claudia is revising it.");
                 Begin(FiguresCorrection(turn, findings));
                 return;
             }

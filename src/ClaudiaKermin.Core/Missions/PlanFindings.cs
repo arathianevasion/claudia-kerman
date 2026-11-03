@@ -14,15 +14,19 @@ namespace ClaudiaKermin.Core.Missions
     /// </summary>
     public sealed class PlanFindings
     {
+        /// <summary>The Script Check's problems; empty when the script passed.</summary>
         public IList<string> ScriptProblems = new List<string>();
         /// <summary>Delta-v left checks the plan's own expected_delta_v is certain to cross (#674), from <see cref="StartDeltaV"/>.</summary>
         public IList<PredictedCrossing> Crossings = new List<PredictedCrossing>();
+        /// <summary>The delta-v left the plan starts from (0 when unreadable) and its expected_delta_v, for the crossings' text.</summary>
         public double StartDeltaV;
         public double ExpectedDeltaV;
         /// <summary>The first burn expected_duration_s doesn't cover (#696); null when it does or none is known.</summary>
         public BurnWait ShortDuration;
+        /// <summary>The plan's expected_duration_s, for the short duration's text.</summary>
         public double ExpectedDurationSeconds;
 
+        /// <summary>The Script Check refused the script.</summary>
         public bool ScriptFailed
         {
             get { return ScriptProblems.Count > 0; }

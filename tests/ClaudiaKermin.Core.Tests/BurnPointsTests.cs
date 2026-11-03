@@ -51,6 +51,8 @@ namespace ClaudiaKermin.Core.Tests
         {
             Assert.Null(BurnPoints.First("tune_pe(lexicon(\"value\", 50000, \"patch\", \"next\")).", Orbiting(304000), Now, 5));
             Assert.Null(BurnPoints.First("tune_pe(lexicon(\"value\", 1000500)).", Orbiting(304000), Now, 5));
+            // A periapsis below the surface reached before the (next) apoapsis: tune_pe burns early, at no fixed point.
+            Assert.Null(BurnPoints.First("tune_pe(lexicon(\"value\", 50000)).", Orbiting(60, periapsis: -1000), Now, 5));
         }
 
         [Fact]

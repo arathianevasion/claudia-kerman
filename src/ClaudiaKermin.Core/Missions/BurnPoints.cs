@@ -143,8 +143,9 @@ namespace ClaudiaKermin.Core.Missions
             // A periapsis in the air or the ground reached first makes it burn sooner: no fixed point to check.
             var body = snapshot.Bodies.FirstOrDefault(b => b.Name == (orbit.Body.Length > 0 ? orbit.Body : snapshot.Body));
             var toAp = TimeTo(orbit, now, Math.PI);
+            if (toAp < TunePeLeadSeconds) toAp += orbit.Period;
             if ((orbit.Periapsis < 0 || (body != null && orbit.Periapsis < body.AtmosphereHeight)) && TimeTo(orbit, now, 0) < toAp) return null;
-            return At(call, "the apoapsis", toAp < TunePeLeadSeconds ? toAp + orbit.Period : toAp);
+            return At(call, "the apoapsis", toAp);
         }
 
         private static BurnWait Apsis(BlockCall call, GameSnapshot snapshot, double now, string at)
