@@ -9,7 +9,7 @@ namespace ClaudiaKermin.Core.Missions
     /// <summary>
     /// What the checks before Approval found in an offered Sequence Plan: the Script Check's problems (ADR 0003), and the
     /// plan's own figures that are wrong by the Game Snapshot (#674's predicted crossings, #696's duration short of its first
-    /// burn). Any of them sends the plan back in the one automatic correction; a check of the plan's figures adds a field here,
+    /// burn, #699's landing in another biome than the goal names). Any of them sends the plan back in the one automatic correction; a check of the plan's figures adds a field here,
     /// its line in <see cref="MissionPrompts.PlanCheckFailed"/> and <see cref="MissionPrompts.PlanFixNotice"/>, and its warning.
     /// </summary>
     public sealed class PlanFindings
@@ -25,6 +25,8 @@ namespace ClaudiaKermin.Core.Missions
         public BurnWait ShortDuration;
         /// <summary>The plan's expected_duration_s, for the short duration's text.</summary>
         public double ExpectedDurationSeconds;
+        /// <summary>A landing aimed at another biome than the Mission Goal names (#699); null when none is.</summary>
+        public GoalBiomeMiss BiomeMiss;
 
         /// <summary>The Script Check refused the script.</summary>
         public bool ScriptFailed
@@ -32,10 +34,10 @@ namespace ClaudiaKermin.Core.Missions
             get { return ScriptProblems.Count > 0; }
         }
 
-        /// <summary>Some figure of the plan's own is wrong by the snapshot.</summary>
+        /// <summary>Some figure of the plan's own is wrong by the snapshot, or its landing misses the goal's biome.</summary>
         public bool FiguresWrong
         {
-            get { return Crossings.Count > 0 || ShortDuration != null; }
+            get { return Crossings.Count > 0 || ShortDuration != null || BiomeMiss != null; }
         }
 
         /// <summary>The figures found wrong, without the Script Check's problems: what a correction for them alone would carry.</summary>
@@ -51,6 +53,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             var warnings = Crossings.Select(c => MissionPrompts.PredictedCrossingWarning(c, StartDeltaV, ExpectedDeltaV)).ToList();
             if (ShortDuration != null) warnings.Add(MissionPrompts.ShortDurationWarning(ShortDuration, ExpectedDurationSeconds));
+            if (BiomeMiss != null) warnings.Add("landing biome: " + MissionPrompts.GoalBiomeMissed(BiomeMiss));
             return warnings;
         }
     }
