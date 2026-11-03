@@ -271,6 +271,9 @@ namespace ClaudiaKermin.Core.Missions
         {
             // At the step limit the next request is the last: tool_choice none, the tools list and system prompt unchanged (#509). The cap check below prices it like any step.
             turn.ToolLimitSent = turn.ToolSteps >= ToolStep.MaxSteps || turn.RepeatStop;
+            // The final request at the step limit says so, after the last results, as ProposePlanNow is added (#668).
+            if (turn.ToolSteps >= ToolStep.MaxSteps && turn.Messages.Count > 0)
+                turn.Messages[turn.Messages.Count - 1].Content.Add(new TextBlock { Text = TakesMissionPlan(turn.Purpose) ? MissionPrompts.StepLimitPlanLine : MissionPrompts.StepLimitLine });
             var worst = RequestCharge.WorstCase(_config.Prices, mission.Model, BuildRequest(mission, turn));
             if (mission.Committed + worst <= mission.SpendingCap)
             {
