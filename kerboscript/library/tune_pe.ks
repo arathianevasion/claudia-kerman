@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 //
 // Building Block tune_pe: sets the periapsis of the current orbit, or of the next patch (the orbit
-// after a sphere-of-influence change), by planning one maneuver node at a point it chooses and flying it
+// after a sphere-of-influence change), by planning one maneuver node at a point it chooses (and one trim, #673) and flying it
 // with exec_node. Built on claudia_lib.ks; block-only helpers are prefixed tune_pe_. The "//|" lines
 // are Claudia's docs for it; the first is its summary.
 // Patch "current" keeps its kerboscript maths rather than ADDONS:CLAUDIA:ORBITBURN (#444): closed form on the live orbit.
@@ -12,8 +12,8 @@
 @lazyglobal off.
 
 //| tune_pe(options): sets the periapsis, this orbit's or the next patch's.
-//| One burn it places itself. Use it to fine-tune the periapsis at a moon before arrival or at Kerbin on the way
-//| home; the burn is planned as a maneuver node and flown by exec_node.
+//| One burn it places itself, and one trim if off. Use it to fine-tune the periapsis at a moon before arrival or at Kerbin on
+//| the way home; flown by exec_node.
 //| Options:
 //|   value [required]: the periapsis altitude wanted, m above the surface.
 //|   patch ["current"]: "current" burns at the apoapsis of the orbit the craft is on (the cheapest point
@@ -23,7 +23,7 @@
 //|     cheapest point before the periapsis, so the craft is not lost to it; "next" burns near the start or halfway to the sphere-of-influence change (the cheaper) and aims the periapsis of the orbit
 //|     after it (at the Mun before arrival, at Kerbin on the way home), earlier if the burn would not end 60 s before the change.
 //|   tolerance [1000]: m the periapsis may end from value; more fails the block.
-//|   max_dv [50]: m/s the burn may cost; more fails the block before any burn.
+//|   max_dv [50]: m/s the burns may cost; more fails the block before that burn.
 //|   max_duration ["auto"]: as for exec_node (the wait to the burn, twice the burn, plus 300 s).
 //|   plus min_ec_pct, abort_on_part_loss, stage_limit and drop_empty as for every block.
 //| Extra results: pe_actual (m, the periapsis of the chosen patch when the block ended), burn_ut (UT of
@@ -339,27 +339,78 @@ function tune_pe_place_best {
   return best.
 }
 
-function tune_pe {
-  parameter options is lexicon().
-  local extra is lexicon("pe_actual", -1, "burn_ut", -1).
-  local ctx is claudia_begin("tune_pe", options, tune_pe_defaults(), "auto").
-  if ctx:error <> "" {
-    return claudia_finish(ctx, false, ctx:error, extra).
-  }
-  local opt is ctx:opt.
-  local unreadable is tune_pe_unreadable(opt).
-  if unreadable <> "" {
-    return claudia_finish(ctx, false, unreadable, extra).
-  }
-  if hasnode {
-    return claudia_finish(ctx, false, "a maneuver node is already planned: remove it first", extra).
-  }
-  local o is ship:orbit.
-  set extra:pe_actual to round(tune_pe_actual(opt:patch)).
-  if extra:pe_actual >= 0 and abs(extra:pe_actual - opt:value) <= opt:tolerance {
-    return claudia_finish(ctx, true, "", extra).
-  }
+// Whether a periapsis of pe m (-1, no patch) is within opt's tolerance of its value. Pure.
+function tune_pe_within {
+  parameter pe, opt.
+  return pe >= 0 and abs(pe - opt:value) <= opt:tolerance.
+}
 
+// After the first burn (#673): the periapsis read() is judged, and outside tolerance one trim is solved by solve() (tune_pe_plan:
+// lexicon("error", "" or why there's none, "dv", m/s), its node added) and flown by fly() (exec_node's result), with the first
+// burn's used m/s counting against max_dv; drop() removes a trim node that isn't flown. No trim to solve (no time before a
+// sphere-of-influence change, say) is a miss. Returns lexicon("reason", "" or why the block fails other than the miss, "missed",
+// true if the periapsis is still outside tolerance). Pure but for the four functions.
+function tune_pe_trim {
+  parameter opt, used, read, solve, fly, drop.
+  local done is lexicon("reason", "", "missed", false).
+  if tune_pe_within(read(), opt) {
+    return done.
+  }
+  local trim is solve().
+  if trim:error <> "" {
+    set done:missed to true.
+    return done.
+  }
+  local over is tune_pe_over_budget(abs(used) + abs(trim:dv), opt:max_dv).
+  if over <> "" {
+    drop().
+    set done:reason to over.
+    return done.
+  }
+  local flown is fly().
+  if not flown:success {
+    set done:reason to flown:reason.
+    return done.
+  }
+  set done:missed to not tune_pe_within(read(), opt).
+  return done.
+}
+
+// exec_node's resolve (#673) for opt: nd's burn solved again at its UT from the orbit as it is after the turn, the way the first
+// was (patch "current": tune_pe_burn_at on the coast's state there, read with nd zeroed just before it; "next": the Course
+// Correction). A burn that can't be solved again keeps its components; one that takes used (m/s already flown) over max_dv
+// fails. Returns "" or why not.
+function tune_pe_resolve {
+  parameter nd, opt, used.
+  local was is list(nd:radialout, nd:normal, nd:prograde).
+  if opt:patch = "current" {
+    set nd:prograde to 0.
+    local at_ut is nd:time - 0.01.
+    local pos is positionat(ship, at_ut) - ship:body:position.
+    local vel is velocityat(ship, at_ut):orbit.
+    local burn is tune_pe_burn_at(ship:body:mu, pos:mag, vel:mag, vdot(vel, pos:normalized), ship:body:radius + opt:value).
+    if burn:error = "" {
+      set nd:prograde to burn:prograde.
+    } else {
+      set nd:prograde to was[2].
+    }
+  } else if ship:orbit:hasnextpatch {
+    local found is tune_pe_search(nd, opt:value, opt:tolerance).
+    if found:error <> "" {
+      set nd:radialout to was[0].
+      set nd:normal to was[1].
+      set nd:prograde to was[2].
+    }
+  }
+  return tune_pe_over_budget(used + nd:deltav:mag, opt:max_dv).
+}
+
+// Plans tune_pe's burn for opt from the orbit as it is now, within max_dv m/s, and adds its node. Returns lexicon("error", ""
+// or why there is no burn (no node is left), "ut", the node's UT, "dv", m/s).
+function tune_pe_plan {
+  parameter opt, max_dv.
+  local done is lexicon("error", "", "ut", -1, "dv", 0).
+  local o is ship:orbit.
   local soi_eta is 0.
   if o:hasnextpatch {
     set soi_eta to o:nextpatcheta.
@@ -380,7 +431,8 @@ function tune_pe {
   }
   local point is tune_pe_burn_point(opt:patch, o:eccentricity, eta_ap, eta_pe, period, pe_unsafe, o:hasnextpatch, soi_eta).
   if point:error <> "" {
-    return claudia_finish(ctx, false, point:error, extra).
+    set done:error to point:error.
+    return done.
   }
   local burn_ut is time:seconds + point:in.
 
@@ -395,11 +447,13 @@ function tune_pe {
       set burn to tune_pe_apoapsis_burn(ship:body:mu, ship:body:radius + o:apoapsis, o:semimajoraxis, ship:body:radius + opt:value).
     }
     if burn:error <> "" {
-      return claudia_finish(ctx, false, burn:error, extra).
+      set done:error to burn:error.
+      return done.
     }
-    local over is tune_pe_over_budget(burn:prograde, opt:max_dv).
+    local over is tune_pe_over_budget(burn:prograde, max_dv).
     if over <> "" {
-      return claudia_finish(ctx, false, over, extra).
+      set done:error to over.
+      return done.
     }
     set nd:prograde to burn:prograde.
     add nd.
@@ -408,7 +462,8 @@ function tune_pe {
     local placed is tune_pe_place_best(nd, opt, time:seconds + soi_eta, tune_pe_next_times(soi_eta)).
     if placed:error <> "" {
       remove nd.
-      return claudia_finish(ctx, false, placed:error, extra).
+      set done:error to placed:error.
+      return done.
     }
     set burn_ut to nd:time.
     local off_by is placed:off_by.
@@ -418,26 +473,72 @@ function tune_pe {
       if placed:miss <> "" {
         set why to ": " + placed:miss.
       }
-      return claudia_finish(ctx, false, "found no burn that reaches " + round(opt:value) + " m (best is " + round(off_by) + " m off)" + why, extra).
+      set done:error to "found no burn that reaches " + round(opt:value) + " m (best is " + round(off_by) + " m off)" + why.
+      return done.
     }
-    local over is tune_pe_over_budget(nd:deltav:mag, opt:max_dv).
+    local over is tune_pe_over_budget(nd:deltav:mag, max_dv).
     if over <> "" {
       remove nd.
-      return claudia_finish(ctx, false, over, extra).
+      set done:error to over.
+      return done.
     }
   }
-  set extra:burn_ut to round(burn_ut, 1).
+  set done:ut to burn_ut.
+  set done:dv to nd:deltav:mag.
+  return done.
+}
 
-  // The burn is judged by the periapsis it leaves, not exec_node's residual.
-  local burn_opts is claudia_burn_options(ctx, nd).
-  set burn_opts:max_residual to 1000000.
-  local flown is exec_node(burn_opts).
-  claudia_add_result(ctx, flown).
+function tune_pe {
+  parameter options is lexicon().
+  local extra is lexicon("pe_actual", -1, "burn_ut", -1).
+  local ctx is claudia_begin("tune_pe", options, tune_pe_defaults(), "auto").
+  if ctx:error <> "" {
+    return claudia_finish(ctx, false, ctx:error, extra).
+  }
+  local opt is ctx:opt.
+  local unreadable is tune_pe_unreadable(opt).
+  if unreadable <> "" {
+    return claudia_finish(ctx, false, unreadable, extra).
+  }
+  if hasnode {
+    return claudia_finish(ctx, false, "a maneuver node is already planned: remove it first", extra).
+  }
+  set extra:pe_actual to round(tune_pe_actual(opt:patch)).
+  if tune_pe_within(extra:pe_actual, opt) {
+    return claudia_finish(ctx, true, "", extra).
+  }
+  local plan is tune_pe_plan(opt, opt:max_dv).
+  if plan:error <> "" {
+    return claudia_finish(ctx, false, plan:error, extra).
+  }
+  set extra:burn_ut to round(plan:ut, 1).
+
+  // The burn is judged by the periapsis it leaves, not exec_node's residual, and is solved again after the turn (#673), within
+  // max_dv with what spent:dv says was flown before it.
+  local spent is lexicon("dv", 0).
+  local fly is {
+    local burn_opts is claudia_burn_options(ctx, nextnode).
+    set burn_opts:max_residual to 1000000.
+    set burn_opts:resolve to { parameter nd. return tune_pe_resolve(nd, opt, spent:dv). }.
+    local flown is exec_node(burn_opts).
+    claudia_add_result(ctx, flown).
+    return flown.
+  }.
+  local flown is fly().
   set extra:pe_actual to round(tune_pe_actual(opt:patch)).
   if not flown:success {
     return claudia_finish(ctx, false, flown:reason, extra).
   }
-  if extra:pe_actual < 0 or abs(extra:pe_actual - opt:value) > opt:tolerance {
+  set spent:dv to abs(flown:node_dv).
+  // Outside tolerance, one trim from the orbit as it is now (#673). Its plan takes no budget of its own (1e30): tune_pe_trim
+  // judges it with the first burn's.
+  local trimmed is tune_pe_trim(opt, spent:dv, { return tune_pe_actual(opt:patch). }, { return tune_pe_plan(opt, 1e30). }, fly,
+    { remove nextnode. }).
+  set extra:pe_actual to round(tune_pe_actual(opt:patch)).
+  if trimmed:reason <> "" {
+    return claudia_finish(ctx, false, trimmed:reason, extra).
+  }
+  if trimmed:missed {
     local hint is "".
     if ship:orbit:hasnextpatch {
       local enc is ship:orbit:nextpatch.

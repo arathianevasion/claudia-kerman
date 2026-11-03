@@ -315,5 +315,107 @@ namespace ClaudiaKermin.Kerboscript.Tests
         {
             Assert.Equal(reason, One("tune_pe_over_budget(" + dv.ToString(CultureInfo.InvariantCulture) + ", " + maxDv + ")"));
         }
+
+        // ---- the burn solved after the turn, and one trim (#673) ----
+
+        private static string Script(string body)
+        {
+            return KosHarness.Run(CoreLibrary.Bundle(body)).Single();
+        }
+
+        private static string F(double x)
+        {
+            return x.ToString("R", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>tune_pe_trim after a first burn of <paramref name="used"/> m/s, aiming 30,000 m within 1,000 m: the periapsis
+        /// reads pes[0] after the first burn and pes[n] after the nth trim. Prints reason|missed|trims flown|nodes dropped.</summary>
+        private static string Trim(string pes, double used = 2.9, double trimDv = 0.6, double maxDv = 50, string solveError = "", bool flies = true)
+        {
+            return Script("local calls is lexicon(\"fly\", 0, \"drop\", 0). local pes is list(" + pes + "). "
+                + "local t is tune_pe_trim(lexicon(\"value\", 30000, \"tolerance\", 1000, \"max_dv\", " + F(maxDv) + "), " + F(used) + ", "
+                + "{ return pes[min(calls:fly, pes:length - 1)]. }, "
+                + "{ return lexicon(\"error\", \"" + solveError + "\", \"dv\", " + F(trimDv) + "). }, "
+                + "{ set calls:fly to calls:fly + 1. return lexicon(\"success\", " + (flies ? "true" : "false") + ", \"reason\", \"out of fuel\"). }, "
+                + "{ set calls:drop to calls:drop + 1. }). "
+                + "print t:reason + \"|\" + t:missed + \"|\" + calls:fly + \"|\" + calls:drop.");
+        }
+
+        [Fact]
+        public void Within_tolerance_after_the_first_burn_flies_no_trim()
+        {
+            Assert.Equal("|False|0|0", Trim("30400"));
+        }
+
+        [Fact]
+        public void A_first_burn_outside_tolerance_flies_one_trim_and_succeeds_when_it_lands()
+        {
+            // e17d (#673): the first burn left 31,601 m against 30,000 within 1,000.
+            Assert.Equal("|False|1|0", Trim("31601, 30150"));
+        }
+
+        [Fact]
+        public void A_trim_that_still_misses_is_a_miss_and_no_third_burn_is_flown()
+        {
+            Assert.Equal("|True|1|0", Trim("31601, 31200, 30000"));
+        }
+
+        [Fact]
+        public void No_periapsis_after_the_first_burn_is_outside_tolerance_and_trims()
+        {
+            Assert.Equal("|False|1|0", Trim("-1, 30500"));
+        }
+
+        [Fact]
+        public void A_trim_that_takes_the_total_over_max_dv_fails_with_what_it_needs_before_burning()
+        {
+            // 2.9 m/s flown and 0.6 more is 3.5 over a max_dv of 3: the trim's node is dropped, none flown.
+            Assert.Equal("needs 3.5 m/s, over max_dv 3|False|0|1", Trim("31601, 30000", maxDv: 3));
+        }
+
+        [Fact]
+        public void No_trim_to_solve_is_the_tolerance_miss()
+        {
+            // No time to fly one (a sphere-of-influence change too close, say): it fails as before, on the tolerance.
+            Assert.Equal("|True|0|0", Trim("31601, 30000", solveError: "the sphere-of-influence change is too close (200 s) to plan and fly a burn"));
+        }
+
+        [Fact]
+        public void A_trim_exec_node_fails_gives_exec_node_s_reason()
+        {
+            Assert.Equal("out of fuel|False|1|0", Trim("31601, 30000", flies: false));
+        }
+
+        [Fact]
+        public void Exec_node_takes_a_resolve_function_and_calls_it_with_the_node_after_the_turn()
+        {
+            // The hook a block re-solves its node through, after the turn and just before the burn (#673).
+            Assert.Equal("", One("claudia_options(lexicon(\"resolve\", { parameter nd. return \"\". }), exec_node_defaults(), \"auto\"):error"));
+            Assert.Equal("", One("exec_node_unreadable(claudia_options(lexicon(\"resolve\", { parameter nd. return \"\". }), exec_node_defaults(), \"auto\"):opt)"));
+            Assert.Equal("", One("exec_node_unreadable(claudia_options(lexicon(), exec_node_defaults(), \"auto\"):opt)"));
+            Assert.Equal("resolve must be '' or a function of the node",
+                One("exec_node_unreadable(claudia_options(lexicon(\"resolve\", 5), exec_node_defaults(), \"auto\"):opt)"));
+            Assert.Equal("|-3.4", Script("local nd is lexicon(\"prograde\", -2.9). "
+                + "local why is exec_node_resolve({ parameter n. set n:prograde to -3.4. return \"\". }, nd). print why + \"|\" + nd:prograde."));
+            Assert.Equal("needs 61 m/s, over max_dv 50|-2.9", Script("local nd is lexicon(\"prograde\", -2.9). "
+                + "local why is exec_node_resolve({ parameter n. return \"needs 61 m/s, over max_dv 50\". }, nd). print why + \"|\" + nd:prograde."));
+            Assert.Equal("|-2.9", Script("local nd is lexicon(\"prograde\", -2.9). local why is exec_node_resolve(\"\", nd). print why + \"|\" + nd:prograde."));
+        }
+
+        [Fact]
+        public void A_node_solved_before_the_orbit_moved_misses_and_solving_it_again_after_lands()
+        {
+            // e17d (#673) at Minmus: the node was solved on the 38,351 x 38,062 m orbit, then an RCS turn pushed the craft. A push of
+            // 0.55 m/s along the track at the burn point (the shortfall the 31,601 m periapsis measures) with the node's fixed
+            // prograde leaves the periapsis over 1,000 m off 30,000; the same closed form on the moved orbit lands it.
+            const double mu = 1.7658e9, radius = 60000, rad = radius + 38351, sma = radius + (38351 + 38062) / 2.0, want = radius + 30000;
+            double PeAlt(double speed) { var a = 1 / (2 / rad - speed * speed / mu); return 2 * a - rad - radius; }
+            var before = System.Math.Sqrt(mu * (2 / rad - 1 / sma));
+            var moved = before + 0.55;
+            var stale = Number("tune_pe_apoapsis_burn(" + F(mu) + ", " + F(rad) + ", " + F(sma) + ", " + F(want) + "):prograde");
+            Assert.InRange(PeAlt(moved + stale) - 30000, 1000, 2000);
+            var again = Number("tune_pe_burn_at(" + F(mu) + ", " + F(rad) + ", " + F(moved) + ", 0, " + F(want) + "):prograde");
+            Assert.InRange(PeAlt(moved + again) - 30000, -1, 1);
+        }
     }
 }
