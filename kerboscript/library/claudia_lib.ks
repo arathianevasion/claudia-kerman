@@ -790,16 +790,16 @@ function claudia_scan_craft {
 function claudia_scan_refresh {
   parameter scan.
   for rec in scan:tanks {
-    local amounts is rec:amounts.
-    local capacities is rec:caps.
-    amounts:clear().
-    capacities:clear().
+    local amounts is list().
+    local capacities is list().
     for res in scan:parts[rec:uid]:resources {
       if claudia_is_propellant(res:name) and res:capacity > 0 {
         amounts:add(res:amount).
         capacities:add(res:capacity).
       }
     }
+    set rec["amounts"] to amounts.
+    set rec["caps"] to capacities.
   }
 }
 
