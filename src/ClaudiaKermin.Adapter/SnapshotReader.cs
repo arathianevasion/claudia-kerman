@@ -91,6 +91,8 @@ namespace ClaudiaKermin.Adapter
             // The start form's target, before Start: the Craft Check judges the craft against it.
             var form = id.HasValue ? null : MissionDriver.FormTargetId;
             if (form.HasValue && form.Value != vessel.persistentId) snapshot.FormTarget = LiveTarget(snapshot, form.Value);
+            snapshot.CraftPersistentId = vessel.persistentId;
+            var here = vessel.GetWorldPos3D();
             foreach (var other in FlightGlobals.Vessels)
                 if (other != null && other != vessel && Nameable(other.vesselType))
                     snapshot.Vessels.Add(new SnapshotVessel
@@ -99,6 +101,8 @@ namespace ClaudiaKermin.Adapter
                         Name = other.vesselName ?? "",
                         Body = other.mainBody != null ? other.mainBody.bodyName : "",
                         Situation = other.situation.ToString(),
+                        // From the craft, so same-named vessels can be told apart and the list puts the nearest first (#709).
+                        Distance = Vector3d.Distance(other.GetWorldPos3D(), here),
                     });
         }
 

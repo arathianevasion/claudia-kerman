@@ -53,9 +53,11 @@ namespace ClaudiaKermin.Adapter
         private TargetPick _choicePick;
         private TargetFacts _choiceFacts;
         private TargetChoice _choice;
-        // The Choose list, kept until the next snapshot's facts.
+        // The Choose list and its entries' text, kept until the next snapshot's facts or another goal (#709: the goal orders it).
         private TargetFacts _optionsFacts;
+        private string _optionsGoal;
         private IList<SnapshotVessel> _options;
+        private IList<string> _optionLabels;
         // The Mission Goal's steps open under it; Hide steps folds them to their count.
         private bool _showGoalSteps = true;
         // The goal clamped to 2 lines, kept until the goal or the width changes (measuring it takes a dozen passes).
@@ -259,7 +261,7 @@ namespace ClaudiaKermin.Adapter
         // The core's choice for the goal as typed so far (the pinned goal once it is set) and the pick; the same function Start runs.
         private TargetChoice TargetChoiceNow()
         {
-            var goal = _goal.Length > 0 && !_editingGoal ? _goal : _typed;
+            var goal = TargetGoalNow();
             var facts = _view.StartForm.Targets;
             if (_choice == null || goal != _choiceGoal || !ReferenceEquals(_targetPick, _choicePick) || !ReferenceEquals(facts, _choiceFacts))
             {
@@ -269,6 +271,11 @@ namespace ClaudiaKermin.Adapter
                 _choice = TargetVessel.Choose(goal, _targetPick, facts);
             }
             return _choice;
+        }
+
+        private string TargetGoalNow()
+        {
+            return _goal.Length > 0 && !_editingGoal ? _goal : _typed;
         }
 
         // Under the Mission Goal, only for a goal that needs a target: the target (or why there is none), Choose, Clear and Auto.
@@ -291,7 +298,7 @@ namespace ClaudiaKermin.Adapter
             if (pick.Kind != TargetPickKind.Cleared && ClaudiaSkin.TextButton("Clear", GUILayout.ExpandWidth(false))) next = TargetPick.Cleared;
             if (pick.Kind != TargetPickKind.Auto && ClaudiaSkin.TextButton("Auto", GUILayout.ExpandWidth(false))) next = TargetPick.Auto;
             GUILayout.EndHorizontal();
-            if (choosing) next = DrawTargetList(next);
+            if (choosing) next = DrawTargetList(next, TargetGoalNow());
             if (ReferenceEquals(next, pick)) return;
             _targetPick = next;
             _choosingTarget = false;
@@ -323,7 +330,7 @@ namespace ClaudiaKermin.Adapter
             GUILayout.EndHorizontal();
             if (choosing)
             {
-                var chosen = DrawTargetList(TargetPick.Auto);
+                var chosen = DrawTargetList(TargetPick.Auto, _view.Goal);
                 if (!ReferenceEquals(chosen, TargetPick.Auto)) picked = chosen;
             }
             if (!enabled) _changingTarget = false;
@@ -332,19 +339,23 @@ namespace ClaudiaKermin.Adapter
             _send(new ChangeTarget(picked));
         }
 
-        // The vessels the player may pick, name · body · situation, the craft's own body first; returns the pick a click made.
-        private TargetPick DrawTargetList(TargetPick pick)
+        // The vessels the player may pick, name · body · situation (and the distance for a shared name), the goal's matches first,
+        // then nearest first (#709); returns the pick a click made.
+        private TargetPick DrawTargetList(TargetPick pick, string goal)
         {
             var facts = _view.StartForm.Targets;
-            if (_options == null || !ReferenceEquals(facts, _optionsFacts))
+            goal = goal ?? "";
+            if (_options == null || !ReferenceEquals(facts, _optionsFacts) || goal != _optionsGoal)
             {
                 _optionsFacts = facts;
-                _options = TargetVessel.Options(facts);
+                _optionsGoal = goal;
+                _options = TargetVessel.Options(facts, goal);
+                _optionLabels = _options.Select(v => TargetVessel.Describe(v, _options)).ToList();
             }
             var options = _options;
             if (options.Count == 0) GUILayout.Label("No vessel in the save can be the Target Vessel.", ClaudiaSkin.Muted);
-            foreach (var vessel in options)
-                if (ClaudiaSkin.TextButton(TargetVessel.Describe(vessel), GUILayout.ExpandWidth(false))) pick = TargetPick.Of(vessel);
+            for (var i = 0; i < options.Count; i++)
+                if (ClaudiaSkin.TextButton(_optionLabels[i], GUILayout.ExpandWidth(false))) pick = TargetPick.Of(options[i]);
             return pick;
         }
 
