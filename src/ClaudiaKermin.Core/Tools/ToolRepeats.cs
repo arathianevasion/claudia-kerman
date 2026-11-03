@@ -29,7 +29,7 @@ namespace ClaudiaKermin.Core.Tools
             var answered = new HashSet<string>(results.Where(r => r.Content != ProposedPlans.OnePerReplyJson).Select(r => r.ToolUseId), StringComparer.Ordinal);
             var accepted = new HashSet<string>(results.Where(r => r.Content == ProposedPlans.AcceptedJson || r.Content == ProposedPlans.GoalKeptJson)
                 .Select(r => r.ToolUseId), StringComparer.Ordinal);
-            var plan = ProposedPlans.ToolName + " ";
+            var planKeyPrefix = ProposedPlans.ToolName + " ";
             // Each earlier call's step, numbered from 1 by the turn's tool_use replies.
             var steps = new Dictionary<string, int>(StringComparer.Ordinal);
             var step = 0;
@@ -43,7 +43,7 @@ namespace ClaudiaKermin.Core.Tools
                     var key = Key(use);
                     // An accepted plan is the one in force: the plan calls before it may be checked again.
                     if (use.Name == ProposedPlans.ToolName && accepted.Contains(use.Id ?? ""))
-                        foreach (var replaced in steps.Keys.Where(k => k != key && k.StartsWith(plan, StringComparison.Ordinal)).ToList()) steps.Remove(replaced);
+                        foreach (var replaced in steps.Keys.Where(k => k != key && k.StartsWith(planKeyPrefix, StringComparison.Ordinal)).ToList()) steps.Remove(replaced);
                     if (!steps.ContainsKey(key)) steps[key] = step;
                 }
             }

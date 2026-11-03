@@ -185,8 +185,9 @@ namespace ClaudiaKermin.Core.Missions
             /// <summary>A correction after a Mission Plan named a vessel that never left the craft: if it does so again, the Mission Pauses.</summary>
             public bool ChildVesselRetry;
             /// <summary>
-            /// A revision the mod asked for while the Mission Goal stands (after an Off-Nominal Debrief, a hand back, a changed Target
-            /// Vessel): a plan with no sequences is refused (#697). Set where the turn begins; false on the first Mission Plan and a typed one.
+            /// A revision the mod asked for while the Mission Goal stands (after an Off-Nominal Debrief or a Hand back's Debrief): a plan
+            /// with no sequences is refused (#697). Set where the turn begins; false on the first Mission Plan, a typed one, and the
+            /// revisions that may decline (a missed window, a changed Target Vessel whose ports no longer fit).
             /// </summary>
             public bool GoalStands;
             /// <summary>The Debrief asked again, with the player's note, after a Failed Debrief offered no reduced goal: a load while it is out sends it again, not an Interrupted Debrief.</summary>
