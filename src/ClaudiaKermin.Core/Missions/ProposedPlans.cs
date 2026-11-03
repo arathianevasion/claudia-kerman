@@ -24,6 +24,17 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The tool result of an accepted plan whose new_goal was ignored (#590); also an accepted call, and its plan carries no new goal.</summary>
         public const string GoalKeptJson = "{\"ok\":true,\"note\":\"new_goal ignored: the Mission Goal is kept, as the player did not ask to change it.\"}";
 
+        /// <summary>
+        /// The answer to every propose_mission_plan call of a reply that holds more than one (#697): none is accepted, so the
+        /// plan is never whichever came last, and as none was accepted, sending one again in the next step is no repeat.
+        /// </summary>
+        public const string OnePerReplyJson = "{\"ok\":false,\"problems\":[\"hand in one Mission Plan per reply: send the one you mean again on its own\"]}";
+
+        public static ToolOutcome OnePerReply()
+        {
+            return new ToolOutcome { Json = OnePerReplyJson, Summary = "1 problem, one plan per reply" };
+        }
+
         public static ToolDefinition Definition()
         {
             return new ToolDefinition
@@ -43,9 +54,11 @@ namespace ClaudiaKermin.Core.Missions
         /// request takes a Mission Plan only for a new Mission Goal (a typed reply to a pending Sequence Plan);
         /// <paramref name="allowsNewGoal"/> when the player may change the goal (their typed Reply or Change), else a new_goal is ignored (#590).
         /// <paramref name="snapshot"/> and <paramref name="goal"/>, copied before the tool step, are for the planet guard (#670).
+        /// <paramref name="goalStands"/> when the mod asked for a revision of a Mission under way whose goal stands (#697): a plan
+        /// with no sequences, which declines the goal, is refused then.
         /// </summary>
         public static ToolOutcome Check(ToolUseBlock use, ICollection<string> leftTheCraft, bool needsNewGoal, bool allowsNewGoal = true,
-            GameSnapshot snapshot = null, string goal = null)
+            GameSnapshot snapshot = null, string goal = null, bool goalStands = false)
         {
             var problems = new List<string>();
             var plan = use.InputIsValid ? Read(use.InputJson, problems) : null;
@@ -62,6 +75,10 @@ namespace ClaudiaKermin.Core.Missions
                 if (planet != null)
                     problems.Add("no Building Block flies to a planet yet, and " + planet + " needs a transfer to another planet: "
                         + "hand in a Mission Plan with no sequences, and say so in say and why");
+                // A planet goal is declined whatever the request (#670), so the revision rule leaves it be.
+                else if (goalStands && plan.Sequences.Count == 0 && PlanetGoal(snapshot, goal) == null)
+                    problems.Add("this is a revision of a Mission still under way: give the sequences still to fly; "
+                        + "to give up on the goal, say so in the Debrief's follow-up instead");
             }
             if (problems.Count == 0)
                 return plan != null && plan.NewGoal != null && !allowsNewGoal

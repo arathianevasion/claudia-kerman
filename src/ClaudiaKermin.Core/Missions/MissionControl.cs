@@ -184,6 +184,12 @@ namespace ClaudiaKermin.Core.Missions
             public bool ScriptRewrite;
             /// <summary>A correction after a Mission Plan named a vessel that never left the craft: if it does so again, the Mission Pauses.</summary>
             public bool ChildVesselRetry;
+            /// <summary>
+            /// A revision the mod asked for while the Mission Goal stands (after an Off-Nominal Debrief or a Hand back's Debrief): a plan
+            /// with no sequences is refused (#697). Set where the turn begins; false on the first Mission Plan, a typed one, and the
+            /// revisions that may decline (a missed window, a changed Target Vessel whose ports no longer fit).
+            /// </summary>
+            public bool GoalStands;
             /// <summary>The Debrief asked again, with the player's note, after a Failed Debrief offered no reduced goal: a load while it is out sends it again, not an Interrupted Debrief.</summary>
             public bool ReducedGoalRetry;
             /// <summary>
@@ -1568,6 +1574,7 @@ namespace ClaudiaKermin.Core.Missions
                 Purpose = turn.Purpose,
                 ChildVesselRetry = true,
                 Waits = turn.Waits,
+                GoalStands = turn.GoalStands,
                 // The refused turn was never committed to the conversation, so what it asked (the player's words, the new settings) goes again.
                 UserText = turn.UserText + "\n" + MissionPrompts.ChildVesselNotLeft(ids),
                 Notice = MissionPrompts.ChildVesselNotice +(typed ? MissionPrompts.ChildVesselTypedNotice : ""),
