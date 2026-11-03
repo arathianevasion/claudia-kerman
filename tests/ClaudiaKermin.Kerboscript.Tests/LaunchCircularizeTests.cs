@@ -251,6 +251,8 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [InlineData(45, "Descending", 10, 50, "41.7")]
         [InlineData(45, "Ascending", 10, -50, "138.3")]
         [InlineData(45, "Descending", 10, -3, "138.3")]
+        [InlineData(6, "Ascending", 0, 0, "83.5")]
+        [InlineData(6, "Descending", 0, 0, "96.5")]
         public void A_northward_and_a_southward_launch_both_get_a_heading(double inc, string node, double epsilon, double northSpeed, string azimuth)
         {
             var data = "list(" + inc + ", 0, 174.94, 2278.9, \"" + node + "\", " + epsilon + ")";
@@ -296,6 +298,35 @@ namespace ClaudiaKermin.Kerboscript.Tests
         public void The_allowed_angle_off_the_airflow_falls_with_dynamic_pressure_above_the_reference(double maxAoa, double q, double qRef, string allowed)
         {
             Assert.Equal(allowed, One("round(launch_allowed_aoa(" + maxAoa + ", " + q + ", " + qRef + "), 3)"));
+        }
+
+        // #676: while burning, the limit toward the airflow keeps the aim in the heading's vertical plane. Turning
+        // straight from the airflow (launch_limit_aoa) kept the airflow's own sideways drift; a fast turn holds the
+        // limit from the turn start, where a metre a second sideways is a degree off the plane, and the drift grew
+        // with the climb (in a 3D point-mass sim of efe0's craft at turn_shape 0.2, 1 m/s north at the turn start
+        // ended at 1.4 degrees of inclination; kept in the plane, 0.1). The aim's pitch in the plane is the nearest
+        // to want_pitch that is max_aoa off an airflow whose projection on the plane is at flow_pitch and which is
+        // off_plane degrees out of it: within flow_pitch +- arccos(cos(max_aoa) / cos(off_plane)).
+        [Theory]
+        [InlineData(85, 88, 0, 5, "85")]
+        [InlineData(60, 89, 0, 5, "84")]
+        [InlineData(60, 89, 3, 5, "85")]
+        [InlineData(60, 89, 4.9, 5, "88")]
+        [InlineData(80, 70, 0, 5, "75")]
+        [InlineData(30, 95, 1, 2.5, "92.71")]
+        public void The_aim_held_toward_the_airflow_stays_in_the_heading_plane(double wantPitch, double flowPitch, double offPlane, double maxAoa, string pitch)
+        {
+            Assert.Equal(pitch, One("round(launch_plane_pitch(" + wantPitch + ", " + flowPitch + ", " + offPlane + ", " + maxAoa + "), 2)"));
+        }
+
+        // The guidance pass uses it while burning, from the airflow's pitch in the plane and its angle out of it, and
+        // keeps launch_limit_aoa for the coast and for an airflow further out of the plane than the angle allowed.
+        [Fact]
+        public void The_climb_limits_the_aim_in_the_heading_plane_and_the_coast_toward_the_airflow()
+        {
+            var src = System.Text.RegularExpressions.Regex.Replace(CoreLibrary.Files.Single(f => f.Name == "launch").Source, "\\s+", " ");
+            Assert.Contains("launch_plane_pitch(pitch, arctan2(vdot(flow, ship:up:vector), vdot(flow, along)), off_plane, allowed)", src);
+            Assert.Contains("if coasting or off_plane >= allowed { set want to launch_limit_aoa(want, flow, allowed). }", src);
         }
 
         // ---- launch: losing control ----
