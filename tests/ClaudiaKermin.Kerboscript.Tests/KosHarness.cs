@@ -44,10 +44,11 @@ namespace ClaudiaKermin.Kerboscript.Tests
             lock (Gate)
             {
                 Init();
-                if (!Registered.Add(rigFunctions)) return;
+                if (Registered.Contains(rigFunctions)) return;
                 foreach (var type in rigFunctions.GetNestedTypes())
                     foreach (FunctionAttribute attribute in type.GetCustomAttributes(typeof(FunctionAttribute), false))
                         FunctionManager.RegisterMethod(attribute, type);
+                Registered.Add(rigFunctions);
             }
         }
 

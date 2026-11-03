@@ -451,8 +451,8 @@ namespace ClaudiaKermin.Kerboscript.Tests
     }
 
     /// <summary>
-    /// The rig's kOS functions: ORBITBURN on the scene now, a flight, an element, and a change of scene. The harness's walk
-    /// finds only kOS.Safe's own [Function]s, so ChangeOrbitTests adds these through <see cref="KosHarness.Register"/>.
+    /// The rig's kOS functions: ORBITBURN on the scene now, a flight, an element, and a change of scene. ChangeOrbitTests adds
+    /// them to kOS through <see cref="KosHarness.Register"/>.
     /// </summary>
     internal static class OrbitRigFunctions
     {
