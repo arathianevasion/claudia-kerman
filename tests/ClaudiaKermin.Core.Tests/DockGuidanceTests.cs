@@ -153,6 +153,18 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void The_call_averages_the_thrusters_isp_by_thrust_and_reads_distance_and_speed()
+        {
+            // Two 1 kN thrusters at 240 s and one 2 kN at 300 s: 270 s. A 0 kN one counts for nothing.
+            var input = new Dictionary<string, object> { { "distance", 150.0 }, { "speed", 0.1 } };
+            var fuel = DockGuidance.FuelCall(input, 20, 6.6, new[] { 1.0, 1.0, 2.0, 0.0 }, new[] { 240.0, 240.0, 300.0, 999.0 });
+            Assert.Equal(270, (double)fuel["isp"], 9);
+            Assert.Equal(7.6, (double)fuel["need"], 9);
+            Assert.Equal(DockGuidance.DeltaV(20, 270, 6.6), (double)fuel["dv"], 9);
+            Assert.StartsWith("too little monopropellant: 20.0 units give 0.0 m/s", (string)DockGuidance.FuelCall(input, 20, 6.6, new double[0], new double[0])["error"]);
+        }
+
+        [Fact]
         public void The_estimate_is_a_reserve_plus_a_share_a_metre_plus_the_speed_now()
         {
             Assert.Equal(DockGuidance.ReserveDv, DockGuidance.Needed(0, 0), 9);

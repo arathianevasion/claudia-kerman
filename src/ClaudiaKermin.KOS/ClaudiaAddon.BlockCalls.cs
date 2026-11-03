@@ -141,31 +141,27 @@ namespace ClaudiaKermin.KOS
         private Lexicon DockFuel(Lexicon input)
         {
             System.Collections.Generic.IDictionary<string, object> fuel = null;
-            double monoprop = 0, isp = 0, mass = 0;
+            double monoprop = 0, mass = 0;
             return (Lexicon)Guarded("DOCKFUEL", () =>
             {
-                var ask = KosValues.ToDictionary(input);
                 var vessel = shared.Vessel;
-                double power = 0, weighted = 0;
+                var thrusts = new System.Collections.Generic.List<double>();
+                var isps = new System.Collections.Generic.List<double>();
                 foreach (var part in vessel.parts)
                 {
                     if (part.Resources.Contains("MonoPropellant")) monoprop += part.Resources["MonoPropellant"].amount;
                     foreach (var rcs in part.FindModulesImplementing<ModuleRCS>())
                     {
-                        if (!rcs.rcsEnabled || rcs.thrusterPower <= 0) continue;
-                        power += rcs.thrusterPower;
-                        weighted += rcs.thrusterPower * rcs.atmosphereCurve.Evaluate(0f);
+                        if (!rcs.rcsEnabled) continue;
+                        thrusts.Add(rcs.thrusterPower);
+                        isps.Add(rcs.atmosphereCurve.Evaluate(0f));
                     }
                 }
-                isp = power > 0 ? weighted / power : 0;
                 mass = vessel.GetTotalMass();
-                object distance, speed;
-                ask.TryGetValue("distance", out distance);
-                ask.TryGetValue("speed", out speed);
-                fuel = DockGuidance.Fuel(monoprop, isp, mass, distance is double ? (double)distance : 0, speed is double ? (double)speed : 0);
+                fuel = DockGuidance.FuelCall(KosValues.ToDictionary(input), monoprop, mass, thrusts, isps);
                 return KosValues.FromPlain(fuel);
             }, () => string.Format(CultureInfo.InvariantCulture, "{0:0.0} units, Isp {1:0} s, {2:0.00} t: {3:0.0} m/s of RCS, needs {4:0.0}{5}",
-                monoprop, isp, mass, fuel["dv"], fuel["need"], fuel["error"] as string == "" ? "" : "; " + fuel["error"]));
+                monoprop, fuel["isp"], mass, fuel["dv"], fuel["need"], fuel["error"] as string == "" ? "" : "; " + fuel["error"]));
         }
 
         private Lexicon ChuteAllocationSet()

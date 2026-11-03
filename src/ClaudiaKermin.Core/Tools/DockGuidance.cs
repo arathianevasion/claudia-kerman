@@ -185,6 +185,26 @@ namespace ClaudiaKermin.Core.Tools
             return new Dictionary<string, object> { { "error", error }, { "dv", have }, { "need", need } };
         }
 
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:DOCKFUEL</c> as the addon maps it: <c>distance</c> and <c>speed</c> from dock's lexicon, and the craft as
+        /// read live: its MonoPropellant (units), mass (t), and each enabled RCS module's thrust (kN) and vacuum Isp (s), averaged
+        /// by thrust. Gives <see cref="Fuel"/>'s answer with the <c>isp</c> it used.
+        /// </summary>
+        public static IDictionary<string, object> FuelCall(IDictionary<string, object> input, double monoprop, double massT, IList<double> thrusts, IList<double> isps)
+        {
+            double power = 0, weighted = 0;
+            for (var i = 0; i < thrusts.Count; i++)
+            {
+                if (thrusts[i] <= 0) continue;
+                power += thrusts[i];
+                weighted += thrusts[i] * isps[i];
+            }
+            var isp = power > 0 ? weighted / power : 0;
+            var fuel = Fuel(monoprop, isp, massT, Number(input, "distance"), Number(input, "speed"));
+            fuel["isp"] = isp;
+            return fuel;
+        }
+
         private static Velocity V(double along, double lat)
         {
             return new Velocity { Along = along, Lat = lat };
