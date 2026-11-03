@@ -46,7 +46,7 @@ namespace ClaudiaKermin.Core.Missions
                     ? "Fastest: take soonest; never wait for a cheaper window."
                     : v.TimeVersusDeltaV == TimeVersusDeltaV.MostEfficient
                         ? "Most efficient: take optimal, the cheapest window, however long the wait."
-                        : "Balanced: take soonest unless optimal saves " + BalancedSavingText + " of its delta-v, as plan_transfer picks."),
+                        : "Balanced: take soonest unless optimal costs at least " + BalancedSavingText + " less; take the plan_transfer pick."),
                 v => "time versus delta-v: " + Label(v.TimeVersusDeltaV)),
             // The player's own choice starts on; the config alone gates it (PhysicsWarpOn), so turning the config back on turns it back on.
             MissionSettingDescriptor.YesNo(PhysicsWarpKey, "Physics warp on Coasts", c => true,

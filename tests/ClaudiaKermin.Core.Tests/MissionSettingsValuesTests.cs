@@ -20,7 +20,7 @@ namespace ClaudiaKermin.Core.Tests
         private const string DaylightOn = "Daylight landing: on. Set the land block's daylight option to true and prefer a daylight landing.";
         private const string DaylightOff = "Daylight landing: off. Do not wait for daylight.";
         private const string Fastest = "Time versus delta-v, Fastest: take soonest; never wait for a cheaper window.";
-        private const string Balanced = "Time versus delta-v, Balanced: take soonest unless optimal saves 10% of its delta-v, as plan_transfer picks.";
+        private const string Balanced = "Time versus delta-v, Balanced: take soonest unless optimal costs at least 10% less; take the plan_transfer pick.";
         private const string Efficient = "Time versus delta-v, Most efficient: take optimal, the cheapest window, however long the wait.";
         private const string WarpOn = "Physics warp on Coasts: on. Blocks warp through Coasts with physics warp where rails can't; use the warp helpers for your own Coasts.";
         private const string WarpOff = "Physics warp on Coasts: off. The mod refuses physics warp. Where rails can't warp, Coasts run at 1×, so plan for the extra real time.";
@@ -173,7 +173,9 @@ namespace ClaudiaKermin.Core.Tests
 
         private static string TimeLine(TimeVersusDeltaV time)
         {
-            return MissionSettingsValues.All[1].Prompt(Make(true, time, true));
+            foreach (var setting in MissionSettingsValues.All)
+                if (setting.Key == MissionSettingsValues.TimeKey) return setting.Prompt(Make(true, time, true));
+            throw new KeyNotFoundException(MissionSettingsValues.TimeKey);
         }
 
         [Fact]
@@ -189,14 +191,15 @@ namespace ClaudiaKermin.Core.Tests
         [InlineData(TimeVersusDeltaV.Fastest, 910)]
         [InlineData(TimeVersusDeltaV.Fastest, 890)]
         [InlineData(TimeVersusDeltaV.Balanced, 910)]
+        [InlineData(TimeVersusDeltaV.Balanced, 900)]
         [InlineData(TimeVersusDeltaV.Balanced, 890)]
         [InlineData(TimeVersusDeltaV.MostEfficient, 910)]
         [InlineData(TimeVersusDeltaV.MostEfficient, 890)]
         public void Each_prompt_line_and_Pick_take_the_same_window(TimeVersusDeltaV time, double optimalDv)
         {
-            // Soonest 1000 m/s; Optimal 910 saves 9%, 890 saves 11%.
+            // Soonest 1000 m/s; Optimal 910 saves 9%, 900 exactly 10% ("at least"), 890 saves 11%.
             var search = new WindowSearch { Soonest = new TransferWindow { TotalDv = 1000 }, Optimal = new TransferWindow { TotalDv = optimalDv } };
-            var rule = Regex.Match(TimeLine(time), @"take (soonest|optimal)(?: unless optimal saves (\d+)% of its delta-v)?");
+            var rule = Regex.Match(TimeLine(time), @"take (soonest|optimal)(?: unless optimal costs at least (\d+)% less)?");
             Assert.True(rule.Success, TimeLine(time));
             var saving = (search.Soonest.TotalDv - search.Optimal.TotalDv) / search.Soonest.TotalDv;
             var lineTakesOptimal = rule.Groups[2].Success
