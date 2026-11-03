@@ -13,7 +13,7 @@ namespace ClaudiaKermin.Core.Missions
     {
         /// <summary>Never waits for a better window.</summary>
         Fastest,
-        /// <summary>Waits up to 6 h to save delta-v.</summary>
+        /// <summary>Takes Soonest unless Optimal saves at least <see cref="Tools.TransferWindows.BalancedSaving"/> of its delta-v.</summary>
         Balanced,
         /// <summary>Waits for the cheapest window.</summary>
         MostEfficient,
@@ -41,11 +41,12 @@ namespace ClaudiaKermin.Core.Missions
                     : "Daylight landing: off. Do not wait for daylight.",
                 v => "Daylight landing: " + (v.DaylightLanding ? "on" : "off")),
             MissionSettingDescriptor.Choice(TimeKey, "Time versus delta-v", c => c.DefaultTimeVersusDeltaV,
+                // Each line states TransferWindows.Pick's rule (#669), the Balanced saving formatted from its constant.
                 v => "Time versus delta-v, " + (v.TimeVersusDeltaV == TimeVersusDeltaV.Fastest
-                    ? "Fastest: never wait for a better window; take the next one."
+                    ? "Fastest: take soonest; never wait for a cheaper window."
                     : v.TimeVersusDeltaV == TimeVersusDeltaV.MostEfficient
-                        ? "Most efficient: wait for the cheapest window, however long (the script warps there)."
-                        : "Balanced: wait up to 6 h to save delta-v; do not wait longer than that for a better window."),
+                        ? "Most efficient: take optimal, the cheapest window, however long the wait."
+                        : "Balanced: take soonest unless optimal costs at least " + BalancedSavingText + " less; take the plan_transfer pick."),
                 v => "time versus delta-v: " + Label(v.TimeVersusDeltaV)),
             // The player's own choice starts on; the config alone gates it (PhysicsWarpOn), so turning the config back on turns it back on.
             MissionSettingDescriptor.YesNo(PhysicsWarpKey, "Physics warp on Coasts", c => true,
@@ -98,13 +99,22 @@ namespace ClaudiaKermin.Core.Missions
             get { return ConfigAllowsPhysicsWarp && PhysicsWarp; }
         }
 
-        /// <summary>The wait Balanced allows, hours (<see cref="Label"/> says 6 h); the most a Planning Tool defaults a search window to.</summary>
-        public const double BalancedWaitHours = 6;
+        /// <summary>The saving Balanced takes Optimal for, as the prompt line and the Settings window say it: "10%".</summary>
+        public static string BalancedSavingText
+        {
+            get { return (Tools.TransferWindows.BalancedSaving * 100).ToString("0", CultureInfo.InvariantCulture) + "%"; }
+        }
 
-        /// <summary>How long a Planning Tool looks ahead when Claudia gives no window: Fastest never waits for a better window, Most efficient waits for the best.</summary>
+        /// <summary>
+        /// How far a Planning Tool looks ahead under Balanced when Claudia gives no window, hours: a search horizon, not a limit on
+        /// a wait for a Transfer Window (Balanced picks by <see cref="Tools.TransferWindows.BalancedSaving"/>, #669).
+        /// </summary>
+        public const double BalancedSearchHours = 6;
+
+        /// <summary>How long a Planning Tool looks ahead when Claudia gives no window: a short horizon under Fastest, a long one under Most efficient.</summary>
         public double TimeCapHours
         {
-            get { return TimeVersusDeltaV == TimeVersusDeltaV.Fastest ? 1 : TimeVersusDeltaV == TimeVersusDeltaV.MostEfficient ? 24 : BalancedWaitHours; }
+            get { return TimeVersusDeltaV == TimeVersusDeltaV.Fastest ? 1 : TimeVersusDeltaV == TimeVersusDeltaV.MostEfficient ? 24 : BalancedSearchHours; }
         }
 
         public static MissionSettingsValues Defaults(PlayerConfig config)
@@ -154,7 +164,7 @@ namespace ClaudiaKermin.Core.Missions
             {
                 case TimeVersusDeltaV.Fastest: return "Fastest";
                 case TimeVersusDeltaV.MostEfficient: return "Most efficient";
-                default: return "Balanced (waits up to 6 h)";
+                default: return "Balanced";
             }
         }
 

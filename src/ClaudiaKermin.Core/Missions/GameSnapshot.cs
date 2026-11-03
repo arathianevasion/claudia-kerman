@@ -200,7 +200,7 @@ namespace ClaudiaKermin.Core.Missions
         /// hours. The Mission sets them on the turn's snapshot before a tool runs; they are not part of the snapshot's JSON.
         /// </summary>
         public bool DaylightLandingDefault = true;
-        public double TimeCapHours = MissionSettingsValues.BalancedWaitHours;
+        public double TimeCapHours = MissionSettingsValues.BalancedSearchHours;
         /// <summary>The Mission Setting that picks a planet's Transfer Window, Soonest or Optimal (#458).</summary>
         public TimeVersusDeltaV TimeVersusDeltaV = TimeVersusDeltaV.Balanced;
         /// <summary>The Craft Check's delta-v margin, %, that Soonest's total must fit within over Optimal's; PlayerConfig's default until the Mission sets it.</summary>
