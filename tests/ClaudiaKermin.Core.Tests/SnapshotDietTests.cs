@@ -76,6 +76,17 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void APlanTurnOnTheSameLegWithANewTargetVesselSendsTheDynamicSnapshotWithIt()
+        {
+            var debrief = Turn("The player approved the Sequence Plan.", MunShotAt(1000));
+            var plan = Turn("The player changed the Target Vessel.", MunShotAt(1010, s => s.Target = new SnapshotTarget { Name = "Tug", Body = "Kerbin" }));
+            var shaped = SnapshotDiet.Shape(plan, new[] { debrief }, true);
+            Assert.DoesNotContain(SnapshotDiet.AsAbove, shaped);
+            Assert.Contains(SnapshotDiet.DynamicHeader, shaped);
+            Assert.Contains("\"target\":{\"name\":\"Tug\"", shaped);
+        }
+
+        [Fact]
         public void AMissionPlanTurnAfterACompactionDroppedTheFullSnapshotSendsItInFull()
         {
             // What a compaction leaves behind it: the summary block, which holds no Game Snapshot line.

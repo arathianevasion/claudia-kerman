@@ -57,7 +57,9 @@ namespace ClaudiaKermin.Core.Missions
             var head = userText.Substring(0, start).TrimEnd('\n');
             var tail = userText.Substring(end);
             var since = now.Ut - last.Ut;
-            if (noRunSince && !now.Falling && since >= 0 && since <= SameLegSeconds) return head + "\n" + AsAbove + tail;
+            // A Target Vessel changed between the two (a Re-plan, #680) is news the snapshot above doesn't have.
+            var sameTarget = (now.Target == null ? null : now.Target.Name) == (last.Target == null ? null : last.Target.Name);
+            if (noRunSince && !now.Falling && sameTarget && since >= 0 && since <= SameLegSeconds) return head + "\n" + AsAbove + tail;
             return head + "\n" + DynamicHeader + now.ToJson(false, false)
                 + "\nparts: unchanged since the Game Snapshot at UT " + Ut(lastFull) + " (" + ids.Count.ToString(CultureInfo.InvariantCulture) + " parts)" + tail;
         }
