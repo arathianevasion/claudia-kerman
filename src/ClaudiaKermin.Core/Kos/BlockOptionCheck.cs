@@ -42,7 +42,7 @@ namespace ClaudiaKermin.Core.Kos
 
         /// <summary>
         /// One problem per judged call that fails, e.g. "line 3: transfer_to: missing required option target_pe; options: target*,
-        /// target_pe*, window, correction (* required), plus the common options". <paramref name="script"/> is a Mission Script,
+        /// target_pe*, window, correction, pe_tolerance (* required), plus the common options". <paramref name="script"/> is a Mission Script,
         /// or a bundle whose library lines it skips.
         /// </summary>
         public static IList<string> Problems(string script)
