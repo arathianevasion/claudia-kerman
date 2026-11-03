@@ -63,6 +63,65 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal("", Unreadable("\"target\", \"Mun\", \"target_pe\", 30000, \"window\", 5000, \"correction\", false"));
         }
 
+        // ---- The arrival periapsis after the correction (#672) ----
+
+        [Fact]
+        public void Transfer_to_judges_the_arrival_periapsis_within_pe_tolerance_1000_by_default()
+        {
+            Assert.Equal("1000", One("claudia_options(lexicon(), transfer_to_defaults(), \"auto\"):opt:pe_tolerance"));
+        }
+
+        [Theory]
+        [InlineData("\"x\"", "pe_tolerance must be metres above 0, not x")]
+        [InlineData("0", "pe_tolerance must be metres above 0, not 0")]
+        [InlineData("-5", "pe_tolerance must be metres above 0, not -5")]
+        [InlineData("2500", "")]
+        public void Transfer_to_refuses_a_pe_tolerance_that_is_not_metres_above_0(string tolerance, string expected)
+        {
+            Assert.Equal(expected, Unreadable("\"target\", \"Mun\", \"target_pe\", 30000, \"pe_tolerance\", " + tolerance));
+        }
+
+        [Fact]
+        public void A_periapsis_8_km_off_is_out_of_a_1_km_tolerance_and_in_a_10_km_one()
+        {
+            // e17d (#672): Minmus at 38,117 m against target_pe 30,000.
+            Assert.Equal("False", One("transfer_to_pe_within(38117 - 30000, 1000)"));
+            Assert.Equal("True", One("transfer_to_pe_within(38117 - 30000, 10000)"));
+            Assert.Equal("True", One("transfer_to_pe_within(-1000, 1000)"));
+            Assert.Equal("False", One("transfer_to_pe_within(1e12, 1000)"));
+        }
+
+        [Fact]
+        public void The_finer_correction_asks_the_solver_for_a_burn_within_pe_tolerance()
+        {
+            Assert.Equal(new[] { "target,target_pe,earliest_ut,latest_ut,pe_tolerance", "Minmus", "30000", "16500", "16500", "1000" },
+                Run("local q is transfer_to_fine_ask(\"Minmus\", 30000, 1000, 16500). print q:keys:join(\",\"). print q:target. print q:target_pe. print q:earliest_ut. print q:latest_ut. print q:pe_tolerance."));
+        }
+
+        [Fact]
+        public void A_periapsis_still_off_after_the_correction_is_the_reason_the_block_fails()
+        {
+            Assert.Equal("after the correction, the periapsis at Minmus is 38.1 km, 8.1 km off target_pe 30 km (pe_tolerance 1 km)",
+                One("transfer_to_miss(\"Minmus\", 38117, 30000, 1000, \"\")"));
+            Assert.Equal("after the correction, the periapsis at Minmus is 29.5 km, 0.5 km off target_pe 30 km (pe_tolerance 1 km): residual 0.3 m/s is over max_residual 0.1 m/s",
+                One("transfer_to_miss(\"Minmus\", 29500, 30000, 1000, \"residual 0.3 m/s is over max_residual 0.1 m/s\")"));
+            Assert.Equal("", One("transfer_to_miss(\"Minmus\", 30400, 30000, 1000, \"\")"));
+            Assert.Equal("", One("transfer_to_miss(\"Minmus\", 38117, 30000, 10000, \"\")"));
+        }
+
+        [Fact]
+        public void The_finer_correction_flies_with_a_tighter_max_residual_and_return_s_with_exec_node_s_default()
+        {
+            const string ctx = "local c is lexicon(\"opt\", claudia_options(lexicon(), transfer_to_defaults(), \"auto\"):opt, \"start_ut\", 0). ";
+            Assert.True(Number("transfer_to_fine_residual()") < 0.5);
+            Assert.Equal(new[] { "True", "0.1" }, Run(ctx + "local b is claudia_burn_options(c, \"n\", transfer_to_fine_residual()). print b:haskey(\"max_residual\"). print b:max_residual."));
+            Assert.Equal("False", Run(ctx + "print claudia_burn_options(c, \"n\"):haskey(\"max_residual\").").Single());
+            var transfer = CoreLibrary.Blocks.Single(b => b.Name == "transfer_to").Source;
+            Assert.Contains("transfer_to_fine_residual())", transfer);
+            var ret = CoreLibrary.Blocks.Single(b => b.Name == "return").Source;
+            Assert.Contains("set fixed to claudia_fly_correction(ctx, addons:claudia:correctionburn(\n          return_with_inc(claudia_correction_ask(planet:name, opt:target_pe, when:ut), opt:target_inc))).", ret.Replace("\r\n", "\n"));
+        }
+
         // ---- A block call that threw (#439) ----
 
         [Fact]

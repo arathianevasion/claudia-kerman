@@ -2271,22 +2271,25 @@ function claudia_pe_error {
 }
 
 // Options for a burn the block flies with exec_node: its own common options, and what is left of
-// max_duration.
+// max_duration; max_residual (m/s) when given above 0, else exec_node's default.
 function claudia_burn_options {
-  parameter ctx, nd.
+  parameter ctx, nd, max_residual is -1.
   local opt is ctx:opt.
   local burn is claudia_common_opts(opt).
   set burn:node to nd.
   if opt:max_duration:istype("Scalar") {
     set burn:max_duration to max(1, opt:max_duration - (time:seconds - ctx:start_ut)).
   }
+  if max_residual > 0 {
+    set burn:max_residual to max_residual.
+  }
   return burn.
 }
 
-// Flies nd with exec_node, counting its delta-v as the block's. Returns exec_node's result.
+// Flies nd with exec_node (max_residual as claudia_burn_options), counting its delta-v as the block's. Returns exec_node's result.
 function claudia_burn {
-  parameter ctx, nd.
-  local burned is exec_node(claudia_burn_options(ctx, nd)).
+  parameter ctx, nd, max_residual is -1.
+  local burned is exec_node(claudia_burn_options(ctx, nd, max_residual)).
   set ctx:dv_used to ctx:dv_used + burned:dv_used.
   claudia_note_dropped(ctx, burned).
   // exec_node's staging dropped parts on purpose; don't count them as lost.
@@ -2333,9 +2336,9 @@ function claudia_correction_ask {
 
 // Flies the Course Correction ADDONS:CLAUDIA:CORRECTIONBURN gave (fix) with exec_node. Its error (a solve that found no
 // burn within the tolerance, or a call that threw, #439) is the block's reason, with nothing burned; a burn under 0.1 m/s
-// isn't flown. Returns lexicon("reason", "" or why the block fails, "dv", m/s burned).
+// isn't flown; max_residual as claudia_burn_options. Returns lexicon("reason", "" or why the block fails, "dv", m/s burned).
 function claudia_fly_correction {
-  parameter ctx, fix.
+  parameter ctx, fix, max_residual is -1.
   local done is lexicon("reason", "", "dv", 0).
   if fix:error <> "" {
     set done:reason to fix:error.
@@ -2345,7 +2348,7 @@ function claudia_fly_correction {
     return done.
   }
   add node(fix:ut, fix:radial, fix:normal, fix:prograde).
-  local burned is claudia_burn(ctx, nextnode).
+  local burned is claudia_burn(ctx, nextnode, max_residual).
   set done:dv to burned:dv_used.
   if not burned:success {
     set done:reason to burned:reason.
