@@ -22,21 +22,22 @@
 //|     Mun from a 100 km orbit); a time (UT seconds) searches from that UT. It warps
 //|     there on rails: no Due Time needed.
 //|   correction [true]: false leaves out the mid-course correction.
+//|   pe_tolerance [1000]: m off target_pe allowed; past it, a finer correction, then a fail.
 //|   max_duration ["auto"]: the time to the planned arrival plus 900 s; a shorter one moves the correction sooner.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block; each burn gets them too.
 //| Extra results: encounter_ut (UT the craft enters the target's sphere of influence),
 //| target_pe_actual (m, the periapsis predicted at the target), correction_dv (m/s the corrections
-//| burned: one making the encounter if the ejection missed, then the mid-course one, none within
-//| 1 km of target_pe, under 0.1 m/s or with correction false); plane_dv (m/s the plane change burned).
+//| burned: one making the encounter if the ejection missed, then up to two mid-course, none within
+//| pe_tolerance, under 0.1 m/s or with correction false); plane_dv (m/s the plane change burned).
 //| ejection_node_dv, ejection_dv_used (m/s the node asked for, the burn used) and ejection_burn_time
 //| (s the engines burned): dv_used well above the node means wasted thrust. All -1 if it failed before the ejection burn.
-//| ejection_wait (s from the block's start to the ejection node; for window "next" at most a
-//| synodic period plus the turn time): -1 if it failed before the node was planned.
+//| ejection_wait (s from the block's start to the ejection node): -1 if it failed before the node was planned.
 //| Fails with "target is required", "target_pe is required", an option value it can't read, "no body
 //| named <x>", a target that doesn't orbit the craft's body, "not in orbit", "a maneuver node is
 //| already planned: remove it first", "found no transfer: <why>", "found no correction: <why>", "no encounter with
 //| <target> after the ejection burn, and no correction fits: <why>" (or "the correction failed:
-//| <why>"; or "after the correction", "the plane change"), an exec_node failure (its node stays), or an abort. The craft must be the active vessel.
+//| <why>"; or "after the correction", "the plane change"), "after the correction, the periapsis ... off
+//| target_pe", an exec_node failure (its node stays), or an abort. The craft must be the active vessel.
 //| Capture isn't part of transfer_to: inside the target's sphere of influence, fly
 //| `circularize(lexicon("at", "pe"))`: in the same sequence or the next, after
 //| `coast(lexicon("until", res:encounter_ut + 60))` (no Due Time needed).
@@ -44,7 +45,7 @@
 
 // The block's own options and defaults ("required" means the Mission Script must give it).
 function transfer_to_defaults {
-  return lexicon("target", "required", "target_pe", "required", "window", "next", "correction", true).
+  return lexicon("target", "required", "target_pe", "required", "window", "next", "correction", true, "pe_tolerance", 1000).
 }
 
 // "" or why an option value isn't one the block can use.
@@ -70,7 +71,75 @@ function transfer_to_unreadable {
   if window <> "" {
     return window.
   }
+  if not opt:pe_tolerance:istype("Scalar") or opt:pe_tolerance <= 0 {
+    return "pe_tolerance must be metres above 0, not " + opt:pe_tolerance.
+  }
   return claudia_correction_unreadable(opt:correction).
+}
+
+// Whether a predicted periapsis off_by m from target_pe (claudia_pe_error; 1e12, no encounter) is within tolerance m (#672). Pure.
+function transfer_to_pe_within {
+  parameter off_by, tolerance.
+  return abs(off_by) <= tolerance.
+}
+
+// What the finer Course Correction (#672) asks ADDONS:CLAUDIA:CORRECTIONBURN: claudia_correction_ask at ut, within tolerance m. Pure.
+function transfer_to_fine_ask {
+  parameter dest_name, target_pe, tolerance, ut.
+  local ask is claudia_correction_ask(dest_name, target_pe, ut).
+  set ask:pe_tolerance to tolerance.
+  return ask.
+}
+
+// m/s the finer Course Correction may leave of its node: tighter than exec_node's 0.5, so a burn of a few m/s hits a
+// kilometre-scale periapsis (#672).
+function transfer_to_fine_residual {
+  return 0.1.
+}
+
+// "" or why the block fails after its corrections (#672): the periapsis pe m at the body named dest_name is over tolerance m
+// from target_pe, or why the finer correction couldn't be found or flown (not "": the block fails whatever pe is). Pure.
+function transfer_to_miss {
+  parameter dest_name, pe, target_pe, tolerance, why.
+  if why = "" and transfer_to_pe_within(pe - target_pe, tolerance) {
+    return "".
+  }
+  local miss is "after the correction, the periapsis at " + dest_name + " is " + round(pe / 1000, 1) + " km, "
+    + round(abs(pe - target_pe) / 1000, 1) + " km off target_pe " + round(target_pe / 1000, 1) + " km (pe_tolerance "
+    + round(tolerance / 1000, 1) + " km)".
+  if why <> "" {
+    set miss to miss + ": " + why.
+  }
+  return miss.
+}
+
+// The finer Course Correction (#672), when the periapsis predicted at dest is outside pe_tolerance after the first (or the
+// plane change): partway to the encounter at soi_ut (claudia_correction_ut's lead and max_duration rules), within
+// pe_tolerance, flown with transfer_to_fine_residual. Returns lexicon("abort", "" or a Pause or abort, "why", "" or why it
+// couldn't be found or flown, "dv", m/s burned).
+function transfer_to_fine_correction {
+  parameter ctx, dest, soi_ut, turn_time.
+  local opt is ctx:opt.
+  local done is lexicon("abort", "", "why", "", "dv", 0).
+  if transfer_to_pe_within(claudia_pe_error(ship:orbit, dest, opt:target_pe), opt:pe_tolerance) {
+    return done.
+  }
+  local ticked is claudia_tick(ctx, 0).
+  if ticked <> "" {
+    claudia_make_safe().
+    set done:abort to ticked.
+    return done.
+  }
+  local when is claudia_correction_ut((time:seconds + soi_ut) / 2, time:seconds, turn_time + 60, ctx:start_ut, opt:max_duration).
+  if when:reason <> "" {
+    set done:why to when:reason.
+    return done.
+  }
+  local fixed is claudia_fly_correction(ctx, addons:claudia:correctionburn(transfer_to_fine_ask(dest:name, opt:target_pe,
+    opt:pe_tolerance, when:ut)), transfer_to_fine_residual()).
+  set done:dv to fixed:dv.
+  set done:why to fixed:reason.
+  return done.
 }
 
 // What the correction after a missed ejection asks ADDONS:CLAUDIA:EJECTIONBURN: the soonest burn the craft can turn to
@@ -246,7 +315,7 @@ function transfer_to {
     }
     // The Course Correction halfway to the encounter (sooner if max_duration ends first, #368), found by the mod's solver:
     // a block-internal call (ADR 0007), so it sits in the block.
-    if abs(claudia_pe_error(ship:orbit, dest, opt:target_pe)) > claudia_correction_good_m() {
+    if not transfer_to_pe_within(claudia_pe_error(ship:orbit, dest, opt:target_pe), opt:pe_tolerance) {
       local when is claudia_correction_ut((time:seconds + enc:soi_ut) / 2, time:seconds, turn:turn_time + 60, ctx:start_ut, opt:max_duration).
       if when:reason <> "" {
         return claudia_finish(ctx, false, when:reason, extra).
@@ -260,6 +329,25 @@ function transfer_to {
     set enc to claudia_patch(ship:orbit, dest).
     if enc:istype("String") {
       return claudia_finish(ctx, false, "no encounter with " + dest:name + " after the correction", extra).
+    }
+  }
+  if opt:correction {
+    // After the Course Correction or the plane change, a periapsis outside pe_tolerance gets one finer correction (#672).
+    local fine is transfer_to_fine_correction(ctx, dest, enc:soi_ut, turn:turn_time).
+    set extra:correction_dv to round(extra:correction_dv + fine:dv, 2).
+    if fine:abort <> "" {
+      return claudia_finish(ctx, false, fine:abort, extra).
+    }
+    set enc to claudia_patch(ship:orbit, dest).
+    if enc:istype("String") {
+      return claudia_finish(ctx, false, "no encounter with " + dest:name + " after the correction", extra).
+    }
+    // Filled on the miss too, so the Debrief sees it.
+    set extra:encounter_ut to round(enc:soi_ut).
+    set extra:target_pe_actual to round(enc:orbit:periapsis).
+    local miss is transfer_to_miss(dest:name, enc:orbit:periapsis, opt:target_pe, opt:pe_tolerance, fine:why).
+    if miss <> "" {
+      return claudia_finish(ctx, false, miss, extra).
     }
   }
   set extra:encounter_ut to round(enc:soi_ut).
