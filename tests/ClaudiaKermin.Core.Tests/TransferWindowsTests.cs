@@ -236,6 +236,39 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void A_craft_with_too_little_delta_v_for_Duna_gets_no_window_fits_with_both_figures()
+        {
+            var snapshot = Parked();
+            snapshot.DeltaVSimulator = true;
+            snapshot.Stages.Clear();
+            snapshot.Stages.Add(new SnapshotStage { Number = 1, DeltaVVac = 1500 });
+            var cheapest = Find("Duna", snapshot).Optimal.TotalDv;
+            Assert.True(cheapest > 1500);
+            var result = Run("{\"target\":\"Duna\",\"target_pe\":100000}", snapshot);
+            Assert.False(result.GetProperty("fits").GetBoolean());
+            Assert.Equal(Math.Round(cheapest, 1), result.GetProperty("cheapest_total_dv").GetDouble());
+            Assert.Equal(1500, result.GetProperty("craft_dv").GetDouble());
+            Assert.False(result.TryGetProperty("soonest", out _));
+        }
+
+        [Fact]
+        public void A_craft_that_can_afford_Duna_gets_the_same_soonest_and_optimal_as_one_with_no_figure()
+        {
+            var unknown = Parked();
+            unknown.DeltaVSimulator = false;
+            var plain = Run("{\"target\":\"Duna\",\"target_pe\":100000}", unknown);
+            var snapshot = Parked();
+            snapshot.DeltaVSimulator = true;
+            snapshot.Stages.Clear();
+            snapshot.Stages.Add(new SnapshotStage { Number = 1, DeltaVVac = 6000 });
+            var rich = Run("{\"target\":\"Duna\",\"target_pe\":100000}", snapshot);
+            Assert.True(rich.GetProperty("fits").GetBoolean());
+            Assert.Equal(plain.GetProperty("soonest").GetRawText(), rich.GetProperty("soonest").GetRawText());
+            Assert.Equal(plain.GetProperty("optimal").GetRawText(), rich.GetProperty("optimal").GetRawText());
+            Assert.False(plain.TryGetProperty("fits", out _));
+        }
+
+        [Fact]
         public void From_the_pad_the_parking_orbit_is_the_low_orbit_and_says_so()
         {
             var snapshot = Parked();
