@@ -498,6 +498,9 @@ namespace ClaudiaKermin.Core.Missions
                     + ", expected_delta_v is " + Metres(findings.ExpectedDeltaV) + "):\n" + string.Join("\n", lines.ToArray()));
             }
             if (findings.ShortDuration != null) parts.Add(ShortDuration(findings.ShortDuration, findings.ExpectedDurationSeconds));
+            if (findings.BiomeMiss != null)
+                parts.Add(char.ToUpperInvariant(GoalBiomeMissed(findings.BiomeMiss)[0]) + GoalBiomeMissed(findings.BiomeMiss).Substring(1) + ". Aim it at "
+                    + findings.BiomeMiss.Goal.Biome + " (find_landing_site's biome, land's target biome), or keep it and say why in the plan's why.");
             return text + (failed ? "\n" : "The mod sent back your Sequence Plan, so the player hasn't seen it; its Mission Script passed the Script Check. ")
                 + string.Join("\n", parts.ToArray());
         }
@@ -508,6 +511,7 @@ namespace ClaudiaKermin.Core.Missions
             var fixes = new List<string>();
             if (findings.Crossings.Count > 0) fixes.Add("each delta-v left threshold set below what the plan itself leaves");
             if (findings.ShortDuration != null) fixes.Add("expected_duration_s at least the figure named below");
+            if (findings.BiomeMiss != null) fixes.Add("land aimed at " + findings.BiomeMiss.Goal.Biome + " (or why it lands elsewhere in why)");
             var with = string.Join(" and ", fixes.ToArray());
             if (findings.ScriptFailed) return fixes.Count == 0 ? RewriteNotice : RewriteNotice + " Also send it with " + with + ", or change the plan.";
             return "Send the Sequence Plan again with " + with + " (or change the plan): reply with kind \"sequence_plan\" and sequence_plan filled in, "
@@ -784,6 +788,55 @@ namespace ClaudiaKermin.Core.Missions
                 .OrderBy(m => m.At.Index)
                 .Select(m => m.Body)
                 .ToList();
+        }
+
+        /// <summary>
+        /// #699: the biomes the Mission Goal names, as whole words, case-insensitive, in the order it names them. Only the biomes
+        /// of the bodies it names (<see cref="GoalBodies"/>) count, or the craft's body (not Kerbin) when it names none; the longest names
+        /// are matched first, so "Midland Craters" is never read as "Midlands". A name two named bodies share goes to the body
+        /// named nearest it in the goal.
+        /// </summary>
+        internal static List<GoalBiome> GoalBiomes(GameSnapshot snapshot, string goal)
+        {
+            goal = goal ?? "";
+            if (snapshot == null) return new List<GoalBiome>();
+            var bodies = GoalBodies(snapshot, goal);
+            // Never the home body by default: its biomes (Water, Shores) are everyday words, and its landing isn't land's.
+            if (bodies.Count == 0) bodies = snapshot.Bodies.Where(b => b.Name == snapshot.Body && b.Name != CraftCheckFlow.HomeBody).ToList();
+            var named = bodies.ToDictionary(b => b.Name, b => Regex.Match(goal, @"\b" + Regex.Escape(b.Name) + @"\b", RegexOptions.IgnoreCase).Index);
+            var taken = new bool[goal.Length];
+            var found = new List<KeyValuePair<int, GoalBiome>>();
+            foreach (var name in bodies.SelectMany(b => b.BiomeNames).Where(n => n.Trim().Length > 0).Distinct(System.StringComparer.OrdinalIgnoreCase).OrderByDescending(n => n.Length))
+            {
+                foreach (Match at in Regex.Matches(goal, @"\b" + Regex.Escape(name) + @"\b", RegexOptions.IgnoreCase))
+                {
+                    if (Enumerable.Range(at.Index, at.Length).Any(i => taken[i])) continue;
+                    for (var i = at.Index; i < at.Index + at.Length; i++) taken[i] = true;
+                    var body = bodies.Where(b => b.BiomeNames.Contains(name, System.StringComparer.OrdinalIgnoreCase))
+                        .OrderBy(b => System.Math.Abs(named[b.Name] - at.Index)).First();
+                    var biome = body.BiomeNames.First(n => string.Equals(n, name, System.StringComparison.OrdinalIgnoreCase));
+                    if (found.All(f => f.Value.Biome != biome || f.Value.Body != body.Name))
+                        found.Add(new KeyValuePair<int, GoalBiome>(at.Index, new GoalBiome { Body = body.Name, Biome = biome }));
+                }
+            }
+            return found.OrderBy(f => f.Key).Select(f => f.Value).ToList();
+        }
+
+        /// <summary>
+        /// #699: the one line a request carries when the Mission Goal names a biome, e.g. "Twin Craters is a Mun biome: pass it as
+        /// find_landing_site's biome and as land's target biome."; "" for none, so other Missions' requests are unchanged.
+        /// </summary>
+        public static string GoalBiomeLine(IList<GoalBiome> biomes)
+        {
+            if (biomes == null || biomes.Count == 0) return "";
+            var named = string.Join(" and ", biomes.Select(b => b.Biome + " is a " + b.Body + " biome").ToArray());
+            return named + ": pass " + (biomes.Count == 1 ? "it" : "each") + " as find_landing_site's biome and as land's target biome.";
+        }
+
+        /// <summary>#699: why a landing goes back before Approval, e.g. "the Mission Goal names Twin Craters (a Mun biome); this landing targets Midland Craters".</summary>
+        public static string GoalBiomeMissed(GoalBiomeMiss miss)
+        {
+            return "the Mission Goal names " + miss.Goal.Biome + " (a " + miss.Goal.Body + " biome); this landing targets " + miss.Targeted;
         }
 
         /// <summary>The Mission request's pad wording (#508), for a craft on the launch pad; "" anywhere else.</summary>
