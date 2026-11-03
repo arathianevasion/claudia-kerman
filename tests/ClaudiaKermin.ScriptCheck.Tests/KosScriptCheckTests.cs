@@ -146,6 +146,40 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             Assert.Equal(fires, warnings.Any(w => w.Contains(StackLint)));
         }
 
+        // ---- The deorbit-then-reentry rule of the stack-drop lint (#666) ----
+
+        private const string DeorbitLint = "deorbit aims for the whole stack";
+
+        // Mission 145202-efe0 (Haiku): deorbit's default separate "none", then reentry's default "auto".
+        private const string Efe0DeorbitReentry =
+            "local res is deorbit(lexicon(\"target\", \"ksc\")).\n"
+            + "if res:burn_ut > 0 { set res to reentry(). }\n"
+            + "addons:claudia:report(res).";
+
+        [Fact]
+        public void The_stack_drop_lint_warns_once_on_efe0s_deorbit_then_reentry_and_the_script_still_passes()
+        {
+            var result = _check.Check(CoreLibrary.Bundle(Efe0DeorbitReentry));
+            Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
+            var lint = Assert.Single(result.Warnings, w => w.Contains(DeorbitLint));
+            Assert.StartsWith("line 1: ", lint);
+            Assert.Contains("separate", lint);
+            Assert.DoesNotContain("\"auto\"", lint);
+            Assert.DoesNotContain(result.Warnings, w => w.Contains(StackLint));
+        }
+
+        [Theory]
+        [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\", \"separate\", 1)).\nset res to reentry().\n", false)]
+        [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\")).\nset res to reentry(lexicon(\"separate\", \"none\")).\n", false)]
+        [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\")).\n", false)]
+        [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\", \"separate\", \"none\")).\nset res to reentry().\n", true)]
+        [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\")).\nset res to reentry(lexicon(\"separate\", 2)).\n", true)]
+        [InlineData("// deorbit(lexicon())\nlocal res is reentry().\n", false)]
+        public void The_stack_drop_lint_warns_on_a_deorbit_without_a_separate_before_a_reentry_that_drops(string script, bool fires)
+        {
+            Assert.Equal(fires, _check.Check(script).Warnings.Any(w => w.Contains(DeorbitLint)));
+        }
+
         // ---- The drop-before-reentry lint (#608): drop_parts as the block call just before reentry ----
 
         private const string DropLint = "drop_parts just before reentry";
