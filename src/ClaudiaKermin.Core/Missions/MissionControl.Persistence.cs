@@ -297,10 +297,12 @@ namespace ClaudiaKermin.Core.Missions
             {
                 var plan = mission.PendingSequence ?? new SequencePlan { Name = "(unknown)" };
                 NoteRunOutcome(mission, mission.OwedOutcome);
+                var owed = StoppedOutcome(mission, mission.OwedOutcome);
                 turn = mission.HandBack ? HandBackTurn(mission) : new Turn
                 {
                     Purpose = Purpose.Debrief,
-                    UserText = MissionPrompts.RunReport(plan, StoppedOutcome(mission, mission.OwedOutcome), CrossingsText(mission), mission.Blocks) + "\n" + MissionPrompts.Facts(_ut, _snapshot),
+                    UserText = MissionPrompts.RunReport(plan, owed, CrossingsText(mission), mission.Blocks, true) + "\n" + MissionPrompts.Facts(_ut, _snapshot),
+                    Report = owed.Report,
                     Notice = MissionPrompts.DebriefNotice,
                 };
             }

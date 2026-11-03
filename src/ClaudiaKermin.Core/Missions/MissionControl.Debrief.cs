@@ -126,12 +126,24 @@ namespace ClaudiaKermin.Core.Missions
             {
                 turn.Gate = new DebriefGate();
                 mission.Gate = turn.Gate;
-                turn.UserText += RunFacts(mission);
+                // RunFacts first: it finishes a drop being measured, which the run total rebases.
+                var facts = RunFacts(mission);
+                turn.UserText = turn.UserText.Replace(MissionPrompts.RunDeltaVSlot, RunDeltaV(mission, turn.Report)) + facts;
                 // The chutes the entries still to fly may open, from the craft as the run left it (one may be used or lost).
                 AllocateChutes(mission);
                 if (mission.ScienceKept.Count > 0 && !mission.HandBack) turn.Notice += MissionPrompts.ScienceKeptNoticeLine;
             }
             return !turn.Gate.Done && StartRecheck(mission, turn);
+        }
+
+        /// <summary>The run's delta-v line with its newline, filling the slot after the report; "" for a hand-back, which has no scripted run to total.</summary>
+        private string RunDeltaV(Mission mission, IDictionary<string, object> report)
+        {
+            mission.RunDeltaVTotal = null;
+            if (mission.HandBack) return "";
+            var snapshot = MissionVesselSnapshot(mission);
+            mission.RunDeltaVTotal = MissionPrompts.RunDeltaVUsed(mission.RunStartDeltaVLeft, snapshot);
+            return "\n" + MissionPrompts.RunDeltaVLine(mission.RunStartDeltaVLeft, snapshot, mission.RunDroppedDeltaV, report);
         }
 
         /// <summary>The events the mod logged and the rest of the Mission Plan, for the Debrief request.</summary>
@@ -142,7 +154,6 @@ namespace ClaudiaKermin.Core.Missions
             var text = mission.RunEvents.DebriefText(mission.RunStartUt);
             var rest = RestOfPlanText(mission);
             // A hand-back Debrief is of a manual stretch, with no scripted run to total.
-            if (!mission.HandBack) text += "\n" + MissionPrompts.RunDeltaVLine(mission.RunStartDeltaVLeft, MissionVesselSnapshot(mission), mission.RunDroppedDeltaV);
             if (!mission.HandBack) text += RunMonopropellantFact(mission);
             if (!mission.HandBack) text += "\n" + MissionPrompts.RcsUseLine(mission.RcsUse);
             return text + "\nManeuver Sequences still to fly in the Mission Plan (quoted): " + MissionPrompts.Quoted(rest) + ".";
