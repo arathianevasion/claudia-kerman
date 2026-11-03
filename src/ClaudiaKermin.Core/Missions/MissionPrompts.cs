@@ -585,6 +585,8 @@ namespace ClaudiaKermin.Core.Missions
         /// The Mission request's stage table (#508): stage_performance's own answers in vacuum and at Kerbin's sea level, each
         /// stage's TWR at every body the Mission Goal names (from the same rows), and the Craft Check's plan_ascent call and
         /// result when it made one, so the Mission Plan step needs neither tool. "" when stage_performance has no figures.
+        /// The ascent figures go in only where an ascent is still to fly (#680): the Craft Check's plan_ascent on the launch pad,
+        /// the Kerbin sea-level row on the ground at Kerbin.
         /// </summary>
         public static string StageTable(GameSnapshot snapshot, string goal, string craftCheckAscent)
         {
@@ -592,12 +594,15 @@ namespace ClaudiaKermin.Core.Missions
             var tools = PlanningTools.Default();
             var vacuum = tools.Run("stage_performance", "{\"situation\":\"vacuum\"}", snapshot, null);
             if (vacuum.IsError) return "";
+            var onPad = snapshot.Situation == "PRELAUNCH";
+            var atHome = snapshot.Body == CraftCheckFlow.HomeBody
+                && (onPad || snapshot.Situation == "LANDED" || snapshot.Situation == "SPLASHED");
             var seaLevelInput = "{\"body\":" + PlanningJson.Quote(CraftCheckFlow.HomeBody) + ",\"situation\":\"surface\"}";
-            var seaLevel = tools.Run("stage_performance", seaLevelInput, snapshot, null);
-            var text = "\nStage table: these are the figures stage_performance and plan_ascent would give for this craft now (JSON data). "
+            var seaLevel = atHome ? tools.Run("stage_performance", seaLevelInput, snapshot, null) : null;
+            var text = "\nStage table: these are the figures stage_performance" + (onPad ? " and plan_ascent" : "") + " would give for this craft now (JSON data). "
                 + "A tool whose figures are here needs no call.\n"
                 + "stage_performance {\"situation\":\"vacuum\"}: " + vacuum.Json + "\n"
-                + (seaLevel.IsError ? "" : "stage_performance " + seaLevelInput + ": " + seaLevel.Json + "\n");
+                + (seaLevel == null || seaLevel.IsError ? "" : "stage_performance " + seaLevelInput + ": " + seaLevel.Json + "\n");
             var bodies = GoalBodies(snapshot, goal);
             if (bodies.Count > 0)
             {
@@ -620,7 +625,7 @@ namespace ClaudiaKermin.Core.Missions
             }
             if (transfers.Length > 0)
                 text += "Transfers to each body the Mission Goal names, as plan_transfer would give them from this Game Snapshot (JSON data). A tool whose figures are here needs no call.\n" + transfers;
-            if (!string.IsNullOrEmpty(craftCheckAscent)) text += "The Craft Check's plan_ascent " + craftCheckAscent + "\n";
+            if (onPad && !string.IsNullOrEmpty(craftCheckAscent)) text +="The Craft Check's plan_ascent " + craftCheckAscent + "\n";
             return text;
         }
 

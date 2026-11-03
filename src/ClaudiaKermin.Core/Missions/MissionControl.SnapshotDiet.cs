@@ -27,8 +27,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             var sent = Sent(mission, turn.CompactionBase, turn.CompactedBase).Where(m => m.Role == Role.User)
                 .Select(m => string.Concat(m.Content.OfType<TextBlock>().Select(b => b.Text))).ToList();
-            var planTurn = turn.Purpose == Purpose.MissionPlan || turn.Purpose == Purpose.Settings;
-            return SnapshotDiet.Shape(turn.UserText, sent, planTurn, mission.NoRunSinceSnapshot && !IsRunning(mission));
+            return SnapshotDiet.Shape(turn.UserText, sent, mission.NoRunSinceSnapshot && !IsRunning(mission));
         }
 
         /// <summary>A committed turn that carried a Game Snapshot starts a leg; a run or Manual Control ends it.</summary>
