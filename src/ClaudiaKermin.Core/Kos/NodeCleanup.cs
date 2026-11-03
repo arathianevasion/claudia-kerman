@@ -28,6 +28,19 @@ namespace ClaudiaKermin.Core.Kos
             }
         }
 
+        /// <summary>What to do with a node due for removal (#695).</summary>
+        public enum Removal { Now, Wait, Drop }
+
+        /// <summary>
+        /// KSP leaves an orphaned map icon when a node is removed while the craft is packed, so: an unloaded craft's node is dropped
+        /// (nothing to remove), a packed craft's waits for unpacking, and a loaded, unpacked craft's goes now.
+        /// </summary>
+        public static Removal WhenToRemove(bool loaded, bool packed)
+        {
+            if (!loaded) return Removal.Drop;
+            return packed ? Removal.Wait : Removal.Now;
+        }
+
         /// <summary>
         /// The nodes in <paramref name="now"/> to remove: those not in <paramref name="atStart"/> (matched by reference, as KSP's
         /// own node objects are), and none at all when <see cref="RemovesNodes"/> says the outcome keeps them.
