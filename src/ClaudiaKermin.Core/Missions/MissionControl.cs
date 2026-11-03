@@ -687,7 +687,8 @@ namespace ClaudiaKermin.Core.Missions
             {
                 Purpose = Purpose.Reply,
                 UserText = MissionPrompts.PlayerReplied(text),
-                Notice = MissionPrompts.ReplyNotice(_mission.Stage == MissionStage.AwaitingPlanApproval),
+                Notice = MissionPrompts.ReplyNotice(_mission.Stage == MissionStage.AwaitingPlanApproval, _mission.Declined),
+                PlayerText = text,
             });
         }
 
@@ -720,7 +721,7 @@ namespace ClaudiaKermin.Core.Missions
                 Purpose = Purpose.Question,
                 // While Running it carries a compact craft snapshot; it never touches the run.
                 UserText = MissionPrompts.PlayerAsks(text) + (running ? "\n" + CompactFacts(mission) : ""),
-                Notice = mission.AwaitingApproval ? MissionPrompts.QuestionWithPlanPendingNotice : MissionPrompts.QuestionNotice,
+                Notice = mission.AwaitingApproval ? MissionPrompts.QuestionWithPlanPendingNotice + (mission.Declined ? MissionPrompts.DeclinedPlanLine : "") : MissionPrompts.QuestionNotice,
                 PlayerText = mission.AwaitingApproval ? text : null,
                 Waits = running,
             });
@@ -1554,6 +1555,8 @@ namespace ClaudiaKermin.Core.Missions
                     // ADR 0002: Claude's reading of typed words never starts anything; only a button press does.
                     if ((reply.Intent == ReplyIntent.Approve || reply.Intent == ReplyIntent.Unclear) && !mission.Declined)
                         mission.ConfirmPrompt = planPending ? "Approve the Mission Plan?" : "Approve the Sequence Plan?";
+                    else if ((reply.Intent == ReplyIntent.Approve || reply.Intent == ReplyIntent.Unclear) && reply.MissionPlan == null && turn.PlayerText != null)
+                        PlanAgain(mission, turn.PlayerText);
                     else Revised(mission, reply, planPending);
                     break;
                 case Purpose.Change:
@@ -2330,6 +2333,7 @@ namespace ClaudiaKermin.Core.Missions
                 view.LinkLossTakeBackIn = LinkLossTakeBackIn();
                 view.PlanStale = StaleBecause(mission);
                 view.PlanStaleTarget = view.PlanStale.Length > 0 && mission.TargetChange.Length > 0;
+                view.PlanDeclined = mission.Declined;
                 view.TargetNeeded = TargetNeeded(mission);
                 view.CanChangeTarget = CanChangeTarget;
                 if (mission.Stage == MissionStage.ManualControl)

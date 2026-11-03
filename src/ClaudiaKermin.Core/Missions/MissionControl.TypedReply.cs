@@ -23,6 +23,7 @@ namespace ClaudiaKermin.Core.Missions
             if (reply.Intent == ReplyIntent.Approve)
             {
                 if (!mission.Declined) mission.ConfirmPrompt = ApprovalQuestion(mission);
+                else PlanAgain(mission, turn.PlayerText);
             }
             else if (reply.Intent == ReplyIntent.Revise)
             {
@@ -34,6 +35,21 @@ namespace ClaudiaKermin.Core.Missions
                     Notice = MissionPrompts.ChangeNotice(missionPlan),
                 });
             }
+        }
+
+        /// <summary>
+        /// The player's words read as approving (or unclear) while the pending Mission Plan is Claudia's decline: there is nothing
+        /// to approve, so the words go back to her as a change request. Nothing flies without Approval of the new plan (ADR 0002).
+        /// </summary>
+        private void PlanAgain(Mission mission, string playerText)
+        {
+            Note(LogKind.Notice, "There was no plan to approve: Claudia is making a new one.");
+            Begin(new Turn
+            {
+                Purpose = Purpose.Change,
+                UserText = MissionPrompts.PlayerWantsChange(playerText),
+                Notice = MissionPrompts.ChangeNotice(true),
+            });
         }
 
         private static string ApprovalQuestion(Mission mission)
