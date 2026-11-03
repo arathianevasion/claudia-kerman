@@ -508,6 +508,8 @@ namespace ClaudiaKermin.Core.Missions
             "Send the Sequence Plan again with each delta-v left threshold set below what the plan itself leaves (or change the plan): reply with kind "
             + "\"sequence_plan\" and sequence_plan filled in, with the complete Mission Script. The mod runs it only after the player's Approval.";
 
+        public const string CrossingAlso = " Also set each delta-v left threshold named below what the plan itself leaves, or change the plan.";
+
         private static string Metres(double value)
         {
             return value.ToString("#,0", CultureInfo.InvariantCulture) + " m/s";

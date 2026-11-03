@@ -1616,7 +1616,8 @@ namespace ClaudiaKermin.Core.Missions
                     ScriptRewrite = true,
                     Stats = turn.Stats,
                     UserText = MissionPrompts.PlanCheckFailed(problems, crossings, startDeltaV, plan.ExpectedDeltaV),
-                    Notice = scriptFailed ? MissionPrompts.RewriteNotice : MissionPrompts.CrossingNotice,
+                    Notice = !scriptFailed ? MissionPrompts.CrossingNotice
+                        : crossings.Count > 0 ? MissionPrompts.RewriteNotice + MissionPrompts.CrossingAlso : MissionPrompts.RewriteNotice,
                 });
                 return;
             }
