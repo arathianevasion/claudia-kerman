@@ -625,7 +625,7 @@ namespace ClaudiaKermin.Core.Missions
             }
             if (transfers.Length > 0)
                 text += "Transfers to each body the Mission Goal names, as plan_transfer would give them from this Game Snapshot (JSON data). A tool whose figures are here needs no call.\n" + transfers;
-            if (onPad && !string.IsNullOrEmpty(craftCheckAscent)) text +="The Craft Check's plan_ascent " + craftCheckAscent + "\n";
+            if (onPad && !string.IsNullOrEmpty(craftCheckAscent)) text += "The Craft Check's plan_ascent " + craftCheckAscent + "\n";
             return text;
         }
 
