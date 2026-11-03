@@ -575,7 +575,7 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             Assert.Null(failed.CompileError);
             Assert.False(failed.Passed);
             var problem = Assert.Single(failed.Problems);
-            Assert.Equal("line 1: transfer_to: missing required option target_pe; options: target*, target_pe*, window, correction (* required), plus the common options", problem);
+            Assert.Equal("line 1: transfer_to: missing required option target_pe; options: target*, target_pe*, window, correction, pe_tolerance (* required), plus the common options", problem);
 
             AssertAllowed(CoreLibrary.Bundle("local res is transfer_to(lexicon(\"target\", \"Mun\", \"target_pe\", 30000, \"stage_limit\", 3)).\nprint res.\n"));
         }
