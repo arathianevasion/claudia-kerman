@@ -98,6 +98,7 @@ namespace ClaudiaKermin.Core.Missions
             // At the step limit the next request is the last: tool_choice none, tools and system unchanged, as for a Mission turn (#509).
             _toolLimitSent = _toolSteps >= ToolStep.MaxSteps;
             _request.NoToolChoice = _toolLimitSent;
+            if (_toolLimitSent) _request.Messages[_request.Messages.Count - 1].Content.Add(new TextBlock { Text = MissionPrompts.StepLimitVerdictLine });
             var worstCase = RequestCharge.WorstCase(_config.Prices, _request.Model, _request);
             var spent = _stepCharges.Sum(c => c.Settlement.Spent + c.Settlement.Held);
             if (spent + worstCase > _spendingCap)

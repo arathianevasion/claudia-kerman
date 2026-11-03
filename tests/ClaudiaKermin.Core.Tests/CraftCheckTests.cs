@@ -644,6 +644,9 @@ namespace ClaudiaKermin.Core.Tests
                     }
                 }
             }
+            // The step-limit line follows the last results, in the final request only (#668).
+            Assert.Contains(MissionPrompts.StepLimitVerdictLine, transport.Requests[8].Body);
+            Assert.DoesNotContain(MissionPrompts.StepLimitVerdictLine, transport.Requests[7].Body);
         }
 
         [Fact]

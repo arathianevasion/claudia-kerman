@@ -769,6 +769,8 @@ namespace ClaudiaKermin.Core.Tests
                 }
             }
             Assert.Contains("tool_limit_final", Events(rig));
+            Assert.Contains(MissionPrompts.StepLimitVerdictLine, rig.Router.CheckRequests[checksBefore + 8].Body);
+            Assert.DoesNotContain(MissionPrompts.StepLimitVerdictLine, rig.Router.CheckRequests[checksBefore + 7].Body);
             Assert.Contains("The mod's margin recheck", LastUserText(rig.Transport.Requests[2]));
             Assert.Equal("", rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief.RecheckSkipped ?? "");
         }

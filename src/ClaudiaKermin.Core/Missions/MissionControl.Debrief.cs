@@ -393,6 +393,7 @@ namespace ClaudiaKermin.Core.Missions
                 // At the step limit the next request is the last: tool_choice none, tools and system unchanged, as for a Mission turn (#509).
                 gate.RecheckLimitSent = gate.RecheckToolSteps >= ToolStep.MaxSteps;
                 gate.RecheckRequest.NoToolChoice = gate.RecheckLimitSent;
+                if (gate.RecheckLimitSent) step.Results.Content.Add(new TextBlock { Text = MissionPrompts.StepLimitVerdictLine });
                 var worst = RequestCharge.WorstCase(_config.Prices, mission.Model, gate.RecheckRequest);
                 if (mission.Committed + worst + DebriefReserve(mission, turn) > mission.SpendingCap)
                 {
