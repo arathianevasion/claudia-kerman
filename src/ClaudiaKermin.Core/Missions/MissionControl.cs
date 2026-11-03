@@ -1465,12 +1465,15 @@ namespace ClaudiaKermin.Core.Missions
             if (offered != null)
             {
                 var check = CheckScript(mission, offered);
-                if (!check.Passed)
+                // Beside it, the plan's own figures (#674): a delta-v left check it is certain to cross goes back in the same one correction.
+                var start = PlanStartDeltaV(mission, offered);
+                var predicted = PredictedCrossings.Find(offered.TelemetryChecks, offered.ExpectedDeltaV, start);
+                if (!check.Passed || (predicted.Count > 0 && CrossingCorrectionWanted(mission, turn, offered, predicted, start.Value)))
                 {
-                    ScriptCheckFailed(mission, turn, offered, check.Problems);
+                    ScriptCheckFailed(mission, turn, offered, check.Passed ? new List<string>() : check.Problems, predicted, start ?? 0);
                     return;
                 }
-                checkWarnings = check.Warnings;
+                checkWarnings = check.Warnings.Concat(predicted.Select(p => MissionPrompts.PredictedCrossingWarning(p, start.Value, offered.ExpectedDeltaV))).ToList();
             }
 
             // Only a vessel that left the craft may be a Child Vessel: the player never sees a plan that names another.
@@ -1599,22 +1602,41 @@ namespace ClaudiaKermin.Core.Missions
         /// rewrite, and the player sees neither the plan nor its line. If a rewrite fails too, the plan is shown
         /// as "Couldn't produce a safe script" with Retry, Retry with a note or Re-plan, and nothing can be approved.
         /// </summary>
-        private void ScriptCheckFailed(Mission mission, Turn turn, SequencePlan plan, IList<string> problems)
+        private void ScriptCheckFailed(Mission mission, Turn turn, SequencePlan plan, IList<string> problems, IList<PredictedCrossing> crossings, double startDeltaV)
         {
             if (!turn.ScriptRewrite)
             {
-                Note(LogKind.Notice, "The script didn't pass the Script Check; Claudia is rewriting it.");
+                var scriptFailed = problems.Count > 0;
+                Note(LogKind.Notice, scriptFailed
+                    ? "The script didn't pass the Script Check" + (crossings.Count > 0 ? " and a Telemetry Check is certain to cross" : "") + "; Claudia is rewriting it."
+                    : "A Telemetry Check is certain to cross by the plan's own figures; Claudia is revising it.");
                 Begin(new Turn
                 {
                     Purpose = Purpose.SequencePlan,
                     ScriptRewrite = true,
                     Stats = turn.Stats,
-                    UserText = MissionPrompts.ScriptCheckFailed(problems),
-                    Notice = MissionPrompts.RewriteNotice,
+                    UserText = MissionPrompts.PlanCheckFailed(problems, crossings, startDeltaV, plan.ExpectedDeltaV),
+                    Notice = scriptFailed ? MissionPrompts.RewriteNotice : MissionPrompts.CrossingNotice,
                 });
                 return;
             }
             ShowUnsafeScript(mission, plan, problems);
+        }
+
+        /// <summary>The delta-v left the plan starts from, read as the run's baseline will be; null when it can't be (no snapshot of the craft, simulator off, an unreliable stage), for a Manual stretch or another vessel.</summary>
+        private double? PlanStartDeltaV(Mission mission, SequencePlan plan)
+        {
+            if (plan.Manual || !FliesCraft(mission, plan.Vessel)) return null;
+            return LiveReadings.DeltaVLeftOf(MissionVesselSnapshot(mission));
+        }
+
+        /// <summary>Whether the plan with predicted crossings goes back: not after a correction already, and only with Spending Cap room for it.</summary>
+        private bool CrossingCorrectionWanted(Mission mission, Turn turn, SequencePlan plan, IList<PredictedCrossing> predicted, double startDeltaV)
+        {
+            if (turn.ScriptRewrite) return false;
+            var probe = new Turn { Purpose = Purpose.SequencePlan, ScriptRewrite = true, Stats = turn.Stats,
+                UserText = MissionPrompts.PlanCheckFailed(null, predicted, startDeltaV, plan.ExpectedDeltaV), Notice = MissionPrompts.CrossingNotice };
+            return HasCapRoom(mission, probe);
         }
 
         /// <summary>"Couldn't produce a safe script": the plan is dropped, nothing can be approved, and the player chooses Retry, Retry with a note or Re-plan.</summary>

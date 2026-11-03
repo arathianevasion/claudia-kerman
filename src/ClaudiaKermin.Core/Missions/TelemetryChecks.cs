@@ -49,6 +49,33 @@ namespace ClaudiaKermin.Core.Missions
         }
     }
 
+    /// <summary>A Claudia-set delta-v-left check the Sequence Plan's own figures are certain to cross (#674).</summary>
+    public sealed class PredictedCrossing
+    {
+        public TelemetryCheck Check;
+        /// <summary>The delta-v left the plan predicts at its end: the start minus <c>expected_delta_v</c>, m/s.</summary>
+        public double PredictedLeft;
+    }
+
+    public static class PredictedCrossings
+    {
+        /// <summary>
+        /// The checks a plan crosses by its own figures: Claudia's (not a default) "delta-v left below X" with X over
+        /// <paramref name="startDeltaVLeft"/> − <paramref name="expectedDeltaV"/>. None when the start can't be read or
+        /// the plan expects no delta-v. Pure, so the rule is tested without a Mission.
+        /// </summary>
+        public static List<PredictedCrossing> Find(IEnumerable<TelemetryCheck> checks, double expectedDeltaV, double? startDeltaVLeft)
+        {
+            var found = new List<PredictedCrossing>();
+            if (!startDeltaVLeft.HasValue || expectedDeltaV <= 0 || checks == null) return found;
+            var left = startDeltaVLeft.Value - expectedDeltaV;
+            foreach (var check in checks)
+                if (!check.Default && check.Quantity == TelemetryQuantity.DeltaVLeft && check.Below && check.Threshold > left)
+                    found.Add(new PredictedCrossing { Check = check, PredictedLeft = left });
+            return found;
+        }
+    }
+
     /// <summary>
     /// A Telemetry Check: a quantity the mod measures while Running, and the threshold whose crossing raises an Alert.
     /// Set in the Sequence Plan by Claudia, or a config default (<see cref="TelemetryDefaults"/>).

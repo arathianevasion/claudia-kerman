@@ -479,6 +479,40 @@ namespace ClaudiaKermin.Core.Missions
             + "the Script Check: reply with kind \"sequence_plan\" and sequence_plan filled in, including its complete Mission "
             + "Script. The mod runs it only after the player's Approval.";
 
+        // ---- Predicted crossings (#674) ----
+
+        /// <summary>
+        /// The one automatic correction's text: the Script Check's problems (none when the script passed) and the Telemetry
+        /// Checks the plan's own figures are certain to cross. Reads right with either alone.
+        /// </summary>
+        public static string PlanCheckFailed(IList<string> scriptProblems, IList<PredictedCrossing> crossings, double startDeltaV, double expectedDeltaV)
+        {
+            var failed = scriptProblems != null && scriptProblems.Count > 0;
+            var text = failed ? ScriptCheckFailed(scriptProblems) : "";
+            if (crossings == null || crossings.Count == 0) return text;
+            var lines = crossings.Select(c => "- " + c.Check.Describe() + ": the plan leaves about " + c.Check.Format(c.PredictedLeft)).ToList();
+            text += (failed ? "\n" : "The mod sent back your Sequence Plan, so the player hasn't seen it; its Mission Script passed the Script Check. ")
+                + "Its own figures are certain to cross these Telemetry Checks (delta-v left starts at " + Metres(startDeltaV)
+                + ", expected_delta_v is " + Metres(expectedDeltaV) + "):\n" + string.Join("\n", lines.ToArray());
+            return text;
+        }
+
+        /// <summary>What a crossing the plan predicted for itself is logged as in plans.jsonl when the plan is offered anyway.</summary>
+        public static string PredictedCrossingWarning(PredictedCrossing crossing, double startDeltaV, double expectedDeltaV)
+        {
+            return "predicted crossing: " + crossing.Check.Describe() + " (starts " + Metres(startDeltaV) + ", expected_delta_v " + Metres(expectedDeltaV)
+                + ", leaves about " + crossing.Check.Format(crossing.PredictedLeft) + ")";
+        }
+
+        public const string CrossingNotice =
+            "Send the Sequence Plan again with each delta-v left threshold set below what the plan itself leaves (or change the plan): reply with kind "
+            + "\"sequence_plan\" and sequence_plan filled in, with the complete Mission Script. The mod runs it only after the player's Approval.";
+
+        private static string Metres(double value)
+        {
+            return value.ToString("#,0", CultureInfo.InvariantCulture) + " m/s";
+        }
+
         private static string Problems(IList<string> problems)
         {
             var lines = new List<string>();
