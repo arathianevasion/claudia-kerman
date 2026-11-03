@@ -1,0 +1,18 @@
+rendezvous(options): meets the Target Vessel.
+From orbit round its body to within its physics range (loaded, about 2.2 km) under 2 m/s relative; then dock.
+Each step is solved when it starts and flown by exec_node: a plane match over max_rel_inc, a phasing orbit when
+the transfer window is over max_phasing_orbits away, the transfer, a Course Correction to about 300 m, and
+matching velocities there.
+Options:
+target ["auto"]: the Mission's Target Vessel; a name given must be its.
+max_rel_inc [0.1]: degrees off the target's plane before the plane match.
+max_phasing_orbits [5]: orbits the craft may wait for the window before it phases.
+max_dv ["none"]: m/s all the burns may cost; a burn past it fails before it flies.
+max_duration ["auto"]: none.
+plus min_ec_pct, abort_on_part_loss, stage_limit and drop_empty as for every block.
+Extra results: distance_actual (m), relative_speed_actual (m/s), burns (the steps flown: match_plane, phasing,
+transfer, correction, match_velocities, kill_speed).
+Fails with "the Game Snapshot has no Target Vessel ..." (or it is landed), "<target> is not the Target Vessel <name>",
+the target round another body, "not in orbit", "a maneuver node is already planned: remove it first", a solver's
+reason, "needs <dv> m/s, over max_dv", an exec_node failure (its node stays), an abort, or "no hand-off after 8 steps".
+Example: `local res is rendezvous(lexicon()). addons:claudia:report(res).`

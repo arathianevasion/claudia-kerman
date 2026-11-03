@@ -1,0 +1,20 @@
+science(options): runs the craft's science experiments here (current body, situation and biome)
+and transmits or keeps the data. Never overwrites data an experiment already holds, and never
+runs a part that is inoperable or has nothing to measure here.
+Options:
+experiments ["all_useful"]: "all_useful" runs every experiment that has science left here (the
+addon knows how much); in Sandbox nothing is tracked, so it runs each experiment once. Or a
+list of experiment ids ("temperatureScan") or part titles/names, run whether or not science
+is left. A name that matches no experiment part fails the block.
+transmit ["auto"]: "keep" leaves the data in the experiment; "transmit" sends it home, data a part
+already holds too, with no new run (it stays if there is no antenna or link; see kept); "auto" transmits unless the craft is returning
+(it carries crew or parachutes) and transmitting would lose value, then keeps it.
+max_duration [1800]: seconds, transmission waits included.
+plus min_ec_pct, abort_on_part_loss and stage_limit as for every block (it never stages).
+Data is kept while electric charge is under min_ec_pct.
+Extra results: results (a list with one lexicon per experiment part: experiment, part, action
+"ran", "sent held data" or "skipped", detail, and transmit "transmitted", "kept" or ""), and
+kept: hints for data kept for want of a link or charge. Data left on board after "keep" comes home
+with the craft; recover it. Fails on an option it can't read, a name matching no experiment, or an
+abort. Nothing to run is a success. EVA reports and samples are the player's job.
+Example: `local res is science(lexicon("transmit", "keep")). addons:claudia:report(res).`

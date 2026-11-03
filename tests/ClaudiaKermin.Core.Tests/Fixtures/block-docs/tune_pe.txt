@@ -1,0 +1,30 @@
+tune_pe(options): sets the periapsis, this orbit's or the next patch's.
+One burn it places itself, and one trim if off. Use it to fine-tune the periapsis at a moon before arrival or at Kerbin on
+the way home; flown by exec_node.
+Options:
+value [required]: the periapsis altitude wanted, m above the surface.
+patch ["current"]: "current" burns at the apoapsis of the orbit the craft is on (the cheapest point
+for moving the periapsis) and needs a closed orbit whose apoapsis comes before any sphere-of-influence
+change. If the periapsis is inside the atmosphere (or below the surface) and the craft reaches it
+before that apoapsis, it burns instead as soon as a burn can be led (about 2 minutes on), the
+cheapest point before the periapsis, so the craft is not lost to it; "next" burns near the start or halfway to the sphere-of-influence change (the cheaper) and aims the periapsis of the orbit
+after it (at the Mun before arrival, at Kerbin on the way home), earlier if the burn would not end 60 s before the change.
+tolerance [1000]: m the periapsis may end from value; more fails the block.
+max_dv [50]: m/s the burns may cost; more fails the block before that burn.
+max_duration ["auto"]: as for exec_node (the wait to the burn, twice the burn, plus 300 s).
+plus min_ec_pct, abort_on_part_loss, stage_limit and drop_empty as for every block.
+Extra results: pe_actual (m, the periapsis of the chosen patch when the block ended), burn_ut (UT of
+the burn; -1 if none was needed). Succeeds at once, with no burn, if the periapsis is already within
+tolerance. Fails with "value is required", an option value it can't read, "a maneuver node is already
+planned: remove it first", "no next patch" (patch "next" with no sphere-of-influence change ahead),
+"the orbit escapes" or "the apoapsis comes after the sphere-of-influence change" (patch "current"),
+"the periapsis is inside the atmosphere or the surface and comes in <s> s, too soon to plan and fly a
+burn before it" (patch "current", under 5 minutes to it), "no prograde burn at the burn point reaches
+a periapsis of <m> m from the centre",
+"value is above the apoapsis", "the sphere-of-influence change is too close", "the burn (<s> s from <s>
+s before its node) does not fit before the sphere-of-influence change in <s> s" (patch "next"), "needs <dv> m/s, over
+max_dv <max>", "found no burn that reaches <value> m", the reasons exec_node gives (no thrust, out of
+fuel, an abort), or "periapsis <pe> m is over tolerance <t> m from <value> m"; on an exec_node failure
+the node is left in place.
+Tool: solve_burn (set_pe or next_patch_pe) for the delta-v to budget; pass tune_pe the value, not that burn.
+Example: `local res is tune_pe(lexicon("value", 50000, "patch", "next")). addons:claudia:report(res).`

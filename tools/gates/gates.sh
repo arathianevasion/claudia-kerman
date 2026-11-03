@@ -17,6 +17,7 @@ run build dotnet build ClaudiaKermin.sln -warnaserror $K
 
 run core dotnet test tests/ClaudiaKermin.Core.Tests --no-build $K --filter "Category!=Timing"
 run kerboscript bash tools/gates/kerboscript.sh   # several test processes at once (#625)
+run kerboscript-loc bash tools/gates/kerboscript-loc.sh   # the library may not grow (#705, ADR 0014)
 run scriptcheck dotnet test tests/ClaudiaKermin.ScriptCheck.Tests --no-build $K
 
 # KsCompile runs from the binary the build above made.

@@ -1,0 +1,41 @@
+return(options): flies home from orbit around any moon to its planet: an ejection
+burn onto a path whose periapsis at the planet is target_pe, then a mid-course correction halfway to
+reentry, both flown with exec_node. It ends after the correction, still in space; the craft comes
+down anywhere on the planet. Call it as a value, `local res is return().`: a bare `return().` is kOS's
+own return statement.
+Options:
+target_pe [35000]: the periapsis altitude at the planet to aim for, m; inside its atmosphere the
+craft comes down.
+target_inc ["any"]: the inclination round the planet to arrive at, degrees from 0 to 180; "any" for none.
+window ["next"]: "next" ejects at the burn point's next pass once the craft can have turned to the
+burn, as transfer_to departs; a time (UT seconds) ejects at its first pass from that time. The
+block warps on rails to the pass however far off it is.
+target ["none"]: LATLNG(lat, lng), lexicon("lat", x, "lng", y) or "ksc": where to come down. The
+mid-course correction then aims the landing point the mod's reentry predictor gives (the craft's
+own drag, held retrograde as reentry flies it) at the target, with target_pe only drawing a path
+that misses the air towards it (and target_inc left out); the ejection burn is unchanged. "none"
+aims for target_pe only. The landing is hard to steer from here: read predicted_error_km, and when
+it is too far for the Mission Goal, capture at the planet and call deorbit instead. Aim a
+splashdown offshore.
+correction [true]: false leaves out the mid-course correction.
+max_duration ["auto"]: the time to the predicted reentry plus 900 s; a shorter one moves the correction sooner.
+plus min_ec_pct, abort_on_part_loss and stage_limit as for every block; each burn gets them too.
+Extra results: planet_pe (m, the predicted periapsis at the planet), reentry_ut (UT of the predicted
+entry into the planet's atmosphere, or of periapsis if that is above it), correction_dv (m/s the
+mid-course correction burned), predicted_geo (lexicon lat, lng: where the craft is predicted to come
+down, from the path it is on after the correction, with the prediction leaving out parachutes and
+lift; empty without a target or a prediction) and predicted_error_km (km from the target to
+predicted_geo; -1 without one).
+The correction is skipped when the prediction is already within 1 km of target_pe and 0.5 degrees of
+target_inc (with a target: within 2 km of it) or the fix is under 0.1 m/s. When leaving the moon's
+sphere of influence comes before halfway, the block warps through that first, however long it takes.
+Fails with an option value it can't read, "not in orbit", "already orbiting <body>, a planet: lower
+the periapsis with exec_node instead", "return starts from orbit around a moon, not <body>", "a
+maneuver node is already planned: remove it first", "found no return: <why>", "found no correction:
+<why>", "no return to <planet> after the ejection burn" (or "after the correction"), an exec_node
+failure (that burn's node is left in place), or an abort.
+Follow it with reentry, in the same sequence or the next (no Due Time needed): once the craft is
+in the planet's sphere of influence (after the correction it usually is; if ship:body is still the
+moon, coast until ship:orbit:nextpatcheta has passed), reentry warps to the atmosphere itself.
+Tool: stage_performance for the delta-v; it plans its own burns, so don't plan them with predict_burn or solve_burn.
+Example: `local res is return(). addons:claudia:report(res).`
