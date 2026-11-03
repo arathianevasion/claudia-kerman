@@ -43,8 +43,8 @@ namespace ClaudiaKermin.Core.Tools
                 // dates and delta-v, not a burn (#670); when #459's transfer_to flies to planets, point a planet at it here.
                 return "The cheapest two-burn transfer in the next window, from this turn's Game Snapshot: to target (a moon of the "
                     + "craft's body, or a planet) at target_pe (m), or to orbit (ap, pe m; inc, lan deg) anywhere on it. Gives the departure burn "
-                    + "(maneuver-node components) and time, and the arrival burn; a planet: soonest and optimal window dates and delta-v, no burn. "
-                    + "capture false minimises the departure alone. Its block is transfer_to. Not for other planets' moons.";
+                    + "(maneuver-node components) and time and the arrival burn; a planet: soonest and optimal dates and delta-v, no burn. "
+                    + "capture false minimises the departure alone. Its block is transfer_to. Don't call it for other planets' moons.";
             }
         }
 

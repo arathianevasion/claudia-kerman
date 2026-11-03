@@ -141,7 +141,7 @@ namespace ClaudiaKermin.Core.Tests
             var description = PlanningTools.Default().Definitions(ToolOffer.Mission).Single(t => t.Name == "plan_transfer").Description;
             Assert.InRange(description.Length, 1, 457);
             Assert.Contains("Its block is transfer_to", description);
-            Assert.Contains("a planet: soonest and optimal window dates and delta-v, no burn", description);
+            Assert.Contains("a planet: soonest and optimal dates and delta-v, no burn", description);
         }
 
         // ---- Through the Mission seam ----
