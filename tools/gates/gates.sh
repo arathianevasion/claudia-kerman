@@ -7,7 +7,10 @@ ROOT=${GATES_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}
 cd "$ROOT" || exit 1
 K="-p:KOSPluginsDir=$HOME/KSP_spike/GameData/kOS/Plugins"
 fail=0
-run() { local name=$1; shift; if out=$("$@" 2>&1); then echo "PASS $name $(echo "$out" | grep -E 'Passed!|Failed!' | tail -1)"; else echo "FAIL $name"; echo "$out" | grep -E 'error|Failed|FAIL' | head -20; fail=1; fi; }
+# On a failure: the error and summary lines, then each failing test's block (#681): its name, message and the top of its
+# stack, so a flake can be diagnosed from the gate log.
+failed_tests() { awk '/^ *Failed [^!]/ { p = 1; s = 0 } p && s && ++n > 3 { p = 0 } p { print } /^ *Stack Trace:/ { s = 1; n = 0 }' | head -300; }
+run() { local name=$1; shift; if out=$("$@" 2>&1); then echo "PASS $name $(echo "$out" | grep -E 'Passed!|Failed!' | tail -1)"; else echo "FAIL $name"; echo "$out" | grep -E 'error|Failed!|FAIL' | head -20; echo "$out" | failed_tests; fail=1; fi; }
 
 run build dotnet build ClaudiaKermin.sln -warnaserror $K
 [ $fail -ne 0 ] && exit 1   # nothing below can run on a broken build

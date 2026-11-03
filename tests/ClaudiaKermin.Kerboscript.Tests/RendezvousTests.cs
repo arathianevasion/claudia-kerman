@@ -26,7 +26,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
     {
         static RendezvousTests()
         {
-            RendezvousRigFunctions.Register();
+            KosHarness.Register(typeof(RendezvousRigFunctions));
         }
 
         private static string[] Run(string missionScript)
@@ -280,17 +280,6 @@ namespace ClaudiaKermin.Kerboscript.Tests
     /// <summary>The rig's kOS functions: the state now, a block-internal call, and a flight.</summary>
     internal static class RendezvousRigFunctions
     {
-        private static bool _registered;
-
-        public static void Register()
-        {
-            if (_registered) return;
-            foreach (var type in typeof(RendezvousRigFunctions).GetNestedTypes())
-                foreach (FunctionAttribute attribute in type.GetCustomAttributes(typeof(FunctionAttribute), false))
-                    FunctionManager.RegisterMethod(attribute, type);
-            _registered = true;
-        }
-
         [Function("test_rv_state")]
         public class FunctionState : SafeFunctionBase
         {
