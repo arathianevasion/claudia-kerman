@@ -197,7 +197,8 @@ namespace ClaudiaKermin.Core.Missions
             var needsNewGoal = mission.Stage != MissionStage.AwaitingPlanApproval && (purpose == Purpose.Reply || purpose == Purpose.Change);
             // Only the player's typed Reply or Change may change the Mission Goal (#590); on any other request a new_goal is ignored.
             var allowsNewGoal = purpose == Purpose.Reply || purpose == Purpose.Change;
-            Func<ToolUseBlock, ToolOutcome> answer = use => use.Name == ProposedPlans.ToolName ? ProposedPlans.Check(use, left, needsNewGoal, allowsNewGoal) : null;
+            var goal = mission.Goal;
+            Func<ToolUseBlock, ToolOutcome> answer = use => use.Name == ProposedPlans.ToolName ? ProposedPlans.Check(use, left, needsNewGoal, allowsNewGoal, snapshot, goal) : null;
             _background.Run(
                 () => ToolStep.Run(tools, message, refusal, atLimit, snapshot, body, timeout, answer),
                 step => ToolsAnswered(mission, turn, message, step, atLimit),
