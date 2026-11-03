@@ -50,15 +50,18 @@ PASS dock
   ok   docked == true (got True)
   ok   test_ports == true (got True)
   ok   monoprop_used > 0 (got <kg or units>)
+  ok   monoprop_used <= 40 (got <units>)
 ```
 
 3. `KSP.log` also shows `starting dock_hold on part <id> of 'Block Test Target' for dock on part <id>` and, when `dock` returns, `stopping dock_hold on part <id>: <reason>`.
 4. The terminal line reads `dock test: success True, docked True, port size0 to size0, monoprop <n>, <s> s, ...`.
+5. #706: `KSP.log` has a `dock trace at UT ...: mode close, distance ..., along ..., lat ..., align_deg ..., speed ..., dv_error ..., translating ..., monoprop ..., hold ...` line about once a second from `starting dock_hold` to the result. Most lines read `translating false` (the craft coasts) and `monoprop` falls in steps, not steadily. About once a second there is also a `block call DOCKGUIDE took ... ms (the slowest of <n> calls ...)` line; the slowest should be well under 1 ms.
+6. #706: watch both vessels inside 20 m. Neither should keep swinging back and forth: the target's port holds still (dock_hold re-aims only when the craft is over 15 degrees off it, more than 10 m out), and the craft's RCS puffs in short bursts, not continuously. Write down any sustained oscillation with the trace's `align_deg` figures.
 
 ## Check 3: Run dock (passive target)
 
 1. Pick `dock_passive` and press **Run**. Same start, but the target is `target.craft`: the dock craft without its kOS KR-2042. The mod cannot run `dock_hold` on it, so `dock` meets it at its port's current facing.
-2. Pass lines: the same four `ok` lines as Check 2 under `PASS dock_passive`.
+2. Pass lines: the same five `ok` lines as Check 2 under `PASS dock_passive`, and the `dock trace` lines (with `hold passive`).
 3. `KSP.log` must not contain `starting dock_hold` for this run.
 4. The target's parts are hand-edited (the processor removed, its neighbours re-linked, a 0.35 m gap left where it sat). If the craft spawns broken or the target comes apart, say so: that is a test-craft bug, not a block bug.
 
@@ -92,6 +95,7 @@ Start a Mission with the Mission Goal "rendezvous with <vessel> and dock" in the
 2. Mission Goal: `rendezvous with <vessel> and dock`. Pick Mission Settings, a Spending Cap and a model, then approve.
 3. Expected: Claudia proposes a Mission Plan of Maneuver Sequences built from Building Blocks alone. Read it in the Mission window and in `saves/<save>/ClaudiaKermin/missions/<id>/transcript.json`. Record: **the plan uses `rendezvous` and `dock`, and no Custom Script.** If a Custom Script appears, write down why she gave for it.
 4. Approve each sequence and let it fly. Expected: the `rendezvous` Sequence ends with the target loaded and under 2 m/s relative, the `dock` Sequence ends docked, and each Debrief is rated Nominal.
+5. #706: the `dock` from that rendezvous hand-off ends docked with monopropellant left: its `monoprop_used` is a modest share of what the craft carried (#706's failed flight used 121.7 of 128 units and stopped 11.6 m short), and `KSP.log` has its `dock trace` lines. Record `monoprop_used` and the units aboard at the start (the first trace line's `monoprop`).
 
 ## Report
 

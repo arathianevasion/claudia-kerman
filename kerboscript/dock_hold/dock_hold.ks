@@ -5,7 +5,9 @@
 // (ADR 0013). Not part of the Core Library: never bundled with a Mission Script, never in Claudia's docs, and Claudia's
 // scripts never run on the target. The mod puts the two ports' kOS uids in (DockHold.Program) and starts it under ADR 0003's
 // runtime gates like any run it starts. It controls from the target port, points it at the craft's port (reading the
-// craft only) and so damps the target's rotation; it ends once its port leaves Ready (capture or docking), and the mod
+// craft only) and holds that direction, so damps the target's rotation. It re-aims only once the craft is over 15 degrees
+// off the held direction and the ports over 10 m apart, then holds again (#706): tracking the craft's port each tick
+// coupled the two vessels' turns into a limit cycle, and close in a few cm off the axis is many degrees. It ends once its port leaves Ready (capture or docking), and the mod
 // stops it when dock ends, however dock ends. It reports success true with reason "docked" when its port was caught.
 
 @lazyglobal off.
@@ -43,8 +45,15 @@ if not dh_found {
   set dh_reason to "the craft's port is not loaded".
 } else {
   dh_port:controlfrom().
-  lock steering to lookdirup(dh_toward:nodeposition - dh_port:nodeposition, ship:facing:topvector).
+  local dh_aim is dh_toward:nodeposition - dh_port:nodeposition.
+  local dh_up is ship:facing:topvector.
+  lock steering to lookdirup(dh_aim, dh_up).
   until dh_port:state <> "Ready" {
+    local dh_now is dh_toward:nodeposition - dh_port:nodeposition.
+    if vang(dh_now, dh_aim) > 15 and dh_now:mag > 10 {
+      set dh_aim to dh_now.
+      set dh_up to ship:facing:topvector.
+    }
     wait 0.
   }
   unlock steering.

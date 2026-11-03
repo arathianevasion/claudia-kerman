@@ -54,6 +54,10 @@ namespace ClaudiaKermin.KOS
                 "Core Library only (dock): the mod starts its dock_hold on the Target Vessel's kOS processor, turning its port (uid) toward the craft's (toward, uid), or meets the target passive; lexicon error, state (starting or passive), reason"));
             AddSuffix("DOCKHOLDSTATE", new NoArgsSuffix<Lexicon>(DockHoldRead,
                 "Core Library only (dock): the dock_hold dock started; lexicon state (none, starting, active, passive, fault or docked), reason"));
+            AddSuffix("DOCKGUIDE", new OneArgsSuffix<Lexicon, Lexicon>(DockGuide,
+                "Core Library only (dock, each tick): DockGuidance's wanted velocity and coast band for the craft's port in the target port's frame; lexicon along, lat, dv_error, fire, cmd_along, cmd_lat, cmd_side"));
+            AddSuffix("DOCKFUEL", new OneArgsSuffix<Lexicon, Lexicon>(DockFuel,
+                "Core Library only (dock): whether the craft's RCS delta-v covers a dock from distance (m) at speed (m/s); lexicon error, dv, need"));
             AddSuffix("CHUTEALLOCATION", new NoArgsSuffix<Lexicon>(ChuteAllocationSet,
                 "Core Library only (reentry): the Chute Allocation's chutes for this entry; lexicon error, all (true: keep every chute), entry, return, uids, titles, powered_finish, touchdown_speed"));
         }
@@ -115,6 +119,55 @@ namespace ClaudiaKermin.KOS
             return result;
         }
 
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:DOCKGUIDE</c> (#706, ADR 0014): one tick of dock's guidance (<see cref="DockGuidance.Guide"/>), pure. Called
+        /// every physics tick, so its time is logged at most once a second (guardrail 6).
+        /// </summary>
+        private Lexicon DockGuide(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> tick = null;
+            return (Lexicon)Guarded("DOCKGUIDE", () =>
+            {
+                tick = DockGuidance.Guide(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(tick);
+            }, () => string.Format(CultureInfo.InvariantCulture, "want {0:0.###}/{1:0.###} m/s, error {2:0.###} m/s, {3}",
+                tick["along"], tick["lat"], tick["dv_error"], (bool)tick["fire"] ? "translating" : "coasting"), 1);
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:DOCKFUEL</c> (#706): dock's start-of-dock monopropellant check (<see cref="DockGuidance.Fuel"/>) on the
+        /// craft's MonoPropellant, mass and its RCS thrusters' vacuum Isp (weighted by thrust), read live.
+        /// </summary>
+        private Lexicon DockFuel(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> fuel = null;
+            double monoprop = 0, isp = 0, mass = 0;
+            return (Lexicon)Guarded("DOCKFUEL", () =>
+            {
+                var ask = KosValues.ToDictionary(input);
+                var vessel = shared.Vessel;
+                double power = 0, weighted = 0;
+                foreach (var part in vessel.parts)
+                {
+                    if (part.Resources.Contains("MonoPropellant")) monoprop += part.Resources["MonoPropellant"].amount;
+                    foreach (var rcs in part.FindModulesImplementing<ModuleRCS>())
+                    {
+                        if (!rcs.rcsEnabled || rcs.thrusterPower <= 0) continue;
+                        power += rcs.thrusterPower;
+                        weighted += rcs.thrusterPower * rcs.atmosphereCurve.Evaluate(0f);
+                    }
+                }
+                isp = power > 0 ? weighted / power : 0;
+                mass = vessel.GetTotalMass();
+                object distance, speed;
+                ask.TryGetValue("distance", out distance);
+                ask.TryGetValue("speed", out speed);
+                fuel = DockGuidance.Fuel(monoprop, isp, mass, distance is double ? (double)distance : 0, speed is double ? (double)speed : 0);
+                return KosValues.FromPlain(fuel);
+            }, () => string.Format(CultureInfo.InvariantCulture, "{0:0.0} units, Isp {1:0} s, {2:0.00} t: {3:0.0} m/s of RCS, needs {4:0.0}{5}",
+                monoprop, isp, mass, fuel["dv"], fuel["need"], fuel["error"] as string == "" ? "" : "; " + fuel["error"]));
+        }
+
         private Lexicon ChuteAllocationSet()
         {
             System.Collections.Generic.IDictionary<string, object> set = null;
@@ -156,7 +209,7 @@ namespace ClaudiaKermin.KOS
         /// exception into <c>lexicon("error", reason)</c> so the block fails with <c>reason</c> instead of the kOS program ending.
         /// Core returns expected failures as an <c>error</c>; an exception here is a bug, logged with its stack.
         /// </summary>
-        internal static Structure Guarded(string name, Func<Structure> call, Func<string> describe)
+        internal static Structure Guarded(string name, Func<Structure> call, Func<string> describe, double everySeconds = 0)
         {
             var watch = Stopwatch.StartNew();
             Structure result;
@@ -173,9 +226,11 @@ namespace ClaudiaKermin.KOS
             }
             // The log line is only a diagnostic: a failure writing it must not fail a call that worked.
             var took = Ms(watch);
+            var note = "";
+            if (everySeconds > 0 && !Due(name, watch.Elapsed.TotalMilliseconds, everySeconds, ref took, ref note)) return result;
             try
             {
-                Debug.Log(ModInfo.LogTag + " block call " + name + " took " + took + " ms: " + (describe == null ? "done" : describe()));
+                Debug.Log(ModInfo.LogTag + " block call " + name + " took " + took + " ms" + note + ": " + (describe == null ? "done" : describe()));
             }
             catch (Exception e)
             {
@@ -317,6 +372,35 @@ namespace ClaudiaKermin.KOS
                     ? string.Format(CultureInfo.InvariantCulture, "; burn at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00} m/s", result["burn_ut"], result["prograde"], result["normal"])
                     : "",
                 Planetarium.InverseRotAngle, FlightGlobals.RefFrameIsRotating ? " (rotating frame)" : "");
+        }
+
+        private sealed class CallTally
+        {
+            public long LastTicks;
+            public int Calls;
+            public double SlowestMs;
+        }
+
+        private static readonly System.Collections.Generic.Dictionary<string, CallTally> Tallies = new System.Collections.Generic.Dictionary<string, CallTally>();
+
+        /// <summary>
+        /// For a call made every tick: whether its log line is due (at most one every <paramref name="everySeconds"/> real seconds), and
+        /// if so <paramref name="took"/> becomes the slowest of the calls since the last line, and <paramref name="note"/> says so.
+        /// </summary>
+        private static bool Due(string name, double ms, double everySeconds, ref string took, ref string note)
+        {
+            CallTally tally;
+            if (!Tallies.TryGetValue(name, out tally)) Tallies[name] = tally = new CallTally { LastTicks = Stopwatch.GetTimestamp() - Stopwatch.Frequency * 3600 };
+            tally.Calls++;
+            tally.SlowestMs = Math.Max(tally.SlowestMs, ms);
+            var now = Stopwatch.GetTimestamp();
+            if (now - tally.LastTicks < everySeconds * Stopwatch.Frequency) return false;
+            took = tally.SlowestMs.ToString("0.000", CultureInfo.InvariantCulture);
+            note = " (the slowest of " + tally.Calls + " calls since the last line; this one's answer)";
+            tally.LastTicks = now;
+            tally.Calls = 0;
+            tally.SlowestMs = 0;
+            return true;
         }
 
         private static string Ms(Stopwatch watch)

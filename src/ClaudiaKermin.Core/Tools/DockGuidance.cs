@@ -11,14 +11,14 @@ namespace ClaudiaKermin.Core.Tools
     /// The <c>dock</c> Building Block's guidance (#706, ADR 0014): the closing speed by distance, the cone the craft must be in to
     /// close, the relative velocity it wants, the coast band that decides when RCS translates, and the monopropellant estimate it
     /// checks at the start. dock.ks calls it once a tick through <c>ADDONS:CLAUDIA:DOCKGUIDE</c> (<see cref="Guide"/>) and at
-    /// the start through <c>DOCKFUEL</c> (<see cref="FuelCheck"/>), both block-internal; kOS still writes <c>ship:control</c>
+    /// the start through <c>DOCKFUEL</c> (<see cref="Fuel"/>), both block-internal; kOS still writes <c>ship:control</c>
     /// and steers. Everything is in the target port's frame: <c>along</c> out along its axis from its face, <c>lat</c> the
     /// distance off the axis (velocities positive away from it), <c>side</c> the third axis, square to both.
     /// </summary>
     public static class DockGuidance
     {
         /// <summary>m/s: the closing speed far out (beyond 100 m).</summary>
-        public const double FarSpeed = 5;
+        public const double FarSpeed = 2;
 
         /// <summary>m: off the axis the craft keeps when it starts behind the target port's face, to pass the target's side.</summary>
         public const double ClearM = 50;
@@ -26,14 +26,15 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>Degrees off the target port's axis the craft's port may point inside 20 m and still close.</summary>
         public const double AlignDeg = 5;
 
-        /// <summary>m/s of velocity error: RCS starts translating over <see cref="CoastOut"/> and stops under <see cref="CoastIn"/>.</summary>
-        public const double CoastOut = 0.1, CoastIn = 0.05;
+        /// <summary>
+        /// m/s of velocity error: RCS starts translating over the band's edge, a fifth of the wanted speed within
+        /// <see cref="BandLow"/> and <see cref="BandHigh"/>, and stops under half of it. Narrower slow, so the craft meets the
+        /// port within about 0.06 m/s of final_speed's default 0.3.
+        /// </summary>
+        public const double BandLow = 0.05, BandHigh = 0.1, BandShare = 0.2;
 
         /// <summary>m/s of velocity error that commands full RCS on an axis.</summary>
         public const double FullAt = 0.2;
-
-        /// <summary>The share of the starting monopropellant at which the block stops closing, backs off and fails.</summary>
-        public const double ReserveShare = 0.15;
 
         /// <summary>m/s of RCS the start check asks for per metre to the port, on top of <see cref="ReserveDv"/> and the speed now.</summary>
         public const double DvPerMetre = 0.03;
@@ -94,13 +95,20 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
-        /// The coast band: whether RCS translates this tick, given the velocity error (m/s, its size) and whether it translated
-        /// last tick. It starts over <see cref="CoastOut"/> and goes on until the error is under <see cref="CoastIn"/>; between
-        /// the two the craft keeps doing what it did, so it coasts until the error leaves the band again.
+        /// The coast band: whether RCS translates this tick, given the velocity error (m/s, its size), the wanted speed (m/s) and
+        /// whether it translated last tick. It starts over <see cref="Band"/> and goes on until the error is under half of it;
+        /// between the two the craft keeps doing what it did, so it coasts until the error leaves the band again.
         /// </summary>
-        public static bool Fires(double error, bool firing)
+        public static bool Fires(double error, double wantSpeed, bool firing)
         {
-            return firing ? error >= CoastIn : error > CoastOut;
+            var band = Band(wantSpeed);
+            return firing ? error >= band / 2 : error > band;
+        }
+
+        /// <summary>m/s: the coast band's edge for the wanted speed (m/s).</summary>
+        public static double Band(double wantSpeed)
+        {
+            return Math.Max(BandLow, Math.Min(BandHigh, BandShare * wantSpeed));
         }
 
         /// <summary>
@@ -108,7 +116,7 @@ namespace ClaudiaKermin.Core.Tools
         /// along the line from the port at 0.5 m/s; "hold": still), <c>along</c>, <c>lat</c>, <c>distance</c> (m),
         /// <c>align_deg</c>, <c>v_along</c>, <c>v_lat</c>, <c>v_side</c> (the relative velocity, m/s), <c>firing</c> (RCS
         /// translated last tick), and the options <c>approach_speed</c>, <c>final_speed</c>, <c>max_lateral</c>. Gives
-        /// <c>along</c>, <c>lat</c> (the wanted velocity), <c>error</c> (m/s, the velocity error's size), <c>fire</c> (RCS
+        /// <c>along</c>, <c>lat</c> (the wanted velocity), <c>dv_error</c> (m/s, the velocity error's size), <c>fire</c> (RCS
         /// translates this tick) and <c>cmd_along</c>, <c>cmd_lat</c>, <c>cmd_side</c>: the RCS command in the port's frame, the
         /// error over <see cref="FullAt"/> (kOS turns it into fore, starboard and top and clips each to 1); all 0 while it coasts.
         /// </summary>
@@ -133,13 +141,13 @@ namespace ClaudiaKermin.Core.Tools
             var eSide = -Number(input, "v_side");
             var error = Math.Sqrt(eAlong * eAlong + eLat * eLat + eSide * eSide);
             object firingValue;
-            var fire = Fires(error, input.TryGetValue("firing", out firingValue) && firingValue is bool && (bool)firingValue);
+            var fire = Fires(error, Math.Sqrt(want.Along * want.Along + want.Lat * want.Lat), input.TryGetValue("firing", out firingValue) && firingValue is bool && (bool)firingValue);
             var k = fire ? 1 / FullAt : 0;
             return new Dictionary<string, object>
             {
                 { "along", want.Along },
                 { "lat", want.Lat },
-                { "error", error },
+                { "dv_error", error },
                 { "fire", fire },
                 { "cmd_along", eAlong * k },
                 { "cmd_lat", eLat * k },
@@ -163,16 +171,18 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
-        /// The start-of-dock check (<c>ADDONS:CLAUDIA:DOCKFUEL</c>): "" when the RCS delta-v on board covers <see cref="Needed"/>,
-        /// else why not. The figures it gives are the ones the reason names.
+        /// The start-of-dock check (<c>ADDONS:CLAUDIA:DOCKFUEL</c>): <paramref name="monoprop"/> units at <paramref name="ispVac"/> s
+        /// (the RCS thrusters' vacuum Isp) on a <paramref name="massT"/> t craft, <paramref name="distance"/> m from the port at
+        /// <paramref name="speed"/> m/s. Gives <c>error</c> ("" when the RCS delta-v on board covers <see cref="Needed"/>, else
+        /// why not), <c>dv</c> (m/s on board) and <c>need</c> (m/s).
         /// </summary>
-        public static string FuelCheck(double monoprop, double ispVac, double massT, double distance, double speed)
+        public static IDictionary<string, object> Fuel(double monoprop, double ispVac, double massT, double distance, double speed)
         {
             var have = DeltaV(monoprop, ispVac, massT);
             var need = Needed(distance, speed);
-            if (have >= need) return "";
-            return string.Format(CultureInfo.InvariantCulture,
+            var error = have >= need ? "" : string.Format(CultureInfo.InvariantCulture,
                 "too little monopropellant: {0:0.0} units give {1:0.0} m/s of RCS, and {2:0} m to the port needs about {3:0.0}", monoprop, have, distance, need);
+            return new Dictionary<string, object> { { "error", error }, { "dv", have }, { "need", need } };
         }
 
         private static Velocity V(double along, double lat)
