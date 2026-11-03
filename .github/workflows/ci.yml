@@ -29,6 +29,9 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Kerboscript line limit (ADR 0014)
+        run: bash tools/gates/kerboscript-loc.sh
+
       - name: Build and test the core
         run: dotnet test tests/ClaudiaKermin.Core.Tests -c Release --filter "Category!=Timing"
 
