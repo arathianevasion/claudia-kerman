@@ -9,12 +9,13 @@ namespace ClaudiaKermin.Core.Missions
 {
     /// <summary>
     /// What of a turn's Game Snapshot Claudia is sent (#256). The craft's parts are nine tenths of a snapshot and change only when
-    /// it stages or docks, so the full snapshot goes on the first turn, on every Mission Plan turn and on any turn whose part count
+    /// it stages or docks, so the full snapshot goes on the first turn and on any turn whose part count
     /// or craft.stage differs from the last full one the conversation sent (or whose part ids do, a swap the count misses); any other turn sends the dynamic snapshot, everything
     /// but craft.parts, and says the parts are unchanged. A turn on the same leg as the previous snapshot (no run between, within
     /// 60 s of it, such as the Continue turn right after a Debrief) points back at it instead, unless the craft is falling (#599):
     /// its snapshot carries impact_in_s and every turn gets a fresh one, as the picture is old within seconds. Only Claudia's text changes:
-    /// Planning Tools read the full <see cref="GameSnapshot"/> the turn was built with.
+    /// Planning Tools read the full <see cref="GameSnapshot"/> the turn was built with. A Mission Plan or Settings turn follows the
+    /// same rule (#680): #256 sent those in full, from before ADR 0012, when a plan turn rewrote the cache anyway.
     /// </summary>
     internal static class SnapshotDiet
     {
@@ -26,13 +27,12 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <param name="userText">The turn's text as built, with the full snapshot that <see cref="MissionPrompts.Facts"/> writes.</param>
         /// <param name="sent">The user texts of the conversation the turn is sent behind, oldest first.</param>
-        /// <param name="planTurn">The turn asks for a Mission Plan, first or revised: always the full snapshot.</param>
         /// <param name="noRunSince">Nothing has flown the craft (a run, Manual Control) since the last turn with a snapshot was committed.</param>
-        public static string Shape(string userText, IList<string> sent, bool planTurn, bool noRunSince)
+        public static string Shape(string userText, IList<string> sent, bool noRunSince)
         {
             int start, end;
             var now = Find(userText, MissionPrompts.SnapshotHeader, out start, out end);
-            if (now == null || planTurn) return userText;
+            if (now == null) return userText;
             GameSnapshot lastFull = null, last = null;
             for (var i = sent.Count - 1; i >= 0 && lastFull == null; i--)
             {
@@ -57,7 +57,9 @@ namespace ClaudiaKermin.Core.Missions
             var head = userText.Substring(0, start).TrimEnd('\n');
             var tail = userText.Substring(end);
             var since = now.Ut - last.Ut;
-            if (noRunSince && !now.Falling && since >= 0 && since <= SameLegSeconds) return head + "\n" + AsAbove + tail;
+            // A Target Vessel changed between the two (a Re-plan, #680) is news the snapshot above doesn't have.
+            var sameTarget = (now.Target == null ? null : now.Target.Name) == (last.Target == null ? null : last.Target.Name);
+            if (noRunSince && !now.Falling && sameTarget && since >= 0 && since <= SameLegSeconds) return head + "\n" + AsAbove + tail;
             return head + "\n" + DynamicHeader + now.ToJson(false, false)
                 + "\nparts: unchanged since the Game Snapshot at UT " + Ut(lastFull) + " (" + ids.Count.ToString(CultureInfo.InvariantCulture) + " parts)" + tail;
         }
