@@ -156,7 +156,7 @@ namespace ClaudiaKermin.Core.Tests
             var system = Body(transport.Requests[0]).GetProperty("system").EnumerateArray().Select(b => b.GetProperty("text").GetString()).ToArray();
             Assert.Equal(3, system.Length);
             Assert.Contains("Daylight landing: on", system[2]);
-            Assert.Contains("Balanced: wait up to 6 h", system[2]);
+            Assert.Contains("Balanced: take soonest unless optimal costs at least 10% less", system[2]);
             Assert.Contains("- exec_node(options): flies a maneuver node", system[0]);
             Assert.Contains("unknown option <name>", system[0]);
             Assert.Contains("max_residual [0.5]", system[1]);
