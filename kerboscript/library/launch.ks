@@ -262,6 +262,15 @@ function launch_limit_aoa {
   return flow:normalized * cos(max_aoa) + side:normalized * sin(max_aoa).
 }
 
+// The pitch (degrees) in the heading's vertical plane nearest want_pitch that is no more than max_aoa off an airflow
+// at flow_pitch in that plane and off_plane degrees out of it (under max_aoa). Turning from the airflow itself kept
+// its sideways drift, which a fast turn grew into inclination (#676). Pure.
+function launch_plane_pitch {
+  parameter want_pitch, flow_pitch, off_plane, max_aoa.
+  local reach is arccos(cos(max_aoa) / cos(off_plane)).
+  return flow_pitch + max(-reach, min(reach, want_pitch - flow_pitch)).
+}
+
 // The inclination to hand LAZcalc_init for inc (degrees, negative southward) from latitude lat: its
 // size kept 0.001 degrees inside abs(lat) .. 180 - abs(lat), so LAZcalc_init (which reads the
 // latitude again) never clamps it with a red HUD message; the sign kept.
@@ -498,8 +507,8 @@ function launch {
     }
     local thin is false.
     local want is ship:up:vector.
+    local pitch is 90.
     if not coasting {
-      local pitch is 90.
       if turn_start_alt >= 0 {
         set pitch to launch_pitch(altitude, turn_start_alt, turn_end, opt:turn_shape).
       }
@@ -520,7 +529,22 @@ function launch {
       }
     }
     if q_pa > launch_aero_q() and spd > 30 {
-      set want to launch_limit_aoa(want, ship:srfprograde:vector, launch_allowed_aoa(opt:max_aoa, q_pa, launch_aoa_q_ref())).
+      // Burning, the aim stays in the heading's vertical plane while the airflow is near enough to it (#676).
+      local allowed is launch_allowed_aoa(opt:max_aoa, q_pa, launch_aoa_q_ref()).
+      local flow is ship:srfprograde:vector.
+      local along is heading(hdg, 0):vector.
+      local normal is vcrs(ship:up:vector, along).
+      local off_plane is arcsin(min(1, abs(vdot(flow:normalized, normal)))).
+      if coasting {
+        set want to launch_limit_aoa(want, flow, allowed).
+      } else if off_plane >= allowed {
+        // Further out than allowed: turn from the airflow toward the plane (where the branch below starts).
+        set want to launch_limit_aoa(vxcl(normal, flow), flow, allowed).
+      } else {
+        // Built by hand, not heading(): the pitch passes 90 when the airflow tips back.
+        local in_plane is launch_plane_pitch(pitch, arctan2(vdot(flow, ship:up:vector), vdot(flow, along)), off_plane, allowed).
+        set want to ship:up:vector * sin(in_plane) + along * cos(in_plane).
+      }
     }
     set aim to want.
 
@@ -534,7 +558,8 @@ function launch {
       addons:claudia:blocktrace("launch", lexicon("phase", phase, "why", why, "alt", round(altitude, 1), "t", round(time:seconds - liftoff_ut, 2),
         "pitch", round(vang(aim, ship:up:vector), 2), "prograde", round(vang(ship:srfprograde:vector, ship:up:vector), 2), "q", round(q_pa),
         "throttle", round(tset, 3), "mass", round(ship:mass, 3), "stage", stage:number, "ap", round(ap),
-        "h_speed", round(ship:groundspeed, 1), "v_speed", round(ship:verticalspeed, 1), "gap", round(pass_gap, 3))).
+        "h_speed", round(ship:groundspeed, 1), "v_speed", round(ship:verticalspeed, 1), "gap", round(pass_gap, 3),
+        "heading", round(hdg, 2), "north", round(vdot(ship:velocity:orbit, ship:north:vector), 1), "inc", round(ship:orbit:inclination, 3))).
     }
 
     // A craft far off its steering for 3 s in the air has lost control: stop rather than tumble on.
