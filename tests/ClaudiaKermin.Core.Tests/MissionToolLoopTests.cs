@@ -1109,6 +1109,19 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void AnUnansweredRevisionKeepsItsGoalStandsFlagAndAnOlderFileLoadsWithout()
+        {
+            MissionStore.WriteUnanswered(_save.Path, new UnansweredTurn { Purpose = "MissionPlan", UserText = "x", GoalStands = true });
+            var path = Path.Combine(_save.Path, MissionStore.UnansweredFile);
+            var json = File.ReadAllText(path);
+            Assert.Contains("\"goal_stands\":true", json);
+            Assert.True(MissionStore.ReadUnanswered(_save.Path).GoalStands);
+            File.WriteAllText(path, json.Replace(",\"goal_stands\":true", ""));
+            Assert.DoesNotContain("goal_stands", File.ReadAllText(path));
+            Assert.False(MissionStore.ReadUnanswered(_save.Path).GoalStands);
+        }
+
+        [Fact]
         public void APlanReplacedByALaterAcceptedPlanMaySendAgainButThePlanInForceIsStillARepeat()
         {
             var messages = new List<Message>
