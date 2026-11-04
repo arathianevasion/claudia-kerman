@@ -156,6 +156,150 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(false, none["rcs"]);
         }
 
+        private static Dictionary<string, object> Now(double ut, double error, double rate, double leftS, bool aligned = false, double monoprop = 10)
+        {
+            return new Dictionary<string, object>
+            {
+                { "ut", ut }, { "error", error }, { "rate", rate }, { "left_s", leftS }, { "aligned", aligned }, { "monoprop", monoprop },
+                { "energy", -2.5e6 }, { "speed", 2200.0 },
+            };
+        }
+
+        /// <summary>
+        /// Flies e17d's 142° turn tick by tick (50 Hz) against a craft that turns as commanded: RCS on adds alpha towards the coast
+        /// rate in the spin and takes it away in the stop; RCS off holds the rate in the coast; the wheels settle the rest.
+        /// </summary>
+        private static List<IDictionary<string, object>> Fly(double angle, double leftS, out IDictionary<string, object> report)
+        {
+            var craft = E17d();
+            IDictionary<string, object> turn = TurnPlan.Call(new Dictionary<string, object> { { "angle", angle }, { "left_s", leftS } }, craft);
+            var alphaW = 1 / 95.0 * 180 / Math.PI;
+            double ut = 1000, error = angle, rate = 0, mono = 10;
+            var ticks = new List<IDictionary<string, object>>();
+            report = null;
+            for (var i = 0; i < 50 * 200; i++)
+            {
+                var aligned = error < 2 && rate < 0.5;
+                turn = TurnPlan.Step(turn, Now(ut, error, rate, leftS - (ut - 1000), aligned, mono), () => craft);
+                ticks.Add(turn);
+                if (turn.ContainsKey("report")) report = (IDictionary<string, object>)turn["report"];
+                if ((bool)turn["done"]) break;
+                var phase = (string)turn["phase"];
+                var alpha = (double)turn["alpha"];
+                const double dt = 0.02;
+                if ((bool)turn["rcs_on"]) mono -= 0.001;
+                if (phase == "spin") rate = Math.Min((double)turn["coast_rate"], rate + alpha * dt);
+                else if (phase == "stop") rate = Math.Max(0, rate - alpha * dt);
+                else if (phase == "settle") rate = Math.Min(rate + alphaW * dt, Math.Sqrt(2 * alphaW * Math.Max(0, error)));
+                error = Math.Max(0, error - rate * dt);
+                ut += dt;
+            }
+            return ticks;
+        }
+
+        [Fact]
+        public void RCS_is_commanded_only_in_the_two_bursts_never_in_the_coast_or_the_wheels_settle()
+        {
+            IDictionary<string, object> report;
+            var ticks = Fly(142, 60, out report);
+            Assert.True((bool)ticks[ticks.Count - 1]["done"]);
+            var phases = new List<string>();
+            foreach (var tick in ticks)
+            {
+                var phase = (string)tick["phase"];
+                Assert.Equal(phase == "spin" || phase == "stop", (bool)tick["rcs_on"]);
+                if (phases.Count == 0 || phases[phases.Count - 1] != phase) phases.Add(phase);
+            }
+            Assert.Equal(new[] { "spin", "coast", "stop", "settle" }, phases);
+            // Each phase hands kOS its tuning as it begins, and only then.
+            Assert.Equal(3, ticks.FindAll(t => t.ContainsKey("tuning")).Count);
+            // Done within the minute it had, with one report.
+            Assert.True((double)ticks[ticks.Count - 1]["ut"] - 1000 < 60);
+            Assert.NotNull(report);
+            Assert.Single(ticks.FindAll(t => t.ContainsKey("report")));
+        }
+
+        [Fact]
+        public void The_turns_one_line_gives_the_planned_and_flown_rate_the_bursts_the_monoprop_the_leftover_and_the_push()
+        {
+            IDictionary<string, object> report;
+            Fly(142, 60, out report);
+            var plan = TurnPlan.Plan(E17d(), 142, 60);
+            Assert.Equal(plan.CoastRateDegS, (double)report["coast_dps"], 6);
+            Assert.InRange((double)report["flown_dps"], plan.CoastRateDegS * 0.99, plan.CoastRateDegS * 1.01);
+            Assert.InRange((double)report["spin_s"], plan.SpinS - 0.05, plan.SpinS + 0.05);
+            Assert.InRange((double)report["stop_s"], plan.StopS - 0.05, plan.StopS + 0.05);
+            Assert.True((double)report["monoprop_used"] > 0);
+            Assert.InRange((double)report["left_deg"], 0, plan.WheelsDeg + 0.5);
+            Assert.Equal(0.0, report["corrections"]);
+            Assert.Equal(0.0, report["dv_mps"]);
+        }
+
+        [Fact]
+        public void A_stop_burst_that_leaves_a_big_error_late_takes_a_burst_pair_and_the_third_reports()
+        {
+            var craft = E17d();
+            IDictionary<string, object> turn = TurnPlan.Call(new Dictionary<string, object> { { "angle", 142.0 }, { "left_s", 60.0 } }, craft);
+            turn = TurnPlan.Step(turn, Now(0, 142, 0, 60), () => craft);
+            for (var pair = 1; pair <= 3; pair++)
+            {
+                // Put the turn at the end of a stop burst with 40 degrees still to go and 20 s left.
+                var at = (Dictionary<string, object>)turn;
+                at["phase"] = "stop";
+                at["ut"] = 0.0;
+                turn = TurnPlan.Step(turn, Now(100, 40, 0, 20), () => craft);
+                if (pair < 3)
+                {
+                    Assert.Equal("spin", turn["phase"]);
+                    Assert.Equal(true, turn["rcs_on"]);
+                    Assert.Equal((double)pair, turn["corrections"]);
+                    Assert.True(turn.ContainsKey("tuning"));
+                    Assert.Equal(TurnPlan.Plan(craft, 40, 20).CoastRateDegS, (double)turn["coast_rate"], 6);
+                }
+                else
+                {
+                    Assert.Equal("settle", turn["phase"]);
+                    Assert.Equal(false, turn["rcs_on"]);
+                    Assert.Equal(2.0, ((IDictionary<string, object>)turn["report"])["corrections"]);
+                }
+            }
+            // The first plan's rate stays the one reported.
+            Assert.Equal(TurnPlan.Plan(craft, 142, 60).CoastRateDegS, (double)((IDictionary<string, object>)turn["report"])["coast_dps"], 6);
+        }
+
+        [Fact]
+        public void The_push_is_the_change_in_orbital_energy_over_the_speed_and_the_settle_ends_when_Aligned_or_after_30_s()
+        {
+            var craft = E17d();
+            IDictionary<string, object> turn = TurnPlan.Call(new Dictionary<string, object> { { "angle", 142.0 }, { "left_s", 60.0 } }, craft);
+            turn = TurnPlan.Step(turn, Now(0, 142, 0, 60), () => craft);
+            ((Dictionary<string, object>)turn)["phase"] = "stop";
+            var now = Now(30, 3, 0, 30);
+            now["energy"] = -2.5e6 + 110;
+            turn = TurnPlan.Step(turn, now, () => craft);
+            Assert.Equal(0.05, (double)((IDictionary<string, object>)turn["report"])["dv_mps"], 6);
+            Assert.False((bool)TurnPlan.Step(turn, Now(40, 2.5, 0.2, 20), () => craft)["done"]);
+            Assert.True((bool)TurnPlan.Step(turn, Now(40, 1.5, 0.2, 20, true), () => craft)["done"]);
+            Assert.True((bool)TurnPlan.Step(turn, Now(60.1, 2.5, 0.2, 0), () => craft)["done"]);
+            Assert.False(TurnPlan.Step(turn, Now(40, 1.5, 0.2, 20, true), () => craft).ContainsKey("report"));
+        }
+
+        [Fact]
+        [Trait("Category", "Timing")]
+        public void A_thousand_turn_ticks_take_under_5_ms()
+        {
+            // ADR 0014 guardrail 6: BURSTTURN is called every tick of a turn; 1,000 ticks (20 s at 50 Hz) in 5 ms.
+            var craft = E17d();
+            var start = TurnPlan.Call(new Dictionary<string, object> { { "angle", 142.0 }, { "left_s", 60.0 } }, craft);
+            var coasting = TurnPlan.Step(start, Now(0, 142, 0, 60), () => craft);
+            ((Dictionary<string, object>)coasting)["phase"] = "coast";
+            var now = Now(1, 100, 3, 59);
+            Timing.Within(5, () =>
+            {
+                for (var i = 0; i < 1000; i++) TurnPlan.Step(coasting, now, () => craft);
+            });
+        }
+
         [Fact]
         [Trait("Category", "Timing")]
         public void A_thousand_plans_take_under_5_ms()

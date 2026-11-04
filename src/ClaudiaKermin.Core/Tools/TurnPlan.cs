@@ -133,7 +133,7 @@ namespace ClaudiaKermin.Core.Tools
 
         /// <summary>
         /// The answer to a block's ask: <c>angle</c> (deg), <c>left_s</c> (s to the deadline; -1 or missing for none) and
-        /// <c>corrections</c> (missing for a turn's first plan; else those taken). Gives <c>error</c> ("" or "no usable torque"),
+        /// <c>corrections</c> (missing for a turn's first plan; else those taken). Gives <c>error</c> ("" or "no usable torque"), <c>phase</c> ("": not flown yet),
         /// <c>rcs</c>, <c>wheels_s</c>, <c>coast_rate</c> (deg/s), <c>spin_s</c>, <c>coast_s</c>, <c>stop_s</c>,
         /// <c>stop_deg</c>, <c>wheels_deg</c>, <c>turn_s</c>, <c>alpha</c> (deg/s²) and lexicons <c>spin</c>, <c>coast</c>
         /// and <c>stop</c> of kOS's <c>t</c>, <c>kp</c> and <c>ki</c> for each phase.
@@ -144,6 +144,7 @@ namespace ClaudiaKermin.Core.Tools
             return new Dictionary<string, object>
             {
                 { "error", plan.Error ?? "" },
+                { "phase", "" },
                 { "rcs", plan.Rcs },
                 { "wheels_s", plan.WheelsS },
                 { "coast_rate", plan.CoastRateDegS },
@@ -158,6 +159,108 @@ namespace ClaudiaKermin.Core.Tools
                 { "coast", Lexicon(plan.Coast) },
                 { "stop", Lexicon(plan.Stop) },
             };
+        }
+
+        /// <summary>The wheels settle at most this long (s) after the last stop burst before RCS Use's rule takes over again.</summary>
+        public const double SettleMaxSeconds = 30;
+
+        /// <summary>
+        /// One tick of a burst turn, through the block-internal <c>ADDONS:CLAUDIA:BURSTTURN</c>: <paramref name="turn"/> is
+        /// <see cref="Call"/>'s plan the first time and this call's answer after; <paramref name="now"/> gives <c>ut</c>,
+        /// <c>error</c> (deg), <c>rate</c> (deg/s), <c>left_s</c> (-1: no deadline), <c>aligned</c>, <c>monoprop</c> (units),
+        /// and <c>energy</c> (J/kg) and <c>speed</c> (m/s) of the orbit. The spin-up ends at the coast rate (or twice its time),
+        /// the coast at <c>stop_deg</c>, the stop burst after its time; then the correction rule (<see cref="Plan"/> on
+        /// <paramref name="craft"/>) flies one more burst pair, or the turn reports and the wheels settle until Aligned or
+        /// <see cref="SettleMaxSeconds"/>. Gives the turn back with <c>phase</c>, <c>rcs_on</c> (what RCS should be: on in spin
+        /// and stop only) and <c>done</c>; <c>tuning</c> (kOS's <c>t</c>, <c>kp</c>, <c>ki</c>) when a phase begins; and
+        /// <c>report</c>, the turn's one RCS Use line (#692's figures), as the wheels take over.
+        /// </summary>
+        public static IDictionary<string, object> Step(IDictionary<string, object> turn, IDictionary<string, object> now, Func<TurnCraft> craft)
+        {
+            var t = new Dictionary<string, object>(turn ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            t.Remove("tuning");
+            t.Remove("report");
+            t["done"] = false;
+            var ut = Number(now, "ut", 0);
+            var error = Number(now, "error", 0);
+            var rate = Number(now, "rate", 0);
+            var monoprop = Number(now, "monoprop", 0);
+            var phase = Text(t, "phase");
+            if (phase == "")
+            {
+                foreach (var key in new[] { "spin_total", "stop_total", "corrections", "flown" }) t[key] = 0.0;
+                t["mono"] = monoprop;
+                t["energy0"] = Number(now, "energy", 0);
+                t["plan_dps"] = Number(t, "coast_rate", 0);
+                return Enter(t, "spin", ut);
+            }
+            var took = ut - Number(t, "ut", ut);
+            if (phase == "spin" && (rate >= Number(t, "coast_rate", 0) || took >= 2 * Number(t, "spin_s", 0)))
+            {
+                t["spin_total"] = Number(t, "spin_total", 0) + took;
+                return Enter(t, "coast", ut);
+            }
+            if (phase == "coast")
+            {
+                t["flown"] = Math.Max(Number(t, "flown", 0), rate);
+                return error <= Number(t, "stop_deg", 0) ? Enter(t, "stop", ut) : t;
+            }
+            if (phase == "stop" && took >= Number(t, "stop_s", 0))
+            {
+                t["stop_total"] = Number(t, "stop_total", 0) + took;
+                var corrections = Number(t, "corrections", 0);
+                var next = Call(new Dictionary<string, object>
+                {
+                    { "angle", error }, { "left_s", Number(now, "left_s", -1) }, { "corrections", corrections },
+                }, craft());
+                if ((bool)next["rcs"])
+                {
+                    foreach (var entry in next) if (entry.Key != "phase") t[entry.Key] = entry.Value;
+                    t["corrections"] = corrections + 1;
+                    return Enter(t, "spin", ut);
+                }
+                var speed = Number(now, "speed", 0);
+                t["report"] = new Dictionary<string, object>
+                {
+                    { "coast_dps", Number(t, "plan_dps", 0) },
+                    { "flown_dps", Number(t, "flown", 0) },
+                    { "spin_s", Number(t, "spin_total", 0) },
+                    { "stop_s", Number(t, "stop_total", 0) },
+                    { "monoprop_used", Number(t, "mono", 0) - monoprop },
+                    { "left_deg", error },
+                    { "corrections", corrections },
+                    { "dv_mps", speed > 0 ? Math.Abs(Number(now, "energy", 0) - Number(t, "energy0", 0)) / speed : 0.0 },
+                };
+                t["phase"] = "settle";
+                t["ut"] = ut;
+                t["rcs_on"] = false;
+                return t;
+            }
+            if (phase == "settle" && (took > SettleMaxSeconds || Bool(now, "aligned"))) t["done"] = true;
+            return t;
+        }
+
+        /// <summary>Puts turn <paramref name="t"/> in <paramref name="phase"/> at <paramref name="ut"/>, with RCS on but in the coast and the phase's tuning.</summary>
+        private static IDictionary<string, object> Enter(Dictionary<string, object> t, string phase, double ut)
+        {
+            t["phase"] = phase;
+            t["ut"] = ut;
+            t["rcs_on"] = phase != "coast";
+            object tuning;
+            t["tuning"] = t.TryGetValue(phase, out tuning) ? tuning : Lexicon(new SteeringTuning { T = TurnTime.KosMaxStoppingTime, Kp = 1, Ki = 0.1 });
+            return t;
+        }
+
+        private static string Text(IDictionary<string, object> input, string key)
+        {
+            object value;
+            return input != null && input.TryGetValue(key, out value) && value != null ? Convert.ToString(value, CultureInfo.InvariantCulture) : "";
+        }
+
+        private static bool Bool(IDictionary<string, object> input, string key)
+        {
+            object value;
+            return input != null && input.TryGetValue(key, out value) && value is bool && (bool)value;
         }
 
         private static IDictionary<string, object> Lexicon(SteeringTuning tuning)
