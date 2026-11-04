@@ -160,6 +160,9 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal("Monolith TMA-8 is a Minmus Point of Interest: land beside it with find_landing_site's poi and land's poi target, not on it.",
                 Line("Land at Minmus's monolith"));
             Assert.Equal(Line("Land at Minmus's monolith"), Line("land beside Monolith TMA-8 on minmus, then go home"));
+            // The trip home names Kerbin, not its monoliths; a goal about Kerbin alone still names them.
+            Assert.Equal(Line("Land at Minmus's monolith"), Line("Land next to the monolith on Minmus and return to Kerbin"));
+            Assert.StartsWith("\"monolith\" names 5 Points of Interest (KSC Monolith on Kerbin", Line("fly over the monoliths on Kerbin"));
         }
 
         [Fact]

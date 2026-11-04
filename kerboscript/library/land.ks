@@ -67,7 +67,6 @@
 //| staged_before_deorbit, staged_before_braking (true if it did; stage_left is the stage it left), slope (degrees where it came to rest), touchdown_speed_actual (m/s),
 //| touchdown_h_speed (m/s sideways at touchdown), lean (degrees from upright once settled),
 //| reversals (times the descent turned back after braking began; 0 normally), vertical_fallback (true if, above its predicted path near the site, it came straight down), poi and distance_to_poi (m from it), distance_to_target
-
 //| (m from the site asked for, or the spot chosen for "any" or a biome), best_effort (true if nothing within
 //| max_divert was flat enough and it landed on the least steep spot found), burn_start_ut (when braking was planned to start; -1 if it never got that far),
 //| braking_began_ut (when braking began; -1 if never), impact_ut (when the orbit after the deorbit burn meets
@@ -1956,7 +1955,6 @@ function land {
   if by_biome and kind = "biome" {
     if not land_same_biome(extra:biome, aim_name) {
       return claudia_finish(ctx, false, "landed in the " + extra:biome + ", outside the " + aim_name + " biome (" + extra:distance_to_target + " m from the site chosen in it)", extra).
-
     }
   }
   return claudia_finish(ctx, true, "", extra).

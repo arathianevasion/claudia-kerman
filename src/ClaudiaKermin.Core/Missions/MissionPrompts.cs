@@ -847,6 +847,8 @@ namespace ClaudiaKermin.Core.Missions
         {
             goal = goal ?? "";
             var named = snapshot == null ? new List<string>() : GoalBodies(snapshot, goal).Select(b => b.Name).ToList();
+            // "...and return to Kerbin" names the home body for the trip home, not for its Points of Interest (as #699's biomes).
+            if (named.Count > 1) named.Remove(CraftCheckFlow.HomeBody);
             var entries = PointsOfInterest.Table.Where(e => e.IsPoi && (named.Count == 0 || named.Contains(e.Body, System.StringComparer.OrdinalIgnoreCase)));
             var terms = entries.SelectMany(e => new[] { e.Friendly }.Concat(e.Aliases).Select(t => new { Term = t, Entry = e }))
                 .GroupBy(x => x.Term, System.StringComparer.OrdinalIgnoreCase).OrderByDescending(g => g.Key.Length);
@@ -886,7 +888,7 @@ namespace ClaudiaKermin.Core.Missions
                     continue;
                 }
                 var one = poi.Entries[0];
-                var body = snapshot == null ? null : snapshot.Bodies.FirstOrDefault(b => b.Name == one.Body);
+                var body = snapshot == null ? null : snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, one.Body, System.StringComparison.OrdinalIgnoreCase));
                 var air = body != null && (body.AtmosphereHeight > 0 || body.SeaLevelAtm > 0);
                 lines.Add(one.Friendly + " is a " + one.Body + " Point of Interest: "
                     + (!one.Landable ? "not landable (" + one.Note + ")." : air ? "reentry can't aim at it yet (no precision landing through air)." : Beside));
