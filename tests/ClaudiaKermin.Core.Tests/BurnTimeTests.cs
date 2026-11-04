@@ -368,12 +368,28 @@ namespace ClaudiaKermin.Core.Tests
             Timing.Within(500, () =>
             {
                 foreach (var orbit in orbits)
-                    foreach (var at in new[] { "ap", "pe", "eq_an", "eq_dn", "eq_nearest", "eq_highest", "rel_an", "rel_dn", "closest_approach" })
+                    foreach (var at in BurnTime.References)
                     {
                         string problem;
                         BurnTime.Resolve(JsonReader.Parse("\"" + at + "\""), new List<Patch> { PatchOf(orbit) }, 0, 0, "the burn", System(), Minmus, out problem);
                     }
             });
+        }
+
+        [Fact]
+        public void A_bad_at_names_every_form_at_accepts()
+        {
+            var problem = Problem("\"soon\"", Orbit(100000, 200000));
+            foreach (var reference in BurnTime.References)
+            {
+                Assert.True(BurnTime.IsNamed(reference), reference);
+                Assert.Contains("\"" + reference + "\"", problem);
+            }
+            Assert.True(BurnTime.IsNamed("altitude 1000 ascending"));
+            Assert.Contains("\"" + BurnTime.AltitudeForm + "\"", problem);
+            Assert.Contains("a UT in seconds, or \"in <s>\"", problem);
+            Assert.Equal("the burn.at must be \"ap\", \"pe\", \"eq_an\", \"eq_dn\", \"eq_nearest\", \"eq_highest\", \"rel_an\", \"rel_dn\", "
+                + "\"closest_approach\", \"altitude <m> [ascending|descending]\", a UT in seconds, or \"in <s>\"", problem);
         }
     }
 }
