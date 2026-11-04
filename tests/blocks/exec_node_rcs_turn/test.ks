@@ -12,8 +12,8 @@
 wait until ship:unpacked.
 // The node's prograde, normal and radial directions now, read off kOS's own nodes.
 function test_basis {
-  parameter radial, normal, prograde.
-  local nd is node(time:seconds + 120, radial, normal, prograde).
+  parameter radial_dv, normal_dv, prograde_dv.
+  local nd is node(time:seconds + 120, radial_dv, normal_dv, prograde_dv).
   add nd.
   local dir is nd:deltav:normalized.
   remove nd.
