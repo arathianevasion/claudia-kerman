@@ -362,7 +362,7 @@ function claudia_autostage {
     wait 0.5.
     set ctx:parts to ship:parts:length.
     // Thrust during the half second above isn't known, so don't count it as delta-v used.
-    set ctx:last_ut to time:seconds.
+    claudia_restart_clock(ctx).
   }
   return "".
 }
@@ -1051,7 +1051,7 @@ function claudia_drop_empty {
       }
     }
     set ctx:parts to ship:parts:length.
-    set ctx:last_ut to time:seconds.
+    claudia_restart_clock(ctx).
   }
 }
 
@@ -2037,6 +2037,13 @@ function claudia_is_burning {
   return tset > 0.
 }
 
+// Restarts the tick clock (#721): last_ut is now and last_tset the throttle in effect, so the next interval is credited at it.
+function claudia_restart_clock {
+  parameter ctx.
+  set ctx:last_ut to time:seconds.
+  set ctx:last_tset to ship:control:mainthrottle.
+}
+
 function claudia_dv_step {
   parameter prev_tset, thrust_kn, mass_t, dt.
   return choose prev_tset * thrust_kn / mass_t * dt if prev_tset > 0 and mass_t > 0 else 0.
@@ -2072,7 +2079,7 @@ function claudia_add_result {
   set ctx:dv_used to ctx:dv_used + inner:dv_used.
   claudia_note_dropped(ctx, inner).
   set ctx:parts to ship:parts:length.
-  set ctx:last_ut to time:seconds.
+  claudia_restart_clock(ctx).
 }
 
 // Flies a maneuver node the calling block added, with exec_node and the caller's common options,
@@ -2408,7 +2415,7 @@ function claudia_burn {
   claudia_note_dropped(ctx, burned).
   // exec_node's staging dropped parts on purpose; don't count them as lost.
   set ctx:parts to ship:parts:length.
-  set ctx:last_ut to time:seconds.
+  claudia_restart_clock(ctx).
   return burned.
 }
 
