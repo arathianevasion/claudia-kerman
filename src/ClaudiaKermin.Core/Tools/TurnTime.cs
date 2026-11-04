@@ -107,8 +107,7 @@ namespace ClaudiaKermin.Core.Tools
 
         private static TurnPrediction Predict(TurnCraft craft, bool withRcs, double maxStoppingTime)
         {
-            var alpha = Math.Min(Acceleration(craft.WheelPitch, craft.RcsPitch, withRcs, craft.MoiPitch),
-                Acceleration(craft.WheelYaw, craft.RcsYaw, withRcs, craft.MoiYaw));
+            var alpha = Alpha(craft, withRcs);
             if (!(alpha > 0) || double.IsInfinity(alpha)) return new TurnPrediction { Error = NoTorque };
 
             var angle = TurnDegrees * Math.PI / 180;
@@ -126,20 +125,8 @@ namespace ClaudiaKermin.Core.Tools
                     AlphaDegS2 = alphaDeg,
                 };
             }
-            // kOS's steering asks for no more than it could stop from in maxstoppingtime at full torque.
-            var cap = alpha * (maxStoppingTime > 0 ? maxStoppingTime : KosMaxStoppingTime);
-            var peak = Math.Sqrt(alpha * angle);
-            double turn;
-            if (peak <= cap)
-            {
-                turn = 2 * Math.Sqrt(angle / alpha);
-            }
-            else
-            {
-                // Up to the cap and down from it take cap / alpha between them; the rest of the angle is at the cap.
-                turn = angle / cap + cap / alpha;
-                peak = cap;
-            }
+            double peak;
+            var turn = CappedTurn(angle, alpha, maxStoppingTime, out peak);
             return new TurnPrediction
             {
                 Seconds = Math.Max(FloorSeconds, turn + SettleSeconds),
@@ -147,6 +134,23 @@ namespace ClaudiaKermin.Core.Tools
                 TopRateDegS = peak * 180 / Math.PI,
                 AlphaDegS2 = alphaDeg,
             };
+        }
+
+        /// <summary>
+        /// Seconds to turn <paramref name="angle"/> at <paramref name="alpha"/> (same angle units) under kOS steering with
+        /// <paramref name="maxStoppingTime"/> (s; 2 if not over 0), which caps the rate at that many seconds of alpha: full
+        /// torque speeding up for the first half and slowing down for the second, cruising at the cap if it's reached.
+        /// <paramref name="peak"/> is the top rate.
+        /// </summary>
+        public static double CappedTurn(double angle, double alpha, double maxStoppingTime, out double peak)
+        {
+            // kOS's steering asks for no more than it could stop from in maxstoppingtime at full torque.
+            var cap = alpha * (maxStoppingTime > 0 ? maxStoppingTime : KosMaxStoppingTime);
+            peak = Math.Sqrt(alpha * angle);
+            if (peak <= cap) return 2 * Math.Sqrt(angle / alpha);
+            // Up to the cap and down from it take cap / alpha between them; the rest of the angle is at the cap.
+            peak = cap;
+            return angle / cap + cap / alpha;
         }
 
         /// <summary>The override's <c>maxstoppingtime</c> (s) for a turn of <paramref name="angle"/> at <paramref name="alpha"/> (same angle units): 0.6 x sqrt(angle / alpha), within 2 to 10.</summary>
@@ -175,6 +179,13 @@ namespace ClaudiaKermin.Core.Tools
                 peak = Math.Max(peak, rate);
             }
             return t;
+        }
+
+        /// <summary>The weaker of pitch's and yaw's angular acceleration (rad/s²), on the wheels and, if <paramref name="withRcs"/>, RCS.</summary>
+        public static double Alpha(TurnCraft craft, bool withRcs)
+        {
+            return Math.Min(Acceleration(craft.WheelPitch, craft.RcsPitch, withRcs, craft.MoiPitch),
+                Acceleration(craft.WheelYaw, craft.RcsYaw, withRcs, craft.MoiYaw));
         }
 
         /// <summary>Angular acceleration (rad/s²) on one axis: kN·m over t·m².</summary>
