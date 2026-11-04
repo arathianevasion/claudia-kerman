@@ -764,6 +764,30 @@ function reentry_geo {
   return lexicon("lat", round(ship:geoposition:lat, 4), "lng", round(ship:geoposition:lng, 4), "alt", round(ship:altitude)).
 }
 
+// The blocknote lexicon for the predicted landing (#478; impact: REENTRYIMPACT's answer). A predictor error
+// or an answer with no landing point says why; reentry flies on unchanged either way. Pure.
+function reentry_prediction_note {
+  parameter impact.
+  if not impact:haskey("lat") {
+    local why is "no landing point".
+    if impact:haskey("error") and impact:error <> "" { set why to impact:error. }
+    return lexicon("phase", "predicted_landing", "error", why, "note", "flying on without a prediction").
+  }
+  return lexicon("phase", "predicted_landing", "predicted_geo", lexicon("lat", round(impact:lat, 4), "lng", round(impact:lng, 4)), "landing_ut", round(impact:landing_ut)).
+}
+
+// Notes where the craft came down against the prediction (impact: REENTRYIMPACT's answer): the actual geo,
+// the touchdown speed (m/s) and, with a prediction, prediction_miss_km (Core's PREDICTIONMISS). Log-only.
+function reentry_note_landing {
+  parameter ctx, impact, speed.
+  local note is lexicon("phase", "landed", "actual_geo", reentry_geo(), "touchdown_speed", round(speed, 1)).
+  if impact:haskey("lat") {
+    local miss is addons:claudia:predictionmiss(lexicon("lat", impact:lat, "lng", impact:lng, "actual_lat", ship:geoposition:lat, "actual_lng", ship:geoposition:lng, "radius", ship:body:radius)).
+    set note:prediction_miss_km to round(miss:km, 2).
+  }
+  addons:claudia:blocknote(ctx:block, note).
+}
+
 // What an abort mid-descent leaves behind: the parachutes it may open (uids) open if that is safe, then a
 // safe craft. mode: chute_mode, "none" with no chute to open. Returns the titles of the chutes it opened.
 function reentry_abort {
@@ -897,6 +921,11 @@ function reentry {
     set shield to list().
   }
   local shield_gone is shield:length = 0.
+  // Log-only (#478): where the predictor puts the landing, with the shield drop and chutes this entry flies.
+  local shield_uids is list().
+  if not shield_gone { set shield_uids to claudia_shield_drop(ship:parts, list()). }
+  local predicted is addons:claudia:reentryimpact(lexicon("chutes", chute_mode <> "none", "shield_drop", shield_uids)).
+  addons:claudia:blocknote(ctx:block, reentry_prediction_note(predicted)).
   local auto_duration is opt:max_duration:istype("String").
   if auto_duration {
     set opt:max_duration to entry_in + 1800.
@@ -1111,6 +1140,7 @@ function reentry {
   set extra:max_temp_pct to round(max(extra:max_temp_pct, reentry_hottest()), 1).
   set extra:geo to reentry_geo().
   set extra:splashed to status = "SPLASHED".
+  reentry_note_landing(ctx, predicted, last_speed).
   if not reentry_touchdown_ok(last_speed, powered) {
     return claudia_finish(ctx, false, "touchdown at " + round(last_speed, 1) + " m/s is over " + reentry_touchdown_max(powered) + " m/s", extra).
   }

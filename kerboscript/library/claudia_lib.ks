@@ -547,6 +547,16 @@ function claudia_stage_drop_plan {
   return plan.
 }
 
+// The UIDs of the parts reentry's default (jettison "auto") drops with its heat shield: the shield's parts
+// if reentry_shield_modules finds a decoupler for it (else none), less leave_out. Pure.
+function claudia_shield_drop {
+  parameter parts, leave_out.
+  local uids is list().
+  if reentry_shield_modules("auto", parts):length = 0 { return uids. }
+  for p in parts { if claudia_part_kind(p) = "shield" and not leave_out:contains(p:uid) { uids:add(p:uid). } }
+  return uids.
+}
+
 // The names, of those names, whose uid is no longer in now_uids: what left. Names are taken while the
 // part is on the ship, since a part that has left cannot be read (its vessel may be gone).
 function claudia_names_left {

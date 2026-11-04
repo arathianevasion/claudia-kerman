@@ -44,6 +44,8 @@ namespace ClaudiaKermin.KOS
                 "Core Library only (deorbit): the deorbit burn that lands on lat, lng by the reentry predictor; lexicon error, burn_ut, prograde, normal, radial, dv, lat, lng, error_km, ...; leave_out (part UIDs) flies the craft without them"));
             AddSuffix("REENTRYIMPACT", new OneArgsSuffix<Lexicon, Lexicon>(ReentryImpact,
                 "Core Library only (deorbit, return): where the orbit as it is now, or the one given as orbit_sma, orbit_ecc, ..., comes down, held retrograde; lexicon error, lat, lng, landing_ut, error_km"));
+            AddSuffix("PREDICTIONMISS", new OneArgsSuffix<Lexicon, Lexicon>(PredictionMissCall,
+                "Core Library only (reentry): the great-circle km on a body of radius (m) between lat, lng and actual_lat, actual_lng; lexicon km"));
             AddSuffix("TURNTIME", new OneArgsSuffix<Lexicon, Lexicon>(TurnTime,
                 "Core Library only (a block that turns to a burn): the time to leave for a 190 degree turn on the wheels and RCS (if the craft has monoprop, on or off), given max_stopping_time; lexicon error, turn_time, turn_s, top_rate, and wheels_turn_time, wheels_turn_s on the wheels alone (-1: no wheel torque)"));
             AddSuffix("TURNPLAN", new OneArgsSuffix<Lexicon, Lexicon>(TurnPlanCall,
@@ -100,6 +102,17 @@ namespace ClaudiaKermin.KOS
         }
 
         /// <summary><c>ADDONS:CLAUDIA:KEEPCLEAR</c> (#713, ADR 0014): land's keep-clear decision (<see cref="KeepClear.Call"/>), pure.</summary>
+        /// <summary><c>ADDONS:CLAUDIA:PREDICTIONMISS</c> (#478, ADR 0014): reentry's predicted-against-actual landing distance (<see cref="PredictionMiss.Call"/>), pure.</summary>
+        private Lexicon PredictionMissCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> miss = null;
+            return (Lexicon)Guarded("PREDICTIONMISS", () =>
+            {
+                miss = PredictionMiss.Call(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(miss);
+            }, () => string.Format(CultureInfo.InvariantCulture, "{0:0.00} km between the predicted and the actual landing", miss["km"]));
+        }
+
         private Lexicon KeepClearCall(Lexicon input)
         {
             System.Collections.Generic.IDictionary<string, object> moved = null;
