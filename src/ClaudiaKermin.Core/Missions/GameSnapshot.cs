@@ -134,6 +134,19 @@ namespace ClaudiaKermin.Core.Missions
         public double Ut;
         /// <summary>KSP's situation name, e.g. PRELAUNCH, ORBITING, LANDED.</summary>
         public string Situation = "";
+
+        /// <summary>The craft is on the ground or the pad (PRELAUNCH, LANDED or SPLASHED): no flight yet, so its ascent or burn starts from the surface.</summary>
+        public bool IsGrounded
+        {
+            get { return IsGroundedSituation(Situation); }
+        }
+
+        /// <summary><see cref="IsGrounded"/> for a situation name, for the callers that hold one (a Target Vessel's, a vessel's).</summary>
+        public static bool IsGroundedSituation(string situation)
+        {
+            return situation == "PRELAUNCH" || situation == "LANDED" || situation == "SPLASHED";
+        }
+
         /// <summary>The body the craft is at.</summary>
         public string Body = "";
         public SnapshotCraft Craft = new SnapshotCraft();
@@ -171,7 +184,7 @@ namespace ClaudiaKermin.Core.Missions
 
         private double? FallingImpact()
         {
-            if (Orbit == null || Situation == "LANDED" || Situation == "SPLASHED" || Situation == "PRELAUNCH") return null;
+            if (Orbit == null || IsGrounded) return null;
             if (Orbit.Periapsis >= 0 || VerticalSpeed >= 0) return null;
             var name = !string.IsNullOrEmpty(Orbit.Body) ? Orbit.Body : Body;
             var at = Bodies.FirstOrDefault(b => b.Name == name);

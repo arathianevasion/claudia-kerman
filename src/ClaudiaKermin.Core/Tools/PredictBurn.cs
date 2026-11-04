@@ -133,7 +133,7 @@ namespace ClaudiaKermin.Core.Tools
                 var orbit = snapshot.Orbit;
                 if (orbit == null || orbit.SemiMajorAxis == 0) { error = PlanningJson.Error("the Game Snapshot has no orbit for the craft"); return null; }
                 var situation = snapshot.Situation ?? "";
-                if (situation == "PRELAUNCH" || situation == "LANDED" || situation == "SPLASHED")
+                if (GameSnapshot.IsGroundedSituation(situation))
                 {
                     error = PlanningJson.Error("the craft is " + situation.ToLowerInvariant() + ", not in flight; there is no orbit to burn from");
                     return null;
