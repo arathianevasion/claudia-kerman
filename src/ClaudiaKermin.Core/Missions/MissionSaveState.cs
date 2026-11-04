@@ -93,6 +93,8 @@ namespace ClaudiaKermin.Core.Missions
         public string RunEvents = "";
         /// <summary>Game time the current or last run began, s of UT; 0 in older saves.</summary>
         public double RunStartUt;
+        /// <summary>The game's UT when the save was made (#412): a loaded save's open RCS-on stretch is closed there; 0 in older saves.</summary>
+        public double SavedUt;
         /// <summary>The run's RCS Use tally (JSON written by RcsUseTally.ToJson); "" for none and in older saves.</summary>
         public string RcsUse = "";
         /// <summary>Monopropellant units at the run's start; null when unknown, and in older saves.</summary>
@@ -193,6 +195,7 @@ namespace ClaudiaKermin.Core.Missions
             if (Crossings.Length > 0) values["crossings"] = Crossings;
             if (RunEvents.Length > 0) values["runEvents"] = RunEvents;
             if (RunStartUt != 0) values["runStartUt"] = RunStartUt.ToString("R", CultureInfo.InvariantCulture);
+            if (SavedUt != 0) values["savedUt"] = SavedUt.ToString("R", CultureInfo.InvariantCulture);
             if (RcsUse.Length > 0) values["rcsUse"] = RcsUse;
             if (RunStartMonopropellant.HasValue) values["runStartMonopropellant"] = RunStartMonopropellant.Value.ToString("R", CultureInfo.InvariantCulture);
             if (RunStartDeltaVLeft.HasValue) values["runStartDeltaVLeft"] = RunStartDeltaVLeft.Value.ToString("R", CultureInfo.InvariantCulture);
@@ -278,6 +281,8 @@ namespace ClaudiaKermin.Core.Missions
             };
             double runStart;
             if (double.TryParse(Get(values, "runStartUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out runStart)) state.RunStartUt = runStart;
+            double savedUt;
+            if (double.TryParse(Get(values, "savedUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out savedUt)) state.SavedUt = savedUt;
             double reading;
             if (double.TryParse(Get(values, "runStartMonopropellant"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.RunStartMonopropellant = reading;
             if (double.TryParse(Get(values, "runStartDeltaVLeft"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.RunStartDeltaVLeft = reading;

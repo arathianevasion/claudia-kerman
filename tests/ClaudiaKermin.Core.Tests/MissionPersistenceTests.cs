@@ -1528,6 +1528,105 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void AnRcsOnStretchOpenAtAnInterruptionIsClosedAtTheInterruptionUt()
+        
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission);
+            var startUt = Saved(mission)[0].RunStartUt;
+            mission.Send(new KosBlockStarted("exec_node", start.RunId));
+            mission.Send(new KosRcsSwitched(new Dictionary<string, object> { { "on", true }, { "reason", "big turn" } }, startUt + 100, start.RunId));
+            mission.Send(new UtAdvanced(startUt + 130));
+
+            // The player left Flight with RCS still on: the stretch ends at the interruption's UT, 30 s after it came on.
+            mission.Send(new SceneChanged(GameScene.Other));
+            Assert.NotEqual(MissionStage.Running, mission.View.Stage);
+            var tally = new RcsUseTally();
+            tally.Restore(Saved(mission)[0].RcsUse);
+            Assert.Equal(1, tally.TimesOn);
+            Assert.Equal(30, tally.SecondsOn, 6);
+        }
+
+        [Fact]
+        public void AnRcsOnStretchOpenInASaveCountsUpToTheSaveWhenItLoadsIntoAnInterruptedDebrief()
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission);
+            var startUt = Saved(mission)[0].RunStartUt;
+            mission.Send(new KosBlockStarted("exec_node", start.RunId));
+            mission.Send(new KosRcsSwitched(new Dictionary<string, object> { { "on", true }, { "reason", "big turn" } }, startUt + 100, start.RunId));
+            mission.Send(new UtAdvanced(startUt + 130));
+            var state = Saved(mission)[0];
+            Assert.Equal(MissionStage.Running, state.Stage);
+            var loaded = MissionSaveState.FromValues(state.ToValues());
+
+            var after = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-debrief.sse"));
+            var resumed = Control(after);
+            resumed.Send(new MissionsRestored(_save.Path, new List<MissionSaveState> { loaded }));
+            Assert.NotEqual(MissionStage.Running, resumed.View.Stage);
+            resumed.Send(new SceneChanged(GameScene.Flight));
+            resumed.Send(OnPad());
+            DrainUntil(resumed, v => v.Stage == MissionStage.Succeeded);
+            var turn = string.Join("\n----\n", Messages(after.Requests[0]).Where(m => m.GetProperty("role").GetString() == "user").Select(Text));
+            Assert.Contains("Interrupted", turn);
+            Assert.Contains("RCS Use this run: switched on 1 time, 30 s in all", turn);
+        }
+
+        [Fact]
+        public void AnRcsOnStretchClosedByAnInterruptionCountsOnceThroughALaterLoad()
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission);
+            var startUt = Saved(mission)[0].RunStartUt;
+            mission.Send(new KosBlockStarted("exec_node", start.RunId));
+            mission.Send(new KosRcsSwitched(new Dictionary<string, object> { { "on", true }, { "reason", "big turn" } }, startUt + 100, start.RunId));
+            mission.Send(new UtAdvanced(startUt + 130));
+            mission.Send(new SceneChanged(GameScene.Other));
+            mission.Send(new UtAdvanced(startUt + 160));
+
+            // The interruption closed the stretch at 130; a save and load at 160 must not close it again.
+            var loaded = MissionSaveState.FromValues(Saved(mission)[0].ToValues());
+            var after = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-debrief.sse"));
+            var resumed = Control(after);
+            resumed.Send(new MissionsRestored(_save.Path, new List<MissionSaveState> { loaded }));
+            resumed.Send(new SceneChanged(GameScene.Flight));
+            resumed.Send(OnPad());
+            DrainUntil(resumed, v => v.Stage == MissionStage.Succeeded);
+            var turn = Messages(after.Requests[0]).Where(m => m.GetProperty("role").GetString() == "user").Select(Text).Last();
+            Assert.Contains("RCS Use this run: switched on 1 time, 30 s in all", turn);
+        }
+
+        [Fact]
+        public void ANormalRunEndStillClosesItsRcsOnStretchAtTheEndUt()
+        
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission);
+            var startUt = Saved(mission)[0].RunStartUt;
+            mission.Send(new KosBlockStarted("exec_node", start.RunId));
+            mission.Send(new KosRcsSwitched(new Dictionary<string, object> { { "on", true }, { "reason", "big turn" } }, startUt + 100, start.RunId));
+            mission.Send(new UtAdvanced(startUt + 130));
+            mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, new Dictionary<string, object> { { "success", true } }, "", "", false), start.RunId));
+            Assert.Contains(mission.View.Log, e => e.Text.Contains("The script ended: Finished"));
+            var tally = new RcsUseTally();
+            tally.Restore(Saved(mission)[0].RcsUse);
+            Assert.Equal(1, tally.TimesOn);
+            Assert.Equal(30, tally.SecondsOn, 6);
+        }
+
+        [Fact]
         public void ASaveWithoutTheTallyOrStartReadingsLoadsAsNoneAndUnknownNotZero()
         {
             var transport = new StreamingFakeTransport(
