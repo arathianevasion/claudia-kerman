@@ -42,6 +42,7 @@ namespace ClaudiaKermin.Adapter
         private const string PortraitUrl = "ClaudiaKermin/Icons/ClaudiaPortrait";
 
         private readonly MissionPanel _panel;
+        private readonly TypingFocus _typing = MissionPanel.NewTypingFocus();
         private readonly WindowFrame _frame =
             new WindowFrame(0x434B04, "", "ClaudiaKerminCapcom", new Rect(0, Top, DefaultWidth, 0), new Vector2(MinWidth, MinPanelHeight), false);
         // The expand tab's width as last drawn; the mouse lock leaves the transparent band either side of it to the game.
@@ -149,7 +150,8 @@ namespace ClaudiaKermin.Adapter
             _frame.LocksMouseAt = LocksMouseAt;
             _frame.Show(Draw, GUILayout.Width(_width));
             // Keys typed into the docked prompt must not stage, throttle or rotate the craft.
-            _frame.SetTyping(expanded && _panel.Typing);
+            if (!expanded) _typing.Reset();
+            _frame.SetTyping(_typing.Held);
         }
 
         private bool LocksMouseAt(Vector2 local)
@@ -161,6 +163,7 @@ namespace ClaudiaKermin.Adapter
         /// <summary>Releases the input locks; call when the strip goes away.</summary>
         public void Unlock()
         {
+            _typing.Reset();
             _dragging = false;
             _panelArea = default(Rect);
             EndTrackDrag();
@@ -205,7 +208,7 @@ namespace ClaudiaKermin.Adapter
         private void DrawPanel()
         {
             GUILayout.BeginVertical(_panelBox, GUILayout.Height(_place.PanelHeight));
-            _panel.Draw(View, _width - 2, true, ClaudiaSkin.Padding);
+            _panel.Draw(View, _width - 2, true, ClaudiaSkin.Padding, _typing);
             GUILayout.EndVertical();
             if (Event.current.type == EventType.Repaint) _panelArea = GUILayoutUtility.GetLastRect();
         }

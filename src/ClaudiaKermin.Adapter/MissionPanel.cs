@@ -105,17 +105,9 @@ namespace ClaudiaKermin.Adapter
         }
 
         /// <summary>The prompt or the Raise cap field has the keyboard; the host locks the keyboard away from the craft while it does.</summary>
-        public bool Typing
+        public static TypingFocus NewTypingFocus()
         {
-            get { return _focus.Held; }
-        }
-
-        // Recorded inside the window function (see Draw), not read after the window returns.
-        private readonly TypingFocus _focus = new TypingFocus(InputControl, RaiseControl);
-
-        private void ObserveFocus()
-        {
-            _focus.Observe(GUI.GetNameOfFocusedControl(), Event.current.type == EventType.Layout);
+            return new TypingFocus(InputControl, RaiseControl);
         }
 
         /// <summary>Flight is loading: the Craft Check starts collapsed again.</summary>
@@ -130,11 +122,10 @@ namespace ClaudiaKermin.Adapter
         /// window's has the spend meter and, in Flight, Dock. <paramref name="rightRoom"/> pads the control bar's right
         /// edge.
         /// </summary>
-        public void Draw(MissionView view, float width, bool docked, int rightRoom)
+        public void Draw(MissionView view, float width, bool docked, int rightRoom, TypingFocus typing)
         {
             _view = view;
             _width = width;
-            ObserveFocus();
             Styles(rightRoom);
             // The start form's goal is spent once a Mission is under way.
             if (_view.CanEndMission)
@@ -164,8 +155,8 @@ namespace ClaudiaKermin.Adapter
             DrawPrompt(prompt);
             DrawActions(settingUp, prompt.For);
             DrawControlBar(settingUp, docked);
-            // After the fields: a click into one moves focus during this pass.
-            ObserveFocus();
+            // Recorded here, inside the window function after the fields: the owner's lock follows it.
+            typing.Observe(GUI.GetNameOfFocusedControl(), Event.current.type == EventType.Layout);
         }
 
         /// <summary>A quick reply from the action row. Change and Ask pick what the prompt sends; pressed again, they let go.</summary>
