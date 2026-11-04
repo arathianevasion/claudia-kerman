@@ -349,7 +349,7 @@ namespace ClaudiaKermin.Core.Tools
                 if (home == null) error = "the body table has no body for the craft's orbit";
                 else if (body == null) error = "no body named " + target + " in the body table";
                 else if (!IsSiblingTransfer(snapshot, target) && !IsMoonTransfer(snapshot, target))
-                    error = body.Name + " is not a planet of the star " + home.Name + " orbits, nor a moon of " + home.Name;
+                    error = body.Name + " shares no parent with " + home.Name + ", nor a moon of " + home.Name;
                 else if (!(targetPe >= 0 && targetPe < body.SoiRadius - body.Radius))
                     error = "target_pe must be from 0 to " + Num(body.SoiRadius - body.Radius) + " m, inside " + body.Name + "'s sphere of influence";
                 else if (!Finite(snapshot.Ut)) error = "the Game Snapshot has no time";

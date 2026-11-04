@@ -101,6 +101,11 @@ namespace ClaudiaKermin.Core.Tools
                 return Fail("the ejection at UT " + Num(ut) + " passes " + Num(missBy / 1000) + " km from " + setup.Target.Name + " at the arrival, outside its sphere of influence");
 
             double prograde, normal, radial;
+            // The aim follows one conic out of the craft's sphere of influence; on the patched conics the way out must not meet one
+            // of its moons (Kerbin's Mun or Minmus) first, which the block could not correct after the burn.
+            var first = SingleShooting.Follow(setup.System, home, AfterBurn(craft, home, ut, aimed.Value), ut, 1);
+            if (first != null && first.Count > 0 && first[0].End == PatchEnd.Encounter)
+                return Fail("the ejection at UT " + Num(ut) + " meets " + first[0].Next.Name + " on its way out of " + home.Name + "'s sphere of influence");
             SingleShooting.NodeFrame(craft, ut, aimed.Value, out prograde, out normal, out radial);
             return new SiblingPlan
             {
@@ -201,6 +206,13 @@ namespace ClaudiaKermin.Core.Tools
                 if (!moved) break;
             }
             return x;
+        }
+
+        private static Conic AfterBurn(Conic craft, SnapshotBody home, double ut, Vec3 burn)
+        {
+            Vec3 r, v;
+            craft.State(ut, out r, out v);
+            return Conic.FromState(home.Gm, r, v + burn, ut);
         }
 
         private static Vec3 Axis(int k)

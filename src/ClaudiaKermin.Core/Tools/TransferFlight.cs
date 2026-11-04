@@ -142,7 +142,6 @@ namespace ClaudiaKermin.Core.Tools
         private static TransferFlightStep Phase(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask)
         {
             var target = setup.Target;
-            var now = setup.Now;
             switch (ask.Phase)
             {
                 case Start:
@@ -178,7 +177,7 @@ namespace ClaudiaKermin.Core.Tools
         {
             var home = setup.Body;
             var target = setup.Target;
-            var sibling = !string.IsNullOrEmpty(home.Parent) && string.Equals(target.Parent, home.Parent, StringComparison.OrdinalIgnoreCase) && target != home;
+            var sibling = TransferWindows.IsSiblingTransfer(snapshot, target.Name);
             if (!sibling && !string.Equals(target.Parent, home.Name, StringComparison.OrdinalIgnoreCase))
                 return Fail(target.Name + " does not orbit " + home.Name + ", the body the craft orbits" + (string.IsNullOrEmpty(home.Parent) ? "" : ", or " + home.Parent));
             var earliest = Earliest(ask.StartUt, ask.TurnTime, ask.Window);

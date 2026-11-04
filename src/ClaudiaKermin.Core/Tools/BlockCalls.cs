@@ -600,13 +600,14 @@ namespace ClaudiaKermin.Core.Tools
         public static IDictionary<string, object> TransferStep(IDictionary<string, object> input, GameSnapshot snapshot)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
-            object target, window, correction, auto, phase, why;
+            object target, window, correction, auto, phase, why, sibling;
             ask.TryGetValue("target", out target);
             ask.TryGetValue("window", out window);
             ask.TryGetValue("correction", out correction);
             ask.TryGetValue("auto", out auto);
             ask.TryGetValue("phase", out phase);
             ask.TryGetValue("why", out why);
+            ask.TryGetValue("sibling", out sibling);
             if (!(target is string)) return Step(new TransferFlightStep { Error = "found no transfer: target must be a body's name" });
             var maxDuration = NumberOrNull(ask, "max_duration");
             var step = TransferFlight.Next(snapshot, new TransferFlightAsk
@@ -626,7 +627,7 @@ namespace ClaudiaKermin.Core.Tools
                 PlaneUt = Number(ask, "plane_ut", -1),
                 Why = why as string ?? "",
                 LastDv = Number(ask, "last_dv", 0),
-                Sibling = ask.ContainsKey("sibling") && ask["sibling"] is bool && (bool)ask["sibling"],
+                Sibling = sibling as bool? ?? false,
             });
             return Step(step);
         }
