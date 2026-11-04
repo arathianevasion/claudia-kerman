@@ -237,7 +237,8 @@ namespace ClaudiaKermin.Core.Tools
                     else early = mid;
                 }
             }
-            if (problem.Moon && soonest.TotalDv - optimal.TotalDv < NoSavingDv) optimal = soonest;
+            // From the pad (#690) the moon is in the launch's plane at every departure: no wait saves anything, so none is taken.
+            if (problem.Moon && (problem.Launch != null || soonest.TotalDv - optimal.TotalDv < NoSavingDv)) optimal = soonest;
 
             return new WindowSearch
             {
