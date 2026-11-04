@@ -72,6 +72,8 @@ namespace ClaudiaKermin.Core.Missions
         public int Seats;
         /// <summary>The vessel's id (its persistent GUID) in Flight, for the Go to button; "" in the editor.</summary>
         public string VesselId = "";
+        /// <summary>The vessel is a Kerbal on EVA (#262). Not in the JSON.</summary>
+        public bool Eva;
         public List<SnapshotPart> Parts = new List<SnapshotPart>();
         /// <summary>
         /// The craft's drag flying nose first: (Mach, m²) keys, drag (N) = ½ρv² × the area, stock's multipliers included and
