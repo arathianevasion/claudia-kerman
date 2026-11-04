@@ -200,7 +200,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
         }
 
         [Fact]
-        public void The_stage_drop_plan_is_shared_in_claudia_lib_and_no_block_calls_another_blocks_deorbit_helper()
+        public void The_stage_drop_plan_is_in_claudia_lib_and_the_deorbit_name_is_gone_from_the_library()
         {
             var library = CoreLibrary.Files.Where(f => f.Name != "claudia_lib").Select(f => f.Source);
             foreach (var source in library)
