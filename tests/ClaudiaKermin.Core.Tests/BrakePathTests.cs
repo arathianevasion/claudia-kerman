@@ -616,8 +616,8 @@ namespace ClaudiaKermin.Core.Tests
             Assert.DoesNotContain("\"craft\"", tool.InputSchemaJson);
         }
 
-        /// <summary>SHA-256 of find_landing_site's description, a NUL and its input schema, as on main at 9c1d0d5.</summary>
-        private const string ToolTextHash = "E66D5DCF9082BE36E59A90379657D201296C23152A54D5E6E9265A0BA1378232";
+        /// <summary>SHA-256 of find_landing_site's description, a NUL and its input schema, as #713 left them (its poi inputs and trimmed docs).</summary>
+        private const string ToolTextHash = "945F8539DA20E55A618695EF3E1C4C9F5F8322C51316BB045D67E5B7977A765E";
 
         private static string Sha256(string text)
         {

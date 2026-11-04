@@ -169,9 +169,9 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         {
             Assert.Equal("", One("land_unreadable(claudia_options(lexicon(\"target\", \"any\"), land_defaults(), \"auto\"):opt)"));
             Assert.Equal("", One("land_unreadable(claudia_options(lexicon(\"target\", lexicon(\"lat\", 1, \"lng\", 2)), land_defaults(), \"auto\"):opt)"));
-            Assert.Equal("target must be \"any\", \"vessel\", LATLNG(lat, lng), lexicon(\"lat\", x, \"lng\", y) or lexicon(\"biome\", name), not 'somewhere'",
+            Assert.Equal("target must be \"any\", \"vessel\", LATLNG(lat, lng), lexicon(\"lat\", x, \"lng\", y), lexicon(\"biome\", name) or lexicon(\"poi\", name), not 'somewhere'",
                 One("land_unreadable(claudia_options(lexicon(\"target\", \"somewhere\"), land_defaults(), \"auto\"):opt)"));
-            Assert.Equal("target must be \"any\", \"vessel\", LATLNG(lat, lng), lexicon(\"lat\", x, \"lng\", y) or lexicon(\"biome\", name), not a lexicon without lat and lng",
+            Assert.Equal("target must be \"any\", \"vessel\", LATLNG(lat, lng), lexicon(\"lat\", x, \"lng\", y), lexicon(\"biome\", name) or lexicon(\"poi\", name), not a lexicon without lat and lng",
                 One("land_unreadable(claudia_options(lexicon(\"target\", lexicon(\"lat\", 1)), land_defaults(), \"auto\"):opt)"));
             Assert.Equal("max_slope must be a number of degrees from 0 to 45",
                 One("land_unreadable(claudia_options(lexicon(\"max_slope\", 60), land_defaults(), \"auto\"):opt)"));
@@ -281,6 +281,43 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         {
             var printed = Run("local q is land_site_query(lexicon(\"biome\", \"Flats\"), true, 8, 20, 12.5).\nprint q:within_hours. print q:max_correction_dv.");
             Assert.Equal(new[] { "20", "12.5" }, printed);
+        }
+
+        // ---- land: a Point of Interest target (#713) ----
+
+        [Fact]
+        public void Land_reads_a_poi_target_and_the_site_search_finds_its_ring_site()
+        {
+            Assert.Equal("", Unreadable("lexicon(\"poi\", \"Monolith TMA-8\")"));
+            Assert.Equal("True", One("land_is_biome(lexicon(\"poi\", \"Monolith TMA-8\"))"));
+            Assert.Equal("poi", One("land_site_kind(lexicon(\"poi\", \"Monolith TMA-8\"))"));
+            Assert.Equal("biome", One("land_site_kind(lexicon(\"biome\", \"Flats\"))"));
+            var printed = Run("local q is land_site_query(lexicon(\"poi\", \"Monolith TMA-8\"), false, 8).\nprint q:poi. print q:haskey(\"biome\"). print q:daylight.");
+            Assert.Equal(new[] { "Monolith TMA-8", "False", "False" }, printed);
+        }
+
+        [Theory]
+        [InlineData("lexicon(\"poi\", \"\")", "target's poi must be a find_poi name")]
+        [InlineData("lexicon(\"poi\", 3)", "target's poi must be a find_poi name")]
+        [InlineData("lexicon(\"poi\", \"Monolith TMA-8\", \"near\", lexicon(\"lat\", 1, \"lng\", 2))", "a poi target takes only poi, not near")]
+        public void Land_says_why_a_poi_target_is_unreadable(string target, string expected)
+        {
+            Assert.Equal(expected, Unreadable(target));
+        }
+
+        [Fact]
+        public void A_poi_the_body_lacks_or_cant_land_beside_is_refused_before_staging()
+        {
+            Assert.Equal("Monolith TMA-7 is not a landable Point of Interest: buried",
+                One("land_unknown_biome(lexicon(\"error\", \"Monolith TMA-7 is not a landable Point of Interest: buried\"))"));
+            Assert.Equal("\"x\" names no one Point of Interest on Mun",
+                One("land_unknown_biome(lexicon(\"error\", char(34) + \"x\" + char(34) + \" names no one Point of Interest on Mun\"))"));
+        }
+
+        [Fact]
+        public void The_poi_report_fields_start_empty()
+        {
+            Assert.Equal(new[] { "", "-1" }, Run("local e is land_extra(). print e:poi. print e:distance_to_poi."));
         }
 
         // ---- land: impact_ut over the terrain on the way down (#383) ----

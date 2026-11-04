@@ -837,6 +837,65 @@ namespace ClaudiaKermin.Core.Missions
             return named + ": pass " + (biomes.Count == 1 ? "it" : "each") + " as find_landing_site's biome and as land's target biome.";
         }
 
+        /// <summary>
+        /// #713: the Points of Interest the Mission Goal names, by a friendly name or an alias of Core's table (whole words, any
+        /// case, a plural too), longest first so "Monolith TMA-8" is never also read as "monolith". Only the Points of Interest of
+        /// the bodies it names count, or every body's when it names none. Each match keeps every entry its words name, so "monolith"
+        /// on the Mun names three.
+        /// </summary>
+        internal static List<GoalPoi> GoalPois(GameSnapshot snapshot, string goal)
+        {
+            goal = goal ?? "";
+            var named = snapshot == null ? new List<string>() : GoalBodies(snapshot, goal).Select(b => b.Name).ToList();
+            // "...and return to Kerbin" names the home body for the trip home, not for its Points of Interest (as #699's biomes).
+            if (named.Count > 1) named.Remove(CraftCheckFlow.HomeBody);
+            var entries = PointsOfInterest.Table.Where(e => e.IsPoi && (named.Count == 0 || named.Contains(e.Body, System.StringComparer.OrdinalIgnoreCase)));
+            var terms = entries.SelectMany(e => new[] { e.Friendly }.Concat(e.Aliases).Select(t => new { Term = t, Entry = e }))
+                .GroupBy(x => x.Term, System.StringComparer.OrdinalIgnoreCase).OrderByDescending(g => g.Key.Length);
+            var taken = new bool[goal.Length];
+            var found = new List<KeyValuePair<int, GoalPoi>>();
+            foreach (var group in terms)
+            {
+                foreach (Match at in Regex.Matches(goal, @"\b" + Regex.Escape(group.Key) + @"(?:e?s)?\b", RegexOptions.IgnoreCase))
+                {
+                    if (Enumerable.Range(at.Index, at.Length).Any(i => taken[i])) continue;
+                    for (var i = at.Index; i < at.Index + at.Length; i++) taken[i] = true;
+                    var pois = group.Select(x => x.Entry).Distinct().ToList();
+                    if (pois.All(p => found.Any(f => f.Value.Entries.Contains(p)))) continue;
+                    found.Add(new KeyValuePair<int, GoalPoi>(at.Index, new GoalPoi { Term = group.Key, Entries = pois }));
+                }
+            }
+            return found.OrderBy(f => f.Key).Select(f => f.Value).ToList();
+        }
+
+        /// <summary>
+        /// #713: the one line a request carries when the Mission Goal names a Point of Interest, like #699's biome line, e.g.
+        /// "Monolith TMA-8 is a Minmus Point of Interest: land beside it with find_landing_site's poi and land's poi target, not on
+        /// it."; words that name several list them and ask for a choice. "" for none, so other Missions' requests are unchanged.
+        /// </summary>
+        internal static string GoalPoiLine(IList<GoalPoi> pois, GameSnapshot snapshot)
+        {
+            if (pois == null || pois.Count == 0) return "";
+            const string Beside = "land beside it with find_landing_site's poi and land's poi target, not on it.";
+            var lines = new List<string>();
+            foreach (var poi in pois)
+            {
+                if (poi.Entries.Count > 1)
+                {
+                    lines.Add("\"" + poi.Term + "\" names " + poi.Entries.Count + " Points of Interest ("
+                        + string.Join(", ", poi.Entries.Select(e => e.Friendly + " on " + e.Body + (e.Landable ? "" : ", not landable")).ToArray())
+                        + "): choose one, or call find_poi; " + Beside);
+                    continue;
+                }
+                var one = poi.Entries[0];
+                var body = snapshot == null ? null : snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, one.Body, System.StringComparison.OrdinalIgnoreCase));
+                var air = body != null && (body.AtmosphereHeight > 0 || body.SeaLevelAtm > 0);
+                lines.Add(one.Friendly + " is a " + one.Body + " Point of Interest: "
+                    + (!one.Landable ? "not landable (" + one.Note + ")." : air ? "reentry can't aim at it yet (no precision landing through air)." : Beside));
+            }
+            return string.Join(" ", lines.ToArray());
+        }
+
         /// <summary>#699: why a landing goes back before Approval, e.g. "the Mission Goal names Twin Craters (a Mun biome); this landing targets Midland Craters".</summary>
         public static string GoalBiomeMissed(GoalBiomeMiss miss)
         {

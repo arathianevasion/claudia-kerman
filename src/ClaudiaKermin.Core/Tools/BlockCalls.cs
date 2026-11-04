@@ -41,6 +41,7 @@ namespace ClaudiaKermin.Core.Tools
             if (ask.TryGetValue("check_only", out checkOnly) && checkOnly is bool && (bool)checkOnly)
             {
                 object named;
+                if (ask.TryGetValue("poi", out named)) return PoiCheck(Convert.ToString(named, CultureInfo.InvariantCulture), snapshot, orbited, body);
                 ask.TryGetValue("biome", out named);
                 var unknown = LandingSiteSearch.UnknownBiome(orbited, Convert.ToString(named, CultureInfo.InvariantCulture), body.BiomeNames(orbited ?? ""));
                 return unknown == null ? new Dictionary<string, object> { { "error", "" } } : Error(unknown);
@@ -73,6 +74,7 @@ namespace ClaudiaKermin.Core.Tools
             if (outcome.IsError) return Error(JsonNode.Str(result["error"]));
 
             var sites = result["sites"];
+            if (result["poi"] != null) return PoiSite(result, sites, snapshot);
             if (sites == null || sites.Items.Count == 0)
             {
                 object biome;
@@ -99,6 +101,63 @@ namespace ClaudiaKermin.Core.Tools
                 { "near_edge", site["near_biome_edge"] != null },
                 { "predicted_dv", JsonNode.Double(site["predicted_dv"]) ?? -1 },
                 { "descent_shape", JsonNode.Double(site["descent_shape"]) ?? -1 },
+            };
+        }
+
+        /// <summary>
+        /// LANDINGSITE's check-only call for a Point of Interest target (#713): <c>error</c> "" if the body orbited has one landable
+        /// Point of Interest of that name, else why not, before land stages.
+        /// </summary>
+        private static IDictionary<string, object> PoiCheck(string name, GameSnapshot snapshot, string orbited, IPlanningBody api)
+        {
+            var at = snapshot == null || snapshot.Bodies.Count == 0 ? null : new BodySystem(snapshot.Bodies).Find(orbited ?? "");
+            if (at == null) return new Dictionary<string, object> { { "error", "" } };
+            string found;
+            var problem = FindLandingSite.PoiQuery(JsonReader.Parse(PlanningJson.Quote(name ?? "")), at, JsonReader.Parse("{}"), new LandingSiteQuery(), api, out found);
+            return problem == null ? new Dictionary<string, object> { { "error", "" } } : Error(problem);
+        }
+
+        /// <summary>
+        /// LANDINGSITE's answer for a Point of Interest target (#713): the first ring site, with <c>poi</c> (its name),
+        /// <c>poi_lat</c>, <c>poi_lng</c>, <c>clear_m</c> (poi_min_m: land's keep_clear on the point), <c>max_divert</c> (m a divert
+        /// may move the site and keep 50 m across either pass's track from the point) and <c>note</c> (the trace: the site's distance
+        /// and bearing from the point). With no site, only <c>error</c>.
+        /// </summary>
+        private static IDictionary<string, object> PoiSite(JsonNode result, JsonNode sites, GameSnapshot snapshot)
+        {
+            var poi = JsonNode.Str(result["poi"]);
+            var orbited = snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body;
+            if (sites == null || sites.Items.Count == 0)
+            {
+                var note = JsonNode.Str(result["note"]);
+                var advice = note.IndexOf("; widen", StringComparison.Ordinal);
+                if (advice >= 0) note = note.Substring(0, advice);
+                return Error("no site beside " + poi + " on " + orbited + ": " + note);
+            }
+            var site = sites.Items[0];
+            var fromM = JsonNode.Double(site["from_poi_m"]) ?? 0;
+            var bearing = JsonNode.Double(site["bearing_from_poi_deg"]) ?? 0;
+            var poiLat = JsonNode.Double(result["poi_latitude"]) ?? 0;
+            var clearM = JsonNode.Double(result["poi_min_m"]) ?? LandingSiteSearch.PoiMinM;
+            var across = LandingSiteSearch.AcrossM(fromM, bearing, poiLat, snapshot.Orbit != null ? snapshot.Orbit.Inclination : 0);
+            return new Dictionary<string, object>
+            {
+                { "error", "" },
+                { "lat", JsonNode.Double(site["latitude"]) ?? 0 },
+                { "lng", JsonNode.Double(site["longitude"]) ?? 0 },
+                { "biome", JsonNode.Str(site["biome"]) },
+                { "terrain_altitude", JsonNode.Double(site["terrain_altitude"]) ?? 0 },
+                { "slope_deg", JsonNode.Double(site["slope_deg"]) ?? 0 },
+                { "near_edge", false },
+                { "predicted_dv", JsonNode.Double(site["predicted_dv"]) ?? -1 },
+                { "descent_shape", JsonNode.Double(site["descent_shape"]) ?? -1 },
+                { "poi", poi },
+                { "poi_lat", poiLat },
+                { "poi_lng", JsonNode.Double(result["poi_longitude"]) ?? 0 },
+                { "clear_m", clearM },
+                { "max_divert", Math.Max(0, across - KeepClear.DefaultClearM) },
+                { "note", "beside " + poi + ": " + fromM.ToString("0", CultureInfo.InvariantCulture) + " m from it, bearing "
+                    + bearing.ToString("0", CultureInfo.InvariantCulture) + " degrees" },
             };
         }
 

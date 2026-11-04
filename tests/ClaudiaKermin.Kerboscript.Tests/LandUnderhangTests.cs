@@ -144,27 +144,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal("0", One("land_fall_reach(2000, 10, 0, 1.63)"));
         }
 
-        [Theory]
-        [InlineData(50, "True")]
-        [InlineData(49.9, "False")]
-        [InlineData(0, "False")]
-        public void A_touchdown_point_is_clear_of_the_Underhang_at_50_m_or_more(double dist, string expected)
-        {
-            Assert.Equal(expected, One(F("land_clear_of({0})", dist)));
-        }
-
-        [Theory]
-        // Already clear: stays put.
-        [InlineData(80, 300, "0")]
-        // Moves the rest of the 50 m.
-        [InlineData(20, 300, "30")]
-        [InlineData(0, 300, "50")]
-        // Never more than max_divert.
-        [InlineData(0, 10, "10")]
-        public void The_touchdown_point_moves_to_50_m_clear_within_max_divert(double dist, double maxDivert, string expected)
-        {
-            Assert.Equal(expected, One(F("land_clear_shift({0}, {1})", dist, maxDivert)));
-        }
+        // Where it lands clear of them is Core's KeepClear since #713 (its cases in KeepClearTests).
 
         // ---- No legs, or no Underhang: today's land ----
 
@@ -192,8 +172,8 @@ namespace ClaudiaKermin.Kerboscript.Tests
                 "burn_start_ut=-1", "braking_began_ut=-1", "impact_ut=-1", "biome=", "staged_before_braking=False", "stage_left=-1",
                 "staged_before_deorbit=False", "lander_dv=-1", "lander_need=-1",
                 // 28 keys: #511 added descent_shape, descent_pe, predicted_dv, actual_dv, predicted_clearance, moved_for_terrain and shape_range;
-                // #596 staged_before_deorbit, lander_dv and lander_need; #712 vertical_fallback.
-                "0", "0", "-1", "29",
+                // #596 staged_before_deorbit, lander_dv and lander_need; #712 vertical_fallback; #713 poi and distance_to_poi.
+                "0", "0", "-1", "31",
             }, printed);
         }
 

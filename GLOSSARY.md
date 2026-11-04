@@ -198,6 +198,10 @@ _Avoid_: probe, drone, secondary craft
 The one other vessel a Mission rendezvouses or docks with, or lands beside when it is landed (`land`'s target `"vessel"`, #662), only for a Mission Goal that asks for rendezvous or docking or names a vessel: the player's pick in the start form, else the vessel the goal names, else KSP's target. The start form shows it, or why there is none, before Start; changing it makes Start check the craft again. Between sequences the Mission window's Choose and Clear change it, and the pending plan becomes Re-plan for a revised Mission Plan (#661). A Child Vessel can be one. The Game Snapshot carries it as one compact entry only when the Mission has one (ADR 0013). It is flown only by the bundled `dock_hold`, never by Claudia's scripts.
 _Avoid_: target (alone, which is also a transfer's body or orbit), station, other vessel
 
+**Point of Interest**:
+A stock anomaly on a body's surface (a monolith, the Mun's rock arches, the Duna Face...): a place to land beside, never on (#713). The game gives its position (its surface objects); Core's table gives its friendly name, a note and whether it is landable (the buried Monolith TMA-7 is not), and leaves out the KSC and launch sites. `find_poi` lists a body's; `find_landing_site`'s `poi` and `land`'s target `lexicon("poi", name)` land in the ring 150 m to 1.5 km round it, the point itself kept clear. It is not a Target Vessel (a vessel, not scenery) and not a biome (an area, not a point).
+_Avoid_: anomaly (alone), easter egg, landmark, POI (in Claudia's text)
+
 **Claudia Flag**:
 The flag the mod ships (`ClaudiaKermin/Flags/ClaudiaFlag`). A Mission's craft and Child Vessels fly it, and it is the agency flag while a Mission is under way (in play, Paused or not); the player's own agency flag comes back when none is.
 _Avoid_: Mission flag, mod flag

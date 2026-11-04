@@ -259,7 +259,7 @@ namespace ClaudiaKermin.Core.Tests
             Plan(mission);
 
             var names = Body(transport.Requests[0]).GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("name").GetString()).ToList();
-            Assert.Equal(new[] { "predict_burn", "solve_burn", "stage_performance", "plan_ascent", "find_landing_site", "plan_transfer", "propose_mission_plan" }, names);
+            Assert.Equal(new[] { "predict_burn", "solve_burn", "stage_performance", "plan_ascent", "find_landing_site", "find_poi", "plan_transfer", "propose_mission_plan" }, names);
             Assert.Equal(new[] { "stage_performance", "plan_ascent" }, PlanningTools.Default(new PassingScriptCheck()).Definitions(ToolOffer.CraftCheck).Select(t => t.Name).ToArray());
         }
 

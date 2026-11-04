@@ -130,6 +130,85 @@ namespace ClaudiaKermin.Adapter
             return names;
         }
 
+        /// <summary>Each body's surface objects as read, until the next scene load (#713: read once per body per scene).</summary>
+        private static readonly Dictionary<string, List<ClaudiaKermin.Core.Tools.SurfaceObject>> SurfaceRead = new Dictionary<string, List<ClaudiaKermin.Core.Tools.SurfaceObject>>(StringComparer.OrdinalIgnoreCase);
+        private static bool _sceneHooked;
+
+        /// <summary>
+        /// The body's stock surface objects (#713), from <c>CelestialBody.pqsSurfaceObjects</c>: the list stock fills for every body
+        /// when the PQS is set up, and that KerbNet's anomaly scan reads, so it holds the PQSCity and PQSCity2 anomalies of bodies the
+        /// craft isn't near (walking the PQS's children would find only the loaded ones). Each object's position comes from its
+        /// transform, the terrain height from the PQS, and the game's launch-site and facility links mark the facilities. Read on the
+        /// main thread once per body per scene, logged to KSP.log, then served from memory.
+        /// </summary>
+        public override IList<ClaudiaKermin.Core.Tools.SurfaceObject> SurfaceObjects(string body)
+        {
+            lock (SurfaceRead)
+            {
+                List<ClaudiaKermin.Core.Tools.SurfaceObject> cached;
+                if (SurfaceRead.TryGetValue(body ?? "", out cached)) return cached;
+            }
+            var read = new List<ClaudiaKermin.Core.Tools.SurfaceObject>();
+            var served = false;
+            Run(() =>
+            {
+                if (!_sceneHooked)
+                {
+                    GameEvents.onLevelWasLoaded.Add(ForgetSurfaceObjects);
+                    _sceneHooked = true;
+                }
+                var celestial = Find(body);
+                if (celestial != null) read.AddRange(ReadSurfaceObjects(celestial));
+                served = celestial != null;
+                return true;
+            });
+            // A read a frame never served (a paused game, an abandoned call) is asked again next time.
+            if (served) lock (SurfaceRead) SurfaceRead[body ?? ""] = read;
+            return read;
+        }
+
+        private static void ForgetSurfaceObjects(GameScenes scene)
+        {
+            lock (SurfaceRead) SurfaceRead.Clear();
+        }
+
+        /// <summary>Main thread only.</summary>
+        private static List<ClaudiaKermin.Core.Tools.SurfaceObject> ReadSurfaceObjects(CelestialBody body)
+        {
+            var read = new List<ClaudiaKermin.Core.Tools.SurfaceObject>();
+            if (body.pqsSurfaceObjects != null)
+                foreach (var obj in body.pqsSurfaceObjects)
+                {
+                    if (obj == null) continue;
+                    var city = obj as PQSCity;
+                    var city2 = obj as PQSCity2;
+                    var found = new ClaudiaKermin.Core.Tools.SurfaceObject
+                    {
+                        Body = body.bodyName, Name = obj.SurfaceObjectName ?? obj.name ?? "",
+                        Facility = (city != null && (city.launchSite != null || city.spaceCenterFacility != null))
+                            || (city2 != null && (city2.launchSite != null || city2.spaceCenterFacility != null)),
+                    };
+                    if (obj.transform != null)
+                    {
+                        var at = body.GetLatitudeAndLongitude(obj.transform.position);
+                        found.Latitude = at.x;
+                        found.Longitude = at.y;
+                    }
+                    else if (city2 != null)
+                    {
+                        found.Latitude = city2.lat;
+                        found.Longitude = city2.lon;
+                    }
+                    if (body.pqsController != null && !double.IsNaN(found.Latitude) && !double.IsNaN(found.Longitude))
+                        found.Altitude = body.TerrainAltitude(found.Latitude, found.Longitude, true);
+                    read.Add(found);
+                }
+            Debug.Log(ClaudiaKermin.Core.ModInfo.LogTag + " Points of Interest: " + read.Count + " surface objects on " + body.bodyName + " (pqsSurfaceObjects)"
+                + string.Concat(read.Select(o => string.Format(System.Globalization.CultureInfo.InvariantCulture, "; {0} at {1:0.000}, {2:0.000}, {3:0} m{4}",
+                    o.Name, o.Latitude, o.Longitude, o.Altitude, o.Facility ? " (facility)" : "")).ToArray()));
+            return read;
+        }
+
         public override double SunElevation(string body, double latitude, double longitude, double ut)
         {
             var sample = new SiteSample { Latitude = latitude, Longitude = longitude, Ut = ut };
