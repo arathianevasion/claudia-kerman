@@ -27,8 +27,16 @@ namespace ClaudiaKermin.Core.Tools
         public double CaptureDv;
         /// <summary>A moon's window (#647): the plane change on the way, where the arc is slow, m/s; 0 to a planet.</summary>
         public double PlaneDv;
-        /// <summary>Ejection plus capture, or the ejection alone without capture (and a moon's plane change).</summary>
+        /// <summary>From the ground (#727): the ascent's loss to the body's turning, launching into this row's plane, m/s; else 0.</summary>
+        public double AscentLossDv;
+        /// <summary>Ejection plus capture, or the ejection alone without capture (and a moon's plane change, and the ascent's loss).</summary>
         public double TotalDv;
+        /// <summary>
+        /// From the ground (#727): the case the row took (<see cref="DeparturePlane"/>'s notes) and the launch it assumes; null
+        /// from orbit. Set on Soonest and Optimal only.
+        /// </summary>
+        public string Plane;
+        public LaunchWindow Launch;
     }
 
     /// <summary>The Soonest and Optimal windows to a planet or a moon of the craft's planet, or why there are none (<see cref="Error"/>, with the rest unset).</summary>
@@ -49,8 +57,9 @@ namespace ClaudiaKermin.Core.Tools
         public double ParkingPe;
         public bool ParkingAssumed;
         /// <summary>
-        /// From the pad to an out-of-plane moon (#690): the launch into the moon's plane the windows assume, null otherwise. The windows
-        /// depart <see cref="WindowWaits.LaunchLeadS"/> after its UT, and cost the transfer in the moon's plane, no plane change.
+        /// From the ground to an out-of-plane moon (#690, #727): the launch the windows assume, null otherwise; they depart
+        /// <see cref="WindowWaits.LaunchLeadS"/> after its UT or later. Into the moon's plane, no plane change; due east from a site
+        /// past it, with the residual (<see cref="LaunchWindow.Residual"/>) fixed on the way. A planet's rows each carry their own.
         /// </summary>
         public LaunchWindow Launch;
         /// <summary>Whether the target is a moon of the craft's planet (#647).</summary>
@@ -179,7 +188,7 @@ namespace ClaudiaKermin.Core.Tools
         {
             if (marginPercent < 0) return Fail("the Craft Check margin must be 0 % or more");
             var from = problem.From;
-            var synodic = span ?? (problem.Moon ? problem.Target.Period : Transfer.Synodic(problem.Home.Period, problem.Target.Period));
+            var synodic = span ?? (problem.Moon ? problem.MoonHorizon() : Transfer.Synodic(problem.Home.Period, problem.Target.Period));
             var step = synodic / (Departures - 1);
             var hohmann = problem.HohmannTime();
             var tofLo = FlightLow * hohmann;
@@ -254,8 +263,10 @@ namespace ClaudiaKermin.Core.Tools
                     else early = mid;
                 }
             }
-            // From the pad (#690) the moon is in the launch's plane at every departure: no wait saves anything, so none is taken.
-            if (problem.Moon && (problem.Launch != null || soonest.TotalDv - optimal.TotalDv < NoSavingDv)) optimal = soonest;
+            // Launched into its plane (#690) the moon is in the parking plane at every departure: no wait saves anything, so none is taken.
+            if (problem.Moon && (problem.Launch != null && problem.Launch.Residual == 0 || soonest.TotalDv - optimal.TotalDv < NoSavingDv)) optimal = soonest;
+            problem.Describe(soonest);
+            if (optimal != soonest) problem.Describe(optimal);
 
             return new WindowSearch
             {
@@ -326,8 +337,22 @@ namespace ClaudiaKermin.Core.Tools
             /// <summary>The parking orbit's periapsis altitude, m, and whether it is the Delta-v Map's low orbit (the craft has no closed one).</summary>
             public double ParkingPe;
             public bool ParkingAssumed;
-            /// <summary>From the pad to a moon out of the equator's plane (#690): the launch window into the moon's plane; null otherwise.</summary>
+            /// <summary>From the ground to a moon out of the site's plane (#690, #727): the launch window; null otherwise.</summary>
             public LaunchWindow Launch;
+            /// <summary>
+            /// From the ground (#727): the craft's body, the site (degrees, at <see cref="SiteUt"/>) and the ascent's loss a moon's
+            /// launch costs every row (m/s); a planet's is costed per departure from its asymptote. <see cref="PlaneNote"/> is the
+            /// rows' case when no launch could be found. All unset from orbit.
+            /// </summary>
+            public bool Grounded;
+            public SnapshotBody HomeBody;
+            public double Latitude;
+            public double CelestialLongitude;
+            public double SiteUt;
+            public double AscentLossDv;
+            public string PlaneNote;
+            /// <summary>The Mission's Time versus delta-v: how long a ground departure's residual may wait for the moon's node (#727).</summary>
+            public TimeVersusDeltaV Setting = TimeVersusDeltaV.Balanced;
             /// <summary>The capture's periapsis radius round the target.</summary>
             public double CaptureR;
             /// <summary>Whether the capture counts in the total.</summary>
@@ -384,20 +409,106 @@ namespace ClaudiaKermin.Core.Tools
                 if (snapshot.DeltaVSimulator && snapshot.Stages.Count > 0 && !snapshot.DeltaVUnreliable) p.CraftDv = snapshot.Stages.Sum(st => st.DeltaVVac);
                 p.LaterLegsDv = snapshot.LaterLegsDv;
                 if (Vec3.Dot(p.Plane, p.Target.W) < 0) p.Plane = p.Plane * -1;
-                // From the pad to a moon out of the equator's plane (#690): launch into the moon's plane at the next launch window (as
-                // plan_ascent's launch_at), so the parking orbit is the moon's plane and the windows start after that launch.
-                var grounded = snapshot.IsGrounded;
-                if (moon && p.ParkingAssumed && grounded && Math.Abs(body.Inclination) >= OutOfPlaneDeg)
-                {
-                    var launch = LaunchWindow.Find(home, snapshot.Ut, snapshot.Latitude, snapshot.CelestialLongitude, body.Inclination, body.Lan, p.ParkingPe);
-                    if (launch.Error == null)
-                    {
-                        p.Launch = launch;
-                        p.Plane = p.Target.W;
-                        p.From = launch.Ut + WindowWaits.LaunchLeadS;
-                    }
-                }
+                p.Setting = snapshot.TimeVersusDeltaV;
+                if (p.ParkingAssumed && snapshot.IsGrounded) Ground(p, snapshot, home, body);
                 return p;
+            }
+
+            /// <summary>
+            /// From the ground (#690, #727), any site on any body: to a moon out of the site's plane, the launch the rows assume (as
+            /// plan_ascent's launch_at): into the moon's plane at the next window, or due east past it with the residual fixed on
+            /// the way, the windows starting after it. To a planet, each row's launch contains its own asymptote (<see cref="Describe"/>),
+            /// so the windows start a turn of the body and the launch lead on, leaving a launch before any of them.
+            /// </summary>
+            private static void Ground(Problem p, GameSnapshot snapshot, SnapshotBody home, SnapshotBody body)
+            {
+                p.Grounded = true;
+                p.HomeBody = home;
+                p.Latitude = snapshot.Latitude;
+                p.CelestialLongitude = snapshot.CelestialLongitude;
+                p.SiteUt = snapshot.Ut;
+                if (!p.Moon)
+                {
+                    if (home.RotationPeriod == 0 || !Finite(home.RotationPeriod)) p.PlaneNote = DeparturePlane.Assumed("the body has no rotation period to time a launch by");
+                    else p.From = snapshot.Ut + WindowWaits.LaunchLeadS + Math.Abs(home.RotationPeriod);
+                    return;
+                }
+                // The Mun from near the equator is in the parking plane already: the rows are as from orbit.
+                if (Math.Abs(body.Inclination) < OutOfPlaneDeg && Math.Abs(snapshot.Latitude) < OutOfPlaneDeg) return;
+                var launch = LaunchWindow.Find(home, snapshot.Ut, snapshot.Latitude, snapshot.CelestialLongitude, body.Inclination, body.Lan, p.ParkingPe);
+                if (launch.Error != null)
+                {
+                    p.PlaneNote = DeparturePlane.Assumed(launch.Error);
+                    return;
+                }
+                p.Launch = launch;
+                p.From = launch.Ut + WindowWaits.LaunchLeadS;
+                if (launch.Residual == 0)
+                {
+                    p.Plane = p.Target.W;
+                    p.AscentLossDv = LaunchWindow.AscentLoss(home, snapshot.Latitude, body.Inclination);
+                    return;
+                }
+                // Due east, its ascending node the moon's: no ascent loss, and the moon's sense of motion.
+                p.Plane = Conic.FromElements(home.Gm, p.ParkingR, 0, launch.Inclination, body.Lan, 0, 0, 0).W;
+                if (Vec3.Dot(p.Plane, p.Target.W) < 0) p.Plane = p.Plane * -1;
+            }
+
+            /// <summary>
+            /// A moon's horizon (#727): one of its orbits, but from the ground with a residual the Mission's Time versus delta-v bounds
+            /// the wait for a node arrival: Fastest one parking orbit after the launch, Balanced a quarter of the moon's orbit.
+            /// </summary>
+            public double MoonHorizon()
+            {
+                if (Launch == null || Launch.Residual == 0) return Target.Period;
+                switch (Setting)
+                {
+                    case TimeVersusDeltaV.Fastest: return 2 * Math.PI * Math.Sqrt(ParkingR * ParkingR * ParkingR / HomeGm);
+                    case TimeVersusDeltaV.MostEfficient: return Target.Period;
+                    default: return Target.Period / 4;
+                }
+            }
+
+            /// <summary>
+            /// From the ground (#727), the case <paramref name="w"/> took and the launch it assumes: a moon's is the problem's; a
+            /// planet's contains this row's asymptote, the latest launch the launch lead before its departure.
+            /// </summary>
+            public void Describe(TransferWindow w)
+            {
+                if (!Grounded) return;
+                if (PlaneNote != null)
+                {
+                    w.Plane = PlaneNote;
+                    return;
+                }
+                if (Moon)
+                {
+                    if (Launch == null) return;
+                    w.Launch = Launch;
+                    w.Plane = Launch.Residual == 0 ? DeparturePlane.LaunchedInto : w.PlaneDv < DeparturePlane.NodeFreeDv ? DeparturePlane.AtNode : DeparturePlane.MidCourse(Launch.Residual);
+                    return;
+                }
+                var leaving = Leaving(w.DepartureUt, w.ArrivalUt - w.DepartureUt);
+                var launch = leaving.HasValue
+                    ? DeparturePlane.ForAsymptote(HomeBody, SiteUt, Latitude, CelestialLongitude, leaving.Value, w.DepartureUt - WindowWaits.LaunchLeadS, ParkingPe)
+                    : LaunchWindow.Fail("the window's arc has no Lambert path");
+                if (launch.Error != null)
+                {
+                    w.Plane = DeparturePlane.Assumed(launch.Error);
+                    return;
+                }
+                w.Launch = launch;
+                w.Plane = DeparturePlane.LaunchedInto;
+            }
+
+            /// <summary>A planet's departure asymptote leaving at <paramref name="t"/> on a <paramref name="tof"/> s arc: v-infinity round the craft's planet; null with no path.</summary>
+            private Vec3? Leaving(double t, double tof)
+            {
+                Vec3 r1, v1, r2, v2;
+                Home.State(t, out r1, out v1);
+                Target.State(t + tof, out r2, out v2);
+                var path = Lambert.Solve(Home.Mu, r1, r2, tof, Home.W);
+                return path.Error == null ? path.V1 - v1 : (Vec3?)null;
             }
 
             /// <summary>The Hohmann time between the planets' semi-major axes round the star, or from the parking orbit to the moon's.</summary>
@@ -427,14 +538,22 @@ namespace ClaudiaKermin.Core.Tools
                     LambertError = path.Error;
                     return new TransferWindow { DepartureUt = t, ArrivalUt = t + tof, TotalDv = double.PositiveInfinity };
                 }
-                var leaving = (path.V1 - v1).Length;
+                var away = path.V1 - v1;
+                var leaving = away.Length;
                 var arriving = (path.V2 - v2).Length;
                 var ejection = Math.Sqrt(leaving * leaving + 2 * HomeGm / ParkingR) - ParkingV;
                 var captureDv = Capture ? Math.Sqrt(arriving * arriving + 2 * TargetGm / CaptureR) - Math.Sqrt(TargetGm / CaptureR) : 0;
+                // From the ground (#727): the launch into an orbit holding the asymptote, inclined at least its declination.
+                var loss = 0.0;
+                if (Grounded && PlaneNote == null && leaving > 0)
+                {
+                    var declination = Math.Asin(Math.Max(-1, Math.Min(1, away.Z / leaving))) * 180 / Math.PI;
+                    loss = LaunchWindow.AscentLoss(HomeBody, Latitude, Math.Max(Math.Abs(Latitude), Math.Abs(declination)));
+                }
                 return new TransferWindow
                 {
-                    DepartureUt = t, ArrivalUt = t + tof, EjectionDv = ejection, ArrivalVInf = arriving, CaptureDv = captureDv,
-                    TotalDv = ejection + captureDv,
+                    DepartureUt = t, ArrivalUt = t + tof, EjectionDv = ejection, ArrivalVInf = arriving, CaptureDv = captureDv, AscentLossDv = loss,
+                    TotalDv = ejection + captureDv + loss,
                 };
             }
 
@@ -488,7 +607,7 @@ namespace ClaudiaKermin.Core.Tools
                 return new TransferWindow
                 {
                     DepartureUt = t, ArrivalUt = t + tof, EjectionDv = ejection, ArrivalVInf = arriving, CaptureDv = captureDv, PlaneDv = planeDv,
-                    TotalDv = ejection + planeDv + captureDv,
+                    AscentLossDv = AscentLossDv, TotalDv = ejection + planeDv + captureDv + AscentLossDv,
                 };
             }
         }
