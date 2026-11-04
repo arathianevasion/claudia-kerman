@@ -164,5 +164,18 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("Its block is transfer_to", description);
             Assert.InRange(description.Length, 1, 900);
         }
+
+        [Fact]
+        public void From_a_30_km_Mun_orbit_Minmus_gets_its_windows_with_the_ejection_transfer_to_flies()
+        {
+            // #734: a body sharing the parent of the body the craft orbits is planned through Transfer Windows, as transfer_to
+            // flies it (the transfer_to_minmus_from_mun block test: the block test brackets its ejection 200 to 350 m/s; about 239 here).
+            var snapshot = TransferRig.Circular("Mun", 30000, 0).Snapshot();
+            var result = Run("{\"target\":\"Minmus\",\"target_pe\":30000}", snapshot);
+            Assert.Equal("Minmus", result.GetProperty("target").GetString());
+            foreach (var name in new[] { "soonest", "optimal" })
+                Assert.InRange(result.GetProperty(name).GetProperty("ejection_dv").GetDouble(), 200, 350);
+            Assert.True(result.TryGetProperty("pick", out _));
+        }
     }
 }
