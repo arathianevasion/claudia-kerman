@@ -726,11 +726,12 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
                 One("land_unreadable(claudia_options(lexicon(\"descent_shape\", \"steep\"), land_defaults(), \"auto\"):opt)"));
             Assert.Equal("descent_shape must be \"auto\" or a Descent Shape from 0.05 to 10 (smaller is steeper)",
                 One("land_unreadable(claudia_options(lexicon(\"descent_shape\", 0), land_defaults(), \"auto\"):opt)"));
-            Assert.Equal(new[] { "-1", "-1", "-1", "-1", "-1", "False", "" }, Run("local x is land_extra().\n"
-                + "print x:descent_shape. print x:descent_pe. print x:predicted_dv. print x:actual_dv. print x:predicted_clearance. print x:moved_for_terrain. print x:shape_range."));
+            Assert.Equal(new[] { "-1", "-1", "-1", "-1", "-1", "False", "", "False" }, Run("local x is land_extra().\n"
+                + "print x:descent_shape. print x:descent_pe. print x:predicted_dv. print x:actual_dv. print x:predicted_clearance. print x:moved_for_terrain. print x:shape_range."
+                + " print x:vertical_fallback."));
             var land = CoreLibrary.FullDocs(new[] { "land" });
             foreach (var field in new[] { "descent_shape [\"auto\"]", "descent_pe", "predicted_dv", "actual_dv", "predicted_clearance", "moved_for_terrain", "shape_range",
-                "retry with a smaller shape", "terrain on the approach", "climbed off its predicted path" })
+                "retry with a smaller shape", "terrain on the approach", "above its predicted path", "vertical_fallback" })
                 Assert.Contains(field, land);
         }
 
@@ -992,22 +993,14 @@ print land_brake_estimate(samples, a_brake, 1.1).");
             + "lexicon(\"s\", 0, \"alt\", 200, \"ground\", 0)).\n";
 
         [Fact]
-        public void A_basin_after_a_ridge_doesnt_trip_the_guard_and_a_real_climb_off_the_predicted_path_does()
+        public void The_predicted_path_is_read_where_the_craft_is_along_the_track()
         {
-            // #511: the guard measures altitude against the prediction at that point along the track, not clearance against
-            // its start (#433's false trips over dropping ground and misses over rising ground).
+            // #511: the path guard (Core's LandGuard since #712, its cases in LandGuardTests) reads the prediction there.
             var printed = Run(RidgeThenBasin
-                // Over the ridge, flying the path: the old guard would see clearance fall; this one sees the path.
-                + "print land_path_guard(3500, land_path_at(pred, 30000)).\n"
-                // Into the basin: clearance rose 3 km over the start, which tripped \"braking climbed 2 km\".
-                + "print land_path_guard(1600, land_path_at(pred, 20000)).\n"
-                // 25 km out, on the way down from the ridge: predicted 2500 m, flown 3400 m, 0.9 km over it: under the 1 km floor.
-                + "print land_path_guard(3400, land_path_at(pred, 25000)).\n"
-                // Climbing off the path over the plain: 1.5 km over a predicted 800 m.
-                + "print land_path_guard(2300, land_path_at(pred, 10000)).\n"
+                + "print round(land_path_at(pred, 30000):alt). print round(land_path_at(pred, 20000):ground).\n"
                 + "print round(land_path_at(pred, 25000):alt). print round(land_path_at(pred, 45000):alt). print round(land_path_at(pred, -500):alt).\n"
-                + "print land_path_guard(99999, \"\").");
-            Assert.Equal(new[] { "", "", "", "braking climbed off its predicted path: 1.5 km over it", "2500", "3000", "200", "" }, printed);
+                + "print land_path_at(list(), 100).");
+            Assert.Equal(new[] { "3500", "-1500", "2500", "3000", "200", "" }, printed);
         }
 
         [Fact]

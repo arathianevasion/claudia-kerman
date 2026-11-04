@@ -55,7 +55,7 @@
 //|   descent_shape ["auto"]: the Descent Shape braking flies, 0.05 to 10: small holds height and drops late (steep, safe, dearer), large sinks
 //|     early (cheap). "auto" simulates braking over the terrain under each pass's approach and flies the cheapest periapsis and shape that clear it
 //|     by 300 m or 2 s of descent (150 m over ground level with the site); it moves a site given as coordinates up to 5 km, or takes the next pass, for terrain, and fails "terrain on the approach" if no pass
-//|     clears. After a guard abort whose report shows terrain or a climb off the predicted path, retry with a smaller shape (e.g. half the
+//|     clears. After a guard abort for terrain or the predicted path, retry with a smaller shape (e.g. half the
 //|     descent_shape reported); otherwise leave it to the block. A shape that doesn't clear is refused before the deorbit burn, with shape_range.
 //|   underhang_agl [2000]: m above the ground to drop any Underhang.
 //|   drop_underhang ["early"]: "late" keeps the stack.
@@ -66,22 +66,22 @@
 //| Extra results: dropped_underhang (the names of the parts dropped), underhang_kept (Underhang parts it couldn't drop), underhang_drop_agl (m above the ground at the drop; -1 if none),
 //| staged_before_deorbit, staged_before_braking (true if it did; stage_left is the stage it left), slope (degrees where it came to rest), touchdown_speed_actual (m/s),
 //| touchdown_h_speed (m/s sideways at touchdown), lean (degrees from upright once settled),
-//| reversals (times the descent turned back after braking began; 0 normally), distance_to_target
+//| reversals (times the descent turned back after braking began; 0 normally), vertical_fallback (true if, above its predicted path near the site, it came straight down), distance_to_target
 //| (m from the site asked for, or the spot chosen for "any" or a biome), best_effort (true if nothing within
-//| max_divert was flat enough and it landed on the least steep spot found), burn_start_ut (when braking was planned to start, before the fall; -1 if it never got that far),
-//| braking_began_ut (when braking actually began; -1 if it never did), impact_ut (when the orbit after the deorbit burn meets
-//| the ground on the way down; -1 if it clears it or it never got that far), biome (the biome it came to rest in; "" if it never landed),
+//| max_divert was flat enough and it landed on the least steep spot found), burn_start_ut (when braking was planned to start; -1 if it never got that far),
+//| braking_began_ut (when braking began; -1 if never), impact_ut (when the orbit after the deorbit burn meets
+//| the ground; -1 if it doesn't or it never got that far), biome (the biome it came to rest in; "" if it never landed),
 //| passes_missed (passes it missed and took the next for; 0 normally), next_pass_ut (when it fails for a missed pass, the touchdown UT of the next it could fly; -1 for none),
 //| descent_shape (the shape flown), descent_pe (m, the periapsis chosen), predicted_dv and actual_dv (m/s: the deorbit, correction and braking, simulated and flown),
 //| predicted_clearance (m, the predicted path's lowest over the terrain), moved_for_terrain (true if the site moved up to 5 km for terrain), shape_range (the shapes
-//| that clear, when it refuses a descent_shape; e.g. "0.2 to 1.2"); find_landing_site gives each site's predicted_dv and descent_shape, from the same simulation;
+//| that clear, when it refuses a descent_shape; e.g. "0.2 to 1.2"); find_landing_site gives each site's predicted_dv and descent_shape;
 //| geo (lat, lng, alt) is the common field once landed. Fails with "land flies airless
 //| bodies only", an orbit it can't land from, no pass over the site within max_correction_dv, no daylight pass (both before any burn, naming
 //| the change_orbit plane changes that reach the site, with their delta-v), a missed pass,
 //| "no site in the <biome> biome" (saying how far the search got), landing outside the biome asked for,
 //| for "vessel" no Target Vessel landed on the body (no burn yet),
 //| not enough delta-v, "terrain on the approach" (before the deorbit burn, or as braking begins, keeping its orbit), "deorbit left periapsis" under the plan,
-//| braking that raised periapsis or "climbed off its predicted path" (the report says whether it brought the orbit back to near-circular), "tipped over",
+//| braking that raised periapsis or "is above its predicted path" (the report says if it brought the orbit back to near-circular), "tipped over",
 //| out of fuel, or an abort; a failure in the descent leaves the craft safe but falling, so give it the delta-v (and TWR over 1.5) it needs.
 //| Tool: stage_performance for the delta-v and TWR at the body (and find_landing_site, as above).
 //| Example: `local res is land(lexicon("target", latlng(-0.5, 22), "daylight", true)). addons:claudia:report(res).`
@@ -100,7 +100,7 @@ function land_extra {
     "staged_before_braking", false, "stage_left", -1, "dropped_underhang", list(), "underhang_kept", list(), "underhang_drop_agl", -1,
     "passes_missed", 0, "next_pass_ut", -1, "descent_shape", -1, "descent_pe", -1, "predicted_dv", -1, "actual_dv", -1,
     "predicted_clearance", -1, "moved_for_terrain", false, "shape_range", "",
-    "staged_before_deorbit", false, "lander_dv", -1, "lander_need", -1).
+    "staged_before_deorbit", false, "lander_dv", -1, "lander_need", -1, "vertical_fallback", false).
 }
 
 // "" or why an option's value isn't one the block can use.
@@ -795,22 +795,6 @@ function land_path_ground_ahead {
     }
   }
   return most.
-}
-
-// Why braking that climbs off its predicted path must stop (#511), or "": altitude alt_now (m) more than
-// max(1 km, 25% of the predicted height over the ground) above the predicted altitude at this point along
-// the track (at, land_path_at's). Altitude against the prediction, not clearance against its start: a
-// basin after a ridge, or a rim the path climbs over, doesn't trip it; a real climb off the path does. Pure.
-function land_path_guard {
-  parameter alt_now, at.
-  if at:istype("String") {
-    return "".
-  }
-  local over is alt_now - at:alt.
-  if over > max(1000, 0.25 * max(0, at:alt - at:ground)) {
-    return "braking climbed off its predicted path: " + round(over / 1000, 1) + " km over it".
-  }
-  return "".
 }
 
 // Whether braking is too far over its Descent Shape to come down to it before it stops (#547): h m over the terrain, more
@@ -2474,8 +2458,8 @@ function land_recover_under {
 // again from the real state (predict, a delegate to ADDONS:CLAUDIA:BRAKEPATH), switching to the cheapest shape
 // that still clears or, with none, not braking (land_repredict_verdict); it steers by the highest ground on the
 // rest of the predicted path, within 45 degrees of retrograde and holding still for a tiny demand (land_steer),
-// and stops braking that raises periapsis (land_brake_guard) or climbs off the predicted path (land_path_guard):
-// throttle 0, the orbit brought back to near-circular if it must be (land_recover), safe, traced. Adds the
+// and stops braking that raises periapsis (land_brake_guard) or is above the predicted path (ADDONS:CLAUDIA:LANDGUARD,
+// which near the site comes straight down instead, #712): throttle 0, the orbit brought back to near-circular if it must be (land_recover), safe, traced. Adds the
 // braking it flew to actual_dv. keep_clear: a "vessel" target's Target Vessel (GeoCoordinates; "" for none), which a site
 // moved for a slope or the Underhang stays 50 m or more from (#662). Returns "" or why it failed.
 function land_descend {
@@ -2530,6 +2514,8 @@ function land_descend {
   // Too far over its Descent Shape to come down to it before it stops (land_over_shape, #547): from then the path guard
   // measures against where it was then (lexicon alt, ground), not the predicted path; "" until then.
   local over_from is "".
+  // Coming straight down over the site, not aborting over the path (LandGuard, #712).
+  local vertical is false.
   // The UT a terminal hover began (land_hover_watch, #562); -1 for none. Once caught, hovering holds until touchdown.
   local hover_since is -1.
   local hovering is false.
@@ -2701,28 +2687,39 @@ function land_descend {
       local s is fig:along.
       // The highest ground on the rest of the predicted path, not only the look-ahead in view (#511).
       set h to min(h, altitude - land_path_ground_ahead(predicted, s)).
-      // Braking that raises periapsis, or climbs off the predicted path, is making things worse: stop, and leave the
-      // rest of the fuel in the tanks (#431, #511).
       local on_path is land_path_at(predicted, s).
       if not over_from:istype("String") {
         set on_path to over_from.
       }
+      local ahead is heading(hdg, 0):vector.
+      local across is heading(hdg + 90, 0):vector.
+      local v_ahead is vdot(v_h, ahead).
+      // Braking that raises periapsis, or far over the predicted path, is making things worse: stop, leaving the fuel in the tanks
+      // (#431, #511); over the path near the site with the delta-v, it comes straight down instead (Core's LandGuard, #712).
       local tripped is land_brake_guard(pe_start, ship:orbit:periapsis).
+      local guard is lexicon().
       if tripped = "" {
-        set tripped to land_path_guard(altitude, on_path).
+        set guard to addons:claudia:landguard(lexicon("alt", altitude, "path", on_path, "s", s, "c", fig:across, "v_al", v_ahead,
+          "v_cr", vdot(v_h, across), "v_up", v_v, "radar", radar, "a_max", a_max, "g", g, "radius", radius_now, "dv_left", ship:deltav:current,
+          "touchdown", opt:touchdown_speed, "margin", opt:burn_margin, "lag", land_turn_lag(turn:top_rate, turn:turn_s), "hover", hovering, "vertical", vertical)).
+        if land_or(guard, "verdict", "") = "abort" {
+          set tripped to guard:error.
+        }
       }
       if tripped <> "" {
         set tset to 0.
         addons:claudia:blocktrace("land", lexicon("phase", "guard", "error", tripped, "v_h", round(v_h:mag, 1), "v_h_start", round(v_h_start, 1),
           "alt", round(altitude), "predicted_alt", round(land_or(on_path, "alt", -1)), "s", round(s), "h", round(h), "h_start", round(h_began),
-          "dist", round(dist), "pe", round(ship:orbit:periapsis), "pe_start", round(pe_start))).
+          "dist", round(dist), "pe", round(ship:orbit:periapsis), "pe_start", round(pe_start), "no_vertical", land_or(guard, "why", ""))).
         local orbit_note is land_after_abort(ctx, plan).
         claudia_make_safe().
         return tripped + orbit_note.
       }
-      local ahead is heading(hdg, 0):vector.
-      local across is heading(hdg + 90, 0):vector.
-      local v_ahead is vdot(v_h, ahead).
+      if land_or(guard, "verdict", "") = "vertical" and not vertical {
+        set vertical to true.
+        set extra:vertical_fallback to true.
+        addons:claudia:blocktrace("land", lexicon("phase", "vertical", "why", guard:why, "alt", round(altitude), "radar", round(radar), "dv_left", round(ship:deltav:current))).
+      }
       local was is reversed.
       set reversed to land_is_reversed(v_ahead, was).
       if reversed and not was {
@@ -2739,10 +2736,13 @@ function land_descend {
         set s_guide to land_turning_s(s, v_h:mag, turn_left).
       }
       set v_top to land_v_top(v_top, v_h:mag).
-      set want to land_guide(lexicon("s", s_guide, "c", fig:across, "v_al", v_ahead, "v_cr", vdot(v_h, across),
-        "v_up", v_v, "h", h, "h_start", h_start, "v0", v_h_start, "shape", shape, "v_top", v_top, "a_max", a_max, "g", g, "radius", radius_now,
-        "lag", land_turn_lag(turn:top_rate, turn:turn_s), "radar", radar, "hover", hovering),
-        opt:touchdown_speed, opt:burn_margin).
+      set want to guard.
+      if not (vertical and guard:haskey("al")) {
+        set want to land_guide(lexicon("s", s_guide, "c", fig:across, "v_al", v_ahead, "v_cr", vdot(v_h, across),
+          "v_up", v_v, "h", h, "h_start", h_start, "v0", v_h_start, "shape", shape, "v_top", v_top, "a_max", a_max, "g", g, "radius", radius_now,
+          "lag", land_turn_lag(turn:top_rate, turn:turn_s), "radar", radar, "hover", hovering),
+          opt:touchdown_speed, opt:burn_margin).
+      }
       set h to want:h.
       if turn_left <= 0 and want:al < -0.1 {
         set first_turn to false.

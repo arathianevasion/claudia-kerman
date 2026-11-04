@@ -60,6 +60,23 @@ namespace ClaudiaKermin.KOS
                 "Core Library only (dock): whether the craft's RCS delta-v covers a dock from distance (m) at speed (m/s); lexicon error, dv, need"));
             AddSuffix("CHUTEALLOCATION", new NoArgsSuffix<Lexicon>(ChuteAllocationSet,
                 "Core Library only (reentry): the Chute Allocation's chutes for this entry; lexicon error, all (true: keep every chute), entry, return, uids, titles, powered_finish, touchdown_speed"));
+            AddSuffix("LANDGUARD", new OneArgsSuffix<Lexicon, Lexicon>(LandGuardTick,
+                "Core Library only (land, each braking tick): the path guard on alt against path_alt, and near the site the straight-down fallback; lexicon verdict (fly, vertical or abort), error, why, over, and the fallback's al, cr, up, vv, ..."));
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:LANDGUARD</c> (#712, ADR 0014): one braking tick of land's path guard and vertical fallback
+        /// (<see cref="LandGuard.Tick"/>), pure. Called every physics tick, so its time is logged at most once a second (guardrail 6).
+        /// </summary>
+        private Lexicon LandGuardTick(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> tick = null;
+            return (Lexicon)Guarded("LANDGUARD", () =>
+            {
+                tick = LandGuard.Tick(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(tick);
+            }, () => string.Format(CultureInfo.InvariantCulture, "{0}, {1:0} m over the path{2}", tick["verdict"], tick["over"],
+                (string)tick["why"] == "" ? "" : "; " + tick["why"]), 1);
         }
 
         /// <summary>

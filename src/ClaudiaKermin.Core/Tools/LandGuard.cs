@@ -118,7 +118,7 @@ namespace ClaudiaKermin.Core.Tools
 
         /// <summary>
         /// One braking tick (<c>ADDONS:CLAUDIA:LANDGUARD</c>): <c>alt</c> (m above sea level) against the predicted path there
-        /// (<c>path_alt</c> and <c>path_ground</c>, m above sea level; none without <c>path_alt</c>), the frame of land_guide
+        /// (<c>path</c>, land_path_at's: <c>alt</c> and <c>ground</c>, m above sea level; none if not a lexicon), the frame of land_guide
         /// (<c>s</c>, <c>c</c>, <c>v_al</c>, <c>v_cr</c>, <c>v_up</c>, <c>radar</c>, <c>a_max</c>, <c>g</c>, <c>radius</c>),
         /// <c>dv_left</c> (m/s), <c>touchdown</c>, <c>margin</c> (burn_margin), <c>lag</c>, <c>hover</c>, and <c>vertical</c> (true once
         /// the fallback is flying). Gives <c>verdict</c>: "fly" (braking flies on), "vertical" (with <see cref="Vertical"/>'s
@@ -136,12 +136,13 @@ namespace ClaudiaKermin.Core.Tools
             var aMax = Number(input, "a_max", 0);
             var g = Number(input, "g", 0);
             var margin = Number(input, "margin", 1.1);
-            object pathAlt;
-            var over = input.TryGetValue("path_alt", out pathAlt) && pathAlt is double ? Number(input, "alt", 0) - (double)pathAlt : 0;
+            object pathValue;
+            var path = input.TryGetValue("path", out pathValue) ? pathValue as IDictionary<string, object> : null;
+            var over = path != null ? Number(input, "alt", 0) - Number(path, "alt", 0) : 0;
             Func<IDictionary<string, object>> vertical = () => Vertical(s, c, vAl, vCr, vUp, radar, aMax, g, Number(input, "radius", 1),
                 Number(input, "touchdown", 2), margin, Number(input, "lag", 2), Flag(input, "hover"));
             if (Flag(input, "vertical")) return With(vertical(), "vertical", "", "", over);
-            if (!(pathAlt is double) || over <= Margin((double)pathAlt, Number(input, "path_ground", 0)))
+            if (path == null || over <= Margin(Number(path, "alt", 0), Number(path, "ground", 0)))
                 return With(new Dictionary<string, object>(), "fly", "", "", over);
             var vH = Math.Sqrt(vAl * vAl + vCr * vCr);
             var why = Ineligible(s, c, vH, -vUp, radar, aMax, g, margin, Number(input, "dv_left", 0));
