@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using ClaudiaKerman.Core.Kos;
 using ClaudiaKerman.Core.Missions;
+using ClaudiaKerman.Core.Tools;
 using Xunit;
 
 namespace ClaudiaKerman.Core.Tests
@@ -116,6 +117,78 @@ namespace ClaudiaKerman.Core.Tests
             Assert.NotNull(BurnPoints.ShortOf(plan, Orbiting(1000), Now));
             plan.ExpectedDurationSeconds = 1180;
             Assert.Null(BurnPoints.ShortOf(plan, Orbiting(1000), Now));
+        }
+
+        // ---- #749: transfer_to and return wait inside their block ----
+
+        private const double SunAltitude = 13599840256 - 261600000;
+
+        private static string Script(double window)
+        {
+            return "local res is transfer_to(lexicon(\"target\", \"Duna\", \"target_pe\", 50000, \"window\", "
+                + window.ToString("F0", System.Globalization.CultureInfo.InvariantCulture) + ")). addons:claudia:report(res).";
+        }
+
+        [Fact]
+        public void TransferToFromASunOrbitWaitsForTheEjectionCoreSolves()
+        {
+            // The player's Duna flight: from a Sun orbit, the window 41M s away.
+            var rig = TransferRig.Circular("Sun", SunAltitude, 0);
+            var wait = BurnPoints.First(Script(41e6), rig.Snapshot(), 0, 1000);
+            Assert.NotNull(wait);
+            Assert.Equal("transfer_to", wait.Block);
+            Assert.True(wait.WaitSeconds > 30e6 && wait.WaitSeconds < 60e6, wait.WaitSeconds.ToString());
+            Assert.Equal(wait.WaitSeconds, wait.DepartureUt.Value, 0);
+            Assert.Equal(wait.DepartureUt.Value - WindowWaits.LaunchLeadS, BurnPoints.DueTime(wait, 0).Value, 0);
+        }
+
+        [Fact]
+        public void ALongTransferWaitIsADueTimeAndOnlyTheLeadNeedsCovering()
+        {
+            var rig = TransferRig.Circular("Sun", SunAltitude, 0);
+            // expected_duration_s of 8,000,000 s, as Claudia wrote it, is no cover for the lead's burn... but the 41M s wait is not asked of it.
+            var plan = new SequencePlan { Script = Script(41e6), ExpectedDurationSeconds = 100, ExpectedDeltaV = 1000 };
+            var short_ = BurnPoints.ShortOf(plan, rig.Snapshot(), 0);
+            Assert.NotNull(short_);
+            Assert.Equal(WindowWaits.LaunchLeadS, short_.WaitSeconds);
+            plan.ExpectedDurationSeconds = 8000000;
+            Assert.Null(BurnPoints.ShortOf(plan, rig.Snapshot(), 0));
+        }
+
+        [Fact]
+        public void AShorterTransferWaitMustBeCoveredByTheDuration()
+        {
+            // A return whose window is 2 h away (a number; transfer_to's own search lands where the solver does).
+            var rig = TransferRig.Circular("Mun", 50000, 0);
+            var script = "local res is return(lexicon(\"window\", 7200)).";
+            var wait = BurnPoints.First(script, rig.Snapshot(), 0, 100);
+            Assert.NotNull(wait);
+            Assert.False(BurnPoints.DueTime(wait, 0).HasValue);
+            var plan = new SequencePlan { Script = script, ExpectedDurationSeconds = 3600, ExpectedDeltaV = 100 };
+            var short_ = BurnPoints.ShortOf(plan, rig.Snapshot(), 0);
+            Assert.NotNull(short_);
+            Assert.Equal(wait.MinimumDurationSeconds, short_.MinimumDurationSeconds);
+            Assert.True(short_.MinimumDurationSeconds > 7200);
+            plan.ExpectedDurationSeconds = wait.MinimumDurationSeconds;
+            Assert.Null(BurnPoints.ShortOf(plan, rig.Snapshot(), 0));
+        }
+
+        [Fact]
+        public void ReturnWaitsOnlyForAWindowItNames()
+        {
+            var rig = TransferRig.Circular("Mun", 50000, 0);
+            Assert.Null(BurnPoints.First("local res is return().", rig.Snapshot(), 0, 100));
+            var wait = BurnPoints.First("local res is return(lexicon(\"window\", 9000000)).", rig.Snapshot(), 0, 100);
+            Assert.Equal("return", wait.Block);
+            Assert.Equal(9000000, wait.WaitSeconds, 0);
+        }
+
+        [Fact]
+        public void ATransferWithAnUnreadableTargetOrWindowGivesNoCheck()
+        {
+            var rig = TransferRig.Circular("Sun", SunAltitude, 0);
+            Assert.Null(BurnPoints.First("local res is transfer_to(lexicon(\"target\", dest, \"target_pe\", 5)).", rig.Snapshot(), 0, 100));
+            Assert.Null(BurnPoints.First("local res is transfer_to(lexicon(\"target\", \"Duna\", \"target_pe\", 5, \"window\", w)).", rig.Snapshot(), 0, 100));
         }
 
         [Fact]
