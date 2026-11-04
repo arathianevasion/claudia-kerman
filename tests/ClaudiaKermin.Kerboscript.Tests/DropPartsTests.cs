@@ -196,8 +196,18 @@ namespace ClaudiaKermin.Kerboscript.Tests
         {
             var source = CoreLibrary.Files.Single(f => f.Name == "claudia_lib").Source;
             Assert.Contains("is a heat shield; reentry drops it", source);
-            var deorbit = CoreLibrary.Files.Single(f => f.Name == "deorbit").Source;
-            Assert.Contains("claudia_part_kind(p) <> \"shield\" and p:stage = stage_num", deorbit);
+            Assert.Contains("claudia_part_kind(p) <> \"shield\" and p:stage = stage_num", source);
+        }
+
+        [Fact]
+        public void The_stage_drop_plan_is_in_claudia_lib_and_the_deorbit_name_is_gone_from_the_library()
+        {
+            var library = CoreLibrary.Files.Where(f => f.Name != "claudia_lib").Select(f => f.Source);
+            foreach (var source in library)
+            {
+                Assert.DoesNotContain("deorbit_stage_drop_plan", source);
+            }
+            Assert.Contains("function claudia_stage_drop_plan {", CoreLibrary.Files.Single(f => f.Name == "claudia_lib").Source);
         }
 
         [Fact]
