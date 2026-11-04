@@ -63,6 +63,7 @@ namespace ClaudiaKermin.Adapter
             var directory = ConfigDirectory.ResolveCurrent();
             var config = PlayerConfig.LoadOrCreate(directory, warning => Debug.LogWarning(ModInfo.LogTag + " " + warning));
             WindowMemory.Init(directory);
+            WindowFrame.DebugTools = config.DebugTools;
             var store = new ApiKeyStore(directory, System.Environment.GetEnvironmentVariable);
             var client = new ClaudeClient(new HttpWebRequestTransport(), store.Load, Debug.Log);
             // Raw stream dumps are a debug tool: offered only with debug_tools = true in the player config.
