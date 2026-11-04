@@ -637,7 +637,7 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [Fact]
         public void DockHoldsSettledReportIsRefusedInAMissionScript()
         {
-            AssertForbidden("call block-internal calculations", "addons:claudia:dockholdsettled("settled").");
+            AssertForbidden("call block-internal calculations", "addons:claudia:dockholdsettled(\"settled\").");
             Assert.True(new KosScriptCheck(forCoreLibrary: true).Check(ClaudiaKermin.Core.Kos.DockHold.Program("1", "2")).Passed);
         }
 

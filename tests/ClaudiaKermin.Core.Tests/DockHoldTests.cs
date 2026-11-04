@@ -124,7 +124,7 @@ namespace ClaudiaKermin.Core.Tests
             // only when the strict test is not met (a settled port is also within the loose limits).
             var program = DockHold.Program("1", "2").Replace("\r\n", "\n");
             Assert.Contains("local dh_off is vang(dh_port:portfacing:forevector, dh_aim).\n", program);
-            Assert.Contains("if dh_off > 5 or dh_rate > 0.5 {\n    set dh_near to time:seconds.", program);
+            Assert.Contains("if dh_off > 5 or dh_rate > 0.5 {\n      set dh_near to time:seconds.", program);
             Assert.Contains("} else if dh_level = \"\" and time:seconds >= dh_near + 2 {\n      set dh_level to \"near\".\n      addons:claudia:dockholdsettled(dh_level).", program);
             Assert.Contains("set dh_level to \"settled\".\n      addons:claudia:dockholdsettled(dh_level).", program);
         }

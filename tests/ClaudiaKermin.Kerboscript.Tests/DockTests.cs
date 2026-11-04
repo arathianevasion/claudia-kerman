@@ -58,7 +58,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [Fact]
         public void The_options_take_the_spec_defaults()
         {
-            Assert.Equal("auto|auto|1|0.3|0.2|1800", One("dock_defaults():values:join(\"|\") + \"|\" + " + Opt + ":max_duration"));
+            Assert.Equal("auto|auto|1|0.3|0.2|300|1800", One("dock_defaults():values:join(\"|\") + \"|\" + " + Opt + ":max_duration"));
             Assert.Equal("unknown option roll", One("claudia_options(lexicon(\"roll\", 90), dock_defaults(), 1800):error"));
         }
 
@@ -70,6 +70,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [InlineData("\"final_speed\", 0", "final_speed must be above 0, not 0")]
         [InlineData("\"max_lateral\", -1", "max_lateral must be above 0, not -1")]
         [InlineData("\"final_speed\", 2", "final_speed must not be over approach_speed")]
+        [InlineData("\"settle_timeout\", 0", "settle_timeout must be above 0, not 0")]
         public void An_option_value_it_cannot_use_is_refused(string options, string reason)
         {
             Assert.Equal(reason, One("dock_unreadable(claudia_options(lexicon(" + options + "), dock_defaults(), 1800):opt)"));
