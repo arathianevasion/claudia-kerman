@@ -88,6 +88,7 @@ namespace ClaudiaKermin.Core.Missions
             else if (input is UtAdvanced) { _ut = ((UtAdvanced)input).Ut; ContinueRunEnd(); }
             else if (input is StartMission) Start((StartMission)input);
             else if (input is RunCraftCheck) RunCraftCheck((RunCraftCheck)input);
+            else if (input is StartFormChanged) _form = (StartFormChanged)input;
             else if (input is AcknowledgeWarning) _craftCheck.Acknowledge(((AcknowledgeWarning)input).Code);
             else if (input is ChooseProcessor) _craftCheck.Choose(((ChooseProcessor)input).PartId, _snapshot);
             else if (input is EndMission) EndRequested();
@@ -2263,7 +2264,8 @@ namespace ClaudiaKermin.Core.Missions
             view.StartForm.DefaultRemote = _config.DefaultRemote;
             view.StartForm.Refusal = _startRefusal;
             view.StartForm.Targets = CurrentTargetFacts();
-            _craftCheck.Populate(view.CraftCheck, _snapshot);
+            _craftCheck.Populate(view.CraftCheck, _snapshot, _form == null ? null : _form.Goal,
+                _form == null ? null : ChooseTarget(_form.Goal, _form.Target).Target, _form != null);
 
             if (mission != null)
             {

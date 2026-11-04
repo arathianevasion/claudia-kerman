@@ -161,7 +161,8 @@ namespace ClaudiaKermin.Core.Tools
         {
             if (target == null || !TransferWindows.IsMoonTransfer(snapshot, target)) return null;
             var found = TransferWindows.Find(snapshot, target, ask.TargetPe, ask.Capture, snapshot.MarginPercent);
-            return found.Error == null && found.Optimal != found.Soonest ? found : null;
+            // From the pad (#690) the launch it assumes is part of the answer even when Optimal is Soonest.
+            return found.Error == null && (found.Optimal != found.Soonest || found.Launch != null) ? found : null;
         }
 
         /// <summary>A planet's Transfer Windows (#458), or a moon's from the pad (#647): Soonest and Optimal, and the one the Mission Setting Time versus delta-v picks.</summary>
@@ -213,14 +214,24 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>A moon's Soonest and Optimal, each its departure and total, and the setting's pick (#647).</summary>
         private static void Choice(JsonWriter json, WindowSearch found, GameSnapshot snapshot)
         {
-            foreach (var w in new[] { found.Soonest, found.Optimal })
+            foreach (var named in new[] { Tuple.Create("soonest", found.Soonest), Tuple.Create("optimal", found.Optimal) })
             {
-                json.Name(w == found.Soonest ? "soonest" : "optimal").BeginObject();
+                var w = named.Item2;
+                json.Name(named.Item1).BeginObject();
                 PlanningJson.Time(json, "depart", w.DepartureUt, snapshot.Ut);
                 json.Field("total_dv", PlanningJson.Round(w.TotalDv, 1)).EndObject();
             }
             var pick = TransferWindows.Pick(found, snapshot.TimeVersusDeltaV);
             json.Field("pick", pick == found.Optimal && pick != found.Soonest ? "optimal" : "soonest");
+            // From the pad (#690) the rows assume this launch: fly launch with this target_inc at this time, not an equatorial orbit.
+            if (found.Launch != null)
+            {
+                json.Name("launch").BeginObject();
+                PlanningJson.Time(json, "at", found.Launch.Ut, snapshot.Ut);
+                json.Field("target_inc", PlanningJson.Round(found.Launch.Inclination, 2))
+                    .Field("note", "the rows assume a launch into " + found.Target + "'s plane at this time, then the transfer in that plane (no plane change)")
+                    .EndObject();
+            }
         }
 
         private static void Window(JsonWriter json, string name, TransferWindow w, double now, bool capture)

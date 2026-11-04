@@ -365,7 +365,8 @@ namespace ClaudiaKermin.Core.Ui
             if (check.State != CraftCheckState.Done) return "Craft Check";
             return CardTitle(check)
                 + (check.Verdict == CraftVerdict.Pass ? "" : " (" + check.Findings.Count.ToString(CultureInfo.InvariantCulture) + ")")
-                + (check.Stale ? " - the craft changed since" : "");
+                + (check.StaleReason.Length > 0 ? " - the " + (check.StaleReason.Contains("Mission Goal") ? "Mission Goal" : "Target Vessel") + " changed since"
+                    : check.Stale ? " - the craft changed since" : "");
         }
 
         private static string VerdictText(CraftVerdict verdict)
@@ -427,6 +428,7 @@ namespace ClaudiaKermin.Core.Ui
         /// <summary>The card's footer: what holds Start Mission closed, or that it is open; empty text when there is nothing to say.</summary>
         public static ToneLine Footer(CraftCheckView check)
         {
+            if (check.StaleReason.Length > 0) return new ToneLine("(" + check.StaleReason + " Start Mission checks again.)", null);
             if (check.Stale && check.Verdict == CraftVerdict.Fail) return new ToneLine("(the craft changed since; Start Mission stays closed until you check again)", null);
             if (check.Stale) return new ToneLine("(the craft changed since; Start Mission checks again)", null);
             if (check.Verdict == CraftVerdict.Fail) return new ToneLine("Start Mission is closed: fix every Blocker in the craft and check again.", null);
