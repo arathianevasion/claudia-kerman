@@ -305,7 +305,7 @@ namespace ClaudiaKermin.Adapter
 
         private static bool OnTheGround(Vessel.Situations situation)
         {
-            return situation == Vessel.Situations.PRELAUNCH || situation == Vessel.Situations.LANDED || situation == Vessel.Situations.SPLASHED;
+            return GameSnapshot.IsGroundedSituation(situation.ToString());
         }
 
         /// <summary>Claudia's roster standing and whether the save has CommNet: the facts the aboard and remote rules judge.</summary>
