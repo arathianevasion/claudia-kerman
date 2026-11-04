@@ -135,7 +135,8 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void ACutOffSecondLookIsNotRetriedAutomaticallyAndRetrySendsTheReducedForm()
         {
-            var rig = new Rig(this, Debrief("hasty draft"), Debrief("never", ""), unsure: Reason, mediums: "debrief", secondLook: ScriptedResponse.Fixture("max-tokens-tool.sse"));
+            var rig = new Rig(this, Debrief("hasty draft"), Debrief("never", ""), unsure: Reason, mediums: "debrief", secondLook: ScriptedResponse.Fixture("max-tokens-tool.sse"),
+                retried: Debrief("third", ""));
             var start = rig.RunToRunning();
             rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
             rig.DrainUntil(v => v.Stage == MissionStage.Paused);
@@ -143,9 +144,10 @@ namespace ClaudiaKerman.Core.Tests
             // Mission Plan, Sequence Plan, the unsure Debrief, its Second look: no cut-off retry stacked on top.
             Assert.Equal(4, rig.Transport.Requests.Count);
             Assert.Equal("Claudia's reply was cut short.", rig.Mission.View.PauseReason);
-            rig.Transport.Add(Reply(Debrief("third", "")));
             rig.Mission.Send(new Retry());
-            rig.DrainUntil(v => rig.Transport.Requests.Count == 5);
+            // The retried Second look's reply is taken, then the next Sequence Plan: one request each, nothing more.
+            rig.DrainUntil(v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            Assert.Equal(6, rig.Transport.Requests.Count);
             var retry = rig.Transport.Requests[4].Body;
             Assert.Contains("Your last attempt ran out of room while thinking.", retry);
             Assert.DoesNotContain("A first look was unsure", retry);
@@ -527,7 +529,7 @@ namespace ClaudiaKerman.Core.Tests
             /// <param name="after">The reply to the resent Debrief, when the first was unsure; null for none.</param>
             /// <param name="mediums">Effort kinds, comma separated, set to medium.</param>
             public Rig(MissionSecondLookTests tests, string firstDebrief, string after, string unsure, string mediums, decimal cap = 10m,
-                int firstDebriefOutputTokens = 90, ScriptedResponse secondLook = null, string sequenceUnsure = "", bool hold = false)
+                int firstDebriefOutputTokens = 90, ScriptedResponse secondLook = null, string sequenceUnsure = "", bool hold = false, string retried = null)
             {
                 _tests = tests;
                 _cap = cap;
@@ -541,6 +543,8 @@ namespace ClaudiaKerman.Core.Tests
                     if (hold) Second.PauseAt = 0;
                     Transport.Add(Second);
                 }
+                // The reply to a Retry of the second reply comes before the next Sequence Plan (a Sequence Plan sent to a Debrief would take #748's correction).
+                if (retried != null) Transport.Add(Reply(retried));
                 // The next Sequence Plan follows the Debrief.
                 Transport.Add(SequenceReply(""));
                 Router = new CraftCheckRouter(Transport);
