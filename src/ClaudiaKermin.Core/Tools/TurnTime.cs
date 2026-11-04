@@ -44,7 +44,7 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The top turn rate (deg/s): kOS's cap, or the peak half the turn reaches if that's lower.</summary>
         public double TopRateDegS;
 
-        /// <summary>The angular acceleration the turn was timed at (deg/s²), the weaker of pitch and yaw; kerboscript sizes the RCS turn override from it.</summary>
+        /// <summary>The angular acceleration the turn was timed at (deg/s²), the weaker of pitch and yaw.</summary>
         public double AlphaDegS2;
 
         /// <summary>Null, or why the craft can't turn (<see cref="TurnTime.NoTorque"/>).</summary>

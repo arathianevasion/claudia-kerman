@@ -1879,7 +1879,7 @@ function claudia_rcs_tick {
   set ctx:rcs_within_ut to claudia_within_ut(ctx:rcs_within_ut, steer_on and error < tol:aligned_deg, now).
   local left_s is choose max(0, ctx:turn_by - now) if ctx:turn_by > 0 else -1.
   if ctx:rcs_turn:istype("Lexicon") {
-    if steer_on and not ctx:rcs_dry {
+    if steer_on and not ctx:rcs_dry and not ctx:rcs_braking and not claudia_on_ground() {
       local t is addons:claudia:burstturn(ctx:rcs_turn, lexicon("ut", now, "error", error, "rate", rate, "monoprop", mono:amount,
         "left_s", left_s, "aligned", claudia_aligned(error, rate, claudia_held_s(ctx:rcs_within_ut, now), tol))).
       set ctx:rcs_turn to choose 0 if t:done else t.
@@ -1891,7 +1891,7 @@ function claudia_rcs_tick {
       }
       return.
     }
-    // Steering released or the tank dry: RCS reads on, so the rule below switches it off and reports the turn's end.
+    // Steering released, the tank dry, braking or landed: RCS reads on, so the rule below switches it off and reports it.
     set rcs to ctx:rcs_turn:phase <> "settle".
     claudia_rcs_end_turn(ctx).
   }

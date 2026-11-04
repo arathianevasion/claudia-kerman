@@ -413,8 +413,12 @@ namespace ClaudiaKermin.KOS
             }, () => (string)plan["error"] != "" ? (string)plan["error"] : string.Format(CultureInfo.InvariantCulture,
                 "rcs {0}, wheels {1:0.0} s; coast {2:0.00} deg/s, bursts {3:0.0} s, coast {4:0.0} s, stop at {5:0.0} deg, turn {6:0.0} s",
                 plan["rcs"], plan["wheels_s"], plan["coast_rate"], plan["spin_s"], plan["coast_s"], plan["stop_deg"], plan["turn_s"]), 1);
-            // RCS Use reads every key: a failure (logged by Guarded) answers as a craft with no torque, no wheels and no burst.
-            return plan == null ? (Lexicon)KosValues.FromPlain(TurnPlan.Call(null, new TurnCraft())) : (Lexicon)answer;
+            if (plan != null) return (Lexicon)answer;
+            // RCS Use reads every key: a failure (logged by Guarded) plans no burst, and wheels that are never late (0 s), so it
+            // brings no continuous RCS; a big turn then gets RCS on as before the burst turn.
+            var none = TurnPlan.Call(null, new TurnCraft());
+            none["wheels_s"] = 0.0;
+            return (Lexicon)KosValues.FromPlain(none);
         }
 
         /// <summary>

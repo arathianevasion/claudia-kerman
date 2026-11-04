@@ -106,6 +106,8 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(plan.CoastRateDegS, plan.Spin.T * plan.AlphaDegS2, 6);
             Assert.Equal(plan.CoastRateDegS, plan.Coast.T * wheels, 6);
             Assert.Equal(TurnPlan.StopStoppingTime, plan.Stop.T);
+            // The stop asks for no rate at all, so kOS brakes whatever the cap: never kp x error, which could speed a light craft up.
+            Assert.Equal(0, plan.Stop.Kp);
             // kp x error stays over the coast rate until the stop burst starts; no integral to wind up.
             Assert.True(plan.Coast.Kp * plan.StopDeg > plan.CoastRateDegS);
             Assert.Equal(0, plan.Spin.Ki + plan.Coast.Ki + plan.Stop.Ki);
@@ -228,7 +230,8 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(plan.CoastRateDegS, (double)report["coast_dps"], 6);
             Assert.InRange((double)report["flown_dps"], plan.CoastRateDegS * 0.99, plan.CoastRateDegS * 1.01);
             Assert.InRange((double)report["spin_s"], plan.SpinS - 0.05, plan.SpinS + 0.05);
-            Assert.InRange((double)report["stop_s"], plan.StopS - 0.05, plan.StopS + 0.05);
+            // The stop ends on its time or once the craft has stopped (under 5% of the coast rate), whichever comes first.
+            Assert.InRange((double)report["stop_s"], plan.StopS * (1 - TurnPlan.StoppedShare) - 0.05, plan.StopS + 0.05);
             Assert.True((double)report["monoprop_used"] > 0);
             Assert.InRange((double)report["left_deg"], 0, plan.WheelsDeg + 0.5);
             Assert.Equal(0.0, report["corrections"]);
@@ -282,6 +285,18 @@ namespace ClaudiaKermin.Core.Tests
             Assert.True((bool)TurnPlan.Step(turn, Now(40, 1.5, 0.2, 20, true), () => craft)["done"]);
             Assert.True((bool)TurnPlan.Step(turn, Now(60.1, 2.5, 0.2, 0), () => craft)["done"]);
             Assert.False(TurnPlan.Step(turn, Now(40, 1.5, 0.2, 20, true), () => craft).ContainsKey("report"));
+        }
+
+        [Fact]
+        public void A_coast_that_runs_well_past_its_plan_stops_wherever_the_craft_points()
+        {
+            var craft = E17d();
+            IDictionary<string, object> turn = TurnPlan.Call(new Dictionary<string, object> { { "angle", 142.0 }, { "left_s", 60.0 } }, craft);
+            turn = TurnPlan.Step(turn, Now(0, 142, 0, 60), () => craft);
+            ((Dictionary<string, object>)turn)["phase"] = "coast";
+            var coast = (double)turn["coast_s"];
+            Assert.Equal("coast", TurnPlan.Step(turn, Now(2 * coast + TurnPlan.CoastSlackSeconds - 0.1, 90, 0, 10), () => craft)["phase"]);
+            Assert.Equal("stop", TurnPlan.Step(turn, Now(2 * coast + TurnPlan.CoastSlackSeconds + 0.1, 90, 0, 10), () => craft)["phase"]);
         }
 
         [Fact]

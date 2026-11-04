@@ -71,7 +71,7 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The coast is never slower than this (deg/s), unless the turn's fastest is.</summary>
         public const double MinCoastDegS = 0.5;
 
-        /// <summary>The stop burst's <c>maxstoppingtime</c> (s): a low cap, so kOS brakes on full torque.</summary>
+        /// <summary>The stop burst's <c>maxstoppingtime</c> (s), with kp 0: kOS asks for no rate, so it brakes on full torque.</summary>
         public const double StopStoppingTime = 0.5;
 
         /// <summary>A leftover over this (deg) after a stop burst may take a correction ...</summary>
@@ -124,7 +124,8 @@ namespace ClaudiaKermin.Core.Tools
             var kp = 2 * rate / plan.StopDeg;
             plan.Spin = new SteeringTuning { T = rate / alpha, Kp = kp };
             plan.Coast = new SteeringTuning { T = rate / alphaW, Kp = kp };
-            plan.Stop = new SteeringTuning { T = StopStoppingTime, Kp = kp };
+            // The stop asks kOS for no rate at all (kp 0), so it brakes on full torque whatever the cap.
+            plan.Stop = new SteeringTuning { T = StopStoppingTime };
 
             var late = leftS >= 0 && plan.WheelsS > leftS;
             plan.Rcs = late && (corrections < 0 || (corrections < MaxCorrections && angle > CorrectionDeg));
@@ -164,12 +165,19 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The wheels settle at most this long (s) after the last stop burst before RCS Use's rule takes over again.</summary>
         public const double SettleMaxSeconds = 30;
 
+        /// <summary>A coast ends at twice its planned time and this many seconds, wherever the craft points.</summary>
+        public const double CoastSlackSeconds = 5;
+
+        /// <summary>The stop burst also ends once the rate is under this share of the coast rate: the craft has stopped.</summary>
+        public const double StoppedShare = 0.05;
+
         /// <summary>
         /// One tick of a burst turn, through the block-internal <c>ADDONS:CLAUDIA:BURSTTURN</c>: <paramref name="turn"/> is
         /// <see cref="Call"/>'s plan the first time and this call's answer after; <paramref name="now"/> gives <c>ut</c>,
         /// <c>error</c> (deg), <c>rate</c> (deg/s), <c>left_s</c> (-1: no deadline), <c>aligned</c>, <c>monoprop</c> (units),
         /// and <c>energy</c> (J/kg) and <c>speed</c> (m/s) of the orbit. The spin-up ends at the coast rate (or twice its time),
-        /// the coast at <c>stop_deg</c>, the stop burst after its time; then the correction rule (<see cref="Plan"/> on
+        /// the coast at <c>stop_deg</c> (or at twice its time and <see cref="CoastSlackSeconds"/>), the stop burst after its time or
+        /// once stopped; then the correction rule (<see cref="Plan"/> on
         /// <paramref name="craft"/>) flies one more burst pair, or the turn reports and the wheels settle until Aligned or
         /// <see cref="SettleMaxSeconds"/>. Gives the turn back with <c>phase</c>, <c>rcs_on</c> (what RCS should be: on in spin
         /// and stop only) and <c>done</c>; <c>tuning</c> (kOS's <c>t</c>, <c>kp</c>, <c>ki</c>) when a phase begins; and
@@ -203,9 +211,11 @@ namespace ClaudiaKermin.Core.Tools
             if (phase == "coast")
             {
                 t["flown"] = Math.Max(Number(t, "flown", 0), rate);
-                return error <= Number(t, "stop_deg", 0) ? Enter(t, "stop", ut) : t;
+                // A coast that runs well past its plan (the target moved away, or warp stopped the turn) stops and is re-planned.
+                var over = took > 2 * Number(t, "coast_s", 0) + CoastSlackSeconds;
+                return error <= Number(t, "stop_deg", 0) || over ? Enter(t, "stop", ut) : t;
             }
-            if (phase == "stop" && took >= Number(t, "stop_s", 0))
+            if (phase == "stop" && (took >= Number(t, "stop_s", 0) || rate <= StoppedShare * Number(t, "coast_rate", 0)))
             {
                 t["stop_total"] = Number(t, "stop_total", 0) + took;
                 var corrections = Number(t, "corrections", 0);
