@@ -223,6 +223,34 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.True(Number(printed[3]) > 3600 && Number(printed[4]) < 3600, printed[3] + " / " + printed[4]);
         }
 
+        // ---- Solved again after the turn (#691) ----
+
+        private static string[] Resolve(string solve, string options)
+        {
+            return Run("local opt is claudia_options(lexicon(" + options + "), change_orbit_defaults(), \"auto\"):opt.\n"
+                + "local nd is lexicon(\"time\", 1000, \"radialout\", 1, \"normal\", 2, \"prograde\", 3).\n"
+                + "local why is change_orbit_resolve(nd, opt, " + solve + ").\n"
+                + "print why. print nd:time. print nd:radialout. print nd:normal. print nd:prograde.");
+        }
+
+        [Fact]
+        public void The_resolve_asks_again_with_the_same_goal_and_sets_the_node_from_the_answer_at_its_UT()
+        {
+            var printed = Resolve("{ parameter ask. print ask:goal + \" \" + ask:value. return lexicon(\"error\", \"\", \"ut\", 1002, \"dv\", 50, \"radial\", 4, \"normal\", 5, \"prograde\", 6). }",
+                "\"goal\", \"set_inc\", \"value\", 90, \"max_dv\", 100");
+            Assert.Equal(new[] { "set_inc 90", "", "1000", "4", "5", "6" }, printed);
+        }
+
+        [Theory]
+        [InlineData("lexicon(\"error\", \"no such orbit\", \"ut\", 1000, \"dv\", 0, \"radial\", 4, \"normal\", 5, \"prograde\", 6)", "no such orbit")]
+        [InlineData("lexicon(\"error\", \"\", \"ut\", 1200, \"dv\", 50, \"radial\", 4, \"normal\", 5, \"prograde\", 6)", "the burn moved to UT 1200 from 1000")]
+        [InlineData("lexicon(\"error\", \"\", \"ut\", 1000, \"dv\", 150, \"radial\", 4, \"normal\", 5, \"prograde\", 6)", "needs 150 m/s, over max_dv 100")]
+        public void A_resolve_that_errors_moves_the_event_or_is_over_max_dv_leaves_the_node_and_says_why(string answer, string reason)
+        {
+            var printed = Resolve("{ parameter ask. return " + answer + ". }", "\"goal\", \"set_inc\", \"value\", 90, \"max_dv\", 100");
+            Assert.Equal(new[] { reason, "1000", "1", "2", "3" }, printed);
+        }
+
         // ---- Failures ----
 
         [Fact]

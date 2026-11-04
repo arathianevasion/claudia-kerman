@@ -209,6 +209,26 @@ function change_orbit_run {
   return done.
 }
 
+// exec_node's resolve (#691): nd re-solved from solve (ORBITBURN, called inline by the block) for the orbit after the turn.
+// Returns "" with nd's components set, or why nd is left as it was: an error, a burn over 5 s from nd's UT, or over max_dv.
+function change_orbit_resolve {
+  parameter nd, opt, solve.
+  local again is solve(change_orbit_ask(opt)).
+  if again:error <> "" {
+    return again:error.
+  }
+  if abs(again:ut - nd:time) > 5 {
+    return "the burn moved to UT " + round(again:ut, 1) + " from " + round(nd:time, 1).
+  }
+  if opt:max_dv:istype("Scalar") and again:dv > opt:max_dv {
+    return "needs " + round(again:dv, 1) + " m/s, over max_dv " + opt:max_dv.
+  }
+  set nd:radialout to again:radial.
+  set nd:normal to again:normal.
+  set nd:prograde to again:prograde.
+  return "".
+}
+
 // The angle (degrees) between the craft's orbit plane and the plane of tgt's orbit round the same body.
 function change_orbit_rel_inc {
   parameter tgt.
@@ -279,6 +299,15 @@ function change_orbit {
       // The burn is judged by the element it sets, not exec_node's residual.
       local burn_opts is claudia_burn_options(ctx, nextnode).
       set burn_opts:max_residual to 1000000.
+      // Solved again after the turn (#691); ORBITBURN is called inline here too (ADR 0007).
+      set burn_opts:resolve to {
+        parameter nd.
+        local why is change_orbit_resolve(nd, opt, { parameter ask. return addons:claudia:orbitburn(ask). }).
+        if why <> "" {
+          addons:claudia:blocktrace("change_orbit", lexicon("phase", "resolve", "kept", "the first node", "why", why)).
+        }
+        return "".
+      }.
       local flown is exec_node(burn_opts).
       claudia_add_result(ctx, flown).
       return flown.
