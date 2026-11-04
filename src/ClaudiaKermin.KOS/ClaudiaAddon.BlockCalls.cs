@@ -52,6 +52,8 @@ namespace ClaudiaKermin.KOS
                 "Core Library only (RCS Use, each tick of a burst turn): the turn (TURNPLAN's plan, then this call's answer) stepped on ut, error, rate, left_s, aligned, monoprop; lexicon phase, rcs_on, done, and tuning (t, kp, ki) as a phase begins, report as the wheels take over"));
             AddSuffix("EJECTIONBURN", new OneArgsSuffix<Lexicon, Lexicon>(EjectionBurn,
                 "Core Library only (transfer_to): the cheapest departure to target (a moon's name) arriving at target_pe, or to an orbit (target_sma, target_ecc, ...; mode rendezvous or intercept), capture true or false, within one synodic period from earliest_ut or window (to latest_ut, refusing over max_dv); lexicon error, ut, prograde, normal, radial, dv, arrival_dv, encounter_ut, arrival_ut, target_pe_actual, ..."));
+            AddSuffix("TRANSFERSTEP", new OneArgsSuffix<Lexicon, Lexicon>(TransferStep,
+                "Core Library only (transfer_to): its next step from phase (start first) with its options and what the last step carried; lexicon error, do (burn, wait or done), kind, ut, prograde, normal, radial, max_residual, fail_prefix, keep_going, report, max_duration, carry"));
             AddSuffix("RETURNBURN", new OneArgsSuffix<Lexicon, Lexicon>(ReturnBurn,
                 "Core Library only (return): the least burn from earliest_ut to latest_ut (one orbit later if missing) that leaves the moon orbited for its planet at target_pe and, if given, target_inc; lexicon error, planet, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted, soi_ut, from_grid"));
             AddSuffix("TARGETVESSEL", new NoArgsSuffix<Lexicon>(TargetVessel,
@@ -317,6 +319,20 @@ namespace ClaudiaKermin.KOS
                 ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.0} m/s); Pe {5:0} m at UT {6:0}, arrival burn {7:0.0} m/s; synodic period {8:0} s from UT {9:0.0}",
                     node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["target_pe_actual"], node["arrival_ut"], node["arrival_dv"], node["synodic"], node["search_from"])
                 : (string)node["error"]);
+        }
+
+        private Lexicon TransferStep(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> step = null;
+            // The step's time (the ejection's window search is the long one) and what it asks the block to do.
+            return (Lexicon)Guarded("TRANSFERSTEP", () =>
+            {
+                step = BlockCalls.TransferStep(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel));
+                return KosValues.FromPlain(step);
+            }, () => (string)step["error"] != "" ? (string)step["error"]
+                : string.Format(CultureInfo.InvariantCulture, "{0} {1} at UT {2:0.0}, prograde {3:0.00}, normal {4:0.00}, radial {5:0.00} m/s; next {6}; {7}",
+                    step["do"], step["kind"], step["ut"], step["prograde"], step["normal"], step["radial"],
+                    ((System.Collections.Generic.IDictionary<string, object>)step["carry"])["phase"], KosValues.Format(step["report"])));
         }
 
         private Lexicon OrbitBurn(Lexicon input)
