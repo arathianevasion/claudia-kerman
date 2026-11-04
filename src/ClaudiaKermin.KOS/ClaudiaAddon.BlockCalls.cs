@@ -54,8 +54,8 @@ namespace ClaudiaKermin.KOS
                 "Core Library only (dock): the mod starts its dock_hold on the Target Vessel's kOS processor, turning its port (uid) toward the craft's (toward, uid), or meets the target passive; lexicon error, state (starting or passive), reason"));
             AddSuffix("DOCKHOLDSTATE", new NoArgsSuffix<Lexicon>(DockHoldRead,
                 "Core Library only (dock): the dock_hold dock started; lexicon state (none, starting, active, settled, passive, fault or docked), reason"));
-            // dock_hold's own report (#711), from the mod's program on the target. A report to the mod like BLOCKSTART, not a
-            // calculation, so the Script Check allows it anywhere: from any run but a live dock_hold the bridge ignores it.
+            // dock_hold's own report (#711), from the mod's program on the target. Block-internal (ADR 0014 guardrail 5): the
+            // Script Check refuses it in a Mission Script, and the bridge ignores it from any run but a live dock_hold.
             AddSuffix("DOCKHOLDSETTLED", new OneArgsSuffix<BooleanValue>(DockHoldSettled,
                 "The mod's dock_hold only: its port settled on its aim (true) or a re-aim unsettled it (false)"));
             AddSuffix("DOCKGUIDE", new OneArgsSuffix<Lexicon, Lexicon>(DockGuide,

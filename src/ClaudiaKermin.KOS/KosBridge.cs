@@ -128,7 +128,7 @@ namespace ClaudiaKermin.KOS
         {
             ActiveRun run;
             if (!_runs.TryGetValue(partId, out run) || run.Run.HasEnded) return;
-            _holds.Settled(partId, run.RunId, settled);
+            if (!_holds.Settled(partId, run.RunId, settled)) return;
             Debug.Log(ModInfo.LogTag + " dock_hold on part " + partId + (settled ? " settled on its aim" : " re-aimed, not settled"));
         }
 

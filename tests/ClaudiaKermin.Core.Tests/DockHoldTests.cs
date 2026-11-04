@@ -134,8 +134,8 @@ namespace ClaudiaKermin.Core.Tests
             holds.Settled(TargetProcessor, Run, false);
             Assert.Equal(DockHoldState.Docked, holds.State(Craft, out _));
             var other = Running();
-            other.Settled(TargetProcessor, Run - 1, true);
-            other.Settled(Craft, Run, true);
+            Assert.False(other.Settled(TargetProcessor, Run - 1, true));
+            Assert.False(other.Settled(Craft, Run, true));
             Assert.Equal(DockHoldState.Active, other.State(Craft, out _));
             other.Settled(TargetProcessor, Run, true);
             other.Faulted(TargetProcessor, Run, "its kOS processor lost power");

@@ -158,12 +158,14 @@ namespace ClaudiaKermin.Core.Kos
         /// <summary>
         /// dock_hold on <paramref name="part"/> reported its port settled on its aim, or unsettled by a re-aim (#711,
         /// <c>ADDONS:CLAUDIA:DOCKHOLDSETTLED</c>). Only a running hold moves between active and settled; any other report is ignored.
+        /// True when the report was a running hold's.
         /// </summary>
-        public void Settled(uint part, int run, bool settled)
+        public bool Settled(uint part, int run, bool settled)
         {
             var hold = Find(part, run);
-            if (hold == null || (hold.State != DockHoldState.Active && hold.State != DockHoldState.Settled)) return;
+            if (hold == null || (hold.State != DockHoldState.Active && hold.State != DockHoldState.Settled)) return false;
             hold.State = settled ? DockHoldState.Settled : DockHoldState.Active;
+            return true;
         }
 
         /// <summary>A runtime gate refused a call from the hold, or its processor lost power: a fault, whatever the outcome says after.</summary>
