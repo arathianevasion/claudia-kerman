@@ -166,7 +166,7 @@ namespace ClaudiaKermin.Core.Missions
             foreach (var leg in rest)
             {
                 var words = SequenceWords.Of(leg);
-                body = SequenceWords.NamedBody(snapshot, words) ?? body;
+                body = SequenceWords.LegBody(snapshot, words, body);
                 var start = used;
                 used += Math.Max(0, leg.DeltaV);
                 if (leg.Manual || body == null || body.SeaLevelAtm > 0 || body.SurfaceGravity <= 0 || !SequenceWords.Surface.IsMatch(words)) continue;

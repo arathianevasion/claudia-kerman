@@ -50,6 +50,15 @@ namespace ClaudiaKermin.Core.Missions
             return first;
         }
 
+        /// <summary>
+        /// The body a leg is at (#726, shared by the Margin check and the Chute Allocation): Kerbin for a return home, else the body
+        /// its words name, else the <paramref name="previous"/> leg's.
+        /// </summary>
+        public static SnapshotBody LegBody(GameSnapshot snapshot, string words, SnapshotBody previous)
+        {
+            return (ReturnHome.IsMatch(words) ? Body(snapshot, "Kerbin") : null) ?? NamedBody(snapshot, words) ?? previous;
+        }
+
         public static SnapshotBody Body(GameSnapshot snapshot, string name)
         {
             return snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase));

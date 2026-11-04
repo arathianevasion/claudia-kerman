@@ -204,12 +204,12 @@ namespace ClaudiaKermin.Core.Missions
             {
                 var leg = sequences[i];
                 var words = SequenceWords.Of(leg);
-                var toKerbin = SequenceWords.ReturnHome.IsMatch(words);
-                body = (toKerbin ? SequenceWords.Body(snapshot, "Kerbin") : null) ?? SequenceWords.NamedBody(snapshot, words) ?? body;
+                var returnsHome = SequenceWords.ReturnHome.IsMatch(words);
+                body = SequenceWords.LegBody(snapshot, words, body);
                 if (SequenceWords.Ascent.IsMatch(words)) ascended = true;
                 if (leg.Manual || body == null) continue;
                 var landing = SequenceWords.Landing.IsMatch(words);
-                var entry = landing || SequenceWords.Reentry.IsMatch(words) || toKerbin;
+                var entry = landing || SequenceWords.Reentry.IsMatch(words) || returnsHome;
                 if (!entry || (SequenceWords.Aero.IsMatch(words) && !landing)) continue;
                 if (body.AtmosphereHeight <= 0 && body.SeaLevelAtm <= 0) continue;
                 var last = entries.Count > 0 ? entries[entries.Count - 1] : null;
