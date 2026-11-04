@@ -68,6 +68,8 @@ namespace ClaudiaKermin.KOS
             // Script Check refuses it in a Mission Script, and the bridge ignores it from any run but a live dock_hold.
             AddSuffix("DOCKHOLDSETTLED", new OneArgsSuffix<StringValue>(DockHoldSettled,
                 "The mod's dock_hold only: its port settled on its aim (settled), loosely (near), or a re-aim unsettled it (empty)"));
+            AddSuffix("DOCKHOLDLEVEL", new OneArgsSuffix<Lexicon, Lexicon>(DockHoldLevel,
+                "The mod's dock_hold only: DockGuidance's level rule, one tick; lexicon level, changed and the clocks to pass back"));
             AddSuffix("DOCKGUIDE", new OneArgsSuffix<Lexicon, Lexicon>(DockGuide,
                 "Core Library only (dock, each tick): DockGuidance's wanted velocity and coast band for the craft's port in the target port's frame; lexicon along, lat, dv_error, fire, cmd_along, cmd_lat, cmd_side"));
             AddSuffix("DOCKFUEL", new OneArgsSuffix<Lexicon, Lexicon>(DockFuel,
@@ -202,6 +204,17 @@ namespace ClaudiaKermin.KOS
         {
             var bridge = KosBridge.Instance;
             if (bridge != null && shared.KSPPart != null) bridge.HoldSettled(shared.KSPPart.persistentId, level.ToString());
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:DOCKHOLDLEVEL</c> (#722): dock_hold's level rule (<see cref="DockGuidance.HoldLevel"/>), pure, each tick, so not logged.</summary>
+        private Lexicon DockHoldLevel(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> tick = null;
+            return (Lexicon)Guarded("DOCKHOLDLEVEL", () =>
+            {
+                tick = DockGuidance.HoldLevel(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(tick);
+            }, () => "level \"" + tick["level"] + "\"", 1);
         }
 
         /// <summary>

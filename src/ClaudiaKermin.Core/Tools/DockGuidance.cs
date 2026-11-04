@@ -166,6 +166,45 @@ namespace ClaudiaKermin.Core.Tools
             return tick;
         }
 
+        /// <summary>s: a hold level rises after this long inside its band, and drops after <see cref="FallS"/> outside it (#722).</summary>
+        public const double RiseS = 2, FallS = 1;
+
+        /// <summary>
+        /// #722: dock_hold's level rule, one tick (<c>ADDONS:CLAUDIA:DOCKHOLDLEVEL</c>). Input: <c>level</c> ("", "near" or
+        /// "settled"), <c>ut</c>, <c>off_deg</c> (the port's angle off its aim), <c>rate_dps</c> (its turn), <c>reaim</c> (the
+        /// aim changed: back to "" with the clocks restarted), and the four clocks from the last tick (<c>strict_out</c>,
+        /// <c>strict_in</c>, <c>near_out</c>, <c>near_in</c>: when the port was last outside, and last inside, the strict band
+        /// of 2° and 0.1°/s and the loose one of 5° and 0.5°/s). A level rises after <see cref="RiseS"/> s inside its band and
+        /// drops after <see cref="FallS"/> s outside it: settled to near while still inside the loose band, else to "". Gives
+        /// the same keys, with <c>changed</c> when <c>level</c> is not the one passed in.
+        /// </summary>
+        public static IDictionary<string, object> HoldLevel(IDictionary<string, object> input)
+        {
+            var ut = Number(input, "ut");
+            var was = Text(input, "level") ?? "";
+            var level = was;
+            double strictOut = Number(input, "strict_out"), strictIn = Number(input, "strict_in"), nearOut = Number(input, "near_out"), nearIn = Number(input, "near_in");
+            object reaim;
+            if (input.TryGetValue("reaim", out reaim) && reaim is bool && (bool)reaim)
+            {
+                level = "";
+                strictOut = nearOut = strictIn = nearIn = ut;
+            }
+            var off = Number(input, "off_deg");
+            var rate = Number(input, "rate_dps");
+            if (off > 2 || rate > 0.1) strictOut = ut; else strictIn = ut;
+            if (off > 5 || rate > 0.5) nearOut = ut; else nearIn = ut;
+            if (level == "settled" && ut >= strictIn + FallS) level = ut >= nearIn + FallS ? "" : "near";
+            else if (level == "near" && ut >= nearIn + FallS) level = "";
+            if (level != "settled" && ut >= strictOut + RiseS) level = "settled";
+            else if (level == "" && ut >= nearOut + RiseS) level = "near";
+            return new Dictionary<string, object>
+            {
+                { "level", level }, { "changed", level != was }, { "ut", ut },
+                { "strict_out", strictOut }, { "strict_in", strictIn }, { "near_out", nearOut }, { "near_in", nearIn },
+            };
+        }
+
         /// <summary>One tick of the wait (<see cref="Wait"/>): whether the craft still holds still, the clock to carry to the next tick, and how the wait ended.</summary>
         public struct WaitTick
         {
