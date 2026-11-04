@@ -122,7 +122,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
         public void The_burn_search_is_asked_for_the_site_window_ground_accuracy_and_isp()
         {
             var printed = KosHarness.Run(CoreLibrary.Bundle(
-                "local q is deorbit_query(lexicon(\"lat\", -0.0972, \"lng\", -74.5577), 1240, 21549.425, -150, 10, 320, list()).\n"
+                "local q is deorbit_query(lexicon(\"lat\", -0.0972, \"lng\", -74.5577), 1240, 21549.425, -150, 10, 320, list(), list()).\n"
                 + "print q:lat. print q:lng. print q:earliest_ut. print q:max_wait. print q:ground_alt. print q:accuracy_km. print q:isp. print q:leave_out:length.")).ToArray();
             // Water's ground is the sea, not the sea bed.
             Assert.Equal(new[] { "-0.0972", "-74.5577", "1240", "21549.425", "0", "10", "320", "0" }, printed);
@@ -132,7 +132,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
         public void Parts_to_separate_are_left_out_of_the_burn_search_and_the_burn_does_not_lighten_what_stays()
         {
             var printed = KosHarness.Run(CoreLibrary.Bundle(
-                "local q is deorbit_query(lexicon(\"lat\", 0, \"lng\", 0), 1240, 3600, 0, 10, 320, list(\"11\", \"12\")).\n"
+                "local q is deorbit_query(lexicon(\"lat\", 0, \"lng\", 0), 1240, 3600, 0, 10, 320, list(\"11\", \"12\"), list()).\n"
                 + "print q:leave_out:join(\",\"). print q:isp.")).ToArray();
             // The burn's propellant is in the stage it drops: the craft that re-enters weighs what it does now.
             Assert.Equal(new[] { "11,12", "0" }, printed);
@@ -169,6 +169,56 @@ namespace ClaudiaKermin.Kerboscript.Tests
         public void A_burn_over_the_delta_v_left_fails_before_burning(double dv, double left, string reason)
         {
             Assert.Equal(reason, One("deorbit_short_of_dv(" + dv + ", " + left + ")"));
+        }
+
+        // ---- the heat shield's drop (#476) ----
+
+        // Parts as kOS gives them, by the modules each has: a pod, a heat shield (a decoupler too, as Mk1 shields are) and a tank.
+        private const string Craft =
+            "function mk {\n parameter uid, mods.\n"
+            + "  local p is lexicon(\"uid\", uid, \"name\", uid, \"hasparent\", false, \"children\", list(), \"stage\", 0).\n"
+            + "  set p:hasmodule to { parameter n. return mods:contains(n). }.\n"
+            + "  set p:getmodule to { parameter n. return lexicon(\"alleventnames\", list(\"jettison heat shield\")). }.\n"
+            + "  return p.\n}\n"
+            + "local pod is mk(\"pod\", list(\"ModuleCommand\")).\n"
+            + "local shield is mk(\"shield\", list(\"ModuleAblator\", \"ModuleDecouple\")).\n"
+            + "local tank is mk(\"tank\", list()).\n";
+
+        private static string[] Printed(string script)
+        {
+            return KosHarness.Run(CoreLibrary.Bundle(Craft + script)).ToArray();
+        }
+
+        [Fact]
+        public void A_craft_with_a_heat_shield_sends_the_shield_s_uid()
+        {
+            Assert.Equal(new[] { "shield" }, Printed("local parts is list(pod, shield, tank).\nprint deorbit_shield_drop(parts, list()):join(\",\")."));
+        }
+
+        [Fact]
+        public void A_craft_without_a_heat_shield_sends_an_empty_list()
+        {
+            Assert.Equal(new[] { "0" }, Printed("local parts is list(pod, tank).\nprint deorbit_shield_drop(parts, list()):length."));
+        }
+
+        [Fact]
+        public void A_shield_that_separate_drops_is_left_out()
+        {
+            Assert.Equal(new[] { "0" }, Printed("local parts is list(pod, shield, tank).\nprint deorbit_shield_drop(parts, list(\"shield\")):length."));
+        }
+
+        [Fact]
+        public void A_shield_with_no_decoupler_is_not_sent_because_reentry_would_not_drop_it()
+        {
+            Assert.Equal(new[] { "0" }, Printed("local bare is mk(\"bare\", list(\"ModuleAblator\")).\nprint deorbit_shield_drop(list(pod, bare), list()):length."));
+        }
+
+        [Fact]
+        public void The_burn_search_and_the_after_burn_ask_both_carry_shield_drop()
+        {
+            Assert.Equal(new[] { "shield" }, Printed("print deorbit_query(lexicon(\"lat\", 0, \"lng\", 0), 1240, 3600, 0, 10, 320, list(), list(\"shield\")):shield_drop:join(\",\")."));
+            var source = CoreLibrary.Files.Single(f => f.Name == "deorbit").Source;
+            Assert.Equal(2, source.Split("deorbit_shield_drop(ship:parts, claudia_drop_uids(separation))").Length - 1);
         }
     }
 }
