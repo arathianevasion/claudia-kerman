@@ -1529,7 +1529,6 @@ namespace ClaudiaKermin.Core.Tests
 
         [Fact]
         public void AnRcsOnStretchOpenAtAnInterruptionIsClosedAtTheInterruptionUt()
-        
         {
             var transport = new StreamingFakeTransport(
                 ScriptedResponse.Fixture("mission-plan.sse"),
@@ -1607,7 +1606,6 @@ namespace ClaudiaKermin.Core.Tests
 
         [Fact]
         public void ANormalRunEndStillClosesItsRcsOnStretchAtTheEndUt()
-        
         {
             var transport = new StreamingFakeTransport(
                 ScriptedResponse.Fixture("mission-plan.sse"),

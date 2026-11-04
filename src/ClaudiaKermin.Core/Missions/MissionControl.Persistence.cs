@@ -47,7 +47,7 @@ namespace ClaudiaKermin.Core.Missions
             if (mission != null)
             {
                 var state = StateOf(mission);
-                // The UT the save is made at (#412): a loaded save closes its open RCS-on stretch there. A load still waiting on a request keeps its own.
+                // The UT the save is made at (#412): a loaded save closes its open RCS Use there. A load still waiting on a request keeps its own.
                 if (mission.DeferredRestore == null) state.SavedUt = _ut;
                 states.Add(state);
             }
@@ -577,7 +577,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             var state = restore.State;
             var before = state.Stage == MissionStage.Paused ? state.StageBeforePause : state.Stage;
-            mission.StageBeforePause = Settle(mission, before, LoadUt(state));
+            mission.StageBeforePause = Settle(mission, before, SaveUt(state));
             mission.Stage = MissionStage.Paused;
             mission.PauseCause = PauseCause.Other;
             mission.PauseReason = CostLogUnreadableReason;
@@ -670,7 +670,7 @@ namespace ClaudiaKermin.Core.Missions
                 };
                 if (unanswered.ReducedGoalRetry) mission.Pending.Gate = mission.Gate = RetryGate();
                 var requestStage = StageOf(purpose);
-                var settled = requestStage != MissionStage.None ? requestStage : Settle(mission, state.Stage == MissionStage.Paused ? state.StageBeforePause : state.Stage, LoadUt(state));
+                var settled = requestStage != MissionStage.None ? requestStage : Settle(mission, state.Stage == MissionStage.Paused ? state.StageBeforePause : state.Stage, SaveUt(state));
                 // A plan or Debrief request in hand is what the loop was waiting for; a question changes nothing.
                 if (requestStage != MissionStage.None) mission.Owed = Owed.None;
                 OfferCards(mission, settled, state);
@@ -694,11 +694,11 @@ namespace ClaudiaKermin.Core.Missions
 
             if (state.Stage == MissionStage.Paused)
             {
-                mission.StageBeforePause = Settle(mission, state.StageBeforePause, LoadUt(state));
+                mission.StageBeforePause = Settle(mission, state.StageBeforePause, SaveUt(state));
                 mission.Stage = MissionStage.Paused;
                 return;
             }
-            var stage = Settle(mission, state.Stage, LoadUt(state));
+            var stage = Settle(mission, state.Stage, SaveUt(state));
             OfferCards(mission, stage, state);
             mission.Stage = stage;
         }
@@ -779,8 +779,8 @@ namespace ClaudiaKermin.Core.Missions
             return true;
         }
 
-        /// <summary>The UT a loaded save's open RCS-on stretch is closed at (#412): the save's own UT, or the mod's latest UT for an older save.</summary>
-        private double LoadUt(MissionSaveState state)
+        /// <summary>The UT a loaded save's open RCS Use is closed at (#412): the save's own UT, or the mod's latest UT for an older save.</summary>
+        private double SaveUt(MissionSaveState state)
         {
             return state.SavedUt > 0 ? state.SavedUt : _ut;
         }
@@ -792,13 +792,13 @@ namespace ClaudiaKermin.Core.Missions
         /// can be approved (ADR 0003): the save file is not trusted, and the check or the Core Library may have
         /// changed since; one that fails is "Couldn't produce a safe script".
         /// </summary>
-        private MissionStage Settle(Mission mission, MissionStage stage, double loadUt)
+        private MissionStage Settle(Mission mission, MissionStage stage, double saveUt)
         {
             switch (stage)
             {
                 case MissionStage.Running:
                 case MissionStage.Debriefing:
-                    mission.RcsUse.Close(loadUt);
+                    mission.RcsUse.Close(saveUt);
                     mission.Owed = Owed.Debrief;
                     mission.OwedOutcome = new RunOutcome(RunOutcomeKind.Interrupted, null, mission.ScriptError, mission.InterruptReason ?? "the game was loaded, quit or crashed while it ran", false);
                     return MissionStage.Debriefing;
