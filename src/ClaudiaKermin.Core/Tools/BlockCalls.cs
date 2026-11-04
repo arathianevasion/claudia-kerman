@@ -588,6 +588,75 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
+        /// <c>ADDONS:CLAUDIA:TRANSFERSTEP</c>, for <c>transfer_to</c> (#459, ADR 0014): its next step (<see cref="TransferFlight"/>),
+        /// asked again after each. Takes <c>target</c> (a body's name), <c>target_pe</c>, <c>window</c> ("next" or a UT),
+        /// <c>correction</c>, <c>pe_tolerance</c>, <c>start_ut</c>, <c>max_duration</c> ("auto" or s), <c>auto</c> (whether it began
+        /// "auto"), <c>turn_time</c>, <c>dv_left</c>, and what the last step carried: <c>phase</c> ("start" first), <c>arrival_ut</c>,
+        /// <c>plane_ut</c>, <c>why</c>, <c>sibling</c>, and <c>last_dv</c> (m/s the last burn used). Gives <c>error</c> ("" or why the block fails),
+        /// <c>do</c> ("burn", "wait" or "done"), <c>kind</c>, <c>ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c>,
+        /// <c>max_residual</c>, <c>fail_prefix</c>, <c>keep_going</c>, <c>report</c> (Script Result keys), <c>max_duration</c> (-1:
+        /// unchanged) and <c>carry</c> (the keys to ask with next).
+        /// </summary>
+        public static IDictionary<string, object> TransferStep(IDictionary<string, object> input, GameSnapshot snapshot)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            object target, window, correction, auto, phase, why, sibling;
+            ask.TryGetValue("target", out target);
+            ask.TryGetValue("window", out window);
+            ask.TryGetValue("correction", out correction);
+            ask.TryGetValue("auto", out auto);
+            ask.TryGetValue("phase", out phase);
+            ask.TryGetValue("why", out why);
+            ask.TryGetValue("sibling", out sibling);
+            if (!(target is string)) return Step(new TransferFlightStep { Error = "found no transfer: target must be a body's name" });
+            var maxDuration = NumberOrNull(ask, "max_duration");
+            var step = TransferFlight.Next(snapshot, new TransferFlightAsk
+            {
+                Target = (string)target,
+                TargetPe = Number(ask, "target_pe", 0),
+                Window = window as double?,
+                Correction = correction as bool? ?? true,
+                PeTolerance = Number(ask, "pe_tolerance", 1000),
+                StartUt = Number(ask, "start_ut", snapshot != null ? snapshot.Ut : 0),
+                MaxDuration = maxDuration,
+                Auto = auto as bool? ?? !maxDuration.HasValue,
+                TurnTime = Number(ask, "turn_time", 0),
+                DvLeft = Number(ask, "dv_left", 0),
+                Phase = phase as string ?? TransferFlight.Start,
+                ArrivalUt = Number(ask, "arrival_ut", -1),
+                PlaneUt = Number(ask, "plane_ut", -1),
+                Why = why as string ?? "",
+                LastDv = Number(ask, "last_dv", 0),
+                Sibling = sibling as bool? ?? false,
+            });
+            return Step(step);
+        }
+
+        private static IDictionary<string, object> Step(TransferFlightStep step)
+        {
+            return new Dictionary<string, object>
+            {
+                { "error", step.Error },
+                { "do", step.Do },
+                { "kind", step.Kind },
+                { "ut", step.Ut },
+                { "prograde", step.Prograde },
+                { "normal", step.Normal },
+                { "radial", step.Radial },
+                { "max_residual", step.MaxResidual },
+                { "fail_prefix", step.FailPrefix },
+                { "keep_going", step.KeepGoing },
+                { "report", new Dictionary<string, object>(step.Report) },
+                { "max_duration", step.MaxDuration ?? -1.0 },
+                { "carry", new Dictionary<string, object>
+                    {
+                        { "phase", step.Phase }, { "arrival_ut", step.ArrivalUt }, { "plane_ut", step.PlaneUt }, { "why", step.Why ?? "" }, { "sibling", step.Sibling },
+                    }
+                },
+            };
+        }
+
+        /// <summary>
         /// The parts a reentry call leaves out of the craft (#326): <c>leave_out</c>, the kOS UIDs of the parts <c>deorbit</c> drops
         /// after its burn, so the predictor flies only what stays. One UID may be given bare. The adapter builds the craft from it.
         /// </summary>

@@ -136,6 +136,19 @@ namespace ClaudiaKermin.Core.Tools
             return star != null && string.IsNullOrEmpty(star.Parent) && string.Equals(body.Parent, star.Name, StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>
+        /// Whether <paramref name="target"/> shares the parent of the body the craft orbits (#459): another planet of its star (Duna
+        /// from Kerbin), or another moon of its planet (Minmus from the Mun).
+        /// </summary>
+        public static bool IsSiblingTransfer(GameSnapshot snapshot, string target)
+        {
+            var system = new BodySystem(snapshot.Bodies);
+            var home = system.Find(HomeName(snapshot));
+            var body = system.Find(target);
+            if (home == null || body == null || home == body || system.Parent(home) == null) return false;
+            return string.Equals(body.Parent, home.Parent, StringComparison.OrdinalIgnoreCase);
+        }
+
         /// <summary>Whether <paramref name="target"/> is a moon of the craft's planet (#647): a body orbiting the body the craft orbits or stands on.</summary>
         public static bool IsMoonTransfer(GameSnapshot snapshot, string target)
         {
@@ -157,12 +170,16 @@ namespace ClaudiaKermin.Core.Tools
             }
         }
 
-        /// <summary>The search over a copied <paramref name="problem"/>, Soonest within <paramref name="marginPercent"/> % of Optimal: it reads nothing else.</summary>
-        internal static WindowSearch Search(Problem problem, int marginPercent)
+        /// <summary>
+        /// The search over a copied <paramref name="problem"/>, Soonest within <paramref name="marginPercent"/> % of Optimal: it reads
+        /// nothing else. <paramref name="span"/> (s) searches that long from <see cref="Problem.From"/> in place of a synodic period:
+        /// transfer_to's re-solve at fly time round the planned window (#459).
+        /// </summary>
+        internal static WindowSearch Search(Problem problem, int marginPercent, double? span = null)
         {
             if (marginPercent < 0) return Fail("the Craft Check margin must be 0 % or more");
             var from = problem.From;
-            var synodic = problem.Moon ? problem.Target.Period : Transfer.Synodic(problem.Home.Period, problem.Target.Period);
+            var synodic = span ?? (problem.Moon ? problem.Target.Period : Transfer.Synodic(problem.Home.Period, problem.Target.Period));
             var step = synodic / (Departures - 1);
             var hohmann = problem.HohmannTime();
             var tofLo = FlightLow * hohmann;
@@ -331,8 +348,8 @@ namespace ClaudiaKermin.Core.Tools
                 var body = system.Find(target ?? "");
                 if (home == null) error = "the body table has no body for the craft's orbit";
                 else if (body == null) error = "no body named " + target + " in the body table";
-                else if (!IsPlanetTransfer(snapshot, target) && !IsMoonTransfer(snapshot, target))
-                    error = body.Name + " is not a planet of the star " + home.Name + " orbits, nor a moon of " + home.Name;
+                else if (!IsSiblingTransfer(snapshot, target) && !IsMoonTransfer(snapshot, target))
+                    error = body.Name + " shares no parent with " + home.Name + ", nor a moon of " + home.Name;
                 else if (!(targetPe >= 0 && targetPe < body.SoiRadius - body.Radius))
                     error = "target_pe must be from 0 to " + Num(body.SoiRadius - body.Radius) + " m, inside " + body.Name + "'s sphere of influence";
                 else if (!Finite(snapshot.Ut)) error = "the Game Snapshot has no time";
