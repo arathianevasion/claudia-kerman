@@ -72,8 +72,9 @@ namespace ClaudiaKermin.Core.Tests
             var off = new TurnCraft { WheelPitch = 5, WheelYaw = 5, RcsPitch = 5, RcsYaw = 5, MoiPitch = 500, MoiYaw = 500 };
             var on = new TurnCraft { WheelPitch = 5, WheelYaw = 5, RcsPitch = 5, RcsYaw = 5, RcsUsable = true, MoiPitch = 500, MoiYaw = 500 };
             Assert.Equal(167.81, TurnTime.Predict(off).TurnSeconds, 2);
-            // Twice the torque: alpha 0.02 rad/s². The RCS Use override (T 7.73 s, cap 0.1547 rad/s) turns in 44.86 s, not the capped 84.90 s.
-            Assert.Equal(44.86, TurnTime.Predict(on).TurnSeconds, 2);
+            // Twice the torque: alpha 0.02 rad/s². #730: the burst turn TurnPlan plans for 190 degrees (no deadline: half of the
+            // wheels' 170.81 s, capped at 120 s), not #678's continuous-RCS turn (44.86 s).
+            Assert.Equal(60, TurnTime.Predict(on).TurnSeconds, 2);
         }
 
         [Fact]
@@ -102,8 +103,8 @@ namespace ClaudiaKermin.Core.Tests
         {
             var turn = TurnTime.Predict(new TurnCraft { RcsPitch = 5, RcsYaw = 5, RcsUsable = true, MoiPitch = 500, MoiYaw = 500 });
             Assert.Null(turn.Error);
-            // The override on RCS alone: alpha 0.01 rad/s², T 10 s.
-            Assert.True(turn.TurnSeconds < 167.81 * 0.5);
+            // #730: no wheels to hold the coast or settle, so there's no burst turn; RCS alone is timed on the capped model (alpha 0.01 rad/s²).
+            Assert.Equal(167.81, turn.TurnSeconds, 2);
         }
 
         [Fact]
@@ -111,22 +112,25 @@ namespace ClaudiaKermin.Core.Tests
         {
             var craft = new TurnCraft { WheelPitch = 5, WheelYaw = 5, RcsPitch = 5, RcsYaw = 5, RcsUsable = true, MoiPitch = 500, MoiYaw = 500 };
             Assert.Equal(167.81, TurnTime.PredictWheels(craft).TurnSeconds, 2);
-            Assert.Equal(44.86, TurnTime.Predict(craft).TurnSeconds, 2);
+            Assert.Equal(60, TurnTime.Predict(craft).TurnSeconds, 2);
         }
 
-        // ---- the RCS Use override (#422) ----
+        // ---- the burst turn (#692, #730) ----
 
-        [Fact]
-        public void The_with_RCS_turn_beats_the_old_capped_model_when_the_full_torque_peak_tops_twice_alpha()
+        [Theory]
+        [InlineData(5, 5, 500)]
+        [InlineData(5, 5, 100)]
+        [InlineData(50, 8, 300)]
+        public void With_RCS_the_time_is_TURNPLANs_turn_plus_the_settle(double wheel, double rcs, double moi)
         {
-            // alpha 0.02 rad/s²: the unchecked peak sqrt(0.02 * 3.316) = 0.258 rad/s tops the old cap of alpha * 2 = 0.04 (84.90 s).
-            var craft = new TurnCraft { WheelPitch = 5, WheelYaw = 5, RcsPitch = 5, RcsYaw = 5, RcsUsable = true, MoiPitch = 500, MoiYaw = 500 };
+            var craft = new TurnCraft { WheelPitch = wheel, WheelYaw = wheel, RcsPitch = rcs, RcsYaw = rcs, RcsUsable = true, MoiPitch = moi, MoiYaw = moi };
+            var plan = TurnPlan.Plan(craft, TurnTime.TurnDegrees, -1);
             var turn = TurnTime.Predict(craft);
-            Assert.True(turn.TurnSeconds < 84.90 * 0.6);
-            // T = 7.73 s caps the rate at 0.1547 rad/s (8.86 deg/s); the full-torque bang-bang bound is 2 * sqrt(3.316 / 0.02) = 25.8 s.
-            Assert.Equal(8.86, turn.TopRateDegS, 1);
-            Assert.True(turn.TurnSeconds > 25.8);
-            Assert.Equal(1.146, turn.AlphaDegS2, 3);
+            Assert.True(plan.TurnS > 0);
+            Assert.Equal(plan.TurnS, turn.TurnSeconds, 6);
+            Assert.Equal(System.Math.Max(TurnTime.FloorSeconds, plan.TurnS + TurnTime.SettleSeconds), turn.Seconds, 6);
+            Assert.Equal(plan.CoastRateDegS, turn.TopRateDegS, 6);
+            Assert.Equal(plan.AlphaDegS2, turn.AlphaDegS2, 6);
         }
 
         [Fact]
@@ -137,25 +141,6 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(167.81, wheels.TurnSeconds, 2);
             Assert.Equal(1.146, wheels.TopRateDegS, 3);
             Assert.Equal(0.573, wheels.AlphaDegS2, 3);
-        }
-
-        [Fact]
-        public void The_override_lets_a_quick_craft_slow_down_gradually_rather_than_stop_at_full_torque()
-        {
-            // alpha 0.362 rad/s² (the reference craft): T = 0.6 x sqrt(3.316 / 0.362) = 1.8 -> 2 s, kp 0.5. The linear tail makes it slower than
-            // the bang-bang 2 * sqrt(3.316 / 0.362) = 6.06 s.
-            var craft = new TurnCraft { WheelPitch = 5, WheelYaw = 5, RcsPitch = 1, RcsYaw = 1, RcsUsable = true, MoiPitch = 13.8, MoiYaw = 13.8 };
-            Assert.True(TurnTime.Predict(craft).TurnSeconds > 2 * System.Math.Sqrt(TurnTime.TurnDegrees * System.Math.PI / 180 / (6.0 / 13.8)));
-        }
-
-        [Theory]
-        [InlineData(1, 1, 2)]    // a small turn: sqrt(1/1) = 1 s, up to the floor of 2
-        [InlineData(4, 1, 2)]
-        [InlineData(100, 1, 6)]   // 0.6 x sqrt(100 / 1)
-        [InlineData(1000, 1, 10)] // a huge turn stays at 10 (0.6 x 31.6 = 19)
-        public void The_override_stopping_time_is_0_6_sqrt_of_angle_over_alpha_within_2_to_10_s(double angle, double alpha, double expected)
-        {
-            Assert.Equal(expected, TurnTime.OverrideStoppingTime(angle, alpha), 6);
         }
 
         [Fact]
@@ -173,9 +158,9 @@ namespace ClaudiaKermin.Core.Tests
             var craft = new TurnCraft { WheelPitch = 5, WheelYaw = 5, RcsPitch = 5, RcsYaw = 5, RcsUsable = true, MoiPitch = 500, MoiYaw = 500 };
             var result = BlockCalls.TurnTime(new Dictionary<string, object>(), craft);
             Assert.Equal("", result["error"]);
-            // Wheels and RCS (the override): 44.86 s turning, 10 s settling. Wheels alone, at T = 2: 167.81 s and 10 s.
-            Assert.Equal(54.86, (double)result["turn_time"], 2);
-            Assert.Equal(44.86, (double)result["turn_s"], 2);
+            // Wheels and RCS (the burst turn, #730): 60 s turning, 10 s settling. Wheels alone, at T = 2: 167.81 s and 10 s.
+            Assert.Equal(70, (double)result["turn_time"], 2);
+            Assert.Equal(60, (double)result["turn_s"], 2);
             Assert.Equal(1.146, (double)result["alpha"], 3);
             Assert.Equal(177.81, (double)result["wheels_turn_time"], 2);
             Assert.Equal(167.81, (double)result["wheels_turn_s"], 2);
