@@ -142,7 +142,7 @@ namespace ClaudiaKermin.Core.Tools
                 if (window.Error != null) return PlanningJson.Error(window.Error);
                 inc = window.Inclination;
             }
-            var grounded = snapshot.Situation == "PRELAUNCH" || snapshot.Situation == "LANDED" || snapshot.Situation == "SPLASHED";
+            var grounded = snapshot.IsGrounded;
             var options = new AscentOptions
             {
                 Gm = body.Gm,

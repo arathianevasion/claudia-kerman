@@ -166,7 +166,7 @@ namespace ClaudiaKermin.Core.Missions
         private static SnapshotOrbit Closed(GameSnapshot snapshot)
         {
             var orbit = snapshot.Orbit;
-            if (orbit == null || snapshot.Situation == "LANDED" || snapshot.Situation == "SPLASHED" || snapshot.Situation == "PRELAUNCH") return null;
+            if (orbit == null || snapshot.IsGrounded) return null;
             return orbit.Eccentricity < 1 && orbit.Period > 0 && !double.IsInfinity(orbit.Period) ? orbit : null;
         }
 
