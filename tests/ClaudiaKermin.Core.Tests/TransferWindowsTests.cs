@@ -520,6 +520,138 @@ namespace ClaudiaKermin.Core.Tests
             Assert.DoesNotContain("\"windows\"", table.Split('\n').Single(l => l.StartsWith("plan_transfer {\"target\":\"Mun\"")));
         }
 
+        // ---- The departure plane from any site (#727) ----
+
+        private static GameSnapshot Site(double latitude, double celestialLongitude = 0, TimeVersusDeltaV setting = TimeVersusDeltaV.Balanced, string body = "Kerbin", double ut = 0)
+        {
+            var snapshot = Pad();
+            snapshot.Ut = ut;
+            snapshot.Body = body;
+            snapshot.Situation = body == "Kerbin" ? "PRELAUNCH" : "LANDED";
+            snapshot.Latitude = latitude;
+            snapshot.CelestialLongitude = celestialLongitude;
+            snapshot.TimeVersusDeltaV = setting;
+            return snapshot;
+        }
+
+        private static double Normal(LaunchWindow launch, Vec3 direction)
+        {
+            return Vec3.Dot(Conic.FromElements(1, 1, 0, Math.Abs(launch.Inclination), launch.Lan, 0, 0, 0).W, direction.Normalized);
+        }
+
+        // KSC to Minmus: under its 6° plane, so into it; the row adds the ascent's loss, Kerbin's 174.9 m/s (1 - cos 6°), about 1 m/s.
+        [Fact]
+        public void From_KSC_Minmus_launches_into_its_plane_and_the_row_adds_about_1_m_s_of_ascent_loss()
+        {
+            var found = Find("Minmus", Site(-0.097));
+            Assert.Equal(0, found.Launch.Residual);
+            Assert.InRange(found.Optimal.AscentLossDv, 0.9, 1.05);
+            Assert.Equal(0, found.Optimal.PlaneDv);
+            Assert.Equal(DeparturePlane.LaunchedInto, found.Optimal.Plane);
+            Assert.Equal(found.Optimal.EjectionDv + found.Optimal.CaptureDv + found.Optimal.AscentLossDv, found.Optimal.TotalDv, 6);
+
+            var row = Run("{\"target\":\"Minmus\",\"target_pe\":30000}", Site(-0.097)).GetProperty("optimal");
+            Assert.Equal("plane: launched into", row.GetProperty("plane").GetString());
+            Assert.Equal(Math.Round(found.Optimal.AscentLossDv, 1), row.GetProperty("ascent_loss_dv").GetDouble());
+            Assert.Equal(0, row.GetProperty("plane_dv").GetDouble());
+        }
+
+        // A 20° site is past Minmus's 6°: due east (inclination 20, no ascent loss) when its node is Minmus's, 14° off; Fastest
+        // leaves at once and fixes the 14° mid-course, tens of m/s, where the arc is slow, not hundreds in the parking orbit.
+        [Fact]
+        public void From_a_20_degree_site_Minmus_launches_due_east_and_fastest_fixes_14_degrees_mid_course()
+        {
+            // Ten days on, as Minmus_ten_days_on_waits_for_the_next_node: no flight time from now reaches a node.
+            var site = Site(20, 0, TimeVersusDeltaV.Fastest, ut: 10 * Day);
+            var found = Find("Minmus", site);
+            Assert.InRange(found.Launch.Residual, 14 - 1e-6, 14 + 1e-6);
+            Assert.Equal(20, found.Launch.Inclination, 6);
+            Assert.Equal(78, found.Launch.Lan, 6);
+            Assert.True(found.Launch.WaitSeconds < site.Bodies.First(b => b.Name == "Kerbin").RotationPeriod);
+            // Due east: the inertial azimuth is 90°, and the pad's own eastward speed doesn't turn it.
+            Assert.InRange(found.Launch.Heading, 89.9, 90.1);
+            var pick = TransferWindows.Pick(found, TimeVersusDeltaV.Fastest);
+            Assert.Equal(0, pick.AscentLossDv);
+            Assert.InRange(pick.PlaneDv, 10, 100);
+            Assert.Equal("plane: residual 14° fixed mid-course", pick.Plane);
+            // Fastest does not wait for a node: it leaves within a parking orbit of the launch's lead.
+            Assert.InRange(pick.DepartureUt - (found.Launch.Ut + WindowWaits.LaunchLeadS), 0, 2 * 3600);
+
+            var result = Run("{\"target\":\"Minmus\",\"target_pe\":30000}", site);
+            Assert.Equal("plane: residual 14° fixed mid-course", result.GetProperty("soonest").GetProperty("plane").GetString());
+            Assert.Equal(20, result.GetProperty("launch").GetProperty("target_inc").GetDouble());
+            Assert.Contains("due east", result.GetProperty("launch").GetProperty("note").GetString());
+        }
+
+        // Most efficient waits for Minmus at the node of the due-east orbit, where the 14° costs next to nothing.
+        [Fact]
+        public void From_a_20_degree_site_most_efficient_waits_for_a_node_arrival_that_cuts_the_fix_to_near_0()
+        {
+            var fastest = TransferWindows.Pick(Find("Minmus", Site(20, 0, TimeVersusDeltaV.Fastest, ut: 10 * Day)), TimeVersusDeltaV.Fastest);
+            var found = Find("Minmus", Site(20, 0, TimeVersusDeltaV.MostEfficient, ut: 10 * Day));
+            var pick = TransferWindows.Pick(found, TimeVersusDeltaV.MostEfficient);
+            Assert.Same(found.Optimal, pick);
+            Assert.InRange(pick.PlaneDv, 0, DeparturePlane.NodeFreeDv);
+            Assert.Equal(DeparturePlane.AtNode, pick.Plane);
+            Assert.True(pick.DepartureUt > fastest.DepartureUt + Day, "most efficient waits for the node");
+            Assert.True(pick.TotalDv < fastest.TotalDv - 10);
+            // Minmus at arrival is in the due-east orbit's plane.
+            var minmus = Parked().Bodies.First(b => b.Name == "Minmus");
+            Vec3 r, v;
+            new BodySystem(Parked().Bodies).OrbitOf(minmus).State(pick.ArrivalUt, out r, out v);
+            Assert.InRange(Math.Abs(Normal(found.Launch, r)), 0, Math.Sin(1 * Math.PI / 180));
+        }
+
+        // From the surface of Eve at 30° to Kerbin: the launch's orbit holds the window's asymptote (any inclination at least
+        // its declination; the time sets the node), before the departure, so no plane is fixed later; the row costs the ascent.
+        [Fact]
+        public void From_Eve_s_surface_the_escape_to_Kerbin_launches_into_an_orbit_containing_the_asymptote()
+        {
+            var site = Site(30, 40, body: "Eve");
+            var found = Find("Kerbin", site, capture: false);
+            Assert.False(found.Moon);
+            Assert.True(found.ParkingAssumed);
+            foreach (var w in new[] { found.Soonest, found.Optimal })
+            {
+                Assert.Equal(DeparturePlane.LaunchedInto, w.Plane);
+                Assert.NotNull(w.Launch);
+                Assert.True(w.Launch.Ut >= site.Ut && w.Launch.Ut <= w.DepartureUt - WindowWaits.LaunchLeadS + 1e-6, "launch at " + w.Launch.Ut + " for " + w.DepartureUt);
+                Assert.True(Math.Abs(w.Launch.Inclination) >= 30 - 1e-6);
+                // The asymptote, from the window's Lambert arc round the Sun, is in the launch's plane.
+                var system = new BodySystem(site.Bodies);
+                Conic eve = system.OrbitOf(system.Find("Eve")), kerbin = system.OrbitOf(system.Find("Kerbin"));
+                Vec3 r1, v1, r2, v2;
+                eve.State(w.DepartureUt, out r1, out v1);
+                kerbin.State(w.ArrivalUt, out r2, out v2);
+                var arc = Lambert.Solve(eve.Mu, r1, r2, w.ArrivalUt - w.DepartureUt, eve.W);
+                Assert.InRange(Normal(w.Launch, arc.V1 - v1), -1e-6, 1e-6);
+                // The site is under the plane at the launch.
+                var eveBody = system.Find("Eve");
+                var lon = (40 + 360 * (w.Launch.Ut - site.Ut) / eveBody.RotationPeriod) * Math.PI / 180;
+                var lat = 30 * Math.PI / 180;
+                Assert.InRange(Normal(w.Launch, new Vec3(Math.Cos(lat) * Math.Cos(lon), Math.Cos(lat) * Math.Sin(lon), Math.Sin(lat))), -1e-6, 1e-6);
+                Assert.Equal(LaunchWindow.AscentLoss(eveBody, 30, Math.Abs(w.Launch.Inclination)), w.AscentLossDv, 3);
+                Assert.Equal(w.EjectionDv + w.AscentLossDv, w.TotalDv, 6);
+            }
+            var row = Run("{\"target\":\"Kerbin\",\"target_pe\":100000,\"capture\":false}", site).GetProperty("optimal");
+            Assert.Equal("plane: launched into", row.GetProperty("plane").GetString());
+            Assert.True(row.GetProperty("launch").TryGetProperty("at_ut", out _));
+        }
+
+        // No silent fallback: a body that doesn't turn has no launch to time, and the rows say they assumed the equator's plane.
+        [Fact]
+        public void A_row_with_no_launch_to_assume_says_so()
+        {
+            var site = Site(20);
+            site.Bodies.First(b => b.Name == "Kerbin").RotationPeriod = 0;
+            var found = Find("Minmus", site);
+            Assert.Null(found.Launch);
+            Assert.Contains("plane: equatorial parking orbit assumed", found.Soonest.Plane);
+            Assert.Contains("rotation period", Run("{\"target\":\"Minmus\",\"target_pe\":30000}", site).GetProperty("soonest").GetProperty("plane").GetString());
+            var duna = Find("Duna", site);
+            Assert.Contains("plane: equatorial parking orbit assumed", duna.Optimal.Plane);
+        }
+
         [Fact]
         public void A_target_pe_outside_the_planet_s_sphere_of_influence_is_refused()
         {

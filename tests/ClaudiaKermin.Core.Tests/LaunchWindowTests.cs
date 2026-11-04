@@ -117,15 +117,37 @@ namespace ClaudiaKermin.Core.Tests
             Assert.True(window.North ? window.Heading < 20 || window.Heading > 340 : window.Heading > 160 && window.Heading < 200);
         }
 
-        [Fact]
-        public void A_site_whose_latitude_exceeds_the_inclination_is_an_error_with_a_reason()
+        // #727: a site past a prograde plane launches due east (its latitude) when its orbit's node is the plane's: the least
+        // relative inclination, the latitude less the plane's, which the transfer fixes on the way.
+        [Theory]
+        [InlineData(28.5, 0.0)]
+        [InlineData(28.5, 200.0)]
+        [InlineData(-28.5, 33.0)]
+        public void A_site_whose_latitude_exceeds_the_inclination_launches_due_east_at_the_plane_s_node(double lat, double celestialLongitude)
         {
-            var window = LaunchWindow.Find(Kerbin(), 0, 28.5, 0, 6, 78, 80000);
-            Assert.Contains("never passes under a plane of inclination 6", window.Error);
+            var window = LaunchWindow.Find(Kerbin(), 0, lat, celestialLongitude, 6, 78, 80000);
+            Assert.Null(window.Error);
+            Assert.Equal(22.5, window.Residual, 9);
+            Assert.Equal(28.5, window.Inclination, 9);
+            Assert.True(window.North);
+            Assert.Equal(78, window.Lan);
+            Assert.InRange(window.WaitSeconds, 0, Period);
+            Assert.InRange(window.Heading, 89.9, 90.1);
+            // Under the due-east orbit at the window: the plane of inclination 28.5 and Minmus's node.
+            Assert.InRange(OffPlane(lat, celestialLongitude, window.WaitSeconds, 28.5, 78), -1e-9, 1e-9);
+            // Into the plane, no residual; due east loses nothing to the body's turning, into 6° from 0° about 1 m/s.
+            Assert.Equal(0, LaunchWindow.Find(Kerbin(), 0, 28.5, 0, 28.5, 78, 80000).Residual);
+            Assert.Equal(0, LaunchWindow.AscentLoss(Kerbin(), 28.5, 28.5), 9);
+            Assert.InRange(LaunchWindow.AscentLoss(Kerbin(), 0, 6), 0.9, 1.0);
+        }
+
+        [Fact]
+        public void A_site_past_a_retrograde_plane_is_an_error_with_a_reason()
+        {
+            // A retrograde plane counts from the other side: 180 - 6 is as far from the equator, and due east is no way into it.
+            var window = LaunchWindow.Find(Kerbin(), 0, 28.5, 0, 174, 78, 80000);
+            Assert.Contains("never passes under a plane of inclination 174", window.Error);
             Assert.Contains("28.5", window.Error);
-            // A retrograde plane counts from the other side: 180 - 6 is as far from the equator.
-            Assert.NotNull(LaunchWindow.Find(Kerbin(), 0, 28.5, 0, 174, 78, 80000).Error);
-            Assert.Null(LaunchWindow.Find(Kerbin(), 0, 28.5, 0, 28.5, 78, 80000).Error);
         }
 
         [Theory]
@@ -174,9 +196,14 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void The_block_call_gives_a_reason_not_a_window_when_it_cannot()
         {
-            var unreachable = BlockCalls.LaunchWindow(new Dictionary<string, object> { { "inc", 6.0 }, { "lan", 0.0 } }, Snapshot(28.5, 0));
+            var unreachable = BlockCalls.LaunchWindow(new Dictionary<string, object> { { "inc", 174.0 }, { "lan", 0.0 } }, Snapshot(28.5, 0));
             Assert.Single(unreachable);
             Assert.Contains("never passes under", (string)unreachable["error"]);
+            // Past a prograde plane (#727): due east, and the residual says how far off.
+            var east = BlockCalls.LaunchWindow(new Dictionary<string, object> { { "inc", 6.0 }, { "lan", 0.0 } }, Snapshot(28.5, 0));
+            Assert.Equal("", east["error"]);
+            Assert.Equal(22.5, (double)east["residual"], 9);
+            Assert.Equal(28.5, (double)east["inc"], 9);
             Assert.Contains("required", (string)BlockCalls.LaunchWindow(new Dictionary<string, object>(), Snapshot(0, 0))["error"]);
             Assert.Contains("body table", (string)BlockCalls.LaunchWindow(new Dictionary<string, object> { { "inc", 6.0 }, { "lan", 0.0 } }, new GameSnapshot { Body = "Kerbin" })["error"]);
         }

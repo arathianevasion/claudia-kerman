@@ -377,12 +377,15 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void A_site_whose_latitude_exceeds_the_inclination_is_an_error_naming_it()
+        public void A_site_whose_latitude_exceeds_the_inclination_launches_due_east_and_names_the_residual()
         {
+            // #727: past Minmus's 6°, due east (28.5°) at Minmus's node, 22.5° off its plane.
             var snapshot = AtKsc();
             snapshot.Latitude = 28.5;
-            Assert.Contains("never passes under a plane of inclination 6", Error(snapshot, "{\"launch_at\":\"Minmus\"}"));
-            Assert.Contains("28.5", Error(snapshot, "{\"target_inc\":10,\"target_lan\":0}"));
+            var result = Run(snapshot, "{\"target_ap\":80000,\"launch_at\":\"Minmus\",\"turn_shape\":0.45}");
+            Assert.Equal(28.5, result.GetProperty("target_inc").GetDouble());
+            Assert.Equal(22.5, result.GetProperty("plane_residual").GetDouble());
+            Assert.Contains("174", Error(snapshot, "{\"target_inc\":174,\"target_lan\":0}"));
             Assert.Contains("orbiting Kerbin", Error(AtKsc(), "{\"launch_at\":\"Kerbin\"}"));
         }
 

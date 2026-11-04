@@ -736,7 +736,8 @@ namespace ClaudiaKermin.Core.Tools
         /// under the plane of inclination <c>inc</c> and ascending node <c>lan</c> (degrees; the sign of <c>inc</c> is ignored), by
         /// <see cref="LaunchWindow"/> on the Game Snapshot's pad and body. <c>target_ap</c> (m, default 0) sets the heading's orbital
         /// speed. Gives <c>error</c> "", <c>wait</c> (s), <c>ut</c>, <c>north</c> (the window launches northward), <c>inc</c> (negative for
-        /// a southbound window) and <c>heading</c> (degrees); or only <c>error</c>, saying why the pad never passes under the plane.
+        /// a southbound window), <c>heading</c> (degrees) and <c>residual</c> (degrees: from a site past a prograde plane, the window
+        /// is due east and this far from the plane, #727); or only <c>error</c>, saying why the pad never passes under a retrograde plane.
         /// </summary>
         public static IDictionary<string, object> LaunchWindow(IDictionary<string, object> input, GameSnapshot snapshot)
         {
@@ -757,6 +758,7 @@ namespace ClaudiaKermin.Core.Tools
                 { "north", window.North },
                 { "inc", window.Inclination },
                 { "heading", window.Heading },
+                { "residual", window.Residual },
             };
         }
 

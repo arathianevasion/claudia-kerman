@@ -203,6 +203,8 @@ namespace ClaudiaKermin.Core.Tools
                 json.Field("launch_ut", Math.Round(window.Ut, 1)).Field("wait_s", Math.Round(window.WaitSeconds))
                     .Field("window", window.North ? "northbound" : "southbound").Field("target_inc", PlanningJson.Round(window.Inclination, 2))
                     .Field("heading", PlanningJson.Round(window.Heading, 1));
+            // From a site past the plane (#727): due east, this far from it; the transfer fixes it on the way.
+            if (window != null && window.Residual > 0) json.Field("plane_residual", PlanningJson.Round(window.Residual, 1));
             json
                 .Field(flight.ReachesOrbit ? "turn_shape" : "best_turn_shape", PlanningJson.Round(best.Item1, 2));
             if (!flight.ReachesOrbit)
