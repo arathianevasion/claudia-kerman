@@ -33,7 +33,11 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>Plane normals closer than this (a unit cross product, about 6e-5 degrees) are the same plane: there are no nodes.</summary>
         private const double SamePlane = 1e-6;
 
-        /// <summary>The keyword references <see cref="Named"/> resolves. The altitude form is the one "altitude " prefix, shown as <see cref="AltitudeForm"/>.</summary>
+        /// <summary>
+        /// The keyword references, read by <see cref="IsNamed"/> and by the bad-<c>at</c> message. <see cref="Named"/> dispatches on the same
+        /// names by hand, so a name added here needs its branch there (<c>Every_reference_resolves_within_a_budget</c> checks each one).
+        /// The altitude form is the one "altitude " prefix, shown as <see cref="AltitudeForm"/>.
+        /// </summary>
         internal static readonly string[] References =
         {
             "ap", "pe", "eq_an", "eq_dn", "eq_nearest", "eq_highest", "rel_an", "rel_dn", "closest_approach",
@@ -48,7 +52,7 @@ namespace ClaudiaKermin.Core.Tools
             return Array.IndexOf(References, text) >= 0 || text.StartsWith("altitude ", StringComparison.Ordinal);
         }
 
-        /// <summary>The bad-<c>at</c> message: every form <c>at</c> accepts, built from <see cref="References"/> so it can't drift from <see cref="IsNamed"/>.</summary>
+        /// <summary>The bad-<c>at</c> message: every form <c>at</c> accepts, listing <see cref="References"/> (the list <see cref="IsNamed"/> reads).</summary>
         private static string BadAt(string label)
         {
             var forms = new List<string>();

@@ -368,7 +368,7 @@ namespace ClaudiaKermin.Core.Tests
             Timing.Within(500, () =>
             {
                 foreach (var orbit in orbits)
-                    foreach (var at in new[] { "ap", "pe", "eq_an", "eq_dn", "eq_nearest", "eq_highest", "rel_an", "rel_dn", "closest_approach" })
+                    foreach (var at in BurnTime.References)
                     {
                         string problem;
                         BurnTime.Resolve(JsonReader.Parse("\"" + at + "\""), new List<Patch> { PatchOf(orbit) }, 0, 0, "the burn", System(), Minmus, out problem);
