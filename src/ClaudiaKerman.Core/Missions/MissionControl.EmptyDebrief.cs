@@ -114,7 +114,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             var said = "Claudia's Debrief reply had no debrief twice, so the mod rated this run Off-Nominal without judging it.";
             if (report == null || report.Count == 0) return said + " The script gave no report.";
-            return said + " The script's report: " + string.Join(", ", report.Select(p => p.Key + " " + p.Value).ToArray()) + ".";
+            return said + " The script's report: " + string.Join(", ", report.Select(p => p.Key + " " + Convert.ToString(p.Value, System.Globalization.CultureInfo.InvariantCulture)).ToArray()) + ".";
         }
     }
 }

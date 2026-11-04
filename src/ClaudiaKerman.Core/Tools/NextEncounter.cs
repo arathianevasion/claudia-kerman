@@ -33,7 +33,6 @@ namespace ClaudiaKerman.Core.Tools
             var system = new BodySystem(snapshot.Bodies);
             var at = system.Find(string.IsNullOrEmpty(orbit.Body) ? snapshot.Body : orbit.Body);
             if (at == null || at.Gm <= 0) return null;
-            try
             {
                 var start = Conic.FromElements(at.Gm, orbit.SemiMajorAxis, orbit.Eccentricity, orbit.Inclination, orbit.Lan,
                     orbit.ArgumentOfPeriapsis, orbit.MeanAnomalyAtEpoch, orbit.Epoch);
@@ -52,10 +51,6 @@ namespace ClaudiaKerman.Core.Tools
                         SoiUt = inside.StartUt,
                     };
                 }
-            }
-            catch (ArgumentException)
-            {
-                return null;
             }
             return null;
         }

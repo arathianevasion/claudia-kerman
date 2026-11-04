@@ -1396,7 +1396,7 @@ namespace ClaudiaKerman.Core.Missions
             var problem = reply == null ? "it wasn't in the Mission reply format" : Mismatch(turn.Purpose, reply);
             if (problem != null)
             {
-                if (turn.Purpose == Purpose.Debrief && mission.DeferredRestore == null)
+                if (turn.Purpose == Purpose.Debrief && reply != null && !PlanNotProposed(reply) && reply.Debrief == null && mission.DeferredRestore == null)
                 {
                     EmptyDebriefReply(mission, turn);
                     return;
