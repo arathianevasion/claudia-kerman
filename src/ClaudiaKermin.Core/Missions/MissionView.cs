@@ -197,6 +197,8 @@ namespace ClaudiaKermin.Core.Missions
         public IList<CraftFinding> Findings = new List<CraftFinding>();
         /// <summary>The craft, the Mission Goal or the processor changed since the result.</summary>
         public bool Stale;
+        /// <summary>Why it is stale when the start form's Mission Goal or Target Vessel changed (#664), e.g. "Stale: the Mission Goal changed since this check. Check again."; "" otherwise.</summary>
+        public string StaleReason = "";
         public IList<ProcessorOption> Processors = new List<ProcessorOption>();
         public uint? ChosenProcessor;
         /// <summary>The player picked <see cref="ChosenProcessor"/>; false when it is the default, the one nearest the root.</summary>
