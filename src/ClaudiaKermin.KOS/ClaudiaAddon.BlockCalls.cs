@@ -66,6 +66,19 @@ namespace ClaudiaKermin.KOS
                 "Core Library only (reentry): the Chute Allocation's chutes for this entry; lexicon error, all (true: keep every chute), entry, return, uids, titles, powered_finish, touchdown_speed"));
             AddSuffix("LANDGUARD", new OneArgsSuffix<Lexicon, Lexicon>(LandGuardTick,
                 "Core Library only (land, each braking tick): the path guard on alt against path_alt, and near the site the straight-down fallback; lexicon verdict (fly, vertical or abort), error, why, over, and the fallback's al, cr, up, vv, ..."));
+            AddSuffix("KEEPCLEAR", new OneArgsSuffix<Lexicon, Lexicon>(KeepClearCall,
+                "Core Library only (land): the site lat, lng moved clear_m clear of keep_lat, keep_lng (straight away, else toward ahead_lat, ahead_lng) by up to max_divert on a body of radius; lexicon lat, lng, dist, moved"));
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:KEEPCLEAR</c> (#713, ADR 0014): land's keep-clear decision (<see cref="KeepClear.Call"/>), pure.</summary>
+        private Lexicon KeepClearCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> moved = null;
+            return (Lexicon)Guarded("KEEPCLEAR", () =>
+            {
+                moved = KeepClear.Call(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(moved);
+            }, () => string.Format(CultureInfo.InvariantCulture, "{0:0} m from what it keeps clear of, moved {1:0} m", moved["dist"], moved["moved"]));
         }
 
         /// <summary>
