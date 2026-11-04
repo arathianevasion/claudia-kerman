@@ -26,7 +26,7 @@ Install and the block test runner are as in `phase-3-gate.md` ("Install", "Where
 
 ## Check 4: the Mission flights
 
-1. Fly the Mun to Minmus as a Mission (a craft in Mun orbit, goal "Orbit Minmus"): the Mission Script calls `transfer_to` once, then `circularize` at pe.
+1. Fly the Mun to Minmus as a Mission (a craft in Mun orbit, goal "Orbit Minmus"): the Mission Script calls `transfer_to` once, then `circularize` at pe. Since #734, `plan_transfer` can plan this transfer too (Minmus from the Mun, through the Transfer Windows), so Claudia may plan before she flies.
 2. Fly the 2026-11-02 goal again: "Orbit Duna, use the optimal window" (Mission m20261102-161833-be82 ended in a Sun orbit with no encounter). Claudia should plan with `plan_transfer`, wait for the window as a Due Time, and fly `transfer_to` with `window` set to the window's departure UT; no hand-built ejection node, no `predict_burn` search for the burn time.
 
 ## Report
