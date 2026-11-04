@@ -12,8 +12,8 @@
 
 //| transfer_to(options): flies from orbit to an encounter with a moon of the body the craft orbits (the
 //| Mun from Kerbin) or a body sharing its parent (Duna from Kerbin): the mod's solver finds the ejection,
-//| exec_node flies it, and mid-course corrections aim for target_pe (far out of plane, a plane change at its
-//| planned time instead). It ends before arrival. (kOS's own TRANSFER moves resources.)
+//| exec_node flies it, and corrections keep the encounter (far out of plane, a plane change at its
+//| planned time); a planet's or sibling's pe is trimmed in its SOI. It ends before arrival. (kOS's TRANSFER moves resources.)
 //| Options:
 //|   target [required]: the body to reach, a name ("Mun") or a body (body("Minmus")).
 //|   target_pe [required]: periapsis altitude at the target, m.
@@ -24,13 +24,13 @@
 //|   pe_tolerance [1000]: m off target_pe allowed; past it, a finer correction, then a fail.
 //|   max_duration ["auto"]: the time to the planned arrival plus 900 s; a shorter one moves the correction sooner.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block; each burn gets them too.
-//| Extra results: encounter_ut (UT the craft enters the target's sphere of influence),
+//| Extra results: encounter_ut (UT the craft enters the target's SOI),
 //| target_pe_actual (m, the periapsis predicted at the target), correction_dv (m/s the corrections
-//| burned: one making the encounter if the ejection missed, then mid-course ones, none within
+//| burned: one making the encounter if the ejection missed or, once, a correction lost it (recovered: why), then the rest, none within
 //| pe_tolerance, under 0.1 m/s or with correction false); plane_dv (m/s the plane change burned).
 //| departure_ut, arrival_ut (UT of ejection, periapsis), v_inf (m/s).
 //| ejection_node_dv, ejection_dv_used (m/s the node asked for, the burn used) and ejection_burn_time
-//| (s the engines burned): dv_used well above the node means wasted thrust. All -1 if it failed before the ejection burn.
+//| (s the engines burned): a long burn's dv_used is ~2% over. All -1 if it failed before the ejection burn.
 //| ejection_wait (s from the block's start to the ejection node): -1 if it failed before the node was planned.
 //| Fails with "target is required", "target_pe is required", an option value it can't read, "no body
 //| named <x>", a target that doesn't orbit the craft's body or parent, "not in orbit", "a maneuver node is
@@ -38,8 +38,8 @@
 //| <target> after the ejection burn, and no correction fits: <why>" (or "the correction failed:
 //| <why>"; or "after the correction", "the plane change"), "after the correction, the periapsis ... off
 //| target_pe", an exec_node failure (its node stays), or an abort. The craft must be the active vessel.
-//| Capture isn't part of transfer_to: inside the target's sphere of influence, fly
-//| `circularize(lexicon("at", "pe"))`: in the same sequence or the next, after
+//| Capture isn't part of transfer_to: fly
+//| `circularize(lexicon("at", "pe"))`: in this sequence or the next, after
 //| `coast(lexicon("until", res:encounter_ut + 60))` (no Due Time needed).
 //| Example: `local res is transfer_to(lexicon("target", "Mun", "target_pe", 30000)). addons:claudia:report(res).`
 

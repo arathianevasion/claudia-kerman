@@ -38,6 +38,8 @@ namespace ClaudiaKerman.Core.Tools
         public double LastDv;
         /// <summary>Whether the target shares the parent of the body the craft began round (carried from the start).</summary>
         public bool Sibling;
+        /// <summary>Whether a lost encounter has had its recovery (#747): a second loss fails the block.</summary>
+        public bool Recovered;
     }
 
     /// <summary>The next thing <c>transfer_to</c> does: fly a node, wait until a UT, or end; or why it fails.</summary>
@@ -71,6 +73,7 @@ namespace ClaudiaKerman.Core.Tools
         public double PlaneUt = -1;
         public string Why = "";
         public bool Sibling;
+        public bool Recovered;
         /// <summary>Script Result keys and values to set.</summary>
         public readonly Dictionary<string, object> Report = new Dictionary<string, object>();
     }
@@ -83,6 +86,9 @@ namespace ClaudiaKerman.Core.Tools
     /// its parent (a planet, or a moon of the same planet), the window re-solved round the planned one and the ejection from
     /// the parking orbit (<see cref="SiblingEjection"/>), then, once out of the craft's sphere of influence, the Course
     /// Correction on the parent's patch and the same finer one. Every check reads the Game Snapshot's patched conics.
+    /// To a far target (a body sharing the parent, or a planet; #747) the far-out corrections only keep or restore the
+    /// encounter, not held to pe_tolerance, and the trim to target_pe waits for the target's sphere of influence (<see cref="Near"/>).
+    /// An encounter lost after a correction gets the missed-ejection recovery once (<see cref="Recover"/>) before the block fails.
     /// </summary>
     internal static class TransferFlight
     {
@@ -93,6 +99,8 @@ namespace ClaudiaKerman.Core.Tools
         private const string Mid = "mid";
         private const string MidCheck = "mid_check";
         private const string Fine = "fine";
+        /// <summary>Inside a far target's sphere of influence, before the trim (#747).</summary>
+        private const string Near = "near";
         private const string FineFlown = "fine_flown";
         private const string FineCheck = "fine_check";
         private const string Escaping = "escaping";
@@ -104,7 +112,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>s past the end of max_duration a Course Correction must leave to burn in; s past the arrival "auto" leaves.</summary>
         private const double BurnRoom = 120;
         private const double AutoSlack = 900;
-        /// <summary>s past leaving the sphere of influence the wait ends, as return waits.</summary>
+        /// <summary>s past leaving the sphere of influence the wait ends, as return waits; and past entering a far target's (#747).</summary>
         private const double PastSoi = 30;
         /// <summary>The most patches to the target: out of a moon, round the planet, into another moon.</summary>
         private const int Patches = 4;
@@ -123,6 +131,7 @@ namespace ClaudiaKerman.Core.Tools
                 if (setup == null) return Fail(JsonNode.Str(JsonReader.Parse(error.Json)["error"]));
                 var step = Phase(snapshot, setup, ask);
                 step.Sibling |= ask.Sibling;
+                step.Recovered |= ask.Recovered;
                 if (step.Error != "" || step.Do != TransferFlightStep.Done || step.Phase == "") return step;
                 // A step that flies nothing goes on to the phase it named, with what it carries.
                 Carry(ask, step);
@@ -139,6 +148,7 @@ namespace ClaudiaKerman.Core.Tools
             ask.PlaneUt = step.PlaneUt;
             ask.Why = step.Why;
             ask.Sibling = step.Sibling;
+            ask.Recovered = step.Recovered;
         }
 
         private static TransferFlightStep Phase(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask)
@@ -153,18 +163,22 @@ namespace ClaudiaKerman.Core.Tools
                 case Planed:
                     return Encounter(setup) == null ? Fail("no encounter with " + target.Name + " after the plane change") : Go(ask, Fine);
                 case Made:
-                    return Encounter(setup) == null ? Fail("no encounter with " + target.Name + " after the correction") : Go(ask, Mid);
+                    return Encounter(setup) == null ? Recover(snapshot, setup, ask, Lost(target)) : Go(ask, Mid);
                 case Mid:
                     return MidCorrection(snapshot, setup, ask);
                 case MidCheck:
-                    return Encounter(setup) == null ? Fail("no encounter with " + target.Name + " after the correction") : Go(ask, Fine);
+                    return Encounter(setup) == null ? Recover(snapshot, setup, ask, Lost(target)) : Go(ask, Fine);
                 case Fine:
                     return FineCorrection(snapshot, setup, ask);
+                case Near:
+                    return NearCorrection(snapshot, setup, ask);
                 case FineFlown:
                     // A finer correction that burned nothing is no correction.
                     return Go(ask, FineCheck, ask.Why == "" && ask.LastDv == 0 ? "its burn, under 0.1 m/s, isn't flown" : ask.Why);
                 case FineCheck:
-                    return Arrive(setup, ask);
+                    return ask.Correction && Encounter(setup) == null
+                        ? Recover(snapshot, setup, ask, Lost(target) + (string.IsNullOrEmpty(ask.Why) ? "" : ": " + ask.Why))
+                        : Arrive(setup, ask);
                 case Escaping:
                     return LeaveHome(setup, ask);
                 case Escaped:
@@ -233,8 +247,37 @@ namespace ClaudiaKerman.Core.Tools
             var fixedMid = ResidualPlane(snapshot, setup, ask);
             if (fixedMid != null) return fixedMid;
 
-            // A missed ejection (#363): the cheapest burn from the orbit the craft is on that meets the target, found as the ejection was.
-            var missed = "no encounter with " + target.Name + " after the ejection burn";
+            return Missed(snapshot, setup, ask, "no encounter with " + target.Name + " after the ejection burn");
+        }
+
+        /// <summary>"no encounter with &lt;target&gt; after the correction": the encounter a correction lost.</summary>
+        private static string Lost(SnapshotBody target)
+        {
+            return "no encounter with " + target.Name + " after the correction";
+        }
+
+        /// <summary>
+        /// A lost encounter (#747): after a correction, the missed-ejection recovery (<see cref="Missed"/>) from the orbit the
+        /// craft is on, reported as <c>recovered</c> (why the encounter was lost); once only, so a second loss fails the block.
+        /// </summary>
+        private static TransferFlightStep Recover(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask, string lost)
+        {
+            if (ask.Recovered) return Fail(lost);
+            var step = Missed(snapshot, setup, ask, lost);
+            if (step.Error != "") return step;
+            step.Recovered = true;
+            step.Report["recovered"] = lost;
+            return step;
+        }
+
+        /// <summary>
+        /// No encounter (<paramref name="missed"/> says after what, #363): the cheapest burn from the orbit the craft is on that
+        /// meets the target, found as the ejection was, within dv_left and max_duration; or why none fits.
+        /// </summary>
+        private static TransferFlightStep Missed(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask, string missed)
+        {
+            var target = setup.Target;
+            var now = setup.Now;
             var correctionAsk = CorrectionAsk(target.Name, ask.TargetPe, now, ask.TurnTime, ask.StartUt, ask.MaxDuration ?? 0, ask.Auto, ask.DvLeft);
             if (correctionAsk.LatestUt.HasValue && correctionAsk.LatestUt.Value < correctionAsk.EarliestUt)
                 return Fail(missed + ", and no correction fits: max_duration (" + Num(ask.MaxDuration ?? 0) + " s) leaves no time for it and the Course Correction after it");
@@ -281,18 +324,36 @@ namespace ClaudiaKerman.Core.Tools
             return ask;
         }
 
-        /// <summary>The Course Correction halfway to the encounter (sooner if max_duration ends first, #368), when the periapsis is outside pe_tolerance.</summary>
+        /// <summary>
+        /// The Course Correction halfway to the encounter (sooner if max_duration ends first, #368), when the periapsis is outside
+        /// pe_tolerance; to a far target it keeps the encounter, aimed at target_pe but not held to pe_tolerance (#747: far out,
+        /// a flown error of 0.05 m/s moves the periapsis by tens of km), so one the solver can't bring within it is not flown.
+        /// Under 0.1 m/s, which exec_node can't fly accurately, it is not flown either. No encounter: the recovery.
+        /// </summary>
         private static TransferFlightStep MidCorrection(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask)
         {
             if (!ask.Correction) return Go(ask, Fine);
             var enc = Encounter(setup);
-            if (enc != null && Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, MidCheck);
-            if (enc == null) return Fail("no encounter with " + setup.Target.Name + " after the correction");
+            if (enc == null) return Recover(snapshot, setup, ask, Lost(setup.Target));
+            if (Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, MidCheck);
             string late;
             var ut = CorrectionUt((setup.Now + enc.SoiUt) / 2, setup.Now, ask.TurnTime + Lead, ask.StartUt, ask.MaxDuration, out late);
             if (late != "") return Fail(late);
             var fix = CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut });
+            if (Far(setup, ask) && (!fix.HasBurn || fix.Error != null)) return Go(ask, MidCheck);
             return FlyCorrection(ask, fix, "correction", MidCheck);
+        }
+
+        /// <summary>
+        /// Whether the target is far (#747): a body sharing the parent of the body the craft began round, or a planet. Its
+        /// periapsis is trimmed inside its sphere of influence: out on the parent's patch a burn flown 0.05 m/s off moves it by
+        /// tens of km. A moon from its planet keeps the finer correction halfway.
+        /// </summary>
+        private static bool Far(PredictBurn.Setup setup, TransferFlightAsk ask)
+        {
+            if (ask.Sibling) return true;
+            var parent = setup.System.Parent(setup.Target);
+            return parent != null && string.IsNullOrEmpty(parent.Parent);
         }
 
         /// <summary>
@@ -304,12 +365,25 @@ namespace ClaudiaKerman.Core.Tools
             if (!ask.Correction) return Arrive(setup, ask);
             var enc = Encounter(setup);
             if (enc != null && Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, FineCheck, "");
-            var soi = enc != null ? enc.SoiUt : setup.Now;
-            // To a body sharing the parent the coast is long, and a burn halfway flown 0.1 m/s off misses by far more than
-            // pe_tolerance: the finer correction waits until that error, carried to the periapsis, would stay within it; that is
-            // inside the target's sphere of influence, where the block then ends.
-            var mid = (setup.Now + soi) / 2;
-            if (ask.Sibling && enc != null) mid = Math.Max(mid, enc.PeUt - ask.PeTolerance / FineResidual);
+            if (enc == null) return Go(ask, FineCheck, "");
+            // To a far target the coast is long, and a burn halfway flown 0.1 m/s off misses by far more than pe_tolerance
+            // (#747: 0.02 m/s moved Duna's periapsis 57 km). The trim waits for the target's sphere of influence (Near) and is
+            // planned there from the orbit flown, no sooner than that error, carried to the periapsis, stays within pe_tolerance;
+            // the block then ends inside it.
+            var far = Far(setup, ask);
+            var lead = ask.TurnTime + Lead;
+            if (far && setup.Body != setup.Target)
+            {
+                var into = enc.SoiUt + PastSoi;
+                if (into > setup.Now && (!ask.MaxDuration.HasValue || into + 2 * (lead + BurnRoom) <= ask.StartUt + ask.MaxDuration.Value))
+                {
+                    var wait = new TransferFlightStep { Do = TransferFlightStep.Wait, Ut = into, Phase = Near, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Why = ask.Why };
+                    wait.Report["encounter_ut"] = Math.Round(enc.SoiUt);
+                    return wait;
+                }
+            }
+            var mid = (setup.Now + enc.SoiUt) / 2;
+            if (far) mid = Math.Max(Math.Max(mid, enc.PeUt - ask.PeTolerance / FineResidual), setup.Now + lead);
             string why;
             var ut = CorrectionUt(mid, setup.Now, ask.TurnTime + Lead, ask.StartUt, ask.MaxDuration, out why);
             if (why != "") return Go(ask, FineCheck, why);
@@ -320,11 +394,30 @@ namespace ClaudiaKerman.Core.Tools
             if (!fix.HasBurn || fix.Error != null) return Go(ask, FineCheck, fix.Error);
             if (fix.DeltaV < SkipDv) return Go(ask, FineCheck, "its burn, under 0.1 m/s, isn't flown");
             var step = Node("correction", fix.Ut, fix.Prograde, fix.Normal, fix.Radial, FineFlown);
-            if (enc != null && fix.Ut > enc.SoiUt) step.Report["encounter_ut"] = Math.Round(enc.SoiUt);
+            if (setup.Body != setup.Target && fix.Ut > enc.SoiUt) step.Report["encounter_ut"] = Math.Round(enc.SoiUt);
             step.MaxResidual = FineResidual;
             step.KeepGoing = true;
             step.ArrivalUt = ask.ArrivalUt;
             return step;
+        }
+
+        /// <summary>
+        /// Just inside a far target's sphere of influence (#747): where the trim to target_pe would burn sooner than its flown
+        /// error allows (<see cref="FineCorrection"/>), a coarser correction first, now, while moving the periapsis is cheap;
+        /// then the trim. Not found, under 0.1 m/s or out of time: straight to the trim.
+        /// </summary>
+        private static TransferFlightStep NearCorrection(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask)
+        {
+            var enc = Encounter(setup);
+            if (enc == null || setup.Body != setup.Target || Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, Fine);
+            var lead = ask.TurnTime + Lead;
+            string late;
+            var ut = CorrectionUt(setup.Now + lead, setup.Now, lead, ask.StartUt, ask.MaxDuration, out late);
+            // Worth it only when the trim's own burn is at least as far again off: a coarse burn there is no cheaper.
+            if (late != "" || enc.PeUt - ask.PeTolerance / FineResidual - ut < ask.PeTolerance / FineResidual) return Go(ask, Fine);
+            var fix = CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut });
+            if (!fix.HasBurn || fix.Error != null) return Go(ask, Fine);
+            return FlyCorrection(ask, fix, "correction", Fine);
         }
 
         /// <summary>The arrival: the encounter and its periapsis reported, then a miss outside pe_tolerance (with correction) fails the block.</summary>
@@ -381,7 +474,10 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// On the parent's patch: the Course Correction as soon as the craft can turn to it, aimed through the planned arrival when
         /// the ejection left no encounter; then the halfway one, and the finer one late enough that its residual stays within
-        /// pe_tolerance. Without correction, the encounter is checked as it stands.
+        /// pe_tolerance. Planned from the orbit the ejection left, so it takes up the ejection's finite-burn error (#747: a 230 s
+        /// burn round low Kerbin orbit loses about 2 % of its node, TransferFlightTests). With the encounter held, one not found
+        /// is not flown; with none and no such burn, the missed-ejection recovery. Without correction, the encounter is checked
+        /// as it stands.
         /// </summary>
         private static TransferFlightStep OnParent(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask)
         {
@@ -396,9 +492,10 @@ namespace ClaudiaKerman.Core.Tools
             {
                 Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut, AimUt = ask.ArrivalUt > ut ? ask.ArrivalUt : (double?)null,
             });
-            var step = FlyCorrection(ask, fix, "correction", Mid);
-            if (enc == null && step.Error != "") step.Error = "no encounter with " + setup.Target.Name + " after the ejection burn, and no correction fits: " + step.Error.Replace("found no correction: ", "");
-            return step;
+            var found = fix.HasBurn && fix.Error == null;
+            if (enc != null && !found) return Go(ask, Mid);
+            if (enc == null && !found) return Missed(snapshot, setup, ask, "no encounter with " + setup.Target.Name + " after the ejection burn");
+            return FlyCorrection(ask, fix, "correction", Mid);
         }
 
         /// <summary>
