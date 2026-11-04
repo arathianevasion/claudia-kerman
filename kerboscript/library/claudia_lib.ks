@@ -2317,18 +2317,6 @@ function claudia_geo {
   return lexicon("lat", round(landing:lat, 4), "lng", round(landing:lng, 4)).
 }
 
-// The earliest departure (UT) of transfer_to's and return's ejection (#346, #357): the block's start_ut plus
-// turn_time (s, ADDONS:CLAUDIA:TURNTIME's), so the craft can have turned to the burn, or window if that is a later UT.
-// Pure.
-function claudia_earliest {
-  parameter start_ut, turn_time, window.
-  local earliest is start_ut + turn_time.
-  if window:istype("Scalar") {
-    set earliest to max(earliest, window).
-  }
-  return earliest.
-}
-
 // Coordinate descent: lowers cost(x) over the list of numbers x, one coordinate at a time, starting
 // with steps (one per coordinate) and stepping on while that helps; when no step helps, every step
 // halves, up to rounds times. Stops early once the cost is at most good, or after 400 tries.
@@ -2429,28 +2417,6 @@ function claudia_burn {
 // m from target_pe within which a predicted arrival needs no Course Correction.
 function claudia_correction_good_m {
   return 1000.
-}
-
-// The Course Correction's burn UT (#368): mid (halfway to arrival), or sooner when a max_duration the block has as a
-// number ends before then, leaving 120 s of it to burn in, as the correction after a missed ejection is bounded. A burn
-// sooner than lead s from now (the time to turn to it and lead it) can't be flown, so the block fails before it, with the
-// reason. Returns lexicon("reason", "" or why there is no time for it, "ut", the burn's UT). Pure.
-function claudia_correction_ut {
-  parameter mid, now, lead, start_ut, max_duration.
-  local done is lexicon("reason", "", "ut", mid).
-  local bounded is max_duration:istype("Scalar").
-  if bounded {
-    set done:ut to min(mid, start_ut + max_duration - 120).
-  }
-  if done:ut < now + lead {
-    if bounded {
-      set done:reason to "max_duration (" + round(max_duration) + " s) ends at UT " + round(start_ut + max_duration)
-        + ", too soon for the Course Correction: its burn needs " + round(lead + 120) + " s from UT " + round(now).
-    } else {
-      set done:reason to "the arrival comes too soon for the Course Correction".
-    }
-  }
-  return done.
 }
 
 // What a Course Correction asks ADDONS:CLAUDIA:CORRECTIONBURN: the least burn at ut that brings the path to dest_name at

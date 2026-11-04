@@ -93,34 +93,44 @@ namespace ClaudiaKermin.Kerboscript.Tests
 
         // ---- The Course Correction's burn time (#368): return's; transfer_to's is Core's TransferFlight (#459) ----
 
-        private static string[] CorrectionUt(string maxDuration)
+        // return asks Core's TransferFlight.CorrectionUt and Earliest through TRANSFERSTEP (#731).
+        private static System.Collections.Generic.IDictionary<string, object> Timing(params object[] pairs)
         {
-            // Block started at UT 1000; the ejection is flown and it is now UT 3000; halfway to the encounter is UT 16500; the
-            // craft needs 193 s to turn to and lead a burn (transfer_to's 133 s TURNTIME plus a minute).
-            return Run("local w is claudia_correction_ut(16500, 3000, 193, 1000, " + maxDuration + "). print w:ut. print w:reason.");
+            var ask = new System.Collections.Generic.Dictionary<string, object>();
+            for (var i = 0; i < pairs.Length; i += 2) ask[(string)pairs[i]] = pairs[i + 1];
+            return ClaudiaKermin.Core.Tools.BlockCalls.TransferStep(ask, null);
+        }
+
+        private static string[] CorrectionUt(double mid, object maxDuration)
+        {
+            // Block started at UT 1000; the ejection is flown and it is now UT 3000; the craft needs 193 s to turn to and lead a
+            // burn (transfer_to's 133 s TURNTIME plus a minute).
+            var w = Timing("timing", "correction", "mid", mid, "now", 3000.0, "lead", 193.0, "start_ut", 1000.0, "max_duration", maxDuration);
+            return new[] { ((double)w["ut"]).ToString(CultureInfo.InvariantCulture), (string)w["why"] };
         }
 
         [Fact]
         public void The_correction_burns_halfway_when_max_duration_is_auto_or_ends_after_it()
         {
-            Assert.Equal(new[] { "16500", "" }, CorrectionUt("\"auto\""));
-            Assert.Equal(new[] { "16500", "" }, CorrectionUt("20000"));
+            // Halfway to the encounter is UT 16500.
+            Assert.Equal(new[] { "16500", "" }, CorrectionUt(16500, "auto"));
+            Assert.Equal(new[] { "16500", "" }, CorrectionUt(16500, 20000.0));
         }
 
         [Fact]
         public void A_max_duration_that_admits_the_ejection_admits_its_correction_too_burning_it_sooner()
         {
             // max_duration ends at UT 11000, before halfway: the correction moves to 120 s before the end, not past it into the abort.
-            Assert.Equal(new[] { "10880", "" }, CorrectionUt("10000"));
+            Assert.Equal(new[] { "10880", "" }, CorrectionUt(16500, 10000.0));
             // Just enough: 120 s to burn after the 193 s lead.
-            Assert.Equal(new[] { "3193", "" }, CorrectionUt("2313"));
+            Assert.Equal(new[] { "3193", "" }, CorrectionUt(16500, 2313.0));
         }
 
         [Fact]
         public void A_max_duration_with_no_time_left_for_the_correction_fails_before_the_burn_with_a_reason()
         {
             Assert.Equal(new[] { "3180", "max_duration (2300 s) ends at UT 3300, too soon for the Course Correction: its burn needs 313 s from UT 3000" },
-                CorrectionUt("2300"));
+                CorrectionUt(16500, 2300.0));
         }
 
         [Fact]
@@ -133,65 +143,39 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [Fact]
         public void A_broken_plane_s_plane_change_burns_at_its_planned_time_not_halfway()
         {
-            // claudia_correction_ut given plane_ut (UT 9000) in place of halfway: it stays there with max_duration auto or later,
+            // The correction time given plane_ut (UT 9000) in place of halfway: it stays there with max_duration auto or later,
             // and moves sooner only as the Course Correction does when max_duration ends first.
-            Assert.Equal(new[] { "9000", "" }, Run("local w is claudia_correction_ut(9000, 3000, 193, 1000, \"auto\"). print w:ut. print w:reason."));
-            Assert.Equal(new[] { "8880", "" }, Run("local w is claudia_correction_ut(9000, 3000, 193, 1000, 8000). print w:ut. print w:reason."));
+            Assert.Equal(new[] { "9000", "" }, CorrectionUt(9000, "auto"));
+            Assert.Equal(new[] { "8880", "" }, CorrectionUt(9000, 8000.0));
         }
 
         // ---- Earliest departure ----
 
         /// <summary>return's rule (#346, #357), as Core's TransferFlight.Earliest is transfer_to's: the block's start plus the turn time, or a later window.</summary>
         [Theory]
-        [InlineData("\"next\"", "1133")]
+        [InlineData("next", "1133")]
         [InlineData("2000", "2000")]
         [InlineData("1100", "1133")]
         public void The_departure_is_searched_from_once_the_craft_can_have_turned_or_from_the_window(string window, string earliest)
         {
-            Assert.Equal(earliest, One("claudia_earliest(1000, 133, " + window + ")"));
+            object w = window == "next" ? (object)"next" : double.Parse(window, CultureInfo.InvariantCulture);
+            var ut = (double)Timing("timing", "earliest", "start_ut", 1000.0, "turn_time", 133.0, "window", w)["ut"];
+            Assert.Equal(earliest, ut.ToString(CultureInfo.InvariantCulture));
         }
 
         [Fact]
-        public void Return_departs_by_the_shared_rule_and_transfer_to_passes_what_Core_s_takes()
+        public void Return_asks_Core_for_both_timings_and_no_Kerboscript_twin_is_left()
         {
-            Assert.Contains("claudia_earliest(ctx:start_ut, turn:turn_time, opt:window)", CoreLibrary.Blocks.Single(b => b.Name == "return").Source);
+            var ret = CoreLibrary.Blocks.Single(b => b.Name == "return").Source;
+            Assert.Contains("\"timing\", \"earliest\", \"start_ut\", ctx:start_ut", ret);
+            Assert.Contains("\"timing\", \"correction\"", ret);
+            var bundle = CoreLibrary.Bundle("");
+            Assert.DoesNotContain("claudia_earliest", bundle);
+            Assert.DoesNotContain("claudia_correction_ut", bundle);
             var transfer = CoreLibrary.Blocks.Single(b => b.Name == "transfer_to").Source;
             Assert.Contains("\"start_ut\", ctx:start_ut", transfer);
             Assert.Contains("\"turn_time\", turn:turn_time", transfer);
             Assert.Contains("\"window\", opt:window", transfer);
-        }
-
-        // ---- Parity (ADR 0014 guardrail 4, #731): the Kerboscript twins and Core's TRANSFERSTEP timing, on the same inputs ----
-
-        private static System.Collections.Generic.IDictionary<string, object> Timing(params object[] pairs)
-        {
-            var ask = new System.Collections.Generic.Dictionary<string, object>();
-            for (var i = 0; i < pairs.Length; i += 2) ask[(string)pairs[i]] = pairs[i + 1];
-            return ClaudiaKermin.Core.Tools.BlockCalls.TransferStep(ask, null);
-        }
-
-        [Theory]
-        [InlineData("\"next\"", null)]
-        [InlineData("2000", 2000.0)]
-        [InlineData("1100", 1100.0)]
-        public void Parity_earliest_kerboscript_and_core_agree(string window, double? number)
-        {
-            var core = number.HasValue ? Timing("timing", "earliest", "start_ut", 1000.0, "turn_time", 133.0, "window", number.Value)
-                                       : Timing("timing", "earliest", "start_ut", 1000.0, "turn_time", 133.0, "window", "next");
-            Assert.Equal(One("claudia_earliest(1000, 133, " + window + ")"), ((double)core["ut"]).ToString(CultureInfo.InvariantCulture));
-        }
-
-        [Theory]
-        [InlineData("\"auto\"", null)]
-        [InlineData("20000", 20000.0)]
-        [InlineData("10000", 10000.0)]
-        [InlineData("2313", 2313.0)]
-        [InlineData("2300", 2300.0)]
-        public void Parity_correction_ut_kerboscript_and_core_agree(string maxDuration, double? number)
-        {
-            var core = number.HasValue ? Timing("timing", "correction", "mid", 16500.0, "now", 3000.0, "lead", 193.0, "start_ut", 1000.0, "max_duration", number.Value)
-                                       : Timing("timing", "correction", "mid", 16500.0, "now", 3000.0, "lead", 193.0, "start_ut", 1000.0, "max_duration", "auto");
-            Assert.Equal(CorrectionUt(maxDuration), new[] { ((double)core["ut"]).ToString(CultureInfo.InvariantCulture), (string)core["why"] });
         }
 
         // ---- Coordinate descent ----
