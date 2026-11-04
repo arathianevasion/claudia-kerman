@@ -244,7 +244,7 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         public static string Describe(SnapshotVessel vessel, IList<SnapshotVessel> listed = null)
         {
-            return Describe(vessel, listed != null && listed.Any(o => o.Id != vessel.Id && Same(o.Name, vessel.Name)));
+            return Describe(vessel, listed != null && SharesName(vessel, listed));
         }
 
         internal static string Describe(SnapshotVessel vessel, bool withDistance)
@@ -331,9 +331,9 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <summary>
         /// A near-miss (#709): as many consecutive goal words as the name has, each starting with its name word's first letter
-        /// (any case) and within that word's allowance of edits (letters added, dropped or changed): none for a word under 4
-        /// letters, 1 for 4 or 5, 2 for 6 or more. So "Kerbal Station Alpha" near-misses "Kerbin Station Alpha", but "Relay Sat 2"
-        /// never "Relay Sat 1" and "over" never "Rover". Returns the closest such phrase's total edits and its text as typed;
+        /// (any case) and within the pair's allowance of edits (letters added, dropped or changed), set by the shorter of the two
+        /// words: none under 4 letters, 1 for 4 or 5, 2 for 6 or more. So "Kerbal Station Alpha" near-misses "Kerbin Station
+        /// Alpha", but "Relay Sat 2" never "Relay Sat 1", "over" never "Rover" and "orbit" never "Orbiter". Returns the closest such phrase's total edits and its text as typed;
         /// null for none. Names under <see cref="ShortestName"/> letters never near-miss.
         /// </summary>
         internal static Tuple<int, string> NearMiss(string goal, string name)
@@ -349,7 +349,8 @@ namespace ClaudiaKermin.Core.Missions
                 for (var j = 0; j < want.Count && edits >= 0; j++)
                 {
                     var word = words[i + j].Value.ToLowerInvariant();
-                    var allowed = want[j].Length < 4 ? 0 : want[j].Length < 6 ? 1 : 2;
+                    var shorter = Math.Min(word.Length, want[j].Length);
+                    var allowed = shorter < 4 ? 0 : shorter < 6 ? 1 : 2;
                     var d = word[0] == want[j][0] ? Edits(word, want[j]) : allowed + 1;
                     edits = d <= allowed ? edits + d : -1;
                 }
@@ -384,7 +385,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             choice.Target = new TargetVessel(vessel.Id, vessel.Name);
             choice.Vessel = vessel;
-            choice.SharedName = listed.Any(o => o.Id != vessel.Id && Same(o.Name, vessel.Name));
+            choice.SharedName = SharesName(vessel, listed);
             choice.Reason = how;
             var grounded = vessel.Situation == "LANDED" || vessel.Situation == "SPLASHED" || vessel.Situation == "PRELAUNCH";
             if (grounded && AsksForRendezvousOrDocking(goal)) choice.Note = "landed: rendezvous and docking need it in orbit";
@@ -395,6 +396,12 @@ namespace ClaudiaKermin.Core.Missions
         {
             choice.Reason = why;
             return choice;
+        }
+
+        /// <summary>Another vessel in <paramref name="listed"/> has its name.</summary>
+        private static bool SharesName(SnapshotVessel vessel, IList<SnapshotVessel> listed)
+        {
+            return listed.Any(o => o.Id != vessel.Id && Same(o.Name, vessel.Name));
         }
 
         private static bool Same(string a, string b)

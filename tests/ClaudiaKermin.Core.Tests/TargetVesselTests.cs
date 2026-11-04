@@ -597,6 +597,8 @@ namespace ClaudiaKermin.Core.Tests
         [InlineData("dock with Relay Sat 2", "Relay Sat 1", -1, "")]
         [InlineData("land over there", "Rover", -1, "")]
         [InlineData("dock with the Tag", "Tug", -1, "")]
+        [InlineData("dock with the station in orbit", "Orbiter", -1, "")]
+        [InlineData("land beside the base", "Lander", -1, "")]
         [InlineData("dock with Kerbin Stations Alpha", "Kerbin Station Alpha", 1, "Kerbin Stations Alpha")]
         [InlineData("dock with Kebrin Station Alpha", "Kerbin Station Alpha", 2, "Kebrin Station Alpha")]
         [InlineData("dock with Kerbinite Station Alpha", "Kerbin Station Alpha", -1, "")]
