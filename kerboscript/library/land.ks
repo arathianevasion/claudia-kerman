@@ -2033,7 +2033,7 @@ function land_stage_early {
   }
   wait 0.5.
   set ctx:parts to ship:parts:length.
-  set ctx:last_ut to time:seconds.
+  claudia_restart_clock(ctx).
   return lexicon("staged", true, "left", left, "note", "staged from stage " + left + " to " + stage:number).
 }
 
@@ -2305,7 +2305,7 @@ function land_drop {
     set outcome to "nothing separated: the decouplers did not fire; keeping the Underhang and braking on".
   }
   set ctx:parts to ship:parts:length.
-  set ctx:last_ut to time:seconds.
+  claudia_restart_clock(ctx).
   local relit is "".
   if ship:availablethrust <= 0 {
     set relit to claudia_stage_into_engines(ctx).

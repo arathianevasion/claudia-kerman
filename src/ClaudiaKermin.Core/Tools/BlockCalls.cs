@@ -471,7 +471,7 @@ namespace ClaudiaKermin.Core.Tools
         /// kOS's <c>steeringmanager:maxstoppingtime</c>; 2 if missing). Gives <c>error</c> "", <c>turn_time</c> (s, at least 30),
         /// <c>turn_s</c> (the 190° turn alone), <c>top_rate</c> (deg/s) and <c>alpha</c> (deg/s², the weaker axis's angular
         /// acceleration), on the wheels and RCS (if the craft has MonoPropellant, whatever the switch; where RCS adds torque the
-        /// figures follow the RCS Use override, #422, and ignore <c>max_stopping_time</c>), and <c>wheels_turn_time</c> and <c>wheels_turn_s</c>, the same on the wheels alone (-1 when the
+        /// figures follow the burst turn, #692 and #730, and ignore <c>max_stopping_time</c>), and <c>wheels_turn_time</c> and <c>wheels_turn_s</c>, the same on the wheels alone (-1 when the
         /// wheels have no torque about pitch or yaw); or only <c>error</c>, "no usable torque".
         /// </summary>
         public static IDictionary<string, object> TurnTime(IDictionary<string, object> input, TurnCraft craft)
@@ -608,6 +608,8 @@ namespace ClaudiaKermin.Core.Tools
             ask.TryGetValue("phase", out phase);
             ask.TryGetValue("why", out why);
             ask.TryGetValue("sibling", out sibling);
+            object timing;
+            if (ask.TryGetValue("timing", out timing)) return Timing(ask, timing as string);
             if (!(target is string)) return Step(new TransferFlightStep { Error = "found no transfer: target must be a body's name" });
             var maxDuration = NumberOrNull(ask, "max_duration");
             var step = TransferFlight.Next(snapshot, new TransferFlightAsk
@@ -630,6 +632,26 @@ namespace ClaudiaKermin.Core.Tools
                 Sibling = sibling as bool? ?? false,
             });
             return Step(step);
+        }
+
+        /// <summary>
+        /// TRANSFERSTEP's timing asks, for <c>return</c> (#731): <c>timing</c> "earliest" (<c>start_ut</c>, <c>turn_time</c>, <c>window</c>)
+        /// gives <c>ut</c>, the earliest departure; "correction" (<c>mid</c>, <c>now</c>, <c>lead</c>, <c>start_ut</c>, <c>max_duration</c>
+        /// "auto" or s) gives <c>ut</c> and <c>why</c> ("" or why there is no time for the Course Correction). Shaped as a step, with <c>do</c> "timing".
+        /// </summary>
+        private static IDictionary<string, object> Timing(IDictionary<string, object> ask, string kind)
+        {
+            var step = new TransferFlightStep { Do = "timing", Kind = kind ?? "" };
+            var why = "";
+            if (kind == "earliest")
+                step.Ut = TransferFlight.Earliest(Number(ask, "start_ut", 0), Number(ask, "turn_time", 0), ask.ContainsKey("window") ? ask["window"] as double? : null);
+            else if (kind == "correction")
+                step.Ut = TransferFlight.CorrectionUt(Number(ask, "mid", 0), Number(ask, "now", 0), Number(ask, "lead", 0), Number(ask, "start_ut", 0), NumberOrNull(ask, "max_duration"), out why);
+            else
+                step.Error = "found no timing: timing must be 'earliest' or 'correction'";
+            var result = Step(step);
+            result["why"] = why;
+            return result;
         }
 
         private static IDictionary<string, object> Step(TransferFlightStep step)

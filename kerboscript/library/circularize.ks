@@ -244,7 +244,7 @@ function circularize {
   if ship:orbit:eccentricity > opt:tolerance and circularize_near(ship:orbit:apoapsis, ship:orbit:periapsis, ship:body:radius, plan:rad, opt:finish_fraction, plan:floor_alt) {
     // exec_node's staging dropped parts on purpose; the trim's ticks count from here.
     set ctx:parts to ship:parts:length.
-    set ctx:last_ut to time:seconds.
+    claudia_restart_clock(ctx).
     local trim is circularize_trim_node().
     add trim.
     local trimmed is claudia_trim(ctx, { return trim:deltav. }, 0.1).

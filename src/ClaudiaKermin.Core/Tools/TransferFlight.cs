@@ -404,7 +404,7 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>
         /// The Course Correction's burn UT (#368): <paramref name="mid"/>, or sooner when max_duration ends before then, leaving 120 s
         /// of it to burn in. A burn sooner than <paramref name="lead"/> s from now can't be flown: <paramref name="reason"/> says
-        /// why, else "". Pure (claudia_correction_ut's rule; return keeps the Kerboscript).
+        /// why, else "". Pure; return asks it through TRANSFERSTEP (#731).
         /// </summary>
         internal static double CorrectionUt(double mid, double now, double lead, double startUt, double? maxDuration, out string reason)
         {

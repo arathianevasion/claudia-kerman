@@ -255,7 +255,7 @@ namespace ClaudiaKermin.Core.Tests
             var snapshot = rig.Snapshot();
             var view = new MissionView { Stage = inMission ? MissionStage.Running : MissionStage.None };
             view.Settings.TimeVersusDeltaV = TimeVersusDeltaV.MostEfficient;
-            view.StampSnapshot(snapshot);
+            MissionView.Stamp(snapshot, view);
             var setting = inMission ? TimeVersusDeltaV.MostEfficient : TimeVersusDeltaV.Balanced;
             Assert.Equal(setting, snapshot.TimeVersusDeltaV);
 

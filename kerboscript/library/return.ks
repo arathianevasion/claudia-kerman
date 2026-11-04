@@ -292,14 +292,19 @@ function return {
   }
 
   // The ejection is the mod's solver, solved here from the live orbit: a block-internal call (ADR 0007), so it sits in
-  // the block. Its earliest departure leaves time to turn to the burn, as transfer_to's does (claudia_earliest). A call
+  // the block. Its earliest departure leaves time to turn to the burn, as transfer_to's does (Core's, via TRANSFERSTEP). A call
   // that threw gives only its error (#439), as a solve that found nothing does.
   local turn is addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime)).
   if turn:error <> "" {
     return claudia_finish(ctx, false, turn:error, extra).
   }
+  local first is addons:claudia:transferstep(lexicon("timing", "earliest", "start_ut", ctx:start_ut,
+    "turn_time", turn:turn_time, "window", opt:window)).
+  if first:error <> "" {
+    return claudia_finish(ctx, false, first:error, extra).
+  }
   local found is addons:claudia:returnburn(return_with_inc(lexicon("target_pe", opt:target_pe,
-    "earliest_ut", claudia_earliest(ctx:start_ut, turn:turn_time, opt:window)), opt:target_inc)).
+    "earliest_ut", first:ut), opt:target_inc)).
   if found:error <> "" {
     return claudia_finish(ctx, false, found:error, extra).
   }
@@ -345,9 +350,13 @@ function return {
     }
     if needed {
       // 300 s to turn to and lead the burn, as before #450, so the aimed correction's timing is unchanged.
-      local when is claudia_correction_ut(mid, time:seconds, 300, ctx:start_ut, opt:max_duration).
-      if when:reason <> "" {
-        return claudia_finish(ctx, false, when:reason, extra).
+      local when is addons:claudia:transferstep(lexicon("timing", "correction", "mid", mid, "now", time:seconds,
+        "lead", 300, "start_ut", ctx:start_ut, "max_duration", opt:max_duration)).
+      if when:error <> "" {
+        return claudia_finish(ctx, false, when:error, extra).
+      }
+      if when:why <> "" {
+        return claudia_finish(ctx, false, when:why, extra).
       }
       if return_aims(opt) {
         set fixed to return_aimed_correction(ctx, planet, opt:target_pe, when:ut, aim).

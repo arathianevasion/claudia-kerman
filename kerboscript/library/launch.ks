@@ -352,7 +352,7 @@ function launch_release_clamps {
         stage.
         wait 0.5.
         set ctx:parts to ship:parts:length.
-        set ctx:last_ut to time:seconds.
+        claudia_restart_clock(ctx).
       }
       return.
     }

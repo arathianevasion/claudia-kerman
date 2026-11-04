@@ -526,8 +526,7 @@ namespace ClaudiaKermin.Core.Missions
             if (_snapshot != null)
             {
                 // A planet's plan_transfer row picks its Transfer Window by the Mission Setting, as a tool call would (#458).
-                _snapshot.TimeVersusDeltaV = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV;
-                _snapshot.MarginPercent = _config.CraftCheckMarginPercent;
+                _snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent);
             }
             return MissionPrompts.StageTable(_snapshot, goal, mission.PlannedAscent) + MissionPrompts.PadPlanning(_snapshot);
         }

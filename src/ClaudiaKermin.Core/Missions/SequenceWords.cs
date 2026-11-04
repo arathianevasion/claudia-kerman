@@ -33,14 +33,28 @@ namespace ClaudiaKermin.Core.Missions
             return sequence.Name + " " + sequence.Intent;
         }
 
+        /// <summary>A landing, touchdown or takeoff verb with its preposition: "land on the", "ascend from", "take off from".</summary>
+        private const string SurfaceVerb = @"\b(?:land(?:s|ed|ing)?|touch ?down|ascen(?:d|ds|t|ding)|lift ?off|take ?off|launch(?:es|ing)?)\s+(?:on|at|near|over|from|off)\s+(?:the\s+)?";
+
         /// <summary>The body named first in <paramref name="words"/>, or null for none.</summary>
         public static SnapshotBody NamedBody(GameSnapshot snapshot, string words)
+        {
+            return FirstBody(snapshot, words, "");
+        }
+
+        /// <summary>The body a landing or takeoff names ("Land on the Mun", "ascend from Minmus"), or null for none.</summary>
+        private static SnapshotBody SurfaceBody(GameSnapshot snapshot, string words)
+        {
+            return FirstBody(snapshot, words, SurfaceVerb);
+        }
+
+        private static SnapshotBody FirstBody(GameSnapshot snapshot, string words, string before)
         {
             SnapshotBody first = null;
             var firstAt = int.MaxValue;
             foreach (var body in snapshot.Bodies.Where(b => b.Name.Length > 0))
             {
-                var match = Regex.Match(words, @"\b" + Regex.Escape(body.Name) + @"\b", RegexOptions.IgnoreCase);
+                var match = Regex.Match(words, before + @"\b" + Regex.Escape(body.Name) + @"\b", RegexOptions.IgnoreCase);
                 if (match.Success && match.Index < firstAt)
                 {
                     first = body;
@@ -48,6 +62,26 @@ namespace ClaudiaKermin.Core.Missions
                 }
             }
             return first;
+        }
+
+        /// <summary>
+        /// The body a leg's surface work is at (#726, the Margin check's thrust): a return home is at Kerbin, unless the leg lands or
+        /// takes off from another body first ("Land on the Mun and return to Kerbin" is at the Mun). Otherwise the body its words
+        /// name, else the <paramref name="previous"/> leg's.
+        /// </summary>
+        public static SnapshotBody LegBody(GameSnapshot snapshot, string words, SnapshotBody previous)
+        {
+            if (!ReturnHome.IsMatch(words)) return NamedBody(snapshot, words) ?? previous;
+            return SurfaceBody(snapshot, words) ?? Body(snapshot, "Kerbin") ?? previous;
+        }
+
+        /// <summary>
+        /// The body the leg after this one starts from (#726): Kerbin once a leg returns home, since the craft has come home; else
+        /// the leg's <see cref="LegBody"/>. Chute Allocation takes a return's entry here too.
+        /// </summary>
+        public static SnapshotBody NextBody(GameSnapshot snapshot, string words, SnapshotBody previous)
+        {
+            return ReturnHome.IsMatch(words) ? Body(snapshot, "Kerbin") ?? previous : LegBody(snapshot, words, previous);
         }
 
         public static SnapshotBody Body(GameSnapshot snapshot, string name)
