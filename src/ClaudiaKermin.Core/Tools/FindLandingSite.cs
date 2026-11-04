@@ -228,7 +228,7 @@ namespace ClaudiaKermin.Core.Tools
                 if (one == null)
                     return PlanningJson.Quote(poi.StringValue) + " names no one Point of Interest on " + body.Name
                         + (pois.Count == 0 ? "; it has none" : "; its Points of Interest are: " + string.Join(", ", pois.Select(p => p.Name).ToArray()));
-                if (!one.Landable) return one.Name + " is not landable: " + one.Note;
+                if (!one.Landable) return one.Name + " is not a landable Point of Interest: " + one.Note;
                 name = one.Name;
                 query.PoiLatitude = one.Latitude;
                 query.PoiLongitude = one.Longitude;
@@ -252,7 +252,8 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The ring search's answer (#713): each site with its distance and bearing from the Point of Interest, and never the point itself.</summary>
         private static ToolOutcome RingAnswer(SnapshotBody body, string poiName, LandingSiteQuery query, LandingSiteResult found, double now)
         {
-            var json = new JsonWriter().BeginObject().Field("body", body.Name).Field("poi", poiName);
+            var json = new JsonWriter().BeginObject().Field("body", body.Name).Field("poi", poiName)
+                .Field("poi_latitude", PlanningJson.Round(query.PoiLatitude, 4)).Field("poi_longitude", PlanningJson.Round(query.PoiLongitude, 4)).Field("poi_min_m", query.PoiMinM);
             json.Name("sites").BeginArray();
             foreach (var site in found.Sites)
             {

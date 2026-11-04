@@ -245,8 +245,6 @@ namespace ClaudiaKermin.Core.Tools
         private static List<Candidate> RingPoints(SnapshotBody body, double inclination, LandingSiteQuery query)
         {
             var lat = query.PoiLatitude;
-            var sinH = Math.Max(-1, Math.Min(1, Math.Cos(inclination * Math.PI / 180) / Math.Max(0.0001, Math.Cos(lat * Math.PI / 180))));
-            var heading = Math.Asin(sinH) * 180 / Math.PI;
             var points = new List<Candidate>();
             for (var c = 0; c < RingCircles; c++)
             {
@@ -254,15 +252,25 @@ namespace ClaudiaKermin.Core.Tools
                 for (var b = 0; b < RingBearings; b++)
                 {
                     var bearing = (b + (c % 2) * 0.5) * 360.0 / RingBearings;
-                    var across = distance * Math.Min(Math.Abs(Math.Sin((bearing - heading) * Math.PI / 180)),
-                        Math.Abs(Math.Sin((bearing - (180 - heading)) * Math.PI / 180)));
-                    if (across < RingAcrossShare * query.PoiMinM) continue;
+                    if (AcrossM(distance, bearing, lat, inclination) < RingAcrossShare * query.PoiMinM) continue;
                     double siteLat, siteLon;
                     Destination(lat, query.PoiLongitude, bearing, distance / body.Radius * 180 / Math.PI, out siteLat, out siteLon);
                     points.Add(new Candidate { Sample = new SiteSample { Latitude = siteLat, Longitude = siteLon }, FromNear = distance, Bearing = bearing });
                 }
             }
             return points;
+        }
+
+        /// <summary>
+        /// How far a site <paramref name="distance"/> m from a point at <paramref name="latitude"/> on <paramref name="bearing"/>
+        /// degrees lies across the track of either pass over it, m, the nearer: an orbit of <paramref name="inclination"/> degrees
+        /// crosses that latitude heading h or 180 - h from north (sin h = cos i / cos lat).
+        /// </summary>
+        internal static double AcrossM(double distance, double bearing, double latitude, double inclination)
+        {
+            var sinH = Math.Max(-1, Math.Min(1, Math.Cos(inclination * Math.PI / 180) / Math.Max(0.0001, Math.Cos(latitude * Math.PI / 180))));
+            var heading = Math.Asin(sinH) * 180 / Math.PI;
+            return distance * Math.Min(Math.Abs(Math.Sin((bearing - heading) * Math.PI / 180)), Math.Abs(Math.Sin((bearing - (180 - heading)) * Math.PI / 180)));
         }
 
         /// <summary>The point <paramref name="arc"/> degrees of arc from (lat, lon) on <paramref name="bearing"/> degrees from north.</summary>

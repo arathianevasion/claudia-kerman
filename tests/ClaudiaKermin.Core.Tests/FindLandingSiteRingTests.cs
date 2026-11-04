@@ -152,10 +152,44 @@ namespace ClaudiaKermin.Core.Tests
             Assert.NotEmpty(result.GetProperty("sites").EnumerateArray());
             var refused = Call("{\"body\":\"Mun\",\"daylight\":false,\"poi\":\"TMA-7\"}", game);
             Assert.True(refused.IsError);
-            Assert.Contains("Monolith TMA-7 is not landable", refused.Json);
+            Assert.Contains("Monolith TMA-7 is not a landable Point of Interest", refused.Json);
             var unknown = Call("{\"body\":\"Mun\",\"daylight\":false,\"poi\":\"Duna Face\"}", game);
             Assert.True(unknown.IsError);
             Assert.Contains("Mun Rock Arch, Monolith TMA-7", unknown.Json);
+        }
+
+        [Fact]
+        public void LandsBlockCallGivesTheRingSiteWithThePointToKeepClearAndNeverThePoint()
+        {
+            var game = new FakeBody();
+            game.Objects.Add(new SurfaceObject { Body = "Mun", Name = "RockArch00", Latitude = PoiLat, Longitude = PoiLon });
+            game.Objects.Add(new SurfaceObject { Body = "Mun", Name = "Monolith02", Latitude = -82.2, Longitude = 102.9 });
+            var site = BlockCalls.LandingSite(new Dictionary<string, object>
+            {
+                { "poi", "rockarch00" }, { "daylight", false }, { "max_slope_deg", 5.0 }, { "max_correction_dv", 30.0 },
+            }, Snapshot(), game);
+            Assert.Equal("", site["error"]);
+            Assert.Equal("Mun Rock Arch", site["poi"]);
+            Assert.Equal(PoiLat, (double)site["poi_lat"], 3);
+            Assert.Equal(PoiLon, (double)site["poi_lng"], 3);
+            Assert.Equal(LandingSiteSearch.PoiMinM, (double)site["clear_m"]);
+            Assert.InRange(FromPoiM((double)site["lat"], (double)site["lng"]), LandingSiteSearch.PoiMinM - 10, LandingSiteSearch.PoiMaxM + 10);
+            // A divert keeps the site 50 m across the track from the point: the site is at least 0.7 x 150 m across it.
+            Assert.InRange((double)site["max_divert"], 0.7 * 150 - 50 - 1, 1500);
+            Assert.StartsWith("beside Mun Rock Arch: ", (string)site["note"]);
+            Assert.Contains(" m from it, bearing ", (string)site["note"]);
+
+            Assert.Equal("", BlockCalls.LandingSite(new Dictionary<string, object> { { "poi", "Mun Rock Arch" }, { "check_only", true } }, Snapshot(), game)["error"]);
+            Assert.Contains("not a landable Point of Interest",
+                (string)BlockCalls.LandingSite(new Dictionary<string, object> { { "poi", "TMA-7" }, { "check_only", true } }, Snapshot(), game)["error"]);
+            Assert.Contains("names no one Point of Interest on Mun",
+                (string)BlockCalls.LandingSite(new Dictionary<string, object> { { "poi", "Duna Face" }, { "check_only", true } }, Snapshot(), game)["error"]);
+
+            var steep = new FakeBody { Terrain = (lat, lon) => 10000 * lat };
+            steep.Objects.AddRange(game.Objects);
+            var none = BlockCalls.LandingSite(new Dictionary<string, object> { { "poi", "Mun Rock Arch" }, { "daylight", false } }, Snapshot(), steep);
+            Assert.StartsWith("no site beside Mun Rock Arch on Mun: no site in the ring", (string)none["error"]);
+            Assert.False(none.ContainsKey("lat"));
         }
 
         [Fact]

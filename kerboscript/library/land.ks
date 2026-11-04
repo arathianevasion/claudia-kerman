@@ -100,14 +100,14 @@ function land_extra {
     "staged_before_braking", false, "stage_left", -1, "dropped_underhang", list(), "underhang_kept", list(), "underhang_drop_agl", -1,
     "passes_missed", 0, "next_pass_ut", -1, "descent_shape", -1, "descent_pe", -1, "predicted_dv", -1, "actual_dv", -1,
     "predicted_clearance", -1, "moved_for_terrain", false, "shape_range", "",
-    "staged_before_deorbit", false, "lander_dv", -1, "lander_need", -1, "vertical_fallback", false).
+    "staged_before_deorbit", false, "lander_dv", -1, "lander_need", -1, "vertical_fallback", false, "poi", "", "distance_to_poi", -1).
 }
 
 // "" or why an option's value isn't one the block can use.
 function land_unreadable {
   parameter opt.
   local t is opt:target.
-  local target_rule is "target must be " + char(34) + "any" + char(34) + ", " + char(34) + "vessel" + char(34) + ", LATLNG(lat, lng), lexicon(" + char(34) + "lat" + char(34) + ", x, " + char(34) + "lng" + char(34) + ", y) or lexicon(" + char(34) + "biome" + char(34) + ", name), not ".
+  local target_rule is "target must be " + char(34) + "any" + char(34) + ", " + char(34) + "vessel" + char(34) + ", LATLNG(lat, lng), lexicon(" + char(34) + "lat" + char(34) + ", x, " + char(34) + "lng" + char(34) + ", y), lexicon(" + char(34) + "biome" + char(34) + ", name) or lexicon(" + char(34) + "poi" + char(34) + ", name), not ".
   if t:istype("String") {
     if t <> "any" and t <> "vessel" {
       return target_rule + "'" + t + "'".
@@ -179,19 +179,20 @@ function land_auto_or_in {
 }
 
 // "" or why a biome target (a lexicon with the key biome) isn't one the block can use: biome a name,
-// and near, if given, a LATLNG or a lat/lng lexicon; no other keys.
+// and near, if given, a LATLNG or a lat/lng lexicon; no other keys. A Point of Interest target (#713) takes only poi, a name.
 function land_biome_unreadable {
   parameter t.
-  local name_rule is "target's biome must be a biome's name, e.g. " + char(34) + "Midlands" + char(34).
-  if not t:biome:istype("String") {
+  local kind is land_site_kind(t).
+  local name_rule is choose "target's poi must be a find_poi name" if kind = "poi" else "target's biome must be a biome's name, e.g. " + char(34) + "Midlands" + char(34).
+  if not t[kind]:istype("String") {
     return name_rule.
   }
-  if t:biome:trim = "" {
+  if t[kind]:trim = "" {
     return name_rule.
   }
   for key in t:keys {
-    if key <> "biome" and key <> "near" {
-      return "a biome target takes only biome and near, not " + key.
+    if key <> kind and (key <> "near" or kind = "poi") {
+      return choose "a poi target takes only poi, not " + key if kind = "poi" else "a biome target takes only biome and near, not " + key.
     }
   }
   if t:haskey("near") {
@@ -211,13 +212,19 @@ function land_biome_unreadable {
   return "".
 }
 
-// True if the target option is a biome target.
+// True if the target option is one the site search finds a site for: a biome or a Point of Interest (#713).
 function land_is_biome {
   parameter target_opt.
   if not target_opt:istype("Lexicon") {
     return false.
   }
-  return target_opt:haskey("biome").
+  return target_opt:haskey("biome") or target_opt:haskey("poi").
+}
+
+// The key of such a target (land_is_biome): "poi" for a Point of Interest (#713), else "biome". Pure.
+function land_site_kind {
+  parameter target_opt.
+  return choose "poi" if target_opt:haskey("poi") else "biome".
 }
 
 // What land asks ADDONS:CLAUDIA:LANDINGSITE (find_landing_site's search) for a biome target: a
@@ -228,7 +235,8 @@ function land_is_biome {
 // max_slope 0 asks for 0.1 degrees. Pure.
 function land_site_query {
   parameter target_opt, daylight, max_slope, within_hours is "auto", reach is 30.
-  local query is lexicon("biome", target_opt:biome, "daylight", daylight, "max_slope_deg", max(0.1, max_slope), "max_correction_dv", reach).
+  local kind is land_site_kind(target_opt).
+  local query is lexicon(kind, target_opt[kind], "daylight", daylight, "max_slope_deg", max(0.1, max_slope), "max_correction_dv", reach).
   if target_opt:haskey("near") {
     query:add("near", lexicon("latitude", target_opt:near:lat, "longitude", target_opt:near:lng)).
   }
@@ -242,7 +250,7 @@ function land_site_query {
 // refusal (#591) to fail with before anything stages, else "". Any other error waits for the site search. Pure.
 function land_unknown_biome {
   parameter named.
-  if named:error:contains(" is not a biome on ") {
+  if named:error:contains(" is not a biome on ") or named:error:contains(" Point of Interest") {
     return named:error.
   }
   return "".
@@ -1053,22 +1061,6 @@ function land_fall_reach {
   return v_h * land_fall_eta(h, v_down, g).
 }
 
-// True if a touchdown point dist m from where the Underhang hits is clear of it: 50 m or more. Pure.
-function land_clear_of {
-  parameter dist.
-  return dist >= 50.
-}
-
-// Metres to move a touchdown point dist m from where the Underhang hits, away from it, to be clear
-// (land_clear_of): 0 if it is, never over max_divert. Pure.
-function land_clear_shift {
-  parameter dist, max_divert.
-  if land_clear_of(dist) {
-    return 0.
-  }
-  return min(max_divert, 50 - dist).
-}
-
 // ---- Pure helpers: when braking starts, for a craft that turns slowly (#380) ----
 
 // The horizontal deceleration (m/s^2) braking plans on: 95% of a_max (m/s^2) with g (m/s^2) held up.
@@ -1516,7 +1508,11 @@ function land {
     }
   }
   local by_biome is land_is_biome(opt:target).
+  local kind is "biome".
+  local aim_name is "".
   if by_biome {
+    set kind to land_site_kind(opt:target).
+    set aim_name to opt:target[kind].
     if opt:target:haskey("near") {
       if opt:target:near:istype("GeoCoordinates") {
         if opt:target:near:body:name <> body:name {
@@ -1559,7 +1555,7 @@ function land {
     if named:body <> body:name {
       return claudia_finish(ctx, false, "the Target Vessel " + named:name + " is on " + named:body + ", not " + body:name, extra).
     }
-    set keep_clear to body:geopositionlatlng(named:lat, named:lng).
+    set keep_clear to lexicon("at", body:geopositionlatlng(named:lat, named:lng), "m", 50, "phase", "clear_vessel").
     set site to land_beside(named:lat, named:lng, opt:vessel_offset, ship:orbit:inclination, body:radius).
     set opt:max_divert to land_vessel_divert(opt:max_divert, opt:vessel_offset).
     addons:claudia:blocktrace("land", lexicon("phase", "site", "note", "beside " + named:name, "lat", round(site:lat, 5), "lng", round(site:lng, 5))).
@@ -1568,7 +1564,7 @@ function land {
   // #622: staging can't be undone, so a biome the body doesn't have (#591) is refused before it, by the site search's
   // check-only call (block-internal, ADR 0007). A biome with no site is only known after staging (#528).
   if by_biome {
-    local named is addons:claudia:landingsite(lexicon("biome", opt:target:biome, "check_only", true)).
+    local named is addons:claudia:landingsite(lexicon(kind, aim_name, "check_only", true)).
     local unknown is land_unknown_biome(named).
     if unknown <> "" {
       return claudia_finish(ctx, false, unknown, extra).
@@ -1647,7 +1643,7 @@ function land {
         local found is addons:claudia:landingsite(site_ask).
         if found:error <> "" {
           if tried:length > 0 {
-            set plan:error to land_sites_refused(plan:error, tried:length, opt:target:biome).
+            set plan:error to land_sites_refused(plan:error, tried:length, aim_name).
             break.
           }
           if found:error:contains(" is not a biome on ") {
@@ -1658,7 +1654,14 @@ function land {
         set site to lexicon("lat", found:lat, "lng", found:lng).
         tried:add(site).
         if found:near_edge {
-          addons:claudia:blocktrace("land", lexicon("phase", "site", "note", "at the " + opt:target:biome + " biome edge: nothing deeper reachable")).
+          addons:claudia:blocktrace("land", lexicon("phase", "site", "note", "at the " + aim_name + " biome edge: nothing deeper reachable")).
+        }
+        // #713: a Point of Interest's ring site; the point itself is keep_clear, and a divert stays across the track from it.
+        if found:haskey("poi") {
+          set keep_clear to lexicon("at", body:geopositionlatlng(found:poi_lat, found:poi_lng), "m", found:clear_m, "phase", "clear_poi").
+          set extra:poi to found:poi.
+          set opt:max_divert to min(opt:max_divert, found:max_divert).
+          addons:claudia:blocktrace("land", lexicon("phase", "site", "note", found:note, "lat", round(site:lat, 5), "lng", round(site:lng, 5))).
         }
       }
       set r_pe to land_pe_radius(site, approach, ship:orbit:semimajoraxis).
@@ -1691,7 +1694,7 @@ function land {
       }
       if not land_next_site(by_biome, plan:error, tried:length) {
         if by_biome {
-          set plan:error to land_sites_refused(plan:error, tried:length, opt:target:biome).
+          set plan:error to land_sites_refused(plan:error, tried:length, aim_name).
         }
         break.
       }
@@ -1937,6 +1940,9 @@ function land {
     return claudia_finish(ctx, false, landed, extra).
   }
   set extra:distance_to_target to round(land_surface_distance(aim:lat, aim:lng, ship:geoposition:lat, ship:geoposition:lng, body:radius)).
+  if extra:poi <> "" {
+    set extra:distance_to_poi to round(land_surface_distance(keep_clear:at:lat, keep_clear:at:lng, ship:geoposition:lat, ship:geoposition:lng, body:radius)).
+  }
   // SLOPE and BIOME give lexicon("error", reason) when they throw (#439): the landing stands, the reading is -1 or "".
   local read_slope is addons:claudia:slope(ship:geoposition).
   set extra:slope to choose -1 if read_slope:istype("Lexicon") else round(read_slope, 1).
@@ -1946,9 +1952,10 @@ function land {
   if extra:lean > 30 {
     return claudia_finish(ctx, false, "tipped over on landing", extra).
   }
-  if by_biome {
-    if not land_same_biome(extra:biome, opt:target:biome) {
-      return claudia_finish(ctx, false, "landed in the " + extra:biome + ", outside the " + opt:target:biome + " biome (" + extra:distance_to_target + " m from the site chosen in it)", extra).
+  if by_biome and kind = "biome" {
+    if not land_same_biome(extra:biome, aim_name) {
+      return claudia_finish(ctx, false, "landed in the " + extra:biome + ", outside the " + aim_name + " biome (" + extra:distance_to_target + " m from the site chosen in it)", extra).
+
     }
   }
   return claudia_finish(ctx, true, "", extra).
@@ -2326,29 +2333,19 @@ function land_drop_impact {
   return body:geopositionof(ship:position + v_h:normalized * land_fall_reach(radar, -v_v, v_h:mag, g)).
 }
 
-// The touchdown point (lat, lng) moved at least 50 m clear of where the Underhang hits (impact, a
-// GeoCoordinates), straight away from it, by no more than max_divert (land_clear_shift); as it was
-// if already clear. track: the way to move if the two are on the same spot. Traces a move as phase ("clear_vessel" when
-// it keeps a "vessel" target's site clear of the Target Vessel the same way, #662).
+// The touchdown point (lat, lng) moved clear_m [50] m clear of impact (a GeoCoordinates: where the Underhang hits, or
+// keep_clear's Target Vessel or Point of Interest, #662, #713), straight away from it, by no more than max_divert: Core's
+// KeepClear (block-internal KEEPCLEAR, ADR 0014). track: the way to move if the two are on the same spot. Traces a move as phase.
 function land_clear_site {
-  parameter site, impact, max_divert, track, phase is "clear".
-  local dist is land_surface_distance(site:lat, site:lng, impact:lat, impact:lng, body:radius).
-  local shift is land_clear_shift(dist, max_divert).
-  if shift <= 0 {
+  parameter site, impact, max_divert, track, phase is "clear", clear_m is 50.
+  local ahead is body:geopositionof(body:geopositionlatlng(site:lat, site:lng):position + track:normalized * 100).
+  local moved is addons:claudia:keepclear(lexicon("lat", site:lat, "lng", site:lng, "keep_lat", impact:lat, "keep_lng", impact:lng,
+    "ahead_lat", ahead:lat, "ahead_lng", ahead:lng, "clear_m", clear_m, "max_divert", max_divert, "radius", body:radius)).
+  if not moved:haskey("moved") or moved:moved <= 0 {
     return site.
   }
-  local site_pos is body:geopositionlatlng(site:lat, site:lng):position.
-  local up_v is (site_pos - body:position):normalized.
-  local away is vxcl(up_v, site_pos - impact:position).
-  if away:mag < 1 {
-    set away to vxcl(up_v, track).
-  }
-  if away:mag < 0.001 {
-    set away to ship:north:vector.
-  }
-  local spot is body:geopositionof(site_pos + away:normalized * shift).
-  addons:claudia:blocktrace("land", lexicon("phase", phase, "from_impact", round(dist), "moved", round(shift))).
-  return lexicon("lat", spot:lat, "lng", spot:lng).
+  addons:claudia:blocktrace("land", lexicon("phase", phase, "from_impact", round(moved:dist), "moved", round(moved:moved))).
+  return lexicon("lat", moved:lat, "lng", moved:lng).
 }
 
 // The shared wait loop (claudia_warp_to) to ut, with a stop condition: ended early (returns "") once
@@ -2460,8 +2457,8 @@ function land_recover_under {
 // rest of the predicted path, within 45 degrees of retrograde and holding still for a tiny demand (land_steer),
 // and stops braking that raises periapsis (land_brake_guard) or is above the predicted path (ADDONS:CLAUDIA:LANDGUARD,
 // which near the site comes straight down instead, #712): throttle 0, the orbit brought back to near-circular if it must be (land_recover), safe, traced. Adds the
-// braking it flew to actual_dv. keep_clear: a "vessel" target's Target Vessel (GeoCoordinates; "" for none), which a site
-// moved for a slope or the Underhang stays 50 m or more from (#662). Returns "" or why it failed.
+// braking it flew to actual_dv. keep_clear: lexicon("at" (GeoCoordinates), "m", "phase") for a "vessel" target's Target Vessel
+// (#662) or a Point of Interest (#713) that a site moved for a slope or the Underhang stays m or more from; "" for none. Returns "" or why it failed.
 function land_descend {
   parameter ctx, aim, extra, turn, under, plan, predict, keep_clear is "".
   local opt is ctx:opt.
@@ -2620,7 +2617,7 @@ function land_descend {
           set site to land_clear_site(site, drop_impact, opt:max_divert, fall_ahead).
         }
         if not keep_clear:istype("String") {
-          set site to land_clear_site(site, keep_clear, opt:max_divert, fall_ahead, "clear_vessel").
+          set site to land_clear_site(site, keep_clear:at, opt:max_divert, fall_ahead, keep_clear:phase, keep_clear:m).
         }
         set extra:best_effort to not spot:flat.
         set dist to land_surface_distance(here:lat, here:lng, site:lat, site:lng, body:radius).
@@ -2796,7 +2793,7 @@ function land_descend {
           set drop_impact to impact.
           set site to land_clear_site(site, drop_impact, opt:max_divert, v_h).
           if not keep_clear:istype("String") {
-            set site to land_clear_site(site, keep_clear, opt:max_divert, v_h, "clear_vessel").
+            set site to land_clear_site(site, keep_clear:at, opt:max_divert, v_h, keep_clear:phase, keep_clear:m).
           }
         }
       }
