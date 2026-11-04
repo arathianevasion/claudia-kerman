@@ -108,6 +108,17 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void AComeHomeLegAfterAMunLandingIsTheKerbinReturnEntry()
+        {
+            var plan = new List<PlannedSequence> { Leg("Mun landing and return", "Land on the Mun and come home.", 500) };
+
+            var home = Assert.Single(Allocate(Craft(landerChutes: 1), plan).Entries);
+
+            Assert.True(home.Return);
+            Assert.Equal("Kerbin", home.Body);
+        }
+
+        [Fact]
         public void AKerbinReturnAloneKeepsEveryChuteAboard()
         {
             var plan = new List<PlannedSequence> { Leg("Deorbit and splash down", "Reenter Kerbin's atmosphere and splash down under parachute.", 100) };
