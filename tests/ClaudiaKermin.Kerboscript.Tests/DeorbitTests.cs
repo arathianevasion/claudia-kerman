@@ -192,25 +192,25 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [Fact]
         public void A_craft_with_a_heat_shield_sends_the_shield_s_uid()
         {
-            Assert.Equal(new[] { "shield" }, Printed("local parts is list(pod, shield, tank).\nprint deorbit_shield_drop(parts, list()):join(\",\")."));
+            Assert.Equal(new[] { "shield" }, Printed("local parts is list(pod, shield, tank).\nprint claudia_shield_drop(parts, list()):join(\",\")."));
         }
 
         [Fact]
         public void A_craft_without_a_heat_shield_sends_an_empty_list()
         {
-            Assert.Equal(new[] { "0" }, Printed("local parts is list(pod, tank).\nprint deorbit_shield_drop(parts, list()):length."));
+            Assert.Equal(new[] { "0" }, Printed("local parts is list(pod, tank).\nprint claudia_shield_drop(parts, list()):length."));
         }
 
         [Fact]
         public void A_shield_that_separate_drops_is_left_out()
         {
-            Assert.Equal(new[] { "0" }, Printed("local parts is list(pod, shield, tank).\nprint deorbit_shield_drop(parts, list(\"shield\")):length."));
+            Assert.Equal(new[] { "0" }, Printed("local parts is list(pod, shield, tank).\nprint claudia_shield_drop(parts, list(\"shield\")):length."));
         }
 
         [Fact]
         public void A_shield_with_no_decoupler_is_not_sent_because_reentry_would_not_drop_it()
         {
-            Assert.Equal(new[] { "0" }, Printed("local bare is mk(\"bare\", list(\"ModuleAblator\")).\nprint deorbit_shield_drop(list(pod, bare), list()):length."));
+            Assert.Equal(new[] { "0" }, Printed("local bare is mk(\"bare\", list(\"ModuleAblator\")).\nprint claudia_shield_drop(list(pod, bare), list()):length."));
         }
 
         [Fact]
@@ -218,7 +218,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
         {
             Assert.Equal(new[] { "shield" }, Printed("print deorbit_query(lexicon(\"lat\", 0, \"lng\", 0), 1240, 3600, 0, 10, 320, list(), list(\"shield\")):shield_drop:join(\",\")."));
             var source = CoreLibrary.Files.Single(f => f.Name == "deorbit").Source;
-            Assert.Equal(2, source.Split("deorbit_shield_drop(ship:parts, claudia_drop_uids(separation))").Length - 1);
+            Assert.Equal(2, source.Split("claudia_shield_drop(ship:parts, claudia_drop_uids(separation))").Length - 1);
         }
     }
 }

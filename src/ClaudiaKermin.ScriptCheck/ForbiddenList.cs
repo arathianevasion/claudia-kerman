@@ -76,7 +76,7 @@ namespace ClaudiaKermin.ScriptCheck
             RebootOrShutDown, "deactivate",
             OtherVessels, "sendmessage",
             PlanningTools, "planningtool",
-            BlockInternal, "landingsite landingpass brakepath deorbitburn reentryimpact turntime ejectionburn launchwindow correctionburn orbitburn returnburn chuteallocation targetvessel dockhold dockholdstate dockholdsettled dockguide dockfuel landguard keepclear burnworth turnplan burstturn transferstep");
+            BlockInternal, "landingsite landingpass brakepath deorbitburn reentryimpact turntime ejectionburn launchwindow correctionburn orbitburn returnburn chuteallocation targetvessel dockhold dockholdstate dockholdsettled dockguide dockfuel landguard keepclear predictionmiss burnworth turnplan burstturn transferstep");
 
         /// <summary>Suffixes forbidden on another vessel or its parts: they change it. Reading stays allowed.</summary>
         public static readonly HashSet<string> OtherVesselMutators = Set(
