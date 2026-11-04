@@ -272,17 +272,13 @@ namespace ClaudiaKermin.Core.Tests
 
                 var minmus = OnPad(1203.48, 9000).Bodies.Single(b => b.Name == "Minmus");
                 var window = WindowWaits.Window(OnPad(1203.48, 9000), minmus, setting, new PlayerConfig().CraftCheckMarginPercent);
-                if (setting == TimeVersusDeltaV.MostEfficient)
-                {
-                    Assert.True(mission.View.DueTime.HasDueTime);
-                    Assert.Equal(window.DepartureUt - WindowWaits.LaunchLeadS, mission.View.DueTime.Ut, 0);
-                    Assert.Equal("the Minmus window", mission.View.DueTime.WaitsFor);
-                }
-                else
-                {
-                    Assert.Equal(1203.48, window.DepartureUt, 0);
-                    Assert.False(mission.View.DueTime.HasDueTime);
-                }
+                // #690: from the pad both launch into Minmus's plane at its next launch window, within a Kerbin day, so neither
+                // sets a Due Time (never one past that launch window).
+                var launch = TransferWindows.Find(OnPad(1203.48, 9000), "Minmus", MissionPrompts.ArrivalPe(minmus), true, 15).Launch;
+                Assert.NotNull(launch);
+                Assert.True(window.DepartureUt - WindowWaits.LaunchLeadS <= launch.Ut + 1e-6);
+                Assert.True(launch.Ut - 1203.48 < WindowWaits.LongWaitS * 4);
+                Assert.False(mission.View.DueTime.HasDueTime);
             }
         }
 

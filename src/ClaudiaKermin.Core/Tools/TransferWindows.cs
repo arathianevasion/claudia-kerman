@@ -48,6 +48,11 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The parking orbit's periapsis altitude (m) the ejection is costed from, and whether it was assumed (no closed orbit round the planet).</summary>
         public double ParkingPe;
         public bool ParkingAssumed;
+        /// <summary>
+        /// From the pad to an out-of-plane moon (#690): the launch into the moon's plane the windows assume, null otherwise. The windows
+        /// depart <see cref="WindowWaits.LaunchLeadS"/> after its UT, and cost the transfer in the moon's plane, no plane change.
+        /// </summary>
+        public LaunchWindow Launch;
         /// <summary>Whether the target is a moon of the craft's planet (#647).</summary>
         public bool Moon;
         /// <summary>The craft's delta-v from the Game Snapshot's stage table, m/s; null when the stock simulator gives none (#648).</summary>
@@ -106,6 +111,8 @@ namespace ClaudiaKermin.Core.Tools
         public const double NoSavingDv = 5;
         /// <summary>The points on a moon's arc the plane change is tried at.</summary>
         private const int PlanePoints = 32;
+        /// <summary>A moon this far (degrees) out of the equator's plane is launched into from the pad (#690); the Mun, in it, is not.</summary>
+        private const double OutOfPlaneDeg = 1;
 
         /// <summary>
         /// The windows from the craft's planet to <paramref name="target"/>, arriving at <paramref name="targetPe"/> (m above its sea
@@ -235,7 +242,7 @@ namespace ClaudiaKermin.Core.Tools
             return new WindowSearch
             {
                 Target = problem.Name, Soonest = soonest, Optimal = optimal, From = from, Synodic = synodic,
-                ParkingPe = problem.ParkingPe, ParkingAssumed = problem.ParkingAssumed, Moon = problem.Moon, CraftDv = problem.CraftDv, LaterLegsDv = problem.LaterLegsDv,
+                ParkingPe = problem.ParkingPe, ParkingAssumed = problem.ParkingAssumed, Launch = problem.Launch, Moon = problem.Moon, CraftDv = problem.CraftDv, LaterLegsDv = problem.LaterLegsDv,
             };
         }
 
@@ -301,6 +308,8 @@ namespace ClaudiaKermin.Core.Tools
             /// <summary>The parking orbit's periapsis altitude, m, and whether it is the Delta-v Map's low orbit (the craft has no closed one).</summary>
             public double ParkingPe;
             public bool ParkingAssumed;
+            /// <summary>From the pad to a moon out of the equator's plane (#690): the launch window into the moon's plane; null otherwise.</summary>
+            public LaunchWindow Launch;
             /// <summary>The capture's periapsis radius round the target.</summary>
             public double CaptureR;
             /// <summary>Whether the capture counts in the total.</summary>
@@ -357,6 +366,19 @@ namespace ClaudiaKermin.Core.Tools
                 if (snapshot.DeltaVSimulator && snapshot.Stages.Count > 0 && !snapshot.DeltaVUnreliable) p.CraftDv = snapshot.Stages.Sum(st => st.DeltaVVac);
                 p.LaterLegsDv = snapshot.LaterLegsDv;
                 if (Vec3.Dot(p.Plane, p.Target.W) < 0) p.Plane = p.Plane * -1;
+                // From the pad to a moon out of the equator's plane (#690): launch into the moon's plane at the next launch window (as
+                // plan_ascent's launch_at), so the parking orbit is the moon's plane and the windows start after that launch.
+                var grounded = snapshot.Situation == "PRELAUNCH" || snapshot.Situation == "LANDED" || snapshot.Situation == "SPLASHED";
+                if (moon && p.ParkingAssumed && grounded && Math.Abs(body.Inclination) >= OutOfPlaneDeg)
+                {
+                    var launch = LaunchWindow.Find(home, snapshot.Ut, snapshot.Latitude, snapshot.CelestialLongitude, body.Inclination, body.Lan, p.ParkingPe);
+                    if (launch.Error == null)
+                    {
+                        p.Launch = launch;
+                        p.Plane = p.Target.W;
+                        p.From = launch.Ut + WindowWaits.LaunchLeadS;
+                    }
+                }
                 return p;
             }
 
