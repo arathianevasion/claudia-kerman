@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using ClaudiaKerman.Core;
 using ClaudiaKerman.Core.Missions;
 
 namespace ClaudiaKerman.Adapter
@@ -37,6 +38,27 @@ namespace ClaudiaKerman.Adapter
             part.flagURL = ClaudiaFlagKeeper.Url;
             foreach (var decal in part.FindModulesImplementing<FlagDecal>()) decal.UpdateFlagTexture();
             foreach (var decal in part.FindModulesImplementing<FlagDecalBackground>()) decal.UpdateFlagTexture();
+        }
+
+        /// <summary>
+        /// A save from before the rename (ADR 0015) flies the Claudia Flag under its old URL, which no longer loads: the agency
+        /// flag and every vessel's parts (planted flags included) take the new one.
+        /// </summary>
+        public static void Renamed()
+        {
+            var game = HighLogic.CurrentGame;
+            if (game == null) return;
+            game.flagURL = RenameMigration.FlagUrl(game.flagURL);
+            if (game.flightState != null)
+                foreach (var proto in game.flightState.protoVessels)
+                    foreach (var snapshot in proto.protoPartSnapshots) snapshot.flagURL = RenameMigration.FlagUrl(snapshot.flagURL);
+            if (FlightGlobals.Vessels == null) return;
+            foreach (var vessel in FlightGlobals.Vessels)
+            {
+                if (vessel == null || !vessel.loaded) continue;
+                foreach (var part in vessel.parts)
+                    if (part.flagURL == RenameMigration.OldFlagUrl) Fly(part);
+            }
         }
 
         /// <summary>The game's agency flag now; "" with no game loaded.</summary>

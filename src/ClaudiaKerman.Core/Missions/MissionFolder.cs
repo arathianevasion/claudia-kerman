@@ -19,9 +19,15 @@ namespace ClaudiaKerman.Core.Missions
 
         private static readonly Encoding Utf8 = new UTF8Encoding(false);
 
+        public const string FolderName = "ClaudiaKerman";
+
+        /// <summary>The save's folder; an old <c>ClaudiaKermin</c> one that couldn't be moved is still read (ADR 0015).</summary>
         public static string Root(string saveDirectory)
         {
-            return Path.Combine(saveDirectory, "ClaudiaKerman");
+            var root = Path.Combine(saveDirectory, FolderName);
+            if (Directory.Exists(root)) return root;
+            var old = Path.Combine(saveDirectory, RenameMigration.OldFolderName);
+            return Directory.Exists(old) ? old : root;
         }
 
         public static string For(string saveDirectory, string missionId)

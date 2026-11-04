@@ -17,10 +17,25 @@ namespace ClaudiaKerman.Adapter
     {
         public const string MissionNode = "MISSION";
 
+        private ConfigNode _loaded;
+
+        // Kept only for a session where the mod stood down (DuplicateInstall), so saving then doesn't drop the Missions.
+        public override void OnLoad(ConfigNode node)
+        {
+            _loaded = node.CreateCopy();
+        }
+
         public override void OnSave(ConfigNode node)
         {
             var driver = MissionDriver.Current;
-            if (driver == null) return;
+            if (driver == null)
+            {
+                if (_loaded == null) return;
+                var kept = ReadSavedAgencyFlag(_loaded);
+                if (kept != null) node.AddValue(ClaudiaFlagKeeper.SavedAgencyFlagKey, kept);
+                foreach (var mission in _loaded.GetNodes(MissionNode)) node.AddNode(mission);
+                return;
+            }
             // Save-level, not a Mission's: the player's agency flag while the Claudia Flag flies in its place (#642).
             if (driver.SavedAgencyFlag != null) node.AddValue(ClaudiaFlagKeeper.SavedAgencyFlagKey, driver.SavedAgencyFlag);
             foreach (var state in driver.ExportStates())

@@ -271,7 +271,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>Claudia is among the crew aboard (in the editor, in the ship's crew manifest).</summary>
         public bool ClaudiaAboard
         {
-            get { return Crew.Any(c => c.Name == ClaudiaIdentity.Name); }
+            get { return Crew.Any(c => ClaudiaIdentity.IsHerName(c.Name)); }
         }
 
         /// <summary>Crew seats not taken by anyone aboard.</summary>
@@ -283,7 +283,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The crew aboard other than Claudia: they ride as passengers while she flies.</summary>
         public int Passengers
         {
-            get { return Crew.Count(c => c.Name != ClaudiaIdentity.Name); }
+            get { return Crew.Count(c => !ClaudiaIdentity.IsHerName(c.Name)); }
         }
         public List<SnapshotExperiment> Experiments = new List<SnapshotExperiment>();
         /// <summary>The game's bodies, for the Delta-v Map and thrust over weight.</summary>
@@ -292,7 +292,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>Crew aboard other than Claudia herself and Tourists: the Kerbals who could really fly the craft.</summary>
         public bool HasOtherCrew
         {
-            get { return Crew.Any(c => c.Name != ClaudiaIdentity.Name && c.Trait != "Tourist"); }
+            get { return Crew.Any(c => !ClaudiaIdentity.IsHerName(c.Name) && c.Trait != "Tourist"); }
         }
 
         /// <summary>The kOS processor Claudia would use: the one nearest the root. Null if the craft has none.</summary>

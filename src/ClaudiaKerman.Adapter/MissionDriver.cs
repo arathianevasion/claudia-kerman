@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using ClaudiaKerman.Core;
 using ClaudiaKerman.Core.Missions;
 using ClaudiaKerman.Core.Ui;
 using UnityEngine;
@@ -242,12 +243,16 @@ namespace ClaudiaKerman.Adapter
             {
                 _game = HighLogic.CurrentGame;
                 _saveFolder = HighLogic.SaveFolder;
-                _flag.Load(SavedAgencyFlagIn(_game));
+                // A save from before the rename (ADR 0015): its Mission folder and Claudia Flag take the new names first.
+                RenameMigration.MissionFolder(SaveDirectory(), LogLine);
+                ClaudiaFlags.Renamed();
+                _flag.Load(RenameMigration.FlagUrl(SavedAgencyFlagIn(_game)));
                 Send(new MissionsRestored(SaveDirectory(), Saved(_game)));
             }
             else if (HighLogic.CurrentGame != null && HighLogic.SaveFolder != _saveFolder)
             {
                 _saveFolder = HighLogic.SaveFolder;
+                RenameMigration.MissionFolder(SaveDirectory(), LogLine);
                 Send(new SaveLoaded(SaveDirectory()));
             }
 
@@ -337,6 +342,11 @@ namespace ClaudiaKerman.Adapter
             if (HighLogic.LoadedScene == GameScenes.FLIGHT) Strip.OnGUI();
             else Strip.Unlock();
             Carry();
+        }
+
+        private static void LogLine(string line)
+        {
+            Debug.Log(ModInfo.LogTag + " " + line);
         }
 
         private static string SaveDirectory()

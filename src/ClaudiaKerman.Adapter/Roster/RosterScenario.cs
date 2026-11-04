@@ -60,7 +60,7 @@ namespace ClaudiaKerman.Adapter.Roster
 
         private void Update()
         {
-            if (HighLogic.CurrentGame == null || HighLogic.CurrentGame.CrewRoster == null) return;
+            if (HighLogic.CurrentGame == null || HighLogic.CurrentGame.CrewRoster == null || DuplicateInstall.Found) return;
             if (!dirty && Time.realtimeSinceStartup < nextCheck) return;
             nextCheck = Time.realtimeSinceStartup + CheckInterval;
             dirty = false;
@@ -100,7 +100,7 @@ namespace ClaudiaKerman.Adapter.Roster
         // A Kerbal who has just been added with her role is re-rolled at once; everything else waits for Update.
         private void OnKerbalAdded(ProtoCrewMember kerbal)
         {
-            if (RosterGateway.IsClaudia(kerbal) && kerbal.name != ClaudiaIdentity.Name)
+            if (RosterGateway.IsClaudia(kerbal) && !ClaudiaIdentity.IsHerName(kerbal.name))
             {
                 var trait = ClaudiaIdentity.HiringTraits[random.Next(ClaudiaIdentity.HiringTraits.Length)];
                 KerbalRoster.SetExperienceTrait(kerbal, trait);

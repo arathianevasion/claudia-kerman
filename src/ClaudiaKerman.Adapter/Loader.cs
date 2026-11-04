@@ -58,9 +58,15 @@ namespace ClaudiaKerman.Adapter
         {
             DontDestroyOnLoad(this);
             Debug.Log(ModInfo.LoadedLine);
+            // The old GameData folder is installed too (ADR 0015): stand down; DuplicateInstall says why at the main menu.
+            if (DuplicateInstall.Found)
+            {
+                Destroy(this);
+                return;
+            }
             CheckKos();
 
-            var directory = ConfigDirectory.ResolveCurrent();
+            var directory = ConfigDirectory.ResolveCurrent(line => Debug.Log(ModInfo.LogTag + " " + line));
             var config = PlayerConfig.LoadOrCreate(directory, warning => Debug.LogWarning(ModInfo.LogTag + " " + warning));
             WindowMemory.Init(directory);
             WindowFrame.DebugTools = config.DebugTools;
@@ -120,6 +126,7 @@ namespace ClaudiaKerman.Adapter
 
         private void OnDestroy()
         {
+            if (_missions == null) return; // stood down in Awake: nothing was set up
             GameEvents.onGUIApplicationLauncherReady.Remove(AddButtons);
             GameEvents.onGUIApplicationLauncherDestroyed.Remove(RemoveButtons);
             GameEvents.onHideUI.Remove(HideUI);

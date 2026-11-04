@@ -8,6 +8,12 @@ namespace ClaudiaKerman.Core.Roster
     {
         public const string Name = "Claudia Kerman";
 
+        /// <summary>Her name, or her name from before the rename (ADR 0015) that an old save holds until the roster renames her.</summary>
+        public static bool IsHerName(string name)
+        {
+            return name == Name || name == RenameMigration.OldName;
+        }
+
         /// <summary>The name fragment that clashes with hers; matched case-insensitively.</summary>
         public const string ClashFragment = "Claudia";
 

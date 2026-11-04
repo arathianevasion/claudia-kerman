@@ -70,6 +70,7 @@ namespace ClaudiaKerman.Core.Roster
 
         // Her trait is unique by construction (out of the hiring pool, re-rolled on anyone else), so it survives a
         // rename; her name is the fallback when a mod changed her trait. Kerbal ids are not saved by KSP: never used.
+        // A save from before ADR 0015 has her as Claudia Kermin: found here, before the clash check, and renamed by RevertName.
         private static KerbalSnapshot FindClaudia(IList<KerbalSnapshot> kerbals)
         {
             KerbalSnapshot firstWithTrait = null;
@@ -80,9 +81,9 @@ namespace ClaudiaKerman.Core.Roster
                 if (kerbal.Trait == ClaudiaIdentity.TraitName)
                 {
                     if (kerbal.Name == ClaudiaIdentity.Name) return kerbal;
-                    if (firstWithTrait == null) firstWithTrait = kerbal;
+                    if (firstWithTrait == null || (kerbal.Name == RenameMigration.OldName && firstWithTrait.Name != RenameMigration.OldName)) firstWithTrait = kerbal;
                 }
-                else if (kerbal.Name == ClaudiaIdentity.Name && byName == null) byName = kerbal;
+                else if (ClaudiaIdentity.IsHerName(kerbal.Name) && (byName == null || kerbal.Name == ClaudiaIdentity.Name)) byName = kerbal;
             }
             return firstWithTrait ?? byName;
         }
