@@ -21,6 +21,15 @@ Fly the Mun validation flight on Mun Shot v2. At the first large RCS-assisted tu
 3. The apoapsis moves under 100 m across the turn with no engine firing (note it in the map view before and after).
 4. A one- or two-degree error close to a Burn Start stays on the wheels: no `RCS on: turning` line with an error under 10°.
 
+## Check 3: a burst turn is quick (#754)
+
+#754: a burst turn is planned for half the wheels' own time (`QuickShare` 0.5), capped at 80% of the time left to the burn; the time left is a limit, never a time to fill. A turn the burst would not finish within 0.8 of the wheels' time is not flown as a burst: the wheels turn on kOS's defaults.
+
+1. At a 60-110° turn before a node, with minutes to the burn: the turn finishes in about the wheels' time or less (`wheels_s` in the `RCS on: turning` line, `turn_s` in the TURNPLAN call), not the 70-96 s #754 saw.
+2. The `BURSTTURN` `coast, RCS off` line runs for a few seconds at most, not a minute.
+3. The `turned` line shows `coast ...°/s planned` well above the old 0.5-0.7°/s, and `monoprop` under about 1 unit. Note the planned and flown rates: #754 saw 1.12°/s flown against 0.69°/s planned, a gap not reproduced offline (kOS's own rate cap and RCS spin-up overshoot are the suspects); a gap that stays under 30% is harmless.
+4. A craft whose wheels are strong against its RCS flies no burst: no `RCS on: turning` burst line and the wheels turn alone.
+
 ## Report
 
 Post on #692: pass or fail for each check, the `turned` line(s), and the monopropellant figures.
