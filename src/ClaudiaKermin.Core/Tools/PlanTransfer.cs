@@ -42,8 +42,8 @@ namespace ClaudiaKermin.Core.Tools
                 // A planet's windows (#458) were paid for by shorter wording (prefix cost). Since #459, transfer_to flies a planet's
                 // window too, so its block is transfer_to for both; #670's "no burn" went with its planet guard.
                 return "The cheapest two-burn transfer in the next window, from this turn's Game Snapshot: to target (a moon of the "
-                    + "craft's body, or a planet) at target_pe (m), or to orbit (ap, pe m; inc, lan deg) anywhere on it. Gives the departure burn "
-                    + "(maneuver-node components) and time and the arrival burn; a planet: soonest and optimal windows. "
+                    + "craft's body, or a sibling) at target_pe (m), or to orbit (ap, pe m; inc, lan deg) anywhere on it. Gives the departure burn "
+                    + "(maneuver-node components) and time and the arrival burn; a sibling: soonest, optimal windows. "
                     + "capture false minimises the departure alone. Its block is transfer_to. Don't call it for other planets' moons.";
             }
         }
@@ -80,7 +80,7 @@ namespace ClaudiaKermin.Core.Tools
             if (string.IsNullOrEmpty(target) == (orbit == null)) return PlanningJson.Error("give target (a body) or orbit, one of them");
             if (target != null && !targetPe.HasValue) return PlanningJson.Error("target needs target_pe, the periapsis altitude to arrive at in metres");
             if (orbit != null && targetPe.HasValue) return PlanningJson.Error("target_pe is for a target body; an orbit is reached at its own altitude");
-            if (target != null && TransferWindows.IsPlanetTransfer(snapshot, target))
+            if (target != null && (TransferWindows.IsPlanetTransfer(snapshot, target) || TransferWindows.IsSiblingTransfer(snapshot, target)))
             {
                 var capture = JsonNode.Bool(input["capture"]) ?? true;
                 return Windows(TransferWindows.Find(snapshot, target, targetPe.Value, capture, snapshot.MarginPercent), snapshot, capture);
