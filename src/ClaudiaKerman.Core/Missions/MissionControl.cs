@@ -206,6 +206,8 @@ namespace ClaudiaKerman.Core.Missions
             public bool CutOffRetry;
             /// <summary>The turn was resent once with <see cref="MissionPrompts.PlanCallNote"/> after a mission_plan reply with no accepted plan (#667); not saved.</summary>
             public bool PlanCallRetry;
+            /// <summary>A Debrief turn was resent once with <see cref="EmptyDebrief.Note"/> after a reply with no debrief (#748); not saved.</summary>
+            public bool DebriefRetry;
             /// <summary>The reply to the final request at the step limit was refused off_schema (#668): <see cref="Pause"/> keeps the tool loop and Retry sends the final request again. Memory only.</summary>
             public bool KeepLoop;
             /// <summary>
@@ -1394,6 +1396,11 @@ namespace ClaudiaKerman.Core.Missions
             var problem = reply == null ? "it wasn't in the Mission reply format" : Mismatch(turn.Purpose, reply);
             if (problem != null)
             {
+                if (turn.Purpose == Purpose.Debrief && mission.DeferredRestore == null)
+                {
+                    EmptyDebriefReply(mission, turn);
+                    return;
+                }
                 if (reply != null && PlanNotProposed(reply) && TakesMissionPlan(turn.Purpose) && !turn.PlanCallRetry && mission.DeferredRestore == null)
                 {
                     PlanCallCorrection(mission, turn, problem);

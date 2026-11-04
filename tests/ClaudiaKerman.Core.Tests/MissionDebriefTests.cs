@@ -1359,6 +1359,63 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(MissionStage.Running, rig.Mission.View.Stage);
         }
 
+        // ---- A Debrief reply with no debrief (#748) ----
+
+        private static string NoDebriefJson(string kind = "debrief")
+        {
+            return "{\"kind\":\"" + kind + "\",\"say\":\"placeholder\",\"reply_intent\":\"none\",\"mission_plan\":null,\"sequence_plan\":null,\"alert\":null,\"debrief\":null}";
+        }
+
+        [Fact]
+        public void ADebriefReplyWithNoDebriefGetsOneCorrectionThenTheModsOwnOffNominalDebriefAndNoMoreRequests()
+        {
+            var rig = new Rig(this, NoDebriefJson(), Reply(NoDebriefJson("answer")), recheck: MarginRecheckMode.Never);
+            // Were the loop to come back, these would answer it; the count below shows none is asked.
+            for (var i = 0; i < 12; i++) rig.Transport.Add(Reply(NoDebriefJson()));
+            var start = rig.RunToRunning();
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Paused);
+
+            // Plan, Sequence Plan, the Debrief, its one correction: four.
+            Assert.Equal(4, rig.Transport.Requests.Count);
+            Assert.Contains("Your reply had no debrief", rig.Transport.Requests[3].Body);
+            Assert.DoesNotContain("Your reply had no debrief", rig.Transport.Requests[2].Body);
+            var card = rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief);
+            Assert.Equal("Off-Nominal", card.Outcome);
+            Assert.Contains("The mod's own Debrief", card.Why);
+            Assert.Contains("Resume", rig.Mission.View.PauseReason);
+
+            // Waiting for the player: nothing more goes until Resume, which asks for the next Sequence Plan.
+            rig.DrainUntil(v => !v.Busy);
+            Assert.Equal(4, rig.Transport.Requests.Count);
+            Assert.Contains("debrief_retry", File.ReadAllText(Path.Combine(rig.Folder, "events.jsonl")));
+            Assert.Contains("mod_debrief", File.ReadAllText(Path.Combine(rig.Folder, "events.jsonl")));
+        }
+
+        [Fact]
+        public void AGoodReplyAfterTheCorrectionIsTakenAndTheMissionCarriesOn()
+        {
+            var rig = new Rig(this, NoDebriefJson(), Reply(DebriefJson("Nominal", "")), recheck: MarginRecheckMode.Never);
+            rig.Transport.Add(Rig.SequenceReply());
+            var start = rig.RunToRunning();
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(5, rig.Transport.Requests.Count);
+            Assert.Contains("Your reply had no debrief", rig.Transport.Requests[3].Body);
+            Assert.Equal("Nominal", rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Outcome);
+        }
+
+        [Fact]
+        public void TheModsOwnDebriefIsRebuiltFromTheTranscriptAfterALoad()
+        {
+            var text = EmptyDebrief.Fact("It was not judged.") + "\nRun report.";
+            Assert.Equal("It was not judged.", EmptyDebrief.ReadFact(text));
+            Assert.Null(EmptyDebrief.ReadFact("Continue the Mission."));
+        }
+
         // ---- Helpers ----
 
         private const string FullExtras =

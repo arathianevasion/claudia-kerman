@@ -181,6 +181,21 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The Debrief card the mod wrote itself for a run refused before any burn (#579), from its fact in the transcript; the steps are as they stood.</summary>
         private static void AddModDebrief(List<LogEntry> log, string userText, List<GoalItem> steps)
         {
+            var account = EmptyDebrief.ReadFact(userText);
+            if (account != null)
+            {
+                var empty = EmptyDebrief.Debrief(account);
+                log.Add(new LogEntry
+                {
+                    Kind = LogKind.Debrief,
+                    Title = "Debrief: " + empty.Outcome,
+                    Text = MissionCards.DebriefBody(empty, ""),
+                    Why = EmptyDebrief.CardWhy,
+                    Outcome = empty.Outcome,
+                    Debrief = MissionCards.DebriefDetail(empty, steps),
+                });
+                return;
+            }
             string sequence, reason;
             if (!PreBurnRefusal.ReadFact(userText, out sequence, out reason)) return;
             var debrief = PreBurnRefusal.Debrief(reason);
