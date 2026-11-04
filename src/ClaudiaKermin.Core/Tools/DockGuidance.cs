@@ -116,7 +116,53 @@ namespace ClaudiaKermin.Core.Tools
         /// </summary>
         public static bool Waits(string hold)
         {
-            return hold == "starting" || hold == "active";
+            return hold == "starting" || hold == "active" || hold == "near";
+        }
+
+        /// <summary>s: the default settle_timeout, how long dock waits for dock_hold's strict settle before it takes a loose one (#714).</summary>
+        public const double SettleTimeout = 300;
+
+        /// <summary>
+        /// #714: the wait for dock_hold, one tick. <paramref name="since"/> is when the wait began (negative: none running) and the
+        /// clock starts when the hold first <see cref="Waits"/>, so a re-aim (settled back to active) restarts it. A hold that
+        /// is "near" (dock_hold's loose settle: its port within 5° of its aim, turning under 0.5°/s, for 2 s) ends the wait once
+        /// <paramref name="timeout"/> s have passed; one still starting or active at twice that ends it as "gave up", with
+        /// <c>Error</c> naming the hold. <c>End</c> is "" while the wait goes on (or none ran), else how it ended.
+        /// </summary>
+        public static WaitTick Wait(string hold, double ut, double since, double timeout, string target, double offDeg, double spinDps)
+        {
+            var tick = new WaitTick { Since = -1, End = "", Error = "" };
+            if (Waits(hold))
+            {
+                tick.Since = since < 0 ? ut : since;
+                tick.Waited = Math.Max(0, ut - tick.Since);
+                tick.Holds = true;
+                if (hold == "near" && tick.Waited >= timeout)
+                {
+                    tick.Holds = false;
+                    tick.End = "loosely settled";
+                }
+                else if (hold != "near" && tick.Waited >= 2 * timeout)
+                {
+                    tick.End = "gave up";
+                    tick.Error = string.Format(CultureInfo.InvariantCulture, "{0}'s dock_hold never settled: {1:0.#}° off its aim, turning {2:0.##}°/s, after {3:0} s", target, offDeg, spinDps, tick.Waited);
+                }
+                if (tick.End != "") tick.Since = -1;
+            }
+            else if (since >= 0)
+            {
+                tick.Waited = Math.Max(0, ut - since);
+                if (hold == "settled") tick.End = "settled";
+            }
+            return tick;
+        }
+
+        /// <summary>One tick of the wait (<see cref="Wait"/>): whether the craft still holds still, the clock to carry to the next tick, and how the wait ended.</summary>
+        public struct WaitTick
+        {
+            public bool Holds;
+            public double Since, Waited;
+            public string End, Error;
         }
 
         /// <summary>
@@ -158,12 +204,13 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>
         /// One tick, as <c>ADDONS:CLAUDIA:DOCKGUIDE</c> takes it. Input: <c>mode</c> ("close", the default; "back_off": out
         /// along the line from the port at 0.5 m/s; "hold": still), <c>hold</c> (dock_hold's state: while it <see cref="Waits"/>,
-        /// "close" holds still too), <c>along</c>, <c>lat</c>, <c>distance</c> (m),
+        /// "close" holds still too, until <see cref="Wait"/> ends it), <c>ut</c>, <c>wait_since</c>, <c>settle_timeout</c>, <c>target</c>,
+        /// <c>hold_off_deg</c>, <c>spin_dps</c> (the wait, #714), <c>along</c>, <c>lat</c>, <c>distance</c> (m),
         /// <c>align_deg</c>, <c>v_along</c>, <c>v_lat</c>, <c>v_side</c> (the relative velocity, m/s), <c>firing</c> (RCS
         /// translated last tick), and the options <c>approach_speed</c>, <c>final_speed</c>, <c>max_lateral</c>. Gives
         /// <c>along</c>, <c>lat</c> (the wanted velocity), <c>dv_error</c> (m/s, the velocity error's size), <c>fire</c> (RCS
         /// translates this tick) and <c>cmd_along</c>, <c>cmd_lat</c>, <c>cmd_side</c>: the RCS command in the port's frame, the
-        /// error over <see cref="FullAt"/> (kOS turns it into fore, starboard and top and clips each to 1); all 0 while it coasts.
+        /// error over <see cref="FullAt"/> (kOS turns it into fore, starboard and top and clips each to 1); all 0 while it coasts; and the wait's <c>wait_since</c>, <c>wait_s</c>, <c>wait_end</c> and <c>wait_error</c>.
         /// </summary>
         public static IDictionary<string, object> Guide(IDictionary<string, object> input)
         {
@@ -172,13 +219,17 @@ namespace ClaudiaKermin.Core.Tools
             var distance = Number(input, "distance");
             var opt = new Options { ApproachSpeed = Number(input, "approach_speed"), FinalSpeed = Number(input, "final_speed"), MaxLateral = Number(input, "max_lateral") };
             var mode = Text(input, "mode");
+            object since, timeout;
+            var wait = Wait(Text(input, "hold"), Number(input, "ut"), input.TryGetValue("wait_since", out since) && since is double ? (double)since : -1,
+                input.TryGetValue("settle_timeout", out timeout) && timeout is double ? (double)timeout : SettleTimeout,
+                Text(input, "target"), Number(input, "hold_off_deg"), Number(input, "spin_dps"));
             Velocity want;
             if (mode == "back_off")
             {
                 var d = Math.Max(distance, 0.01);
                 want = V(0.5 * along / d, 0.5 * lat / d);
             }
-            else if (mode == "hold" || Waits(Text(input, "hold"))) want = V(0, 0);
+            else if (mode == "hold" || wait.Holds) want = V(0, 0);
             else want = Want(along, lat, distance, Number(input, "align_deg"), opt);
             var eAlong = want.Along - Number(input, "v_along");
             var eLat = want.Lat - Number(input, "v_lat");
@@ -196,6 +247,10 @@ namespace ClaudiaKermin.Core.Tools
                 { "cmd_along", eAlong * k },
                 { "cmd_lat", eLat * k },
                 { "cmd_side", eSide * k },
+                { "wait_since", wait.Since },
+                { "wait_s", wait.Waited },
+                { "wait_end", wait.End },
+                { "wait_error", wait.Error },
             };
         }
 
