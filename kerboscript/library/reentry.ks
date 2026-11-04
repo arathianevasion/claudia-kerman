@@ -780,12 +780,12 @@ function reentry_prediction_note {
 // the touchdown speed (m/s) and, with a prediction, prediction_miss_km (Core's PREDICTIONMISS). Log-only.
 function reentry_note_landing {
   parameter ctx, impact, speed.
-  local note is lexicon("phase", "landed", "actual_geo", reentry_geo(), "touchdown_speed", round(speed, 1)).
+  local landed is lexicon("phase", "landed", "actual_geo", reentry_geo(), "touchdown_speed", round(speed, 1)).
   if impact:haskey("lat") {
     local miss is addons:claudia:predictionmiss(lexicon("lat", impact:lat, "lng", impact:lng, "actual_lat", ship:geoposition:lat, "actual_lng", ship:geoposition:lng, "radius", ship:body:radius)).
-    set note:prediction_miss_km to round(miss:km, 2).
+    set landed:prediction_miss_km to round(miss:km, 2).
   }
-  addons:claudia:blocknote(ctx:block, note).
+  addons:claudia:blocknote(ctx:block, landed).
 }
 
 // What an abort mid-descent leaves behind: the parachutes it may open (uids) open if that is safe, then a
