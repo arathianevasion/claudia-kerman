@@ -32,7 +32,7 @@ Install and the block test runner are as in `phase-3-gate.md` ("Install", "Where
 
 ## Check 5: the Duna miss of #747, flown again
 
-1. Fly the 2026-11-04 goal again: "Fly to Duna. Land anywhere" (Mission m20261104-181222-e076 lost its Duna encounter after a 0.13 m/s mid-course correction and failed; a later transfer_to from the Sun's orbit ended 2.9 km against target_pe 60 km).
+1. Fly the 2026-11-04 goal again: "Fly to Duna. Land anywhere" (Mission m20261104-181222-e076 lost its Duna encounter after a 0.13 m/s Course Correction and failed; a later transfer_to from the Sun's orbit ended 2.9 km against target_pe 60 km).
 2. Watch `KSP.log` for `block call TRANSFERSTEP` lines: far out on the Sun's patch, corrections only keep the encounter; the trim to target_pe comes after `next near`, inside Duna's sphere of influence.
 3. If a correction loses the encounter, the next TRANSFERSTEP line is a `burn correction ... next made` and the Script Result carries `recovered` (why the encounter was lost) instead of failing with "no encounter with Duna after the correction". Note whether it happened.
 4. The Script Result's `target_pe_actual` is within `pe_tolerance` of `target_pe` and `body` is Duna; the capture (`circularize` at pe) follows.

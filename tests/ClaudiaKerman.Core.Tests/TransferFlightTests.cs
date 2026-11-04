@@ -103,7 +103,7 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void A_mid_course_correction_that_loses_the_Duna_encounter_recovers_instead_of_failing()
+        public void A_Course_Correction_that_loses_the_Duna_encounter_recovers_instead_of_failing()
         {
             // The Duna miss of #747: a Course Correction on the Sun's patch that left no encounter ended the block. Here one is
             // flown 40 m/s wrong; the check after it plans the missed-ejection recovery from the orbit the craft is on.

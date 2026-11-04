@@ -99,6 +99,7 @@ namespace ClaudiaKerman.Core.Tools
         private const string Mid = "mid";
         private const string MidCheck = "mid_check";
         private const string Fine = "fine";
+        /// <summary>Inside a far target's sphere of influence, before the trim (#747).</summary>
         private const string Near = "near";
         private const string FineFlown = "fine_flown";
         private const string FineCheck = "fine_check";
@@ -111,7 +112,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>s past the end of max_duration a Course Correction must leave to burn in; s past the arrival "auto" leaves.</summary>
         private const double BurnRoom = 120;
         private const double AutoSlack = 900;
-        /// <summary>s past leaving the sphere of influence the wait ends, as return waits.</summary>
+        /// <summary>s past leaving the sphere of influence the wait ends, as return waits; and past entering a far target's (#747).</summary>
         private const double PastSoi = 30;
         /// <summary>The most patches to the target: out of a moon, round the planet, into another moon.</summary>
         private const int Patches = 4;
