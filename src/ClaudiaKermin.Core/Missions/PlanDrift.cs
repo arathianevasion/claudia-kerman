@@ -15,7 +15,6 @@ namespace ClaudiaKermin.Core.Missions
     /// </summary>
     public static class PlanDrift
     {
-        private static readonly string[] Grounded = { "PRELAUNCH", "LANDED", "SPLASHED" };
         private static readonly string[] Stable = { "ORBITING", "ESCAPING", "DOCKED" };
 
         /// <summary>The first way <paramref name="now"/> differs from <paramref name="baseline"/> beyond <paramref name="tolerancePercent"/>, in words; "" when it doesn't.</summary>
@@ -25,7 +24,7 @@ namespace ClaudiaKermin.Core.Missions
             if (baseline.Body != now.Body) return "the craft is now at " + now.Body + ", not " + baseline.Body;
             if (!new HashSet<uint>(baseline.Craft.Parts.Select(p => p.Id)).SetEquals(now.Craft.Parts.Select(p => p.Id)))
                 return "parts have been added or lost";
-            if ((Array.IndexOf(Grounded, baseline.Situation) >= 0) != (Array.IndexOf(Grounded, now.Situation) >= 0))
+            if (baseline.IsGrounded != now.IsGrounded)
                 return "the craft is now " + now.Situation + ", not " + baseline.Situation;
 
             var tolerance = tolerancePercent / 100.0;

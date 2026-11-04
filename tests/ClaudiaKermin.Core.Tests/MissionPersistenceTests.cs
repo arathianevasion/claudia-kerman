@@ -35,13 +35,27 @@ namespace ClaudiaKermin.Core.Tests
             _save.Dispose();
         }
 
-        private MissionControl Control(StreamingFakeTransport transport, Background background = null)
+        /// <summary>
+        /// The Mission under test. Trap: a default PlayerConfig's time-elapsed Telemetry Check is 150% of the plan's expected
+        /// duration (8 s for the 5 s fixture plans); a test that advances UT past that sends an Alert request, which takes the
+        /// next scripted fixture. Such a test passes <see cref="TimeElapsedCheckOff"/> as <paramref name="config"/>.
+        /// </summary>
+        private MissionControl Control(StreamingFakeTransport transport, Background background = null, PlayerConfig config = null)
         {
             var client = new ClaudeClient(new CraftCheckRouter(transport), () => "sk-ant-test", l => { });
             client.Timing.Wait = (d, c) => { };
-            var mission = new MissionControl(client, background ?? _background, new PlayerConfig(), () => true, new PassingScriptCheck());
+            var mission = new MissionControl(client, background ?? _background, config ?? new PlayerConfig(), () => true, new PassingScriptCheck());
             mission.Send(new SaveLoaded(_save.Path));
             return mission;
+        }
+
+        /// <summary>
+        /// A PlayerConfig whose time-elapsed check is out of the way: 100000% of the plan's duration, since the config's own cap
+        /// (1000%, 50 s here) is below the 130 s these tests advance. The check is only defaulted, so the plan's own checks still apply.
+        /// </summary>
+        private static PlayerConfig TimeElapsedCheckOff()
+        {
+            return new PlayerConfig { CheckDurationPercent = 100000 };
         }
 
         /// <summary>A "crashed" game: its own queue, never drained, so nothing it still has in flight can reach the files.</summary>
@@ -1533,7 +1547,7 @@ namespace ClaudiaKermin.Core.Tests
             var transport = new StreamingFakeTransport(
                 ScriptedResponse.Fixture("mission-plan.sse"),
                 ScriptedResponse.Fixture("mission-sequence-plan.sse"));
-            var mission = Control(transport);
+            var mission = Control(transport, null, TimeElapsedCheckOff());
             var start = ToRunning(mission);
             var startUt = Saved(mission)[0].RunStartUt;
             mission.Send(new KosBlockStarted("exec_node", start.RunId));
@@ -1547,6 +1561,18 @@ namespace ClaudiaKermin.Core.Tests
             tally.Restore(Saved(mission)[0].RcsUse);
             Assert.Equal(1, tally.TimesOn);
             Assert.Equal(30, tally.SecondsOn, 6);
+
+            // And the Interrupted Debrief reports the same stretch on its RCS Use line.
+            var loaded = MissionSaveState.FromValues(Saved(mission)[0].ToValues());
+            var after = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-debrief.sse"));
+            var resumed = Control(after);
+            resumed.Send(new MissionsRestored(_save.Path, new List<MissionSaveState> { loaded }));
+            resumed.Send(new SceneChanged(GameScene.Flight));
+            resumed.Send(OnPad());
+            DrainUntil(resumed, v => v.Stage == MissionStage.Succeeded);
+            var turn = string.Join("\n----\n", Messages(after.Requests[0]).Where(m => m.GetProperty("role").GetString() == "user").Select(Text));
+            Assert.Contains("Interrupted", turn);
+            Assert.Contains("RCS Use this run: switched on 1 time, 30 s in all", turn);
         }
 
         [Fact]
@@ -1555,7 +1581,7 @@ namespace ClaudiaKermin.Core.Tests
             var transport = new StreamingFakeTransport(
                 ScriptedResponse.Fixture("mission-plan.sse"),
                 ScriptedResponse.Fixture("mission-sequence-plan.sse"));
-            var mission = Control(transport);
+            var mission = Control(transport, null, TimeElapsedCheckOff());
             var start = ToRunning(mission);
             var startUt = Saved(mission)[0].RunStartUt;
             mission.Send(new KosBlockStarted("exec_node", start.RunId));
@@ -1583,7 +1609,7 @@ namespace ClaudiaKermin.Core.Tests
             var transport = new StreamingFakeTransport(
                 ScriptedResponse.Fixture("mission-plan.sse"),
                 ScriptedResponse.Fixture("mission-sequence-plan.sse"));
-            var mission = Control(transport);
+            var mission = Control(transport, null, TimeElapsedCheckOff());
             var start = ToRunning(mission);
             var startUt = Saved(mission)[0].RunStartUt;
             mission.Send(new KosBlockStarted("exec_node", start.RunId));
@@ -1610,7 +1636,7 @@ namespace ClaudiaKermin.Core.Tests
             var transport = new StreamingFakeTransport(
                 ScriptedResponse.Fixture("mission-plan.sse"),
                 ScriptedResponse.Fixture("mission-sequence-plan.sse"));
-            var mission = Control(transport);
+            var mission = Control(transport, null, TimeElapsedCheckOff());
             var start = ToRunning(mission);
             var startUt = Saved(mission)[0].RunStartUt;
             mission.Send(new KosBlockStarted("exec_node", start.RunId));
