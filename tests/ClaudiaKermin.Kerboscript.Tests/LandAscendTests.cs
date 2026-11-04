@@ -1410,7 +1410,8 @@ function tsim {
             };
             var craft = new Core.Tools.BrakeCraft { ThrustN = thrustN, MassKg = massKg, Isp = 345, LagS = lag };
             var flown = Core.Tools.BrakePath.Simulate(craft, world, new Core.Tools.BrakeStart { S = siteX, Alt = startY, VH = vStart, VUp = vUpStart, Braking = true }, shape);
-            alts = flown.Path.Take(flown.Path.Count - 1).Select(p => p.Alt).ToList();
+            // The points every 5 km: not where braking stopped (#712) or came down.
+            alts = flown.Path.Take(flown.Path.Count - 1).Where(p => p.S != flown.BrakeEndS).Select(p => p.Alt).ToList();
             return flown;
         }
 
