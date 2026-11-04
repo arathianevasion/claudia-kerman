@@ -2324,6 +2324,7 @@ namespace ClaudiaKermin.Core.Missions
                 view.ChildVessels = ChildVesselViews(mission);
                 view.RunningChildVesselId = RunningChildVesselId(mission);
                 view.Settings = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config));
+                view.MarginPercent = _config.CraftCheckMarginPercent;
                 view.CanEditSettings = CanEditSettings;
                 view.PhysicsWarpAllowed = view.Settings.PhysicsWarpOn;
                 var due = PendingDueTime;

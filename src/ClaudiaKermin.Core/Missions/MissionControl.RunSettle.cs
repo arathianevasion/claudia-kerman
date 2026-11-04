@@ -54,6 +54,7 @@ namespace ClaudiaKermin.Core.Missions
 
         internal static bool IsSettled(GameSnapshot snapshot)
         {
+            // Narrower than IsGrounded on purpose: a craft on the pad has not flown, so it has nothing to settle from.
             return (snapshot.Situation == "LANDED" || snapshot.Situation == "SPLASHED")
                 && snapshot.SurfaceSpeed < SettledSpeed && Math.Abs(snapshot.VerticalSpeed) < SettledSpeed;
         }

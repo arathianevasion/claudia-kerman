@@ -348,6 +348,123 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(DockGuidance.ReserveDv + 100 * DockGuidance.DvPerMetre + 2, DockGuidance.Needed(100, 2), 9);
         }
 
+        // #722: dock_hold's level rule, driven in 0.5 s steps like a run of ticks.
+        private sealed class Hold
+        {
+            public IDictionary<string, object> State = new Dictionary<string, object>
+            {
+                { "level", "" }, { "strict_out", 0.0 }, { "strict_in", 0.0 }, { "near_out", 0.0 }, { "near_in", 0.0 },
+            };
+
+            public string Level { get { return (string)State["level"]; } }
+
+            /// <summary>Holds the port at (off, rate) from ut <paramref name="from"/> to <paramref name="to"/> (s), ticking every 0.5 s.</summary>
+            public void Run(double from, double to, double off, double rate, bool reaim = false)
+            {
+                for (var ut = from; ut <= to + 1e-9; ut += 0.5)
+                {
+                    var next = new Dictionary<string, object>(State);
+                    next["ut"] = ut;
+                    next["off_deg"] = off;
+                    next["rate_dps"] = rate;
+                    next["reaim"] = reaim && ut == from;
+                    State = next;
+                    State = DockGuidance.HoldLevel(State);
+                }
+            }
+        }
+
+        [Fact]
+        public void The_hold_rises_to_near_then_settled_after_two_seconds_in_each_band()
+        {
+            var h = new Hold();
+            h.Run(0, 1.5, 3, 0.3);
+            Assert.Equal("", h.Level);
+            h.Run(2, 2, 3, 0.3);
+            Assert.Equal("near", h.Level);
+            h.Run(2.5, 3.5, 1, 0.05);
+            Assert.Equal("near", h.Level);
+            h.Run(4, 4, 1, 0.05);
+            Assert.Equal("settled", h.Level);
+        }
+
+        [Fact]
+        public void A_half_second_excursion_changes_nothing_but_a_second_drops_settled_to_near_or_active_by_band()
+        {
+            var h = new Hold();
+            h.Run(0, 2, 1, 0.05);
+            Assert.Equal("settled", h.Level);
+            // 0.5 s outside the strict band, inside the loose one, then back in: nothing changes.
+            h.Run(2.5, 2.5, 3, 0.3);
+            h.Run(3, 3.5, 1, 0.05);
+            h.Run(4, 4, 3, 0.3);
+            Assert.Equal("settled", h.Level);
+            // 1 s outside the strict band but inside the loose one: near.
+            h.Run(4.5, 4.5, 3, 0.3);
+            Assert.Equal("near", h.Level);
+            Assert.True((bool)h.State["changed"]);
+            // 1 s outside the loose band: active.
+            h.Run(5, 5.5, 8, 0.3);
+            Assert.Equal("", h.Level);
+        }
+
+        [Fact]
+        public void Settled_falls_straight_to_active_when_it_leaves_both_bands_and_rises_again_after_two_seconds()
+        {
+            var h = new Hold();
+            h.Run(0, 2, 1, 0.05);
+            h.Run(2.5, 3.5, 8, 0.05);
+            Assert.Equal("", h.Level);
+            h.Run(4, 5, 1, 0.05);
+            Assert.Equal("", h.Level);
+            h.Run(5.5, 5.5, 1, 0.05);
+            Assert.Equal("settled", h.Level);
+        }
+
+        [Fact]
+        public void Near_drops_to_active_after_a_second_outside_the_loose_band_and_a_half_second_wobble_does_not()
+        {
+            var h = new Hold();
+            h.Run(0, 2, 3, 0.3);
+            Assert.Equal("near", h.Level);
+            h.Run(2.5, 2.5, 6, 0.3);
+            h.Run(3, 3.5, 3, 0.3);
+            h.Run(4, 4, 6, 0.3);
+            Assert.Equal("near", h.Level);
+            h.Run(4.5, 5, 6, 0.3);
+            Assert.Equal("", h.Level);
+        }
+
+        [Fact]
+        public void A_re_aim_resets_the_level_and_reports_the_change()
+        {
+            var h = new Hold();
+            h.Run(0, 2, 1, 0.05);
+            Assert.Equal("settled", h.Level);
+            h.Run(2.5, 2.5, 1, 0.05, reaim: true);
+            Assert.Equal("", h.Level);
+            Assert.True((bool)h.State["changed"]);
+        }
+
+        [Fact]
+        public void The_wait_restarts_after_a_drop_to_active_and_a_loose_settle_stops_being_accepted()
+        {
+            // Settled ended the first wait; the hold is then knocked to active: a new clock starts and the craft holds still again.
+            var settled = Wait("settled", 1000, 900);
+            Assert.Equal("settled", (string)settled["wait_end"]);
+            var knocked = Wait("active", 1010, (double)settled["wait_since"]);
+            Assert.True(Holds(knocked));
+            Assert.Equal(1010, (double)knocked["wait_since"]);
+            // A loose settle accepted after the timeout keeps the craft closing while the level is near, not once it drops to active.
+            var accepted = Wait("near", 1300, 1000);
+            Assert.False(Holds(accepted));
+            Assert.False(Holds(Wait("near", 1301, (double)accepted["wait_since"])));
+            var dropped = Wait("active", 1302, (double)accepted["wait_since"]);
+            Assert.True(Holds(dropped));
+            Assert.Equal(1302, (double)dropped["wait_since"]);
+            Assert.Equal(0, (double)dropped["wait_s"]);
+        }
+
         [Fact]
         [Trait("Category", "Timing")]
         public void A_tick_of_guidance_takes_well_under_a_physics_tick()

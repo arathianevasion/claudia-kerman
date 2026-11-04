@@ -709,8 +709,7 @@ namespace ClaudiaKermin.Core.Missions
             var vacuum = tools.Run("stage_performance", "{\"situation\":\"vacuum\"}", snapshot, null);
             if (vacuum.IsError) return "";
             var onPad = snapshot.Situation == "PRELAUNCH";
-            var atHome = snapshot.Body == CraftCheckFlow.HomeBody
-                && (onPad || snapshot.Situation == "LANDED" || snapshot.Situation == "SPLASHED");
+            var atHome = snapshot.Body == CraftCheckFlow.HomeBody && snapshot.IsGrounded;
             var seaLevelInput = "{\"body\":" + PlanningJson.Quote(CraftCheckFlow.HomeBody) + ",\"situation\":\"surface\"}";
             var seaLevel = atHome ? tools.Run("stage_performance", seaLevelInput, snapshot, null) : null;
             var text = "\nStage table: these are the figures stage_performance" + (onPad ? " and plan_ascent" : "") + " would give for this craft now (JSON data). "

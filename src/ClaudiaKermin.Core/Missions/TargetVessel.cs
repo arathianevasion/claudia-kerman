@@ -31,7 +31,7 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>Where it is on <see cref="Body"/>; null when not read. The entry carries it only when <see cref="IsDown"/> (#662).</summary>
         public SnapshotPosition Position;
 
-        /// <summary>Whether it is landed or splashed, so its position, not its orbit, says where it is (#662).</summary>
+        /// <summary>Whether it is landed or splashed, so its position, not its orbit, says where it is (#662). Narrower than IsGrounded on purpose: a PRELAUNCH vessel is read by its orbit.</summary>
         public bool IsDown
         {
             get { return Situation == "LANDED" || Situation == "SPLASHED"; }
@@ -64,7 +64,7 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>Where a landed or splashed vessel is saved (#710); null when not read.</summary>
         public SnapshotPosition Position;
 
-        /// <summary>Whether it is landed or splashed, so its place, not its orbit, tells it apart (#710).</summary>
+        /// <summary>Whether it is landed or splashed, so its place, not its orbit, tells it apart (#710). Narrower than IsGrounded on purpose: a PRELAUNCH vessel is read by its orbit.</summary>
         public bool IsDown
         {
             get { return Situation == "LANDED" || Situation == "SPLASHED"; }
@@ -423,7 +423,7 @@ namespace ClaudiaKermin.Core.Missions
             choice.Vessel = vessel;
             choice.SharedName = SharesName(vessel, listed);
             choice.Reason = how;
-            var grounded = vessel.Situation == "LANDED" || vessel.Situation == "SPLASHED" || vessel.Situation == "PRELAUNCH";
+            var grounded = GameSnapshot.IsGroundedSituation(vessel.Situation);
             if (grounded && AsksForRendezvousOrDocking(goal)) choice.Note = "landed: rendezvous and docking need it in orbit";
             return choice;
         }

@@ -35,7 +35,7 @@ namespace ClaudiaKermin.KOS
             var inputJson = ToolTestGate.InputJson(KosValues.ToDictionary(input));
 
             var watch = Stopwatch.StartNew();
-            var snapshot = SnapshotReader.Read(shared.Vessel);
+            var snapshot = SnapshotReader.ReadForMission(shared.Vessel);
             var snapshotMs = watch.Elapsed.TotalMilliseconds;
             watch.Reset();
             watch.Start();

@@ -626,6 +626,7 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("local h is addons:claudia:dockhold(lexicon(\"port\", \"1\", \"toward\", \"2\")).\nprint h:state.")]
         [InlineData("local c is addons:claudia.\nprint c:DockHoldState:reason.")]
         [InlineData("print addons:claudia:dockguide(lexicon(\"along\", 10)):fire.")]
+        [InlineData("print addons:claudia:dockholdlevel(lexicon(\"level\", \"\")):changed.")]
         [InlineData("local c is addons:claudia.\nprint c:DockFuel(lexicon(\"distance\", 150)):error.")]
         [InlineData("print addons:claudia:burnworth(lexicon(\"block\", \"circularize\")):skip.")]
         [InlineData("print addons:claudia:turnplan(lexicon(\"angle\", 140, \"left_s\", 60)):coast_rate.")]

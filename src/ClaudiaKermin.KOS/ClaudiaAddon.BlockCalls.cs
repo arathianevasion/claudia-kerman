@@ -68,6 +68,8 @@ namespace ClaudiaKermin.KOS
             // Script Check refuses it in a Mission Script, and the bridge ignores it from any run but a live dock_hold.
             AddSuffix("DOCKHOLDSETTLED", new OneArgsSuffix<StringValue>(DockHoldSettled,
                 "The mod's dock_hold only: its port settled on its aim (settled), loosely (near), or a re-aim unsettled it (empty)"));
+            AddSuffix("DOCKHOLDLEVEL", new OneArgsSuffix<Lexicon, Lexicon>(DockHoldLevel,
+                "The mod's dock_hold only: DockGuidance's level rule, one tick; lexicon level, changed and the clocks to pass back"));
             AddSuffix("DOCKGUIDE", new OneArgsSuffix<Lexicon, Lexicon>(DockGuide,
                 "Core Library only (dock, each tick): DockGuidance's wanted velocity and coast band for the craft's port in the target port's frame; lexicon along, lat, dv_error, fire, cmd_along, cmd_lat, cmd_side"));
             AddSuffix("DOCKFUEL", new OneArgsSuffix<Lexicon, Lexicon>(DockFuel,
@@ -204,6 +206,17 @@ namespace ClaudiaKermin.KOS
             if (bridge != null && shared.KSPPart != null) bridge.HoldSettled(shared.KSPPart.persistentId, level.ToString());
         }
 
+        /// <summary><c>ADDONS:CLAUDIA:DOCKHOLDLEVEL</c> (#722): dock_hold's level rule (<see cref="DockGuidance.HoldLevel"/>), pure, each tick, so not logged.</summary>
+        private Lexicon DockHoldLevel(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> tick = null;
+            return (Lexicon)Guarded("DOCKHOLDLEVEL", () =>
+            {
+                tick = DockGuidance.HoldLevel(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(tick);
+            }, () => "level \"" + tick["level"] + "\"", 1);
+        }
+
         /// <summary>
         /// <c>ADDONS:CLAUDIA:DOCKGUIDE</c> (#706, ADR 0014): one tick of dock's guidance (<see cref="DockGuidance.Guide"/>), pure. Called
         /// every physics tick, so its time is logged at most once a second (guardrail 6).
@@ -258,7 +271,7 @@ namespace ClaudiaKermin.KOS
                 var vessel = shared.Vessel;
                 var uids = new System.Collections.Generic.Dictionary<uint, string>();
                 foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
-                set = BlockCalls.ChuteAllocationCall(MissionDriver.ChuteAllocation, MissionDriver.CurrentSequence, SnapshotReader.Read(vessel),
+                set = BlockCalls.ChuteAllocationCall(MissionDriver.ChuteAllocation, MissionDriver.CurrentSequence, SnapshotReader.ReadForMission(vessel),
                     id => uids.ContainsKey(id) ? uids[id] : null);
                 return KosValues.FromPlain(set);
             }, () => set["error"] as string == ""
@@ -275,7 +288,7 @@ namespace ClaudiaKermin.KOS
             // The solve's time against ADR 0010's budget (about 100 ms, under 200 ms from the grid), and the node.
             return (Lexicon)Guarded("RETURNBURN", () =>
             {
-                node = BlockCalls.ReturnBurn(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel));
+                node = BlockCalls.ReturnBurn(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
                 return KosValues.FromPlain(node);
             }, () => node.ContainsKey("dv")
                 ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); {5} Pe {6:0} m, inclination {7:0.00}, leaving the moon at UT {8:0}{9}{10}",
@@ -326,7 +339,7 @@ namespace ClaudiaKermin.KOS
             // The search's time, against the minutes the old RSVP search took, and the node.
             return (Lexicon)Guarded("EJECTIONBURN", () =>
             {
-                node = BlockCalls.EjectionBurn(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel));
+                node = BlockCalls.EjectionBurn(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
                 return KosValues.FromPlain(node);
             }, () => node["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.0} m/s); Pe {5:0} m at UT {6:0}, arrival burn {7:0.0} m/s; synodic period {8:0} s from UT {9:0.0}",
@@ -340,7 +353,7 @@ namespace ClaudiaKermin.KOS
             // The step's time (the ejection's window search is the long one) and what it asks the block to do.
             return (Lexicon)Guarded("TRANSFERSTEP", () =>
             {
-                step = BlockCalls.TransferStep(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel));
+                step = BlockCalls.TransferStep(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
                 return KosValues.FromPlain(step);
             }, () => (string)step["error"] != "" ? (string)step["error"]
                 : string.Format(CultureInfo.InvariantCulture, "{0} {1} at UT {2:0.0}, prograde {3:0.00}, normal {4:0.00}, radial {5:0.00} m/s; next {6}; {7}",
@@ -355,7 +368,7 @@ namespace ClaudiaKermin.KOS
             return (Lexicon)Guarded("ORBITBURN", () =>
             {
                 ask = KosValues.ToDictionary(input);
-                node = BlockCalls.OrbitBurn(ask, SnapshotReader.Read(shared.Vessel));
+                node = BlockCalls.OrbitBurn(ask, SnapshotReader.ReadForMission(shared.Vessel));
                 return KosValues.FromPlain(node);
             }, () => node["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "{0} node at UT {1:0.0}, prograde {2:0.00}, normal {3:0.00}, radial {4:0.00} m/s ({5:0.00} m/s, burn {6:0.0} s); wanted {7}",
@@ -368,7 +381,7 @@ namespace ClaudiaKermin.KOS
             System.Collections.Generic.IDictionary<string, object> found = null;
             return (Lexicon)Guarded("TARGETVESSEL", () =>
             {
-                found = BlockCalls.TargetVessel(SnapshotReader.Read(shared.Vessel));
+                found = BlockCalls.TargetVessel(SnapshotReader.ReadForMission(shared.Vessel));
                 var answer = (Lexicon)KosValues.FromPlain(found);
                 // The vessel structure itself, found by persistentId like DOCKHOLD, so the blocks never look the target up by name.
                 var id = MissionDriver.TargetVesselId ?? MissionDriver.BlockTestTargetId;
@@ -384,7 +397,7 @@ namespace ClaudiaKermin.KOS
             System.Collections.Generic.IDictionary<string, object> node = null;
             return (Lexicon)Guarded("CORRECTIONBURN", () =>
             {
-                node = BlockCalls.CorrectionBurn(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel));
+                node = BlockCalls.CorrectionBurn(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
                 return KosValues.FromPlain(node);
             }, () => !node.ContainsKey("dv") ? (string)node["error"]
                 : node.ContainsKey("distance_predicted")
@@ -401,7 +414,7 @@ namespace ClaudiaKermin.KOS
             System.Collections.Generic.IDictionary<string, object> window = null;
             return (Lexicon)Guarded("LAUNCHWINDOW", () =>
             {
-                window = BlockCalls.LaunchWindow(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel));
+                window = BlockCalls.LaunchWindow(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
                 return KosValues.FromPlain(window);
             }, () => window["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "window in {0:0} s at UT {1:0}, {2}bound, inclination {3:0.00}, heading {4:0.0}",
@@ -498,7 +511,7 @@ namespace ClaudiaKermin.KOS
             {
                 var vessel = shared.Vessel;
                 var ask = KosValues.ToDictionary(input);
-                found = BlockCalls.DeorbitBurn(ask, SnapshotReader.Read(vessel), new PlanningBody(),
+                found = BlockCalls.DeorbitBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(),
                     new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
                 return KosValues.FromPlain(found);
             }, () => Landing(found));
@@ -511,7 +524,7 @@ namespace ClaudiaKermin.KOS
             {
                 var vessel = shared.Vessel;
                 var ask = KosValues.ToDictionary(input);
-                landing = BlockCalls.ReentryImpact(ask, SnapshotReader.Read(vessel), new PlanningBody(),
+                landing = BlockCalls.ReentryImpact(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(),
                     new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
                 return KosValues.FromPlain(landing);
             }, () => Landing(landing));
@@ -571,7 +584,7 @@ namespace ClaudiaKermin.KOS
             // The search runs on the main thread, as kOS does: its time against the frame budget is for tuning it.
             return (Lexicon)Guarded("LANDINGSITE", () =>
             {
-                site = BlockCalls.LandingSite(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel), new PlanningBody());
+                site = BlockCalls.LandingSite(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel), new PlanningBody());
                 return KosValues.FromPlain(site);
             }, () => site["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "{0} at {1}, {2}", site["biome"], site["lat"], site["lng"])
@@ -584,7 +597,7 @@ namespace ClaudiaKermin.KOS
             // The prediction against the flown descent, and its time against the search's budget (#511).
             return (Lexicon)Guarded("BRAKEPATH", () =>
             {
-                path = BlockCalls.BrakePathCall(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel), new PlanningBody());
+                path = BlockCalls.BrakePathCall(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel), new PlanningBody());
                 return KosValues.FromPlain(path);
             }, () => path["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "shape {0:0.###} {1}, shapes {2:0.###} to {3:0.###} clear, braking {4:0} m/s",
@@ -605,7 +618,7 @@ namespace ClaudiaKermin.KOS
             System.Collections.Generic.IDictionary<string, object> pass = null;
             return (Lexicon)Guarded("LANDINGPASS", () =>
             {
-                pass = BlockCalls.LandingPass(KosValues.ToDictionary(input), WithTimeCap(SnapshotReader.Read(shared.Vessel)), new PlanningBody());
+                pass = BlockCalls.LandingPass(KosValues.ToDictionary(input), WithTimeCap(SnapshotReader.ReadForMission(shared.Vessel)), new PlanningBody());
                 return KosValues.FromPlain(pass);
             }, () => pass.ContainsKey("burn_ut") && pass["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "burn at UT {0:0.0}, touchdown at UT {1:0.0}, correction {2:0.0} m/s, next pass {3:0.0}; descent shape {4:0.###}, periapsis radius {5:0} m, landing {6:0} m/s",

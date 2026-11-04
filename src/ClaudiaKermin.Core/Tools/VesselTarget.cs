@@ -40,7 +40,7 @@ namespace ClaudiaKermin.Core.Tools
                 return null;
             }
             var situation = entry.Situation ?? "";
-            if (situation == "LANDED" || situation == "SPLASHED" || situation == "PRELAUNCH")
+            if (GameSnapshot.IsGroundedSituation(situation))
             {
                 why = "the Target Vessel " + entry.Name + " is " + situation.ToLowerInvariant() + ", not in orbit";
                 return null;
