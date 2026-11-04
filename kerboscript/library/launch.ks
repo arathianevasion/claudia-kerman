@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 //
 // Building Block launch: flies from the ground of a body with an atmosphere to a coast out of it.
-// Built on claudia_lib.ks and KSLib's lib_lazcalc.ks (bundled with a recorded patch, kerboscript/kslib/NOTE.md) for its heading;
+// Built on claudia_lib.ks; its heading is Core's (ADDONS:CLAUDIA:LAUNCHHEADING, the one plan_ascent reports, #475);
 // block-only helpers are prefixed launch_. The "//|" lines are Claudia's docs for it; the first is
 // its summary.
 
@@ -18,7 +18,7 @@
 //|     target_inc to its plane.
 //|   target_ap ["auto"]: apoapsis to reach, m; "auto" is the atmosphere top + 10 km.
 //|   target_inc [0]: inclination, degrees; negative launches southward.
-//|   heading ["lib_lazcalc"]: compass degrees to fly, or "lib_lazcalc" to fly into target_inc.
+//|   heading ["into_inc"]: compass degrees to fly, or "into_inc" to fly into target_inc.
 //|   turn_start_speed [60]: m/s of airspeed at which the gravity turn starts. Give more than the craft
 //|     will reach (e.g. 100000) to climb straight up.
 //|   turn_shape [0.45]: the turn's pitch is 90 * (1 - f^turn_shape), f the fraction of the way from
@@ -51,14 +51,14 @@
 //| Example: `local res is launch(lexicon("target_ap", 80000)). if res:success { set res to circularize(lexicon("at", "ap")). }
 //| addons:claudia:report(res).`
 
-// The block's own options and defaults ("auto", "lib_lazcalc", "none" and "body" are resolved once
+// The block's own options and defaults ("auto", "into_inc", "none" and "body" are resolved once
 // the block knows the body and the wait).
 function launch_defaults {
   return lexicon(
     "launch_at", "now",
     "target_ap", "auto",
     "target_inc", 0,
-    "heading", "lib_lazcalc",
+    "heading", "into_inc",
     "turn_start_speed", 60,
     "turn_shape", 0.45,
     "max_aoa", 5,
@@ -73,11 +73,14 @@ function launch_unreadable {
   parameter opt.
   local words is list(
     list("target_ap", "auto", "m"),
-    list("heading", "lib_lazcalc", "degrees"),
     list("throttle_max_q", "none", "Pa"),
     list("g", "body", "a number"),
     list("atm_height", "body", "a number"),
     list("surface_pressure", "body", "a number")).
+  // "lib_lazcalc" is the heading's old name for the default (#475).
+  if opt:heading:istype("String") and opt:heading <> "into_inc" and opt:heading <> "lib_lazcalc" {
+    return "heading must be 'into_inc' or degrees, not '" + opt:heading + "'".
+  }
   for w in words {
     local value is opt[w[0]].
     if value:istype("String") and value <> w[1] {
@@ -271,17 +274,11 @@ function launch_plane_pitch {
   return flow_pitch + max(-reach, min(reach, want_pitch - flow_pitch)).
 }
 
-// The inclination to hand LAZcalc_init for inc (degrees, negative southward) from latitude lat: its
-// size kept 0.001 degrees inside abs(lat) .. 180 - abs(lat), so LAZcalc_init (which reads the
-// latitude again) never clamps it with a red HUD message; the sign kept.
-function launch_laz_inc {
-  parameter inc, lat.
-  local margin is 0.001.
-  local inc_size is min(180 - abs(lat) - margin, max(abs(lat) + margin, abs(inc))).
-  if inc < 0 {
-    return -inc_size.
-  }
-  return inc_size.
+// Core's heading into the plane of inc (negative southward) from the craft's latitude: lexicon error, heading (#475).
+function launch_heading {
+  parameter inc, target_ap.
+  return addons:claudia:launchheading(lexicon("inc", inc, "target_ap", target_ap, "lat", ship:latitude,
+    "gm", body:mu, "radius", body:radius, "rotation", body:rotationperiod)).
 }
 
 // Why the block stopped for lost control: burning is whether an engine gave thrust (not what the
@@ -403,13 +400,16 @@ function launch {
     }
   }
 
-  // The heading is KSLib's LAZcalc (bundled lib_lazcalc.ks), set up for the pad and recomputed on the climb.
+  // The heading is Core's (launch_heading) for the plane, set for the pad and recomputed on the climb as the latitude moves.
   local hdg is opt:heading.
-  local laz is list().
-  local laz_on is hdg:istype("String").
-  if laz_on {
-    set laz to LAZcalc_init(target_ap, launch_laz_inc(go:inc, ship:latitude)).
-    set hdg to LAZcalc(laz).
+  local into_plane is hdg:istype("String").
+  if into_plane {
+    local aimed is launch_heading(go:inc, target_ap).
+    if aimed:error <> "" {
+      claudia_make_safe().
+      return claudia_finish(ctx, false, "launch heading: " + aimed:error, extra).
+    }
+    set hdg to aimed:heading.
   }
   local max_q_pa is -1.
   if opt:throttle_max_q:istype("Scalar") {
@@ -512,8 +512,8 @@ function launch {
       if turn_start_alt >= 0 {
         set pitch to launch_pitch(altitude, turn_start_alt, turn_end, opt:turn_shape).
       }
-      if laz_on {
-        set hdg to LAZcalc(laz).
+      if into_plane {
+        set hdg to launch_heading(go:inc, target_ap):heading.
       }
       if spd > 30 {
         local lifted is launch_thin_pitch(pitch, 90 - vang(ship:srfprograde:vector, ship:up:vector), q_pa, launch_thin_lead()).

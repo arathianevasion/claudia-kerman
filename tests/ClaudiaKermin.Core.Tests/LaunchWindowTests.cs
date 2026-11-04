@@ -181,6 +181,62 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("body table", (string)BlockCalls.LaunchWindow(new Dictionary<string, object> { { "inc", 6.0 }, { "lan", 0.0 } }, new GameSnapshot { Body = "Kerbin" })["error"]);
         }
 
+        private static Dictionary<string, object> LaunchHeadingAsk(double inc, double lat)
+        {
+            return new Dictionary<string, object>
+            {
+                { "inc", inc }, { "lat", lat }, { "target_ap", 80000.0 },
+                { "gm", 3.5316e12 }, { "radius", 600000.0 }, { "rotation", Period },
+            };
+        }
+
+        // #475: launch flies this heading, so for the same inputs it must be the one plan_ascent reports (the window's).
+        [Theory]
+        [InlineData(6.0, 78.0, 123.4)]
+        [InlineData(-6.0, 78.0, 123.4)]
+        [InlineData(-45.0, 0.0, 10.0)]
+        [InlineData(90.0, 100.0, 40.0)]
+        public void The_launch_heading_is_the_heading_plan_ascent_reports_for_the_same_window(double inc, double lan, double celestialLongitude)
+        {
+            var snapshot = Snapshot(KscLatitude, celestialLongitude);
+            var window = BlockCalls.LaunchWindow(new Dictionary<string, object> { { "inc", inc }, { "lan", lan }, { "target_ap", 80000.0 } }, snapshot);
+            Assert.Equal("", window["error"]);
+            var ask = LaunchHeadingAsk((double)window["inc"], KscLatitude);
+            var heading = BlockCalls.LaunchHeading(ask);
+            Assert.Equal("", heading["error"]);
+            Assert.Equal((double)window["heading"], (double)heading["heading"], 9);
+        }
+
+        // The block's heading is the signed inclination's: a southbound plane flies southeast, a northbound one northeast.
+        [Fact]
+        public void A_southbound_plane_flies_southward_and_a_northbound_one_northward()
+        {
+            var north = (double)BlockCalls.LaunchHeading(LaunchHeadingAsk(45, 28.5))["heading"];
+            var south = (double)BlockCalls.LaunchHeading(LaunchHeadingAsk(-45, 28.5))["heading"];
+            Assert.InRange(north, 0, 90);
+            Assert.InRange(south, 90, 180);
+        }
+
+        [Fact]
+        public void A_block_call_without_its_inputs_or_a_body_that_turns_gives_a_reason()
+        {
+            Assert.Contains("inc is required", (string)BlockCalls.LaunchHeading(new Dictionary<string, object>())["error"]);
+            var still = LaunchHeadingAsk(45, 28.5);
+            still["rotation"] = 0.0;
+            Assert.Contains("above zero", (string)BlockCalls.LaunchHeading(still)["error"]);
+        }
+
+        [Fact]
+        [Trait("Category", "Timing")]
+        public void The_launch_heading_runs_in_microseconds_every_tick()
+        {
+            var ask = LaunchHeadingAsk(6, 28.5);
+            Timing.Within(2, () =>
+            {
+                for (var i = 0; i < 100; i++) BlockCalls.LaunchHeading(ask);
+            });
+        }
+
         [Fact]
         [Trait("Category", "Timing")]
         public void It_runs_in_milliseconds()
