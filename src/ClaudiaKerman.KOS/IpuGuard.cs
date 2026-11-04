@@ -74,6 +74,8 @@ namespace ClaudiaKerman.KOS
         // The IPU must never stop a run from starting or ending.
         private static void Guard(string what, Action work)
         {
+            // Stood down beside the old copy (ADR 0015): its config folder is left where it is.
+            if (Adapter.DuplicateInstall.Found) return;
             try { work(); }
             catch (Exception e) { Debug.LogWarning(ModInfo.LogTag + " couldn't " + what + " kOS's IPU: " + e.Message); }
         }

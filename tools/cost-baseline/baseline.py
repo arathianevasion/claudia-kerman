@@ -241,7 +241,7 @@ def install_of(saves):
 
 def analyse_mission(folder, install=''):
     mid = os.path.basename(folder.rstrip('/'))
-    save = re.split(re.escape(os.sep) + 'ClaudiaKerm[ai]n' + re.escape(os.sep), folder)[0].split(os.sep)[-1]
+    save = re.split(re.escape(os.sep) + MOD_FOLDER + re.escape(os.sep), folder)[0].split(os.sep)[-1]
     M = dict(id=mid, save=save, install=install, responses=[], craft=[], incomplete_attempts=0, notes=[], mod_total=0.0)
 
     # Transcript turns, with the reply kind the mod asked for.

@@ -33,6 +33,8 @@ namespace ClaudiaKerman.KOS
         // Decided once per scene by each debug tool. Any failure reading the player config counts as off.
         internal static bool DebugToolsOn()
         {
+            // Stood down beside the old copy (ADR 0015): its config folder is left where it is.
+            if (Adapter.DuplicateInstall.Found) return false;
             try
             {
                 return PlayerConfig.LoadOrCreate(ConfigDirectory.ResolveCurrent()).DebugTools;

@@ -31,6 +31,7 @@ namespace ClaudiaKerman.Adapter
             }
         }
 
+        /// <summary>The old copy is installed too: this one stands down and leaves the config folder alone.</summary>
         public static bool Found
         {
             get { return Message.Length > 0; }

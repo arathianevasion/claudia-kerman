@@ -19,7 +19,7 @@ namespace ClaudiaKerman.Adapter
 
         private ConfigNode _loaded;
 
-        // Kept only for a session where the mod stood down (DuplicateInstall), so saving then doesn't drop the Missions.
+        // Written back only when no driver runs (the mod stood down, DuplicateInstall), so saving then doesn't drop the Missions.
         public override void OnLoad(ConfigNode node)
         {
             _loaded = node.CreateCopy();
