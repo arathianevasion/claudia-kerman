@@ -218,7 +218,7 @@ namespace ClaudiaKermin.Core.Tools
             public double OpenedUt = double.NegativeInfinity;
         }
 
-        private ReentryPredictor(SnapshotBody body, IReentryAir air, IReentryCraft craft, BodyFrame frame, double ground)
+        private ReentryPredictor(SnapshotBody body, IReentryAir air, IReentryCraft craft, BodyFrame frame, double ground, bool chutes)
         {
             _body = body;
             _air = air;
@@ -226,23 +226,25 @@ namespace ClaudiaKermin.Core.Tools
             _spin = frame.Spin;
             _ground = ground;
             foreach (var chute in craft.Chutes ?? new ReentryChute[0])
-                if (chute != null) _chutes.Add(new Chute { Of = chute, State = chute.State });
+                if (chute != null && (chutes || chute.State == ReentryChuteState.SemiDeployed || chute.State == ReentryChuteState.Deployed))
+                    _chutes.Add(new Chute { Of = chute, State = chute.State });
         }
 
         /// <summary>
         /// Where the craft on <paramref name="orbit"/> round <paramref name="body"/> lands, falling from <paramref name="fromUt"/>,
         /// on ground <paramref name="groundAltitude"/> m above sea level, with mass <paramref name="massKg"/>, opening its chutes and
-        /// dropping its heat shield by <see cref="ReentryRules"/>.
+        /// dropping its heat shield by <see cref="ReentryRules"/>. With <paramref name="chutes"/> false (#477) no chute is armed or
+        /// opened: each stays stowed, its drag as the craft has it stowed; one already open stays open.
         /// </summary>
         public static ReentryPrediction Predict(SnapshotBody body, Conic orbit, double fromUt, double groundAltitude, double massKg,
-            IReentryAir air, IReentryCraft craft, BodyFrame frame)
+            IReentryAir air, IReentryCraft craft, BodyFrame frame, bool chutes = true)
         {
             if (body == null || orbit == null || air == null || craft == null || frame == null)
                 return Fail("the body, orbit, air, craft and frame must all be given");
             if (body.AtmosphereHeight <= 0) return Fail(body.Name + " has no atmosphere");
             if (!SearchInput.Finite(fromUt) || !SearchInput.Finite(groundAltitude)) return Fail("the start time and the ground's height must be finite");
             if (!SearchInput.Finite(massKg) || massKg <= 0) return Fail("the craft's mass must be a positive number of kg");
-            var predictor = new ReentryPredictor(body, air, craft, frame, groundAltitude) { _mass = massKg };
+            var predictor = new ReentryPredictor(body, air, craft, frame, groundAltitude, chutes) { _mass = massKg };
             return predictor.Fly(orbit, fromUt, frame);
         }
 

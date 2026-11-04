@@ -50,25 +50,37 @@ if not dh_found {
   local dh_up is ship:facing:topvector.
   lock steering to lookdirup(dh_aim, dh_up).
   // Settled (#711): the port within 2 degrees of the aim and turning under 0.1 deg/s for 2 s. The mod passes it to dock,
-  // whose craft holds still until then; a re-aim unsettles it.
-  local dh_settled is false.
+  // whose craft holds still until then; a re-aim unsettles it. Near (#714): 5 degrees and 0.5 deg/s, dock
+  // closes on it only after its settle_timeout. A level holds until a re-aim.
+  local dh_level is "".
   local dh_since is time:seconds.
+  local dh_near is dh_since.
   until dh_port:state <> "Ready" {
     local dh_now is dh_toward:nodeposition - dh_port:nodeposition.
     if vang(dh_now, dh_aim) > 15 and dh_now:mag > 10 {
       set dh_aim to dh_now.
       set dh_up to ship:facing:topvector.
       set dh_since to time:seconds.
-      if dh_settled {
-        set dh_settled to false.
-        addons:claudia:dockholdsettled(false).
+      set dh_near to dh_since.
+      if dh_level <> "" {
+        set dh_level to "".
+        addons:claudia:dockholdsettled("").
       }
     }
-    if vang(dh_port:portfacing:forevector, dh_aim) > 2 or ship:angularvel:mag * constant:radtodeg > 0.1 {
+    local dh_off is vang(dh_port:portfacing:forevector, dh_aim).
+    local dh_rate is ship:angularvel:mag * constant:radtodeg.
+    if dh_off > 2 or dh_rate > 0.1 {
       set dh_since to time:seconds.
-    } else if not dh_settled and time:seconds >= dh_since + 2 {
-      set dh_settled to true.
-      addons:claudia:dockholdsettled(true).
+    }
+    if dh_off > 5 or dh_rate > 0.5 {
+      set dh_near to time:seconds.
+    }
+    if dh_level <> "settled" and time:seconds >= dh_since + 2 {
+      set dh_level to "settled".
+      addons:claudia:dockholdsettled(dh_level).
+    } else if dh_level = "" and time:seconds >= dh_near + 2 {
+      set dh_level to "near".
+      addons:claudia:dockholdsettled(dh_level).
     }
     wait 0.
   }
