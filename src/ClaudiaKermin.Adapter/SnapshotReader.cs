@@ -126,13 +126,29 @@ namespace ClaudiaKermin.Adapter
             {
                 if (saved == null || !Nameable(saved.vesselType)) continue;
                 var body = SavedBody(saved);
-                snapshot.Vessels.Add(new SnapshotVessel { Id = saved.persistentId, Name = saved.vesselName ?? "", Body = body, Situation = saved.situation.ToString() });
+                var entry = new SnapshotVessel { Id = saved.persistentId, Name = saved.vesselName ?? "", Body = body, Situation = saved.situation.ToString() };
+                if (entry.IsDown) entry.Position = new SnapshotPosition { Latitude = saved.latitude, Longitude = saved.longitude, Altitude = saved.altitude };
+                else ReadSavedOrbit(entry, saved);
+                snapshot.Vessels.Add(entry);
                 if (form.HasValue && form.Value == saved.persistentId)
                 {
                     snapshot.FormTarget = new SnapshotTarget { Id = saved.persistentId, Name = saved.vesselName ?? "", Body = body, Situation = saved.situation.ToString() };
                     ReadSavedPorts(snapshot.FormTarget, saved);
                 }
             }
+        }
+
+        /// <summary>Periapsis and apoapsis altitudes from the saved orbit, to tell same-named vessels apart in the editor (#710).</summary>
+        private static void ReadSavedOrbit(SnapshotVessel entry, ProtoVessel saved)
+        {
+            var orbit = saved.orbitSnapShot;
+            var bodies = FlightGlobals.Bodies;
+            if (orbit == null || bodies == null || orbit.ReferenceBodyIndex < 0 || orbit.ReferenceBodyIndex >= bodies.Count || bodies[orbit.ReferenceBodyIndex] == null) return;
+            double pe;
+            double? ap;
+            TargetVessel.OrbitAltitudes(orbit.semiMajorAxis, orbit.eccentricity, bodies[orbit.ReferenceBodyIndex].Radius, out pe, out ap);
+            entry.PeriapsisM = pe;
+            entry.ApoapsisM = ap;
         }
 
         private static string SavedBody(ProtoVessel saved)
