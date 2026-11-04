@@ -191,7 +191,14 @@ namespace ClaudiaKermin.Adapter
             if (typing) InputLockManager.SetControlLock(ControlTypes.KEYBOARDINPUT, _keyboardLockId);
             else InputLockManager.RemoveControlLock(_keyboardLockId);
             _keyboardLocked = typing;
+            if (DebugTools) Debug.Log(Core.ModInfo.LogTag + " typing lock " + (typing ? "on" : "off") + ": " + LogName);
         }
+
+        /// <summary>With debug_tools on, each typing-lock change is logged; set once at load.</summary>
+        public static bool DebugTools;
+
+        /// <summary>The window's name in the typing-lock log line.</summary>
+        public string LogName = "window";
 
         /// <summary>Releases every lock and any resize; safe to call when nothing is locked.</summary>
         public void Unlock()

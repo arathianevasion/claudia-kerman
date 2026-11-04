@@ -41,6 +41,7 @@ namespace ClaudiaKermin.Adapter
             _chat = chat;
             _dumpFolder = dumpFolder;
             _frame.Remember("chat");
+            _frame.LogName = "Chat window";
             if (dumpFolder != null) _dump = new FileStreamDump(dumpFolder);
         }
 
@@ -55,17 +56,22 @@ namespace ClaudiaKermin.Adapter
             _frame.Show(Draw);
 
             // Keys typed into the chat must not stage, throttle or rotate the craft.
-            _frame.SetTyping(GUI.GetNameOfFocusedControl() == InputControl);
+            _frame.SetTyping(_focus.Held);
         }
 
         /// <summary>Releases the input locks; call when the window goes away.</summary>
         public void Unlock()
         {
+            _focus.Reset();
             _frame.Unlock();
         }
 
+        // Recorded inside the window function, where the field is drawn.
+        private readonly TypingFocus _focus = new TypingFocus(InputControl);
+
         private void Draw(int id)
         {
+            _focus.Observe(GUI.GetNameOfFocusedControl(), Event.current.type == EventType.Layout);
             if (_chat.Version != _seenVersion)
             {
                 _seenVersion = _chat.Version;
@@ -86,6 +92,8 @@ namespace ClaudiaKermin.Adapter
 
             GUI.SetNextControlName(InputControl);
             _typed = GUILayout.TextField(_typed, 2000);
+            // After the field: a click into it moves focus during this pass.
+            _focus.Observe(GUI.GetNameOfFocusedControl(), Event.current.type == EventType.Layout);
 
             GUILayout.BeginHorizontal();
             GUI.enabled = (!_chat.Busy && _typed.Trim().Length > 0) || ClearRules.IsCommand(_typed);
