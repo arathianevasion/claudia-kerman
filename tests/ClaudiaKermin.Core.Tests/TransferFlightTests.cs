@@ -167,6 +167,54 @@ namespace ClaudiaKermin.Core.Tests
             Assert.InRange(D(step, "target_pe_actual"), 29000, 31000);
         }
 
+        // #732 (folded into #727): launched due east from a 20° site, the craft's plane is 14° from Minmus's. An ejection in that
+        // plane toward where Minmus would be, turned into it, misses by Minmus's height out of it; the correction fixes the plane
+        // mid-course, aimed through the planned arrival, for tens of m/s, and the arrival is at target_pe.
+        [Fact]
+        public void The_correction_removes_a_residual_plane_mismatch_mid_course()
+        {
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            var kerbin = rig.System.Find("Kerbin");
+            var minmus = rig.System.OrbitOf(rig.System.Find("Minmus"));
+            var parking = Conic.FromElements(kerbin.Gm, 700000, 0, 20, 78, 0, 0, 0);
+            var tof = Math.PI * Math.Sqrt(Math.Pow((700000 + minmus.A) / 2, 3) / kerbin.Gm);
+            // A departure whose arrival finds Minmus well off the line of nodes: at least 8° out of the parking plane.
+            double t1 = 0, arrival = 0;
+            Vec3 r2 = new Vec3(0, 0, 0), v2;
+            for (var t = 10 * Day; t < 60 * Day; t += Day / 4)
+            {
+                minmus.State(t + tof, out r2, out v2);
+                if (Math.Abs(Vec3.Dot(r2.Normalized, parking.W)) < Math.Sin(8 * Math.PI / 180)) continue;
+                t1 = t;
+                arrival = t + tof;
+                break;
+            }
+            Assert.True(arrival > 0);
+            var meet = (r2 - parking.W * Vec3.Dot(parking.W, r2)).Normalized * r2.Length;
+            var r1 = meet.Normalized * -700000;
+            var arc = Lambert.Solve(kerbin.Gm, r1, meet, tof, parking.W);
+            Assert.Null(arc.Error);
+            rig.Orbit = Conic.FromState(kerbin.Gm, r1, arc.V1, t1);
+            rig.Ut = t1;
+            rig.MoveTo(t1 + 600);
+
+            var ask = Ask("Minmus", 30000);
+            ask.StartUt = t1 - 3600;
+            ask.Phase = "ejected";
+            ask.ArrivalUt = arrival;
+            var step = TransferFlight.Next(rig.Snapshot(), ask);
+            Assert.True(step.Error == "", step.Error);
+            Assert.Equal(TransferFlightStep.Burn, step.Do);
+            Assert.Equal("plane", step.Kind);
+            Assert.InRange(step.Ut, t1 + 600, arrival);
+            Assert.True(Math.Abs(step.Normal) > 1, "a plane fix burns normal: " + step.Normal);
+
+            var done = rig.Run(ask);
+            Assert.True(done.Error == "", done.Error + " | " + string.Join(", ", rig.Burns.Select(b => b.Key + " " + b.Value)));
+            Assert.InRange(rig.Burned("plane"), 10, 150);
+            Assert.InRange(D(done, "target_pe_actual"), 29000, 31000);
+        }
+
         [Fact]
         public void A_body_that_shares_neither_the_craft_s_body_nor_its_parent_is_refused()
         {

@@ -110,6 +110,8 @@ namespace ClaudiaKermin.Core.Tools
         private const int Patches = 4;
         /// <summary>The steps one call may take before it gives up on a loop: a step that flies nothing goes straight on.</summary>
         private const int MaxPhases = 12;
+        /// <summary>From this tilt, degrees, between the craft's arc and the target's orbit, a missed ejection is put down to the plane (#732).</summary>
+        private const double ResidualDeg = 1;
 
         public static TransferFlightStep Next(GameSnapshot snapshot, TransferFlightAsk ask)
         {
@@ -225,6 +227,12 @@ namespace ClaudiaKermin.Core.Tools
             }
             if (Encounter(setup) != null) return Go(ask, Mid);
 
+            // A residual plane (#727, #732): a craft launched due east from past the target's plane ejects in its own plane and
+            // misses by the target's height out of it. The fix is mid-course, where the arc is slow, aimed through the planned
+            // arrival (tens of m/s; in the parking orbit it would be hundreds), then the finer correction as after a plane change.
+            var fixedMid = ResidualPlane(snapshot, setup, ask);
+            if (fixedMid != null) return fixedMid;
+
             // A missed ejection (#363): the cheapest burn from the orbit the craft is on that meets the target, found as the ejection was.
             var missed = "no encounter with " + target.Name + " after the ejection burn";
             var correctionAsk = CorrectionAsk(target.Name, ask.TargetPe, now, ask.TurnTime, ask.StartUt, ask.MaxDuration ?? 0, ask.Auto, ask.DvLeft);
@@ -237,6 +245,26 @@ namespace ClaudiaKermin.Core.Tools
             if (ask.Auto) step.MaxDuration = found.ArrivalUt - ask.StartUt + AutoSlack;
             step.ArrivalUt = ask.ArrivalUt;
             return step;
+        }
+
+        /// <summary>
+        /// The mid-course plane fix for a craft whose arc is tilted <see cref="ResidualDeg"/> or more from the target's orbit and
+        /// misses it (#732): halfway to the planned arrival (sooner if max_duration ends first), the burn whose Lambert arc meets
+        /// the target then, sized to target_pe; null when there is no planned arrival, no tilt, no time or no such burn the craft
+        /// can pay for, and the correction after a missed ejection is tried instead.
+        /// </summary>
+        private static TransferFlightStep ResidualPlane(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask)
+        {
+            var now = setup.Now;
+            if (!(ask.ArrivalUt > now)) return null;
+            var tilt = Math.Acos(Math.Max(-1, Math.Min(1, Vec3.Dot(setup.Start.W, setup.System.OrbitOf(setup.Target).W)))) * 180 / Math.PI;
+            if (tilt < ResidualDeg) return null;
+            string late;
+            var ut = CorrectionUt((now + ask.ArrivalUt) / 2, now, ask.TurnTime + Lead, ask.StartUt, ask.MaxDuration, out late);
+            if (late != "") return null;
+            var fix = CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut, AimUt = ask.ArrivalUt });
+            if (!fix.HasBurn || fix.Error != null || ask.DvLeft > 0 && fix.DeltaV > ask.DvLeft) return null;
+            return FlyCorrection(ask, fix, "plane", Planed);
         }
 
         /// <summary>
