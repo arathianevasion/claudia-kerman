@@ -226,6 +226,16 @@ namespace ClaudiaKermin.Core.Missions
         public double? LaterLegsDv;
         private static readonly int DefaultMarginPercent = new Config.PlayerConfig().CraftCheckMarginPercent;
 
+        /// <summary>
+        /// Stamps the Mission's Time versus delta-v and margin (#739). The only place either field is written: callers pass the
+        /// Mission's values, and a snapshot with no Mission never calls this (it keeps the defaults).
+        /// </summary>
+        public void StampMission(TimeVersusDeltaV time, int marginPercent)
+        {
+            TimeVersusDeltaV = time;
+            MarginPercent = marginPercent;
+        }
+
         // ---- Craft Check facts, computed by the adapter from the game ----
 
         /// <summary>SANDBOX, SCIENCE_SANDBOX or CAREER.</summary>
