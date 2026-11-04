@@ -53,12 +53,11 @@ namespace ClaudiaKermin.Core.Missions
         /// <paramref name="leftTheCraft"/> is the vessel ids that may be Child Vessels; <paramref name="needsNewGoal"/> when the
         /// request takes a Mission Plan only for a new Mission Goal (a typed reply to a pending Sequence Plan);
         /// <paramref name="allowsNewGoal"/> when the player may change the goal (their typed Reply or Change), else a new_goal is ignored (#590).
-        /// <paramref name="snapshot"/> and <paramref name="goal"/>, copied before the tool step, are for the planet guard (#670).
         /// <paramref name="goalStands"/> when the mod asked for a revision of a Mission under way whose goal stands (#697): a plan
         /// with no sequences, which declines the goal, is refused then.
         /// </summary>
         public static ToolOutcome Check(ToolUseBlock use, ICollection<string> leftTheCraft, bool needsNewGoal, bool allowsNewGoal = true,
-            GameSnapshot snapshot = null, string goal = null, bool goalStands = false)
+            bool goalStands = false)
         {
             var problems = new List<string>();
             var plan = use.InputIsValid ? Read(use.InputJson, problems) : null;
@@ -70,13 +69,8 @@ namespace ClaudiaKermin.Core.Missions
                         + "or use a vessel id from a notice that said it left");
                 if (needsNewGoal && plan.NewGoal == null)
                     problems.Add("new_goal is empty: while a Sequence Plan is pending, a Mission Plan is only for a new Mission Goal; otherwise reply with a sequence_plan or an answer");
-                // The planet guard (#670): until #459's transfer_to flies to planets, a planet goal is declined. #459 removes it.
-                var planet = plan.Sequences.Count > 0 ? PlanetGoal(snapshot, allowsNewGoal && plan.NewGoal != null ? plan.NewGoal : goal) : null;
-                if (planet != null)
-                    problems.Add("no Building Block flies to a planet yet, and " + planet + " needs a transfer to another planet: "
-                        + "hand in a Mission Plan with no sequences, and say so in say and why");
-                // A planet goal is declined whatever the request (#670), so the revision rule leaves it be.
-                else if (goalStands && plan.Sequences.Count == 0 && PlanetGoal(snapshot, goal) == null)
+                // #670's planet guard went with #459: transfer_to flies to a planet, so a planet goal is planned like any other.
+                if (goalStands && plan.Sequences.Count == 0)
                     problems.Add("this is a revision of a Mission still under way: give the sequences still to fly; "
                         + "to give up on the goal, say so in the Debrief's follow-up instead");
             }
@@ -91,18 +85,6 @@ namespace ClaudiaKermin.Core.Missions
                 Json = json.EndArray().EndObject().ToString(),
                 Summary = problems.Count + (problems.Count == 1 ? " problem" : " problems"),
             };
-        }
-
-        /// <summary>
-        /// The body <paramref name="goal"/> names that needs a transfer to another planet (#670): one the craft's planet transfers to,
-        /// as <see cref="WindowWaits.Planet"/> reads the goal, or a moon of one (Ike, Laythe); null for none. Goes with #459.
-        /// </summary>
-        internal static string PlanetGoal(GameSnapshot snapshot, string goal)
-        {
-            if (snapshot == null || string.IsNullOrEmpty(goal)) return null;
-            var body = MissionPrompts.GoalBodies(snapshot, goal).FirstOrDefault(b => TransferWindows.IsPlanetTransfer(snapshot, b.Name)
-                || (!string.IsNullOrEmpty(b.Parent) && TransferWindows.IsPlanetTransfer(snapshot, b.Parent)));
-            return body != null ? body.Name : null;
         }
 
         /// <summary>The last plan the tool accepted in <paramref name="messages"/> (one turn's), or null when none was.</summary>

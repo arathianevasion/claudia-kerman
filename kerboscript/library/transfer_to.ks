@@ -3,23 +3,22 @@
 //
 // Building Block transfer_to, the spec's `transfer` (kOS already has a built-in TRANSFER, for moving
 // resources, which a function may not hide): flies from orbit around a body to an encounter with
-// one of its moons, finding the ejection with ADDONS:CLAUDIA:EJECTIONBURN and the Course Correction with
-// ADDONS:CLAUDIA:CORRECTIONBURN. Built on claudia_lib.ks and exec_node.ks (the patch and Course Correction helpers it
-// shares with return are in claudia_lib.ks); block-only helpers are prefixed transfer_to_. The "//|" lines are
-// Claudia's docs for it; the first is its summary.
+// one of its moons or a body sharing its parent. Its flight is the mod's (ADDONS:CLAUDIA:TRANSFERSTEP, #459, ADR 0014):
+// each step plans a node, a wait or the end, and checks the encounter; the block only flies the nodes with exec_node,
+// warps and reports. Built on claudia_lib.ks and exec_node.ks; block-only helpers are prefixed transfer_to_. The "//|"
+// lines are Claudia's docs for it; the first is its summary.
 
 @lazyglobal off.
 
 //| transfer_to(options): flies from orbit to an encounter with a moon of the body the craft orbits (the
-//| Mun or Minmus from Kerbin): the mod's ejection solver finds the burn, exec_node flies it, and a mid-course
-//| correction halfway through the coast aims for target_pe (far out of plane, a plane change at its planned
-//| time instead). It ends after it, before arrival. (kOS's own TRANSFER moves resources.)
+//| Mun from Kerbin) or a body sharing its parent (Duna from Kerbin): the mod's solver finds the ejection,
+//| exec_node flies it, and mid-course corrections aim for target_pe (far out of plane, a plane change at its
+//| planned time instead). It ends before arrival. (kOS's own TRANSFER moves resources.)
 //| Options:
 //|   target [required]: the body to reach, a name ("Mun") or a body (body("Minmus")).
 //|   target_pe [required]: periapsis altitude at the target, m.
 //|   window ["next"]: "next" departs in the next transfer window once the craft can have turned to
-//|     the burn (one synodic period is searched: about 33 minutes for the
-//|     Mun from a 100 km orbit); a time (UT seconds) searches from that UT. It warps
+//|     the burn; a time (UT seconds): the window from then (a planet's: round it). It warps
 //|     there on rails: no Due Time needed.
 //|   correction [true]: false leaves out the mid-course correction.
 //|   pe_tolerance [1000]: m off target_pe allowed; past it, a finer correction, then a fail.
@@ -27,13 +26,14 @@
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block; each burn gets them too.
 //| Extra results: encounter_ut (UT the craft enters the target's sphere of influence),
 //| target_pe_actual (m, the periapsis predicted at the target), correction_dv (m/s the corrections
-//| burned: one making the encounter if the ejection missed, then up to two mid-course, none within
+//| burned: one making the encounter if the ejection missed, then mid-course ones, none within
 //| pe_tolerance, under 0.1 m/s or with correction false); plane_dv (m/s the plane change burned).
+//| departure_ut, arrival_ut (UT of ejection, periapsis), v_inf (m/s).
 //| ejection_node_dv, ejection_dv_used (m/s the node asked for, the burn used) and ejection_burn_time
 //| (s the engines burned): dv_used well above the node means wasted thrust. All -1 if it failed before the ejection burn.
 //| ejection_wait (s from the block's start to the ejection node): -1 if it failed before the node was planned.
 //| Fails with "target is required", "target_pe is required", an option value it can't read, "no body
-//| named <x>", a target that doesn't orbit the craft's body, "not in orbit", "a maneuver node is
+//| named <x>", a target that doesn't orbit the craft's body or parent, "not in orbit", "a maneuver node is
 //| already planned: remove it first", "found no transfer: <why>", "found no correction: <why>", "no encounter with
 //| <target> after the ejection burn, and no correction fits: <why>" (or "the correction failed:
 //| <why>"; or "after the correction", "the plane change"), "after the correction, the periapsis ... off
@@ -77,113 +77,67 @@ function transfer_to_unreadable {
   return claudia_correction_unreadable(opt:correction).
 }
 
-// Whether a predicted periapsis off_by m from target_pe (claudia_pe_error; 1e12, no encounter) is within tolerance m (#672). Pure.
-function transfer_to_pe_within {
-  parameter off_by, tolerance.
-  return abs(off_by) <= tolerance.
-}
-
-// What the finer Course Correction (#672) asks ADDONS:CLAUDIA:CORRECTIONBURN: claudia_correction_ask at ut, within tolerance m. Pure.
-function transfer_to_fine_ask {
-  parameter dest_name, target_pe, tolerance, ut.
-  local ask is claudia_correction_ask(dest_name, target_pe, ut).
-  set ask:pe_tolerance to tolerance.
-  return ask.
-}
-
-// m/s the finer Course Correction may leave of its node: tighter than exec_node's 0.5, so a burn of a few m/s hits a
-// kilometre-scale periapsis (#672). Pure.
-function transfer_to_fine_residual {
-  return 0.1.
-}
-
-// "" or why the block fails after its corrections (#672): the periapsis pe m at the body named dest_name is over tolerance m
-// from target_pe, or why the finer correction couldn't be found or flown (not "": the block fails whatever pe is). Pure.
-function transfer_to_miss {
-  parameter dest_name, pe, target_pe, tolerance, why.
-  if why = "" and transfer_to_pe_within(pe - target_pe, tolerance) {
-    return "".
+// The flight: the mod's steps from state (TRANSFERSTEP's ask, its phase "start") until one ends it, each folded into extra
+// (the Script Result's own keys) and opt (max_duration, once the plan sets it). ask(state) gives the next step (a call that
+// threw gives only its error, #439); fly(step) flies its node and gives exec_node's result; wait(ut) and tick() give "" or
+// why the block must stop. Returns "" or the reason the block fails.
+function transfer_to_run {
+  parameter state, opt, extra, ask, fly, wait, tick.
+  local first is true.
+  until false {
+    if not first {
+      local ticked is tick().
+      if ticked <> "" {
+        return ticked.
+      }
+    }
+    set first to false.
+    local step is ask(state).
+    if not step:haskey("do") {
+      return step:error.
+    }
+    for key in step:report:keys {
+      set extra[key] to step:report[key].
+    }
+    if step:error <> "" or step:do = "done" {
+      return step:error.
+    }
+    for key in step:carry:keys {
+      set state[key] to step:carry[key].
+    }
+    if step:max_duration >= 0 {
+      set opt:max_duration to step:max_duration.
+      set state:max_duration to step:max_duration.
+    }
+    if step:do = "wait" {
+      local waited is wait(step:ut).
+      if waited <> "" {
+        return waited.
+      }
+    } else {
+      local burned is fly(step).
+      set state:last_dv to burned:dv_used.
+      if step:kind = "ejection" {
+        set extra:ejection_node_dv to burned:node_dv.
+        set extra:ejection_dv_used to round(burned:dv_used, 1).
+        set extra:ejection_burn_time to burned:burn_time.
+      } else {
+        set extra[step:kind + "_dv"] to round(extra[step:kind + "_dv"] + burned:dv_used, 2).
+      }
+      if not burned:success {
+        if not step:keep_going {
+          return step:fail_prefix + burned:reason.
+        }
+        set state:why to burned:reason.
+      }
+    }
   }
-  local miss is "after the correction, the periapsis at " + dest_name + " is " + round(pe / 1000, 1) + " km, "
-    + round(abs(pe - target_pe) / 1000, 1) + " km off target_pe " + round(target_pe / 1000, 1) + " km (pe_tolerance "
-    + round(tolerance / 1000, 1) + " km)".
-  if why <> "" {
-    set miss to miss + ": " + why.
-  }
-  return miss.
-}
-
-// What the correction after a missed ejection asks ADDONS:CLAUDIA:EJECTIONBURN: the soonest burn the craft can turn to
-// (turn_time plus a minute for the lead), one the craft's dv_left (m/s, stock's; 0 or less for unknown) pays for, and
-// with max_duration given (auto false) one that leaves the Course Correction after it its lead and 120 s. One burn: no
-// broken-plane plan, whose plane change this path would not fly. Pure.
-function transfer_to_correction_ask {
-  parameter dest_name, target_pe, now, turn_time, start_ut, max_duration, auto, dv_left.
-  local ask is lexicon("target", dest_name, "target_pe", target_pe, "earliest_ut", now + turn_time + 60, "plane_change", false).
-  if not auto {
-    set ask:latest_ut to start_ut + max_duration - 120 - turn_time - 60.
-  }
-  if dv_left > 0 {
-    set ask:max_dv to dv_left.
-  }
-  return ask.
-}
-
-// After an ejection that left no encounter with dest: the cheapest burn from the orbit the craft is on that meets dest
-// at target_pe, within the block's limits (transfer_to_correction_ask), flown with exec_node. With max_duration auto, it
-// moves to the new arrival plus 900 s. Returns lexicon("reason", "" or ", and no correction fits: <why>" or exec_node's
-// failure after ", and the correction failed: ", "dv", m/s burned).
-function transfer_to_make_encounter {
-  parameter ctx, dest, auto, turn_time.
-  local opt is ctx:opt.
-  local done is lexicon("reason", "", "dv", 0).
-  local ask is transfer_to_correction_ask(dest:name, opt:target_pe, time:seconds, turn_time,
-    ctx:start_ut, opt:max_duration, auto, claudia_dv_remaining()).
-  if ask:haskey("latest_ut") and ask:latest_ut < ask:earliest_ut {
-    set done:reason to ", and no correction fits: max_duration (" + round(opt:max_duration) + " s) leaves no time for it and the Course Correction after it".
-    return done.
-  }
-  local found is addons:claudia:ejectionburn(ask).
-  if found:error <> "" {
-    set done:reason to ", and no correction fits: " + found:error:replace("found no transfer: ", "").
-    return done.
-  }
-  if auto {
-    set opt:max_duration to found:arrival_ut - ctx:start_ut + 900.
-  }
-  add node(found:ut, found:radial, found:normal, found:prograde).
-  local burned is claudia_burn(ctx, nextnode).
-  set done:dv to burned:dv_used.
-  if not burned:success {
-    set done:reason to ", and the correction failed: " + burned:reason.
-  }
-  return done.
-}
-
-// What a broken-plane plan's plane change (#619) asks ADDONS:CLAUDIA:CORRECTIONBURN: the least burn at ut that brings the
-// path to dest_name at target_pe (m), the solve starting from the Lambert burn to its centre at aim_ut (the planned
-// arrival), since the path before it misses. Pure.
-function transfer_to_plane_ask {
-  parameter dest_name, target_pe, ut, aim_ut.
-  local ask is claudia_correction_ask(dest_name, target_pe, ut).
-  set ask:aim_ut to aim_ut.
-  return ask.
-}
-
-// Why a block-internal call gave nothing to fly: its error, "" when it gave a result. ADDONS:CLAUDIA turns a throw inside
-// a call into lexicon("error", reason) (#439), so a failed call ends this block with that reason, not the kOS program.
-function transfer_to_call_failure {
-  parameter result.
-  if result:haskey("error") {
-    return result:error.
-  }
-  return "".
 }
 
 function transfer_to {
   parameter options is lexicon().
-  local extra is lexicon("encounter_ut", -1, "target_pe_actual", -1, "correction_dv", 0, "plane_dv", 0,
-    "ejection_wait", -1, "ejection_node_dv", -1, "ejection_dv_used", -1, "ejection_burn_time", -1).
+  local extra is lexicon("encounter_ut", -1, "target_pe_actual", -1, "correction_dv", 0, "plane_dv", 0, "ejection_wait", -1,
+    "ejection_node_dv", -1, "ejection_dv_used", -1, "ejection_burn_time", -1, "departure_ut", -1, "arrival_ut", -1, "v_inf", -1).
   local ctx is claudia_begin("transfer_to", options, transfer_to_defaults(), "auto").
   if ctx:error <> "" {
     return claudia_finish(ctx, false, ctx:error, extra).
@@ -204,144 +158,36 @@ function transfer_to {
   if status <> "ORBITING" {
     return claudia_finish(ctx, false, "not in orbit: transfer_to starts from orbit around " + ship:body:name, extra).
   }
-  if not dest:hasbody or dest:body <> ship:body {
-    return claudia_finish(ctx, false, dest:name + " does not orbit " + ship:body:name + ", the body the craft orbits", extra).
-  }
   if hasnode {
     return claudia_finish(ctx, false, "a maneuver node is already planned: remove it first", extra).
   }
 
-  // The solver finds the cheapest ejection in the next window and gives its node's components. The
-  // calls are block-internal (ADR 0006, ADR 0007), so they sit in the block. The earliest departure
-  // leaves time to turn to the burn, which exec_node does before it warps.
+  // The steps are the mod's, block-internal calls (ADR 0007, ADR 0014), so they sit in the block. The earliest departure
+  // leaves time to turn to the burn, which exec_node does before it warps there on rails, with no cap (ADR 0004).
   local turn is addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime)).
-  local turn_failure is transfer_to_call_failure(turn).
-  if turn_failure <> "" {
-    return claudia_finish(ctx, false, turn_failure, extra).
+  if turn:error <> "" {
+    return claudia_finish(ctx, false, turn:error, extra).
   }
-  local found is addons:claudia:ejectionburn(lexicon("target", dest:name, "target_pe", opt:target_pe,
-    "earliest_ut", claudia_earliest(ctx:start_ut, turn:turn_time, opt:window), "window", opt:window)).
-  local found_failure is transfer_to_call_failure(found).
-  if found_failure <> "" {
-    return claudia_finish(ctx, false, found_failure, extra).
-  }
-  add node(found:ut, found:radial, found:normal, found:prograde).
-  // The ejection burn may be far off (window "next" up to a synodic period away, a UT window
-  // further): exec_node warps there on rails, with no cap (ADR 0004).
-  set extra:ejection_wait to round(found:ut - ctx:start_ut).
-  local auto is opt:max_duration:istype("String").
-  if auto {
-    set opt:max_duration to found:arrival_ut - ctx:start_ut + 900.
-  }
-
-  local ejected is claudia_burn(ctx, nextnode).
-  set extra:ejection_node_dv to ejected:node_dv.
-  set extra:ejection_dv_used to round(ejected:dv_used, 1).
-  set extra:ejection_burn_time to ejected:burn_time.
-  if not ejected:success {
-    return claudia_finish(ctx, false, ejected:reason, extra).
-  }
-  local enc is claudia_patch(ship:orbit, dest).
-  local missed is "no encounter with " + dest:name + " after the ejection burn".
-  // A broken-plane plan (#619): the ejection stays in the craft's plane, and the plane change, at its planned time, makes
-  // the encounter in place of the halfway Course Correction.
-  local broken is found:plane_ut >= 0.
-  if broken {
+  local state is lexicon("target", dest:name, "target_pe", opt:target_pe, "window", opt:window, "correction", opt:correction,
+    "pe_tolerance", opt:pe_tolerance, "start_ut", ctx:start_ut, "max_duration", opt:max_duration,
+    "auto", opt:max_duration:istype("String"), "turn_time", turn:turn_time, "phase", "start").
+  local reason is transfer_to_run(state, opt, extra, {
+    parameter s.
+    set s:dv_left to claudia_dv_remaining().
+    return addons:claudia:transferstep(s).
+  }, {
+    parameter step.
+    add node(step:ut, step:radial, step:normal, step:prograde).
+    return claudia_burn(ctx, nextnode, step:max_residual).
+  }, {
+    parameter ut.
+    return claudia_wait_until(ctx, ut).
+  }, {
     local ticked is claudia_tick(ctx, 0).
     if ticked <> "" {
       claudia_make_safe().
-      return claudia_finish(ctx, false, ticked, extra).
     }
-    local when is claudia_correction_ut(found:plane_ut, time:seconds, turn:turn_time + 60, ctx:start_ut, opt:max_duration).
-    if when:reason <> "" {
-      return claudia_finish(ctx, false, when:reason, extra).
-    }
-    local changed is claudia_fly_correction(ctx, addons:claudia:correctionburn(transfer_to_plane_ask(dest:name, opt:target_pe, when:ut, found:arrival_ut))).
-    set extra:plane_dv to round(changed:dv, 2).
-    if changed:reason <> "" {
-      return claudia_finish(ctx, false, changed:reason, extra).
-    }
-    set enc to claudia_patch(ship:orbit, dest).
-    if enc:istype("String") {
-      return claudia_finish(ctx, false, "no encounter with " + dest:name + " after the plane change", extra).
-    }
-  } else if enc:istype("String") {
-    // A missed ejection (#363) gets a correction that makes the encounter, found as the ejection was.
-    local made is transfer_to_make_encounter(ctx, dest, auto, turn:turn_time).
-    set extra:correction_dv to round(made:dv, 2).
-    if made:reason <> "" {
-      return claudia_finish(ctx, false, missed + made:reason, extra).
-    }
-    set enc to claudia_patch(ship:orbit, dest).
-    if enc:istype("String") {
-      return claudia_finish(ctx, false, "no encounter with " + dest:name + " after the correction", extra).
-    }
-  }
-
-  if opt:correction and not broken {
-    local ticked is claudia_tick(ctx, 0).
-    if ticked <> "" {
-      claudia_make_safe().
-      return claudia_finish(ctx, false, ticked, extra).
-    }
-    // The Course Correction halfway to the encounter (sooner if max_duration ends first, #368), found by the mod's solver:
-    // a block-internal call (ADR 0007), so it sits in the block.
-    if not transfer_to_pe_within(claudia_pe_error(ship:orbit, dest, opt:target_pe), opt:pe_tolerance) {
-      local when is claudia_correction_ut((time:seconds + enc:soi_ut) / 2, time:seconds, turn:turn_time + 60, ctx:start_ut, opt:max_duration).
-      if when:reason <> "" {
-        return claudia_finish(ctx, false, when:reason, extra).
-      }
-      local fixed is claudia_fly_correction(ctx, addons:claudia:correctionburn(claudia_correction_ask(dest:name, opt:target_pe, when:ut))).
-      set extra:correction_dv to round(extra:correction_dv + fixed:dv, 2).
-      if fixed:reason <> "" {
-        return claudia_finish(ctx, false, fixed:reason, extra).
-      }
-    }
-    set enc to claudia_patch(ship:orbit, dest).
-    if enc:istype("String") {
-      return claudia_finish(ctx, false, "no encounter with " + dest:name + " after the correction", extra).
-    }
-  }
-  if opt:correction {
-    // After the Course Correction or the plane change, a periapsis outside pe_tolerance gets one finer correction (#672),
-    // partway to the encounter, within pe_tolerance and a tighter max_residual: a block-internal call (ADR 0007), so in the block.
-    local why is "".
-    if not transfer_to_pe_within(claudia_pe_error(ship:orbit, dest, opt:target_pe), opt:pe_tolerance) {
-      local ticked is claudia_tick(ctx, 0).
-      if ticked <> "" {
-        claudia_make_safe().
-        return claudia_finish(ctx, false, ticked, extra).
-      }
-      local when is claudia_correction_ut((time:seconds + enc:soi_ut) / 2, time:seconds, turn:turn_time + 60, ctx:start_ut, opt:max_duration).
-      set why to when:reason.
-      if why = "" {
-        local fix is addons:claudia:correctionburn(transfer_to_fine_ask(dest:name, opt:target_pe, opt:pe_tolerance, when:ut)).
-        local fine is claudia_fly_correction(ctx, fix, transfer_to_fine_residual()).
-        set extra:correction_dv to round(extra:correction_dv + fine:dv, 2).
-        set why to fine:reason.
-        if why = "" and fine:dv = 0 {
-          set why to "its burn, under 0.1 m/s, isn't flown".
-        }
-      }
-    }
-    set enc to claudia_patch(ship:orbit, dest).
-    if enc:istype("String") {
-      if why <> "" {
-        set why to ": " + why.
-      }
-      return claudia_finish(ctx, false, "no encounter with " + dest:name + " after the correction" + why, extra).
-    }
-    // Filled on the miss too, so the Debrief sees it.
-    set extra:encounter_ut to round(enc:soi_ut).
-    set extra:target_pe_actual to round(enc:orbit:periapsis).
-    local miss is transfer_to_miss(dest:name, enc:orbit:periapsis, opt:target_pe, opt:pe_tolerance, why).
-    if miss <> "" {
-      return claudia_finish(ctx, false, miss, extra).
-    }
-  }
-  set extra:encounter_ut to round(enc:soi_ut).
-  set extra:target_pe_actual to round(enc:orbit:periapsis).
-  // It ends before arrival: a capture straight after it would burn at this body's apsis (20ac, #610). Turn text, not docs.
-  set extra:next to "coast to encounter_ut + 60 before a capture".
-  return claudia_finish(ctx, true, "", extra).
+    return ticked.
+  }).
+  return claudia_finish(ctx, reason = "", reason, extra).
 }
