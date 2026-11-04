@@ -922,8 +922,7 @@ function reentry {
   }
   local shield_gone is shield:length = 0.
   // Log-only (#478): where the predictor puts the landing, with the shield drop and chutes this entry flies.
-  local shield_uids is list().
-  if not shield_gone { set shield_uids to claudia_shield_drop(ship:parts, list()). }
+  local shield_uids is claudia_shield_drop(ship:parts, list(), shield).
   local predicted is addons:claudia:reentryimpact(lexicon("chutes", chute_mode <> "none", "shield_drop", shield_uids)).
   addons:claudia:blocknote(ctx:block, reentry_prediction_note(predicted)).
   local auto_duration is opt:max_duration:istype("String").
