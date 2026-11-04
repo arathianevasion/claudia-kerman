@@ -101,6 +101,7 @@ namespace ClaudiaKermin.Adapter
         public CapcomStrip(MissionPanel panel)
         {
             _panel = panel;
+            _frame.LogName = "Capcom strip";
         }
 
         /// <summary>The strip is on screen, so the player can see Claudia's line without a window.</summary>
@@ -148,7 +149,7 @@ namespace ClaudiaKermin.Adapter
             _frame.LocksMouseAt = LocksMouseAt;
             _frame.Show(Draw, GUILayout.Width(_width));
             // Keys typed into the docked prompt must not stage, throttle or rotate the craft.
-            _frame.SetTyping(expanded && MissionPanel.Typing);
+            _frame.SetTyping(expanded && _panel.Typing);
         }
 
         private bool LocksMouseAt(Vector2 local)

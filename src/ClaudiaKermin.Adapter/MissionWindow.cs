@@ -34,6 +34,7 @@ namespace ClaudiaKermin.Adapter
         {
             _panel = panel;
             _frame.Remember("mission");
+            _frame.LogName = "Mission window";
         }
 
         public void OnGUI()
@@ -48,7 +49,7 @@ namespace ClaudiaKermin.Adapter
             _frame.Show(Draw);
 
             // Keys typed into the window must not stage, throttle or rotate the craft.
-            _frame.SetTyping(MissionPanel.Typing);
+            _frame.SetTyping(_panel.Typing);
         }
 
         /// <summary>Releases the input locks; call when the window goes away.</summary>

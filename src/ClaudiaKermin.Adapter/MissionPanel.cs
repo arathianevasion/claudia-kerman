@@ -105,13 +105,17 @@ namespace ClaudiaKermin.Adapter
         }
 
         /// <summary>The prompt or the Raise cap field has the keyboard; the host locks the keyboard away from the craft while it does.</summary>
-        public static bool Typing
+        public bool Typing
         {
-            get
-            {
-                var focused = GUI.GetNameOfFocusedControl();
-                return focused == InputControl || focused == RaiseControl;
-            }
+            get { return _focus.Held; }
+        }
+
+        // Recorded inside the window function (see Draw), not read after the window returns.
+        private readonly TypingFocus _focus = new TypingFocus(InputControl, RaiseControl);
+
+        private void ObserveFocus()
+        {
+            _focus.Observe(GUI.GetNameOfFocusedControl(), Event.current.type == EventType.Layout);
         }
 
         /// <summary>Flight is loading: the Craft Check starts collapsed again.</summary>
@@ -130,6 +134,7 @@ namespace ClaudiaKermin.Adapter
         {
             _view = view;
             _width = width;
+            ObserveFocus();
             Styles(rightRoom);
             // The start form's goal is spent once a Mission is under way.
             if (_view.CanEndMission)
@@ -159,6 +164,8 @@ namespace ClaudiaKermin.Adapter
             DrawPrompt(prompt);
             DrawActions(settingUp, prompt.For);
             DrawControlBar(settingUp, docked);
+            // After the fields: a click into one moves focus during this pass.
+            ObserveFocus();
         }
 
         /// <summary>A quick reply from the action row. Change and Ask pick what the prompt sends; pressed again, they let go.</summary>
