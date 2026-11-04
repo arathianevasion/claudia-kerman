@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using ClaudiaKerman.Core.Kos;
+using ClaudiaKerman.Core.Tools;
 
 namespace ClaudiaKerman.Core.Missions
 {
@@ -22,6 +23,8 @@ namespace ClaudiaKerman.Core.Missions
         public double BurnSeconds;
         /// <summary>For a run the hard stop cut short (<see cref="BurnPoints.WarpCutShort"/>): game seconds still left to the point.</summary>
         public double LeftSeconds;
+        /// <summary>For transfer_to and return (#749): the UT of the ejection the block waits for, from Core's solver; null for any other burn point.</summary>
+        public double? DepartureUt;
 
         /// <summary>The least <c>expected_duration_s</c> that covers the wait, the burn and the turn to it, rounded up to 10 s.</summary>
         public double MinimumDurationSeconds
@@ -49,6 +52,7 @@ namespace ClaudiaKerman.Core.Missions
 
         private static readonly Regex AddNode = new Regex(@"\badd\s+node\s*\(", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         private static readonly Regex Remove = new Regex(@"\bremove\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        private static readonly Regex Quoted = new Regex("\"(?<n>[^\"]+)\"", RegexOptions.CultureInvariant);
         private static readonly Regex Number = new Regex(@"^\d+(\.\d+)?$", RegexOptions.CultureInvariant);
         private static readonly Regex FromNow = new Regex(@"^time\s*:\s*seconds\s*\+\s*(?<s>\d+(\.\d+)?)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
@@ -60,7 +64,18 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (plan == null || plan.Manual) return null;
             var wait = First(plan.Script, snapshot, now, plan.ExpectedDeltaV);
+            // A departure over WindowWaits.LongWaitS off is a Due Time (DueTime): the run starts one launch lead before it.
+            if (wait != null && DueTime(wait, now).HasValue) wait.WaitSeconds = WindowWaits.LaunchLeadS;
             return wait != null && plan.ExpectedDurationSeconds < wait.MinimumDurationSeconds ? wait : null;
+        }
+
+        /// <summary>
+        /// #749: the Due Time for a transfer_to or return whose ejection is more than <see cref="WindowWaits.LongWaitS"/> away,
+        /// as a window wait on the pad has (#616); null for a shorter wait or another burn point.
+        /// </summary>
+        public static double? DueTime(BurnWait wait, double now)
+        {
+            return wait != null && wait.DepartureUt.HasValue ? WindowWaits.DueTime(wait.DepartureUt.Value, now) : null;
         }
 
         /// <summary>
@@ -125,9 +140,43 @@ namespace ClaudiaKerman.Core.Missions
                     return Apsis(call, snapshot, now, call.Option("at"));
                 case "tune_pe":
                     return TunePe(call, snapshot, now);
+                case "transfer_to":
+                case "return":
+                    return Departure(call, snapshot, now);
                 default:
                     return null;
             }
+        }
+
+        /// <summary>
+        /// #749: the ejection transfer_to or return waits for. The window option's UT when it is a number; "next" asks Core's
+        /// flight (TRANSFERSTEP's first step) for transfer_to, and gives no fixed point for return (its burn point's next pass).
+        /// </summary>
+        private static BurnWait Departure(BlockCall call, GameSnapshot snapshot, double now)
+        {
+            var option = call.Option("window");
+            var window = Literal(option);
+            if (!window.HasValue && option != "\"next\"") return null;
+            double ut;
+            if (call.Block == "return")
+            {
+                if (!window.HasValue) return null;
+                ut = TransferFlight.Earliest(now, 0, window);
+            }
+            else
+            {
+                var named = Quoted.Match(call.Option("target") ?? "");
+                if (!named.Success) return null;
+                var step = TransferFlight.Next(snapshot.At(now), new TransferFlightAsk
+                {
+                    Target = named.Groups["n"].Value, TargetPe = Literal(call.Option("target_pe")) ?? 0, Window = window, StartUt = now,
+                });
+                if (step.Error != "" || step.Do != TransferFlightStep.Burn) return null;
+                ut = step.Ut;
+            }
+            var wait = At(call, "the ejection", ut - now);
+            if (wait != null) wait.DepartureUt = ut;
+            return wait;
         }
 
         /// <summary>tune_pe's patch "current" burns at the apoapsis (the next one if this is under 2 minutes off).</summary>
