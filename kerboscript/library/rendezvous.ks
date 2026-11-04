@@ -278,7 +278,7 @@ function rendezvous_run {
 // is 10 km over the air or the surface), body, ut and orbit (the target's elements as EJECTIONBURN takes a target orbit,
 // degrees and the mean anomaly as kOS gives them). Loading lags a frame behind the range, so a target inside it is given up
 // to 5 s to load, ticking (ctx, the block's context): an abort then gives lexicon("abort", reason). The vessel is only read, and only here, never passed to a function.
-// The ADDONS:CLAUDIA:TARGETVESSEL route is block-internal and refused in Mission Scripts; the taint rule does not cover it (ADR 0003, #654 amendment), so rv_target is kept unique by this block's own code.
+// The ADDONS:CLAUDIA:TARGETVESSEL route is block-internal and refused in Mission Scripts; the taint rule does not cover it (ADR 0003, #654 amendment), so no other code may use the name rv_target.
 function rendezvous_state {
   parameter ctx, name.
   local rv_target is addons:claudia:targetvessel():vessel.

@@ -203,7 +203,7 @@ function dock {
     return claudia_finish(ctx, false, mine:error, extra).
   }
   // The target is read inline, never passed to a function. The ADDONS:CLAUDIA:TARGETVESSEL route is block-internal and refused
-  // in Mission Scripts; the taint rule does not cover it (ADR 0003, #654 amendment). dk_target and the parts read from it start dk_; named does not.
+  // in Mission Scripts; the taint rule does not cover it (ADR 0003, #654 amendment). dk_target and the parts read from it start dk_, and no other code uses one; named does not.
   local dk_target is named:vessel.
   if not dk_target:loaded {
     return claudia_finish(ctx, false, named:name + " is not loaded (" + round(dk_target:distance) + " m): fly rendezvous first", extra).
