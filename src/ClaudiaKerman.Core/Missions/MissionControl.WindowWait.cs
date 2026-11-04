@@ -37,6 +37,24 @@ namespace ClaudiaKerman.Core.Missions
                 + ", an hour before the ejection burn. Fly other Missions meanwhile; a KSP alarm calls you back.");
         }
 
+        /// <summary>
+        /// #749: a transfer_to or return that waits more than a Kerbin day inside its block for its ejection makes the plan a Due Time
+        /// at the ejection less the launch lead, as a window wait on the pad does; a shorter wait is <c>expected_duration_s</c>'s
+        /// (<see cref="BurnPoints.ShortOf"/>). The craft coasts on rails meanwhile; Auto Mode never approves at a Due Time.
+        /// </summary>
+        private void TransferWait(Mission mission, SequencePlan plan)
+        {
+            if (plan.Manual || !FliesCraft(mission, plan.Vessel)) return;
+            var snapshot = MissionVesselSnapshot(mission);
+            var wait = BurnPoints.First(plan.Script, snapshot, _ut, plan.ExpectedDeltaV);
+            var due = BurnPoints.DueTime(wait, _ut);
+            if (!due.HasValue) return;
+            if (plan.DueTimeUt.HasValue && plan.DueTimeUt.Value >= due.Value) return;
+            plan.DueTimeUt = due.Value;
+            Note(LogKind.Notice, "Waiting for the ejection: " + wait.Block + " leaves " + KerbinTime.Date(wait.DepartureUt.Value) + ", so the sequence is due "
+                + KerbinTime.Date(due.Value) + ", an hour before. Fly other Missions meanwhile; a KSP alarm calls you back.");
+        }
+
         private TransferWindow WindowFor(Mission mission, SnapshotBody planet)
         {
             if (planet == null || _snapshot == null) return null;
