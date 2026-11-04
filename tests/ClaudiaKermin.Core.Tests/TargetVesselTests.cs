@@ -545,6 +545,68 @@ namespace ClaudiaKermin.Core.Tests
             }, options.Select(v => TargetVessel.Describe(v, options)).ToArray());
         }
 
+        // ---- The editor has no distances: same-named vessels are told apart by their saved orbit or place (#710) ----
+
+        private static SnapshotVessel Saved(uint id, string name, double peKm, double apKm)
+        {
+            var v = Vessel(id, name);
+            v.PeriapsisM = peKm * 1000;
+            v.ApoapsisM = apKm * 1000;
+            return v;
+        }
+
+        [Fact]
+        public void SameNamedVesselsWithNoDistanceShowTheirSavedOrbit()
+        {
+            var list = new List<SnapshotVessel> { Saved(1, "Kerbin Station Alpha", 100, 98), Saved(2, "Kerbin Station Alpha", 250, 240) };
+
+            Assert.Equal("Kerbin Station Alpha · Kerbin · orbiting · 100 × 98 km", TargetVessel.Describe(list[0], list));
+            Assert.Equal("Kerbin Station Alpha · Kerbin · orbiting · 250 × 240 km", TargetVessel.Describe(list[1], list));
+        }
+
+        [Fact]
+        public void AUniqueNameGetsNoOrbitFigures()
+        {
+            var list = new List<SnapshotVessel> { Saved(1, "Relay", 100, 98), Saved(2, "Other", 250, 240) };
+
+            Assert.Equal("Relay · Kerbin · orbiting", TargetVessel.Describe(list[0], list));
+        }
+
+        [Fact]
+        public void ADistanceShowsRatherThanTheOrbit()
+        {
+            var a = Saved(1, "Alpha", 100, 98);
+            a.Distance = 12000;
+            var list = new List<SnapshotVessel> { a, Saved(2, "Alpha", 250, 240) };
+
+            Assert.Equal("Alpha · Kerbin · orbiting · 12 km", TargetVessel.Describe(a, list));
+        }
+
+        [Fact]
+        public void SameNamedLandedVesselsShowLatitudeAndLongitudeToOneDecimal()
+        {
+            var a = Vessel(1, "Base", "Mun", "LANDED");
+            a.Position = new SnapshotPosition { Latitude = 12.345, Longitude = -45.67 };
+            var list = new List<SnapshotVessel> { a, Vessel(2, "Base", "Mun", "LANDED") };
+
+            Assert.Equal("Base · Mun · landed · 12.3°, -45.7°", TargetVessel.Describe(a, list));
+            Assert.Equal("Base · Mun · landed", TargetVessel.Describe(list[1], list));
+        }
+
+        [Fact]
+        public void OrbitAltitudesComeFromTheSemiMajorAxisEccentricityAndBodyRadius()
+        {
+            // Kerbin (600 km): a 100 x 300 km orbit has radii 700 and 900 km, so sma 800 km, ecc 0.125.
+            double pe;
+            double? ap;
+            TargetVessel.OrbitAltitudes(800000, 0.125, 600000, out pe, out ap);
+            Assert.Equal(100000, pe, 3);
+            Assert.Equal(300000, ap.Value, 3);
+
+            TargetVessel.OrbitAltitudes(-1000000, 1.5, 600000, out pe, out ap);
+            Assert.Null(ap);
+        }
+
         [Fact]
         public void AGoalNamingSeveralVesselsListsThemFirstNearestFirstAndAsksThePlayerToChoose()
         {

@@ -57,6 +57,18 @@ namespace ClaudiaKermin.Core.Missions
         public string Situation = "";
         /// <summary>Its distance from the craft in m (#709); null when not read (the editor has no craft in the world).</summary>
         public double? Distance;
+        /// <summary>Its saved orbit's periapsis altitude in m (#710); null when landed, splashed or not read.</summary>
+        public double? PeriapsisM;
+        /// <summary>Its saved orbit's apoapsis altitude in m (#710); null when landed, splashed, on an escape orbit or not read.</summary>
+        public double? ApoapsisM;
+        /// <summary>Where a landed or splashed vessel is saved (#710); null when not read.</summary>
+        public SnapshotPosition Position;
+
+        /// <summary>Whether it is landed or splashed, so its place, not its orbit, tells it apart (#710).</summary>
+        public bool IsDown
+        {
+            get { return Situation == "LANDED" || Situation == "SPLASHED"; }
+        }
     }
 
     /// <summary>The start form's Target Vessel setting: Auto (the mod's choice), Clear (none), or a vessel the player chose.</summary>
@@ -247,13 +259,37 @@ namespace ClaudiaKermin.Core.Missions
             return Describe(vessel, listed != null && SharesName(vessel, listed));
         }
 
-        internal static string Describe(SnapshotVessel vessel, bool withDistance)
+        /// <summary>Periapsis and apoapsis altitudes in m from a saved orbit's semi-major axis, eccentricity and its body's radius (#710). The apoapsis is null on an escape orbit.</summary>
+        public static void OrbitAltitudes(double semiMajorAxis, double eccentricity, double bodyRadius, out double periapsis, out double? apoapsis)
         {
+            periapsis = semiMajorAxis * (1 - eccentricity) - bodyRadius;
+            apoapsis = eccentricity < 1 ? semiMajorAxis * (1 + eccentricity) - bodyRadius : (double?)null;
+        }
+
+        internal static string Describe(SnapshotVessel vessel, bool sharedName)
+        {
+            var withDistance = sharedName;
             var parts = new List<string> { vessel.Name.Trim() };
             if (vessel.Body.Length > 0) parts.Add(vessel.Body);
             if (vessel.Situation.Length > 0) parts.Add(vessel.Situation.ToLowerInvariant().Replace('_', '-'));
             if (withDistance && vessel.Distance.HasValue) parts.Add(Distance(vessel.Distance.Value));
+            // No distance (the editor): tell same-named vessels apart by their saved orbit, or place if down (#710).
+            else if (sharedName && vessel.IsDown && vessel.Position != null)
+                parts.Add(Place(vessel.Position));
+            else if (sharedName && !vessel.IsDown && vessel.PeriapsisM.HasValue && vessel.ApoapsisM.HasValue)
+                parts.Add(Km(vessel.PeriapsisM.Value) + " × " + Km(vessel.ApoapsisM.Value) + " km");
             return string.Join(" · ", parts.ToArray());
+        }
+
+        private static string Km(double metres)
+        {
+            return Math.Round(metres / 1000).ToString("0", CultureInfo.InvariantCulture);
+        }
+
+        private static string Place(SnapshotPosition position)
+        {
+            var invariant = CultureInfo.InvariantCulture;
+            return position.Latitude.ToString("0.0", invariant) + "°, " + position.Longitude.ToString("0.0", invariant) + "°";
         }
 
         /// <summary>Under 1 km in whole m, under 10 km to a tenth of a km, else in whole km.</summary>
