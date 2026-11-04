@@ -402,10 +402,10 @@ namespace ClaudiaKermin.Kerboscript.Tests
 
         // #532: ecc as before, plus which stop ended the burn and the node's residual; #577: and whether it finished short.
         [Fact]
-        public void Circularize_results_are_ecc_stop_residual_and_finished_short()
+        public void Circularize_results_are_ecc_stop_residual_and_finished_short_and_skipped()
         {
-            Assert.Equal(new[] { "ecc=0.12346", "stop=", "residual=-1", "finished_short=False", "4" },
-                Run("local x is circularize_extra(0.123456). for k in list(\"ecc\", \"stop\", \"residual\", \"finished_short\") { print k + \"=\" + x[k]. } print x:keys:length."));
+            Assert.Equal(new[] { "ecc=0.12346", "stop=", "residual=-1", "finished_short=False", "skipped=False", "5" },
+                Run("local x is circularize_extra(0.123456). for k in list(\"ecc\", \"stop\", \"residual\", \"finished_short\", \"skipped\") { print k + \"=\" + x[k]. } print x:keys:length."));
         }
 
         [Fact]
