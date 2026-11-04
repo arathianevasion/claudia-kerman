@@ -9,12 +9,12 @@ change. If the periapsis is inside the atmosphere (or below the surface) and the
 before that apoapsis, it burns instead as soon as a burn can be led (about 2 minutes on), the
 cheapest point before the periapsis, so the craft is not lost to it; "next" burns near the start or halfway to the sphere-of-influence change (the cheaper) and aims the periapsis of the orbit
 after it (at the Mun before arrival, at Kerbin on the way home), earlier if the burn would not end 60 s before the change.
-tolerance [1000]: m the periapsis may end from value; more fails the block.
+tolerance [max(1000, 5% of value)]: m the periapsis may end from value; more fails the block. Unset: skips within it if pe is safe, never on next.
 max_dv [50]: m/s the burns may cost; more fails the block before that burn.
-max_duration ["auto"]: as for exec_node (the wait to the burn, twice the burn, plus 300 s).
+max_duration ["auto"]: as for exec_node.
 plus min_ec_pct, abort_on_part_loss, stage_limit and drop_empty as for every block.
 Extra results: pe_actual (m, the periapsis of the chosen patch when the block ended), burn_ut (UT of
-the burn; -1 if none was needed). Succeeds at once, with no burn, if the periapsis is already within
+the burn; -1 if none was needed), skipped (skip_note says why). Succeeds at once, with no burn, if the periapsis is already within
 tolerance. Fails with "value is required", an option value it can't read, "a maneuver node is already
 planned: remove it first", "no next patch" (patch "next" with no sphere-of-influence change ahead),
 "the orbit escapes" or "the apoapsis comes after the sphere-of-influence change" (patch "current"),

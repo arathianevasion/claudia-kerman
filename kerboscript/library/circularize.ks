@@ -14,13 +14,13 @@
 //| Script, it finishes the orbit; at "pe" inside a new body's SOI it is the capture burn.
 //| Options:
 //|   at ["ap"]: where to burn: "ap", "pe" or an altitude in m between pe and ap (the next pass).
-//|   tolerance [0.01]: the eccentricity it must end within; more fails the block.
+//|   tolerance [0.01]: the eccentricity it must end within; more fails the block. Unset: skips a burn under 5 m/s at ecc under 0.03, pe safe.
 //|   finish_fraction [0.05]: as for exec_node, judged by ap and pe within this share of the burn's radius (from the
 //|     body's centre), pe above the atmosphere.
-//|   max_duration ["auto"]: as for exec_node (the wait to the burn, twice the burn, plus 300 s).
+//|   max_duration ["auto"]: as for exec_node.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
 //| Extra results: ecc (the eccentricity when the block ended), stop ("node"; "ecc_min": cut short
-//| where the orbit was roundest), residual (m/s the node still needed), finished_short.
+//| where the orbit was roundest), residual (m/s the node still needed), finished_short, skipped (skip_note says why).
 //| Succeeds at once, with no burn, if the orbit is already within tolerance. Fails with "no apoapsis"
 //| on an escape orbit (use "pe"), an altitude the orbit doesn't pass, a burn point inside the
 //| atmosphere or below the surface, the reasons exec_node gives (no thrust, out of fuel, an abort), or
@@ -144,7 +144,7 @@ function circularize_plan {
 // The block's extra results before it burns: stop "" (no burn ended), residual -1 (no node), not finished short.
 function circularize_extra {
   parameter ecc.
-  return lexicon("ecc", round(ecc, 5), "stop", "", "residual", -1, "finished_short", false).
+  return lexicon("ecc", round(ecc, 5), "stop", "", "residual", -1, "finished_short", false, "skipped", false).
 }
 
 // Whether an orbit over tolerance still finishes the circularization (#577): apoapsis ap and periapsis pe (m above a
@@ -186,6 +186,7 @@ function circularize {
     return claudia_finish(ctx, false, ctx:error, extra).
   }
   local opt is ctx:opt.
+  local given is options:haskey("tolerance").
   local unreadable is circularize_unreadable(opt:at).
   if unreadable <> "" {
     return claudia_finish(ctx, false, unreadable, extra).
@@ -203,6 +204,11 @@ function circularize {
   local first is claudia_soi_first_at(plan:ut).
   if first <> "" {
     return claudia_finish(ctx, false, first, extra).
+  }
+  local worth is addons:claudia:burnworth(lexicon("block", "circularize", "given", given, "dv", sqrt(plan:prograde ^ 2 + plan:radial ^ 2),
+    "ecc", ship:orbit:eccentricity)).
+  if worth:skip {
+    return claudia_skip(ctx, worth, extra).
   }
   local nd is node(plan:ut, plan:radial, 0, plan:prograde).
   add nd.

@@ -22,12 +22,12 @@
 //|     before that apoapsis, it burns instead as soon as a burn can be led (about 2 minutes on), the
 //|     cheapest point before the periapsis, so the craft is not lost to it; "next" burns near the start or halfway to the sphere-of-influence change (the cheaper) and aims the periapsis of the orbit
 //|     after it (at the Mun before arrival, at Kerbin on the way home), earlier if the burn would not end 60 s before the change.
-//|   tolerance [1000]: m the periapsis may end from value; more fails the block.
+//|   tolerance [max(1000, 5% of value)]: m the periapsis may end from value; more fails the block. Unset: skips within it if pe is safe, never on next.
 //|   max_dv [50]: m/s the burns may cost; more fails the block before that burn.
-//|   max_duration ["auto"]: as for exec_node (the wait to the burn, twice the burn, plus 300 s).
+//|   max_duration ["auto"]: as for exec_node.
 //|   plus min_ec_pct, abort_on_part_loss, stage_limit and drop_empty as for every block.
 //| Extra results: pe_actual (m, the periapsis of the chosen patch when the block ended), burn_ut (UT of
-//| the burn; -1 if none was needed). Succeeds at once, with no burn, if the periapsis is already within
+//| the burn; -1 if none was needed), skipped (skip_note says why). Succeeds at once, with no burn, if the periapsis is already within
 //| tolerance. Fails with "value is required", an option value it can't read, "a maneuver node is already
 //| planned: remove it first", "no next patch" (patch "next" with no sphere-of-influence change ahead),
 //| "the orbit escapes" or "the apoapsis comes after the sphere-of-influence change" (patch "current"),
@@ -176,32 +176,6 @@ function tune_pe_actual {
     return ship:orbit:nextpatch:periapsis.
   }
   return ship:orbit:periapsis.
-}
-
-// The lowest periapsis (m) that is safe at a body named name: above its atmosphere (atm_height m, has_atm), or 2 km above
-// its highest peak for the stock airless bodies; -1 for a body whose peaks the block doesn't know. Pure.
-function tune_pe_safe_height {
-  parameter name, has_atm, atm_height.
-  if has_atm {
-    return atm_height.
-  }
-  local peaks is lexicon("Moho", 6817, "Gilly", 6401, "Mun", 7061, "Minmus", 5725, "Ike", 12738, "Dres", 5670, "Vall", 7985,
-    "Tylo", 11290, "Bop", 21757, "Pol", 5585, "Eeloo", 3874).
-  if not peaks:haskey(name) {
-    return -1.
-  }
-  return peaks[name] + 2000.
-}
-
-// What a miss on tolerance adds to the reason (#610): "" or, when the craft is on an encounter (to_moon, claudia_to_moon) whose
-// periapsis pe m at the body named name is above safe m (tune_pe_safe_height; -1, unknown, is never safe), that a capture
-// can still follow (20ac: a script's `if res:success` skipped one at 35.3 km against 30 ± 5). Pure.
-function tune_pe_safe_hint {
-  parameter to_moon, pe, name, safe.
-  if not to_moon or safe < 0 or pe <= safe {
-    return "".
-  }
-  return "; encounter safe: pe " + round(pe / 1000, 1) + " km at " + name + "; a capture can follow".
 }
 
 // What tune_pe asks ADDONS:CLAUDIA:CORRECTIONBURN for the next-patch burn (#484): claudia_correction_ask at ut, to dest_name at
@@ -490,12 +464,13 @@ function tune_pe_plan {
 
 function tune_pe {
   parameter options is lexicon().
-  local extra is lexicon("pe_actual", -1, "burn_ut", -1).
+  local extra is lexicon("pe_actual", -1, "burn_ut", -1, "skipped", false).
   local ctx is claudia_begin("tune_pe", options, tune_pe_defaults(), "auto").
   if ctx:error <> "" {
     return claudia_finish(ctx, false, ctx:error, extra).
   }
   local opt is ctx:opt.
+  local given is options:haskey("tolerance").
   local unreadable is tune_pe_unreadable(opt).
   if unreadable <> "" {
     return claudia_finish(ctx, false, unreadable, extra).
@@ -504,6 +479,13 @@ function tune_pe {
     return claudia_finish(ctx, false, "a maneuver node is already planned: remove it first", extra).
   }
   set extra:pe_actual to round(tune_pe_actual(opt:patch)).
+  local worth is addons:claudia:burnworth(lexicon("block", "tune_pe", "given", given, "value", opt:value, "patch", opt:patch)).
+  if not given {
+    set opt:tolerance to worth:tolerance.
+  }
+  if worth:skip {
+    return claudia_skip(ctx, worth, extra).
+  }
   if tune_pe_within(extra:pe_actual, opt) {
     return claudia_finish(ctx, true, "", extra).
   }
@@ -543,7 +525,8 @@ function tune_pe {
     if ship:orbit:hasnextpatch {
       local enc is ship:orbit:nextpatch.
       local dest is enc:body.
-      set hint to tune_pe_safe_hint(claudia_to_moon(dest), enc:periapsis, dest:name, tune_pe_safe_height(dest:name, dest:atm:exists, dest:atm:height)).
+      set hint to addons:claudia:burnworth(lexicon("block", "hint", "to_moon", claudia_to_moon(dest), "pe", enc:periapsis, "body", dest:name,
+        "has_atm", dest:atm:exists, "atm_height", dest:atm:height)):note.
     }
     return claudia_finish(ctx, false, "periapsis " + extra:pe_actual + " m is over tolerance " + opt:tolerance + " m from " + round(opt:value) + " m" + hint, extra).
   }
