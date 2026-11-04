@@ -18,3 +18,5 @@ Building Blocks keep their Kerboscript interface, while their flight logic moves
 We rejected a big-bang rewrite (too costly in tokens and full retesting, for no new capability); phase blocks Claudia sequences herself, such as `land` split into deorbit, brake and touchdown (a small model is more likely to miss a step, and every piece adds to the cached prompt); and a default set of C# calls exposed to Mission Scripts (the same prompt cost; exposure happens only on evidence, guardrail 5). The cost: new logic is written in C# with its Kerboscript shell left thin, and the library's line limit only goes down unless a ticket argues otherwise.
 
 Decided on #705 (spec #435 discoveries, 2026-11-03). Moves no flight logic itself.
+
+**Dated note, 2026-11-04 (#737).** kslib no longer exists: #475 removed the vendored KSLib script, so the ratchet's only exclusions are `debug` and `dock_hold`. Where "The ratchet" above says `kslib`, read the library as `kerboscript/library/*.ks`: `tools/gates/kerboscript-loc.sh` counts only that glob, so `debug` and `dock_hold` (outside it) are left out by path, not by an exclusion list in the script.
