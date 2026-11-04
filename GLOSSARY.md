@@ -57,7 +57,7 @@ One self-contained stretch of flight that Claudia plans and kOS executes in a si
 _Avoid_: step, phase, maneuver (alone), burn
 
 **Leg**:
-One stretch of a Mission Goal's travel, as the goal's words divide it (e.g. "Land on the Mun" from Kerbin, then "return to Kerbin"). A leg is not a Maneuver Sequence: a leg is planned as one or more Maneuver Sequences, and Claudia executes Maneuver Sequences, not legs. In code, `SequenceWords.LegBody` and `NextBody` read a leg's body from its words.
+One stretch of a Mission Goal's travel, as the goal's words divide it (e.g. "Land on the Mun" from Kerbin, then "return to Kerbin"). A leg is not a Maneuver Sequence: a leg is planned as one or more Maneuver Sequences, and Claudia executes Maneuver Sequences, not legs. In code, `SequenceWords.LegBody` gives the body where the leg's surface work happens, and `NextBody` the body the next leg starts from (Kerbin after a return home); for "Land on the Mun and return to Kerbin" these differ.
 _Avoid_: stage (which is a rocket stage), step
 
 **Coast**:
@@ -235,11 +235,11 @@ The state of a Mission while the player flies the craft and Claudia only advises
 _Avoid_: takeover, override, manual mode
 
 **Interrupted**:
-Of a Maneuver Sequence: it was Running when the scene changed, a save was loaded, or the game quit or crashed, so its script is gone. It is never restarted; Claudia gives it an Interrupted Debrief when the player is back in Flight, judging from the craft as it now is. Not a Debrief outcome: the Debrief still ends Nominal, Off-Nominal or Failed.
+Of a Maneuver Sequence: it was Running when the scene changed, a save was loaded, the game quit or crashed, or its kOS processor was lost, so its script is gone. It is never restarted; Claudia gives it an Interrupted Debrief when the player is back in Flight, judging from the craft as it now is. Not a Debrief outcome: the Debrief still ends Nominal, Off-Nominal or Failed.
 _Avoid_: restarted, resumed (an interrupted sequence is Debriefed, never run again)
 
 **Interrupted Debrief**:
-The Debrief Claudia gives for a Maneuver Sequence that was Interrupted: the Debrief is owed from the interruption and given when the player is back in Flight. It is owed when the scene changes, a save is loaded, the game quits or crashes, or the kOS processor is lost mid-run.
+The Debrief Claudia gives for a Maneuver Sequence that was Interrupted: the Debrief is owed from the interruption and given when the player is back in Flight. It is owed for each cause the Interrupted entry gives.
 _Avoid_: interrupted-sequence Debrief, restart Debrief
 
 **Hand back**:

@@ -19,4 +19,4 @@ We rejected a big-bang rewrite (too costly in tokens and full retesting, for no 
 
 Decided on #705 (spec #435 discoveries, 2026-11-03). Moves no flight logic itself.
 
-**Dated note, 2026-11-04 (#737).** kslib no longer exists: #475 removed the vendored KSLib script, so the ratchet's only exclusions are `debug` and `dock_hold`. Where "The ratchet" above says `kslib`, read the library as `kerboscript/library/*.ks` with `debug` and `dock_hold` left out, as `tools/gates/kerboscript-loc.sh` does.
+**Dated note, 2026-11-04 (#737).** kslib no longer exists: #475 removed the vendored KSLib script, so the ratchet's only exclusions are `debug` and `dock_hold`. Where "The ratchet" above says `kslib`, read the library as `kerboscript/library/*.ks`: `tools/gates/kerboscript-loc.sh` counts only that glob, so `debug` and `dock_hold` (outside it) are left out by path, not by an exclusion list in the script.
