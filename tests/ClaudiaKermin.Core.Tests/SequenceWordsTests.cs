@@ -29,6 +29,9 @@ namespace ClaudiaKermin.Core.Tests
         [InlineData("Set up a homestead on the Mun")]
         [InlineData("home in on the target")]
         [InlineData("Fly home in on the target")]
+        [InlineData("Fly home, in on the target")]
+        [InlineData("come home-base")]
+        [InlineData("come home-stretch")]
         [InlineData("Dock at the home stretch")]
         [InlineData("Land on the Mun")]
         public void AWordThatOnlyLooksLikeAReturnDoesNotMatch(string words)
