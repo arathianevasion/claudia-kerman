@@ -277,8 +277,8 @@ function rendezvous_run {
 // (the craft's semi-major axis) and target_r (the target's), mu, min_period (the shortest period from here whose low point
 // is 10 km over the air or the surface), body, ut and orbit (the target's elements as EJECTIONBURN takes a target orbit,
 // degrees and the mean anomaly as kOS gives them). Loading lags a frame behind the range, so a target inside it is given up
-// to 5 s to load, ticking (ctx, the block's context): an abort then gives lexicon("abort", reason). The vessel is only read, and only here, never passed to a function: the Script Check follows another
-// vessel into every function it is passed to (ADR 0003), so rv_target is a name no other code uses.
+// to 5 s to load, ticking (ctx, the block's context): an abort then gives lexicon("abort", reason). The vessel is only read, and only here, never passed to a function: a call that passes another
+// vessel taints the callee's parameter (ADR 0003, #654), so rv_target is a name no other code uses.
 function rendezvous_state {
   parameter ctx, name.
   local rv_target is addons:claudia:targetvessel():vessel.

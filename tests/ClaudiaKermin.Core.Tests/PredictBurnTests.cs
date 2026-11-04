@@ -320,7 +320,8 @@ namespace ClaudiaKermin.Core.Tests
         public void Bad_inputs_are_plain_errors()
         {
             Assert.Contains("there is no body named \"Eeloo\"", Error(Snapshot(), "{\"burns\":[" + Burn("0", 1) + "],\"target\":\"Eeloo\"}"));
-            Assert.Equal("burn 1.at must be \"ap\", \"pe\", a UT in seconds, or \"in <s>\"", Error(Snapshot(), "{\"burns\":[" + Burn("\"soon\"", 1) + "]}"));
+            Assert.Equal("burn 1.at must be \"ap\", \"pe\", \"eq_an\", \"eq_dn\", \"eq_nearest\", \"eq_highest\", \"rel_an\", \"rel_dn\", "
+                + "\"closest_approach\", \"altitude <m> [ascending|descending]\", a UT in seconds, or \"in <s>\"", Error(Snapshot(), "{\"burns\":[" + Burn("\"soon\"", 1) + "]}"));
             Assert.Equal("burn 2 is at UT 5, before the burn before it", Error(Snapshot(), "{\"burns\":[" + Burn("10", 1) + "," + Burn("5", 1) + "]}"));
             Assert.Contains("an escape with no apoapsis", Error(Snapshot(munPhase: -Math.PI / 2), "{\"burns\":[" + Burn("0", 1000) + "," + Burn("\"ap\"", 1) + "]}"));
             Assert.Contains("is after the craft reaches Kerbin's atmosphere", Error(Snapshot(), "{\"burns\":[" + Burn("0", -100) + "," + Burn("\"in 100000\"", 1) + "]}"));
