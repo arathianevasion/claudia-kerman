@@ -219,7 +219,7 @@ def find_missions(paths):
         if os.path.exists(os.path.join(p, 'transcript.json')) or os.path.isdir(os.path.join(p, 'craft-checks')):
             out.append(p)
         else:
-            out.extend(sorted(glob.glob(os.path.join(p, '*', 'ClaudiaKermin', 'missions', '*', ''))))
+            out.extend(sorted(glob.glob(os.path.join(p, '*', 'ClaudiaKerman', 'missions', '*', ''))))
             out.extend(sorted(d for d in glob.glob(os.path.join(p, '*', '')) if os.path.exists(os.path.join(d, 'transcript.json'))))
     return out
 

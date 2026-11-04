@@ -59,7 +59,7 @@ class CompareColumnsTests(unittest.TestCase):
 
     def mission(self, mid, turns, diagnostics=None):
         """turns: (notice key, user text, reply, cache read, cache write); one dump per turn. `diagnostics` goes on the last."""
-        folder = os.path.join(self.saves, 'Save', 'ClaudiaKermin', 'missions', mid)
+        folder = os.path.join(self.saves, 'Save', 'ClaudiaKerman', 'missions', mid)
         messages = []
         for n, (key, user, reply, read, write) in enumerate(turns, 1):
             text = json.dumps(reply)

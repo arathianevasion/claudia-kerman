@@ -22,7 +22,7 @@ for ((i = 0; i < LOAD; i++)); do yes > /dev/null & pids+=($!); done
 echo "load: $LOAD of $CORES cores; runs: up to $RUNS; filter: $FILTER"
 
 for ((run = 1; run <= RUNS; run++)); do
-  out=$(dotnet test tests/ClaudiaKermin.Kerboscript.Tests --no-build $K --filter "$FILTER" 2>&1)
+  out=$(dotnet test tests/ClaudiaKerman.Kerboscript.Tests --no-build $K --filter "$FILTER" 2>&1)
   rc=$?
   summary=$(echo "$out" | grep -E 'Passed!|Failed!' | tail -1)
   if [ $rc -eq 0 ]; then

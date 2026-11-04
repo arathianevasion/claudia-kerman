@@ -33,12 +33,12 @@ jobs:
         run: bash tools/gates/kerboscript-loc.sh
 
       - name: Build and test the core
-        run: dotnet test tests/ClaudiaKermin.Core.Tests -c Release --filter "Category!=Timing"
+        run: dotnet test tests/ClaudiaKerman.Core.Tests -c Release --filter "Category!=Timing"
 
       # The wall-clock tests (#623) fail on slow runners; run them for the record without failing the job.
       - name: Core timing tests (informational)
         continue-on-error: true
-        run: dotnet test tests/ClaudiaKermin.Core.Tests -c Release --no-build --filter "Category=Timing"
+        run: dotnet test tests/ClaudiaKerman.Core.Tests -c Release --no-build --filter "Category=Timing"
 
       - name: Fetch kOS.Safe from the kOS release
         env:
@@ -54,24 +54,24 @@ jobs:
           echo "KOS_PLUGINS_DIR=$(dirname "$safe")" >> "$GITHUB_ENV"
 
       - name: Test the Script Check with kOS.Safe
-        run: dotnet test tests/ClaudiaKermin.ScriptCheck.Tests -c Release -p:KOSPluginsDir="$KOS_PLUGINS_DIR"
+        run: dotnet test tests/ClaudiaKerman.ScriptCheck.Tests -c Release -p:KOSPluginsDir="$KOS_PLUGINS_DIR"
 
       - name: Build the Script Check command line
-        run: dotnet build tools/ClaudiaKermin.KsCompile -c Release -p:KOSPluginsDir="$KOS_PLUGINS_DIR"
+        run: dotnet build tools/ClaudiaKerman.KsCompile -c Release -p:KOSPluginsDir="$KOS_PLUGINS_DIR"
 
       # Every shipped script under kerboscript/ (the Core Library in kerboscript/library, and the
       # debug scripts) and the block test scripts: a compile error or
       # a forbidden call fails CI.
       - name: Script Check the shipped kerboscript and the block test scripts
-        run: dotnet run --project tools/ClaudiaKermin.KsCompile -c Release --no-build -- kerboscript tests/blocks
+        run: dotnet run --project tools/ClaudiaKerman.KsCompile -c Release --no-build -- kerboscript tests/blocks
 
       - name: Test the Core Library on kOS.Safe
-        run: dotnet test tests/ClaudiaKermin.Kerboscript.Tests -c Release -p:KOSPluginsDir="$KOS_PLUGINS_DIR"
+        run: dotnet test tests/ClaudiaKerman.Kerboscript.Tests -c Release -p:KOSPluginsDir="$KOS_PLUGINS_DIR"
 
       - name: Check that a syntax error and a forbidden call fail the Script Check
         run: |
           for fixture in syntax-error forbidden-call; do
-            if dotnet run --project tools/ClaudiaKermin.KsCompile -c Release --no-build -- "tools/ClaudiaKermin.KsCompile/fixtures/$fixture.ks"; then
+            if dotnet run --project tools/ClaudiaKerman.KsCompile -c Release --no-build -- "tools/ClaudiaKerman.KsCompile/fixtures/$fixture.ks"; then
               echo "The Script Check passed $fixture.ks"
               exit 1
             fi

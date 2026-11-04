@@ -1,0 +1,51 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!--
+  The kOS addon: the bridge into each kOS processor and the runtime gates (ADR 0003).
+  Targets net48 like kOS 1.6.0.1. kOS and Harmony are dependencies the player installs;
+  neither is copied into the build output.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>ClaudiaKerman.KOS</AssemblyName>
+    <RootNamespace>ClaudiaKerman.KOS</RootNamespace>
+    <NeedsKSP>true</NeedsKSP>
+    <NeedsKOS>true</NeedsKOS>
+    <ShipsInGameData>true</ShipsInGameData>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ClaudiaKerman.Core/ClaudiaKerman.Core.csproj" />
+    <ProjectReference Include="../ClaudiaKerman.Adapter/ClaudiaKerman.Adapter.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="kOS" HintPath="$(KOSPluginsDir)/kOS.dll" Private="false" />
+    <Reference Include="kOS.Safe" HintPath="$(KOSPluginsDir)/kOS.Safe.dll" Private="false" />
+    <!-- GUILayout, for the debug_tools window. -->
+    <Reference Include="UnityEngine.IMGUIModule" HintPath="$(KSPManagedDir)/UnityEngine.IMGUIModule.dll" Private="false" />
+    <Reference Include="UnityEngine.PhysicsModule" HintPath="$(KSPManagedDir)/UnityEngine.PhysicsModule.dll" Private="false" />
+  </ItemGroup>
+
+  <!-- The debug_tools test scripts ship inside the DLL, so running them reads and writes no files. -->
+  <ItemGroup>
+    <EmbeddedResource Include="$(RepoRoot)kerboscript/debug/*.ks" LogicalName="ClaudiaKerman.KOS.debug.%(Filename).ks" />
+  </ItemGroup>
+
+  <!-- The debug block test runner's tests (scenario save, reference craft, test.cfg, test.ks), also inside the DLL. -->
+  <ItemGroup>
+    <BlockTestFile Include="$(RepoRoot)tests/blocks/*/*" />
+    <EmbeddedResource Include="@(BlockTestFile)" LogicalName="ClaudiaKerman.KOS.blocktests.$([System.IO.Path]::GetFileName($([System.IO.Path]::GetDirectoryName('%(FullPath)')))).%(Filename)%(Extension)" />
+    <!-- The Planning Tool scenarios, laid out the same way under tests/tools/. -->
+    <ToolTestFile Include="$(RepoRoot)tests/tools/*/*" />
+    <EmbeddedResource Include="@(ToolTestFile)" LogicalName="ClaudiaKerman.KOS.tooltests.$([System.IO.Path]::GetFileName($([System.IO.Path]::GetDirectoryName('%(FullPath)')))).%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!--
+    Compile-only: players get 0Harmony.dll from the community Harmony mod (HarmonyKSP 2.2.1.0),
+    so the reference is pinned to the same version.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Lib.Harmony" Version="2.2.1" ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

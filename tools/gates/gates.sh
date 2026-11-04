@@ -28,18 +28,18 @@ collect() { [ -e "$dir/$1.rc" ] || { wait "$(cat "$dir/$1.pid")"; echo $? > "$di
 report() { [ -e "$dir/$1.shown" ] && return; : > "$dir/$1.shown"; collect "$1"
   if [ "$rc" -eq 0 ]; then echo "PASS $1 $(echo "$out" | grep -E 'Passed!|Failed!' | tail -1)"; else echo "FAIL $1"; echo "$out" | grep -E 'error|Failed!|FAIL' | head -20; echo "$out" | failed_tests; fail=1; fi; }
 
-start build dotnet build ClaudiaKermin.sln -warnaserror $K
+start build dotnet build ClaudiaKerman.sln -warnaserror $K
 report build
 [ $fail -ne 0 ] && exit 1   # nothing below can run on a broken build
 
-start core dotnet test tests/ClaudiaKermin.Core.Tests --no-build $K --filter "Category!=Timing"
+start core dotnet test tests/ClaudiaKerman.Core.Tests --no-build $K --filter "Category!=Timing"
 start kerboscript bash tools/gates/kerboscript.sh   # several test processes at once (#625)
 start kerboscript-loc bash tools/gates/kerboscript-loc.sh   # the library may not grow (#705, ADR 0014)
-start scriptcheck dotnet test tests/ClaudiaKermin.ScriptCheck.Tests --no-build $K
+start scriptcheck dotnet test tests/ClaudiaKerman.ScriptCheck.Tests --no-build $K
 
 # KsCompile runs from the binary the build above made.
-KS=$(ls -t tools/ClaudiaKermin.KsCompile/bin/*/*/ClaudiaKermin.KsCompile.dll 2>/dev/null | head -1)   # newest = the one just built
-if [ -z "$KS" ]; then report core; report kerboscript; report kerboscript-loc; report scriptcheck; echo "FAIL ksc-binary not found under tools/ClaudiaKermin.KsCompile/bin"; exit 1; fi
+KS=$(ls -t tools/ClaudiaKerman.KsCompile/bin/*/*/ClaudiaKerman.KsCompile.dll 2>/dev/null | head -1)   # newest = the one just built
+if [ -z "$KS" ]; then report core; report kerboscript; report kerboscript-loc; report scriptcheck; echo "FAIL ksc-binary not found under tools/ClaudiaKerman.KsCompile/bin"; exit 1; fi
 start blocks dotnet "$KS" kerboscript tests/blocks
 [ -d tests/tools ] && start tools dotnet "$KS" kerboscript tests/tools
 

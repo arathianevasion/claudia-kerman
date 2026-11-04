@@ -98,7 +98,7 @@ class ReportCase(unittest.TestCase):
 class MainCase(unittest.TestCase):
     def test_the_report_reads_plans_jsonl_from_every_mission_folder(self):
         with tempfile.TemporaryDirectory() as saves:
-            folder = os.path.join(saves, 's1', 'ClaudiaKermin', 'missions', 'm9')
+            folder = os.path.join(saves, 's1', 'ClaudiaKerman', 'missions', 'm9')
             os.makedirs(folder)
             with open(os.path.join(folder, 'plans.jsonl'), 'w', encoding='utf-8') as f:
                 f.write(json.dumps(debriefed(plan_line(1, name='Hop to the Mun'), 'Nominal')) + '\n')

@@ -1,0 +1,322 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Andrew Watson
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using ClaudiaKerman.Core;
+using ClaudiaKerman.Core.Chat;
+using ClaudiaKerman.Core.Claude;
+using ClaudiaKerman.Core.Config;
+using ClaudiaKerman.Core.Ui;
+using ClaudiaKerman.ScriptCheck;
+using KSP.UI.Screens;
+using MissionControl = ClaudiaKerman.Core.Missions.MissionControl;
+using UnityEngine;
+
+namespace ClaudiaKerman.Adapter
+{
+    /// <summary>
+    /// Created once when KSP starts and kept across scenes (so requests survive scene changes).
+    /// Announces that Claudia Kerman loaded, owns the Claude client and the chat, and drains their
+    /// results each frame.
+    /// </summary>
+    [KSPAddon(KSPAddon.Startup.Instantly, true)]
+    public class Loader : MonoBehaviour
+    {
+        // The one toolbar button: the Space Center, the VAB/SPH and Flight (map view counts as Flight); not the
+        // main menu, the Tracking Station or other KSC buildings.
+        private const ApplicationLauncher.AppScenes ButtonScenes =
+            ApplicationLauncher.AppScenes.SPACECENTER | ApplicationLauncher.AppScenes.FLIGHT
+            | ApplicationLauncher.AppScenes.MAPVIEW | ApplicationLauncher.AppScenes.VAB
+            | ApplicationLauncher.AppScenes.SPH;
+
+        // The Missions list button: also in the Tracking Station, where the list is the one thing the mod shows.
+        private const ApplicationLauncher.AppScenes MissionsButtonScenes =
+            ApplicationLauncher.AppScenes.SPACECENTER | ApplicationLauncher.AppScenes.TRACKSTATION
+            | ApplicationLauncher.AppScenes.FLIGHT | ApplicationLauncher.AppScenes.MAPVIEW
+            | ApplicationLauncher.AppScenes.VAB | ApplicationLauncher.AppScenes.SPH;
+
+        private const string IconUrl = "ClaudiaKerman/Icons/ClaudiaIcon";
+        private const string AttentionIconUrl = "ClaudiaKerman/Icons/ClaudiaIconAttention";
+
+        private readonly Background _background = new Background(Debug.LogException);
+        private readonly PlanningBody _planningBody = new PlanningBody();
+        private SettingsWindow _window;
+        private ChatWindow _chatWindow;
+        private MissionDriver _missions;
+        private ApplicationLauncherButton _button;
+        private ApplicationLauncherButton _missionsButton;
+        private Texture2D _icon;
+        private Texture2D _iconAttention;
+        private bool _attentionShown;
+        private bool _settingsSeen;
+        private string _kosProblem = "";
+        private bool _kosProblemShown;
+
+        private void Awake()
+        {
+            DontDestroyOnLoad(this);
+            Debug.Log(ModInfo.LoadedLine);
+            CheckKos();
+
+            var directory = ConfigDirectory.ResolveCurrent();
+            var config = PlayerConfig.LoadOrCreate(directory, warning => Debug.LogWarning(ModInfo.LogTag + " " + warning));
+            WindowMemory.Init(directory);
+            WindowFrame.DebugTools = config.DebugTools;
+            var store = new ApiKeyStore(directory, System.Environment.GetEnvironmentVariable);
+            var client = new ClaudeClient(new HttpWebRequestTransport(), store.Load, Debug.Log);
+            // Raw stream dumps are a debug tool: offered only with debug_tools = true in the player config.
+            var dumpFolder = config.DebugTools ? Path.Combine(directory, "stream-dumps") : null;
+            var chat = new ChatSession(client, _background, () => store.Load() != null)
+            {
+                // The player's default model, read at each message: Settings' Apply and a Mission start move it (#639).
+                ModelSource = () => config.DefaultModel,
+                CompactionTriggerTokens = config.CompactionTriggerTokens,
+            };
+            _chatWindow = new ChatWindow(chat, dumpFolder);
+
+            // Missions dump raw streams into their own Mission folder when debug_tools is on.
+            // The real Script Check (ADR 0003) reads kOS.Safe, which kOS loads; without kOS it fails every script.
+            var missions = new MissionControl(client, _background, config, () => store.Load() != null, new KosScriptCheck());
+            // Terrain, biome and the sun for the Planning Tools, served on the main thread within a per-frame budget (Update pumps it).
+            missions.PlanningBody = _planningBody;
+            _missions = new MissionDriver(missions, config.DebugTools) { SaveConfigDefaults = done => _background.Run(() => config.TrySaveDefaults(directory), done) };
+            _window = new SettingsWindow(new KeySettings(store, client, _background), _missions, config, directory, _chatWindow);
+            _missions.Panel.OpenSettings = () => _window.Visible = true;
+
+            GameEvents.onGUIApplicationLauncherReady.Add(AddButtons);
+            GameEvents.onGUIApplicationLauncherDestroyed.Add(RemoveButtons);
+            GameEvents.onHideUI.Add(HideUI);
+            GameEvents.onShowUI.Add(ShowUI);
+            GameEvents.onGameSceneLoadRequested.Add(SceneChanging);
+        }
+
+        // KSP refuses ClaudiaKerman.KOS.dll without kOS 1.6+ and only logs its own warning, and this assembly
+        // loads without kOS: so say it here, in the log now and on screen once the first scene is up.
+        private void CheckKos()
+        {
+            var loaded = new List<KeyValuePair<string, Version>>();
+            foreach (var entry in AssemblyLoader.loadedAssemblies)
+            {
+                // Only kOS is inspected: other mods' assemblies may not reflect cleanly.
+                if (entry.assembly == null || !string.Equals(entry.name, "kOS", StringComparison.OrdinalIgnoreCase)) continue;
+                try
+                {
+                    var version = entry.assembly.GetName().Version;
+                    // kOS declares its version to KSP with KSPAssembly: the one KSPAssemblyDependency is checked against.
+                    foreach (KSPAssembly declared in entry.assembly.GetCustomAttributes(typeof(KSPAssembly), false))
+                        version = new Version(declared.versionMajor, declared.versionMinor);
+                    loaded.Add(new KeyValuePair<string, Version>(entry.name, version));
+                }
+                catch (Exception e)
+                {
+                    Debug.LogException(e);
+                }
+            }
+            _kosProblem = KosPresence.Check(KosPresence.Find(loaded));
+            if (_kosProblem.Length > 0) Debug.LogError(ModInfo.LogTag + " " + _kosProblem);
+        }
+
+        private void OnDestroy()
+        {
+            GameEvents.onGUIApplicationLauncherReady.Remove(AddButtons);
+            GameEvents.onGUIApplicationLauncherDestroyed.Remove(RemoveButtons);
+            GameEvents.onHideUI.Remove(HideUI);
+            GameEvents.onShowUI.Remove(ShowUI);
+            GameEvents.onGameSceneLoadRequested.Remove(SceneChanging);
+            RemoveButtons();
+            if (_missions != null) _missions.Detach();
+            UnlockAll();
+        }
+
+        private void UnlockAll()
+        {
+            _window.Unlock();
+            _chatWindow.Unlock();
+            _missions.Window.Unlock();
+            _missions.Strip.Unlock();
+            _missions.MissionsList.Unlock();
+            _missions.Locks.Release();
+        }
+
+        private void Update()
+        {
+            _background.Drain();
+            _planningBody.Pump();
+            _missions.Update();
+
+            // The Missions list button follows the window, which Close and a scene change can shut from elsewhere.
+            if (_missionsButton != null)
+            {
+                var listOpen = _missions.MissionsList.Visible;
+                var listPressed = _missionsButton.toggleButton.CurrentState == KSP.UI.UIRadioButton.State.True;
+                if (listOpen && !listPressed) _missionsButton.SetTrue(false);
+                else if (!listOpen && listPressed) _missionsButton.SetFalse(false);
+            }
+
+            if (_button != null)
+            {
+                // A window can be opened or closed from elsewhere (Raise cap, Change something, Settings' Cancel
+                // and Apply): keep the button's pressed state in step with whatever it toggles in this scene.
+                var open = Toggled;
+                var pressed = _button.toggleButton.CurrentState == KSP.UI.UIRadioButton.State.True;
+                if (open && !pressed) _button.SetTrue(false);
+                else if (!open && pressed) _button.SetFalse(false);
+
+                // The Space Center has no Mission panel: its button opens Settings, and opening that is the acknowledgement.
+                // Only the moment it opens counts, so a call that comes while it stays open still flashes; F2 hides it.
+                var settingsSeen = HighLogic.LoadedScene == GameScenes.SPACECENTER && _window.Visible && !_window.UiHidden;
+                if (settingsSeen && !_settingsSeen) _missions.AcknowledgeFlash();
+                _settingsSeen = settingsSeen;
+
+                // Claudia needs the player and the window is closed: the button flashes between its two frames.
+                var attention = _missions.Flashing && Mathf.FloorToInt(Time.realtimeSinceStartup * 2f) % 2 == 0;
+                if (attention != _attentionShown)
+                {
+                    _attentionShown = attention;
+                    _button.SetTexture(attention ? _iconAttention : _icon);
+                }
+            }
+        }
+
+        // The Space Center button toggles Settings (in its Space Center context); the VAB/SPH toggle the Mission
+        // window, and Flight/Map expand and collapse the docked Mission panel (or toggle the floating window when undocked).
+        private bool Toggled
+        {
+            get { return HighLogic.LoadedScene == GameScenes.SPACECENTER ? _window.Visible : _missions.PanelOpen; }
+        }
+
+        private void ButtonOn()
+        {
+            if (HighLogic.LoadedScene == GameScenes.SPACECENTER) _window.Visible = true;
+            else _missions.PanelOpen = true;
+        }
+
+        private void ButtonOff()
+        {
+            if (HighLogic.LoadedScene == GameScenes.SPACECENTER) _window.Visible = false;
+            else _missions.PanelOpen = false;
+        }
+
+        private void OnGUI()
+        {
+            _window.OnGUI();
+            // The chat also opens in the Space Center, from Settings' Basic chat (debug).
+            if (SettingsSceneLoaded()) _chatWindow.OnGUI();
+            else _chatWindow.Unlock();
+            if (ChatSceneLoaded())
+            {
+                _missions.OnGUI();
+            }
+            else
+            {
+                _missions.Window.Unlock();
+                _missions.Strip.Unlock();
+            }
+            if (MissionsSceneLoaded()) _missions.MissionsList.OnGUI(_missions.View);
+            else _missions.MissionsList.Unlock();
+        }
+
+        private static bool MissionsSceneLoaded()
+        {
+            return HighLogic.LoadedScene == GameScenes.TRACKSTATION || SettingsSceneLoaded();
+        }
+
+        private static bool ChatSceneLoaded()
+        {
+            return HighLogic.LoadedScene == GameScenes.FLIGHT || HighLogic.LoadedScene == GameScenes.EDITOR;
+        }
+
+        private void HideUI()
+        {
+            _window.UiHidden = true;
+            _chatWindow.UiHidden = true;
+            _missions.Window.UiHidden = true;
+            _missions.Strip.UiHidden = true;
+            _missions.MissionsList.UiHidden = true;
+        }
+
+        private void ShowUI()
+        {
+            _window.UiHidden = false;
+            _chatWindow.UiHidden = false;
+            _missions.Window.UiHidden = false;
+            _missions.Strip.UiHidden = false;
+            _missions.MissionsList.UiHidden = false;
+        }
+
+        // The chat and the Mission keep running across the change; only the input locks are released.
+        // The settings window closes: the buttons are removed here and rebuilt unpressed when the launcher is
+        // ready in the next scene, or not at all if that scene doesn't allow them.
+        private void SceneChanging(GameScenes scene)
+        {
+            RemoveButtons();
+            _window.Visible = false;
+            _missions.MissionsList.Visible = false;
+            UnlockAll();
+            _window.UiHidden = false;
+            _chatWindow.UiHidden = false;
+            _missions.Window.UiHidden = false;
+            _missions.Strip.UiHidden = false;
+            _missions.MissionsList.UiHidden = false;
+            // Each time Flight loads (including a revert), the Craft Check starts collapsed.
+            if (scene == GameScenes.FLIGHT) _missions.Panel.FlightLoading();
+        }
+
+        private static bool SettingsSceneLoaded()
+        {
+            return HighLogic.LoadedScene == GameScenes.SPACECENTER || ChatSceneLoaded();
+        }
+
+        private void AddButtons()
+        {
+            RemoveButtons();
+            if (!MissionsSceneLoaded()) return;
+            if (_icon == null)
+            {
+                _icon = LoadIcon(IconUrl, ClaudiaSkin.IconGreen);
+                _iconAttention = LoadIcon(AttentionIconUrl, ClaudiaSkin.Attention);
+            }
+            _missionsButton = ApplicationLauncher.Instance.AddModApplication(
+                () => _missions.MissionsList.Visible = true, () => _missions.MissionsList.Visible = false, null, null, null, null, MissionsButtonScenes, _icon);
+            if (_missions.MissionsList.Visible) _missionsButton.SetTrue(false);
+            if (!SettingsSceneLoaded()) return;
+            _attentionShown = false;
+            _button = ApplicationLauncher.Instance.AddModApplication(
+                ButtonOn, ButtonOff, null, null, null, null, ButtonScenes, _icon);
+            if (Toggled) _button.SetTrue(false);
+            if (_kosProblem.Length > 0 && !_kosProblemShown && ScreenMessages.Instance != null)
+            {
+                _kosProblemShown = true;
+                ScreenMessages.PostScreenMessage(_kosProblem, 15f, ScreenMessageStyle.UPPER_CENTER);
+            }
+        }
+
+        private void RemoveButtons()
+        {
+            if (ApplicationLauncher.Instance != null && _button != null) ApplicationLauncher.Instance.RemoveModApplication(_button);
+            _button = null;
+            if (ApplicationLauncher.Instance != null && _missionsButton != null) ApplicationLauncher.Instance.RemoveModApplication(_missionsButton);
+            _missionsButton = null;
+        }
+
+        // The Winged glare artwork from GameData; a plain tile in the icon colour if the PNG didn't load.
+        private static Texture2D LoadIcon(string url, Color fallback)
+        {
+            var icon = GameDatabase.Instance != null ? GameDatabase.Instance.GetTexture(url, false) : null;
+            return icon != null ? icon : MakeIcon(fallback);
+        }
+
+        // A plain tile: the fallback for a Winged glare PNG that didn't load.
+        private static Texture2D MakeIcon(Color color)
+        {
+            var icon = new Texture2D(38, 38, TextureFormat.ARGB32, false);
+            var pixels = new Color[38 * 38];
+            for (var i = 0; i < pixels.Length; i++) pixels[i] = color;
+            icon.SetPixels(pixels);
+            icon.Apply();
+            return icon;
+        }
+    }
+}

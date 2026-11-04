@@ -1,0 +1,181 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Andrew Watson
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
+using ClaudiaKerman.Core.Claude;
+using ClaudiaKerman.Core.Kos;
+using ClaudiaKerman.Core.Missions;
+using ClaudiaKerman.Core.Tools;
+using Xunit;
+
+namespace ClaudiaKerman.Core.Tests
+{
+    /// <summary>
+    /// How to plan (#285): the cached base layer's planning rules and worked example, and the pairs that tie each
+    /// Planning Tool to its Building Block and back.
+    /// </summary>
+    public sealed class GuidanceTests
+    {
+        /// <summary>Every Planning Tool a Mission request offers (no check_script, #570).</summary>
+        private static IList<ToolDefinition> Tools()
+        {
+            return PlanningTools.Default().Definitions(ToolOffer.Mission);
+        }
+
+        [Fact]
+        public void TheBaseLayerCarriesTheThreeRulesInPlaceOfPreferBuildingBlocks()
+        {
+            var layer = MissionPrompts.BaseLayer;
+            Assert.DoesNotContain("Prefer Building Blocks", layer);
+            Assert.Contains("Don't work out in your head what a Planning Tool can calculate; call it.", layer);
+            Assert.Contains("Don't write in a script what a Building Block does; call the block.", layer);
+            Assert.Contains("Pass blocks goals, not timings", layer);
+            Assert.Contains(MissionPrompts.HowToPlan, layer);
+        }
+
+        [Fact]
+        public void TheBaseLayerSaysToCallAToolOnlyWhenItsAnswerChangesTheReplyAndNeverDuringAnAlert()
+        {
+            var layer = MissionPrompts.BaseLayer;
+            Assert.Contains("only when its answer changes your reply", layer);
+            Assert.Contains("never to test that tools work", layer);
+            Assert.Contains("never call a tool during an Alert", layer);
+        }
+
+        [Fact]
+        public void TheBaseLayerSaysToSendIndependentCallsTogetherAndLeavesThePadWordingToTheMissionRequest()
+        {
+            var layer = MissionPrompts.BaseLayer;
+            Assert.Contains("Send independent calls together in one reply", layer);
+            // #508: the pad-specific wording rides in the Mission request, not the cached base layer.
+            Assert.DoesNotContain("launch pad", layer);
+            Assert.DoesNotContain("The Mission Plan needs no", layer);
+            Assert.Contains("The Script Check runs on every Sequence Plan's script when you send it; one that fails comes back once for a rewrite.", layer);
+        }
+
+        [Fact]
+        public void TheWorkedExampleIsAMunLandingFromFindLandingSiteToStagePerformanceToLandByBiomeWithDropEmpty()
+        {
+            var plan = MissionPrompts.HowToPlan;
+            var site = plan.IndexOf("find_landing_site", StringComparison.Ordinal);
+            var stages = plan.IndexOf("stage_performance", StringComparison.Ordinal);
+            var script = plan.IndexOf(MissionPrompts.WorkedExampleScript, StringComparison.Ordinal);
+            Assert.True(site >= 0 && stages > site && script > stages, plan);
+            Assert.Contains("land(", MissionPrompts.WorkedExampleScript);
+            // #510: the biome with the site find_landing_site showed as near, so land flies that site.
+            Assert.Contains("lexicon(\"biome\", \"Midlands\", \"near\", latlng(3.1, 24.6))", MissionPrompts.WorkedExampleScript);
+            Assert.Contains("site at (3.1, 24.6)", plan);
+            Assert.Contains("give land a biome with find_landing_site's site as near", plan);
+            // #521: a site off the track takes a plane change, flown first as its own step and budgeted at its total.
+            Assert.Contains("For a site off the track, first fly one of find_landing_site's plane_changes as its own step, budgeting its total_dv.", plan);
+            Assert.Contains("\"drop_empty\"", MissionPrompts.WorkedExampleScript);
+            Assert.Contains("addons:claudia:report(res).", MissionPrompts.WorkedExampleScript);
+            // The example is block use, not a Custom Script, and its Debrief calls no tool.
+            Assert.False(ScriptProvenance.IsCustom(MissionPrompts.WorkedExampleScript));
+            Assert.Contains("Debrief", plan.Substring(script));
+        }
+
+        [Fact]
+        public void TheGuidanceStaysShortSoTheCachedPrefixGrowsByLittleMoreThanTheRulesAndExample()
+        {
+            // The base layer was 8,401 characters before #285; the rules and the example are all it gains.
+            Assert.InRange(MissionPrompts.HowToPlan.Length, 1, 1500);
+            // was 8401 + 1500 = 9901; raised for #349 Claudia's warp guidance (human decision 2026-10-27); raised by the
+            // rcs_tolerance doc worded in the RCS Use spec (#393, #400); to 10762 for the claudia_rcs_translate doc (#401);
+            // to 10921 for the spec's RCS Use / SAS wording in the mission prompt (#402; spec-mandated, not yet human-approved);
+            // to 11116 (+195) for numbering the Mission Plan's Maneuver Sequence each Sequence Plan flies (#413; ticket-mandated, not yet human-approved);
+            // to 11275 (+159) for #415: big_deg in the rcs_tolerance doc and the big-turn wording in the RCS Use sentence (spec-mandated, not yet human-approved);
+            // to 11461 (+186) for #421: the one-line claudia_keep_roll doc (human approved the raise, trimming the doc to one line);
+            // to 11483 (+22) for #510: rule 3 and the worked example pass land the tool's site as near (human approved 2026-10-28, run budget +250)
+            // to 11545 (+62) for #523: the SET a:b[c] rule (human approved 2026-10-29)
+            // to 11635 (+90) for #521: fly the proposed plane change before land (human approved 2026-10-29)
+            // to 11770 (+135) for #599: a falling craft thrusts horizontal and up, never a prograde node (ticket-mandated, within the run's 60-token prefix allowance)
+            Assert.InRange(MissionPrompts.BaseLayer.Length, 1, 11770);
+        }
+
+        [Fact]
+        public void TheMissionPromptTellsClaudiaToNameTheStepEachSequencePlanFliesAndTheSameStepForARetry()
+        {
+            Assert.Contains("Each Sequence Plan's plan_step numbers the Mission Plan's Maneuver Sequence it flies (1 for the first): a retry gives the same number again", MissionPrompts.BaseLayer);
+        }
+
+        [Fact]
+        public void TheMissionPromptTellsClaudiaToLeaveRcsToTheBlocksAndNeverSwitchSasOn()
+        {
+            Assert.Contains("Blocks manage RCS themselves (RCS Use, which includes big turns even with time to spare): leave it to them, or use claudia_rcs_translate for translation. "
+                + "Never switch SAS on: the Script Check rejects it, because SAS fights kOS steering and fires RCS through holds.", MissionPrompts.BaseLayer);
+            Assert.DoesNotContain("do not turn it back on", MissionPrompts.BaseLayer);
+        }
+
+        [Fact]
+        public void EveryToolDescriptionNamesItsBuildingBlockAndWhenNotToCallIt()
+        {
+            var blocks = CoreLibrary.Blocks.Select(b => b.Name).ToList();
+            foreach (var tool in Tools())
+            {
+                var named = blocks.Any(b => Regex.IsMatch(tool.Description, "Its blocks? (is|are) [^:]*\\b" + b + "\\b"));
+                Assert.True(named, tool.Name + " names no Building Block: " + tool.Description);
+                Assert.True(tool.Description.Contains("Don't call it"), tool.Name + " doesn't say when not to call it: " + tool.Description);
+            }
+        }
+
+        [Fact]
+        public void PredictBurnIsNotForTheBlocksThatPlanTheirOwnBurns()
+        {
+            var predict = Tools().Single(t => t.Name == "predict_burn").Description;
+            Assert.Contains("Its block is exec_node", predict);
+            Assert.Contains("Don't call it for transfer_to, return, tune_pe, deorbit, circularize or land, which plan their own burns", predict);
+        }
+
+        [Fact]
+        public void TheBaseLayerPointsPlaneChangesAtChangeOrbitInOneLine()
+        {
+            // #444's guidance line, one line (#212): change_orbit's summary, so Claudia calls it rather than hand-writing a plane change.
+            Assert.Contains("\n- change_orbit(options): inclination, plane, LAN, resonance.", MissionPrompts.BaseLayer);
+            Assert.Contains("call it rather than hand-write the node", CoreLibrary.FullDocs(new[] { "change_orbit" }));
+            Assert.Contains("Its blocks are change_orbit,", Tools().Single(t => t.Name == "solve_burn").Description);
+        }
+
+        [Fact]
+        public void TheBaseLayerPointsATargetVesselAtRendezvousInOneLine()
+        {
+            // #455's guidance line, one line (#212): rendezvous's summary; its full docs say where it hands off to dock.
+            Assert.Contains("\n- rendezvous(options): meets the Target Vessel.", MissionPrompts.BaseLayer);
+            Assert.Contains("under 2 m/s relative; then dock.", CoreLibrary.FullDocs(new[] { "rendezvous" }));
+        }
+
+        [Fact]
+        public void TheBaseLayerPointsADockingAtDockInOneLine()
+        {
+            // #456's guidance line, one line (#212): dock's summary; its full docs take over from rendezvous's hand-off.
+            Assert.Contains("\n- dock(options): docks with the Target Vessel.", MissionPrompts.BaseLayer);
+            Assert.Contains("From rendezvous's hand-off (loaded, under 2 m/s) on RCS", CoreLibrary.FullDocs(new[] { "dock" }));
+            // Docking is no longer a stretch the player flies by hand.
+            Assert.DoesNotContain("(docking,", MissionPrompts.BaseLayer);
+        }
+
+        [Theory]
+        [InlineData("land", "find_landing_site")]
+        [InlineData("land", "stage_performance")]
+        [InlineData("deorbit", "stage_performance")]
+        [InlineData("return", "stage_performance")]
+        [InlineData("tune_pe", "solve_burn")]
+        [InlineData("change_orbit", "solve_burn")]
+        [InlineData("drop_parts", "stage_performance")]
+        public void EachNewOrChangedBlocksDocsNameItsTool(string block, string tool)
+        {
+            Assert.Contains(tool, CoreLibrary.FullDocs(new[] { block }));
+        }
+
+        [Fact]
+        public void ThePairsSitInTheFullDocsNotTheBaseLayersSummaries()
+        {
+            // The block summaries are cached in the base layer: a pair there would grow it past the rules and the example.
+            var summaries = CoreLibrary.Summaries();
+            foreach (var tool in Tools()) Assert.DoesNotContain(tool.Name, summaries);
+        }
+    }
+}

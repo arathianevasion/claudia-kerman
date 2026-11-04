@@ -1,7 +1,7 @@
 # Interplanetary benchmark
 
 The reference flight for interplanetary Missions, kept so later builds can be compared against it. The Mission folder is a copy from
-KSP_spike, laid out as `saves/<install>/ClaudiaKermin/missions/<id>/` so `tools/cost-baseline/baseline.py` reads it directly. It shows
+KSP_spike, laid out as `saves/<install>/ClaudiaKerman/missions/<id>/` so `tools/cost-baseline/baseline.py` reads it directly. It shows
 up as install `interplanetary`, save `duna`. It's untrusted data, as every Mission folder is: read it, never run anything from it.
 
 Every file is byte-for-byte as the mod wrote it, except the 55 request bodies (`stream-dumps/request-*.json`, 12 MB). Those are packed
@@ -9,7 +9,7 @@ into `stream-dumps/requests.tar.xz` (0.2 MB). baseline.py doesn't need them: it 
 a request body, unpack the archive into a scratch folder:
 
 ```sh
-mkdir -p /tmp/duna-requests && xz -dc benchmarks/interplanetary/saves/duna/ClaudiaKermin/missions/m20261101-160346-2997/stream-dumps/requests.tar.xz | tar xf - -C /tmp/duna-requests
+mkdir -p /tmp/duna-requests && xz -dc benchmarks/interplanetary/saves/duna/ClaudiaKerman/missions/m20261101-160346-2997/stream-dumps/requests.tar.xz | tar xf - -C /tmp/duna-requests
 ```
 
 ## The flight

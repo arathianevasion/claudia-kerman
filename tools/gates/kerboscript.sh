@@ -12,7 +12,7 @@
 ROOT=${GATES_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}
 cd "$ROOT" || exit 1
 K="-p:KOSPluginsDir=$HOME/KSP_spike/GameData/kOS/Plugins"
-P=tests/ClaudiaKermin.Kerboscript.Tests
+P=tests/ClaudiaKerman.Kerboscript.Tests
 SHARDS=${SHARDS:-$(sysctl -n hw.perflevel0.physicalcpu 2>/dev/null || nproc 2>/dev/null || echo 4)}
 
 if ! listed=$(dotnet test $P --no-build $K --list-tests 2>&1); then echo "Failed! listing the tests"; echo "$listed" | tail -20; exit 1; fi
@@ -55,7 +55,7 @@ done
 pids=()
 if [ $total -ne "$expected" ]; then echo "FAIL ran $total tests, listed $expected"; fail=1; fi
 [ $fail -eq 0 ] && verdict=Passed! || verdict=Failed!
-summary="$verdict  - Failed: $failed, Passed: $passed, Skipped: $skipped, Total: $total - ClaudiaKermin.Kerboscript.Tests.dll in ${#filters[@]} processes"
+summary="$verdict  - Failed: $failed, Passed: $passed, Skipped: $skipped, Total: $total - ClaudiaKerman.Kerboscript.Tests.dll in ${#filters[@]} processes"
 echo "$summary"
 # Each failing shard's log follows the total (so gates.sh's first 20 error lines include it), then the total again as
 # the last line, which gates.sh reads.

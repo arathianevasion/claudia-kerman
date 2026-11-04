@@ -33,7 +33,7 @@
   <!-- Static GameData files (trait config, icon) are copied as they are, under the staged mod folder. -->
   <Target Name="StageGameDataFiles" AfterTargets="Build" Condition="'$(StagesGameDataFiles)' == 'true'">
     <ItemGroup>
-      <_StageFile Include="$(RepoRoot)GameData/ClaudiaKermin/**/*" />
+      <_StageFile Include="$(RepoRoot)GameData/ClaudiaKerman/**/*" />
     </ItemGroup>
     <Copy SourceFiles="@(_StageFile)" DestinationFiles="@(_StageFile->'$(GameDataStageDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>

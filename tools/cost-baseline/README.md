@@ -53,7 +53,7 @@ distance to `--goal`. An unknown Mission id is an error; an unknown reference is
 2026-10-30 the two flights read: b5f3 $2.20, 6 legs, 1 revised plan for $0.42, no compaction, prefix 25,569; 3dc5
 $4.21, 10 legs, 3 revised plans for $1.04, 1 compaction for $0.66, prefix 26,865.
 
-The prefix also has a test: `MissionPrefixBudgetTests` in `tests/ClaudiaKermin.Core.Tests` builds a Mission request as
+The prefix also has a test: `MissionPrefixBudgetTests` in `tests/ClaudiaKerman.Core.Tests` builds a Mission request as
 `MissionControl` does and holds the system prompt and tool definitions under a budget about 5% above today's figure
 (chars / 3, the mod's own estimate; it runs lower than the API's count, so compare it only with itself).
 
