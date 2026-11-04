@@ -1967,7 +1967,7 @@ function claudia_begin {
     "opt", checked:opt,
     "start_ut", time:seconds,
     "last_ut", time:seconds,
-    "dv_used", 0,
+    "dv_used", 0, "last_tset", 0,
     "parts", ship:parts:length,
     "dropped", list(),
     "drop_tried", list(),
@@ -2002,20 +2002,23 @@ function claudia_is_burning {
   return tset > 0.
 }
 
+function claudia_dv_step {
+  parameter prev_tset, thrust_kn, mass_t, dt.
+  return choose prev_tset * thrust_kn / mass_t * dt if prev_tset > 0 and mass_t > 0 else 0.
+}
+
 // Once per physics tick in a block's loops. tset: the throttle the block is commanding now.
-// burning (optional): true while the block means the engines to thrust, whatever tset is; leave it
-// out and burning means tset > 0. Delta-v used is counted from tset either way. Callers that
-// pass tset 0 and no signal (return, transfer_to, science, the warp and wait loops) are coasting
-// with the engines off and never stage (#379).
-// Adds up delta-v used, auto-stages while burning, switches RCS by the RCS Use rule (claudia_rcs_tick)
-// and checks the common aborts. Returns "" or the reason the block must fail.
+// burning (optional): true while the block means the engines to thrust, whatever tset is; left out, burning
+// means tset > 0. Delta-v credits the interval since the last tick at ctx:last_tset, the throttle then. Callers
+// passing tset 0 and no signal (return, transfer_to, science, the warp and wait loops) coast and never stage (#379).
+// Adds up delta-v used, auto-stages while burning, switches RCS by the RCS Use rule (claudia_rcs_tick) and
+// checks the common aborts. Returns "" or the reason the block must fail.
 function claudia_tick {
   parameter ctx, tset, burning is "unsaid".
   claudia_rcs_tick(ctx).
   local now is time:seconds.
-  if tset > 0 and ship:mass > 0 {
-    set ctx:dv_used to ctx:dv_used + tset * ship:availablethrust / ship:mass * (now - ctx:last_ut).
-  }
+  set ctx:dv_used to ctx:dv_used + claudia_dv_step(ctx:last_tset, ship:availablethrust, ship:mass, now - ctx:last_ut).
+  set ctx:last_tset to tset.
   if claudia_is_burning(burning, tset) {
     local staging is claudia_autostage(ctx).
     if staging <> "" {
