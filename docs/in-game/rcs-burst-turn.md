@@ -27,7 +27,7 @@ Fly the Mun validation flight on Mun Shot v2. At the first large RCS-assisted tu
 
 1. At a 60-110° turn before a node, with minutes to the burn: the turn finishes in about the wheels' time or less (`wheels_s` in the `RCS on: turning` line, `turn_s` in the TURNPLAN call), not the 70-96 s #754 saw.
 2. The `BURSTTURN` `coast, RCS off` line runs for a few seconds at most, not a minute.
-3. The `turned` line shows `coast ...°/s planned` of roughly 2-6°/s on a small craft, and `monoprop` under about 1 unit. Note the planned and flown rates: #754 saw 1.12°/s flown against 0.69°/s planned, a gap not reproduced offline (kOS's own rate cap and RCS spin-up overshoot are the suspects); a gap that stays under 30% is harmless.
+3. The `turned` line shows `coast ...°/s planned` well above the old 0.5-0.7°/s, and `monoprop` under about 1 unit. Note the planned and flown rates: #754 saw 1.12°/s flown against 0.69°/s planned, a gap not reproduced offline (kOS's own rate cap and RCS spin-up overshoot are the suspects); a gap that stays under 30% is harmless.
 4. A craft whose wheels are strong against its RCS flies no burst: no `RCS on: turning` burst line and the wheels turn alone.
 
 ## Report
