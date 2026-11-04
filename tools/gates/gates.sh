@@ -21,7 +21,7 @@ failed_tests() { awk '/^ *Failed [^!]/ { p = 1; s = 0 } p && s && ++n > 3 { p = 
 
 # start NAME CMD...: runs CMD in the background, its output in $dir/NAME.out. GATES_SERIAL=1 waits for it and prints it now.
 start() { local name=$1; shift; "$@" > "$dir/$name.out" 2>&1 & echo $! > "$dir/$name.pid"; pids+=($!)
-  if [ "${GATES_SERIAL:-}" = 1 ]; then report "$name"; fi; }
+  if [ "${GATES_SERIAL:-}" = 1 ]; then if [ "$name" = fixtures ]; then collect "$name"; else report "$name"; fi; fi; }
 # collect NAME: waits for the job once; leaves its status in $rc and its output in $out.
 collect() { [ -e "$dir/$1.rc" ] || { wait "$(cat "$dir/$1.pid")"; echo $? > "$dir/$1.rc"; }; rc=$(cat "$dir/$1.rc"); out=$(cat "$dir/$1.out"); }
 # report NAME: prints the PASS or FAIL lines for a job (once), in the format the callers grep.
@@ -39,7 +39,7 @@ start scriptcheck dotnet test tests/ClaudiaKermin.ScriptCheck.Tests --no-build $
 
 # KsCompile runs from the binary the build above made.
 KS=$(ls -t tools/ClaudiaKermin.KsCompile/bin/*/*/ClaudiaKermin.KsCompile.dll 2>/dev/null | head -1)   # newest = the one just built
-if [ -z "$KS" ]; then echo "FAIL ksc-binary not found under tools/ClaudiaKermin.KsCompile/bin"; exit 1; fi
+if [ -z "$KS" ]; then report core; report kerboscript; report kerboscript-loc; report scriptcheck; echo "FAIL ksc-binary not found under tools/ClaudiaKermin.KsCompile/bin"; exit 1; fi
 start blocks dotnet "$KS" kerboscript tests/blocks
 [ -d tests/tools ] && start tools dotnet "$KS" kerboscript tests/tools
 
