@@ -15,6 +15,27 @@ namespace ClaudiaKermin.Core.Tests
             return new SegmentTrack(count, 590, 110, 10);
         }
 
+        // ---- Window height ----
+
+        [Fact]
+        public void ACollapsedStripAsksForHeightZeroEvenWithAStaleTallRectAndAnUnchangedShape()
+        {
+            Assert.Equal(0, CapcomStripLayout.WindowHeight(false, false, 1000));
+        }
+
+        [Fact]
+        public void AnExpandedPanelKeepsItsRememberedHeight()
+        {
+            Assert.Equal(640, CapcomStripLayout.WindowHeight(true, false, 640));
+        }
+
+        [Fact]
+        public void AChangedShapeStillResetsTheHeight()
+        {
+            Assert.Equal(0, CapcomStripLayout.WindowHeight(true, true, 640));
+            Assert.Equal(0, CapcomStripLayout.WindowHeight(false, true, 1000));
+        }
+
         // ---- Segment track ----
 
         [Fact]
