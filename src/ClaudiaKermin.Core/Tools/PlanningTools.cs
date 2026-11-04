@@ -27,6 +27,9 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The names of the body's biomes; empty when the body has no biome map or can't be read.</summary>
         IList<string> BiomeNames(string body);
 
+        /// <summary>The body's stock surface objects (#713: the anomalies, and the facilities Core leaves out); empty when none or unread.</summary>
+        IList<SurfaceObject> SurfaceObjects(string body);
+
         /// <summary>The sun's elevation above the horizon at the point at <paramref name="ut"/>, degrees; NaN when it can't be read.</summary>
         double SunElevation(string body, double latitude, double longitude, double ut);
 
@@ -78,6 +81,9 @@ namespace ClaudiaKermin.Core.Tools
 
         /// <summary>No biomes listed; a fake that has some overrides it.</summary>
         public virtual IList<string> BiomeNames(string body) { return new string[0]; }
+
+        /// <summary>No surface objects; a fake that has some overrides it.</summary>
+        public virtual IList<SurfaceObject> SurfaceObjects(string body) { return new SurfaceObject[0]; }
 
         public virtual void Survey(string body, IList<SiteSample> samples, SiteFacts facts)
         {

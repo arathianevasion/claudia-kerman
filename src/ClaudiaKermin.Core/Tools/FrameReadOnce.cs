@@ -36,6 +36,11 @@ namespace ClaudiaKermin.Core.Tools
             return _api.BiomeNames(body);
         }
 
+        public IList<SurfaceObject> SurfaceObjects(string body)
+        {
+            return _api.SurfaceObjects(body);
+        }
+
         public double SunElevation(string body, double latitude, double longitude, double ut)
         {
             return _api.SunElevation(body, latitude, longitude, ut);
