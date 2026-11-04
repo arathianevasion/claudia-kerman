@@ -134,6 +134,8 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal("vertical", holding["verdict"]);
             Assert.Equal(0.0, (double)holding["vv"]);
             Assert.True((double)holding["al"] < 0);
+            // The hold isn't land_phase's "terminal", so the hover watch doesn't catch it (h_ref is the height it holds).
+            Assert.Equal(3108.0, (double)holding["h_ref"]);
             tick["v_al"] = 0.0;
             tick["s"] = 5.0;
             var down = LandGuard.Tick(tick);

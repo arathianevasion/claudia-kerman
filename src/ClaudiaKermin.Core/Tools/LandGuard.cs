@@ -110,7 +110,9 @@ namespace ClaudiaKermin.Core.Tools
             }
             return new Dictionary<string, object>
             {
-                { "al", al }, { "cr", cr }, { "up", up }, { "h", h }, { "h_ref", 0.0 }, { "vv", vvWant },
+                // While it holds its height to stop, that height is its h_ref, so land_phase reads "approach" and land's terminal hover
+                // watch (falling under a quarter of touchdown speed for 10 s) doesn't take the hold for a hover; 0 once descending.
+                { "al", al }, { "cr", cr }, { "up", up }, { "h", h }, { "h_ref", vH > HoldOverVh ? h : 0.0 }, { "vv", vvWant },
                 { "vh", BrakeGuidance.VhTarget(Math.Max(0, s), horizontal, margin) }, { "to_go", Math.Max(0, s) },
                 { "sink", Math.Max(touchdown, Math.Min(100, BrakeGuidance.SinkLimit(h, aStop, lag))) },
             };

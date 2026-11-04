@@ -127,8 +127,9 @@ namespace ClaudiaKermin.Core.Tools
         public double Ground;
         /// <summary>m/s across the ground.</summary>
         public double VH;
-        /// <summary>m/s up, and s since the simulation started.</summary>
+        /// <summary>m/s up.</summary>
         public double VUp;
+        /// <summary>s since the simulation started.</summary>
         public double T;
     }
 
