@@ -394,7 +394,8 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>ADDONS:CLAUDIA:DEORBITBURN</c>, for <c>deorbit</c>: the deorbit burn search (<see cref="DeorbitBurn"/>) from the craft's
         /// orbit, by the reentry predictor with <paramref name="air"/> and <paramref name="craft"/>. Takes <c>lat</c>, <c>lng</c>
         /// (the target), <c>earliest_ut</c>, <c>max_wait</c> (s), <c>ground_alt</c> (m), <c>accuracy_km</c> and <c>isp</c> (s; 0 or
-        /// missing for none); <c>leave_out</c> (<see cref="LeftOut"/>) is for the adapter's <paramref name="craft"/>. Gives <c>error</c> "", <c>burn_ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver
+        /// missing for none); <c>chutes</c> (#477, true or missing: the predictor opens the stowed chutes; false keeps them stowed;
+        /// anything else is an error); <c>leave_out</c> (<see cref="LeftOut"/>) is for the adapter's <paramref name="craft"/>. Gives <c>error</c> "", <c>burn_ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver
         /// node components), <c>dv</c>, and the landing: <c>lat</c>, <c>lng</c>, <c>error_km</c>, <c>landing_ut</c>. A best burn
         /// outside the accuracy gives its <c>error</c> with the landing; a search that could not run, only <c>error</c>.
         /// </summary>
@@ -402,6 +403,9 @@ namespace ClaudiaKermin.Core.Tools
             IReentryAir air, IReentryCraft craft)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            bool chutes;
+            var chutesProblem = ChutesOf(ask, out chutes);
+            if (chutesProblem != null) return Error(chutesProblem);
             SnapshotBody at;
             Conic orbit;
             BodyFrame frame;
@@ -416,6 +420,7 @@ namespace ClaudiaKermin.Core.Tools
                 GroundAltitude = Number(ask, "ground_alt", 0),
                 AccuracyKm = Number(ask, "accuracy_km", 5),
                 Isp = Number(ask, "isp", 0),
+                Chutes = chutes,
             }, air, craft, frame);
             if (plan.Landing == null || plan.Landing.Error != null) return Error(plan.Error ?? plan.Landing.Error);
             var result = Landing(plan.Landing, plan.ErrorKm);
@@ -436,18 +441,21 @@ namespace ClaudiaKermin.Core.Tools
         /// asks it of its planned path round Kerbin before the craft is there, with <c>from_ut</c> (UT, default now) the UT that
         /// path begins, so the fall is not taken from an earlier pass of the same conic. Gives
         /// <c>error</c> "", <c>lat</c>, <c>lng</c>, <c>landing_ut</c> and <c>error_km</c> (-1 without a target); or only
-        /// <c>error</c>, saying why there is no landing point.
+        /// <c>error</c>, saying why there is no landing point. <c>chutes</c> (#477) is as for <see cref="DeorbitBurn"/>.
         /// </summary>
         public static IDictionary<string, object> ReentryImpact(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body,
             IReentryAir air, IReentryCraft craft)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            bool chutes;
+            var chutesProblem = ChutesOf(ask, out chutes);
+            if (chutesProblem != null) return Error(chutesProblem);
             SnapshotBody at;
             Conic orbit;
             BodyFrame frame;
             var problem = Reentry(snapshot, body, ask, out at, out orbit, out frame);
             if (problem != null) return Error(problem);
-            var landing = ReentryPredictor.Predict(at, orbit, Number(ask, "from_ut", snapshot.Ut), Number(ask, "ground_alt", 0), craft.MassKg, air, craft, frame);
+            var landing = ReentryPredictor.Predict(at, orbit, Number(ask, "from_ut", snapshot.Ut), Number(ask, "ground_alt", 0), craft.MassKg, air, craft, frame, chutes);
             if (landing.Error != null) return Error(landing.Error);
             var km = ask.ContainsKey("lat") && ask.ContainsKey("lng")
                 ? LandingSiteSearch.ArcDegrees(landing.Latitude, landing.Longitude, Number(ask, "lat", 0), Number(ask, "lng", 0)) * Math.PI / 180 * at.Radius / 1000
@@ -981,6 +989,17 @@ namespace ClaudiaKermin.Core.Tools
                 { "burn_time", solved.BurnTime ?? -1 },
                 { "wanted", wanted },
             };
+        }
+
+        /// <summary>The <c>chutes</c> a reentry call asks for (#477): true when missing, else a boolean; a problem text otherwise.</summary>
+        private static string ChutesOf(IDictionary<string, object> ask, out bool chutes)
+        {
+            chutes = true;
+            object value;
+            if (!ask.TryGetValue("chutes", out value) || value == null) return null;
+            if (!(value is bool)) return "chutes must be true or false";
+            chutes = (bool)value;
+            return null;
         }
 
         private static double Number(IDictionary<string, object> ask, string key, double fallback)
