@@ -19,20 +19,20 @@
 
 @lazyglobal off.
 
-//| land(options): lands on an airless body (the Mun, Minmus...) from a low, near-circular orbit:
+//| land(options): lands on an airless body from a low, near-circular orbit:
 //| a deorbit burn timed for the site, a correction burn that puts the ground track over it, and a
 //| powered descent that brakes onto it, rejects slopes over max_slope (diverting up to max_divert to
 //| flatter ground) and touches down at about touchdown_speed. Aims for about 5 km of the site.
 //| Options:
-//|   target ["any"]: "any", "vessel", LATLNG(lat, lng), lexicon("lat", x, "lng", y) or
-//|     lexicon("biome", name) on the body orbited. "any" lands about half an orbit on. "vessel" lands
-//|     vessel_offset [200] m (50 or more) beside the landed Target Vessel. A biome target
-//|     (e.g. lexicon("biome", "Midlands")), with an optional "near" point (LATLNG or lat/lng lexicon),
+//|   target ["any"]: "any", "vessel", LATLNG(lat, lng), lexicon("lat", x, "lng", y), lexicon("biome", name) or
+//|     lexicon("poi", name) on the body orbited. "any" lands about half an orbit on. "vessel" lands
+//|     vessel_offset [200] m (50 or more) beside the landed Target Vessel; "poi" 150 m to 1.5 km beside that find_poi
+//|     Point of Interest, never on it. A biome target, with an optional "near" point (LATLNG or lat/lng lexicon),
 //|     finds its site when it flies, with find_landing_site's search: the soonest pass (or the one
 //|     nearest near) over the biome under the ground track in the window, 5 km inside its edge if it
 //|     can, in daylight if daylight is set, within max_slope. A site, given or found, flies on the
 //|     soonest pass in the window whose correction burn is within max_correction_dv (warping there on
-//|     rails); land solves that pass again shortly before the deorbit burn and, if it missed it, takes the
+//|     rails), solved again shortly before the deorbit burn; a missed pass takes the
 //|     next (up to 2 times). Plan with find_landing_site, then pass the biome with its site as near,
 //|     or that site as the target. land never changes the plane: for a site
 //|     off the track, fly a change_orbit from find_landing_site's plane_changes first, as its own step, and budget its total_dv.
@@ -42,7 +42,7 @@
 //|     of the craft's delta-v (30 m/s reaches about 11 km off the ground track). Pass any you gave find_landing_site.
 //|   daylight [true]: set it from the Mission Setting Daylight landing. true touches down only with
 //|     Daylight at the site: the sun more than 20 degrees up. For a site it looks up to a day of the body ahead
-//|     for such a pass (about 46 h at the Mun, 13 h at Minmus) where that is longer than the window, and warps
+//|     for such a pass where that is longer than the window, and warps
 //|     there on rails, with no Due Time needed; give expected_duration_s that wait. "any" with daylight fails
 //|     only on an orbit that runs along the day-night line.
 //|   max_slope [8]: degrees; steeper ground is rejected during final descent.
@@ -66,7 +66,8 @@
 //| Extra results: dropped_underhang (the names of the parts dropped), underhang_kept (Underhang parts it couldn't drop), underhang_drop_agl (m above the ground at the drop; -1 if none),
 //| staged_before_deorbit, staged_before_braking (true if it did; stage_left is the stage it left), slope (degrees where it came to rest), touchdown_speed_actual (m/s),
 //| touchdown_h_speed (m/s sideways at touchdown), lean (degrees from upright once settled),
-//| reversals (times the descent turned back after braking began; 0 normally), vertical_fallback (true if, above its predicted path near the site, it came straight down), distance_to_target
+//| reversals (times the descent turned back after braking began; 0 normally), vertical_fallback (true if, above its predicted path near the site, it came straight down), poi and distance_to_poi (m from it), distance_to_target
+
 //| (m from the site asked for, or the spot chosen for "any" or a biome), best_effort (true if nothing within
 //| max_divert was flat enough and it landed on the least steep spot found), burn_start_ut (when braking was planned to start; -1 if it never got that far),
 //| braking_began_ut (when braking began; -1 if never), impact_ut (when the orbit after the deorbit burn meets
