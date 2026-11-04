@@ -177,12 +177,15 @@ namespace ClaudiaKermin.Core.Tools
             if (!found.Moon && !found.Fits)
             {
                 // No window fits (#648): the cheapest total against what the craft has, in the result alone (the description is unchanged).
-                json.Field("fits", false).Field("cheapest_total_dv", PlanningJson.Round(found.Optimal.TotalDv, 1)).Field("craft_dv", PlanningJson.Round(found.CraftDv.Value, 1))
-                    .Field("note", "no window in the next synodic period fits: the cheapest costs more than the craft has");
+                json.Field("fits", false).Field("cheapest_total_dv", PlanningJson.Round(found.Optimal.TotalDv, 1)).Field("craft_dv", PlanningJson.Round(found.CraftDv.Value, 1));
+                if (found.LaterLegsDv.HasValue)
+                    json.Field("later_legs_dv", PlanningJson.Round(found.LaterLegsDv.Value, 1)).Field("available_dv", PlanningJson.Round(found.CraftDv.Value - found.LaterLegsDv.Value, 1));
+                var later = found.LaterLegsDv.HasValue ? ", " + Num(found.LaterLegsDv.Value) + " of it for the later legs" : "";
+                json.Field("note", "no window in the next synodic period fits: the cheapest costs more than the craft has" + (found.LaterLegsDv.HasValue ? " after the Mission Plan's later legs" : ""));
                 return new ToolOutcome
                 {
                     Json = json.EndObject().ToString(),
-                    Summary = found.Target + ": no window fits, the cheapest " + Num(found.Optimal.TotalDv) + " m/s, the craft has " + Num(found.CraftDv.Value) + " m/s",
+                    Summary = found.Target + ": no window fits, the cheapest " + Num(found.Optimal.TotalDv) + " m/s, the craft has " + Num(found.CraftDv.Value) + " m/s" + later,
                 };
             }
             if (found.Moon)
@@ -191,6 +194,8 @@ namespace ClaudiaKermin.Core.Tools
                 return new ToolOutcome { Json = json.EndObject().ToString(), Summary = Summary(found, pick) };
             }
             if (found.CraftDv.HasValue) json.Field("fits", true).Field("craft_dv", PlanningJson.Round(found.CraftDv.Value, 1));
+            if (found.CraftDv.HasValue && found.LaterLegsDv.HasValue)
+                json.Field("later_legs_dv", PlanningJson.Round(found.LaterLegsDv.Value, 1)).Field("available_dv", PlanningJson.Round(found.CraftDv.Value - found.LaterLegsDv.Value, 1));
             Window(json, "soonest", found.Soonest, snapshot.Ut, capture);
             Window(json, "optimal", found.Optimal, snapshot.Ut, capture);
             json.Field("pick", pick == found.Optimal && pick != found.Soonest ? "optimal" : "soonest")

@@ -188,6 +188,7 @@ namespace ClaudiaKermin.Core.Missions
                 snapshot.TimeCapHours = settings.TimeCapHours;
                 snapshot.TimeVersusDeltaV = settings.TimeVersusDeltaV;
                 snapshot.MarginPercent = _config.CraftCheckMarginPercent;
+                snapshot.LaterLegsDv = LaterLegsDv(mission);
             }
             var purpose = turn.Purpose;
             var timeout = _toolCallTimeout;
@@ -208,6 +209,12 @@ namespace ClaudiaKermin.Core.Missions
                 () => ToolStep.Run(tools, message, refusal, atLimit, snapshot, body, timeout, answer),
                 step => ToolsAnswered(mission, turn, message, step, atLimit),
                 error => ToolsAnswered(mission, turn, message, null, atLimit));
+        }
+
+        /// <summary>The craft's delta-v for the Mission Plan's legs after the one being planned (#694): the rest of the plan less its first, a Child Vessel's legs left out; null with no Mission Plan.</summary>
+        private static double? LaterLegsDv(Mission mission)
+        {
+            return mission.Plan == null ? (double?)null : MissionCards.LaterLegsDv(mission.Plan, StepsBegun(mission), mission.VesselName);
         }
 
         private void ToolsAnswered(Mission mission, Turn turn, AssistantMessage message, ToolStepResult step, bool atLimit)

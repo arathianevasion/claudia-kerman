@@ -207,6 +207,8 @@ namespace ClaudiaKermin.Core.Missions
         public TimeVersusDeltaV TimeVersusDeltaV = TimeVersusDeltaV.Balanced;
         /// <summary>The Craft Check's delta-v margin, %, that Soonest's total must fit within over Optimal's; PlayerConfig's default until the Mission sets it.</summary>
         public int MarginPercent = DefaultMarginPercent;
+        /// <summary>The delta-v, m/s, of the Mission Plan's legs after the one this turn plans, flown by the craft; null with no Mission Plan. Set by the Mission before a tool runs; not in the JSON.</summary>
+        public double? LaterLegsDv;
         private static readonly int DefaultMarginPercent = new Config.PlayerConfig().CraftCheckMarginPercent;
 
         // ---- Craft Check facts, computed by the adapter from the game ----
