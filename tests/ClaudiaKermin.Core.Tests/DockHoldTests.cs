@@ -111,33 +111,58 @@ namespace ClaudiaKermin.Core.Tests
         {
             // #711: settled is the port within 2 degrees of the aim, turning under 0.1 deg/s, for 2 s; a re-aim unsettles it.
             var program = DockHold.Program("1", "2").Replace("\r\n", "\n");
-            Assert.Contains("if vang(dh_port:portfacing:forevector, dh_aim) > 2 or ship:angularvel:mag * constant:radtodeg > 0.1 {\n", program);
-            Assert.Contains("} else if not dh_settled and time:seconds >= dh_since + 2 {\n", program);
-            Assert.Contains("addons:claudia:dockholdsettled(true).", program);
-            Assert.Contains("addons:claudia:dockholdsettled(false).", program);
+            Assert.Contains("if dh_off > 2 or dh_rate > 0.1 {\n", program);
+            Assert.Contains("if dh_level <> \"settled\" and time:seconds >= dh_since + 2 {\n", program);
+            Assert.Contains("set dh_level to \"settled\".", program);
+            Assert.Contains("addons:claudia:dockholdsettled(\"\").", program);
+        }
+
+        [Fact]
+        public void The_program_reports_a_loose_settle_within_5_degrees_and_under_half_a_degree_a_second_not_as_settled()
+        {
+            // #714: near is the port within 5 degrees and turning under 0.5 deg/s for 2 s; it reports near, not settled, and
+            // only when the strict test is not met (a settled port is also within the loose limits).
+            var program = DockHold.Program("1", "2").Replace("\r\n", "\n");
+            Assert.Contains("local dh_off is vang(dh_port:portfacing:forevector, dh_aim).\n", program);
+            Assert.Contains("if dh_off > 5 or dh_rate > 0.5 {\n      set dh_near to time:seconds.", program);
+            Assert.Contains("} else if dh_level = \"\" and time:seconds >= dh_near + 2 {\n      set dh_level to \"near\".\n      addons:claudia:dockholdsettled(dh_level).", program);
+            Assert.Contains("set dh_level to \"settled\".\n      addons:claudia:dockholdsettled(dh_level).", program);
+        }
+
+        [Fact]
+        public void A_running_hold_takes_a_loose_settle_and_then_a_strict_one()
+        {
+            var holds = Running();
+            holds.Settled(TargetProcessor, Run, "near");
+            Assert.Equal(DockHoldState.Near, holds.State(Craft, out _));
+            Assert.Single(holds.Live());
+            holds.Settled(TargetProcessor, Run, "settled");
+            Assert.Equal(DockHoldState.Settled, holds.State(Craft, out _));
+            holds.Settled(TargetProcessor, Run, "");
+            Assert.Equal(DockHoldState.Active, holds.State(Craft, out _));
         }
 
         [Fact]
         public void A_running_hold_moves_between_active_and_settled_as_it_reports()
         {
             var holds = Running();
-            holds.Settled(TargetProcessor, Run, true);
+            holds.Settled(TargetProcessor, Run, "settled");
             Assert.Equal(DockHoldState.Settled, holds.State(Craft, out _));
             Assert.Single(holds.Live());
-            holds.Settled(TargetProcessor, Run, false);
+            holds.Settled(TargetProcessor, Run, "");
             Assert.Equal(DockHoldState.Active, holds.State(Craft, out _));
-            holds.Settled(TargetProcessor, Run, true);
+            holds.Settled(TargetProcessor, Run, "settled");
             // A settled hold still ends docked or faults like an active one.
             holds.Ended(TargetProcessor, Run, Outcome(RunOutcomeKind.Finished, report: "docked"));
             Assert.Equal(DockHoldState.Docked, holds.State(Craft, out _));
             // A report from another run, or after the hold ended, changes nothing.
-            holds.Settled(TargetProcessor, Run, false);
+            holds.Settled(TargetProcessor, Run, "");
             Assert.Equal(DockHoldState.Docked, holds.State(Craft, out _));
             var other = Running();
-            Assert.False(other.Settled(TargetProcessor, Run - 1, true));
-            Assert.False(other.Settled(Craft, Run, true));
+            Assert.False(other.Settled(TargetProcessor, Run - 1, "settled"));
+            Assert.False(other.Settled(Craft, Run, "settled"));
             Assert.Equal(DockHoldState.Active, other.State(Craft, out _));
-            other.Settled(TargetProcessor, Run, true);
+            other.Settled(TargetProcessor, Run, "settled");
             other.Faulted(TargetProcessor, Run, "its kOS processor lost power");
             Assert.Equal(DockHoldState.Fault, other.State(Craft, out _));
         }

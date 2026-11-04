@@ -89,6 +89,8 @@ namespace ClaudiaKermin.Core.Kos
         Active,
         /// <summary>dock_hold runs and reports its port settled on its aim (#711): only now does dock close.</summary>
         Settled,
+        /// <summary>dock_hold reports a loose settle (#714): its port near its aim; dock closes on it only after settle_timeout.</summary>
+        Near,
         /// <summary>No hold: the target is met as it is (why in the reason).</summary>
         Passive,
         /// <summary>The hold stopped while dock still flew (a gate, lost power, an error): dock backs off and fails.</summary>
@@ -157,14 +159,14 @@ namespace ClaudiaKermin.Core.Kos
 
         /// <summary>
         /// dock_hold on <paramref name="part"/> reported its port settled on its aim, or unsettled by a re-aim (#711,
-        /// <c>ADDONS:CLAUDIA:DOCKHOLDSETTLED</c>). Only a running hold moves between active and settled; any other report is ignored.
-        /// True when the report was a running hold's.
+        /// <c>ADDONS:CLAUDIA:DOCKHOLDSETTLED</c>) at <paramref name="level"/>: "settled", "near" (#714, a loose settle) or "" (unsettled).
+        /// Only a running hold moves between active, near and settled; any other report is ignored. True when the report was a running hold's.
         /// </summary>
-        public bool Settled(uint part, int run, bool settled)
+        public bool Settled(uint part, int run, string level)
         {
             var hold = Find(part, run);
-            if (hold == null || (hold.State != DockHoldState.Active && hold.State != DockHoldState.Settled)) return false;
-            hold.State = settled ? DockHoldState.Settled : DockHoldState.Active;
+            if (hold == null || !IsLive(hold.State) || hold.State == DockHoldState.Starting) return false;
+            hold.State = level == "settled" ? DockHoldState.Settled : level == "near" ? DockHoldState.Near : DockHoldState.Active;
             return true;
         }
 
@@ -225,7 +227,7 @@ namespace ClaudiaKermin.Core.Kos
         /// <summary>The hold's run is starting or running (settled or not).</summary>
         private static bool IsLive(DockHoldState state)
         {
-            return state == DockHoldState.Starting || state == DockHoldState.Active || state == DockHoldState.Settled;
+            return state == DockHoldState.Starting || state == DockHoldState.Active || state == DockHoldState.Settled || state == DockHoldState.Near;
         }
 
         private Hold Find(uint part, int run)

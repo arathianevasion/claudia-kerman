@@ -61,7 +61,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             // 296 m out, almost all of it sideways (#711's Mission): while dock_hold is starting or still turning the station,
             // the craft only nulls its relative velocity; settled (or passive), it lines up.
-            foreach (var hold in new[] { "starting", "active" })
+            foreach (var hold in new[] { "starting", "active", "near" })
             {
                 Assert.True(DockGuidance.Waits(hold));
                 var tick = Tick(0.4, false, along: 59, lat: 290, vLat: -0.3, hold: hold);
@@ -74,6 +74,104 @@ namespace ClaudiaKermin.Core.Tests
                 Assert.False(DockGuidance.Waits(hold));
                 Assert.Equal(-0.6, (double)Tick(0, false, along: 59, lat: 290, hold: hold)["lat"], 9);
             }
+        }
+
+        private static IDictionary<string, object> Wait(string hold, double ut, double since, double timeout = 300)
+        {
+            return DockGuidance.Guide(new Dictionary<string, object>
+            {
+                { "mode", "close" }, { "hold", hold }, { "along", 59.0 }, { "lat", 290.0 }, { "distance", 296.0 }, { "align_deg", 0.0 },
+                { "v_along", 0.0 }, { "v_lat", 0.0 }, { "v_side", 0.0 }, { "firing", false },
+                { "approach_speed", 1.0 }, { "final_speed", 0.3 }, { "max_lateral", 0.2 },
+                { "ut", ut }, { "wait_since", since }, { "settle_timeout", timeout }, { "target", "Station" }, { "hold_off_deg", 3.4 }, { "spin_dps", 0.27 },
+            });
+        }
+
+        private static bool Holds(IDictionary<string, object> tick)
+        {
+            return (double)tick["lat"] == 0 && (double)tick["along"] == 0;
+        }
+
+        [Fact]
+        public void An_active_hold_is_waited_for_until_the_settle_timeout_and_the_clock_starts_with_the_wait()
+        {
+            var first = Wait("active", 1000, -1);
+            Assert.True(Holds(first));
+            Assert.Equal(1000, (double)first["wait_since"]);
+            Assert.Equal(0, (double)first["wait_s"]);
+            Assert.Equal("", (string)first["wait_end"]);
+            var later = Wait("active", 1299, 1000);
+            Assert.True(Holds(later));
+            Assert.Equal(299, (double)later["wait_s"], 9);
+            Assert.Equal("", (string)later["wait_end"]);
+            Assert.Equal("", (string)later["wait_error"]);
+        }
+
+        [Fact]
+        public void After_the_timeout_a_loose_settle_ends_the_wait_but_before_it_does_not()
+        {
+            var before = Wait("near", 1100, 1000);
+            Assert.True(Holds(before));
+            Assert.Equal("", (string)before["wait_end"]);
+            var after = Wait("near", 1300, 1000);
+            Assert.False(Holds(after));
+            Assert.Equal("loosely settled", (string)after["wait_end"]);
+            Assert.Equal(300, (double)after["wait_s"], 9);
+            Assert.Equal("", (string)after["wait_error"]);
+            // The craft then closes on it: later ticks neither hold still again nor restart the clock nor repeat the end.
+            var next = Wait("near", 1301, (double)after["wait_since"]);
+            Assert.False(Holds(next));
+            Assert.Equal("", (string)next["wait_end"]);
+            Assert.Equal((double)after["wait_since"], (double)next["wait_since"]);
+            // A re-aim (active again) starts a fresh wait.
+            Assert.Equal(1400, (double)Wait("active", 1400, (double)after["wait_since"])["wait_since"]);
+        }
+
+        [Fact]
+        public void A_settled_hold_ends_the_wait_with_how_long_it_took()
+        {
+            var tick = Wait("settled", 1042, 1000);
+            Assert.False(Holds(tick));
+            Assert.Equal("settled", (string)tick["wait_end"]);
+            Assert.Equal(42, (double)tick["wait_s"], 9);
+            Assert.Equal(-1, (double)tick["wait_since"]);
+            // Once ended, later ticks report nothing more.
+            Assert.Equal("", (string)Wait("settled", 1043, -1)["wait_end"]);
+        }
+
+        [Fact]
+        public void At_twice_the_timeout_with_no_loose_settle_the_block_gives_up_naming_the_hold()
+        {
+            Assert.Equal("", (string)Wait("active", 1599, 1000)["wait_error"]);
+            var tick = Wait("active", 1600, 1000);
+            Assert.Equal("gave up", (string)tick["wait_end"]);
+            Assert.Equal("Station's dock_hold never settled: 3.4° off its aim, turning 0.27°/s, after 600 s", (string)tick["wait_error"]);
+            // A shorter timeout scales the limit.
+            Assert.Equal("gave up", (string)Wait("starting", 1100, 1000, 50)["wait_end"]);
+        }
+
+        [Fact]
+        public void A_re_aim_restarts_the_clock()
+        {
+            // Settled at 1000 + 100; a re-aim reads active again with no clock running, so it starts afresh.
+            Assert.Equal("settled", (string)Wait("settled", 1100, 1000)["wait_end"]);
+            var reaim = Wait("active", 1500, -1);
+            Assert.Equal(1500, (double)reaim["wait_since"]);
+            Assert.Equal("", (string)reaim["wait_error"]);
+            Assert.True(Holds(Wait("active", 1500 + 299, 1500)));
+        }
+
+        [Theory]
+        [InlineData("passive")]
+        [InlineData("none")]
+        [InlineData("fault")]
+        public void A_passive_target_never_waits_or_starts_a_clock(string hold)
+        {
+            var tick = Wait(hold, 1000, -1);
+            Assert.False(Holds(tick));
+            Assert.Equal(-1, (double)tick["wait_since"]);
+            Assert.Equal("", (string)tick["wait_end"]);
+            Assert.Equal("", (string)tick["wait_error"]);
         }
 
         [Fact]
