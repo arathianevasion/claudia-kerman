@@ -2,7 +2,7 @@
 
 The keyboard lock (`ControlTypes.KEYBOARDINPUT`) now follows a focus flag that each window records inside its own draw (Core `TypingFocus`), and a Layout pass never clears it. Install and `KSP.log` location are as in `phase-3-gate.md`.
 
-Set `debug_tools = true` in the player config first. Each time a window's typing lock turns on or off, `KSP.log` gets one line: `[ClaudiaKermin] typing lock on: Mission window` (or `off`). The names are `Mission window`, `Capcom strip`, `Chat window`, `Settings window`.
+Set `debug_tools = true` in the player config first. Each time a window's typing lock turns on or off, `KSP.log` gets one line: `[ClaudiaKerman] typing lock on: Mission window` (or `off`). The names are `Mission window`, `Capcom strip`, `Chat window`, `Settings window`.
 
 Use a craft with a stage still to fire (an uncrewed one is the worst case). Watch the stage counter.
 

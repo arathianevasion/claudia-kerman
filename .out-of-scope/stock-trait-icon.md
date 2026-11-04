@@ -1,6 +1,6 @@
 # Trait icon in stock crew lists
 
-Claudia Kermin does not draw her Super Intelligence trait icon in the stock Astronaut Complex or crew lists. The icon is shown only when Community Trait Icons (CTI) is installed, through the ModuleManager patch in `GameData/ClaudiaKermin/Compatibility`.
+Claudia Kerman does not draw her Super Intelligence trait icon in the stock Astronaut Complex or crew lists. The icon is shown only when Community Trait Icons (CTI) is installed, through the ModuleManager patch in `GameData/ClaudiaKerman/Compatibility`.
 
 ## Why this is out of scope
 

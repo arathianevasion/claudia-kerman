@@ -1,15 +1,15 @@
 // The #482 research spike's probe: prints the sensitivities in return-landing-targeting.md from the merged ReentryPredictor,
 // DeorbitBurn and ReturnBurn (at 45de72a), with the research's capsule and atmosphere (ReentrySim). Not a test: to rerun it,
-// copy it into tests/ClaudiaKermin.Core.Tests as Spike482Probe.cs and run
-//   dotnet test tests/ClaudiaKermin.Core.Tests -p:KOSPluginsDir=$HOME/KSP_spike/GameData/kOS/Plugins --filter Category=Spike482 --logger "console;verbosity=detailed"
+// copy it into tests/ClaudiaKerman.Core.Tests as Spike482Probe.cs and run
+//   dotnet test tests/ClaudiaKerman.Core.Tests -p:KOSPluginsDir=$HOME/KSP_spike/GameData/kOS/Plugins --filter Category=Spike482 --logger "console;verbosity=detailed"
 using System;
 using System.Diagnostics;
-using ClaudiaKermin.Core.Missions;
-using ClaudiaKermin.Core.Tools;
+using ClaudiaKerman.Core.Missions;
+using ClaudiaKerman.Core.Tools;
 using Xunit;
 using Xunit.Abstractions;
 
-namespace ClaudiaKermin.Core.Tests
+namespace ClaudiaKerman.Core.Tests
 {
     public sealed class Spike482Probe
     {

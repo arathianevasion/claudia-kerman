@@ -1,8 +1,8 @@
-Claudia Kermin bundles third-party code under its own license. The notice below is
-kept with the code and ships in GameData/ClaudiaKermin.
+Claudia Kerman bundles third-party code under its own license. The notice below is
+kept with the code and ships in GameData/ClaudiaKerman.
 
 ================================================================================
-poliastro: src/ClaudiaKermin.Core/Tools/Lambert.cs (ported from MechJebLib's
+poliastro: src/ClaudiaKerman.Core/Tools/Lambert.cs (ported from MechJebLib's
 Lambert/Izzo.cs, itself a port of poliastro's Izzo solver)
 https://github.com/poliastro/poliastro
 ================================================================================

@@ -2,7 +2,7 @@ GAME
 {
 	version = 1.12.5
 	Title = claudia_block_tests (SANDBOX)
-	Description = Claudia Kermin debug block test scenario: the runner spawns the reference craft into orbit.
+	Description = Claudia Kerman debug block test scenario: the runner spawns the reference craft into orbit.
 	linkURL = 
 	linkCaption = 
 	Mode = SANDBOX

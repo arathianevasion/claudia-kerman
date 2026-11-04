@@ -1,20 +1,20 @@
-# Claudia Kermin
+# Claudia Kerman
 
 A Kerbal Space Program mod in which an AI mission controller plans and flies missions through kOS, turning a player's stated goal into a sequence of executed maneuvers.
 
 ## Language
 
-**Claudia Kermin**:
+**Claudia Kerman**:
 The name of the mod as a whole.
-_Avoid_: Kermin (alone), the plugin
+_Avoid_: Kerman (alone), Kermin (the spelling before ADR 0015), the plugin
 
 **Claudia**:
 The AI mission controller the player talks to, who is also a Kerbal crew member (a standard female Kerbal) that can be assigned to missions.
 _Avoid_: the bot, the chatbot, the AI, Claude
 
 **Kerbin**:
-The home planet in KSP. The mod name's "Kermin" never refers to the planet.
-_Avoid_: Kermin (for the planet)
+The home planet in KSP. The mod name's "Kerman" is the stock Kerbal surname and never refers to the planet.
+_Avoid_: Kerman (for the planet)
 
 **Super Intelligence**:
 Claudia's crew role, combining the abilities of a Pilot, an Engineer and a Scientist.
@@ -211,7 +211,7 @@ A stock anomaly on a body's surface (a monolith, the Mun's rock arches, the Duna
 _Avoid_: anomaly (alone), easter egg, landmark, POI (in Claudia's text)
 
 **Claudia Flag**:
-The flag the mod ships (`ClaudiaKermin/Flags/ClaudiaFlag`). A Mission's craft and Child Vessels fly it, and it is the agency flag while a Mission is under way (in play, Paused or not); the player's own agency flag comes back when none is.
+The flag the mod ships (`ClaudiaKerman/Flags/ClaudiaFlag`). A Mission's craft and Child Vessels fly it, and it is the agency flag while a Mission is under way (in play, Paused or not); the player's own agency flag comes back when none is.
 _Avoid_: Mission flag, mod flag
 
 **Spending Cap**:
@@ -265,7 +265,7 @@ _Avoid_: Mission history (the finished part of the list), Mission manager
 ### Scripts
 
 **Core Library**:
-The fixed set of Building Blocks that ships with Claudia Kermin and is the same for every Mission.
+The fixed set of Building Blocks that ships with Claudia Kerman and is the same for every Mission.
 _Avoid_: primitives, stdlib, script bundle
 
 **Building Block**:

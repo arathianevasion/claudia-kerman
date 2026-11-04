@@ -1,0 +1,27 @@
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!--
+  The thin KSP adapter (ADR 0001): game-state reads, crew roster and UI, feeding the core plain
+  snapshots. Builds against a local KSP 1.12.5 install; see KSPRoot in Directory.Build.props.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>ClaudiaKerman</AssemblyName>
+    <RootNamespace>ClaudiaKerman.Adapter</RootNamespace>
+    <NeedsKSP>true</NeedsKSP>
+    <ShipsInGameData>true</ShipsInGameData>
+    <!-- The one project that also stages the repo's GameData/ClaudiaKerman files (trait cfg, icon). -->
+    <StagesGameDataFiles>true</StagesGameDataFiles>
+  </PropertyGroup>
+
+  <!-- Compile-only, as in ClaudiaKerman.KOS: players get 0Harmony.dll from HarmonyKSP 2.2.1.0. -->
+  <ItemGroup>
+    <PackageReference Include="Lib.Harmony" Version="2.2.1" ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ClaudiaKerman.Core/ClaudiaKerman.Core.csproj" />
+    <!-- The real Script Check; it ships, kOS.Safe behind it doesn't (kOS loads it). -->
+    <ProjectReference Include="../ClaudiaKerman.ScriptCheck/ClaudiaKerman.ScriptCheck.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Regenerates GameData/ClaudiaKermin/Icons/SuperIntelligence.png: a disc in three sectors
+// Regenerates GameData/ClaudiaKerman/Icons/SuperIntelligence.png: a disc in three sectors
 // (pilot blue, engineer orange, scientist green) with a white rim.
-// Usage: dotnet run tools/make-trait-icon.cs -- GameData/ClaudiaKermin/Icons/SuperIntelligence.png
+// Usage: dotnet run tools/make-trait-icon.cs -- GameData/ClaudiaKerman/Icons/SuperIntelligence.png
 #:property LangVersion=latest
 #:property TreatWarningsAsErrors=false
 using System;

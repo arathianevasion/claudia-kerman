@@ -16,7 +16,7 @@ The gates are keyed on the run id of the mod's start, so they come down when tha
 
 ## Amendment (the other-vessel taint, #654, 2026-11-04)
 
-The Script Check's other-vessel rule, read from the compiled opcodes in `src/ClaudiaKermin.ScriptCheck/OpcodeReader.cs` and pinned by the `#654` tests in `tests/ClaudiaKermin.ScriptCheck.Tests/KosScriptCheckTests.cs`. A value is another vessel when:
+The Script Check's other-vessel rule, read from the compiled opcodes in `src/ClaudiaKerman.ScriptCheck/OpcodeReader.cs` and pinned by the `#654` tests in `tests/ClaudiaKerman.ScriptCheck.Tests/KosScriptCheckTests.cs`. A value is another vessel when:
 
 - it is `target`, or a variable that holds another vessel;
 - it is a call to `VESSEL(...)`, a `BUILDLIST` of `"targets"`, or a user function that returns another vessel (a delegate call may, when the reader can't name the function);

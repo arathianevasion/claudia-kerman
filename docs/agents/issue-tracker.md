@@ -16,7 +16,7 @@ Infer the repo from `git remote -v`; `gh` does this automatically when run insid
 
 ## The Project: every issue gets an Area
 
-All issues live on the GitHub Project **Claudia Kermin**: <https://github.com/users/arathianevasion/projects/1>, project number 1, owner `arathianevasion`.
+All issues live on the GitHub Project **Claudia Kerman**: <https://github.com/users/arathianevasion/projects/1>, project number 1, owner `arathianevasion`.
 
 - **Labels are the category and the state.** `bug`/`enhancement` and `needs-triage`/`needs-info`/`ready-for-agent`/`ready-for-human`/`wontfix` (see `triage-labels.md`). Every open issue carries exactly one of each.
 - **The Project carries what labels don't:** Area, Priority and Verified in. Leave the built-in Status field alone.

@@ -98,7 +98,7 @@ class ReportCase(unittest.TestCase):
 class MainCase(unittest.TestCase):
     def test_the_report_reads_plans_jsonl_from_every_mission_folder(self):
         with tempfile.TemporaryDirectory() as saves:
-            folder = os.path.join(saves, 's1', 'ClaudiaKermin', 'missions', 'm9')
+            folder = os.path.join(saves, 's1', 'ClaudiaKerman', 'missions', 'm9')
             os.makedirs(folder)
             with open(os.path.join(folder, 'plans.jsonl'), 'w', encoding='utf-8') as f:
                 f.write(json.dumps(debriefed(plan_line(1, name='Hop to the Mun'), 'Nominal')) + '\n')
@@ -114,6 +114,16 @@ class MainCase(unittest.TestCase):
         self.assertIn('## Per Sequence Plan', text)
         self.assertIn('| m9 | 1 | Hop to the Mun |', text)
         self.assertIn('Nominal', text)
+
+    def test_a_save_not_loaded_since_the_rename_is_read_too(self):
+        with tempfile.TemporaryDirectory() as saves:
+            for save, folder_name, mid in (('new', 'ClaudiaKerman', 'm1'), ('old', 'ClaudiaKermin', 'm2')):
+                folder = os.path.join(saves, save, folder_name, 'missions', mid)
+                os.makedirs(folder)
+                with open(os.path.join(folder, 'plans.jsonl'), 'w', encoding='utf-8') as f:
+                    f.write(json.dumps(debriefed(plan_line(1), 'Nominal')) + '\n')
+            found = sorted((M['save'], M['id']) for M in baseline.find_missions([saves]))
+        self.assertEqual([('new', 'm1'), ('old', 'm2')], found)
 
 
 if __name__ == '__main__':

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cost baseline per reply kind and per Mission, from the mod's debug stream dumps.
 
-Reads, for every Mission folder under SAVES/*/ClaudiaKermin/missions/*/:
+Reads, for every Mission folder under SAVES/*/ClaudiaKerman/missions/*/ (or ClaudiaKermin, a save not loaded since ADR 0015):
   stream-dumps/request-<session>-<id>.sse  raw SSE responses (debug_tools on)
   transcript.json                         the committed conversation
   cost-log.jsonl                          the mod's pending/paid ledger
@@ -22,6 +22,9 @@ import os
 import re
 import statistics
 import sys
+
+# The mod's folder in a save: ClaudiaKerman, or ClaudiaKermin in a save not loaded since the rename (ADR 0015).
+MOD_FOLDER = 'ClaudiaKerm[ai]n'
 
 # USD per million tokens, from https://platform.claude.com/docs/en/about-claude/pricing (fetched 2026-10-26).
 # input = base (uncached) input, w5m / w1h = cache writes by TTL, read = cache hits and refreshes.
@@ -238,7 +241,7 @@ def install_of(saves):
 
 def analyse_mission(folder, install=''):
     mid = os.path.basename(folder.rstrip('/'))
-    save = folder.split(os.sep + 'ClaudiaKermin' + os.sep)[0].split(os.sep)[-1]
+    save = re.split(re.escape(os.sep) + MOD_FOLDER + re.escape(os.sep), folder)[0].split(os.sep)[-1]
     M = dict(id=mid, save=save, install=install, responses=[], craft=[], incomplete_attempts=0, notes=[], mod_total=0.0)
 
     # Transcript turns, with the reply kind the mod asked for.
@@ -718,7 +721,7 @@ def find_missions(saves, ids=None):
     """Analyses the Missions under each saves folder (all, or those named in `ids`), each read in place and labelled with its install."""
     missions = []
     for sv in saves:
-        pattern = os.path.join(os.path.expanduser(sv), '*', 'ClaudiaKermin', 'missions', '*', '')
+        pattern = os.path.join(os.path.expanduser(sv), '*', MOD_FOLDER, 'missions', '*', '')
         for f in sorted(glob.glob(pattern)):
             if ids is None or os.path.basename(f.rstrip('/')) in ids:
                 M = analyse_mission(f, install_of(sv))

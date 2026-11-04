@@ -2,7 +2,7 @@
 
 In-game checks for #712 (ADR 0014 block migration): BRAKEPATH's path now has the point where braking stops, and `land`'s path guard, with its vertical fallback, runs in Core (`ADDONS:CLAUDIA:LANDGUARD`, each braking tick). Steering, throttle and staging are still kOS's. The agent run that wrote this did not launch KSP; the tests and the gate are green in the repo.
 
-Install as in `phase-3-gate.md` (build, copy `dist/GameData/ClaudiaKermin/`, `debug_tools = true`). Results are in `block-tests.log` and `KSP.log`.
+Install as in `phase-3-gate.md` (build, copy `dist/GameData/ClaudiaKerman/`, `debug_tools = true`). Results are in `block-tests.log` and `KSP.log`.
 
 ## Check 1: Run land_biome_minmus
 
