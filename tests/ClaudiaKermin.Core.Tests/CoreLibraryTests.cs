@@ -205,7 +205,7 @@ namespace ClaudiaKermin.Core.Tests
             // Shortened for #444 to make room for change_orbit's summary in the base layer.
             Assert.Contains("\n- circularize(options): circular orbit at ap, pe or an altitude.", summaries);
             var launch = CoreLibrary.FullDocs(new[] { "launch" });
-            foreach (var option in new[] { "launch_at [\"now\"]", "target_ap [\"auto\"]", "target_inc [0]", "heading [\"lib_lazcalc\"]", "turn_start_speed [60]", "turn_shape [0.45]", "max_aoa [5]", "throttle_max_q [\"none\"]", "g, atm_height, surface_pressure [\"body\"]", "ap_error", "max_q", "coast_ap" })
+            foreach (var option in new[] { "launch_at [\"now\"]", "target_ap [\"auto\"]", "target_inc [0]", "heading [\"into_inc\"]", "turn_start_speed [60]", "turn_shape [0.45]", "max_aoa [5]", "throttle_max_q [\"none\"]", "g, atm_height, surface_pressure [\"body\"]", "ap_error", "max_q", "coast_ap" })
                 Assert.Contains(option, launch);
             var circularize = CoreLibrary.FullDocs(new[] { "circularize" });
             foreach (var option in new[] { "at [\"ap\"]", "tolerance [0.01]", "ecc", "stop (\"node\"; \"ecc_min\"", "residual (m/s" })
