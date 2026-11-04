@@ -103,7 +103,7 @@ namespace ClaudiaKermin.Core.Tools.Numerics
         /// burn time changed sign from one iteration to the next, so no point along the step lowered the merit. ADR 0010 has
         /// the window as measured.
         /// </summary>
-        private const double VelocityStep = 1.3e-5;
+        internal const double VelocityStep = 1.3e-5;
         private const double TimeStep = 1.3e-3;
         /// <summary>A feasible point whose step is under this (scaled; about 2 mm/s at Kerbin) has converged.</summary>
         private const double StepTolerance = 1e-6;
