@@ -22,7 +22,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The turn on the reaction wheels alone, with the Aligned hold on top; -1 when they have no torque about pitch or yaw.</summary>
         public double WheelsS;
 
-        /// <summary>The coast rate (deg/s); 0 when there is no burst turn to fly (no RCS torque, or no wheels to settle it).</summary>
+        /// <summary>The coast rate (deg/s); 0 when there is no burst turn to fly (no RCS torque, no wheels to settle it, or no gain on the wheels alone, #754).</summary>
         public double CoastRateDegS;
 
         /// <summary>The spin-up burst and the stop burst, the same length; and the coast between them.</summary>
@@ -48,16 +48,22 @@ namespace ClaudiaKerman.Core.Tools
     /// The burst turn (#692, ADR 0014), through the block-internal <c>ADDONS:CLAUDIA:TURNPLAN</c> (<see cref="Call"/>), called once
     /// per turn when RCS Use's on-gate is checked and once after each stop burst. RCS turns the craft as a pilot would: one burst
     /// spins it up to a coast rate, it coasts with RCS off, one burst stops it a few degrees short, and the wheels settle the rest.
-    /// The coast rate is the slowest that finishes within 80% of the time left (to <c>turn_by</c>, and never over the 120 s a turn
-    /// to a burn waits), since a slower turn spends less monopropellant. kOS still switches RCS and steers; this only plans.
+    /// The coast rate is the slowest that turns in <see cref="QuickShare"/> (half) of the wheels' own time (#754), a quick turn that
+    /// still spends little monopropellant; the deadline (<c>turn_by</c>, never over the 120 s a turn to a burn waits) only caps
+    /// it, at <see cref="MarginShare"/> of the time left, and is never a time to fill. A burst turn that would not finish within
+    /// <see cref="BurstAdvantage"/> of the wheels' time is not flown: the wheels turn on kOS's defaults with RCS off. kOS still
+    /// switches RCS and steers; this only plans.
     /// </summary>
     public static class TurnPlan
     {
-        /// <summary>A turn plans to be done within this share of the time left.</summary>
+        /// <summary>A turn never plans to take more than this share of the time left: the deadline is a limit, not a target (#754).</summary>
         public const double MarginShare = 0.8;
 
-        /// <summary>With no deadline, a turn plans to take this share of the wheels' own time.</summary>
-        public const double NoDeadlineShare = 0.5;
+        /// <summary>A burst turn aims to take this share of the wheels' own time (#754), deadline or not (the deadline only caps it).</summary>
+        public const double QuickShare = 0.5;
+
+        /// <summary>A burst turn is flown only if it takes at most this share of the wheels' own time; else the wheels turn alone.</summary>
+        public const double BurstAdvantage = 0.8;
 
         /// <summary>The longest a turn plans for (s): claudia_turn_to_burn gives up after 120 s.</summary>
         public const double MaxSeconds = 120;
@@ -102,18 +108,24 @@ namespace ClaudiaKerman.Core.Tools
             // A burst needs RCS torque to add, and wheels to hold the coast and settle the end (with none, RCS Use holds RCS on).
             if (!wheels || !(alpha > alphaW) || !(angle > 0)) return plan;
 
-            var budget = leftS >= 0 ? Math.Min(leftS, MaxSeconds) * MarginShare : Math.Min(plan.WheelsS, MaxSeconds) * NoDeadlineShare;
+            // A quick turn: a share of the wheels' time (#754), held down by the deadline (never filling it) and by the 120 s wait.
+            var budget = Math.Min(plan.WheelsS, MaxSeconds) * QuickShare;
+            if (leftS >= 0) budget = Math.Min(budget, Math.Min(leftS, MaxSeconds) * MarginShare);
             plan.WheelsDeg = Math.Min(HandOverDeg, angle / 4);
             var settle = TurnTime.CappedTurn(plan.WheelsDeg, alphaW, TurnTime.KosMaxStoppingTime, out peak) + SettleSeconds;
             var rcsDeg = angle - plan.WheelsDeg;
             var time = budget - settle;
-            // Bursts of rate / alpha each and a coast at rate: rcsDeg / rate + rate / alpha = time; the slower root spends least.
+            // Bursts of rate / alpha each and a coast at rate: rcsDeg / rate + rate / alpha = time; the slower root spends least
+            // (and is the rate when the time is just enough; a time too short for any root flies the fastest bursts).
             var fastest = Math.Sqrt(alpha * rcsDeg);
             var rate = time > 0 && alpha * time * time >= 4 * rcsDeg
                 ? (alpha * time - Math.Sqrt(alpha * alpha * time * time - 4 * alpha * rcsDeg)) / 2
                 : fastest;
             rate = Math.Max(rate, Math.Min(MinCoastDegS, fastest));
             var burstDeg = rate * rate / (2 * alpha);
+            var turnS = 2 * rate / alpha + Math.Max(0, (rcsDeg - 2 * burstDeg) / rate) + settle;
+            // No meaningful gain on the wheels (#754): no burst turn, kOS's default steering and RCS off.
+            if (!(turnS <= BurstAdvantage * plan.WheelsS)) return plan;
             plan.CoastRateDegS = rate;
             plan.SpinS = plan.StopS = rate / alpha;
             plan.CoastS = Math.Max(0, (rcsDeg - 2 * burstDeg) / rate);

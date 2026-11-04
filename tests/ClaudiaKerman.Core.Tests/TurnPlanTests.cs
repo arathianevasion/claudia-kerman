@@ -133,7 +133,54 @@ namespace ClaudiaKerman.Core.Tests
             var plan = TurnPlan.Plan(E17d(), 142, -1);
             Assert.False(plan.Rcs);
             Assert.True(plan.CoastRateDegS > 0);
-            Assert.True(plan.TurnS <= Math.Min(plan.WheelsS, TurnPlan.MaxSeconds) * TurnPlan.NoDeadlineShare + 1e-6, plan.TurnS + " s");
+            Assert.True(plan.TurnS <= Math.Min(plan.WheelsS, TurnPlan.MaxSeconds) * TurnPlan.QuickShare + 1e-6, plan.TurnS + " s");
+        }
+
+        /// <summary>#754: a craft like the logged one (Mission m20261104-201248-6a57): wheels 8-10 s for 55-108 degrees.</summary>
+        private static TurnCraft Logged()
+        {
+            return new TurnCraft { WheelPitch = 6, WheelYaw = 6, RcsPitch = 12, RcsYaw = 12, RcsUsable = true, MoiPitch = 20, MoiYaw = 20 };
+        }
+
+        [Theory]
+        [InlineData(55)]
+        [InlineData(66)]
+        [InlineData(108)]
+        public void A_burst_turn_is_never_planned_slower_than_the_wheels_alone_with_minutes_to_the_deadline(double angle)
+        {
+            var plan = TurnPlan.Plan(Logged(), angle, 300);
+            Assert.True(plan.WheelsS > 0 && plan.WheelsS < 30, plan.WheelsS + " s");
+            if (plan.SpinS > 0) Assert.True(plan.TurnS <= TurnPlan.BurstAdvantage * plan.WheelsS + 1e-6, plan.TurnS + " s against " + plan.WheelsS);
+            else Assert.Equal(0, plan.CoastRateDegS);
+            Assert.True(plan.TurnS <= plan.WheelsS + 1e-6);
+            // The deadline is a limit, not a target: 300 s or 120 s or none changes nothing.
+            Assert.Equal(plan.TurnS, TurnPlan.Plan(Logged(), angle, 120).TurnS, 6);
+            Assert.Equal(plan.CoastRateDegS, TurnPlan.Plan(Logged(), angle, -1).CoastRateDegS, 6);
+        }
+
+        [Fact]
+        public void With_no_burst_advantage_there_is_no_burst_and_no_coast_cap()
+        {
+            // RCS that adds little to strong wheels: the wheels turn on kOS's defaults, RCS off.
+            var craft = new TurnCraft { WheelPitch = 50, WheelYaw = 50, RcsPitch = 8, RcsYaw = 8, RcsUsable = true, MoiPitch = 300, MoiYaw = 300 };
+            var plan = TurnPlan.Plan(craft, 108, 300);
+            Assert.True(plan.WheelsS > 0);
+            Assert.Equal(0, plan.SpinS);
+            Assert.Equal(0, plan.CoastRateDegS);
+            Assert.Equal(0, plan.Coast.T);
+            Assert.False(plan.Rcs);
+        }
+
+        [Fact]
+        public void A_short_deadline_caps_the_burst_turn_and_a_late_wheels_turn_still_asks_for_RCS()
+        {
+            var plan = TurnPlan.Plan(E17d(), 142, 30);
+            Assert.True(plan.WheelsS > 30);
+            Assert.True(plan.Rcs);
+            Assert.True(plan.SpinS > 0);
+            Assert.True(plan.TurnS <= 30 * TurnPlan.MarginShare + 1e-6, plan.TurnS + " s");
+            // Wheels in time: no RCS, even though a burst turn is planned.
+            Assert.False(TurnPlan.Plan(Logged(), 108, 40).Rcs);
         }
 
         [Fact]
