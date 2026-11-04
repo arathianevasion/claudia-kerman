@@ -624,13 +624,22 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("local c is addons:claudia.\nprint c:TargetVessel:body.")]
         [InlineData("local h is addons:claudia:dockhold(lexicon(\"port\", \"1\", \"toward\", \"2\")).\nprint h:state.")]
         [InlineData("local c is addons:claudia.\nprint c:DockHoldState:reason.")]
-        [InlineData("addons:claudia:dockholdsettled(true).")]
         [InlineData("print addons:claudia:dockguide(lexicon(\"along\", 10)):fire.")]
         [InlineData("local c is addons:claudia.\nprint c:DockFuel(lexicon(\"distance\", 150)):error.")]
         public void ABlockInternalCallInAMissionScriptFails(string script)
         {
             AssertForbidden("call block-internal calculations", script);
             AssertForbidden("call block-internal calculations", CoreLibrary.Bundle(script));
+        }
+
+        // #711: dock_hold's settled report is a report to the mod, like BLOCKSTART, and the bridge ignores it from any run but a
+        // live dock_hold, so the Script Check doesn't refuse it; dock_hold itself is checked as a script (KsCompile) and passes.
+        [Fact]
+        public void DockHoldsSettledReportIsAllowedAndDockHoldPassesTheScriptCheck()
+        {
+            AssertAllowed("addons:claudia:dockholdsettled(true).");
+            var program = File.ReadAllText(Path.Combine(RepoRoot(), "kerboscript", "dock_hold", "dock_hold.ks"));
+            Assert.True(_check.Check(program).Passed, string.Join("\n", _check.Check(program).Problems));
         }
 
         // #335: the warp trace's wait marks are common calls, like BLOCKSTART: a report to the mod's trace, not a calculation
