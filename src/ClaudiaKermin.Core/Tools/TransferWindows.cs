@@ -55,8 +55,10 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>Whether the craft can afford a window (#648): <see cref="Optimal"/> is the cheapest in the horizon, so no window fits when it exceeds <see cref="CraftDv"/>. True when the craft's figure is unknown.</summary>
         public bool Fits
         {
-            get { return !CraftDv.HasValue || Optimal.TotalDv <= CraftDv.Value; }
+            get { return !CraftDv.HasValue || Optimal.TotalDv <= CraftDv.Value - (LaterLegsDv ?? 0); }
         }
+        /// <summary>The Mission Plan's later legs' delta-v, m/s (#694); null with no Mission Plan. <see cref="Fits"/> is judged against <see cref="CraftDv"/> less this.</summary>
+        public double? LaterLegsDv;
     }
 
     /// <summary>
@@ -233,7 +235,7 @@ namespace ClaudiaKermin.Core.Tools
             return new WindowSearch
             {
                 Target = problem.Name, Soonest = soonest, Optimal = optimal, From = from, Synodic = synodic,
-                ParkingPe = problem.ParkingPe, ParkingAssumed = problem.ParkingAssumed, Moon = problem.Moon, CraftDv = problem.CraftDv,
+                ParkingPe = problem.ParkingPe, ParkingAssumed = problem.ParkingAssumed, Moon = problem.Moon, CraftDv = problem.CraftDv, LaterLegsDv = problem.LaterLegsDv,
             };
         }
 
@@ -305,6 +307,8 @@ namespace ClaudiaKermin.Core.Tools
             public bool Capture;
             /// <summary>The craft's delta-v from the stage table, m/s; null when unknown (#648).</summary>
             public double? CraftDv;
+            /// <summary>The Mission Plan's later legs' delta-v, m/s; null with none (#694).</summary>
+            public double? LaterLegsDv;
             /// <summary>Why the last Lambert solve that failed had no path.</summary>
             public string LambertError;
 
@@ -351,6 +355,7 @@ namespace ClaudiaKermin.Core.Tools
                 }
                 p.ParkingPe = p.ParkingR - home.Radius;
                 if (snapshot.DeltaVSimulator && snapshot.Stages.Count > 0 && !snapshot.DeltaVUnreliable) p.CraftDv = snapshot.Stages.Sum(st => st.DeltaVVac);
+                p.LaterLegsDv = snapshot.LaterLegsDv;
                 if (Vec3.Dot(p.Plane, p.Target.W) < 0) p.Plane = p.Plane * -1;
                 return p;
             }

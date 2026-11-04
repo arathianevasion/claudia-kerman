@@ -526,6 +526,27 @@ function claudia_drop_uids {
   return uids.
 }
 
+// claudia_drop_plan's lexicon for the decouplers that fire at stage number stage_num (kOS's
+// PART:STAGE, as reentry's jettison_stage) and the parts leaving with them.
+function claudia_stage_drop_plan {
+  parameter stage_num.
+  local plan is claudia_drop_plan(list()).
+  for p in ship:parts {
+    if claudia_is_decoupler(p) and claudia_part_kind(p) <> "shield" and p:stage = stage_num {
+      local with is claudia_dropped_with(p).
+      if claudia_drop_holds_core(with) {
+        set plan:error to "stage " + stage_num + "'s " + p:name + " would drop the part running the script".
+        return plan.
+      }
+      claudia_drop_add(plan, p, with).
+    }
+  }
+  if plan:decouplers:length = 0 {
+    set plan:error to "no decoupler fires at stage " + stage_num.
+  }
+  return plan.
+}
+
 // The names, of those names, whose uid is no longer in now_uids: what left. Names are taken while the
 // part is on the ship, since a part that has left cannot be read (its vessel may be gone).
 function claudia_names_left {
