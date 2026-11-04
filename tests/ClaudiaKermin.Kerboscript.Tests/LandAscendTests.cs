@@ -452,7 +452,7 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         {
             var land = CoreLibrary.FullDocs(new[] { "land" });
             Assert.Contains("burn_start_ut (when braking was planned to start", land);
-            Assert.Contains("braking_began_ut (when braking actually began", land);
+            Assert.Contains("braking_began_ut (when braking began", land);
             Assert.Contains("impact_ut", land);
         }
 
