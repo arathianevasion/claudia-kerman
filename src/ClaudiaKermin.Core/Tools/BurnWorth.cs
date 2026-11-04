@@ -94,7 +94,7 @@ namespace ClaudiaKermin.Core.Tools
             if (block == "circularize")
             {
                 var dv = Math.Abs(Number(input, "dv", double.PositiveInfinity));
-                if (dv >= CircularizeMaxDv || Number(input, "ecc", double.PositiveInfinity) >= CircularizeMaxEcc || !safe) return answer;
+                if (!(dv < CircularizeMaxDv) || !(Number(input, "ecc", double.PositiveInfinity) < CircularizeMaxEcc) || !safe) return answer;
                 answer["skip"] = true;
                 answer["note"] = "within its default tolerance: a " + Format(dv) + " m/s burn isn't worth the turn";
                 return answer;
@@ -105,7 +105,7 @@ namespace ClaudiaKermin.Core.Tools
             var tolerance = TunePeTolerance(value);
             answer["tolerance"] = tolerance;
             var off = Math.Abs(pe - value);
-            if (off > tolerance) return answer;
+            if (!(off <= tolerance)) return answer;
             answer["skip"] = true;
             answer["note"] = "within its default tolerance: the periapsis is " + Format(off) + " m from " + Format(value) + " m, inside "
                 + Format(tolerance) + " m, so a burn isn't worth the turn";

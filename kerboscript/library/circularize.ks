@@ -199,16 +199,16 @@ function circularize {
   if plan:error <> "" {
     return claudia_finish(ctx, false, plan:error, extra).
   }
-  local worth is addons:claudia:burnworth(lexicon("block", "circularize", "given", given, "dv", sqrt(plan:prograde ^ 2 + plan:radial ^ 2),
-    "ecc", ship:orbit:eccentricity)).
-  if worth:skip {
-    return claudia_skip(ctx, worth, extra).
-  }
   // The burn is timed on this patch: with a sphere-of-influence change before it (transfer_to then circularize, no coast:
   // 20ac, #610) the craft would fly past its encounter to burn at the old body's apsis. Refuse, leaving it on its path.
   local first is claudia_soi_first_at(plan:ut).
   if first <> "" {
     return claudia_finish(ctx, false, first, extra).
+  }
+  local worth is addons:claudia:burnworth(lexicon("block", "circularize", "given", given, "dv", sqrt(plan:prograde ^ 2 + plan:radial ^ 2),
+    "ecc", ship:orbit:eccentricity)).
+  if worth:skip {
+    return claudia_skip(ctx, worth, extra).
   }
   local nd is node(plan:ut, plan:radial, 0, plan:prograde).
   add nd.
