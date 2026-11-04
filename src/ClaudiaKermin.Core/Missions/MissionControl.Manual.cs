@@ -68,7 +68,7 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>In Manual Control with no link and no other crew aboard: game seconds until Claudia takes the craft back.</summary>
         private double? LinkLossTakeBackIn()
         {
-            if (!InFlightManual || !_strandedSince.HasValue) return null;
+            if (!InFlightManual || !_strandedSince.HasValue || _mission.OutOnEva) return null;
             return Math.Max(0, _strandedSince.Value + _config.ManualLinkGraceSeconds - _ut);
         }
 
@@ -202,10 +202,20 @@ namespace ClaudiaKermin.Core.Missions
 
         // ---- Handing back ----
 
+        /// <summary>Why Hand back is disabled: Claudia is out on EVA, or aboard a craft with no kOS processor (#262); "" when it is offered.</summary>
+        private string HandBackUnavailableBecause()
+        {
+            var mission = _mission;
+            if (mission == null || mission.Stage != MissionStage.ManualControl) return "";
+            if (mission.OutOnEva || mission.CannotFlyBecause.Contains("no kOS processor")) return MissionCraft.HandBackOutOnEva;
+            return "";
+        }
+
         private void HandedBack(string message, bool linkLost = false)
         {
             var mission = _mission;
             if (MissionOver || mission.Stage != MissionStage.ManualControl) return;
+            if (!linkLost && HandBackUnavailableBecause().Length > 0) return;
             mission.HandBack = true;
             mission.HandBackMessage = (message ?? "").Trim();
             Note(LogKind.Player, mission.HandBackMessage.Length > 0 ? "Hand back to Claudia: " + mission.HandBackMessage : "Hand back to Claudia.");

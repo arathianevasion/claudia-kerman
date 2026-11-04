@@ -2345,6 +2345,7 @@ namespace ClaudiaKermin.Core.Missions
                 view.ManualControlAllowed = ManualAllowed;
                 view.ManualControlUnavailable = ManualUnavailableBecause();
                 view.LinkLossTakeBackIn = LinkLossTakeBackIn();
+                view.HandBackUnavailable = HandBackUnavailableBecause();
                 view.PlanStale = StaleBecause(mission);
                 view.PlanStaleTarget = view.PlanStale.Length > 0 && mission.TargetChange.Length > 0;
                 view.PlanDeclined = mission.Declined;

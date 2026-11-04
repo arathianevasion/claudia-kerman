@@ -563,6 +563,12 @@ namespace ClaudiaKermin.Adapter
                         clicked = ClaudiaSkin.PrimaryButton(label, GUILayout.ExpandWidth(true), GUILayout.MinWidth(0));
                         GUI.color = tint;
                     }
+                    else if (reply == QuickReply.HandBack && _view.HandBackUnavailable.Length > 0)
+                    {
+                        // Out on EVA (#262): the reason is in the strip's lock line.
+                        ClaudiaSkin.DisabledButton(label, GUILayout.ExpandWidth(true), GUILayout.MinWidth(0));
+                        clicked = false;
+                    }
                     else if (MissionWindowRules.IsPrimary(reply)) clicked = ClaudiaSkin.PrimaryButton(label, GUILayout.ExpandWidth(true), GUILayout.MinWidth(0));
                     else if (reply == QuickReply.ChangeSomething) clicked = ClaudiaSkin.ToggleButton(writing == PromptFor.Change, label, GUILayout.ExpandWidth(false));
                     else if (reply == QuickReply.AskQuestion) clicked = ClaudiaSkin.ToggleButton(writing == PromptFor.Question, label, GUILayout.ExpandWidth(false));

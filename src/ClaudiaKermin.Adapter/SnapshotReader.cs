@@ -35,6 +35,7 @@ namespace ClaudiaKermin.Adapter
             };
             snapshot.Craft.Name = vessel.vesselName ?? "";
             snapshot.Craft.VesselId = vessel.id.ToString("N");
+            snapshot.Craft.Eva = vessel.isEVA;
             snapshot.Craft.MassTonnes = vessel.GetTotalMass();
             snapshot.Craft.Stage = vessel.currentStage;
             snapshot.RcsOn = vessel.ActionGroups[KSPActionGroup.RCS];

@@ -703,6 +703,7 @@ namespace ClaudiaKermin.Core.Ui
         public static string LockLine(MissionView view)
         {
             if (view.PlanStale.Length > 0) return StaleWhat(view) + " has changed (" + view.PlanStale + "): Re-plan";
+            if (view.HandBackUnavailable.Length > 0) return view.HandBackUnavailable;
             if (view.LinkLossTakeBackIn.HasValue)
                 return "No link to Kerbin: Claudia takes the craft back in "
                     + System.Math.Ceiling(view.LinkLossTakeBackIn.Value).ToString("0", CultureInfo.InvariantCulture) + " s unless it returns";
