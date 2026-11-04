@@ -20,6 +20,17 @@ namespace ClaudiaKermin.Adapter
         /// <summary>kOS's processor part module, found by name so the adapter needn't reference kOS.</summary>
         private const string KosProcessorModule = "kOSProcessor";
 
+        /// <summary>
+        /// <see cref="Read"/> stamped with the active Mission's Time versus delta-v and margin (#733), for the block calls and the
+        /// Planning Tools bridge: a window "next" then picks plan_transfer's window. No Mission, the defaults.
+        /// </summary>
+        public static GameSnapshot ReadForMission(Vessel vessel)
+        {
+            var snapshot = Read(vessel);
+            if (MissionDriver.Current != null) MissionDriver.Current.View.StampSnapshot(snapshot);
+            return snapshot;
+        }
+
         public static GameSnapshot Read(Vessel vessel)
         {
             var snapshot = new GameSnapshot

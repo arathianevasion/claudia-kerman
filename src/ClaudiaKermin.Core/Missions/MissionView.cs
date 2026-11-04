@@ -415,6 +415,18 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <summary>The Mission Settings in force.</summary>
         public MissionSettingsValues Settings = new MissionSettingsValues();
+        /// <summary>The margin the Mission's planning keeps, percent (the player config's craft-check margin); read with <see cref="Settings"/> by <see cref="StampSnapshot"/>.</summary>
+        public int MarginPercent = new Config.PlayerConfig().CraftCheckMarginPercent;
+        /// <summary>
+        /// Stamps a Game Snapshot with the Mission's Time versus delta-v and margin (#733), as the planning snapshot gets them, so a block
+        /// call's window pick matches plan_transfer's. With no Mission the snapshot keeps its defaults.
+        /// </summary>
+        public void StampSnapshot(GameSnapshot snapshot)
+        {
+            if (Stage == MissionStage.None) return;
+            snapshot.TimeVersusDeltaV = Settings.TimeVersusDeltaV;
+            snapshot.MarginPercent = MarginPercent;
+        }
         /// <summary>The Mission Settings may be edited now (a plan awaits Approval, or Claudia has not planned yet).</summary>
         public bool CanEditSettings;
         /// <summary>The runtime gates' single "physics warp allowed" input: the config and the Mission Setting, or the config alone with no Mission.</summary>

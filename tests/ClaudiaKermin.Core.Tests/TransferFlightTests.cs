@@ -196,6 +196,38 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal("found no transfer: target must be a body's name", BlockCalls.TransferStep(new Dictionary<string, object>(), rig.Snapshot())["error"]);
         }
 
+        // ---- The block call's snapshot carries the Mission's Time versus delta-v (#733) ----
+
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void Window_next_picks_the_window_plan_transfer_planned_for_the_Mission_s_Time_versus_delta_v(bool inMission)
+        {
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            var snapshot = rig.Snapshot();
+            var view = new MissionView { Stage = inMission ? MissionStage.Running : MissionStage.None };
+            view.Settings.TimeVersusDeltaV = TimeVersusDeltaV.MostEfficient;
+            view.StampSnapshot(snapshot);
+            var setting = inMission ? TimeVersusDeltaV.MostEfficient : TimeVersusDeltaV.Balanced;
+            Assert.Equal(setting, snapshot.TimeVersusDeltaV);
+
+            var found = TransferWindows.Find(snapshot, "Duna", 50000, true, snapshot.MarginPercent);
+            var expected = TransferWindows.Pick(found, setting);
+            // The setting matters here: Most efficient and Fastest pick different windows.
+            Assert.True(Math.Abs(TransferWindows.Pick(found, TimeVersusDeltaV.MostEfficient).DepartureUt - TransferWindows.Pick(found, TimeVersusDeltaV.Fastest).DepartureUt) > 10 * Day);
+            var plan = PlanningTools.Default().Run("plan_transfer", "{\"target\":\"Duna\",\"target_pe\":50000}", snapshot, null);
+            Assert.Contains("leaving at UT " + Math.Round(expected.DepartureUt).ToString(System.Globalization.CultureInfo.InvariantCulture), plan.Summary);
+
+            var input = new Dictionary<string, object>
+            {
+                { "target", "Duna" }, { "target_pe", 50000.0 }, { "window", "next" }, { "correction", true }, { "pe_tolerance", 1000.0 },
+                { "start_ut", 0.0 }, { "max_duration", "auto" }, { "auto", true }, { "turn_time", 60.0 }, { "phase", "start" },
+            };
+            var step = BlockCalls.TransferStep(input, snapshot);
+            Assert.Equal("", step["error"]);
+            Assert.InRange(Convert.ToDouble(step["ut"]), expected.DepartureUt - 10 * Day, expected.DepartureUt + 10 * Day);
+        }
+
         // ---- The pure rules, from the Kerboscript (TransferFlightParityTests checked them against it) ----
 
         [Fact]
