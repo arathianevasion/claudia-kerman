@@ -553,9 +553,9 @@ function claudia_shield_drop {
   if decs:istype("String") { set decs to reentry_shield_modules("auto", parts). }
   local uids is list().
   for p in parts { for d in decs {
-    local q is d:module:part.
+    local dp is d:module:part.
     if claudia_part_kind(p) = "shield" and not leave_out:contains(p:uid) and not uids:contains(p:uid) {
-      if q:uid = p:uid or (p:hasparent and p:parent:uid = q:uid) or (q:hasparent and q:parent:uid = p:uid) { uids:add(p:uid). }
+      if dp:uid = p:uid or (p:hasparent and p:parent:uid = dp:uid) or (dp:hasparent and dp:parent:uid = p:uid) { uids:add(p:uid). }
     }
   } }
   return uids.
