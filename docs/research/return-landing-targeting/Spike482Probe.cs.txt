@@ -1,0 +1,286 @@
+// The #482 research spike's probe: prints the sensitivities in return-landing-targeting.md from the merged ReentryPredictor,
+// DeorbitBurn and ReturnBurn (at 45de72a), with the research's capsule and atmosphere (ReentrySim). Not a test: to rerun it,
+// copy it into tests/ClaudiaKermin.Core.Tests as Spike482Probe.cs and run
+//   dotnet test tests/ClaudiaKermin.Core.Tests -p:KOSPluginsDir=$HOME/KSP_spike/GameData/kOS/Plugins --filter Category=Spike482 --logger "console;verbosity=detailed"
+using System;
+using System.Diagnostics;
+using ClaudiaKermin.Core.Missions;
+using ClaudiaKermin.Core.Tools;
+using Xunit;
+using Xunit.Abstractions;
+
+namespace ClaudiaKermin.Core.Tests
+{
+    public sealed class Spike482Probe
+    {
+        private readonly ITestOutputHelper _out;
+        public Spike482Probe(ITestOutputHelper output) { _out = output; }
+
+        private const double Mu = ReentrySim.Mu;
+        private const double R = ReentrySim.R;
+        // The flight's arrival: apoapsis 12,519 km (the return block's report), periapsis target_pe.
+        private const double ApAlt = 12519107;
+
+        private static Conic Arrival(double peAlt)
+        {
+            var ra = R + ApAlt;
+            var rp = R + peAlt;
+            var a = (ra + rp) / 2;
+            var v = Math.Sqrt(Mu * (2 / ra - 1 / a));
+            // Apoapsis on the x axis at UT 0, prograde equatorial.
+            return Conic.FromState(Mu, new Vec3(-ra, 0, 0), new Vec3(0, -v, 0), 0);
+        }
+
+        private static ReentryPrediction Land(Conic orbit, double fromUt)
+        {
+            var craft = new ReentrySim.Capsule();
+            return ReentryPredictor.Predict(ReentrySim.Kerbin(), orbit, fromUt, 0, craft.MassKg, new ReentrySim.Atmosphere(), craft, ReentrySim.Frame());
+        }
+
+        private static void EastNorth(ReentryPrediction a, ReentryPrediction b, out double east, out double north)
+        {
+            var km = R / 1000 * Math.PI / 180;
+            east = LandingSiteSearch.Wrap180(b.Longitude - a.Longitude) * Math.Cos(a.Latitude * Math.PI / 180) * km;
+            north = (b.Latitude - a.Latitude) * km;
+        }
+
+        private static Conic Burn(Conic orbit, double ut, double pro, double rad, double nor)
+        {
+            Vec3 r, v;
+            orbit.State(ut, out r, out v);
+            var p = v.Normalized;
+            var n = Vec3.Cross(r, v).Normalized;
+            var q = Vec3.Cross(n, p); // radial-out in the node's frame
+            return Conic.FromState(Mu, r, v + p * pro + q * rad + n * nor, ut);
+        }
+
+        [Fact]
+        [Trait("Category", "Spike482")]
+        public void Probe()
+        {
+            // P2: target_pe lever on an arrival from the Mun.
+            _out.WriteLine("P2 target_pe sweep (arrival ap 12,519 km), landing vs pe 35 km");
+            var baseLanding = Land(Arrival(35000), 0);
+            foreach (var pe in new[] { 15000.0, 20000, 25000, 30000, 35000, 40000, 45000, 50000 })
+            {
+                var l = Land(Arrival(pe), 0);
+                if (l.Error != null) { _out.WriteLine("  pe " + pe + ": " + l.Error); continue; }
+                double e, n;
+                EastNorth(baseLanding, l, out e, out n);
+                _out.WriteLine(string.Format("  pe {0,6:0} m: lng {1,8:0.00} east {2,8:0.0} km landing_ut {3,8:0} entry->ground {4,5:0} s peakG {5:0.0} steps {6}",
+                    pe, l.Longitude, e, l.LandingUt, l.LandingUt - l.EntryUt, l.PeakG, l.Steps));
+            }
+
+            // P3: a Course Correction's authority, halfway in time from apoapsis to entry, for pe 35 km.
+            var arr = Arrival(35000);
+            var entry = baseLanding.EntryUt;
+            foreach (var share in new[] { 0.5, 0.8, 0.95 })
+            {
+                var tc = entry * share;
+                _out.WriteLine(string.Format("P3 correction at {0:0} s ({1:0} s before entry), r {2:0} km", tc, entry - tc, arr.Radius(tc) / 1000));
+                foreach (var axis in new[] { "pro", "rad", "nor" })
+                {
+                    foreach (var dv in new[] { 0.1, 1.0 })
+                    {
+                        var after = Burn(arr, tc, axis == "pro" ? dv : 0, axis == "rad" ? dv : 0, axis == "nor" ? dv : 0);
+                        var l = Land(after, tc);
+                        if (l.Error != null) { _out.WriteLine("  " + axis + " " + dv + ": " + l.Error); continue; }
+                        double e, n;
+                        EastNorth(baseLanding, l, out e, out n);
+                        _out.WriteLine(string.Format("  {0} {1} m/s: dpe {2,8:0} m east {3,8:0.0} km north {4,7:0.0} km dt_land {5,7:0.0} s",
+                            axis, dv, after.PeR - arr.PeR, e, n, l.LandingUt - baseLanding.LandingUt));
+                    }
+                }
+                // Holding pe: the in-plane direction with no first-order pe change.
+                double h = 0.01;
+                var dpePro = (Burn(arr, tc, h, 0, 0).PeR - arr.PeR) / h;
+                var dpeRad = (Burn(arr, tc, 0, h, 0).PeR - arr.PeR) / h;
+                var norm = Math.Sqrt(dpePro * dpePro + dpeRad * dpeRad);
+                double cp = -dpeRad / norm, cr = dpePro / norm; // orthogonal to the gradient
+                foreach (var dv in new[] { 1.0, 5.0, 20.0 })
+                {
+                    var after = Burn(arr, tc, cp * dv, cr * dv, 0);
+                    var l = Land(after, tc);
+                    if (l.Error != null) { _out.WriteLine("  hold-pe " + dv + ": " + l.Error); continue; }
+                    double e, n;
+                    EastNorth(baseLanding, l, out e, out n);
+                    _out.WriteLine(string.Format("  hold-pe {0} m/s (pro {1:0.00} rad {2:0.00}): dpe {3,7:0} m east {4,8:0.0} km dt_land {5,7:0.0} s",
+                        dv, cp, cr, after.PeR - arr.PeR, e, l.LandingUt - baseLanding.LandingUt));
+                }
+                _out.WriteLine(string.Format("  dpe/dv pro {0:0} m per m/s, rad {1:0} m per m/s", dpePro, dpeRad));
+            }
+
+            // P8: cost of one prediction from far out (from apoapsis) against one from the entry.
+            var sw = Stopwatch.StartNew();
+            int steps = 0;
+            for (var i = 0; i < 50; i++) steps += Land(arr, 0).Steps;
+            _out.WriteLine(string.Format("P8 predict from apoapsis: {0:0.00} ms each, {1} steps", sw.Elapsed.TotalMilliseconds / 50, steps / 50));
+
+            EjectionTiming();
+
+            // P6: deorbit from the flight's high orbit after tune_pe (ap 12,519 km, pe 100 km), against a 100 km circular one.
+            HighOrbitDeorbit();
+        }
+
+        private static readonly SnapshotBody SunB = new SnapshotBody { Name = "Sun", Gm = 1.1723328e18, Radius = 261600000, RotationPeriod = 432000 };
+        private static readonly SnapshotBody KerbinB = new SnapshotBody
+        {
+            Name = "Kerbin", Parent = "Sun", Gm = 3.5316e12, Radius = 600000, AtmosphereHeight = 70000, SeaLevelAtm = 1, SoiRadius = 84159286.48,
+            RotationPeriod = 21549.425, Sma = 13599840256, MeanAnomalyAtEpoch = 3.14,
+        };
+        private static readonly SnapshotBody MunB = new SnapshotBody
+        {
+            Name = "Mun", Parent = "Kerbin", Gm = 6.5138398e10, Radius = 200000, SoiRadius = 2429559.1, RotationPeriod = 138984.38, Sma = 12000000,
+            MeanAnomalyAtEpoch = 1.7,
+        };
+
+        // P1: the ejection's time as a lever. RETURNBURN's least burn, then the same solve with the burn time pinned off it.
+        private void EjectionTiming()
+        {
+            var snapshot = new GameSnapshot { Ut = 1000, Situation = "ORBITING", Body = "Mun" };
+            snapshot.Orbit = new SnapshotOrbit { SemiMajorAxis = 238000, Eccentricity = 0, Inclination = 0, Body = "Mun", Periapsis = 38000, Apoapsis = 38000, Epoch = 1000 };
+            snapshot.Bodies.AddRange(new[] { SunB, KerbinB, MunB });
+            var system = new BodySystem(new[] { SunB, KerbinB, MunB });
+            var orbit = Conic.FromElements(MunB.Gm, 238000, 0, 0, 0, 0, 0, 1000);
+            foreach (var pe in new[] { 35000.0 })
+            {
+                var best = ReturnBurn.Find(snapshot, new ReturnAsk { TargetPe = pe, EarliestUt = 1000 });
+                _out.WriteLine(string.Format("P1 least return: ut {0:0.0} dv {1:0.00} pro {2:0.00} rad {3:0.00} nor {4:0.00} err {5}", best.Ut, best.DeltaV, best.Prograde, best.Radial, best.Normal, best.Error));
+                ReentryPrediction baseLanding = null;
+                double basePeUt = 0;
+                foreach (var dt in new[] { -600.0, -300, -150, -60, -30, 0, 30, 60, 150, 300, 600 })
+                {
+                    var ut = best.Ut + dt;
+                    var sw = Stopwatch.StartNew();
+                    var plan = ReturnBurn.Find(snapshot, new ReturnAsk { TargetPe = pe, EarliestUt = ut, LatestUt = ut });
+                    var ms = sw.Elapsed.TotalMilliseconds;
+                    if (!plan.HasBurn) { _out.WriteLine("  dt " + dt + ": " + plan.Error); continue; }
+                    Vec3 r, v;
+                    orbit.State(plan.Ut, out r, out v);
+                    var along = v.Normalized;
+                    var up = Vec3.Cross(r, v).Normalized;
+                    var burn = along * plan.Prograde + up * plan.Normal + Vec3.Cross(along, up) * plan.Radial;
+                    var patch = SingleShooting.Arrive(system, MunB, orbit, plan.Ut, burn, KerbinB, 3);
+                    if (patch == null) { _out.WriteLine("  dt " + dt + ": no Kerbin patch"); continue; }
+                    var peUt = patch.Orbit.NextPeriapsis(patch.StartUt).Value;
+                    var l = Land(patch.Orbit, patch.StartUt);
+                    if (l.Error != null) { _out.WriteLine("  dt " + dt + ": " + l.Error); continue; }
+                    if (dt == 0) { baseLanding = l; basePeUt = peUt; }
+                    _out.WriteLine(string.Format("  dt {0,5:0} s: dv {1,7:0.00} (pe {2,6:0} m, ap {3,6:0} km) pe_ut {4,8:0} landing lng {5,8:0.00} lat {6,6:0.00} solve {7:0} ms{8}",
+                        dt, plan.DeltaV, patch.Orbit.PeR - 600000, (patch.Orbit.ApR - 600000) / 1000, peUt, l.Longitude, l.Latitude, ms, plan.Error == null ? "" : " (" + plan.Error + ")"));
+                }
+                _out.WriteLine("  (base landing lng " + (baseLanding == null ? "?" : baseLanding.Longitude.ToString("0.00")) + ", pe_ut " + basePeUt.ToString("0") + ")");
+            }
+        }
+
+        private void HighOrbitDeorbit()
+        {
+            var ra = R + ApAlt;
+            var rp = R + 100000;
+            var a = (ra + rp) / 2;
+            var vp = Math.Sqrt(Mu * (2 / rp - 1 / a));
+            // Periapsis on the x axis at UT 21,000 s, as in the flight (the one pass comes near the end of a Kerbin day).
+            var peUt = 21000.0;
+            var high = Conic.FromState(Mu, new Vec3(rp, 0, 0), new Vec3(0, vp, 0), peUt);
+            _out.WriteLine(string.Format("P6 high orbit: period {0:0} s, v at pe {1:0} m/s", high.Period, vp));
+            // Where the inbound leg lands with a small burn (the natural landing): retrograde at UT 15000.
+            for (var lngTarget = -180.0; lngTarget < 180; lngTarget += 30)
+            {
+                var ask = new DeorbitAsk { TargetLatitude = 0, TargetLongitude = lngTarget, EarliestUt = 240, MaxWait = ReentrySim.RotationPeriod, AccuracyKm = 5 };
+                var sw = Stopwatch.StartNew();
+                var plan = DeorbitBurn.Find(ReentrySim.Kerbin(), high, ask, new ReentrySim.Atmosphere(), new ReentrySim.Capsule(), ReentrySim.Frame());
+                var ms = sw.Elapsed.TotalMilliseconds;
+                if (plan.Landing == null || plan.Landing.Error != null) { _out.WriteLine("  target lng " + lngTarget + ": " + plan.Error); continue; }
+                _out.WriteLine(string.Format("  target lng {0,5:0}: burn at {1,6:0} s (pe {2:+0;-0} s) pro {3,7:0.0} nor {4,5:0.0} dv {5,6:0.0} err {6,6:0.0} km fall {7,5:0} s search {8:0} ms{9}",
+                    lngTarget, plan.BurnUt, plan.BurnUt - peUt, plan.Prograde, plan.Normal, plan.DeltaV, plan.ErrorKm, plan.Landing.LandingUt - plan.BurnUt, ms,
+                    plan.Error == null ? "" : " FAIL"));
+                if (plan.Error == null && plan.DeltaV > 100) Sensitivity(high, plan, "high");
+                if (plan.Error == null && plan.DeltaV > 300 && plan.DeltaV < 500) FiniteBurn(high, plan);
+            }
+            // Same perturbations for a burn from a 100 km circular orbit.
+            var circ = Conic.FromState(Mu, new Vec3(rp, 0, 0), new Vec3(0, Math.Sqrt(Mu / rp), 0), 0);
+            var cplan = DeorbitBurn.Find(ReentrySim.Kerbin(), circ, new DeorbitAsk { TargetLatitude = 0, TargetLongitude = -75, EarliestUt = 240, MaxWait = ReentrySim.RotationPeriod, AccuracyKm = 5 },
+                new ReentrySim.Atmosphere(), new ReentrySim.Capsule(), ReentrySim.Frame());
+            _out.WriteLine(string.Format("P6 circular 100 km: dv {0:0.0} err {1:0.0} km fall {2:0} s", cplan.DeltaV, cplan.ErrorKm, cplan.Landing.LandingUt - cplan.BurnUt));
+            Sensitivity(circ, cplan, "circ");
+        }
+
+        // The planned impulse flown as a finite burn: Terrier 60 kN, Isp 345 s, 3.726 t at ignition (the flight's craft
+        // after tune_pe), started half the burn's delta-v early. Steering: "fixed" holds the impulse's inertial direction;
+        // "node" steers at the node's remaining burn as KSP gives it (target orbit's velocity at the node's UT less the
+        // current orbit's there), stopping under 0.1 m/s as exec_node does.
+        private void FiniteBurn(Conic orbit, DeorbitPlan plan)
+        {
+            Vec3 r0, v0;
+            orbit.State(plan.BurnUt, out r0, out v0);
+            var target = Burn(orbit, plan.BurnUt, plan.Prograde, 0, plan.Normal);
+            Vec3 rt, vt;
+            target.State(plan.BurnUt, out rt, out vt);
+            var impulse = vt - v0;
+            var nominal = Land(target, plan.BurnUt);
+            const double thrust = 60000, isp = 345, g0 = 9.80665, m0 = 3726;
+            var mdot = thrust / (isp * g0);
+            var mHalf = m0 * Math.Exp(-impulse.Length / 2 / (isp * g0));
+            var lead = (m0 - mHalf) / mdot;
+            foreach (var mode in new[] { "fixed", "node" })
+            {
+                var t = plan.BurnUt - lead;
+                Vec3 r, v;
+                orbit.State(t, out r, out v);
+                var m = m0;
+                double delivered = 0;
+                const double h = 0.02;
+                var dir = impulse.Normalized;
+                for (var i = 0; i < 200000; i++)
+                {
+                    if (mode == "node")
+                    {
+                        var cur = Conic.FromState(Mu, r, v, t);
+                        Vec3 rc, vc;
+                        cur.State(plan.BurnUt, out rc, out vc);
+                        var left = vt - vc;
+                        if (left.Length < 0.1 || Vec3.Dot(left, impulse) < 0) break;
+                        dir = left.Normalized;
+                    }
+                    else if (delivered >= impulse.Length) break;
+                    var a = thrust / m;
+                    var g = r * (-Mu / Math.Pow(r.Length, 3));
+                    v = v + (g + dir * a) * h;
+                    r = r + v * h;
+                    m -= mdot * h;
+                    delivered += a * h;
+                    t += h;
+                }
+                var flown = Conic.FromState(Mu, r, v, t);
+                var l = Land(flown, t);
+                if (l.Error != null) { _out.WriteLine("    finite " + mode + ": " + l.Error); continue; }
+                double e, n;
+                EastNorth(nominal, l, out e, out n);
+                _out.WriteLine(string.Format("    finite {0}: burn {1:0.0} s, delivered {2:0.0} m/s, pe {3:0} m (planned {4:0}), east {5,8:0.0} km north {6,6:0.0} km",
+                    mode, t - (plan.BurnUt - lead), delivered, flown.PeR - R, target.PeR - R, e, n));
+            }
+        }
+
+        private void Sensitivity(Conic orbit, DeorbitPlan plan, string tag)
+        {
+            var nominal = Land(Burn(orbit, plan.BurnUt, plan.Prograde, 0, plan.Normal), plan.BurnUt);
+            var cases = new[]
+            {
+                new { n = "pro +1 m/s", t = 0.0, p = 1.0, r = 0.0, q = 0.0 },
+                new { n = "pro -1 m/s", t = 0.0, p = -1.0, r = 0.0, q = 0.0 },
+                new { n = "rad +1 m/s", t = 0.0, p = 0.0, r = 1.0, q = 0.0 },
+                new { n = "late 1 s", t = 1.0, p = 0.0, r = 0.0, q = 0.0 },
+                new { n = "1% short", t = 0.0, p = -0.01 * plan.Prograde, r = 0.0, q = 0.0 },
+                new { n = "1 deg up", t = 0.0, p = 0.0, r = Math.Abs(plan.Prograde) * Math.Sin(Math.PI / 180), q = 0.0 },
+            };
+            foreach (var c in cases)
+            {
+                var l = Land(Burn(orbit, plan.BurnUt + c.t, plan.Prograde + c.p, c.r, plan.Normal + c.q), plan.BurnUt + c.t);
+                if (l.Error != null) { _out.WriteLine("    " + tag + " " + c.n + ": " + l.Error); continue; }
+                double e, n;
+                EastNorth(nominal, l, out e, out n);
+                _out.WriteLine(string.Format("    {0} {1}: east {2,8:0.0} km north {3,6:0.0} km", tag, c.n, e, n));
+            }
+        }
+    }
+}
