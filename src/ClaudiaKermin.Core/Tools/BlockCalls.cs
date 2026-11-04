@@ -608,6 +608,8 @@ namespace ClaudiaKermin.Core.Tools
             ask.TryGetValue("phase", out phase);
             ask.TryGetValue("why", out why);
             ask.TryGetValue("sibling", out sibling);
+            object timing;
+            if (ask.TryGetValue("timing", out timing)) return Timing(ask, timing as string);
             if (!(target is string)) return Step(new TransferFlightStep { Error = "found no transfer: target must be a body's name" });
             var maxDuration = NumberOrNull(ask, "max_duration");
             var step = TransferFlight.Next(snapshot, new TransferFlightAsk
@@ -630,6 +632,26 @@ namespace ClaudiaKermin.Core.Tools
                 Sibling = sibling as bool? ?? false,
             });
             return Step(step);
+        }
+
+        /// <summary>
+        /// TRANSFERSTEP's timing asks, for <c>return</c> (#731): <c>timing</c> "earliest" (<c>start_ut</c>, <c>turn_time</c>, <c>window</c>)
+        /// gives <c>ut</c>, the earliest departure; "correction" (<c>mid</c>, <c>now</c>, <c>lead</c>, <c>start_ut</c>, <c>max_duration</c>
+        /// "auto" or s) gives <c>ut</c> and <c>why</c> ("" or why there is no time for the Course Correction). Shaped as a step, with <c>do</c> "timing".
+        /// </summary>
+        private static IDictionary<string, object> Timing(IDictionary<string, object> ask, string kind)
+        {
+            var step = new TransferFlightStep { Do = "timing", Kind = kind ?? "" };
+            var why = "";
+            if (kind == "earliest")
+                step.Ut = TransferFlight.Earliest(Number(ask, "start_ut", 0), Number(ask, "turn_time", 0), ask.ContainsKey("window") ? ask["window"] as double? : null);
+            else if (kind == "correction")
+                step.Ut = TransferFlight.CorrectionUt(Number(ask, "mid", 0), Number(ask, "now", 0), Number(ask, "lead", 0), Number(ask, "start_ut", 0), NumberOrNull(ask, "max_duration"), out why);
+            else
+                step.Error = "found no timing: timing must be 'earliest' or 'correction'";
+            var result = Step(step);
+            result["why"] = why;
+            return result;
         }
 
         private static IDictionary<string, object> Step(TransferFlightStep step)

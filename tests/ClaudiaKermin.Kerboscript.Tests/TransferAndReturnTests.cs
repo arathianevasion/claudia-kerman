@@ -161,6 +161,39 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Contains("\"window\", opt:window", transfer);
         }
 
+        // ---- Parity (ADR 0014 guardrail 4, #731): the Kerboscript twins and Core's TRANSFERSTEP timing, on the same inputs ----
+
+        private static System.Collections.Generic.IDictionary<string, object> Timing(params object[] pairs)
+        {
+            var ask = new System.Collections.Generic.Dictionary<string, object>();
+            for (var i = 0; i < pairs.Length; i += 2) ask[(string)pairs[i]] = pairs[i + 1];
+            return ClaudiaKermin.Core.Tools.BlockCalls.TransferStep(ask, null);
+        }
+
+        [Theory]
+        [InlineData("\"next\"", null)]
+        [InlineData("2000", 2000.0)]
+        [InlineData("1100", 1100.0)]
+        public void Parity_earliest_kerboscript_and_core_agree(string window, double? number)
+        {
+            var core = number.HasValue ? Timing("timing", "earliest", "start_ut", 1000.0, "turn_time", 133.0, "window", number.Value)
+                                       : Timing("timing", "earliest", "start_ut", 1000.0, "turn_time", 133.0, "window", "next");
+            Assert.Equal(One("claudia_earliest(1000, 133, " + window + ")"), ((double)core["ut"]).ToString(CultureInfo.InvariantCulture));
+        }
+
+        [Theory]
+        [InlineData("\"auto\"", null)]
+        [InlineData("20000", 20000.0)]
+        [InlineData("10000", 10000.0)]
+        [InlineData("2313", 2313.0)]
+        [InlineData("2300", 2300.0)]
+        public void Parity_correction_ut_kerboscript_and_core_agree(string maxDuration, double? number)
+        {
+            var core = number.HasValue ? Timing("timing", "correction", "mid", 16500.0, "now", 3000.0, "lead", 193.0, "start_ut", 1000.0, "max_duration", number.Value)
+                                       : Timing("timing", "correction", "mid", 16500.0, "now", 3000.0, "lead", 193.0, "start_ut", 1000.0, "max_duration", "auto");
+            Assert.Equal(CorrectionUt(maxDuration), new[] { ((double)core["ut"]).ToString(CultureInfo.InvariantCulture), (string)core["why"] });
+        }
+
         // ---- Coordinate descent ----
 
         [Fact]
