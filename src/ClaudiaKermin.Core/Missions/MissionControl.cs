@@ -1081,15 +1081,27 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         /// <summary>
-        /// #699: a plan request's text with the line naming the Mission Goal's biomes (<see cref="MissionPrompts.GoalBiomeLine"/>)
+        /// #699: a plan request's text with the line naming the Mission Goal's biomes (<see cref="MissionPrompts.GoalBiomeLine"/>), and #713's naming its Points of Interest,
         /// while a landing is still to fly: before the Mission Plan's steps, or while one not yet ticked names the biome or a landing.
         /// Unchanged for a goal that names none, so other Missions' requests don't grow.
         /// </summary>
         private string WithGoalBiomes(Mission mission, string text)
         {
-            var line = MissionPrompts.GoalBiomeLine(GoalBiomesToLand(mission));
-            if (line.Length == 0 || (text ?? "").Contains(line)) return text;
-            return text + "\n" + line;
+            foreach (var line in new[] { MissionPrompts.GoalBiomeLine(GoalBiomesToLand(mission)), MissionPrompts.GoalPoiLine(GoalPoisToLand(mission), _snapshot) })
+                if (line.Length > 0 && !(text ?? "").Contains(line)) text = text + "\n" + line;
+            return text;
+        }
+
+        /// <summary>#713: the Mission Goal's Points of Interest whose landing is still to fly, as its biomes' (<see cref="LandingToFly"/>).</summary>
+        private List<GoalPoi> GoalPoisToLand(Mission mission)
+        {
+            return MissionPrompts.GoalPois(_snapshot, mission.Goal).Where(p => PoiToFly(mission.GoalSteps, p)).ToList();
+        }
+
+        /// <summary>#713: before the Mission Plan's steps, always; after, while a step not yet ticked names the words, or a landing on one of their bodies.</summary>
+        internal static bool PoiToFly(IList<GoalItem> steps, GoalPoi poi)
+        {
+            return poi.Entries.Select(e => e.Body).Distinct().Any(body => LandingToFly(steps, new GoalBiome { Body = body, Biome = poi.Term }));
         }
 
         /// <summary>The Mission Goal's biomes whose landing is still to fly (<see cref="LandingToFly"/>).</summary>

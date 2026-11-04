@@ -41,6 +41,13 @@ namespace ClaudiaKermin.Core.Tools
         public bool Landable = true;
     }
 
+    /// <summary>Words of the Mission Goal that name Points of Interest (#713, <c>MissionPrompts.GoalPois</c>), and the table entries they name.</summary>
+    internal sealed class GoalPoi
+    {
+        public string Term = "";
+        public List<PointsOfInterest.Entry> Entries = new List<PointsOfInterest.Entry>();
+    }
+
     /// <summary>
     /// The Points of Interest (#713): the stock anomalies, from a curated table merged with the game's own surface objects. The
     /// table gives friendly names, notes, aliases for the goal hint, a landable flag and the research positions (the Anomaly
