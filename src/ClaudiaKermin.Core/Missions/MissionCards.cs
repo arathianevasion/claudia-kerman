@@ -30,6 +30,12 @@ namespace ClaudiaKermin.Core.Missions
                 || string.Equals(vessel, craftName, StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>The craft's delta-v, m/s, for the legs after the one being planned (#694): the plan past <paramref name="stepsBegun"/> less its first, a Child Vessel's legs left out.</summary>
+        public static double LaterLegsDv(MissionPlan plan, int stepsBegun, string craftName)
+        {
+            return plan.Sequences.Skip(stepsBegun + 1).Where(s => FliesCraft(craftName, s.Vessel)).Sum(s => s.DeltaV);
+        }
+
         /// <param name="craftName">The Mission's craft, so a sequence that flies a Child Vessel is marked with that vessel's name.</param>
         public static string MissionPlanBody(MissionPlan plan, string craftName)
         {
