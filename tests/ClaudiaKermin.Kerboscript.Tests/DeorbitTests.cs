@@ -178,7 +178,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
             "function mk {\n parameter uid, mods.\n"
             + "  local p is lexicon(\"uid\", uid, \"name\", uid, \"hasparent\", false, \"children\", list(), \"stage\", 0).\n"
             + "  set p:hasmodule to { parameter n. return mods:contains(n). }.\n"
-            + "  set p:getmodule to { parameter n. return lexicon(\"alleventnames\", list(\"jettison heat shield\")). }.\n"
+            + "  set p:getmodule to { parameter n. return lexicon(\"alleventnames\", list(\"jettison heat shield\"), \"part\", p). }.\n"
             + "  return p.\n}\n"
             + "local pod is mk(\"pod\", list(\"ModuleCommand\")).\n"
             + "local shield is mk(\"shield\", list(\"ModuleAblator\", \"ModuleDecouple\")).\n"
@@ -211,6 +211,29 @@ namespace ClaudiaKermin.Kerboscript.Tests
         public void A_shield_with_no_decoupler_is_not_sent_because_reentry_would_not_drop_it()
         {
             Assert.Equal(new[] { "0" }, Printed("local bare is mk(\"bare\", list(\"ModuleAblator\")).\nprint claudia_shield_drop(list(pod, bare), list()):length."));
+        }
+
+        // Two heat shields (#720): s1 and s2, each a decoupler too; the decouplers that fire are passed in.
+        private const string Two = "local s2 is mk(\"s2\", list(\"ModuleAblator\", \"ModuleDecouple\")).\n"
+            + "local parts is list(pod, shield, s2, tank).\n"
+            + "function fires { parameter p. return lexicon(\"module\", lexicon(\"part\", p), \"event\", \"e\"). }\n";
+
+        [Fact]
+        public void Only_the_shield_a_decoupler_beside_it_takes_is_sent()
+        {
+            Assert.Equal(new[] { "shield" }, Printed(Two + "print claudia_shield_drop(parts, list(), list(fires(shield))):join(\",\")."));
+        }
+
+        [Fact]
+        public void An_explicit_jettison_stage_naming_one_shield_sends_only_it()
+        {
+            Assert.Equal(new[] { "s2" }, Printed(Two + "set s2:stage to 3.\nprint claudia_shield_drop(parts, list(), reentry_shield_modules(3, parts)):join(\",\")."));
+        }
+
+        [Fact]
+        public void A_powered_touchdown_that_keeps_its_shield_sends_none()
+        {
+            Assert.Equal(new[] { "0" }, Printed(Two + "print claudia_shield_drop(parts, list(), list()):length."));
         }
 
         [Fact]

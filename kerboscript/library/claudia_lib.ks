@@ -547,13 +547,17 @@ function claudia_stage_drop_plan {
   return plan.
 }
 
-// The UIDs of the parts reentry's default (jettison "auto") drops with its heat shield: the shield's parts
-// if reentry_shield_modules finds a decoupler for it (else none), less leave_out. Pure.
+// The UIDs of the heat shields the decouplers that fire take (decs: reentry_shield_modules' list, default its "auto"), less leave_out. Pure.
 function claudia_shield_drop {
-  parameter parts, leave_out.
+  parameter parts, leave_out, decs is "auto".
+  if decs:istype("String") { set decs to reentry_shield_modules("auto", parts). }
   local uids is list().
-  if reentry_shield_modules("auto", parts):length = 0 { return uids. }
-  for p in parts { if claudia_part_kind(p) = "shield" and not leave_out:contains(p:uid) { uids:add(p:uid). } }
+  for p in parts { for d in decs {
+    local dp is d:module:part.
+    if claudia_part_kind(p) = "shield" and not leave_out:contains(p:uid) and not uids:contains(p:uid) {
+      if dp:uid = p:uid or (p:hasparent and p:parent:uid = dp:uid) or (dp:hasparent and dp:parent:uid = p:uid) { uids:add(p:uid). }
+    }
+  } }
   return uids.
 }
 
