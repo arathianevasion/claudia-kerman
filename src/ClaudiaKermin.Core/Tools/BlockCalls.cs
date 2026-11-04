@@ -471,7 +471,7 @@ namespace ClaudiaKermin.Core.Tools
         /// kOS's <c>steeringmanager:maxstoppingtime</c>; 2 if missing). Gives <c>error</c> "", <c>turn_time</c> (s, at least 30),
         /// <c>turn_s</c> (the 190° turn alone), <c>top_rate</c> (deg/s) and <c>alpha</c> (deg/s², the weaker axis's angular
         /// acceleration), on the wheels and RCS (if the craft has MonoPropellant, whatever the switch; where RCS adds torque the
-        /// figures follow the RCS Use override, #422, and ignore <c>max_stopping_time</c>), and <c>wheels_turn_time</c> and <c>wheels_turn_s</c>, the same on the wheels alone (-1 when the
+        /// figures follow the burst turn, #692 and #730, and ignore <c>max_stopping_time</c>), and <c>wheels_turn_time</c> and <c>wheels_turn_s</c>, the same on the wheels alone (-1 when the
         /// wheels have no torque about pitch or yaw); or only <c>error</c>, "no usable torque".
         /// </summary>
         public static IDictionary<string, object> TurnTime(IDictionary<string, object> input, TurnCraft craft)
