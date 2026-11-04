@@ -139,7 +139,8 @@ namespace ClaudiaKermin.Adapter
             var shape = expanded + "|" + _place.Side + "|" + (View.PlanSequences.Count > 0) + "|" + MissionWindowRules.LockLine(View) + "|" + Screen.height
                 + "|" + Mathf.RoundToInt(_width) + "|" + Mathf.RoundToInt(_place.PanelHeight);
             // It grows to fit; with the tab (and panel) above, the window starts above the strip.
-            var height = shape == _shape ? _frame.Rect.height : 0;
+            // Collapsed it asks for 0 every frame, so a stale tall rect is never kept.
+            var height = CapcomStripLayout.WindowHeight(expanded, shape != _shape, _frame.Rect.height);
             _shape = shape;
             var y = above ? _place.Y - TabHeight() - (expanded ? _place.PanelHeight : 0) : _place.Y;
             _frame.Rect = new Rect(_place.X, y, _width, height);
