@@ -279,6 +279,22 @@ function change_orbit {
       // The burn is judged by the element it sets, not exec_node's residual.
       local burn_opts is claudia_burn_options(ctx, nextnode).
       set burn_opts:max_residual to 1000000.
+      // Solved again after the turn (#691): ORBITBURN inline (ADR 0007) keeps the first node, with its reason, if the burn moved or is over max_dv.
+      set burn_opts:resolve to {
+        parameter nd.
+        local ask is change_orbit_ask(opt).
+        set ask["resolve_ut"] to nd:time.
+        set ask["resolve_max_dv"] to opt:max_dv.
+        local again is addons:claudia:orbitburn(ask).
+        if again:error = "" {
+          set nd:radialout to again:radial.
+          set nd:normal to again:normal.
+          set nd:prograde to again:prograde.
+        } else {
+          addons:claudia:blocktrace("change_orbit", lexicon("phase", "resolve", "kept", "the first node", "why", again:error)).
+        }
+        return "".
+      }.
       local flown is exec_node(burn_opts).
       claudia_add_result(ctx, flown).
       return flown.

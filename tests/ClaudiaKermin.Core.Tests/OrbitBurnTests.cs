@@ -203,6 +203,50 @@ namespace ClaudiaKermin.Core.Tests
             Assert.StartsWith(reason, (string)result["error"]);
         }
 
+        // ---- Re-solved after the turn (#691): the keep-or-fly decision ----
+
+        [Fact]
+        public void A_resolve_within_5_s_of_the_nodes_UT_and_max_dv_gives_the_burn()
+        {
+            var snapshot = Every();
+            var plain = BlockCalls.OrbitBurn(Ask("goal=set_inc;value=40"), snapshot);
+            var ask = Ask("goal=set_inc;value=40");
+            ask["resolve_ut"] = D(plain, "ut") + 4.9;
+            ask["resolve_max_dv"] = D(plain, "dv") + 1;
+            var result = BlockCalls.OrbitBurn(ask, snapshot);
+            Assert.Equal("", result["error"]);
+            Assert.Equal(D(plain, "ut"), D(result, "ut"));
+            Assert.Equal(D(plain, "prograde"), D(result, "prograde"));
+        }
+
+        [Fact]
+        public void A_burn_moved_more_than_5_s_from_the_nodes_UT_gives_only_that_reason()
+        {
+            var snapshot = Every();
+            var ut = D(BlockCalls.OrbitBurn(Ask("goal=set_inc;value=40"), snapshot), "ut");
+            var ask = Ask("goal=set_inc;value=40");
+            ask["resolve_ut"] = ut - 6;
+            var result = BlockCalls.OrbitBurn(ask, snapshot);
+            Assert.Equal(new[] { "error" }, result.Keys);
+            Assert.Equal("the burn moved to UT " + Math.Round(ut, 1).ToString(CultureInfo.InvariantCulture) + " from "
+                + Math.Round(ut - 6, 1).ToString(CultureInfo.InvariantCulture), (string)result["error"]);
+        }
+
+        [Fact]
+        public void A_burn_over_resolve_max_dv_gives_only_that_reason_and_a_non_number_max_dv_is_none()
+        {
+            var snapshot = Every();
+            var plain = BlockCalls.OrbitBurn(Ask("goal=set_inc;value=40"), snapshot);
+            var ask = Ask("goal=set_inc;value=40");
+            ask["resolve_ut"] = D(plain, "ut");
+            ask["resolve_max_dv"] = 10.0;
+            var result = BlockCalls.OrbitBurn(ask, snapshot);
+            Assert.Equal(new[] { "error" }, result.Keys);
+            Assert.Equal("needs " + Math.Round(D(plain, "dv"), 1).ToString(CultureInfo.InvariantCulture) + " m/s, over max_dv 10", (string)result["error"]);
+            ask["resolve_max_dv"] = "none";
+            Assert.Equal("", BlockCalls.OrbitBurn(ask, snapshot)["error"]);
+        }
+
         [Fact]
         public void A_number_where_a_name_goes_or_a_non_finite_number_is_refused()
         {
