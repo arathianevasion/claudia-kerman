@@ -205,7 +205,7 @@ namespace ClaudiaKermin.Core.Missions
                 var leg = sequences[i];
                 var words = SequenceWords.Of(leg);
                 var returnsHome = SequenceWords.ReturnHome.IsMatch(words);
-                body = SequenceWords.LegBody(snapshot, words, body);
+                body = SequenceWords.NextBody(snapshot, words, body);
                 if (SequenceWords.Ascent.IsMatch(words)) ascended = true;
                 if (leg.Manual || body == null) continue;
                 var landing = SequenceWords.Landing.IsMatch(words);
