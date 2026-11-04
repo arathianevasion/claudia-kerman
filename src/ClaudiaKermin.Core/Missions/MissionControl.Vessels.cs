@@ -269,6 +269,7 @@ namespace ClaudiaKermin.Core.Missions
             mission.LoadNotice = (mission.LoadNotice != null ? mission.LoadNotice + "\n\n" : "") + MissionCraft.DockingNotice(added);
             mission.Recheck = "docked with " + added.Name;
             mission.RecheckSince = mission.Requests;
+            DockedThisRun(mission, added.Name);
         }
 
         /// <summary>A plan is offered: if it came from a request sent after docking, it was made with the rechecked facts.</summary>

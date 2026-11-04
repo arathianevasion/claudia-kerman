@@ -53,7 +53,11 @@ namespace ClaudiaKermin.KOS
             AddSuffix("DOCKHOLD", new OneArgsSuffix<Lexicon, Lexicon>(DockHoldStart,
                 "Core Library only (dock): the mod starts its dock_hold on the Target Vessel's kOS processor, turning its port (uid) toward the craft's (toward, uid), or meets the target passive; lexicon error, state (starting or passive), reason"));
             AddSuffix("DOCKHOLDSTATE", new NoArgsSuffix<Lexicon>(DockHoldRead,
-                "Core Library only (dock): the dock_hold dock started; lexicon state (none, starting, active, passive, fault or docked), reason"));
+                "Core Library only (dock): the dock_hold dock started; lexicon state (none, starting, active, settled, passive, fault or docked), reason"));
+            // dock_hold's own report (#711), from the mod's program on the target. Block-internal (ADR 0014 guardrail 5): the
+            // Script Check refuses it in a Mission Script, and the bridge ignores it from any run but a live dock_hold.
+            AddSuffix("DOCKHOLDSETTLED", new OneArgsSuffix<BooleanValue>(DockHoldSettled,
+                "The mod's dock_hold only: its port settled on its aim (true) or a re-aim unsettled it (false)"));
             AddSuffix("DOCKGUIDE", new OneArgsSuffix<Lexicon, Lexicon>(DockGuide,
                 "Core Library only (dock, each tick): DockGuidance's wanted velocity and coast band for the craft's port in the target port's frame; lexicon along, lat, dv_error, fire, cmd_along, cmd_lat, cmd_side"));
             AddSuffix("DOCKFUEL", new OneArgsSuffix<Lexicon, Lexicon>(DockFuel,
@@ -134,6 +138,13 @@ namespace ClaudiaKermin.KOS
             result.Add(new StringValue("state"), new StringValue(state.ToString().ToLowerInvariant()));
             result.Add(new StringValue("reason"), new StringValue(reason ?? ""));
             return result;
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:DOCKHOLDSETTLED</c> (#711): dock_hold's settled report; the bridge ignores it from any run but a live hold.</summary>
+        private void DockHoldSettled(BooleanValue settled)
+        {
+            var bridge = KosBridge.Instance;
+            if (bridge != null && shared.KSPPart != null) bridge.HoldSettled(shared.KSPPart.persistentId, settled.Value);
         }
 
         /// <summary>

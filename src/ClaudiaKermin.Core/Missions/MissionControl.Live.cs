@@ -86,6 +86,11 @@ namespace ClaudiaKermin.Core.Missions
             public double? SeparationAfter;
             /// <summary>A snapshot this run had no engine aboard: its propulsion checks are disarmed for the rest of it (#605).</summary>
             public bool NoEngineAboard;
+            /// <summary>
+            /// The craft docked this run, with this vessel (#711); "" when it hasn't. Its whole-vessel delta-v checks are disarmed
+            /// for the rest of the run: the merged vessel's figures are not the craft's.
+            /// </summary>
+            public string DockedWith = "";
             public double? RunStartMonopropellant;
             /// <summary>The current run's Telemetry Checks.</summary>
             public readonly List<LiveCheck> Checks = new List<LiveCheck>();
@@ -139,6 +144,7 @@ namespace ClaudiaKermin.Core.Missions
             mission.ScienceKept.Clear();
             ClearSeparation(mission);
             mission.NoEngineAboard = false;
+            mission.DockedWith = "";
             mission.RunStartMonopropellant = LiveReadings.MonopropellantOf(MissionVesselSnapshot(mission));
             mission.RunStartOrbit = OrbitFix.Of(MissionVesselSnapshot(mission));
             mission.Checks.Clear();
@@ -229,6 +235,11 @@ namespace ClaudiaKermin.Core.Missions
                 if (mission.NoEngineAboard && live.Check.Propulsion)
                 {
                     Disarm(mission, live, "no engine aboard");
+                    continue;
+                }
+                if (mission.DockedWith.Length > 0 && live.Check.Propulsion)
+                {
+                    Disarm(mission, live, DockedReason(mission));
                     continue;
                 }
                 if (mission.SeparationBefore.HasValue && live.Check.NeedsConfirmation)
@@ -390,6 +401,23 @@ namespace ClaudiaKermin.Core.Missions
             if (live.Disarmed) return;
             live.Disarmed = true;
             Event(mission, "telemetry_check_disarmed", live.Check.Describe() + ": " + reason + ".");
+        }
+
+        /// <summary>
+        /// The craft docked with <paramref name="with"/> while Running (#711): its delta-v checks (left, used, the needed-fuel margin)
+        /// read the whole vessel, and the merged one's stock delta-v is not the craft's, so they are disarmed for the rest of the
+        /// run, now, before a merged reading can cross them. Each disarm is logged once.
+        /// </summary>
+        private void DockedThisRun(Mission mission, string with)
+        {
+            if (mission.Stage != MissionStage.Running || !mission.RunId.HasValue) return;
+            mission.DockedWith = with ?? "";
+            foreach (var live in mission.Checks.Where(c => c.Check.Propulsion)) Disarm(mission, live, DockedReason(mission));
+        }
+
+        private static string DockedReason(Mission mission)
+        {
+            return "the craft docked with " + mission.DockedWith + ", and the merged vessel's delta-v is not the craft's";
         }
 
         /// <summary>A disarmed check re-arms on its first reading on the safe side of its active threshold, which arms it for #419 too.</summary>
