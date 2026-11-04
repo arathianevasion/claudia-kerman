@@ -57,6 +57,19 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal("Kerbin", SequenceWords.LegBody(snapshot, words, SequenceWords.Body(snapshot, "Minmus")).Name);
         }
 
+        [Theory]
+        [InlineData("Return from the Mun to Kerbin and land", "Kerbin")]
+        [InlineData("Return to Kerbin from the Mun, then land at KSC", "Kerbin")]
+        [InlineData("Land on the Mun, then come home from the Mun", "Mun")]
+        [InlineData("Ascend from the Mun and return home", "Mun")]
+        [InlineData("Land in the Mun highlands and return to Kerbin", "Mun")]
+        public void ABodyAReturnComesFromIsNotWhereItsSurfaceWorkIsButAnotherMentionOfItIs(string words, string expected)
+        {
+            var snapshot = InKerbinOrbit();
+
+            Assert.Equal(expected, SequenceWords.LegBody(snapshot, words, SequenceWords.Body(snapshot, "Minmus")).Name);
+        }
+
         [Fact]
         public void ALegThatNamesABodyIsAtThatBodyAndOneThatNamesNoneKeepsThePreviousOne()
         {
