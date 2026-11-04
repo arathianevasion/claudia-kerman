@@ -122,6 +122,9 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>s: the default settle_timeout, how long dock waits for dock_hold's strict settle before it takes a loose one (#714).</summary>
         public const double SettleTimeout = 300;
 
+        /// <summary>wait_since after a loose settle ended the wait: the craft closes, and the clock stays stopped until the hold leaves "near".</summary>
+        private const double Accepted = -2;
+
         /// <summary>
         /// #714: the wait for dock_hold, one tick. <paramref name="since"/> is when the wait began (negative: none running) and the
         /// clock starts when the hold first <see cref="Waits"/>, so a re-aim (settled back to active) restarts it. A hold that
@@ -132,7 +135,12 @@ namespace ClaudiaKermin.Core.Tools
         public static WaitTick Wait(string hold, double ut, double since, double timeout, string target, double offDeg, double spinDps)
         {
             var tick = new WaitTick { Since = -1, End = "", Error = "" };
-            if (Waits(hold))
+            if (since == Accepted && hold == "near")
+            {
+                // A loose settle already ended this wait: the craft closes on it from here, with no new clock.
+                tick.Since = Accepted;
+            }
+            else if (Waits(hold))
             {
                 tick.Since = since < 0 ? ut : since;
                 tick.Waited = Math.Max(0, ut - tick.Since);
@@ -141,13 +149,14 @@ namespace ClaudiaKermin.Core.Tools
                 {
                     tick.Holds = false;
                     tick.End = "loosely settled";
+                    tick.Since = Accepted;
                 }
                 else if (hold != "near" && tick.Waited >= 2 * timeout)
                 {
                     tick.End = "gave up";
                     tick.Error = string.Format(CultureInfo.InvariantCulture, "{0}'s dock_hold never settled: {1:0.#}° off its aim, turning {2:0.##}°/s, after {3:0} s", target, offDeg, spinDps, tick.Waited);
                 }
-                if (tick.End != "") tick.Since = -1;
+                if (tick.End == "gave up") tick.Since = -1;
             }
             else if (since >= 0)
             {

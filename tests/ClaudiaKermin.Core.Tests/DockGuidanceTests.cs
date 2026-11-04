@@ -117,8 +117,14 @@ namespace ClaudiaKermin.Core.Tests
             Assert.False(Holds(after));
             Assert.Equal("loosely settled", (string)after["wait_end"]);
             Assert.Equal(300, (double)after["wait_s"], 9);
-            Assert.Equal(-1, (double)after["wait_since"]);
             Assert.Equal("", (string)after["wait_error"]);
+            // The craft then closes on it: later ticks neither hold still again nor restart the clock nor repeat the end.
+            var next = Wait("near", 1301, (double)after["wait_since"]);
+            Assert.False(Holds(next));
+            Assert.Equal("", (string)next["wait_end"]);
+            Assert.Equal((double)after["wait_since"], (double)next["wait_since"]);
+            // A re-aim (active again) starts a fresh wait.
+            Assert.Equal(1400, (double)Wait("active", 1400, (double)after["wait_since"])["wait_since"]);
         }
 
         [Fact]
