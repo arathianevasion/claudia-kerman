@@ -118,12 +118,19 @@ namespace ClaudiaKermin.Core.Tools
     {
         /// <summary>m to the site along the track (negative past it).</summary>
         public double S;
-        /// <summary>m above sea level.</summary>
+        /// <summary>
+        /// m above sea level as the craft passes <see cref="S"/>. Past where braking stopped it comes straight down, so the last
+        /// point keeps the height braking stopped at: the highest it is there, which is what <c>land</c>'s path guard reads (#712).
+        /// </summary>
         public double Alt;
         /// <summary>The terrain's height there, m above sea level.</summary>
         public double Ground;
         /// <summary>m/s across the ground.</summary>
         public double VH;
+        /// <summary>m/s up.</summary>
+        public double VUp;
+        /// <summary>s since the simulation started.</summary>
+        public double T;
     }
 
     internal sealed class BrakeResult
@@ -139,6 +146,8 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>m to the site and m above the ground where braking ended (under 1 m/s across the ground); NaN if it never did.</summary>
         public double BrakeEndS = double.NaN;
         public double BrakeEndAgl = double.NaN;
+        /// <summary>m above sea level where braking ended; NaN if it never did.</summary>
+        public double BrakeEndAlt = double.NaN;
         /// <summary>m to the site where the braking descent first came down to <see cref="BrakeGuidance.HEnd"/> over the ground; NaN if it never did.</summary>
         public double HEndS = double.NaN;
         /// <summary>
@@ -240,9 +249,12 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>
         /// Flies the descent from <paramref name="start"/> to touchdown (or 1500 s) on <paramref name="shape"/>: falling until
         /// <see cref="BrakeGuidance.BrakeDue"/> fires unless already braking, then braking as land_descend does, steering by its
-        /// clearance over the terrain at the look-ahead points and the highest ground on to where it stops.
+        /// clearance over the terrain at the look-ahead points and the highest ground on to where it stops. The path is a point
+        /// every <see cref="BrakeWorld.PathSpacing"/> m along the track, one where braking stops, and where it came down
+        /// (<see cref="BrakePoint.Alt"/>); a cleared one keeps <see cref="FlyableFailure"/>'s rule. <paramref name="ticks"/>, if given,
+        /// gets every tick's state.
         /// </summary>
-        public static BrakeResult Simulate(BrakeCraft craft, BrakeWorld world, BrakeStart start, double shape)
+        public static BrakeResult Simulate(BrakeCraft craft, BrakeWorld world, BrakeStart start, double shape, List<BrakePoint> ticks = null)
         {
             var result = new BrakeResult { Shape = shape };
             var dt = world.Dt;
@@ -324,16 +336,21 @@ namespace ClaudiaKermin.Core.Tools
                 {
                     result.BrakeEndS = s;
                     result.BrakeEndAgl = radar;
+                    result.BrakeEndAlt = y;
+                    // The top of the straight-down descent: without it the line from the last point to touchdown read as a dive
+                    // across the last few hundred m, 1 km under the craft 190 m from Minmus Flats (#712).
+                    result.Path.Add(new BrakePoint { S = s, Alt = y, Ground = ground.At(s), VH = vx, VUp = vy, T = t });
                 }
                 // Where a fall stopped at full thrust after the turn lag would end, over the ground (#547).
                 if (braking && vy < 0 && aMax > g && radar > BrakeGuidance.HEnd)
                     result.LeastStopRoom = Math.Min(result.LeastStopRoom, radar + vy * craft.LagS - vy * vy / (2 * (aMax - g)));
                 if (braking && double.IsNaN(result.HEndS) && radar <= BrakeGuidance.HEnd) result.HEndS = s;
-                if (s <= nextPoint)
+                if (s <= nextPoint && double.IsNaN(result.BrakeEndS))
                 {
-                    result.Path.Add(new BrakePoint { S = s, Alt = y, Ground = ground.At(s), VH = vx });
+                    result.Path.Add(new BrakePoint { S = s, Alt = y, Ground = ground.At(s), VH = vx, VUp = vy, T = t });
                     nextPoint -= world.PathSpacing;
                 }
+                if (ticks != null) ticks.Add(new BrakePoint { S = s, Alt = y, Ground = ground.At(s), VH = vx, VUp = vy, T = t });
                 lastSpeed = Math.Sqrt(vx * vx + vy * vy);
                 vx += ax * dt;
                 vy += (ay - g + vx * vx / (world.Radius + y)) * dt;
@@ -358,10 +375,33 @@ namespace ClaudiaKermin.Core.Tools
             result.Seconds = t;
             result.StopS = s;
             result.TouchdownSpeed = lastSpeed;
-            result.Path.Add(new BrakePoint { S = s, Alt = y, Ground = ground.At(s) });
+            var ended = !double.IsNaN(result.BrakeEndS);
+            result.Path.Add(new BrakePoint { S = s, Alt = ended ? result.BrakeEndAlt : y, Ground = ground.At(s), VUp = vy, T = t });
             if (radar > 0) result.Failure = "still flying after 1500 s";
             else if (lastSpeed > 5) result.Failure = "hit the ground at " + lastSpeed.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " m/s";
+            else result.Failure = FlyableFailure(result.Path, world, ended ? result.Path.Count - 1 : result.Path.Count);
             return result;
+        }
+
+        /// <summary>
+        /// The rule a cleared path keeps (#712): <c>land</c>'s braking asks for no push below the horizon (<see cref="BrakeGuidance.Guide"/>),
+        /// so gravity is the only pull down, and between any two of the first <paramref name="count"/> points the path may drop no more
+        /// than a fall from the first's vertical speed under the gravity there gives over the time between them (1 m spare). A path
+        /// that drops faster asks for a fall the craft can't fly, so it doesn't clear: why, or null.
+        /// </summary>
+        public static string FlyableFailure(IList<BrakePoint> path, BrakeWorld world, int count)
+        {
+            for (var i = 1; i < Math.Min(count, path.Count); i++)
+            {
+                var a = path[i - 1];
+                var b = path[i];
+                var t = b.T - a.T;
+                var g = world.Mu / Math.Pow(world.Radius + Math.Min(a.Alt, b.Alt), 2);
+                if (a.Alt - b.Alt > -a.VUp * t + 0.5 * g * t * t + 1)
+                    return "its path falls " + Whole(a.Alt - b.Alt) + " m in " + t.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)
+                        + " s " + Whole(a.S) + " m out, faster than gravity alone";
+            }
+            return null;
         }
 
         /// <summary>

@@ -831,6 +831,8 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             var land = File.ReadAllText(Path.Combine(RepoRoot(), "kerboscript", "library", "land.ks"));
             Assert.True(new KosScriptCheck(forCoreLibrary: true).Check(land).Passed);
             Assert.Contains(_check.Check(land).Forbidden, f => f.EndsWith("(call block-internal calculations)"));
+            // LANDGUARD (#712), made every braking tick, is refused in a Mission Script.
+            Assert.Contains(_check.Check(land).Forbidden, f => f.EndsWith(":LANDGUARD (call block-internal calculations)"));
             // The library's check refuses everything else on the list.
             Assert.Contains(new KosScriptCheck(forCoreLibrary: true).Check("kuniverse:quicksave().").Forbidden, f => f.EndsWith("(quicksave)"));
         }
