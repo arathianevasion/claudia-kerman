@@ -11,7 +11,7 @@ namespace ClaudiaKermin.Core.Tools
     /// The departure plane from a launch site or a landed craft on any body (#727): the orbit to launch into, and when, for a
     /// transfer. A moon's plane is its orbit's (<see cref="LaunchWindow.Find"/>: into it when the site passes under it, else due
     /// east with the residual fixed on the way). A planet or an escape needs any orbit containing the departure asymptote: its
-    /// inclination at least the asymptote's declination, the launch time setting the node, so there is no residual: here.
+    /// inclination at least the asymptote's declination, the launch time setting the node, so there is no residual (<see cref="ForAsymptote"/>).
     /// The Transfer Windows' rows cost and name it (<see cref="TransferWindows"/>); <c>launch</c> flies the inclination and time
     /// they give (<c>launch_at</c> a UT, <c>target_inc</c>), so the block keeps only steering, staging and warp.
     /// </summary>

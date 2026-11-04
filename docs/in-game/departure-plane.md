@@ -1,8 +1,12 @@
 # The departure plane from any launch site or landed craft in KSP (#727, #732)
 
-#727 moved the choice of the departure plane into Core (ADR 0014): `LaunchWindow` (into a moon's plane when the site passes under it, else due east at the moon's node with the residual named), `DeparturePlane` (a planet's escape: an orbit holding the asymptote), `TransferWindows` (each row's ascent loss, plane change and case note) and `TransferFlight` (#732: transfer_to fixes a residual plane mid-course). `launch` and `transfer_to` are unchanged Kerboscript: they fly the inclination, time and nodes Core gives. No block option or description changed. The agent run that wrote this did not launch KSP; the Core tests and the gate are green in the repo.
+#727 moved the choice of the departure plane into Core (ADR 0014): `LaunchWindow` (into a moon's plane when the site passes under it, else due east at the moon's node with the residual named), `DeparturePlane` (a planet's escape: an orbit holding the asymptote), `TransferWindows` (each row's ascent loss, plane change and case note) and `TransferFlight` (#732: transfer_to fixes a residual plane mid-course). `launch` and `transfer_to` are unchanged Kerboscript: they fly the inclination, time and nodes Core gives. No block option, `//|` line or tool description changed. One deliberate behaviour change: `launch` with `launch_at` a body from a site past its plane (Minmus from 20° N) no longer fails with "the pad never passes under a plane of inclination 6"; it launches due east (target_inc the site's latitude) when its orbit's node is the body's. A retrograde plane still fails as before. The agent run that wrote this did not launch KSP; the Core tests and the gate are green in the repo.
 
 Install and the block test runner are as in `phase-3-gate.md` ("Install", "Where to look").
+
+## Check 0: the block tests, unchanged
+
+1. In the block test runner run `launch_lan` (launch_at "Minmus" from KSC, into its plane) and `transfer_to`: both `PASS` as before #727.
 
 ## Check 1: the Minmus validation flight's rows show the ascent loss
 

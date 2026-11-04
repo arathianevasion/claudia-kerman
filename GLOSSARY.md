@@ -105,7 +105,7 @@ The earliest Transfer Window whose total delta-v is within the Craft Check's mar
 _Avoid_: next window, fastest (a Mission Setting)
 
 **Optimal**:
-The cheapest Transfer Window within one synodic period of the two planets, or one orbit of the moon. A moon's Optimal is its Soonest unless it saves at least 5 m/s: the Mun, in the parking orbit's plane, costs the same at any departure; Minmus is cheapest near a node. From the pad, a moon out of the equator's plane is costed as a launch into its plane at the next launch window (#690), so Soonest is Optimal and the wait is under a Kerbin day; the row names that launch (its target_inc and time).
+The cheapest Transfer Window within one synodic period of the two planets, or one orbit of the moon. A moon's Optimal is its Soonest unless it saves at least 5 m/s: the Mun, in the parking orbit's plane, costs the same at any departure; Minmus is cheapest near a node. From the ground, a moon out of the site's plane is costed as a launch into its plane at the next launch window (#690), so Soonest is Optimal and the wait is under a body day; from a site past the plane, as a launch due east with the residual fixed on the way, and the moon's horizon is bounded by Time versus delta-v (Fastest one parking orbit, Balanced a quarter of the moon's orbit, Most efficient one orbit, #727). Each row names that launch (its target_inc and time), its ascent loss and plane change, and the case it took.
 _Avoid_: best window, most efficient (a Mission Setting)
 
 **Daylight**:
