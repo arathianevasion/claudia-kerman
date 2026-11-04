@@ -642,7 +642,10 @@ namespace ClaudiaKermin.Kerboscript.Tests
             var land = System.IO.File.ReadAllText(System.IO.Path.Combine(dir.FullName, "kerboscript", "library", "land.ks"));
             Assert.Contains("set ctx:rcs_braking to true.", land);
             Assert.Contains("\"ground\", claudia_on_ground(), \"braking\", ctx:rcs_braking", body("claudia_rcs_tick"));
-            Assert.Contains("(gate or ctx:rcs_braking)", body("claudia_rcs_tick"));
+            Assert.Contains("if ctx:rcs_braking and ctx:rcs_wheels_parts <> ship:parts:length", body("claudia_rcs_tick"));
+            // #408: at the on-gate the wheels' time is TURNPLAN's for the error now, not TURNTIME's 190-degree turn.
+            Assert.Contains("addons:claudia:turnplan(lexicon(\"angle\", error, \"left_s\", left_s))", body("claudia_rcs_tick"));
+            Assert.Contains("set ctx:rcs_wheels_s to plan:wheels_s.", body("claudia_rcs_tick"));
         }
 
         [Theory]
@@ -658,36 +661,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Equal(expected, Decide(state));
         }
 
-        // ---- RCS turn-rate override (#422) ----
-
-        [Theory]
-        // T = 0.6 x sqrt(angle / alpha) within 2 to 10 s; kp = 1 / T (#678); ki = 0.1 x kp.
-        [InlineData(36, 1, "3.6|0.278|0.028")]
-        [InlineData(128, 2, "4.8|0.208|0.021")]
-        // A small turn stays at 2 s (kp 0.5), a huge one at 10 s (kp 0.1); no acceleration is the default T.
-        [InlineData(4, 4, "2|0.5|0.05")]
-        [InlineData(0.5, 3, "2|0.5|0.05")]
-        [InlineData(5000, 1, "10|0.1|0.01")]
-        [InlineData(100, 0, "2|0.5|0.05")]
-        public void The_turn_override_sizes_T_kp_and_ki_from_the_angle_and_alpha(double angle, double alpha, string expected)
-        {
-            var tuning = "claudia_rcs_turn_tuning(" + angle.ToString(CultureInfo.InvariantCulture) + ", " + alpha.ToString(CultureInfo.InvariantCulture) + ")";
-            Assert.Equal(expected, Run("local u is " + tuning + ". print round(u:t, 3) + \"|\" + round(u:kp, 3) + \"|\" + round(u:ki, 3).").Single());
-        }
-
-        [Theory]
-        [InlineData("big turn", "True")]
-        [InlineData("turning", "True")]
-        [InlineData("falling behind", "True")]
-        [InlineData("no wheel torque", "False")]
-        [InlineData("translating", "False")]
-        [InlineData("aligned", "False")]
-        [InlineData("block end", "False")]
-        [InlineData("", "False")]
-        public void The_override_applies_only_to_the_turn_reasons(string reason, string expected)
-        {
-            Assert.Equal(expected, One("claudia_rcs_turn_reason(\"" + reason + "\")"));
-        }
+        // ---- RCS steering tuning (a burst turn's phases, #692) ----
 
         // A stand-in for steeringmanager: lexicons with the suffixes the library sets, and reset() counted.
         private const string FakeSteering =
@@ -700,9 +674,9 @@ namespace ClaudiaKermin.Kerboscript.Tests
         public void The_override_sets_both_rate_controllers_and_resets_them_and_the_defaults_put_them_back()
         {
             var lines = Run(FakeSteering
-                + "claudia_rcs_set_tuning(sm, claudia_rcs_turn_tuning(36, 1)).\nprint show().\n"
+                + "claudia_rcs_set_tuning(sm, lexicon(\"t\", 3.6, \"kp\", 0.278, \"ki\", 0)).\nprint show().\n"
                 + "claudia_rcs_set_tuning(sm, claudia_rcs_default_tuning()).\nprint show().");
-            Assert.Equal(new[] { "3.6|0.278|0.028|0.278|0.028|2", "2|1|0.1|1|0.1|4" }, lines);
+            Assert.Equal(new[] { "3.6|0.278|0|0.278|0|2", "2|1|0.1|1|0.1|4" }, lines);
         }
 
         [Fact]
@@ -726,9 +700,13 @@ namespace ClaudiaKermin.Kerboscript.Tests
             Assert.Matches(@"if not on \{\s*claudia_rcs_restore_tuning\(\)", body("claudia_rcs_switch"));
             Assert.Contains("claudia_rcs_switch(decided[\"on\"]", body("claudia_rcs_tick"));
             Assert.Contains("claudia_rcs_switch(false", body("claudia_rcs_off"));
-            // The override is applied in the tick only for a turn reason, never in the translate path.
-            Assert.Contains("claudia_rcs_turn_reason(decided:reason)", body("claudia_rcs_tick"));
+            // A burst turn's phase tuning is applied in the tick only (BURSTTURN), never in the translate path, which ends a turn
+            // with the defaults back; so does a turn cut short by steering released or the tank dry.
+            Assert.Contains("claudia_rcs_set_tuning(steeringmanager, t:tuning)", body("claudia_rcs_tick"));
             Assert.DoesNotContain("claudia_rcs_set_tuning", body("claudia_rcs_translate"));
+            Assert.Contains("claudia_rcs_end_turn(ctx)", body("claudia_rcs_translate"));
+            Assert.Contains("claudia_rcs_end_turn(ctx)", body("claudia_rcs_tick"));
+            Assert.Contains("claudia_rcs_restore_tuning()", body("claudia_rcs_end_turn"));
         }
 
         [Theory]

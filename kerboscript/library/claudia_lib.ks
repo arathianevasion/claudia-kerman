@@ -1802,30 +1802,9 @@ function claudia_wheels_turn_time {
   return turn:wheels_turn_time.
 }
 
-// The turn-rate override (#422, retuned #678). kOS caps the turn rate at torque x maxstoppingtime / MOI and brakes
-// without overshoot only while kp <= 2 x (real decel / alpha) / T; the craft slows at about 2/3 of alpha, so kp = 1 / T.
-// Turns by RCS widen the cap: T = 0.6 x sqrt(angle / alpha) within 2 to 10 s (angle in degrees, alpha in deg/s2:
-// TURNTIME's alpha), ki = 0.1 x kp. Pure.
-function claudia_rcs_turn_tuning {
-  parameter angle, alpha.
-  local t is 2.
-  if alpha > 0 {
-    set t to min(10, max(2, 0.6 * sqrt(max(0, angle) / alpha))).
-  }
-  local kp is 1 / t.
-  return lexicon("t", t, "kp", kp, "ki", 0.1 * kp).
-}
-
-// kOS's own steering settings: what the override puts back.
+// kOS's own steering settings: what a burst turn's tuning gives back.
 function claudia_rcs_default_tuning {
   return lexicon("t", 2, "kp", 1, "ki", 0.1).
-}
-
-// Whether a claudia_rcs_decide reason is a turn the override applies to: not translating, not wheels-only
-// ("no wheel torque" has no wheel turn to speed up), not a Coast hold.
-function claudia_rcs_turn_reason {
-  parameter reason.
-  return reason = "big turn" or reason = "turning" or reason = "falling behind".
 }
 
 // Sets steering manager sm (steeringmanager) to tuning (t, kp, ki) and resets both rate controllers.
@@ -1845,8 +1824,8 @@ function claudia_rcs_restore_tuning {
   claudia_rcs_set_tuning(steeringmanager, claudia_rcs_default_tuning()).
 }
 
-// Switches RCS on or off and reports it (ADDONS:CLAUDIA:RCSSWITCH) with its reason and figures (a
-// lexicon of error_deg, rate_dps, wheels_s with left_s, monoprop with monoprop_max, stopping_s with kp; any may be left out).
+// Switches RCS on or off and reports it (ADDONS:CLAUDIA:RCSSWITCH) with its reason and figures (a lexicon of
+// error_deg, rate_dps, wheels_s with left_s, monoprop with monoprop_max, a burst turn's; any may be left out).
 // Off, whatever the reason, restores kOS's steering defaults.
 function claudia_rcs_switch {
   parameter on, reason, figures.
@@ -1870,9 +1849,10 @@ function claudia_rcs_off {
 }
 
 // One tick of RCS Use, from claudia_tick: turns SAS off if it finds it on (it fights kOS steering and
-// fires RCS through holds), reads kOS state, applies claudia_rcs_decide and reports each switch. TURNTIME
-// is read only when the on-gate is checked, and once per craft (again after it loses parts). Traces to
-// KSP.log at most once a second while RCS is on or the error is over on_deg.
+// fires RCS through holds), reads kOS state, steps a burst turn (#692, BURSTTURN: RCS on only in its two bursts,
+// kOS's steering tuned per phase) or applies claudia_rcs_decide, and reports each switch. TURNPLAN (the wheels'
+// time for this error, #408, and the burst turn) is asked only at the on-gate. Traces to KSP.log at most once a
+// second while RCS is on or the error is over on_deg.
 function claudia_rcs_tick {
   parameter ctx.
   if sas {
@@ -1897,20 +1877,35 @@ function claudia_rcs_tick {
     set ctx:rcs_dry to true.
   }
   set ctx:rcs_within_ut to claudia_within_ut(ctx:rcs_within_ut, steer_on and error < tol:aligned_deg, now).
+  local left_s is choose max(0, ctx:turn_by - now) if ctx:turn_by > 0 else -1.
+  if ctx:rcs_turn:istype("Lexicon") {
+    if steer_on and not ctx:rcs_dry and not ctx:rcs_braking and not claudia_on_ground() {
+      local t is addons:claudia:burstturn(ctx:rcs_turn, lexicon("ut", now, "error", error, "rate", rate, "monoprop", mono:amount,
+        "left_s", left_s, "aligned", claudia_aligned(error, rate, claudia_held_s(ctx:rcs_within_ut, now), tol))).
+      set ctx:rcs_turn to choose 0 if t:done else t.
+      if t:haskey("report") {
+        claudia_rcs_switch(false, "turned", t:report).
+      } else if t:haskey("tuning") {
+        set rcs to t:rcs_on.
+        claudia_rcs_set_tuning(steeringmanager, t:tuning).
+      }
+      return.
+    }
+    // Steering released, the tank dry, braking or landed: RCS reads on, so the rule below switches it off and reports it.
+    set rcs to ctx:rcs_turn:phase <> "settle".
+    claudia_rcs_end_turn(ctx).
+  }
   local gate is steer_on and not rcs and claudia_rcs_gate_due(error, tol:on_deg, ctx:rcs_above, now, ctx:rcs_gate_ut).
   set ctx:rcs_above to error > tol:on_deg.
-  local left_s is -1.
+  local plan is lexicon("wheels_s", -1, "spin_s", 0).
   if gate {
     set ctx:rcs_gate_ut to now.
+    set plan to addons:claudia:turnplan(lexicon("angle", error, "left_s", left_s)).
+    set ctx:rcs_wheels_s to plan:wheels_s.
   }
-  if (gate or ctx:rcs_braking) and ctx:rcs_wheels_parts <> ship:parts:length {
+  if ctx:rcs_braking and ctx:rcs_wheels_parts <> ship:parts:length {
     set ctx:rcs_wheels_s to claudia_wheels_turn_time().
     set ctx:rcs_wheels_parts to ship:parts:length.
-  }
-  if gate {
-    if ctx:turn_by > 0 {
-      set left_s to max(0, ctx:turn_by - now).
-    }
   }
   local monoprop is mono:amount.
   if ctx:rcs_dry {
@@ -1932,15 +1927,9 @@ function claudia_rcs_tick {
       set figures:monoprop to round(mono:amount, 1).
       set figures:monoprop_max to round(mono:capacity, 1).
     }
-    if decided["on"] and claudia_rcs_turn_reason(decided:reason) {
-      // Once per turn, at the switch; left alone until RCS goes off. alpha is the one TURNTIME models with RCS.
-      local turn is addons:claudia:turntime(lexicon("max_stopping_time", 2)).
-      if turn:error = "" {
-        local tuning is claudia_rcs_turn_tuning(error, turn:alpha).
-        claudia_rcs_set_tuning(steeringmanager, tuning).
-        set figures:stopping_s to round(tuning:t, 1).
-        set figures:kp to round(tuning:kp, 3).
-      }
+    if decided["on"] and plan:spin_s > 0 {
+      set ctx:rcs_turn to plan.
+      set figures:coast_dps to round(plan:coast_rate, 2).
     }
     claudia_rcs_switch(decided["on"], decided:reason, figures).
   }
@@ -1953,11 +1942,21 @@ function claudia_rcs_tick {
   }
 }
 
+// Ends a burst turn before its end (steering released, the tank dry, translating) with kOS's steering defaults back.
+function claudia_rcs_end_turn {
+  parameter ctx.
+  if ctx:rcs_turn:istype("Lexicon") {
+    set ctx:rcs_turn to 0.
+    claudia_rcs_restore_tuning().
+  }
+}
+
 // Holds RCS on while code translates (on true) and hands back to the RCS Use rule (on false). While
 // ctx:rcs_translating is set claudia_rcs_tick decides nothing; switching on is reported once, as "translating".
 function claudia_rcs_translate {
   parameter ctx, on.
   set ctx:rcs_translating to on.
+  claudia_rcs_end_turn(ctx).
   if on {
     local monoprop is claudia_monoprop():amount.
     if ctx:rcs_dry {
@@ -1998,8 +1997,9 @@ function claudia_begin {
     "drop_scan", 0,
     "drop_mode", "full",
     // RCS Use (claudia_rcs_tick): turn_by is the UT a turn must be done by (0: no deadline), set around a
-    // turn to a burn; while rcs_translating is true RCS stays on and the rule decides nothing.
+    // turn to a burn; while rcs_translating is true RCS stays on and the rule decides nothing; rcs_turn is a burst turn.
     "turn_by", 0,
+    "rcs_turn", 0,
     "rcs_translating", false,
     "rcs_dry", false,
     "rcs_above", false,

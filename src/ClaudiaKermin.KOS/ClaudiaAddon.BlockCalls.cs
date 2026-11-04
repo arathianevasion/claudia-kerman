@@ -46,6 +46,10 @@ namespace ClaudiaKermin.KOS
                 "Core Library only (deorbit, return): where the orbit as it is now, or the one given as orbit_sma, orbit_ecc, ..., comes down, held retrograde; lexicon error, lat, lng, landing_ut, error_km"));
             AddSuffix("TURNTIME", new OneArgsSuffix<Lexicon, Lexicon>(TurnTime,
                 "Core Library only (a block that turns to a burn): the time to leave for a 190 degree turn on the wheels and RCS (if the craft has monoprop, on or off), given max_stopping_time; lexicon error, turn_time, turn_s, top_rate, and wheels_turn_time, wheels_turn_s on the wheels alone (-1: no wheel torque)"));
+            AddSuffix("TURNPLAN", new OneArgsSuffix<Lexicon, Lexicon>(TurnPlanCall,
+                "Core Library only (RCS Use, once per turn): the burst turn through angle (deg) with left_s to the deadline (-1: none), or after a stop burst with corrections taken; lexicon error, rcs, wheels_s, coast_rate, spin_s, coast_s, stop_s, stop_deg, wheels_deg, turn_s, alpha, and spin, coast, stop (kOS's t, kp, ki)"));
+            AddSuffix("BURSTTURN", new TwoArgsSuffix<Lexicon, Lexicon, Lexicon>(BurstTurnCall,
+                "Core Library only (RCS Use, each tick of a burst turn): the turn (TURNPLAN's plan, then this call's answer) stepped on ut, error, rate, left_s, aligned, monoprop; lexicon phase, rcs_on, done, and tuning (t, kp, ki) as a phase begins, report as the wheels take over"));
             AddSuffix("EJECTIONBURN", new OneArgsSuffix<Lexicon, Lexicon>(EjectionBurn,
                 "Core Library only (transfer_to): the cheapest departure to target (a moon's name) arriving at target_pe, or to an orbit (target_sma, target_ecc, ...; mode rendezvous or intercept), capture true or false, within one synodic period from earliest_ut or window (to latest_ut, refusing over max_dv); lexicon error, ut, prograde, normal, radial, dv, arrival_dv, encounter_ut, arrival_ut, target_pe_actual, ..."));
             AddSuffix("RETURNBURN", new OneArgsSuffix<Lexicon, Lexicon>(ReturnBurn,
@@ -407,6 +411,55 @@ namespace ClaudiaKermin.KOS
                             : string.Format(CultureInfo.InvariantCulture, "turn_time {0:0.0} s, turn {1:0.0} s", turn["wheels_turn_time"], turn["wheels_turn_s"]))
                     : turn["error"],
                 craft.WheelPitch, craft.WheelYaw, craft.RcsPitch, craft.RcsYaw, craft.RcsUsable ? "" : " (no monoprop)", craft.MoiPitch, craft.MoiYaw));
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:TURNPLAN</c> (#692, ADR 0014): RCS Use's burst turn and correction rule (<see cref="TurnPlan.Call"/>) on
+        /// the torque and moment of inertia read now. Called at the on-gate (at most once a second) and after each stop burst, so its
+        /// time is logged at most once a second (guardrail 6).
+        /// </summary>
+        private Lexicon TurnPlanCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> plan = null;
+            var answer = Guarded("TURNPLAN", () =>
+            {
+                plan = TurnPlan.Call(KosValues.ToDictionary(input), TurnCraftReader.Read(shared.Vessel));
+                return KosValues.FromPlain(plan);
+            }, () => (string)plan["error"] != "" ? (string)plan["error"] : string.Format(CultureInfo.InvariantCulture,
+                "rcs {0}, wheels {1:0.0} s; coast {2:0.00} deg/s, bursts {3:0.0} s, coast {4:0.0} s, stop at {5:0.0} deg, turn {6:0.0} s",
+                plan["rcs"], plan["wheels_s"], plan["coast_rate"], plan["spin_s"], plan["coast_s"], plan["stop_deg"], plan["turn_s"]), 1);
+            if (plan != null) return (Lexicon)answer;
+            // RCS Use reads every key: a failure (logged by Guarded) plans no burst, and wheels that are never late (0 s), so it
+            // brings no continuous RCS; a big turn then gets RCS on as before the burst turn.
+            var none = TurnPlan.Call(null, new TurnCraft());
+            none["wheels_s"] = 0.0;
+            return (Lexicon)KosValues.FromPlain(none);
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:BURSTTURN</c> (#692, ADR 0014): one tick of a burst turn (<see cref="TurnPlan.Step"/>), with the
+        /// orbit's energy and speed read now; the craft's torque is read only when a stop burst ends. Called every tick of a
+        /// turn, so its time is logged at most once a second (guardrail 6). A failure ends the turn with RCS off.
+        /// </summary>
+        private Lexicon BurstTurnCall(Lexicon turn, Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> step = null;
+            var answer = Guarded("BURSTTURN", () =>
+            {
+                var vessel = shared.Vessel;
+                var now = KosValues.ToDictionary(input);
+                now["energy"] = vessel.orbit.orbitalEnergy;
+                now["speed"] = vessel.obt_speed;
+                step = TurnPlan.Step(KosValues.ToDictionary(turn), now, () => TurnCraftReader.Read(vessel));
+                return KosValues.FromPlain(step);
+            }, () => string.Format(CultureInfo.InvariantCulture, "{0}, RCS {1}{2}", step["phase"], (bool)step["rcs_on"] ? "on" : "off",
+                (bool)step["done"] ? ", done" : ""), 1);
+            if (step != null) return (Lexicon)answer;
+            return (Lexicon)KosValues.FromPlain(new System.Collections.Generic.Dictionary<string, object>
+            {
+                { "phase", "settle" }, { "done", true }, { "rcs_on", false },
+                { "tuning", new System.Collections.Generic.Dictionary<string, object> { { "t", 2.0 }, { "kp", 1.0 }, { "ki", 0.1 } } },
+            });
         }
 
         private Lexicon DeorbitBurn(Lexicon input)
