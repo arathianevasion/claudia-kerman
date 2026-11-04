@@ -79,33 +79,12 @@ function deorbit_separate_unreadable {
   return "".
 }
 
-// claudia_drop_plan's lexicon for the decouplers that fire at stage number stage_num (kOS's
-// PART:STAGE, as reentry's jettison_stage) and the parts leaving with them.
-function deorbit_stage_drop_plan {
-  parameter stage_num.
-  local plan is claudia_drop_plan(list()).
-  for p in ship:parts {
-    if claudia_is_decoupler(p) and claudia_part_kind(p) <> "shield" and p:stage = stage_num {
-      local with is claudia_dropped_with(p).
-      if claudia_drop_holds_core(with) {
-        set plan:error to "stage " + stage_num + "'s " + p:name + " would drop the part running the script".
-        return plan.
-      }
-      claudia_drop_add(plan, p, with).
-    }
-  }
-  if plan:decouplers:length = 0 {
-    set plan:error to "no decoupler fires at stage " + stage_num.
-  }
-  return plan.
-}
-
 // What separate drops (claudia_drop_plan's lexicon): nothing for "none", a stage's decouplers for a
 // number, else the named parts. Fires nothing.
 function deorbit_separation {
   parameter sep.
   if sep:istype("Scalar") {
-    return deorbit_stage_drop_plan(sep).
+    return claudia_stage_drop_plan(sep).
   }
   if sep:istype("String") {
     if sep = "none" {
