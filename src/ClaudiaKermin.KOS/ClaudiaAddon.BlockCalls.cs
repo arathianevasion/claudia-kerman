@@ -68,6 +68,29 @@ namespace ClaudiaKermin.KOS
                 "Core Library only (land, each braking tick): the path guard on alt against path_alt, and near the site the straight-down fallback; lexicon verdict (fly, vertical or abort), error, why, over, and the fallback's al, cr, up, vv, ..."));
             AddSuffix("KEEPCLEAR", new OneArgsSuffix<Lexicon, Lexicon>(KeepClearCall,
                 "Core Library only (land): the site lat, lng moved clear_m clear of keep_lat, keep_lng (straight away, else toward ahead_lat, ahead_lng) by up to max_divert on a body of radius; lexicon lat, lng, dist, moved"));
+            AddSuffix("BURNWORTH", new OneArgsSuffix<Lexicon, Lexicon>(BurnWorthCall,
+                "Core Library only (circularize, tune_pe): whether a burn is worth its turn when the tolerance was defaulted, and tune_pe's default tolerance; lexicon safe_height, tolerance, skip, note"));
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:BURNWORTH</c> (#715, ADR 0014): circularize's and tune_pe's skip rule (<see cref="BurnWorth.Call"/>), pure.</summary>
+        private Lexicon BurnWorthCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> worth = null;
+            return (Lexicon)Guarded("BURNWORTH", () =>
+            {
+                // The craft's periapsis and body are read live, unless the block names its own (the hint's encounter body).
+                var ask = KosValues.ToDictionary(input);
+                var vessel = shared.Vessel;
+                if (!ask.ContainsKey("body"))
+                {
+                    ask["body"] = vessel.mainBody.bodyName;
+                    ask["has_atm"] = vessel.mainBody.atmosphere;
+                    ask["atm_height"] = vessel.mainBody.atmosphereDepth;
+                    ask["pe"] = vessel.orbit.PeA;
+                }
+                worth = BurnWorth.Call(ask);
+                return KosValues.FromPlain(worth);
+            }, () => (bool)worth["skip"] ? (string)worth["note"] : string.Format(CultureInfo.InvariantCulture, "no skip, tolerance {0:0.###}", worth["tolerance"]));
         }
 
         /// <summary><c>ADDONS:CLAUDIA:KEEPCLEAR</c> (#713, ADR 0014): land's keep-clear decision (<see cref="KeepClear.Call"/>), pure.</summary>

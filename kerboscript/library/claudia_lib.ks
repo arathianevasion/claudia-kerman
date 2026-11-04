@@ -2148,6 +2148,15 @@ function claudia_finish {
   return result.
 }
 
+// A burn skipped as not worth its turn (#715): the note in the result and the trace, and success.
+function claudia_skip {
+  parameter ctx, worth, extra.
+  set extra:skipped to true.
+  set extra:skip_note to worth:note.
+  addons:claudia:blocktrace(ctx:block, lexicon("phase", "skip", "note", worth:note)).
+  return claudia_finish(ctx, true, "", extra).
+}
+
 // ---- Flying: shared by launch, ascend, land and exec_node ----
 
 // Degrees wrapped into [0, 360).
