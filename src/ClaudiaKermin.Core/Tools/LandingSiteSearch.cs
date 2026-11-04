@@ -33,6 +33,12 @@ namespace ClaudiaKermin.Core.Tools
         public SearchDeadline Deadline;
         /// <summary>Sites already tried (#528: <c>land</c>'s, refused for terrain), as latitude and longitude, degrees: no site within <see cref="LandingSiteSearch.MinSeparationDeg"/> of one.</summary>
         public List<double[]> Exclude = new List<double[]>();
+        /// <summary>A Point of Interest to land beside (#713): sites only in the ring <see cref="PoiMinM"/> to <see cref="PoiMaxM"/> from it (<see cref="LandingSiteSearch.Ring"/>).</summary>
+        public bool HasPoi;
+        public double PoiLatitude;
+        public double PoiLongitude;
+        public double PoiMinM = LandingSiteSearch.PoiMinM;
+        public double PoiMaxM = LandingSiteSearch.PoiMaxM;
     }
 
     internal sealed class LandingSite
@@ -58,6 +64,9 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The landing's predicted delta-v (deorbit, correction and descent) and the Descent Shape it flies (#511); NaN without a craft.</summary>
         public double PredictedDv = double.NaN;
         public double DescentShape = double.NaN;
+        /// <summary>With a Point of Interest (#713): the site's distance from it, m, and its bearing from it, degrees; NaN without one.</summary>
+        public double FromPoiM = double.NaN;
+        public double BearingFromPoi = double.NaN;
     }
 
     internal sealed class LandingSiteResult
@@ -118,6 +127,155 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The spacing of the whole-body biome survey for a site off the track (#545), degrees of arc, and the most of its points whose slope is measured.</summary>
         internal const double BiomeGridDeg = 4;
         private const int MaxOffTrackChecks = 2 * SlopeBatch;
+
+        /// <summary>
+        /// The ring round a Point of Interest a site may be in (#713), m. Inside: an overshoot or a tip can't reach the object, as
+        /// land touches down within about 100 m of a site it flies to (its divert) and keeps the site this far clear. Outside: a
+        /// Kerbal walks there on EVA.
+        /// </summary>
+        public const double PoiMinM = 150;
+        public const double PoiMaxM = 1500;
+        /// <summary>The ring's circles and the points on each (every other circle turned half a step), so at most 96 points are measured.</summary>
+        private const int RingCircles = 6;
+        private const int RingBearings = 16;
+        /// <summary>A ring site lies at least this much of <see cref="LandingSiteQuery.PoiMinM"/> across either pass's track from the Point of Interest, so a miss along the track passes it (#662's 0.7).</summary>
+        public const double RingAcrossShare = 0.7;
+
+        /// <summary>
+        /// The ring search beside a Point of Interest (#713): the flattest sites within the query's slope limit from
+        /// <see cref="LandingSiteQuery.PoiMinM"/> to <see cref="LandingSiteQuery.PoiMaxM"/> of it, flattest first (to the degree),
+        /// then nearest the ring's inner edge, each at least <see cref="RingAcrossShare"/> of the minimum across the track of either
+        /// pass over the point from it, at least the minimum apart, and kept only if <c>land</c>'s pass search has a pass to it
+        /// (<see cref="Fly"/>, as <see cref="Find"/> keeps track sites). Never the point itself: every site is at least the minimum
+        /// from it. A site's <see cref="LandingSite.PassUt"/> is its touchdown.
+        /// </summary>
+        public static LandingSiteResult Ring(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, IPlanningBody api)
+        {
+            var result = new LandingSiteResult();
+            if (body.AtmosphereHeight > 0)
+            {
+                result.Error = body.Name + " has an atmosphere, and find_landing_site is airless-only for now";
+                return result;
+            }
+            if (!orbit.Closed || orbit.Period <= 0)
+            {
+                result.Error = "the craft's orbit round " + body.Name + " is not closed, so it has no passes to land from";
+                return result;
+            }
+            result.WindowHours = Math.Max(0.05, Math.Min(MaxWindowHours, query.WithinHours));
+            var deadline = query.Deadline ?? SearchDeadline.None;
+            var points = RingPoints(body, orbit.Inclination, query);
+            result.Candidates = points.Count;
+            result.AfterBiome = result.AfterDaylight = points.Count;
+            var measured = new List<LandingSite>();
+            var unreadable = 0;
+            for (var at = 0; at < points.Count; at += SlopeBatch)
+            {
+                if (deadline.Passed)
+                {
+                    result.OutOfTime = true;
+                    result.Tried = at;
+                    result.NearPoints = points.Count;
+                    break;
+                }
+                var batch = points.Skip(at).Take(SlopeBatch).ToList();
+                var cross = new List<SiteSample>();
+                foreach (var p in batch) cross.AddRange(Cross(body, p.Sample));
+                api.Survey(body.Name, cross, SiteFacts.Altitude | SiteFacts.Biome);
+                for (var i = 0; i < batch.Count; i++)
+                {
+                    var five = cross.Skip(i * 5).Take(5).ToList();
+                    if (five.Any(c => double.IsNaN(c.Altitude)))
+                    {
+                        unreadable++;
+                        continue;
+                    }
+                    var slope = Slope(five);
+                    if (slope > query.MaxSlopeDeg) continue;
+                    measured.Add(new LandingSite
+                    {
+                        Latitude = batch[i].Sample.Latitude, Longitude = batch[i].Sample.Longitude, Biome = five[0].Biome, Altitude = five[0].Altitude,
+                        SlopeDeg = slope, FromPoiM = batch[i].FromNear, BearingFromPoi = batch[i].Bearing, PassUt = double.PositiveInfinity,
+                    });
+                }
+            }
+            if (points.Count > 0 && unreadable == points.Count)
+            {
+                result.Error = "the terrain on " + body.Name + " could not be read";
+                return result;
+            }
+            result.AfterSlope = measured.Count;
+            var minApart = query.PoiMinM / body.Radius * 180 / Math.PI;
+            foreach (var site in measured.OrderBy(m => Math.Floor(m.SlopeDeg)).ThenBy(m => m.FromPoiM))
+            {
+                if (result.Sites.Count >= query.MaxSites) break;
+                if (deadline.Passed)
+                {
+                    result.OutOfTime = true;
+                    break;
+                }
+                if (result.Sites.Any(s => ArcDegrees(s.Latitude, s.Longitude, site.Latitude, site.Longitude) < minApart)) continue;
+                var pass = Fly(body, orbit, now, query, site, api);
+                if (pass.OutOfTime)
+                {
+                    result.OutOfTime = true;
+                    break;
+                }
+                if (pass.Error != null)
+                {
+                    result.Unflyable++;
+                    continue;
+                }
+                site.PassUt = site.LandingUt;
+                result.Sites.Add(site);
+            }
+            // The sun at each site's touchdown, in one read.
+            var sun = result.Sites.Select(s => new SiteSample { Latitude = s.Latitude, Longitude = s.Longitude, Ut = s.LandingUt }).ToList();
+            if (sun.Count > 0) api.Survey(body.Name, sun, SiteFacts.Sun);
+            for (var i = 0; i < sun.Count; i++) result.Sites[i].SunElevationDeg = sun[i].SunElevation;
+            return result;
+        }
+
+        /// <summary>
+        /// The ring's points: <see cref="RingCircles"/> circles from the query's minimum to its maximum, <see cref="RingBearings"/>
+        /// a circle, less those within <see cref="RingAcrossShare"/> of the minimum of the track of either pass over the point (an
+        /// orbit of <paramref name="inclination"/> degrees crosses its latitude heading h or 180 - h from north). FromNear holds the
+        /// distance from the point, m.
+        /// </summary>
+        private static List<Candidate> RingPoints(SnapshotBody body, double inclination, LandingSiteQuery query)
+        {
+            var lat = query.PoiLatitude;
+            var sinH = Math.Max(-1, Math.Min(1, Math.Cos(inclination * Math.PI / 180) / Math.Max(0.0001, Math.Cos(lat * Math.PI / 180))));
+            var heading = Math.Asin(sinH) * 180 / Math.PI;
+            var points = new List<Candidate>();
+            for (var c = 0; c < RingCircles; c++)
+            {
+                var distance = query.PoiMinM + (query.PoiMaxM - query.PoiMinM) * c / (RingCircles - 1);
+                for (var b = 0; b < RingBearings; b++)
+                {
+                    var bearing = (b + (c % 2) * 0.5) * 360.0 / RingBearings;
+                    var across = distance * Math.Min(Math.Abs(Math.Sin((bearing - heading) * Math.PI / 180)),
+                        Math.Abs(Math.Sin((bearing - (180 - heading)) * Math.PI / 180)));
+                    if (across < RingAcrossShare * query.PoiMinM) continue;
+                    double siteLat, siteLon;
+                    Destination(lat, query.PoiLongitude, bearing, distance / body.Radius * 180 / Math.PI, out siteLat, out siteLon);
+                    points.Add(new Candidate { Sample = new SiteSample { Latitude = siteLat, Longitude = siteLon }, FromNear = distance, Bearing = bearing });
+                }
+            }
+            return points;
+        }
+
+        /// <summary>The point <paramref name="arc"/> degrees of arc from (lat, lon) on <paramref name="bearing"/> degrees from north.</summary>
+        internal static void Destination(double lat, double lon, double bearing, double arc, out double toLat, out double toLon)
+        {
+            const double Rad = Math.PI / 180;
+            var p1 = lat * Rad;
+            var d = arc * Rad;
+            var b = bearing * Rad;
+            var p2 = Math.Asin(Math.Sin(p1) * Math.Cos(d) + Math.Cos(p1) * Math.Sin(d) * Math.Cos(b));
+            toLat = p2 / Rad;
+            toLon = Wrap180(lon + Math.Atan2(Math.Sin(b) * Math.Sin(d) * Math.Cos(p1), Math.Cos(d) - Math.Sin(p1) * Math.Sin(p2)) / Rad);
+        }
 
         public static LandingSiteResult Find(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, IPlanningBody api)
         {
@@ -381,6 +539,8 @@ namespace ClaudiaKermin.Core.Tools
         {
             public SiteSample Sample;
             public double FromNear = double.NaN;
+            /// <summary>A ring point's bearing from the Point of Interest, degrees (#713).</summary>
+            public double Bearing = double.NaN;
         }
 
         private sealed class TrackPoint
