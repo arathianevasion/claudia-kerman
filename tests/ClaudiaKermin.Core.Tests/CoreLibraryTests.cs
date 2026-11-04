@@ -43,8 +43,8 @@ namespace ClaudiaKermin.Core.Tests
         [Fact]
         public void NoLocalParameterOrSetTargetInTheBundleOrATestScriptSharesANameWithACoreLibraryFunction()
         {
-            // The functions every file can see: the first-party library and kslib.
-            var global = CoreLibrary.Files.Concat(CoreLibrary.Vendored).ToList();
+            // The functions every file can see: the Core Library's.
+            var global = CoreLibrary.Files;
             var functions = new System.Collections.Generic.HashSet<string>(global.SelectMany(f => KosBuiltinNames.FunctionNames(f.Source)));
             Assert.Contains("deorbit", functions);
             var bad = new System.Collections.Generic.List<string>();
@@ -110,6 +110,17 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("function claudia_finish {", bundle);
             Assert.Contains("function exec_node {", bundle);
             Assert.Single(Regex.Matches(bundle, "(?m)^\\s*@lazyglobal"));
+        }
+
+        // ADR 0007: the bundle's tail is the Core Library alone. Removing the vendored scripts (#729) left it as it was.
+        [Fact]
+        public void TheBundleTailIsTheCoreLibraryAloneAfterTheMissionScript()
+        {
+            var tail = "// ---- The Core Library, bundled by Claudia Kermin ----\n" + string.Concat(CoreLibrary.Files
+                .SelectMany(f => f.Source.Split('\n'))
+                .Where(line => !Regex.IsMatch(line, "^\\s*@(lazyglobal|clobberbuiltins)", RegexOptions.IgnoreCase))
+                .Select(line => line + "\n"));
+            Assert.EndsWith("\n\n" + tail, CoreLibrary.Bundle(Script));
         }
 
         [Fact]

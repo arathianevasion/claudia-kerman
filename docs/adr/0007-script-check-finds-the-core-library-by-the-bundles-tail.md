@@ -18,3 +18,5 @@ The cost:
 The calls only read the game, like the Planning Tools beneath them, so there is no runtime gate on them: the player's terminal may call them too.
 
 Decided in #281, from spec #265.
+
+**Dated note, 2026-11-04 (#729).** The tail is the Core Library alone. #475 removed the vendored KSLib script, and with it the `kerboscript/kslib` glob, `CoreLibrary.Vendored` and the vendored half of the bundle went too; the bundle's text is unchanged, since the vendored half was empty. Where this ADR says "the Core Library and the vendored scripts", read "the Core Library". The removed script is recoverable from 5319e54 if one is ever needed again.

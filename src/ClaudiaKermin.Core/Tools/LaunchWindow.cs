@@ -67,7 +67,7 @@ namespace ClaudiaKermin.Core.Tools
 
         /// <summary>
         /// The compass heading from a pad at <paramref name="latitude"/> into a plane of inclination <paramref name="inc"/> (the size): the
-        /// inertial azimuth asin(cos i / cos lat), the body's eastward turning at the pad taken off the orbital velocity (what KSLib's LAZcalc did before #475).
+        /// inertial azimuth asin(cos i / cos lat), the body's eastward turning at the pad taken off the orbital velocity.
         /// </summary>
         public static double HeadingInto(SnapshotBody body, double latitude, double inc, bool north, double targetAp)
         {

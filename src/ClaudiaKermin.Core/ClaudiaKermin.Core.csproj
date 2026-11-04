@@ -23,8 +23,6 @@
   <!-- The Core Library ships inside the core, so bundling a Mission Script reads no files. -->
   <ItemGroup>
     <EmbeddedResource Include="$(RepoRoot)kerboscript/library/*.ks" LogicalName="ClaudiaKermin.Core.library.%(Filename).ks" />
-    <!-- Third-party scripts bundled as they are (KSLib, MIT): in the compile unit, not Building Blocks. -->
-    <EmbeddedResource Include="$(RepoRoot)kerboscript/kslib/*.ks" LogicalName="ClaudiaKermin.Core.kslib.%(Filename).ks" />
     <!-- The mod's own program on the Target Vessel while dock flies (#456): not in the bundle, not in Claudia's docs. -->
     <EmbeddedResource Include="$(RepoRoot)kerboscript/dock_hold/dock_hold.ks" LogicalName="ClaudiaKermin.Core.dock_hold.ks" />
   </ItemGroup>

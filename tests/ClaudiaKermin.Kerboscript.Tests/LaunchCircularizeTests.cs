@@ -229,15 +229,13 @@ namespace ClaudiaKermin.Kerboscript.Tests
 
         // ---- launch: heading and the plane ----
 
-        // The heading is Core's (ADDONS:CLAUDIA:LAUNCHHEADING, #475), its parity with KSLib's LAZcalc checked before the
-        // Kerboscript heading was deleted. launch flies it in game (launch_orbit). No KSLib script is bundled any more.
+        // The heading is Core's (ADDONS:CLAUDIA:LAUNCHHEADING, #475). launch flies it in game (launch_orbit).
         [Fact]
-        public void The_heading_comes_from_Core_and_no_KSLib_script_is_loaded()
+        public void The_heading_comes_from_Core()
         {
             Assert.Contains("addons:claudia:launchheading(", CoreLibrary.Files.Single(f => f.Name == "launch").Source);
             Assert.DoesNotContain("LAZcalc", CoreLibrary.Bundle(""));
             Assert.DoesNotContain("LAZcalc", CoreLibrary.FullDocs() + CoreLibrary.Summaries());
-            Assert.Empty(CoreLibrary.Vendored);
         }
 
         // The window itself is ADDONS:CLAUDIA:LAUNCHWINDOW's (C#, LaunchWindowTests); launch_apply_window takes its lexicon into the plan.
