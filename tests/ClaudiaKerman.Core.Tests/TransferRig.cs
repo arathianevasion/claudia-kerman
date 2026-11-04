@@ -27,6 +27,10 @@ namespace ClaudiaKerman.Core.Tests
         public double BurnError { get; set; }
         /// <summary>m/s every burn is left short by, as exec_node leaves its residual (0: flown exactly).</summary>
         public double Residual { get; set; }
+        /// <summary>m/s every burn but the ejection is flown long (or short, below 0), as exec_node's execution error (#747).</summary>
+        public double CorrectionError { get; set; }
+        /// <summary>The body each burn in <see cref="Burns"/> was flown round.</summary>
+        public readonly List<string> BurnBodies = new List<string>();
 
         private TransferRig(string body, double altitude, double ut, double inclination = 0)
         {
@@ -77,9 +81,11 @@ namespace ClaudiaKerman.Core.Tests
             var up = Vec3.Cross(r, v).Normalized;
             var burn = along * prograde + up * normal + Vec3.Cross(along, up) * radial;
             if (kind == "ejection") burn = burn * (1 + BurnError);
-            burn = burn * (Math.Max(0, burn.Length - Residual) / burn.Length);
+            else if (burn.Length > 0) burn = burn * (Math.Max(0, burn.Length + CorrectionError) / burn.Length);
+            if (burn.Length > 0) burn = burn * (Math.Max(0, burn.Length - Residual) / burn.Length);
             Orbit = Conic.FromState(Body.Gm, r, v + burn, ut);
             Burns.Add(new KeyValuePair<string, double>(kind, burn.Length));
+            BurnBodies.Add(Body.Name);
             return burn.Length;
         }
 
