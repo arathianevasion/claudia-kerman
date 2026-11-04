@@ -20,6 +20,9 @@ namespace ClaudiaKermin.Core.Missions
             public string TargetChange = "";
         }
 
+        /// <summary>The start form's goal and pick as it last reported them (#664); null until it has.</summary>
+        private StartFormChanged _form;
+
         private GameSnapshot _targetFactsFrom;
         private TargetFacts _targetFacts = new TargetFacts();
 

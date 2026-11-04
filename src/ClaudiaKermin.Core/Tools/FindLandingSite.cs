@@ -43,14 +43,14 @@ namespace ClaudiaKermin.Core.Tools
             {
                 return "Up to 3 landing sites on an airless body the craft's orbit passes over in a window, from the live terrain, biome "
                     + "and sun: latitude and longitude (degrees), biome, terrain altitude (m), slope (degrees), the UT the track passes over it, the "
-                    + "sun's elevation then, and landing_ut, when land would touch down there (correction_dv: its burn onto the site, m/s). Only "
+                    + "sun's elevation then, and landing_ut, when land would touch down (correction_dv: its burn onto the site, m/s), predicted_dv (m/s land uses from the pass; prefer one the stage fits); descent_shape (small steep and safe, large cheap). Only "
                     + "sites land can fly come back. Filters: biome, daylight (default the Mission Settings), slope (default 5 degrees), a "
                     + "window in hours (default the larger of the time cap and one turn of the body, at most 48), a near point, or a poi. The "
-                    + "craft must orbit the body. Its block is land: call it to see a biome or a goal's landing can be flown, then pass land "
-                    + "the biome with the site as near (or the site as its target), and any within_hours or max_correction_dv you gave. "
+                    + "craft must orbit the body. Its block is land: call it to see a biome or goal can be flown, then pass land "
+                    + "the biome with the site as near (or as its target), and any within_hours or max_correction_dv you gave. "
                     + "plane_changes, for near (else the first site or the biome's): change_orbit (set_inc) calls with plane_change_dv, "
                     + "landing_dv and total_dv: cheapest and soonest when land can't reach it, else one only if it saves 20 m/s net; fly it as "
-                    + "its own step before land, budgeting its total_dv. Don't call it for land's target \"any\" or a body with air (deorbit aims those).";
+                    + "a step before land, budgeting its total_dv. Don't call it for land's target \"any\" or a body with air (deorbit aims those).";
             }
         }
 

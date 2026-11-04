@@ -471,6 +471,45 @@ namespace ClaudiaKermin.Core.Tests
             Assert.True(_tools.Run("plan_transfer", "{\"target\":\"Mun\",\"target_pe\":30000}", snapshot, new NoPlanningBody()).IsError);
         }
 
+        private static GameSnapshot Pad()
+        {
+            var snapshot = Parked();
+            snapshot.Orbit = null;
+            snapshot.Situation = "PRELAUNCH";
+            return snapshot;
+        }
+
+        // #690: from the pad, Minmus's rows are a launch into its plane at the next launch window, then the transfer in that plane.
+        [Fact]
+        public void From_the_pad_Minmus_launches_into_its_plane_and_waits_under_a_day()
+        {
+            var pad = Pad();
+            var found = Find("Minmus", pad);
+            Assert.NotNull(found.Launch);
+            Assert.True(found.Launch.WaitSeconds < Day, "launch wait " + found.Launch.WaitSeconds);
+            Assert.Same(found.Soonest, found.Optimal);
+            Assert.Equal(0, found.Optimal.PlaneDv);
+            Assert.Equal(found.Launch.Ut + WindowWaits.LaunchLeadS, found.Optimal.DepartureUt, 3);
+            Assert.True(found.Optimal.DepartureUt - pad.Ut < Day);
+            Assert.True(Math.Abs(found.Launch.Inclination) > 5);
+            // Never a pad Due Time past the launch window: the window less the lead is the launch itself.
+            var due = WindowWaits.DueTime(found.Optimal.DepartureUt, pad.Ut);
+            Assert.True(due == null || due.Value <= found.Launch.Ut + 1e-6);
+
+            var row = Run("{\"target\":\"Minmus\",\"target_pe\":30000}", pad).GetProperty("launch");
+            Assert.Equal(found.Launch.Ut, row.GetProperty("at_ut").GetDouble(), 0);
+            Assert.Equal(found.Launch.Inclination, row.GetProperty("target_inc").GetDouble(), 1);
+        }
+
+        // From orbit nothing changes, and the Mun (in the equator's plane) is the same from the pad as it was.
+        [Fact]
+        public void From_orbit_and_to_the_Mun_the_rows_do_not_assume_a_launch()
+        {
+            Assert.Null(Find("Minmus").Launch);
+            Assert.Null(Find("Mun", Pad()).Launch);
+            Assert.False(Run("{\"target\":\"Minmus\",\"target_pe\":30000}", Parked()).GetProperty("windows").TryGetProperty("launch", out _));
+        }
+
         // The Mission request's stage table rows are plan_transfer's answers, so Minmus's carries its windows.
         [Fact]
         public void The_stage_table_row_for_Minmus_carries_its_windows()

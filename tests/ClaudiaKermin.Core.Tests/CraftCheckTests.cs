@@ -473,6 +473,71 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("Fly to Minmus.", UserFacts(transport.Requests[1]));
         }
 
+        private static GameSnapshot CraftWithTug()
+        {
+            var craft = Craft();
+            craft.Vessels.Add(new SnapshotVessel { Id = 9, Name = "Tug", Body = "Kerbin", Situation = "ORBITING" });
+            return craft;
+        }
+
+        [Fact]
+        public void ChangingTheGoalInTheFormMakesADoneCheckStaleWithTheGoalReason()
+        {
+            var mission = Checked(Replies("craft-check-pass.sse"), CraftWithTug());
+            mission.Send(new StartFormChanged(Goal, TargetPick.Auto));
+            Assert.False(mission.View.CraftCheck.Stale);
+
+            mission.Send(new StartFormChanged("Fly to Minmus.", TargetPick.Auto));
+            Assert.True(mission.View.CraftCheck.Stale);
+            Assert.Equal("Stale: the Mission Goal changed since this check. Check again.", mission.View.CraftCheck.StaleReason);
+        }
+
+        [Fact]
+        public void ChangingTheTargetVesselInTheFormMakesADoneCheckStaleWithTheTargetReason()
+        {
+            // The goal names Tug, so Auto checks against it; the player then clears the target in the form.
+            const string dock = "Rendezvous with Tug.";
+            var mission = Control(Replies("craft-check-pass.sse"));
+            mission.Send(CraftWithTug());
+            mission.Send(new RunCraftCheck(dock, Cap, Model));
+            DrainUntil(mission, v => v.CraftCheck.State != CraftCheckState.Running);
+            mission.Send(new StartFormChanged(dock, TargetPick.Auto));
+            Assert.False(mission.View.CraftCheck.Stale);
+
+            mission.Send(new StartFormChanged(dock, TargetPick.Cleared));
+            Assert.True(mission.View.CraftCheck.Stale);
+            Assert.Equal("Stale: the Target Vessel changed since this check. Check again.", mission.View.CraftCheck.StaleReason);
+        }
+
+        [Fact]
+        public void AStaleFailFromTheFormDoesNotBlockStartAndStartChecksAgain()
+        {
+            var transport = Replies("craft-check-fail.sse", "craft-check-pass.sse");
+            var mission = Checked(transport, CraftWithTug());
+            Assert.False(mission.View.CraftCheck.StartAllowed);
+
+            mission.Send(new StartFormChanged("Fly to Minmus.", TargetPick.Auto));
+            Assert.True(mission.View.CraftCheck.Stale);
+            Assert.True(mission.View.CraftCheck.StartAllowed);
+
+            mission.Send(new StartMission("Fly to Minmus.", Cap, Model));
+            Assert.Equal(CraftCheckState.Running, mission.View.CraftCheck.State);
+            DrainUntil(mission, v => v.Stage == MissionStage.WaitingForFlight);
+            Assert.Equal(2, transport.Requests.Count);
+            Assert.Contains("Fly to Minmus.", UserFacts(transport.Requests[1]));
+        }
+
+        [Fact]
+        public void AnUnchangedFormLeavesTheCheckCurrentAndStartAsToday()
+        {
+            var mission = Checked(Replies("craft-check-fail.sse"), CraftWithTug());
+            mission.Send(new StartFormChanged("  " + Goal + " ", TargetPick.Auto));
+            var check = mission.View.CraftCheck;
+            Assert.False(check.Stale);
+            Assert.Equal("", check.StaleReason);
+            Assert.False(check.StartAllowed);
+        }
+
         [Fact]
         public void ClaudiasProcessorDefaultsToTheOneNearestTheRootAndThePlayerCanChooseAnother()
         {
