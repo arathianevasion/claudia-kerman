@@ -25,7 +25,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [Fact]
         public void Launch_options_take_the_spec_defaults()
         {
-            Assert.Equal(new[] { "now", "auto", "0", "lib_lazcalc", "60", "0.45", "5", "none", "body", "body", "body", "auto", "" },
+            Assert.Equal(new[] { "now", "auto", "0", "into_inc", "60", "0.45", "5", "none", "body", "body", "body", "auto", "" },
                 Run("local c is claudia_options(lexicon(), launch_defaults(), \"auto\"). local o is c:opt.\n"
                     + "print o:launch_at. print o:target_ap. print o:target_inc. print o:heading. print o:turn_start_speed. print o:turn_shape.\n"
                     + "print o:max_aoa. print o:throttle_max_q. print o:g. print o:atm_height. print o:surface_pressure. print o:max_duration. print c:error."));
@@ -37,7 +37,9 @@ namespace ClaudiaKermin.Kerboscript.Tests
         // A string launch_at other than "now" is a body's name, looked up when launch plans the wait (launch_when), not refused here.
         [InlineData("lexicon(\"launch_at\", \"Minmus\")", "")]
         [InlineData("lexicon(\"target_ap\", \"high\")", "target_ap must be 'auto' or m, not 'high'")]
-        [InlineData("lexicon(\"heading\", \"east\")", "heading must be 'lib_lazcalc' or degrees, not 'east'")]
+        [InlineData("lexicon(\"heading\", \"lib_lazcalc\")", "")]
+        [InlineData("lexicon(\"heading\", \"into_inc\")", "")]
+        [InlineData("lexicon(\"heading\", \"east\")", "heading must be 'into_inc' or degrees, not 'east'")]
         [InlineData("lexicon(\"throttle_max_q\", \"off\")", "throttle_max_q must be 'none' or Pa, not 'off'")]
         [InlineData("lexicon(\"g\", \"kerbin\")", "g must be 'body' or a number, not 'kerbin'")]
         public void A_launch_option_string_it_does_not_know_is_refused(string options, string reason)
@@ -227,36 +229,15 @@ namespace ClaudiaKermin.Kerboscript.Tests
 
         // ---- launch: heading and the plane ----
 
-        // The heading itself is KSLib's LAZcalc, which reads the ship; it is checked in game (launch_orbit).
+        // The heading is Core's (ADDONS:CLAUDIA:LAUNCHHEADING, #475), its parity with KSLib's LAZcalc checked before the
+        // Kerboscript heading was deleted. launch flies it in game (launch_orbit). No KSLib script is bundled any more.
         [Fact]
-        public void The_heading_comes_from_the_bundled_lib_lazcalc_which_is_not_a_Building_Block()
+        public void The_heading_comes_from_Core_and_no_KSLib_script_is_loaded()
         {
-            var bundle = CoreLibrary.Bundle("");
-            Assert.Contains("FUNCTION LAZcalc_init {", bundle);
-            Assert.DoesNotContain("@CLOBBERBUILTINS", bundle);
-            Assert.DoesNotContain("function launch_azimuth", bundle);
-            Assert.Contains("LAZcalc(laz)", CoreLibrary.Files.Single(f => f.Name == "launch").Source);
-            Assert.DoesNotContain(CoreLibrary.Blocks, b => b.Name.StartsWith("lib_lazcalc"));
+            Assert.Contains("addons:claudia:launchheading(", CoreLibrary.Files.Single(f => f.Name == "launch").Source);
+            Assert.DoesNotContain("LAZcalc", CoreLibrary.Bundle(""));
             Assert.DoesNotContain("LAZcalc", CoreLibrary.FullDocs() + CoreLibrary.Summaries());
-        }
-
-        // LAZcalc_azimuth is the patched lib_lazcalc's arithmetic without the ship: Kerbin, 80 km orbit,
-        // on the equator (latitude 0); the list is what LAZcalc_init builds: inclination, latitude,
-        // equatorial speed, orbital speed, node, node epsilon (m/s of north speed that switches the node).
-        [Theory]
-        [InlineData(45, "Ascending", 0, 0, "41.7")]
-        [InlineData(45, "Descending", 0, 0, "138.3")]
-        [InlineData(135, "Ascending", 0, 0, "312.1")]
-        [InlineData(135, "Descending", 0, 0, "227.9")]
-        [InlineData(45, "Descending", 10, 50, "41.7")]
-        [InlineData(45, "Ascending", 10, -50, "138.3")]
-        [InlineData(45, "Descending", 10, -3, "138.3")]
-        [InlineData(6, "Ascending", 0, 0, "83.5")]
-        [InlineData(6, "Descending", 0, 0, "96.5")]
-        public void A_northward_and_a_southward_launch_both_get_a_heading(double inc, string node, double epsilon, double northSpeed, string azimuth)
-        {
-            var data = "list(" + inc + ", 0, 174.94, 2278.9, \"" + node + "\", " + epsilon + ")";
-            Assert.Equal(azimuth, One("round(LAZcalc_azimuth(" + data + ", 0, " + northSpeed + "), 1)"));
+            Assert.Empty(CoreLibrary.Vendored);
         }
 
         // The window itself is ADDONS:CLAUDIA:LAUNCHWINDOW's (C#, LaunchWindowTests); launch_apply_window takes its lexicon into the plan.
@@ -269,21 +250,6 @@ namespace ClaudiaKermin.Kerboscript.Tests
             var printed = Run("local plan is lexicon(\"error\", \"\", \"wait\", 0, \"inc\", 0). set plan to launch_apply_window(plan, " + window + ", \"Minmus\", " + incGiven
                 + "). print plan:wait + \" \" + plan:inc + \" \" + plan:error.");
             Assert.Equal(expected, printed[0]);
-        }
-
-        // LAZcalc_init puts a red message on the HUD for an inclination the latitude can't reach, so
-        // launch hands it one just inside what the latitude allows, keeping the sign (negative: southward).
-        [Theory]
-        [InlineData(0, -0.0972, "0.0982")]
-        [InlineData(-0.05, -0.0972, "-0.0982")]
-        [InlineData(0, 0, "0.001")]
-        [InlineData(6, -0.0972, "6")]
-        [InlineData(-6, 28.5, "-28.501")]
-        [InlineData(179.99, 28.5, "151.499")]
-        [InlineData(-180, -0.0972, "-179.9018")]
-        public void The_inclination_handed_to_lib_lazcalc_is_one_the_latitude_can_reach(double inc, double lat, string clamped)
-        {
-            Assert.Equal(clamped, One("round(launch_laz_inc(" + inc + ", " + lat + "), 4)"));
         }
 
         // ---- launch: angle off the airflow ----

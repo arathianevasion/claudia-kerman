@@ -32,6 +32,8 @@ namespace ClaudiaKermin.KOS
                 "Core Library only (transfer_to, return, tune_pe): the least burn from earliest_ut to latest_ut that arrives at target (a body's name) at target_pe and, if given, target_inc; lexicon error, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted"));
             AddSuffix("LAUNCHWINDOW", new OneArgsSuffix<Lexicon, Lexicon>(LaunchWindow,
                 "Core Library only (launch): when the pad next passes under the plane of inc and lan (degrees); lexicon error, wait (s), ut, north, inc (negative southbound), heading"));
+            AddSuffix("LAUNCHHEADING", new OneArgsSuffix<Lexicon, Lexicon>(LaunchHeading,
+                "Core Library only (launch): the heading into the plane of inc (negative southbound) from lat, with gm, radius and rotation of the body and target_ap (m); lexicon error, heading"));
             AddSuffix("LANDINGSITE", new OneArgsSuffix<Lexicon, Lexicon>(LandingSite,
                 "Core Library only (land): find_landing_site's search on the body orbited; gives the first site as lexicon error, lat, lng, biome, ..."));
             AddSuffix("LANDINGPASS", new OneArgsSuffix<Lexicon, Lexicon>(LandingPass,
@@ -376,6 +378,19 @@ namespace ClaudiaKermin.KOS
                 ? string.Format(CultureInfo.InvariantCulture, "window in {0:0} s at UT {1:0}, {2}bound, inclination {3:0.00}, heading {4:0.0}",
                     window["wait"], window["ut"], (bool)window["north"] ? "north" : "south", window["inc"], window["heading"])
                 : (string)window["error"]);
+        }
+
+        private Lexicon LaunchHeading(Lexicon input)
+        {
+            // Called every tick on the climb, so its log line is throttled (every 2 s), as the other per-tick calls'.
+            System.Collections.Generic.IDictionary<string, object> heading = null;
+            return (Lexicon)Guarded("LAUNCHHEADING", () =>
+            {
+                heading = BlockCalls.LaunchHeading(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(heading);
+            }, () => heading["error"] as string == ""
+                ? string.Format(CultureInfo.InvariantCulture, "heading {0:0.00}", heading["heading"])
+                : (string)heading["error"], 2);
         }
 
         private Lexicon TurnTime(Lexicon input)

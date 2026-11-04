@@ -692,6 +692,25 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
+        /// <c>ADDONS:CLAUDIA:LAUNCHHEADING</c>, for <c>launch</c>'s heading (#475): <see cref="Tools.LaunchWindow.HeadingInto"/>, the
+        /// compass heading plan_ascent reports, from the pad at <c>lat</c> (degrees) into the plane of inclination <c>inc</c> (degrees;
+        /// negative is southbound) to a circular orbit <c>target_ap</c> m up, on a body of <c>gm</c> (m^3/s^2), <c>radius</c> (m) and
+        /// <c>rotation</c> (s). The block calls it again on the climb, as the pad's latitude moves. Gives <c>error</c> "" and
+        /// <c>heading</c> (degrees), or only <c>error</c>.
+        /// </summary>
+        public static IDictionary<string, object> LaunchHeading(IDictionary<string, object> input)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            foreach (var key in new[] { "inc", "lat", "gm", "radius", "rotation" })
+                if (!NumberOrNull(ask, key).HasValue) return Error(key + " is required");
+            var body = new SnapshotBody { Gm = Number(ask, "gm", 0), Radius = Number(ask, "radius", 0), RotationPeriod = Number(ask, "rotation", 0) };
+            if (body.Gm <= 0 || body.Radius <= 0 || body.RotationPeriod <= 0) return Error("the body needs gm, radius and rotation above zero");
+            var inc = Number(ask, "inc", 0);
+            var heading = Tools.LaunchWindow.HeadingInto(body, Number(ask, "lat", 0), Math.Abs(inc), inc >= 0, Number(ask, "target_ap", 0));
+            return new Dictionary<string, object> { { "error", "" }, { "heading", heading } };
+        }
+
+        /// <summary>
         /// <c>ADDONS:CLAUDIA:CORRECTIONBURN</c>, for <c>transfer_to</c> and <c>return</c> (#449): the Course Correction, the smallest
         /// burn that brings the craft's trajectory to <c>target</c> (a body's name) at <c>target_pe</c> (m) and, if given, at
         /// <c>target_inc</c> (degrees), by <see cref="Tools.CorrectionBurn"/>. <c>earliest_ut</c> (UT; now if missing) and
