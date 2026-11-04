@@ -8,17 +8,38 @@ using System.Globalization;
 namespace ClaudiaKermin.Core.Tools
 {
     /// <summary>
-    /// The <c>dock</c> Building Block's guidance (#706, ADR 0014): the closing speed by distance, the cone the craft must be in to
-    /// close, the relative velocity it wants, the coast band that decides when RCS translates, and the monopropellant estimate it
-    /// checks at the start. dock.ks calls it once a tick through <c>ADDONS:CLAUDIA:DOCKGUIDE</c> (<see cref="Guide"/>) and at
-    /// the start through <c>DOCKFUEL</c> (<see cref="Fuel"/>), both block-internal; kOS still writes <c>ship:control</c>
-    /// and steers. Everything is in the target port's frame: <c>along</c> out along its axis from its face, <c>lat</c> the
-    /// distance off the axis (velocities positive away from it), <c>side</c> the third axis, square to both.
+    /// The <c>dock</c> Building Block's guidance (#706, #711, ADR 0014): the closing speed for each stretch of the approach, the
+    /// cone the craft must be in to close, the relative velocity it wants, the coast band that decides when RCS translates, the
+    /// wait for dock_hold to settle the target, and the monopropellant estimate it checks at the start. dock.ks calls it once a
+    /// tick through <c>ADDONS:CLAUDIA:DOCKGUIDE</c> (<see cref="Guide"/>) and at the start through <c>DOCKFUEL</c>
+    /// (<see cref="Fuel"/>), both block-internal; kOS still writes <c>ship:control</c> and steers. Everything is in the target
+    /// port's frame: <c>along</c> out along its axis from its face, <c>lat</c> the distance off the axis (velocities positive away
+    /// from it), <c>side</c> the third axis, square to both.
+    /// <para>
+    /// #711: the wanted velocity is constant within a stretch (beyond <see cref="NearM"/>, to <see cref="FinalM"/>, inside it) and
+    /// changes only at a stretch's edge or when the craft's lateral or alignment state changes, never with distance each tick; the
+    /// band is a share of the wanted speed. So one burn reaches the wanted velocity and the craft coasts until the error leaves the
+    /// band again. Until dock_hold reports the target settled the craft only nulls its relative velocity, rather than chase an
+    /// axis that is still turning.
+    /// </para>
     /// </summary>
     public static class DockGuidance
     {
-        /// <summary>m/s: the closing speed far out (beyond 100 m).</summary>
+        /// <summary>m/s: the closing speed far out (beyond <see cref="NearM"/>), or approach_speed if that is faster.</summary>
         public const double FarSpeed = 2;
+
+        /// <summary>m: the stretches' edges: approach_speed inside <see cref="NearM"/>, final_speed inside <see cref="FinalM"/>.</summary>
+        public const double NearM = 50, FinalM = 10;
+
+        /// <summary>
+        /// The share of the stretch's closing speed the craft moves toward the axis at while lining up (off the cone) or drifting in
+        /// (on it, further off than <see cref="Inner"/>). Over <see cref="BandShare"/>, so reaching the inner zone is a burn that
+        /// stops the drift, not a coast across the axis.
+        /// </summary>
+        public const double LateralShare = 0.3;
+
+        /// <summary>m: inside this distance the craft closes only while its port points within <see cref="AlignDeg"/> of the axis.</summary>
+        public const double AlignM = 20;
 
         /// <summary>m: off the axis the craft keeps when it starts behind the target port's face, to pass the target's side.</summary>
         public const double ClearM = 50;
@@ -27,11 +48,11 @@ namespace ClaudiaKermin.Core.Tools
         public const double AlignDeg = 5;
 
         /// <summary>
-        /// m/s of velocity error: RCS starts translating over the band's edge, a fifth of the wanted speed within
-        /// <see cref="BandLow"/> and <see cref="BandHigh"/>, and stops under half of it. Narrower slow, so the craft meets the
-        /// port within about 0.06 m/s of final_speed's default 0.3.
+        /// m/s of velocity error: RCS starts translating over the band's edge, <see cref="BandShare"/> of the wanted speed and at
+        /// least <see cref="BandFloor"/>, and stops under <see cref="StopShare"/> of it. At final_speed's default 0.3 m/s the band
+        /// is 0.075 m/s, so the craft meets the port within that of it.
         /// </summary>
-        public const double BandLow = 0.05, BandHigh = 0.1, BandShare = 0.2;
+        public const double BandShare = 0.25, BandFloor = 0.03, StopShare = 0.25;
 
         /// <summary>m/s of velocity error that commands full RCS on an axis.</summary>
         public const double FullAt = 0.2;
@@ -60,14 +81,13 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
-        /// m/s: the closing speed at distance <paramref name="d"/> (m): up to <see cref="FarSpeed"/> beyond 100 m, approach_speed
-        /// from 100 to 50 m, tapering to final_speed at 10 m and holding it inside.
+        /// m/s: the closing speed for the stretch at distance <paramref name="d"/> (m), constant within it: the larger of
+        /// <see cref="FarSpeed"/> and approach_speed beyond <see cref="NearM"/>, approach_speed to <see cref="FinalM"/>, final_speed inside.
         /// </summary>
         public static double Speed(double d, Options opt)
         {
-            if (d > 100) return Math.Min(FarSpeed, Math.Max(opt.ApproachSpeed, opt.ApproachSpeed * d / 100));
-            if (d > 50) return opt.ApproachSpeed;
-            if (d > 10) return opt.FinalSpeed + (opt.ApproachSpeed - opt.FinalSpeed) * (d - 10) / 40;
+            if (d > NearM) return Math.Max(FarSpeed, opt.ApproachSpeed);
+            if (d > FinalM) return opt.ApproachSpeed;
             return opt.FinalSpeed;
         }
 
@@ -78,42 +98,63 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
-        /// The relative velocity the craft wants now. Over a metre behind the port's face it first moves <see cref="ClearM"/> off
-        /// the axis and then out past the face; off the cone it holds its distance along (backing out inside 2 m) and moves onto
-        /// the axis; on the cone it closes at <see cref="Speed"/>, except inside 20 m while its port points over
-        /// <see cref="AlignDeg"/> off the axis.
+        /// m: on the cone the craft drifts toward the axis until it is this close to it, then wants no lateral speed: half the
+        /// cone at its stretch's near edge, a fixed figure for the stretch (1.1 m beyond 50 m, half max_lateral inside).
+        /// </summary>
+        public static double Inner(double distance, Options opt)
+        {
+            return Cone(distance > NearM ? NearM : FinalM, opt) / 2;
+        }
+
+        /// <summary>
+        /// dock_hold's state (<c>DOCKHOLDSTATE</c>) has the target still turning to its aim: starting, or active and not yet
+        /// settled. The craft then only nulls its relative velocity. A passive target is never waited for.
+        /// </summary>
+        public static bool Waits(string hold)
+        {
+            return hold == "starting" || hold == "active";
+        }
+
+        /// <summary>
+        /// The relative velocity the craft wants now, constant within a stretch (<see cref="Speed"/>). Over a metre behind the
+        /// port's face it first moves <see cref="ClearM"/> off the axis and then out past the face; off the cone it holds its
+        /// distance along (backing out inside 2 m) and moves onto the axis at <see cref="LateralShare"/> of the speed; on the cone
+        /// it closes at the speed, drifting in at that share while further off than <see cref="Inner"/>, except inside
+        /// <see cref="AlignM"/> while its port points over <see cref="AlignDeg"/> off the axis.
         /// </summary>
         public static Velocity Want(double along, double lat, double distance, double alignDeg, Options opt)
         {
             var speed = Speed(distance, opt);
             if (along < -1)
                 return lat < ClearM ? V(0, Math.Min(speed, 2)) : V(Math.Min(speed, 2), 0);
-            var toward = -Math.Min(speed, 0.2 * lat);
-            if (lat > Cone(along, opt)) return V(along < 2 ? opt.FinalSpeed : 0, toward);
-            if (distance < 20 && alignDeg > AlignDeg) return V(0, toward);
+            var drift = -LateralShare * speed;
+            if (lat > Cone(along, opt)) return V(along < 2 ? opt.FinalSpeed : 0, drift);
+            var toward = lat > Inner(distance, opt) ? drift : 0;
+            if (distance < AlignM && alignDeg > AlignDeg) return V(0, toward);
             return V(-speed, toward);
         }
 
         /// <summary>
         /// The coast band: whether RCS translates this tick, given the velocity error (m/s, its size), the wanted speed (m/s) and
-        /// whether it translated last tick. It starts over <see cref="Band"/> and goes on until the error is under half of it;
-        /// between the two the craft keeps doing what it did, so it coasts until the error leaves the band again.
+        /// whether it translated last tick. It starts over <see cref="Band"/> and goes on until the error is under
+        /// <see cref="StopShare"/> of it; between the two the craft keeps doing what it did, so it coasts until the error leaves the band.
         /// </summary>
         public static bool Fires(double error, double wantSpeed, bool firing)
         {
             var band = Band(wantSpeed);
-            return firing ? error >= band / 2 : error > band;
+            return firing ? error >= band * StopShare : error > band;
         }
 
-        /// <summary>m/s: the coast band's edge for the wanted speed (m/s).</summary>
+        /// <summary>m/s: the coast band's edge for the wanted speed (m/s): <see cref="BandShare"/> of it, at least <see cref="BandFloor"/>.</summary>
         public static double Band(double wantSpeed)
         {
-            return Math.Max(BandLow, Math.Min(BandHigh, BandShare * wantSpeed));
+            return Math.Max(BandFloor, BandShare * wantSpeed);
         }
 
         /// <summary>
         /// One tick, as <c>ADDONS:CLAUDIA:DOCKGUIDE</c> takes it. Input: <c>mode</c> ("close", the default; "back_off": out
-        /// along the line from the port at 0.5 m/s; "hold": still), <c>along</c>, <c>lat</c>, <c>distance</c> (m),
+        /// along the line from the port at 0.5 m/s; "hold": still), <c>hold</c> (dock_hold's state: while it <see cref="Waits"/>,
+        /// "close" holds still too), <c>along</c>, <c>lat</c>, <c>distance</c> (m),
         /// <c>align_deg</c>, <c>v_along</c>, <c>v_lat</c>, <c>v_side</c> (the relative velocity, m/s), <c>firing</c> (RCS
         /// translated last tick), and the options <c>approach_speed</c>, <c>final_speed</c>, <c>max_lateral</c>. Gives
         /// <c>along</c>, <c>lat</c> (the wanted velocity), <c>dv_error</c> (m/s, the velocity error's size), <c>fire</c> (RCS
@@ -126,15 +167,14 @@ namespace ClaudiaKermin.Core.Tools
             var lat = Number(input, "lat");
             var distance = Number(input, "distance");
             var opt = new Options { ApproachSpeed = Number(input, "approach_speed"), FinalSpeed = Number(input, "final_speed"), MaxLateral = Number(input, "max_lateral") };
-            object modeValue;
-            var mode = input.TryGetValue("mode", out modeValue) ? modeValue as string : null;
+            var mode = Text(input, "mode");
             Velocity want;
             if (mode == "back_off")
             {
                 var d = Math.Max(distance, 0.01);
                 want = V(0.5 * along / d, 0.5 * lat / d);
             }
-            else if (mode == "hold") want = V(0, 0);
+            else if (mode == "hold" || Waits(Text(input, "hold"))) want = V(0, 0);
             else want = Want(along, lat, distance, Number(input, "align_deg"), opt);
             var eAlong = want.Along - Number(input, "v_along");
             var eLat = want.Lat - Number(input, "v_lat");
@@ -208,6 +248,12 @@ namespace ClaudiaKermin.Core.Tools
         private static Velocity V(double along, double lat)
         {
             return new Velocity { Along = along, Lat = lat };
+        }
+
+        private static string Text(IDictionary<string, object> input, string key)
+        {
+            object value;
+            return input != null && input.TryGetValue(key, out value) ? value as string : null;
         }
 
         private static double Number(IDictionary<string, object> input, string key)

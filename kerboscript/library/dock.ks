@@ -3,14 +3,14 @@
 //
 // Building Block dock (#456): from the rendezvous hand-off (the Target Vessel loaded, under about 2 m/s) to docked. The
 // craft controls from its own port, points it along the target port's axis and translates on RCS onto that axis and in
-// along it, at a speed by distance. Its guidance is Core's (DockGuidance, ADR 0014), one ADDONS:CLAUDIA:DOCKGUIDE call a
+// along it, at one speed a stretch (#711). Its guidance is Core's (DockGuidance, ADR 0014), one ADDONS:CLAUDIA:DOCKGUIDE call a
 // tick: the wanted velocity, and a coast band (#706) that fires RCS only when the velocity error leaves it. kOS fires RCS
 // for translation (ship:control:fore/starboard/top, set here) only while the RCS group is on, and while it is on kOS
 // steering fires it for attitude too; so RCS goes on (claudia_rcs_translate) only for the ticks it translates, and in
 // between RCS Use decides, which switches it off once Aligned. KSP ignores an attitude axis under 5%, so an Aligned craft
 // translating fires no attitude RCS. The mod starts its bundled dock_hold on the target's kOS processor, when the target has
 // a powered processor with a link to the craft or KSC (the Child Vessel link test), and stops it when the block ends,
-// however it ends (ADR 0013); kOS messaging stays forbidden. A passive target is met at its port's current facing, and
+// however it ends (ADR 0013); kOS messaging stays forbidden. Until dock_hold reports its target settled the craft holds still; a passive target is met at its port's current facing, and
 // refused if it turns faster than 1 deg/s. Built on claudia_lib.ks; block-only helpers are prefixed dock_. The "//|"
 // lines are Claudia's docs for it; the first is its summary.
 
@@ -72,12 +72,12 @@ function dock_back_off {
   parameter s, state, push.
   local d0 is s:distance.
   local t0 is s:ut.
-  until s:abort <> "" or s:docked or s:distance >= d0 + 10 or s:ut > t0 + 30 {
+  until s:abort <> "" or s:docked or s:hold = "docked" or s:distance >= d0 + 10 or s:ut > t0 + 30 {
     push(s, "back_off").
     set s to state().
   }
   local t1 is s:ut.
-  until s:abort <> "" or s:docked or s:speed < 0.05 or s:ut > t1 + 10 {
+  until s:abort <> "" or s:docked or s:hold = "docked" or s:speed < 0.05 or s:ut > t1 + 10 {
     push(s, "hold").
     set s to state().
   }
@@ -87,7 +87,7 @@ function dock_back_off {
 // The block's flight, with its contacts with the game passed in so the kOS harness can fly it. state() is the craft's port
 // against the target port now: lexicon abort ("" or why the block must stop), docked, distance, along and lat (m, as
 // DockGuidance), speed (relative, m/s) and its v_along, v_lat and v_side, align_deg, spin_dps (the target's turn rate),
-// monoprop (units), hold and hold_reason (dock_hold's state: starting, active, passive, fault, docked or none), ut.
+// monoprop (units), hold and hold_reason (dock_hold's state: starting, active, settled, passive, fault, docked or none), ut.
 // push(s, mode) flies a tick on DOCKGUIDE's answer for s in mode (close, back_off or hold). name is the Target Vessel's.
 // At 15% of its starting monoprop it backs off and fails. Returns lexicon("reason", "" or why it fails, "docked",
 // "monoprop", the last monoprop read undocked, "state", the last state).
@@ -103,7 +103,8 @@ function dock_run {
       set done:reason to s:abort.
       return done.
     }
-    if s:docked {
+    // Docked (the craft's port Docked or Acquire) or dock_hold saw its port caught: success before any other rule (#711).
+    if s:docked or s:hold = "docked" {
       set done:docked to true.
       return done.
     }
@@ -111,7 +112,7 @@ function dock_run {
     local why is "".
     if s:hold = "fault" {
       set why to "dock_hold on " + name + " stopped: " + s:hold_reason.
-    } else if s:hold <> "active" and s:hold <> "starting" and s:spin_dps > dock_max_spin() {
+    } else if not list("active", "starting", "settled"):contains(s:hold) and s:spin_dps > dock_max_spin() {
       set why to name + " turns at " + round(s:spin_dps, 1) + " deg/s, over " + dock_max_spin() + " deg/s, with no dock_hold (" + s:hold_reason + ")".
     } else if s:monoprop <= reserve {
       set why to "monopropellant down to " + round(s:monoprop, 1) + " units, 15% of the start's, " + round(s:distance, 1) + " m from " + name + "'s port".
@@ -263,7 +264,7 @@ function dock {
       if ticked <> "" {
         return dock_stopped(ticked, false).
       }
-      if own:state:startswith("Docked") {
+      if own:state:startswith("Docked") or own:state:startswith("Acquire") {
         return dock_stopped("", true).
       }
       local held is addons:claudia:dockholdstate().
@@ -289,11 +290,10 @@ function dock {
     },
     {
       parameter s, mode.
-      local g is addons:claudia:dockguide(lexicon("mode", mode, "along", s:along, "lat", s:lat, "distance", s:distance, "align_deg", s:align_deg,
+      local g is addons:claudia:dockguide(lexicon("mode", mode, "hold", s:hold, "along", s:along, "lat", s:lat, "distance", s:distance, "align_deg", s:align_deg,
         "v_along", s:v_along, "v_lat", s:v_lat, "v_side", s:v_side, "firing", firing,
         "approach_speed", opt:approach_speed, "final_speed", opt:final_speed, "max_lateral", opt:max_lateral)).
-      // Magnetic capture: the ports pull themselves together, so the block stops pushing.
-      set firing to g:fire and not own:state:startswith("Acquire").
+      set firing to g:fire.
       if firing <> ctx:rcs_translating {
         claudia_rcs_translate(ctx, firing).
       }

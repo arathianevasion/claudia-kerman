@@ -120,6 +120,18 @@ namespace ClaudiaKermin.KOS
             return _holds.State(craftPart, out reason);
         }
 
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:DOCKHOLDSETTLED</c> from the run on <paramref name="partId"/> (#711): a dock_hold's port settled on its aim,
+        /// or unsettled by a re-aim. A call from any run that isn't a live hold changes nothing.
+        /// </summary>
+        public void HoldSettled(uint partId, bool settled)
+        {
+            ActiveRun run;
+            if (!_runs.TryGetValue(partId, out run) || run.Run.HasEnded) return;
+            _holds.Settled(partId, run.RunId, settled);
+            Debug.Log(ModInfo.LogTag + " dock_hold on part " + partId + (settled ? " settled on its aim" : " re-aimed, not settled"));
+        }
+
         /// <summary>dock on <paramref name="craftPart"/> returned, or its run ended: its hold is stopped, however either ended.</summary>
         private void StopHold(uint craftPart, string reason)
         {

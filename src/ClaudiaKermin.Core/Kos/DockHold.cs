@@ -87,6 +87,8 @@ namespace ClaudiaKermin.Core.Kos
         Starting,
         /// <summary>dock_hold runs, turning the target's port to the craft's.</summary>
         Active,
+        /// <summary>dock_hold runs and reports its port settled on its aim (#711): only now does dock close.</summary>
+        Settled,
         /// <summary>No hold: the target is met as it is (why in the reason).</summary>
         Passive,
         /// <summary>The hold stopped while dock still flew (a gate, lost power, an error): dock backs off and fails.</summary>
@@ -153,11 +155,22 @@ namespace ClaudiaKermin.Core.Kos
             hold.Reason = "dock_hold didn't start: " + (why ?? "");
         }
 
+        /// <summary>
+        /// dock_hold on <paramref name="part"/> reported its port settled on its aim, or unsettled by a re-aim (#711,
+        /// <c>ADDONS:CLAUDIA:DOCKHOLDSETTLED</c>). Only a running hold moves between active and settled; any other report is ignored.
+        /// </summary>
+        public void Settled(uint part, int run, bool settled)
+        {
+            var hold = Find(part, run);
+            if (hold == null || (hold.State != DockHoldState.Active && hold.State != DockHoldState.Settled)) return;
+            hold.State = settled ? DockHoldState.Settled : DockHoldState.Active;
+        }
+
         /// <summary>A runtime gate refused a call from the hold, or its processor lost power: a fault, whatever the outcome says after.</summary>
         public void Faulted(uint part, int run, string why)
         {
             var hold = Find(part, run);
-            if (hold == null || (hold.State != DockHoldState.Starting && hold.State != DockHoldState.Active)) return;
+            if (hold == null || !IsLive(hold.State)) return;
             hold.State = DockHoldState.Fault;
             hold.Reason = why ?? "";
         }
@@ -166,7 +179,7 @@ namespace ClaudiaKermin.Core.Kos
         public void Ended(uint part, int run, RunOutcome outcome)
         {
             var hold = Find(part, run);
-            if (hold == null || (hold.State != DockHoldState.Starting && hold.State != DockHoldState.Active)) return;
+            if (hold == null || !IsLive(hold.State)) return;
             var fault = DockHold.Fault(outcome);
             hold.State = fault == null ? DockHoldState.Docked : DockHoldState.Fault;
             hold.Reason = fault ?? "";
@@ -197,7 +210,7 @@ namespace ClaudiaKermin.Core.Kos
         /// <summary>The holds whose run is starting or running: part and run, for the per-frame power check.</summary>
         public IList<KeyValuePair<uint, int>> Live()
         {
-            return _byCraft.Values.Where(h => h.State == DockHoldState.Starting || h.State == DockHoldState.Active)
+            return _byCraft.Values.Where(h => IsLive(h.State))
                 .Select(h => new KeyValuePair<uint, int>(h.Part, h.Run)).ToList();
         }
 
@@ -205,6 +218,12 @@ namespace ClaudiaKermin.Core.Kos
         public bool IsHold(uint part, int run)
         {
             return Find(part, run) != null;
+        }
+
+        /// <summary>The hold's run is starting or running (settled or not).</summary>
+        private static bool IsLive(DockHoldState state)
+        {
+            return state == DockHoldState.Starting || state == DockHoldState.Active || state == DockHoldState.Settled;
         }
 
         private Hold Find(uint part, int run)
