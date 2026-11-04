@@ -107,6 +107,42 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void The_program_reports_settled_and_again_when_it_re_aims()
+        {
+            // #711: settled is the port within 2 degrees of the aim, turning under 0.1 deg/s, for 2 s; a re-aim unsettles it.
+            var program = DockHold.Program("1", "2").Replace("\r\n", "\n");
+            Assert.Contains("if vang(dh_port:portfacing:forevector, dh_aim) > 2 or ship:angularvel:mag * constant:radtodeg > 0.1 {\n", program);
+            Assert.Contains("} else if not dh_settled and time:seconds >= dh_since + 2 {\n", program);
+            Assert.Contains("addons:claudia:dockholdsettled(true).", program);
+            Assert.Contains("addons:claudia:dockholdsettled(false).", program);
+        }
+
+        [Fact]
+        public void A_running_hold_moves_between_active_and_settled_as_it_reports()
+        {
+            var holds = Running();
+            holds.Settled(TargetProcessor, Run, true);
+            Assert.Equal(DockHoldState.Settled, holds.State(Craft, out _));
+            Assert.Single(holds.Live());
+            holds.Settled(TargetProcessor, Run, false);
+            Assert.Equal(DockHoldState.Active, holds.State(Craft, out _));
+            holds.Settled(TargetProcessor, Run, true);
+            // A settled hold still ends docked or faults like an active one.
+            holds.Ended(TargetProcessor, Run, Outcome(RunOutcomeKind.Finished, report: "docked"));
+            Assert.Equal(DockHoldState.Docked, holds.State(Craft, out _));
+            // A report from another run, or after the hold ended, changes nothing.
+            holds.Settled(TargetProcessor, Run, false);
+            Assert.Equal(DockHoldState.Docked, holds.State(Craft, out _));
+            var other = Running();
+            other.Settled(TargetProcessor, Run - 1, true);
+            other.Settled(Craft, Run, true);
+            Assert.Equal(DockHoldState.Active, other.State(Craft, out _));
+            other.Settled(TargetProcessor, Run, true);
+            other.Faulted(TargetProcessor, Run, "its kOS processor lost power");
+            Assert.Equal(DockHoldState.Fault, other.State(Craft, out _));
+        }
+
+        [Fact]
         public void A_hold_that_saw_its_port_caught_is_docked_not_a_fault()
         {
             var holds = Running();

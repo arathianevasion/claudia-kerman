@@ -28,8 +28,11 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>m/s: the closing speed far out (beyond <see cref="NearM"/>), or approach_speed if that is faster.</summary>
         public const double FarSpeed = 2;
 
-        /// <summary>m: the stretches' edges: approach_speed inside <see cref="NearM"/>, final_speed inside <see cref="FinalM"/>.</summary>
-        public const double NearM = 50, FinalM = 10;
+        /// <summary>
+        /// m: the stretches' edges: approach_speed inside <see cref="NearM"/>, final_speed inside <see cref="FinalM"/>. 10 m and 5 m
+        /// further out than the 50 m and 10 m dock's docs give, so one burn has reached the slower speed by then.
+        /// </summary>
+        public const double NearM = 60, FinalM = 15;
 
         /// <summary>
         /// The share of the stretch's closing speed the craft moves toward the axis at while lining up (off the cone) or drifting in
@@ -38,7 +41,7 @@ namespace ClaudiaKermin.Core.Tools
         /// </summary>
         public const double LateralShare = 0.3;
 
-        /// <summary>m: inside this distance the craft closes only while its port points within <see cref="AlignDeg"/> of the axis.</summary>
+        /// <summary>m: inside this distance the craft closes only while its port points within <see cref="AlignDeg"/> of the axis: a state change, not a stretch.</summary>
         public const double AlignM = 20;
 
         /// <summary>m: off the axis the craft keeps when it starts behind the target port's face, to pass the target's side.</summary>
@@ -99,11 +102,12 @@ namespace ClaudiaKermin.Core.Tools
 
         /// <summary>
         /// m: on the cone the craft drifts toward the axis until it is this close to it, then wants no lateral speed: half the
-        /// cone at its stretch's near edge, a fixed figure for the stretch (1.1 m beyond 50 m, half max_lateral inside).
+        /// cone at its stretch's near edge, a fixed figure for the stretch (1.35 m far out, 0.225 m to <see cref="FinalM"/>,
+        /// half max_lateral inside, at the defaults).
         /// </summary>
         public static double Inner(double distance, Options opt)
         {
-            return Cone(distance > NearM ? NearM : FinalM, opt) / 2;
+            return Cone(distance > NearM ? NearM : distance > FinalM ? FinalM : 0, opt) / 2;
         }
 
         /// <summary>

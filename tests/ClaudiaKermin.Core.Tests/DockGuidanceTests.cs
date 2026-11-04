@@ -17,18 +17,74 @@ namespace ClaudiaKermin.Core.Tests
         private static readonly DockGuidance.Options Defaults = new DockGuidance.Options { ApproachSpeed = 1, FinalSpeed = 0.3, MaxLateral = 0.2 };
 
         [Theory]
-        // 1 m/s beyond 50 m, 0.3 m/s inside 10 m, a taper between, up to 2 m/s far out (#706; it was 5).
+        // #711: one speed a stretch, no taper: 2 m/s beyond 60 m, approach_speed (1) to 15 m, final_speed (0.3) inside, so
+        // the craft is at approach_speed by 50 m and at final_speed by 10 m, as dock's docs give.
         [InlineData(2000, 2)]
         [InlineData(300, 2)]
-        [InlineData(150, 1.5)]
-        [InlineData(80, 1)]
-        [InlineData(50, 1)]
-        [InlineData(30, 0.65)]
-        [InlineData(10, 0.3)]
+        [InlineData(150, 2)]
+        [InlineData(60.01, 2)]
+        [InlineData(60, 1)]
+        [InlineData(30, 1)]
+        [InlineData(15.01, 1)]
+        [InlineData(15, 0.3)]
         [InlineData(2, 0.3)]
-        public void The_closing_speed_goes_by_distance(double distance, double speed)
+        public void The_closing_speed_is_one_figure_a_stretch(double distance, double speed)
         {
             Assert.Equal(speed, DockGuidance.Speed(distance, Defaults), 9);
+        }
+
+        [Fact]
+        public void A_faster_approach_speed_is_kept_far_out()
+        {
+            Assert.Equal(3, DockGuidance.Speed(200, new DockGuidance.Options { ApproachSpeed = 3, FinalSpeed = 0.3, MaxLateral = 0.2 }), 9);
+        }
+
+        [Fact]
+        public void The_wanted_velocity_is_constant_within_a_stretch_and_changes_only_at_its_edges()
+        {
+            // On the axis, closing from 300 m: the wanted velocity changes at the stretches' edges, 60 m and 15 m, and nowhere else.
+            var changes = new List<double>();
+            var last = DockGuidance.Want(300, 0, 300, 0, Defaults);
+            for (var d = 300.0; d > 0.5; d -= 0.05)
+            {
+                var want = DockGuidance.Want(d, 0, d, 0, Defaults);
+                if (want.Along != last.Along || want.Lat != last.Lat) changes.Add(Math.Round(d, 1));
+                last = want;
+            }
+            Assert.Equal(new[] { 60.0, 15.0 }, changes);
+            // Off the axis on the cone, drifting in: the lateral speed is constant too, until the inner zone.
+            Assert.Equal(DockGuidance.Want(120, 3, 120, 0, Defaults).Lat, DockGuidance.Want(90, 2, 90, 0, Defaults).Lat, 9);
+        }
+
+        [Fact]
+        public void It_waits_for_dock_hold_to_settle_the_target_before_it_lines_up()
+        {
+            // 296 m out, almost all of it sideways (#711's Mission): while dock_hold is starting or still turning the station,
+            // the craft only nulls its relative velocity; settled (or passive), it lines up.
+            foreach (var hold in new[] { "starting", "active" })
+            {
+                Assert.True(DockGuidance.Waits(hold));
+                var tick = Tick(0.4, false, along: 59, lat: 290, vLat: -0.3, hold: hold);
+                Assert.Equal(0, (double)tick["along"]);
+                Assert.Equal(0, (double)tick["lat"]);
+                Assert.Equal(0.5, (double)tick["dv_error"], 9);
+            }
+            foreach (var hold in new[] { "settled", "passive", "none" })
+            {
+                Assert.False(DockGuidance.Waits(hold));
+                Assert.Equal(-0.6, (double)Tick(0, false, along: 59, lat: 290, hold: hold)["lat"], 9);
+            }
+        }
+
+        [Fact]
+        public void The_inner_zone_is_fixed_for_a_stretch()
+        {
+            Assert.Equal(1.35, DockGuidance.Inner(200, Defaults), 9);
+            Assert.Equal(1.35, DockGuidance.Inner(61, Defaults), 9);
+            Assert.Equal(0.225, DockGuidance.Inner(60, Defaults), 9);
+            Assert.Equal(0.225, DockGuidance.Inner(16, Defaults), 9);
+            Assert.Equal(0.1, DockGuidance.Inner(15, Defaults), 9);
+            Assert.Equal(0.1, DockGuidance.Inner(5, Defaults), 9);
         }
 
         [Theory]
@@ -41,20 +97,25 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Theory]
-        // On the axis: close at the speed for the distance.
-        [InlineData(80, 0, 0, -1, 0)]
-        [InlineData(5, 0.1, 0, -0.3, -0.02)]
-        // Off the cone (0.2 m inside 10 m): hold the distance and line up.
-        [InlineData(5, 0.5, 0, 0, -0.1)]
+        // On the axis: close at the stretch's speed.
+        [InlineData(80, 0, 0, -2, 0)]
+        [InlineData(30, 0, 0, -1, 0)]
+        // Inside 10 m within the inner zone (half max_lateral): straight in.
+        [InlineData(5, 0.08, 0, -0.3, 0)]
+        // On the cone but outside the inner zone: close and drift in at 0.3 of the speed.
+        [InlineData(5, 0.15, 0, -0.3, -0.09)]
+        [InlineData(80, 2, 0, -2, -0.6)]
+        // Off the cone (0.2 m inside 10 m): hold the distance and line up at 0.3 of the speed.
+        [InlineData(5, 0.5, 0, 0, -0.09)]
         // Off the cone within 2 m: back out at final_speed.
-        [InlineData(1, 0.5, 0, 0.3, -0.1)]
+        [InlineData(1, 0.5, 0, 0.3, -0.09)]
         // On the cone inside 20 m but pointing 8 degrees off the axis: wait for the turn.
         [InlineData(15, 0, 8, 0, 0)]
         // Half a metre behind the face at a port's edge, as just before capture: no 50 m detour, back out and line up.
-        [InlineData(-0.5, 0.5, 0, 0.3, -0.1)]
+        [InlineData(-0.5, 0.5, 0, 0.3, -0.09)]
         // Over a metre behind the port's face: out to 50 m off the axis first, then out past the face.
-        [InlineData(-80, 10, 0, 0, 1)]
-        [InlineData(-80, 60, 0, 1, 0)]
+        [InlineData(-80, 10, 0, 0, 2)]
+        [InlineData(-80, 60, 0, 2, 0)]
         public void The_wanted_velocity_lines_up_on_the_axis_before_it_closes(double along, double lat, double align, double wantAlong, double wantLat)
         {
             var want = DockGuidance.Want(along, lat, Math.Sqrt(along * along + lat * lat), align, Defaults);
@@ -62,28 +123,29 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(wantLat, want.Lat, 6);
         }
 
-        private static IDictionary<string, object> Tick(double vAlong, bool firing, string mode = "close", double along = 80, double lat = 0, double vLat = 0, double vSide = 0)
+        private static IDictionary<string, object> Tick(double vAlong, bool firing, string mode = "close", double along = 30, double lat = 0, double vLat = 0, double vSide = 0,
+            string hold = "settled")
         {
             return DockGuidance.Guide(new Dictionary<string, object>
             {
-                { "mode", mode }, { "along", along }, { "lat", lat }, { "distance", Math.Sqrt(along * along + lat * lat) }, { "align_deg", 0.0 },
+                { "mode", mode }, { "hold", hold }, { "along", along }, { "lat", lat }, { "distance", Math.Sqrt(along * along + lat * lat) }, { "align_deg", 0.0 },
                 { "v_along", vAlong }, { "v_lat", vLat }, { "v_side", vSide }, { "firing", firing },
                 { "approach_speed", 1.0 }, { "final_speed", 0.3 }, { "max_lateral", 0.2 },
             });
         }
 
         [Theory]
-        // At 80 m the craft wants -1 m/s along the axis. Inside the band (error to 0.1 m/s) a coasting craft stays coasting, with no command.
+        // At 30 m the craft wants -1 m/s along the axis. Inside the band (error to 0.25 m/s) a coasting craft stays coasting, with no command.
         [InlineData(-1.0, false, false)]
-        [InlineData(-0.92, false, false)]
-        [InlineData(-1.09, false, false)]
+        [InlineData(-0.8, false, false)]
+        [InlineData(-1.24, false, false)]
         // Out of the band it translates.
-        [InlineData(-0.85, false, true)]
-        [InlineData(-1.2, false, true)]
+        [InlineData(-0.7, false, true)]
+        [InlineData(-1.3, false, true)]
         [InlineData(0, false, true)]
-        // Translating, it goes on until the error is under 0.05 m/s, then coasts.
-        [InlineData(-0.92, true, true)]
-        [InlineData(-0.96, true, false)]
+        // Translating, it goes on until the error is under a quarter of the band (0.0625 m/s), then coasts.
+        [InlineData(-0.8, true, true)]
+        [InlineData(-0.95, true, false)]
         public void The_coast_band_translates_only_once_the_error_leaves_it(double vAlong, bool firing, bool fires)
         {
             var tick = Tick(vAlong, firing);
@@ -95,29 +157,46 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Theory]
-        // A fifth of the wanted speed, within 0.05 and 0.1 m/s.
-        [InlineData(2, 0.1)]
-        [InlineData(0.65, 0.1)]
-        [InlineData(0.3, 0.06)]
-        [InlineData(0, 0.05)]
-        public void The_band_narrows_with_the_wanted_speed(double wantSpeed, double band)
+        // #711: a quarter of the wanted speed, at least 0.03 m/s (it was a fifth within 0.05 and 0.1).
+        [InlineData(2, 0.5)]
+        [InlineData(1, 0.25)]
+        [InlineData(0.3, 0.075)]
+        [InlineData(0.1, 0.03)]
+        [InlineData(0, 0.03)]
+        public void The_band_is_a_share_of_the_wanted_speed_with_a_floor(double wantSpeed, double band)
         {
             Assert.Equal(band, DockGuidance.Band(wantSpeed), 9);
             Assert.False(DockGuidance.Fires(band - 1e-6, wantSpeed, false));
             Assert.True(DockGuidance.Fires(band + 1e-6, wantSpeed, false));
-            Assert.True(DockGuidance.Fires(band / 2 + 1e-6, wantSpeed, true));
-            Assert.False(DockGuidance.Fires(band / 2 - 1e-6, wantSpeed, true));
+            Assert.True(DockGuidance.Fires(band / 4 + 1e-6, wantSpeed, true));
+            Assert.False(DockGuidance.Fires(band / 4 - 1e-6, wantSpeed, true));
+        }
+
+        [Fact]
+        public void After_a_burn_the_craft_coasts_until_the_error_leaves_the_band()
+        {
+            // Wanting -1 m/s at 30 m: a burn ends under 0.0625 m/s off, then the error may grow to 0.25 m/s with RCS idle.
+            var firing = true;
+            var coasted = 0;
+            for (var v = -0.5; v > -1.3; v -= 0.01)
+            {
+                firing = (bool)Tick(v, firing)["fire"];
+                if (!firing) coasted++;
+                if (v < -0.95 && v > -1.24) Assert.False(firing, "translating at " + v + " m/s");
+            }
+            Assert.True(firing, "still coasting past the band");
+            Assert.True(coasted > 25, "coasted " + coasted);
         }
 
         [Fact]
         public void The_band_is_on_the_whole_velocity_error_and_commands_every_axis()
         {
-            // 0.08 m/s off in each of the three axes: 0.139 m/s in all, out of the band.
-            var tick = Tick(-1.08, false, vLat: 0.08, vSide: -0.08);
+            // 0.2 m/s off in each of the three axes: 0.35 m/s in all, out of the 0.25 m/s band.
+            var tick = Tick(-1.2, false, vLat: 0.2, vSide: -0.2);
             Assert.True((bool)tick["fire"]);
-            Assert.Equal(0.4, (double)tick["cmd_along"], 9);
-            Assert.Equal(-0.4, (double)tick["cmd_lat"], 9);
-            Assert.Equal(0.4, (double)tick["cmd_side"], 9);
+            Assert.Equal(1, (double)tick["cmd_along"], 9);
+            Assert.Equal(-1, (double)tick["cmd_lat"], 9);
+            Assert.Equal(1, (double)tick["cmd_side"], 9);
         }
 
         [Fact]

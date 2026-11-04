@@ -624,6 +624,7 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("local c is addons:claudia.\nprint c:TargetVessel:body.")]
         [InlineData("local h is addons:claudia:dockhold(lexicon(\"port\", \"1\", \"toward\", \"2\")).\nprint h:state.")]
         [InlineData("local c is addons:claudia.\nprint c:DockHoldState:reason.")]
+        [InlineData("addons:claudia:dockholdsettled(true).")]
         [InlineData("print addons:claudia:dockguide(lexicon(\"along\", 10)):fire.")]
         [InlineData("local c is addons:claudia.\nprint c:DockFuel(lexicon(\"distance\", 150)):error.")]
         public void ABlockInternalCallInAMissionScriptFails(string script)

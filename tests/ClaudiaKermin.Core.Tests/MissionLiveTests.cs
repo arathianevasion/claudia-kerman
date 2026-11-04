@@ -1005,6 +1005,31 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void AfterDockingTheDeltaVChecksDoNotCrossOnTheMergedVesselsFiguresAndEachDisarmIsLogged()
+        {
+            // #711's Mission: the craft docked with Kerbin Station Alpha, and the merged vessel read 0 delta-v left, so everything "used".
+            var mission = RunningWith(Plan(Check("delta_v_left", "below", 250)), 950, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
+
+            mission.Send(Left(3100));
+            mission.Send(new VesselsDocked(new SeenVessel { Id = "craft", Name = "Craft", ClaudiaAboard = true },
+                new SeenVessel { Id = "station", Name = "Kerbin Station Alpha" }));
+            mission.Send(Left(0));
+            mission.Send(Left(0));
+            mission.Send(Left(0));
+            // Back to the craft's own figure later doesn't re-arm them either.
+            mission.Send(Left(3100));
+            mission.Send(Left(0));
+            mission.Send(Left(0));
+            _background.Drain();
+
+            Assert.Equal(0, CrossedLines(mission));
+            const string why = ": the craft docked with Kerbin Station Alpha, and the merged vessel's delta-v is not the craft's.";
+            Assert.Equal(1, EventLines(mission, "telemetry_check_disarmed", "delta-v left under 250 m/s" + why));
+            Assert.Equal(1, EventLines(mission, "telemetry_check_disarmed", "delta-v used over 1,140 m/s" + why));
+            Assert.Equal(1, EventLines(mission, "telemetry_check_disarmed", "needed-fuel margin under -10%" + why));
+        }
+
+        [Fact]
         public void APropulsionCheckStaysDisarmedForTheRestOfTheRunOnceNoEngineIsAboard()
         {
             var mission = RunningWith(Plan(Check("delta_v_used", "above", 500)), 0, Snapshot(s => s.Stages[0].DeltaVVac = 3200));
