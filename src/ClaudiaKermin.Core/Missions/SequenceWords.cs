@@ -17,7 +17,11 @@ namespace ClaudiaKermin.Core.Missions
         public static readonly Regex Landing = new Regex(@"\b(land(s|ed|ing)?|touch ?down)\b", RegexOptions.IgnoreCase);
         public static readonly Regex Ascent = new Regex(@"\b(ascen(d|ds|t|ding)|lift ?off|take ?off|launch(es|ing)?)\b", RegexOptions.IgnoreCase);
         public static readonly Regex Reentry = new Regex(@"\b(re-?ent(er|ry|ers|ering)|splash ?down)\b", RegexOptions.IgnoreCase);
-        public static readonly Regex ReturnHome = new Regex(@"\breturn(s|ing)?\b.*\bKerbin\b|\bKerbin\b.*\breturn(s|ing)?\b", RegexOptions.IgnoreCase);
+        /// <summary>
+        /// The return to the home planet (#689): a return that names Kerbin, or "come/return/go/head home", "back home" and "fly home"
+        /// (inflected where natural), whole words. "home in on" and "home stretch" are not returns.
+        /// </summary>
+        public static readonly Regex ReturnHome = new Regex(@"\breturn(s|ing)?\b.*\bKerbin\b|\bKerbin\b.*\breturn(s|ing)?\b|\b(?:com(?:e|es|ing)|return(?:s|ing|ed)?|go(?:es|ing)?|head(?:s|ing|ed)?|fl(?:y|ies|ying)|back)\s+home\b(?!\s+(?:in\s+on|stretch)\b)", RegexOptions.IgnoreCase);
         /// <summary>Docking with the Target Vessel: the dock block (#456).</summary>
         public static readonly Regex Docking = new Regex(@"\bdock(s|ed|ing)?\b", RegexOptions.IgnoreCase);
         /// <summary>Aerobraking and aerocapture: through the air, but not down to the ground.</summary>
