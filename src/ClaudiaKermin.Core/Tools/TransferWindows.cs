@@ -386,7 +386,7 @@ namespace ClaudiaKermin.Core.Tools
                 if (Vec3.Dot(p.Plane, p.Target.W) < 0) p.Plane = p.Plane * -1;
                 // From the pad to a moon out of the equator's plane (#690): launch into the moon's plane at the next launch window (as
                 // plan_ascent's launch_at), so the parking orbit is the moon's plane and the windows start after that launch.
-                var grounded = snapshot.Situation == "PRELAUNCH" || snapshot.Situation == "LANDED" || snapshot.Situation == "SPLASHED";
+                var grounded = snapshot.IsGrounded;
                 if (moon && p.ParkingAssumed && grounded && Math.Abs(body.Inclination) >= OutOfPlaneDeg)
                 {
                     var launch = LaunchWindow.Find(home, snapshot.Ut, snapshot.Latitude, snapshot.CelestialLongitude, body.Inclination, body.Lan, p.ParkingPe);

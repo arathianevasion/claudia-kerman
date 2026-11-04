@@ -146,7 +146,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             var legs = new List<PlannedSequence>();
             if (snapshot == null) return legs;
-            var grounded = snapshot.Situation == "PRELAUNCH" || snapshot.Situation == "LANDED" || snapshot.Situation == "SPLASHED";
+            var grounded = snapshot.IsGrounded;
             var launch = grounded ? DeltaVMap.Compute(snapshot.Bodies, snapshot.Body).Leg("launch:" + snapshot.Body) : null;
             if (launch != null) legs.Add(new PlannedSequence { Name = "Launch from " + snapshot.Body, DeltaV = launch.DeltaV });
             foreach (var clause in GoalClause.Split(goal ?? ""))
