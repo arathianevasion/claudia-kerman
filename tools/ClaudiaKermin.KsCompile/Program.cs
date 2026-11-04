@@ -83,7 +83,9 @@ namespace ClaudiaKermin.KsCompile
         /// </summary>
         private static bool IsCoreLibrary(string file)
         {
-            return Under(file, "kerboscript", "library");
+            // The mod's own dock_hold (kerboscript/dock_hold/, ADR 0013) makes block-internal calls too (DOCKHOLDSETTLED, #711),
+            // and is checked as the mod's, as TheDockHoldProgramPassesTheCheckAsTheModsOwn checks it.
+            return Under(file, "kerboscript", "library") || Under(file, "kerboscript", "dock_hold");
         }
 
         private static bool Under(string file, string parent, string folder)

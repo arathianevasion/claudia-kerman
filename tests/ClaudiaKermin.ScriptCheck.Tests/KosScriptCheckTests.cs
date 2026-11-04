@@ -632,6 +632,15 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             AssertForbidden("call block-internal calculations", CoreLibrary.Bundle(script));
         }
 
+        // #711: dock_hold's settled report changes the hold's state, so it is block-internal (ADR 0014 guardrail 5): refused in a
+        // Mission Script. The mod's own dock_hold makes it, and passes as the mod's (TheDockHoldProgramPassesTheCheckAsTheModsOwn).
+        [Fact]
+        public void DockHoldsSettledReportIsRefusedInAMissionScript()
+        {
+            AssertForbidden("call block-internal calculations", "addons:claudia:dockholdsettled(true).");
+            Assert.True(new KosScriptCheck(forCoreLibrary: true).Check(ClaudiaKermin.Core.Kos.DockHold.Program("1", "2")).Passed);
+        }
+
         // #335: the warp trace's wait marks are common calls, like BLOCKSTART: a report to the mod's trace, not a calculation
         // (ADR 0006), so a Custom Script's own claudia_warp_to, or the script itself, may make them.
         [Fact]
