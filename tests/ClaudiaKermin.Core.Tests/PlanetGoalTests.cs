@@ -59,7 +59,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             var description = PlanningTools.Default().Definitions(ToolOffer.Mission).Single(t => t.Name == "plan_transfer").Description;
             Assert.InRange(description.Length, 1, 457);
-            Assert.Contains("a planet: soonest and optimal windows", description);
+            Assert.Contains("a sibling: soonest, optimal windows", description);
             Assert.Contains("Its block is transfer_to", description);
             Assert.DoesNotContain("no burn", description);
         }
