@@ -196,7 +196,6 @@ namespace ClaudiaKermin.Adapter
             _focusPrompt = _promptFor == mode;
         }
 
-        // What the Craft Check card in the transcript needs from the setup: the pinned goal, the cost estimate and Check again.
         /// <summary>Tells the core the form's goal and Target Vessel pick when they change, so the Craft Check card can show it is stale (#664). UI state only.</summary>
         private void ReportForm(bool settingUp)
         {
@@ -207,6 +206,7 @@ namespace ClaudiaKermin.Adapter
             _send(new StartFormChanged(_goal, _targetPick));
         }
 
+        // What the Craft Check card in the transcript needs from the setup: the pinned goal, the cost estimate and Check again.
         private void SetCraftCheckContext(bool settingUp)
         {
             var form = _view.StartForm;
