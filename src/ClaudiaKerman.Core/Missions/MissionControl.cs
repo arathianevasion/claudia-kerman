@@ -1895,7 +1895,11 @@ namespace ClaudiaKerman.Core.Missions
         /// <param name="restored">A load offers the saved plan again: its Due Time and window were decided when it first arrived.</param>
         private void OfferSequencePlan(Mission mission, SequencePlan plan, bool restored = false)
         {
-            if (!restored) WindowWait(mission, plan);
+            if (!restored)
+            {
+                WindowWait(mission, plan);
+                TransferWait(mission, plan);
+            }
             if (!mission.SequenceCounted)
             {
                 mission.SequencesProposed++;
