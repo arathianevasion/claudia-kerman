@@ -902,7 +902,9 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver node components), <c>dv</c>, <c>burn_time</c> (s; -1 when
         /// the craft's stages don't give it) and <c>wanted</c>, a lexicon of each element the goal sets and the figure it aims at
         /// (<see cref="SolvedBurn.Wanted"/>); or only <c>error</c>, solve_burn's reason. It refuses <c>intercept_at</c>, whose aim is
-        /// an arrival, not an element.
+        /// an arrival, not an element. Block-internal (#691), for change_orbit's re-solve after the turn: <c>resolve_ut</c> (the
+        /// node's UT) and <c>resolve_max_dv</c> (a number, or anything else for none). With <c>resolve_ut</c>, a burn more than 5 s
+        /// from it, or <c>resolve_max_dv</c> and a burn over it, gives only an <c>error</c> naming that: the first node is kept.
         /// </summary>
         public static IDictionary<string, object> OrbitBurn(IDictionary<string, object> input, GameSnapshot snapshot)
         {
@@ -917,10 +919,20 @@ namespace ClaudiaKermin.Core.Tools
             if (goal as string == "match_velocities" || goal as string == "course_correction")
                 return Error("ORBITBURN does not solve " + goal + ": it aims at the Target Vessel, not an orbit element; CORRECTIONBURN solves it at fly time");
             var json = new JsonWriter().BeginObject();
+            double? resolveUt = null, resolveMaxDv = null;
             foreach (var entry in ask)
             {
                 var key = entry.Key.ToLowerInvariant();
                 var text = entry.Value as string;
+                if (key == "resolve_ut" || key == "resolve_max_dv")
+                {
+                    if (entry.Value is double && !double.IsNaN((double)entry.Value))
+                    {
+                        if (key == "resolve_ut") resolveUt = (double)entry.Value;
+                        else resolveMaxDv = (double)entry.Value;
+                    }
+                    continue;
+                }
                 switch (key)
                 {
                     case "goal":
@@ -950,6 +962,12 @@ namespace ClaudiaKermin.Core.Tools
             var solved = new SolvedBurn();
             var outcome = new SolveBurn().Solve(JsonReader.Parse(json.EndObject().ToString()), snapshot, solved);
             if (outcome.IsError) return Error(outcome.Summary);
+            if (resolveUt.HasValue && Math.Abs(solved.Ut - resolveUt.Value) > 5)
+                return Error("the burn moved to UT " + Math.Round(solved.Ut, 1).ToString(CultureInfo.InvariantCulture) + " from "
+                    + Math.Round(resolveUt.Value, 1).ToString(CultureInfo.InvariantCulture));
+            if (resolveUt.HasValue && resolveMaxDv.HasValue && solved.DeltaV > resolveMaxDv.Value)
+                return Error("needs " + Math.Round(solved.DeltaV, 1).ToString(CultureInfo.InvariantCulture) + " m/s, over max_dv "
+                    + resolveMaxDv.Value.ToString(CultureInfo.InvariantCulture));
             var wanted = new Dictionary<string, object>();
             foreach (var element in solved.Wanted) wanted[element.Key] = element.Value;
             return new Dictionary<string, object>
