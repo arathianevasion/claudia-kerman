@@ -14,10 +14,10 @@ target ["none"]: LATLNG(lat, lng), lexicon("lat", x, "lng", y) or "ksc": where t
 mid-course correction then aims the landing point the mod's reentry predictor gives (the craft's
 own drag, held retrograde as reentry flies it) at the target, with target_pe only drawing a path
 that misses the air towards it (and target_inc left out); the ejection burn is unchanged. "none"
-aims for target_pe only. The landing is hard to steer from here: read predicted_error_km, and when
-it is too far for the Mission Goal, capture at the planet and call deorbit instead. Aim a
-splashdown offshore.
+aims for target_pe only. Hard to steer from here: read predicted_error_km, and when
+too far for the Mission Goal, capture at the planet and call deorbit instead. Aim a splashdown offshore.
 correction [true]: false leaves out the mid-course correction.
+checkpoint ["off"]: the mod's own, for a coast it resumes.
 max_duration ["auto"]: the time to the predicted reentry plus 900 s; a shorter one moves the correction sooner.
 plus min_ec_pct, abort_on_part_loss and stage_limit as for every block; each burn gets them too.
 Extra results: planet_pe (m, the periapsis at the planet), reentry_ut (UT of the predicted

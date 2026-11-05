@@ -119,6 +119,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is KosRcsSwitched) RcsSwitched((KosRcsSwitched)input);
             else if (input is ShipSystemsMoved) ShipSystemsLine((ShipSystemsMoved)input);
             else if (input is EncounterWatchDropped) EncounterWatchLine((EncounterWatchDropped)input);
+            else if (input is CoastArmed) CoastArmedSeen((CoastArmed)input);
             else if (input is AbortSequence) AbortPressed();
             else if (input is VesselsSeen) VesselsChanged(((VesselsSeen)input).Vessels);
             else if (input is VesselsDocked) Docked((VesselsDocked)input);
@@ -144,6 +145,7 @@ namespace ClaudiaKerman.Core.Missions
             CheckRunaway();
             CheckTelemetry();
             CheckFlyable();
+            CheckCoastReturn();
             TryPlan();
             TryTargetRevision();
             TryOwed();
@@ -645,8 +647,8 @@ namespace ClaudiaKerman.Core.Missions
             var plan = mission.PendingSequence;
             // Back after the Transfer Window: the next one, or an Alert (#616).
             if (!plan.Manual && WindowWasMissed(mission) && !NextWindow(mission, plan)) return;
-            // The mod never starts a sequence before its Due Time, and never warps there for the player.
-            if (plan.DueTimeUt.HasValue && _ut < plan.DueTimeUt.Value)
+            // The mod never starts a sequence before its Due Time, and never warps there for the player (but for a coast checkpoint's, which is soft: #775).
+            if (plan.DueTimeUt.HasValue && _ut < plan.DueTimeUt.Value && !SoftDueTime(mission, plan))
             {
                 Note(LogKind.Notice, "Not before the Due Time, " + KerbinTime.Date(plan.DueTimeUt.Value) + " (in "
                     + KerbinTime.Span(plan.DueTimeUt.Value - _ut) + "). Warp to Due Time, then Approve.");
@@ -905,6 +907,7 @@ namespace ClaudiaKerman.Core.Missions
             var outcome = StoppedOutcome(mission, ended.Outcome);
             NoteRunOutcome(mission, outcome);
             Notice("The script ended: " + outcome.Summary + ".");
+            if (RunEndedAtCheckpoint(mission, outcome)) return;
             if (DebriefOnReturn(mission, outcome)) return;
             AwaitPostRunSnapshot(mission, outcome, ended.Ut);
         }
@@ -1773,7 +1776,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>What actually runs: the plan's script bundled with the Core Library.</summary>
         private string Bundle(SequencePlan plan)
         {
-            return CoreLibrary.Bundle(plan.Script);
+            // #775: a Mission's run of the craft may stop at a Coast Checkpoint; a block test or a Child Vessel's run never does.
+            return CoreLibrary.Bundle(_mission != null && FliesCraft(_mission, plan.Vessel) ? CoastCheckpoints.Armed(plan.Script) : plan.Script);
         }
 
         /// <summary>
@@ -1911,6 +1915,8 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (!restored)
             {
+                // Only the mod marks its own resume (#775).
+                plan.CoastCheckpoint = "";
                 WindowWait(mission, plan);
                 TransferWait(mission, plan);
             }
@@ -2346,6 +2352,9 @@ namespace ClaudiaKerman.Core.Missions
                     && mission.Stage != MissionStage.AwaitingReducedGoal;
 
                 view.LeavingFlightNeedsConfirmation = IsRunning(mission);
+                var cannotLeave = CannotLeaveCraft(mission);
+                view.FarSwitchLeavesAtCheckpoint = cannotLeave == "";
+                view.FarSwitchWarning = cannotLeave ?? "";
                 view.CraftVesselId = FollowsCraft(mission) ? mission.VesselId : "";
                 view.ChildVessels = ChildVesselViews(mission);
                 view.RunningChildVesselId = RunningChildVesselId(mission);
@@ -2365,7 +2374,7 @@ namespace ClaudiaKerman.Core.Missions
                         SecondsLeft = Math.Max(0, due.Value - _ut),
                         Reached = _ut >= due.Value,
                         VesselName = mission.VesselName,
-                        WaitsFor = mission.WindowPlanet.Length > 0 ? WindowWaits.WaitsFor(mission.WindowPlanet) : "",
+                        WaitsFor = mission.WindowPlanet.Length > 0 ? WindowWaits.WaitsFor(mission.WindowPlanet) : CoastPlanToken(mission.PendingSequence) != null ? CoastCheckpoints.WaitsFor : "",
                     };
                 }
                 view.Locks = LocksNow();
@@ -2411,6 +2420,9 @@ namespace ClaudiaKerman.Core.Missions
                     view.QuickReplies = mission.ConfirmPrompt != null
                         ? new List<QuickReply> { QuickReply.ConfirmApproval, QuickReply.NotYet }
                         : new List<QuickReply> { first ?? QuickReply.Approve, QuickReply.ChangeSomething, QuickReply.AskQuestion };
+                    // A coast checkpoint's Due Time is soft: with the player in the craft, one Approve warps there too (#775).
+                    if (mission.ConfirmPrompt == null && first == QuickReply.WarpToDueTime && mission.PendingSequence != null && SoftDueTime(mission, mission.PendingSequence))
+                        view.QuickReplies.Insert(0, QuickReply.Approve);
                 }
                 // Paused mid-run, the script still flies: Abort stays on offer.
                 if (mission.Stage == MissionStage.Paused && IsRunning(mission) && mission.RunId.HasValue && mission.StopReason == null)

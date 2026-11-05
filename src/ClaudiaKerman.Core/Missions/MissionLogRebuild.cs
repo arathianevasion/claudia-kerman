@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Linq;
 using ClaudiaKerman.Core.Claude;
 using ClaudiaKerman.Core.Config;
+using ClaudiaKerman.Core.Tools;
 
 namespace ClaudiaKerman.Core.Missions
 {
@@ -181,6 +182,21 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The Debrief card the mod wrote itself for a run refused before any burn (#579), from its fact in the transcript; the steps are as they stood.</summary>
         private static void AddModDebrief(List<LogEntry> log, string userText, List<GoalItem> steps)
         {
+            var coast = CoastCheckpoints.ReadFact(userText);
+            if (coast != null)
+            {
+                var clean = CoastCheckpoints.Debrief(coast);
+                log.Add(new LogEntry
+                {
+                    Kind = LogKind.Debrief,
+                    Title = "Debrief: " + clean.Outcome,
+                    Text = MissionCards.DebriefBody(clean, ""),
+                    Why = CoastCheckpoints.CardWhy,
+                    Outcome = clean.Outcome,
+                    Debrief = MissionCards.DebriefDetail(clean, steps),
+                });
+                return;
+            }
             var account = EmptyDebrief.ReadFact(userText);
             if (account != null)
             {

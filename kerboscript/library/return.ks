@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 //
-// Building Block return: flies home from orbit around any moon to a periapsis in the atmosphere of the
-// planet it orbits. The ejection is the mod's solver, ADDONS:CLAUDIA:RETURNBURN. Built on claudia_lib.ks (its
-// patch, descent and Course Correction helpers) and exec_node.ks; block-only helpers are prefixed return_. kOS
-// lets a function be named return when it is called as a value. The "//|" lines are Claudia's docs for it; the
-// first is its summary.
+// Building Block return: flies home from orbit around any moon. The ejection is the mod's solver, ADDONS:CLAUDIA:RETURNBURN. Block-only helpers
+// are prefixed return_. kOS lets a function be named return when it is called as a value. The "//|" lines are Claudia's docs.
 
 @lazyglobal off.
 
@@ -25,10 +22,10 @@
 //|     mid-course correction then aims the landing point the mod's reentry predictor gives (the craft's
 //|     own drag, held retrograde as reentry flies it) at the target, with target_pe only drawing a path
 //|     that misses the air towards it (and target_inc left out); the ejection burn is unchanged. "none"
-//|     aims for target_pe only. The landing is hard to steer from here: read predicted_error_km, and when
-//|     it is too far for the Mission Goal, capture at the planet and call deorbit instead. Aim a
-//|     splashdown offshore.
+//|     aims for target_pe only. Hard to steer from here: read predicted_error_km, and when
+//|     too far for the Mission Goal, capture at the planet and call deorbit instead. Aim a splashdown offshore.
 //|   correction [true]: false leaves out the mid-course correction.
+//|   checkpoint ["off"]: the mod's own, for a coast it resumes.
 //|   max_duration ["auto"]: the time to the predicted reentry plus 900 s; a shorter one moves the correction sooner.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block; each burn gets them too.
 //| Extra results: planet_pe (m, the periapsis at the planet), reentry_ut (UT of the predicted
@@ -54,7 +51,7 @@
 
 // The block's own options and defaults.
 function return_defaults {
-  return lexicon("target_pe", 35000, "target_inc", "any", "window", "next", "correction", true, "target", "none").
+  return lexicon("target_pe", 35000, "target_inc", "any", "window", "next", "correction", true, "target", "none", "checkpoint", "off").
 }
 
 // Whether the Mission Script gave a landing target.
@@ -63,9 +60,8 @@ function return_aims {
   return not (opt:target:istype("String") and opt:target = "none").
 }
 
-// What return asks ADDONS:CLAUDIA:REENTRYIMPACT: where the path orb round the planet comes down, and how
-// far that is from site (lat, lng) whose ground is ground_alt m (sea level for water). The path begins
-// at from_ut (the craft may not be on it yet), so the fall is taken from there. Pure.
+// What return asks ADDONS:CLAUDIA:REENTRYIMPACT: where the path orb, from from_ut, comes down, and how far that
+// is from site (lat, lng) whose ground is ground_alt m (sea level for water). Pure.
 function return_impact_query {
   parameter orb, from_ut, site, ground_alt.
   return lexicon("lat", site:lat, "lng", site:lng, "ground_alt", max(0, ground_alt), "from_ut", from_ut,
@@ -178,14 +174,10 @@ function return_leave_moon {
 }
 
 // km the predicted landing may be from the target before the aimed correction stops looking.
-function return_aim_good_km {
-  return 2.
-}
+function return_aim_good_km { return 2. }
 
-// What the aimed correction (return_aimed_correction) lowers for the path orb: the km from the
-// target to where it lands; over any real landing (no planet with moons is 2000 km round) when it misses
-// the atmosphere, so the search first moves towards the air by target_pe, or 1e5 with no path to dest.
-// p is claudia_patch's result for the path.
+// What the aimed correction lowers for the path p (claudia_patch's result): the km from the target to where it lands; over any real
+// landing when it misses the atmosphere, so the search first moves towards the air by target_pe; 1e5 with no path to dest.
 function return_aim_cost {
   parameter aim, p, target_pe.
   if p:istype("String") {
@@ -198,12 +190,9 @@ function return_aim_cost {
   return km.
 }
 
-// The correction with a landing target: a node at ut whose burn aims the landing the predictor gives at the target, by
-// coordinate descent over its components, flown with exec_node. aim is a delegate of an orbit patch round dest and the UT
-// it begins, that returns the km its predicted landing is from the target, or -1 if it doesn't come down; target_pe only
-// draws a path that misses the atmosphere towards it. The search stops once the landing is within return_aim_good_km()
-// of the target (the block asks only when it isn't yet), and nothing is burned when the fix is under 0.1 m/s. Returns
-// lexicon("reason", "" or why the block fails, "dv", m/s burned).
+// The correction with a landing target: a node at ut aiming the predicted landing at the target, by coordinate descent, flown with
+// exec_node. aim(orbit patch round dest, the UT it begins) gives the km its landing is from the target, -1 if it doesn't come down. It stops
+// within return_aim_good_km(); nothing is burned under 0.1 m/s. Returns lexicon("reason", "" or why the block fails, "dv", m/s burned).
 function return_aimed_correction {
   parameter ctx, dest, target_pe, ut, aim.
   local done is lexicon("reason", "", "dv", 0).
@@ -246,23 +235,23 @@ function return {
   }
 
   local moon is ship:body.
-  if status <> "ORBITING" {
+  local resumed is opt:checkpoint:startswith("resume").
+  if status <> "ORBITING" and not resumed {
     return claudia_finish(ctx, false, "not in orbit: return starts from orbit around a moon", extra).
   }
   if not moon:hasbody {
     return claudia_finish(ctx, false, "return starts from orbit around a moon, not " + moon:name, extra).
   }
-  if not moon:body:hasbody {
+  if not moon:body:hasbody and not resumed {
     return claudia_finish(ctx, false, "already orbiting " + moon:name + ", a planet: lower the periapsis with exec_node instead", extra).
   }
-  local planet is moon:body.
+  // Resumed (#775), the craft may be past the moon already.
+  local planet is choose moon if resumed and not moon:body:hasbody else moon:body.
   if hasnode {
     return claudia_finish(ctx, false, "a maneuver node is already planned: remove it first", extra).
   }
 
-  // With a target, the correction aims the predicted landing at it. The prediction is the mod's reentry
-  // predictor, a block-internal call (ADR 0007): inline here, asked of a path round the planet that the craft
-  // may not be on yet.
+  // With a target, the correction aims the mod's reentry prediction at it, for a path the craft may not be on yet (ADR 0007).
   local aim is 0.
   local predict is 0.
   if return_aims(opt) {
@@ -285,37 +274,36 @@ function return {
     }.
   }
 
-  // The ejection is the mod's solver, solved here from the live orbit: a block-internal call (ADR 0007), so it sits in
-  // the block. Its earliest departure leaves time to turn to the burn, as transfer_to's does (Core's, via TRANSFERSTEP). A call
-  // that threw gives only its error (#439), as a solve that found nothing does.
+  // The ejection is the mod's solver, a block-internal call (ADR 0007). Its earliest departure leaves time to turn to the burn (TRANSFERSTEP).
   local turn is addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime)).
   if turn:error <> "" {
     return claudia_finish(ctx, false, turn:error, extra).
   }
-  local first is addons:claudia:transferstep(lexicon("timing", "earliest", "start_ut", ctx:start_ut,
-    "turn_time", turn:turn_time, "window", opt:window)).
-  if first:error <> "" {
-    return claudia_finish(ctx, false, first:error, extra).
-  }
-  local found is addons:claudia:returnburn(return_with_inc(lexicon("target_pe", opt:target_pe,
-    "earliest_ut", first:ut), opt:target_inc)).
-  if found:error <> "" {
-    return claudia_finish(ctx, false, found:error, extra).
-  }
-  local nd is node(found:ut, found:radial, found:normal, found:prograde).
-  add nd.
-  local planned is claudia_patch(nd:orbit, planet).
-  if planned:istype("String") {
-    remove nd.
-    return claudia_finish(ctx, false, "found no return: the ejection node does not reach " + planet:name, extra).
-  }
-  if opt:max_duration:istype("String") {
-    set opt:max_duration to return_reentry_ut(planned:orbit) - ctx:start_ut + 900.
-  }
-
-  local ejected is claudia_burn(ctx, nd).
-  if not ejected:success {
-    return claudia_finish(ctx, false, ejected:reason, extra).
+  if not resumed {
+    local first is addons:claudia:transferstep(lexicon("timing", "earliest", "start_ut", ctx:start_ut,
+      "turn_time", turn:turn_time, "window", opt:window)).
+    if first:error <> "" {
+      return claudia_finish(ctx, false, first:error, extra).
+    }
+    local found is addons:claudia:returnburn(return_with_inc(lexicon("target_pe", opt:target_pe,
+      "earliest_ut", first:ut), opt:target_inc)).
+    if found:error <> "" {
+      return claudia_finish(ctx, false, found:error, extra).
+    }
+    local nd is node(found:ut, found:radial, found:normal, found:prograde).
+    add nd.
+    local planned is claudia_patch(nd:orbit, planet).
+    if planned:istype("String") {
+      remove nd.
+      return claudia_finish(ctx, false, "found no return: the ejection node does not reach " + planet:name, extra).
+    }
+    if opt:max_duration:istype("String") {
+      set opt:max_duration to return_reentry_ut(planned:orbit) - ctx:start_ut + 900.
+    }
+    local ejected is claudia_burn(ctx, nd).
+    if not ejected:success {
+      return claudia_finish(ctx, false, ejected:reason, extra).
+    }
   }
   local home is claudia_patch(ship:orbit, planet).
   if home:istype("String") {
@@ -343,6 +331,21 @@ function return {
       set needed to return_miss(claudia_patch(ship:orbit, planet), opt) <> "".
     }
     if needed {
+      // The mod decides (#775): stop at a Coast Checkpoint, or when resumed, the watched wait to the correction.
+      local ahead is addons:claudia:transferstep(lexicon("timing", "coast", "target", planet:name, "mid", mid, "turn_time", turn:turn_time,
+        "arrive_ut", return_reentry_ut(home:orbit), "checkpoint", opt:checkpoint)).
+      if ahead:do = "done" {
+        return claudia_finish(ctx, true, "", ahead:report).
+      }
+      set mid to ahead:ut.
+      if ahead:do = "wait" {
+        addons:claudia:encounterwatch(ahead:watch).
+        set waited to claudia_warp_to(ctx, ahead:wait_ut, 30, { return addons:claudia:encounterwatchdropped. }).
+        if waited <> "" {
+          claudia_make_safe().
+          return claudia_finish(ctx, false, waited, extra).
+        }
+      }
       // 300 s to turn to and lead the burn, as before #450, so the aimed correction's timing is unchanged.
       local when is addons:claudia:transferstep(lexicon("timing", "correction", "mid", mid, "now", time:seconds,
         "lead", 300, "start_ut", ctx:start_ut, "max_duration", opt:max_duration)).

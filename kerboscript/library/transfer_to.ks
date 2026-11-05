@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 //
-// Building Block transfer_to, the spec's `transfer` (kOS already has a built-in TRANSFER, for moving
-// resources, which a function may not hide): flies from orbit around a body to an encounter with
-// one of its moons or a body sharing its parent. Its flight is the mod's (ADDONS:CLAUDIA:TRANSFERSTEP, #459, ADR 0014):
-// each step plans a node, a wait or the end, and checks the encounter; the block only flies the nodes with exec_node,
-// warps and reports. Built on claudia_lib.ks and exec_node.ks; block-only helpers are prefixed transfer_to_. The "//|"
-// lines are Claudia's docs for it; the first is its summary.
+// Building Block transfer_to, the spec's `transfer` (kOS has a built-in TRANSFER, for moving resources): flies from orbit to an
+// encounter. Its flight is the mod's (ADDONS:CLAUDIA:TRANSFERSTEP, #459, ADR 0014): each step plans a node, a wait or the end; the block only
+// flies the nodes with exec_node, warps and reports. Block-only helpers are prefixed transfer_to_. The "//|" lines are Claudia's docs.
 
 @lazyglobal off.
 
@@ -21,16 +18,16 @@
 //|     the burn; a time (UT seconds): the window from then (a planet's: round it). It warps
 //|     there on rails: no Due Time needed.
 //|   correction [true]: false leaves out the mid-course correction.
+//|   checkpoint ["off"]: the mod's own, for a coast it resumes.
 //|   pe_tolerance [1000]: m off target_pe allowed; past it, a finer correction, then a fail.
 //|   max_duration ["auto"]: the time to the planned arrival plus 900 s; a shorter one moves the correction sooner.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block; each burn gets them too.
 //| Extra results: encounter_ut (UT the craft enters the target's SOI),
 //| target_pe_actual (m, the periapsis predicted at the target), correction_dv (m/s the corrections
-//| burned: one making the encounter if the ejection missed or, once, a correction lost it (recovered: why), then the rest, none within
-//| pe_tolerance, under 0.1 m/s or with correction false); plane_dv (m/s the plane change burned).
+//| burned, restoring a lost encounter too; recovered: why it was lost); plane_dv (m/s the plane change burned).
 //| departure_ut, arrival_ut (UT of ejection, periapsis), v_inf (m/s).
 //| ejection_node_dv, ejection_dv_used (m/s the node asked for, the burn used) and ejection_burn_time
-//| (s the engines burned): a long burn's dv_used is ~2% over. All -1 if it failed before the ejection burn.
+//| (s the engines burned): a long burn's dv_used is ~2% over. All -1 if it failed before the ejection burn or resumed.
 //| ejection_wait (s from the block's start to the ejection node): -1 if it failed before the node was planned.
 //| Fails with "target is required", "target_pe is required", an option value it can't read, "no body
 //| named <x>", a target that doesn't orbit the craft's body or parent, "not in orbit", "a maneuver node is
@@ -45,7 +42,7 @@
 
 // The block's own options and defaults ("required" means the Mission Script must give it).
 function transfer_to_defaults {
-  return lexicon("target", "required", "target_pe", "required", "window", "next", "correction", true, "pe_tolerance", 1000).
+  return lexicon("target", "required", "target_pe", "required", "window", "next", "correction", true, "pe_tolerance", 1000, "checkpoint", "off").
 }
 
 // "" or why an option value isn't one the block can use.
@@ -77,10 +74,8 @@ function transfer_to_unreadable {
   return claudia_correction_unreadable(opt:correction).
 }
 
-// The flight: the mod's steps from state (TRANSFERSTEP's ask, its phase "start") until one ends it, each folded into extra
-// (the Script Result's own keys) and opt (max_duration, once the plan sets it). ask(state) gives the next step (a call that
-// threw gives only its error, #439); fly(step) flies its node and gives exec_node's result; wait(step) and tick() give "" or
-// why the block must stop. Returns "" or the reason the block fails.
+// The flight: the mod's steps from state (TRANSFERSTEP's ask) until one ends it, each folded into extra and opt. ask(state) gives the next step (a throw
+// gives only its error, #439); fly(step) gives exec_node's result; wait(step) and tick() give "" or why the block must stop. Returns "" or why it fails.
 function transfer_to_run {
   parameter state, opt, extra, ask, fly, wait, tick.
   local first is true.
@@ -155,22 +150,21 @@ function transfer_to {
     }
     set dest to body(dest).
   }
-  if status <> "ORBITING" {
+  if status <> "ORBITING" and not opt:checkpoint:startswith("resume") {
     return claudia_finish(ctx, false, "not in orbit: transfer_to starts from orbit around " + ship:body:name, extra).
   }
   if hasnode {
     return claudia_finish(ctx, false, "a maneuver node is already planned: remove it first", extra).
   }
 
-  // The steps are the mod's, block-internal calls (ADR 0007, ADR 0014), so they sit in the block. The earliest departure
-  // leaves time to turn to the burn, which exec_node does before it warps there on rails, with no cap (ADR 0004).
+  // The steps are the mod's, block-internal calls (ADR 0007, ADR 0014). The earliest departure leaves time to turn to the burn (ADR 0004).
   local turn is addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime)).
   if turn:error <> "" {
     return claudia_finish(ctx, false, turn:error, extra).
   }
   local state is lexicon("target", dest:name, "target_pe", opt:target_pe, "window", opt:window, "correction", opt:correction,
     "pe_tolerance", opt:pe_tolerance, "start_ut", ctx:start_ut, "max_duration", opt:max_duration,
-    "auto", opt:max_duration:istype("String"), "turn_time", turn:turn_time, "phase", "start").
+    "auto", opt:max_duration:istype("String"), "turn_time", turn:turn_time, "phase", "start", "checkpoint", opt:checkpoint).
   local reason is transfer_to_run(state, opt, extra, {
     parameter s.
     set s:dv_left to claudia_dv_remaining().

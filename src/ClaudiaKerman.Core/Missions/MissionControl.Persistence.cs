@@ -30,6 +30,8 @@ namespace ClaudiaKerman.Core.Missions
             SequencePlan,
             /// <summary>The Debrief of a sequence that was interrupted.</summary>
             Debrief,
+            /// <summary>The mod's own Debrief and resume of a run that ended at a Coast Checkpoint (#775).</summary>
+            CoastCheckpoint,
         }
 
         /// <summary>What a load puts back: a snapshot from the save, or (NoSnapshot) just the Mission folder.</summary>
@@ -300,6 +302,11 @@ namespace ClaudiaKerman.Core.Missions
             // It needs the craft's own facts: with the player in another vessel it waits until they are back in the craft.
             if (mission.Stage == MissionStage.Paused || !CraftActive || mission.SwitchingAway) return;
 
+            if (mission.Owed == Owed.CoastCheckpoint && mission.Stage == MissionStage.Debriefing)
+            {
+                TakeOwedCheckpoint(mission);
+                return;
+            }
             Turn turn;
             if (mission.Owed == Owed.Debrief && mission.Stage == MissionStage.Debriefing)
             {
@@ -859,6 +866,8 @@ namespace ClaudiaKerman.Core.Missions
                 mission.SuppressCards = mission.LogRebuilt;
                 OfferSequencePlan(mission, mission.PendingSequence, true);
                 mission.SuppressCards = false;
+                // #775: time has passed by a load, a far switch's reload or a parked Mission's return: the check runs again on the craft.
+                mission.CheckPending = CoastPlanToken(mission.PendingSequence) != null;
                 // The rebuilt card had no "now" to say its Due Time is "in" so long against; the one awaiting Approval has one again.
                 var rebuilt = mission.LogRebuilt ? mission.Log.LastOrDefault(e => e.Kind == LogKind.SequencePlan) : null;
                 if (rebuilt != null) rebuilt.Text = MissionCards.SequencePlanBody(mission.PendingSequence, mission.VesselName, _ut, _config);

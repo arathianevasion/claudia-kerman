@@ -317,7 +317,7 @@ namespace ClaudiaKerman.Core.Tests
         public void TheAutoModeSwitchHasItsWordingAndTooltip()
         {
             Assert.Equal("Auto Mode", MissionWindowRules.AutoModeLabel);
-            Assert.Equal("Approve Claudia's plans for you while the Spending Cap has room. Starting the Mission, Warnings, Manual stretches and Due Times still need you.", MissionWindowRules.AutoModeTooltip);
+            Assert.Equal("Approve Claudia's plans for you while the Spending Cap has room. Starting the Mission, Warnings, Manual stretches and Due Times (not a Coast Checkpoint's, while you stay in the craft) still need you.", MissionWindowRules.AutoModeTooltip);
             Assert.Equal("Start new Missions in Auto Mode", MissionWindowRules.DefaultAutoModeLabel);
         }
 

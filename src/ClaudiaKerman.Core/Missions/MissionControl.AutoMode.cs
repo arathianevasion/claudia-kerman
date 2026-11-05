@@ -51,7 +51,7 @@ namespace ClaudiaKerman.Core.Missions
             FirstMissionPlan,
             /// <summary>Only the player flies a manual stretch.</summary>
             ManualStretch,
-            /// <summary>A Due Time is a wait that needs the player (ADR 0004), even once it is reached.</summary>
+            /// <summary>A Due Time is a wait that needs the player (ADR 0004), even once it is reached; a coast checkpoint's only once they have left (#775).</summary>
             DueTime,
             /// <summary>Auto Mode only: the Spending Cap has no room for the Debrief and next plan request that follow.</summary>
             NoRoom,
@@ -137,7 +137,8 @@ namespace ClaudiaKerman.Core.Missions
                     WaitsForPlayer(mission, AdvanceWait.ManualStretch, plan.Name);
                     return;
                 }
-                if (plan.DueTimeUt.HasValue)
+                // The one exception (#775): Auto Mode may stand in at a coast checkpoint's Due Time, with the player still in the craft, and at no other kind.
+                if (plan.DueTimeUt.HasValue && !(mission.AutoMode && !mission.Blackout && SoftDueTime(mission, plan)))
                 {
                     WaitsForPlayer(mission, AdvanceWait.DueTime, plan.Name);
                     return;
