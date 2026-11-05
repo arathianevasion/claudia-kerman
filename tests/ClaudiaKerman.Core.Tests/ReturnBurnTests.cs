@@ -344,17 +344,22 @@ namespace ClaudiaKerman.Core.Tests
         /// can stall where the inertial solve (the solve before #759) reaches it: that solve remains behind the bounded one.
         /// </summary>
         [Theory]
-        [InlineData("Minmus", 6000, 170, 50000)]
-        [InlineData("Minmus", 6000, 170, 170000)]
-        [InlineData("Ike", 30000, 170, 35000)]
-        public void A_return_the_bound_cannot_solve_still_gets_the_inertial_solve(string moonName, double altitude, double inc, double targetPe)
+        [InlineData(0.0, 50000)]
+        [InlineData(0.2, 50000)]
+        [InlineData(0.2, 170000)]
+        public void A_return_the_bound_cannot_solve_still_gets_the_inertial_solve(double eccentricity, double targetPe)
         {
-            var moon = MoonNamed(moonName);
-            var snapshot = Orbiting(moon, altitude, inc);
+            var snapshot = Orbiting(Minmus, 6000, 170);
+            snapshot.Orbit.SemiMajorAxis = 66000 / (1 - eccentricity);
+            snapshot.Orbit.Eccentricity = eccentricity;
+            snapshot.Orbit.Lan = 30;
+            snapshot.Orbit.ArgumentOfPeriapsis = 40;
+            snapshot.Orbit.MeanAnomalyAtEpoch = 1;
             var node = Solve(snapshot, targetPe);
             Assert.Equal("", node["error"]);
+            Assert.Equal("the inertial solve, without the bound", node["finished_by"]);
             double pe, flownInc;
-            Flown(snapshot, node, moon.Parent, out pe, out flownInc);
+            Flown(snapshot, node, "Kerbin", out pe, out flownInc);
             Assert.InRange(pe, targetPe - PeBound, targetPe + PeBound);
         }
 

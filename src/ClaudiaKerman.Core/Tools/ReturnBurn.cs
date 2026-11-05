@@ -86,6 +86,7 @@ namespace ClaudiaKerman.Core.Tools
         private const int FinishIterations = 30;
         private const string Prograde1D = "a search on the prograde component";
         private const string TimeShift = "a time shift";
+        private const string InertialSolve = "the inertial solve, without the bound";
         /// <summary>Out of the moon, round the planet: a last patch round the star no longer throws (#471).</summary>
         private const int Patches = 2;
         /// <summary>The seed's search for the burn point: samples over the window.</summary>
@@ -144,7 +145,11 @@ namespace ClaudiaKerman.Core.Tools
             {
                 var plan = Solved(system, moon, planet, orbit, ask, earliest, latest, peR, startUt, seed, floor, bounded);
                 plan.FromGrid = fromGrid;
-                if (plan.Error == null) return plan;
+                if (plan.Error == null)
+                {
+                    if (!bounded) plan.FinishedBy = InertialSolve;
+                    return plan;
+                }
                 if (stopped == null || (!stopped.HasBurn && plan.HasBurn)) stopped = plan;
                 if (!plan.HasBurn || !ask.FinishSearch) continue;
                 var finished = Finished(FinishAlongPrograde(system, moon, planet, orbit, plan, floor, peR), plan, Prograde1D, ask)
@@ -169,11 +174,11 @@ namespace ClaudiaKerman.Core.Tools
             tolerances[0] = PeResidual;
             for (var k = 1; k < m; k++) tolerances[k] = IncResidual;
             Func<double[], double, Vec3> burnOf = (x, t) => bounded ? SingleShooting.FromNodeFrame(orbit, t, x[0], x[1], x[2]) : new Vec3(x[0], x[1], x[2]);
-            double a = seed.X, b = seed.Y, c0 = seed.Z;
+            double first = seed.X, second = seed.Y, third = seed.Z;
             if (bounded)
             {
-                SingleShooting.NodeFrame(orbit, startUt, seed, out a, out b, out c0);
-                a = Math.Max(a, floor);
+                SingleShooting.NodeFrame(orbit, startUt, seed, out first, out second, out third);
+                first = Math.Max(first, floor);
             }
             var lowest = bounded ? floor : double.NegativeInfinity;
             var problem = new SqpProblem
@@ -182,7 +187,7 @@ namespace ClaudiaKerman.Core.Tools
                 Variables = free
                     ? new[] { SqpVariable.Velocity, SqpVariable.Velocity, SqpVariable.Velocity, SqpVariable.Time }
                     : new[] { SqpVariable.Velocity, SqpVariable.Velocity, SqpVariable.Velocity },
-                Start = free ? new[] { a, b, c0, startUt } : new[] { a, b, c0 },
+                Start = free ? new[] { first, second, third, startUt } : new[] { first, second, third },
                 Lower = free ? new[] { lowest, double.NegativeInfinity, double.NegativeInfinity, earliest } : new[] { lowest, double.NegativeInfinity, double.NegativeInfinity },
                 Upper = free
                     ? new[] { double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity, latest }

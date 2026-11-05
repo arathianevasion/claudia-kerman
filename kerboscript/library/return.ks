@@ -44,7 +44,7 @@
 //| the periapsis with exec_node instead", "return starts from orbit around a moon, not <body>", "a
 //| maneuver node is already planned: remove it first", "found no return: <why>", "found no correction:
 //| <why>", "no return to <planet> after the ejection burn" (or "after the correction"), "the return
-//| flown arrives at periapsis <m>, not <target_pe> m" (if over 1 km off), an exec_node
+//| flown arrives at periapsis <m>, not <target_pe> m" (1 km, 0.5 deg off), an exec_node
 //| failure (that burn's node is left in place), or an abort.
 //| Follow it with reentry, in the same sequence or the next (no Due Time needed): once the craft is
 //| in the planet's sphere of influence (after the correction it usually is; if ship:body is still the

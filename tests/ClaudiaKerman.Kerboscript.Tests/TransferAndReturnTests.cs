@@ -315,7 +315,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         /// it last, with planet_pe already in the report, and fails on the answer. No path at all needs the correction without asking.
         /// </summary>
         [Fact]
-        public void A_return_that_misses_what_was_asked_fails_with_planet_pe_in_its_report()
+        public void A_return_that_misses_what_was_asked_fails_with_planet_pe_in_its_script_result()
         {
             var source = CoreLibrary.Blocks.Single(b => b.Name == "return").Source;
             var pe = source.IndexOf("set extra:planet_pe to round(home:orbit:periapsis).", StringComparison.Ordinal);
