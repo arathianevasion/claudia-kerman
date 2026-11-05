@@ -87,7 +87,7 @@ namespace ClaudiaKerman.Adapter
             var missions = new MissionControl(client, _background, config, () => store.Load() != null, new KosScriptCheck());
             // Terrain, biome and the sun for the Planning Tools, served on the main thread within a per-frame budget (Update pumps it).
             missions.PlanningBody = _planningBody;
-            _missions = new MissionDriver(missions, config.DebugTools) { SaveConfigDefaults = done => _background.Run(() => config.TrySaveDefaults(directory), done) };
+            _missions = new MissionDriver(missions, config.DebugTools, () => config.ManageShipSystems) { SaveConfigDefaults = done => _background.Run(() => config.TrySaveDefaults(directory), done) };
             _window = new SettingsWindow(new KeySettings(store, client, _background), _missions, config, directory, _chatWindow);
             _missions.Panel.OpenSettings = () => _window.Visible = true;
 

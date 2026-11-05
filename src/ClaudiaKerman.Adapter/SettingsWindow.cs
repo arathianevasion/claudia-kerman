@@ -62,6 +62,8 @@ namespace ClaudiaKerman.Adapter
         private bool _processorPicked;
         private uint? _processor;
         private string _applyError = "";
+        // Claudia manages ship systems (#756): a player setting, the same in every context.
+        private bool _manageShipSystems;
 
         // The Claudia Kerman section, remembered per context for the session.
         // Open during a Mission, where a Pause may be waiting on the key.
@@ -132,6 +134,7 @@ namespace ClaudiaKerman.Adapter
             _processorPicked = false;
             _processor = null;
             _applyError = "";
+            _manageShipSystems = _config.ManageShipSystems;
             switch (_context)
             {
                 case Context.DuringMission:
@@ -176,6 +179,8 @@ namespace ClaudiaKerman.Adapter
 
             _scroll = GUILayout.BeginScrollView(_scroll, false, false, GUIStyle.none, GUI.skin.verticalScrollbar, GUIStyle.none, GUILayout.ExpandHeight(true));
             DrawMissionSection();
+            GUILayout.Space(ClaudiaSkin.Gap);
+            _manageShipSystems = ClaudiaSkin.Switch(_manageShipSystems, MissionWindowRules.ManageShipSystemsLabel);
             GUILayout.Space(ClaudiaSkin.Gap * 2);
             DrawClaudiaKerman();
             GUILayout.EndScrollView();
@@ -560,6 +565,9 @@ namespace ClaudiaKerman.Adapter
         {
             decimal cap;
             if (!TryCap(out cap)) return;
+            // The Space Center's Apply below saves it with the Mission defaults; elsewhere only this line changed.
+            var shipSystemsChanged = _manageShipSystems != _config.ManageShipSystems;
+            _config.ManageShipSystems = _manageShipSystems;
             switch (_context)
             {
                 case Context.DuringMission:
@@ -584,6 +592,11 @@ namespace ClaudiaKerman.Adapter
                     // The next Mission set up starts from the new defaults.
                     ApplyToSetup(cap);
                     break;
+            }
+            if (shipSystemsChanged && _context != Context.Defaults)
+            {
+                _applyError = _config.TrySaveDefaults(_configDirectory);
+                if (_applyError.Length > 0) return;
             }
             Close();
         }

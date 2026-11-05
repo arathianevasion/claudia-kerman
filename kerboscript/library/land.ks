@@ -2772,6 +2772,7 @@ function land_descend {
         "throttle", round(tset, 2), "since_ut", round(hover_since, 1))).
     }
     if land_trace_due(phase, last_phase, time:seconds, last_trace_ut) {
+      if phase = "terminal" and last_phase <> phase { addons:claudia:shipsystems("final_descent"). }
       addons:claudia:blocktrace("land", lexicon("phase", phase, "h", round(h), "radar", round(radar), "v_h", round(v_h:mag, 1),
         "v_down", round(-v_v, 1), "dist", round(dist), "throttle", round(tset, 2), "h_ref", round(want:h_ref),
         "vh_want", round(want:vh, 1), "vv_want", round(want:vv, 1), "turn_left", round(turn_left, 1), "pe", round(ship:orbit:periapsis))).

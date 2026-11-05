@@ -416,6 +416,11 @@ function launch {
     set max_q_pa to opt:throttle_max_q.
   }
 
+  local stowed is claudia_stow_ship_systems(ctx).
+  if stowed <> "" {
+    claudia_make_safe().
+    return claudia_finish(ctx, false, stowed, extra).
+  }
   // Light the engines.
   sas off.
   local tset is 1.

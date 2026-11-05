@@ -140,6 +140,10 @@ _Avoid_: glide slope, descent profile (as a name for the number), approach angle
 The chutes each remaining atmospheric entry may open, by need, with the pod's chutes kept for the return. The mod works it out at Mission Plan Approval and again at each Debrief, from the craft as it is, and for the Craft Check from the Mission Goal's own words; an entry its chutes can't bring under reentry's touchdown limit is a powered finish. `reentry` reads its entry's set when its chutes are "auto".
 _Avoid_: chute budget, parachute plan
 
+**Ship Systems**:
+The parts the mod moves at flight transitions on the craft Claudia flies: solar panels, deployable antennas and deployable radiators (extended and retracted) and lights (on and off). Its own rule, with Building Blocks only cueing the moments they alone know; each move goes to the Mission's events and trace, not the prompt, and what the player toggles between transitions stands until the next one. Not cargo bays, drills, ISRU or science parts.
+_Avoid_: deployables, auto-deploy
+
 **Mission Plan**:
 The ordered list of Maneuver Sequences Claudia intends to fly to reach a Mission Goal, each with its delta-v budget and Due Time or rough timing; approved once to start the Mission and revised as Debriefs require.
 _Avoid_: flight plan, roadmap

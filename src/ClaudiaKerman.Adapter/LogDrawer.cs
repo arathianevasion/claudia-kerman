@@ -427,6 +427,7 @@ namespace ClaudiaKerman.Adapter
 
             DrawFacts(MissionWindowRules.Facts(check, Estimate));
             foreach (var finding in check.Findings) DrawFinding(finding);
+            if (check.ShipSystemsInfo.Length > 0) GUILayout.Label(check.ShipSystemsInfo, ClaudiaSkin.Secondary);
 
             if (view.StartForm.CanStart)
             {

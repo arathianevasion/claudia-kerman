@@ -35,6 +35,8 @@ namespace ClaudiaKerman.Adapter
         private readonly VesselWatch _vessels;
         /// <summary>Staging, part loss, overheating and science during a run, for its Debrief.</summary>
         private readonly RunEventWatcher _events;
+        /// <summary>Ship Systems (#756): moves the panels, antennas, radiators and lights of the craft Claudia flies.</summary>
+        private readonly ShipSystemsKeeper _shipSystems;
 
         /// <summary>The Mission window's body, drawn by the floating window or, docked in Flight, under the Capcom strip.</summary>
         public readonly MissionPanel Panel;
@@ -153,7 +155,7 @@ namespace ClaudiaKerman.Adapter
             get { return _flag.SavedAgencyFlag; }
         }
 
-        public MissionDriver(MissionControl mission, bool debugTools)
+        public MissionDriver(MissionControl mission, bool debugTools, Func<bool> manageShipSystems = null)
         {
             Current = this;
             _mission = mission;
@@ -166,6 +168,7 @@ namespace ClaudiaKerman.Adapter
             _vessels = new VesselWatch(Send);
             _events = new RunEventWatcher(Send, () => _mission.View.Stage == MissionStage.Running,
                 () => _mission.View.CraftVesselId, () => _mission.View.RunningChildVesselId);
+            _shipSystems = new ShipSystemsKeeper(Send, () => _mission.View, manageShipSystems ?? (() => true));
             // Any stock alarm drops a running script's in-script warp (ADR 0004); the core ignores it when nothing runs.
             GameEvents.onAlarmTriggered.Add(alarm => Send(new StockAlarmFired()));
             // Building Block progress, for the strip and the log, with no Claude call behind it.
@@ -243,6 +246,7 @@ namespace ClaudiaKerman.Adapter
             {
                 _game = HighLogic.CurrentGame;
                 _saveFolder = HighLogic.SaveFolder;
+                _shipSystems.Reset();
                 // A save from before the rename (ADR 0015): its Mission folder and Claudia Flag take the new names first.
                 RenameMigration.MissionFolder(SaveDirectory(), LogLine);
                 ClaudiaFlags.Renamed();
@@ -295,6 +299,7 @@ namespace ClaudiaKerman.Adapter
             Locks.Apply(locks);
             _inputWatcher.Update(locks != ControlLocks.None, seconds => Send(new ManualInputHeld(seconds)));
             if (scene == GameScene.Flight) _events.Update();
+            _shipSystems.Update(scene == GameScene.Flight);
 
             // Once a Mission is under way its setup is spent: the next one starts from the defaults.
             if (_mission.View.CanEndMission) Setup.Reset();
