@@ -151,6 +151,10 @@ _Avoid_: chute budget, parachute plan
 The parts the mod moves at flight transitions on the craft Claudia flies: solar panels, deployable antennas and deployable radiators (extended and retracted) and lights (on and off). Its own rule, with Building Blocks only cueing the moments they alone know; each move goes to the Mission's events and trace, not the prompt, and what the player toggles between transitions stands until the next one. Not cargo bays, drills, ISRU or science parts.
 _Avoid_: deployables, auto-deploy
 
+**Encounter Watch**:
+The mod's check of an encounter during `transfer_to`'s long coasts: at intervals of game time, tighter near the coast's two ends, it reads the craft's orbit from KSP with no physics and asks whether the encounter the coast was planned on still holds. Only a lost encounter, a re-patch onto a body the coast doesn't go round, or a periapsis drifted past its limit ends the wait early, and the block then plans the restore. It never raises warp.
+_Avoid_: encounter guard, warp monitor
+
 **Mission Plan**:
 The ordered list of Maneuver Sequences Claudia intends to fly to reach a Mission Goal, each with its delta-v budget and Due Time or rough timing; approved once to start the Mission and revised as Debriefs require.
 _Avoid_: flight plan, roadmap

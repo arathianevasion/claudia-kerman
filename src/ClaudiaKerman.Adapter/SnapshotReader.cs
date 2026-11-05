@@ -26,6 +26,24 @@ namespace ClaudiaKerman.Adapter
         /// </summary>
         public static GameSnapshot ReadForMission(Vessel vessel) { return MissionView.Stamp(Read(vessel), MissionDriver.Current != null ? MissionDriver.Current.View : null); }
 
+        /// <summary>
+        /// The Encounter Watch's reading (#770): the time, the craft's situation and KSP's own orbit for it, read at warp with no parts.
+        /// <paramref name="bodies"/> is the body table an earlier read gave, as it doesn't change in a game, or null to read it.
+        /// </summary>
+        public static GameSnapshot ReadOrbit(Vessel vessel, List<SnapshotBody> bodies)
+        {
+            var snapshot = new GameSnapshot
+            {
+                Ut = Planetarium.GetUniversalTime(),
+                Situation = vessel.situation.ToString(),
+                Body = vessel.mainBody != null ? vessel.mainBody.bodyName : "",
+            };
+            if (vessel.orbit != null) snapshot.Orbit = OrbitOf(vessel.orbit);
+            if (bodies != null) snapshot.Bodies.AddRange(bodies);
+            else ReadBodies(snapshot);
+            return snapshot;
+        }
+
         public static GameSnapshot Read(Vessel vessel)
         {
             var snapshot = new GameSnapshot

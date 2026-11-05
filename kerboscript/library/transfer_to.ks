@@ -79,7 +79,7 @@ function transfer_to_unreadable {
 
 // The flight: the mod's steps from state (TRANSFERSTEP's ask, its phase "start") until one ends it, each folded into extra
 // (the Script Result's own keys) and opt (max_duration, once the plan sets it). ask(state) gives the next step (a call that
-// threw gives only its error, #439); fly(step) flies its node and gives exec_node's result; wait(ut) and tick() give "" or
+// threw gives only its error, #439); fly(step) flies its node and gives exec_node's result; wait(step) and tick() give "" or
 // why the block must stop. Returns "" or the reason the block fails.
 function transfer_to_run {
   parameter state, opt, extra, ask, fly, wait, tick.
@@ -110,7 +110,7 @@ function transfer_to_run {
       set state:max_duration to step:max_duration.
     }
     if step:do = "wait" {
-      local waited is wait(step:ut).
+      local waited is wait(step).
       if waited <> "" {
         return waited.
       }
@@ -180,8 +180,12 @@ function transfer_to {
     add node(step:ut, step:radial, step:normal, step:prograde).
     return claudia_burn(ctx, nextnode, step:max_residual).
   }, {
-    parameter ut.
-    return claudia_wait_until(ctx, ut).
+    parameter step.
+    // The mod's Encounter Watch (#770) may end the wait early; the next step then plans the restore.
+    addons:claudia:encounterwatch(step:watch).
+    local waited is claudia_warp_to(ctx, step:ut, 30, { return addons:claudia:encounterwatchdropped. }).
+    set state:watch_dropped to addons:claudia:encounterwatchdropped.
+    return waited.
   }, {
     local ticked is claudia_tick(ctx, 0).
     if ticked <> "" {

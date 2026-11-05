@@ -332,6 +332,16 @@ namespace ClaudiaKerman.Core.Missions
         }
     }
 
+    /// <summary>The Encounter Watch dropped the warp (#770): one line for the Mission's events and log. It never reaches the prompt.</summary>
+    public sealed class EncounterWatchDropped : MissionInput
+    {
+        public readonly string Text;
+        public EncounterWatchDropped(string text)
+        {
+            Text = text;
+        }
+    }
+
     /// <summary>The adapter moved Ship Systems at a transition (#756): one line for the Mission's events and log. It never reaches the prompt.</summary>
     public sealed class ShipSystemsMoved : MissionInput
     {

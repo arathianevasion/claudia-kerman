@@ -37,6 +37,7 @@ namespace ClaudiaKerman.Adapter
         private readonly RunEventWatcher _events;
         /// <summary>Ship Systems (#756): moves the panels, antennas, radiators and lights of the craft Claudia flies.</summary>
         private readonly ShipSystemsKeeper _shipSystems;
+        private readonly EncounterWatcher _encounterWatcher;
 
         /// <summary>The Mission window's body, drawn by the floating window or, docked in Flight, under the Capcom strip.</summary>
         public readonly MissionPanel Panel;
@@ -169,6 +170,7 @@ namespace ClaudiaKerman.Adapter
             _events = new RunEventWatcher(Send, () => _mission.View.Stage == MissionStage.Running,
                 () => _mission.View.CraftVesselId, () => _mission.View.RunningChildVesselId);
             _shipSystems = new ShipSystemsKeeper(Send, () => _mission.View, manageShipSystems ?? (() => true));
+            _encounterWatcher = new EncounterWatcher(Send);
             // Any stock alarm drops a running script's in-script warp (ADR 0004); the core ignores it when nothing runs.
             GameEvents.onAlarmTriggered.Add(alarm => Send(new StockAlarmFired()));
             // Building Block progress, for the strip and the log, with no Claude call behind it.
@@ -247,6 +249,7 @@ namespace ClaudiaKerman.Adapter
                 _game = HighLogic.CurrentGame;
                 _saveFolder = HighLogic.SaveFolder;
                 _shipSystems.Reset();
+                _encounterWatcher.Reset();
                 // A save from before the rename (ADR 0015): its Mission folder and Claudia Flag take the new names first.
                 RenameMigration.MissionFolder(SaveDirectory(), LogLine);
                 ClaudiaFlags.Renamed();

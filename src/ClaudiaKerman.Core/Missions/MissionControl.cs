@@ -118,6 +118,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is KosBlockEnded) BlockEnded((KosBlockEnded)input);
             else if (input is KosRcsSwitched) RcsSwitched((KosRcsSwitched)input);
             else if (input is ShipSystemsMoved) ShipSystemsLine((ShipSystemsMoved)input);
+            else if (input is EncounterWatchDropped) EncounterWatchLine((EncounterWatchDropped)input);
             else if (input is AbortSequence) AbortPressed();
             else if (input is VesselsSeen) VesselsChanged(((VesselsSeen)input).Vessels);
             else if (input is VesselsDocked) Docked((VesselsDocked)input);
