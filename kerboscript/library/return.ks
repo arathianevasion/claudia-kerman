@@ -19,8 +19,8 @@
 //|     craft comes down.
 //|   target_inc ["any"]: the inclination round the planet to arrive at, degrees from 0 to 180; "any" for none.
 //|   window ["next"]: "next" ejects at the burn point's next pass once the craft can have turned to the
-//|     burn, as transfer_to departs; a time (UT seconds) ejects at its first pass from that time. The
-//|     block warps on rails to the pass however far off it is.
+//|     burn; a time (UT seconds) ejects at its first pass from that time. It
+//|     warps on rails to the pass.
 //|   target ["none"]: LATLNG(lat, lng), lexicon("lat", x, "lng", y) or "ksc": where to come down. The
 //|     mid-course correction then aims the landing point the mod's reentry predictor gives (the craft's
 //|     own drag, held retrograde as reentry flies it) at the target, with target_pe only drawing a path
@@ -31,7 +31,7 @@
 //|   correction [true]: false leaves out the mid-course correction.
 //|   max_duration ["auto"]: the time to the predicted reentry plus 900 s; a shorter one moves the correction sooner.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block; each burn gets them too.
-//| Extra results: planet_pe (m, the predicted periapsis at the planet), reentry_ut (UT of the predicted
+//| Extra results: planet_pe (m, the periapsis at the planet), reentry_ut (UT of the predicted
 //| entry into the planet's atmosphere, or of periapsis if that is above it), correction_dv (m/s the
 //| mid-course correction burned), predicted_geo (lexicon lat, lng: where the craft is predicted to come
 //| down, from the path it is on after the correction, with the prediction leaving out parachutes and
@@ -39,11 +39,12 @@
 //| predicted_geo; -1 without one).
 //| The correction is skipped when the prediction is already within 1 km of target_pe and 0.5 degrees of
 //| target_inc (with a target: within 2 km of it) or the fix is under 0.1 m/s. When leaving the moon's
-//| sphere of influence comes before halfway, the block warps through that first, however long it takes.
+//| sphere of influence comes before halfway, the block warps through that first.
 //| Fails with an option value it can't read, "not in orbit", "already orbiting <body>, a planet: lower
 //| the periapsis with exec_node instead", "return starts from orbit around a moon, not <body>", "a
 //| maneuver node is already planned: remove it first", "found no return: <why>", "found no correction:
-//| <why>", "no return to <planet> after the ejection burn" (or "after the correction"), an exec_node
+//| <why>", "no return to <planet> after the ejection burn" (or "after the correction"), "the return
+//| flown arrives at periapsis <m>, not <target_pe> m" (if over 1 km off), an exec_node
 //| failure (that burn's node is left in place), or an abort.
 //| Follow it with reentry, in the same sequence or the next (no Due Time needed): once the craft is
 //| in the planet's sphere of influence (after the correction it usually is; if ship:body is still the
@@ -112,21 +113,14 @@ function return_with_inc {
   return ask.
 }
 
-// Whether the path p (claudia_patch's result round the planet) needs the plain Course Correction: its periapsis
-// is over claudia_correction_good_m() from target_pe, or its inclination over 0.5 degrees from a target_inc
-// given, or it has no path to the planet. Pure.
-function return_needs_correction {
-  parameter p, target_pe, target_inc.
+// Core's word on the path p (claudia_patch's result round the planet) against the block's ask: "" or why it is not the
+// return asked, with the figures. Decides whether the plain Course Correction is needed, and whether the block may succeed.
+function return_miss {
+  parameter p, opt.
   if p:istype("String") {
-    return true.
+    return "no return to the planet".
   }
-  if abs(p:orbit:periapsis - target_pe) > claudia_correction_good_m() {
-    return true.
-  }
-  if target_inc:istype("Scalar") {
-    return abs(p:orbit:inclination - target_inc) > 0.5.
-  }
-  return false.
+  return addons:claudia:returnmiss(return_with_inc(lexicon("target_pe", opt:target_pe, "pe", p:orbit:periapsis, "inc", p:orbit:inclination), opt:target_inc)):error.
 }
 
 // Seconds an orbit (semi-major axis a in m, negative for a hyperbola; eccentricity ecc; body mu)
@@ -346,7 +340,7 @@ function return {
     if return_aims(opt) {
       set needed to return_aim_cost(aim, claudia_patch(ship:orbit, planet), opt:target_pe) > return_aim_good_km().
     } else {
-      set needed to return_needs_correction(claudia_patch(ship:orbit, planet), opt:target_pe, opt:target_inc).
+      set needed to return_miss(claudia_patch(ship:orbit, planet), opt) <> "".
     }
     if needed {
       // 300 s to turn to and lead the burn, as before #450, so the aimed correction's timing is unchanged.
@@ -383,6 +377,12 @@ function return {
     if landing:error = "" {
       set extra:predicted_geo to claudia_geo(landing).
       set extra:predicted_error_km to round(landing:error_km, 2).
+    }
+  } else {
+    // The path flown, whatever the correction left: a return off what was asked fails with the figure (#759).
+    local miss is return_miss(home, opt).
+    if miss <> "" {
+      return claudia_finish(ctx, false, miss, extra).
     }
   }
   return claudia_finish(ctx, true, "", extra).

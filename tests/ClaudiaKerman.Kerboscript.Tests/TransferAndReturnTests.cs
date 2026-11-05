@@ -310,19 +310,20 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal("target_pe,earliest_ut", One("return_with_inc(lexicon(\"target_pe\", 35000, \"earliest_ut\", 1133), \"any\"):keys:join(\",\")"));
         }
 
-        private static string NeedsCorrection(string pe, string inc, string targetInc)
-        {
-            return One("return_needs_correction(lexicon(\"orbit\", lexicon(\"periapsis\", " + pe + ", \"inclination\", " + inc + "), \"soi_ut\", 0), 35000, " + targetInc + ")");
-        }
-
+        /// <summary>
+        /// #759: Core decides whether the path flown is the return asked (ReturnBurnTests pins the figures); here, that the block asks
+        /// it last, with planet_pe already in the report, and fails on the answer. No path at all needs the correction without asking.
+        /// </summary>
         [Fact]
-        public void The_plain_correction_is_needed_off_target_pe_or_off_a_target_inc_given()
+        public void A_return_that_misses_what_was_asked_fails_with_planet_pe_in_its_report()
         {
-            Assert.Equal("False", NeedsCorrection("35900", "12", "\"any\""));
-            Assert.Equal("True", NeedsCorrection("36100", "12", "\"any\""));
-            Assert.Equal("False", NeedsCorrection("35000", "30.4", "30"));
-            Assert.Equal("True", NeedsCorrection("35000", "30.6", "30"));
-            Assert.Equal("True", One("return_needs_correction(\"none\", 35000, \"any\")"));
+            var source = CoreLibrary.Blocks.Single(b => b.Name == "return").Source;
+            var pe = source.IndexOf("set extra:planet_pe to round(home:orbit:periapsis).", StringComparison.Ordinal);
+            var asked = source.IndexOf("local miss is return_miss(home, opt).", StringComparison.Ordinal);
+            var failed = source.IndexOf("return claudia_finish(ctx, false, miss, extra).", StringComparison.Ordinal);
+            var succeeded = source.LastIndexOf("return claudia_finish(ctx, true, \"\", extra).", StringComparison.Ordinal);
+            Assert.True(pe >= 0 && pe < asked && asked < failed && failed < succeeded, "planet_pe, then the check, then its failure, then success");
+            Assert.Equal("no return to the planet", One("return_miss(\"none\", lexicon())"));
         }
 
         [Fact]
