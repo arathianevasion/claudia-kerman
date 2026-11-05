@@ -57,7 +57,7 @@ namespace ClaudiaKerman.Core.Missions
             _toolLimitSent = false;
             var next = new CraftCheckCharge { Model = request.Model, Pending = worstCase, Input = RequestCharge.InputCost(_config.Prices, request.Model, request, worstCase) };
             _background.Run(
-                () => _client.Stream(request, update => { }, cancel.Token),
+                () => _client.Stream(request, update => { }, cancel.Token, _dump),
                 r => Finished(cancel, next, r),
                 error => Finished(cancel, next, null));
             // The check is still running: this only lets Mission Control show "taking a second look".

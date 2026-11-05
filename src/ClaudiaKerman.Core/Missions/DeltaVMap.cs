@@ -318,10 +318,62 @@ namespace ClaudiaKerman.Core.Missions
             return Lines(Legs);
         }
 
-        /// <summary>The legs for the bodies a Mission Goal names, as lines; per-turn text, never the cached prefix.</summary>
-        public string ToText(IList<SnapshotBody> named)
+        /// <summary>
+        /// The legs for the bodies a Mission Goal names, as lines; per-turn text, never the cached prefix. A trip's line holds its capture
+        /// (and says so), so no separate capture line follows it: the capture can't be counted twice (#776). With the craft's
+        /// <paramref name="snapshot"/>, an airless body's landing or ascent is given with the craft's gravity loss, at the lowest TWR of the
+        /// stages that fly it (the legs before it spent in firing order, as <see cref="PlanLegs"/> does); with no TWR known, the bare figure, marked.
+        /// </summary>
+        public string ToText(IList<SnapshotBody> named, GameSnapshot snapshot = null)
         {
-            return Lines(LegsFor(named));
+            var legs = LegsFor(named);
+            var text = new StringBuilder();
+            // Spent before the first landing: the launch and the trips in, the last hop to a named body included.
+            var goal = new HashSet<string>(named.Select(b => b.Name));
+            double used = legs.Where(l => l.Id == "launch:" + Home || (l.Id.StartsWith("transfer:", StringComparison.Ordinal)
+                && (l.Id.IndexOf('>') < 0 || goal.Contains(l.Id.Substring(l.Id.IndexOf('>') + 1))))).Sum(l => l.DeltaV);
+            foreach (var leg in legs.Where(l => !HeldByTrip(legs, l)))
+            {
+                var figure = leg.DeltaV;
+                var note = "";
+                var airless = snapshot != null && named.Count > 0 && IsSurface(leg) && leg.Bodies[0] != Home && AirlessBody(leg.Bodies[0]);
+                if (airless)
+                {
+                    var twr = MarginCheck.LowestTwr(snapshot, snapshot.Bodies.First(b => b.Name == leg.Bodies[0]), used, used + Math.Max(1, leg.DeltaV));
+                    figure = WithGravityLoss(leg.Id, twr);
+                    note = twr.HasValue && twr.Value > 0
+                        ? " (includes this craft's gravity loss at TWR " + twr.Value.ToString("0.0", CultureInfo.InvariantCulture) + "; " + Whole(leg.DeltaV) + " without)"
+                        : " (bare figure: this craft's TWR there is unknown, so no gravity loss is added)";
+                }
+                text.Append("- ").Append(leg.Id).Append(": ").Append(leg.Description).Append(": ").Append(Whole(figure)).Append(" m/s").Append(note);
+                if (leg.PlaneChange > 0)
+                    text.Append(" (carries a plane change of ").Append(Whole(leg.PlaneChange)).Append(" m/s)");
+                if (leg.Id.StartsWith("transfer:", StringComparison.Ordinal) && leg.Arrival > 0)
+                    text.Append(" (includes the capture, ").Append(Whole(leg.Arrival)).Append(" m/s)");
+                text.Append('\n');
+                if (IsSurface(leg) && leg.Bodies[0] != Home) used += figure;
+            }
+            return text.ToString();
+        }
+
+        private bool AirlessBody(string name)
+        {
+            var body = _bodies.FirstOrDefault(b => b.Name == name);
+            return body != null && body.AtmosphereHeight <= 0;
+        }
+
+        private static bool IsSurface(DeltaVLeg leg)
+        {
+            return leg.Id.StartsWith("land:", StringComparison.Ordinal) || leg.Id.StartsWith("ascend:", StringComparison.Ordinal);
+        }
+
+        /// <summary>A capture line a trip's own line already holds (the trip arrives at that body): both would pay the capture twice.</summary>
+        private static bool HeldByTrip(IList<DeltaVLeg> legs, DeltaVLeg leg)
+        {
+            if (!leg.Id.StartsWith("capture:", StringComparison.Ordinal)) return false;
+            var body = leg.Id.Substring(8);
+            return legs.Any(l => l.Id.StartsWith("transfer:", StringComparison.Ordinal) && l.Arrival > 0
+                && (l.Id == "transfer:" + body || l.Id.EndsWith(">" + body, StringComparison.Ordinal)));
         }
 
         /// <summary>
@@ -336,7 +388,7 @@ namespace ClaudiaKerman.Core.Missions
             var parts = new List<string>();
             foreach (var leg in legs)
             {
-                if (leg.Id.StartsWith("capture:", StringComparison.Ordinal) && legs.Any(l => l.Id == "transfer:" + leg.Id.Substring(8))) continue;
+                if (HeldByTrip(legs, leg)) continue;
                 var text = leg.Id + " " + Whole(leg.DeltaV);
                 if (leg.Id.StartsWith("transfer:", StringComparison.Ordinal) && leg.Arrival > 0) text += " (capture " + Whole(leg.Arrival) + ")";
                 parts.Add(text);
