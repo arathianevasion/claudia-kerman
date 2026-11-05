@@ -29,6 +29,23 @@ namespace ClaudiaKerman.Core.Missions
             /// <summary>The last far-switch answer and the snapshot it was read from, so each view doesn't work out the path again.</summary>
             public GameSnapshot LeaveSnapshot;
             public string CannotLeave = "";
+            /// <summary>What stops the running script's long coast from checkpointing (<see cref="CoastCheckpoints.LongCoastBlocker"/>, #778); "" when nothing does. Set at each run's start; not saved.</summary>
+            public string CoastBlocked = "";
+        }
+
+        /// <summary>#778: the clause that says why this plan's long coast can't checkpoint, "" for a plan that can, a short coast, a manual stretch, a Child Vessel's run or the mod's own resume.</summary>
+        private string CoastBlock(Mission mission, SequencePlan plan)
+        {
+            if (plan.Manual || !FliesCraft(mission, plan.Vessel) || CoastPlanToken(plan) != null) return "";
+            return CoastCheckpoints.LongCoastBlocker(plan.Script, MissionVesselSnapshot(mission));
+        }
+
+        /// <summary>The Sequence Plan card's text: the plan, then the mod's line when its long coast can't checkpoint.</summary>
+        private string PlanCardText(Mission mission, SequencePlan plan)
+        {
+            var text = MissionCards.SequencePlanBody(plan, mission.VesselName, _ut, _config);
+            var blocked = CoastBlock(mission, plan);
+            return blocked.Length > 0 ? text + "\n" + CoastCheckpoints.BlockerLine(blocked) : text;
         }
 
         /// <summary>The block's wait armed its Encounter Watch: the coast it is on. An empty token: nothing a switch could checkpoint.</summary>
@@ -136,7 +153,9 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         private string CannotLeaveCraft(Mission mission)
         {
-            if (mission.Stage != MissionStage.Running || !mission.RunId.HasValue || mission.Coast == null || _ut >= mission.Coast.WaitUt) return null;
+            if (mission.Stage != MissionStage.Running || !mission.RunId.HasValue) return null;
+            // #778: a script that can't checkpoint says why, in place of the silence.
+            if (mission.Coast == null || _ut >= mission.Coast.WaitUt) return mission.CoastBlocked.Length > 0 ? "this script " + mission.CoastBlocked : null;
             if (mission.Pending != null || mission.InFlight || mission.Queue.Count > 0 || mission.Compacting != null) return "a request to Claudia is out";
             // The mod's Debrief is Nominal: a run with a crossing is Claudia's to judge.
             if (mission.Crossings.Count > 0) return "a Telemetry Check was crossed during this run";

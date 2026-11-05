@@ -402,6 +402,79 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(Elsewhere(rig));
         }
 
+        // ---- A long coast that can't checkpoint says why (#778) ----
+
+        private const string Duna = "transfer_to(lexicon(\"target\", \"Duna\", \"target_pe\", 60000)).\n";
+        private const string Mun = "transfer_to(lexicon(\"target\", \"Mun\", \"target_pe\", 60000)).\n";
+
+        [Fact]
+        public void The_hasnode_guard_and_a_local_options_lexicon_checkpoint()
+        {
+            var guarded = "if hasnode { remove nextnode. }\n" + Script;
+            Assert.Contains("\"checkpoint\", \"on\"", CoastCheckpoints.Armed(guarded));
+            Assert.StartsWith("if hasnode { remove nextnode. }", CoastCheckpoints.Armed(guarded));
+            var local = "local opts is lexicon(\"target\", \"Duna\", \"target_pe\", 60000).\nlocal res is transfer_to(opts).\n";
+            var armed = CoastCheckpoints.Armed(local);
+            Assert.Contains("local opts is lexicon(\"checkpoint\", \"on\", \"target\"", armed);
+            Assert.Contains("transfer_to(opts)", armed);
+            // Both together; and a remove or a wait that isn't the guard still stops it.
+            Assert.Contains("\"checkpoint\", \"on\"", CoastCheckpoints.Armed("if hasnode { remove nextnode. }\n" + local));
+            var other = "if hasnode { remove nextnode. }\nremove nextnode.\n" + Script;
+            Assert.Equal(other, CoastCheckpoints.Armed(other));
+        }
+
+        [Theory]
+        [InlineData("circularize(lexicon(\"at\", \"ap\")).\n", "runs circularize before transfer_to")]
+        [InlineData("tune_pe(lexicon(\"value\", 70000)).\n", "runs tune_pe before transfer_to")]
+        [InlineData("doaction(\"panels\").\n", "uses doaction before transfer_to")]
+        [InlineData("local o is makeopts().\n", "passes transfer_to its options in a way the mod can't read")]
+        public void A_long_coast_that_cant_checkpoint_names_what_blocks_it(string before, string clause)
+        {
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            var script = before + (clause.StartsWith("passes") ? "transfer_to(o).\n" : Duna);
+            Assert.Equal(clause, CoastCheckpoints.LongCoastBlocker(script, rig.Snapshot()));
+            Assert.Equal("This script " + clause + ", so its coast can't stop at a Coast Checkpoint.", CoastCheckpoints.BlockerLine(clause));
+        }
+
+        [Fact]
+        public void A_short_coast_or_one_that_can_resume_gets_no_line()
+        {
+            var snapshot = TransferRig.Circular("Kerbin", 100000, 0).Snapshot();
+            Assert.Equal("", CoastCheckpoints.LongCoastBlocker("circularize(lexicon(\"at\", \"ap\")).\n" + Mun, snapshot));
+            Assert.Equal("", CoastCheckpoints.LongCoastBlocker(Script, snapshot));
+            Assert.Equal("", CoastCheckpoints.LongCoastBlocker("if hasnode { remove nextnode. }\n" + Script, snapshot));
+            Assert.Equal("", CoastCheckpoints.LongCoastBlocker("circularize(lexicon(\"at\", \"ap\")).\n", snapshot));
+            Assert.Equal("", CoastCheckpoints.LongCoastBlocker("circularize(lexicon(\"at\", \"ap\")).\n" + Duna, null));
+        }
+
+        [Fact]
+        public void The_plan_card_the_log_and_a_far_switch_say_why_a_long_coast_cant_checkpoint()
+        {
+            var script = "circularize(lexicon(\"at\", \"ap\")).\n" + Script;
+            var line = "This script runs circularize before transfer_to, so its coast can't stop at a Coast Checkpoint.";
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer", script: script)));
+            ToRunning(mission, rig);
+            Assert.EndsWith(line, mission.View.Log.Last(e => e.Kind == LogKind.SequencePlan).Text);
+            Assert.Single(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text == line);
+            Assert.False(mission.View.FarSwitchLeavesAtCheckpoint);
+            Assert.Equal("this script runs circularize before transfer_to", mission.View.FarSwitchWarning);
+
+            mission.Send(new FarSwitchConfirmed("Relay Station"));
+            Assert.Contains(mission.View.Log, e => e.Text.StartsWith("Not a Coast Checkpoint: this script runs circularize before transfer_to"));
+        }
+
+        [Fact]
+        public void A_plan_that_can_resume_has_no_line_on_its_card_or_in_its_log()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer")));
+            ToRunning(mission, rig);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("can't stop at a Coast Checkpoint"));
+        }
+
         // ---- A clean checkpoint ----
 
         [Fact]
@@ -413,7 +486,12 @@ namespace ClaudiaKerman.Core.Tests
             var launchFirst = "launch(lexicon(\"apoapsis\", 100000)).\n" + Script;
             Assert.Equal(launchFirst, CoastCheckpoints.Armed(launchFirst));
             var variable = "local o is lexicon(\"target\", \"Duna\", \"target_pe\", 60000).\ntransfer_to(o).\n";
-            Assert.Equal(variable, CoastCheckpoints.Armed(variable));
+            Assert.Contains("lexicon(\"checkpoint\", \"on\", \"target\", \"Duna\"", CoastCheckpoints.Armed(variable));
+            // Options it can't read, or a lexicon something else reads or changes, still stay as they are.
+            var shared = "local o is lexicon(\"target\", \"Duna\", \"target_pe\", 60000).\nset o[\"target_pe\"] to 70000.\ntransfer_to(o).\n";
+            Assert.Equal(shared, CoastCheckpoints.Armed(shared));
+            var computed = "local o is makeopts().\ntransfer_to(o).\n";
+            Assert.Equal(computed, CoastCheckpoints.Armed(computed));
             foreach (var once in new[] { "stage.\n", "toggle ag1.\n", "lights on.\n" })
                 Assert.Equal(once + Script, CoastCheckpoints.Armed(once + Script));
 

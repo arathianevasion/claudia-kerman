@@ -265,37 +265,164 @@ namespace ClaudiaKerman.Core.Tools
 
         // ---- The script ----
 
-        /// <summary>
-        /// The first block of a script when it is the coast's <c>transfer_to</c> or <c>return</c> with its options inline and nothing before it
-        /// that can't run twice: only then can the mod write its resume by starting the same script over. Null otherwise, and the script has no checkpoints.
-        /// </summary>
-        private static BlockCall Coast(string script, out string code, out string masked)
+        /// <summary>The steps that are safe to run twice, so a script that starts with one can still start over (#778): an explicit, small list.</summary>
+        private static readonly Regex SafeTwice = new Regex(@"\bif\s+hasnode\s*\{\s*remove\s+nextnode\s*\.\s*\}", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        private static readonly Regex LocalLexicon = new Regex(@"\blocal\s+(?<name>[a-z_]\w*)\s+is\s+(?<lex>lexicon|lex)\s*\(", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        private static readonly Regex Identifier = new Regex(@"^[a-z_]\w*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        private static readonly Regex Quoted = new Regex("^\"(?<n>[^\"]+)\"$", RegexOptions.CultureInvariant);
+
+        /// <summary>The script's coast block and where the mod's option goes, or why the script can't be resumed (#778).</summary>
+        private sealed class CoastShape
         {
-            code = CoreLibrary.MissionScript(script);
-            masked = CoreLibrary.MissionScript(script, true);
+            public BlockCall Call;
+            public string Code;
+            public string Masked;
+            /// <summary>What blocks resuming, as a clause that follows "this script"; "" when the script can be resumed.</summary>
+            public string Blocker = "";
+            public IDictionary<string, string> Options;
+            /// <summary>Where the option goes in <see cref="Code"/>; <see cref="Wrap"/> when it needs a <c>lexicon(...)</c> around it.</summary>
+            public int InsertAt;
+            public bool Wrap;
+        }
+
+        /// <summary>
+        /// The script's first <c>transfer_to</c> or <c>return</c>, and whether the mod can write its resume by starting the script over: no other block
+        /// first, nothing before it that can't run twice but <see cref="SafeTwice"/>, and its options inline or in a local lexicon only it uses.
+        /// Null with no such block.
+        /// </summary>
+        private static CoastShape Shape(string script)
+        {
+            var shape = new CoastShape { Code = CoreLibrary.MissionScript(script), Masked = CoreLibrary.MissionScript(script, true) };
             var calls = BlockOptionCheck.Calls(script);
-            if (calls.Count == 0) return null;
-            var first = calls[0];
-            if ((first.Block != "transfer_to" && first.Block != "return") || first.Options == null) return null;
-            return NotTwice.IsMatch(masked.Substring(0, first.Index)) ? null : first;
+            var at = calls.ToList().FindIndex(c => c.Block == "transfer_to" || c.Block == "return");
+            if (at < 0) return null;
+            var call = shape.Call = calls[at];
+            if (at > 0)
+            {
+                shape.Blocker = "runs " + calls[0].Block + " before " + call.Block;
+                return shape;
+            }
+            var before = SafeTwice.Replace(shape.Masked.Substring(0, call.Index), m => new string(' ', m.Length));
+            var open = shape.Masked.IndexOf('(', call.Index) + 1;
+            var inline = LexiconOpen.Match(shape.Masked, open);
+            if (call.Options != null)
+            {
+                shape.Options = call.Options;
+                shape.Wrap = !inline.Success;
+                shape.InsertAt = inline.Success ? inline.Index + inline.Length : open;
+            }
+            else
+            {
+                var name = LocalArgument(shape, open);
+                var declared = name == null ? null : LocalLexicon.Matches(before).Cast<Match>().LastOrDefault(m => m.Groups["name"].Value.Equals(name, StringComparison.OrdinalIgnoreCase));
+                // Only the coast's block may read it: a shared lexicon would give the other block an option it doesn't know.
+                var options = declared == null || Occurrences(shape.Masked, name) != 2 ? null : BlockOptionCheck.Lexicon(shape.Code.Substring(declared.Groups["lex"].Index));
+                if (options == null)
+                {
+                    shape.Blocker = "passes " + call.Block + " its options in a way the mod can't read";
+                    return shape;
+                }
+                shape.Options = options;
+                shape.InsertAt = declared.Index + declared.Length;
+                // The declaration runs twice harmlessly: it is not a step.
+                before = before.Remove(declared.Index, declared.Length).Insert(declared.Index, new string(' ', declared.Length));
+            }
+            var step = NotTwice.Match(before);
+            if (step.Success) shape.Blocker = "uses " + step.Value.ToLowerInvariant() + " before " + call.Block;
+            return shape;
+        }
+
+        /// <summary>The one identifier passed to the call whose "(" ends at <paramref name="open"/>; null when the argument is anything else.</summary>
+        private static string LocalArgument(CoastShape shape, int open)
+        {
+            var close = shape.Masked.IndexOf(')', open);
+            if (close < 0) return null;
+            var argument = shape.Code.Substring(open, close - open).Trim();
+            return Identifier.IsMatch(argument) ? argument : null;
+        }
+
+        private static int Occurrences(string masked, string name)
+        {
+            return Regex.Matches(masked, @"\b" + Regex.Escape(name) + @"\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant).Count;
         }
 
         /// <summary>The script with the <c>checkpoint</c> option set on its coast's block; unchanged when it has no such block, or the option is already there.</summary>
         private static string WithOption(string script, string value)
         {
             if (string.IsNullOrWhiteSpace(script) || value.IndexOf('"') >= 0) return script;
-            string code, masked;
-            var call = Coast(script, out code, out masked);
-            if (call == null || call.Options.ContainsKey(TokenKey)) return script;
-            var open = masked.IndexOf('(', call.Index) + 1;
-            var inline = LexiconOpen.Match(masked, open);
+            var shape = Shape(script);
+            if (shape == null || shape.Blocker.Length > 0 || shape.Options.ContainsKey(TokenKey)) return script;
             var option = "\"" + TokenKey + "\", \"" + value + "\"";
-            if (inline.Success)
+            var code = shape.Code;
+            if (shape.Wrap) return code.Substring(0, shape.InsertAt) + "lexicon(" + option + ")" + code.Substring(shape.InsertAt);
+            return code.Substring(0, shape.InsertAt) + option + (shape.Options.Count > 0 ? ", " : "") + code.Substring(shape.InsertAt);
+        }
+
+        // ---- When a long coast can't checkpoint (#778) ----
+
+        /// <summary>
+        /// "" or what stops the script's long coast from resuming at a Coast Checkpoint, as a clause after "this script" (e.g. "runs circularize before
+        /// transfer_to"). "" for a script with no coast, one that can be resumed, or a short coast: the estimate is the time to the correction midway along
+        /// a Hohmann transfer against <see cref="WindowWaits.LongWaitS"/>; a coast the snapshot can't estimate says nothing.
+        /// </summary>
+        public static string LongCoastBlocker(string script, GameSnapshot snapshot)
+        {
+            if (string.IsNullOrWhiteSpace(script)) return "";
+            var shape = Shape(script);
+            if (shape == null || shape.Blocker.Length == 0) return "";
+            // Options the mod can't read name no target: a transfer_to with them could coast as long as any.
+            var unknown = shape.Call.Block == "transfer_to" && shape.Call.Options == null;
+            return unknown || CoastSeconds(shape.Call, snapshot) > WindowWaits.LongWaitS ? shape.Blocker : "";
+        }
+
+        /// <summary>The mod's line that says why, for the plan card and the log.</summary>
+        public static string BlockerLine(string blocker)
+        {
+            return "This script " + blocker + ", so its coast can't stop at a Coast Checkpoint.";
+        }
+
+        /// <summary>Game seconds to the correction midway along the transfer; 0 when the snapshot can't give it.</summary>
+        private static double CoastSeconds(BlockCall call, GameSnapshot snapshot)
+        {
+            if (snapshot == null || snapshot.Orbit == null) return 0;
+            var home = Body(snapshot, string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Body : snapshot.Orbit.Body);
+            if (home == null) return 0;
+            SnapshotBody parent;
+            double r1, r2;
+            if (call.Block == "return")
             {
-                var at = inline.Index + inline.Length;
-                return code.Substring(0, at) + option + (call.Options.Count > 0 ? ", " : "") + code.Substring(at);
+                // Down from the moon's orbit to the planet it leaves for.
+                parent = Body(snapshot, home.Parent);
+                if (parent == null) return 0;
+                r1 = home.Sma;
+                r2 = parent.Radius + parent.AtmosphereHeight;
             }
-            return code.Substring(0, open) + "lexicon(" + option + ")" + code.Substring(open);
+            else
+            {
+                var named = Quoted.Match(call.Option("target") ?? "");
+                var target = named.Success ? Body(snapshot, named.Groups["n"].Value) : null;
+                if (target == null) return 0;
+                if (string.Equals(target.Parent, home.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    parent = home;
+                    r1 = snapshot.Orbit.SemiMajorAxis;
+                }
+                else if (home.Parent.Length > 0 && string.Equals(target.Parent, home.Parent, StringComparison.OrdinalIgnoreCase))
+                {
+                    parent = Body(snapshot, home.Parent);
+                    r1 = home.Sma;
+                }
+                else return 0;
+                r2 = target.Sma;
+            }
+            if (parent == null || parent.Gm <= 0 || r1 <= 0 || r2 <= 0) return 0;
+            var a = (r1 + r2) / 2;
+            return Math.PI * Math.Sqrt(a * a * a / parent.Gm) / 2;
+        }
+
+        private static SnapshotBody Body(GameSnapshot snapshot, string name)
+        {
+            return snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>What a Mission's run of the plan's script runs: its coast's block may checkpoint. Whatever else the script does stays as Claudia wrote it.</summary>
