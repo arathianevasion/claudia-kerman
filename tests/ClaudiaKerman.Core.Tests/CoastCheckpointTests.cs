@@ -187,12 +187,80 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void The_due_time_is_the_correction_point_less_the_turn_time_and_the_burn_points_lead()
+        public void The_due_time_is_the_correction_point_less_30_minutes_never_less_than_the_turn_time_and_the_burn_points_lead()
         {
             CoastToken token;
             ToFirstCheckpoint(out token);
-            Assert.Equal(60 + BurnPoints.TurnMarginSeconds, token.LeadS);
-            Assert.Equal(token.PointUt - 120, token.DueUt);
+            Assert.Equal(1800, token.LeadS);
+            Assert.Equal(token.PointUt - 1800, token.DueUt);
+            // A craft slow to turn: its turn time plus the margin is the floor.
+            Assert.Equal(1800, CoastCheckpoints.Lead(60));
+            Assert.Equal(1800, CoastCheckpoints.Lead(1740));
+            Assert.Equal(3000 + BurnPoints.TurnMarginSeconds, CoastCheckpoints.Lead(3000));
+        }
+
+        /// <summary>A craft ejected from Duna to a 35 km Kerbin periapsis: on the Sun's patch with the encounter ahead.</summary>
+        private static TransferRig HomeFromDuna(out TransferFlight.Arrival enc, out PredictBurn.Setup setup)
+        {
+            var rig = TransferRig.Circular("Duna", 100000, 0);
+            rig.BurnError = 0.005;
+            var ask = Ask("Kerbin", 35000);
+            ToolOutcome error;
+            // The ejection, then the mid-course correction that puts the periapsis where it was asked.
+            for (var i = 0; i < 8; i++)
+            {
+                var s = TransferFlight.Next(rig.Snapshot(), ask);
+                Assert.Equal("", s.Error);
+                if (s.MaxDuration.HasValue) ask.MaxDuration = s.MaxDuration;
+                if (s.Do == TransferFlightStep.Burn) ask.LastDv = rig.Fly(s.Kind, s.Ut, s.Prograde, s.Normal, s.Radial);
+                else rig.MoveTo(s.Ut);
+                TransferFlight.Carry(ask, s);
+                if (rig.Body.Name != "Sun" || i == 0 && s.Kind == "ejection") continue;
+                setup = PredictBurn.Setup.Prepare(rig.Snapshot(), "Kerbin", out error);
+                enc = TransferFlight.Encounter(setup);
+                if (enc != null && enc.Pe >= 0 && enc.Pe <= 60000) return rig;
+            }
+            throw new InvalidOperationException("the flight never had a Kerbin periapsis in the air");
+        }
+
+        [Fact]
+        public void A_return_from_Duna_with_a_Kerbin_periapsis_in_the_air_checkpoints_before_a_correction_ahead_of_Kerbins_SOI_and_not_after_it()
+        {
+            TransferFlight.Arrival enc;
+            PredictBurn.Setup setup;
+            var rig = HomeFromDuna(out enc, out setup);
+            Assert.True(ArrivalRule.EndsInReentry(setup.Snapshot, "Kerbin"));
+            Assert.True(enc.Pe <= setup.Target.AtmosphereHeight);
+            // The correction before the entry: the safety test passes, as for any other encounter.
+            Assert.Equal("", CoastCheckpoints.Unsafe(setup, enc, enc.SoiUt - 3 * Day));
+            // The correction at or after the entry: it never does.
+            Assert.Contains("atmosphere", CoastCheckpoints.Unsafe(setup, enc, enc.SoiUt + 30));
+            Assert.Contains("atmosphere", CoastCheckpoints.Unsafe(setup, enc, enc.SoiUt));
+            // The ground is never safe, reentry or not.
+            Assert.Contains("surface", CoastCheckpoints.Unsafe(setup, new TransferFlight.Arrival { SoiUt = enc.SoiUt, Pe = -1000 }, enc.SoiUt - 3 * Day));
+            // A body with air that is not home keeps the old rule.
+            var away = TransferRig.Circular("Kerbin", 100000, 0);
+            ToolOutcome error;
+            var toDuna = PredictBurn.Setup.Prepare(away.Snapshot(), "Duna", out error);
+            Assert.Contains("atmosphere", CoastCheckpoints.Unsafe(toDuna, new TransferFlight.Arrival { SoiUt = 1e9, Pe = 10000 }, 1e9 - 3 * Day));
+
+            // return's own step: a checkpoint ahead of the entry, a correction after it keeps flying.
+            var snapshot = rig.Snapshot();
+            var mid = rig.Ut + 3 * Day;
+            Assert.True(mid < enc.SoiUt - Day, "the coast is long enough");
+            var stop = BlockCalls.TransferStep(ReturnAsk(mid, "on"), snapshot);
+            Assert.Equal("done", stop["do"]);
+            var token = CoastToken.Parse((string)((IDictionary<string, object>)stop["report"])[CoastCheckpoints.TokenKey]);
+            Assert.Equal(mid - 1800, token.DueUt);
+            Assert.Equal("go", BlockCalls.TransferStep(ReturnAsk(enc.SoiUt + 100, "on"), snapshot)["do"]);
+            // Resumed, the wait to the correction doesn't depend on the lead: it still stops 360 s short of the burn.
+            var resumed = BlockCalls.TransferStep(ReturnAsk(mid, token.ToString()), snapshot);
+            Assert.Equal("wait", resumed["do"]);
+            Assert.Equal(mid - 360, (double)resumed["wait_ut"]);
+            Assert.True((double)resumed["wait_ut"] > token.DueUt);
+            // The check on return keeps the air periapsis before the entry; a far switch can leave.
+            Assert.Equal(CoastVerdictKind.Kept, CoastCheckpoints.Judge(snapshot, token, token.DueUt).Kind);
+            Assert.Equal("", CoastCheckpoints.CannotLeave(snapshot, token, rig.Ut));
         }
 
         // ---- The Mission seam: helpers ----
@@ -371,7 +439,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("Nominal", debrief.Outcome);
             Assert.Equal(CoastCheckpoints.CardWhy, debrief.Why);
             Assert.True(view.DueTime.HasDueTime);
-            Assert.Equal(token.PointUt - 120, view.DueTime.Ut, 3);
+            Assert.Equal(token.PointUt - 1800, view.DueTime.Ut, 3);
             Assert.Equal(CoastCheckpoints.WaitsFor, view.DueTime.WaitsFor);
             var commands = mission.TakeCommands();
             Assert.Equal(token.DueUt, commands.OfType<SetDueTimeAlarm>().Single().Ut, 3);
@@ -922,7 +990,7 @@ namespace ClaudiaKerman.Core.Tests
             var token = CoastToken.Parse((string)report[CoastCheckpoints.TokenKey]);
             Assert.Equal("return", token.Block);
             Assert.Equal(mid, token.PointUt);
-            Assert.Equal(mid - 120, token.DueUt);
+            Assert.Equal(mid - 1800, token.DueUt);
 
             // Resumed: a watched wait to the correction, not a second stop.
             var resumed = BlockCalls.TransferStep(ReturnAsk(mid, token.ToString()), snapshot);

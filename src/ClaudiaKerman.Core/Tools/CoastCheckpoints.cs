@@ -27,7 +27,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The periapsis the coast was planned on, m above the target's sea level, and how far it may drift, m (the Encounter Watch's).</summary>
         public double Pe;
         public double PeLimit;
-        /// <summary>The UT of the next correction point, and the turn time plus <see cref="BurnPoints.TurnMarginSeconds"/>.</summary>
+        /// <summary>The UT of the next correction point, and the lead before it (<see cref="CoastCheckpoints.Lead"/>).</summary>
         public double PointUt;
         public double LeadS;
         /// <summary>The UT the coast's wait runs to, and the phase after it.</summary>
@@ -156,6 +156,14 @@ namespace ClaudiaKerman.Core.Tools
         public const string WaitsFor = "the next correction";
         /// <summary>return's own lead before its correction, s (return.ks: 300 s to turn to and lead the burn).</summary>
         public const double ReturnBurnLeadS = 300;
+        /// <summary>How long before the correction a checkpoint's Due Time falls, game s (#779): time for the scene change, the check on return and a plan.</summary>
+        public const double DueLeadS = 1800;
+
+        /// <summary>A checkpoint's lead before its correction: <see cref="DueLeadS"/>, never less than the turn time plus <see cref="BurnPoints.TurnMarginSeconds"/>.</summary>
+        public static double Lead(double turnTime)
+        {
+            return Math.Max(DueLeadS, turnTime + BurnPoints.TurnMarginSeconds);
+        }
 
         /// <summary>What may not run twice: a burn, a stage or a held control before the coast's block means the script can't start over.</summary>
         private static readonly Regex NotTwice = new Regex(@"\b(stage|add|remove|lock|wait|warpto|toggle|doevent|doaction|on|off|ag\d+)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -172,7 +180,7 @@ namespace ClaudiaKerman.Core.Tools
         {
             var target = setup.Target;
             if (enc == null) return "no encounter with " + target.Name;
-            if (PeUnsafe(target, enc.Pe)) return "the periapsis at " + target.Name + " is " + Km(enc.Pe) + " km, in its atmosphere or at its surface";
+            if (PeUnsafe(setup, enc.Pe, pointUt, enc.SoiUt)) return "the periapsis at " + target.Name + " is " + Km(enc.Pe) + " km, in its atmosphere or at its surface";
             var path = SingleShooting.Follow(setup.System, setup.Body, setup.Start, setup.Now, 2);
             var first = path != null && path.Count > 0 ? path[0] : null;
             if (first == null || first.End == PatchEnd.Stable || first.EndUt >= pointUt) return "";
@@ -180,9 +188,17 @@ namespace ClaudiaKerman.Core.Tools
             return "the craft changes sphere of influence" + (first.End == PatchEnd.Encounter ? " into " + first.Next.Name : " leaving " + setup.Body.Name) + " before the next correction";
         }
 
-        private static bool PeUnsafe(SnapshotBody target, double pe)
+        /// <summary>
+        /// The periapsis is in the atmosphere or at the ground. A trip home that ends in reentry (<see cref="ArrivalRule.EndsInReentry(GameSnapshot, string)"/>)
+        /// plans its periapsis in the air on purpose (#779): it is safe while the correction at <paramref name="pointUt"/> comes before the
+        /// target's sphere of influence at <paramref name="soiUt"/>, as the craft can't reach the air before it. The ground is never safe.
+        /// </summary>
+        private static bool PeUnsafe(PredictBurn.Setup setup, double pe, double pointUt, double soiUt)
         {
-            return pe <= Math.Max(target.AtmosphereHeight, Math.Max(0, target.TerrainHeight));
+            var target = setup.Target;
+            if (pe <= Math.Max(0, target.TerrainHeight)) return true;
+            if (pointUt < soiUt && ArrivalRule.EndsInReentry(setup.Snapshot, target.Name)) return false;
+            return pe <= target.AtmosphereHeight;
         }
 
         // ---- The check ----
@@ -224,7 +240,7 @@ namespace ClaudiaKerman.Core.Tools
                 return verdict;
             }
             var drift = Math.Abs(enc.Pe - token.Pe);
-            if (drift > token.PeLimit || PeUnsafe(setup.Target, enc.Pe))
+            if (drift > token.PeLimit || PeUnsafe(setup, enc.Pe, token.PointUt, enc.SoiUt))
             {
                 verdict.Kind = CoastVerdictKind.Drifted;
                 verdict.Line = "the " + token.Target + " encounter has drifted: its periapsis is " + Km(enc.Pe) + " km, " + Km(drift) + " km off the " + Km(token.Pe) + " km planned (limit " + Km(token.PeLimit) + " km)";
@@ -358,7 +374,7 @@ namespace ClaudiaKerman.Core.Tools
             if (mid - now <= WindowWaits.LongWaitS || enc == null || !string.IsNullOrEmpty(Unsafe(setup, enc, mid))) return step;
             var at = new CoastToken
             {
-                Block = "return", Target = target, Pe = enc.Pe, PeLimit = PeLimit(setup.Target, 1000), PointUt = mid, LeadS = turnTime + BurnPoints.TurnMarginSeconds,
+                Block = "return", Target = target, Pe = enc.Pe, PeLimit = PeLimit(setup.Target, 1000), PointUt = mid, LeadS = Lead(turnTime),
                 WaitUt = mid - ReturnBurnLeadS - BurnPoints.TurnMarginSeconds, Phase = "correction", ArriveUt = arriveUt, Bodies = string.Join(",", enc.Bodies.ToArray()),
             };
             if (!CoastToken.Plain(at.Bodies)) return step;
