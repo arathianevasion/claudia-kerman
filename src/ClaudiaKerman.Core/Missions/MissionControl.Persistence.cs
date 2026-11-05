@@ -870,7 +870,7 @@ namespace ClaudiaKerman.Core.Missions
                 mission.CheckPending = CoastPlanToken(mission.PendingSequence) != null;
                 // The rebuilt card had no "now" to say its Due Time is "in" so long against; the one awaiting Approval has one again.
                 var rebuilt = mission.LogRebuilt ? mission.Log.LastOrDefault(e => e.Kind == LogKind.SequencePlan) : null;
-                if (rebuilt != null) rebuilt.Text = MissionCards.SequencePlanBody(mission.PendingSequence, mission.VesselName, _ut, _config);
+                if (rebuilt != null) rebuilt.Text = PlanCardText(mission, mission.PendingSequence);
                 mission.DueNotified = state.DueNotified;
             }
             else if (stage == MissionStage.UnsafeScript) UnsafeScriptCard(mission, null);

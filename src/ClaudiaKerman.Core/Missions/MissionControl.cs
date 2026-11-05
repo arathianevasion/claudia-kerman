@@ -678,6 +678,8 @@ namespace ClaudiaKerman.Core.Missions
             }
             Notice("Sequence Plan approved: the mod is starting the script.");
             mission.Stage = MissionStage.Running;
+            mission.CoastBlocked = CoastBlock(mission, plan);
+            if (mission.CoastBlocked.Length > 0) Note(LogKind.Notice, CoastCheckpoints.BlockerLine(mission.CoastBlocked));
             if (plan.DueTimeUt.HasValue) _commands.Add(new ClearDueTimeAlarm(mission.Id));
             ClearWindow(mission);
             mission.RunningProcessor = processor.Value;
@@ -1941,7 +1943,7 @@ namespace ClaudiaKerman.Core.Missions
                 mission.DueNotified = plan.DueTimeUt.Value <= _ut;
             }
             else mission.DueNotified = false;
-            var card = AddCard(mission, LogKind.SequencePlan, plan.Name, MissionCards.SequencePlanBody(plan, mission.VesselName, _ut, _config), plan.Why);
+            var card = AddCard(mission, LogKind.SequencePlan, plan.Name, PlanCardText(mission, plan), plan.Why);
             card.Script = plan.Script;
             card.CustomScript = plan.CustomScript;
             card.CustomScriptReason = plan.CustomScriptReason;
