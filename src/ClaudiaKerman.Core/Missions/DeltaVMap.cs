@@ -336,10 +336,11 @@ namespace ClaudiaKerman.Core.Missions
             {
                 var figure = leg.DeltaV;
                 var note = "";
-                var airless = snapshot != null && named.Count > 0 && IsSurface(leg) && leg.Bodies[0] != Home && AirlessBody(leg.Bodies[0]);
+                var sbody = snapshot == null ? null : snapshot.Bodies.FirstOrDefault(b => b.Name == leg.Bodies[0]);
+                var airless = sbody != null && named.Count > 0 && IsSurface(leg) && leg.Bodies[0] != Home && AirlessBody(leg.Bodies[0]);
                 if (airless)
                 {
-                    var twr = MarginCheck.LowestTwr(snapshot, snapshot.Bodies.First(b => b.Name == leg.Bodies[0]), used, used + Math.Max(1, leg.DeltaV));
+                    var twr = MarginCheck.LowestTwr(snapshot, sbody, used, used + Math.Max(1, leg.DeltaV));
                     figure = WithGravityLoss(leg.Id, twr);
                     note = twr.HasValue && twr.Value > 0
                         ? " (includes this craft's gravity loss at TWR " + twr.Value.ToString("0.0", CultureInfo.InvariantCulture) + "; " + Whole(leg.DeltaV) + " without)"

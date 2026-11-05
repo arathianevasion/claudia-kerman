@@ -31,13 +31,27 @@ namespace ClaudiaKerman.Core.Missions
                 while (Directory.Exists(Path.Combine(root, now.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture)))) now = now.AddMilliseconds(1);
                 var path = Path.Combine(root, now.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture));
                 Directory.CreateDirectory(path);
-                foreach (var old in Directory.GetDirectories(root).OrderByDescending(d => d, StringComparer.Ordinal).Skip(Keep))
-                    Directory.Delete(old, true);
+                Prune(root);
                 return path;
             }
             catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             {
                 return null;
+            }
+        }
+
+        /// <summary>Best effort: an old folder that is locked stays, and this check is still saved.</summary>
+        private static void Prune(string root)
+        {
+            foreach (var old in Directory.GetDirectories(root).OrderByDescending(d => d, StringComparer.Ordinal).Skip(Keep))
+            {
+                try
+                {
+                    Directory.Delete(old, true);
+                }
+                catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+                {
+                }
             }
         }
 
