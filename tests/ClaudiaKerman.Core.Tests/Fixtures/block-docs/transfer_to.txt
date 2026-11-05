@@ -18,7 +18,7 @@ target_pe_actual (m, the periapsis predicted at the target), correction_dv (m/s 
 burned, restoring a lost encounter too; recovered: why it was lost); plane_dv (m/s the plane change burned).
 departure_ut, arrival_ut (UT of ejection, periapsis), v_inf (m/s).
 ejection_node_dv, ejection_dv_used (m/s the node asked for, the burn used) and ejection_burn_time
-(s the engines burned): a long burn's dv_used is ~2% over. All -1 if it failed before the ejection burn.
+(s the engines burned): a long burn's dv_used is ~2% over. All -1 if it failed before the ejection burn or resumed.
 ejection_wait (s from the block's start to the ejection node): -1 if it failed before the node was planned.
 Fails with "target is required", "target_pe is required", an option value it can't read, "no body
 named <x>", a target that doesn't orbit the craft's body or parent, "not in orbit", "a maneuver node is

@@ -222,11 +222,11 @@ namespace ClaudiaKerman.Core.Tests
                 + "\"total_delta_v\":2400,\"expected_duration\":\"months\",\"mission_time_s\":-1},\"sequence_plan\":null,\"debrief\":null}");
         }
 
-        private static ScriptedResponse SequenceReply(string name, double due = -1, string script = Script)
+        private static ScriptedResponse SequenceReply(string name, double due = -1, string script = Script, string checks = "")
         {
             return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
                 + "\"sequence_plan\":{\"name\":" + JsonSerializer.Serialize(name) + ",\"plan_step\":1,\"intent\":\"Fly to Duna.\",\"why\":\"Next.\",\"target\":\"Duna\","
-                + "\"tolerances\":\"Pe within 1 km\",\"expected_delta_v\":1600,\"expected_duration_s\":40000000,\"abort_conditions\":[],\"risks\":[],"
+                + "\"tolerances\":\"Pe within 1 km\",\"expected_delta_v\":1600,\"expected_duration_s\":40000000,\"abort_conditions\":[],\"risks\":[]," + checks
                 + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":" + JsonSerializer.Serialize(script) + ","
                 + "\"due_time_ut\":" + due.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"window_closes_ut\":-1,\"late_window_dv\":-1},\"debrief\":null}");
         }
@@ -346,8 +346,8 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(launchFirst, CoastCheckpoints.Armed(launchFirst));
             var variable = "local o is lexicon(\"target\", \"Duna\", \"target_pe\", 60000).\ntransfer_to(o).\n";
             Assert.Equal(variable, CoastCheckpoints.Armed(variable));
-            var staged = "stage.\n" + Script;
-            Assert.Equal(staged, CoastCheckpoints.Armed(staged));
+            foreach (var once in new[] { "stage.\n", "toggle ag1.\n", "lights on.\n" })
+                Assert.Equal(once + Script, CoastCheckpoints.Armed(once + Script));
 
             CoastToken token;
             var rig = ToFirstCheckpoint(out token);
@@ -555,6 +555,59 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Empty(mission.TakeCommands().OfType<SetDueTimeAlarm>());
             Assert.Contains(view.Log, e => e.Text.Contains("was interrupted"));
             Assert.Contains(view.Log, e => e.Text.StartsWith("Not a Coast Checkpoint:") && e.Text.Contains("lost"));
+        }
+
+        [Fact]
+        public void A_far_switch_after_a_crossed_Telemetry_Check_is_an_interruption_for_Claudia_to_judge()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var checks = "\"telemetry_checks\":[{\"quantity\":\"altitude\",\"resource\":\"\",\"direction\":\"above\",\"threshold\":1000,\"why\":\"Test.\"}],";
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer", checks: checks), ScriptedResponse.Fixture("mission-alert-abort.sse")));
+            ToRunning(mission, rig);
+            var high = Craft(rig);
+            high.Altitude = 5000000;
+            mission.Send(high);
+            DrainUntil(mission, v => v.AbortRecommended.Length > 0);
+            mission.Send(new CoastArmed(token.ToString()));
+
+            Assert.False(mission.View.FarSwitchLeavesAtCheckpoint);
+            Assert.Contains("Telemetry Check", mission.View.FarSwitchWarning);
+            mission.Send(new FarSwitchConfirmed("Relay Station"));
+            Assert.Equal(MissionStage.Debriefing, mission.View.Stage);
+            Assert.Contains(mission.View.Log, e => e.Text.Contains("was interrupted"));
+        }
+
+        [Fact]
+        public void A_run_that_ends_at_a_checkpoint_with_the_player_nearby_elsewhere_is_checked_when_they_are_back()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var transport = new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer"));
+            var mission = Control(transport);
+            var start = ToRunning(mission, rig);
+            mission.Send(new SetAutoMode(true));
+            mission.Send(Elsewhere(rig));
+            mission.Send(AtCheckpoint(token, start.RunId));
+            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
+
+            mission.Send(Craft(rig));
+            mission.Send(Craft(rig));
+            _background.Drain();
+            Assert.Contains(mission.View.Log, e => e.Text.StartsWith("Checked on return:"));
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+        }
+
+        [Fact]
+        public void A_resumed_flight_reports_the_encounter_for_what_comes_after_the_block()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            rig.MoveTo(token.DueUt);
+            var ask = Ask("Duna", 60000);
+            ask.Resume = token;
+            var step = TransferFlight.Next(rig.Snapshot(), ask);
+            Assert.Equal(Math.Round(token.SoiUt), step.Report["encounter_ut"]);
         }
 
         [Fact]

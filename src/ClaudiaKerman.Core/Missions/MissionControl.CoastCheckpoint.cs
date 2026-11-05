@@ -62,6 +62,8 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (mission.Stage != MissionStage.Running || CoastCheckpoints.Of(outcome) == null) return false;
             mission.Stage = MissionStage.Debriefing;
+            // The player is already elsewhere nearby: the mod's resume waits for them, and the check with it.
+            mission.CheckPending = ElsewhereInFlight;
             mission.Owed = Owed.CoastCheckpoint;
             mission.OwedOutcome = outcome;
             return true;
@@ -136,6 +138,8 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (mission.Stage != MissionStage.Running || !mission.RunId.HasValue || mission.Coast == null || _ut >= mission.Coast.WaitUt) return null;
             if (mission.Pending != null || mission.InFlight || mission.Queue.Count > 0 || mission.Compacting != null) return "a request to Claudia is out";
+            // The mod's Debrief is Nominal: a run with a crossing is Claudia's to judge.
+            if (mission.Crossings.Count > 0) return "a Telemetry Check was crossed during this run";
             var snapshot = MissionVesselSnapshot(mission);
             if (mission.LeaveSnapshot != null && ReferenceEquals(mission.LeaveSnapshot, snapshot)) return mission.CannotLeave;
             mission.LeaveSnapshot = snapshot;

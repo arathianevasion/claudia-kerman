@@ -35,6 +35,8 @@ namespace ClaudiaKerman.Core.Tools
         public string Phase = "";
         /// <summary>The UT the coast ends: the periapsis at the target, or the reentry.</summary>
         public double ArriveUt;
+        /// <summary>The UT of the target's sphere of influence, for the resumed block's <c>encounter_ut</c>; -1 for none.</summary>
+        public double SoiUt = -1;
         public double MidUt = -1;
         public double ArrivalUt = -1;
         public double PlaneUt = -1;
@@ -56,7 +58,7 @@ namespace ClaudiaKerman.Core.Tools
             return Prefix + string.Join(";", new[]
             {
                 "block=" + Block, "target=" + Target, "pe=" + Num(Pe), "pe_limit=" + Num(PeLimit), "point=" + Num(PointUt), "lead=" + Num(LeadS), "wait=" + Num(WaitUt),
-                "phase=" + Phase, "arrive=" + Num(ArriveUt), "mid=" + Num(MidUt), "arrival=" + Num(ArrivalUt), "plane=" + Num(PlaneUt),
+                "phase=" + Phase, "arrive=" + Num(ArriveUt), "soi=" + Num(SoiUt), "mid=" + Num(MidUt), "arrival=" + Num(ArrivalUt), "plane=" + Num(PlaneUt),
                 "sibling=" + (Sibling ? "1" : "0"), "recovered=" + (Recovered ? "1" : "0"), "restored=" + (Restored ? "1" : "0"), "drops=" + Drops.ToString(CultureInfo.InvariantCulture), "bodies=" + Bodies,
             });
         }
@@ -87,7 +89,7 @@ namespace ClaudiaKerman.Core.Tools
             if (!int.TryParse(Get(values, "drops"), NumberStyles.Integer, CultureInfo.InvariantCulture, out drops)) return null;
             token.Drops = drops;
             return Read(values, "pe", out token.Pe) && Read(values, "pe_limit", out token.PeLimit) && Read(values, "point", out token.PointUt)
-                && Read(values, "lead", out token.LeadS) && Read(values, "wait", out token.WaitUt) && Read(values, "arrive", out token.ArriveUt)
+                && Read(values, "lead", out token.LeadS) && Read(values, "wait", out token.WaitUt) && Read(values, "arrive", out token.ArriveUt) && Read(values, "soi", out token.SoiUt)
                 && Read(values, "mid", out token.MidUt) && Read(values, "arrival", out token.ArrivalUt) && Read(values, "plane", out token.PlaneUt) ? token : null;
         }
 
@@ -156,7 +158,7 @@ namespace ClaudiaKerman.Core.Tools
         public const double ReturnBurnLeadS = 300;
 
         /// <summary>What may not run twice: a burn, a stage or a held control before the coast's block means the script can't start over.</summary>
-        private static readonly Regex NotTwice = new Regex(@"\b(stage|add|remove|lock|wait|warpto)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        private static readonly Regex NotTwice = new Regex(@"\b(stage|add|remove|lock|wait|warpto|toggle|doevent|doaction|on|off|ag\d+)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         private static readonly Regex LexiconOpen = new Regex(@"\G\s*(lexicon|lex)\s*\(", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         // ---- The safety test ----
@@ -350,7 +352,7 @@ namespace ClaudiaKerman.Core.Tools
                 step.Ut = Math.Max(token.PointUt, now + ReturnBurnLeadS);
                 step.Do = TransferFlightStep.Wait;
                 step.WaitUt = Math.Max(now, step.Ut - ReturnBurnLeadS - BurnPoints.TurnMarginSeconds);
-                step.Watch = ReturnWatch(setup, token, step.WaitUt);
+                step.Watch = ReturnWatch(setup, token);
                 return step;
             }
             if (mid - now <= WindowWaits.LongWaitS || enc == null || !string.IsNullOrEmpty(Unsafe(setup, enc, mid))) return step;
@@ -367,7 +369,8 @@ namespace ClaudiaKerman.Core.Tools
             return step;
         }
 
-        private static EncounterWatchPlan ReturnWatch(PredictBurn.Setup setup, CoastToken token, double waitUt)
+        /// <summary>Round the planet a Kepler orbit doesn't drift, so the watch mostly stands as the coast a far switch can leave; on the moon's patch it watches as ever.</summary>
+        private static EncounterWatchPlan ReturnWatch(PredictBurn.Setup setup, CoastToken token)
         {
             return new EncounterWatchPlan
             {

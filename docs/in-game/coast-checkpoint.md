@@ -2,14 +2,14 @@
 
 During a long coast of `transfer_to` or `return` the player can leave the craft. A KSP alarm calls them back before the next correction, and the mod checks the trajectory itself on their return. Core tests cover the rules (`CoastCheckpointTests`) and the resume mode (`TransferToFlightTests`). These checks need the game. Install and where to look are as in `phase-3-gate.md`.
 
-**Block migration:** no logic moves out of Kerboscript. Every new decision is in Core (`CoastCheckpoints`, `TransferFlight`), and `transfer_to.ks` and `return.ks` get wiring only. The checks below are the player's flights; no `tests/blocks` scenario changes.
+**Block migration:** no logic moves out of Kerboscript. Every new decision is in Core (`CoastCheckpoints`, `TransferFlight`), and `transfer_to.ks` and `return.ks` get wiring only. The checks below are the player's flights. `tests/blocks/transfer_to_duna`, `return`, `return_ike` and `return_target` are unchanged and must still PASS: a block test's run never checkpoints, as only a Mission's bundle sets the option.
 
 **The lead** before a correction is the turn time plus `BurnPoints.TurnMarginSeconds` (60 s), a few minutes. The Due Time is soft while the player is in the craft.
 
 ## Check 1: a Duna coast where the player leaves, takes the alarm and returns
 
 1. Start a Mission from Kerbin orbit with the goal "Orbit Duna", with a second craft somewhere far away. Leave Auto Mode off. Approve as usual until `transfer_to` runs.
-2. The block flies the ejection, leaves Kerbin's sphere of influence and flies the correction 5 % past its edge. It then stops on its own, with no warp to the mid-course correction. In `KSP.log`: `report from` the run with `checkpoint_ut`, then the run ends. The kOS terminal reads "Stopped at a Coast Checkpoint". Nothing after `transfer_to` in the script runs.
+2. The block flies the ejection, leaves Kerbin's sphere of influence and flies the correction 5 % past its edge. It then stops on its own, with no warp to the next Course Correction. In `KSP.log`: `report from` the run with `checkpoint_ut`, then the run ends. The kOS terminal reads "Stopped at a Coast Checkpoint". Nothing after `transfer_to` in the script runs.
 3. The log has a **Debrief: Nominal** card written by the mod (its Why says so), a Sequence Plan with the same name and step, and "Coast Checkpoint: the next correction is due ... Fly other Missions meanwhile; a KSP alarm calls you back." No request was made: the cost does not move.
 4. Check: the Capcom strip reads "Waiting for the next correction: <date>", the KSP Alarm Clock has an alarm at that date, and the quick replies offer both Approve and Warp to Due Time.
 5. Switch to the other craft through the map. Nothing asks first, as no run is going. Open the Missions list: the Mission shows "Due <date>: check pending".

@@ -66,6 +66,7 @@ namespace ClaudiaKerman.Core.Missions
             mission.ScriptError = "";
             mission.Coast = null;
             mission.LeaveSnapshot = null;
+            mission.CheckPending = false;
         }
 
         private static string RunEventsJson(Mission mission)

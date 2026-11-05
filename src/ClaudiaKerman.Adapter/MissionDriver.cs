@@ -132,7 +132,6 @@ namespace ClaudiaKerman.Adapter
         /// <summary>The driver of this game session, for the scenario module and the leave-Flight guard.</summary>
         public static MissionDriver Current { get; private set; }
 
-        /// <summary>A sequence is Running, so leaving Flight needs the player's say-so first.</summary>
         /// <summary>A far switch now is a clean Coast Checkpoint (#775).</summary>
         public bool FarSwitchLeavesAtCheckpoint
         {
@@ -145,6 +144,7 @@ namespace ClaudiaKerman.Adapter
             get { return _mission.View.FarSwitchWarning; }
         }
 
+        /// <summary>A sequence is Running, so leaving Flight needs the player's say-so first.</summary>
         public bool LeavingFlightNeedsConfirmation
         {
             get { return _mission.View.LeavingFlightNeedsConfirmation; }

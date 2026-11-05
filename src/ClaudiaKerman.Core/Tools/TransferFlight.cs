@@ -272,6 +272,8 @@ namespace ClaudiaKerman.Core.Tools
                 ? new TransferFlightStep { Do = TransferFlightStep.Wait, Ut = token.WaitUt, Phase = token.Phase, MidUt = token.MidUt, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Watch = Watch(setup, enc, ask, token.PointUt, token.WaitUt, token.Phase, token.MidUt) }
                 : new TransferFlightStep { Phase = token.Phase, MidUt = token.MidUt, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt };
             if (ask.Auto) step.MaxDuration = enc.PeUt - ask.StartUt + AutoSlack;
+            // The wait that reported it was the run before this one's; a script after the block reads it from this result.
+            step.Report["encounter_ut"] = Math.Round(token.SoiUt >= 0 ? token.SoiUt : enc.SoiUt);
             return step;
         }
 
@@ -304,7 +306,7 @@ namespace ClaudiaKerman.Core.Tools
             return new CoastToken
             {
                 Target = setup.Target.Name, Pe = enc.Pe, PeLimit = CoastCheckpoints.PeLimit(setup.Target, ask.PeTolerance), PointUt = pointUt, LeadS = ask.TurnTime + BurnPoints.TurnMarginSeconds,
-                WaitUt = waitUt, Phase = phase, ArriveUt = enc.PeUt, MidUt = midUt, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Sibling = ask.Sibling,
+                WaitUt = waitUt, Phase = phase, ArriveUt = enc.PeUt, SoiUt = enc.SoiUt, MidUt = midUt, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Sibling = ask.Sibling,
                 Recovered = ask.Recovered, Restored = ask.Restored, Drops = ask.Drops, Bodies = bodies,
             };
         }
