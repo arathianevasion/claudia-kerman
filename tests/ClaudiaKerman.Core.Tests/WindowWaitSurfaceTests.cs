@@ -180,6 +180,15 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Null(WindowWaits.AfterAscent(Landed(body, 1000, 9000), plan, Steps(steps), 1));
         }
 
+        [Theory]
+        [InlineData("launch")]
+        [InlineData("ascend")]
+        public void TheScriptsFirstBlockIsTheAscentWhateverThePlanIsNamed(string block)
+        {
+            var plan = new SequencePlan { Name = "To orbit", Script = block + "(lexicon()).\n" };
+            Assert.Equal("Kerbin", WindowWaits.AfterAscent(Landed("Ike", 1000, 9000), plan, Steps("To orbit", "Return to Kerbin"), 1).Planet.Name);
+        }
+
         [Fact]
         public void TheScriptsOwnTransferToIsADeparture()
         {
