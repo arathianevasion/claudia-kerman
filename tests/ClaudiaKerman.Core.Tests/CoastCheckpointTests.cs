@@ -1,0 +1,791 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Andrew Watson
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using ClaudiaKerman.Core.Claude;
+using ClaudiaKerman.Core.Config;
+using ClaudiaKerman.Core.Kos;
+using ClaudiaKerman.Core.Missions;
+using ClaudiaKerman.Core.Tools;
+using ClaudiaKerman.Core.Ui;
+using Xunit;
+
+namespace ClaudiaKerman.Core.Tests
+{
+    /// <summary>
+    /// Coast Checkpoints (#775): during a long coast the player can leave the craft, a KSP alarm calls them back before the next
+    /// correction, and the mod checks the trajectory on their return. The flight is <see cref="TransferFlight"/> on
+    /// <see cref="TransferRig"/>; the rest is driven through the Mission seam with hand-written replies.
+    /// </summary>
+    public sealed class CoastCheckpointTests : IDisposable
+    {
+        private const string Goal = "Orbit Duna.";
+        private const double Day = 21600;
+        private const string Script = "local res is transfer_to(lexicon(\"target\", \"Duna\", \"target_pe\", 60000)).\naddons:claudia:report(res).\n";
+        private readonly Background _background = new Background(e => throw new Exception("background error", e));
+        private readonly TempDir _save = new TempDir();
+
+        public void Dispose()
+        {
+            _save.Dispose();
+        }
+
+        // ---- The flight ----
+
+        private static TransferFlightAsk Ask(string target, double pe, bool checkpoints = true)
+        {
+            return new TransferFlightAsk { Target = target, TargetPe = pe, StartUt = 0, TurnTime = 60, DvLeft = 5000, Auto = true, Checkpoints = checkpoints };
+        }
+
+        private static string TokenOf(TransferFlightStep step)
+        {
+            object token;
+            return step.Report.TryGetValue(CoastCheckpoints.TokenKey, out token) ? (string)token : null;
+        }
+
+        /// <summary>Flies the rig's steps until one ends the block, and gives that step; the waits and burns on the way are kept.</summary>
+        private static TransferFlightStep FlyToEnd(TransferRig rig, TransferFlightAsk ask, List<TransferFlightStep> flown = null)
+        {
+            for (var i = 0; i < 40; i++)
+            {
+                var step = TransferFlight.Next(rig.Snapshot(), ask);
+                if (step.Error != "" || step.Do == TransferFlightStep.Done) return step;
+                if (flown != null) flown.Add(step);
+                if (step.MaxDuration.HasValue) ask.MaxDuration = step.MaxDuration;
+                if (step.Do == TransferFlightStep.Burn) ask.LastDv = rig.Fly(step.Kind, step.Ut, step.Prograde, step.Normal, step.Radial);
+                else rig.MoveTo(step.Ut);
+                TransferFlight.Carry(ask, step);
+            }
+            throw new InvalidOperationException("the flight did not end in 40 steps");
+        }
+
+        /// <summary>A Kerbin to Duna flight flown to its first checkpoint: the rig on the coast, and the token.</summary>
+        private static TransferRig ToFirstCheckpoint(out CoastToken token)
+        {
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            rig.BurnError = 0.005;
+            rig.CorrectionError = 0.05;
+            var step = FlyToEnd(rig, Ask("Duna", 60000));
+            Assert.True(step.Error == "", step.Error);
+            token = CoastToken.Parse(TokenOf(step));
+            Assert.NotNull(token);
+            return rig;
+        }
+
+        [Fact]
+        public void A_Duna_coast_checkpoints_before_each_correction_point_more_than_six_hours_away()
+        {
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            rig.BurnError = 0.005;
+            // Every burn left short, so the corrections after the first have something to fly.
+            rig.Residual = 0.3;
+            var ask = Ask("Duna", 60000);
+            var points = new List<CoastToken>();
+            TransferFlightStep end;
+            while (true)
+            {
+                end = FlyToEnd(rig, ask);
+                Assert.True(end.Error == "", end.Error);
+                var text = TokenOf(end);
+                if (text == null) break;
+                var token = CoastToken.Parse(text);
+                Assert.True(token.PointUt - rig.Ut > WindowWaits.LongWaitS, "a checkpoint only before a point over 6 h off");
+                points.Add(token);
+                Assert.True(points.Count < 6, "resuming must not checkpoint the same point again");
+                // exec_node's own residual from here: the trim near the target is held to pe_tolerance.
+                rig.Residual = 0.05;
+                // The player comes back at the Due Time, and the same step flies on from the token.
+                rig.MoveTo(token.DueUt);
+                ask = Ask("Duna", 60000);
+                ask.Resume = token;
+                ask.StartUt = rig.Ut;
+            }
+            // The mid-course correction, then the one at the target's edge and the finer one inside it; a post-escape correction comes with an SOI change first, and soon.
+            Assert.Equal("mid", points[0].Phase);
+            Assert.Contains(points, p => p.Phase == "near");
+            Assert.Single(rig.Burns, b => b.Key == "ejection");
+            Assert.Equal("Duna", rig.Body.Name);
+            Assert.InRange(Convert.ToDouble(end.Report["target_pe_actual"]), 59000, 61000);
+        }
+
+        [Fact]
+        public void A_Mun_coast_under_six_hours_has_no_checkpoint()
+        {
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            rig.Residual = 0.05;
+            var end = FlyToEnd(rig, Ask("Mun", 30000));
+            Assert.True(end.Error == "", end.Error);
+            Assert.Null(TokenOf(end));
+        }
+
+        [Fact]
+        public void A_flight_outside_a_Missions_run_never_checkpoints()
+        {
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            rig.BurnError = 0.005;
+            rig.CorrectionError = 0.05;
+            var flown = new List<TransferFlightStep>();
+            var end = FlyToEnd(rig, Ask("Duna", 60000, false), flown);
+            Assert.Null(TokenOf(end));
+            Assert.Contains(flown, s => s.Do == TransferFlightStep.Wait && s.Phase == "near");
+            Assert.All(flown.Where(s => s.Watch != null), s => Assert.Equal("", s.Watch.Checkpoint));
+        }
+
+        // ---- The safety test ----
+
+        [Fact]
+        public void A_periapsis_in_the_atmosphere_prevents_the_checkpoint_and_the_block_keeps_flying()
+        {
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            rig.BurnError = 0.005;
+            rig.CorrectionError = 0.05;
+            var flown = new List<TransferFlightStep>();
+            // Duna's atmosphere tops out at 50 km.
+            var end = FlyToEnd(rig, Ask("Duna", 10000), flown);
+            Assert.True(end.Error == "", end.Error);
+            Assert.Null(TokenOf(end));
+            Assert.Contains(flown, s => s.Do == TransferFlightStep.Wait && s.Phase == "near");
+        }
+
+        [Fact]
+        public void No_encounter_prevents_the_checkpoint()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            rig.Fly("by_hand", rig.Ut, -300, 0, 0);
+            ToolOutcome error;
+            var setup = PredictBurn.Setup.Prepare(rig.Snapshot(), "Duna", out error);
+            Assert.Null(TransferFlight.Encounter(setup));
+            Assert.Contains("no encounter", CoastCheckpoints.Unsafe(setup, null, token.PointUt));
+        }
+
+        [Fact]
+        public void An_SOI_change_before_the_next_point_prevents_the_checkpoint_but_the_targets_own_does_not()
+        {
+            // Just after the ejection: Kerbin's edge comes first.
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            rig.BurnError = 0.005;
+            var ask = Ask("Duna", 60000);
+            var eject = TransferFlight.Next(rig.Snapshot(), ask);
+            rig.Fly(eject.Kind, eject.Ut, eject.Prograde, eject.Normal, eject.Radial);
+            ToolOutcome error;
+            var setup = PredictBurn.Setup.Prepare(rig.Snapshot(), "Duna", out error);
+            Assert.Contains("sphere of influence", CoastCheckpoints.Unsafe(setup, new TransferFlight.Arrival { Pe = 60000 }, rig.Ut + 10 * Day));
+
+            // On the Sun's patch, the point just inside Duna's sphere of influence is the finer correction's.
+            CoastToken token;
+            var coast = ToFirstCheckpoint(out token);
+            setup = PredictBurn.Setup.Prepare(coast.Snapshot(), "Duna", out error);
+            var enc = TransferFlight.Encounter(setup);
+            Assert.Equal("", CoastCheckpoints.Unsafe(setup, enc, enc.SoiUt + 30));
+        }
+
+        [Fact]
+        public void The_due_time_is_the_correction_point_less_the_turn_time_and_the_burn_points_lead()
+        {
+            CoastToken token;
+            ToFirstCheckpoint(out token);
+            Assert.Equal(60 + BurnPoints.TurnMarginSeconds, token.LeadS);
+            Assert.Equal(token.PointUt - 120, token.DueUt);
+        }
+
+        // ---- The Mission seam: helpers ----
+
+        private static ScriptedResponse Reply(string json)
+        {
+            var text = JsonSerializer.Serialize(json);
+            var sse = "event: message_start\n"
+                + "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_t\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-sonnet-5-5\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":3000,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":1}}}\n\n"
+                + "event: content_block_start\n"
+                + "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n"
+                + "event: content_block_delta\n"
+                + "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":" + text + "}}\n\n"
+                + "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n"
+                + "event: message_delta\n"
+                + "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":200,\"iterations\":[{\"type\":\"message\",\"input_tokens\":3000,\"output_tokens\":200}]}}\n\n"
+                + "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
+            return new ScriptedResponse { Body = Encoding.UTF8.GetBytes(sse) };
+        }
+
+        private static ScriptedResponse DunaPlan()
+        {
+            return Reply("{\"kind\":\"mission_plan\",\"say\":\"Mission Plan: the transfer.\",\"reply_intent\":\"none\","
+                + "\"mission_plan\":{\"why\":\"Duna.\",\"sequences\":["
+                + "{\"name\":\"Duna transfer\",\"intent\":\"Fly to Duna.\",\"delta_v\":1600,\"timing\":\"now\",\"due_time_ut\":-1},"
+                + "{\"name\":\"Duna capture\",\"intent\":\"Capture at Duna.\",\"delta_v\":800,\"timing\":\"after\",\"due_time_ut\":-1}],"
+                + "\"total_delta_v\":2400,\"expected_duration\":\"months\",\"mission_time_s\":-1},\"sequence_plan\":null,\"debrief\":null}");
+        }
+
+        private static ScriptedResponse SequenceReply(string name, double due = -1, string script = Script)
+        {
+            return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
+                + "\"sequence_plan\":{\"name\":" + JsonSerializer.Serialize(name) + ",\"plan_step\":1,\"intent\":\"Fly to Duna.\",\"why\":\"Next.\",\"target\":\"Duna\","
+                + "\"tolerances\":\"Pe within 1 km\",\"expected_delta_v\":1600,\"expected_duration_s\":40000000,\"abort_conditions\":[],\"risks\":[],"
+                + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":" + JsonSerializer.Serialize(script) + ","
+                + "\"due_time_ut\":" + due.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"window_closes_ut\":-1,\"late_window_dv\":-1},\"debrief\":null}");
+        }
+
+        private MissionControl Control(StreamingFakeTransport transport)
+        {
+            var client = new ClaudeClient(new CraftCheckRouter(transport), () => "sk-ant-test", l => { });
+            client.Timing.Wait = (d, c) => { };
+            var mission = new MissionControl(client, _background, new PlayerConfig(), () => true, new PassingScriptCheck());
+            mission.Send(new SaveLoaded(_save.Path));
+            return mission;
+        }
+
+        private void DrainUntil(MissionControl mission, Func<MissionView, bool> condition)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(20);
+            while (!condition(mission.View) && DateTime.UtcNow < deadline)
+            {
+                _background.Drain();
+                Thread.Sleep(2);
+            }
+            _background.Drain();
+            Assert.True(condition(mission.View), "never reached; stage is " + mission.View.Stage + " " + mission.View.PauseReason);
+        }
+
+        /// <summary>The Mission's craft, flying as the rig does: the fixture's parts and crew, with the rig's orbit, UT and bodies.</summary>
+        private static GameSnapshot Craft(TransferRig rig)
+        {
+            var snapshot = GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "on-pad.json")));
+            var flying = rig.Snapshot();
+            snapshot.Craft.VesselId = "craft";
+            snapshot.Ut = flying.Ut;
+            snapshot.Situation = flying.Situation;
+            snapshot.Body = flying.Body;
+            snapshot.Orbit = flying.Orbit;
+            snapshot.Bodies = flying.Bodies;
+            return snapshot;
+        }
+
+        private static GameSnapshot Elsewhere(TransferRig rig)
+        {
+            var snapshot = Craft(rig);
+            snapshot.Craft.VesselId = "relay";
+            snapshot.Craft.Name = "Relay Station";
+            snapshot.Crew.Clear();
+            snapshot.Crew.Add(new SnapshotCrewMember { Name = "Jebediah Kerman", Trait = "Pilot" });
+            snapshot.Craft.Parts.RemoveAll(p => p.HasKosProcessor);
+            return snapshot;
+        }
+
+        /// <summary>
+        /// Through to the transfer running: approved in Kerbin orbit an hour before its ejection, as it would be, then the craft on the rig's coast
+        /// when the block has flown there. Gives its start command.
+        /// </summary>
+        private StartScript ToRunning(MissionControl mission, TransferRig rig)
+        {
+            var parked = TransferRig.Circular("Kerbin", 100000, 0);
+            var eject = TransferFlight.Next(parked.Snapshot(), Ask("Duna", 60000));
+            parked.MoveTo(eject.Ut - 3600);
+            mission.Send(new SceneChanged(GameScene.Flight));
+            mission.Send(new UtAdvanced(parked.Ut));
+            mission.Send(Craft(parked));
+            CraftCheckRouter.StartChecked(mission, _background, Craft(parked), new StartMission(Goal, 10m, "claude-sonnet-5-5"));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            mission.TakeCommands();
+            mission.Send(new Approve());
+            var started = mission.TakeCommands().OfType<StartScript>().ToList();
+            Assert.True(started.Count == 1, "no start: " + mission.View.Stage + ": " + string.Join(" | ", mission.View.Log.Skip(Math.Max(0, mission.View.Log.Count - 4)).Select(e => e.Text)));
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            mission.Send(new UtAdvanced(rig.Ut));
+            mission.Send(Craft(rig));
+            return started[0];
+        }
+
+        private static KosRunEnded AtCheckpoint(CoastToken token, int runId)
+        {
+            var report = new Dictionary<string, object>
+            {
+                { "success", true }, { CoastCheckpoints.TokenKey, token.ToString() }, { CoastCheckpoints.PointKey, Math.Round(token.PointUt) }, { "ejection_dv_used", 1030.0 },
+            };
+            return new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, report, "", "", false), runId);
+        }
+
+        private MissionControl RunToCheckpoint(StreamingFakeTransport transport, TransferRig rig, CoastToken token, bool autoMode = false)
+        {
+            var mission = Control(transport);
+            var start = ToRunning(mission, rig);
+            if (autoMode) mission.Send(new SetAutoMode(true));
+            mission.Send(AtCheckpoint(token, start.RunId));
+            _background.Drain();
+            return mission;
+        }
+
+        private static string Messages(HttpRequestSpec request)
+        {
+            using (var doc = JsonDocument.Parse(request.Body))
+                return doc.RootElement.GetProperty("messages").GetRawText();
+        }
+
+        /// <summary>The player leaves for a far vessel with the run at the checkpoint, and is seen there.</summary>
+        private static void Leave(MissionControl mission, TransferRig rig)
+        {
+            mission.Send(Elsewhere(rig));
+        }
+
+        // ---- A clean checkpoint ----
+
+        [Fact]
+        public void A_Missions_run_may_checkpoint_and_a_block_test_may_not()
+        {
+            Assert.Contains("\"checkpoint\", \"on\"", CoastCheckpoints.Armed(Script));
+            Assert.Contains("lexicon(\"checkpoint\", \"on\")", CoastCheckpoints.Armed("local res is return().\n"));
+            // What the mod can't start over stays as it is: a launch first, options it can't read, or a burn by hand.
+            var launchFirst = "launch(lexicon(\"apoapsis\", 100000)).\n" + Script;
+            Assert.Equal(launchFirst, CoastCheckpoints.Armed(launchFirst));
+            var variable = "local o is lexicon(\"target\", \"Duna\", \"target_pe\", 60000).\ntransfer_to(o).\n";
+            Assert.Equal(variable, CoastCheckpoints.Armed(variable));
+            var staged = "stage.\n" + Script;
+            Assert.Equal(staged, CoastCheckpoints.Armed(staged));
+
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var start = ToRunning(Control(new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer"))), rig);
+            Assert.Contains("\"checkpoint\", \"on\"", start.Source);
+        }
+
+        [Fact]
+        public void A_clean_checkpoint_gets_a_mod_written_Nominal_Debrief_the_same_step_and_a_due_time_with_an_alarm()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var transport = new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer"));
+            var mission = RunToCheckpoint(transport, rig, token);
+            var requests = transport.Requests.Count;
+
+            var view = mission.View;
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, view.Stage);
+            Assert.Equal(requests, transport.Requests.Count);
+            var debrief = view.Log.Last(e => e.Kind == LogKind.Debrief);
+            Assert.Equal("Nominal", debrief.Outcome);
+            Assert.Equal(CoastCheckpoints.CardWhy, debrief.Why);
+            Assert.True(view.DueTime.HasDueTime);
+            Assert.Equal(token.PointUt - 120, view.DueTime.Ut, 3);
+            Assert.Equal(CoastCheckpoints.WaitsFor, view.DueTime.WaitsFor);
+            var commands = mission.TakeCommands();
+            Assert.Equal(token.DueUt, commands.OfType<SetDueTimeAlarm>().Single().Ut, 3);
+            Assert.Contains(view.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("Fly other Missions meanwhile"));
+            // One plan step, as a retry: the Mission Plan never names checkpoints, and the count doesn't move.
+            var state = mission.ExportStates().Single();
+            Assert.Equal(1, state.SequencesProposed);
+            Assert.Equal(1, state.SequencePlan.PlanStep);
+            Assert.Equal("Duna transfer", state.SequencePlan.Name);
+            Assert.Equal(2, state.MissionPlan.Sequences.Count);
+            Assert.Contains(token.ToString(), state.SequencePlan.Script);
+            Assert.DoesNotContain("\"on\"", state.SequencePlan.Script);
+        }
+
+        [Fact]
+        public void The_card_and_the_fact_survive_a_rebuild_and_the_next_request_hears_of_it_without_the_token()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var transport = new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer"), SequenceReply("Fixing it"));
+            var mission = RunToCheckpoint(transport, rig, token);
+            Assert.NotNull(CoastCheckpoints.ReadFact(CoastCheckpoints.Fact("x", "what", "report")));
+            Assert.Null(CoastCheckpoints.ReadFact("anything else"));
+
+            Leave(mission, rig);
+            rig.Fly("by_hand", rig.Ut, -300, 0, 0);
+            mission.Send(Craft(rig));
+            DrainUntil(mission, v => transport.Requests.Count == 3);
+            var messages = Messages(transport.Requests[2]);
+            Assert.Contains(CoastCheckpoints.FactPrefix.Substring(0, 30), messages);
+            Assert.Contains("ejection_dv_used", messages);
+            Assert.DoesNotContain("resume:block", messages);
+        }
+
+        // ---- The player stays ----
+
+        [Fact]
+        public void Auto_Mode_on_with_the_player_in_the_craft_starts_the_resumed_sequence_at_once()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var transport = new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer"));
+            var mission = RunToCheckpoint(transport, rig, token, autoMode: true);
+
+            var start = mission.TakeCommands().OfType<StartScript>().Single();
+            Assert.Contains(token.ToString(), start.Source);
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            Assert.Equal("", mission.View.AutoModeStop);
+        }
+
+        [Fact]
+        public void Auto_Mode_still_stops_at_a_due_time_of_Claudias_own()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var due = rig.Ut + 10 * Day;
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer", due)));
+            mission.Send(new SceneChanged(GameScene.Flight));
+            mission.Send(new UtAdvanced(rig.Ut));
+            mission.Send(Craft(rig));
+            CraftCheckRouter.StartChecked(mission, _background, Craft(rig), new StartMission(Goal, 10m, "claude-sonnet-5-5"));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            mission.Send(new SetAutoMode(true));
+            mission.Send(new UtAdvanced(due + 1));
+            _background.Drain();
+            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
+            Assert.Equal("Auto Mode is waiting for you: a Due Time.", mission.View.AutoModeStop);
+        }
+
+        [Fact]
+        public void Auto_Mode_still_stops_at_an_ejection_wait_and_a_window_wait()
+        {
+            // A transfer_to in Kerbin orbit whose ejection is months off (#749), under the window's Due Time (#616).
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer")));
+            mission.Send(new SceneChanged(GameScene.Flight));
+            mission.Send(new UtAdvanced(rig.Ut));
+            mission.Send(Craft(rig));
+            CraftCheckRouter.StartChecked(mission, _background, Craft(rig), new StartMission(Goal, 10m, "claude-sonnet-5-5"));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            mission.Send(new SetAutoMode(true));
+            var due = mission.View.DueTime;
+            Assert.True(due.HasDueTime);
+            mission.Send(new UtAdvanced(due.Ut + 1));
+            _background.Drain();
+            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
+            Assert.Equal("Auto Mode is waiting for you: a Due Time.", mission.View.AutoModeStop);
+        }
+
+        [Fact]
+        public void A_reply_of_Claudias_cannot_mark_its_plan_as_a_checkpoint()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var script = Script;
+            var reply = "{\"kind\":\"sequence_plan\",\"say\":\"x\",\"reply_intent\":\"none\",\"mission_plan\":null,\"sequence_plan\":{\"name\":\"Marked\",\"plan_step\":1,\"intent\":\"i\",\"why\":\"w\",\"target\":\"t\","
+                + "\"tolerances\":\"t\",\"expected_delta_v\":1,\"expected_duration_s\":40000000,\"abort_conditions\":[],\"risks\":[],\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":" + JsonSerializer.Serialize(script) + ","
+                + "\"due_time_ut\":" + (rig.Ut + Day).ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"window_closes_ut\":-1,\"late_window_dv\":-1,\"coast_checkpoint\":" + JsonSerializer.Serialize(token.ToString()) + "},\"debrief\":null}";
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), Reply(reply)));
+            mission.Send(new SceneChanged(GameScene.Flight));
+            mission.Send(new UtAdvanced(rig.Ut));
+            mission.Send(Craft(rig));
+            CraftCheckRouter.StartChecked(mission, _background, Craft(rig), new StartMission(Goal, 10m, "claude-sonnet-5-5"));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            mission.Send(new SetAutoMode(true));
+            _background.Drain();
+            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
+            Assert.Equal("Auto Mode is waiting for you: a Due Time.", mission.View.AutoModeStop);
+        }
+
+        [Fact]
+        public void Auto_Mode_off_waits_for_one_Approve_which_may_come_before_the_due_time()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var mission = RunToCheckpoint(new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer")), rig, token);
+            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
+            Assert.Equal(new[] { QuickReply.Approve, QuickReply.WarpToDueTime }, mission.View.QuickReplies.Take(2).ToArray());
+
+            mission.Send(new Approve());
+            var commands = mission.TakeCommands();
+            Assert.Contains(token.ToString(), commands.OfType<StartScript>().Single().Source);
+            Assert.Single(commands.OfType<ClearDueTimeAlarm>());
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+        }
+
+        // ---- A far switch ----
+
+        [Fact]
+        public void A_far_switch_during_a_coast_warp_is_a_clean_checkpoint_when_the_safety_test_passes()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var transport = new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer"));
+            var mission = Control(transport);
+            ToRunning(mission, rig);
+            var requests = transport.Requests.Count;
+
+            mission.Send(new CoastArmed(token.ToString()));
+            Assert.True(mission.View.FarSwitchLeavesAtCheckpoint);
+            Assert.Equal("", mission.View.FarSwitchWarning);
+
+            mission.Send(new FarSwitchConfirmed("Relay Station"));
+            _background.Drain();
+            var commands = mission.TakeCommands();
+            Assert.Single(commands.OfType<AbortScript>());
+            Assert.Equal(token.DueUt, commands.OfType<SetDueTimeAlarm>().Single().Ut, 3);
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            Assert.Equal("Nominal", mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Outcome);
+            Assert.Equal(requests, transport.Requests.Count);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("was interrupted"));
+            Assert.Equal("Due " + KerbinTime.ShortDate(token.DueUt) + ": check pending", MissionListRules.Due(mission.View.Missions.Single(m => m.Current)));
+
+            // Before the player is back, Approve starts nothing.
+            mission.Send(new Approve());
+            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
+        }
+
+        [Fact]
+        public void A_far_switch_is_an_interruption_with_a_warning_when_the_safety_test_fails()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer")));
+            ToRunning(mission, rig);
+            mission.Send(new CoastArmed(token.ToString()));
+            rig.Fly("by_hand", rig.Ut, -300, 0, 0);
+            mission.Send(Craft(rig));
+            Assert.False(mission.View.FarSwitchLeavesAtCheckpoint);
+            Assert.Contains("lost", mission.View.FarSwitchWarning);
+
+            mission.Send(new FarSwitchConfirmed("Relay Station"));
+            var view = mission.View;
+            Assert.Equal(MissionStage.Debriefing, view.Stage);
+            Assert.Empty(mission.TakeCommands().OfType<SetDueTimeAlarm>());
+            Assert.Contains(view.Log, e => e.Text.Contains("was interrupted"));
+            Assert.Contains(view.Log, e => e.Text.StartsWith("Not a Coast Checkpoint:") && e.Text.Contains("lost"));
+        }
+
+        [Fact]
+        public void A_far_switch_with_nothing_armed_past_the_wait_or_in_a_burn_is_an_interruption_as_before()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer")));
+            ToRunning(mission, rig);
+            Assert.False(mission.View.FarSwitchLeavesAtCheckpoint);
+            Assert.Equal("", mission.View.FarSwitchWarning);
+
+            mission.Send(new CoastArmed(token.ToString()));
+            mission.Send(new UtAdvanced(token.WaitUt + 1));
+            Assert.False(mission.View.FarSwitchLeavesAtCheckpoint);
+            Assert.Equal("", mission.View.FarSwitchWarning);
+
+            mission.Send(new FarSwitchConfirmed("Relay Station"));
+            Assert.Equal(MissionStage.Debriefing, mission.View.Stage);
+        }
+
+        [Fact]
+        public void An_encounter_watch_drop_ends_the_coast_a_far_switch_could_leave()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer")));
+            ToRunning(mission, rig);
+            mission.Send(new CoastArmed(token.ToString()));
+            mission.Send(new EncounterWatchDropped("Encounter Watch: lost"));
+            Assert.False(mission.View.FarSwitchLeavesAtCheckpoint);
+        }
+
+        // ---- The check on return ----
+
+        [Fact]
+        public void The_check_keeps_a_clean_trajectory_with_no_request_and_Auto_Mode_starts_the_resume()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var transport = new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer"));
+            var mission = RunToCheckpoint(transport, rig, token);
+            mission.TakeCommands();
+            var requests = transport.Requests.Count;
+
+            Leave(mission, rig);
+            var entry = mission.View.Missions.Single(m => m.Current);
+            Assert.Equal("Due " + KerbinTime.ShortDate(token.DueUt) + ": check pending", MissionListRules.Due(entry));
+            mission.Send(new SetAutoMode(true));
+            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
+
+            // Back at the alarm.
+            rig.MoveTo(token.DueUt);
+            mission.Send(new UtAdvanced(rig.Ut));
+            mission.Send(Craft(rig));
+            _background.Drain();
+
+            Assert.Equal(requests, transport.Requests.Count);
+            Assert.Contains(mission.View.Log, e => e.Text.StartsWith("Checked on return:") && e.Text.Contains("is kept"));
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+        }
+
+        [Fact]
+        public void A_kept_late_return_takes_the_resume_with_its_lateness_in_the_log()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var transport = new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer"));
+            var mission = RunToCheckpoint(transport, rig, token);
+            var requests = transport.Requests.Count;
+
+            Leave(mission, rig);
+            rig.MoveTo(token.PointUt + 2 * Day);
+            mission.Send(new UtAdvanced(rig.Ut));
+            mission.Send(Craft(rig));
+            _background.Drain();
+
+            Assert.Equal(requests, transport.Requests.Count);
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            Assert.Contains(mission.View.Log, e => e.Text.StartsWith("Checked on return:") && e.Text.Contains(KerbinTime.Span(2 * Day) + " late"));
+        }
+
+        [Fact]
+        public void A_drifted_coast_goes_to_Claudia_with_the_figures()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            // A limit a small nudge passes, the encounter kept.
+            token.PeLimit = 1000;
+            var transport = new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer"), SequenceReply("Fix the coast"));
+            var mission = RunToCheckpoint(transport, rig, token);
+            mission.TakeCommands();
+
+            Leave(mission, rig);
+            rig.Fly("by_hand", rig.Ut, 0.5, 0, 0);
+            var seen = CoastCheckpoints.Judge(Craft(rig), token, rig.Ut);
+            Assert.Equal(CoastVerdictKind.Drifted, seen.Kind);
+            mission.Send(Craft(rig));
+            DrainUntil(mission, v => v.Log.Any(e => e.Kind == LogKind.SequencePlan && e.Title == "Fix the coast"));
+
+            var asked = Messages(transport.Requests.Last());
+            Assert.Contains("Coast Checkpoint", asked);
+            Assert.Contains("has drifted", asked);
+            Assert.Contains("km off the", asked);
+            Assert.Single(mission.TakeCommands().OfType<ClearDueTimeAlarm>());
+        }
+
+        [Fact]
+        public void A_lost_late_coast_goes_to_Claudia_with_the_figures_and_its_lateness()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var transport = new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer"), SequenceReply("Recover"));
+            var mission = RunToCheckpoint(transport, rig, token);
+            mission.TakeCommands();
+
+            Leave(mission, rig);
+            rig.Fly("by_hand", rig.Ut, -300, 0, 0);
+            rig.MoveTo(token.PointUt + 3 * Day);
+            mission.Send(new UtAdvanced(rig.Ut));
+            mission.Send(Craft(rig));
+            DrainUntil(mission, v => v.Log.Any(e => e.Kind == LogKind.SequencePlan && e.Title == "Recover"));
+
+            var asked = Messages(transport.Requests.Last());
+            Assert.Contains("encounter is lost", asked);
+            Assert.Contains("The player is late", asked);
+            Assert.Contains(Math.Round(3 * Day).ToString("0", System.Globalization.CultureInfo.InvariantCulture), asked);
+            Assert.Single(mission.TakeCommands().OfType<ClearDueTimeAlarm>());
+            // The same step again, not a new one.
+            Assert.Equal(1, mission.ExportStates().Single().SequencesProposed);
+        }
+
+        [Fact]
+        public void The_check_runs_again_after_a_load_of_a_save_at_a_checkpoint()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var transport = new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer"));
+            var mission = RunToCheckpoint(transport, rig, token);
+            var state = mission.ExportStates().Single();
+            Assert.Equal(token.ToString(), state.SequencePlan.CoastCheckpoint);
+
+            mission.Send(new MissionsRestored(_save.Path, new[] { MissionSaveState.FromValues(state.ToValues()) }));
+            _background.Drain();
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            Assert.Contains("check pending", MissionListRules.Due(mission.View.Missions.Single(m => m.Current)));
+            mission.Send(Craft(rig));
+            _background.Drain();
+            Assert.Contains(mission.View.Log, e => e.Text.StartsWith("Checked on return:"));
+            Assert.Equal(token.DueUt, mission.View.DueTime.Ut, 3);
+        }
+
+        // ---- The token ----
+
+        [Fact]
+        public void The_token_round_trips_and_refuses_what_a_save_could_smuggle()
+        {
+            CoastToken token;
+            ToFirstCheckpoint(out token);
+            var back = CoastToken.Parse(token.ToString());
+            Assert.Equal(token.ToString(), back.ToString());
+            Assert.Null(CoastToken.Parse("on"));
+            Assert.Null(CoastToken.Parse("resume:block=transfer_to"));
+            Assert.Null(CoastToken.Parse(token.ToString().Replace("target=Duna", "target=Du\"na")));
+            Assert.Null(CoastToken.Parse(token.ToString().Replace("block=transfer_to", "block=launch")));
+        }
+
+        // ---- return's twin ----
+
+        private static IDictionary<string, object> ReturnAsk(double mid, string mode)
+        {
+            return new Dictionary<string, object> { { "timing", "coast" }, { "target", "Kerbin" }, { "mid", mid }, { "turn_time", 60.0 }, { "arrive_ut", mid * 2 }, { "checkpoint", mode } };
+        }
+
+        [Fact]
+        public void Return_stops_at_a_checkpoint_only_on_a_safe_coast_over_six_hours_and_resumes_with_a_watched_wait()
+        {
+            // A high orbit round Kerbin, its periapsis well above the air.
+            var rig = TransferRig.Circular("Kerbin", 40000000, 1000);
+            var snapshot = rig.Snapshot();
+            var mid = 1000 + 3 * Day;
+
+            // Off (a block test), or a short coast: on with the flight.
+            Assert.Equal("go", BlockCalls.TransferStep(ReturnAsk(mid, "off"), snapshot)["do"]);
+            Assert.Equal("go", BlockCalls.TransferStep(ReturnAsk(1000 + Day / 2, "on"), snapshot)["do"]);
+
+            var stop = BlockCalls.TransferStep(ReturnAsk(mid, "on"), snapshot);
+            Assert.Equal("done", stop["do"]);
+            var report = (IDictionary<string, object>)stop["report"];
+            var token = CoastToken.Parse((string)report[CoastCheckpoints.TokenKey]);
+            Assert.Equal("return", token.Block);
+            Assert.Equal(mid, token.PointUt);
+            Assert.Equal(mid - 120, token.DueUt);
+
+            // Resumed: a watched wait to the correction, not a second stop.
+            var resumed = BlockCalls.TransferStep(ReturnAsk(mid, token.ToString()), snapshot);
+            Assert.Equal("wait", resumed["do"]);
+            Assert.Equal(mid, resumed["ut"]);
+            Assert.Equal(mid - 360, (double)resumed["wait_ut"]);
+            Assert.Equal(token.ToString(), ((IDictionary<string, object>)resumed["watch"])[CoastCheckpoints.TokenKey]);
+
+            // Late: the correction as soon as the craft can turn to it.
+            rig.MoveTo(mid + 500);
+            var late = BlockCalls.TransferStep(ReturnAsk(mid, token.ToString()), rig.Snapshot());
+            Assert.Equal(rig.Ut + CoastCheckpoints.ReturnBurnLeadS, late["ut"]);
+        }
+
+        [Fact]
+        public void Return_with_its_periapsis_in_the_air_keeps_flying()
+        {
+            var rig = TransferRig.Circular("Kerbin", 100000, 1000);
+            var kerbin = rig.System.Find("Kerbin");
+            // Apoapsis 40 Mm, periapsis 35 km: the Block's default aim, which a late return would turn into a loss.
+            var pe = kerbin.Radius + 35000;
+            var ap = kerbin.Radius + 40000000;
+            rig.Orbit = Conic.FromElements(kerbin.Gm, (pe + ap) / 2, (ap - pe) / (ap + pe), 0, 0, 0, 3, 1000);
+            Assert.Equal("go", BlockCalls.TransferStep(ReturnAsk(1000 + 3 * Day, "on"), rig.Snapshot())["do"]);
+        }
+
+        [Fact]
+        public void A_return_script_with_no_options_can_be_armed_and_resumed()
+        {
+            var plan = new SequencePlan { Name = "Home", Script = "local res is return().\naddons:claudia:report(res).\n" };
+            var token = new CoastToken { Block = "return", Target = "Kerbin", Pe = 100000, PeLimit = 8000000, PointUt = 50000, LeadS = 120, WaitUt = 49640, Phase = "correction", ArriveUt = 90000, Bodies = "Kerbin" };
+            var resumed = CoastCheckpoints.Resumed(plan, token, 1000);
+            Assert.Contains("return(lexicon(\"checkpoint\", \"resume:block=return", resumed.Script);
+            // A second checkpoint in a resumed run replaces the token.
+            var next = new CoastToken { Block = "return", Target = "Kerbin", Pe = 100000, PeLimit = 8000000, PointUt = 70000, LeadS = 120, WaitUt = 69640, Phase = "correction", ArriveUt = 90000, Bodies = "Kerbin" };
+            var again = CoastCheckpoints.Resumed(resumed, next, 2000);
+            Assert.Contains(next.ToString(), again.Script);
+            Assert.DoesNotContain(token.ToString(), again.Script);
+        }
+    }
+}
