@@ -63,7 +63,8 @@ namespace ClaudiaKerman.Core.Tools
     /// formulation of <c>MechJebLib/Maneuvers/ReturnFromMoon.cs</c> (MechJeb2 a958383), posed as single shooting through
     /// <see cref="BodySystem.Follow"/> instead of its multiple shooting: the variables are the burn's three node components, the
     /// prograde one bounded clear of the moon's sphere of influence (<see cref="ProgradeFloor"/>), and its time, solved by
-    /// <see cref="Sqp"/>, with a search along prograde or in time to finish a best point it stops short at (#759). It starts from an analytic seed, the prograde burn whose escape asymptote leaves
+    /// <see cref="Sqp"/>, with a search along prograde or in time to finish a best point it stops short at (#759); then, if that
+    /// fails, the same unbounded over inertial components. It starts from an analytic seed, the prograde burn whose escape asymptote leaves
     /// backwards along the moon's orbit at the speed a Hohmann-like descent from the moon's distance to target_pe needs, at the
     /// point where the asymptote lines up; where that seed is undefined, from the best point of a coarse grid over burn time and
     /// prograde delta-v. There is no short-way/long-way pair: the seed picks the escape side that lowers the periapsis. It
@@ -126,13 +127,6 @@ namespace ClaudiaKerman.Core.Tools
                 return Fail("the craft's orbit round " + moon.Name + " does not stay there until the burn: return starts from a stable orbit");
 
             var peR = planet.Radius + ask.TargetPe;
-            var free = latest > earliest;
-            var withInc = ask.TargetInc.HasValue;
-            var m = 1 + (withInc ? Sqp.InclinationConstraints(ask.TargetInc.Value) : 0);
-            var tolerances = new double[m];
-            tolerances[0] = PeResidual;
-            for (var k = 1; k < m; k++) tolerances[k] = IncResidual;
-
             var fromGrid = false;
             double startUt;
             var seed = Seed(system, moon, planet, orbit, earliest, latest, peR, out startUt);
@@ -142,22 +136,54 @@ namespace ClaudiaKerman.Core.Tools
                 if (!Grid(system, moon, planet, orbit, earliest, latest, peR, out startUt, out seed))
                     return Fail("no prograde burn in the window leaves " + moon.Name + " for " + planet.Name);
             }
-            if (withInc && Sqp.InclinationConstraints(ask.TargetInc.Value) == 1) seed = OffTheEquator(system, moon, planet, orbit, startUt, seed);
+            if (ask.TargetInc.HasValue && Sqp.InclinationConstraints(ask.TargetInc.Value) == 1) seed = OffTheEquator(system, moon, planet, orbit, startUt, seed);
 
-            double seedPrograde, seedNormal, seedRadial;
-            SingleShooting.NodeFrame(orbit, startUt, seed, out seedPrograde, out seedNormal, out seedRadial);
             var floor = ProgradeFloor(moon, orbit, startUt);
-            seedPrograde = Math.Max(seedPrograde, floor);
+            ReturnPlan stopped = null;
+            foreach (var bounded in new[] { true, false })
+            {
+                var plan = Solved(system, moon, planet, orbit, ask, earliest, latest, peR, startUt, seed, floor, bounded);
+                plan.FromGrid = fromGrid;
+                if (plan.Error == null) return plan;
+                if (stopped == null || (!stopped.HasBurn && plan.HasBurn)) stopped = plan;
+                if (!plan.HasBurn || !ask.FinishSearch) continue;
+                var finished = Finished(FinishAlongPrograde(system, moon, planet, orbit, plan, floor, peR), plan, Prograde1D, ask)
+                    ?? Finished(FinishInTime(system, moon, planet, orbit, plan, earliest, latest, peR), plan, TimeShift, ask);
+                if (finished != null) return finished;
+            }
+            return stopped;
+        }
 
-            var n = free ? 4 : 3;
+        /// <summary>
+        /// One SQP solve. <paramref name="bounded"/>: over the burn's node components with the prograde one over <paramref name="floor"/>, the
+        /// answer to take, clear of the sphere's edge. Otherwise over its inertial components, unbounded, for what that can't do: the
+        /// node frame turns with the burn's time, which couples its variables when the burn is large or against the orbit.
+        /// </summary>
+        private static ReturnPlan Solved(BodySystem system, SnapshotBody moon, SnapshotBody planet, Conic orbit, ReturnAsk ask, double earliest, double latest, double peR,
+            double startUt, Vec3 seed, double floor, bool bounded)
+        {
+            var free = latest > earliest;
+            var withInc = ask.TargetInc.HasValue;
+            var m = 1 + (withInc ? Sqp.InclinationConstraints(ask.TargetInc.Value) : 0);
+            var tolerances = new double[m];
+            tolerances[0] = PeResidual;
+            for (var k = 1; k < m; k++) tolerances[k] = IncResidual;
+            Func<double[], double, Vec3> burnOf = (x, t) => bounded ? SingleShooting.FromNodeFrame(orbit, t, x[0], x[1], x[2]) : new Vec3(x[0], x[1], x[2]);
+            double a = seed.X, b = seed.Y, c0 = seed.Z;
+            if (bounded)
+            {
+                SingleShooting.NodeFrame(orbit, startUt, seed, out a, out b, out c0);
+                a = Math.Max(a, floor);
+            }
+            var lowest = bounded ? floor : double.NegativeInfinity;
             var problem = new SqpProblem
             {
                 Scale = Scale.Create(moon.Gm, moon.Radius),
                 Variables = free
                     ? new[] { SqpVariable.Velocity, SqpVariable.Velocity, SqpVariable.Velocity, SqpVariable.Time }
                     : new[] { SqpVariable.Velocity, SqpVariable.Velocity, SqpVariable.Velocity },
-                Start = free ? new[] { seedPrograde, seedNormal, seedRadial, startUt } : new[] { seedPrograde, seedNormal, seedRadial },
-                Lower = free ? new[] { floor, double.NegativeInfinity, double.NegativeInfinity, earliest } : new[] { floor, double.NegativeInfinity, double.NegativeInfinity },
+                Start = free ? new[] { a, b, c0, startUt } : new[] { a, b, c0 },
+                Lower = free ? new[] { lowest, double.NegativeInfinity, double.NegativeInfinity, earliest } : new[] { lowest, double.NegativeInfinity, double.NegativeInfinity },
                 Upper = free
                     ? new[] { double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity, latest }
                     : new[] { double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity },
@@ -168,8 +194,8 @@ namespace ClaudiaKerman.Core.Tools
                 Constraints = m,
                 Evaluate = (x, c) =>
                 {
-                    var t = n == 4 ? x[3] : startUt;
-                    var arrival = SingleShooting.Arrive(system, moon, orbit, t, SingleShooting.FromNodeFrame(orbit, t, x[0], x[1], x[2]), planet, Patches);
+                    var t = free ? x[3] : startUt;
+                    var arrival = SingleShooting.Arrive(system, moon, orbit, t, burnOf(x, t), planet, Patches);
                     if (arrival == null) return false;
                     c[0] = arrival.Orbit.PeR - peR;
                     if (withInc) Sqp.Inclination(Normal(arrival), ask.TargetInc.Value, c, 1);
@@ -182,16 +208,14 @@ namespace ClaudiaKerman.Core.Tools
             if (result.Status == SqpStatus.Invalid) return Fail(result.Reason);
 
             var ut = free ? result.X[3] : startUt;
-            var plan = PlanAt(system, moon, planet, orbit, ut, result.X[0], result.X[1], result.X[2]);
+            double prograde, normal, radial;
+            SingleShooting.NodeFrame(orbit, ut, burnOf(result.X, ut), out prograde, out normal, out radial);
+            var plan = PlanAt(system, moon, planet, orbit, ut, prograde, normal, radial);
             if (plan == null) return Fail("the solver's best burn does not leave " + moon.Name + " for " + planet.Name);
-            plan.FromGrid = fromGrid;
             plan.Iterations = result.Iterations;
             plan.Evaluations = result.Evaluations;
             plan.Error = PlanError(plan, ask, result.Reason ?? result.Status.ToString());
-            if (plan.Error == null || !ask.FinishSearch) return plan;
-            return Finished(FinishAlongPrograde(system, moon, planet, orbit, plan, floor, peR), plan, Prograde1D, ask)
-                ?? Finished(FinishInTime(system, moon, planet, orbit, plan, earliest, latest, peR), plan, TimeShift, ask)
-                ?? plan;
+            return plan;
         }
 
         /// <summary>A finish's plan, as the stopped solve's but for what the search moved, when it meets the tolerances; else null.</summary>

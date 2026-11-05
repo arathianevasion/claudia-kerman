@@ -333,15 +333,38 @@ namespace ClaudiaKerman.Core.Tests
         public void A_solve_stopped_short_at_the_floor_is_finished_by_a_time_shift()
         {
             var snapshot = MissionOrbit(0);
-            var stopped = ReturnBurn.Find(snapshot, new ReturnAsk { TargetPe = 300000, EarliestUt = snapshot.Ut, SolverIterations = 4, FinishSearch = false });
-            Assert.InRange(Math.Abs(stopped.PePredicted - 300000), 1000, 8000);
-
             var plan = ReturnBurn.Find(snapshot, new ReturnAsk { TargetPe = 300000, EarliestUt = snapshot.Ut, SolverIterations = 4 });
             Assert.Null(plan.Error);
             Assert.Equal("a time shift", plan.FinishedBy);
-            Assert.Equal(stopped.Prograde, plan.Prograde);
-            Assert.NotEqual(stopped.Ut, plan.Ut);
             AssertFlownWithin1Km(snapshot, plan, 300000);
+        }
+
+        /// <summary>
+        /// The bound's node frame turns with the burn's time, so a large burn against the orbit, as out of a retrograde one round a small moon,
+        /// can stall where the inertial solve (the solve before #759) reaches it: that solve remains behind the bounded one.
+        /// </summary>
+        [Theory]
+        [InlineData("Minmus", 6000, 170, 50000)]
+        [InlineData("Minmus", 6000, 170, 170000)]
+        [InlineData("Ike", 30000, 170, 35000)]
+        public void A_return_the_bound_cannot_solve_still_gets_the_inertial_solve(string moonName, double altitude, double inc, double targetPe)
+        {
+            var moon = MoonNamed(moonName);
+            var snapshot = Orbiting(moon, altitude, inc);
+            var node = Solve(snapshot, targetPe);
+            Assert.Equal("", node["error"]);
+            double pe, flownInc;
+            Flown(snapshot, node, moon.Parent, out pe, out flownInc);
+            Assert.InRange(pe, targetPe - PeBound, targetPe + PeBound);
+        }
+
+        /// <summary>The worst the two solves and the finishes add to the Mission's own solve, against ADR 0010's budget.</summary>
+        [Fact]
+        [Trait("Category", "Timing")]
+        public void The_Ike_Missions_return_is_solved_in_under_200_ms()
+        {
+            var snapshot = MissionOrbit(0);
+            Timing.Within(WorstMs, () => Assert.Equal("", Solve(snapshot, 300000)["error"]));
         }
 
         /// <summary>A solve that reaches its answer has nothing to finish.</summary>
