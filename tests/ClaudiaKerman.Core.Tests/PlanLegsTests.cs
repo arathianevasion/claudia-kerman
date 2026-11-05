@@ -390,7 +390,8 @@ namespace ClaudiaKerman.Core.Tests
             var facts = RecheckPrompts.Facts("Go to Ike and land.", AtDuna(), 15, null, false, "Capture at Ike and land (370 m/s)", legFacts);
             Assert.Contains(legFacts, facts);
             // Only the goal's bodies reach the map text.
-            Assert.Contains("- capture:Ike:", facts);
+            Assert.Contains("- transfer:Duna>Ike:", facts);
+            Assert.DoesNotContain("- capture:Ike:", facts);
             Assert.DoesNotContain("capture:Laythe", facts);
         }
 

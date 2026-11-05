@@ -245,9 +245,9 @@ namespace ClaudiaKerman.Core.Tests
             var map = DeltaVMap.Compute(StockSystem(), "Kerbin");
             var bodies = StockSystem();
             var text = map.ToText(bodies.Where(b => b.Name == "Ike").ToList());
-            foreach (var id in new[] { "launch:Kerbin", "transfer:Duna", "capture:Duna", "transfer:Duna>Ike", "transfer:Ike>Duna", "capture:Ike", "land:Ike", "ascend:Ike", "return:Ike", "return:Duna" })
+            foreach (var id in new[] { "launch:Kerbin", "transfer:Duna", "transfer:Duna>Ike", "transfer:Ike>Duna", "land:Ike", "ascend:Ike", "return:Ike", "return:Duna" })
                 Assert.Contains("- " + id + ":", text);
-            foreach (var id in new[] { "Eve", "Laythe", "Mun", "land:Duna", "polar:Duna" })
+            foreach (var id in new[] { "Eve", "Laythe", "Mun", "land:Duna", "polar:Duna", "capture:Duna", "capture:Ike" })
                 Assert.DoesNotContain(id, text);
 
             // A goal naming no body keeps the home system, as the Map always gave it.

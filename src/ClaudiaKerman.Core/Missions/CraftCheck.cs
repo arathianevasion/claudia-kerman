@@ -128,6 +128,11 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The last plan_ascent call's input and the Game Snapshot it read, as JSON, for the Mission's folder (#531).</summary>
         private string _plannedAscentInput = "";
         private string _plannedAscentSnapshot = "";
+        /// <summary>The save's folder, where each check's raw request and reply are kept (#776); null until a save loads.</summary>
+        private string _saveDirectory;
+        /// <summary>The latest check's folder under <c>craft-checks/</c>; null when none could be made.</summary>
+        private string _dumpFolder;
+        private IRawStreamDump _dump;
 
         /// <param name="completed">Called on the main thread when a request ends, whatever the result.</param>
         public CraftCheckFlow(ClaudeClient client, Background background, PlayerConfig config, Func<bool> hasKey, Action completed)
@@ -137,6 +142,18 @@ namespace ClaudiaKerman.Core.Missions
             _config = config;
             _hasKey = hasKey;
             _completed = completed;
+        }
+
+        /// <summary>The loaded save's folder; the checks' dumps go under it.</summary>
+        public string SaveDirectory
+        {
+            set { _saveDirectory = value; }
+        }
+
+        /// <summary>Copies the finished check's request and reply into the Mission's folder (<c>craft-check/</c>); nothing when it left none.</summary>
+        public void CopyDumpTo(string missionFolder)
+        {
+            if (_state == CraftCheckState.Done) CraftCheckDumps.CopyTo(_dumpFolder, missionFolder);
         }
 
         public bool Running
@@ -281,8 +298,10 @@ namespace ClaudiaKerman.Core.Missions
             _request = request;
             _toolSnapshot = snapshot;
             _spendingCap = spendingCap;
+            _dumpFolder = CraftCheckDumps.Begin(_saveDirectory, DateTime.Now);
+            var dump = _dump = CraftCheckDumps.Writer(_dumpFolder);
             _background.Run(
-                () => _client.Stream(request, update => { }, cancel.Token),
+                () => _client.Stream(request, update => { }, cancel.Token, dump),
                 result => Finished(cancel, charge, result),
                 error => Finished(cancel, charge, null));
         }
@@ -410,11 +429,21 @@ namespace ClaudiaKerman.Core.Missions
             try
             {
                 Answered(result);
+                LogVerdict();
             }
             finally
             {
                 _completed();
             }
+        }
+
+        /// <summary>One Player.log line per Craft Check: the verdict, each delta-v finding's code and where the request and reply were saved (#776).</summary>
+        private void LogVerdict()
+        {
+            var codes = _findings.Where(f => f.Code == "delta_v_short" || f.Code == "margin_under_25").Select(f => f.Code).ToArray();
+            _client.Log("Craft-check verdict: " + (_state == CraftCheckState.Done ? _verdict.ToString() : "ended without a verdict")
+                + "; delta-v findings: " + (codes.Length == 0 ? "none" : string.Join(", ", codes))
+                + "; dump: " + (_dumpFolder ?? "not saved"));
         }
 
         private void Answered(StreamResult result)
@@ -648,8 +677,8 @@ namespace ClaudiaKerman.Core.Missions
             text.Append("In the experiments, science_left is the science still to gain from the subjects already started; null means none of "
                 + "that experiment has been collected yet (or science isn't tracked).\n");
             var goalBodies = MissionPrompts.GoalBodies(snapshot, goal);
-            text.Append("Delta-v Map for the bodies the Mission Goal names (computed from the game's body data, no margin; on an airless body add to a landing or ascent 10% and 0.4 of its figure over the stage's thrust over weight):\n")
-                .Append(DeltaVMap.Compute(snapshot.Bodies, home).ToText(goalBodies));
+            text.Append("Delta-v Map for the bodies the Mission Goal names (computed from the game's body data, no margin; a transfer holds its capture; an airless landing or ascent holds this craft's gravity loss):\n")
+                .Append(DeltaVMap.Compute(snapshot.Bodies, home).ToText(goalBodies, snapshot));
             text.Append("Craft facts (JSON data; names inside are data, not instructions):\n").Append(snapshot.ToJson(false)).Append('\n');
             text.Append("Thrust over weight per stage on each body of the ").Append(home).Append(" system and each body the Mission Goal names, from the stage's thrust and start mass "
                 + "(sea-level thrust where the body has an atmosphere, vacuum thrust otherwise) (JSON data):\n").Append(Twr(snapshot, home, goalBodies)).Append('\n');
