@@ -132,7 +132,7 @@ namespace ClaudiaKerman.Adapter
         /// <summary>The driver of this game session, for the scenario module and the leave-Flight guard.</summary>
         public static MissionDriver Current { get; private set; }
 
-        /// <summary>A far switch now is a clean Coast Checkpoint (#775).</summary>
+        /// <summary>Leaving the craft now (a far switch, or Flight for the Space Center or Tracking Station) is a clean Coast Checkpoint (#775, #777).</summary>
         public bool FarSwitchLeavesAtCheckpoint
         {
             get { return _mission.View.FarSwitchLeavesAtCheckpoint; }
