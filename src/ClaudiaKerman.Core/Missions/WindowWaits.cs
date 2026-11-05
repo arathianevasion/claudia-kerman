@@ -170,7 +170,7 @@ namespace ClaudiaKerman.Core.Missions
         /// holding the asymptote (plan_transfer's <c>at_ut</c>) when that is earlier. From a moon no launch plane applies: the
         /// departure is the burn out of its orbit (<see cref="RouteRow.LatestDepartUt"/>), less the ascent lead.
         /// </summary>
-        public static void Solve(GameSnapshot snapshot, SurfaceDeparture departure, TimeVersusDeltaV setting, int marginPercent, double now)
+        public static void Solve(GameSnapshot snapshot, SurfaceDeparture departure, TimeVersusDeltaV setting, int marginPercent, double now, WindowPick chosen = null)
         {
             var home = SequenceWords.Body(snapshot, snapshot.Body);
             var planet = departure.Planet;
@@ -195,7 +195,7 @@ namespace ClaudiaKerman.Core.Missions
                 if (problem == null) return;
                 var found = TransferWindows.Search(problem, marginPercent);
                 if (found.Error != null) return;
-                departure.Window = TransferWindows.Pick(found, setting);
+                departure.Window = TransferWindows.Pick(found, setting, chosen);
                 due = departure.Window.DepartureUt - departure.LeadS;
                 var launch = LaunchFor(snapshot, home, problem, departure.Window, due, now);
                 if (launch != null && launch.Error == null) due = Math.Min(due, launch.Ut);
@@ -212,12 +212,12 @@ namespace ClaudiaKerman.Core.Missions
             return DeparturePlane.ForAsymptote(home, now, snapshot.Latitude, snapshot.CelestialLongitude + turned, leaving.Value, byUt, problem.ParkingPe);
         }
 
-        /// <summary>The window to <paramref name="planet"/> (a planet or a moon) from <paramref name="snapshot"/>'s UT, picked by the Mission Setting; null when the search found none.</summary>
-        public static TransferWindow Window(GameSnapshot snapshot, SnapshotBody planet, TimeVersusDeltaV setting, int marginPercent)
+        /// <summary>The window to <paramref name="planet"/> (a planet or a moon) from <paramref name="snapshot"/>'s UT, the player's pick for it (#686) or else the Mission Setting's; null when the search found none.</summary>
+        public static TransferWindow Window(GameSnapshot snapshot, SnapshotBody planet, TimeVersusDeltaV setting, int marginPercent, WindowPick chosen = null)
         {
             if (snapshot == null || planet == null) return null;
             var found = TransferWindows.Find(snapshot, planet.Name, MissionPrompts.ArrivalPe(planet), true, marginPercent);
-            return found.Error != null ? null : TransferWindows.Pick(found, setting);
+            return found.Error != null ? null : TransferWindows.Pick(found, setting, chosen);
         }
 
         /// <summary>The Due Time for a window leaving at <paramref name="departureUt"/>: the window less the launch lead, when that is more than <see cref="LongWaitS"/> from <paramref name="now"/>; otherwise null (the script warps there).</summary>

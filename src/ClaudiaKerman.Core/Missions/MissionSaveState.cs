@@ -59,6 +59,10 @@ namespace ClaudiaKerman.Core.Missions
         public string WindowPlanet = "";
         public double? WindowUt;
         public double? WindowDeltaV;
+        /// <summary>The player's Transfer Window pick (#686), whether the plan in hand waits for a fresh one, and whether Claudia has yet to hear it; none, false and false in older saves.</summary>
+        public WindowPick WindowPick = WindowPick.None;
+        public bool WindowPickNeeded;
+        public bool WindowPickUnsaid;
         /// <summary>The Mission is remote: Claudia is at Mission Control, not aboard. A save from before this existed reads as crewed.</summary>
         public bool Remote;
         /// <summary>The Mission is in Auto Mode: the player's Approval is given in advance. A save from before this existed reads as off.</summary>
@@ -220,6 +224,13 @@ namespace ClaudiaKerman.Core.Missions
                 values["windowUt"] = WindowUt.Value.ToString("R", CultureInfo.InvariantCulture);
                 values["windowDv"] = WindowDeltaV.Value.ToString("R", CultureInfo.InvariantCulture);
             }
+            if (!WindowPick.IsNone)
+            {
+                values["windowPickBody"] = WindowPick.Body;
+                values["windowPickKind"] = WindowPick.Kind.ToString();
+            }
+            if (WindowPickNeeded) values["windowPickNeeded"] = "true";
+            if (WindowPickUnsaid) values["windowPickUnsaid"] = "true";
             foreach (var setting in Settings) values[SettingPrefix + setting.Key] = setting.Value;
             for (var i = 0; i < UnsafeProblems.Count; i++) values[UnsafeProblemPrefix + i.ToString(CultureInfo.InvariantCulture)] = UnsafeProblems[i];
             if (QueuedEntries > 0) values["queuedEntries"] = QueuedEntries.ToString(CultureInfo.InvariantCulture);
@@ -278,6 +289,10 @@ namespace ClaudiaKerman.Core.Missions
                 PausedForCap = Get(values, "pausedForCap") == "true",
                 SafePending = Get(values, "safePending"),
                 PlannedAscent = Get(values, "plannedAscent"),
+                WindowPick = Get(values, "windowPickBody").Length == 0 ? WindowPick.None
+                    : new WindowPick(Get(values, "windowPickBody"), Get(values, "windowPickKind") == WindowKind.Optimal.ToString() ? WindowKind.Optimal : WindowKind.Soonest),
+                WindowPickNeeded = Get(values, "windowPickNeeded") == "true",
+                WindowPickUnsaid = Get(values, "windowPickUnsaid") == "true",
             };
             double runStart;
             if (double.TryParse(Get(values, "runStartUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out runStart)) state.RunStartUt = runStart;

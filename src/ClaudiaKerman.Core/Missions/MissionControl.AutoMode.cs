@@ -57,6 +57,8 @@ namespace ClaudiaKerman.Core.Missions
             NoRoom,
             /// <summary>Auto Mode only: the script failed the Script Check again after Auto Mode's re-plan.</summary>
             ScriptFailedAgain,
+            /// <summary>A revised Mission Plan's Transfer Window is the player's to pick (#686): nothing stands in for them.</summary>
+            WindowPick,
         }
 
         /// <summary>The Auto Mode checkbox, in any stage of a Mission in play. Ticking it lets the check below approve a plan that waits.</summary>
@@ -126,6 +128,11 @@ namespace ClaudiaKerman.Core.Missions
                 if (mission.SequencesProposed == 0 && !mission.MissionPlanApproved)
                 {
                     WaitsForPlayer(mission, AdvanceWait.FirstMissionPlan, "");
+                    return;
+                }
+                if (WindowPickMissing(mission))
+                {
+                    WaitsForPlayer(mission, AdvanceWait.WindowPick, "");
                     return;
                 }
             }
@@ -234,6 +241,7 @@ namespace ClaudiaKerman.Core.Missions
                 case AdvanceWait.DueTime: mission.AutoModeStop = AutoModeWaitsFor("a Due Time"); break;
                 case AdvanceWait.ScriptFailedAgain: mission.AutoModeStop = AutoModeWaitsFor("the script failed again after a re-plan"); break;
                 case AdvanceWait.NoRoom: mission.AutoModeStop = mission.AutoModeRoomStop; break;
+                case AdvanceWait.WindowPick: mission.AutoModeStop = AutoModeWaitsFor("a Transfer Window to pick"); break;
             }
         }
 

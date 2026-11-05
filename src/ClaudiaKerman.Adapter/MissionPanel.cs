@@ -49,6 +49,9 @@ namespace ClaudiaKerman.Adapter
         // The goal and pick last told to the core (#664), so it hears only changes.
         private string _reportedGoal;
         private TargetPick _reportedPick;
+        // The start form's Transfer Window pick (#686), like the Target Vessel's only here, and put back once a Mission is under way.
+        private WindowPick _windowPick = WindowPick.None;
+        private WindowPick _reportedWindow;
         // The Mission's Choose list is open (#661): its own flag, since a Mission under way resets the form's every frame.
         private bool _changingTarget;
         // The line's choice, kept until the goal, the pick or the facts (a new snapshot) change.
@@ -101,7 +104,7 @@ namespace ClaudiaKerman.Adapter
             _send = send;
             _setup = setup;
             _debugTools = debugTools;
-            _log = new LogDrawer(send);
+            _log = new LogDrawer(send) { WindowChoice = DrawWindowChoice };
         }
 
         /// <summary>The prompt or the Raise cap field has the keyboard; the host locks the keyboard away from the craft while it does.</summary>
@@ -133,6 +136,7 @@ namespace ClaudiaKerman.Adapter
                 _goal = "";
                 _editingGoal = false;
                 _targetPick = TargetPick.Auto;
+                _windowPick = WindowPick.None;
                 _choosingTarget = false;
             }
             var settingUp = _view.StartForm.CanStart;
@@ -198,10 +202,11 @@ namespace ClaudiaKerman.Adapter
         private void ReportForm(bool settingUp)
         {
             if (!settingUp || _goal.Length == 0) return;
-            if (_goal == _reportedGoal && ReferenceEquals(_targetPick, _reportedPick)) return;
+            if (_goal == _reportedGoal && ReferenceEquals(_targetPick, _reportedPick) && ReferenceEquals(_windowPick, _reportedWindow)) return;
             _reportedGoal = _goal;
             _reportedPick = _targetPick;
-            _send(new StartFormChanged(_goal, _targetPick));
+            _reportedWindow = _windowPick;
+            _send(new StartFormChanged(_goal, _targetPick, _windowPick));
         }
 
         // What the Craft Check card in the transcript needs from the setup: the pinned goal, the cost estimate and Check again.
@@ -215,7 +220,7 @@ namespace ClaudiaKerman.Adapter
             _log.SetupRemote = _setup.Remote;
             _log.Estimate = settingUp && form.Estimates.TryGetValue(model, out estimate) ? estimate : (decimal?)null;
             _log.CheckAgain = () => _goal.Length > 0 && form.Models.Count > 0 && _view.CraftCheck.State != CraftCheckState.Running
-                ? new RunCraftCheck(_goal, _setup.SpendingCap, model, _setup.Remote, _targetPick) : null;
+                ? new RunCraftCheck(_goal, _setup.SpendingCap, model, _setup.Remote, _targetPick, _windowPick) : null;
         }
 
         private void Styles(int rightRoom)
@@ -314,6 +319,36 @@ namespace ClaudiaKerman.Adapter
             if (ReferenceEquals(next, pick)) return;
             _targetPick = next;
             _choosingTarget = false;
+        }
+
+        // ---- The Transfer Window choice (#686) ----
+
+        // A row per window with a button to pick it: the core works out the rows and what a pick does. Before Start the pick is the
+        // form's and goes with Check craft and Start; for a revised Mission Plan it goes to the core at once.
+        private void DrawWindowChoice()
+        {
+            var settingUp = _view.StartForm.CanStart;
+            var offer = settingUp ? _view.StartForm.Windows : _view.Windows;
+            if (offer.Problem.Length > 0) GUILayout.Label(offer.Problem, ClaudiaSkin.Muted);
+            if (!offer.Needed) return;
+            var picked = settingUp ? WindowChoice.Held(_windowPick, offer) : _view.WindowPickNeeded ? WindowPick.None : WindowChoice.Held(_view.WindowPick, offer);
+            ClaudiaSkin.BeginCard();
+            GUILayout.Label(offer.Caption, ClaudiaSkin.Secondary);
+            GUI.enabled = settingUp || !_view.Busy;
+            foreach (var row in offer.Rows)
+            {
+                GUILayout.BeginHorizontal();
+                var on = !picked.IsNone && picked.Kind == row.Kind;
+                if (ClaudiaSkin.ToggleButton(on, row.Kind.ToString(), GUILayout.ExpandWidth(false)) && !on)
+                {
+                    if (settingUp) _windowPick = new WindowPick(offer.Body, row.Kind);
+                    else _send(new ChooseWindow(row.Kind));
+                }
+                GUILayout.Label(row.Text, ClaudiaSkin.Body);
+                GUILayout.EndHorizontal();
+            }
+            GUI.enabled = true;
+            ClaudiaSkin.EndCard();
         }
 
         // ---- The Mission's Target Vessel, changed between sequences (#661) ----
@@ -616,12 +651,12 @@ namespace ClaudiaKerman.Adapter
             GUILayout.BeginHorizontal();
             GUILayout.Space(ClaudiaSkin.Padding);
             // Start Mission runs the Craft Check first; it is closed on a Blocker and until every Warning is acknowledged.
-            var canStart = _setup.SpendingCap > 0 && _goal.Length > 0 && form.Models.Count > 0 && check.StartAllowed;
+            var canStart = _setup.SpendingCap > 0 && _goal.Length > 0 && form.Models.Count > 0 && check.StartAllowed && !form.WindowPickMissing;
             if (canStart)
             {
                 // The goal stays until the Mission has actually started: the Craft Check may still hold it back.
                 if (ClaudiaSkin.PrimaryButton("Start Mission", GUILayout.ExpandWidth(true), GUILayout.MinWidth(0)))
-                    _send(new StartMission(_goal, _setup.SpendingCap, _setup.ModelFor(form), _setup.Settings.Copy(), _setup.Remote, _targetPick));
+                    _send(new StartMission(_goal, _setup.SpendingCap, _setup.ModelFor(form), _setup.Settings.Copy(), _setup.Remote, _targetPick, _windowPick));
             }
             else
             {
@@ -629,7 +664,7 @@ namespace ClaudiaKerman.Adapter
             }
             GUI.enabled = _goal.Length > 0 && form.Models.Count > 0 && check.State != CraftCheckState.Running;
             if (ClaudiaSkin.SecondaryButton(check.State == CraftCheckState.None ? "Check craft" : "Check again", GUILayout.ExpandWidth(false)))
-                _send(new RunCraftCheck(_goal, _setup.SpendingCap, _setup.ModelFor(form), _setup.Remote, _targetPick));
+                _send(new RunCraftCheck(_goal, _setup.SpendingCap, _setup.ModelFor(form), _setup.Remote, _targetPick, _windowPick));
             GUI.enabled = true;
             GUILayout.Space(ClaudiaSkin.Padding);
             GUILayout.EndHorizontal();

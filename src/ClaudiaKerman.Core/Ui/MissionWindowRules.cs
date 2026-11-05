@@ -223,6 +223,7 @@ namespace ClaudiaKerman.Core.Ui
         public static string StartLabel(MissionView view)
         {
             var check = view.CraftCheck;
+            if (view.StartForm.WindowPickMissing) return "Start Mission · pick a Transfer Window";
             if (check.State == CraftCheckState.Done && !check.StartAllowed)
             {
                 // A stale result that failed keeps Start Mission closed until the check runs again.
@@ -646,6 +647,7 @@ namespace ClaudiaKerman.Core.Ui
                 case MissionStage.AwaitingSequenceApproval:
                     if (view.PlanDeclined) return "Claudia declined the goal: Change something or End Mission";
                     if (replies.Contains(QuickReply.Replan) && view.PlanStale.Length > 0) return StaleWhat(view) + " has changed: Re-plan?";
+                    if (view.WindowPickNeeded) return "Pick a Transfer Window, then Approve";
                     if (!replies.Contains(QuickReply.Approve)) return "";
                     if (view.Stage == MissionStage.AwaitingPlanApproval) return "Approve the Mission Plan?";
                     if (!view.DueTime.HasDueTime) return "Sequence Plan awaiting Approval";

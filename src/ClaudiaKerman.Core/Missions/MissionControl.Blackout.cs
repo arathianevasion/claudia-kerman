@@ -136,6 +136,9 @@ namespace ClaudiaKerman.Core.Missions
                 case AdvanceWait.ManualStretch:
                     WaitsForLink(mission, "The manual stretch " + MissionPrompts.Quoted(planName) + " waits for you when the link returns.");
                     break;
+                case AdvanceWait.WindowPick:
+                    WaitsForLink(mission, "The revised Mission Plan waits for you to pick its Transfer Window.");
+                    break;
                 case AdvanceWait.DueTime:
                     WaitsForLink(mission, "The Sequence Plan " + MissionPrompts.Quoted(planName) + " has a Due Time for you, so it waits for the link.");
                     break;

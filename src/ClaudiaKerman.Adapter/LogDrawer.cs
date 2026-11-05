@@ -52,6 +52,8 @@ namespace ClaudiaKerman.Adapter
         public bool SetupRemote;
         /// <summary>Builds the input Check again sends, or null when it can't be sent yet (no Mission Goal pinned).</summary>
         public Func<MissionInput> CheckAgain;
+        /// <summary>Draws the Transfer Window choice (#686): under the Craft Check before Start, under the plan awaiting Approval in a Mission.</summary>
+        public Action WindowChoice;
         // In Flight the Craft Check starts collapsed to one line so the Mission log gets the room; reset when Flight loads.
         private bool _checkCollapsed = true;
 
@@ -91,10 +93,12 @@ namespace ClaudiaKerman.Adapter
             // The first item of a full transcript; drawing only, never a log entry.
             if (_send != null) _banner.Draw(view, width, SetupModel, SetupRemote, GoalSet);
             if (_send != null && (view.StartForm.CanStart || view.CraftCheck.State != CraftCheckState.None)) DrawCraftCheck(view);
+            if (_send != null && view.StartForm.CanStart && WindowChoice != null) WindowChoice();
             if (_send != null && view.StartForm.CanStart && view.StartForm.Refusal.Length > 0) GUILayout.Label(view.StartForm.Refusal, ClaudiaSkin.DangerText);
             var hidden = _send != null ? HiddenBefore(view) : 0;
             if (hidden > 0) DrawHiddenNotice(view);
             for (var i = hidden; i < view.Log.Count; i++) DrawEntry(view.Log[i], view.Ut, width);
+            if (_send != null && !view.StartForm.CanStart && WindowChoice != null) WindowChoice();
             if (_send != null && confirming) DrawApproval(view);
             GUILayout.EndScrollView();
         }
