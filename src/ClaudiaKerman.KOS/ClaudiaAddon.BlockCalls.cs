@@ -58,7 +58,7 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (transfer_to): its next step from phase (start first) with its options and what the last step carried; lexicon error, do (burn, wait or done), kind, ut, prograde, normal, radial, max_residual, fail_prefix, keep_going, report, max_duration, watch, carry"));
             AddSuffix("ENCOUNTERWATCH", new OneArgsSuffix<Lexicon>(EncounterWatchArm,
                 "Core Library only (transfer_to): arms the Encounter Watch for a wait with TRANSFERSTEP's watch; an empty lexicon watches nothing"));
-            AddSuffix("ENCOUNTERWATCHDROPPED", new NoArgsSuffix<BooleanValue>(EncounterWatchPoll,
+            AddSuffix("ENCOUNTERWATCHDROPPED", new Suffix<BooleanValue>(EncounterWatchPoll,
                 "Core Library only (transfer_to, each tick of a wait): the Encounter Watch's check when one is due; whether the wait should end early"));
             AddSuffix("RETURNBURN", new OneArgsSuffix<Lexicon, Lexicon>(ReturnBurn,
                 "Core Library only (return): the least burn from earliest_ut to latest_ut (one orbit later if missing) that leaves the moon orbited for its planet at target_pe and, if given, target_inc; lexicon error, planet, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted, soi_ut, from_grid, finished_by"));
