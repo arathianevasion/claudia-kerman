@@ -232,4 +232,23 @@ namespace ClaudiaKerman.Core.Missions
         public readonly string VesselName;
         public FarSwitchConfirmed(string vesselName) { VesselName = vesselName; }
     }
+
+    /// <summary>Where the player is leaving Flight for (#777). Only the Space Center and the Tracking Station can be a Coast Checkpoint: revert (to the VAB or SPH) rewinds time, and the main menu and quit save before the mod could.</summary>
+    public enum LeaveTo
+    {
+        Other,
+        SpaceCenter,
+        TrackingStation,
+    }
+
+    /// <summary>
+    /// The player confirmed leaving Flight while Running (the adapter asked first) and the scene change follows at once. On a coast that passes the safety test, to
+    /// the Space Center or the Tracking Station, the block stops at a checkpoint first, so the scene change finds it recorded; any other leave is the
+    /// interruption the scene change makes.
+    /// </summary>
+    public sealed class LeaveFlightConfirmed : MissionInput
+    {
+        public readonly LeaveTo Destination;
+        public LeaveFlightConfirmed(LeaveTo destination) { Destination = destination; }
+    }
 }

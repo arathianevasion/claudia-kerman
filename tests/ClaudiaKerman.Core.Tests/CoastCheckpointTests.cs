@@ -641,6 +641,98 @@ namespace ClaudiaKerman.Core.Tests
             Assert.False(mission.View.FarSwitchLeavesAtCheckpoint);
         }
 
+        // ---- Leaving Flight for the Space Center or Tracking Station (#777) ----
+
+        [Theory]
+        [InlineData(LeaveTo.SpaceCenter)]
+        [InlineData(LeaveTo.TrackingStation)]
+        public void Leaving_Flight_during_a_coast_that_passes_the_test_is_recorded_before_the_scene_loads_and_survives_it_and_the_save(LeaveTo destination)
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var transport = new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer"));
+            var mission = Control(transport);
+            ToRunning(mission, rig);
+            var requests = transport.Requests.Count;
+            mission.Send(new CoastArmed(token.ToString()));
+            Assert.True(mission.View.FarSwitchLeavesAtCheckpoint);
+
+            // The adapter's answer comes first: the checkpoint is whole before KSP changes scene.
+            mission.Send(new LeaveFlightConfirmed(destination));
+            var commands = mission.TakeCommands();
+            Assert.Single(commands.OfType<AbortScript>());
+            Assert.Equal(token.DueUt, commands.OfType<SetDueTimeAlarm>().Single().Ut, 3);
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            Assert.Equal("Nominal", mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Outcome);
+            var before = mission.ExportStates().Single();
+
+            // Then the scene change, and the save that goes with it.
+            mission.Send(new SceneChanged(GameScene.Other));
+            var after = mission.ExportStates().Single();
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            Assert.Equal(before.Stage, after.Stage);
+            Assert.Contains(token.ToString(), after.SequencePlan.Script);
+            Assert.Equal(1, after.SequencePlan.PlanStep);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("was interrupted"));
+            Assert.Empty(mission.TakeCommands().OfType<ClearDueTimeAlarm>());
+            Assert.True(mission.View.DueTime.HasDueTime);
+            Assert.Equal("Due " + KerbinTime.ShortDate(token.DueUt) + ": check pending", MissionListRules.Due(mission.View.Missions.Single(m => m.Current)));
+
+            // Back through the alarm, Go to vessel or Fly: Flight loads and the return check runs, with no request.
+            mission.Send(new SetAutoMode(true));
+            rig.MoveTo(token.DueUt);
+            mission.Send(new UtAdvanced(rig.Ut));
+            mission.Send(new SceneChanged(GameScene.Flight));
+            mission.Send(Craft(rig));
+            mission.Send(Craft(rig));
+            _background.Drain();
+            Assert.Equal(requests, transport.Requests.Count);
+            Assert.Contains(mission.View.Log, e => e.Text.StartsWith("Checked on return:") && e.Text.Contains("is kept"));
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+        }
+
+        [Fact]
+        public void Leaving_Flight_when_the_test_fails_is_an_interruption_with_the_reason()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer")));
+            ToRunning(mission, rig);
+            mission.Send(new CoastArmed(token.ToString()));
+            rig.Fly("by_hand", rig.Ut, -300, 0, 0);
+            mission.Send(Craft(rig));
+            Assert.False(mission.View.FarSwitchLeavesAtCheckpoint);
+            Assert.Contains("lost", mission.View.FarSwitchWarning);
+
+            mission.Send(new LeaveFlightConfirmed(LeaveTo.SpaceCenter));
+            mission.Send(new SceneChanged(GameScene.Other));
+            var view = mission.View;
+            Assert.Equal(MissionStage.Debriefing, view.Stage);
+            Assert.Empty(mission.TakeCommands().OfType<SetDueTimeAlarm>());
+            Assert.Single(view.Log, e => e.Text.Contains("was interrupted"));
+            Assert.Contains(view.Log, e => e.Text.StartsWith("Not a Coast Checkpoint:") && e.Text.Contains("lost"));
+        }
+
+        [Fact]
+        public void The_main_menu_quit_and_revert_stay_interruptions_even_when_the_test_passes()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer")));
+            ToRunning(mission, rig);
+            mission.Send(new CoastArmed(token.ToString()));
+            Assert.True(mission.View.FarSwitchLeavesAtCheckpoint);
+
+            // The adapter offers a checkpoint only to the Space Center and the Tracking Station; any other leave says so.
+            mission.Send(new LeaveFlightConfirmed(LeaveTo.Other));
+            mission.Send(new SceneChanged(GameScene.Editor));
+            var view = mission.View;
+            Assert.Equal(MissionStage.Debriefing, view.Stage);
+            Assert.Empty(mission.TakeCommands().OfType<SetDueTimeAlarm>());
+            Assert.Single(view.Log, e => e.Text.Contains("was interrupted"));
+            Assert.DoesNotContain(view.Log, e => e.Kind == LogKind.Debrief);
+        }
+
         // ---- The check on return ----
 
         [Fact]

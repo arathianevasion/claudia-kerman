@@ -26,6 +26,15 @@ During a long coast of `transfer_to` or `return` the player can leave the craft.
 3. In `KSP.log`, the wait's `block call` lines show the Encounter Watch checks (`ENCOUNTERWATCHDROPPED`) as in `transfer-to.md`.
 4. During that warp, press the map's Switch To on the far craft. The prompt reads "The craft is coasting and safe to leave" with **Leave at a checkpoint** and **Stay**. Choose Leave: the same Debrief and alarm as Check 1, with no "interrupted" line, and the run's program is stopped. Back in the craft, the check runs, and Auto Mode starts the resume at once.
 5. During a burn, or the turn to one, press Switch To: the old prompt, with **Switch** and **Stay**; Switch interrupts the run as before.
-6. Note: leaving Flight for the Space Center or the Tracking Station during a run still asks first and interrupts, as today. Only a far switch can be a checkpoint. Once the block has stopped at a checkpoint, no run is going, so any way out is free.
+6. Note: the main menu, quitting and revert (to the VAB or SPH) still interrupt the run, as today; revert never checkpoints. Once the block has stopped at a checkpoint, no run is going, so any way out is free.
+## Check 3: leaving Flight for the Space Center or the Tracking Station mid-coast (#777)
+
+1. As Check 1, step 1 to the Duna coast, with the run warping on rails and the safety test passing.
+2. Press Esc and choose Space Center. The prompt reads "The craft is coasting and safe to leave" with **Leave at a checkpoint** and **Stay**. Stay: nothing changes and the run goes on.
+3. Try again and choose Leave at a checkpoint. The Space Center loads. In the Missions list the Mission shows "Due ...: check pending", a KSP alarm is in the Alarm Clock, and the log has the mod's Nominal Debrief and no "interrupted" line. Quit to the main menu and reload the save at this point once to be sure: the Mission is still at the checkpoint with its Due Time.
+4. Launch something else from the Space Center (VAB, then Launch), fly it a while, then take the alarm (or open the Tracking Station and Fly the Duna craft). Back in the craft: "Checked on return: ... is kept ..." with no request, as Check 1. Approve (or let Auto Mode start it): the correction burns.
+5. Repeat with the Tracking Station instead of the Space Center.
+6. Make the test fail (nudge the craft by hand so the encounter is lost, or cross a Telemetry Check) and choose Space Center again: the prompt is the old one with **Leave Flight** and the reason ("It isn't safe to leave at a checkpoint now: ..."), and Leave Flight interrupts the run as before.
+7. Mid-coast, press Esc and choose Main Menu, and separately Revert Flight (to VAB): no checkpoint is offered, and the run is interrupted. Revert never checkpoints.
 
 Tell the ticket how the alarm's timing felt: the lead is short by design (the correction waits for a late player), so say if a longer one would have helped.

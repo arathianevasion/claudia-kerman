@@ -128,6 +128,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is CraftSafingUnreached) SafingUnreached((CraftSafingUnreached)input);
             else if (input is VesselUnloaded) Unloaded(((VesselUnloaded)input).VesselId);
             else if (input is FarSwitchConfirmed) FarSwitched(((FarSwitchConfirmed)input).VesselName);
+            else if (input is LeaveFlightConfirmed) LeavingFlight(((LeaveFlightConfirmed)input).Destination);
             else if (input is RunEventSeen) EventSeen((RunEventSeen)input);
             else if (input is CraftSeparated) Separated(((CraftSeparated)input).Throttle);
             else if (input is AcceptReducedGoal) ReducedGoalAccepted();
