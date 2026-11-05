@@ -57,7 +57,9 @@ namespace ClaudiaKerman.KOS
             AddSuffix("TRANSFERSTEP", new OneArgsSuffix<Lexicon, Lexicon>(TransferStep,
                 "Core Library only (transfer_to): its next step from phase (start first) with its options and what the last step carried; lexicon error, do (burn, wait or done), kind, ut, prograde, normal, radial, max_residual, fail_prefix, keep_going, report, max_duration, carry"));
             AddSuffix("RETURNBURN", new OneArgsSuffix<Lexicon, Lexicon>(ReturnBurn,
-                "Core Library only (return): the least burn from earliest_ut to latest_ut (one orbit later if missing) that leaves the moon orbited for its planet at target_pe and, if given, target_inc; lexicon error, planet, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted, soi_ut, from_grid"));
+                "Core Library only (return): the least burn from earliest_ut to latest_ut (one orbit later if missing) that leaves the moon orbited for its planet at target_pe and, if given, target_inc; lexicon error, planet, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted, soi_ut, from_grid, finished_by"));
+            AddSuffix("RETURNMISS", new OneArgsSuffix<Lexicon, Lexicon>(ReturnMissCall,
+                "Core Library only (return): whether the path flown (pe, inc) is the return asked (target_pe and, if given, target_inc, within pe_tolerance and inc_tolerance); lexicon error, empty when it is, else why with the figures"));
             AddSuffix("TARGETVESSEL", new NoArgsSuffix<Lexicon>(TargetVessel,
                 "Core Library only (rendezvous, dock, land): the Mission's Target Vessel, read live; lexicon error, name, body, and lat, lng, alt for a landed or splashed one"));
             AddSuffix("DOCKHOLD", new OneArgsSuffix<Lexicon, Lexicon>(DockHoldStart,
@@ -317,8 +319,20 @@ namespace ClaudiaKerman.KOS
             }, () => node.ContainsKey("dv")
                 ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); {5} Pe {6:0} m, inclination {7:0.00}, leaving the moon at UT {8:0}{9}{10}",
                     node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["planet"], node["pe_predicted"], node["inc_predicted"], node["soi_ut"],
-                    (bool)node["from_grid"] ? " (from the grid)" : "", node["error"] as string == "" ? "" : "; " + node["error"])
+                    ((bool)node["from_grid"] ? " (from the grid)" : "") + (node["finished_by"] as string == "" ? "" : " (the SQP stopped short: finished by " + node["finished_by"] + ")"),
+                    node["error"] as string == "" ? "" : "; " + node["error"])
                 : (string)node["error"]);
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:RETURNMISS</c> (#759, ADR 0014): whether the path flown is the return asked (<see cref="BlockCalls.ReturnMiss"/>), pure.</summary>
+        private Lexicon ReturnMissCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> miss = null;
+            return (Lexicon)Guarded("RETURNMISS", () =>
+            {
+                miss = BlockCalls.ReturnMiss(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(miss);
+            }, () => miss["error"] as string == "" ? "within the tolerances" : (string)miss["error"]);
         }
 
         /// <summary>

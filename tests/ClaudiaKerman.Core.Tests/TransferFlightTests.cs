@@ -432,6 +432,111 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(Convert.ToDouble(step["ut"]), expected.DepartureUt - 10 * Day, expected.DepartureUt + 10 * Day);
         }
 
+        // ---- A trip home prices no capture burn (#761, ArrivalRule from #758) ----
+
+        private static Dictionary<string, object> StartInput(string target, double pe)
+        {
+            return new Dictionary<string, object>
+            {
+                { "target", target }, { "target_pe", pe }, { "correction", true }, { "pe_tolerance", 1000.0 }, { "start_ut", 0.0 },
+                { "max_duration", "auto" }, { "auto", true }, { "turn_time", 60.0 }, { "phase", "start" },
+            };
+        }
+
+        [Fact]
+        public void Duna_to_Kerbin_departs_when_plan_transfer_does_with_no_capture_priced()
+        {
+            var rig = TransferRig.Circular("Duna", 100000, 0);
+            var snapshot = rig.Snapshot();
+            var capture = ArrivalRule.Capture(snapshot, "Kerbin", null);
+            Assert.False(capture);
+            var pick = TransferWindows.Pick(TransferWindows.Find(snapshot, "Kerbin", 30000, capture, snapshot.MarginPercent), snapshot.TimeVersusDeltaV);
+            var step = BlockCalls.TransferStep(StartInput("Kerbin", 30000), snapshot);
+            Assert.Equal("", step["error"]);
+
+            // plan_transfer's departure is the heliocentric one; the ejection burn is flown on the parking orbit, so the two UTs
+            // agree to within half its period (the solvers themselves resolve the window to a second: TimeTolerance 1e-6 of the
+            // time scale). Measured 202 s of 1,558 s. Priced with a capture (the old default) the departure is 34,120 s later.
+            var duna = rig.System.Find("Duna");
+            var half = Math.PI * Math.Sqrt(Math.Pow(duna.Radius + 100000, 3) / duna.Gm);
+            Assert.InRange(Convert.ToDouble(step["ut"]), pick.DepartureUt - half, pick.DepartureUt + half);
+
+            // And the ejection's dv is plan_transfer's within 1 % (measured 0.5 %).
+            var dv = Math.Sqrt(Math.Pow(Convert.ToDouble(step["prograde"]), 2) + Math.Pow(Convert.ToDouble(step["normal"]), 2) + Math.Pow(Convert.ToDouble(step["radial"]), 2));
+            Assert.InRange(dv, pick.EjectionDv * 0.99, pick.EjectionDv * 1.01);
+        }
+
+        [Fact]
+        public void A_trip_home_says_no_capture_is_priced_and_a_trip_elsewhere_still_hints_a_capture()
+        {
+            var home = TransferRig.Circular("Duna", 100000, 0);
+            var homeStep = home.Run(Ask("Kerbin", 30000, correction: false));
+            Assert.Equal("", homeStep.Error);
+            Assert.Equal("arrival: entry at 21 km, no capture burn", homeStep.Report["arrival_note"]);
+            Assert.False(homeStep.Report.ContainsKey("next"));
+            var away = TransferRig.Circular("Kerbin", 100000, 0).Run(Ask("Duna", 50000, correction: false));
+            Assert.False(away.Report.ContainsKey("arrival_note"));
+        }
+
+        /// <summary>A craft ejected from its body and put 40 m/s off by a correction: on the Sun's patch with no encounter, the state a missed-ejection recovery plans from.</summary>
+        private static Tuple<TransferRig, TransferFlightAsk> LostOnTheWay(string from, string to, double pe, double miss = -40)
+        {
+            var rig = TransferRig.Circular(from, 100000, 0);
+            var ask = Ask(to, pe);
+            for (var i = 0; i < 2; i++)
+            {
+                var s = TransferFlight.Next(rig.Snapshot(), ask);
+                Assert.Equal("", s.Error);
+                if (s.MaxDuration.HasValue) ask.MaxDuration = s.MaxDuration;
+                if (s.Do == TransferFlightStep.Burn) ask.LastDv = rig.Fly(s.Kind, s.Ut, s.Prograde, s.Normal, s.Radial);
+                else rig.MoveTo(s.Ut);
+                TransferFlight.Carry(ask, s);
+            }
+            Assert.Equal("Sun", rig.Body.Name);
+            rig.Fly("correction", rig.Ut + 600, miss, 0, 0);
+            ask.Phase = "mid_check";
+            return Tuple.Create(rig, ask);
+        }
+
+        [Fact]
+        public void A_missed_ejection_recovery_on_a_trip_home_is_accepted_when_dv_left_covers_the_ejection_but_not_a_capture()
+        {
+            // Duna to Kerbin, a correction 100 m/s off loses the encounter. Ranked with a capture, the recovery picked is a 100.5 m/s
+            // burn (over dv_left 100, refused before #761); ranked by the burn alone, as the ArrivalRule says a trip home is, 29 m/s.
+            var lost = LostOnTheWay("Duna", "Kerbin", 30000, -100);
+            var input = StartInput("Kerbin", 30000);
+            input["phase"] = "mid_check";
+            input["dv_left"] = 100.0;
+            var step = BlockCalls.TransferStep(input, lost.Item1.Snapshot());
+            Assert.Equal("", step["error"]);
+            Assert.Equal("burn", step["do"]);
+            Assert.Equal("correction", step["kind"]);
+            Assert.Equal("no encounter with Kerbin after the correction", ((IDictionary<string, object>)step["report"])["recovered"]);
+            var dv = Math.Sqrt(Math.Pow(Convert.ToDouble(step["prograde"]), 2) + Math.Pow(Convert.ToDouble(step["normal"]), 2) + Math.Pow(Convert.ToDouble(step["radial"]), 2));
+            Assert.InRange(dv, 1, 100);
+        }
+
+        [Fact]
+        public void The_same_dv_left_to_a_body_that_is_not_home_is_still_refused_for_the_capture_it_prices()
+        {
+            // Kerbin to Duna, a correction 200 m/s off loses the encounter. Duna's capture is priced, so the recovery picked is a
+            // 199.9 m/s burn (a 37.7 m/s one exists, ranked without the capture): over dv_left 100, as before.
+            var lost = LostOnTheWay("Kerbin", "Duna", 50000, 200);
+            var input = StartInput("Duna", 50000);
+            input["phase"] = "mid_check";
+            input["dv_left"] = 100.0;
+            var step = BlockCalls.TransferStep(input, lost.Item1.Snapshot());
+            Assert.Contains("no encounter with Duna after the correction, and no correction fits:", (string)step["error"]);
+            Assert.Contains("more than the craft's 100 m/s", (string)step["error"]);
+        }
+
+        [Fact]
+        public void The_correction_after_a_missed_ejection_takes_the_arrival_rules_capture()
+        {
+            Assert.False(TransferFlight.CorrectionAsk("Kerbin", 30000, 5000, 133, 1000, 30000, true, 412.5, false).Capture);
+            Assert.True(TransferFlight.CorrectionAsk("Kerbin", 30000, 5000, 133, 1000, 30000, true, 412.5).Capture);
+        }
+
         // ---- The pure rules, from the Kerboscript (TransferFlightParityTests checked them against it) ----
 
         [Fact]

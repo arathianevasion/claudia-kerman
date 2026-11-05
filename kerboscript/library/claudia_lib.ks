@@ -2440,11 +2440,6 @@ function claudia_burn {
 
 // ---- Course Corrections: shared by transfer_to and return ----
 
-// m from target_pe within which a predicted arrival needs no Course Correction.
-function claudia_correction_good_m {
-  return 1000.
-}
-
 // What a Course Correction asks ADDONS:CLAUDIA:CORRECTIONBURN: the least burn at ut that brings the path to dest_name at
 // target_pe (m). Pure.
 function claudia_correction_ask {

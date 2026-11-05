@@ -556,7 +556,7 @@ namespace ClaudiaKerman.Core.Tools
                 Target = target as string,
                 TargetOrbit = orbit,
                 Mode = intercept ? TransferMode.Intercept : TransferMode.Rendezvous,
-                Capture = capture as bool? ?? true,
+                Capture = ArrivalRule.Capture(snapshot, target as string, capture as bool?),
                 TargetPe = Number(ask, "target_pe", 0),
                 EarliestUt = Number(ask, "earliest_ut", snapshot.Ut),
                 WindowUt = window as double?,
@@ -979,7 +979,8 @@ namespace ClaudiaKerman.Core.Tools
         /// later if missing) are the burn's window. <c>pe_tolerance</c> (m, default 1000) and <c>inc_tolerance</c> (degrees,
         /// default 0.5) are how close the answer must be. Gives <c>error</c> "", <c>planet</c>, <c>ut</c>, <c>prograde</c>,
         /// <c>normal</c>, <c>radial</c> (m/s, maneuver node components), <c>dv</c>, <c>pe_predicted</c> (m), <c>inc_predicted</c>
-        /// (degrees), <c>soi_ut</c> (UT the craft leaves the moon) and <c>from_grid</c> (the analytic seed was undefined); a best
+        /// (degrees), <c>soi_ut</c> (UT the craft leaves the moon), <c>from_grid</c> (the analytic seed was undefined) and
+        /// <c>finished_by</c> (what finished a solve the SQP stopped short, "" for none); a best
         /// burn outside the tolerances gives its <c>error</c> with the rest; a solve that could not start, only <c>error</c>,
         /// "found no return: &lt;why&gt;".
         /// </summary>
@@ -1014,7 +1015,24 @@ namespace ClaudiaKerman.Core.Tools
                 { "inc_predicted", plan.IncPredicted },
                 { "soi_ut", plan.SoiUt },
                 { "from_grid", plan.FromGrid },
+                { "finished_by", plan.FinishedBy ?? "" },
             };
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:RETURNMISS</c>, for <c>return</c> (#759, ADR 0014): whether the path flown is the return asked, from
+        /// <c>target_pe</c> and <c>pe</c> (m), and <c>target_inc</c> and <c>inc</c> (degrees; <c>inc</c> counts only with a
+        /// <c>target_inc</c>), within <c>pe_tolerance</c> (m, default 1000) and <c>inc_tolerance</c> (degrees, default 0.5). Gives
+        /// <c>error</c>: "" when it is, else why, with the figures. Pure.
+        /// </summary>
+        public static IDictionary<string, object> ReturnMiss(IDictionary<string, object> input)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            var targetPe = NumberOrNull(ask, "target_pe");
+            var pe = NumberOrNull(ask, "pe");
+            if (!targetPe.HasValue || !pe.HasValue) return Error("the return's check: target_pe and pe must be numbers");
+            return Error(Tools.ReturnBurn.Miss(pe.Value, Number(ask, "inc", 0), targetPe.Value, NumberOrNull(ask, "target_inc"),
+                Number(ask, "pe_tolerance", 1000), Number(ask, "inc_tolerance", 0.5)) ?? "");
         }
 
         /// <summary>

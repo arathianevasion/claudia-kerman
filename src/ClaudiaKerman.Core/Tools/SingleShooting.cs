@@ -65,6 +65,16 @@ namespace ClaudiaKerman.Core.Tools
             OrbitChange.NodeComponents(r, v, burn, out prograde, out normal, out radial);
         }
 
+        /// <summary>The inertial burn with these components in stock's maneuver-node frame at <paramref name="ut"/> on <paramref name="orbit"/>: <see cref="NodeFrame"/> undone.</summary>
+        public static Vec3 FromNodeFrame(Conic orbit, double ut, double prograde, double normal, double radial)
+        {
+            Vec3 r, v;
+            orbit.State(ut, out r, out v);
+            var along = v.Normalized;
+            var up = Vec3.Cross(r, v).Normalized;
+            return along * prograde + up * normal + Vec3.Cross(along, up) * radial;
+        }
+
         /// <summary>
         /// The error when the best burn misses the caller's tolerances (metres and degrees; the solver's own status is not the
         /// test), or null when it meets them. Inclination is compared in degrees, so an equatorial target is not met by
