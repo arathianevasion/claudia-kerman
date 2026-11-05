@@ -64,6 +64,8 @@ namespace ClaudiaKerman.Core.Missions
             mission.RcsUse.Clear();
             mission.Blocks.Clear();
             mission.ScriptError = "";
+            mission.Coast = null;
+            mission.LeaveSnapshot = null;
         }
 
         private static string RunEventsJson(Mission mission)

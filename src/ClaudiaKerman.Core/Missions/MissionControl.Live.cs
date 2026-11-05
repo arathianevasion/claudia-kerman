@@ -646,6 +646,8 @@ namespace ClaudiaKerman.Core.Missions
         {
             var mission = _mission;
             if (mission == null) return;
+            // The block goes to its restore: no longer only warping (#775).
+            mission.Coast = null;
             Note(LogKind.Notice, dropped.Text);
             if (mission.Folder != null) Event(mission, "encounter_watch", dropped.Text);
         }

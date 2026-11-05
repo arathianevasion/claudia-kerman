@@ -437,7 +437,9 @@ namespace ClaudiaKerman.Core.Missions
                 Strings(json, "risks", sequence.Risks);
                 json.Field("custom_script", sequence.CustomScript).Field("custom_script_reason", sequence.CustomScriptReason)
                     .Field("script", sequence.Script).Field("due_time_ut", sequence.DueTimeUt)
-                    .Field("window_closes_ut", sequence.WindowClosesUt).Field("late_window_dv", sequence.LateWindowDeltaV).Field("manual", sequence.Manual).Field("vessel", sequence.Vessel).EndObject();
+                    .Field("window_closes_ut", sequence.WindowClosesUt).Field("late_window_dv", sequence.LateWindowDeltaV).Field("manual", sequence.Manual).Field("vessel", sequence.Vessel);
+                if (sequence.CoastCheckpoint.Length > 0) json.Field("coast_checkpoint", sequence.CoastCheckpoint);
+                json.EndObject();
             }
             return json.EndObject().ToString();
         }

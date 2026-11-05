@@ -256,6 +256,15 @@ namespace ClaudiaKerman.KOS
             });
         }
 
+        /// <summary>A Mission's run stopped at a Coast Checkpoint (#775): the block's result becomes the run's Script Result. False for any other program.</summary>
+        public bool EndRunAtCheckpoint(uint partId, IDictionary<string, object> result)
+        {
+            ActiveRun run;
+            if (!_runs.TryGetValue(partId, out run) || run.Run.HasEnded || run.RunId <= 0) return false;
+            run.Run.Report(result);
+            return true;
+        }
+
         /// <summary>
         /// From <c>ADDONS:CLAUDIA:BLOCKTRACE</c> (#365): written to KSP.log at once, so it is there even if the craft is lost the
         /// next frame, and kept as the run's last word should it end without a Script Result (unless keep is false, #407). Every mod-started run's.

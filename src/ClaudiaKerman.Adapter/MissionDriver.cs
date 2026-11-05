@@ -133,6 +133,18 @@ namespace ClaudiaKerman.Adapter
         public static MissionDriver Current { get; private set; }
 
         /// <summary>A sequence is Running, so leaving Flight needs the player's say-so first.</summary>
+        /// <summary>A far switch now is a clean Coast Checkpoint (#775).</summary>
+        public bool FarSwitchLeavesAtCheckpoint
+        {
+            get { return _mission.View.FarSwitchLeavesAtCheckpoint; }
+        }
+
+        /// <summary>The run is on a coast, but a far switch is still an interruption: why (#775); "" otherwise.</summary>
+        public string FarSwitchWarning
+        {
+            get { return _mission.View.FarSwitchWarning; }
+        }
+
         public bool LeavingFlightNeedsConfirmation
         {
             get { return _mission.View.LeavingFlightNeedsConfirmation; }
