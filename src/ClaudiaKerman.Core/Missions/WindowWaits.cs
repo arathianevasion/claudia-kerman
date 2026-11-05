@@ -49,6 +49,7 @@ namespace ClaudiaKerman.Core.Missions
         /// body to reach the burn point, and <see cref="AscentMarginS"/>. The launch lead's own figures, by body (<see cref="AscentLeadS"/>).
         /// </summary>
         public const double AscentAllowanceS = 600;
+        /// <summary>The ascent lead's room to spare, s.</summary>
         public const double AscentMarginS = 900;
 
         /// <summary>The ascent lead from <paramref name="body"/>, s.</summary>
@@ -80,20 +81,20 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// #774: the departure the craft on the surface waits for, when <paramref name="plan"/> is an ascent and the plan's next leg
-        /// leaves for another planet, or a stretch by hand with those two next (<paramref name="step"/>, 1-based, is the step it flies);
+        /// leaves for another planet, or a manual stretch with those two next (<paramref name="step"/>, 1-based, is the step it flies);
         /// null otherwise, as for a return to the craft's own planet, which has no window. The ascent is the script's first block, or
-        /// its words; the departure is the script's own transfer_to, or the words of the steps after it (<see cref="SequenceWords"/>).
+        /// its words; the departure is the script's own transfer_to, or the words of the legs after it (<see cref="SequenceWords"/>).
         /// </summary>
-        public static SurfaceDeparture AfterAscent(GameSnapshot snapshot, SequencePlan plan, IList<PlannedSequence> steps, int step)
+        public static SurfaceDeparture AfterAscent(GameSnapshot snapshot, SequencePlan plan, IList<PlannedSequence> legs, int step)
         {
             if (snapshot == null || plan == null || (snapshot.Situation != "LANDED" && snapshot.Situation != "SPLASHED")) return null;
-            var home = SequenceWords.Body(snapshot, snapshot.Body);
-            if (home == null) return null;
-            steps = steps ?? new List<PlannedSequence>();
+            var body = SequenceWords.Body(snapshot, snapshot.Body);
+            if (body == null) return null;
+            legs = legs ?? new List<PlannedSequence>();
             var from = step;
             if (plan.Manual)
             {
-                if (step < 0 || step >= steps.Count || steps[step].Manual || !SequenceWords.Ascent.IsMatch(SequenceWords.ActionWords(steps[step]))) return null;
+                if (step < 0 || step >= legs.Count || legs[step].Manual || !SequenceWords.Ascent.IsMatch(SequenceWords.ActionWords(legs[step]))) return null;
                 from = step + 1;
             }
             else
@@ -102,33 +103,33 @@ namespace ClaudiaKerman.Core.Missions
                 var first = calls.FirstOrDefault();
                 if ((first == null || first.Block != "launch") && !SequenceWords.Ascent.IsMatch(plan.Name)) return null;
                 var named = calls.Where(c => c.Block == "transfer_to").Select(c => SequenceWords.Body(snapshot, (c.Option("target") ?? "").Trim('"'))).FirstOrDefault(b => b != null);
-                var flown = Elsewhere(snapshot, home, named);
+                var flown = Elsewhere(snapshot, body, named);
                 if (flown != null) return new SurfaceDeparture { Planet = flown };
                 // "Ascend from Duna and return to Kerbin": the step in hand goes too.
-                if (step >= 1 && step <= steps.Count && IsTrip(SequenceWords.ActionWords(steps[step - 1]))) from = step - 1;
+                if (step >= 1 && step <= legs.Count && IsTrip(SequenceWords.ActionWords(legs[step - 1]))) from = step - 1;
             }
-            return Departure(snapshot, home, steps, from);
+            return Departure(snapshot, body, legs, from);
         }
 
         /// <summary>
-        /// The steps from <paramref name="from"/>, while they lead on from the ascent: a trip to another planet is the departure; a
+        /// The legs from <paramref name="from"/>, while they lead on from the ascent: a trip to another planet is the departure; a
         /// return to the craft's own planet and a capture there are the way to it (from a moon, by either route of #760).
         /// </summary>
-        private static SurfaceDeparture Departure(GameSnapshot snapshot, SnapshotBody home, IList<PlannedSequence> steps, int from)
+        private static SurfaceDeparture Departure(GameSnapshot snapshot, SnapshotBody body, IList<PlannedSequence> legs, int from)
         {
             var atPlanet = false;
             var twoStep = false;
-            for (var i = Math.Max(0, from); i < steps.Count; i++)
+            for (var i = Math.Max(0, from); i < legs.Count; i++)
             {
-                var leg = steps[i];
+                var leg = legs[i];
                 var words = SequenceWords.ActionWords(leg);
                 if (leg.Manual || !MissionCards.FliesCraft(snapshot.Craft.Name, leg.Vessel)) return null;
                 if (IsTrip(words))
                 {
-                    var target = SequenceWords.TripTarget(snapshot, words, home, CraftCheckFlow.HomeBody);
-                    var planet = Elsewhere(snapshot, home, target);
+                    var target = SequenceWords.TripTarget(snapshot, words, body, CraftCheckFlow.HomeBody);
+                    var planet = Elsewhere(snapshot, body, target);
                     if (planet != null) return new SurfaceDeparture { Planet = planet, TwoStep = twoStep };
-                    if (target == null || target == home) return null;
+                    if (target == null || target == body) return null;
                     atPlanet = true;
                 }
                 else if (SequenceWords.Capture.IsMatch(words) && !SequenceWords.Surface.IsMatch(words)) twoStep = atPlanet;
@@ -210,7 +211,6 @@ namespace ClaudiaKerman.Core.Missions
             var turned = home.RotationPeriod == 0 ? 0 : 360 * (now - snapshot.Ut) / home.RotationPeriod;
             return DeparturePlane.ForAsymptote(home, now, snapshot.Latitude, snapshot.CelestialLongitude + turned, leaving.Value, byUt, problem.ParkingPe);
         }
-
 
         /// <summary>The window to <paramref name="planet"/> (a planet or a moon) from <paramref name="snapshot"/>'s UT, picked by the Mission Setting; null when the search found none.</summary>
         public static TransferWindow Window(GameSnapshot snapshot, SnapshotBody planet, TimeVersusDeltaV setting, int marginPercent)

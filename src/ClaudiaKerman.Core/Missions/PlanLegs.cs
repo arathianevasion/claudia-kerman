@@ -213,7 +213,7 @@ namespace ClaudiaKerman.Core.Missions
             private void Read(string words, int index)
             {
                 var landing = SequenceWords.Landing.IsMatch(words);
-                var target = Target(words);
+                var target = SequenceWords.TripTarget(_snapshot, words, _at, _map.Home);
                 var trips = SequenceWords.Trip.IsMatch(words) || SequenceWords.ReturnHome.IsMatch(words);
                 var goesHome = trips && target != null && target.Name == _map.Home && _at != null && _at.Name != _map.Home;
                 // "Land on the Mun and return to Kerbin": the landing comes first in the words, so it is down here, then up and away.
@@ -230,11 +230,6 @@ namespace ClaudiaKerman.Core.Missions
                 var captures = SequenceWords.Capture.IsMatch(words) || SequenceWords.Aero.IsMatch(words);
                 if (captures && !tripped && !SequenceWords.Ascent.IsMatch(words)) Capture(target ?? _at, words);
                 if (landing) Land(tripped ? target : SequenceWords.LegBody(_snapshot, words, _at));
-            }
-
-            private SnapshotBody Target(string words)
-            {
-                return SequenceWords.TripTarget(_snapshot, words, _at, _map.Home);
             }
 
             private void Ascend()

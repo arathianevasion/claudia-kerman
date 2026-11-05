@@ -379,7 +379,31 @@ namespace ClaudiaKerman.Core.Tests
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
         }
 
-        // ---- A stretch by hand comes first ----
+        [Fact]
+        public void InMidMissionAMissedWindowIsBudgetedOnTheLegsStillToFly()
+        {
+            var clock = new FakeAlarmClock();
+            const double now = 1203.48;
+            var mission0 = Solved("Duna", now);
+            var back = mission0.Window.DepartureUt + 120 * Day;
+            var snapshot = Landed("Duna", now, 20000);
+            var next = new SurfaceDeparture { Planet = snapshot.Bodies.Single(b => b.Name == "Kerbin") };
+            WindowWaits.Solve(snapshot, next, new PlayerConfig().DefaultTimeVersusDeltaV, new PlayerConfig().CraftCheckMarginPercent, back);
+            // Enough for the two legs left at 500 m/s each, with the margin; not for all four.
+            var deltaV = (1000 - mission0.Window.TotalDv + next.Window.TotalDv) * 1.2;
+            var mission = Control(new StreamingFakeTransport(HomePlan("Launch from Kerbin", "Land on Duna", "Ascend from Duna", "Return to Kerbin"), AscentPlan(step: 3)));
+            ToAscent(mission, "Duna", now, deltaV: deltaV);
+            clock.Take(mission);
+
+            mission.Send(new UtAdvanced(back));
+            mission.Send(new Approve());
+
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            Assert.Equal(next.DueUt.Value, mission.View.DueTime.Ut, 0);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("Claudia is revising the Mission Plan"));
+        }
+
+        // ---- A manual stretch comes first ----
 
         private MissionControl ToSurfaceStay(StreamingFakeTransport transport, double now)
         {
@@ -441,6 +465,24 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(Solved("Duna", back).DueUt.Value, mission.View.DueTime.Ut, 0);
             Assert.Equal("the Kerbin window", mission.View.DueTime.WaitsFor);
             Assert.Equal(mission.View.DueTime.Ut, clock.Alarms[mission.View.MissionId], 0);
+        }
+
+        [Fact]
+        public void HandedBackInsideTheLeadTheNotedWindowStandsAndApprovingStartsTheAscent()
+        {
+            var clock = new FakeAlarmClock();
+            const double now = 1203.48;
+            var mission = ToSurfaceStay(StayThenAscent(), now);
+            mission.Send(new Approve());
+            var noted = Solved("Duna", now);
+            HandedBackAt(mission, noted.Window.DepartureUt - noted.LeadS / 2);
+            clock.Take(mission);
+
+            Assert.True(mission.View.DueTime.Reached);
+            Assert.Equal("the Kerbin window", mission.View.DueTime.WaitsFor);
+            mission.Send(new Approve());
+            Assert.Single(clock.Take(mission).OfType<StartScript>());
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("was missed"));
         }
 
         [Fact]

@@ -19,7 +19,7 @@ A long wait for a Transfer Window is spent on the ground, under a Due Time with 
 4. Approve. The ascent flies, and the next sequence's ejection comes within about the ascent lead, with no long wait in Duna orbit.
 5. Tell the ticket how long the craft spent in orbit before the ejection, against the ascent lead.
 
-## Check 3: a stretch by hand comes first
+## Check 3: a manual stretch comes first
 
 1. Landed on Duna, ask for "hand over control for surface operations, then return to Kerbin". Approve the manual stretch: it has no Due Time, and no alarm is set.
 2. Time-warp past the Kerbin window, then Hand back. When the ascent's Sequence Plan arrives, Approve. The log says "The Kerbin window of ... was missed" and either moves the Due Time and the alarm to the next window, or Claudia revises the Mission Plan.

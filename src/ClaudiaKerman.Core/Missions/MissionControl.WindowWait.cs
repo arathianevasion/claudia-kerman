@@ -17,7 +17,7 @@ namespace ClaudiaKerman.Core.Missions
     /// </summary>
     public sealed partial class MissionControl
     {
-        /// <summary>The first Maneuver Sequence waits on the pad for a window more than a Kerbin day off: its Due Time is the window less the launch lead.</summary>
+        /// <summary>The first Maneuver Sequence waits on the pad for a window more than a Kerbin day off: its Due Time is the window less the launch lead. A craft on the surface waits before its ascent instead (#774).</summary>
         private void WindowWait(Mission mission, SequencePlan plan)
         {
             var carriedPlanet = mission.WindowPlanet;
@@ -27,10 +27,11 @@ namespace ClaudiaKerman.Core.Missions
             var surface = SurfaceWait(mission, plan);
             if (surface != null)
             {
-                // A stretch by hand with a Due Time of Claudia's own waits for that, not a window.
+                // A manual stretch with a Due Time of Claudia's own waits for that, not a window.
                 if (plan.Manual && plan.DueTimeUt.HasValue) return;
-                // A stretch by hand that ran past the window it noted: Approve goes to the missed-window handling, as on the pad.
-                if (carriedUt.HasValue && carriedPlanet == surface.Planet.Name && WindowWaits.Missed(carriedUt.Value, _ut))
+                // Back after the departure less the lead, from a manual stretch that noted the window: Approve goes to the missed-window
+                // handling, as on the pad. Inside the lead that starts the ascent for this window; after the departure, the next one.
+                if (carriedUt.HasValue && carriedPlanet == surface.Planet.Name && _ut > carriedUt.Value - surface.LeadS)
                 {
                     mission.WindowPlanet = carriedPlanet;
                     mission.WindowUt = carriedUt;
@@ -58,7 +59,7 @@ namespace ClaudiaKerman.Core.Missions
                 + ", an hour before the ejection burn. Fly other Missions meanwhile; a KSP alarm calls you back.");
         }
 
-        /// <summary>#774: the ascent waits on the surface for its departure's window. A stretch by hand has no Due Time and is never cut short: it only notes the window, for the ascent after it.</summary>
+        /// <summary>#774: the ascent waits on the surface for its departure's window. A manual stretch has no Due Time and is never cut short: it only notes the window, for the ascent after it.</summary>
         private void FromTheSurface(Mission mission, SequencePlan plan, SurfaceDeparture surface)
         {
             if (surface.Window == null) return;
@@ -81,13 +82,17 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (!FliesCraft(mission, plan.Vessel)) return null;
             var snapshot = MissionVesselSnapshot(mission);
-            // As OfferSequencePlan counts it, whether or not this plan is counted yet.
-            var step = plan.PlanStep ?? mission.SequencesProposed + (mission.SequenceCounted ? 0 : 1);
-            var surface = WindowWaits.AfterAscent(snapshot, plan, mission.Plan == null ? null : mission.Plan.Sequences, step);
+            var surface = WindowWaits.AfterAscent(snapshot, plan, mission.Plan == null ? null : mission.Plan.Sequences, StepOf(mission, plan));
             if (surface == null) return null;
             var settings = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config));
             WindowWaits.Solve(snapshot, surface, settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, _ut);
             return surface;
+        }
+
+        /// <summary>The Mission Plan step <paramref name="plan"/> flies, 1-based, as OfferSequencePlan counts it, whether or not this plan is counted yet.</summary>
+        private static int StepOf(Mission mission, SequencePlan plan)
+        {
+            return plan.PlanStep ?? mission.SequencesProposed + (mission.SequenceCounted ? 0 : 1);
         }
 
         /// <summary>
@@ -141,7 +146,8 @@ namespace ClaudiaKerman.Core.Missions
             var planet = _snapshot == null ? null : _snapshot.Bodies.FirstOrDefault(b => b.Name == mission.WindowPlanet);
             var surface = SurfaceWait(mission, plan);
             var next = surface != null ? surface.Window : WindowFor(mission, planet);
-            var budget = mission.Plan == null ? 0 : mission.Plan.Sequences.Sum(s => Math.Max(0, s.DeltaV));
+            // On the pad that is the whole plan; from a surface in mid-Mission, the legs still to fly (this one too), which the craft's delta-v is for.
+            var budget = mission.Plan == null ? 0 : mission.Plan.Sequences.Skip(surface != null ? Math.Max(0, StepOf(mission, plan) - 1) : 0).Sum(s => Math.Max(0, s.DeltaV));
             var head = "The " + mission.WindowPlanet + " window of " + KerbinTime.Date(missed) + " was missed";
             if (next == null || !WindowWaits.Fits(budget, planned, next.TotalDv, CraftDeltaV(_snapshot), _config.CraftCheckMarginPercent))
             {

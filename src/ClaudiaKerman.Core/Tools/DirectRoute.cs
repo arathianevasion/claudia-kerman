@@ -297,7 +297,7 @@ namespace ClaudiaKerman.Core.Tools
             return Math.Sqrt(orbit.Mu * (2 / orbit.PeR - 1 / orbit.A));
         }
 
-        /// <summary>The Game Snapshot as if the craft were in <paramref name="planet"/>'s low circular orbit at <paramref name="ut"/>: the windows' view of the two-step route.</summary>
+        /// <summary>The Game Snapshot as if the craft were in <paramref name="planet"/>'s low circular orbit at <paramref name="ut"/>: the windows' view of the two-step route; of any body's low orbit, from its surface (#774).</summary>
         internal static GameSnapshot FromLowOrbit(GameSnapshot snapshot, SnapshotBody planet, double ut)
         {
             var low = DeltaVMap.LowOrbit(planet);
