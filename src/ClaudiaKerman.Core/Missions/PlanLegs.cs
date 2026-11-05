@@ -213,7 +213,7 @@ namespace ClaudiaKerman.Core.Missions
             private void Read(string words, int index)
             {
                 var landing = SequenceWords.Landing.IsMatch(words);
-                var target = Target(words);
+                var target = SequenceWords.TripTarget(_snapshot, words, _at, _map.Home);
                 var trips = SequenceWords.Trip.IsMatch(words) || SequenceWords.ReturnHome.IsMatch(words);
                 var goesHome = trips && target != null && target.Name == _map.Home && _at != null && _at.Name != _map.Home;
                 // "Land on the Mun and return to Kerbin": the landing comes first in the words, so it is down here, then up and away.
@@ -230,28 +230,6 @@ namespace ClaudiaKerman.Core.Missions
                 var captures = SequenceWords.Capture.IsMatch(words) || SequenceWords.Aero.IsMatch(words);
                 if (captures && !tripped && !SequenceWords.Ascent.IsMatch(words)) Capture(target ?? _at, words);
                 if (landing) Land(tripped ? target : SequenceWords.LegBody(_snapshot, words, _at));
-            }
-
-            /// <summary>The body the words go to: the one after "to", else the one they name, else home for a bare return.</summary>
-            private SnapshotBody Target(string words)
-            {
-                SnapshotBody first = null;
-                var firstAt = int.MaxValue;
-                foreach (var body in _snapshot.Bodies.Where(b => b.Name.Length > 0))
-                {
-                    var match = Regex.Match(words, @"\bto\s+(?:the\s+)?" + Regex.Escape(body.Name) + @"\b", RegexOptions.IgnoreCase);
-                    if (match.Success && match.Index < firstAt)
-                    {
-                        first = body;
-                        firstAt = match.Index;
-                    }
-                }
-                if (first != null) return first;
-                if (SequenceWords.ReturnHome.IsMatch(words)) return SequenceWords.Body(_snapshot, _map.Home);
-                // The first body named that isn't where the craft is ("Kerbin-Duna transfer" goes to Duna).
-                var named = SequenceWords.NamedBody(_snapshot, _at == null ? words : Regex.Replace(words, @"\b" + Regex.Escape(_at.Name) + @"\b", " ", RegexOptions.IgnoreCase));
-                if (named == null && SequenceWords.BareReturn.IsMatch(words)) return SequenceWords.Body(_snapshot, _map.Home);
-                return named ?? SequenceWords.NamedBody(_snapshot, words);
             }
 
             private void Ascend()

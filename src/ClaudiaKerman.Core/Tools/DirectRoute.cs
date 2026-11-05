@@ -43,6 +43,8 @@ namespace ClaudiaKerman.Core.Tools
     {
         /// <summary>When the burn out of the moon's orbit is, and the UT to give return's window for that burn.</summary>
         public double DepartUt;
+        /// <summary>The latest the burn out of the moon's orbit can be and make this row's ejection: the direct route's is <see cref="DepartUt"/>; the two-step's is the ejection less the fall, as it waits in low orbit otherwise (#774).</summary>
+        public double LatestDepartUt;
         public double ReturnWindow;
         public double ReturnDv;
         /// <summary>The capture at the planet: the two-step route's only; 0 on the direct route.</summary>
@@ -184,7 +186,7 @@ namespace ClaudiaKerman.Core.Tools
             var twoStepBurn = SiblingEjection.Oberth(lowOrbit, planet.Gm, leaving.Value, window.DepartureUt, peUt, out twoStepEject);
             var twoStep = new RouteRow
             {
-                DepartUt = home.Ut, ReturnWindow = now, ReturnDv = home.DeltaV, PlanetCaptureDv = price.PlanetCaptureDv, EjectUt = twoStepEject, EjectWindow = window.DepartureUt,
+                DepartUt = home.Ut, LatestDepartUt = Math.Max(home.Ut, twoStepEject - (peUt - home.Ut)), ReturnWindow = now, ReturnDv = home.DeltaV, PlanetCaptureDv = price.PlanetCaptureDv, EjectUt = twoStepEject, EjectWindow = window.DepartureUt,
                 EjectionDv = twoStepBurn.Length, CaptureDv = window.CaptureDv, ArrivalUt = twoStepEject + window.ArrivalUt - window.DepartureUt, ArrivalVInf = window.ArrivalVInf,
             };
             twoStep.TotalDv = twoStep.ReturnDv + twoStep.PlanetCaptureDv + twoStep.EjectionDv + twoStep.CaptureDv;
@@ -273,7 +275,7 @@ namespace ClaudiaKerman.Core.Tools
             }
             var result = new RouteRow
             {
-                DepartUt = plan.Ut, ReturnWindow = earliest, ReturnDv = plan.DeltaV, EjectUt = ejectUt, EjectWindow = ejectUt - flown.Orbit.Period / 2, EjectionDv = burn.Length,
+                DepartUt = plan.Ut, LatestDepartUt = plan.Ut, ReturnWindow = earliest, ReturnDv = plan.DeltaV, EjectUt = ejectUt, EjectWindow = ejectUt - flown.Orbit.Period / 2, EjectionDv = burn.Length,
                 CaptureDv = row.CaptureDv, ArrivalUt = ejectUt + row.ArrivalUt - row.DepartureUt, ArrivalVInf = row.ArrivalVInf,
             };
             result.TotalDv = result.ReturnDv + result.EjectionDv + result.CaptureDv;
@@ -295,8 +297,8 @@ namespace ClaudiaKerman.Core.Tools
             return Math.Sqrt(orbit.Mu * (2 / orbit.PeR - 1 / orbit.A));
         }
 
-        /// <summary>The Game Snapshot as if the craft were in <paramref name="planet"/>'s low circular orbit at <paramref name="ut"/>: the windows' view of the two-step route.</summary>
-        private static GameSnapshot FromLowOrbit(GameSnapshot snapshot, SnapshotBody planet, double ut)
+        /// <summary>The Game Snapshot as if the craft were in <paramref name="planet"/>'s low circular orbit at <paramref name="ut"/>: the windows' view of the two-step route; of any body's low orbit, from its surface (#774).</summary>
+        internal static GameSnapshot FromLowOrbit(GameSnapshot snapshot, SnapshotBody planet, double ut)
         {
             var low = DeltaVMap.LowOrbit(planet);
             var view = new GameSnapshot
