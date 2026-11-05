@@ -144,7 +144,7 @@ namespace ClaudiaKerman.Core.Tools
         /// </summary>
         internal const double ClearOfSoi = 0.05;
         /// <summary>
-        /// In "auto", the longest wait, s, for a next-window recovery: 30 Kerbin days (#770). Past it the block fails with the figures
+        /// In "auto", the longest wait, s, for a far target's next-window recovery: 30 Kerbin days (#770). Past it the block fails with the figures
         /// so Claudia replans with the player, never a burn years out.
         /// </summary>
         internal const double RecoveryWait = 30 * 21600;
@@ -161,7 +161,7 @@ namespace ClaudiaKerman.Core.Tools
                 ask.WatchDropped = false;
                 ask.Drops++;
             }
-            double? moved = null;
+            double? movedMax = null;
             for (var i = 0; i < MaxPhases; i++)
             {
                 ToolOutcome error;
@@ -172,8 +172,8 @@ namespace ClaudiaKerman.Core.Tools
                 step.Recovered |= ask.Recovered;
                 step.Restored |= ask.Restored;
                 step.Drops = ask.Drops;
-                if (step.MaxDuration.HasValue) moved = step.MaxDuration;
-                else step.MaxDuration = moved;
+                if (step.MaxDuration.HasValue) movedMax = step.MaxDuration;
+                else step.MaxDuration = movedMax;
                 if (step.Error != "" || step.Do != TransferFlightStep.Done || step.Phase == "") return step;
                 // A step that flies nothing goes on to the phase it named, with what it carries.
                 Carry(ask, step);
@@ -313,7 +313,8 @@ namespace ClaudiaKerman.Core.Tools
         /// </summary>
         private static TransferFlightStep Recover(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask, string lost)
         {
-            if (ask.Recovered) return Fail(lost);
+            if (ask.Recovered)
+                return Fail(lost + Figures(snapshot, CorrectionAsk(setup.Target.Name, ask.TargetPe, setup.Now, ask.TurnTime, ask.StartUt, ask.MaxDuration ?? 0, ask.Auto, ask.DvLeft, ArrivalRule.Capture(snapshot, setup.Target.Name, null)), setup.Now, ""));
             var restoreCost = "";
             if (!ask.Restored)
             {
@@ -350,7 +351,7 @@ namespace ClaudiaKerman.Core.Tools
                 cost = "no restore found";
                 return null;
             }
-            if (ask.DvLeft > 0 && fix.DeltaV > ask.DvLeft)
+            if (OverDvLeft(ask, fix))
             {
                 cost = "a restore costs " + Num(fix.DeltaV) + " m/s of " + Num(ask.DvLeft) + " m/s left";
                 return null;
@@ -387,7 +388,7 @@ namespace ClaudiaKerman.Core.Tools
         private static TransferFlightStep Restore(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask)
         {
             var target = setup.Target;
-            if (ask.Sibling && setup.Body != target && !OnTargetsParent(setup)) return Go(ask, Escaping);
+            if (BackRoundHome(setup, ask)) return Go(ask, Escaping);
             var enc = Encounter(setup);
             if (enc == null) return Recover(snapshot, setup, ask, Lost(target));
             var lead = ask.TurnTime + Lead;
@@ -395,13 +396,20 @@ namespace ClaudiaKerman.Core.Tools
             var ut = CorrectionUt(setup.Now + lead, setup.Now, lead, ask.StartUt, ask.MaxDuration, out late);
             if (late != "") return Go(ask, Mid);
             var fix = CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut });
-            if (!fix.HasBurn || fix.Error != null) return Go(ask, Mid);
+            if (!fix.HasBurn || fix.Error != null || OverDvLeft(ask, fix)) return Go(ask, Mid);
             return FlyCorrection(ask, fix, "correction", RestoreCheck);
         }
 
-        private static bool OnTargetsParent(PredictBurn.Setup setup)
+        /// <summary>Whether a sibling flight has the craft round neither the target nor their parent: KSP has it back round the body it left (#770).</summary>
+        private static bool BackRoundHome(PredictBurn.Setup setup, TransferFlightAsk ask)
         {
-            return string.Equals(setup.Body.Name, setup.Target.Parent, StringComparison.OrdinalIgnoreCase);
+            return ask.Sibling && setup.Body != setup.Target && !string.Equals(setup.Body.Name, setup.Target.Parent, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>Whether a correction costs more than the craft's dv_left (0 or less for unknown).</summary>
+        private static bool OverDvLeft(TransferFlightAsk ask, CorrectionPlan fix)
+        {
+            return ask.DvLeft > 0 && fix.DeltaV > ask.DvLeft;
         }
 
         /// <summary>
@@ -416,7 +424,8 @@ namespace ClaudiaKerman.Core.Tools
             var correctionAsk = CorrectionAsk(target.Name, ask.TargetPe, now, ask.TurnTime, ask.StartUt, ask.MaxDuration ?? 0, ask.Auto, ask.DvLeft, ArrivalRule.Capture(snapshot, target.Name, null));
             if (correctionAsk.LatestUt.HasValue && correctionAsk.LatestUt.Value < correctionAsk.EarliestUt)
                 return Fail(missed + ", and no correction fits: max_duration (" + Num(ask.MaxDuration ?? 0) + " s) leaves no time for it and the Course Correction after it" + Figures(snapshot, correctionAsk, now, restoreCost));
-            if (ask.Auto) correctionAsk.LatestUt = correctionAsk.EarliestUt + RecoveryWait;
+            // A moon's next window is days off, and a limit changes which departures Transfer picks: only a far target's is held to it.
+            if (ask.Auto && Far(setup, ask)) correctionAsk.LatestUt = correctionAsk.EarliestUt + RecoveryWait;
             var found = Transfer.Find(snapshot, correctionAsk);
             if (found.Error != null) return Fail(missed + ", and no correction fits: " + found.Error.Replace("found no transfer: ", "") + Figures(snapshot, correctionAsk, now, restoreCost));
             var step = Node("correction", found.Ut, found.Prograde, found.Normal, found.Radial, Made);
@@ -487,13 +496,14 @@ namespace ClaudiaKerman.Core.Tools
             string late;
             var lead = ask.TurnTime + Lead;
             var ut = CorrectionUt(ask.MidUt >= 0 ? Math.Max(ask.MidUt, setup.Now + lead) : (setup.Now + enc.SoiUt) / 2, setup.Now, lead, ask.StartUt, ask.MaxDuration, out late);
-            if (late != "") return Fail(late);
+            // A wake too late for the planned burn goes on to the trim: only the first planning of it can fail the block.
+            if (late != "") return ask.MidUt >= 0 ? Go(ask, MidCheck) : Fail(late);
             var fix = CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut });
             var far = Far(setup, ask);
             if (far && (!fix.HasBurn || fix.Error != null)) return Go(ask, MidCheck);
             // exec_node's warp to a node has no stop: a far target's long coast to it is a watched wait, and the node is planned at its end (#770).
-            if (far && fix.DeltaV >= SkipDv && ut > setup.Now + 2 * lead)
-                return new TransferFlightStep { Do = TransferFlightStep.Wait, Ut = ut - lead, Phase = Mid, MidUt = ut, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Why = ask.Why, Watch = Watch(setup, enc, ask) };
+            if (far && ask.MidUt < 0 && fix.DeltaV >= SkipDv && ut > setup.Now + 2 * lead + Lead)
+                return new TransferFlightStep { Do = TransferFlightStep.Wait, Ut = ut - lead - Lead, Phase = Mid, MidUt = ut, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Why = ask.Why, Watch = Watch(setup, enc, ask) };
             return FlyCorrection(ask, fix, "correction", MidCheck);
         }
 
@@ -670,7 +680,7 @@ namespace ClaudiaKerman.Core.Tools
         private static TransferFlightStep OnParent(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask)
         {
             // KSP must report the parent after the warp (#770): still round the body the craft left, the way out first.
-            if (ask.Sibling && setup.Body != setup.Target && !OnTargetsParent(setup)) return Go(ask, Escaping);
+            if (BackRoundHome(setup, ask)) return Go(ask, Escaping);
             if (!ask.Correction) return Arrive(snapshot, setup, ask);
             var enc = Encounter(setup);
             if (enc != null && Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, Mid);
@@ -682,7 +692,7 @@ namespace ClaudiaKerman.Core.Tools
             {
                 Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut, AimUt = ask.ArrivalUt > ut ? ask.ArrivalUt : (double?)null,
             });
-            var found = fix.HasBurn && fix.Error == null;
+            var found = fix.HasBurn && fix.Error == null && !OverDvLeft(ask, fix);
             if (enc != null && !found) return Go(ask, Mid);
             if (enc == null && !found) return Missed(snapshot, setup, ask, "no encounter with " + setup.Target.Name + " after the ejection burn");
             return FlyCorrection(ask, fix, "correction", Mid);

@@ -142,7 +142,7 @@ namespace ClaudiaKerman.Core.Tests
             ask.Phase = "mid_check";
             ask.Recovered = true;
             var step = TransferFlight.Next(rig.Snapshot(), ask);
-            Assert.Equal("no encounter with Mun after the correction", step.Error);
+            Assert.StartsWith("no encounter with Mun after the correction; the next window costs ", step.Error);
         }
 
         [Fact]

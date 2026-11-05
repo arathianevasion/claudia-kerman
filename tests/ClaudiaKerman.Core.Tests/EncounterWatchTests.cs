@@ -458,14 +458,85 @@ namespace ClaudiaKerman.Core.Tests
             Woken(ask, wait);
             ask.Restored = true;
             var step = TransferFlight.Next(rig.Snapshot(), ask);
-            if (step.Error != "")
-            {
-                Assert.Contains("the next window costs ", step.Error);
-                return;
-            }
+            Assert.True(step.Error == "", step.Error);
             Assert.Equal(TransferFlightStep.Burn, step.Do);
             Assert.True(step.Recovered);
+            Assert.InRange(Dv(step), 0.1, 30);
             Assert.True(step.Ut <= rig.Ut + ask.TurnTime + 60 + TransferFlight.RecoveryWait, "burn at UT " + step.Ut + " from UT " + rig.Ut);
+        }
+
+        [Fact]
+        public void A_lost_encounter_inside_an_explicit_max_duration_with_no_affordable_restore_fails_with_the_figures()
+        {
+            TransferFlightAsk ask;
+            TransferFlightStep wait;
+            var rig = Coasting(out ask, out wait);
+            RePatchIntoKerbin(rig);
+            RePatchBackOntoTheSun(rig);
+            Woken(ask, wait);
+            ask.Auto = false;
+            ask.MaxDuration = rig.Ut + 2 * 21600;
+            ask.DvLeft = 0.5;
+
+            var step = TransferFlight.Next(rig.Snapshot(), ask);
+            Assert.StartsWith("no encounter with Duna after the correction, and no correction fits: ", step.Error);
+            Assert.Contains("a restore costs ", step.Error);
+            Assert.Contains("the next window costs ", step.Error);
+        }
+
+        [Fact]
+        public void A_drift_s_burn_the_craft_can_t_pay_for_is_not_flown()
+        {
+            TransferFlightAsk ask;
+            TransferFlightStep wait;
+            var rig = Coasting(out ask, out wait);
+            rig.Fly("by_hand", rig.Ut + 60, -2, 0, 0);
+            Assert.NotNull(TransferFlight.Encounter(Setup(rig)));
+            Woken(ask, wait);
+            ask.DvLeft = 0.5;
+            var step = TransferFlight.Next(rig.Snapshot(), ask);
+            Assert.True(step.Error == "", step.Error);
+            Assert.NotEqual(TransferFlightStep.Burn, step.Do);
+        }
+
+        [Fact]
+        public void A_short_max_duration_s_watched_mid_course_wait_still_flies_its_burn()
+        {
+            // "A shorter one moves the correction sooner": the burn at the end of max_duration, its wait ending in time for it.
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            rig.BurnError = 0.005;
+            rig.CorrectionError = 0.5;
+            var ask = Ask("Duna", 50000);
+            for (var i = 0; i < 12; i++)
+            {
+                var step = TransferFlight.Next(rig.Snapshot(), ask);
+                Assert.True(step.Error == "", step.Error);
+                if (step.MaxDuration.HasValue) ask.MaxDuration = step.MaxDuration;
+                if (step.Do == TransferFlightStep.Burn && step.Phase == "mid" )
+                {
+                    ask.LastDv = rig.Fly(step.Kind, step.Ut, step.Prograde, step.Normal, step.Radial);
+                    TransferFlight.Carry(ask, step);
+                    // From here max_duration ends 10 days on, well before halfway.
+                    ask.Auto = false;
+                    ask.MaxDuration = rig.Ut + 10 * 21600;
+                    var wait = TransferFlight.Next(rig.Snapshot(), ask);
+                    Assert.True(wait.Error == "", wait.Error);
+                    Assert.Equal(TransferFlightStep.Wait, wait.Do);
+                    Assert.Equal(ask.MaxDuration.Value - 120, wait.MidUt, 3);
+                    // A wake a few seconds past the wait's end, as a warp's overshoot gives.
+                    rig.MoveTo(wait.Ut + 5);
+                    TransferFlight.Carry(ask, wait);
+                    var burn = TransferFlight.Next(rig.Snapshot(), ask);
+                    Assert.True(burn.Error == "", burn.Error);
+                    Assert.Equal(TransferFlightStep.Burn, burn.Do);
+                    Assert.Equal(wait.MidUt, burn.Ut, 3);
+                    return;
+                }
+                if (step.Do == TransferFlightStep.Burn) ask.LastDv = rig.Fly(step.Kind, step.Ut, step.Prograde, step.Normal, step.Radial);
+                else rig.MoveTo(step.Ut);
+                TransferFlight.Carry(ask, step);
+            }
+            Assert.Fail("no correction on the Sun's patch");
         }
 
         [Fact]
