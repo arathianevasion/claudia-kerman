@@ -442,6 +442,14 @@ namespace ClaudiaKerman.Core.Missions
             {
                 Note(LogKind.Notice, "Couldn't write the Mission's ascent plan snapshot: " + e.Message);
             }
+            try
+            {
+                _craftCheck.CopyDumpTo(mission.Folder);
+            }
+            catch (Exception e) when (IsFileError(e))
+            {
+                Note(LogKind.Notice, "Couldn't copy the Craft Check's request and reply: " + e.Message);
+            }
             FoldCraftCheckCost(mission, _craftCheck.TakeCost());
             // Started from the editor with her not aboard: the mod puts her in a free seat (the Craft Check made sure there is one).
             if (!mission.Remote && _scene == GameScene.Editor && _snapshot != null && !_snapshot.ClaudiaAboard && _snapshot.FreeSeats > 0)
@@ -546,6 +554,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (saveDirectory == _saveDirectory) return;
             _saveDirectory = saveDirectory;
+            _craftCheck.SaveDirectory = saveDirectory;
             _snapshot = null;
             _active = null;
             _craftLink = null;
