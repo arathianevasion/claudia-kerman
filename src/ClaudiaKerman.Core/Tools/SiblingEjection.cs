@@ -44,6 +44,12 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The re-solve round a window UT: this share of the synodic period each way, or two parking orbits if longer.</summary>
         private const double NarrowShare = 0.01;
         private const int NarrowOrbits = 2;
+        /// <summary>
+        /// From this eccentricity the craft is on a fall, not in a parking orbit (#760): its first periapsis after the window UT is the
+        /// ejection. Its periapsis is lined up for that time, and each later pass goes back out to the moon's height, so the re-solve stays
+        /// within half an orbit of the window UT, where the burn point's next pass is that first periapsis.
+        /// </summary>
+        private const double FallEccentricity = 0.5;
         /// <summary>Newton's method: its iteration cap, the finite-difference step (m/s), and the miss (m) it stops within.</summary>
         private const int Iterations = 20;
         private const double Step = 0.01;
@@ -65,7 +71,7 @@ namespace ClaudiaKerman.Core.Tools
             TransferWindow pick;
             if (window.HasValue)
             {
-                var reach = Math.Max(NarrowOrbits * craft.Period, NarrowShare * synodic);
+                var reach = craft.E >= FallEccentricity ? craft.Period / 4 : Math.Max(NarrowOrbits * craft.Period, NarrowShare * synodic);
                 problem.From = Math.Max(earliest, window.Value - reach);
                 found = TransferWindows.Search(problem, snapshot.MarginPercent, Math.Max(window.Value + reach, problem.From + 2 * reach) - problem.From);
                 pick = found.Optimal;
@@ -125,16 +131,11 @@ namespace ClaudiaKerman.Core.Tools
             var speed = vInf.Length;
             var dir = vInf / speed;
             var h = craft.W;
-            var sinTilt = Vec3.Dot(dir, h);
-            var cosTilt = Math.Sqrt(Math.Max(1e-12, 1 - sinTilt * sinTilt));
-            var u = (dir - h * sinTilt).Normalized;
             var r0 = craft.A;
             ut = departure;
             for (var pass = 0; pass < 2; pass++)
             {
-                var e = 1 + r0 * speed * speed / mu;
-                var c = Math.Max(-1, Math.Min(1, -1 / e / cosTilt));
-                var point = u * c - Vec3.Cross(h, u) * Math.Sqrt(1 - c * c);
+                var point = BurnPoint(h, vInf, r0, mu);
                 var nu = Math.Atan2(Vec3.Dot(point, craft.Q), Vec3.Dot(point, craft.P));
                 ut = craft.TimeAtTrue(nu, Math.Max(earliest, departure - craft.Period / 2)) ?? departure;
                 r0 = craft.Radius(ut);
@@ -145,6 +146,19 @@ namespace ClaudiaKerman.Core.Tools
             if (up.Length < 1e-9 * r.Length) up = h;
             var along = Vec3.Cross(up.Normalized, r).Normalized;
             return along * Math.Sqrt(speed * speed + 2 * mu / r.Length) - v;
+        }
+
+        /// <summary>The direction, in the plane with normal <paramref name="h"/>, of the periapsis of the hyperbola at radius <paramref name="r0"/> leaving along <paramref name="vInf"/> (see <see cref="Oberth"/>).</summary>
+        internal static Vec3 BurnPoint(Vec3 h, Vec3 vInf, double r0, double mu)
+        {
+            var speed = vInf.Length;
+            var dir = vInf / speed;
+            var sinTilt = Vec3.Dot(dir, h);
+            var cosTilt = Math.Sqrt(Math.Max(1e-12, 1 - sinTilt * sinTilt));
+            var u = (dir - h * sinTilt).Normalized;
+            var e = 1 + r0 * speed * speed / mu;
+            var c = Math.Max(-1, Math.Min(1, -1 / e / cosTilt));
+            return u * c - Vec3.Cross(h, u) * Math.Sqrt(1 - c * c);
         }
 
         /// <summary>
@@ -208,7 +222,7 @@ namespace ClaudiaKerman.Core.Tools
             return x;
         }
 
-        private static Conic AfterBurn(Conic craft, SnapshotBody home, double ut, Vec3 burn)
+        internal static Conic AfterBurn(Conic craft, SnapshotBody home, double ut, Vec3 burn)
         {
             Vec3 r, v;
             craft.State(ut, out r, out v);

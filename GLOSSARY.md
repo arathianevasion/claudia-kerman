@@ -116,6 +116,13 @@ _Avoid_: next window, fastest (a Mission Setting)
 The cheapest Transfer Window within one synodic period of the two planets, or one orbit of the moon. A moon's Optimal is its Soonest unless it saves at least 5 m/s: the Mun, in the parking orbit's plane, costs the same at any departure; Minmus is cheapest near a node. From the ground, a moon out of the site's plane is costed as a launch into its plane at the next launch window (#690), so Soonest is Optimal and the wait is under a body day; from a site past the plane, as a launch due east with the residual fixed on the way, and the moon's horizon is bounded by Time versus delta-v (Fastest one parking orbit, Balanced a quarter of the moon's orbit, Most efficient one orbit, #727). Each row names that launch (its target_inc and time), its ascent loss and plane change, and the case it took.
 _Avoid_: best window, most efficient (a Mission Setting)
 
+**Direct Route**:
+From a moon's orbit to another planet of its star, in one Transfer Window (#760): a fall from the moon to a low periapsis at its planet, at the time that lines the periapsis up with the ejection, and the ejection at that periapsis. It saves about twice the capture at the planet over the Two-Step Route. Flown by return, then transfer_to, each with its window from plan_transfer's row. Time versus delta-v picks between the two routes as it does between windows: Soonest is the route arriving first if it is within the Craft Check's margin of the cheaper, else the cheaper.
+_Avoid_: slingshot, gravity assist (the planet's gravity does no turning for free here), Oberth route
+
+**Two-Step Route**:
+From a moon's orbit to another planet of its star: a return to the planet's low orbit, a capture there, and the ejection from that orbit at the Transfer Window.
+
 **Daylight**:
 At a landing site, the sun is more than 20° above the horizon there. A daylight landing touches down only in Daylight; a sun lower than that, though up, is not Daylight.
 _Avoid_: lit, sunlit, daytime

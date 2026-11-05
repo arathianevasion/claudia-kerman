@@ -84,8 +84,14 @@ namespace ClaudiaKerman.Core.Tools
         {
             var body = EntryBody(snapshot, target);
             if (body == null || capture) return null;
-            var km = Math.Round(DeorbitBurn.EntryPeriapsisShare * body.AtmosphereHeight / 1000);
+            var km = Math.Round(EntryPe(body) / 1000);
             return "arrival: entry at " + km.ToString("0", CultureInfo.InvariantCulture) + " km, no capture burn";
+        }
+
+        /// <summary>The periapsis altitude, m, of a trip into <paramref name="body"/>'s air: reentry's entry periapsis.</summary>
+        public static double EntryPe(SnapshotBody body)
+        {
+            return DeorbitBurn.EntryPeriapsisShare * body.AtmosphereHeight;
         }
     }
 }

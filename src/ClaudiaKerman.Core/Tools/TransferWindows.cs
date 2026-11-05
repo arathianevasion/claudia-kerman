@@ -170,12 +170,17 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The window the setting takes: Fastest Soonest, Most efficient Optimal, Balanced Soonest unless Optimal saves <see cref="BalancedSaving"/>.</summary>
         public static TransferWindow Pick(WindowSearch search, TimeVersusDeltaV setting)
         {
+            return TakesOptimal(search.Soonest.TotalDv, search.Optimal.TotalDv, setting) ? search.Optimal : search.Soonest;
+        }
+
+        /// <summary>The setting's rule on two totals: whether it takes the cheaper Optimal over Soonest (#760: for routes as for windows).</summary>
+        internal static bool TakesOptimal(double soonestDv, double optimalDv, TimeVersusDeltaV setting)
+        {
             switch (setting)
             {
-                case TimeVersusDeltaV.Fastest: return search.Soonest;
-                case TimeVersusDeltaV.MostEfficient: return search.Optimal;
-                default:
-                    return search.Soonest.TotalDv - search.Optimal.TotalDv >= BalancedSaving * search.Soonest.TotalDv ? search.Optimal : search.Soonest;
+                case TimeVersusDeltaV.Fastest: return false;
+                case TimeVersusDeltaV.MostEfficient: return true;
+                default: return soonestDv - optimalDv >= BalancedSaving * soonestDv;
             }
         }
 
@@ -293,6 +298,13 @@ namespace ClaudiaKerman.Core.Tools
             var y = Minimise(u => problem.Cost(t, tof0 + u * tofStep).TotalDv, Math.Max(-1, (tofStep * 0.1 - tof0) / tofStep), 1);
             var found = problem.Cost(t, tof0 + y * tofStep);
             return found.TotalDv <= c0 ? found : problem.Cost(t, tof0);
+        }
+
+        /// <summary>The cheapest flight time leaving at <paramref name="t"/>, from a flight of about <paramref name="seedTof"/> s: a window moved a little from the one a search found (#760).</summary>
+        internal static TransferWindow CheapestAt(Problem problem, double t, double seedTof)
+        {
+            var hohmann = problem.HohmannTime();
+            return CheapestFlight(problem, t, seedTof, (FlightHigh - FlightLow) * hohmann / (Flights - 1), FlightLow * hohmann);
         }
 
         /// <summary>BrentMin's minimiser of <paramref name="f"/> in [<paramref name="lo"/>, <paramref name="hi"/>] (grid steps), a cell with no path costed <see cref="NoPath"/>.</summary>
@@ -502,7 +514,7 @@ namespace ClaudiaKerman.Core.Tools
             }
 
             /// <summary>A planet's departure asymptote leaving at <paramref name="t"/> on a <paramref name="tof"/> s arc: v-infinity round the craft's planet; null with no path.</summary>
-            private Vec3? Leaving(double t, double tof)
+            internal Vec3? Leaving(double t, double tof)
             {
                 Vec3 r1, v1, r2, v2;
                 Home.State(t, out r1, out v1);
