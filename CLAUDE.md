@@ -1,10 +1,10 @@
-# claudia-kermin
+# claudia-kerman
 
 ## Agent skills
 
 ### Issue tracker
 
-Issues are tracked in GitHub Issues on arathianevasion/claudia-kermin (via `gh`). See `docs/agents/issue-tracker.md`.
+Issues are tracked in GitHub Issues on arathianevasion/claudia-kerman (via `gh`). See `docs/agents/issue-tracker.md`.
 
 Every new issue goes on the **Claudia Kerman** Project (`gh project item-add 1 --owner arathianevasion`), with an **Area** set when it's filed. Triage sets **Priority**. Labels stay the category and the state. The Areas and commands are in `docs/agents/issue-tracker.md`.
 
