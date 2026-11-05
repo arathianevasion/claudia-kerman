@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using ClaudiaKerman.Core.Missions;
@@ -19,8 +20,13 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The home body when <paramref name="target"/> is it and it has air, else null.</summary>
         private static SnapshotBody EntryBody(GameSnapshot snapshot, string target)
         {
-            if (snapshot == null || string.IsNullOrEmpty(target)) return null;
-            return snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, target, StringComparison.OrdinalIgnoreCase)
+            return snapshot == null ? null : EntryBody(snapshot.Bodies, target);
+        }
+
+        private static SnapshotBody EntryBody(IEnumerable<SnapshotBody> bodies, string target)
+        {
+            if (string.IsNullOrEmpty(target)) return null;
+            return bodies.FirstOrDefault(b => string.Equals(b.Name, target, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(b.Name, CraftCheckFlow.HomeBody, StringComparison.OrdinalIgnoreCase) && b.AtmosphereHeight > 0);
         }
 
@@ -28,6 +34,32 @@ namespace ClaudiaKerman.Core.Tools
         public static bool EndsInReentry(GameSnapshot snapshot, string target)
         {
             return EntryBody(snapshot, target) != null;
+        }
+
+        /// <summary>The same from the body table alone, for the Delta-v Map, which has no Game Snapshot.</summary>
+        public static bool EndsInReentry(IEnumerable<SnapshotBody> bodies, string target)
+        {
+            return EntryBody(bodies, target) != null;
+        }
+
+        /// <summary>
+        /// #762: the same with the Mission Plan to read. A trip to any body with air ends in reentry when the plan's next leg there
+        /// comes down through the air (a landing or a reentry, not an aerobrake) with no capture before it (Eve, Laythe). <paramref name="later"/>
+        /// is the plan's legs after the transfer.
+        /// </summary>
+        public static bool EndsInReentry(GameSnapshot snapshot, string target, IEnumerable<PlannedSequence> later)
+        {
+            if (EndsInReentry(snapshot, target)) return true;
+            var body = snapshot == null ? null : SequenceWords.Body(snapshot, target);
+            if (body == null || body.AtmosphereHeight <= 0) return false;
+            foreach (var leg in later)
+            {
+                var words = SequenceWords.ActionWords(leg);
+                if (SequenceWords.Capture.IsMatch(words) || SequenceWords.Aero.IsMatch(words) || SequenceWords.Ascent.IsMatch(words)) return false;
+                if (SequenceWords.Landing.IsMatch(words) || SequenceWords.Reentry.IsMatch(words)) return true;
+                if (SequenceWords.Trip.IsMatch(words)) return false;
+            }
+            return false;
         }
 
         /// <summary>Whether to price the capture: the caller's <paramref name="explicitCapture"/>, else yes unless the trip ends in reentry.</summary>

@@ -49,7 +49,7 @@ The craft is on the ground or the pad (PRELAUNCH, LANDED or SPLASHED): no flight
 _Avoid_: landed (alone, which leaves out PRELAUNCH)
 
 **Delta-v Map**:
-The reference table of delta-v needed for each leg of travel in the Kerbin system, against which a Mission Plan is budgeted.
+The reference table of delta-v needed for each leg of travel between every body, computed from the game's body data, against which a Mission Plan is budgeted.
 _Avoid_: dv chart, cheat sheet
 
 **Maneuver Sequence**:

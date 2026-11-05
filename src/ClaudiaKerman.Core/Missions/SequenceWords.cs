@@ -27,10 +27,32 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>Aerobraking and aerocapture: through the air, but not down to the ground.</summary>
         public static readonly Regex Aero = new Regex(@"\baero ?(brak(e|es|ed|ing)|captur(e|es|ed|ing))\b", RegexOptions.IgnoreCase);
 
+        /// <summary>A capture into orbit at the end of a trip (#757).</summary>
+        public static readonly Regex Capture = new Regex(@"\b(captur(e|es|ed|ing)|circulari[sz](e|es|ed|ing)|insertion)\b", RegexOptions.IgnoreCase);
+        /// <summary>A trip to another body (#757): a transfer, an ejection or a return. The body it goes to is read separately.</summary>
+        public static readonly Regex Trip = new Regex(@"\b(transfer(s|ring)?|eject(s|ion|ing)?|depart(s|ure|ing)?|intercept|return(s|ing)?|(go|fly|head|travel)\s+(back\s+)?to)\b", RegexOptions.IgnoreCase);
+        /// <summary>A trip that passes the body and never stops there (#757).</summary>
+        public static readonly Regex Flyby = new Regex(@"\b(fly ?-?by|flies by|fly past|free return)\b", RegexOptions.IgnoreCase);
+
         /// <summary>The sequence's words, as the matchers read them.</summary>
         public static string Of(PlannedSequence sequence)
         {
             return sequence.Name + " " + sequence.Intent;
+        }
+
+        /// <summary>
+        /// The words the Delta-v Map's leg matching reads (#757): the name when it says what the leg does, else the intent. An intent
+        /// is prose that names what comes next ("Launch ... then circularize", "Return to Duna for the Kerbin transfer"), so it never
+        /// adds to a name that already says.
+        /// </summary>
+        public static string ActionWords(PlannedSequence sequence)
+        {
+            return Acts(sequence.Name) ? sequence.Name : sequence.Intent;
+        }
+
+        private static bool Acts(string words)
+        {
+            return Surface.IsMatch(words) || Trip.IsMatch(words) || Capture.IsMatch(words) || Reentry.IsMatch(words) || Aero.IsMatch(words) || Flyby.IsMatch(words);
         }
 
         /// <summary>The body named first in <paramref name="words"/>, or null for none.</summary>
