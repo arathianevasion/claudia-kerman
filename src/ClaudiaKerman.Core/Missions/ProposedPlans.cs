@@ -95,7 +95,7 @@ namespace ClaudiaKerman.Core.Missions
             };
         }
 
-        /// <summary>A tool result that accepted its plan: <see cref="AcceptedJson"/>, <see cref="GoalKeptJson"/> or either with a note.</summary>
+        /// <summary>A tool result that accepted its plan: <see cref="AcceptedJson"/>, <see cref="GoalKeptJson"/>, or an ok with a leg note (#757).</summary>
         public static bool IsAccepted(string content)
         {
             return content != null && content.StartsWith("{\"ok\":true", System.StringComparison.Ordinal);

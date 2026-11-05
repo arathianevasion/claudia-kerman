@@ -56,7 +56,12 @@ namespace ClaudiaKerman.Core.Tools
             {
                 var words = SequenceWords.ActionWords(leg);
                 if (SequenceWords.Capture.IsMatch(words) || SequenceWords.Aero.IsMatch(words) || SequenceWords.Ascent.IsMatch(words)) return false;
-                if (SequenceWords.Landing.IsMatch(words) || SequenceWords.Reentry.IsMatch(words)) return true;
+                if (SequenceWords.Landing.IsMatch(words) || SequenceWords.Reentry.IsMatch(words))
+                {
+                    // Coming down somewhere else ("Land on Laythe" after a trip to Jool) says nothing of an entry here.
+                    var named = SequenceWords.NamedBody(snapshot, words);
+                    return named == null || named == body;
+                }
                 if (SequenceWords.Trip.IsMatch(words)) return false;
             }
             return false;

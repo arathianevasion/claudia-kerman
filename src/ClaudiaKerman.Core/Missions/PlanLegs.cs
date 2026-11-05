@@ -54,8 +54,8 @@ namespace ClaudiaKerman.Core.Missions
     /// at their budget.
     /// </para>
     /// <para>
-    /// <b>The figure.</b> The Map's, with v/TWR on an airless landing or ascent at the lowest TWR of the stages the leg will burn
-    /// (<see cref="DeltaVMap.Surface"/>). The launch is plan_ascent's figure plus <see cref="LaunchAllowance"/> when the Craft Check made that
+    /// <b>The figure.</b> The Map's, with a gravity loss on an airless landing or ascent at the lowest TWR of the stages the leg will burn
+    /// (<see cref="DeltaVMap.WithGravityLoss"/>). The launch is plan_ascent's figure plus <see cref="LaunchAllowance"/> when the Craft Check made that
     /// call, else the Map's.
     /// </para>
     /// <para>
@@ -105,18 +105,27 @@ namespace ClaudiaKerman.Core.Missions
             return found;
         }
 
-        /// <summary>The note on an accepted propose_mission_plan; "" when no leg is under the Map.</summary>
-        public static string Note(IEnumerable<JudgedLeg> legs)
+        /// <summary>The note on an accepted propose_mission_plan, with the margin by the rule; "" when no leg is under the Map.</summary>
+        public static string Note(GameSnapshot snapshot, IList<JudgedLeg> legs, int wantedPercent)
         {
             var under = legs.Where(l => l.Under).ToList();
-            return under.Count == 0 ? "" : Unders(under) + ". The plan stands. Hand it in again with those budgets, unless you have a reason: then say it in why.";
+            return under.Count == 0 ? "" : Unders(under) + "." + MarginAtLargerFigures(snapshot, legs, wantedPercent)
+                + " The plan stands. Hand it in again with those budgets, unless you have a reason: then say it in why.";
         }
 
-        /// <summary>The line on the Mission Plan card; "" when no leg is under the Map.</summary>
-        public static string CardLine(IEnumerable<JudgedLeg> legs)
+        /// <summary>The line on the Mission Plan card, with the margin by the rule; "" when no leg is under the Map.</summary>
+        public static string CardLine(GameSnapshot snapshot, IList<JudgedLeg> legs, int wantedPercent)
         {
             var under = legs.Where(l => l.Under).ToList();
-            return under.Count == 0 ? "" : "\nWarning: " + Unders(under) + ".";
+            return under.Count == 0 ? "" : "\nWarning: " + Unders(under) + "." + MarginAtLargerFigures(snapshot, legs, wantedPercent);
+        }
+
+        /// <summary>The first margin a plan gets, before any Debrief: each leg at the larger figure, as the Margin check will count it; "" with no delta-v known.</summary>
+        private static string MarginAtLargerFigures(GameSnapshot snapshot, IList<JudgedLeg> legs, int wantedPercent)
+        {
+            if (!snapshot.DeltaVSimulator || snapshot.Stages.Count == 0 || snapshot.DeltaVUnreliable) return "";
+            var bar = MarginBar.Compute(snapshot.Stages.Sum(s => s.DeltaVVac), Need(legs), wantedPercent);
+            return bar == null ? "" : " Each leg at the larger figure: " + bar.Describe();
         }
 
         /// <summary>
@@ -152,6 +161,8 @@ namespace ClaudiaKerman.Core.Missions
             private SnapshotBody _at;
             private bool _grounded;
             private bool _orbiting;
+            /// <summary>The craft starts between bodies, its ejection flown: the first trip only says where to.</summary>
+            private bool _inTransit;
             /// <summary>A trip came here with its capture still to pay, from <see cref="_origin"/>.</summary>
             private bool _captureOwed;
             private SnapshotBody _origin;
@@ -172,6 +183,7 @@ namespace ClaudiaKerman.Core.Missions
                 _at = SequenceWords.Body(snapshot, at);
                 _grounded = snapshot.IsGrounded;
                 _orbiting = snapshot.Situation == "ORBITING";
+                _inTransit = _at != null && !_grounded && ((_at.Sma <= 0 && _at.Name != _map.Home) || (snapshot.Orbit != null && snapshot.Orbit.Eccentricity >= 1));
             }
 
             public List<JudgedLeg> Run()
@@ -202,18 +214,18 @@ namespace ClaudiaKerman.Core.Missions
             {
                 var landing = SequenceWords.Landing.IsMatch(words);
                 var target = Target(words);
-                var goesHome = SequenceWords.ReturnHome.IsMatch(words)
-                    || (SequenceWords.Trip.IsMatch(words) && target != null && target.Name == _map.Home && _at != null && _at.Name != _map.Home);
-                var away = goesHome && landing ? SequenceWords.LegBody(_snapshot, words, _at) : null;
-                // "Land on the Mun and return to Kerbin": down here first, then up and away.
-                if (away != null && away.Name != _map.Home)
+                var trips = SequenceWords.Trip.IsMatch(words) || SequenceWords.ReturnHome.IsMatch(words);
+                var goesHome = trips && target != null && target.Name == _map.Home && _at != null && _at.Name != _map.Home;
+                // "Land on the Mun and return to Kerbin": the landing comes first in the words, so it is down here, then up and away.
+                // "Return and parachute landing": the landing comes after, so it is the entry at home.
+                if (goesHome && landing && SequenceWords.Landing.Match(words).Index < SequenceWords.Trip.Match(words).Index)
                 {
-                    _at = away;
-                    Land(away);
+                    var named = SequenceWords.NamedBody(_snapshot, words);
+                    Land(named != null && named.Name != _map.Home ? named : _at);
                     landing = false;
                 }
                 if (SequenceWords.Ascent.IsMatch(words) || (goesHome && _grounded)) Ascend();
-                var tripped = SequenceWords.Trip.IsMatch(words) && target != null && _at != null && target != _at;
+                var tripped = trips && target != null && _at != null && target != _at;
                 if (tripped) Trip(target, words, landing, index);
                 var captures = SequenceWords.Capture.IsMatch(words) || SequenceWords.Aero.IsMatch(words);
                 if (captures && !tripped && !SequenceWords.Ascent.IsMatch(words)) Capture(target ?? _at, words);
@@ -236,10 +248,10 @@ namespace ClaudiaKerman.Core.Missions
                 }
                 if (first != null) return first;
                 if (SequenceWords.ReturnHome.IsMatch(words)) return SequenceWords.Body(_snapshot, _map.Home);
-                var named = SequenceWords.NamedBody(_snapshot, words);
-                if ((named == null || named == _at) && Regex.IsMatch(words, @"\breturn(s|ing)?\b", RegexOptions.IgnoreCase))
-                    return SequenceWords.Body(_snapshot, _map.Home);
-                return named;
+                // The first body named that isn't where the craft is ("Kerbin-Duna transfer" goes to Duna).
+                var named = SequenceWords.NamedBody(_snapshot, _at == null ? words : Regex.Replace(words, @"\b" + Regex.Escape(_at.Name) + @"\b", " ", RegexOptions.IgnoreCase));
+                if (named == null && SequenceWords.BareReturn.IsMatch(words)) return SequenceWords.Body(_snapshot, _map.Home);
+                return named ?? SequenceWords.NamedBody(_snapshot, words);
             }
 
             private void Ascend()
@@ -258,9 +270,18 @@ namespace ClaudiaKerman.Core.Missions
 
             private void Trip(SnapshotBody target, string words, bool landsHere, int index)
             {
+                // Already on the way (round the star, or escaping): the ejection is flown, and no low orbit is left to price a trip from.
+                if (_inTransit)
+                {
+                    _inTransit = false;
+                    _at = target;
+                    _orbiting = false;
+                    return;
+                }
                 var trip = _map.Trip(_at.Name, target.Name);
                 if (trip == null) return;
-                var id = _at.Name == _map.Home ? "transfer:" + target.Name : target.Name == _map.Home ? "return:" + _at.Name : "transfer:" + _at.Name + ">" + target.Name;
+                var id = _at.Name == _map.Home ? (_map.Leg("transfer:" + target.Name) != null ? "transfer:" + target.Name : "transfer:" + _at.Name + ">" + target.Name)
+                    : target.Name == _map.Home ? "return:" + _at.Name : "transfer:" + _at.Name + ">" + target.Name;
                 var later = _rest.Skip(index + 1).ToList();
                 // The name says, or its own intent does and no later leg names the capture for itself.
                 var named = SequenceWords.Capture.IsMatch(words) || (SequenceWords.Capture.IsMatch(_leg.Sequence.Intent) && !LaterLegNamesCapture(later));
@@ -268,7 +289,9 @@ namespace ClaudiaKerman.Core.Missions
                 var captured = landsHere && target.AtmosphereHeight > 0 && !named ? false : ArrivalRule.Capture(_snapshot, target.Name, explicitCapture, later);
                 var figure = trip.Departure + trip.PlaneChange;
                 _captureOwed = false;
-                if (captured && !named && !landsHere && CaptureComesLater(later))
+                // A budget that holds the whole trip, as the Map's line gives it, has the capture in it, whatever the next leg lands.
+                var budgetHoldsCapture = _leg.Sequence.DeltaV >= (figure + trip.Arrival) * (1 - Tolerance) && !LaterLegNamesCapture(later);
+                if (captured && !named && !landsHere && !budgetHoldsCapture && CaptureComesLater(later))
                 {
                     _captureOwed = true;
                     _origin = _at;
@@ -322,7 +345,8 @@ namespace ClaudiaKerman.Core.Missions
 
             private void Land(SnapshotBody body)
             {
-                if (body == null) return;
+                // Already down: "Run the crew report on the landed pod" lands nothing.
+                if (body == null || _grounded) return;
                 if (_captureOwed && body == _at && body.AtmosphereHeight <= 0)
                     Capture(body, "");
                 _captureOwed = false;
@@ -340,7 +364,7 @@ namespace ClaudiaKerman.Core.Missions
                 var leg = _map.Leg(id);
                 if (leg == null) return;
                 var from = _used + _leg.Figure;
-                Add(id, _map.Surface(id, MarginCheck.LowestTwr(_snapshot, body, from, from + Math.Max(1, leg.DeltaV))));
+                Add(id, _map.WithGravityLoss(id, MarginCheck.LowestTwr(_snapshot, body, from, from + Math.Max(1, leg.DeltaV))));
             }
 
             private void Add(string id, double figure)

@@ -30,7 +30,9 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>A capture into orbit at the end of a trip (#757).</summary>
         public static readonly Regex Capture = new Regex(@"\b(captur(e|es|ed|ing)|circulari[sz](e|es|ed|ing)|insertion)\b", RegexOptions.IgnoreCase);
         /// <summary>A trip to another body (#757): a transfer, an ejection or a return. The body it goes to is read separately.</summary>
-        public static readonly Regex Trip = new Regex(@"\b(transfer(s|ring)?|eject(s|ion|ing)?|depart(s|ure|ing)?|intercept|return(s|ing)?|(go|fly|head|travel)\s+(back\s+)?to)\b", RegexOptions.IgnoreCase);
+        public static readonly Regex Trip = new Regex(@"\b(transfer(s|ring)?|eject(s|ion|ing)?|inject(s|ion|ing)?|depart(s|ure|ing)?|intercept|return(s|ing)?|(go|fly|head|travel)\s+(back\s+)?to)\b", RegexOptions.IgnoreCase);
+        /// <summary>A return that names nowhere to return to: home (#757).</summary>
+        public static readonly Regex BareReturn = new Regex(@"\breturn(s|ing)?\b", RegexOptions.IgnoreCase);
         /// <summary>A trip that passes the body and never stops there (#757).</summary>
         public static readonly Regex Flyby = new Regex(@"\b(fly ?-?by|flies by|fly past|free return)\b", RegexOptions.IgnoreCase);
 
@@ -52,7 +54,7 @@ namespace ClaudiaKerman.Core.Missions
 
         private static bool Acts(string words)
         {
-            return Surface.IsMatch(words) || Trip.IsMatch(words) || Capture.IsMatch(words) || Reentry.IsMatch(words) || Aero.IsMatch(words) || Flyby.IsMatch(words);
+            return Surface.IsMatch(words) || Trip.IsMatch(words) || ReturnHome.IsMatch(words) || Capture.IsMatch(words) || Reentry.IsMatch(words) || Aero.IsMatch(words) || Flyby.IsMatch(words);
         }
 
         /// <summary>The body named first in <paramref name="words"/>, or null for none.</summary>

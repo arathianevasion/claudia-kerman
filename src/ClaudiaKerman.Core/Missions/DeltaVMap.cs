@@ -35,8 +35,12 @@ namespace ClaudiaKerman.Core.Missions
     /// Plan is budgeted. Computed from body data (patched-conic Hohmann transfers between low orbits, plus a simple ascent-loss allowance)
     /// rather than copied from community charts, so it follows whatever planet pack the game runs. The figures carry no margin; the Craft
     /// Check adds it. A trip's plane change is priced at the transfer's apoapsis, its slower end. A return home is priced to an entry where
-    /// <see cref="ArrivalRule"/> says the trip ends in one. <see cref="PlanLegs"/> matches a Mission Plan's Maneuver Sequences to these
-    /// legs by their words and position, and judges each budget against the figure at its tolerance: it states both rules.
+    /// <see cref="ArrivalRule"/> says the trip ends in one.
+    /// <para>
+    /// Matching and tolerance (<see cref="PlanLegs"/> has the whole rule): each Maneuver Sequence is matched to the legs its name (or, when the
+    /// name says nothing a leg does, its intent) describes, in plan order from where the craft is; a budget more than 10% and 25 m/s under
+    /// their figure is a <c>leg_under_map</c> Warning; the margin counts each leg at the larger of its budget and its figure.
+    /// </para>
     /// </summary>
     public sealed class DeltaVMap
     {
@@ -46,6 +50,11 @@ namespace ClaudiaKerman.Core.Missions
         private const double ThickAirLossPerAtm = 0.25;
         /// <summary>The same without an atmosphere.</summary>
         private const double AirlessAscentLoss = 0.1;
+        /// <summary>
+        /// Over the craft's thrust over weight, on top of <see cref="AirlessAscentLoss"/>, an airless landing's or ascent's loss: fitted to flown legs at
+        /// TWR 5 to 8, the Mun's +11% to +19% and Ike's ascent's +13%, and untested below that.
+        /// </summary>
+        private const double GravityLossOverTwr = 0.4;
         /// <summary>Low orbit above an atmosphere clears it by this much (m).</summary>
         private const double AtmosphereClearance = 10000;
         /// <summary>Low orbit round an airless body, as a fraction of its radius above the surface.</summary>
@@ -260,17 +269,17 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
-        /// A landing's or an ascent's figure with the craft's thrust over weight there: on an airless body the leg's figure plus v/TWR,
-        /// gravity acting for the whole burn, the upper bound on the loss (a TWR under 1 counts as 1). With no TWR known, or on a body
+        /// A landing's or an ascent's figure with the craft's thrust over weight there: on an airless body the leg's figure times
+        /// 1 + <see cref="AirlessAscentLoss"/> + <see cref="GravityLossOverTwr"/>/TWR (a TWR under 1 counts as 1). With no TWR known, or on a body
         /// with air (whose allowance already holds gravity and drag), the leg's own figure. 0 for a leg the Map doesn't have.
         /// </summary>
-        public double Surface(string id, double? twr)
+        public double WithGravityLoss(string id, double? twr)
         {
             var leg = Leg(id);
             if (leg == null) return 0;
             var body = _bodies.FirstOrDefault(b => b.Name == leg.Bodies.FirstOrDefault());
             if (body == null || body.AtmosphereHeight > 0 || !twr.HasValue || twr.Value <= 0) return leg.DeltaV;
-            return leg.DeltaV * (1 + 1 / Math.Max(1, twr.Value));
+            return leg.DeltaV * (1 + AirlessAscentLoss + GravityLossOverTwr / Math.Max(1, twr.Value));
         }
 
         /// <summary>The ascent loss with air: <see cref="AtmosphericAscentLoss"/>, and more where the air is thicker than Kerbin's.</summary>

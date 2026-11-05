@@ -37,7 +37,7 @@ A Craft Check finding that prevents the Mission from starting; it cannot be over
 _Avoid_: error, hard fail
 
 **Warning**:
-A Craft Check finding the player must acknowledge before the Mission starts.
+A Craft Check finding the player must acknowledge before the Mission starts. Once a Mission Plan exists the mod also reports a Warning that a Maneuver Sequence's budget is under the Delta-v Map; that one is shown, not acknowledged.
 _Avoid_: soft fail, notice
 
 **Game Snapshot**:

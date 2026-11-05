@@ -39,7 +39,8 @@ namespace ClaudiaKerman.Core.Missions
     /// monopropellant are measured against what is left to fly; and the Craft Check findings the mod can decide in code join them.
     /// The level is the worst of them. Findings the start Craft Check already raised and the player acknowledged (no generation,
     /// a low landing TWR, a margin under 25%, a manual stretch with no other crew) are reported but leave the level as it is, so
-    /// that only what has changed since makes the margin tight or short. An unreliable delta-v reading (#234) is not judged.
+    /// that only what has changed since makes the margin tight or short. An unreliable delta-v reading (#234) is not judged. Delta-v counts each
+    /// leg at the larger of its budget and the Delta-v Map's figure (#757, <see cref="PlanLegs"/>); a leg under the Map is also reported, and sets no level.
     /// </summary>
     internal sealed class MarginCheck
     {

@@ -1889,8 +1889,7 @@ namespace ClaudiaKerman.Core.Missions
             // As MissionLogRebuild does with the plan's card, so a load has the same steps.
             mission.GoalSteps = GoalSteps.Replace(mission.GoalSteps, plan.GoalSteps);
             // #757: the Craft Check ran before there was a plan, so the plan's own legs are judged against the Delta-v Map here.
-            var legs = _snapshot == null ? new List<JudgedLeg>() : PlanLegs.Judge(_snapshot, plan.Sequences.Skip(StepsBegun(mission)).ToList(), mission.PlannedAscent);
-            var underMap = PlanLegs.CardLine(legs);
+            var underMap = _snapshot == null ? "" : PlanLegs.CardLine(_snapshot, PlanLegs.Judge(_snapshot, RestOfPlan(mission), mission.PlannedAscent), _config.CraftCheckMarginPercent);
             if (underMap.Length > 0) Event(mission, "leg_under_map", underMap.Trim());
             AddCard(mission, LogKind.MissionPlan, "Mission Plan", MissionCards.MissionPlanBody(plan, mission.VesselName) + underMap, plan.Why);
             PlanNews("Claudia has a Mission Plan for your Approval.");

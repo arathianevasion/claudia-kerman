@@ -73,7 +73,7 @@ namespace ClaudiaKerman.Core.Tests
         public void TheFindingsFigureIsCaptureAndLandingWithTheStagesGravityLoss()
         {
             var ike = Named(PlanLegs.Judge(Pad(), IkePlan(), PlannedAscent), "Capture at Ike and land");
-            // Capture about 178 and landing about 390 with v/TWR on top: the last stage's TWR at Ike is about 8.5, so 436. 771 was flown.
+            // Capture about 178 and landing about 390 with its gravity loss on top: the last stage's TWR at Ike is about 8.5, so 447. 771 was flown.
             Assert.InRange(ike.Figure, 600, 630);
             Assert.True(ike.Under);
         }
@@ -90,7 +90,8 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("ascend:Ike", Named(legs, "Ascend from Ike").Legs);
             Assert.Equal("return:Ike", Named(legs, "Transfer to Kerbin").Legs);
             Assert.False(Named(legs, "Crew report on Ike").Matched);
-            Assert.Single(legs, l => l.Under);
+            // The ascent too: 400 budgeted against about 447, and 442 was flown.
+            Assert.Equal(new[] { "Capture at Ike and land", "Ascend from Ike" }, legs.Where(l => l.Under).Select(l => l.Sequence.Name).ToArray());
         }
 
         [Fact]
@@ -198,6 +199,8 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(ArrivalRule.EndsInReentry(snapshot, "Laythe", new[] { Leg("Crew report", 0), Leg("Reentry at Laythe", 0) }));
             Assert.False(ArrivalRule.EndsInReentry(snapshot, "Eve", new[] { Leg("Capture at Eve", 1400), Leg("Land on Eve", 0) }));
             Assert.False(ArrivalRule.EndsInReentry(snapshot, "Eve", new[] { Leg("Aerobrake at Eve", 0) }));
+            // Coming down at a moon says nothing of an entry at its planet.
+            Assert.False(ArrivalRule.EndsInReentry(snapshot, "Jool", new[] { Leg("Land on Laythe", 0) }));
             // Airless: there is nothing to enter.
             Assert.False(ArrivalRule.EndsInReentry(snapshot, "Dres", new[] { Leg("Land on Dres", 0) }));
             Assert.True(ArrivalRule.EndsInReentry(snapshot, "Kerbin", new PlannedSequence[0]));
@@ -394,9 +397,79 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void TheNoteIsThePlansUnderLegsAndEmptyWhenThereAreNone()
         {
-            var note = PlanLegs.Note(PlanLegs.Judge(Pad(), IkePlan(), PlannedAscent));
+            var note = PlanLegs.Note(Pad(), PlanLegs.Judge(Pad(), IkePlan(), PlannedAscent), 15);
             Assert.Contains("Capture at Ike and land", note);
-            Assert.Equal("", PlanLegs.Note(PlanLegs.Judge(Pad(), new List<PlannedSequence> { Leg("Launch to orbit", 3600) }, PlannedAscent)));
+            // The first margin the plan gets, by the same rule.
+            Assert.Contains("Each leg at the larger figure: 7,871 m/s left against", note);
+            Assert.Equal("", PlanLegs.Note(Pad(), PlanLegs.Judge(Pad(), new List<PlannedSequence> { Leg("Launch to orbit", 3600) }, PlannedAscent), 15));
+        }
+
+        [Fact]
+        public void ACrewReportOnALandedCraftLandsNothing()
+        {
+            var legs = PlanLegs.Judge(Pad(), new List<PlannedSequence>
+            {
+                Leg("Launch to orbit", 3400),
+                Leg("Transfer to Mun and capture", 1170),
+                Leg("Land on the Mun", 700),
+                Leg("Crew report on the Mun", 0, "Run the crew report experiment on the landed Mk1 pod."),
+            }, "");
+            Assert.False(legs[3].Matched);
+        }
+
+        [Fact]
+        public void AReturnAndParachuteLandingFromOrbitIsTheReturnAloneAndTheEntryIsFree()
+        {
+            var snapshot = Pad();
+            snapshot.Situation = "ORBITING";
+            snapshot.Body = "Mun";
+            var legs = PlanLegs.Judge(snapshot, new List<PlannedSequence> { Leg("Return and parachute landing", 300) }, "");
+            Assert.Equal("return:Mun", legs[0].Legs);
+            Assert.InRange(legs[0].Figure, 290, 330);
+        }
+
+        [Fact]
+        public void APlanThatFollowsTheMapsLineRaisesNothing()
+        {
+            var legs = PlanLegs.Judge(Pad(), new List<PlannedSequence>
+            {
+                Leg("Launch to orbit", 3420),
+                Leg("Transfer to the Mun", 1170),
+                Leg("Land on the Mun", 720),
+            }, "");
+            Assert.Equal("land:Mun", legs[2].Legs);
+            Assert.DoesNotContain(legs, l => l.Under);
+        }
+
+        [Fact]
+        public void ATripFromBetweenBodiesPricesNoEjection()
+        {
+            var snapshot = Pad();
+            snapshot.Situation = "ORBITING";
+            snapshot.Body = "Sun";
+            var legs = PlanLegs.Judge(snapshot, new List<PlannedSequence> { Leg("Transfer to Duna", 10), Leg("Capture at Duna", 620) }, "");
+            Assert.False(legs[0].Matched);
+            Assert.Equal("capture:Duna", legs[1].Legs);
+
+            var escaping = Pad();
+            escaping.Situation = "ESCAPING";
+            escaping.Orbit = new SnapshotOrbit { Body = "Kerbin", Eccentricity = 1.2 };
+            Assert.False(PlanLegs.Judge(escaping, new List<PlannedSequence> { Leg("Transfer to Duna", 10) }, "")[0].Matched);
+        }
+
+        [Fact]
+        public void TheWordingsARealPlanUsesAreRead()
+        {
+            var inOrbit = Pad();
+            inOrbit.Situation = "ORBITING";
+            Assert.Equal("transfer:Mun", PlanLegs.Judge(inOrbit, new List<PlannedSequence> { Leg("Trans-Mun injection and capture", 1170) }, "")[0].Legs);
+            Assert.Equal("transfer:Duna", PlanLegs.Judge(inOrbit, new List<PlannedSequence> { Leg("Kerbin-Duna transfer", 1100) }, "")[0].Legs);
+            var atMun = Pad();
+            atMun.Situation = "ORBITING";
+            atMun.Body = "Mun";
+            Assert.Equal("return:Mun", PlanLegs.Judge(atMun, new List<PlannedSequence> { Leg("Come home", 310) }, "")[0].Legs);
+            // The Map has no direct leg from home to a moon of another planet, so the label says which trip it priced.
+            Assert.Equal("transfer:Kerbin>Ike", PlanLegs.Judge(inOrbit, new List<PlannedSequence> { Leg("Transfer to Ike", 1200) }, "")[0].Legs);
         }
 
         private static ToolUseBlock PlanCall()

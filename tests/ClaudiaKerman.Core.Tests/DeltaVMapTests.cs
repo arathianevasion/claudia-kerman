@@ -232,11 +232,11 @@ namespace ClaudiaKerman.Core.Tests
         {
             var map = DeltaVMap.Compute(StockSystem(), "Kerbin");
             var land = map.Leg("land:Ike").DeltaV;
-            // v/TWR: gravity acting for the whole burn, the upper bound. TWR 5 is 20% on top; under 1 counts as 1; none known leaves the figure.
-            Assert.Equal(land * 1.2, map.Surface("land:Ike", 5), 6);
-            Assert.Equal(land * 2, map.Surface("land:Ike", 0.5), 6);
-            Assert.Equal(land, map.Surface("land:Ike", null), 6);
-            Assert.Equal(map.Leg("ascend:Duna").DeltaV, map.Surface("ascend:Duna", 5), 6);
+            // 10% and 0.4/TWR: TWR 5 is 18% on top; under 1 counts as 1; none known leaves the figure.
+            Assert.Equal(land * 1.18, map.WithGravityLoss("land:Ike", 5), 6);
+            Assert.Equal(land * 1.5, map.WithGravityLoss("land:Ike", 0.5), 6);
+            Assert.Equal(land, map.WithGravityLoss("land:Ike", null), 6);
+            Assert.Equal(map.Leg("ascend:Duna").DeltaV, map.WithGravityLoss("ascend:Duna", 5), 6);
         }
 
         [Fact]
