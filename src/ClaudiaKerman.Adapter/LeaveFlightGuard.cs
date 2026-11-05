@@ -13,7 +13,7 @@ namespace ClaudiaKerman.Adapter
     /// Leaving Flight while a Maneuver Sequence is Running cuts its script off, so the player is asked first.
     /// A prefix on <c>HighLogic.LoadScene</c> holds the change and shows a dialog; Leave marks the sequence
     /// interrupted (the core does that when the scene changes) and repeats the change; to the Space Center or the Tracking Station on a coast that passes the safety
-    /// test, Leave is a Coast Checkpoint instead (#777), recorded before the change. Other scene loads,
+    /// test, Leave is a Coast Checkpoint instead (#777), recorded before the change. A revert to the VAB or SPH (a load of the editor) shows no dialog. Other scene loads,
     /// and leaving Flight when nothing is running, pass straight through.
     /// </summary>
     [KSPAddon(KSPAddon.Startup.MainMenu, true)]
