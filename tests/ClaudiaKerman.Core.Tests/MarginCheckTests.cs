@@ -55,7 +55,8 @@ namespace ClaudiaKerman.Core.Tests
 
             Assert.Equal(MarginLevel.Enough, check.Level);
             Assert.Empty(check.Findings);
-            Assert.Equal("3,904 m/s left against 2,850 m/s still to fly (+37%; 15% wanted): enough.", check.Line());
+            // #757: 2,850 budgeted, 2,889 with each leg at the larger of its budget and the Delta-v Map's figure.
+            Assert.Equal("3,904 m/s left against 2,889 m/s still to fly (+35%; 15% wanted): enough.", check.Line());
         }
 
         [Fact]
@@ -128,12 +129,14 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("twr_below_one", Codes(check));
             Assert.Contains("Mun", check.Findings.Single(f => f.Code == "twr_below_one").Explanation);
 
-            // At 14 kN it is 1.38: a Warning, which the start Craft Check already raised and the player acknowledged.
+            // At 14 kN it is 1.38: a Warning, which the start Craft Check already raised and the player acknowledged. The same
+            // stage's gravity loss now also counts (#757): the landing's budget is under the Delta-v Map and the margin is tight.
             var low = InKerbinOrbit();
             low.Stages[1].ThrustVacKn = 14;
             check = Check(low, MunLandingAndReturn());
-            Assert.Equal(MarginLevel.Enough, check.Level);
-            Assert.Equal(new[] { "landing_twr_low" }, Codes(check));
+            Assert.Equal(MarginLevel.Tight, check.Level);
+            Assert.Contains("landing_twr_low", Codes(check));
+            Assert.Contains(CraftCheckRules.LegUnderMap, Codes(check));
         }
 
         [Fact]
@@ -306,7 +309,7 @@ namespace ClaudiaKerman.Core.Tests
 
             var text = Check(InKerbinOrbit(), rest).Text();
 
-            Assert.StartsWith("The mod's margin check (the craft as it is now against the Maneuver Sequences still to fly): 3,904 m/s left against 3,500 m/s still to fly", text);
+            Assert.StartsWith("The mod's margin check (the craft as it is now against the Maneuver Sequences still to fly): 3,904 m/s left against 3,539 m/s still to fly", text);
             Assert.Contains("Blocker: Not enough delta-v", text);
         }
 

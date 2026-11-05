@@ -69,6 +69,12 @@ namespace ClaudiaKerman.Core.Missions
     /// against the fixed Blocker and Warning lists; the mod turns her findings into Pass, Pass with Warnings or Fail.
     /// It is a request of its own, outside any Mission (the Mission does not exist until the check lets it start),
     /// and it never changes the craft. <see cref="MissionControl"/> owns one and routes its inputs here.
+    /// <para>
+    /// #757: it runs before any Mission Plan exists, so it judges the route from the Map for the bodies the Mission Goal names. Each Maneuver
+    /// Sequence is judged once there is a plan: <see cref="PlanLegs"/> matches it to its Map legs by its words and its place in the plan, and a
+    /// budget more than 10% and 25 m/s under their figure is a <c>leg_under_map</c> Warning, on propose_mission_plan's answer and the plan's
+    /// card, and at each Margin check. The margin counts each leg at the larger of its budget and the figure, and the margin recheck is told so.
+    /// </para>
     /// </summary>
     internal sealed partial class CraftCheckFlow
     {

@@ -118,8 +118,10 @@ namespace ClaudiaKerman.Core.Tests
         {
             var snapshot = Craft();
 
-            // The legs alone leave a healthy margin; only the finish's own delta-v takes it away.
-            var plan = Plan(3500, 100, 0);
+            // The legs alone leave a healthy margin; only the finish's own delta-v takes it away. The return is a reentry alone, as #757
+            // counts an ascent and return at the Delta-v Map's figure, and this craft hasn't that as well.
+            var plan = Plan(3500, 100, 0).Take(2).ToList();
+            plan.Add(new PlannedSequence { Name = "Reentry at Kerbin", Intent = "Reenter Kerbin and land under parachute." });
             Assert.True(FinishSpeed(snapshot, plan) > 304);
 
             var check = MarginCheck.Of(snapshot, plan, 5, 10, false, null, ChuteAllocation.Of(snapshot, plan, 0, false, null), Home, 0);
@@ -154,26 +156,27 @@ namespace ClaudiaKerman.Core.Tests
         public void TheFinishesDeltaVJoinsTheMarginsNeed()
         {
             var snapshot = Craft();
-            var plan = Plan(1800, 100, 1000);
+            // Budgets over the Delta-v Map's figures (#757), so each leg counts at its budget.
+            var plan = Plan(1800, 100, 2000);
             var need = FinishSpeed(snapshot, plan);
 
             var without = MarginCheck.Of(snapshot, plan, 15, 10, false, null);
             var with = Check(snapshot, plan, Home);
 
-            Assert.Equal(2900, without.Margin.RestOfPlan, 3);
-            Assert.Equal(2900 + need, with.Margin.RestOfPlan, 3);
+            Assert.Equal(3900, without.Margin.RestOfPlan, 3);
+            Assert.Equal(3900 + need, with.Margin.RestOfPlan, 3);
         }
 
         [Fact]
         public void AnEngineerRepackingTheChutesTurnsTheBlockerIntoAWarningThatSaysSo()
         {
-            var check = Check(Craft(), Plan(3800, 100, 1000), Repack);
+            var check = Check(Craft(), Plan(3800, 100, 2000), Repack);
 
             var finding = Assert.Single(check.Findings, f => f.Code.StartsWith("chutes_"));
             Assert.Equal("chutes_thin_for_landing", finding.Code);
             Assert.Equal(CraftFindingSeverity.Warning, finding.Severity);
             Assert.Contains("relies on a repack at Duna", finding.Explanation);
-            Assert.Equal(4900, check.Margin.RestOfPlan, 3);
+            Assert.Equal(5900, check.Margin.RestOfPlan, 3);
         }
 
         [Fact]

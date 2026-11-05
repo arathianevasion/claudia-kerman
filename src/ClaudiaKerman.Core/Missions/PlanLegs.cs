@@ -49,8 +49,9 @@ namespace ClaudiaKerman.Core.Missions
     /// a landing (<c>land:Body</c>, and on a body with air only from low orbit, as a landing off a trip is the entry itself). A landing that
     /// also returns home adds the ascent between them. The trip's capture is priced by <see cref="ArrivalRule"/> with the plan to read, so a
     /// return home or a Mission that comes down at Eve pays none; a flyby and an aerocapture pay none. A capture that is owed falls to the
-    /// next leg that captures or lands, else to the trip itself. Manual legs and a Child Vessel's legs are not judged, and neither is a leg
-    /// with no matching words; they count at their budget.
+    /// next leg that names one, else the next that lands (unless the trip's own intent says it captures), else the trip itself. Manual legs,
+    /// a Child Vessel's legs and legs a revised plan lists as flown are not judged, and neither is a leg with no matching words; they count
+    /// at their budget.
     /// </para>
     /// <para>
     /// <b>The figure.</b> The Map's, with v/TWR on an airless landing or ascent at the lowest TWR of the stages the leg will burn
@@ -201,7 +202,8 @@ namespace ClaudiaKerman.Core.Missions
             {
                 var landing = SequenceWords.Landing.IsMatch(words);
                 var target = Target(words);
-                var goesHome = SequenceWords.ReturnHome.IsMatch(words) || (target != null && target.Name == _map.Home && _at != null && _at.Name != _map.Home);
+                var goesHome = SequenceWords.ReturnHome.IsMatch(words)
+                    || (SequenceWords.Trip.IsMatch(words) && target != null && target.Name == _map.Home && _at != null && _at.Name != _map.Home);
                 var away = goesHome && landing ? SequenceWords.LegBody(_snapshot, words, _at) : null;
                 // "Land on the Mun and return to Kerbin": down here first, then up and away.
                 if (away != null && away.Name != _map.Home)
@@ -260,7 +262,8 @@ namespace ClaudiaKerman.Core.Missions
                 if (trip == null) return;
                 var id = _at.Name == _map.Home ? "transfer:" + target.Name : target.Name == _map.Home ? "return:" + _at.Name : "transfer:" + _at.Name + ">" + target.Name;
                 var later = _rest.Skip(index + 1).ToList();
-                var named = SequenceWords.Capture.IsMatch(words);
+                // The name says, or its own intent does and no later leg names the capture for itself.
+                var named = SequenceWords.Capture.IsMatch(words) || (SequenceWords.Capture.IsMatch(_leg.Sequence.Intent) && !LaterLegNamesCapture(later));
                 bool? explicitCapture = SequenceWords.Flyby.IsMatch(words) || SequenceWords.Aero.IsMatch(words) ? false : named ? true : (bool?)null;
                 var captured = landsHere && target.AtmosphereHeight > 0 && !named ? false : ArrivalRule.Capture(_snapshot, target.Name, explicitCapture, later);
                 var figure = trip.Departure + trip.PlaneChange;
@@ -285,6 +288,18 @@ namespace ClaudiaKerman.Core.Missions
                     var words = SequenceWords.ActionWords(leg);
                     if (SequenceWords.Capture.IsMatch(words) || SequenceWords.Aero.IsMatch(words) || SequenceWords.Landing.IsMatch(words)) return true;
                     if (SequenceWords.Ascent.IsMatch(words) || SequenceWords.Trip.IsMatch(words)) return false;
+                }
+                return false;
+            }
+
+            /// <summary>The next leg that does anything names a capture.</summary>
+            private static bool LaterLegNamesCapture(IEnumerable<PlannedSequence> later)
+            {
+                foreach (var leg in later)
+                {
+                    var words = SequenceWords.ActionWords(leg);
+                    if (SequenceWords.Capture.IsMatch(words) || SequenceWords.Aero.IsMatch(words)) return true;
+                    if (SequenceWords.Landing.IsMatch(words) || SequenceWords.Ascent.IsMatch(words) || SequenceWords.Trip.IsMatch(words)) return false;
                 }
                 return false;
             }

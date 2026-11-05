@@ -56,14 +56,18 @@ namespace ClaudiaKerman.Core.Missions
         /// is what the run just flown used (null when unknown, or for a manual stretch): each leg still to fly is taken to need as much.
         /// </summary>
         public static MarginCheck Of(GameSnapshot snapshot, IList<PlannedSequence> rest, int wantedPercent, int chargePercent, bool remote, double? monopropellantUsed,
-            ChuteAllocation chutes = null, string goal = "", int firstStep = 0)
+            ChuteAllocation chutes = null, string goal = "", int firstStep = 0, string plannedAscent = "")
         {
             var check = new MarginCheck();
             if (rest.Count == 0) return check;
             var repack = RepackPlan.IsPlanned(goal);
             var finishes = Finishes(chutes);
+            // #757: each leg counts at the larger of its budget and the Delta-v Map's figure (PlanLegs states the rule).
+            var legs = PlanLegs.Judge(snapshot, rest, plannedAscent);
             // A goal that has an Engineer repack the chutes reuses them: the finish it would need is a Warning, not delta-v to carry.
-            check.DeltaV(snapshot, rest, wantedPercent, repack ? new List<EntryChutes>() : finishes);
+            check.DeltaV(snapshot, PlanLegs.Need(legs), wantedPercent, repack ? new List<EntryChutes>() : finishes);
+            // A Warning to see, not a level: the margin above already counts the larger figure, and only a margin that falls pays for a recheck.
+            foreach (var finding in PlanLegs.Findings(legs)) check.Findings.Add(finding);
             check.Chutes(snapshot, rest, chutes, finishes, repack, firstStep);
             check.Thrust(snapshot, rest);
             check.Charge(snapshot, chargePercent);
@@ -72,16 +76,16 @@ namespace ClaudiaKerman.Core.Missions
             return check;
         }
 
-        private void DeltaV(GameSnapshot snapshot, IList<PlannedSequence> rest, int wantedPercent, IList<EntryChutes> finishes)
+        private void DeltaV(GameSnapshot snapshot, double need, int wantedPercent, IList<EntryChutes> finishes)
         {
             DeltaVUnknown = UnknownDeltaV(snapshot);
             if (DeltaVUnknown.Length > 0) return;
-            Margin = MarginBar.Compute(snapshot.Stages.Sum(s => s.DeltaVVac), rest.Sum(s => s.DeltaV) + finishes.Sum(e => e.TouchdownSpeed), wantedPercent);
+            Margin = MarginBar.Compute(snapshot.Stages.Sum(s => s.DeltaVVac), need + finishes.Sum(e => e.TouchdownSpeed), wantedPercent);
             if (Margin == null) return;
             if (Margin.Level != MarginLevel.Enough)
             {
                 // A shortfall that only the powered finishes cause is the Chute finding's (it names the finish): one finding, not two.
-                var legs = MarginBar.Compute(snapshot.Stages.Sum(s => s.DeltaVVac), rest.Sum(s => s.DeltaV), wantedPercent);
+                var legs = MarginBar.Compute(snapshot.Stages.Sum(s => s.DeltaVVac), need, wantedPercent);
                 if (finishes.Count > 0 && legs != null && legs.Level == MarginLevel.Enough) return;
                 Add("delta_v_short", Margin.Level, Margin.Describe().TrimEnd('.'));
                 return;

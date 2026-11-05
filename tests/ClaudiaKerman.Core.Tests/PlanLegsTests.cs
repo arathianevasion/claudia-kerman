@@ -230,6 +230,38 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void ATripWhoseIntentCapturesKeepsTheCaptureUnlessALaterLegNamesIt()
+        {
+            var inIntent = PlanLegs.Judge(Pad(), new List<PlannedSequence>
+            {
+                Leg("Launch to orbit", 3400),
+                Leg("Duna transfer", 1700, "Transfer to Duna and capture into low Duna orbit."),
+                Leg("Land on Duna", 100),
+            }, "");
+            Assert.InRange(inIntent[1].Figure, 1650, 1750);
+            Assert.Equal("land:Duna", inIntent[2].Legs);
+
+            var named = PlanLegs.Judge(Pad(), new List<PlannedSequence>
+            {
+                Leg("Launch to orbit", 3400),
+                Leg("Duna transfer", 1100, "Transfer to Duna and capture on the next leg."),
+                Leg("Capture at Duna", 620),
+            }, "");
+            Assert.InRange(named[1].Figure, 1050, 1100);
+            Assert.Equal("capture:Duna", named[2].Legs);
+        }
+
+        [Fact]
+        public void AReentryThatNamesHomeIsNoTripHome()
+        {
+            var snapshot = Pad();
+            snapshot.Situation = "LANDED";
+            snapshot.Body = "Duna";
+            var legs = PlanLegs.Judge(snapshot, new List<PlannedSequence> { Leg("Reentry at Kerbin", 0) }, "");
+            Assert.False(legs[0].Matched);
+        }
+
+        [Fact]
         public void ALegThatDoesItAllAddsItsPieces()
         {
             var snapshot = Pad();
@@ -282,6 +314,81 @@ namespace ClaudiaKerman.Core.Tests
                 Leg("Transfer to Mun", 10, "Done: ejected onto a Mun encounter."),
             }, "");
             Assert.All(legs, l => Assert.False(l.Matched));
+        }
+
+        /// <summary>After the Duna capture, in low orbit round Duna: what the Margin check would have seen before "Transfer to Ike".</summary>
+        private static GameSnapshot AtDuna()
+        {
+            var snapshot = Pad();
+            snapshot.Situation = "ORBITING";
+            snapshot.Body = "Duna";
+            snapshot.Stages.RemoveAll(s => s.Number > 3);
+            snapshot.Craft.Parts.Add(new SnapshotPart { Name = "solarPanel", Tags = new List<string> { "electric_generator" } });
+            return snapshot;
+        }
+
+        private static List<PlannedSequence> RestAtDuna()
+        {
+            return IkePlan().Skip(3).ToList();
+        }
+
+        [Fact]
+        public void TheMarginCheckCountsEachLegAtTheLargerFigureAndRaisesTheFinding()
+        {
+            var check = MarginCheck.Of(AtDuna(), RestAtDuna(), 15, 10, false, null);
+
+            var need = PlanLegs.Need(PlanLegs.Judge(AtDuna(), RestAtDuna(), ""));
+            Assert.True(need > RestAtDuna().Sum(s => s.DeltaV));
+            Assert.Equal(need, check.Margin.RestOfPlan, 3);
+            var finding = Assert.Single(check.Findings, f => f.Code == CraftCheckRules.LegUnderMap);
+            Assert.Contains("Capture at Ike and land", finding.Explanation);
+        }
+
+        [Fact]
+        public void ALegUnderTheMapDoesNotOnItsOwnMakeTheMarginTight()
+        {
+            // A Warning to see, not a paid recheck: 3,621 m/s against the larger figures still clears the 15% margin.
+            var check = MarginCheck.Of(AtDuna(), RestAtDuna(), 15, 10, false, null);
+            Assert.Contains(check.Findings, f => f.Code == CraftCheckRules.LegUnderMap);
+            Assert.Equal(MarginLevel.Enough, check.Level);
+        }
+
+        [Fact]
+        public void TheLargerFiguresCanMakeTheMarginShortWhereTheBudgetsWouldNot()
+        {
+            var snapshot = AtDuna();
+            var budgets = RestAtDuna().Sum(s => s.DeltaV);
+            var need = PlanLegs.Need(PlanLegs.Judge(snapshot, RestAtDuna(), ""));
+            // Between the two totals: enough delta-v for the budgets, not for what the Map says they will fly.
+            var left = (budgets + need) / 2;
+            snapshot.Stages.Clear();
+            snapshot.Stages.Add(new SnapshotStage { Number = 2, DeltaVVac = left, ThrustVacKn = 60, StartMassT = 6.4, EndMassT = 3 });
+
+            var check = MarginCheck.Of(snapshot, RestAtDuna(), 15, 10, false, null);
+
+            Assert.Equal(MarginLevel.Short, check.Level);
+            Assert.Contains(check.Findings, f => f.Code == "delta_v_short");
+        }
+
+        [Fact]
+        public void TheRecheckFactsGiveTheTotalAndTheRaisedLegs()
+        {
+            var facts = PlanLegs.RecheckFacts(PlanLegs.Judge(AtDuna(), RestAtDuna(), ""));
+            Assert.Contains("larger of its budget and the Delta-v Map's figure", facts);
+            Assert.Contains("Capture at Ike and land", facts);
+            Assert.Contains("capture:Ike + land:Ike", facts);
+            Assert.Equal("", PlanLegs.RecheckFacts(PlanLegs.Judge(AtDuna(), new List<PlannedSequence> { Leg("Phase the orbit", 100) }, "")));
+        }
+
+        [Fact]
+        public void TheRecheckRequestCarriesTheSameRuleAsTheMarginCheck()
+        {
+            var legFacts = PlanLegs.RecheckFacts(PlanLegs.Judge(AtDuna(), RestAtDuna(), ""));
+            var facts = RecheckPrompts.Facts("Go to Ike and land.", AtDuna(), 15, null, false, "Capture at Ike and land (370 m/s)", legFacts);
+            Assert.Contains(legFacts, facts);
+            // Only the goal's bodies reach the map text.
+            Assert.Contains("- capture:Ike:", facts);
+            Assert.DoesNotContain("capture:Laythe", facts);
         }
 
         [Fact]
