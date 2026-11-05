@@ -128,7 +128,8 @@ namespace ClaudiaKerman.Core.Tools
             }
             // A trip that ends in reentry (#758) flies no arrival burn; otherwise the figures are as they were.
             var entryNote = ArrivalRule.Note(snapshot, target, ask.Capture);
-            json.Field("arrival_dv", PlanningJson.Round(entryNote != null ? 0 : plan.ArrivalDv, 1))
+            var arrivalDv = entryNote != null ? 0 : plan.ArrivalDv;
+            json.Field("arrival_dv", PlanningJson.Round(arrivalDv, 1))
                 .Field("total_dv", PlanningJson.Round(plan.Total(entryNote == null), 1));
             if (entryNote != null) json.Field("arrival_note", entryNote);
             if (orbit == null)
@@ -152,7 +153,7 @@ namespace ClaudiaKerman.Core.Tools
                 Json = json.ToString(),
                 Summary = name + ": " + Num(plan.DeltaV) + " m/s out at UT " + Num(plan.Ut)
                     + (plan.PlaneUt.HasValue ? ", " + Num(plan.PlaneDv) + " m/s plane change at UT " + Num(plan.PlaneUt.Value) : "")
-                    + ", " + Num(plan.ArrivalDv) + " m/s on arrival",
+                    + ", " + Num(arrivalDv) + " m/s on arrival",
             };
         }
 
