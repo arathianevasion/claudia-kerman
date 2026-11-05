@@ -295,6 +295,13 @@ namespace ClaudiaKerman.Core.Tools
             return found.TotalDv <= c0 ? found : problem.Cost(t, tof0);
         }
 
+        /// <summary>The cheapest flight time leaving at <paramref name="t"/>, from a flight of about <paramref name="seedTof"/> s: a window moved a little from the one a search found (#760).</summary>
+        internal static TransferWindow CheapestAt(Problem problem, double t, double seedTof)
+        {
+            var hohmann = problem.HohmannTime();
+            return CheapestFlight(problem, t, seedTof, (FlightHigh - FlightLow) * hohmann / (Flights - 1), FlightLow * hohmann);
+        }
+
         /// <summary>BrentMin's minimiser of <paramref name="f"/> in [<paramref name="lo"/>, <paramref name="hi"/>] (grid steps), a cell with no path costed <see cref="NoPath"/>.</summary>
         private static double Minimise(Func<double, double> f, double lo, double hi)
         {
@@ -502,7 +509,7 @@ namespace ClaudiaKerman.Core.Tools
             }
 
             /// <summary>A planet's departure asymptote leaving at <paramref name="t"/> on a <paramref name="tof"/> s arc: v-infinity round the craft's planet; null with no path.</summary>
-            private Vec3? Leaving(double t, double tof)
+            internal Vec3? Leaving(double t, double tof)
             {
                 Vec3 r1, v1, r2, v2;
                 Home.State(t, out r1, out v1);

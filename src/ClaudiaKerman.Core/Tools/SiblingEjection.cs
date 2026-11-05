@@ -125,16 +125,11 @@ namespace ClaudiaKerman.Core.Tools
             var speed = vInf.Length;
             var dir = vInf / speed;
             var h = craft.W;
-            var sinTilt = Vec3.Dot(dir, h);
-            var cosTilt = Math.Sqrt(Math.Max(1e-12, 1 - sinTilt * sinTilt));
-            var u = (dir - h * sinTilt).Normalized;
             var r0 = craft.A;
             ut = departure;
             for (var pass = 0; pass < 2; pass++)
             {
-                var e = 1 + r0 * speed * speed / mu;
-                var c = Math.Max(-1, Math.Min(1, -1 / e / cosTilt));
-                var point = u * c - Vec3.Cross(h, u) * Math.Sqrt(1 - c * c);
+                var point = BurnPoint(h, vInf, r0, mu);
                 var nu = Math.Atan2(Vec3.Dot(point, craft.Q), Vec3.Dot(point, craft.P));
                 ut = craft.TimeAtTrue(nu, Math.Max(earliest, departure - craft.Period / 2)) ?? departure;
                 r0 = craft.Radius(ut);
@@ -145,6 +140,19 @@ namespace ClaudiaKerman.Core.Tools
             if (up.Length < 1e-9 * r.Length) up = h;
             var along = Vec3.Cross(up.Normalized, r).Normalized;
             return along * Math.Sqrt(speed * speed + 2 * mu / r.Length) - v;
+        }
+
+        /// <summary>The direction, in the plane with normal <paramref name="h"/>, of the periapsis of the hyperbola at radius <paramref name="r0"/> leaving along <paramref name="vInf"/> (see <see cref="Oberth"/>).</summary>
+        internal static Vec3 BurnPoint(Vec3 h, Vec3 vInf, double r0, double mu)
+        {
+            var speed = vInf.Length;
+            var dir = vInf / speed;
+            var sinTilt = Vec3.Dot(dir, h);
+            var cosTilt = Math.Sqrt(Math.Max(1e-12, 1 - sinTilt * sinTilt));
+            var u = (dir - h * sinTilt).Normalized;
+            var e = 1 + r0 * speed * speed / mu;
+            var c = Math.Max(-1, Math.Min(1, -1 / e / cosTilt));
+            return u * c - Vec3.Cross(h, u) * Math.Sqrt(1 - c * c);
         }
 
         /// <summary>
