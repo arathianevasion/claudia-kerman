@@ -4,7 +4,7 @@ During a long coast of `transfer_to` or `return` the player can leave the craft.
 
 **Block migration:** no logic moves out of Kerboscript. Every new decision is in Core (`CoastCheckpoints`, `TransferFlight`), and `transfer_to.ks` and `return.ks` get wiring only. The checks below are the player's flights. `tests/blocks/transfer_to_duna`, `return`, `return_ike` and `return_target` are unchanged and must still PASS: a block test's run never checkpoints, as only a Mission's bundle sets the option.
 
-**The lead** before a correction is the turn time plus `BurnPoints.TurnMarginSeconds` (60 s), a few minutes. The Due Time is soft while the player is in the craft.
+**The lead** before a correction is 30 min of game time (#779), never less than the turn time plus `BurnPoints.TurnMarginSeconds` (60 s). The Due Time is soft while the player is in the craft.
 
 ## Check 1: a Duna coast where the player leaves, takes the alarm and returns
 
@@ -37,4 +37,11 @@ During a long coast of `transfer_to` or `return` the player can leave the craft.
 6. Make the test fail (nudge the craft by hand so the encounter is lost, or cross a Telemetry Check) and choose Space Center again: the prompt is the old one with **Leave Flight** and the reason ("It isn't safe to leave at a checkpoint now: ..."), and Leave Flight interrupts the run as before.
 7. Mid-coast, press Esc and choose Main Menu: the Leave/Stay dialog with no checkpoint, and the run is interrupted. Separately, Revert Flight (to VAB): no dialog at all, the run is interrupted, and no checkpoint. Revert to launch (Flight to Flight) never went through the guard and is unchanged.
 
-Tell the ticket how the alarm's timing felt: the lead is short by design (the correction waits for a late player), so say if a longer one would have helped.
+Tell the ticket how the alarm's timing felt: the Due Time is 30 min before the correction, so say if that was enough for the scene change and the check.
+
+## Check 4: a return from Ike or Duna left mid-coast (#779)
+
+1. Start a Mission from a low orbit of Duna (or Ike) with the goal "Return to Kerbin" and a second craft somewhere far away. Auto Mode off. Approve until `return` runs (its default target periapsis is 35 km, inside Kerbin's air).
+2. After the ejection, the correction before Kerbin's sphere of influence is over 6 h off. The block stops at a Coast Checkpoint, though the periapsis is in the air: the log has the mod's Nominal Debrief and "Coast Checkpoint: the next correction is due ...", and the Due Time is 30 min before the correction.
+3. Switch to the other craft, warp until the alarm (30 min before the correction), come back: "Checked on return: the Kerbin encounter is kept", then Approve. The block warps on to 360 s before the burn and flies it.
+4. Check there is no checkpoint once the last correction before Kerbin's sphere of influence has been flown: during the final warp to Kerbin, a far switch gives the old warning ("the periapsis ... is in its atmosphere"), and a switch is an interruption.
