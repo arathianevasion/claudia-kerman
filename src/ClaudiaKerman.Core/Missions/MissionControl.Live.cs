@@ -641,6 +641,15 @@ namespace ClaudiaKerman.Core.Missions
             if (mission.Folder != null) Event(mission, "ship_systems", moved.Text);
         }
 
+        /// <summary>The Encounter Watch dropped the warp (#770): one log row and one line in the Mission's events; the conversation hears of it only through the block's result.</summary>
+        private void EncounterWatchLine(EncounterWatchDropped dropped)
+        {
+            var mission = _mission;
+            if (mission == null) return;
+            Note(LogKind.Notice, dropped.Text);
+            if (mission.Folder != null) Event(mission, "encounter_watch", dropped.Text);
+        }
+
         /// <summary>A Building Block's result: one log row and an entry in the run's blocks trail, with no Claude call.</summary>
         private void BlockEnded(KosBlockEnded ended)
         {

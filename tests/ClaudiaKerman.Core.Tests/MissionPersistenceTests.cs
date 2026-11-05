@@ -1562,6 +1562,13 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(messages, Saved(mission)[0].TranscriptMarker);
             Assert.DoesNotContain("Ship Systems", File.ReadAllText(TranscriptPath(mission)));
 
+            // #770, the same: the Encounter Watch's drop goes to the log and the event log only.
+            mission.Send(new EncounterWatchDropped("Encounter Watch: Duna encounter lost at UT 44786120; warp dropped to restore it"));
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Encounter Watch: Duna encounter lost"));
+            Assert.Contains("\"encounter_watch\"", File.ReadAllText(Path.Combine(MissionFolder(mission), "events.jsonl")));
+            Assert.Equal(messages, Saved(mission)[0].TranscriptMarker);
+            Assert.DoesNotContain("Encounter Watch", File.ReadAllText(TranscriptPath(mission)));
+
             // The player left Flight with RCS still on: the stretch ends at the interruption's UT, 30 s after it came on.
             mission.Send(new SceneChanged(GameScene.Other));
             Assert.NotEqual(MissionStage.Running, mission.View.Stage);
