@@ -68,6 +68,12 @@ namespace ClaudiaKerman.Core.Tools
             return explicitCapture ?? !EndsInReentry(snapshot, target);
         }
 
+        /// <summary>The same with the Mission Plan's <paramref name="later"/> legs to read (#762).</summary>
+        public static bool Capture(GameSnapshot snapshot, string target, bool? explicitCapture, IEnumerable<PlannedSequence> later)
+        {
+            return explicitCapture ?? !EndsInReentry(snapshot, target, later);
+        }
+
         /// <summary>The arrival note for an entry priced without a capture, or null (a capture is priced, or the target has no entry).</summary>
         public static string Note(GameSnapshot snapshot, string target, bool capture)
         {

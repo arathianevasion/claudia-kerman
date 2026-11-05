@@ -181,7 +181,7 @@ namespace ClaudiaKerman.Core.Missions
             if (low.Count > 0) Add("landing_twr_low", MarginLevel.Enough, "Thrust over weight " + string.Join("; ", low.ToArray()));
         }
 
-        private static double? LowestTwr(GameSnapshot snapshot, SnapshotBody body, double from, double to)
+        internal static double? LowestTwr(GameSnapshot snapshot, SnapshotBody body, double from, double to)
         {
             var rows = StagePerformance.Rows(snapshot, 0, body.SurfaceGravity).Where(r => r.DeltaV > 0 && r.Thrust > 0).OrderByDescending(r => r.Stage).ToList();
             double? lowest = null;
