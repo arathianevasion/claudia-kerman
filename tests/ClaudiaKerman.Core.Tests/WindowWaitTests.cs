@@ -23,7 +23,7 @@ namespace ClaudiaKerman.Core.Tests
     /// here) is set, moved and removed; a missed window is moved within the Craft Check budget or raises an Alert; Auto Mode
     /// never approves at it; and it survives a save and load. Driven through the Mission seam with hand-written replies.
     /// </summary>
-    public sealed class WindowWaitTests : IDisposable
+    public sealed partial class WindowWaitTests : IDisposable
     {
         private const string Goal = "Orbit Duna.";
         private const double Day = 21600;

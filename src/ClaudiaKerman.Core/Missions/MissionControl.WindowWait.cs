@@ -13,13 +13,34 @@ namespace ClaudiaKerman.Core.Missions
     /// of a Mission to another planet gets a Due Time at the Transfer Window less the launch lead, and a player who comes back
     /// after the window has the Due Time moved to the next one when it fits the Craft Check budget, or an Alert to Claudia, who
     /// revises the Mission Plan. Auto Mode never approves at a Due Time (MissionControl.AutoMode.cs), so only the player does.
+    /// #774: a craft on another body's surface waits there the same way, the ascent carrying the Due Time.
     /// </summary>
     public sealed partial class MissionControl
     {
         /// <summary>The first Maneuver Sequence waits on the pad for a window more than a Kerbin day off: its Due Time is the window less the launch lead.</summary>
         private void WindowWait(Mission mission, SequencePlan plan)
         {
+            var carriedPlanet = mission.WindowPlanet;
+            var carriedUt = mission.WindowUt;
+            var carriedDv = mission.WindowDeltaV;
             ClearWindow(mission);
+            var surface = SurfaceWait(mission, plan);
+            if (surface != null)
+            {
+                // A stretch by hand with a Due Time of Claudia's own waits for that, not a window.
+                if (plan.Manual && plan.DueTimeUt.HasValue) return;
+                // A stretch by hand that ran past the window it noted: Approve goes to the missed-window handling, as on the pad.
+                if (carriedUt.HasValue && carriedPlanet == surface.Planet.Name && WindowWaits.Missed(carriedUt.Value, _ut))
+                {
+                    mission.WindowPlanet = carriedPlanet;
+                    mission.WindowUt = carriedUt;
+                    mission.WindowDeltaV = carriedDv;
+                    if (!plan.Manual && !plan.DueTimeUt.HasValue) plan.DueTimeUt = carriedUt.Value - surface.LeadS;
+                    return;
+                }
+                FromTheSurface(mission, plan, surface);
+                return;
+            }
             // Only before the first run: the craft waits on the pad, and the launch carries the Due Time.
             if (plan.Manual || mission.RunStartUt != 0 || _snapshot == null) return;
             var planet = WindowWaits.Planet(_snapshot, mission.Goal);
@@ -35,6 +56,38 @@ namespace ClaudiaKerman.Core.Missions
             mission.WindowDeltaV = window.TotalDv;
             Note(LogKind.Notice, "Waiting for " + WindowWaits.WaitsFor(planet.Name) + ": the launch is due " + KerbinTime.Date(plan.DueTimeUt.Value)
                 + ", an hour before the ejection burn. Fly other Missions meanwhile; a KSP alarm calls you back.");
+        }
+
+        /// <summary>#774: the ascent waits on the surface for its departure's window. A stretch by hand has no Due Time and is never cut short: it only notes the window, for the ascent after it.</summary>
+        private void FromTheSurface(Mission mission, SequencePlan plan, SurfaceDeparture surface)
+        {
+            if (surface.Window == null) return;
+            if (!plan.Manual)
+            {
+                if (!surface.DueUt.HasValue) return;
+                // A later Due Time of Claudia's own stands, as on the pad.
+                if (plan.DueTimeUt.HasValue && plan.DueTimeUt.Value >= surface.DueUt.Value) return;
+                plan.DueTimeUt = surface.DueUt.Value;
+                Note(LogKind.Notice, "Waiting for " + WindowWaits.WaitsFor(surface.Planet.Name) + ": the ascent is due " + KerbinTime.Date(plan.DueTimeUt.Value)
+                    + ", " + KerbinTime.Span(surface.Window.DepartureUt - plan.DueTimeUt.Value) + " before the departure. Fly other Missions meanwhile; a KSP alarm calls you back.");
+            }
+            mission.WindowPlanet = surface.Planet.Name;
+            mission.WindowUt = surface.Window.DepartureUt;
+            mission.WindowDeltaV = surface.Window.TotalDv;
+        }
+
+        /// <summary>The departure the plan makes from the surface, with its window from now (<see cref="WindowWaits.AfterAscent"/>); null when it makes none.</summary>
+        private SurfaceDeparture SurfaceWait(Mission mission, SequencePlan plan)
+        {
+            if (!FliesCraft(mission, plan.Vessel)) return null;
+            var snapshot = MissionVesselSnapshot(mission);
+            // As OfferSequencePlan counts it, whether or not this plan is counted yet.
+            var step = plan.PlanStep ?? mission.SequencesProposed + (mission.SequenceCounted ? 0 : 1);
+            var surface = WindowWaits.AfterAscent(snapshot, plan, mission.Plan == null ? null : mission.Plan.Sequences, step);
+            if (surface == null) return null;
+            var settings = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config));
+            WindowWaits.Solve(snapshot, surface, settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, _ut);
+            return surface;
         }
 
         /// <summary>
@@ -86,7 +139,8 @@ namespace ClaudiaKerman.Core.Missions
             var missed = mission.WindowUt.Value;
             var planned = mission.WindowDeltaV ?? 0;
             var planet = _snapshot == null ? null : _snapshot.Bodies.FirstOrDefault(b => b.Name == mission.WindowPlanet);
-            var next = WindowFor(mission, planet);
+            var surface = SurfaceWait(mission, plan);
+            var next = surface != null ? surface.Window : WindowFor(mission, planet);
             var budget = mission.Plan == null ? 0 : mission.Plan.Sequences.Sum(s => Math.Max(0, s.DeltaV));
             var head = "The " + mission.WindowPlanet + " window of " + KerbinTime.Date(missed) + " was missed";
             if (next == null || !WindowWaits.Fits(budget, planned, next.TotalDv, CraftDeltaV(_snapshot), _config.CraftCheckMarginPercent))
@@ -97,7 +151,7 @@ namespace ClaudiaKerman.Core.Missions
             var cost = " (" + MetresPerSecond(next.TotalDv) + " against " + MetresPerSecond(planned) + " planned, within the Craft Check budget)";
             mission.WindowUt = next.DepartureUt;
             mission.WindowDeltaV = next.TotalDv;
-            var due = WindowWaits.DueTime(next.DepartureUt, _ut);
+            var due = surface != null ? surface.DueUt : WindowWaits.DueTime(next.DepartureUt, _ut);
             if (due.HasValue)
             {
                 plan.DueTimeUt = due.Value;

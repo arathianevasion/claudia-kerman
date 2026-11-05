@@ -113,6 +113,28 @@ namespace ClaudiaKerman.Core.Missions
             return ReturnHome.IsMatch(words) ? Body(snapshot, "Kerbin") ?? previous : LegBody(snapshot, words, previous);
         }
 
+        /// <summary>The body a trip's words go to, from <paramref name="at"/>: the one after "to", else the one they name, else <paramref name="home"/> for a bare return.</summary>
+        public static SnapshotBody TripTarget(GameSnapshot snapshot, string words, SnapshotBody at, string home)
+        {
+            SnapshotBody first = null;
+            var firstAt = int.MaxValue;
+            foreach (var body in snapshot.Bodies.Where(b => b.Name.Length > 0))
+            {
+                var match = Regex.Match(words, @"\bto\s+(?:the\s+)?" + Regex.Escape(body.Name) + @"\b", RegexOptions.IgnoreCase);
+                if (match.Success && match.Index < firstAt)
+                {
+                    first = body;
+                    firstAt = match.Index;
+                }
+            }
+            if (first != null) return first;
+            if (ReturnHome.IsMatch(words)) return Body(snapshot, home);
+            // The first body named that isn't where the craft is ("Kerbin-Duna transfer" goes to Duna).
+            var named = NamedBody(snapshot, at == null ? words : Regex.Replace(words, @"\b" + Regex.Escape(at.Name) + @"\b", " ", RegexOptions.IgnoreCase));
+            if (named == null && BareReturn.IsMatch(words)) return Body(snapshot, home);
+            return named ?? NamedBody(snapshot, words);
+        }
+
         public static SnapshotBody Body(GameSnapshot snapshot, string name)
         {
             return snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase));

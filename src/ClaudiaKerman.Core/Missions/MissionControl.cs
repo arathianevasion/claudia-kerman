@@ -635,7 +635,7 @@ namespace ClaudiaKerman.Core.Missions
 
             var plan = mission.PendingSequence;
             // Back after the Transfer Window: the next one, or an Alert (#616).
-            if (WindowWasMissed(mission) && !NextWindow(mission, plan)) return;
+            if (!plan.Manual && WindowWasMissed(mission) && !NextWindow(mission, plan)) return;
             // The mod never starts a sequence before its Due Time, and never warps there for the player.
             if (plan.DueTimeUt.HasValue && _ut < plan.DueTimeUt.Value)
             {

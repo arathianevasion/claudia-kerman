@@ -160,7 +160,7 @@ The ordered list of Maneuver Sequences Claudia intends to fly to reach a Mission
 _Avoid_: flight plan, roadmap
 
 **Due Time**:
-The earliest time a Maneuver Sequence may start; the player may fly elsewhere until then, and the Mission calls them back at it. Claudia sets one in a Sequence Plan when the wait before it needs the player (e.g. "come back when you've docked"). The mod sets one on the first Maneuver Sequence when it would wait on the pad more than 6 h for a Transfer Window to another planet or a moon: the window less the launch lead. A shorter wait for a window, and any wait for daylight or a hold, is not a Due Time: the Mission Script warps through it (ADR 0004 and its amendment).
+The earliest time a Maneuver Sequence may start; the player may fly elsewhere until then, and the Mission calls them back at it. Claudia sets one in a Sequence Plan when the wait before it needs the player (e.g. "come back when you've docked"). The mod sets one on the first Maneuver Sequence when it would wait on the pad more than 6 h for a Transfer Window to another planet or a moon: the window less the launch lead. A goal at a moon of another planet waits for that planet's window. A craft landed on another body waits there too: when its next legs are an ascent and a departure for another planet, the ascent carries the Due Time, the departure less the ascent lead. A shorter wait for a window, and any wait for daylight or a hold, is not a Due Time: the Mission Script warps through it (ADR 0004 and its amendment).
 _Avoid_: window (which is a transfer window), scheduled time
 
 **Sequence Plan**:

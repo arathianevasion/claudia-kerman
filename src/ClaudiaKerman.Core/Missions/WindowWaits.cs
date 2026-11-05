@@ -1,16 +1,37 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
+using ClaudiaKerman.Core.Kos;
 using ClaudiaKerman.Core.Tools;
 
 namespace ClaudiaKerman.Core.Missions
 {
     /// <summary>
+    /// A departure from the surface (#774): the planet whose window it waits for, then, once <see cref="WindowWaits.Solve"/> has
+    /// run, that window and the ascent's Due Time.
+    /// </summary>
+    internal sealed class SurfaceDeparture
+    {
+        public SnapshotBody Planet;
+        /// <summary>From a moon, the plan names a capture at its planet: the two-step route (<see cref="DirectRoute"/>), not the route's pick.</summary>
+        public bool TwoStep;
+        /// <summary>The window, leaving at the burn out of the craft's own body's orbit; null when the search found none.</summary>
+        public TransferWindow Window;
+        /// <summary>The ascent lead, s (<see cref="WindowWaits.AscentLeadS"/>).</summary>
+        public double LeadS;
+        /// <summary>When the ascent is due; null when the wait is no more than <see cref="WindowWaits.LongWaitS"/>.</summary>
+        public double? DueUt;
+    }
+
+    /// <summary>
     /// A wait for a Transfer Window longer than one Kerbin day is a Due Time (#616, the ADR 0004 amendment): the craft waits on
     /// the pad and the first Maneuver Sequence carries a Due Time at the window less the launch lead, so the player can fly other
     /// Missions meanwhile. A shorter wait stays an in-script warp. The window is #458's (<see cref="TransferWindows"/>), picked by
     /// the Mission Setting Time versus delta-v as the Mission request's plan_transfer rows pick it; a moon's is the same (#647).
+    /// A craft on the surface of another body waits there too, before the ascent that starts its departure (#774): <see cref="AfterAscent"/>.
     /// </summary>
     internal static class WindowWaits
     {
@@ -23,13 +44,173 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         public const double LaunchLeadS = 3600;
 
-        /// <summary>The first planet the Mission Goal names that the craft's planet transfers to, or moon of the craft's planet (#647); null for none.</summary>
+        /// <summary>
+        /// What an ascent from the surface takes before its departure burn is <see cref="AscentAllowanceS"/>, one low orbit of the
+        /// body to reach the burn point, and <see cref="AscentMarginS"/>. The launch lead's own figures, by body (<see cref="AscentLeadS"/>).
+        /// </summary>
+        public const double AscentAllowanceS = 600;
+        public const double AscentMarginS = 900;
+
+        /// <summary>The ascent lead from <paramref name="body"/>, s.</summary>
+        public static double AscentLeadS(SnapshotBody body)
+        {
+            var low = DeltaVMap.LowOrbit(body);
+            return AscentAllowanceS + 2 * Math.PI * Math.Sqrt(low * low * low / body.Gm) + AscentMarginS;
+        }
+
+        /// <summary>
+        /// The first planet the Mission Goal names that the craft's planet transfers to, or moon of the craft's planet (#647), or the
+        /// planet of a moon of another planet (#774: Ike gives Duna's window); null for none.
+        /// </summary>
         public static SnapshotBody Planet(GameSnapshot snapshot, string goal)
         {
             if (snapshot == null) return null;
+            var system = new BodySystem(snapshot.Bodies);
             return MissionPrompts.GoalBodies(snapshot, goal)
-                .FirstOrDefault(b => TransferWindows.IsPlanetTransfer(snapshot, b.Name) || TransferWindows.IsMoonTransfer(snapshot, b.Name));
+                .Select(b => TransferWindows.IsMoonTransfer(snapshot, b.Name) ? b : PlanetTransfer(snapshot, system, b))
+                .FirstOrDefault(b => b != null);
         }
+
+        /// <summary><paramref name="body"/> or the first of its parents the craft's planet transfers to; null for none.</summary>
+        private static SnapshotBody PlanetTransfer(GameSnapshot snapshot, BodySystem system, SnapshotBody body)
+        {
+            while (body != null && !TransferWindows.IsPlanetTransfer(snapshot, body.Name)) body = system.Parent(body);
+            return body;
+        }
+
+        /// <summary>
+        /// #774: the departure the craft on the surface waits for, when <paramref name="plan"/> is an ascent and the plan's next leg
+        /// leaves for another planet, or a stretch by hand with those two next (<paramref name="step"/>, 1-based, is the step it flies);
+        /// null otherwise, as for a return to the craft's own planet, which has no window. The ascent is the script's first block, or
+        /// its words; the departure is the script's own transfer_to, or the words of the steps after it (<see cref="SequenceWords"/>).
+        /// </summary>
+        public static SurfaceDeparture AfterAscent(GameSnapshot snapshot, SequencePlan plan, IList<PlannedSequence> steps, int step)
+        {
+            if (snapshot == null || plan == null || (snapshot.Situation != "LANDED" && snapshot.Situation != "SPLASHED")) return null;
+            var home = SequenceWords.Body(snapshot, snapshot.Body);
+            if (home == null) return null;
+            steps = steps ?? new List<PlannedSequence>();
+            var from = step;
+            if (plan.Manual)
+            {
+                if (step < 0 || step >= steps.Count || steps[step].Manual || !SequenceWords.Ascent.IsMatch(SequenceWords.ActionWords(steps[step]))) return null;
+                from = step + 1;
+            }
+            else
+            {
+                var calls = BlockOptionCheck.Calls(plan.Script).ToList();
+                var first = calls.FirstOrDefault();
+                if ((first == null || first.Block != "launch") && !SequenceWords.Ascent.IsMatch(plan.Name)) return null;
+                var named = calls.Where(c => c.Block == "transfer_to").Select(c => SequenceWords.Body(snapshot, (c.Option("target") ?? "").Trim('"'))).FirstOrDefault(b => b != null);
+                var flown = Elsewhere(snapshot, home, named);
+                if (flown != null) return new SurfaceDeparture { Planet = flown };
+                // "Ascend from Duna and return to Kerbin": the step in hand goes too.
+                if (step >= 1 && step <= steps.Count && IsTrip(SequenceWords.ActionWords(steps[step - 1]))) from = step - 1;
+            }
+            return Departure(snapshot, home, steps, from);
+        }
+
+        /// <summary>
+        /// The steps from <paramref name="from"/>, while they lead on from the ascent: a trip to another planet is the departure; a
+        /// return to the craft's own planet and a capture there are the way to it (from a moon, by either route of #760).
+        /// </summary>
+        private static SurfaceDeparture Departure(GameSnapshot snapshot, SnapshotBody home, IList<PlannedSequence> steps, int from)
+        {
+            var atPlanet = false;
+            var twoStep = false;
+            for (var i = Math.Max(0, from); i < steps.Count; i++)
+            {
+                var leg = steps[i];
+                var words = SequenceWords.ActionWords(leg);
+                if (leg.Manual || !MissionCards.FliesCraft(snapshot.Craft.Name, leg.Vessel)) return null;
+                if (IsTrip(words))
+                {
+                    var target = SequenceWords.TripTarget(snapshot, words, home, CraftCheckFlow.HomeBody);
+                    var planet = Elsewhere(snapshot, home, target);
+                    if (planet != null) return new SurfaceDeparture { Planet = planet, TwoStep = twoStep };
+                    if (target == null || target == home) return null;
+                    atPlanet = true;
+                }
+                else if (SequenceWords.Capture.IsMatch(words) && !SequenceWords.Surface.IsMatch(words)) twoStep = atPlanet;
+                else return null;
+            }
+            return null;
+        }
+
+        private static bool IsTrip(string words)
+        {
+            return SequenceWords.Trip.IsMatch(words) || SequenceWords.ReturnHome.IsMatch(words);
+        }
+
+        /// <summary>The planet <paramref name="target"/> is or orbits, when it isn't the one <paramref name="home"/> is or orbits; null otherwise.</summary>
+        private static SnapshotBody Elsewhere(GameSnapshot snapshot, SnapshotBody home, SnapshotBody target)
+        {
+            if (target == null) return null;
+            var system = new BodySystem(snapshot.Bodies);
+            var planet = PlanetOf(system, target);
+            return planet == PlanetOf(system, home) ? null : planet;
+        }
+
+        private static SnapshotBody PlanetOf(BodySystem system, SnapshotBody body)
+        {
+            var parent = system.Parent(body);
+            while (parent != null && !string.IsNullOrEmpty(parent.Parent))
+            {
+                body = parent;
+                parent = system.Parent(body);
+            }
+            return body;
+        }
+
+        /// <summary>
+        /// The window for <paramref name="departure"/> from <paramref name="now"/>, and the ascent's Due Time. The window is the one the
+        /// craft can take once it is up, so it is searched as from the body's low orbit; a shorter wait than <see cref="LongWaitS"/>
+        /// is no Due Time. From a planet the Due Time is the departure less the ascent lead, or DeparturePlane's launch into an orbit
+        /// holding the asymptote (plan_transfer's <c>at_ut</c>) when that is earlier. From a moon no launch plane applies: the
+        /// departure is the burn out of its orbit (<see cref="RouteRow.LatestDepartUt"/>), less the ascent lead.
+        /// </summary>
+        public static void Solve(GameSnapshot snapshot, SurfaceDeparture departure, TimeVersusDeltaV setting, int marginPercent, double now)
+        {
+            var home = SequenceWords.Body(snapshot, snapshot.Body);
+            var planet = departure.Planet;
+            var at = snapshot.At(now);
+            at.TimeVersusDeltaV = setting;
+            at.MarginPercent = marginPercent;
+            var view = DirectRoute.FromLowOrbit(at, home, now);
+            departure.LeadS = AscentLeadS(home);
+            double due;
+            if (DirectRoute.Applies(view, planet.Name))
+            {
+                var routes = DirectRoute.Find(view, planet.Name, MissionPrompts.ArrivalPe(planet), true);
+                if (routes.Error != null) return;
+                var row = departure.TwoStep ? routes.TwoStep : routes.Pick;
+                departure.Window = new TransferWindow { DepartureUt = row.LatestDepartUt, ArrivalUt = row.ArrivalUt, TotalDv = row.TotalDv };
+                due = row.LatestDepartUt - departure.LeadS;
+            }
+            else
+            {
+                string error;
+                var problem = TransferWindows.Problem.Of(view, planet.Name, MissionPrompts.ArrivalPe(planet), true, out error);
+                if (problem == null) return;
+                var found = TransferWindows.Search(problem, marginPercent);
+                if (found.Error != null) return;
+                departure.Window = TransferWindows.Pick(found, setting);
+                due = departure.Window.DepartureUt - departure.LeadS;
+                var launch = LaunchFor(snapshot, home, problem, departure.Window, due, now);
+                if (launch != null && launch.Error == null) due = Math.Min(due, launch.Ut);
+            }
+            if (due - now > LongWaitS) departure.DueUt = due;
+        }
+
+        private static LaunchWindow LaunchFor(GameSnapshot snapshot, SnapshotBody home, TransferWindows.Problem problem, TransferWindow window, double byUt, double now)
+        {
+            var leaving = problem.Leaving(window.DepartureUt, window.ArrivalUt - window.DepartureUt);
+            if (!leaving.HasValue) return null;
+            // The site has turned since the snapshot, which may be older (the player is back from another Mission).
+            var turned = home.RotationPeriod == 0 ? 0 : 360 * (now - snapshot.Ut) / home.RotationPeriod;
+            return DeparturePlane.ForAsymptote(home, now, snapshot.Latitude, snapshot.CelestialLongitude + turned, leaving.Value, byUt, problem.ParkingPe);
+        }
+
 
         /// <summary>The window to <paramref name="planet"/> (a planet or a moon) from <paramref name="snapshot"/>'s UT, picked by the Mission Setting; null when the search found none.</summary>
         public static TransferWindow Window(GameSnapshot snapshot, SnapshotBody planet, TimeVersusDeltaV setting, int marginPercent)

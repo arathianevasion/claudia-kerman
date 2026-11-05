@@ -232,26 +232,9 @@ namespace ClaudiaKerman.Core.Missions
                 if (landing) Land(tripped ? target : SequenceWords.LegBody(_snapshot, words, _at));
             }
 
-            /// <summary>The body the words go to: the one after "to", else the one they name, else home for a bare return.</summary>
             private SnapshotBody Target(string words)
             {
-                SnapshotBody first = null;
-                var firstAt = int.MaxValue;
-                foreach (var body in _snapshot.Bodies.Where(b => b.Name.Length > 0))
-                {
-                    var match = Regex.Match(words, @"\bto\s+(?:the\s+)?" + Regex.Escape(body.Name) + @"\b", RegexOptions.IgnoreCase);
-                    if (match.Success && match.Index < firstAt)
-                    {
-                        first = body;
-                        firstAt = match.Index;
-                    }
-                }
-                if (first != null) return first;
-                if (SequenceWords.ReturnHome.IsMatch(words)) return SequenceWords.Body(_snapshot, _map.Home);
-                // The first body named that isn't where the craft is ("Kerbin-Duna transfer" goes to Duna).
-                var named = SequenceWords.NamedBody(_snapshot, _at == null ? words : Regex.Replace(words, @"\b" + Regex.Escape(_at.Name) + @"\b", " ", RegexOptions.IgnoreCase));
-                if (named == null && SequenceWords.BareReturn.IsMatch(words)) return SequenceWords.Body(_snapshot, _map.Home);
-                return named ?? SequenceWords.NamedBody(_snapshot, words);
+                return SequenceWords.TripTarget(_snapshot, words, _at, _map.Home);
             }
 
             private void Ascend()
