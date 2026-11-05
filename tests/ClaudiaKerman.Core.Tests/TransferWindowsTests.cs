@@ -295,6 +295,62 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(Math.Round(dv, 1), fits.GetProperty("available_dv").GetDouble());
         }
 
+        /// <summary>The stock body table with the craft in a 60 km circular orbit of Duna (#758).</summary>
+        private static GameSnapshot InDunaOrbit()
+        {
+            var snapshot = Parked();
+            snapshot.Body = "Duna";
+            var duna = snapshot.Bodies.First(b => b.Name == "Duna");
+            snapshot.Orbit = new SnapshotOrbit
+            {
+                SemiMajorAxis = duna.Radius + 60000, Eccentricity = 0, Body = "Duna", Periapsis = 60000, Apoapsis = 60000, Epoch = snapshot.Ut,
+            };
+            return snapshot;
+        }
+
+        // #758: a trip home ends in reentry, so it prices the ejection alone and says so; an explicit capture still prices one.
+        [Fact]
+        public void Duna_to_Kerbin_prices_the_ejection_alone_with_the_entry_note_and_capture_true_adds_the_capture()
+        {
+            var snapshot = InDunaOrbit();
+            var home = Run("{\"target\":\"Kerbin\",\"target_pe\":80000}", snapshot);
+            Assert.False(home.GetProperty("capture").GetBoolean());
+            Assert.Equal("arrival: entry at 21 km, no capture burn", home.GetProperty("arrival_note").GetString());
+            var ejection = home.GetProperty("optimal").GetProperty("ejection_dv").GetDouble();
+            var total = home.GetProperty("optimal").GetProperty("total_dv").GetDouble();
+            Assert.Equal(ejection, total, 1);
+            Assert.False(home.GetProperty("optimal").TryGetProperty("capture_dv", out _));
+
+            var captured = Run("{\"target\":\"Kerbin\",\"target_pe\":80000,\"capture\":true}", snapshot);
+            Assert.True(captured.GetProperty("capture").GetBoolean());
+            Assert.False(captured.TryGetProperty("arrival_note", out _));
+            Assert.True(captured.GetProperty("optimal").GetProperty("total_dv").GetDouble() > total + 300);
+        }
+
+        // #758: the per-turn transfer row for a Mission Goal ending at Kerbin, from Duna orbit, shows no capture burn.
+        [Fact]
+        public void The_precomputed_transfer_to_Kerbin_shows_no_capture_burn()
+        {
+            var text = MissionPrompts.StageTable(InDunaOrbit(), "Land on Ike and return to Kerbin.", null);
+            var row = text.Substring(text.IndexOf("plan_transfer {\"target\":\"Kerbin\"", StringComparison.Ordinal));
+            row = row.Substring(0, row.IndexOf('\n'));
+            Assert.Contains("\"capture\":false", row);
+            Assert.Contains("arrival: entry at 21 km, no capture burn", row);
+            Assert.DoesNotContain("capture_dv", row);
+        }
+
+        [Fact]
+        public void The_arrival_rule_is_home_only_and_the_caller_wins()
+        {
+            var snapshot = InDunaOrbit();
+            Assert.True(ArrivalRule.EndsInReentry(snapshot, "Kerbin"));
+            Assert.False(ArrivalRule.EndsInReentry(snapshot, "Eve"));
+            Assert.True(ArrivalRule.Capture(snapshot, "Eve", null));
+            Assert.False(ArrivalRule.Capture(snapshot, "Kerbin", null));
+            Assert.True(ArrivalRule.Capture(snapshot, "Kerbin", true));
+            Assert.False(ArrivalRule.Capture(snapshot, "Eve", false));
+        }
+
         [Fact]
         public void With_no_later_legs_the_result_is_as_it_was()
         {
