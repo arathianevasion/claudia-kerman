@@ -178,7 +178,7 @@ namespace ClaudiaKerman.Core.Tools
                 case FineCheck:
                     return ask.Correction && Encounter(setup) == null
                         ? Recover(snapshot, setup, ask, Lost(target) + (string.IsNullOrEmpty(ask.Why) ? "" : ": " + ask.Why))
-                        : Arrive(setup, ask);
+                        : Arrive(snapshot, setup, ask);
                 case Escaping:
                     return LeaveHome(setup, ask);
                 case Escaped:
@@ -201,7 +201,7 @@ namespace ClaudiaKerman.Core.Tools
             double arrival;
             if (sibling)
             {
-                var found = SiblingEjection.Find(snapshot, setup, target.Name, ask.TargetPe, earliest, ask.Window);
+                var found = SiblingEjection.Find(snapshot, setup, target.Name, ask.TargetPe, earliest, ask.Window, ArrivalRule.Capture(snapshot, target.Name, null));
                 if (found.Error != null) return Fail(found.Error);
                 step = Node("ejection", found.Ut, found.Prograde, found.Normal, found.Radial, Escaping);
                 step.Sibling = true;
@@ -210,7 +210,7 @@ namespace ClaudiaKerman.Core.Tools
             }
             else
             {
-                var plan = Transfer.Find(snapshot, new TransferAsk { Target = target.Name, TargetPe = ask.TargetPe, EarliestUt = earliest, WindowUt = ask.Window });
+                var plan = Transfer.Find(snapshot, new TransferAsk { Target = target.Name, TargetPe = ask.TargetPe, EarliestUt = earliest, WindowUt = ask.Window, Capture = ArrivalRule.Capture(snapshot, target.Name, null) });
                 if (plan.Error != null) return Fail(plan.Error);
                 step = Node("ejection", plan.Ut, plan.Prograde, plan.Normal, plan.Radial, Ejected);
                 arrival = plan.ArrivalUt;
@@ -278,7 +278,7 @@ namespace ClaudiaKerman.Core.Tools
         {
             var target = setup.Target;
             var now = setup.Now;
-            var correctionAsk = CorrectionAsk(target.Name, ask.TargetPe, now, ask.TurnTime, ask.StartUt, ask.MaxDuration ?? 0, ask.Auto, ask.DvLeft);
+            var correctionAsk = CorrectionAsk(target.Name, ask.TargetPe, now, ask.TurnTime, ask.StartUt, ask.MaxDuration ?? 0, ask.Auto, ask.DvLeft, ArrivalRule.Capture(snapshot, target.Name, null));
             if (correctionAsk.LatestUt.HasValue && correctionAsk.LatestUt.Value < correctionAsk.EarliestUt)
                 return Fail(missed + ", and no correction fits: max_duration (" + Num(ask.MaxDuration ?? 0) + " s) leaves no time for it and the Course Correction after it");
             var found = Transfer.Find(snapshot, correctionAsk);
@@ -316,9 +316,9 @@ namespace ClaudiaKerman.Core.Tools
         /// (not auto) one that leaves the Course Correction after it its lead and 120 s. One burn: no broken-plane plan, whose plane
         /// change this path would not fly. Pure (transfer_to_correction_ask before #459).
         /// </summary>
-        internal static TransferAsk CorrectionAsk(string target, double targetPe, double now, double turnTime, double startUt, double maxDuration, bool auto, double dvLeft)
+        internal static TransferAsk CorrectionAsk(string target, double targetPe, double now, double turnTime, double startUt, double maxDuration, bool auto, double dvLeft, bool capture = true)
         {
-            var ask = new TransferAsk { Target = target, TargetPe = targetPe, EarliestUt = now + turnTime + Lead, BrokenPlane = false };
+            var ask = new TransferAsk { Target = target, TargetPe = targetPe, EarliestUt = now + turnTime + Lead, BrokenPlane = false, Capture = capture };
             if (!auto) ask.LatestUt = startUt + maxDuration - BurnRoom - turnTime - Lead;
             if (dvLeft > 0) ask.MaxDv = dvLeft;
             return ask;
@@ -362,7 +362,7 @@ namespace ClaudiaKerman.Core.Tools
         /// </summary>
         private static TransferFlightStep FineCorrection(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask)
         {
-            if (!ask.Correction) return Arrive(setup, ask);
+            if (!ask.Correction) return Arrive(snapshot, setup, ask);
             var enc = Encounter(setup);
             if (enc != null && Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, FineCheck, "");
             if (enc == null) return Go(ask, FineCheck, "");
@@ -421,7 +421,7 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>The arrival: the encounter and its periapsis reported, then a miss outside pe_tolerance (with correction) fails the block.</summary>
-        private static TransferFlightStep Arrive(PredictBurn.Setup setup, TransferFlightAsk ask)
+        private static TransferFlightStep Arrive(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask)
         {
             var target = setup.Target;
             var enc = Encounter(setup);
@@ -440,7 +440,9 @@ namespace ClaudiaKerman.Core.Tools
                 if (miss != "") return Fail(miss, step);
             }
             // It ends before arrival: a capture straight after it would burn at this body's apsis (20ac, #610). Turn text, not docs.
-            step.Report["next"] = "coast to encounter_ut + 60 before a capture";
+            var entry = ArrivalRule.Note(snapshot, target.Name, ArrivalRule.Capture(snapshot, target.Name, null));
+            if (entry != null) step.Report["arrival_note"] = entry;
+            else step.Report["next"] = "coast to encounter_ut + 60 before a capture";
             return step;
         }
 
@@ -481,7 +483,7 @@ namespace ClaudiaKerman.Core.Tools
         /// </summary>
         private static TransferFlightStep OnParent(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask)
         {
-            if (!ask.Correction) return Arrive(setup, ask);
+            if (!ask.Correction) return Arrive(snapshot, setup, ask);
             var enc = Encounter(setup);
             if (enc != null && Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, Mid);
             string late;
