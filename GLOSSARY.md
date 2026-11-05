@@ -117,7 +117,7 @@ The cheapest Transfer Window within one synodic period of the two planets, or on
 _Avoid_: best window, most efficient (a Mission Setting)
 
 **Direct Route**:
-From a moon's orbit to another planet of its star, in one Transfer Window (#760): a fall from the moon to a low periapsis at its planet, at the time that lines the periapsis up with the ejection, and the ejection at that periapsis. It saves about twice the capture at the planet over the Two-Step Route. Flown by return, then transfer_to, each with its window from plan_transfer's row.
+From a moon's orbit to another planet of its star, in one Transfer Window (#760): a fall from the moon to a low periapsis at its planet, at the time that lines the periapsis up with the ejection, and the ejection at that periapsis. It saves about twice the capture at the planet over the Two-Step Route. Flown by return, then transfer_to, each with its window from plan_transfer's row. Time versus delta-v picks between the two routes as it does between windows: Soonest is the route arriving first if it is within the Craft Check's margin of the cheaper, else the cheaper.
 _Avoid_: slingshot, gravity assist (the planet's gravity does no turning for free here), Oberth route
 
 **Two-Step Route**:

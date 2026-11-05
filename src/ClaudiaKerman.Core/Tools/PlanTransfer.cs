@@ -82,12 +82,14 @@ namespace ClaudiaKerman.Core.Tools
             var targetPe = JsonNode.Double(input["target_pe"]);
             var orbit = input["orbit"];
             if (string.IsNullOrEmpty(target) == (orbit == null)) return PlanningJson.Error("give target (a body) or orbit, one of them");
-            // From a moon's orbit, the two routes to another planet (#760); home needs no target_pe, its arrival being an entry.
+            // From a moon's orbit, the two routes to another planet (#760). A trip ending in reentry arrives at the entry periapsis the
+            // arrival note gives, whatever target_pe says (the Mission request's row gives a capture's), so it needs none.
             if (target != null && DirectRoute.Applies(snapshot, target))
             {
                 var routeCapture = ArrivalRule.Capture(snapshot, target, JsonNode.Bool(input["capture"]));
-                if (targetPe.HasValue || !routeCapture && ArrivalRule.EndsInReentry(snapshot, target))
-                    return Routes(DirectRoute.Find(snapshot, target, targetPe ?? DirectRoute.EntryPe(new BodySystem(snapshot.Bodies).Find(target)), routeCapture), snapshot, routeCapture);
+                var entry = !routeCapture && ArrivalRule.EndsInReentry(snapshot, target);
+                if (targetPe.HasValue || entry)
+                    return Routes(DirectRoute.Find(snapshot, target, entry ? ArrivalRule.EntryPe(new BodySystem(snapshot.Bodies).Find(target)) : targetPe.Value, routeCapture), snapshot, routeCapture);
             }
             if (target != null && !targetPe.HasValue) return PlanningJson.Error("target needs target_pe, the periapsis altitude to arrive at in metres");
             if (orbit != null && targetPe.HasValue) return PlanningJson.Error("target_pe is for a target body; an orbit is reached at its own altitude");
@@ -190,9 +192,9 @@ namespace ClaudiaKerman.Core.Tools
                 .Field("window", plan.WindowName).Field("departure_v_inf", PlanningJson.Round(plan.VInf, 1));
             var entry = ArrivalRule.Note(snapshot, plan.Target, capture);
             if (entry != null) json.Field("arrival_note", entry);
-            if (plan.Direct != null) Route(json, "direct", plan.Direct, snapshot.Ut, capture, plan, true);
+            if (plan.Direct != null) Route(json, "direct", plan.Direct, snapshot.Ut, capture, plan);
             else json.Field("direct_note", plan.DirectError);
-            Route(json, "two_step", plan.TwoStep, snapshot.Ut, capture, plan, false);
+            Route(json, "two_step", plan.TwoStep, snapshot.Ut, capture, plan);
             json.Field("pick", pick == plan.Direct ? "direct" : "two_step");
             if (plan.CraftDv.HasValue)
             {
@@ -206,8 +208,9 @@ namespace ClaudiaKerman.Core.Tools
             };
         }
 
-        private static void Route(JsonWriter json, string name, RouteRow row, double now, bool capture, DirectRoutePlan plan, bool direct)
+        private static void Route(JsonWriter json, string name, RouteRow row, double now, bool capture, DirectRoutePlan plan)
         {
+            var direct = row == plan.Direct;
             json.Name(name).BeginObject();
             PlanningJson.Time(json, "depart", row.DepartUt, now);
             if (direct) json.Field("return_window", PlanningJson.Round(row.ReturnWindow, 1));
@@ -219,9 +222,10 @@ namespace ClaudiaKerman.Core.Tools
             json.Field("arrive_ut", PlanningJson.Round(row.ArrivalUt, 0)).Field("arrival_v_inf", PlanningJson.Round(row.ArrivalVInf, 1))
                 .Field("total_dv", PlanningJson.Round(row.TotalDv, 1));
             // The two-step's return is its next pass: return's default window.
-            var ret = "return(lexicon(\"target_pe\", " + Num(plan.ReturnPe) + (direct ? ", \"window\", " + Num(row.ReturnWindow) : "") + "))";
-            var on = "transfer_to(lexicon(\"target\", \"" + plan.Target + "\", \"target_pe\", " + Num(plan.TargetPe) + ", \"window\", " + Num(row.EjectWindow) + "))";
-            json.Field("fly", ret + ", coast until in " + plan.Planet + "'s sphere of influence, " + (direct ? "then " : "circularize(lexicon(\"at\", \"pe\")), then ") + on).EndObject();
+            // Called as a value: a bare return() is kOS's own statement.
+            var returning = "local res is return(lexicon(\"target_pe\", " + Num(plan.ReturnPe) + (direct ? ", \"window\", " + Num(row.ReturnWindow) : "") + "))";
+            var onward = "transfer_to(lexicon(\"target\", \"" + plan.Target + "\", \"target_pe\", " + Num(plan.TargetPe) + ", \"window\", " + Num(row.EjectWindow) + "))";
+            json.Field("fly", returning + ", coast until in " + plan.Planet + "'s sphere of influence, " + (direct ? "then " : "circularize(lexicon(\"at\", \"pe\")), then ") + onward).EndObject();
         }
 
         /// <summary>A planet's Transfer Windows (#458), or a moon's from the pad (#647): Soonest and Optimal, and the one the Mission Setting Time versus delta-v picks.</summary>

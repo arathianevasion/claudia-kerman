@@ -85,32 +85,66 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Theory]
-        [InlineData(TimeVersusDeltaV.Balanced, "direct")]
-        [InlineData(TimeVersusDeltaV.MostEfficient, "direct")]
-        public void The_cheaper_route_is_picked_unless_the_setting_is_Fastest(TimeVersusDeltaV setting, string pick)
+        [InlineData(TimeVersusDeltaV.Fastest)]
+        [InlineData(TimeVersusDeltaV.Balanced)]
+        [InlineData(TimeVersusDeltaV.MostEfficient)]
+        public void From_Ike_every_setting_takes_the_direct_route_the_saving_being_past_any_margin(TimeVersusDeltaV setting)
         {
-            Assert.Equal(pick, Run("{\"target\":\"Kerbin\"}", Ike(setting)).GetProperty("pick").GetString());
+            Assert.Equal("direct", Run("{\"target\":\"Kerbin\"}", Ike(setting)).GetProperty("pick").GetString());
         }
 
         [Fact]
-        public void Fastest_takes_the_route_arriving_first()
+        public void The_pick_is_the_settings_rule_with_soonest_the_route_arriving_first_within_the_margin()
         {
-            var result = Run("{\"target\":\"Kerbin\"}", Ike(TimeVersusDeltaV.Fastest));
-            var first = D(result.GetProperty("direct"), "arrive_ut") <= D(result.GetProperty("two_step"), "arrive_ut") ? "direct" : "two_step";
-            Assert.Equal(first, result.GetProperty("pick").GetString());
+            var cheap = new RouteRow { TotalDv = 800, ArrivalUt = 2000 };
+            var closeAndFirst = new RouteRow { TotalDv = 850, ArrivalUt = 1000 };
+            Assert.Same(closeAndFirst, DirectRoute.Pick(cheap, closeAndFirst, TimeVersusDeltaV.Fastest, 10));
+            Assert.Same(closeAndFirst, DirectRoute.Pick(cheap, closeAndFirst, TimeVersusDeltaV.Balanced, 10));
+            Assert.Same(cheap, DirectRoute.Pick(cheap, closeAndFirst, TimeVersusDeltaV.MostEfficient, 10));
+            // Past the margin it is no Soonest: hours aren't worth hundreds of m/s, even at Fastest.
+            var dearAndFirst = new RouteRow { TotalDv = 2000, ArrivalUt = 1000 };
+            Assert.Same(cheap, DirectRoute.Pick(cheap, dearAndFirst, TimeVersusDeltaV.Fastest, 10));
+            // Within a wide margin Balanced takes the cheaper once it saves 10%, Fastest doesn't.
+            var within = new RouteRow { TotalDv = 1000, ArrivalUt = 1000 };
+            Assert.Same(cheap, DirectRoute.Pick(cheap, within, TimeVersusDeltaV.Balanced, 50));
+            Assert.Same(within, DirectRoute.Pick(cheap, within, TimeVersusDeltaV.Fastest, 50));
         }
 
         [Fact]
-        public void The_pick_rule_is_the_settings_rule_on_the_two_routes()
+        public void An_ejection_a_moon_would_stop_gets_no_direct_row_and_says_why()
         {
-            var cheapLate = new RouteRow { TotalDv = 250, ArrivalUt = 2000 };
-            var dearEarly = new RouteRow { TotalDv = 850, ArrivalUt = 1000 };
-            Assert.Same(dearEarly, DirectRoute.Pick(cheapLate, dearEarly, TimeVersusDeltaV.Fastest));
-            Assert.Same(cheapLate, DirectRoute.Pick(cheapLate, dearEarly, TimeVersusDeltaV.MostEfficient));
-            Assert.Same(cheapLate, DirectRoute.Pick(cheapLate, dearEarly, TimeVersusDeltaV.Balanced));
-            // Balanced keeps the earlier unless the other saves at least 10%.
-            var nearlyAsCheap = new RouteRow { TotalDv = 800, ArrivalUt = 2000 };
-            Assert.Same(dearEarly, DirectRoute.Pick(nearlyAsCheap, dearEarly, TimeVersusDeltaV.Balanced));
+            // transfer_to refuses an ejection that meets a moon on its way out, after return has committed the craft: a large moon of
+            // Duna's put round the sky finds one, and the two-step row stands.
+            var notes = 0;
+            for (var turn = 0; turn < 12; turn++)
+            {
+                var rig = TransferRig.Circular("Ike", 20000, 0);
+                rig.Bodies.Add(new SnapshotBody
+                {
+                    Name = "Rock", Parent = "Duna", Gm = 1e9, Radius = 10000, SoiRadius = 12000000, Sma = 30000000, RotationPeriod = 1000, MeanAnomalyAtEpoch = turn * Math.PI / 6,
+                });
+                var outcome = _tools.Run("plan_transfer", "{\"target\":\"Kerbin\"}", rig.Snapshot(), new NoPlanningBody());
+                if (outcome.IsError) continue;
+                using (var doc = JsonDocument.Parse(outcome.Json))
+                {
+                    var root = doc.RootElement;
+                    if (!root.TryGetProperty("direct_note", out var note)) continue;
+                    notes++;
+                    Assert.Contains("meets Rock", note.GetString());
+                    Assert.False(root.TryGetProperty("direct", out _));
+                    Assert.Equal("two_step", root.GetProperty("pick").GetString());
+                }
+            }
+            Assert.True(notes > 0, "no place of the moon stopped the ejection");
+        }
+
+        [Fact]
+        public void A_craft_rising_from_the_moon_on_a_path_that_comes_down_is_not_in_its_orbit()
+        {
+            var snapshot = Ike();
+            snapshot.Orbit.SemiMajorAxis = 150000;
+            snapshot.Orbit.Eccentricity = 0.5;
+            Assert.False(DirectRoute.Applies(snapshot, "Kerbin"));
         }
 
         [Fact]
@@ -173,8 +207,8 @@ namespace ClaudiaKerman.Core.Tests
             var first = TransferFlight.Next(rig.Snapshot(), ask);
             Assert.Equal("", first.Error);
             Assert.Equal("ejection", first.Kind);
-            var off = (first.Ut - D(direct, "eject_ut")) / rig.Orbit.Period;
-            Assert.True(Math.Abs(off - Math.Round(off)) < 0.02, "ejects at " + first.Ut + ", the row says " + D(direct, "eject_ut") + ", the craft's orbit is " + rig.Orbit.Period + " s");
+            // On the first pass of the periapsis: no waiting on the fall, each later pass going back out to the moon's height.
+            Assert.InRange(first.Ut - D(direct, "eject_ut"), -0.02 * rig.Orbit.Period, 0.02 * rig.Orbit.Period);
             var step = rig.Run(ask);
             Assert.True(step.Error == "", step.Error);
             Assert.InRange(rig.Burned("ejection"), D(direct, "ejection_dv") * 0.85, D(direct, "ejection_dv") * 1.15);
@@ -189,7 +223,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             var result = Run("{\"target\":\"Kerbin\"}", Ike());
             var direct = result.GetProperty("direct").GetProperty("fly").GetString();
-            Assert.StartsWith("return(", direct);
+            Assert.StartsWith("local res is return(", direct);
             Assert.Contains("then transfer_to(", direct);
             Assert.DoesNotContain("circularize", direct);
             Assert.Contains("circularize", result.GetProperty("two_step").GetProperty("fly").GetString());
@@ -218,10 +252,13 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void The_trip_home_takes_its_target_pe_when_given_and_the_entry_periapsis_when_not()
+        public void The_trip_home_flies_to_the_entry_periapsis_its_arrival_note_gives_whatever_target_pe_says()
         {
             Assert.Equal(21000, D(Run("{\"target\":\"Kerbin\"}", Ike()), "target_pe"));
-            Assert.Equal(80000, D(Run("{\"target\":\"Kerbin\",\"target_pe\":80000}", Ike()), "target_pe"));
+            // The Mission request's row asks with a capture's 80 km: its fly text must not contradict "entry at 21 km".
+            var row = Run("{\"target\":\"Kerbin\",\"target_pe\":80000}", Ike());
+            Assert.Equal(21000, D(row, "target_pe"));
+            Assert.Contains("\"target_pe\", 21000", row.GetProperty("direct").GetProperty("fly").GetString());
         }
 
         [Fact]

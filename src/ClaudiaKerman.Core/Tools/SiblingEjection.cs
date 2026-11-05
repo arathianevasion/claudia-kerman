@@ -44,6 +44,12 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The re-solve round a window UT: this share of the synodic period each way, or two parking orbits if longer.</summary>
         private const double NarrowShare = 0.01;
         private const int NarrowOrbits = 2;
+        /// <summary>
+        /// From this eccentricity the craft is on a fall, not in a parking orbit (#760): its first periapsis after the window UT is the
+        /// ejection. Its periapsis is lined up for that time, and each later pass goes back out to the moon's height, so the re-solve stays
+        /// within half an orbit of the window UT, where the burn point's next pass is that first periapsis.
+        /// </summary>
+        private const double FallEccentricity = 0.5;
         /// <summary>Newton's method: its iteration cap, the finite-difference step (m/s), and the miss (m) it stops within.</summary>
         private const int Iterations = 20;
         private const double Step = 0.01;
@@ -65,7 +71,7 @@ namespace ClaudiaKerman.Core.Tools
             TransferWindow pick;
             if (window.HasValue)
             {
-                var reach = Math.Max(NarrowOrbits * craft.Period, NarrowShare * synodic);
+                var reach = craft.E >= FallEccentricity ? craft.Period / 4 : Math.Max(NarrowOrbits * craft.Period, NarrowShare * synodic);
                 problem.From = Math.Max(earliest, window.Value - reach);
                 found = TransferWindows.Search(problem, snapshot.MarginPercent, Math.Max(window.Value + reach, problem.From + 2 * reach) - problem.From);
                 pick = found.Optimal;
@@ -216,7 +222,7 @@ namespace ClaudiaKerman.Core.Tools
             return x;
         }
 
-        private static Conic AfterBurn(Conic craft, SnapshotBody home, double ut, Vec3 burn)
+        internal static Conic AfterBurn(Conic craft, SnapshotBody home, double ut, Vec3 burn)
         {
             Vec3 r, v;
             craft.State(ut, out r, out v);

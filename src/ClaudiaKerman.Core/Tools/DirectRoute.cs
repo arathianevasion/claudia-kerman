@@ -93,11 +93,13 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>Whether <paramref name="target"/> is a planet of the star of the planet whose moon the craft is in orbit round, other than that planet.</summary>
         public static bool Applies(GameSnapshot snapshot, string target)
         {
-            if (snapshot == null || string.IsNullOrEmpty(target) || snapshot.IsGrounded || snapshot.Orbit == null || !(snapshot.Orbit.Eccentricity < 1) || !(snapshot.Orbit.SemiMajorAxis > 0)) return false;
+            var orbit = snapshot == null ? null : snapshot.Orbit;
+            if (string.IsNullOrEmpty(target) || orbit == null || snapshot.IsGrounded || !(orbit.Eccentricity < 1) || !(orbit.SemiMajorAxis > 0)) return false;
             var system = new BodySystem(snapshot.Bodies);
-            var moon = system.Find(string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Body : snapshot.Orbit.Body);
+            var moon = system.Find(string.IsNullOrEmpty(orbit.Body) ? snapshot.Body : orbit.Body);
             var body = system.Find(target);
-            if (moon == null || body == null) return false;
+            // In orbit: a craft rising from the moon on a path that comes down again is not, and return would refuse it.
+            if (moon == null || body == null || !(orbit.SemiMajorAxis * (1 - orbit.Eccentricity) > moon.Radius + moon.AtmosphereHeight)) return false;
             var planet = system.Parent(moon);
             var star = planet == null ? null : system.Parent(planet);
             return star != null && string.IsNullOrEmpty(star.Parent) && body != planet && string.Equals(body.Parent, star.Name, StringComparison.OrdinalIgnoreCase);
@@ -130,23 +132,17 @@ namespace ClaudiaKerman.Core.Tools
             price.EjectionDv = leaving - vAtPe;
         }
 
-        /// <summary>The route the setting takes, by <see cref="TransferWindows.Pick"/>'s rule: Fastest the one arriving first, Most efficient the cheaper, Balanced the one arriving first unless the other saves <see cref="TransferWindows.BalancedSaving"/>.</summary>
-        public static RouteRow Pick(RouteRow a, RouteRow b, TimeVersusDeltaV setting)
+        /// <summary>
+        /// The route the setting takes, by the rule windows go by. Optimal is the cheaper route; Soonest the one arriving first if it is
+        /// within the Craft Check's margin of the cheaper, else the cheaper: both routes share a window, so the one arriving first
+        /// differs only by the moon's phase, hours that no setting pays hundreds of m/s for.
+        /// </summary>
+        public static RouteRow Pick(RouteRow a, RouteRow b, TimeVersusDeltaV setting, int marginPercent)
         {
-            var sooner = a.ArrivalUt <= b.ArrivalUt ? a : b;
-            var other = sooner == a ? b : a;
-            switch (setting)
-            {
-                case TimeVersusDeltaV.Fastest: return sooner;
-                case TimeVersusDeltaV.MostEfficient: return a.TotalDv <= b.TotalDv ? a : b;
-                default: return sooner.TotalDv - other.TotalDv >= TransferWindows.BalancedSaving * sooner.TotalDv ? other : sooner;
-            }
-        }
-
-        /// <summary>The periapsis (m) a trip to <paramref name="body"/> that ends in reentry aims at when plan_transfer isn't given one: the entry periapsis.</summary>
-        public static double EntryPe(SnapshotBody body)
-        {
-            return Math.Round(DeorbitBurn.EntryPeriapsisShare * body.AtmosphereHeight);
+            var cheaper = a.TotalDv <= b.TotalDv ? a : b;
+            var first = a.ArrivalUt <= b.ArrivalUt ? a : b;
+            var soonest = first.TotalDv <= cheaper.TotalDv * (1 + marginPercent / 100.0) ? first : cheaper;
+            return TransferWindows.TakesOptimal(soonest.TotalDv, cheaper.TotalDv, setting) ? cheaper : soonest;
         }
 
         /// <summary>Both routes for the Game Snapshot's craft, in the window the setting picks; call only where <see cref="Applies"/>.</summary>
@@ -201,7 +197,7 @@ namespace ClaudiaKerman.Core.Tools
                 WindowName = window == found.Optimal && window != found.Soonest ? "optimal" : "soonest", VInf = leaving.Value.Length,
                 TwoStep = twoStep, Direct = direct, DirectError = directError, CraftDv = found.CraftDv, LaterLegsDv = found.LaterLegsDv,
             };
-            plan.Pick = direct == null ? twoStep : Pick(direct, twoStep, snapshot.TimeVersusDeltaV);
+            plan.Pick = direct == null ? twoStep : Pick(direct, twoStep, snapshot.TimeVersusDeltaV, snapshot.MarginPercent);
             return plan;
         }
 
@@ -268,6 +264,13 @@ namespace ClaudiaKerman.Core.Tools
             }
             double ejectUt;
             var burn = SiblingEjection.Oberth(flown.Orbit, planet.Gm, away.Value, peUt, flown.StartUt, out ejectUt);
+            // What transfer_to would refuse after the return has committed the craft.
+            var way = SingleShooting.Follow(system, planet, SiblingEjection.AfterBurn(flown.Orbit, planet, ejectUt, burn), ejectUt, 1);
+            if (way != null && way.Count > 0 && way[0].End == PatchEnd.Encounter)
+            {
+                error = "the ejection at UT " + Num(ejectUt) + " meets " + way[0].Next.Name + " on its way out of " + planet.Name + "'s sphere of influence";
+                return null;
+            }
             var result = new RouteRow
             {
                 DepartUt = plan.Ut, ReturnWindow = earliest, ReturnDv = plan.DeltaV, EjectUt = ejectUt, EjectWindow = ejectUt - flown.Orbit.Period / 2, EjectionDv = burn.Length,

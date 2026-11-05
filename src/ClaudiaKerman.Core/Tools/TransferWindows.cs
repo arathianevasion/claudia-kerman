@@ -170,12 +170,17 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The window the setting takes: Fastest Soonest, Most efficient Optimal, Balanced Soonest unless Optimal saves <see cref="BalancedSaving"/>.</summary>
         public static TransferWindow Pick(WindowSearch search, TimeVersusDeltaV setting)
         {
+            return TakesOptimal(search.Soonest.TotalDv, search.Optimal.TotalDv, setting) ? search.Optimal : search.Soonest;
+        }
+
+        /// <summary>The setting's rule on two totals: whether it takes the cheaper Optimal over Soonest (#760: for routes as for windows).</summary>
+        internal static bool TakesOptimal(double soonestDv, double optimalDv, TimeVersusDeltaV setting)
+        {
             switch (setting)
             {
-                case TimeVersusDeltaV.Fastest: return search.Soonest;
-                case TimeVersusDeltaV.MostEfficient: return search.Optimal;
-                default:
-                    return search.Soonest.TotalDv - search.Optimal.TotalDv >= BalancedSaving * search.Soonest.TotalDv ? search.Optimal : search.Soonest;
+                case TimeVersusDeltaV.Fastest: return false;
+                case TimeVersusDeltaV.MostEfficient: return true;
+                default: return soonestDv - optimalDv >= BalancedSaving * soonestDv;
             }
         }
 

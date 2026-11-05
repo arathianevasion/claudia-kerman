@@ -11,18 +11,18 @@ The expected figures from a 20 km orbit round Ike to Kerbin: `return_dv` about 1
 Use `tests/blocks/return_ike`'s craft, or any craft in a low orbit round Ike with about 500 m/s. Its stages must not fire a decoupler that the second burn needs.
 
 1. Ask `plan_transfer` with `{"target":"Kerbin"}`. The result has `direct`, `two_step` and `pick`. `arrival_note` says there is no capture burn, and `direct` has no `capture_dv`. Note `return_pe`, `target_pe`, and from `direct` its `return_window`, `depart_ut`, `eject_ut`, `eject_window` and `ejection_dv`.
-2. Run the row's `fly` text: `local res is return(lexicon("target_pe", <return_pe>, "window", <return_window>)). addons:claudia:report(res).` It warps to the window and burns about `return_dv`. Check that `dv_used` is within 5 m/s of `return_dv` and the burn comes within about 200 s of `depart_ut`, then that `success` is true and `planet_pe` is within 1 km of `return_pe`.
+2. Run the first part of the row's `fly` text and report it: `local res is return(lexicon("target_pe", <return_pe>, "window", <return_window>)). addons:claudia:report(res).` It warps to the window and burns about `return_dv`. Check that `dv_used` is within 5 m/s of `return_dv` and the burn comes within about 200 s of `depart_ut`, then that `success` is true and `planet_pe` is within 1 km of `return_pe`.
 3. If `ship:body` is still Ike, coast until it is Duna. `status` must be `ORBITING`, on a closed orbit reaching back out to about Ike's height.
 4. Run `local res is transfer_to(lexicon("target", "Kerbin", "target_pe", <target_pe>, "window", <eject_window>)). addons:claudia:report(res).`
-5. Check that the node sits at or within a few degrees of the orbit's periapsis, and `departure_ut` is `eject_ut` or a whole number of orbits after it (about 27,000 s each). `ejection_node_dv` should be within about 15% of the row's `ejection_dv`.
+5. Check that the node sits at or within a few degrees of the orbit's periapsis, and `departure_ut` is within about 500 s of `eject_ut`: the first pass, with no waiting on the fall. `ejection_node_dv` should be within about 15% of the row's `ejection_dv`.
 6. The craft leaves Duna's sphere of influence, and `success` is true with an encounter with Kerbin (`encounter_ut` above 0). `correction_dv` is under about 20 m/s.
 
 Tell the ticket the figures from steps 2 and 5, and the time between `eject_ut` and `departure_ut`.
 
 ## Things to watch
 
-- **Waiting on the fall.** `transfer_to` re-solves the window and may take a later pass of the periapsis. Each pass reaches back out to Ike's height, and a pass that meets Ike's sphere of influence changes the orbit. If that happens, tell the ticket how many passes it waited.
-- **Passing Ike on the way out.** `transfer_to` refuses an ejection that meets a moon on the way out of the planet's sphere of influence, with `meets <moon> on its way out`. It's a real refusal: note the date.
+- **The first pass only.** On an orbit this eccentric (0.5 or more), `transfer_to` with a window UT keeps its re-solve to the first periapsis after that UT. If the craft reaches `transfer_to` after that pass, it takes the next one: each pass goes back out to Ike's height, and one that meets Ike's sphere of influence changes the orbit. If that happens, tell the ticket.
+- **Passing a moon on the way out.** `plan_transfer` gives no `direct` row when the ejection would meet a moon on the way out of the planet's sphere of influence: `direct_note` says so and `pick` is `two_step`. `transfer_to` makes the same check, and its figure may differ a little from the row's, so if it refuses after a row said yes (`meets <moon> on its way out`), note the date on the ticket.
 
 ## The two-step row is as it was
 
