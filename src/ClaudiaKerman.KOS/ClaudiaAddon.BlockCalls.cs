@@ -82,6 +82,30 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (land): the site lat, lng moved clear_m clear of keep_lat, keep_lng (straight away, else toward ahead_lat, ahead_lng) by up to max_divert on a body of radius; lexicon lat, lng, dist, moved"));
             AddSuffix("BURNWORTH", new OneArgsSuffix<Lexicon, Lexicon>(BurnWorthCall,
                 "Core Library only (circularize, tune_pe): whether a burn is worth its turn when the tolerance was defaulted, and tune_pe's default tolerance; lexicon safe_height, tolerance, skip, note"));
+            AddSuffix("SHIPSYSTEMS", new OneArgsSuffix<Lexicon, StringValue>(ShipSystemsCall,
+                "Core Library only (launch, ascend, land, deorbit, reentry): a Ship Systems cue (liftoff, final_descent, entry) or stowing to ask after the lift-off stow; lexicon done, capped, note"));
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:SHIPSYSTEMS</c> (#756, ADR 0014): the block's one-line cue for the moments only it knows. The mod's rule
+        /// decides (<see cref="ShipSystemsRule"/>) and the mod moves the parts, the craft's own, from Update; the Script Check refuses
+        /// the call in a Mission Script. A block's stow wait polls it, so its time is logged at most once a second (guardrail 6).
+        /// </summary>
+        private Lexicon ShipSystemsCall(StringValue cue)
+        {
+            ShipSystemsStowAnswer answer = null;
+            return (Lexicon)Guarded("SHIPSYSTEMS", () =>
+            {
+                // A failure here must not stop the block (it reads the answer's keys unguarded): no action, and the block goes on.
+                var keeper = ShipSystemsKeeper.Current;
+                try { answer = keeper == null ? ShipSystemsStowAnswer.Nothing : keeper.Cue(cue.ToString(), shared.Vessel); }
+                catch (Exception e)
+                {
+                    Debug.LogWarning(ModInfo.LogTag + " Ship Systems cue " + cue + " failed: " + e);
+                    answer = ShipSystemsStowAnswer.Nothing;
+                }
+                return KosValues.FromPlain(answer.Lexicon());
+            }, () => cue + ": " + (answer.Done ? "done" : "waiting") + (answer.Capped ? ", capped" : ""), 1);
         }
 
         /// <summary><c>ADDONS:CLAUDIA:BURNWORTH</c> (#715, ADR 0014): circularize's and tune_pe's skip rule (<see cref="BurnWorth.Call"/>), pure.</summary>

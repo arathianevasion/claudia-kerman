@@ -245,6 +245,7 @@ function deorbit {
   if short <> "" {
     return claudia_finish(ctx, false, short, extra).
   }
+  addons:claudia:shipsystems("entry").
   if opt:max_duration:istype("String") {
     set opt:max_duration to max(0, found:burn_ut - time:seconds) + 900.
   }

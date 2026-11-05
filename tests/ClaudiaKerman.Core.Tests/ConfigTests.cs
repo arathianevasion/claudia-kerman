@@ -344,7 +344,9 @@ namespace ClaudiaKerman.Core.Tests
                     + "runaway_multiplier = 250%\n"
                     // Added at the load before: the one-time Haiku move (#639) left this edited list alone.
                     + PlayerConfig.HaikuDefaultMarkerComment + "\n"
-                    + PlayerConfig.HaikuDefaultMarker + " = true\n",
+                    + PlayerConfig.HaikuDefaultMarker + " = true\n"
+                    + "# Claudia manages ship systems: panels, antennas, radiators and lights extend, retract and switch at flight transitions on the craft she flies.\n"
+                    + "manage_ship_systems = true\n",
                     File.ReadAllText(path));
                 Assert.Equal(2.5, PlayerConfig.LoadOrCreate(dir.Sub).RunawayMultiplier);
             }
@@ -368,9 +370,25 @@ namespace ClaudiaKerman.Core.Tests
                 var text = File.ReadAllText(path);
                 Assert.StartsWith("# old\r\ndebug_tools = false\r\nmodels = claude-sonnet-5-5\r\ndaylight_landing = true\r\ntime_vs_dv = Balanced\r\n", text);
                 Assert.EndsWith("default_spending_cap = 10\r\n# Mission type prefilled in the start form: false is crewed (Claudia flies aboard), true is remote (Claudia at Mission Control).\r\ndefault_remote = true\r\n"
-                    + "# Start new Missions in Auto Mode: Claudia's plans after the first Mission Plan are approved for you while the Spending Cap has room.\r\ndefault_auto_mode = true\r\n", text);
+                    + "# Start new Missions in Auto Mode: Claudia's plans after the first Mission Plan are approved for you while the Spending Cap has room.\r\ndefault_auto_mode = true\r\n"
+                    + "# Claudia manages ship systems: panels, antennas, radiators and lights extend, retract and switch at flight transitions on the craft she flies.\r\nmanage_ship_systems = true\r\n", text);
                 Assert.True(PlayerConfig.LoadOrCreate(dir.Sub).DefaultRemote);
                 Assert.True(PlayerConfig.LoadOrCreate(dir.Sub).DefaultAutoMode);
+            }
+        }
+
+        // #756: "Claudia manages ship systems" is on by default and persists like the other settings.
+        [Fact]
+        public void ManageShipSystemsIsOnByDefaultAndPersists()
+        {
+            using (var dir = new TempDir())
+            {
+                var config = PlayerConfig.LoadOrCreate(dir.Sub);
+                Assert.True(config.ManageShipSystems);
+                Assert.Contains("manage_ship_systems = true", File.ReadAllText(Path.Combine(dir.Sub, PlayerConfig.FileName)));
+                config.ManageShipSystems = false;
+                config.SaveDefaults(dir.Sub);
+                Assert.False(PlayerConfig.LoadOrCreate(dir.Sub).ManageShipSystems);
             }
         }
 

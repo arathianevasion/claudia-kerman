@@ -631,6 +631,7 @@ namespace ClaudiaKerman.ScriptCheck.Tests
         [InlineData("print addons:claudia:burnworth(lexicon(\"block\", \"circularize\")):skip.")]
         [InlineData("print addons:claudia:turnplan(lexicon(\"angle\", 140, \"left_s\", 60)):coast_rate.")]
         [InlineData("print addons:claudia:burstturn(lexicon(), lexicon(\"error\", 40)):rcs_on.")]
+        [InlineData("print addons:claudia:shipsystems(\"liftoff\"):done.")]
         public void ABlockInternalCallInAMissionScriptFails(string script)
         {
             AssertForbidden("call block-internal calculations", script);

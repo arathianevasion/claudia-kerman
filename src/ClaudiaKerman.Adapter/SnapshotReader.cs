@@ -355,7 +355,11 @@ namespace ClaudiaKerman.Adapter
                 if (part.Resources.Contains("ElectricCharge")) info.ChargeMax = part.Resources["ElectricCharge"].maxAmount;
                 if (part.CrewCapacity > 0) info.Tags.Add("crew_seat");
                 snapshot.Craft.Seats += part.CrewCapacity;
-                foreach (var module in part.Modules) Classify(snapshot, part, info, module);
+                foreach (var module in part.Modules)
+                {
+                    Classify(snapshot, part, info, module);
+                    if (ShipSystemsKeeper.CannotRetract(module)) info.CannotRetract = true;
+                }
                 snapshot.Craft.Parts.Add(info);
 
                 foreach (var resource in part.Resources)

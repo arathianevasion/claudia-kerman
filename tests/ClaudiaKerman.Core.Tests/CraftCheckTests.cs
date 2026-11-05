@@ -89,6 +89,26 @@ namespace ClaudiaKerman.Core.Tests
             return mission;
         }
 
+        // #756: an info line names Ship Systems that can't retract: no finding, nothing to acknowledge, no word of it in the request.
+        [Fact]
+        public void ShipSystemsThatCannotRetractGetAnInfoLineAndStayOutOfThePrompt()
+        {
+            var craft = Craft();
+            craft.Craft.Parts[0].CannotRetract = true;
+            craft.Craft.Parts[0].Title = "OX-Fixed";
+            var transport = Replies("craft-check-pass.sse");
+            var mission = Checked(transport, craft);
+
+            var check = mission.View.CraftCheck;
+            Assert.StartsWith("Ship Systems that can't retract: OX-Fixed.", check.ShipSystemsInfo);
+            Assert.Equal(CraftVerdict.Pass, check.Verdict);
+            Assert.Empty(check.Findings);
+            Assert.DoesNotContain("retract", transport.Requests[0].Body, StringComparison.OrdinalIgnoreCase);
+
+            var off = Checked(Replies("craft-check-pass.sse"), craft, new PlayerConfig { ManageShipSystems = false });
+            Assert.Equal("", off.View.CraftCheck.ShipSystemsInfo);
+        }
+
         [Fact]
         public void APassingCraftCheckIsShownAsPassAndNothingIsEditedInTheGame()
         {

@@ -40,6 +40,8 @@ namespace ClaudiaKerman.Core.Missions
         public string BootFile = "";
         /// <summary>A docking port's size (its node type, e.g. size1), as the Target Vessel's free_ports count them; "" for other parts.</summary>
         public string PortSize = "";
+        /// <summary>A Ship System that extends but can never retract, for the Craft Check's info line (<see cref="ShipSystemsHold"/>). Not in the JSON: the prompt doesn't carry it.</summary>
+        public bool CannotRetract;
 
         // ---- Child Vessel facts (#100): enough to work out a separated vessel's own figures ----
 

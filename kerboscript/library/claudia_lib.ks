@@ -2072,6 +2072,25 @@ function claudia_tick {
   return claudia_abort_reason(ctx:opt, claudia_ec_pct(), now - ctx:start_ut, max(0, ctx:parts - ship:parts:length)).
 }
 
+// Ship Systems (#756): the lift-off cue, then until the mod reports them retracted, at most 10 s (Core's ShipSystemsStowWait).
+// "" or why the block's tick stopped it. The mod moves the parts; this only waits.
+function claudia_stow_ship_systems {
+  parameter ctx.
+  local stow is addons:claudia:shipsystems("liftoff").
+  until stow:done {
+    wait 0.2.
+    local ticked is claudia_tick(ctx, 0).
+    if ticked <> "" {
+      return ticked.
+    }
+    set stow to addons:claudia:shipsystems("stowing").
+  }
+  if stow:capped {
+    addons:claudia:blocknote(ctx:block, lexicon("phase", "ship_systems", "note", stow:note)).
+  }
+  return "".
+}
+
 // After a block calls another block (e.g. exec_node for a burn): folds the inner result's delta-v
 // into ctx and takes the craft as it now is, so the inner block's staging isn't counted as part loss.
 function claudia_add_result {

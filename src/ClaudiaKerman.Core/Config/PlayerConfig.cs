@@ -72,6 +72,9 @@ namespace ClaudiaKerman.Core.Config
         /// <summary>A new Mission starts in Auto Mode (the player's Approval given in advance); off by default.</summary>
         public bool DefaultAutoMode;
 
+        /// <summary>Claudia manages Ship Systems (#756): panels, antennas, radiators and lights move at flight transitions on the craft she flies. On by default.</summary>
+        public bool ManageShipSystems = true;
+
         /// <summary>How much more delta-v a late Approval may cost (the next window against the planned one) before Claudia re-plans, in percent.</summary>
         public int LateApprovalToleranceDvPercent = 10;
 
@@ -121,6 +124,9 @@ namespace ClaudiaKerman.Core.Config
         private const string AutoModeComment =
             "# Start new Missions in Auto Mode: Claudia's plans after the first Mission Plan are approved for you while the Spending Cap has room.";
 
+        private const string ShipSystemsComment =
+            "# Claudia manages ship systems: panels, antennas, radiators and lights extend, retract and switch at flight transitions on the craft she flies.";
+
         private const string DefaultFile =
             "# Claudia Kerman player config\n"
             + "debug_tools = false\n"
@@ -154,6 +160,8 @@ namespace ClaudiaKerman.Core.Config
             + "default_remote = false\n"
             + AutoModeComment + "\n"
             + "default_auto_mode = false\n"
+            + ShipSystemsComment + "\n"
+            + "manage_ship_systems = true\n"
             + "# How much more delta-v, in percent, a late Approval may cost before Claudia re-plans instead of taking the next window.\n"
             + "late_approval_dv_tolerance = 10\n"
             + "# Seconds attitude, translation or throttle input must be held to start Manual Control.\n"
@@ -296,6 +304,9 @@ namespace ClaudiaKerman.Core.Config
                         break;
                     case "default_auto_mode":
                         config.DefaultAutoMode = string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+                        break;
+                    case "manage_ship_systems":
+                        config.ManageShipSystems = !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
                         break;
                     case "late_approval_dv_tolerance":
                         int lateTolerance;
@@ -452,6 +463,7 @@ namespace ClaudiaKerman.Core.Config
                 new KeyValuePair<string, string>("time_vs_dv", DefaultTimeVersusDeltaV.ToString()),
                 new KeyValuePair<string, string>("default_remote", DefaultRemote ? "true" : "false"),
                 new KeyValuePair<string, string>("default_auto_mode", DefaultAutoMode ? "true" : "false"),
+                new KeyValuePair<string, string>("manage_ship_systems", ManageShipSystems ? "true" : "false"),
             };
             var lines = Lines(text);
 
@@ -474,6 +486,7 @@ namespace ClaudiaKerman.Core.Config
                 if (written.Contains(pair.Key)) continue;
                 if (pair.Key == "default_remote") lines.Add(RemoteComment);
                 if (pair.Key == "default_auto_mode") lines.Add(AutoModeComment);
+                if (pair.Key == "manage_ship_systems") lines.Add(ShipSystemsComment);
                 lines.Add(pair.Key + " = " + pair.Value);
                 added = true;
             }
