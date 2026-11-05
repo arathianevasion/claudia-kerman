@@ -200,9 +200,13 @@ namespace ClaudiaKerman.Core.Missions
             var goalStands = turn.GoalStands;
             // One Mission Plan per reply (#697): with two or more calls none is accepted, so "the last one" never picks among them.
             var plans = message.Content.OfType<ToolUseBlock>().Count(u => u.Name == ProposedPlans.ToolName);
+            var stepsBegun = StepsBegun(mission);
+            var plannedAscent = mission.PlannedAscent;
+            var wantedPercent = _config.CraftCheckMarginPercent;
+            Func<MissionPlan, string> legNote = plan => snapshot == null ? "" : PlanLegs.Note(snapshot, PlanLegs.Judge(snapshot, plan.Sequences.Skip(stepsBegun).ToList(), plannedAscent), wantedPercent);
             Func<ToolUseBlock, ToolOutcome> answer = use => use.Name != ProposedPlans.ToolName ? null
                 : plans > 1 ? ProposedPlans.OnePerReply()
-                : ProposedPlans.Check(use, left, needsNewGoal, allowsNewGoal, goalStands);
+                : ProposedPlans.Check(use, left, needsNewGoal, allowsNewGoal, goalStands, legNote);
             _background.Run(
                 () => ToolStep.Run(tools, message, refusal, atLimit, snapshot, body, timeout, answer),
                 step => ToolsAnswered(mission, turn, message, step, atLimit),

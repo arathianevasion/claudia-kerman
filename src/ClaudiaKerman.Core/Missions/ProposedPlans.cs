@@ -56,8 +56,12 @@ namespace ClaudiaKerman.Core.Missions
         /// <paramref name="goalStands"/> when the mod asked for a revision of a Mission under way whose goal stands (#697): a plan
         /// with no sequences, which declines the goal, is refused then.
         /// </summary>
+        /// <param name="legNote">
+        /// #757: the plan's legs under the Delta-v Map (<see cref="PlanLegs.Note"/>), "" for none. Such a plan is still accepted, with the note: a leg
+        /// matched by its words must never be able to refuse a Mission, and she may hand it in again or keep it.
+        /// </param>
         public static ToolOutcome Check(ToolUseBlock use, ICollection<string> leftTheCraft, bool needsNewGoal, bool allowsNewGoal = true,
-            bool goalStands = false)
+            bool goalStands = false, System.Func<MissionPlan, string> legNote = null)
         {
             var problems = new List<string>();
             var plan = use.InputIsValid ? Read(use.InputJson, problems) : null;
@@ -75,9 +79,13 @@ namespace ClaudiaKerman.Core.Missions
                         + "to give up on the goal, say so in the Debrief's follow-up instead");
             }
             if (problems.Count == 0)
-                return plan != null && plan.NewGoal != null && !allowsNewGoal
-                    ? new ToolOutcome { Json = GoalKeptJson, Summary = "ok, goal kept" }
-                    : new ToolOutcome { Json = AcceptedJson, Summary = "ok" };
+            {
+                if (plan != null && plan.NewGoal != null && !allowsNewGoal) return new ToolOutcome { Json = GoalKeptJson, Summary = "ok, goal kept" };
+                var note = plan != null && legNote != null ? legNote(plan) : "";
+                return string.IsNullOrEmpty(note)
+                    ? new ToolOutcome { Json = AcceptedJson, Summary = "ok" }
+                    : new ToolOutcome { Json = new JsonWriter().BeginObject().Field("ok", true).Field("note", note).EndObject().ToString(), Summary = "ok, a leg under the Delta-v Map" };
+            }
             var json = new JsonWriter().BeginObject().Field("ok", false).Name("problems").BeginArray();
             foreach (var problem in problems) json.String(problem);
             return new ToolOutcome
@@ -87,12 +95,18 @@ namespace ClaudiaKerman.Core.Missions
             };
         }
 
+        /// <summary>A tool result that accepted its plan: <see cref="AcceptedJson"/>, <see cref="GoalKeptJson"/>, or an ok with a leg note (#757).</summary>
+        public static bool IsAccepted(string content)
+        {
+            return content != null && content.StartsWith("{\"ok\":true", System.StringComparison.Ordinal);
+        }
+
         /// <summary>The last plan the tool accepted in <paramref name="messages"/> (one turn's), or null when none was.</summary>
         public static MissionPlan LastAccepted(IEnumerable<Message> messages)
         {
             var list = messages.ToList();
             var results = list.SelectMany(m => m.Content.OfType<ToolResultBlock>()).Where(r => !r.IsError).ToList();
-            var accepted = new HashSet<string>(results.Where(r => r.Content == AcceptedJson || r.Content == GoalKeptJson).Select(r => r.ToolUseId));
+            var accepted = new HashSet<string>(results.Where(r => IsAccepted(r.Content)).Select(r => r.ToolUseId));
             var kept = new HashSet<string>(results.Where(r => r.Content == GoalKeptJson).Select(r => r.ToolUseId));
             var use = list.SelectMany(m => m.Content.OfType<ToolUseBlock>()).LastOrDefault(u => u.Name == ToolName && u.InputIsValid && accepted.Contains(u.Id ?? ""));
             var plan = use != null ? ReadAccepted(use.InputJson) : null;

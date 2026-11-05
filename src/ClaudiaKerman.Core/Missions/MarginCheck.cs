@@ -39,7 +39,8 @@ namespace ClaudiaKerman.Core.Missions
     /// monopropellant are measured against what is left to fly; and the Craft Check findings the mod can decide in code join them.
     /// The level is the worst of them. Findings the start Craft Check already raised and the player acknowledged (no generation,
     /// a low landing TWR, a margin under 25%, a manual stretch with no other crew) are reported but leave the level as it is, so
-    /// that only what has changed since makes the margin tight or short. An unreliable delta-v reading (#234) is not judged.
+    /// that only what has changed since makes the margin tight or short. An unreliable delta-v reading (#234) is not judged. Delta-v counts each
+    /// leg at the larger of its budget and the Delta-v Map's figure (#757, <see cref="PlanLegs"/>); a leg under the Map is also reported, and sets no level.
     /// </summary>
     internal sealed class MarginCheck
     {
@@ -56,14 +57,18 @@ namespace ClaudiaKerman.Core.Missions
         /// is what the run just flown used (null when unknown, or for a manual stretch): each leg still to fly is taken to need as much.
         /// </summary>
         public static MarginCheck Of(GameSnapshot snapshot, IList<PlannedSequence> rest, int wantedPercent, int chargePercent, bool remote, double? monopropellantUsed,
-            ChuteAllocation chutes = null, string goal = "", int firstStep = 0)
+            ChuteAllocation chutes = null, string goal = "", int firstStep = 0, string plannedAscent = "")
         {
             var check = new MarginCheck();
             if (rest.Count == 0) return check;
             var repack = RepackPlan.IsPlanned(goal);
             var finishes = Finishes(chutes);
+            // #757: each leg counts at the larger of its budget and the Delta-v Map's figure (PlanLegs states the rule).
+            var legs = PlanLegs.Judge(snapshot, rest, plannedAscent);
             // A goal that has an Engineer repack the chutes reuses them: the finish it would need is a Warning, not delta-v to carry.
-            check.DeltaV(snapshot, rest, wantedPercent, repack ? new List<EntryChutes>() : finishes);
+            check.DeltaV(snapshot, PlanLegs.Need(legs), wantedPercent, repack ? new List<EntryChutes>() : finishes);
+            // A Warning to see, not a level: the margin above already counts the larger figure, and only a margin that falls pays for a recheck.
+            foreach (var finding in PlanLegs.Findings(legs)) check.Findings.Add(finding);
             check.Chutes(snapshot, rest, chutes, finishes, repack, firstStep);
             check.Thrust(snapshot, rest);
             check.Charge(snapshot, chargePercent);
@@ -72,16 +77,16 @@ namespace ClaudiaKerman.Core.Missions
             return check;
         }
 
-        private void DeltaV(GameSnapshot snapshot, IList<PlannedSequence> rest, int wantedPercent, IList<EntryChutes> finishes)
+        private void DeltaV(GameSnapshot snapshot, double need, int wantedPercent, IList<EntryChutes> finishes)
         {
             DeltaVUnknown = UnknownDeltaV(snapshot);
             if (DeltaVUnknown.Length > 0) return;
-            Margin = MarginBar.Compute(snapshot.Stages.Sum(s => s.DeltaVVac), rest.Sum(s => s.DeltaV) + finishes.Sum(e => e.TouchdownSpeed), wantedPercent);
+            Margin = MarginBar.Compute(snapshot.Stages.Sum(s => s.DeltaVVac), need + finishes.Sum(e => e.TouchdownSpeed), wantedPercent);
             if (Margin == null) return;
             if (Margin.Level != MarginLevel.Enough)
             {
                 // A shortfall that only the powered finishes cause is the Chute finding's (it names the finish): one finding, not two.
-                var legs = MarginBar.Compute(snapshot.Stages.Sum(s => s.DeltaVVac), rest.Sum(s => s.DeltaV), wantedPercent);
+                var legs = MarginBar.Compute(snapshot.Stages.Sum(s => s.DeltaVVac), need, wantedPercent);
                 if (finishes.Count > 0 && legs != null && legs.Level == MarginLevel.Enough) return;
                 Add("delta_v_short", Margin.Level, Margin.Describe().TrimEnd('.'));
                 return;
@@ -181,7 +186,7 @@ namespace ClaudiaKerman.Core.Missions
             if (low.Count > 0) Add("landing_twr_low", MarginLevel.Enough, "Thrust over weight " + string.Join("; ", low.ToArray()));
         }
 
-        private static double? LowestTwr(GameSnapshot snapshot, SnapshotBody body, double from, double to)
+        internal static double? LowestTwr(GameSnapshot snapshot, SnapshotBody body, double from, double to)
         {
             var rows = StagePerformance.Rows(snapshot, 0, body.SurfaceGravity).Where(r => r.DeltaV > 0 && r.Thrust > 0).OrderByDescending(r => r.Stage).ToList();
             double? lowest = null;

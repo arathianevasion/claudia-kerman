@@ -197,7 +197,7 @@ namespace ClaudiaKerman.Core.Missions
             if (!snapshot.DeltaVSimulator) return Skip(gate, "the stock delta-v simulator is off");
             if (!_hasKey()) return Skip(gate, "there is no API key");
 
-            var request = _craftCheck.RecheckRequest(mission.Goal, mission.Model, snapshot, mission.Remote, RestOfPlanText(mission));
+            var request = _craftCheck.RecheckRequest(mission.Goal, mission.Model, snapshot, mission.Remote, RestOfPlanText(mission), null, RecheckLegFacts(mission, snapshot));
             var worst = _config.Prices.WorstCase(mission.Model, (request.ToJson().Length + 2) / 3, request.MaxTokens);
             // The recheck must leave room for the Debrief itself, or a Mission at its cap would Pause for a side request.
             if (mission.Committed + worst + DebriefReserve(mission, turn) > mission.SpendingCap)
@@ -215,6 +215,12 @@ namespace ClaudiaKerman.Core.Missions
             return true;
         }
 
+        /// <summary>#757: the rest of the Mission Plan judged against the Delta-v Map, as the margin recheck is told of it.</summary>
+        private static string RecheckLegFacts(Mission mission, GameSnapshot snapshot)
+        {
+            return PlanLegs.RecheckFacts(PlanLegs.Judge(snapshot, RestOfPlan(mission), mission.PlannedAscent));
+        }
+
         /// <summary>The mod's margin check of the craft as it is now against the rest of the Mission Plan; a manual stretch has no run's monopropellant to go by.</summary>
         private MarginCheck MarginCheckOf(Mission mission, GameSnapshot snapshot)
         {
@@ -225,7 +231,7 @@ namespace ClaudiaKerman.Core.Missions
             // A revision since the allocation was made (#645) leaves it stale: it is worked out again for the plan judged.
             if (mission.Chutes != null && mission.Plan != null)
                 mission.Chutes = ChuteAllocation.Current(mission.Chutes, _snapshot, mission.Plan.Sequences, StepsBegun(mission), mission.Remote, mission.ProcessorPartId);
-            return MarginCheck.Of(snapshot, RestOfPlan(mission), _config.CraftCheckMarginPercent, _config.CheckElectricChargePercent, mission.Remote, used, mission.Chutes, mission.Goal, StepsBegun(mission));
+            return MarginCheck.Of(snapshot, RestOfPlan(mission), _config.CraftCheckMarginPercent, _config.CheckElectricChargePercent, mission.Remote, used, mission.Chutes, mission.Goal, StepsBegun(mission), mission.PlannedAscent);
         }
 
         /// <summary>Sends the recheck's request (its first, or the next step of its tool loop), charged to the Mission at <paramref name="worst"/>.</summary>
@@ -319,7 +325,7 @@ namespace ClaudiaKerman.Core.Missions
             }
             if (!SecondLook.Eligible("margin_recheck", gate.RecheckRequest.Effort)) return false;
             var snapshot = _snapshot ?? gate.RecheckSnapshot;
-            var request = _craftCheck.RecheckRequest(mission.Goal, mission.Model, snapshot, mission.Remote, RestOfPlanText(mission), reply.UnsureBecause);
+            var request = _craftCheck.RecheckRequest(mission.Goal, mission.Model, snapshot, mission.Remote, RestOfPlanText(mission), reply.UnsureBecause, RecheckLegFacts(mission, snapshot));
             var worst = RequestCharge.WorstCase(_config.Prices, mission.Model, request);
             if (mission.Committed + worst + DebriefReserve(mission, turn) > mission.SpendingCap)
             {
@@ -487,7 +493,7 @@ namespace ClaudiaKerman.Core.Missions
             if (snapshot != null)
             {
                 double? left = snapshot.DeltaVSimulator && snapshot.Stages.Count > 0 && !snapshot.DeltaVUnreliable ? snapshot.Stages.Sum(s => s.DeltaVVac) : (double?)null;
-                detail.Margin = MarginBar.Compute(left, RestOfPlan(mission).Sum(s => s.DeltaV), _config.CraftCheckMarginPercent);
+                detail.Margin = MarginBar.Compute(left, PlanLegs.Need(PlanLegs.Judge(snapshot, RestOfPlan(mission), mission.PlannedAscent)), _config.CraftCheckMarginPercent);
                 detail.ResourcesLeft = snapshot.Resources.Where(r => r.Max > 0)
                     .Select(r => r.Name + " " + (100 * r.Amount / r.Max).ToString("0", CultureInfo.InvariantCulture) + "%").ToList();
                 if (snapshot.RcsOn.HasValue) detail.RcsState = snapshot.RcsOn.Value ? "RCS on" : "RCS off";
