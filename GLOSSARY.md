@@ -152,15 +152,19 @@ The parts the mod moves at flight transitions on the craft Claudia flies: solar 
 _Avoid_: deployables, auto-deploy
 
 **Encounter Watch**:
-The mod's check of an encounter during `transfer_to`'s long coasts: at intervals of game time, tighter near the coast's two ends, it reads the craft's orbit from KSP with no physics and asks whether the encounter the coast was planned on still holds. Only a lost encounter, a re-patch onto a body the coast doesn't go round, or a periapsis drifted past its limit ends the wait early, and the block then plans the restore. It never raises warp.
+The mod's check of an encounter during `transfer_to`'s long coasts (and, by the same rule, the check when the player is back from a Coast Checkpoint): at intervals of game time, tighter near the coast's two ends, it reads the craft's orbit from KSP with no physics and asks whether the encounter the coast was planned on still holds. Only a lost encounter, a re-patch onto a body the coast doesn't go round, or a periapsis drifted past its limit ends the wait early, and the block then plans the restore. It never raises warp.
 _Avoid_: encounter guard, warp monitor
+
+**Coast Checkpoint**:
+A place in a long coast of `transfer_to` or `return` where the block ends Nominal so the player can fly something else, without any setting or reply. It falls before each of the block's correction points more than 6 h away, and only when the encounter is confirmed, the predicted periapsis is out of the atmosphere and off the surface, and no sphere of influence change comes first (the target's own entry aside, which the finer correction sits just inside); otherwise the block corrects or keeps flying. The mod writes a Nominal Debrief and a resumed Sequence Plan with the same `plan_step`, with no request, entering the flight at the coast with no ejection; its Due Time is the correction point less the turn time and 60 s. A far switch while the block only warps on such a coast makes one too. When the player is back on the craft the mod checks the trajectory on the Game Snapshot: kept and within tolerance, the resume stands; drifted (over 10% of the target's sphere of influence, or an unsafe periapsis) or lost, Claudia plans the next sequence from the check's figures. The Mission Plan never names one.
+_Avoid_: coast pause, save point, parking
 
 **Mission Plan**:
 The ordered list of Maneuver Sequences Claudia intends to fly to reach a Mission Goal, each with its delta-v budget and Due Time or rough timing; approved once to start the Mission and revised as Debriefs require.
 _Avoid_: flight plan, roadmap
 
 **Due Time**:
-The earliest time a Maneuver Sequence may start; the player may fly elsewhere until then, and the Mission calls them back at it. Claudia sets one in a Sequence Plan when the wait before it needs the player (e.g. "come back when you've docked"). The mod sets one on the first Maneuver Sequence when it would wait on the pad more than 6 h for a Transfer Window to another planet or a moon: the window less the launch lead. A goal at a moon of another planet waits for that planet's window. A craft landed on another body waits there too: when its next legs are an ascent and a departure for another planet, the ascent carries the Due Time, the departure less the ascent lead. A shorter wait for a window, and any wait for daylight or a hold, is not a Due Time: the Mission Script warps through it (ADR 0004 and its amendment).
+The earliest time a Maneuver Sequence may start; the player may fly elsewhere until then, and the Mission calls them back at it. Claudia sets one in a Sequence Plan when the wait before it needs the player (e.g. "come back when you've docked"). The mod sets one on the first Maneuver Sequence when it would wait on the pad more than 6 h for a Transfer Window to another planet or a moon: the window less the launch lead. A goal at a moon of another planet waits for that planet's window. A craft landed on another body waits there too: when its next legs are an ascent and a departure for another planet, the ascent carries the Due Time, the departure less the ascent lead. A shorter wait for a window, and any wait for daylight or a hold, is not a Due Time: the Mission Script warps through it (ADR 0004 and its amendment). A Coast Checkpoint's Due Time is the one soft kind: with the player still in the craft the resumed sequence need not wait for it, and its alarm matters only if they have left.
 _Avoid_: window (which is a transfer window), scheduled time
 
 **Sequence Plan**:
@@ -206,7 +210,7 @@ The player's go-ahead, given in chat, for Claudia to execute the proposed Maneuv
 _Avoid_: confirmation, sign-off
 
 **Auto Mode**:
-A per-Mission switch on the Mission window, which the player may flip at any point in the Mission, under which the player's Approval is given in advance: every plan Claudia proposes after the first Mission Plan (Sequence Plans, revised Mission Plans, a reduced or changed Mission Goal) is approved the moment it arrives and an unsafe script is re-planned once, each only while the Spending Cap has room for the worst case of the Debrief and next plan that follow; an Abort she recommends is always taken. It never starts a Mission, acknowledges a Warning, raises the Spending Cap, resumes a Paused Mission, or stands in for the player at a Manual stretch or Due Time; there, and when the Spending Cap has no room, it stops and calls the player. New Missions take the player's default, off unless set otherwise.
+A per-Mission switch on the Mission window, which the player may flip at any point in the Mission, under which the player's Approval is given in advance: every plan Claudia proposes after the first Mission Plan (Sequence Plans, revised Mission Plans, a reduced or changed Mission Goal) is approved the moment it arrives and an unsafe script is re-planned once, each only while the Spending Cap has room for the worst case of the Debrief and next plan that follow; an Abort she recommends is always taken. It never starts a Mission, acknowledges a Warning, raises the Spending Cap, resumes a Paused Mission, or stands in for the player at a Manual stretch or Due Time, but for a Coast Checkpoint's Due Time with the player still in the craft and at no other kind; there, and when the Spending Cap has no room, it stops and calls the player. New Missions take the player's default, off unless set otherwise.
 _Avoid_: autopilot, autonomous mode (Blackout's word to avoid), auto-approve (as a noun)
 
 **Mission**:
@@ -250,7 +254,7 @@ The state of a Mission while the player flies the craft and Claudia only advises
 _Avoid_: takeover, override, manual mode
 
 **Interrupted**:
-Of a Maneuver Sequence: it was Running when the scene changed, a save was loaded, the game quit or crashed, its kOS processor was lost, or its craft unloaded (the player switched vessels, or went out of range of it), so its script is gone. It is never restarted; Claudia gives it an Interrupted Debrief when the player is back in Flight, judging from the craft as it now is. Not a Debrief outcome: the Debrief still ends Nominal, Off-Nominal or Failed.
+Of a Maneuver Sequence: it was Running when the scene changed, a save was loaded, the game quit or crashed, its kOS processor was lost, or its craft unloaded (the player switched vessels, or went out of range of it), so its script is gone; a far switch that makes a Coast Checkpoint is not an interruption. It is never restarted; Claudia gives it an Interrupted Debrief when the player is back in Flight, judging from the craft as it now is. Not a Debrief outcome: the Debrief still ends Nominal, Off-Nominal or Failed.
 _Avoid_: restarted, resumed (an interrupted sequence is Debriefed, never run again)
 
 **Interrupted Debrief**:

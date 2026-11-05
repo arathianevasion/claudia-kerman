@@ -37,11 +37,11 @@ namespace ClaudiaKerman.Core.Ui
             return entry.FinalDebrief != null ? entry.FinalDebrief.Title : "No Debrief";
         }
 
-        /// <summary>The line under a Due Mission's goal: "Due Y2 D140: waiting for the Duna window", or "Due Y2 D140"; "" for none.</summary>
+        /// <summary>The line under a Due Mission's goal: "Due Y2 D140: waiting for the Duna window", "Due Y2 D140: check pending" (#775) or "Due Y2 D140"; "" for none.</summary>
         public static string Due(MissionListEntry entry)
         {
             if (!entry.DueUt.HasValue || entry.Finished) return "";
-            return "Due " + KerbinTime.ShortDate(entry.DueUt.Value) + (entry.DueFor.Length > 0 ? ": waiting for " + entry.DueFor : "");
+            return "Due " + KerbinTime.ShortDate(entry.DueUt.Value) + (entry.CheckPending ? ": check pending" : entry.DueFor.Length > 0 ? ": waiting for " + entry.DueFor : "");
         }
 
         /// <summary>The empty list says what the list is for.</summary>

@@ -390,6 +390,10 @@ namespace ClaudiaKerman.Core.Missions
         public bool CanEndMission;
         /// <summary>Leaving Flight now would cut off a running sequence, so the adapter asks the player first.</summary>
         public bool LeavingFlightNeedsConfirmation;
+        /// <summary>A far switch now is a clean Coast Checkpoint (#775): the guard offers "Leave at a checkpoint".</summary>
+        public bool FarSwitchLeavesAtCheckpoint;
+        /// <summary>The run is on a coast, but a far switch is still an interruption: why, for the guard's warning; "" otherwise.</summary>
+        public string FarSwitchWarning = "";
         /// <summary>
         /// The Mission's craft (its vessel id) once it is in Flight, "" before and after: the adapter reports how far the player is
         /// from it, when it unloads, and asks first before a far switch that would unload it while Running.

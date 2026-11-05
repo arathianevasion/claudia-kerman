@@ -21,12 +21,14 @@ namespace ClaudiaKerman.Core.Tools
         public double SinceUt;
         /// <summary>The bodies the coast goes round, the target last: any other means KSP has re-patched the craft.</summary>
         public List<string> Bodies = new List<string>();
+        /// <summary>What the mod would resume from if the player left now (#775, <see cref="CoastToken"/>); "" when the flight may not checkpoint.</summary>
+        public string Checkpoint = "";
 
         public IDictionary<string, object> ToLexicon()
         {
             return new Dictionary<string, object>
             {
-                { "target", Target }, { "pe", Pe }, { "pe_limit", PeLimit }, { "soi_ut", SoiUt }, { "since_ut", SinceUt }, { "bodies", string.Join(",", Bodies.ToArray()) },
+                { "target", Target }, { "pe", Pe }, { "pe_limit", PeLimit }, { "soi_ut", SoiUt }, { "since_ut", SinceUt }, { "bodies", string.Join(",", Bodies.ToArray()) }, { "checkpoint", Checkpoint },
             };
         }
     }
