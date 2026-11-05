@@ -37,7 +37,7 @@ A Craft Check finding that prevents the Mission from starting; it cannot be over
 _Avoid_: error, hard fail
 
 **Warning**:
-A Craft Check finding the player must acknowledge before the Mission starts.
+A Craft Check finding the player must acknowledge before the Mission starts. Once a Mission Plan exists the mod also reports a Warning that a Maneuver Sequence's budget is under the Delta-v Map; that one is shown, not acknowledged.
 _Avoid_: soft fail, notice
 
 **Game Snapshot**:
@@ -49,7 +49,7 @@ The craft is on the ground or the pad (PRELAUNCH, LANDED or SPLASHED): no flight
 _Avoid_: landed (alone, which leaves out PRELAUNCH)
 
 **Delta-v Map**:
-The reference table of delta-v needed for each leg of travel in the Kerbin system, against which a Mission Plan is budgeted.
+The reference table of delta-v needed for each leg of travel between every body, computed from the game's body data, against which a Mission Plan is budgeted.
 _Avoid_: dv chart, cheat sheet
 
 **Maneuver Sequence**:

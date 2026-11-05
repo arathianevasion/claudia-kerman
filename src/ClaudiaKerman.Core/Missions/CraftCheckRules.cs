@@ -42,6 +42,8 @@ namespace ClaudiaKerman.Core.Missions
         public const string DockingKit = "no_docking_kit";
         /// <summary>The Warning: no port on the craft is a size the Target Vessel has free.</summary>
         public const string DockingPortSize = "docking_port_size";
+        /// <summary>The Warning (#757): a Maneuver Sequence budgets under the Delta-v Map by more than the tolerance (<see cref="PlanLegs"/>); the mod's own, once a Mission Plan exists.</summary>
+        public const string LegUnderMap = "leg_under_map";
 
         public static readonly IList<CraftCheckRule> All = new List<CraftCheckRule>
         {
@@ -97,6 +99,8 @@ namespace ClaudiaKerman.Core.Missions
                 + "other than Claudia (trait SuperIntelligence) and Tourists (trait Tourist)."),
             new CraftCheckRule(DockingPortSize, Warning, "Docking port sizes may not match",
                 "the Mission Goal docks and no port on the craft is a size the Target Vessel has free.", modOnly: true),
+            new CraftCheckRule(LegUnderMap, Warning, "A leg's budget is under the Delta-v Map",
+                "a Maneuver Sequence's budget is more than the tolerance under its legs' figure on the Delta-v Map.", modOnly: true),
             new CraftCheckRule("ascent_cannot_reach_orbit", Warning, "The ascent can't reach orbit",
                 "plan_ascent says reaches_orbit is false for the launch (no turn_shape it tried reaches orbit); name the Boost stage that falls short."),
             new CraftCheckRule("ascent_thin_margin", Warning, "The ascent reaches orbit by a thin margin",

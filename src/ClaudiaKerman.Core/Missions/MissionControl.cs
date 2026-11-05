@@ -531,7 +531,7 @@ namespace ClaudiaKerman.Core.Missions
                 // A planet's plan_transfer row picks its Transfer Window by the Mission Setting, as a tool call would (#458).
                 _snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent);
             }
-            return MissionPrompts.StageTable(_snapshot, goal, mission.PlannedAscent) + MissionPrompts.PadPlanning(_snapshot);
+            return MissionPrompts.StageTable(_snapshot, goal, mission.PlannedAscent) + MissionPrompts.DeltaVMapLine(_snapshot, goal) + MissionPrompts.PadPlanning(_snapshot);
         }
 
         /// <summary>
@@ -1888,7 +1888,10 @@ namespace ClaudiaKerman.Core.Missions
             }
             // As MissionLogRebuild does with the plan's card, so a load has the same steps.
             mission.GoalSteps = GoalSteps.Replace(mission.GoalSteps, plan.GoalSteps);
-            AddCard(mission, LogKind.MissionPlan, "Mission Plan", MissionCards.MissionPlanBody(plan, mission.VesselName), plan.Why);
+            // #757: the Craft Check ran before there was a plan, so the plan's own legs are judged against the Delta-v Map here.
+            var underMap = _snapshot == null ? "" : PlanLegs.CardLine(_snapshot, PlanLegs.Judge(_snapshot, RestOfPlan(mission), mission.PlannedAscent), _config.CraftCheckMarginPercent);
+            if (underMap.Length > 0) Event(mission, "leg_under_map", underMap.Trim());
+            AddCard(mission, LogKind.MissionPlan, "Mission Plan", MissionCards.MissionPlanBody(plan, mission.VesselName) + underMap, plan.Why);
             PlanNews("Claudia has a Mission Plan for your Approval.");
         }
 

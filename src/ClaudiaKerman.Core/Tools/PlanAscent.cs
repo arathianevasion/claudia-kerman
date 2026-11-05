@@ -223,6 +223,8 @@ namespace ClaudiaKerman.Core.Tools
                 var fraction = flight.DeltaVToOrbit > 0 ? flight.DeltaVLeft / flight.DeltaVToOrbit : 0;
                 var minVs = double.IsInfinity(flight.MinVerticalSpeed) ? (double?)null : Math.Round(flight.MinVerticalSpeed);
                 json.Field("dv_to_orbit", Math.Round(flight.DeltaVToOrbit))
+                    // #757: what to budget: flown launches run over the simulated figure by PlanLegs.LaunchAllowance.
+                    .Field("dv_budget", Math.Round(flight.DeltaVToOrbit * (1 + PlanLegs.LaunchAllowance)))
                     .Field("dv_left", Math.Round(flight.DeltaVLeft))
                     .Field("dv_kept", Math.Round(flight.DeltaVKept))
                     .Field("launch_ends_in_stage", flight.LaunchEndStage);
