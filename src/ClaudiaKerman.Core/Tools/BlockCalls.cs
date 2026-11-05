@@ -556,7 +556,7 @@ namespace ClaudiaKerman.Core.Tools
                 Target = target as string,
                 TargetOrbit = orbit,
                 Mode = intercept ? TransferMode.Intercept : TransferMode.Rendezvous,
-                Capture = capture as bool? ?? true,
+                Capture = ArrivalRule.Capture(snapshot, target as string, capture as bool?),
                 TargetPe = Number(ask, "target_pe", 0),
                 EarliestUt = Number(ask, "earliest_ut", snapshot.Ut),
                 WindowUt = window as double?,

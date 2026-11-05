@@ -51,13 +51,13 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>A refined burn that misses the centre by more than this share of the target's sphere of influence is no ejection.</summary>
         private const double AimNear = 0.25;
 
-        public static SiblingPlan Find(GameSnapshot snapshot, PredictBurn.Setup setup, string target, double targetPe, double earliest, double? window)
+        public static SiblingPlan Find(GameSnapshot snapshot, PredictBurn.Setup setup, string target, double targetPe, double earliest, double? window, bool capture = true)
         {
             var home = setup.Body;
             var craft = setup.Start;
             if (!craft.Closed) return Fail("the craft is not in a closed orbit round " + home.Name);
             string error;
-            var problem = TransferWindows.Problem.Of(snapshot, target, targetPe, true, out error);
+            var problem = TransferWindows.Problem.Of(snapshot, target, targetPe, capture, out error);
             if (problem == null) return Fail(error);
             if (problem.ParkingAssumed) return Fail("the craft's orbit round " + home.Name + " must be closed and clear of its atmosphere");
             var synodic = Transfer.Synodic(problem.Home.Period, problem.Target.Period);

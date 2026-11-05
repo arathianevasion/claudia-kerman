@@ -432,6 +432,49 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(Convert.ToDouble(step["ut"]), expected.DepartureUt - 10 * Day, expected.DepartureUt + 10 * Day);
         }
 
+        // ---- A trip home prices no capture burn (#761, ArrivalRule from #758) ----
+
+        private static Dictionary<string, object> StartInput(string target, double pe)
+        {
+            return new Dictionary<string, object>
+            {
+                { "target", target }, { "target_pe", pe }, { "correction", true }, { "pe_tolerance", 1000.0 }, { "start_ut", 0.0 },
+                { "max_duration", "auto" }, { "auto", true }, { "turn_time", 60.0 }, { "phase", "start" },
+            };
+        }
+
+        [Fact]
+        public void Duna_to_Kerbin_departs_when_plan_transfer_does_with_no_capture_priced()
+        {
+            var rig = TransferRig.Circular("Duna", 100000, 0);
+            var snapshot = rig.Snapshot();
+            var plan = PlanningTools.Default().Run("plan_transfer", "{\"target\":\"Kerbin\",\"target_pe\":30000}", snapshot, null);
+            var step = BlockCalls.TransferStep(StartInput("Kerbin", 30000), snapshot);
+            Assert.Equal("", step["error"]);
+            var planned = Convert.ToDouble(System.Text.RegularExpressions.Regex.Match(plan.Summary, @"leaving at UT (\d+)").Groups[1].Value);
+            // The ejection burn sits within a parking orbit of the window's departure.
+            Assert.InRange(Convert.ToDouble(step["ut"]), planned - Day, planned + Day);
+        }
+
+        [Fact]
+        public void A_trip_home_says_no_capture_is_priced_and_a_trip_elsewhere_still_hints_a_capture()
+        {
+            var home = TransferRig.Circular("Duna", 100000, 0);
+            var homeStep = home.Run(Ask("Kerbin", 30000, correction: false));
+            Assert.Equal("", homeStep.Error);
+            Assert.Equal("arrival: entry at 21 km, no capture burn", homeStep.Report["arrival_note"]);
+            Assert.False(homeStep.Report.ContainsKey("next"));
+            var away = TransferRig.Circular("Kerbin", 100000, 0).Run(Ask("Duna", 50000, correction: false));
+            Assert.False(away.Report.ContainsKey("arrival_note"));
+        }
+
+        [Fact]
+        public void The_correction_after_a_missed_ejection_takes_the_arrival_rules_capture()
+        {
+            Assert.False(TransferFlight.CorrectionAsk("Kerbin", 30000, 5000, 133, 1000, 30000, true, 412.5, false).Capture);
+            Assert.True(TransferFlight.CorrectionAsk("Kerbin", 30000, 5000, 133, 1000, 30000, true, 412.5).Capture);
+        }
+
         // ---- The pure rules, from the Kerboscript (TransferFlightParityTests checked them against it) ----
 
         [Fact]
