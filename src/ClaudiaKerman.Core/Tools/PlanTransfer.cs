@@ -82,14 +82,14 @@ namespace ClaudiaKerman.Core.Tools
             if (orbit != null && targetPe.HasValue) return PlanningJson.Error("target_pe is for a target body; an orbit is reached at its own altitude");
             if (target != null && (TransferWindows.IsPlanetTransfer(snapshot, target) || TransferWindows.IsSiblingTransfer(snapshot, target)))
             {
-                var capture = JsonNode.Bool(input["capture"]) ?? true;
+                var capture = ArrivalRule.Capture(snapshot, target, JsonNode.Bool(input["capture"]));
                 return Windows(TransferWindows.Find(snapshot, target, targetPe.Value, capture, snapshot.MarginPercent), snapshot, capture);
             }
             var ask = new TransferAsk
             {
                 Target = target,
                 TargetPe = targetPe ?? 0,
-                Capture = JsonNode.Bool(input["capture"]) ?? true,
+                Capture = ArrivalRule.Capture(snapshot, target, JsonNode.Bool(input["capture"])),
                 EarliestUt = snapshot.Ut,
             };
             if (orbit != null)
@@ -126,8 +126,12 @@ namespace ClaudiaKerman.Core.Tools
                 PlanningJson.Time(json, "plane", plan.PlaneUt.Value, now);
                 json.Field("plane_dv", PlanningJson.Round(plan.PlaneDv, 1));
             }
-            json.Field("arrival_dv", PlanningJson.Round(plan.ArrivalDv, 1))
-                .Field("total_dv", PlanningJson.Round(plan.Total(true), 1));
+            // A trip that ends in reentry (#758) flies no arrival burn; otherwise the figures are as they were.
+            var entryNote = ArrivalRule.Note(snapshot, target, ask.Capture);
+            var arrivalDv = entryNote != null ? 0 : plan.ArrivalDv;
+            json.Field("arrival_dv", PlanningJson.Round(arrivalDv, 1))
+                .Field("total_dv", PlanningJson.Round(plan.Total(entryNote == null), 1));
+            if (entryNote != null) json.Field("arrival_note", entryNote);
             if (orbit == null)
             {
                 PlanningJson.Time(json, "encounter", plan.EncounterUt, now);
@@ -149,7 +153,7 @@ namespace ClaudiaKerman.Core.Tools
                 Json = json.ToString(),
                 Summary = name + ": " + Num(plan.DeltaV) + " m/s out at UT " + Num(plan.Ut)
                     + (plan.PlaneUt.HasValue ? ", " + Num(plan.PlaneDv) + " m/s plane change at UT " + Num(plan.PlaneUt.Value) : "")
-                    + ", " + Num(plan.ArrivalDv) + " m/s on arrival",
+                    + ", " + Num(arrivalDv) + " m/s on arrival",
             };
         }
 
@@ -173,6 +177,8 @@ namespace ClaudiaKerman.Core.Tools
             var json = new JsonWriter().BeginObject().Field("model", found.Moon ? MoonWindowModel : WindowModel).Field("target", found.Target).Field("capture", capture);
             json.Field("parking_pe", PlanningJson.Round(found.ParkingPe, 0));
             if (found.ParkingAssumed) json.Field("parking_note", "assumed: the craft is not in a closed orbit clear of the atmosphere");
+            var entry = ArrivalRule.Note(snapshot, found.Target, capture);
+            if (entry != null) json.Field("arrival_note", entry);
             if (!found.Moon && !found.Fits)
             {
                 // No window fits (#648): the cheapest total against what the craft has, in the result alone (the description is unchanged).
