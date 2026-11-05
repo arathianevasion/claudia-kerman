@@ -332,15 +332,15 @@ function return {
     }
     if needed {
       // The mod decides (#775): stop at a Coast Checkpoint, or when resumed, the watched wait to the correction.
-      local coast is addons:claudia:transferstep(lexicon("timing", "coast", "target", planet:name, "mid", mid, "turn_time", turn:turn_time,
+      local ahead is addons:claudia:transferstep(lexicon("timing", "coast", "target", planet:name, "mid", mid, "turn_time", turn:turn_time,
         "arrive_ut", return_reentry_ut(home:orbit), "checkpoint", opt:checkpoint)).
-      if coast:do = "done" {
-        return claudia_finish(ctx, true, "", coast:report).
+      if ahead:do = "done" {
+        return claudia_finish(ctx, true, "", ahead:report).
       }
-      set mid to coast:ut.
-      if coast:do = "wait" {
-        addons:claudia:encounterwatch(coast:watch).
-        set waited to claudia_warp_to(ctx, coast:wait_ut, 30, { return addons:claudia:encounterwatchdropped. }).
+      set mid to ahead:ut.
+      if ahead:do = "wait" {
+        addons:claudia:encounterwatch(ahead:watch).
+        set waited to claudia_warp_to(ctx, ahead:wait_ut, 30, { return addons:claudia:encounterwatchdropped. }).
         if waited <> "" {
           claudia_make_safe().
           return claudia_finish(ctx, false, waited, extra).
