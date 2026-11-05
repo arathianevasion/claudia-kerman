@@ -305,7 +305,7 @@ namespace ClaudiaKerman.Core.Tools
             if (!CoastToken.Plain(bodies) || !CoastToken.Plain(setup.Target.Name)) return null;
             return new CoastToken
             {
-                Target = setup.Target.Name, Pe = enc.Pe, PeLimit = CoastCheckpoints.PeLimit(setup.Target, ask.PeTolerance), PointUt = pointUt, LeadS = ask.TurnTime + BurnPoints.TurnMarginSeconds,
+                Target = setup.Target.Name, Pe = enc.Pe, PeLimit = CoastCheckpoints.PeLimit(setup.Target, ask.PeTolerance), PointUt = pointUt, LeadS = CoastCheckpoints.Lead(ask.TurnTime),
                 WaitUt = waitUt, Phase = phase, ArriveUt = enc.PeUt, SoiUt = enc.SoiUt, MidUt = midUt, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Sibling = ask.Sibling,
                 Recovered = ask.Recovered, Restored = ask.Restored, Drops = ask.Drops, Bodies = bodies,
             };
