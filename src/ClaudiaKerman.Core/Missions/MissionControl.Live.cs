@@ -632,6 +632,15 @@ namespace ClaudiaKerman.Core.Missions
             Note(LogKind.Notice, change.Line());
         }
 
+        /// <summary>Ship Systems moved (#756): one log row and one line in the Mission's events, whatever the stage; the conversation never hears of it.</summary>
+        private void ShipSystemsLine(ShipSystemsMoved moved)
+        {
+            var mission = _mission;
+            if (mission == null) return;
+            Note(LogKind.Notice, moved.Text);
+            if (mission.Folder != null) Event(mission, "ship_systems", moved.Text);
+        }
+
         /// <summary>A Building Block's result: one log row and an entry in the run's blocks trail, with no Claude call.</summary>
         private void BlockEnded(KosBlockEnded ended)
         {

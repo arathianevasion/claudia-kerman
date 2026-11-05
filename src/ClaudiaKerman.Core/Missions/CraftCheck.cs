@@ -545,6 +545,7 @@ namespace ClaudiaKerman.Core.Missions
                 Code = f.Code, Severity = f.Severity, Title = f.Title, Explanation = f.Explanation, Fix = f.Fix, Acknowledged = f.Acknowledged,
             }).ToList();
             var done = _state == CraftCheckState.Done && snapshot != null;
+            view.ShipSystemsInfo = done && _config.ManageShipSystems ? ShipSystemsHold.CraftCheckLine(snapshot) : "";
             var formChanged = "";
             if (done && formReported)
             {

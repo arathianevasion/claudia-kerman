@@ -195,6 +195,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The simulator prompt or the error, when <see cref="State"/> is NeedsSimulator or Error.</summary>
         public string Message = "";
         public IList<CraftFinding> Findings = new List<CraftFinding>();
+        /// <summary>An info line, not a finding (#756): the Ship Systems on the craft that can't retract; "" for none.</summary>
+        public string ShipSystemsInfo = "";
         /// <summary>The craft, the Mission Goal or the processor changed since the result.</summary>
         public bool Stale;
         /// <summary>Why it is stale when the start form's Mission Goal or Target Vessel changed (#664), e.g. "Stale: the Mission Goal changed since this check. Check again."; "" otherwise.</summary>
@@ -335,6 +337,10 @@ namespace ClaudiaKerman.Core.Missions
         public int CurrentSequence = -1;
         /// <summary>The Chute Allocation (#626) for reentry "auto"; null before Mission Plan Approval.</summary>
         public ChuteAllocation ChuteAllocation;
+        /// <summary>The Mission Plan's legs, for the Ship Systems hold (#756); null before there is a plan.</summary>
+        public IList<PlannedSequence> PlanLegs;
+        /// <summary>The kOS processor the Mission flies on; null for the default.</summary>
+        public uint? ProcessorPartId;
 
         /// <summary>While Running, what is running; "" otherwise.</summary>
         public string RunStatus = "";
