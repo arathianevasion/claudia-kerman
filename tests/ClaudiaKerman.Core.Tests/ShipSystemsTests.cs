@@ -99,6 +99,14 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Null(rule.Step(Orbit()));
         }
 
+        [Fact]
+        public void An_orbit_first_read_during_a_burn_is_no_transition_either()
+        {
+            var rule = new ShipSystemsRule();
+            Assert.Null(rule.Step(Orbit(engines: true)));
+            Assert.Null(rule.Step(Orbit()));
+        }
+
         // ---- Retract before an atmosphere ----
 
         [Theory]
@@ -159,6 +167,31 @@ namespace ClaudiaKerman.Core.Tests
             var rule = Flown();
             Assert.Equal(ShipSystemsDeployables.Retract, rule.Step(Coast(500000, 50, -100, "Kerbin", 70000, 40000, ShipSystemsSituation.Orbiting)).Deployables);
             Assert.Equal(ShipSystemsDeployables.Extend, rule.Step(Orbit()).Deployables);
+        }
+
+        [Fact]
+        public void A_bounce_after_landing_is_no_entry_and_no_new_landing()
+        {
+            var rule = Flown();
+            rule.Step(Coast(500, null));
+            rule.Step(Ground(300));
+            Assert.NotNull(rule.Step(Ground(303)));
+            var bounce = Coast(2000, null, -1, situation: ShipSystemsSituation.Flying, pe: -300000);
+            bounce.Radar = 2;
+            Assert.Null(rule.Step(bounce));
+            Assert.Null(rule.Step(Ground(310)));
+            Assert.Null(rule.Step(Ground(320)));
+        }
+
+        [Fact]
+        public void A_hop_above_the_air_retracts_on_its_way_back_and_a_low_one_does_not()
+        {
+            var rule = new ShipSystemsRule();
+            rule.Step(Ground(300));
+            Assert.Null(rule.Step(Coast(40000, null, 100, pe: -300000)));
+            Assert.Null(rule.Step(Coast(40000, null, -100, pe: -300000)));
+            Assert.Null(rule.Step(Coast(55000, 100, 100, pe: -300000)));
+            Assert.Equal(ShipSystemsDeployables.Retract, rule.Step(Coast(55000, 30, -100, pe: -300000)).Deployables);
         }
 
         // ---- Airless bodies ----
@@ -478,6 +511,43 @@ namespace ClaudiaKerman.Core.Tests
             var plan = Plan("Land on Duna", "Reach orbit", "Land on the Mun");
             Assert.True(ShipSystemsHold.Find(Craft(), plan, 0, false, null).Holds(2));
             Assert.False(ShipSystemsHold.Find(Craft(), plan, 1, false, null).Holds(2));
+        }
+
+        [Fact]
+        public void A_landing_just_flown_is_behind_the_craft()
+        {
+            var plan = Plan("Land on Duna", "Reach orbit", "Land on the Mun");
+            var duna = Craft();
+            duna.Orbit = new SnapshotOrbit { Body = "Duna" };
+            Assert.True(ShipSystemsHold.Find(duna, plan, 0, false, null).Holds(2));
+            Assert.False(ShipSystemsHold.Find(duna, plan, 0, false, null, true).Holds(2));
+            Assert.True(ShipSystemsHold.Find(duna, Plan("Land on Duna", "Return to Kerbin"), 0, false, null, true).Holds(2));
+            Assert.True(ShipSystemsHold.Find(duna, Plan("Land on Duna and return to Kerbin"), 0, false, null, true).Holds(2));
+            Assert.False(ShipSystemsHold.Find(Craft(), Plan("Return to Kerbin"), 0, false, null, true).Holds(2));
+        }
+
+        [Fact]
+        public void The_touchdown_says_it_landed()
+        {
+            var rule = Flown();
+            rule.Step(Coast(500, null));
+            rule.Step(Ground(300));
+            Assert.True(rule.Step(Ground(303)).Landed);
+            Assert.False(Flown().Step(Orbit()).Landed);
+        }
+
+        [Fact]
+        public void A_part_caught_moving_is_asked_again_once_it_has_stopped()
+        {
+            var transition = new ShipSystemsTransition { Deployables = ShipSystemsDeployables.Retract, Why = "x" };
+            var moving = Part(1, ShipSystemKind.Panel, ShipSystemState.Moving);
+            var first = ShipSystemsMoves.Of(transition, new[] { moving }, ShipSystemsHold.None);
+            Assert.True(first.Unsettled);
+            Assert.Empty(first.Retract);
+            moving.State = ShipSystemState.Out;
+            var second = ShipSystemsMoves.Of(transition, new[] { moving }, ShipSystemsHold.None);
+            Assert.False(second.Unsettled);
+            Assert.Single(second.Retract);
         }
 
         [Fact]

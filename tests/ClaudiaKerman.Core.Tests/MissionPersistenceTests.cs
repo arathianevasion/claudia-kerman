@@ -1581,6 +1581,7 @@ namespace ClaudiaKerman.Core.Tests
             var turn = string.Join("\n----\n", Messages(after.Requests[0]).Where(m => m.GetProperty("role").GetString() == "user").Select(Text));
             Assert.Contains("Interrupted", turn);
             Assert.Contains("RCS Use this run: switched on 1 time, 30 s in all", turn);
+            Assert.DoesNotContain("Ship Systems", after.Requests[0].Body);
         }
 
         [Fact]

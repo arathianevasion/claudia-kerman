@@ -25,7 +25,7 @@ namespace ClaudiaKerman.Core.Missions
         Out,
         /// <summary>On its way in or out.</summary>
         Moving,
-        /// <summary>Broken: nothing moves it.</summary>
+        /// <summary>Broken or shielded in a fairing or bay: nothing can move it now.</summary>
         Broken,
     }
 
@@ -103,6 +103,8 @@ namespace ClaudiaKerman.Core.Missions
         public ShipSystemsDeployables Deployables;
         public ShipSystemsLights Lights;
         public string Why = "";
+        /// <summary>This Extend is the touchdown: the leg in hand has landed, so its own entry is behind the craft (<see cref="ShipSystemsHold.Find"/>).</summary>
+        public bool Landed;
     }
 
     /// <summary>
@@ -123,11 +125,14 @@ namespace ClaudiaKerman.Core.Missions
         public const double RedeploySeconds = 3;
         /// <summary>Under this, m/s, the craft counts as stationary.</summary>
         public const double StationarySpeed = 0.2;
+        /// <summary>Above this over the ground the craft has flown; lower is a bounce or a wave.</summary>
+        public const double FlownRadar = 100;
 
         private readonly List<ShipSystemsCue> _cues = new List<ShipSystemsCue>();
         private bool _read;
         private bool _orbitDone;
         private bool _entryDone;
+        private bool _down;
         private bool _lightsDone;
         private bool _flown;
         private double? _stoppedAt;
@@ -202,16 +207,26 @@ namespace ClaudiaKerman.Core.Missions
             return HasAir(reading) && (OnGround(reading) || reading.Situation == ShipSystemsSituation.Prelaunch);
         }
 
-        /// <summary>The trajectory enters the air, and it is within 60 s or 10 km of its top, coming down.</summary>
+        /// <summary>
+        /// The trajectory enters the air, and it is within 60 s of its top, or within 10 km coming down. A craft that started from the
+        /// ground has to rise above the air first: a bounce or a wave, or a low hop, is no entry.
+        /// </summary>
         private void Entry(ShipSystemsReading reading, ShipSystemsTransition transition)
         {
+            if (OnGround(reading) || reading.Situation == ShipSystemsSituation.Prelaunch)
+            {
+                _down = true;
+                _entryDone = false;
+                return;
+            }
+            if (reading.Altitude > reading.AtmosphereTop) _down = false;
             var aloft = Falling(reading) || reading.Situation == ShipSystemsSituation.Orbiting || reading.Situation == ShipSystemsSituation.Escaping;
             if (!HasAir(reading) || !aloft || reading.Periapsis >= reading.AtmosphereTop)
             {
                 _entryDone = false;
                 return;
             }
-            if (_entryDone) return;
+            if (_entryDone || _down) return;
             var soon = reading.SecondsToAir.HasValue && reading.SecondsToAir.Value <= RetractSeconds;
             var near = reading.VerticalSpeed < 0 && reading.Altitude <= reading.AtmosphereTop + RetractMetres;
             if (!soon && !near) return;
@@ -230,16 +245,17 @@ namespace ClaudiaKerman.Core.Missions
                 _orbitDone = false;
                 return;
             }
+            // An orbit the craft was already in when the rule first read it is no transition, burning or not.
+            if (!_read) _orbitDone = true;
             if (_orbitDone || reading.EnginesOn) return;
             _orbitDone = true;
-            // An orbit the craft was already in when the rule first read it is no transition.
-            if (_read) Ask(transition, ShipSystemsDeployables.Extend, "in orbit of " + reading.Body);
+            Ask(transition, ShipSystemsDeployables.Extend, "in orbit of " + reading.Body);
         }
 
         /// <summary>Down on a body with air after a flight, and stationary for 3 s.</summary>
         private void Touchdown(ShipSystemsReading reading, ShipSystemsTransition transition)
         {
-            if (Falling(reading)) _flown = true;
+            if (Falling(reading) && reading.Radar > FlownRadar) _flown = true;
             if (!_flown || !HasAir(reading) || !OnGround(reading) || reading.SurfaceSpeed >= StationarySpeed)
             {
                 _stoppedAt = null;
@@ -250,6 +266,7 @@ namespace ClaudiaKerman.Core.Missions
             _flown = false;
             _stoppedAt = null;
             Ask(transition, ShipSystemsDeployables.Extend, "landed on " + reading.Body);
+            transition.Landed = transition.Deployables == ShipSystemsDeployables.Extend;
         }
 
         /// <summary>Coming down below gear_alt; an orbit means the next low pass is a new landing.</summary>
@@ -336,7 +353,8 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>The hold over <paramref name="plan"/> from step <paramref name="firstStep"/> (0 first; the leg in hand) on; a null plan is no Mission Plan yet.</summary>
-        public static ShipSystemsHold Find(GameSnapshot snapshot, IList<PlannedSequence> plan, int firstStep, bool remote, uint? processorPartId)
+        /// <param name="landed">The leg in hand has just landed: its entry is behind the craft, unless it also goes on home from another body.</param>
+        public static ShipSystemsHold Find(GameSnapshot snapshot, IList<PlannedSequence> plan, int firstStep, bool remote, uint? processorPartId, bool landed = false)
         {
             var hold = new ShipSystemsHold();
             if (plan == null || snapshot == null)
@@ -345,7 +363,7 @@ namespace ClaudiaKerman.Core.Missions
                 hold.Why = "there is no Mission Plan yet";
                 return hold;
             }
-            var entry = FirstEntry(snapshot, plan, Math.Max(0, firstStep));
+            var entry = FirstEntry(snapshot, plan, Math.Max(0, firstStep), landed);
             if (entry == null) return hold;
             hold._holds = true;
             hold.Why = "the Mission Plan enters " + entry.Value.Key + "'s atmosphere (" + entry.Value.Value + ")";
@@ -355,7 +373,7 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>The first leg from <paramref name="firstStep"/> on through an atmosphere: its body and name; null for none.</summary>
-        private static KeyValuePair<string, string>? FirstEntry(GameSnapshot snapshot, IList<PlannedSequence> plan, int firstStep)
+        private static KeyValuePair<string, string>? FirstEntry(GameSnapshot snapshot, IList<PlannedSequence> plan, int firstStep, bool landed)
         {
             var at = snapshot.Orbit != null && snapshot.Orbit.Body.Length > 0 ? snapshot.Orbit.Body : snapshot.Body;
             var body = SequenceWords.Body(snapshot, at);
@@ -365,6 +383,7 @@ namespace ClaudiaKerman.Core.Missions
                 var returnsHome = SequenceWords.ReturnHome.IsMatch(words);
                 var onBody = returnsHome ? SequenceWords.Body(snapshot, "Kerbin") ?? body : SequenceWords.LegBody(snapshot, words, body);
                 body = SequenceWords.NextBody(snapshot, words, body);
+                if (landed && i == firstStep && !(returnsHome && !string.Equals(at, "Kerbin", StringComparison.OrdinalIgnoreCase))) continue;
                 if (onBody == null || (onBody.AtmosphereHeight <= 0 && onBody.SeaLevelAtm <= 0)) continue;
                 if (SequenceWords.Landing.IsMatch(words) || SequenceWords.Reentry.IsMatch(words) || returnsHome || SequenceWords.Aero.IsMatch(words))
                     return new KeyValuePair<string, string>(onBody.Name, plan[i].Name);
@@ -394,6 +413,8 @@ namespace ClaudiaKerman.Core.Missions
         public readonly List<ShipSystemPart> LightsOff = new List<ShipSystemPart>();
         /// <summary>For the Mission's events and trace; "" when nothing moved and nothing was held back, which is no event.</summary>
         public string Text = "";
+        /// <summary>A panel, antenna or radiator was on its way when this was worked out, so it must be asked again once it has stopped.</summary>
+        public bool Unsettled;
 
         /// <summary>What <paramref name="transition"/> does to <paramref name="parts"/> as they are now. Only a part that would change is touched.</summary>
         public static ShipSystemsMoves Of(ShipSystemsTransition transition, IEnumerable<ShipSystemPart> parts, ShipSystemsHold hold)
@@ -405,6 +426,10 @@ namespace ClaudiaKerman.Core.Missions
                 {
                     if (transition.Lights == ShipSystemsLights.On && part.State == ShipSystemState.Stowed) moves.LightsOn.Add(part);
                     if (transition.Lights == ShipSystemsLights.Off && part.State == ShipSystemState.Out) moves.LightsOff.Add(part);
+                }
+                else if (transition.Deployables != ShipSystemsDeployables.None && part.State == ShipSystemState.Moving)
+                {
+                    moves.Unsettled = true;
                 }
                 else if (transition.Deployables == ShipSystemsDeployables.Extend && part.State == ShipSystemState.Stowed)
                 {

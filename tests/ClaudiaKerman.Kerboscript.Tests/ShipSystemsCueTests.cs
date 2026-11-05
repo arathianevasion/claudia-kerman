@@ -61,7 +61,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             var deorbit = Source("deorbit");
             Before(deorbit, "return claudia_finish(ctx, false, short, extra).", "addons:claudia:shipsystems(\"entry\")");
-            Before(deorbit, "addons:claudia:shipsystems(\"entry\")", "claudia_fly_node");
+            Before(deorbit, "addons:claudia:shipsystems(\"entry\")", "local flown is");
             var reentry = Source("reentry");
             Before(reentry, "needs a lit engine (reentry never stages)", "addons:claudia:shipsystems(\"entry\")");
             Before(reentry, "addons:claudia:shipsystems(\"entry\")", "lock steering to srfretrograde.");

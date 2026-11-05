@@ -30,6 +30,8 @@ namespace ClaudiaKerman.Adapter
         private Vessel _flown;
         private float _nextRead;
         private bool _cued;
+        // A transition that met a part on its way, to ask again once nothing is moving.
+        private ShipSystemsTransition _again;
         // The block's stow wait: when its lift-off cue came, until its parts are in or the cap; null with no wait in hand.
         private double? _stowFrom;
 
@@ -47,6 +49,7 @@ namespace ClaudiaKerman.Adapter
             _rule = null;
             _flown = null;
             _cued = false;
+            _again = null;
             _stowFrom = null;
         }
 
@@ -68,8 +71,17 @@ namespace ClaudiaKerman.Adapter
             if (!_cued && Time.realtimeSinceStartup < _nextRead) return;
             _nextRead = Time.realtimeSinceStartup + ReadSeconds;
             _cued = false;
-            var transition = _rule.Step(Read(vessel), _managed());
-            if (transition != null) Carry(transition, vessel);
+            // Nothing here may stop the flight: the rule has latched, so a transition that fails is logged and lost.
+            try
+            {
+                var transition = _rule.Step(Read(vessel), _managed());
+                if (transition == null && _again != null && !ReadParts(vessel, null).Any(p => p.State == ShipSystemState.Moving && p.Kind != ShipSystemKind.Light)) transition = _again;
+                if (transition != null) Carry(transition, vessel);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning(ModInfo.LogTag + " Ship Systems failed: " + e);
+            }
         }
 
         private bool Flown(Vessel vessel)
@@ -173,9 +185,10 @@ namespace ClaudiaKerman.Adapter
             if (transition.Deployables == ShipSystemsDeployables.Extend && parts.Any(p => !p.CanRetract))
             {
                 var view = _view();
-                hold = ShipSystemsHold.Find(SnapshotReader.ReadForMission(vessel), view.PlanLegs, Math.Max(0, view.CurrentSequence), view.Remote, view.ProcessorPartId);
+                hold = ShipSystemsHold.Find(SnapshotReader.ReadForMission(vessel), view.PlanLegs, Math.Max(0, view.CurrentSequence), view.Remote, view.ProcessorPartId, transition.Landed);
             }
             var moves = ShipSystemsMoves.Of(transition, parts, hold);
+            _again = moves.Unsettled ? new ShipSystemsTransition { Deployables = transition.Deployables, Why = transition.Why, Landed = transition.Landed } : null;
             foreach (var part in moves.Extend) Move(modules[part], true);
             foreach (var part in moves.Retract) Move(modules[part], false);
             if (transition.Lights != ShipSystemsLights.None) Lights(vessel, moves, modules, transition.Lights == ShipSystemsLights.On);
@@ -237,7 +250,9 @@ namespace ClaudiaKerman.Adapter
             if (light != null) return new ShipSystemPart { Id = part.persistentId, Kind = ShipSystemKind.Light, State = light.isOn ? ShipSystemState.Out : ShipSystemState.Stowed };
             var deployable = module as ModuleDeployablePart;
             if (!Managed(deployable)) return null;
-            return new ShipSystemPart { Id = part.persistentId, Kind = Kind(deployable), State = State(deployable.deployState), CanRetract = deployable.retractable };
+            // A part shielded in a fairing or bay can't deploy: the line mustn't count it.
+            var state = part.ShieldedFromAirstream ? ShipSystemState.Broken : State(deployable.deployState);
+            return new ShipSystemPart { Id = part.persistentId, Kind = Kind(deployable), State = state, CanRetract = deployable.retractable };
         }
 
         /// <summary>A panel, antenna or radiator that moves: a fixed panel has no animation and nothing to extend. Nothing else is a Ship System (#756, scope).</summary>

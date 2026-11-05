@@ -96,8 +96,14 @@ namespace ClaudiaKerman.KOS
             ShipSystemsStowAnswer answer = null;
             return (Lexicon)Guarded("SHIPSYSTEMS", () =>
             {
+                // A failure here must not stop the block (it reads the answer's keys unguarded): no action, and the block goes on.
                 var keeper = ShipSystemsKeeper.Current;
-                answer = keeper == null ? ShipSystemsStowAnswer.Nothing : keeper.Cue(cue.ToString(), shared.Vessel);
+                try { answer = keeper == null ? ShipSystemsStowAnswer.Nothing : keeper.Cue(cue.ToString(), shared.Vessel); }
+                catch (Exception e)
+                {
+                    Debug.LogWarning(ModInfo.LogTag + " Ship Systems cue " + cue + " failed: " + e);
+                    answer = ShipSystemsStowAnswer.Nothing;
+                }
                 return KosValues.FromPlain(answer.Lexicon());
             }, () => cue + ": " + (answer.Done ? "done" : "waiting") + (answer.Capped ? ", capped" : ""), 1);
         }
