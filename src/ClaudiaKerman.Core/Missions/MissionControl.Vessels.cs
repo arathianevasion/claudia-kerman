@@ -259,7 +259,7 @@ namespace ClaudiaKerman.Core.Missions
         private void LeavingFlight(LeaveTo destination)
         {
             var mission = _mission;
-            if (mission == null || MissionOver || !IsRunning(mission) || destination == LeaveTo.Other) return;
+            if (mission == null || MissionOver || !IsRunning(mission) || !LeaveFlightRules.CanCheckpoint(destination)) return;
             var cannotLeave = CannotLeaveCraft(mission);
             if (cannotLeave == "") LeaveAtCheckpoint(mission);
             else if (!string.IsNullOrEmpty(cannotLeave)) Note(LogKind.Notice, "Not a Coast Checkpoint: " + cannotLeave + ".");

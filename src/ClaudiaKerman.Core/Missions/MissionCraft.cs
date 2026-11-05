@@ -239,6 +239,18 @@ namespace ClaudiaKerman.Core.Missions
         Other,
         SpaceCenter,
         TrackingStation,
+        /// <summary>The VAB or SPH: a revert. Unrestricted, so the guard shows no dialog; the scene change still interrupts a Running sequence.</summary>
+        Editor,
+    }
+
+    /// <summary>What the Leave/Stay guard decides for a scene change out of Flight (#777 amendment).</summary>
+    public static class LeaveFlightRules
+    {
+        /// <summary>A revert to the VAB or SPH never asks; every other leave asks while a sequence is Running.</summary>
+        public static bool AsksFirst(bool running, LeaveTo destination) { return running && destination != LeaveTo.Editor; }
+
+        /// <summary>Only the Space Center and the Tracking Station can be a Coast Checkpoint.</summary>
+        public static bool CanCheckpoint(LeaveTo destination) { return destination == LeaveTo.SpaceCenter || destination == LeaveTo.TrackingStation; }
     }
 
     /// <summary>

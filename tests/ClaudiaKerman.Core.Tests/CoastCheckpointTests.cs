@@ -733,6 +733,31 @@ namespace ClaudiaKerman.Core.Tests
             Assert.DoesNotContain(view.Log, e => e.Kind == LogKind.Debrief);
         }
 
+        [Fact]
+        public void A_revert_to_the_VAB_shows_no_dialog_and_interrupts_a_Running_sequence_never_a_checkpoint()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer")));
+            ToRunning(mission, rig);
+            mission.Send(new CoastArmed(token.ToString()));
+            Assert.True(mission.View.LeavingFlightNeedsConfirmation);
+
+            // The guard's choice: no dialog for the editor, even while Running; a dialog for the others.
+            Assert.False(LeaveFlightRules.AsksFirst(mission.View.LeavingFlightNeedsConfirmation, LeaveTo.Editor));
+            Assert.True(LeaveFlightRules.AsksFirst(mission.View.LeavingFlightNeedsConfirmation, LeaveTo.Other));
+            Assert.True(LeaveFlightRules.AsksFirst(mission.View.LeavingFlightNeedsConfirmation, LeaveTo.SpaceCenter));
+            Assert.False(LeaveFlightRules.CanCheckpoint(LeaveTo.Editor));
+
+            // With no dialog, no LeaveFlightConfirmed is sent: the scene change alone interrupts.
+            mission.Send(new SceneChanged(GameScene.Editor));
+            var view = mission.View;
+            Assert.Equal(MissionStage.Debriefing, view.Stage);
+            Assert.Empty(mission.TakeCommands().OfType<SetDueTimeAlarm>());
+            Assert.Single(view.Log, e => e.Text.Contains("was interrupted"));
+            Assert.DoesNotContain(view.Log, e => e.Kind == LogKind.Debrief);
+        }
+
         // ---- The check on return ----
 
         [Fact]

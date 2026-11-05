@@ -43,13 +43,16 @@ namespace ClaudiaKerman.Adapter
         {
             var driver = MissionDriver.Current;
             if (leaving || driver == null || HighLogic.LoadedScene != GameScenes.FLIGHT || scene == GameScenes.FLIGHT) return true;
-            if (!driver.LeavingFlightNeedsConfirmation) return true;
+            var destination = scene == GameScenes.SPACECENTER ? LeaveTo.SpaceCenter : scene == GameScenes.TRACKSTATION ? LeaveTo.TrackingStation
+                : scene == GameScenes.EDITOR ? LeaveTo.Editor : LeaveTo.Other;
+            // A revert to the VAB or SPH is unrestricted: no dialog; Core interrupts a Running sequence when the scene changes.
+            if (!LeaveFlightRules.AsksFirst(driver.LeavingFlightNeedsConfirmation, destination)) return true;
 
             // #777: to the Space Center or the Tracking Station on a coast that passes the safety test, leaving is a Coast Checkpoint (the far switch's
-            // Core decision). Revert, the main menu and every other scene stay interruptions.
-            var destination = scene == GameScenes.SPACECENTER ? LeaveTo.SpaceCenter : scene == GameScenes.TRACKSTATION ? LeaveTo.TrackingStation : LeaveTo.Other;
-            var leaves = destination != LeaveTo.Other && driver.FarSwitchLeavesAtCheckpoint;
-            var warning = destination != LeaveTo.Other ? driver.FarSwitchWarning : "";
+            // Core decision). The main menu and every other scene stay interruptions; a revert to the VAB or SPH shows no dialog.
+            var canCheckpoint = LeaveFlightRules.CanCheckpoint(destination);
+            var leaves = canCheckpoint && driver.FarSwitchLeavesAtCheckpoint;
+            var warning = canCheckpoint ? driver.FarSwitchWarning : "";
             var dialog = new MultiOptionDialog(
                 "ClaudiaKermanLeaveFlight",
                 leaves
