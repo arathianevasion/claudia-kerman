@@ -387,7 +387,7 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void The_card_and_the_fact_survive_a_rebuild_and_the_next_request_hears_of_it_without_the_token()
+        public void The_next_request_hears_of_the_checkpoint_from_its_fact_without_the_token()
         {
             CoastToken token;
             var rig = ToFirstCheckpoint(out token);
@@ -697,10 +697,15 @@ namespace ClaudiaKerman.Core.Tests
             var state = mission.ExportStates().Single();
             Assert.Equal(token.ToString(), state.SequencePlan.CoastCheckpoint);
 
+            // A fresh Mission Control, as a new game session has: the card comes back from the transcript's fact.
+            mission = Control(transport);
             mission.Send(new MissionsRestored(_save.Path, new[] { MissionSaveState.FromValues(state.ToValues()) }));
             _background.Drain();
             Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
             Assert.Contains("check pending", MissionListRules.Due(mission.View.Missions.Single(m => m.Current)));
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Debrief && e.Outcome == "Nominal" && e.Why == CoastCheckpoints.CardWhy);
+            mission.Send(new SceneChanged(GameScene.Flight));
+            mission.Send(new UtAdvanced(rig.Ut));
             mission.Send(Craft(rig));
             _background.Drain();
             Assert.Contains(mission.View.Log, e => e.Text.StartsWith("Checked on return:"));
