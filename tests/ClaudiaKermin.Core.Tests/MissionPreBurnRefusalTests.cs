@@ -58,6 +58,25 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void The_mod_debriefs_a_refusal_from_a_snapshot_read_after_the_run_and_the_next_plan_carries_its_facts()
+        {
+            var rig = new Rig(this);
+            var start = rig.RunToRunning();
+            rig.Mission.Send(new KosRunEnded(Refused(0), start.RunId, 5000));
+            // The snapshot in hand is from before the run's end: no card and no request until a later one arrives.
+            Assert.DoesNotContain(rig.Mission.View.Log, e => e.Kind == LogKind.Debrief);
+            Assert.Equal(2, rig.Transport.Requests.Count);
+
+            var after = GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "on-pad.json")));
+            after.Ut = 5001;
+            after.Altitude = 70123.5;
+            rig.Mission.Send(after);
+            rig.DrainUntil(v => v.Stage == MissionStage.AwaitingSequenceApproval && !v.Busy);
+            Assert.Single(rig.Mission.View.Log, e => e.Kind == LogKind.Debrief);
+            Assert.Contains("70123.5", LastUserText(rig.Transport.Requests[2]));
+        }
+
+        [Fact]
         public void The_fact_is_a_user_message_after_the_last_reply_so_the_prefix_and_order_stay_as_they_were()
         {
             var rig = new Rig(this);

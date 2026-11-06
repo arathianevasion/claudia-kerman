@@ -213,6 +213,26 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void TheDebriefOwedOnReturnIsBuiltFromTheSnapshotOfTheCraftAfterTheRunNotTheOneBeforeIt()
+        {
+            var transport = Replies("mission-plan.sse", "mission-sequence-plan.sse", "mission-debrief.sse");
+            var mission = Control(transport);
+            var script = ToRunning(mission);
+            mission.Send(Craft(s => s.Altitude = 61234.5));
+            mission.Send(new FarSwitchConfirmed("Relay Station"));
+            mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Interrupted, null, "", "left Flight", false), script.RunId));
+            mission.Send(Elsewhere());
+            _background.Drain();
+            Assert.Equal(2, transport.Requests.Count);
+
+            mission.Send(Craft(s => s.Altitude = 70123.5));
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+            var debrief = Messages(transport.Requests[2]);
+            Assert.Contains("70123.5", debrief);
+            Assert.DoesNotContain("61234.5", debrief);
+        }
+
+        [Fact]
         public void TheFarSwitchReasonSurvivesTheReloadTheSwitchMakes()
         {
             var transport = Replies("mission-plan.sse", "mission-sequence-plan.sse");

@@ -197,7 +197,8 @@ namespace ClaudiaKermin.Core.Missions
             var needsNewGoal = mission.Stage != MissionStage.AwaitingPlanApproval && (purpose == Purpose.Reply || purpose == Purpose.Change);
             // Only the player's typed Reply or Change may change the Mission Goal (#590); on any other request a new_goal is ignored.
             var allowsNewGoal = purpose == Purpose.Reply || purpose == Purpose.Change;
-            Func<ToolUseBlock, ToolOutcome> answer = use => use.Name == ProposedPlans.ToolName ? ProposedPlans.Check(use, left, needsNewGoal, allowsNewGoal) : null;
+            var goal = mission.Goal;
+            Func<ToolUseBlock, ToolOutcome> answer = use => use.Name == ProposedPlans.ToolName ? ProposedPlans.Check(use, left, needsNewGoal, allowsNewGoal, snapshot, goal) : null;
             _background.Run(
                 () => ToolStep.Run(tools, message, refusal, atLimit, snapshot, body, timeout, answer),
                 step => ToolsAnswered(mission, turn, message, step, atLimit),
@@ -271,6 +272,9 @@ namespace ClaudiaKermin.Core.Missions
         {
             // At the step limit the next request is the last: tool_choice none, the tools list and system prompt unchanged (#509). The cap check below prices it like any step.
             turn.ToolLimitSent = turn.ToolSteps >= ToolStep.MaxSteps || turn.RepeatStop;
+            // The final request at the step limit says so, after the last results, as ProposePlanNow is added (#668).
+            if (turn.ToolSteps >= ToolStep.MaxSteps && turn.Messages.Count > 0)
+                turn.Messages[turn.Messages.Count - 1].Content.Add(new TextBlock { Text = TakesMissionPlan(turn.Purpose) ? MissionPrompts.StepLimitPlanLine : MissionPrompts.StepLimitLine });
             var worst = RequestCharge.WorstCase(_config.Prices, mission.Model, BuildRequest(mission, turn));
             if (mission.Committed + worst <= mission.SpendingCap)
             {

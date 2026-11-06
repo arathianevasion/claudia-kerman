@@ -241,6 +241,51 @@ namespace ClaudiaKermin.Core.Tests
             Assert.InRange(Orbit(snapshot).Radius(result.GetProperty("at_ut").GetDouble()) - p / (1 + e * Math.Cos(nu)), -100, 100);
         }
 
+        private double AtUt(GameSnapshot snapshot, string input) { return Run(snapshot, input).GetProperty("at_ut").GetDouble(); }
+
+        [Fact]
+        public void Set_inc_default_on_a_near_circular_orbit_takes_the_nearer_node_not_the_higher()
+        {
+            // 100 x 100.2 km (e about 0.00017) at 2°, Pe 30° past the AN: the DN, at 150°, is nearer; the AN is higher by about 100 m.
+            var snapshot = Snapshot(100000, 100200, inclination: 2, argPe: 30, phase: JustPast);
+            var dn = AtUt(snapshot, "{\"goal\":\"set_inc\",\"value\":0,\"at\":\"eq_dn\"}");
+            var an = AtUt(snapshot, "{\"goal\":\"set_inc\",\"value\":0,\"at\":\"eq_an\"}");
+            Assert.True(dn < an);
+            Assert.Equal(dn, AtUt(snapshot, "{\"goal\":\"set_inc\",\"value\":0}"), 3);
+            Assert.Equal(dn, AtUt(snapshot, "{\"goal\":\"set_inc\",\"value\":0,\"at\":\"eq_nearest\"}"), 3);
+            // The named references mean what they did: eq_highest is still the slower node, nearer or not.
+            Assert.Contains(AtUt(snapshot, "{\"goal\":\"set_inc\",\"value\":0,\"at\":\"eq_highest\"}"), new[] { an, dn });
+        }
+
+        [Fact]
+        public void Set_inc_default_on_an_eccentric_orbit_still_takes_the_cheaper_farther_node()
+        {
+            // 100 x 3500 km at 20°, Pe 30° before the AN: the AN is near the Pe and fast, the DN near the Ap and slow.
+            var snapshot = Snapshot(100000, 3500000, inclination: 20, argPe: 330, phase: JustPast);
+            var an = AtUt(snapshot, "{\"goal\":\"set_inc\",\"value\":10,\"at\":\"eq_an\"}");
+            var dn = AtUt(snapshot, "{\"goal\":\"set_inc\",\"value\":10,\"at\":\"eq_dn\"}");
+            Assert.True(an < dn);
+            Assert.Equal(dn, AtUt(snapshot, "{\"goal\":\"set_inc\",\"value\":10}"), 3);
+            Assert.Equal(dn, AtUt(snapshot, "{\"goal\":\"set_inc\",\"value\":10,\"at\":\"eq_highest\"}"), 3);
+            Assert.Equal(an, AtUt(snapshot, "{\"goal\":\"set_inc\",\"value\":10,\"at\":\"eq_nearest\"}"), 3);
+        }
+
+        [Fact]
+        public void Set_inc_default_takes_the_farther_node_only_at_the_saving_threshold()
+        {
+            Assert.Equal(10, SolveBurn.PickNode(10, 50, 20, 50 - SolveBurn.FartherNodeSaving + 0.001), 6);
+            Assert.Equal(20, SolveBurn.PickNode(10, 50, 20, 50 - SolveBurn.FartherNodeSaving), 6);
+            Assert.Equal(20, SolveBurn.PickNode(20, 50 - SolveBurn.FartherNodeSaving - 0.001, 10, 50), 6);
+            Assert.Equal(10, SolveBurn.PickNode(20, 60, 10, 50), 6);
+        }
+
+        [Fact]
+        public void Set_inc_default_on_an_equatorial_orbit_still_burns_at_the_apoapsis()
+        {
+            var snapshot = Snapshot(100000, 300000, phase: JustPast);
+            Assert.Equal(AtUt(snapshot, "{\"goal\":\"set_inc\",\"value\":5,\"at\":\"ap\"}"), AtUt(snapshot, "{\"goal\":\"set_inc\",\"value\":5}"), 3);
+        }
+
         [Fact]
         public void Set_inc_round_the_Mun_flattens_an_inclined_orbit()
         {

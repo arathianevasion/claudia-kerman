@@ -1555,7 +1555,7 @@ namespace ClaudiaKermin.Core.Tests
             DrainUntil(resumed, v => v.Stage == MissionStage.Succeeded);
             var turn = Messages(after.Requests[0]).Where(m => m.GetProperty("role").GetString() == "user").Select(Text).Last();
             Assert.Contains("RCS Use this run: none.", turn);
-            Assert.Contains("Delta-v used this run: unknown (no stock delta-v figure at the run's start).", turn);
+            Assert.Contains("Delta-v used by the whole run: unknown (no stock delta-v figure at the run's start).", turn);
             Assert.Null(Saved(resumed)[0].RunStartMonopropellant);
         }
 

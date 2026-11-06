@@ -76,9 +76,50 @@ namespace ClaudiaKermin.Core.Tests
 
             // The bridge stopped the program (BreakExecution, make-safe) and reports the abort.
             mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Aborted, null, "Program aborted.", "timed out", true), start.RunId));
+            mission.Send(AfterTheRun());
             DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
             Assert.Contains("kOS run ended: Aborted (timed out).", LastUserText(transport.Requests[2]));
             Assert.Equal("Debrief: Nominal (timed out)", mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Title);
+        }
+
+        // #696: the hard stop fired 900 s into a run whose exec_node was warping to a burn 304,000 s out.
+        [Fact]
+        public void ARunStoppedMidWarpIsDebriefedWithTheTimeLeftToItsTarget()
+        {
+            var transport = Transport(plannedSeconds: 300);
+            var mission = InFlight(transport, new PlayerConfig());
+            var start = RunToRunning(mission);
+
+            // In warp the stop fires on the first UT past the deadline (900 s): here 1,000 s in.
+            mission.Send(new UtAdvanced(ApprovedAt + 1000));
+            Assert.Single(mission.TakeCommands().OfType<AbortScript>());
+            var trace = new WarpTrace(0);
+            trace.BlockStarted("tune_pe", 0.1);
+            trace.BlockStarted("exec_node", 0.2);
+            trace.Requested(0.3, ApprovedAt + 1, ApprovedAt + 304000, "rails", null, "");
+            mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Aborted, null, "Program aborted.", "timed out", true, trace), start.RunId));
+            mission.Send(AfterTheRun());
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            var text = LastUserText(transport.Requests[2]);
+            Assert.Contains("timed out 303,000 s of game time short of exec_node's warp target, 304,000 s after the run started", text);
+            Assert.Contains("an expected_duration_s of at least 304,180 s would have covered", text);
+        }
+
+        [Fact]
+        public void ARunStoppedOutsideAWarpGetsNoWarpLine()
+        {
+            var transport = Transport(plannedSeconds: 600);
+            var mission = InFlight(transport, new PlayerConfig());
+            var start = RunToRunning(mission);
+            mission.Send(new UtAdvanced(ApprovedAt + 1800));
+            var trace = new WarpTrace(0);
+            trace.Requested(0.3, ApprovedAt + 1, ApprovedAt + 600, "rails", null, "");
+            mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Aborted, null, "Program aborted.", "timed out", true, trace), start.RunId));
+            mission.Send(AfterTheRun());
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            Assert.DoesNotContain("warp target", LastUserText(transport.Requests[2]));
         }
 
         [Fact]
@@ -211,6 +252,7 @@ namespace ClaudiaKermin.Core.Tests
             var start = RunToRunning(mission);
             mission.Send(new UtAdvanced(ApprovedAt + 1800));
             mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Aborted, null, "Program aborted.", "timed out", true), start.RunId));
+            mission.Send(AfterTheRun());
             DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
 
             AssertSameDebriefAfterALoad(mission, "Debrief: Nominal (timed out)");
@@ -280,6 +322,14 @@ namespace ClaudiaKermin.Core.Tests
             mission.Send(new Approve());
             Assert.Equal(MissionStage.Running, mission.View.Stage);
             return mission.TakeCommands().OfType<StartScript>().Single();
+        }
+
+        /// <summary>A Game Snapshot read after the run ended (#671): the Debrief waits for one newer than the run's end.</summary>
+        private static GameSnapshot AfterTheRun()
+        {
+            var snapshot = OnPad();
+            snapshot.Ut = ApprovedAt + 6000;
+            return snapshot;
         }
 
         private static GameSnapshot OnPad()

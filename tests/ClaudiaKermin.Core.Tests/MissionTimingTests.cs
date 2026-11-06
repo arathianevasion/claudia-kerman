@@ -460,7 +460,7 @@ namespace ClaudiaKermin.Core.Tests
             var layers = SystemLayers(transport.Requests[0]);
             Assert.Equal(3, layers.Length);
             Assert.Contains("Daylight landing: off", layers[2]);
-            Assert.Contains("Most efficient: wait for the cheapest window", layers[2]);
+            Assert.Contains("Most efficient: take optimal, the cheapest window", layers[2]);
             Assert.Contains("due_time_ut", layers[2]);
             // ADR 0004: waits warp inside the script, and a Due Time is only for a wait between sequences that needs the player.
             Assert.DoesNotContain("capped", layers[2]);
@@ -488,7 +488,7 @@ namespace ClaudiaKermin.Core.Tests
 
             Assert.False(mission.View.Settings.DaylightLanding);
             Assert.Equal(TimeVersusDeltaV.Fastest, mission.View.Settings.TimeVersusDeltaV);
-            Assert.Contains("Fastest: never wait", SystemLayers(transport.Requests[0])[2]);
+            Assert.Contains("Fastest: take soonest; never wait", SystemLayers(transport.Requests[0])[2]);
         }
 
         [Fact]
@@ -508,7 +508,7 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(2, transport.Requests.Count);
             var asked = Messages(transport.Requests[1]);
             Assert.Contains("changed the Mission Settings", asked);
-            Assert.Contains("Fastest: never wait", asked);
+            Assert.Contains("Fastest: take soonest; never wait", asked);
             Assert.Contains("Revise the Mission Plan", asked);
             // The system layers did not change, so the cached prefix stays intact.
             Assert.Equal(SystemLayers(transport.Requests[0]), SystemLayers(transport.Requests[1]));
@@ -725,7 +725,7 @@ namespace ClaudiaKermin.Core.Tests
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
 
             Assert.Contains("Daylight landing: off", Messages(transport.Requests[0]));
-            Assert.Contains("Fastest: never wait", Messages(transport.Requests[0]));
+            Assert.Contains("Fastest: take soonest; never wait", Messages(transport.Requests[0]));
         }
 
         // ---- Persistence ----

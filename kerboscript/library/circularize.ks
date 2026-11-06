@@ -162,6 +162,22 @@ function circularize_trim_node {
   return node(time:seconds, burn:radial, 0, burn:prograde).
 }
 
+// exec_node's resolve (#673): circularize_burn again for the orbit as it is after the turn, at nd's UT (read with nd zeroed,
+// just before it, so on the coast's patch). Returns "".
+function circularize_resolve {
+  parameter nd.
+  set nd:radialout to 0.
+  set nd:prograde to 0.
+  local at_ut is nd:time - 0.01.
+  local pos is positionat(ship, at_ut) - ship:body:position.
+  local vel is velocityat(ship, at_ut):orbit.
+  local o is ship:orbit.
+  local burn is circularize_burn(ship:body:mu, pos:mag, o:semimajoraxis, o:eccentricity, vdot(vel, pos) >= 0).
+  set nd:radialout to burn:radial.
+  set nd:prograde to burn:prograde.
+  return "".
+}
+
 function circularize {
   parameter options is lexicon().
   local extra is circularize_extra(ship:orbit:eccentricity).
@@ -197,6 +213,8 @@ function circularize {
   set flight:max_duration to opt:max_duration. // circularize hands its own budget on; claudia_common_opts leaves max_duration out
   // A long burn passes its node half way through and the node swings; stop where the orbit is roundest (#532).
   set flight:stop_at_min to "ecc".
+  // Solved again after the turn, whose RCS can move the orbit (#673).
+  set flight:resolve to circularize_resolve@.
   // The burn is traced to the log (ADDONS:CLAUDIA:BLOCKTRACE, #531): its start, and its end with the delta-v used.
   addons:claudia:blocktrace("circularize", lexicon("phase", "start", "burn_ut", round(plan:ut, 1), "prograde", round(plan:prograde, 1),
     "radial", round(plan:radial, 1), "ap", round(ship:orbit:apoapsis), "pe", round(ship:orbit:periapsis), "ecc", round(ship:orbit:eccentricity, 5),

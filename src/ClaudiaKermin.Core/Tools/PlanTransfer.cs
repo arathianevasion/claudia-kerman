@@ -39,11 +39,12 @@ namespace ClaudiaKermin.Core.Tools
         {
             get
             {
-                // A planet's windows (#458) were paid for by shorter wording, at the same 457 characters (prefix cost).
+                // A planet's windows (#458) were paid for by shorter wording, at the same 457 characters (prefix cost). A planet gets
+                // dates and delta-v, not a burn (#670); when #459's transfer_to flies to planets, point a planet at it here.
                 return "The cheapest two-burn transfer in the next window, from this turn's Game Snapshot: to target (a moon of the "
                     + "craft's body, or a planet) at target_pe (m), or to orbit (ap, pe m; inc, lan deg) anywhere on it. Gives the departure burn "
-                    + "(maneuver-node components) and time, and the arrival burn; a planet: soonest and optimal windows. capture false "
-                    + "minimises the departure alone. Its block is transfer_to, given the target. Don't call it for other planets' moons.";
+                    + "(maneuver-node components) and time and the arrival burn; a planet: soonest and optimal dates and delta-v, no burn. "
+                    + "capture false minimises the departure alone. Its block is transfer_to. Don't call it for other planets' moons.";
             }
         }
 
@@ -169,13 +170,27 @@ namespace ClaudiaKermin.Core.Tools
             if (found.Error != null) return PlanningJson.Error(found.Error);
             var pick = TransferWindows.Pick(found, snapshot.TimeVersusDeltaV);
             var json = new JsonWriter().BeginObject().Field("model", found.Moon ? MoonWindowModel : WindowModel).Field("target", found.Target).Field("capture", capture);
+            // Until #459's transfer_to flies to planets (#670), in a planet's answer alone; #459 removes it with the plan check's guard.
+            if (!found.Moon) json.Field("decline", "no Building Block flies to a planet yet: hand in a Mission Plan with no sequences");
             json.Field("parking_pe", PlanningJson.Round(found.ParkingPe, 0));
             if (found.ParkingAssumed) json.Field("parking_note", "assumed: the craft is not in a closed orbit clear of the atmosphere");
+            if (!found.Moon && !found.Fits)
+            {
+                // No window fits (#648): the cheapest total against what the craft has, in the result alone (the description is unchanged).
+                json.Field("fits", false).Field("cheapest_total_dv", PlanningJson.Round(found.Optimal.TotalDv, 1)).Field("craft_dv", PlanningJson.Round(found.CraftDv.Value, 1))
+                    .Field("note", "no window in the next synodic period fits: the cheapest costs more than the craft has");
+                return new ToolOutcome
+                {
+                    Json = json.EndObject().ToString(),
+                    Summary = found.Target + ": no window fits, the cheapest " + Num(found.Optimal.TotalDv) + " m/s, the craft has " + Num(found.CraftDv.Value) + " m/s",
+                };
+            }
             if (found.Moon)
             {
                 Choice(json, found, snapshot);
                 return new ToolOutcome { Json = json.EndObject().ToString(), Summary = Summary(found, pick) };
             }
+            if (found.CraftDv.HasValue) json.Field("fits", true).Field("craft_dv", PlanningJson.Round(found.CraftDv.Value, 1));
             Window(json, "soonest", found.Soonest, snapshot.Ut, capture);
             Window(json, "optimal", found.Optimal, snapshot.Ut, capture);
             json.Field("pick", pick == found.Optimal && pick != found.Soonest ? "optimal" : "soonest")

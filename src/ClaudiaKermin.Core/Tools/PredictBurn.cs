@@ -362,6 +362,12 @@ namespace ClaudiaKermin.Core.Tools
             return found;
         }
 
+        /// <summary>Seconds to burn <paramref name="dv"/> m/s on the craft's stages from the snapshot (#696); null when they can't give it.</summary>
+        internal static double? BurnSeconds(GameSnapshot snapshot, double dv)
+        {
+            return BurnStages(snapshot).Take(dv);
+        }
+
         /// <summary>The stages that can burn, first to last, used up burn by burn for the burn times.</summary>
         private static StageBudget BurnStages(GameSnapshot snapshot)
         {

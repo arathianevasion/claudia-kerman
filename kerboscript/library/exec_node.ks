@@ -34,9 +34,11 @@
 // The block's own options and defaults (max_duration "auto" is resolved once the burn is known).
 // stop_at_min is for other blocks, so not in Claudia's docs (#532): "ecc" also stops the burn once the
 // orbit's eccentricity stops falling (circularize asks for it), and the result's stop says which stop
-// ended it; "" keeps only the node's.
+// ended it; "" keeps only the node's. resolve is for other blocks too (#673): "" or a function of the node that re-solves it from
+// the orbit as it is after the turn, just before the burn, keeping its UT, and returns "" or why the block must fail.
 function exec_node_defaults {
-  return lexicon("node", "next", "max_residual", 0.5, "lead", "half_burn", "rcs_trim", false, "finish_fraction", 0.05, "stop_at_min", "").
+  return lexicon("node", "next", "max_residual", 0.5, "lead", "half_burn", "rcs_trim", false, "finish_fraction", 0.05, "stop_at_min", "",
+    "resolve", "").
 }
 
 // "" or why a string value of node or lead isn't one the block knows.
@@ -55,7 +57,21 @@ function exec_node_unreadable {
   if opt:stop_at_min <> "" and opt:stop_at_min <> "ecc" {
     return "stop_at_min must be '' or 'ecc', not '" + opt:stop_at_min + "'".
   }
+  if not opt:resolve:istype("Delegate") and not (opt:resolve:istype("String") and opt:resolve = "") {
+    return "resolve must be '' or a function of the node".
+  }
   return "".
+}
+
+// The node re-solved by resolve (exec_node_defaults) once the turn is done: "" with no resolve, else what resolve(nd) returns.
+// A turn on RCS pushes the craft (#673: at Minmus a 142 degree turn burned 6 units of monoprop, about 5 m/s of thrust, and the
+// apoapsis rose 543 m before a burn at it), so a node solved before the turn lands its delta-v on the moved orbit.
+function exec_node_resolve {
+  parameter resolve, nd.
+  if resolve:istype("String") {
+    return "".
+  }
+  return resolve(nd).
 }
 
 function exec_node {
@@ -114,6 +130,12 @@ function exec_node {
     claudia_make_safe().
     return claudia_finish(ctx, false, burn:error, extra).
   }
+  local resolved is exec_node_resolve(opt:resolve, nd).
+  if resolved <> "" {
+    claudia_make_safe().
+    return claudia_finish(ctx, false, resolved, extra).
+  }
+  set extra:node_dv to round(nd:deltav:mag, 3).
 
   local steer is nd:deltav.
   lock steering to claudia_keep_roll(steer).

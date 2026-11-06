@@ -192,7 +192,7 @@ namespace ClaudiaKermin.Adapter
         /// The Mission's time cap, hours (<see cref="MissionSettingsValues.TimeCapHours"/>), for the block calls' own Game Snapshots
         /// (#543): <c>land</c>'s pass search defaults its window by it, as <c>find_landing_site</c> does. Refreshed every frame.
         /// </summary>
-        public static double TimeCapHours = MissionSettingsValues.BalancedWaitHours;
+        public static double TimeCapHours = MissionSettingsValues.BalancedSearchHours;
 
         /// <summary>
         /// The Chute Allocation and the Mission Plan step in hand (0 first; -1 before the first), for reentry's
@@ -486,6 +486,15 @@ namespace ClaudiaKermin.Adapter
             return "";
         }
 
+        /// <summary>The script ended: a fresh Game Snapshot of the craft goes ahead of the end, so the Debrief is built from the craft as the run left it (#671).</summary>
+        private void RunEnded(ClaudiaKermin.Core.Kos.RunOutcome outcome, int runId)
+        {
+            var vessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ready ? FlightGlobals.ActiveVessel : null;
+            var ut = Planetarium.GetUniversalTime();
+            if (vessel != null) Send(SnapshotReader.Read(vessel));
+            Send(new KosRunEnded(outcome, runId, ut));
+        }
+
         private void StartScript(StartScript start)
         {
             var runner = ScriptRunner.Current;
@@ -495,7 +504,7 @@ namespace ClaudiaKermin.Adapter
                 return;
             }
             runner.BeginRun(start.ProcessorPartId, start.RunId, start.Label, start.Source,
-                outcome => Send(new KosRunEnded(outcome, start.RunId)),
+                outcome => RunEnded(outcome, start.RunId),
                 reason => Send(new KosRunRefused(reason, start.RunId)),
                 what => Send(new KosRunBlocked(what, start.RunId)));
         }

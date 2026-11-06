@@ -352,7 +352,7 @@ namespace ClaudiaKermin.Adapter
             {
                 case TimeVersusDeltaV.Fastest: return "Burns as soon as possible; spends more delta-v.";
                 case TimeVersusDeltaV.MostEfficient: return "Waits as long as it takes for the cheapest burn.";
-                default: return "Waits up to 6 h for a cheaper window.";
+                default: return "Waits for a cheaper window only if it costs at least " + MissionSettingsValues.BalancedSavingText + " less.";
             }
         }
 

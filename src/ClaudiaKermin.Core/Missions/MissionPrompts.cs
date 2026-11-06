@@ -111,6 +111,9 @@ namespace ClaudiaKermin.Core.Missions
         public const string CutOffEffort = "medium";
         public const string CutOffNote = "Your last attempt ran out of room while thinking. Decide with what you have and keep your reasoning short.";
 
+        /// <summary>The correction sent once when a reply of kind mission_plan came back without a plan accepted through propose_mission_plan (#667): turn text, never the system prompt.</summary>
+        public const string PlanCallNote = "You replied with kind mission_plan without calling propose_mission_plan, so no plan was accepted. Call propose_mission_plan now with the plan, then end the turn with kind mission_plan.";
+
         /// <summary>
         /// The summarization prompt for on-demand compaction (#268; it replaces the API's default). It names what a long
         /// Mission must keep word for word; the summary is all Claude has of the compacted turns. The craft's state here is the
@@ -247,6 +250,18 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>In the tool results of the step before the last that may call a tool (#509), on a request for a Mission Plan not yet handed in.</summary>
         public const string ProposePlanNow = "Your next step is the last that can call a tool: if you are replying with a Mission Plan, hand it in with propose_mission_plan now.";
 
+        /// <summary>After the last tool results of a Sequence Plan or other turn at the step limit (#668): the final request, tool_choice none.</summary>
+        public const string StepLimitLine = "Your tool steps are used up and no tool will be answered. Reply now with the kind this request asked for: for a Sequence Plan, the best plan you can make from the results so far, complete with its script; if you are unsure, send it anyway with unsure_because filled in, not a null plan.";
+
+        /// <summary>The same for a turn that takes a Mission Plan.</summary>
+        public const string StepLimitPlanLine = "Your tool steps are used up and no tool will be answered. Reply now with kind mission_plan: the mod takes the last plan propose_mission_plan accepted.";
+
+        /// <summary>The same for the Craft Check and the margin recheck.</summary>
+        public const string StepLimitVerdictLine = "Your tool steps are used up and no tool will be answered. Reply now with your verdict from the results so far.";
+
+        /// <summary>Retry after the reply to the final request was refused (#668): the kept tool results are sent again.</summary>
+        public const string StepLimitRetryLine = "Your last reply was refused because it didn't fit the reply format. The tool steps are still used up: reply now with the kind this request asked for, built from the results above.";
+
         public const string SettingsNotice =
             "Revise the Mission Plan for the new Mission Settings, with the waits, any Due Times and the total Mission time they imply: "
             + ProposePlan + ". The player must approve it again.";
@@ -292,7 +307,7 @@ namespace ClaudiaKermin.Core.Missions
             + "Telemetry Check crossing rules out Nominal, a recovered one doesn't; list each with its verdict in what_happened. Always fill outcome, why, next and "
             + "goal_steps_done. For Nominal leave what_happened, outcome_vs_target, plan_margin and science empty (the card shows the mod's events, margin "
             + "bar and science) unless a check was crossed or the script printed an error. Otherwise fill them: outcome_vs_target (the "
-            + "script's report and the events the mod logged, against the target and tolerances, with numbers), plan_margin (the "
+            + "report and mod events vs the target, with numbers; delta-v from the run total), plan_margin (run total "
             + "delta-v and resources left against the Maneuver Sequences still to fly, using the mod's margin recheck), science, "
             + "and follow_up with follow_up_text: for Off-Nominal "
             + "corrective_sequence or revised_plan; for Failed reduced_goal (follow_up_text is the reduced Mission Goal, which the "
@@ -464,6 +479,80 @@ namespace ClaudiaKermin.Core.Missions
             + "the Script Check: reply with kind \"sequence_plan\" and sequence_plan filled in, including its complete Mission "
             + "Script. The mod runs it only after the player's Approval.";
 
+        // ---- The plan's own figures (#674, #696) ----
+
+        /// <summary>
+        /// The one automatic correction's text: the Script Check's problems (none when the script passed), then each of the
+        /// plan's own figures found wrong (<see cref="PlanFindings"/>). Reads right with any one alone.
+        /// </summary>
+        public static string PlanCheckFailed(PlanFindings findings)
+        {
+            var failed = findings.ScriptFailed;
+            var text = failed ? ScriptCheckFailed(findings.ScriptProblems) : "";
+            if (!findings.FiguresWrong) return text;
+            var parts = new List<string>();
+            if (findings.Crossings.Count > 0)
+            {
+                var lines = findings.Crossings.Select(c => "- " + c.Check.Describe() + ": the plan leaves about " + c.Check.Format(c.PredictedLeft)).ToList();
+                parts.Add("Its own figures are certain to cross these Telemetry Checks (delta-v left starts at " + Metres(findings.StartDeltaV)
+                    + ", expected_delta_v is " + Metres(findings.ExpectedDeltaV) + "):\n" + string.Join("\n", lines.ToArray()));
+            }
+            if (findings.ShortDuration != null) parts.Add(ShortDuration(findings.ShortDuration, findings.ExpectedDurationSeconds));
+            return text + (failed ? "\n" : "The mod sent back your Sequence Plan, so the player hasn't seen it; its Mission Script passed the Script Check. ")
+                + string.Join("\n", parts.ToArray());
+        }
+
+        /// <summary>The correction's notice: a rewrite for a failed script, with each wrong figure to set.</summary>
+        public static string PlanFixNotice(PlanFindings findings)
+        {
+            var fixes = new List<string>();
+            if (findings.Crossings.Count > 0) fixes.Add("each delta-v left threshold set below what the plan itself leaves");
+            if (findings.ShortDuration != null) fixes.Add("expected_duration_s at least the figure named below");
+            var with = string.Join(" and ", fixes.ToArray());
+            if (findings.ScriptFailed) return fixes.Count == 0 ? RewriteNotice : RewriteNotice + " Also send it with " + with + ", or change the plan.";
+            return "Send the Sequence Plan again with " + with + " (or change the plan): reply with kind \"sequence_plan\" and sequence_plan filled in, "
+                + "with the complete Mission Script. The mod runs it only after the player's Approval.";
+        }
+
+        /// <summary>#696: the plan's expected_duration_s leaves out the wait to its first burn, which the runaway hard stop counts.</summary>
+        private static string ShortDuration(BurnWait wait, double planned)
+        {
+            return "Its expected_duration_s is " + Seconds(planned) + ", but " + wait.Block + " waits about " + Seconds(wait.WaitSeconds) + " (game time, from now) for "
+                + wait.Point + ", then burns about " + Seconds(wait.BurnSeconds) + ". The runaway hard stop counts waits in expected_duration_s: "
+                + "set it to at least " + Seconds(wait.MinimumDurationSeconds) + ".";
+        }
+
+        /// <summary>#696: the Debrief's event for a run the hard stop cut short mid-warp (<see cref="BurnPoints.WarpCutShort"/>).</summary>
+        public static string TimedOutMidWarp(BurnWait cut)
+        {
+            return "timed out " + Seconds(cut.LeftSeconds) + " of game time short of " + cut.Block + "'s warp target, " + Seconds(cut.WaitSeconds)
+                + " after the run started; an expected_duration_s of at least " + Seconds(cut.MinimumDurationSeconds) + " would have covered the wait and the burn";
+        }
+
+        /// <summary>What a duration short of the first burn is logged as in plans.jsonl when the plan is offered anyway.</summary>
+        public static string ShortDurationWarning(BurnWait wait, double planned)
+        {
+            return "duration short of first burn: expected_duration_s " + Seconds(planned) + ", " + wait.Block + " waits " + Seconds(wait.WaitSeconds)
+                + " for " + wait.Point + "; needs at least " + Seconds(wait.MinimumDurationSeconds);
+        }
+
+        private static string Seconds(double value)
+        {
+            return value.ToString("#,0", CultureInfo.InvariantCulture) + " s";
+        }
+
+        /// <summary>What a crossing the plan predicted for itself is logged as in plans.jsonl when the plan is offered anyway.</summary>
+        public static string PredictedCrossingWarning(PredictedCrossing crossing, double startDeltaV, double expectedDeltaV)
+        {
+            return "predicted crossing: " + crossing.Check.Describe() + " (starts " + Metres(startDeltaV) + ", expected_delta_v " + Metres(expectedDeltaV)
+                + ", leaves about " + crossing.Check.Format(crossing.PredictedLeft) + ")";
+        }
+
+        private static string Metres(double value)
+        {
+            return value.ToString("#,0", CultureInfo.InvariantCulture) + " m/s";
+        }
+
         private static string Problems(IList<string> problems)
         {
             var lines = new List<string>();
@@ -476,19 +565,51 @@ namespace ClaudiaKermin.Core.Missions
         /// is unreadable. <paramref name="startLeft"/> is the run's baseline, already less the <paramref name="dropped"/> delta-v
         /// stages took with them at zero throttle (#605), which the line names so it doesn't read as less than a script burned.
         /// </summary>
-        public static string RunDeltaVLine(double? startLeft, GameSnapshot now, double dropped)
+        public static string RunDeltaVLine(double? startLeft, GameSnapshot now, double dropped, IDictionary<string, object> report = null)
         {
             var nowLeft = LiveReadings.DeltaVLeftOf(now);
-            string why = null;
-            if (!startLeft.HasValue) why = "no stock delta-v figure at the run's start";
-            else if (now == null) why = "the craft's readings aren't available now";
-            else if (!now.DeltaVSimulator) why = "the stock delta-v simulator is off now";
-            else if (!nowLeft.HasValue) why = "a stage's delta-v reading is unreliable now";
-            if (why != null) return "Delta-v used this run: unknown (" + why + ").";
-            return "Delta-v used this run, from stock: " + Rounded(System.Math.Max(0, startLeft.Value - nowLeft.Value)) + " m/s (left at start "
+            var used = RunDeltaVUsed(startLeft, now);
+            if (!used.HasValue) return "Delta-v used by the whole run: unknown (" + RunDeltaVWhy(startLeft, now) + ").";
+            return "Delta-v used by the whole run (all blocks, the mod's own reading from stock; the report's dv_used may be one block's): " + Rounded(used.Value) + " m/s (left at start "
                 + Rounded(startLeft.Value + dropped) + " m/s, now " + Rounded(nowLeft.Value) + " m/s"
-                + (dropped > 0 ? "; " + Rounded(dropped) + " m/s dropped with stages at zero throttle isn't counted" : "") + ").";
+                + (dropped > 0 ? "; " + Rounded(dropped) + " m/s dropped with stages at zero throttle isn't counted" : "") + ")."
+                + ReportDiffers(report, used.Value, nowLeft.Value);
         }
+
+        /// <summary>The run's delta-v used from stock's figures; null when a reading is missing.</summary>
+        public static double? RunDeltaVUsed(double? startLeft, GameSnapshot now)
+        {
+            if (RunDeltaVWhy(startLeft, now) != null) return null;
+            return System.Math.Max(0, startLeft.Value - LiveReadings.DeltaVLeftOf(now).Value);
+        }
+
+        private static string RunDeltaVWhy(double? startLeft, GameSnapshot now)
+        {
+            if (!startLeft.HasValue) return "no stock delta-v figure at the run's start";
+            if (now == null) return "the craft's readings aren't available now";
+            if (!now.DeltaVSimulator) return "the stock delta-v simulator is off now";
+            if (!LiveReadings.DeltaVLeftOf(now).HasValue) return "a stage's delta-v reading is unreliable now";
+            return null;
+        }
+
+        private static string ReportDiffers(IDictionary<string, object> report, double used, double left)
+        {
+            var note = "";
+            object value;
+            if (report != null && report.TryGetValue("dv_used", out value) && value is double && System.Math.Abs((double)value - used) > Tolerance(used))
+                note += " The report's dv_used " + Rounded((double)value) + " differs.";
+            if (report != null && report.TryGetValue("dv_remaining", out value) && value is double && System.Math.Abs((double)value - left) > Tolerance(left))
+                note += " The report's dv_remaining " + Rounded((double)value) + " differs.";
+            return note;
+        }
+
+        private static double Tolerance(double figure)
+        {
+            return System.Math.Max(5, 0.05 * figure);
+        }
+
+        /// <summary>Where <see cref="RunReport"/> leaves the run delta-v line of a Debrief turn; filled when the Debrief is prepared.</summary>
+        public const string RunDeltaVSlot = "\n[[run delta-v]]";
 
         /// <summary>
         /// The Debrief's line on the monopropellant the whole run used, from stock's amount at its start and now (dropped
@@ -570,6 +691,8 @@ namespace ClaudiaKermin.Core.Missions
         /// The Mission request's stage table (#508): stage_performance's own answers in vacuum and at Kerbin's sea level, each
         /// stage's TWR at every body the Mission Goal names (from the same rows), and the Craft Check's plan_ascent call and
         /// result when it made one, so the Mission Plan step needs neither tool. "" when stage_performance has no figures.
+        /// The ascent figures go in only where an ascent is still to fly (#680): the Craft Check's plan_ascent on the launch pad,
+        /// the Kerbin sea-level row on the ground at Kerbin.
         /// </summary>
         public static string StageTable(GameSnapshot snapshot, string goal, string craftCheckAscent)
         {
@@ -577,12 +700,15 @@ namespace ClaudiaKermin.Core.Missions
             var tools = PlanningTools.Default();
             var vacuum = tools.Run("stage_performance", "{\"situation\":\"vacuum\"}", snapshot, null);
             if (vacuum.IsError) return "";
+            var onPad = snapshot.Situation == "PRELAUNCH";
+            var atHome = snapshot.Body == CraftCheckFlow.HomeBody
+                && (onPad || snapshot.Situation == "LANDED" || snapshot.Situation == "SPLASHED");
             var seaLevelInput = "{\"body\":" + PlanningJson.Quote(CraftCheckFlow.HomeBody) + ",\"situation\":\"surface\"}";
-            var seaLevel = tools.Run("stage_performance", seaLevelInput, snapshot, null);
-            var text = "\nStage table: these are the figures stage_performance and plan_ascent would give for this craft now (JSON data). "
+            var seaLevel = atHome ? tools.Run("stage_performance", seaLevelInput, snapshot, null) : null;
+            var text = "\nStage table: these are the figures stage_performance" + (onPad ? " and plan_ascent" : "") + " would give for this craft now (JSON data). "
                 + "A tool whose figures are here needs no call.\n"
                 + "stage_performance {\"situation\":\"vacuum\"}: " + vacuum.Json + "\n"
-                + (seaLevel.IsError ? "" : "stage_performance " + seaLevelInput + ": " + seaLevel.Json + "\n");
+                + (seaLevel == null || seaLevel.IsError ? "" : "stage_performance " + seaLevelInput + ": " + seaLevel.Json + "\n");
             var bodies = GoalBodies(snapshot, goal);
             if (bodies.Count > 0)
             {
@@ -605,7 +731,7 @@ namespace ClaudiaKermin.Core.Missions
             }
             if (transfers.Length > 0)
                 text += "Transfers to each body the Mission Goal names, as plan_transfer would give them from this Game Snapshot (JSON data). A tool whose figures are here needs no call.\n" + transfers;
-            if (!string.IsNullOrEmpty(craftCheckAscent)) text += "The Craft Check's plan_ascent " + craftCheckAscent + "\n";
+            if (onPad && !string.IsNullOrEmpty(craftCheckAscent)) text += "The Craft Check's plan_ascent " + craftCheckAscent + "\n";
             return text;
         }
 
@@ -670,13 +796,14 @@ namespace ClaudiaKermin.Core.Missions
 
         /// <param name="crossings">The Telemetry Checks crossed during the run with their verdicts; "" when none was.</param>
         /// <param name="blocks">The run's blocks trail (#609), listed after the report; null for none.</param>
-        public static string RunReport(SequencePlan plan, RunOutcome outcome, string crossings, BlockTrail blocks = null)
+        public static string RunReport(SequencePlan plan, RunOutcome outcome, string crossings, BlockTrail blocks = null, bool runDeltaV = false)
         {
             var text = "The player approved the Sequence Plan " + Quoted(plan.Name) + " and the mod ran its Mission Script.\n"
                 + RunEndedPrefix + outcome.Kind + (outcome.Reason.Length > 0 ? " (" + outcome.Reason + ")" : "") + ".";
             if (outcome.Report != null) text += "\nReport (JSON data): " + ReportJson(outcome.Report);
             var trail = blocks == null ? "" : blocks.Line(outcome.Report);
             if (trail.Length > 0) text += "\n" + trail;
+            if (runDeltaV) text += RunDeltaVSlot;
             if (outcome.ErrorText.Length > 0) text += "\nkOS terminal after the run (quoted): " + Quoted(outcome.ErrorText);
             if (outcome.MakesCraftSafe && !outcome.WasAborted) text += "\nThe mod cut the throttle and released steering.";
             text += CrossedChecks(crossings);

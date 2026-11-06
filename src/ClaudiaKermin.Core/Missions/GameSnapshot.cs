@@ -143,6 +143,8 @@ namespace ClaudiaKermin.Core.Missions
         public double CelestialLongitude;
         /// <summary>Vertical speed, m/s, negative going down; 0 in the editor.</summary>
         public double VerticalSpeed;
+        /// <summary>Speed over the surface, vertical included, m/s (#671): a landed craft that has stopped is under half a metre per second. 0 in the editor and in snapshots recorded before it.</summary>
+        public double SurfaceSpeed;
         /// <summary>Null when there is no orbit to read (e.g. in the editor).</summary>
         public SnapshotOrbit Orbit;
 
@@ -198,7 +200,7 @@ namespace ClaudiaKermin.Core.Missions
         /// hours. The Mission sets them on the turn's snapshot before a tool runs; they are not part of the snapshot's JSON.
         /// </summary>
         public bool DaylightLandingDefault = true;
-        public double TimeCapHours = MissionSettingsValues.BalancedWaitHours;
+        public double TimeCapHours = MissionSettingsValues.BalancedSearchHours;
         /// <summary>The Mission Setting that picks a planet's Transfer Window, Soonest or Optimal (#458).</summary>
         public TimeVersusDeltaV TimeVersusDeltaV = TimeVersusDeltaV.Balanced;
         /// <summary>The Craft Check's delta-v margin, %, that Soonest's total must fit within over Optimal's; PlayerConfig's default until the Mission sets it.</summary>
@@ -316,6 +318,8 @@ namespace ClaudiaKermin.Core.Missions
                 .Field("latitude", Latitude)
                 .Field("celestial_longitude", CelestialLongitude)
                 .Field("vertical_speed", VerticalSpeed);
+            // Claudia's turns never carried it (the Debrief's wait reads it, #671): only the capture and the tools' snapshots write it.
+            if (withBodies) json.Field("surface_speed", SurfaceSpeed);
             if (RcsOn.HasValue) json.Field("rcs_on", RcsOn.Value);
             var impact = ImpactInS;
             if (impact.HasValue) json.Field("impact_in_s", impact.Value);
@@ -585,6 +589,7 @@ namespace ClaudiaKermin.Core.Missions
                 Latitude = JsonNode.Double(root["latitude"]) ?? 0,
                 CelestialLongitude = JsonNode.Double(root["celestial_longitude"]) ?? 0,
                 VerticalSpeed = JsonNode.Double(root["vertical_speed"]) ?? 0,
+                SurfaceSpeed = JsonNode.Double(root["surface_speed"]) ?? 0,
                 RcsOn = JsonNode.Bool(root["rcs_on"]),
                 _parsedImpactInS = JsonNode.Double(root["impact_in_s"]),
                 Target = ReadTarget(root["target"]),

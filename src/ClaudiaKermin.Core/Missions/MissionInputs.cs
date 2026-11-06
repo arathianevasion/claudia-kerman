@@ -272,7 +272,9 @@ namespace ClaudiaKermin.Core.Missions
         public readonly RunOutcome Outcome;
         /// <summary>The <see cref="StartScript.RunId"/> this answers.</summary>
         public readonly int RunId;
-        public KosRunEnded(RunOutcome outcome, int runId) { Outcome = outcome; RunId = runId; }
+        /// <summary>UT when the run ended, 0 when the adapter didn't say: a Game Snapshot older than this is not trusted for the Debrief (#671).</summary>
+        public readonly double Ut;
+        public KosRunEnded(RunOutcome outcome, int runId, double ut = 0) { Outcome = outcome; RunId = runId; Ut = ut; }
     }
 
     /// <summary>A Building Block began in the run (<c>ADDONS:CLAUDIA:BLOCKSTART</c>, from the Core Library's <c>claudia_begin</c>).</summary>

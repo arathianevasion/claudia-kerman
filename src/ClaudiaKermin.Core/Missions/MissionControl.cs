@@ -85,7 +85,7 @@ namespace ClaudiaKermin.Core.Missions
             else if (input is SaveLoaded) Loaded(((SaveLoaded)input).SaveDirectory);
             else if (input is MissionsRestored) Restored((MissionsRestored)input);
             else if (input is SceneChanged) SceneChanging(((SceneChanged)input).Scene);
-            else if (input is UtAdvanced) _ut = ((UtAdvanced)input).Ut;
+            else if (input is UtAdvanced) { _ut = ((UtAdvanced)input).Ut; ContinueRunEnd(); }
             else if (input is StartMission) Start((StartMission)input);
             else if (input is RunCraftCheck) RunCraftCheck((RunCraftCheck)input);
             else if (input is AcknowledgeWarning) _craftCheck.Acknowledge(((AcknowledgeWarning)input).Code);
@@ -176,6 +176,8 @@ namespace ClaudiaKermin.Core.Missions
             public string Effort;
             public string UserText;
             public string Notice;
+            /// <summary>The script's report, kept so the Debrief's run delta-v line can say when its dv_used differs.</summary>
+            public IDictionary<string, object> Report;
             /// <summary>The player's words of a question asked with a plan pending, which may turn out to be a revision (MissionControl.TypedReply.cs); null otherwise.</summary>
             public string PlayerText;
             /// <summary>A rewrite after a failed Script Check: if this script fails too, there is no further automatic rewrite.</summary>
@@ -195,6 +197,10 @@ namespace ClaudiaKermin.Core.Missions
             /// the cut-off note. At most one automatic retry per turn, and any Retry sends this form, never the identical request.
             /// </summary>
             public bool CutOffRetry;
+            /// <summary>The turn was resent once with <see cref="MissionPrompts.PlanCallNote"/> after a mission_plan reply with no accepted plan (#667); not saved.</summary>
+            public bool PlanCallRetry;
+            /// <summary>The reply to the final request at the step limit was refused off_schema (#668): <see cref="Pause"/> keeps the tool loop and Retry sends the final request again. Memory only.</summary>
+            public bool KeepLoop;
             /// <summary>
             /// The turn is in its Second look (<see cref="SecondLook"/>): high effort and the first reply's reason for doubt added, which
             /// is never "" once set. At most one per turn, and never with a <see cref="CutOffRetry"/>, in either order.
@@ -557,6 +563,7 @@ namespace ClaudiaKermin.Core.Missions
             LinkSeen(previous, snapshot);
             var mission = _mission;
             if (mission == null) return;
+            ContinueRunEnd(mission);
             // A plan restored from a save was never offered against a snapshot: the first one after the load is its baseline.
             if (mission.AwaitingApproval && mission.PlanBaseline == null && !mission.InFlight && _scene == GameScene.Flight) mission.PlanBaseline = snapshot;
             // An approved plan restored from a save has no Chute Allocation yet: the first snapshot of the craft after the load gives it one.
@@ -871,6 +878,7 @@ namespace ClaudiaKermin.Core.Missions
                 || (mission.Stage == MissionStage.Paused && mission.StageBeforePause == MissionStage.Running);
             if (!running || mission.RunId != ended.RunId) return;
             mission.RunId = null;
+            TimedOutMidWarp(mission, ended.Outcome);
             mission.RunDeadlineUt = null;
             mission.RcsUse.Close(_ut);
             EndLive(mission);
@@ -878,11 +886,18 @@ namespace ClaudiaKermin.Core.Missions
             NoteRunOutcome(mission, outcome);
             Notice("The script ended: " + outcome.Summary + ".");
             if (DebriefOnReturn(mission, outcome)) return;
+            AwaitPostRunSnapshot(mission, outcome, ended.Ut);
+        }
+
+        /// <summary>The Debrief of the run that ended, from the Game Snapshot read after it (MissionControl.RunSettle.cs).</summary>
+        private void BeginRunDebrief(Mission mission, RunOutcome outcome)
+        {
             if (DebriefedRefusal(mission, outcome)) return;
             var turn = new Turn
             {
                 Purpose = Purpose.Debrief,
-                UserText = MissionPrompts.RunReport(mission.PendingSequence, outcome, CrossingsText(mission), mission.Blocks) + "\n" + ChildRunNote(mission) + MissionPrompts.Facts(_ut, _snapshot),
+                UserText = MissionPrompts.RunReport(mission.PendingSequence, outcome, CrossingsText(mission), mission.Blocks, true) + "\n" + ChildRunNote(mission) + MissionPrompts.Facts(_ut, _snapshot),
+                Report = outcome.Report,
                 Notice = MissionPrompts.DebriefNotice,
             };
             if (mission.Stage == MissionStage.Paused) mission.StageBeforePause = MissionStage.Debriefing;
@@ -1141,6 +1156,7 @@ namespace ClaudiaKermin.Core.Missions
             turn.PlanCallRefused = false;
             turn.RepeatStop = false;
             turn.PlanOnly = false;
+            turn.KeepLoop = false;
             turn.ToolSnapshot = null;
             RecordUnanswered(mission, turn);
         }
@@ -1322,6 +1338,12 @@ namespace ClaudiaKermin.Core.Missions
             var problem = reply == null ? "it wasn't in the Mission reply format" : Mismatch(turn.Purpose, reply);
             if (problem != null)
             {
+                if (reply != null && PlanNotProposed(reply) && TakesMissionPlan(turn.Purpose) && !turn.PlanCallRetry && mission.DeferredRestore == null)
+                {
+                    PlanCallCorrection(mission, turn, problem);
+                    return;
+                }
+                turn.KeepLoop = turn.ToolSteps >= ToolStep.MaxSteps && turn.Messages != null && mission.DeferredRestore == null;
                 Failed(mission, turn, "Claudia's reply didn't fit: " + problem + ".");
                 return;
             }
@@ -1380,13 +1402,41 @@ namespace ClaudiaKermin.Core.Missions
             return reply != null ? reply.WithProposed(ProposedPlans.LastAccepted(turn.Messages ?? new List<Message>())) : null;
         }
 
+        /// <summary>A reply of kind mission_plan whose plan no propose_mission_plan call accepted.</summary>
+        private static bool PlanNotProposed(MissionReply reply)
+        {
+            return reply.Kind == MissionReply.MissionPlanKind && reply.MissionPlan == null;
+        }
+
+        /// <summary>
+        /// A mission_plan reply with no accepted plan on a turn that takes one (#667). It is never committed. The turn is resent
+        /// once with the correction after its own messages (a tool loop stays), as the last step that may call propose_mission_plan
+        /// alone, if the Spending Cap has room; otherwise, or after a second refusal, it fails as it always did.
+        /// </summary>
+        private void PlanCallCorrection(Mission mission, Turn turn, string problem)
+        {
+            turn.PlanCallRetry = true;
+            turn.Messages.Add(Message.SystemText(MissionPrompts.PlanCallNote));
+            turn.ToolLimitSent = false;
+            turn.RepeatStop = false;
+            turn.PlanOnly = true;
+            if (!HasCapRoom(mission, turn))
+            {
+                Failed(mission, turn, "Claudia's reply didn't fit: " + problem + ".");
+                return;
+            }
+            Event(mission, "plan_call_retry", turn.Purpose.ToString());
+            mission.Activity = Thinking(turn);
+            Send(mission, turn);
+        }
+
         /// <summary>
         /// Why a reply doesn't fit its request (reported as off_schema), or null when it does. The schema takes every kind
         /// (ADR 0012), so this is where a kind the request can't come back as is refused.
         /// </summary>
         private static string Mismatch(Purpose purpose, MissionReply reply)
         {
-            if (reply.Kind == MissionReply.MissionPlanKind && reply.MissionPlan == null) return "no Mission Plan was accepted through propose_mission_plan";
+            if (PlanNotProposed(reply)) return "no Mission Plan was accepted through propose_mission_plan";
             switch (purpose)
             {
                 case Purpose.MissionPlan:
@@ -1419,12 +1469,15 @@ namespace ClaudiaKermin.Core.Missions
             if (offered != null)
             {
                 var check = CheckScript(mission, offered);
-                if (!check.Passed)
+                // Beside it, the plan's own figures (#674, #696): one wrong by the snapshot goes back in the same one correction.
+                var findings = PlanFigures(mission, offered);
+                if (!check.Passed) findings.ScriptProblems = check.Problems;
+                if (findings.ScriptFailed || (findings.FiguresWrong && FiguresCorrectionWanted(mission, turn, findings)))
                 {
-                    ScriptCheckFailed(mission, turn, offered, check.Problems);
+                    ScriptCheckFailed(mission, turn, offered, findings);
                     return;
                 }
-                checkWarnings = check.Warnings;
+                checkWarnings = check.Warnings.Concat(findings.Warnings()).ToList();
             }
 
             // Only a vessel that left the craft may be a Child Vessel: the player never sees a plan that names another.
@@ -1553,22 +1606,63 @@ namespace ClaudiaKermin.Core.Missions
         /// rewrite, and the player sees neither the plan nor its line. If a rewrite fails too, the plan is shown
         /// as "Couldn't produce a safe script" with Retry, Retry with a note or Re-plan, and nothing can be approved.
         /// </summary>
-        private void ScriptCheckFailed(Mission mission, Turn turn, SequencePlan plan, IList<string> problems)
+        private void ScriptCheckFailed(Mission mission, Turn turn, SequencePlan plan, PlanFindings findings)
         {
             if (!turn.ScriptRewrite)
             {
-                Note(LogKind.Notice, "The script didn't pass the Script Check; Claudia is rewriting it.");
-                Begin(new Turn
-                {
-                    Purpose = Purpose.SequencePlan,
-                    ScriptRewrite = true,
-                    Stats = turn.Stats,
-                    UserText = MissionPrompts.ScriptCheckFailed(problems),
-                    Notice = MissionPrompts.RewriteNotice,
-                });
+                var wrong = FiguresWrongNote(findings);
+                Note(LogKind.Notice, findings.ScriptFailed
+                    ? "The script didn't pass the Script Check" + (findings.FiguresWrong ? " and " + wrong : "") + "; Claudia is rewriting it."
+                    : char.ToUpperInvariant(wrong[0]) + wrong.Substring(1) + "; Claudia is revising it.");
+                Begin(FiguresCorrection(turn, findings));
                 return;
             }
-            ShowUnsafeScript(mission, plan, problems);
+            ShowUnsafeScript(mission, plan, findings.ScriptProblems);
+        }
+
+        /// <summary>The one automatic correction's turn (also the probe the Spending Cap room check prices).</summary>
+        private static Turn FiguresCorrection(Turn turn, PlanFindings findings)
+        {
+            return new Turn
+            {
+                Purpose = Purpose.SequencePlan,
+                ScriptRewrite = true,
+                Stats = turn.Stats,
+                UserText = MissionPrompts.PlanCheckFailed(findings),
+                Notice = MissionPrompts.PlanFixNotice(findings),
+            };
+        }
+
+        /// <summary>The log's words for the figures found wrong, e.g. "a Telemetry Check is certain to cross by the plan's own figures".</summary>
+        private static string FiguresWrongNote(PlanFindings findings)
+        {
+            var wrong = new List<string>();
+            if (findings.Crossings.Count > 0) wrong.Add("a Telemetry Check is certain to cross by the plan's own figures");
+            if (findings.ShortDuration != null) wrong.Add("the planned duration leaves out the wait to the first burn");
+            return string.Join(" and ", wrong.ToArray());
+        }
+
+        /// <summary>
+        /// The plan's own figures checked against the Game Snapshot of the craft it flies (#674, #696); nothing is found for a
+        /// Manual stretch, another vessel, or when the snapshot can't give the figure.
+        /// </summary>
+        private PlanFindings PlanFigures(Mission mission, SequencePlan plan)
+        {
+            var findings = new PlanFindings { ExpectedDeltaV = plan.ExpectedDeltaV, ExpectedDurationSeconds = plan.ExpectedDurationSeconds };
+            if (plan.Manual || !FliesCraft(mission, plan.Vessel)) return findings;
+            var snapshot = MissionVesselSnapshot(mission);
+            var start = LiveReadings.DeltaVLeftOf(snapshot);
+            findings.StartDeltaV = start ?? 0;
+            findings.Crossings = PredictedCrossings.Find(plan.TelemetryChecks, plan.ExpectedDeltaV, start);
+            findings.ShortDuration = BurnPoints.ShortOf(plan, snapshot, _ut);
+            return findings;
+        }
+
+        /// <summary>Whether a plan whose figures are wrong goes back: not after a correction already, and only with Spending Cap room for it.</summary>
+        private bool FiguresCorrectionWanted(Mission mission, Turn turn, PlanFindings findings)
+        {
+            if (turn.ScriptRewrite) return false;
+            return HasCapRoom(mission, FiguresCorrection(turn, findings.FiguresOnly()));
         }
 
         /// <summary>"Couldn't produce a safe script": the plan is dropped, nothing can be approved, and the player chooses Retry, Retry with a note or Re-plan.</summary>
@@ -1832,13 +1926,31 @@ namespace ClaudiaKermin.Core.Missions
         private void Pause(Mission mission, string reason)
         {
             // A tool loop never survives a Pause: Retry or Resume sends the turn from scratch.
-            if (mission.Pending != null && !mission.InFlight) DiscardLoop(mission, mission.Pending);
+            // Except the one whose final reply at the step limit was refused off_schema (#668): Retry sends that request again.
+            if (mission.Pending != null && !mission.InFlight && !mission.Pending.KeepLoop) DiscardLoop(mission, mission.Pending);
             if (mission.Stage != MissionStage.Paused) mission.StageBeforePause = mission.Stage;
             mission.Stage = MissionStage.Paused;
             mission.PauseCause = PauseCause.Other;
             mission.PauseReason = reason;
+            Event(mission, "paused", reason);
             Note(LogKind.Notice, reason);
             NeedsPlayer("Claudia's Mission is Paused.");
+        }
+
+        /// <summary>
+        /// Retry of a turn whose final reply at the step limit was refused (#668): the tool loop is kept, the retry line is added, and
+        /// the final request goes again with tool_choice none. A turn still owed a Mission Plan gets one step first on which only
+        /// propose_mission_plan is answered (#571).
+        /// </summary>
+        private void KeepLoopRetry(Mission mission, Turn turn)
+        {
+            turn.KeepLoop = false;
+            turn.Messages.Add(Message.SystemText(MissionPrompts.StepLimitRetryLine));
+            var planOwed = TakesMissionPlan(turn.Purpose) && ProposedPlans.LastAccepted(turn.Messages) == null;
+            turn.PlanOnly = planOwed;
+            turn.ToolLimitSent = !planOwed;
+            turn.RepeatStop = false;
+            Event(mission, "tool_loop_kept", turn.Purpose + " after " + turn.ToolSteps + " steps; Retry sends the final request again" + (planOwed ? " after one propose_mission_plan step" : ""));
         }
 
         private void Retried()
@@ -1887,6 +1999,7 @@ namespace ClaudiaKermin.Core.Missions
             if (mission.Pending != null)
             {
                 if (mission.Pending.Messages == null) ApplyLoadNotice(mission, mission.Pending);
+                else if (mission.Pending.KeepLoop) KeepLoopRetry(mission, mission.Pending);
                 Send(mission, mission.Pending);
             }
             else SendQueued(mission);
