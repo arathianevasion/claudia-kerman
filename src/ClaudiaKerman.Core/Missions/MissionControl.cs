@@ -118,6 +118,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is ArrivalPlaneAimed) ArrivalPlaneRecorded((ArrivalPlaneAimed)input);
             else if (input is KosBlockStarted) BlockStarted((KosBlockStarted)input);
             else if (input is KosBlockEnded) BlockEnded((KosBlockEnded)input);
+            else if (input is KosWarpRequested) WarpRequestSeen((KosWarpRequested)input);
             else if (input is KosRcsSwitched) RcsSwitched((KosRcsSwitched)input);
             else if (input is ShipSystemsMoved) ShipSystemsLine((ShipSystemsMoved)input);
             else if (input is EncounterWatchDropped) EncounterWatchLine((EncounterWatchDropped)input);
@@ -269,6 +270,8 @@ namespace ClaudiaKerman.Core.Missions
             public int? RunId;
             /// <summary>The runaway hard stop's UT for the current run (MissionControl.Gates.cs); null when nothing runs.</summary>
             public double? RunDeadlineUt;
+            /// <summary>The target UT of the current run's latest warp request (#830); the runaway stop holds while it, plus <see cref="RunawayStop.WarpAllowanceSeconds"/>, is ahead.</summary>
+            public double? WarpTargetUt;
             /// <summary>Why the mod stopped the current run ("blocked: …", "timed out"), for its Debrief; null otherwise.</summary>
             public string StopReason;
             public MissionPlan Plan;

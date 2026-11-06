@@ -345,7 +345,16 @@ namespace ClaudiaKerman.KOS
         {
             ActiveRun run;
             if (!_runs.TryGetValue(partId, out run) || run.Run.HasEnded) return;
-            run.Run.Trace.Requested(WarpTracing.Real, WarpTracing.Ut, targetUt, WarpTracing.Mode, rateAsked, refusal);
+            var entry = run.Run.Trace.Requested(WarpTracing.Real, WarpTracing.Ut, targetUt, WarpTracing.Mode, rateAsked, refusal);
+            if (run.RunId <= 0) return;
+            // #830: a Mission's run tells the core where its warp is headed, so the runaway stop can wait for it.
+            var runId = run.RunId;
+            var target = entry.TargetUt;
+            _events.Enqueue(() =>
+            {
+                var requested = ScriptRunner.WarpRequested;
+                if (requested != null) requested(runId, target);
+            });
         }
 
         /// <summary>The warp rate this frame, into every running program's trace; a fall to 1x mid-wait is named a drop.</summary>

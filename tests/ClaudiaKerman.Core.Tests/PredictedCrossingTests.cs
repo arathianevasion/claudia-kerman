@@ -268,6 +268,23 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains(line.GetProperty("lints").EnumerateArray(), l => l.GetString().StartsWith("duration raised by the mod: expected_duration_s 300 s to 304,"));
         }
 
+        /// <summary>#830, the flight's own case: a coast to a literal UT, then capture, planned at 20,000 s.</summary>
+        [Fact]
+        public void ACoastToALiteralUtThenCaptureIsRaisedAboveTheRealWaitWithNoRequest()
+        {
+            var until = (FarFromApoapsis().Ut + 63300).ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+            var script = "local res is coast(lexicon(\"until\", " + until + ")). set res to capture(lexicon(\"alt\", 60000)). addons:claudia:report(res).";
+            var transport = new StreamingFakeTransport(PlanReply(), Sequence(1500, script, 20000));
+            var mission = Control(transport);
+            ToSequencePlan(mission);
+            mission.Send(FarFromApoapsis());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(2, transport.Requests.Count);
+            Assert.True(CardDuration(mission) > 63300, "raised above the real wait: " + CardDuration(mission));
+            Assert.Contains(Assert.Single(PlanLines(mission)).GetProperty("lints").EnumerateArray(), l => l.GetString().StartsWith("duration raised by the mod: expected_duration_s 20,000 s to "));
+        }
+
         [Fact]
         public void AFigureLongerThanTheMinimumStands()
         {
