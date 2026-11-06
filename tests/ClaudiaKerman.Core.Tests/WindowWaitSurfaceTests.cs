@@ -76,6 +76,8 @@ namespace ClaudiaKerman.Core.Tests
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            // No form or Mission Plan asks for a moon's way home: its ascent does (#782), and these tests are about what follows the window.
+            if (mission.View.WindowPickNeeded) mission.Send(new ChooseWindow(mission.View.Windows.Rows.First(r => r.DepartureUt == Solved(body, ut).Window.DepartureUt).Kind));
         }
 
         private static SurfaceDeparture Solved(string body, double ut, string target = "Kerbin", bool twoStep = false)

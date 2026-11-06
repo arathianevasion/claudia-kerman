@@ -1115,9 +1115,9 @@ namespace ClaudiaKerman.Core.Missions
                 Enqueue(mission, turn);
                 return;
             }
+            turn.UserText = DepartureLine(mission) + turn.UserText;
             if (turn.Purpose == Purpose.Debrief && PrepareDebrief(mission, turn)) return;
             if (turn.Purpose == Purpose.MissionPlan || (turn.Purpose == Purpose.SequencePlan && !turn.ScriptRewrite)) turn.UserText = WithGoalBiomes(mission, turn.UserText);
-            turn.UserText = DepartureLine(mission) + turn.UserText;
             mission.Pending = turn;
             RecordUnanswered(mission, turn);
             Send(mission, turn);
@@ -1948,6 +1948,7 @@ namespace ClaudiaKerman.Core.Missions
                 // Only the mod marks its own resume (#775).
                 plan.CoastCheckpoint = "";
                 // A departure that waits for the player's pick has its Due Time from that pick (#782).
+                mission.WindowOwnDue = plan.DueTimeUt;
                 if (!DeparturePickMissing(mission, plan))
                 {
                     WindowWait(mission, plan);

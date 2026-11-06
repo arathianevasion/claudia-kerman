@@ -22,7 +22,7 @@ namespace ClaudiaKerman.Core.Missions
             public bool WindowPickNeeded;
             /// <summary>The player picked after the plan's request was sent, so Claudia hears it with the Approval. Saved.</summary>
             public bool WindowPickUnsaid;
-            /// <summary>#782: the Sequence Plan's own Due Time before the first pick's, so a changed pick starts from it. Saved.</summary>
+            /// <summary>#782: the Due Time the Sequence Plan in hand came with, which each pick's window is worked against. Saved.</summary>
             public double? WindowOwnDue;
         }
 
@@ -140,23 +140,21 @@ namespace ClaudiaKerman.Core.Missions
             if (!CanAnswerPlan || !WindowChoiceOpen(mission)) return;
             var offer = MissionOffer(mission);
             if (!offer.Needed) return;
-            var changed = mission.WindowPickUnsaid;
             mission.WindowPick = new WindowPick(offer.Body, kind);
             mission.WindowPickNeeded = false;
             mission.WindowPickUnsaid = true;
             mission.ConfirmPrompt = null;
             Note(LogKind.Player, "Transfer Window to " + offer.Body + ": " + kind + ".");
             Event(mission, "window_picked", mission.WindowPick.Key);
-            if (mission.Stage == MissionStage.AwaitingSequenceApproval) DeparturePicked(mission, offer.RowFor(mission.WindowPick), changed);
+            if (mission.Stage == MissionStage.AwaitingSequenceApproval) DeparturePicked(mission, offer.RowFor(mission.WindowPick));
         }
 
         /// <summary>#782: the Sequence Plan takes the pick: its script's literal windows, then the Due Time and alarm from the window, on top of the plan's own Due Time.</summary>
-        private void DeparturePicked(Mission mission, WindowRow row, bool changed)
+        private void DeparturePicked(Mission mission, WindowRow row)
         {
             var plan = mission.PendingSequence;
             var hadDue = plan.DueTimeUt.HasValue;
-            if (changed) plan.DueTimeUt = mission.WindowOwnDue;
-            else mission.WindowOwnDue = plan.DueTimeUt;
+            plan.DueTimeUt = mission.WindowOwnDue;
             plan.Script = WindowChoice.Retimed(plan.Script, row);
             // A window noted under the setting, from a manual stretch before this, is not the one picked.
             ClearWindow(mission);

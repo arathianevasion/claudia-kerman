@@ -29,3 +29,15 @@ For a transfer between bodies with the same parent, the player picks Soonest or 
 
 1. Pin "Orbit the Mun": no card, and Start needs nothing more. The request's rows have no `"setting":"Player"`.
 2. Pin "Go to Ike": the card is headed "Transfer Window to Duna". Start the Mission with a pick and Approve the plan: the launch's Due Time is that Duna window's.
+
+## Check 5: a departure flown straight on asks at its Sequence Plan (#782)
+
+1. Land a craft with fuel for the trip home on Duna, by any means (a cheat or an earlier Mission). Pin the goal "Explore and come home.": the goal names no way home, so no card shows before Start and none with the Mission Plan. If the Mission Plan's steps are not an ascent and then a return to Kerbin, ask for that with Change something.
+2. Approve the Mission Plan. Under the ascent's Sequence Plan card is "Transfer Window to Kerbin: pick one" with a Soonest and an Optimal row, each reading "capture 0 m/s", and neither button on. There is no Due Time yet, Approve is greyed out, and the status reads "Pick a Transfer Window, then Approve".
+3. Turn Auto Mode on. Nothing is approved or picked, and it says "Auto Mode is waiting for you: a Transfer Window to pick." Turn it off again.
+4. Save, load and come back: the card is there with neither button on.
+5. Press Optimal. The log has "Transfer Window to Kerbin: Optimal." and "Waiting for the Kerbin window: the ascent is due ...", the card shows that Due Time, and a KSP alarm is set for it. Press Soonest: the Due Time and the alarm move to the earlier date.
+6. Save, load and come back: the pick stands, its button is on, and the Due Time is unchanged.
+7. Warp to the Due Time and Approve. After the ascent, the first request in the Mission's dump opens with "The player picked the Soonest Transfer Window to Kerbin.", once. The Sequence Plan for the departure asks nothing, and its `transfer_to` leaves at about the Soonest row's date.
+8. Repeat from Duna orbit with a plan whose first step is the return: the card is under that Sequence Plan, and its script's `window`, if it has one, reads the picked row's date after a pick. Tell the ticket whether the rows' figures read right there.
+9. From the Mun or Minmus, landed and in orbit, with the same goal: no card, and Approve is on from the start.
