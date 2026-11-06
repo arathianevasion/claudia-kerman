@@ -132,7 +132,7 @@ namespace ClaudiaKermin.Core.Tests
             mission.Send(new SceneChanged(GameScene.Editor));
             Assert.True(mission.View.StartForm.CanStart);
             Assert.Equal(10m, mission.View.StartForm.DefaultSpendingCap);
-            Assert.Equal(new[] { "claude-sonnet-5-5", "claude-haiku-5-5" }, mission.View.StartForm.Models);
+            Assert.Equal(new[] { "claude-haiku-5-5", "claude-sonnet-5-5" }, mission.View.StartForm.Models);
             StartChecked(mission, new StartMission(Goal, 10m, "claude-sonnet-5-5"));
             Assert.Equal(MissionStage.WaitingForFlight, mission.View.Stage);
             Assert.False(mission.View.StartForm.CanStart);

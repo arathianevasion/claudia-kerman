@@ -24,23 +24,23 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void TheShippedModelsAreSonnetThenHaikuAndEachHasAPriceLine()
+        public void TheShippedModelsAreHaikuThenSonnetAndEachHasAPriceLine()
         {
             var config = new PlayerConfig();
-            Assert.Equal(new[] { Sonnet, Haiku }, config.Models);
+            Assert.Equal(new[] { Haiku, Sonnet }, config.Models);
             foreach (var model in config.Models) Assert.True(config.Prices.Knows(model), model);
             // Opus left the shipped list but its price stays: a fallback can still route a refusal to it.
             Assert.True(config.Prices.Knows("claude-opus-5-5"));
         }
 
         [Fact]
-        public void TheShippedConfigFileOffersSonnetThenHaikuAndItsPriceLinesLoadBack()
+        public void TheShippedConfigFileOffersHaikuThenSonnetAndItsPriceLinesLoadBack()
         {
             using (var dir = new TempDir())
             {
                 var loaded = PlayerConfig.LoadOrCreate(dir.Sub);
-                Assert.Equal(new[] { Sonnet, Haiku }, loaded.Models);
-                Assert.Contains("models = claude-sonnet-5-5, claude-haiku-5-5\n", File.ReadAllText(Path(dir)));
+                Assert.Equal(new[] { Haiku, Sonnet }, loaded.Models);
+                Assert.Contains("models = claude-haiku-5-5, claude-sonnet-5-5\n", File.ReadAllText(Path(dir)));
                 Assert.Equal(0.10m, loaded.Prices.PriceOf(Haiku).InputPerMTok);
                 Assert.Equal(0.01m, loaded.Prices.PriceOf(Haiku).CacheReadPerMTok);
                 Assert.Equal(2.50m, loaded.Prices.PriceOf(Haiku, 100001).OutputPerMTok);

@@ -69,7 +69,8 @@ namespace ClaudiaKermin.Adapter
             var dumpFolder = config.DebugTools ? Path.Combine(directory, "stream-dumps") : null;
             var chat = new ChatSession(client, _background, () => store.Load() != null)
             {
-                Model = config.DefaultModel,
+                // The player's default model, read at each message: Settings' Apply and a Mission start move it (#639).
+                ModelSource = () => config.DefaultModel,
                 CompactionTriggerTokens = config.CompactionTriggerTokens,
             };
             _chatWindow = new ChatWindow(chat, dumpFolder);
@@ -79,7 +80,7 @@ namespace ClaudiaKermin.Adapter
             var missions = new MissionControl(client, _background, config, () => store.Load() != null, new KosScriptCheck());
             // Terrain, biome and the sun for the Planning Tools, served on the main thread within a per-frame budget (Update pumps it).
             missions.PlanningBody = _planningBody;
-            _missions = new MissionDriver(missions, config.DebugTools);
+            _missions = new MissionDriver(missions, config.DebugTools) { SaveConfigDefaults = () => config.TrySaveDefaults(directory) };
             _window = new SettingsWindow(new KeySettings(store, client, _background), _missions, config, directory, _chatWindow);
             _missions.Panel.OpenSettings = () => _window.Visible = true;
 

@@ -35,7 +35,7 @@ namespace ClaudiaKermin.Core.Chat
     /// </summary>
     public sealed class ChatSession
     {
-        public const string DefaultModel = "claude-sonnet-5-5";
+        public const string DefaultModel = "claude-haiku-5-5";
         public const int MaxTokens = 16000;
 
         public const string SystemPrompt =
@@ -93,8 +93,24 @@ namespace ClaudiaKermin.Core.Chat
         /// <summary>Raw stream events go here when set; only the debug_tools option sets it.</summary>
         public IRawStreamDump RawDump;
 
-        /// <summary>The model for chat outside a Mission; the Loader sets the player config's default.</summary>
-        public string Model = DefaultModel;
+        /// <summary>
+        /// Where <see cref="Model"/> comes from when set: the Loader points it at the player config's default model, so a
+        /// default changed by Settings' Apply or a Mission start reaches the chat from its next message (#639).
+        /// </summary>
+        public Func<string> ModelSource;
+
+        private string _model = DefaultModel;
+
+        /// <summary>The model for chat outside a Mission: <see cref="ModelSource"/>'s when it names one, otherwise the one set here.</summary>
+        public string Model
+        {
+            get
+            {
+                var model = ModelSource != null ? ModelSource() : null;
+                return string.IsNullOrEmpty(model) ? _model : model;
+            }
+            set { _model = value; }
+        }
 
         /// <summary>From the player config. The basic chat keeps threshold compaction; a Mission compacts on demand (#268).</summary>
         public int CompactionTriggerTokens = 150000;
