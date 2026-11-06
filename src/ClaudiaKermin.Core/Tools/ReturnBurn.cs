@@ -70,7 +70,7 @@ namespace ClaudiaKermin.Core.Tools
         private const double PeResidual = 10;
         private const double IncResidual = 1e-6;
         private const int MaxIterations = 50;
-        /// <summary>Out of the moon, round the planet: following no further keeps clear of #471 (a last patch round the star throws).</summary>
+        /// <summary>Out of the moon, round the planet: a last patch round the star no longer throws (#471).</summary>
         private const int Patches = 2;
         /// <summary>The seed's search for the burn point: samples over the window.</summary>
         private const int SeedSamples = 360;
@@ -106,7 +106,7 @@ namespace ClaudiaKermin.Core.Tools
             if (why != null) return Fail(why);
             if (planet.SoiRadius > 0 && ask.TargetPe >= planet.SoiRadius - planet.Radius)
                 return Fail("target_pe must be under " + Num(planet.SoiRadius - planet.Radius) + " m, inside " + planet.Name + "'s sphere of influence");
-            var stable = Follow(system, moon, orbit, now, 1);
+            var stable = SingleShooting.Follow(system, moon, orbit, now, 1);
             if (stable == null || stable[0].End != PatchEnd.Stable || stable[0].Error != null)
                 return Fail("the craft's orbit round " + moon.Name + " does not stay there until the burn: return starts from a stable orbit");
 
@@ -121,7 +121,7 @@ namespace ClaudiaKermin.Core.Tools
             var fromGrid = false;
             double startUt;
             var seed = Seed(system, moon, planet, orbit, earliest, latest, peR, out startUt);
-            if (ask.FromGrid || Arrive(system, moon, orbit, startUt, seed, planet) == null)
+            if (ask.FromGrid || SingleShooting.Arrive(system, moon, orbit, startUt, seed, planet, Patches) == null)
             {
                 fromGrid = true;
                 if (!Grid(system, moon, planet, orbit, earliest, latest, peR, out startUt, out seed))
@@ -146,7 +146,7 @@ namespace ClaudiaKermin.Core.Tools
                 Constraints = m,
                 Evaluate = (x, c) =>
                 {
-                    var arrival = Arrive(system, moon, orbit, n == 4 ? x[3] : startUt, new Vec3(x[0], x[1], x[2]), planet);
+                    var arrival = SingleShooting.Arrive(system, moon, orbit, n == 4 ? x[3] : startUt, new Vec3(x[0], x[1], x[2]), planet, Patches);
                     if (arrival == null) return false;
                     c[0] = arrival.Orbit.PeR - peR;
                     if (withInc) Sqp.Inclination(Normal(arrival), ask.TargetInc.Value, c, 1);
@@ -160,22 +160,18 @@ namespace ClaudiaKermin.Core.Tools
 
             var ut = free ? result.X[3] : startUt;
             var burn = new Vec3(result.X[0], result.X[1], result.X[2]);
-            var reached = Arrive(system, moon, orbit, ut, burn, planet);
+            var reached = SingleShooting.Arrive(system, moon, orbit, ut, burn, planet, Patches);
             if (reached == null) return Fail("the solver's best burn does not leave " + moon.Name + " for " + planet.Name);
-            Vec3 r, v;
-            orbit.State(ut, out r, out v);
-            // Stock's maneuver-node frame, as PredictBurn applies it.
-            var along = v.Normalized;
-            var up = Vec3.Cross(r, v).Normalized;
-            var outward = Vec3.Cross(along, up);
+            double prograde, normal, radial;
+            SingleShooting.NodeFrame(orbit, ut, burn, out prograde, out normal, out radial);
             var plan = new ReturnPlan
             {
                 HasBurn = true,
                 Planet = planet.Name,
                 Ut = ut,
-                Prograde = Vec3.Dot(burn, along),
-                Normal = Vec3.Dot(burn, up),
-                Radial = Vec3.Dot(burn, outward),
+                Prograde = prograde,
+                Normal = normal,
+                Radial = radial,
                 DeltaV = burn.Length,
                 PePredicted = reached.Orbit.PeR - planet.Radius,
                 IncPredicted = reached.Orbit.Inclination,
@@ -184,15 +180,8 @@ namespace ClaudiaKermin.Core.Tools
                 Iterations = result.Iterations,
                 Evaluations = result.Evaluations,
             };
-            // The solver's own status is not the test: the caller's tolerances, in metres and degrees, are.
-            var peOff = Math.Abs(plan.PePredicted - ask.TargetPe);
-            var incOff = withInc ? Math.Abs(plan.IncPredicted - ask.TargetInc.Value) : 0;
-            if (peOff > ask.PeTolerance || incOff > ask.IncTolerance)
-            {
-                plan.Error = Failure + ": the best burn (" + Num(plan.DeltaV) + " m/s) arrives at periapsis " + Num(plan.PePredicted) + " m"
-                    + (withInc ? " and inclination " + Deg(plan.IncPredicted) + "°" : "") + ", not " + Num(ask.TargetPe) + " m"
-                    + (withInc ? " and " + Deg(ask.TargetInc.Value) + "°" : "") + " (" + (result.Reason ?? result.Status.ToString()) + ")";
-            }
+            plan.Error = SingleShooting.ToleranceError(Failure, plan.DeltaV, plan.PePredicted, plan.IncPredicted, ask.TargetPe, ask.TargetInc,
+                ask.PeTolerance, ask.IncTolerance, result.Reason ?? result.Status.ToString());
             return plan;
         }
 
@@ -270,7 +259,7 @@ namespace ClaudiaKermin.Core.Tools
                 foreach (var factor in GridEscape)
                 {
                     var trial = v.Normalized * (escape * factor - v.Length);
-                    var arrival = Arrive(system, moon, orbit, t, trial, planet);
+                    var arrival = SingleShooting.Arrive(system, moon, orbit, t, trial, planet, Patches);
                     if (arrival == null) continue;
                     var off = Math.Abs(arrival.Orbit.PeR - peR);
                     if (off < best)
@@ -297,44 +286,12 @@ namespace ClaudiaKermin.Core.Tools
             for (var tilt = 0; tilt <= SeedTilts; tilt++)
             {
                 var tilted = seed + up * (seed.Length * SeedTilt * tilt);
-                var arrival = Arrive(system, moon, orbit, ut, tilted, planet);
+                var arrival = SingleShooting.Arrive(system, moon, orbit, ut, tilted, planet, Patches);
                 if (arrival == null) break;
                 var inc = arrival.Orbit.Inclination;
                 if (inc >= Sqp.EquatorialBand && inc <= 180 - Sqp.EquatorialBand) return tilted;
             }
             return seed;
-        }
-
-        /// <summary>The patch round <paramref name="planet"/> after <paramref name="burn"/> (inertial, m/s) at <paramref name="ut"/> on <paramref name="orbit"/>, or null when the path does not leave the moon for it.</summary>
-        private static Patch Arrive(BodySystem system, SnapshotBody moon, Conic orbit, double ut, Vec3 burn, SnapshotBody planet)
-        {
-            Vec3 r, v;
-            orbit.State(ut, out r, out v);
-            Conic after;
-            try
-            {
-                after = Conic.FromState(moon.Gm, r, v + burn, ut);
-            }
-            catch (ArgumentException)
-            {
-                return null;
-            }
-            var path = Follow(system, moon, after, ut, Patches);
-            if (path == null || path.Count < Patches || path[0].End != PatchEnd.Escape) return null;
-            return path[1].Body == planet ? path[1] : null;
-        }
-
-        /// <summary><see cref="BodySystem.Follow"/>, or null where it throws (a radial path; #471's hyperbola round the star).</summary>
-        private static List<Patch> Follow(BodySystem system, SnapshotBody body, Conic orbit, double ut, int patches)
-        {
-            try
-            {
-                return system.Follow(body, orbit, ut, patches);
-            }
-            catch (ArgumentException)
-            {
-                return null;
-            }
         }
 
         private static Vec3 Normal(Patch patch)
@@ -357,11 +314,6 @@ namespace ClaudiaKermin.Core.Tools
         private static string Num(double x)
         {
             return Math.Round(x).ToString("0", CultureInfo.InvariantCulture);
-        }
-
-        private static string Deg(double x)
-        {
-            return x.ToString("0.00", CultureInfo.InvariantCulture);
         }
     }
 }

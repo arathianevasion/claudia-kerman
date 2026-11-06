@@ -27,7 +27,7 @@ namespace ClaudiaKermin.KOS
             AddSuffix("ORBITBURN", new OneArgsSuffix<Lexicon, Lexicon>(OrbitBurn,
                 "Core Library only (change_orbit): solve_burn's burn to goal (with value, at, target, pe, ap, of, direction as it needs) on the orbit as it is now; lexicon error, ut, prograde, normal, radial, dv, burn_time, wanted (element: figure)"));
             AddSuffix("CORRECTIONBURN", new OneArgsSuffix<Lexicon, Lexicon>(CorrectionBurn,
-                "Core Library only (transfer_to, return): the least burn from earliest_ut to latest_ut that arrives at target (a body's name) at target_pe and, if given, target_inc; lexicon error, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted"));
+                "Core Library only (transfer_to, return, tune_pe): the least burn from earliest_ut to latest_ut that arrives at target (a body's name) at target_pe and, if given, target_inc; lexicon error, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted"));
             AddSuffix("LAUNCHWINDOW", new OneArgsSuffix<Lexicon, Lexicon>(LaunchWindow,
                 "Core Library only (launch): when the pad next passes under the plane of inc and lan (degrees); lexicon error, wait (s), ut, north, inc (negative southbound), heading"));
             AddSuffix("LANDINGSITE", new OneArgsSuffix<Lexicon, Lexicon>(LandingSite,
@@ -46,6 +46,28 @@ namespace ClaudiaKermin.KOS
                 "Core Library only (transfer_to): the cheapest departure to target (a moon's name) arriving at target_pe, or to an orbit (target_sma, target_ecc, ...; mode rendezvous or intercept), capture true or false, within one synodic period from earliest_ut or window (to latest_ut, refusing over max_dv); lexicon error, ut, prograde, normal, radial, dv, arrival_dv, encounter_ut, arrival_ut, target_pe_actual, ..."));
             AddSuffix("RETURNBURN", new OneArgsSuffix<Lexicon, Lexicon>(ReturnBurn,
                 "Core Library only (return): the least burn from earliest_ut to latest_ut (one orbit later if missing) that leaves the moon orbited for its planet at target_pe and, if given, target_inc; lexicon error, planet, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted, soi_ut, from_grid"));
+            AddSuffix("CHUTEALLOCATION", new NoArgsSuffix<Lexicon>(ChuteAllocationSet,
+                "Core Library only (reentry): the Chute Allocation's chutes for this entry; lexicon error, all (true: keep every chute), entry, return, uids, titles, powered_finish, touchdown_speed"));
+        }
+
+        private Lexicon ChuteAllocationSet()
+        {
+            System.Collections.Generic.IDictionary<string, object> set = null;
+            // The set and why, so a reentry's chutes can be read back from KSP.log.
+            return (Lexicon)Guarded("CHUTEALLOCATION", () =>
+            {
+                var vessel = shared.Vessel;
+                var uids = new System.Collections.Generic.Dictionary<uint, string>();
+                foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
+                set = BlockCalls.ChuteAllocationCall(MissionDriver.ChuteAllocation, MissionDriver.CurrentSequence, SnapshotReader.Read(vessel),
+                    id => uids.ContainsKey(id) ? uids[id] : null);
+                return KosValues.FromPlain(set);
+            }, () => set["error"] as string == ""
+                ? string.Format(CultureInfo.InvariantCulture, "{0}: {1}{2}{3}", (bool)set["all"] ? "every chute aboard" : "entry " + set["entry"],
+                    string.Join(", ", ((System.Collections.Generic.List<object>)set["titles"]).ConvertAll(t => (string)t).ToArray()),
+                    (bool)set["powered_finish"] ? ", powered finish" : "",
+                    (double)set["touchdown_speed"] >= 0 ? string.Format(CultureInfo.InvariantCulture, ", {0:0.0} m/s", set["touchdown_speed"]) : "")
+                : (string)set["error"]);
         }
 
         private Lexicon ReturnBurn(Lexicon input)

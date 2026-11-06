@@ -128,6 +128,28 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void Set_sma_from_exactly_the_periapsis_defaults_to_the_next_periapsis_a_period_on()
+        {
+            double rp = KerbinR + 100000, ra = KerbinR + 500000, a = (rp + ra) / 2;
+            var result = Run(Snapshot(100000, 500000), "{\"goal\":\"set_sma\",\"value\":" + (a + 200000).ToString("R", System.Globalization.CultureInfo.InvariantCulture) + "}");
+            Assert.Equal(2 * Math.PI * Math.Sqrt(a * a * a / KerbinGm), result.GetProperty("at_ut").GetDouble(), 0);
+        }
+
+        [Fact]
+        public void A_second_burn_more_than_one_orbit_after_the_first_resolves_at_ap_pe_and_an_equatorial_node()
+        {
+            var snapshot = Snapshot(100000, 500000);
+            snapshot.Orbit.Inclination = 30;
+            snapshot.Orbit.ArgumentOfPeriapsis = 40;
+            foreach (var at in new[] { "ap", "pe", "eq_an" })
+            {
+                var input = "{\"burns\":[{\"at\":\"pe\",\"dv\":{\"prograde\":0}},{\"at\":\"pe\",\"dv\":{\"prograde\":0}},{\"at\":\"" + at + "\",\"dv\":{\"prograde\":0}}]}";
+                var outcome = _tools.Run("predict_burn", input, snapshot, new NoPlanningBody());
+                Assert.False(outcome.IsError, at + ": " + outcome.Json);
+            }
+        }
+
+        [Fact]
         public void Set_pe_burns_at_the_apoapsis_to_the_vis_viva_speed_for_the_new_periapsis()
         {
             double rp = KerbinR + 100000, ra = KerbinR + 500000, newPe = KerbinR + 200000, a = (rp + ra) / 2;

@@ -117,6 +117,7 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             var lint = Assert.Single(result.Warnings, w => w.Contains(StackLint));
             Assert.StartsWith(warning, lint);
             Assert.Contains("separate", lint);
+            Assert.DoesNotContain("drop_parts", lint);
             Assert.DoesNotContain(result.Problems, p => p.Contains(StackLint));
         }
 
@@ -172,6 +173,22 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         }
 
         [Fact]
+        public void The_drop_lint_is_quiet_on_a_return_then_reentry_that_follows_the_stack_drop_lints_advice()
+        {
+            // The stack-drop lint names reentry's separate, not drop_parts: a return then reentry with the separate it asks for.
+            const string followsAdvice =
+                "local res is return(lexicon(\"target_pe\", 35000)).\n"
+                + "if res:success {\n"
+                + "  set res to reentry(lexicon(\"separate\", \"auto\")).\n"
+                + "}\n"
+                + "addons:claudia:report(res).";
+            var result = _check.Check(CoreLibrary.Bundle(followsAdvice));
+            Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
+            Assert.DoesNotContain(result.Warnings, w => w.Contains(StackLint));
+            Assert.DoesNotContain(result.Warnings, w => w.Contains(DropLint));
+        }
+
+        [Fact]
         public void The_drop_lint_never_warns_on_library_lines()
         {
             Assert.DoesNotContain(_check.Check(CoreLibrary.Bundle("")).Warnings, w => w.Contains(DropLint));
@@ -189,6 +206,43 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         public void The_drop_lint_fires_only_when_reentry_is_the_next_block_call_after_drop_parts(string script, bool fires)
         {
             Assert.Equal(fires, _check.Check(script).Warnings.Any(w => w.Contains(DropLint)));
+        }
+
+        // ---- The descent-loop lint (#627): a throttle lock in an until loop that tests alt:radar or LANDED ----
+
+        private const string DescentLint = "a hand-written descent loop";
+
+        // The Duna benchmark's loop shape.
+        private const string DunaDescentLoop =
+            "lock steering to srfretrograde.\n"
+            + "until ship:status = \"LANDED\" {\n"
+            + "  lock throttle to 1.\n"
+            + "  wait 0.1.\n"
+            + "}\n"
+            + "lock throttle to 0.";
+
+        [Theory]
+        [InlineData("until alt:radar < 50 {\n  lock throttle to 0.5.\n}\n", true)]
+        [InlineData("until LANDED { if ship:verticalspeed < -5 { lock throttle to 1. } }\n", true)]
+        // No throttle lock, a condition that tests neither, a comment, or a string.
+        [InlineData("until alt:radar < 50 {\n  wait 0.1.\n}\n", false)]
+        [InlineData("until ship:altitude > 70000 {\n  lock throttle to 1.\n}\n", false)]
+        [InlineData("// until LANDED { lock throttle to 1. }\nprint 1.\n", false)]
+        [InlineData("print \"until LANDED { lock throttle to 1. }\".\n", false)]
+        public void The_descent_loop_lint_fires_on_a_throttle_lock_in_an_until_loop_that_tests_radar_or_landed(string script, bool fires)
+        {
+            var result = _check.Check(script);
+            Assert.Equal(fires, result.Warnings.Any(w => w.Contains(DescentLint)));
+            if (fires) Assert.Contains(result.Warnings, w => w.Contains("use reentry for a landing through air"));
+        }
+
+        [Fact]
+        public void The_descent_loop_lint_warns_on_the_benchmarks_loop_and_never_on_the_bundled_core_library()
+        {
+            Assert.DoesNotContain(_check.Check(CoreLibrary.Bundle("")).Warnings, w => w.Contains(DescentLint));
+            var result = _check.Check(CoreLibrary.Bundle(DunaDescentLoop));
+            Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
+            Assert.Single(result.Warnings, w => w.Contains(DescentLint));
         }
 
         // ---- Forbidden: one theory per item of the spec's list ----
@@ -294,6 +348,18 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("set vessel(\"Probe\"):control:pilotmainthrottle to 1.")]
         [InlineData("list targets in t.\nt[0]:parts[0]:getmodule(\"ModuleLight\"):doevent(\"lights on\").")]
         public void ChangeOrMessageOtherVessels(string script) { AssertForbidden("change or message other vessels", script); }
+
+        // ADR 0013: the Target Vessel takes no new rule. Reading TARGET and SET TARGET TO pass; changing it stays refused.
+        [Theory]
+        [InlineData("set target to \"Kerbin Station Alpha\".\nprint target:orbit:apoapsis.")]
+        [InlineData("set target to vessel(\"Kerbin Station Alpha\").\nlocal ports is target:dockingports.\nprint ports:length.")]
+        [InlineData("print target:partstagged(\"fore\")[0]:nodetype.\nprint target:position:mag.")]
+        public void ReadingTheTargetAndSettingItPass(string script) { AssertAllowed(script); }
+
+        [Theory]
+        [InlineData("target:partstagged(\"fore\")[0]:getmodule(\"ModuleDockingNode\"):doevent(\"undock\").")]
+        [InlineData("set target:shipname to \"Renamed\".")]
+        public void ChangingTheTargetStaysRefused(string script) { AssertForbidden("change or message other vessels", script); }
 
         [Theory]
         [InlineData("local g is gui(200).\ng:show().")]
@@ -518,6 +584,8 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("local c is addons:claudia.\nprint c:OrbitBurn(lexicon(\"goal\", \"match_plane\", \"target\", \"Minmus\")):dv.")]
         [InlineData("local h is addons:claudia:returnburn(lexicon(\"target_pe\", 35000)).\nadd node(h:ut, h:radial, h:normal, h:prograde).")]
         [InlineData("local c is addons:claudia.\nprint c:ReturnBurn(lexicon(\"target_pe\", 35000, \"target_inc\", 30)):dv.")]
+        [InlineData("local a is addons:claudia:chuteallocation().\nprint a:uids.")]
+        [InlineData("local c is addons:claudia.\nprint c:ChuteAllocation:titles.")]
         public void ABlockInternalCallInAMissionScriptFails(string script)
         {
             AssertForbidden("call block-internal calculations", script);

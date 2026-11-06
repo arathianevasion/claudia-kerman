@@ -76,8 +76,8 @@ namespace ClaudiaKermin.Core.Missions
             public double? RunStartDeltaVLeft;
             /// <summary>The delta-v taken off <see cref="RunStartDeltaVLeft"/> this run (#605), so the Debrief can say so; 0 when none.</summary>
             public double RunDroppedDeltaV;
-            /// <summary>A science call this run kept data on board for want of a link or charge (#612); the Debrief notice then says so. Not saved.</summary>
-            public bool ScienceKept;
+            /// <summary>The experiments whose data a science call kept on board this run (#612) and no later call transmitted (#624); the Debrief notice shows while any remain. Not saved.</summary>
+            public readonly HashSet<string> ScienceKept = new HashSet<string>();
             /// <summary>Stock delta-v left just before a separation at zero throttle, until the readings after it settle; null when none is waiting.</summary>
             public double? SeparationBefore;
             /// <summary>The last reading after that separation; null until there is one.</summary>
@@ -134,7 +134,7 @@ namespace ClaudiaKermin.Core.Missions
             mission.RunStartUt = _ut;
             mission.RunStartDeltaVLeft = LiveReadings.DeltaVLeftOf(MissionVesselSnapshot(mission));
             mission.RunDroppedDeltaV = 0;
-            mission.ScienceKept = false;
+            mission.ScienceKept.Clear();
             ClearSeparation(mission);
             mission.NoEngineAboard = false;
             mission.RunStartMonopropellant = LiveReadings.MonopropellantOf(MissionVesselSnapshot(mission));
@@ -303,15 +303,16 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>
         /// A stage or decoupler fired on the craft (#605). At zero throttle the latest reading is the delta-v left before it, and
         /// what stock loses across it, once two readings agree, was dropped, not used. Under throttle nothing is taken: that fall counts as used.
+        /// The event's own throttle (#615) is read when it carries one, else the last snapshot's.
         /// </summary>
-        private void Separated()
+        private void Separated(double? throttle)
         {
             var mission = _mission;
             if (mission == null || mission.Stage != MissionStage.Running || !mission.RunId.HasValue) return;
             if (!mission.RunStartDeltaVLeft.HasValue || mission.SeparationBefore.HasValue) return;
             var snapshot = MissionVesselSnapshot(mission);
             var left = LiveReadings.DeltaVLeftOf(snapshot);
-            if (!left.HasValue || snapshot.Throttle > 0) return;
+            if (!left.HasValue || (throttle ?? snapshot.Throttle) > 0) return;
             mission.SeparationBefore = left;
             mission.SeparationAfter = null;
         }
@@ -611,8 +612,24 @@ namespace ClaudiaKermin.Core.Missions
             mission.Blocks.Add(ended.Block, ended.Result);
             var line = BlockLine(ended.Block, ended.Result);
             Note(LogKind.Notice, line);
-            if (ended.Block == "science" && ended.Result != null && ended.Result.ContainsKey("kept")) mission.ScienceKept = true;
+            if (ended.Block == "science") NoteScienceKept(mission, ended.Result);
             if (!BlockSucceeded(ended.Result)) mission.RunEvents.Add(_ut, RunEventKind.BlockAborted, line.TrimEnd('.'));
+        }
+
+        /// <summary>A science result's per-experiment entries: "kept" adds the experiment to the run's set, "transmitted" removes it (#624).</summary>
+        private static void NoteScienceKept(Mission mission, IDictionary<string, object> result)
+        {
+            object results;
+            var entries = result != null && result.TryGetValue("results", out results) ? results as System.Collections.IEnumerable : null;
+            if (entries == null) return;
+            foreach (var item in entries)
+            {
+                var entry = item as IDictionary<string, object>;
+                object name, transmit;
+                if (entry == null || !entry.TryGetValue("experiment", out name) || name == null || !entry.TryGetValue("transmit", out transmit)) continue;
+                if ("kept".Equals(transmit)) mission.ScienceKept.Add(name.ToString());
+                else if ("transmitted".Equals(transmit)) mission.ScienceKept.Remove(name.ToString());
+            }
         }
 
         /// <summary>"Building Block exec_node: done, 812 m/s used, 63 s." or "Building Block exec_node: failed (abort min_ec_pct: 8%), 40 s.".</summary>

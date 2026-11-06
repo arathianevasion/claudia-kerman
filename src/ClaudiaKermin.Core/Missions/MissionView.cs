@@ -292,6 +292,10 @@ namespace ClaudiaKermin.Core.Missions
         public string Goal = "";
         /// <summary>The Mission Goal's steps, each ticked or not, for the list under the pinned goal; empty when no Mission Plan gave any (#581).</summary>
         public IList<GoalItem> GoalSteps = new List<GoalItem>();
+        /// <summary>The Target Vessel's <c>persistentId</c> while a Mission with one is in play, for the adapter to read it live (ADR 0013); null otherwise.</summary>
+        public uint? TargetVesselId;
+        /// <summary>The Target Vessel's name, shown under the Mission Goal; "" for none.</summary>
+        public string TargetVesselName = "";
         public string Model = "";
         public decimal SpendingCap;
         /// <summary>Cost so far from real usage, USD. With <see cref="HeldCharges"/> and <see cref="PendingCharge"/> it is what counts against the Spending Cap.</summary>
@@ -316,6 +320,8 @@ namespace ClaudiaKermin.Core.Missions
         public IList<bool> PlanSequencesManual = new List<bool>();
         /// <summary>Index into <see cref="PlanSequences"/> of the Maneuver Sequence in hand; -1 before the first.</summary>
         public int CurrentSequence = -1;
+        /// <summary>The Chute Allocation (#626) for reentry "auto"; null before Mission Plan Approval.</summary>
+        public ChuteAllocation ChuteAllocation;
 
         /// <summary>While Running, what is running; "" otherwise.</summary>
         public string RunStatus = "";

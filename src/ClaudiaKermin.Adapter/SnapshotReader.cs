@@ -40,6 +40,7 @@ namespace ClaudiaKermin.Adapter
             snapshot.Throttle = vessel.ctrlState.mainThrottle;
             snapshot.Nodes = ManeuverPlan.ForSnapshot(vessel);
             ReadParts(snapshot, vessel.parts, vessel.VesselDeltaV);
+            ReadChutes(snapshot, vessel);
             MarkTrickleStages(snapshot, vessel.parts);
             // plan_ascent's drag, for a launch: only a craft on the ground of a body with air needs it.
             if (vessel.mainBody != null && vessel.mainBody.atmosphere && OnTheGround(vessel.situation))
@@ -49,25 +50,134 @@ namespace ClaudiaKermin.Adapter
             // A save with CommNet off counts as linked, whatever the connection says.
             snapshot.HasLink = LinkedHome(vessel);
 
-            var orbit = vessel.orbit;
-            if (orbit != null)
-            {
-                snapshot.Orbit = new SnapshotOrbit
-                {
-                    Apoapsis = orbit.ApA,
-                    Periapsis = orbit.PeA,
-                    Inclination = orbit.inclination,
-                    Eccentricity = orbit.eccentricity,
-                    Period = orbit.period,
-                    SemiMajorAxis = orbit.semiMajorAxis,
-                    Lan = orbit.LAN,
-                    ArgumentOfPeriapsis = orbit.argumentOfPeriapsis,
-                    MeanAnomalyAtEpoch = orbit.meanAnomalyAtEpoch,
-                    Epoch = orbit.epoch,
-                    Body = orbit.referenceBody != null ? orbit.referenceBody.bodyName : "",
-                };
-            }
+            if (vessel.orbit != null) snapshot.Orbit = OrbitOf(vessel.orbit);
+            ReadTargets(snapshot, vessel);
             return snapshot;
+        }
+
+        private static SnapshotOrbit OrbitOf(Orbit orbit)
+        {
+            return new SnapshotOrbit
+            {
+                Apoapsis = orbit.ApA,
+                Periapsis = orbit.PeA,
+                Inclination = orbit.inclination,
+                Eccentricity = orbit.eccentricity,
+                Period = orbit.period,
+                SemiMajorAxis = orbit.semiMajorAxis,
+                Lan = orbit.LAN,
+                ArgumentOfPeriapsis = orbit.argumentOfPeriapsis,
+                MeanAnomalyAtEpoch = orbit.meanAnomalyAtEpoch,
+                Epoch = orbit.epoch,
+                Body = orbit.referenceBody != null ? orbit.referenceBody.bodyName : "",
+            };
+        }
+
+        // ---- The Target Vessel (ADR 0013) ----
+
+        /// <summary>
+        /// KSP's target, the Mission's Target Vessel live by its persistentId (<see cref="MissionDriver.TargetVesselId"/>, so the
+        /// block calls' own snapshots read it too), and the other vessels a Mission Goal may name. The core keeps the entry only
+        /// for the Mission in play's target. A vessel is never its own target.
+        /// </summary>
+        private static void ReadTargets(GameSnapshot snapshot, Vessel vessel)
+        {
+            var ksp = vessel.targetObject != null ? vessel.targetObject.GetVessel() : null;
+            if (ksp != null && ksp != vessel) snapshot.KspTarget = TargetOf(ksp);
+            var id = MissionDriver.TargetVesselId;
+            if (id.HasValue && id.Value != vessel.persistentId)
+            {
+                Vessel target;
+                if (snapshot.KspTarget != null && snapshot.KspTarget.Id == id.Value) snapshot.Target = snapshot.KspTarget;
+                else if (FlightGlobals.FindVessel(id.Value, out target) && target != null) snapshot.Target = TargetOf(target);
+            }
+            foreach (var other in FlightGlobals.Vessels)
+                if (other != null && other != vessel && Nameable(other.vesselType)) snapshot.Vessels.Add(new SnapshotVessel { Id = other.persistentId, Name = other.vesselName ?? "" });
+        }
+
+        /// <summary>The vessels in the save a Mission Goal may name before launch: the editor has no FlightGlobals vessels.</summary>
+        private static void ReadSavedVessels(GameSnapshot snapshot)
+        {
+            var game = HighLogic.CurrentGame;
+            if (game == null || game.flightState == null) return;
+            foreach (var saved in game.flightState.protoVessels)
+                if (saved != null && Nameable(saved.vesselType)) snapshot.Vessels.Add(new SnapshotVessel { Id = saved.persistentId, Name = saved.vesselName ?? "" });
+        }
+
+        /// <summary>Vessels a Mission could rendezvous or dock with: not debris, flags, asteroids or Kerbals on EVA.</summary>
+        private static bool Nameable(VesselType type)
+        {
+            return type != VesselType.Debris && type != VesselType.Flag && type != VesselType.SpaceObject && type != VesselType.EVA
+                && type != VesselType.Unknown && type != VesselType.DroppedPart && type != VesselType.DeployedScienceController
+                && type != VesselType.DeployedSciencePart;
+        }
+
+        private static SnapshotTarget TargetOf(Vessel vessel)
+        {
+            var target = new SnapshotTarget
+            {
+                Id = vessel.persistentId,
+                Name = vessel.vesselName ?? "",
+                Body = vessel.mainBody != null ? vessel.mainBody.bodyName : "",
+                Situation = vessel.situation.ToString(),
+            };
+            if (vessel.orbit != null) target.Orbit = OrbitOf(vessel.orbit);
+            if (vessel.loaded) ReadLoadedPorts(target, vessel);
+            else if (vessel.protoVessel != null) ReadSavedPorts(target, vessel.protoVessel);
+            return target;
+        }
+
+        /// <summary>kOS's name tag module and field, by name so the adapter needn't reference kOS.</summary>
+        private const string NameTagModule = "KOSNameTag";
+        private const string NameTagField = "nameTag";
+
+        private static void ReadLoadedPorts(SnapshotTarget target, Vessel vessel)
+        {
+            foreach (var part in vessel.parts)
+            {
+                string tag = null;
+                foreach (var module in part.Modules)
+                    if (module.moduleName == NameTagModule && module.Fields[NameTagField] != null) tag = module.Fields[NameTagField].GetValue(module) as string;
+                foreach (var port in part.FindModulesImplementing<ModuleDockingNode>())
+                    if (Free(port.state)) AddPort(target, port.nodeType, tag);
+            }
+        }
+
+        /// <summary>An unloaded vessel's ports: the size from the part's prefab, whether it's free from its saved state.</summary>
+        private static void ReadSavedPorts(SnapshotTarget target, ProtoVessel vessel)
+        {
+            foreach (var part in vessel.protoPartSnapshots)
+            {
+                var prefab = part.partInfo != null ? part.partInfo.partPrefab : null;
+                if (prefab == null) continue;
+                var ports = prefab.FindModulesImplementing<ModuleDockingNode>();
+                string tag = null;
+                foreach (var module in part.modules)
+                    if (module.moduleName == NameTagModule && module.moduleValues != null) tag = module.moduleValues.GetValue(NameTagField);
+                // Saved modules go by class name, a docking port's subclass included: pair them in order with the prefab's ports.
+                var index = 0;
+                foreach (var module in part.modules)
+                {
+                    if (index >= ports.Count || module.moduleName != ports[index].moduleName) continue;
+                    var state = module.moduleValues != null ? module.moduleValues.GetValue("state") : null;
+                    if (Free(state)) AddPort(target, ports[index].nodeType, tag);
+                    index++;
+                }
+            }
+        }
+
+        /// <summary>Docked, acquiring, disengaging or shut: only "Ready" is free.</summary>
+        private static bool Free(string state)
+        {
+            return state != null && state.StartsWith("Ready", StringComparison.Ordinal);
+        }
+
+        private static void AddPort(SnapshotTarget target, string size, string tag)
+        {
+            size = string.IsNullOrEmpty(size) ? "unknown" : size.Trim();
+            int count;
+            target.FreePorts[size] = target.FreePorts.TryGetValue(size, out count) ? count + 1 : 1;
+            if (!string.IsNullOrEmpty(tag)) target.PortTags[tag.Trim()] = size;
         }
 
         /// <summary>
@@ -99,6 +209,7 @@ namespace ClaudiaKermin.Adapter
             var manifest = ShipConstruction.ShipManifest;
             if (manifest != null) snapshot.Crew.AddRange(manifest.GetAllCrew(false).Where(c => c != null).Select(Crew));
             ReadAboard(snapshot);
+            ReadSavedVessels(snapshot);
             return snapshot;
         }
 
@@ -123,6 +234,14 @@ namespace ClaudiaKermin.Adapter
                 // The config name, as RosterGateway.IsClaudia compares: experienceTrait.TypeName gives the title in game ("Super Intelligence").
                 Trait = crew.trait ?? "",
             };
+        }
+
+        /// <summary>Each parachute's own numbers, held retrograde, for the Chute Allocation (#626); flight only (the editor has no airflow to hold).</summary>
+        private static void ReadChutes(GameSnapshot snapshot, Vessel vessel)
+        {
+            var parts = vessel.parts;
+            for (var i = 0; i < parts.Count && i < snapshot.Craft.Parts.Count; i++)
+                if (snapshot.Craft.Parts[i].Tags.Contains("parachute")) snapshot.Craft.Parts[i].Chute = ReentryCraft.ChuteOf(vessel, parts[i]);
         }
 
         private static void ReadParts(GameSnapshot snapshot, IList<Part> parts, VesselDeltaV deltaV)

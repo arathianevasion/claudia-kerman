@@ -16,9 +16,12 @@ namespace ClaudiaKermin.Core.Missions
         public readonly string Title;
         /// <summary>When it applies, as Claude is told.</summary>
         public readonly string Condition;
+        /// <summary>Raised only by the mod, never by Claude: left out of the prompt and the findings schema.</summary>
+        public readonly bool ModOnly;
 
-        public CraftCheckRule(string code, CraftFindingSeverity severity, string title, string condition)
+        public CraftCheckRule(string code, CraftFindingSeverity severity, string title, string condition, bool modOnly = false)
         {
+            ModOnly = modOnly;
             Code = code;
             Severity = severity;
             Title = title;
@@ -44,13 +47,15 @@ namespace ClaudiaKermin.Core.Missions
                 "the Mission is crewed (she flies aboard) and the craft has no free crew seat for her."),
             new CraftCheckRule("no_probe_core_or_antenna", Blocker, "No probe core or antenna reaching home",
                 "the Mission is remote (Claudia stays at Mission Control) and the craft has no probe core, or no antenna able to reach home. "
-                + "The mod also raises it itself when no part is tagged probe_core, or (with CommNet on) no antenna part has a transmitter power above zero."),
+                + "The mod also raises it itself when no part is tagged probe_core, or (CommNet on) no antenna has transmitter power."),
             new CraftCheckRule("delta_v_short", Blocker, "Not enough delta-v",
                 "the craft's delta-v is below what the Mission Goal's route needs from the Delta-v Map plus the margin."),
             new CraftCheckRule("twr_below_one", Blocker, "Thrust-to-weight under 1.0",
                 "the thrust over weight is under 1.0 at launch, or for a landing, on the body concerned."),
             new CraftCheckRule("no_parachutes_for_return", Blocker, "No parachutes for the return",
                 "a crewed Mission returns to Kerbin and the craft has no parachutes."),
+            new CraftCheckRule("chutes_short_for_landing", Blocker, "Chutes short for an air landing",
+                "a powered finish lacks delta-v, or the Kerbin return is uncovered.", modOnly: true),
             new CraftCheckRule("required_experiments_missing", Blocker, "Required experiments missing",
                 "the Mission Goal needs experiments the craft has no parts for."),
             new CraftCheckRule("child_vessel_problem", Blocker, "Child Vessel problem",
@@ -59,11 +64,13 @@ namespace ClaudiaKermin.Core.Missions
                 + "The mod also raises it itself for the problems it lists and for a staging plan that strands Claudia without a processor."),
 
             new CraftCheckRule("launch_twr_low", Warning, "Launch thrust-to-weight under 1.2",
-                "the launch thrust over weight is under 1.2 (but not under 1.0, which is a Blocker)."),
+                "the launch thrust over weight is under 1.2 (not under 1.0: a Blocker)."),
             new CraftCheckRule("landing_twr_low", Warning, "Landing thrust-to-weight under 1.5",
-                "the landing thrust over weight is under 1.5 (but not under 1.0, which is a Blocker)."),
+                "the landing thrust over weight is under 1.5 (not under 1.0: a Blocker)."),
             new CraftCheckRule("margin_under_25", Warning, "Delta-v margin under 25%",
-                "the delta-v margin over the need is under 25% (but is not short, which is a Blocker)."),
+                "the delta-v margin over the need is under 25% (not short: a Blocker)."),
+            new CraftCheckRule("chutes_thin_for_landing", Warning, "Thin chutes for an air landing",
+                "a powered finish has under 25% spare delta-v, or an Engineer repack is relied on.", modOnly: true),
             new CraftCheckRule("no_landing_legs", Warning, "No landing legs",
                 "the Mission Goal includes a landing and the craft has no landing legs."),
             new CraftCheckRule("no_electric_generation_or_low_battery", Warning, "No electric charge generation or a low battery",
@@ -71,8 +78,8 @@ namespace ClaudiaKermin.Core.Missions
             new CraftCheckRule("weak_control_authority", Warning, "Weak control authority",
                 "the craft has little to steer with for its mass (few or no reaction wheels, RCS or gimbals)."),
             new CraftCheckRule("no_attitude_control", Warning, "No way to hold attitude",
-                "no part has the reaction_wheel, rcs or aero_stabiliser tag, so the craft can't hold attitude unpowered in thick air or point for a burn in vacuum "
-                + "(gimbals only steer while an engine burns). Applies on top of weak_control_authority, which is for a craft with a little to steer with, not nothing."),
+                "no part has the reaction_wheel, rcs or aero_stabiliser tag, so the craft can't hold attitude unpowered in air or point for a vacuum burn "
+                + "(gimbals steer only while an engine burns). Applies on top of weak_control_authority."),
             new CraftCheckRule("no_heat_shield", Warning, "No heat shield on a high-speed return",
                 "the Mission Goal returns to Kerbin at high speed (from the Mun or farther) and the craft has no heat shield."),
             new CraftCheckRule("eva_science_required", Warning, "EVA science required",
@@ -80,12 +87,12 @@ namespace ClaudiaKermin.Core.Missions
             new CraftCheckRule("boot_file_set", Warning, "Boot file set on Claudia's processor",
                 "the processor Claudia will use (chosen_processor) has a boot file set."),
             new CraftCheckRule("manual_stretches_without_crew", Warning, "Manual stretches planned with no other crew aboard",
-                "the Mission Goal plans stretches the player flies by hand (docking, EVA science, or flying a sequence themselves) and the crew list has no Kerbal "
+                "the Mission Goal plans stretches the player flies by hand (docking, EVA science, flying a sequence) and the crew list has no Kerbal "
                 + "other than Claudia (trait SuperIntelligence) and Tourists (trait Tourist)."),
             new CraftCheckRule("ascent_cannot_reach_orbit", Warning, "The ascent can't reach orbit",
                 "plan_ascent says reaches_orbit is false for the launch (no turn_shape it tried reaches orbit); name the Boost stage that falls short."),
             new CraftCheckRule("ascent_thin_margin", Warning, "The ascent reaches orbit by a thin margin",
-                "plan_ascent says the launch reaches orbit but its margin is marginal (thin)."),
+                "plan_ascent says the launch reaches orbit but with a thin margin."),
         };
 
         public static CraftCheckRule Find(string code)
@@ -98,10 +105,10 @@ namespace ClaudiaKermin.Core.Missions
         {
             var text = new StringBuilder();
             text.Append("Blockers (the Mission cannot start; the player cannot override them):\n");
-            foreach (var rule in All.Where(r => r.Severity == Blocker))
+            foreach (var rule in All.Where(r => !r.ModOnly && r.Severity == Blocker))
                 text.Append("- ").Append(rule.Code).Append(": ").Append(rule.Title).Append(". Applies when ").Append(rule.Condition).Append('\n');
             text.Append("\nWarnings (the player must acknowledge each before the Mission starts):\n");
-            foreach (var rule in All.Where(r => r.Severity == Warning))
+            foreach (var rule in All.Where(r => !r.ModOnly && r.Severity == Warning))
                 text.Append("- ").Append(rule.Code).Append(": ").Append(rule.Title).Append(". Applies when ").Append(rule.Condition).Append('\n');
             return text.ToString();
         }
@@ -110,7 +117,7 @@ namespace ClaudiaKermin.Core.Missions
         public static string SchemaJson()
         {
             var codes = new JsonWriter().BeginArray();
-            foreach (var rule in All) codes.String(rule.Code);
+            foreach (var rule in All.Where(r => !r.ModOnly)) codes.String(rule.Code);
             codes.EndArray();
             return "{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"summary\",\"findings\",\"child_vessel_stages\",\"unsure_because\",\"planned_turn_shape\"],\"properties\":{"
                 + SecondLook.FieldJson + ","

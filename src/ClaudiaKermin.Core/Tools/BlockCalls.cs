@@ -29,13 +29,23 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>pass_ut</c>, <c>sun_elevation_deg</c>, <c>near_edge</c> (true if nothing deeper in the biome was reachable). With no site, or a search that could not run, only <c>error</c>, saying why.
         /// Two inputs are the block's alone, not the tool's (#528): <c>craft</c>, the craft the pass search will fly (<see cref="CraftOf"/>'s keys;
         /// without thrust and mass, the Game Snapshot's), whose descents keep the sites; and <c>exclude</c>, the sites tried already (lexicons of
-        /// <c>lat</c>, <c>lng</c>), none of whose neighbours comes back.
+        /// <c>lat</c>, <c>lng</c>), none of whose neighbours comes back; and <c>check_only</c> (#622), true to check <c>biome</c> alone, before the
+        /// craft stages: <c>error</c> "" if the body orbited has it (or the check can't tell), else the tool's unknown-biome error.
         /// </summary>
         public static IDictionary<string, object> LandingSite(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
             var orbited = snapshot == null ? "" : snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body;
             ask["body"] = orbited ?? "";
+            object checkOnly;
+            if (ask.TryGetValue("check_only", out checkOnly) && checkOnly is bool && (bool)checkOnly)
+            {
+                object named;
+                ask.TryGetValue("biome", out named);
+                var unknown = LandingSiteSearch.UnknownBiome(orbited, Convert.ToString(named, CultureInfo.InvariantCulture), body.BiomeNames(orbited ?? ""));
+                return unknown == null ? new Dictionary<string, object> { { "error", "" } } : Error(unknown);
+            }
+            ask.Remove("check_only");
             object craft, exclude;
             ask.TryGetValue("craft", out craft);
             ask.TryGetValue("exclude", out exclude);
@@ -773,6 +783,59 @@ namespace ClaudiaKermin.Core.Tools
         {
             object value;
             return ask.TryGetValue(key, out value) && value is double ? (double)value : (double?)null;
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:CHUTEALLOCATION</c>, for <c>reentry</c>'s chutes "auto" (#626, #628): the Chute Allocation's set for the
+        /// entry this reentry is, by <see cref="ChuteAllocation.For"/> on the Mission Plan step in hand (<paramref name="step"/>, 0
+        /// first) and the body the craft is at. Takes no input. Gives <c>error</c> "", <c>all</c> (true: no allocation, or no entry
+        /// for this step, so the reentry keeps every chute aboard), <c>entry</c> (the Maneuver Sequence's name; "" when all),
+        /// <c>return</c> (it is the Kerbin return), <c>uids</c> (the kOS part UIDs of the chutes it may open, drogues with their
+        /// mains; every stowed or armed chute aboard when all), <c>titles</c> (their part titles, in the same order),
+        /// <c>powered_finish</c> (its chutes can't bring it under 15 m/s), and <c>touchdown_speed</c> (m/s its chutes leave it
+        /// at, by the predictor; -1 unknown or when all). <paramref name="uidOf"/> gives a part's kOS UID from its
+        /// <c>persistentId</c>, or null when it isn't aboard: a chute no longer aboard is left out.
+        /// </summary>
+        public static IDictionary<string, object> ChuteAllocationCall(ChuteAllocation allocation, int step, GameSnapshot snapshot, Func<uint, string> uidOf)
+        {
+            if (snapshot == null) return Error("there is no Game Snapshot of the craft");
+            var at = snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body;
+            var entry = allocation == null ? null : allocation.For(step, at);
+            var uids = new List<object>();
+            var titles = new List<object>();
+            if (entry == null)
+            {
+                foreach (var part in snapshot.Craft.Parts)
+                {
+                    if (!part.Tags.Contains("parachute")) continue;
+                    if (part.Chute != null && (part.Chute.State == ReentryChuteState.SemiDeployed || part.Chute.State == ReentryChuteState.Deployed)) continue;
+                    var uid = uidOf(part.Id);
+                    if (uid == null) continue;
+                    uids.Add(uid);
+                    titles.Add(part.Title.Length > 0 ? part.Title : part.Name);
+                }
+            }
+            else
+            {
+                foreach (var chute in entry.Chutes)
+                {
+                    var uid = uidOf(chute.PartId);
+                    if (uid == null) continue;
+                    uids.Add(uid);
+                    titles.Add(chute.Title);
+                }
+            }
+            return new Dictionary<string, object>
+            {
+                { "error", "" },
+                { "all", entry == null },
+                { "entry", entry == null ? "" : entry.Sequence },
+                { "return", entry != null && entry.Return },
+                { "uids", uids },
+                { "titles", titles },
+                { "powered_finish", entry != null && entry.PoweredFinish },
+                { "touchdown_speed", entry == null ? -1.0 : entry.TouchdownSpeed },
+            };
         }
 
         private static IDictionary<string, object> Error(string reason)

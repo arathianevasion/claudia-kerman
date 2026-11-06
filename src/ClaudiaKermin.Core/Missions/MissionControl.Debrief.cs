@@ -127,7 +127,9 @@ namespace ClaudiaKermin.Core.Missions
                 turn.Gate = new DebriefGate();
                 mission.Gate = turn.Gate;
                 turn.UserText += RunFacts(mission);
-                if (mission.ScienceKept && !mission.HandBack) turn.Notice += MissionPrompts.ScienceKeptNoticeLine;
+                // The chutes the entries still to fly may open, from the craft as the run left it (one may be used or lost).
+                AllocateChutes(mission);
+                if (mission.ScienceKept.Count > 0 && !mission.HandBack) turn.Notice += MissionPrompts.ScienceKeptNoticeLine;
             }
             return !turn.Gate.Done && StartRecheck(mission, turn);
         }
@@ -135,6 +137,8 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The events the mod logged and the rest of the Mission Plan, for the Debrief request.</summary>
         private string RunFacts(Mission mission)
         {
+            // A run cut off by a load with a drop still being measured (#614) is finished here the way a run's end finishes it.
+            if (!mission.HandBack) { MeasureSeparationAtRunEnd(mission); ClearSeparation(mission); }
             var text = mission.RunEvents.DebriefText(mission.RunStartUt);
             var rest = RestOfPlanText(mission);
             // A hand-back Debrief is of a manual stretch, with no scripted run to total.
@@ -207,7 +211,7 @@ namespace ClaudiaKermin.Core.Missions
             // Measured as the run's monopropellant line is, on the Mission's own vessel.
             var now = LiveReadings.MonopropellantOf(MissionVesselSnapshot(mission));
             if (!mission.HandBack && mission.RunStartMonopropellant.HasValue && now.HasValue) used = Math.Max(0, mission.RunStartMonopropellant.Value - now.Value);
-            return MarginCheck.Of(snapshot, RestOfPlan(mission), _config.CraftCheckMarginPercent, _config.CheckElectricChargePercent, mission.Remote, used);
+            return MarginCheck.Of(snapshot, RestOfPlan(mission), _config.CraftCheckMarginPercent, _config.CheckElectricChargePercent, mission.Remote, used, mission.Chutes, mission.Goal, StepsBegun(mission));
         }
 
         /// <summary>Sends the recheck's request (its first, or the next step of its tool loop), charged to the Mission at <paramref name="worst"/>.</summary>

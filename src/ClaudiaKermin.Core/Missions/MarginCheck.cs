@@ -50,21 +50,21 @@ namespace ClaudiaKermin.Core.Missions
         public string DeltaVUnknown = "";
         public readonly List<MarginFinding> Findings = new List<MarginFinding>();
 
-        private static readonly Regex Surface = new Regex(@"\b(land(s|ed|ing)?|touch ?down|ascen(d|ds|t|ding)|lift ?off|take ?off|launch(es|ing)?)\b", RegexOptions.IgnoreCase);
-        private static readonly Regex Landing = new Regex(@"\b(land(s|ed|ing)?|touch ?down)\b", RegexOptions.IgnoreCase);
-        private static readonly Regex Reentry = new Regex(@"\b(re-?ent(er|ry|ers|ering)|splash ?down)\b", RegexOptions.IgnoreCase);
-        private static readonly Regex ReturnHome = new Regex(@"\breturn(s|ing)?\b.*\bKerbin\b|\bKerbin\b.*\breturn(s|ing)?\b", RegexOptions.IgnoreCase);
-
         /// <summary>
         /// The check of <paramref name="snapshot"/> against <paramref name="rest"/>, with <paramref name="wantedPercent"/> the Craft
         /// Check's margin and <paramref name="chargePercent"/> the electric charge Telemetry Check's line. <paramref name="monopropellantUsed"/>
         /// is what the run just flown used (null when unknown, or for a manual stretch): each leg still to fly is taken to need as much.
         /// </summary>
-        public static MarginCheck Of(GameSnapshot snapshot, IList<PlannedSequence> rest, int wantedPercent, int chargePercent, bool remote, double? monopropellantUsed)
+        public static MarginCheck Of(GameSnapshot snapshot, IList<PlannedSequence> rest, int wantedPercent, int chargePercent, bool remote, double? monopropellantUsed,
+            ChuteAllocation chutes = null, string goal = "", int firstStep = 0)
         {
             var check = new MarginCheck();
             if (rest.Count == 0) return check;
-            check.DeltaV(snapshot, rest, wantedPercent);
+            var repack = Repack.IsMatch(goal ?? "");
+            var finishes = chutes == null ? new List<EntryChutes>() : chutes.Entries.Where(e => !e.Return && e.PoweredFinish && e.TouchdownSpeed >= 0).ToList();
+            // A goal that has an Engineer repack the chutes reuses them: the finish it would need is a Warning, not delta-v to carry.
+            check.DeltaV(snapshot, rest, wantedPercent, repack ? new List<EntryChutes>() : finishes);
+            check.Chutes(snapshot, rest, chutes, finishes, repack, firstStep);
             check.Thrust(snapshot, rest);
             check.Charge(snapshot, chargePercent);
             check.Monopropellant(snapshot, rest, monopropellantUsed);
@@ -72,20 +72,63 @@ namespace ClaudiaKermin.Core.Missions
             return check;
         }
 
-        private void DeltaV(GameSnapshot snapshot, IList<PlannedSequence> rest, int wantedPercent)
+        /// <summary>The Mission Goal has an Engineer repack the chutes (a Kerbal on EVA does it, in stock).</summary>
+        private static readonly Regex Repack = new Regex(@"(?=.*\bengineer)(?=.*\brepack(s|ed|ing)?\b)(?=.*\bchutes?\b|.*\bparachutes?\b)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        private void DeltaV(GameSnapshot snapshot, IList<PlannedSequence> rest, int wantedPercent, IList<EntryChutes> finishes)
         {
             if (!snapshot.DeltaVSimulator || snapshot.Stages.Count == 0) DeltaVUnknown = "the stock delta-v simulator gives no figures";
             else if (snapshot.DeltaVUnreliable) DeltaVUnknown = "stock reads 0 while an engine is lit at a trickle throttle, so it is unknown, not 0";
             if (DeltaVUnknown.Length > 0) return;
-            Margin = MarginBar.Compute(snapshot.Stages.Sum(s => s.DeltaVVac), rest.Sum(s => s.DeltaV), wantedPercent);
+            Margin = MarginBar.Compute(snapshot.Stages.Sum(s => s.DeltaVVac), rest.Sum(s => s.DeltaV) + finishes.Sum(e => e.TouchdownSpeed), wantedPercent);
             if (Margin == null) return;
             if (Margin.Level != MarginLevel.Enough)
             {
+                // A shortfall that only the powered finishes cause is the Chute finding's (it names the finish): one finding, not two.
+                var legs = MarginBar.Compute(snapshot.Stages.Sum(s => s.DeltaVVac), rest.Sum(s => s.DeltaV), wantedPercent);
+                if (finishes.Count > 0 && legs != null && legs.Level == MarginLevel.Enough) return;
                 Add("delta_v_short", Margin.Level, Margin.Describe().TrimEnd('.'));
                 return;
             }
             var actual = Margin.ActualPercent;
             if (actual.HasValue && actual.Value < 25) Add("margin_under_25", MarginLevel.Enough, Margin.Describe().TrimEnd('.'));
+        }
+
+        /// <summary>
+        /// The Chute Allocation's verdicts (#629): a powered finish whose stages (in firing order, after the legs before it and the
+        /// finishes before it) lack the delta-v for it, or a Kerbin return that can't be covered, is a Blocker; a finish with under
+        /// 25% spare is a Warning. With an Engineer repacking the chutes the shortfalls are Warnings that say so. The delta-v for a
+        /// finish is its touchdown speed, from the allocation's predictor; an entry that couldn't be predicted is not judged.
+        /// </summary>
+        private void Chutes(GameSnapshot snapshot, IList<PlannedSequence> rest, ChuteAllocation chutes, IList<EntryChutes> finishes, bool repack, int firstStep)
+        {
+            if (chutes == null) return;
+            var severity = repack ? CraftCheckRules.Find("chutes_thin_for_landing") : CraftCheckRules.Find("chutes_short_for_landing");
+            var level = repack ? MarginLevel.Enough : MarginLevel.Short;
+            var have = DeltaVUnknown.Length == 0 && snapshot.DeltaVSimulator ? snapshot.Stages.Sum(s => s.DeltaVVac) : (double?)null;
+            double carried = 0;
+            foreach (var entry in finishes)
+            {
+                var need = entry.TouchdownSpeed;
+                var through = Math.Max(0, Math.Min(rest.Count, entry.Step - firstStep + 1));
+                var left = have - rest.Take(through).Sum(s => Math.Max(0, s.DeltaV)) - carried;
+                carried += need;
+                if (!left.HasValue) continue;
+                var where = "The powered finish at " + entry.Body + " for \"" + entry.Sequence + "\" needs " + Whole(need) + " m/s (its chutes leave it falling that fast), "
+                    + Whole(Math.Max(0, left.Value)) + " m/s left";
+                if (left.Value < need) AddChute(severity, level, where + (repack ? "; relies on a repack at " + entry.Body : ""));
+                else if (left.Value < 1.25 * need) AddChute(CraftCheckRules.Find("chutes_thin_for_landing"), MarginLevel.Enough, where + ", under 25% spare");
+            }
+            var home = chutes.Return;
+            if (chutes.ReturnUncovered && home != null)
+                AddChute(severity, level, "The Kerbin return's chutes leave it at " + Whole(home.TouchdownSpeed) + " m/s, over " + Whole(ChuteAllocation.TouchdownLimit)
+                    + (repack ? "; relies on a repack at Kerbin" : ""));
+        }
+
+        private void AddChute(CraftCheckRule rule, MarginLevel level, string explanation)
+        {
+            Findings.Add(new MarginFinding { Code = rule.Code, Severity = rule.Severity, Title = rule.Title, Explanation = explanation });
+            Raise(level);
         }
 
         /// <summary>
@@ -98,20 +141,20 @@ namespace ClaudiaKermin.Core.Missions
             if (!snapshot.DeltaVSimulator || snapshot.Stages.Count == 0 || snapshot.Bodies.Count == 0) return;
             var below = new List<string>();
             var low = new List<string>();
-            var body = Body(snapshot, snapshot.Body);
+            var body = SequenceWords.Body(snapshot, snapshot.Body);
             double used = 0;
             foreach (var leg in rest)
             {
-                var words = leg.Name + " " + leg.Intent;
-                body = NamedBody(snapshot, words) ?? body;
+                var words = SequenceWords.Of(leg);
+                body = SequenceWords.NamedBody(snapshot, words) ?? body;
                 var start = used;
                 used += Math.Max(0, leg.DeltaV);
-                if (leg.Manual || body == null || body.SeaLevelAtm > 0 || body.SurfaceGravity <= 0 || !Surface.IsMatch(words)) continue;
+                if (leg.Manual || body == null || body.SeaLevelAtm > 0 || body.SurfaceGravity <= 0 || !SequenceWords.Surface.IsMatch(words)) continue;
                 var twr = LowestTwr(snapshot, body, start, Math.Max(start + 1, used));
                 if (!twr.HasValue) continue;
                 var line = TwrText(twr.Value) + " on " + body.Name + " for \"" + leg.Name + "\"";
                 if (twr.Value < 1) below.Add(line);
-                else if (twr.Value < 1.5 && Landing.IsMatch(words)) low.Add(line);
+                else if (twr.Value < 1.5 && SequenceWords.Landing.IsMatch(words)) low.Add(line);
             }
             if (below.Count > 0) Add("twr_below_one", MarginLevel.Short, "Thrust over weight " + string.Join("; ", below.ToArray()));
             if (low.Count > 0) Add("landing_twr_low", MarginLevel.Enough, "Thrust over weight " + string.Join("; ", low.ToArray()));
@@ -129,27 +172,6 @@ namespace ClaudiaKermin.Core.Missions
                 at = end;
             }
             return lowest;
-        }
-
-        private static SnapshotBody NamedBody(GameSnapshot snapshot, string words)
-        {
-            SnapshotBody first = null;
-            var firstAt = int.MaxValue;
-            foreach (var body in snapshot.Bodies.Where(b => b.Name.Length > 0))
-            {
-                var match = Regex.Match(words, @"\b" + Regex.Escape(body.Name) + @"\b", RegexOptions.IgnoreCase);
-                if (match.Success && match.Index < firstAt)
-                {
-                    first = body;
-                    firstAt = match.Index;
-                }
-            }
-            return first;
-        }
-
-        private static SnapshotBody Body(GameSnapshot snapshot, string name)
-        {
-            return snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, name, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>No generation is the start check's Warning; with none, a battery under the Telemetry Check's line is tight and an empty one short.</summary>
@@ -188,18 +210,12 @@ namespace ClaudiaKermin.Core.Missions
                 var missing = RemoteBlocker.Missing(snapshot);
                 if (missing.Length > 0) Add(RemoteBlocker.Code, MarginLevel.Short, missing.TrimEnd('.'));
             }
-            else if (rest.Any(s => ReturnsHome(s.Name + " " + s.Intent)) && !snapshot.Craft.Parts.Any(p => p.Tags.Contains("parachute")))
+            else if (rest.Any(s => SequenceWords.ReturnsHome(SequenceWords.Of(s))) && !snapshot.Craft.Parts.Any(p => p.Tags.Contains("parachute")))
             {
                 Add("no_parachutes_for_return", MarginLevel.Short, "A return is still to fly and no part is a parachute");
             }
             if (rest.Any(s => s.Manual) && !snapshot.HasOtherCrew)
                 Add("manual_stretches_without_crew", MarginLevel.Enough, "A manual stretch is still to fly and no Kerbal aboard but Claudia can fly it");
-        }
-
-        /// <summary>A leg that comes down through Kerbin's air: a reentry or splashdown, or a return that names Kerbin.</summary>
-        private static bool ReturnsHome(string words)
-        {
-            return Reentry.IsMatch(words) || ReturnHome.IsMatch(words);
         }
 
         private void Add(string code, MarginLevel level, string explanation)

@@ -83,6 +83,8 @@ namespace ClaudiaKermin.Core.Missions
                 StopReason = mission.StopReason,
                 InterruptReason = mission.InterruptReason,
                 ProcessorPartId = mission.ProcessorPartId,
+                TargetVesselId = mission.Target != null ? mission.Target.Id : (uint?)null,
+                TargetVesselName = mission.Target != null ? mission.Target.Name : "",
                 ReducedGoal = mission.ReducedGoal,
                 ChildVessels = ChildVesselsJson(mission),
                 LeftTheCraft = LeftTheCraftJson(mission),
@@ -93,6 +95,8 @@ namespace ClaudiaKermin.Core.Missions
                 RunStartMonopropellant = mission.RunStartMonopropellant,
                 RunStartDeltaVLeft = mission.RunStartDeltaVLeft,
                 RunDroppedDeltaV = mission.RunDroppedDeltaV,
+                SeparationBefore = mission.SeparationBefore,
+                SeparationAfter = mission.SeparationAfter,
                 BlockTrail = mission.Blocks.ToJson(),
                 ScriptError = mission.ScriptError ?? "",
                 Recheck = mission.Recheck,
@@ -439,6 +443,7 @@ namespace ClaudiaKermin.Core.Missions
                 HandBack = state.HandBack,
                 HandBackMessage = state.HandBackMessage,
                 ProcessorPartId = state.ProcessorPartId,
+                Target = state.TargetVesselId.HasValue ? new TargetVessel(state.TargetVesselId.Value, state.TargetVesselName) : null,
                 InterruptReason = state.InterruptReason,
                 ReducedGoal = state.ReducedGoal ?? "",
                 Recheck = state.Recheck ?? "",
@@ -457,6 +462,8 @@ namespace ClaudiaKermin.Core.Missions
             mission.RunStartMonopropellant = state.RunStartMonopropellant;
             mission.RunStartDeltaVLeft = state.RunStartDeltaVLeft;
             mission.RunDroppedDeltaV = state.RunDroppedDeltaV;
+            mission.SeparationBefore = state.SeparationBefore;
+            mission.SeparationAfter = state.SeparationAfter;
             mission.Blocks.Restore(state.BlockTrail);
             mission.ScriptError = state.ScriptError ?? "";
 

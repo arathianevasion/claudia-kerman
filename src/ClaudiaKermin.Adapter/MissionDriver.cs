@@ -194,11 +194,27 @@ namespace ClaudiaKermin.Adapter
         /// </summary>
         public static double TimeCapHours = MissionSettingsValues.BalancedWaitHours;
 
+        /// <summary>
+        /// The Chute Allocation and the Mission Plan step in hand (0 first; -1 before the first), for reentry's
+        /// <c>ADDONS:CLAUDIA:CHUTEALLOCATION</c> (#626). Refreshed every frame; null with no Mission or before Approval.
+        /// </summary>
+        public static ChuteAllocation ChuteAllocation;
+        public static int CurrentSequence = -1;
+
+        /// <summary>
+        /// The Mission in play's Target Vessel (its persistentId, ADR 0013): every Game Snapshot, the block calls' own included,
+        /// reads it live. Refreshed every frame; null with no Mission or none.
+        /// </summary>
+        public static uint? TargetVesselId;
+
         /// <summary>Call each frame, after the background queue has drained.</summary>
         public void Update()
         {
             PhysicsWarpAllowed = _mission.View.PhysicsWarpAllowed;
             TimeCapHours = _mission.View.Settings.TimeCapHours;
+            ChuteAllocation = _mission.View.ChuteAllocation;
+            CurrentSequence = _mission.View.CurrentSequence;
+            TargetVesselId = _mission.View.TargetVesselId;
             // A new Game object means a save was loaded: continue, quickload, revert or another save. A scene
             // change keeps the same Game, so it never counts. The core puts the Missions in step with the save.
             if (HighLogic.CurrentGame != null && !ReferenceEquals(HighLogic.CurrentGame, _game))

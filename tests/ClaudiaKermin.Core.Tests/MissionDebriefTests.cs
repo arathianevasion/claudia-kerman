@@ -196,6 +196,36 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("Delta-v used this run, from stock: 1,038 m/s (left at start 3,913 m/s, now 2,875 m/s).", LastUserText(rig.Transport.Requests[2]));
         }
 
+        // ---- The Chute Allocation (#626) ----
+
+        private static Action<GameSnapshot> WithChute(ClaudiaKermin.Core.Tools.ReentryChuteState state)
+        {
+            return s => s.Craft.Parts.Add(new SnapshotPart
+            {
+                Id = 4242, ParentId = s.Craft.Parts[0].Id, Name = "parachuteSingle", Title = "Mk16 Parachute", MassT = 0.1,
+                Tags = new List<string> { "parachute" }, Chute = new ClaudiaKermin.Core.Tools.ReentryChute { State = state, FullArea = 337 },
+            });
+        }
+
+        [Fact]
+        public void TheChuteAllocationIsWorkedOutAtMissionPlanApprovalAndAgainAtEachDebriefFromTheCraftAsItIs()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning(WithChute(ClaudiaKermin.Core.Tools.ReentryChuteState.Stowed));
+            var approved = rig.Mission.View.ChuteAllocation;
+            Assert.NotNull(approved);
+            Assert.Equal(new uint[] { 4242 }, approved.Chutes.Select(c => c.PartId));
+
+            // The run opened the chute: the Debrief's allocation has none left to give.
+            rig.Mission.Send(Craft(WithChute(ClaudiaKermin.Core.Tools.ReentryChuteState.Deployed)));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            var debriefed = rig.Mission.View.ChuteAllocation;
+            Assert.NotSame(approved, debriefed);
+            Assert.Empty(debriefed.Chutes);
+        }
+
         // ---- Data kept on board (#612) ----
 
         [Fact]
@@ -203,12 +233,7 @@ namespace ClaudiaKermin.Core.Tests
         {
             var kept = new Rig(this, DebriefJson("Nominal", ""));
             var start = kept.RunToRunning();
-            var result = new Dictionary<string, object>
-            {
-                { "success", true },
-                { "kept", new List<object> { "crewReport: no link; call science with transmit once the link is up, from anywhere" } },
-            };
-            kept.Mission.Send(new KosBlockEnded("science", result, start.RunId));
+            kept.Mission.Send(new KosBlockEnded("science", ScienceResult(("crewReport", "kept")), start.RunId));
             kept.Mission.Send(new KosRunEnded(Finished(), start.RunId));
             kept.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
             Assert.Contains("The data is aboard; sending it needs no new landing.", kept.Transport.Requests[2].Body);
@@ -219,6 +244,39 @@ namespace ClaudiaKermin.Core.Tests
             sent.Mission.Send(new KosRunEnded(Finished(), sentStart.RunId));
             sent.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
             Assert.DoesNotContain("no new landing", sent.Transport.Requests[2].Body);
+        }
+
+        private static Dictionary<string, object> ScienceResult(params (string Experiment, string Transmit)[] entries)
+        {
+            return new Dictionary<string, object>
+            {
+                { "success", true },
+                { "results", entries.Select(e => (object)new Dictionary<string, object> { { "experiment", e.Experiment }, { "transmit", e.Transmit } }).ToList() },
+            };
+        }
+
+        private static string DebriefAfterScience(MissionDebriefTests test, params Dictionary<string, object>[] calls)
+        {
+            var rig = new Rig(test, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning();
+            foreach (var call in calls) rig.Mission.Send(new KosBlockEnded("science", call, start.RunId));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+            return rig.Transport.Requests[2].Body;
+        }
+
+        [Fact]
+        public void ALaterScienceCallThatTransmitsTheKeptDataTakesTheAboardNoticeAway()
+        {
+            var body = DebriefAfterScience(this, ScienceResult(("crewReport", "kept")), ScienceResult(("crewReport", "transmitted")));
+            Assert.DoesNotContain("no new landing", body);
+        }
+
+        [Fact]
+        public void TheAboardNoticeStaysWhileAnotherExperimentIsStillKept()
+        {
+            var body = DebriefAfterScience(this, ScienceResult(("crewReport", "kept"), ("temperatureScan", "kept")), ScienceResult(("temperatureScan", "transmitted")));
+            Assert.Contains("The data is aboard; sending it needs no new landing.", body);
         }
 
         [Fact]

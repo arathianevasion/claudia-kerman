@@ -128,6 +128,23 @@ namespace ClaudiaKermin.Adapter
 
         private void AddChute(Part part, ModuleParachute chute, Vector3 local)
         {
+            var read = ChuteOf(part, chute, local);
+            if (read != null) _chutes.Add(read);
+        }
+
+        /// <summary>
+        /// The part's parachute for the predictor as <paramref name="vessel"/> holds it surface retrograde, for the Game Snapshot
+        /// (#626: the Chute Allocation divides the chutes by these); null for a part without one, or a cut chute.
+        /// </summary>
+        public static ReentryChute ChuteOf(Vessel vessel, Part part)
+        {
+            var chute = part.FindModuleImplementing<ModuleParachute>();
+            if (chute == null) return null;
+            return ChuteOf(part, chute, part.partTransform.InverseTransformDirection(-vessel.ReferenceTransform.up));
+        }
+
+        private static ReentryChute ChuteOf(Part part, ModuleParachute chute, Vector3 local)
+        {
             ReentryChuteState state;
             switch (chute.deploymentState)
             {
@@ -136,9 +153,9 @@ namespace ClaudiaKermin.Adapter
                 case ModuleParachute.deploymentStates.SEMIDEPLOYED: state = ReentryChuteState.SemiDeployed; break;
                 case ModuleParachute.deploymentStates.DEPLOYED: state = ReentryChuteState.Deployed; break;
                 // Cut, or anything newer: no drag to come from it.
-                default: return;
+                default: return null;
             }
-            _chutes.Add(new ReentryChute
+            return new ReentryChute
             {
                 // As reentry.ks's reentry_is_drogue reads the part's name.
                 Drogue = part.partInfo != null && part.partInfo.name.ToLowerInvariant().Contains("drogue"),
@@ -150,7 +167,7 @@ namespace ClaudiaKermin.Adapter
                 SemiSeconds = chute.semiDeploymentSpeed > 0 ? 1 / chute.semiDeploymentSpeed : 0,
                 FullSeconds = chute.deploymentSpeed > 0 ? 1 / chute.deploymentSpeed : 0,
                 Curve = chute.deploymentCurve > 0 ? chute.deploymentCurve : 1,
-            });
+            };
         }
 
         /// <summary>The drag area, m², of the part's drag cube <paramref name="name"/> alone, unoccluded, met along <paramref name="local"/>; 0 if it has none.</summary>

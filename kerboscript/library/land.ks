@@ -235,6 +235,30 @@ function land_site_query {
   return query.
 }
 
+// What land's check-only call (#622) said of a biome target's name (named, ADDONS:CLAUDIA:LANDINGSITE's lexicon): the unknown-biome
+// refusal (#591) to fail with before anything stages, else "". Any other error waits for the site search. Pure.
+function land_unknown_biome {
+  parameter named.
+  if named:error:contains(" is not a biome on ") {
+    return named:error.
+  }
+  return "".
+}
+
+// The advice a biome with no site gets (#528): staged is true if land has staged into its engines already (#622), which the
+// advice says, since the stack is not as it was. Pure.
+function land_no_site_advice {
+  parameter daylight, staged.
+  local advice is "raise max_slope, try another biome or near point, or change the orbit's plane".
+  if daylight {
+    set advice to advice + ", or land with daylight false".
+  }
+  if staged {
+    set advice to advice + " (land has already staged into its engines, so the stack is not as it was)".
+  }
+  return advice.
+}
+
 // True if land takes the biome's next site (#528): a biome target (by_biome) whose site the pass search refused for
 // terrain on the approach (error), with fewer than 5 sites tried (tried). Other failures don't retry. Pure.
 function land_next_site {
@@ -1485,7 +1509,7 @@ function land {
     }
   }
   if body:atm:exists {
-    return claudia_finish(ctx, false, "land flies airless bodies only; " + body:name + " has an atmosphere", extra).
+    return claudia_finish(ctx, false, "land flies airless bodies only; " + body:name + " has an atmosphere; use reentry", extra).
   }
   if claudia_on_ground() {
     return claudia_finish(ctx, false, "already down (" + status + ")", extra).
@@ -1501,7 +1525,18 @@ function land {
     set site to land_site_of(opt:target).
   }
 
+  // #622: staging can't be undone, so a biome the body doesn't have (#591) is refused before it, by the site search's
+  // check-only call (block-internal, ADR 0007). A biome with no site is only known after staging (#528).
+  if by_biome {
+    local named is addons:claudia:landingsite(lexicon("biome", opt:target:biome, "check_only", true)).
+    local unknown is land_unknown_biome(named).
+    if unknown <> "" {
+      return claudia_finish(ctx, false, unknown, extra).
+    }
+  }
+
   // A craft whose engines aren't lit yet stages into them (within stage_limit).
+  local stage_before is stage:number.
   local lit is claudia_stage_into_engines(ctx).
   if lit <> "" {
     return claudia_finish(ctx, false, lit, extra).
@@ -1577,11 +1612,7 @@ function land {
           if found:error:contains(" is not a biome on ") {
             return claudia_finish(ctx, false, found:error, extra).
           }
-          local advice is "raise max_slope, try another biome or near point, or change the orbit's plane".
-          if opt:daylight {
-            set advice to advice + ", or land with daylight false".
-          }
-          return claudia_finish(ctx, false, found:error + "; " + advice, extra).
+          return claudia_finish(ctx, false, found:error + "; " + land_no_site_advice(opt:daylight, stage:number < stage_before), extra).
         }
         set site to lexicon("lat", found:lat, "lng", found:lng).
         tried:add(site).

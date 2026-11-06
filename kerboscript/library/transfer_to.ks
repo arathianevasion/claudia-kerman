@@ -76,12 +76,12 @@ function transfer_to_unreadable {
 
 // What the correction after a missed ejection asks ADDONS:CLAUDIA:EJECTIONBURN: the soonest burn the craft can turn to
 // (turn_time plus a minute for the lead), one the craft's dv_left (m/s, stock's; 0 or less for unknown) pays for, and
-// with max_duration given (auto false) one that leaves 120 s of it to burn in. Pure.
+// with max_duration given (auto false) one that leaves the Course Correction after it its lead and 120 s. Pure.
 function transfer_to_correction_ask {
   parameter dest_name, target_pe, now, turn_time, start_ut, max_duration, auto, dv_left.
   local ask is lexicon("target", dest_name, "target_pe", target_pe, "earliest_ut", now + turn_time + 60).
   if not auto {
-    set ask:latest_ut to start_ut + max_duration - 120.
+    set ask:latest_ut to start_ut + max_duration - 120 - turn_time - 60.
   }
   if dv_left > 0 {
     set ask:max_dv to dv_left.
@@ -97,8 +97,13 @@ function transfer_to_make_encounter {
   parameter ctx, dest, auto, turn_time.
   local opt is ctx:opt.
   local done is lexicon("reason", "", "dv", 0).
-  local found is addons:claudia:ejectionburn(transfer_to_correction_ask(dest:name, opt:target_pe, time:seconds, turn_time,
-    ctx:start_ut, opt:max_duration, auto, claudia_dv_remaining())).
+  local ask is transfer_to_correction_ask(dest:name, opt:target_pe, time:seconds, turn_time,
+    ctx:start_ut, opt:max_duration, auto, claudia_dv_remaining()).
+  if ask:haskey("latest_ut") and ask:latest_ut < ask:earliest_ut {
+    set done:reason to ", and no correction fits: max_duration (" + round(opt:max_duration) + " s) leaves no time for it and the Course Correction after it".
+    return done.
+  }
+  local found is addons:claudia:ejectionburn(ask).
   if found:error <> "" {
     set done:reason to ", and no correction fits: " + found:error:replace("found no transfer: ", "").
     return done.
