@@ -1,72 +1,126 @@
 # Claudia Kerman
+<img width="839" height="659" alt="Screenshot 2026-11-01 at 9 49 54 PM" src="https://github.com/user-attachments/assets/47f8e2cb-d407-462f-bece-83ce4acdcc33" />
 
-A Kerbal Space Program mod that adds **Claudia**, an AI mission controller. You give her a goal in plain language, such as "Land on the Mun, run 3 experiments, return to Kerbin". She plans the mission, explains each step, asks your go-ahead, flies it through kOS and reports back.
+A Kerbal Space Program mod that adds **Claudia**, an AI mission controller. You give her a goal in plain language, such as "Land on the Mun, run 3 experiments, return to Kerbin". She checks your craft, plans the mission, explains each step, asks your go-ahead, flies it through kOS and reports back.
 
-> **Status: design complete, not yet built.** The v1 design is in [Spec: Claudia Kerman v1](https://github.com/arathianevasion/claudia-kermin/issues/36). Only the project skeleton exists so far (see [Building](#building)). The rest describes what v1 will do.
+> **Status: in development, not yet released.** The v1 design ([Spec: Claudia Kermin v1](https://github.com/arathianevasion/claudia-kermin/issues/36)) is built and flown in game on macOS: Missions from the Craft Check to the last Debrief, the Building Blocks below, Auto Mode, Blackouts, Manual Control, Child Vessels and the Missions list. Rendezvous and docking (`rendezvous`, `dock`) are the newest blocks and are still waiting on their in-game checks. There is no packaged release yet; build it yourself (see [Building](#building)).
 
 ## How a Mission works
 
-1. **Mission Goal.** In the VAB/SPH, tell Claudia what the Mission must achieve. Then pick your Mission Settings (daylight landing, time versus delta-v), a Spending Cap and the model she uses.
-2. **Craft Check.** Claudia checks your craft against the goal: delta-v per leg, TWR, parachutes, experiments, a kOS processor and a seat for her.
+1. **Mission Goal.** In the VAB/SPH or in Flight, open the Mission window from the toolbar button and tell Claudia what the Mission must achieve. Pick your Mission Settings (daylight landing, time versus delta-v, crewed or remote), a Spending Cap and the model she uses.
+2. **Craft Check.** The mod computes the facts (delta-v and thrust per stage from the stock simulator, thrust over weight per body, parts, crew, experiments, science left) and Claudia judges them against the goal.
    - **Blockers** stop the Mission from starting.
    - **Warnings** must be acknowledged before you can start.
    - She suggests fixes but never edits your craft.
 3. **Mission Plan.** She proposes the whole route as a list of Maneuver Sequences, each with its delta-v budget and timing. You approve it once.
 4. **The loop.** Each Maneuver Sequence goes through four steps:
-   - **Sequence Plan:** what she'll do, its targets and tolerances, and what could go wrong.
-   - **Approval:** your go-ahead in chat.
-   - **Running:** the mod runs her kOS script, built from a shipped library of tested Building Blocks (`launch`, `circularize`, `change_orbit`, `exec_node`, `transfer_to`, `tune_pe`, `rendezvous`, `dock`, `land`, `ascend`, `return`, `deorbit`, `reentry`, `science`). `ascend` also flies from a fall over an airless body: the abort to orbit when a landing or hop fails.
-   - **Debrief:** how it went, rated Nominal, Off-Nominal or Failed, followed by the next plan.
+   - **Sequence Plan:** what she'll do, its targets and tolerances, what could go wrong, and the script. **Show script** lets you read it.
+   - **Approval:** your go-ahead.
+   - **Running:** the mod runs her kOS Mission Script, which calls the shipped Building Blocks. Waits for a window, daylight or a phase angle warp on rails inside the script.
+   - **Debrief:** how it went, rated **Nominal**, **Off-Nominal** or **Failed**, followed by the next plan. Every Debrief includes the mod's own Margin check of the craft as it is now against the sequences still to fly. When that is tight or short, Claudia reruns the Craft Check.
 
-Claudia is also a Kerbal: a female crew member with the **Super Intelligence** role, which combines Pilot, Engineer and Scientist. She flies aboard crewed craft, or remotely from Mission Control for probes. If she dies aboard, the Mission is Lost, and she returns to the roster later.
+Claudia is also a Kerbal: a female crew member with the **Super Intelligence** role, which combines Pilot, Engineer and Scientist. She flies aboard crewed craft, or remotely from Mission Control for probes. If she dies aboard, the Mission is **Lost**, and she returns to the roster later.
 
-### Landing with a stage below the legs
+In Flight, the **Capcom strip** under the altimeter follows the Mission: Claudia's latest line, where the Mission is in its plan, the Spending Cap and what is locked. Its tab expands the Mission window docked to it, and it turns amber when she needs you. In the Space Center and Tracking Station, the **Missions list** shows every Mission in the save: the active one, Paused ones and finished ones with their final Debrief and cost.
 
-Some craft hang their transfer stage below the lander's legs, the Underhang. If staging that stage off drops all of it, and the lander alone has the delta-v for the landing with `land`'s `burn_margin`, `land` stages it off in orbit before the deorbit burn. The lander then plans and flies the descent on its own, which turns and brakes far better than the whole stack. Whatever delta-v the stage had left is lost, so plan the Mission's delta-v without it. The Script Result shows `staged_before_deorbit`, `stage_left`, and the lander's delta-v against the need (`lander_dv`, `lander_need`). If the lander can't cover the landing alone, the stack brakes together and the Underhang drops near the ground, as `land(lexicon("drop_underhang", "late"))` always does.
+## Building Blocks
 
-### You stay in charge
+Claudia's scripts fly the craft through a fixed, tested Core Library. Each block solves its goal again from the real orbit when it flies, rather than trusting numbers from planning time.
 
-- No script runs without your Approval. The one exception is a **Blackout**: with no link to Kerbin, Claudia flies the Mission Plan you already approved, and shows you any changes she made when the link returns.
+| Block | What it does |
+| --- | --- |
+| `launch` | From the ground of a body with an atmosphere to a coast out of it, with the apoapsis at the target. Can time the launch for a target plane. |
+| `circularize` | A circular orbit at apoapsis, periapsis or an altitude; at periapsis in a new SOI it is the capture burn. |
+| `change_orbit` | Inclination, plane match, LAN shift or a resonant orbit, in one solved burn. |
+| `exec_node` | Flies a maneuver node with the main engines. The other burn blocks fly through it. |
+| `coast` | Holds the craft on its path until a time, warping on rails. |
+| `transfer_to` | From orbit to an encounter with a moon (the Mun, Minmus), with a mid-course correction. |
+| `tune_pe` | Fine-tunes periapsis, this orbit's or the next patch's. |
+| `rendezvous` | Meets the Mission's Target Vessel in orbit, to within physics range under 2 m/s. |
+| `dock` | Docks with the Target Vessel on RCS, pairing ports by size. If the target has a kOS processor, the mod holds it steady. |
+| `land` | Lands on an airless body: a site chosen by biome or position, a deorbit burn, and a powered descent shaped from the terrain ([ADR 0011](docs/adr/0011-landing-descent-shaped-from-the-terrain.md)). Can stage off a transfer stage hung below the legs before it starts. |
+| `ascend` | From the ground, or from a fall over an airless body, to a circular orbit; also the abort to orbit when a landing fails. |
+| `return` | Home from orbit round any moon to its planet, with a mid-course correction; can aim for KSC. |
+| `deorbit` | One burn down from orbit round a body with an atmosphere, aimed with the mod's reentry predictor. |
+| `reentry` | Through the atmosphere: drops the stack, holds the heat shield forward, opens parachutes only when safe. |
+| `drop_parts` | Drops named parts now by firing the decoupler that holds each. |
+| `science` | Runs the craft's experiments here and transmits or keeps the data, never overwriting data already held. |
+
+The spec's `transfer` block is `transfer_to`, because kOS has a built-in `TRANSFER`. Call `return` as a value (`local res is return().`), since a bare `return().` is kOS's return statement.
+
+While she plans, Claudia can also call read-only **Planning Tools** (`predict_burn`, `solve_burn`, `plan_transfer`, `plan_ascent`, `find_landing_site`). They never change the game; only Building Blocks fly ([ADR 0006](docs/adr/0006-planning-tools-read-blocks-fly.md)). Where no block fits, she may write a **Custom Script** with flight logic of its own; it goes through the same Script Check.
+
+## You stay in charge
+
+- No script runs without your Approval, with two exceptions:
+  - **Auto Mode** is a per-Mission switch that gives your Approval in advance for every plan after the first Mission Plan, as long as the Spending Cap has room for what follows. It never starts a Mission, acknowledges a Warning, raises the cap or flies a manual stretch for you ([ADR 0009](docs/adr/0009-auto-mode-is-standing-approval-on-blackouts-path.md)).
+  - In a **Blackout**, with no link to Kerbin, Claudia flies the Mission Plan you already approved, and shows you any changes she made when the link returns.
 - The **Abort** button stops a running sequence and makes the craft safe.
 - **Manual Control** lets you fly yourself at any time, if you have a link or other crew aboard. **Hand back to Claudia** when you're done, and she replans from where you left the craft.
 - While a sequence runs, the mod watches its **Telemetry Checks**, such as delta-v used, duration and electric charge. If one is crossed, Claudia tells you whether to abort.
+- A sequence still running at three times its planned duration is stopped.
 
-### Safety
+A Mission survives scene changes, quicksaves, reverts, quits and crashes. A sequence that was Running at a load, quit or crash is marked **Interrupted** and Debriefed, never restarted. The mod never switches vessels itself.
 
-kOS scripts can do far more than fly a craft. Before you see a script, the mod checks it against a forbidden list:
+## Safety
+
+kOS scripts can do far more than fly a craft. Before you see a script, the mod compiles it and checks it against a forbidden list:
 
 - save, load and revert
 - switching vessels
-- physics warp
-- file operations
+- physics warp (except on a Coast, see [ADR 0008](docs/adr/0008-physics-warp-on-coasts.md))
+- file operations and Archive writes
 - kOS settings
-- other vessels and other addons
+- changing other vessels and other addons
 
-While Claudia's programs run, runtime guards block the most harmful calls. Your own kOS terminal and scripts are unaffected. This is a safety net against Claude's mistakes, not a security sandbox. See [ADR 0003](docs/adr/0003-script-check-and-runtime-gates.md).
+If a script fails, Claudia rewrites it once automatically. If the rewrite fails too, the plan shows **Couldn't produce a safe script** with **Retry**, **Retry with a note** or **Re-plan**.
 
-## Requirements (v1)
+While Claudia's programs run, runtime gates block the most harmful calls. Your own kOS terminal and scripts are unaffected. This is a safety net against Claude's mistakes, not a security sandbox. See [ADR 0003](docs/adr/0003-script-check-and-runtime-gates.md).
+
+## Requirements
 
 - Kerbal Space Program **1.12.5** on **macOS**. Windows and Linux are untested and planned for a later release.
 - [kOS](https://github.com/KSP-KOS/KOS) 1.6 or later.
 - [HarmonyKSP](https://github.com/KSPModdingLibs/HarmonyKSP) 2.2.1 (the community Harmony build for KSP, installed as `GameData/000_Harmony`).
 - ModuleManager (optional), for the compatibility patches.
 - Your own **Anthropic API key**.
+- The stock delta-v calculations turned on. The Craft Check stops and asks if they are off.
 
 Sandbox, Science and Career all work.
 
 ## API key and cost
 
-Claudia uses the Claude API with your own key. Each Mission has its own Spending Cap, $10 by default, which you can raise later; the mod never sends a request that could exceed it. As a rough guide, a Mun landing and return costs about $2.40 on Sonnet 5.5 (the default) or about $5 on Opus 5.5.
+Claudia uses the Claude API with your own key. Each Mission has its own **Spending Cap**, $10 by default, which you can raise later; the mod never sends a request that could go over it. When the cap has no room, the Mission is **Paused** until you raise it.
 
-The key is stored as **plain text** in `~/Library/Application Support/ClaudiaKerman/`, readable only by you. If the `ANTHROPIC_API_KEY` environment variable is set, it is used instead. The key is never written to logs, saves or Mission records, and never placed under GameData.
+The start form shows an estimate. As a rough guide, a Mun landing and return costs about $2.40 on Sonnet 5.5 (the default), about $0.25 on Haiku 5.5, or about $5 on Opus 5.5. Failed and retried legs cost the most, so a clean flight costs less.
+
+The key is stored as **plain text** in `~/Library/Application Support/ClaudiaKermin/`, readable only by you. If the `ANTHROPIC_API_KEY` environment variable is set, it is used instead. The key is never written to logs, saves or Mission records, and never placed under GameData.
+
+## Settings
+
+The player config is `config.cfg` in the same folder, as `name = value` lines. Unknown names are ignored. The common ones:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `models` | `claude-sonnet-5-5, claude-haiku-5-5` | The models offered in the start form, default first. Add `claude-opus-5-5` to offer Opus. |
+| `default_spending_cap` | `10` | The Spending Cap a new Mission starts with, in USD. |
+| `daylight_landing`, `time_vs_dv`, `default_remote` | `true`, `Balanced`, `false` | Prefills for the Mission Settings. |
+| `default_auto_mode` | `false` | New Missions start in Auto Mode. |
+| `craft_check_margin` | `15` | The delta-v margin, in percent, the Craft Check wants over the Delta-v Map. |
+| `margin_recheck` | `auto` | When a Debrief also asks Claudia to rerun the Craft Check. |
+| `check_dv_used`, `check_duration`, `check_ec`, `check_fuel_margin` | `120`, `150`, `10`, `10` | The default Telemetry Checks, in percent. |
+| `runaway_multiplier` | `300%` | When a running sequence is stopped, as a share of its planned duration. |
+| `physics_warp` | `true` | Lets Mission Scripts physics-warp on a Coast. |
+| `debug_tools` | `false` | Shows the debug windows: the basic chat, stream dumps, Game Snapshots and the block test runner. |
 
 ## Known gaps
 
-- Stock contracts, EVA welding and the construction combine bonus count Claudia as a Pilot, Engineer and Scientist (Harmony patches on `FinePrint.Utilities.VesselUtilities`). ModuleManager patches in `GameData/ClaudiaKerman/Compatibility` cover Kerbalism and Community Trait Icons.
+- Stock contracts, EVA welding and the construction combine bonus count Claudia as a Pilot, Engineer and Scientist (Harmony patches). ModuleManager patches in `GameData/ClaudiaKermin/Compatibility` cover Kerbalism and Community Trait Icons.
 - These mods check crew roles by name and **do not** count Claudia as a Pilot, Engineer or Scientist: KER, USI, Near Future Electrical, SystemHeat, SSPX, StationScience, WildBlue and Contract Configurator contract packs.
-- Claudia doesn't go on EVA in v1. When a goal needs EVA science, she asks you to do it by hand.
-- In this development build, Missions are a first pass: scripts are Script-Checked and run behind runtime gates that stop a script trying to save, load, revert, switch vessels, write the Archive, change `CONFIG`, use physics warp, freeze the game, change other vessels or touch another kOS processor (your own terminal is never gated), and a script still running at `runaway_multiplier` (300%) of its planned duration is stopped; still read a Sequence Plan's script with **Show script** before you approve it. The Craft Check does not yet recheck margins in each Debrief. A Mission is kept across scene changes, quicksaves, reverts, quits and crashes: loading a save puts its state back without rewinding Claudia's conversation, a sequence that was Running at a load, quit or crash is marked interrupted and Debriefed (never restarted), and leaving Flight while Running asks first. The Mission's craft is the vessel Claudia is aboard (or, remote, the one with the original kOS processor), through staging, docking and undocking: you may fly other vessels between sequences, and nearby while Running, with a warning 10 seconds before the craft would unload; a far switch while Running asks first; either way the interrupted sequence is Debriefed when you are back in the craft, Resume works only from the craft, and the controls are locked only on the craft. Docking tells Claudia what was added, and the plan awaiting Approval needs Re-plan; undocking, or a vessel with a kOS processor separating, tells her what left. The Mission Plan names any Child Vessels (the Craft Check judges each at its separation stage, and refuses a staging plan that strands Claudia without a processor), and each Sequence Plan names its vessel: a script goes to a Child Vessel only once it has separated and has a CommNet path from Claudia, keeps running if the link drops, and starts only while every other vessel of the Mission is stable. A Child Vessel's run has no Telemetry Checks yet. Separated vessels the plan doesn't name are ignored, and Child Vessels are ordinary vessels once the Mission ends. The mod never switches vessels itself.
-- If a script fails the Script Check, Claudia rewrites it once automatically; that rewrite is a billed request under the Spending Cap like any other. If the rewrite fails too, the plan shows **Couldn't produce a safe script** with **Retry**, **Retry with a note** or **Re-plan**. A Sequence Plan restored from a save is Script-Checked again before you can approve it.
+- Claudia doesn't go on EVA in v1. When a goal needs EVA science, she plans a manual stretch and asks you to do it by hand.
+- `transfer_to` and `return` fly between a planet and its moons. Interplanetary transfers are not a Building Block yet.
+- A Child Vessel's run has no Telemetry Checks yet.
+- Read a Sequence Plan's script with **Show script** before you approve it. The checks are a safety net, not a guarantee.
 - **Before uninstalling**, press **Prepare to uninstall** in Claudia's settings in every save that has her. Removing the mod without it is likely to break those saves.
 
 ## Building
@@ -75,42 +129,48 @@ You need the .NET 10 SDK. The adapter and kOS addon compile against your own KSP
 
 | What | Command |
 | --- | --- |
-| Build everything | `dotnet build ClaudiaKerman.sln -p:KSPRoot=/path/to/KSP` |
-| Core tests (no KSP needed) | `dotnet test tests/ClaudiaKerman.Core.Tests` |
-| Script Check tests (need only kOS.Safe) | `dotnet test tests/ClaudiaKerman.ScriptCheck.Tests -p:KSPRoot=/path/to/KSP` |
-| Script Check the shipped kerboscript and block tests (needs only kOS.Safe) | `dotnet run --project tools/ClaudiaKerman.KsCompile -p:KSPRoot=/path/to/KSP -- kerboscript tests/blocks` |
-| Core Library tests on kOS.Safe (no KSP needed) | `dotnet test tests/ClaudiaKerman.Kerboscript.Tests -p:KSPRoot=/path/to/KSP` |
+| Build everything | `dotnet build ClaudiaKermin.sln -p:KSPRoot=/path/to/KSP` |
+| Core tests (no KSP needed) | `dotnet test tests/ClaudiaKermin.Core.Tests` |
+| Script Check tests (need only kOS.Safe) | `dotnet test tests/ClaudiaKermin.ScriptCheck.Tests -p:KSPRoot=/path/to/KSP` |
+| Script Check the shipped kerboscript and block tests | `dotnet run --project tools/ClaudiaKermin.KsCompile -p:KSPRoot=/path/to/KSP -- kerboscript tests/blocks` |
+| Core Library tests on kOS.Safe (no KSP needed) | `dotnet test tests/ClaudiaKermin.Kerboscript.Tests -p:KSPRoot=/path/to/KSP` |
+| Every gate above, as one pass or fail | `tools/gates/gates.sh` |
 
-A failing test, or a script that doesn't compile or uses something forbidden, exits non-zero. A build stages the mod in `dist/GameData/ClaudiaKerman/`. To install it, copy that folder into your KSP `GameData` folder, next to kOS and HarmonyKSP. kOS and HarmonyKSP are dependencies you install yourself; they are never bundled.
+A failing test, or a script that doesn't compile or uses something forbidden, exits non-zero. A build stages the mod in `dist/GameData/ClaudiaKermin/`. To install it, copy that folder into your KSP `GameData` folder, next to kOS and HarmonyKSP. kOS and HarmonyKSP are dependencies you install yourself; they are never bundled.
 
-The layout follows [ADR 0001](docs/adr/0001-single-in-process-ksp-mod.md):
+CI (`.github/workflows/ci.yml`) runs on every push: the core tests, then, with kOS.Safe from the public kOS release, the Script Check tests, a Script Check of every shipped script and block test script, the Core Library tests, and a check that the syntax-error and forbidden-call fixtures fail.
 
-- `src/ClaudiaKerman.Core`: the Unity-free core. It never references Unity or KSP.
-- `src/ClaudiaKerman.Adapter`: the thin KSP adapter (`ClaudiaKerman.dll`). One Winged glare toolbar button serves the Space Center (it toggles Settings), the VAB/SPH and Flight (it toggles the Mission window). The basic chat with Claudia (no Mission needed) is a debug entry point in Settings; her replies stream in and keep coming across scene changes. With `debug_tools = true`, the chat window can dump raw stream events to `stream-dumps/` in the config folder.
-- Missions: the toolbar button opens the Mission window. Its start form takes the Mission Goal, Spending Cap and model (from `models` and `default_spending_cap` in the player config); in Flight a Capcom strip under the altimeter follows the Mission (Claudia's status, the Mission Plan's sequences as a segment track that scrolls sideways when they don't fit, what is locked) and the Mission window docks to it, below or, near the bottom of the screen, above. Drag the strip by its status row to move it (it is remembered in `windows.cfg`; double-click the row to put it back). The strip's tab or the toolbar button expands it, and Undock turns it back into a floating window for the session. All Mission logic sits behind one seam in the core (`ClaudiaKerman.Core.Missions.MissionControl`), which the adapter's `MissionDriver` feeds and obeys. Each Mission's transcript is rewritten atomically to `saves/<save>/ClaudiaKerman/missions/<id>/transcript.json` after every response; with `debug_tools = true`, raw stream events go to that folder's `stream-dumps/`, and a button saves Game Snapshots to `saves/<save>/ClaudiaKerman/snapshots/`. The save file holds a small snapshot per Mission (a `MissionScenario` ScenarioModule writes the core's `MissionSaveState`); the Mission folder also holds `mission.json`, an append-only `events.jsonl` and, while a request is out, `unanswered-turn.json`, none of which a load rewinds.
-- Craft Check: the mod computes the facts (per-stage delta-v and thrust from the stock simulator, thrust over weight per body, the part inventory, crew, experiments and science left) into the Game Snapshot, and the core computes the Delta-v Map from the snapshot's body data. Claude judges them against the spec's fixed Blocker and Warning lists with the margin from `craft_check_margin` (percent, default 15) in the player config. The Mission board pins the result (Pass, Pass with Warnings or Fail); Start Mission is closed on a Blocker and until every Warning is acknowledged, and runs the check itself if the craft or goal changed. The craft is never edited and the delta-v app's body setting is never touched. If the stock delta-v calculations are off, the check stops and asks you to enable them. You can pick which kOS processor Claudia uses (default: nearest the root); a boot file on it is a Warning.
-- `tests/ClaudiaKerman.Core.Tests/Fixtures/streams`: hand-written, byte-exact Claude streams that the client tests replay through the real parser.
-- `GameData/ClaudiaKerman`: static mod files (the Super Intelligence trait config and icon, the Winged glare toolbar icons and portrait, and the Claudia Flag in `Flags/`, which the player made and which ships under the repo's licence), copied into the staged mod on build. `tools/make-trait-icon.cs` regenerates the trait icon; the Winged glare PNGs are rasterized from `art/icons/*.svg`.
-- `kerboscript/library`: the Core Library. `claudia_lib.ks` holds the shared helpers and, in its header, the conventions every Building Block follows; each block is one file named after it (`exec_node.ks`). The core embeds them (`CoreLibrary`), bundles them after each Mission Script into one compile unit, and puts their `//|` doc lines into Claudia's cached prompt layers. The Script Check runs over that whole bundle, the Mission Script with the Core Library, because that is what runs.
-- The spec's `transfer` block is `transfer_to`, because kOS has a built-in `TRANSFER`; `return` keeps its name but must be called as a value (`local res is return().`), since a bare `return().` is kOS's return statement.
-- `src/ClaudiaKerman.KOS`: the kOS addon (`net48`, like kOS 1.6.0.1): `ADDONS:CLAUDIA` and the kOS bridge that runs scripts on a processor. With `debug_tools = true` in the player config, a Flight window runs the test scripts in `kerboscript/debug/` through it, and a block test runner window (main menu, Space Center, Flight) runs the tests in `tests/blocks/`.
-- `src/ClaudiaKerman.ScriptCheck`: the Script Check ([ADR 0003](docs/adr/0003-script-check-and-runtime-gates.md)). It compiles a script with kOS.Safe and reads its opcodes against the forbidden list. Block-internal calls (`ADDONS:CLAUDIA:LANDINGSITE`, the site search `land` makes for a biome target; `LANDINGPASS`, `land`'s pass search over its site, the one `find_landing_site` keeps its sites by, which also picks the Descent Shape and periapsis over the terrain under each pass's approach; `BRAKEPATH`, `land`'s braking simulated from the craft's state as braking begins, with the same guidance laws, to check its Descent Shape still clears; `DEORBITBURN` and `REENTRYIMPACT`, the reentry predictor `deorbit` burns by; `TURNTIME`, how long `exec_node`'s craft takes to turn to the burn; `EJECTIONBURN`, the C# ejection solver that is to replace RSVP in `transfer_to`; `LAUNCHWINDOW`, when `launch`'s pad passes under a target plane; `CORRECTIONBURN`, the C# Course Correction solver `transfer_to` and `return` burn by; `ORBITBURN`, `solve_burn`'s orbit changes solved at the start of `change_orbit`; `RETURNBURN`, the C# ejection solver `return` leaves any moon for its planet by; `TARGETVESSEL`, the Mission's Target Vessel `rendezvous` flies to (and, landed, the place `land`'s `"vessel"` target lands beside), which also re-solves each step with `ORBITBURN`, `EJECTIONBURN` and `CORRECTIONBURN`; `DOCKHOLD` and `DOCKHOLDSTATE`, through which `dock` has the mod start its bundled `dock_hold` on the Target Vessel's processor and reads how it is going) are allowed only on the Core Library's lines of a bundle, found by the bundle's fixed tail ([ADR 0007](docs/adr/0007-script-check-finds-the-core-library-by-the-bundles-tail.md)). It is Unity-free (`net48`) and references kOS.Safe compile-only; kOS.Safe is never shipped. The core sees it only through `ClaudiaKerman.Core.Kos.IScriptCheck`, and the adapter passes it in.
-- `tests/blocks/<test>`: debug block tests. Each has `test.cfg` (block, craft, orbit, timeout and the contract ranges to check), `test.ks` (the Mission Script to run), `scenario.sfs` (the save it starts from) and `reference.craft` (stock parts plus kOS, KSP 1.12.5). They ship inside the kOS addon DLL. **Run** in the runner window writes them to `saves/claudia_block_tests/`, loads that save, spawns the craft into orbit, runs the block unattended and logs PASS or FAIL to KSP.log and `saves/claudia_block_tests/block-tests.log`. Run them whenever a block changes. `land_biome_mun` and `land_biome_minmus` fly `land` with a biome target (Midlands, Flats) in daylight; KSP.log has the site the block's search chose and how long the search took on the main thread. `deorbit_kerbin` (to KSC), then `deorbit_eve`, `deorbit_duna` and `deorbit_laythe`, fly `deorbit` from a low equatorial orbit, separating the spent tank and engine after the burn (`separate` 1, so only the capsule re-enters), and `reentry` after it, and report predicted against actual landing points (`miss_km` from the prediction after the burn and separation, `target_km` from the target); KSP.log has each predictor call, its landing point, its time on the main thread and the inverse-rotation angle of the frame it read the ground in. `return_target` flies `return` from the Mun with `target` "ksc", then `reentry`, and reports the same predicted against actual landing points (the accuracy is logged, not judged). A test with `target_craft` also spawns a second craft, "Block Test Target", placed relative to the first by `target_orbit_along` (m along its track, negative behind) and a relative velocity (`target_orbit_prograde`, `target_orbit_normal`, `target_orbit_radial`, m/s), and reads it as the Target Vessel while the test runs: `rendezvous` starts with it 200 km behind and off plane, and must end with it loaded under 2 m/s; `dock` starts with it 150 m ahead and must dock. `target_landed_lat` and `target_landed_ahead` (degrees of longitude east of the point under the craft) land it on the craft's body instead: `land_vessel` flies `land` with target `"vessel"` and must come to rest within a few hundred metres of it without touching it.
-- `tests/tools/<scenario>`: Planning Tool scenarios, laid out like `tests/blocks` and run from the same window as `tools/<scenario>`. While a test runs, and only then, its processor may call `ADDONS:CLAUDIA:PLANNINGTOOL(name, input)`: the test-only bridge to Planning Tools ([ADR 0006](docs/adr/0006-planning-tools-read-blocks-fly.md)). Each scenario asks a tool, flies the answer with a block (the `find_landing_site_*` ones fly nothing: they log the tool's biome and terrain against KSP's own at each site, warp to one pass to check the ground track, and time each call), and reports predicted against actual; KSP.log gets the report, each call, and its time against the frame budget. The Script Check refuses the call in Mission Scripts; `KsCompile` checks files under `tests/tools/` as block-test scripts, which may make it.
-- `tests/ClaudiaKerman.Core.Tests`: the core tests. `tests/ClaudiaKerman.ScriptCheck.Tests`: the real Script Check, with a test for each forbidden and allowed item.
-- `tests/ClaudiaKerman.Kerboscript.Tests`: runs the Core Library's pure helpers on a kOS CPU from kOS.Safe, with no KSP, through the same bundle the mod starts.
-- `tools/ClaudiaKerman.KsCompile`: the Script Check from the command line. It runs over `.ks` files (CI gives it `kerboscript/`, which holds the Core Library, and `tests/blocks`) with the same code the mod uses. Files under `kerboscript/library/` are checked as the Core Library's, so they may make block-internal calls.
+### In-game tests
 
-CI (`.github/workflows/ci.yml`) runs on every push. It runs the core tests, then takes kOS.Safe from the public kOS release to run the Script Check tests, Script Check every shipped script and the block test scripts, run the Core Library tests, and require the syntax-error and forbidden-call fixtures to fail.
+With `debug_tools = true`, a block test runner window (main menu, Space Center, Flight) runs the tests in `tests/blocks/` and the Planning Tool scenarios in `tests/tools/`. Each test has a `test.cfg` (block, craft, orbit, timeout and the ranges to check), a `test.ks`, a `scenario.sfs` and a `reference.craft` built from stock parts plus kOS. **Run** loads a test save, spawns the craft, flies the block unattended and logs PASS or FAIL to KSP.log and `saves/claudia_block_tests/block-tests.log`. Run them whenever a block changes. Checklists for larger in-game checks are in [docs/in-game/](docs/in-game/).
+
+## Repository layout
+
+The layout follows [ADR 0001](docs/adr/0001-single-in-process-ksp-mod.md): one in-process C# mod, no companion process.
+
+| Path | What it holds |
+| --- | --- |
+| `src/ClaudiaKermin.Core` | The Unity-free core: the Claude client, the Mission state machine (`Missions.MissionControl`), the Craft Check facts, the Planning Tools and the C# solvers. It never references Unity or KSP. |
+| `src/ClaudiaKermin.Adapter` | The thin KSP adapter (`ClaudiaKermin.dll`): the toolbar button, Mission window, Capcom strip, Missions list, Game Snapshots and the `MissionDriver` that feeds the core. |
+| `src/ClaudiaKermin.KOS` | The kOS addon (`ADDONS:CLAUDIA`), the bridge that runs scripts on a processor, the runtime gates and the block test runner. |
+| `src/ClaudiaKermin.ScriptCheck` | The Script Check: compiles a script with kOS.Safe and reads its opcodes against the forbidden list. Block-internal calls are allowed only on the Core Library's lines of a bundle ([ADR 0007](docs/adr/0007-script-check-finds-the-core-library-by-the-bundles-tail.md)). |
+| `kerboscript/library` | The Core Library: `claudia_lib.ks` with the shared helpers and conventions, and one file per Building Block. Their `//|` doc lines go into Claudia's prompt. |
+| `kerboscript/dock_hold` | The program the mod runs on a Target Vessel's processor to hold it steady for docking. |
+| `tests/` | The core, Script Check and Core Library test projects, plus the in-game `blocks/` and `tools/` tests. |
+| `tools/` | `ClaudiaKermin.KsCompile` (the Script Check from the command line), the merge gates and the cost baseline script. |
+| `GameData/ClaudiaKermin` | Static mod files: the Super Intelligence trait config and icon, the toolbar icons and portrait, and the compatibility patches. |
+
+Each Mission's records live in `saves/<save>/ClaudiaKermin/missions/<id>/`: the transcript, `mission.json` and an append-only `events.jsonl`. The save file holds only a small snapshot per Mission.
 
 ## Project docs
 
 - [GLOSSARY.md](GLOSSARY.md): the domain language (Mission, Craft Check, Maneuver Sequence, Debrief and more).
 - [docs/adr/](docs/adr/): architecture decisions.
-- [Map: Claudia Kerman v1](https://github.com/arathianevasion/claudia-kermin/issues/1): the design decisions, each with its own ticket.
+- [Map: Claudia Kermin v1](https://github.com/arathianevasion/claudia-kermin/issues/1): the design decisions, each with its own ticket.
+- [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES): licenses for bundled and ported code.
 
 ## License
 
-Claudia Kerman is free software under the GNU General Public License, version 3 or (at your option) any later version (`GPL-3.0-or-later`). See [LICENSE](LICENSE).
+Claudia Kermin is free software under the GNU General Public License, version 3 or (at your option) any later version (`GPL-3.0-or-later`). See [LICENSE](LICENSE).
 
-Ported code keeps its own licenses and notices. Ported from MechJebLib (MechJeb2 a958383, multi-licensed, ported under GPL-3.0-or-later with its copyright and SPDX lines kept): `BrentRoot`, `BrentMin`, `Newton`, `Scale`, `Shepperd` (from `MechJebLib/TwoBody/Shepperd.cs`), `Bs3` (from `MechJebLib/ODE/BS3.cs`, with the parts of `AbstractRungeKutta.cs` and `AbstractIVP.cs` it uses), `OdeEvent` (from `MechJebLib/ODE/Event.cs`) and `PlaneTiming` (`TimeToPlane` and `MinimumTimeToPlane` from `MechJebLib/Functions/Astro.cs`) in `src/ClaudiaKerman.Core/Tools/Numerics/`, `MechJebLib/Lambert/Izzo.cs` (itself ported from poliastro, MIT) as `src/ClaudiaKerman.Core/Tools/Lambert.cs`, `MechJebLib/Maneuvers/Simple.cs`, `MechJebLib/Maneuvers/ChangeOrbitalElement.cs` and `Astro.VelocityForInclination` from `MechJebLib/Functions/Astro.cs` in `src/ClaudiaKerman.Core/Tools/OrbitChange.cs`, and the formulation of `MechJebLib/Maneuvers/TwoImpulseTransfer.cs` (without its alglib call) in `src/ClaudiaKerman.Core/Tools/Transfer.cs`. Ported from MechJeb2 itself (a958383, GPL-3, its copyright notice kept): `MechJeb2/Maneuver/TimeSelector.cs` and the `OrbitExtensions` node, radius and closest-approach helpers it calls, as `src/ClaudiaKerman.Core/Tools/BurnTime.cs`, and `MechJeb2/OrbitalManeuverCalculator.cs`'s plane-match, LAN-shift and resonant-orbit burns in `src/ClaudiaKerman.Core/Tools/OrbitChange.cs`. The Mission Scripts and Custom Scripts that Claudia writes for your Missions are yours; Claudia Kerman claims no license over them.
+Bundled third-party scripts and ported code keep their own licenses and notices: KSLib's `lib_lazcalc` (MIT). Ported from MechJebLib (MechJeb2 a958383, multi-licensed, ported under GPL-3.0-or-later with its copyright and SPDX lines kept): `BrentRoot`, `BrentMin`, `Newton`, `Scale`, `Shepperd` (from `MechJebLib/TwoBody/Shepperd.cs`), `Bs3` (from `MechJebLib/ODE/BS3.cs`, with the parts of `AbstractRungeKutta.cs` and `AbstractIVP.cs` it uses), `OdeEvent` (from `MechJebLib/ODE/Event.cs`) and `PlaneTiming` (`TimeToPlane` and `MinimumTimeToPlane` from `MechJebLib/Functions/Astro.cs`) in `src/ClaudiaKermin.Core/Tools/Numerics/`, `MechJebLib/Lambert/Izzo.cs` (itself ported from poliastro, MIT) as `src/ClaudiaKermin.Core/Tools/Lambert.cs`, `MechJebLib/Maneuvers/Simple.cs`, `MechJebLib/Maneuvers/ChangeOrbitalElement.cs` and `Astro.VelocityForInclination` from `MechJebLib/Functions/Astro.cs` in `src/ClaudiaKermin.Core/Tools/OrbitChange.cs`, and the formulation of `MechJebLib/Maneuvers/TwoImpulseTransfer.cs` (without its alglib call) in `src/ClaudiaKermin.Core/Tools/Transfer.cs`. Ported from MechJeb2 itself (a958383, GPL-3, its copyright notice kept): `MechJeb2/Maneuver/TimeSelector.cs` and the `OrbitExtensions` node, radius and closest-approach helpers it calls, as `src/ClaudiaKermin.Core/Tools/BurnTime.cs`, and `MechJeb2/OrbitalManeuverCalculator.cs`'s plane-match, LAN-shift and resonant-orbit burns in `src/ClaudiaKermin.Core/Tools/OrbitChange.cs`. The Mission Scripts and Custom Scripts that Claudia writes for your Missions are yours; Claudia Kermin claims no license over them.
