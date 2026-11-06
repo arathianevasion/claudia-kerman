@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
+using ClaudiaKerman.Core.Kos;
 using ClaudiaKerman.Core.Tools;
 using ClaudiaKerman.Core.Ui;
 
@@ -65,6 +67,9 @@ namespace ClaudiaKerman.Core.Missions
         internal double DepartureUt;
         internal double TotalDv;
         internal double CaptureDv;
+        /// <summary>#782: the literal UT a departure's script gives transfer_to for this window (<see cref="WindowChoice.Retimed"/>), and return's on the direct route (null for no return).</summary>
+        internal double WindowUt;
+        internal double? ReturnWindow;
 
         /// <summary>Whether the Delta-v Map's leg <paramref name="id"/> is this window's trip.</summary>
         internal bool Budgets(string id)
@@ -102,12 +107,16 @@ namespace ClaudiaKerman.Core.Missions
     /// <summary>
     /// Who picks the Transfer Window (#686, amending #488). For a transfer between bodies that orbit the same parent, the player does:
     /// the body the craft departs from and the target, or the target's parent (Kerbin to Ike goes through Duna). Within one sphere of
-    /// influence the Mission Setting Time versus delta-v still picks (#669). Only the player ever picks: Auto Mode never does.
+    /// influence the Mission Setting Time versus delta-v still picks (#669). Only the player ever picks: Auto Mode never does. A departure
+    /// no pick covers asks at its first Sequence Plan (#782: <see cref="Departure"/>).
     /// </summary>
     public static class WindowChoice
     {
         /// <summary>What Start and Approval say when the pick is missing.</summary>
         public const string PickFirst = "Pick a Transfer Window first: Soonest or Optimal.";
+
+        /// <summary>A literal window option in a block's lexicon, as plan_transfer's rows write it.</summary>
+        private static readonly Regex LiteralWindow = new Regex("\"window\"\\s*,\\s*(?<ut>\\d+(\\.\\d+)?)\\s*[,)]", RegexOptions.CultureInvariant);
 
         /// <summary>A rework at most this often in game time, s (a Kerbin day), so a row's date and wait stay about right while the player reads them.</summary>
         private const double ReworkEveryS = 21600;
@@ -160,16 +169,123 @@ namespace ClaudiaKerman.Core.Missions
             if (body == null) return WindowOffer.None;
             var at = snapshot.At(now);
             var found = TransferWindows.Find(at, body.Name, MissionPrompts.ArrivalPe(body), ArrivalRule.Capture(at, body.Name, null), marginPercent);
-            if (found.Error != null) return new WindowOffer { Problem = "Transfer Window to " + body.Name + ": " + found.Error + ". The Mission Setting picks." };
-            var from = snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body;
+            return found.Error != null ? Unworked(body.Name, found.Error) : Offer(at, body.Name, now, found.Soonest, found.Optimal);
+        }
+
+        /// <summary>
+        /// #782: the departure <paramref name="plan"/> starts that the player picks a window for; null for none. A landed craft's is the
+        /// ascent's (<see cref="WindowWaits.AfterAscent"/>). In a closed orbit it is the script's transfer_to to a body with the same
+        /// parent, or to another planet from a moon's orbit (<see cref="DirectRoute.Applies"/>), or a return from a moon when the Mission
+        /// Plan's legs lead on to another planet. A return from the Mun or Minmus leads only to Kerbin: the setting's, as ever.
+        /// </summary>
+        internal static SurfaceDeparture Departure(GameSnapshot snapshot, SequencePlan plan, IList<PlannedSequence> legs, int step)
+        {
+            if (snapshot == null || plan == null || plan.Manual) return null;
+            var surface = WindowWaits.AfterAscent(snapshot, plan, legs, step);
+            if (surface != null) return surface;
+            var orbit = snapshot.Orbit;
+            if (orbit == null || snapshot.IsGrounded || !(orbit.Eccentricity < 1)) return null;
+            foreach (var call in BlockOptionCheck.Calls(plan.Script))
+            {
+                if (call.Block == "return")
+                {
+                    var moon = SequenceWords.Body(snapshot, !string.IsNullOrEmpty(orbit.Body) ? orbit.Body : snapshot.Body);
+                    return moon == null ? null : WindowWaits.Departure(snapshot, moon, legs ?? new List<PlannedSequence>(), step - 1);
+                }
+                if (call.Block != "transfer_to") continue;
+                var target = SequenceWords.Body(snapshot, (call.Option("target") ?? "").Trim('"'));
+                if (target != null && (TransferWindows.IsSiblingTransfer(snapshot, target.Name) || DirectRoute.Applies(snapshot, target.Name))) return new SurfaceDeparture { Planet = target };
+            }
+            return null;
+        }
+
+        /// <summary>#782: the two rows for <paramref name="departure"/>, each the window its pick would really take: from the surface, what the ascent's Due Time is worked from (<see cref="WindowWaits.Solve"/>).</summary>
+        internal static WindowOffer WorkDeparture(GameSnapshot snapshot, SurfaceDeparture departure, TimeVersusDeltaV setting, int marginPercent, double now)
+        {
+            var name = departure.Planet.Name;
+            var at = snapshot.At(now);
+            at.StampMission(setting, marginPercent);
+            if (at.IsGrounded)
+            {
+                var up = Taken(snapshot, departure, setting, marginPercent, now, WindowKind.Soonest);
+                var late = Taken(snapshot, departure, setting, marginPercent, now, WindowKind.Optimal);
+                return up.Window == null || late.Window == null ? Unworked(name, "no window from its low orbit") : Offer(at, name, now, up.Window, late.Window);
+            }
+            if (DirectRoute.Applies(at, name))
+            {
+                string error;
+                var soonest = Routed(at, departure, WindowKind.Soonest, out error);
+                var optimal = soonest == null ? null : Routed(at, departure, WindowKind.Optimal, out error);
+                if (optimal == null) return Unworked(name, error);
+                var offer = Offer(at, name, now, WindowWaits.AsWindow(soonest), WindowWaits.AsWindow(optimal));
+                Retimes(offer.Rows[0], soonest);
+                Retimes(offer.Rows[1], optimal);
+                return offer;
+            }
+            var found = TransferWindows.Find(at, name, MissionPrompts.ArrivalPe(departure.Planet), ArrivalRule.Capture(at, name, null), marginPercent);
+            return found.Error != null ? Unworked(name, found.Error) : Offer(at, name, now, found.Soonest, found.Optimal);
+        }
+
+        private static SurfaceDeparture Taken(GameSnapshot snapshot, SurfaceDeparture departure, TimeVersusDeltaV setting, int marginPercent, double now, WindowKind kind)
+        {
+            var taken = new SurfaceDeparture { Planet = departure.Planet, TwoStep = departure.TwoStep };
+            WindowWaits.Solve(snapshot, taken, setting, marginPercent, now, new WindowPick(departure.Planet.Name, kind));
+            return taken;
+        }
+
+        private static RouteRow Routed(GameSnapshot at, SurfaceDeparture departure, WindowKind kind, out string error)
+        {
+            var name = departure.Planet.Name;
+            var picked = at.At(at.Ut);
+            picked.WindowPick = new WindowPick(name, kind);
+            var routes = DirectRoute.Find(picked, name, MissionPrompts.ArrivalPe(departure.Planet), ArrivalRule.Capture(picked, name, null));
+            error = routes.Error;
+            return routes.Error != null ? null : departure.TwoStep ? routes.TwoStep : routes.Pick;
+        }
+
+        private static void Retimes(WindowRow row, RouteRow route)
+        {
+            row.WindowUt = route.EjectWindow;
+            row.ReturnWindow = route.ReturnWindow;
+        }
+
+        /// <summary>
+        /// #782: <paramref name="script"/>, written before the player picked, flying <paramref name="row"/>'s window: a literal window
+        /// option on the departure's own calls becomes that window's. Any other value is left, as "next" reads the pick as it flies.
+        /// </summary>
+        internal static string Retimed(string script, WindowRow row)
+        {
+            var calls = BlockOptionCheck.Calls(script).ToList();
+            for (var i = calls.Count - 1; i >= 0; i--)
+            {
+                var call = calls[i];
+                double? ut = null;
+                if (call.Block == "return") ut = row.ReturnWindow;
+                else if (call.Block == "transfer_to" && string.Equals((call.Option("target") ?? "").Trim('"'), row.Body, StringComparison.OrdinalIgnoreCase)) ut = row.WindowUt;
+                if (!ut.HasValue) continue;
+                var end = i + 1 < calls.Count ? calls[i + 1].Index : script.Length;
+                var written = LiteralWindow.Match(script, call.Index, end - call.Index);
+                if (written.Success) script = script.Substring(0, written.Groups["ut"].Index) + Whole(ut.Value) + script.Substring(written.Groups["ut"].Index + written.Groups["ut"].Length);
+            }
+            return script;
+        }
+
+        private static WindowOffer Unworked(string body, string why)
+        {
+            return new WindowOffer { Problem = "Transfer Window to " + body + ": " + why + ". The Mission Setting picks." };
+        }
+
+        private static WindowOffer Offer(GameSnapshot at, string body, double now, TransferWindow soonest, TransferWindow optimal)
+        {
+            var from = at.Orbit != null && !string.IsNullOrEmpty(at.Orbit.Body) ? at.Orbit.Body : at.Body;
             return new WindowOffer
             {
-                Body = body.Name,
-                Caption = "Transfer Window to " + body.Name + ": pick one",
+                Body = body,
+                Caption = "Transfer Window to " + body + ": pick one",
                 Rows = new List<WindowRow>
                 {
-                    Row(at, WindowKind.Soonest, found.Soonest, from, body.Name, now),
-                    Row(at, WindowKind.Optimal, found.Optimal, from, body.Name, now),
+                    Row(at, WindowKind.Soonest, soonest, from, body, now),
+                    Row(at, WindowKind.Optimal, optimal, from, body, now),
                 },
             };
         }
@@ -182,7 +298,7 @@ namespace ClaudiaKerman.Core.Missions
                 + ", ejection " + Dv(window.EjectionDv) + " (" + (burn.HasValue ? "about " + KerbinTime.Span(burn.Value) : "burn time unknown") + ")"
                 + (window.AscentLossDv >= 1 ? ", ascent loss " + Dv(window.AscentLossDv) : "")
                 + ", capture " + Dv(window.CaptureDv) + ", total " + Dv(window.TotalDv) + ", flight " + KerbinTime.Span(window.ArrivalUt - window.DepartureUt);
-            return new WindowRow { Kind = kind, Text = text, From = from, Body = body, DepartureUt = window.DepartureUt, TotalDv = window.TotalDv, CaptureDv = window.CaptureDv };
+            return new WindowRow { Kind = kind, Text = text, From = from, Body = body, DepartureUt = window.DepartureUt, TotalDv = window.TotalDv, CaptureDv = window.CaptureDv, WindowUt = window.DepartureUt };
         }
 
         /// <summary>From the ground, what the ascent spends first: the ejection burns on the stages left after it.</summary>

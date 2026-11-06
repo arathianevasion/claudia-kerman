@@ -69,7 +69,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The periapsis both routes fall to at the planet (its low orbit's height) and the one given to transfer_to at the target, m.</summary>
         public double ReturnPe;
         public double TargetPe;
-        /// <summary>The window both routes take: the setting's pick, named, and the speed leaving the planet there.</summary>
+        /// <summary>The window both routes take: the player's pick or else the setting's (#782), named, and the speed leaving the planet there.</summary>
         public string WindowName;
         public double VInf;
         public RouteRow Direct;
@@ -147,7 +147,7 @@ namespace ClaudiaKerman.Core.Tools
             return TransferWindows.TakesOptimal(soonest.TotalDv, cheaper.TotalDv, setting) ? cheaper : soonest;
         }
 
-        /// <summary>Both routes for the Game Snapshot's craft, in the window the setting picks; call only where <see cref="Applies"/>.</summary>
+        /// <summary>Both routes for the Game Snapshot's craft, in the window the player or else the setting picks; call only where <see cref="Applies"/>.</summary>
         public static DirectRoutePlan Find(GameSnapshot snapshot, string target, double targetPe, bool capture)
         {
             ToolOutcome error;
@@ -173,7 +173,7 @@ namespace ClaudiaKerman.Core.Tools
             if (problem == null) return Fail(problemError);
             var found = TransferWindows.Search(problem, snapshot.MarginPercent);
             if (found.Error != null) return Fail(found.Error);
-            var window = TransferWindows.Pick(found, snapshot.TimeVersusDeltaV);
+            var window = TransferWindows.Pick(found, snapshot);
             var leaving = problem.Leaving(window.DepartureUt, window.ArrivalUt - window.DepartureUt);
             if (!leaving.HasValue) return Fail("the window's arc has no Lambert path");
 
@@ -303,7 +303,7 @@ namespace ClaudiaKerman.Core.Tools
             var low = DeltaVMap.LowOrbit(planet);
             var view = new GameSnapshot
             {
-                Ut = ut, Situation = "ORBITING", Body = planet.Name, TimeVersusDeltaV = snapshot.TimeVersusDeltaV, MarginPercent = snapshot.MarginPercent,
+                Ut = ut, Situation = "ORBITING", Body = planet.Name, TimeVersusDeltaV = snapshot.TimeVersusDeltaV, MarginPercent = snapshot.MarginPercent, WindowPick = snapshot.WindowPick,
                 LaterLegsDv = snapshot.LaterLegsDv, DeltaVSimulator = snapshot.DeltaVSimulator, Bodies = snapshot.Bodies, Stages = snapshot.Stages,
                 Orbit = new SnapshotOrbit { SemiMajorAxis = low, Eccentricity = 0, Body = planet.Name, Periapsis = low - planet.Radius, Apoapsis = low - planet.Radius, Epoch = ut },
             };

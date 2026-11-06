@@ -63,6 +63,7 @@ namespace ClaudiaKerman.Core.Missions
         public WindowPick WindowPick = WindowPick.None;
         public bool WindowPickNeeded;
         public bool WindowPickUnsaid;
+        public double? WindowOwnDue;
         /// <summary>The Mission is remote: Claudia is at Mission Control, not aboard. A save from before this existed reads as crewed.</summary>
         public bool Remote;
         /// <summary>The Mission is in Auto Mode: the player's Approval is given in advance. A save from before this existed reads as off.</summary>
@@ -231,6 +232,7 @@ namespace ClaudiaKerman.Core.Missions
             }
             if (WindowPickNeeded) values["windowPickNeeded"] = "true";
             if (WindowPickUnsaid) values["windowPickUnsaid"] = "true";
+            if (WindowOwnDue.HasValue) values["windowOwnDue"] = WindowOwnDue.Value.ToString("R", CultureInfo.InvariantCulture);
             foreach (var setting in Settings) values[SettingPrefix + setting.Key] = setting.Value;
             for (var i = 0; i < UnsafeProblems.Count; i++) values[UnsafeProblemPrefix + i.ToString(CultureInfo.InvariantCulture)] = UnsafeProblems[i];
             if (QueuedEntries > 0) values["queuedEntries"] = QueuedEntries.ToString(CultureInfo.InvariantCulture);
@@ -314,6 +316,7 @@ namespace ClaudiaKerman.Core.Missions
                 state.WindowUt = windowUt;
                 state.WindowDeltaV = windowDv;
             }
+            if (double.TryParse(Get(values, "windowOwnDue"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.WindowOwnDue = reading;
             decimal cap;
             if (decimal.TryParse(Get(values, "spendingCap"), NumberStyles.Number, CultureInfo.InvariantCulture, out cap)) state.SpendingCap = cap;
             int number;
