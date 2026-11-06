@@ -26,6 +26,10 @@ namespace ClaudiaKerman.Core.Tools
         public double Isp;
         /// <summary>Whether the predictor opens the craft's stowed chutes (#477); false keeps them stowed.</summary>
         public bool Chutes = true;
+        /// <summary>m/s the burn may cost (#794); 0 or less is "auto": <see cref="DeorbitBurn.AutoMaxDv"/> of <see cref="DeltaVLeft"/>.</summary>
+        public double MaxDv;
+        /// <summary>The delta-v stock reports left, m/s; 0 or less when it can't say.</summary>
+        public double DeltaVLeft;
     }
 
     /// <summary>The burn <see cref="DeorbitBurn.Find"/> chose, in maneuver-node components, and where it lands.</summary>
@@ -58,6 +62,11 @@ namespace ClaudiaKerman.Core.Tools
         public const double EntryPeriapsisShare = 0.3;
         /// <summary>The most normal delta-v the search spends on a target beside the ground track, m/s.</summary>
         public const double MaxNormal = 50;
+        /// <summary>The auto <c>max_dv</c> keeps back the larger of this, m/s, or <see cref="ReserveShare"/> of the delta-v left (#794).</summary>
+        public const double ReserveMin = 50;
+        public const double ReserveShare = 0.1;
+        /// <summary>Burns within accuracy whose cost differs by less than this are a tie, and the earlier wins, m/s.</summary>
+        private const double TieDv = 1;
         private const double G0 = 9.80665;
         private const int Candidates = 4;
         private const int NewtonSteps = 8;
@@ -77,8 +86,48 @@ namespace ClaudiaKerman.Core.Tools
             if (orbit.PeR <= top)
                 return Fail("the periapsis (" + Whole(orbit.PeR - body.Radius) + " m) is already inside " + body.Name
                     + "'s atmosphere: fly reentry");
+            if (ask.MaxDv <= 0 && ask.DeltaVLeft <= 0) return Fail("stock can't say the delta-v left: give max_dv");
             var search = new Search(body, orbit, ask, air, craft, frame);
             return search.Run();
+        }
+
+        /// <summary>"" or why the delta-v left (m/s; 0 or less when stock can't say) won't fly a burn of <paramref name="dv"/> m/s.</summary>
+        public static string ShortOfDv(double dv, double dvLeft)
+        {
+            if (dvLeft > 0 && dvLeft < dv)
+                return "not enough delta-v: the burn needs " + Dv(dv) + " m/s, " + Dv(dvLeft) + " m/s left";
+            return "";
+        }
+
+        /// <summary>The auto <c>max_dv</c>: the delta-v left less the reserve (the larger of 50 m/s or 10% of it), less a powered landing's need.</summary>
+        public static double AutoMaxDv(double dvLeft, double poweredLandingDv)
+        {
+            return dvLeft - Math.Max(ReserveMin, ReserveShare * dvLeft) - Math.Max(0, poweredLandingDv);
+        }
+
+        /// <summary>
+        /// Whether burn <paramref name="a"/> beats <paramref name="b"/> (#794): of burns within <paramref name="accuracyKm"/> the cheaper (the
+        /// earlier on a near tie in delta-v), and any such burn beats one outside it; of burns outside it the smaller error (the earlier on a near tie).
+        /// </summary>
+        internal static bool Better(DeorbitPlan a, DeorbitPlan b, double accuracyKm)
+        {
+            var aIn = a.ErrorKm <= accuracyKm;
+            var bIn = b.ErrorKm <= accuracyKm;
+            if (aIn != bIn) return aIn;
+            if (aIn)
+            {
+                if (a.DeltaV < b.DeltaV - TieDv) return true;
+                if (a.DeltaV > b.DeltaV + TieDv) return false;
+                return a.BurnUt < b.BurnUt;
+            }
+            if (a.ErrorKm < b.ErrorKm - TieKm) return true;
+            if (a.ErrorKm > b.ErrorKm + TieKm) return false;
+            return a.BurnUt < b.BurnUt;
+        }
+
+        private static string Dv(double dv)
+        {
+            return Math.Round(dv, 1).ToString("0.#", CultureInfo.InvariantCulture);
         }
 
         private static DeorbitPlan Fail(string reason)
@@ -123,9 +172,10 @@ namespace ClaudiaKerman.Core.Tools
                 foreach (var ut in Passes(first))
                 {
                     var refined = Refine(ut);
-                    if (refined != null && Better(refined, best)) best = refined;
+                    if (refined != null && Better(refined, best, _ask.AccuracyKm)) best = refined;
                 }
-                if (best.ErrorKm > _ask.AccuracyKm)
+                if (best.ErrorKm <= _ask.AccuracyKm) best.Error = OverBudget(best);
+                else
                     best.Error = "the best burn in the next " + Hours(_latest - _ask.EarliestUt) + " h lands " + Km(best.ErrorKm)
                         + " km from the target, over accuracy_km " + Km(_ask.AccuracyKm)
                         + (best.Normal != 0 && Math.Abs(best.Normal) >= MaxNormal - 1e-6
@@ -134,11 +184,17 @@ namespace ClaudiaKerman.Core.Tools
                 return best;
             }
 
-            private static bool Better(DeorbitPlan a, DeorbitPlan b)
+            /// <summary>Null, or why the burn must not fly: more than the delta-v left, or than max_dv (the auto one when none was given).</summary>
+            private string OverBudget(DeorbitPlan plan)
             {
-                if (a.ErrorKm < b.ErrorKm - TieKm) return true;
-                if (a.ErrorKm > b.ErrorKm + TieKm) return false;
-                return a.BurnUt < b.BurnUt;
+                var lacking = ShortOfDv(plan.DeltaV, _ask.DeltaVLeft);
+                if (lacking != "") return lacking;
+                // Without chutes the craft lands on its engines, and that costs its speed at the ground.
+                var powered = _craft.Chutes.Count == 0 || !_ask.Chutes ? plan.Landing.LandingSpeed : 0;
+                var limit = _ask.MaxDv > 0 ? _ask.MaxDv : AutoMaxDv(_ask.DeltaVLeft, powered);
+                if (plan.DeltaV <= limit) return null;
+                return "the cheapest burn within accuracy_km needs " + Dv(plan.DeltaV) + " m/s (at UT " + Whole(plan.BurnUt) + "), over max_dv "
+                    + Dv(Math.Max(0, limit)) + (_ask.MaxDv > 0 ? "" : " (auto: " + Dv(_ask.DeltaVLeft) + " m/s left, less the reserve and a powered landing)");
             }
 
             /// <summary>

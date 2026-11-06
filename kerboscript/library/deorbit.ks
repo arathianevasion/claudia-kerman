@@ -12,11 +12,11 @@
 
 @lazyglobal off.
 
-//| deorbit(options): from orbit round a body with an atmosphere (Kerbin, Eve, Duna, Laythe...), burns
+//| deorbit(options): from orbit round a body with an atmosphere (Kerbin, Eve, Duna...), burns
 //| once to bring the craft down near a target, e.g. KSC. It chooses the burn itself with the mod's
 //| reentry predictor (the craft's own drag, held retrograde as reentry flies it) and flies it with
 //| exec_node; it fails rather than burn when no burn in max_wait lands within accuracy_km. It does
-//| not fly the descent: call reentry next, in the same sequence.
+//| not fly the descent: call reentry next.
 //| Options:
 //|   target [required]: LATLNG(lat, lng), lexicon("lat", x, "lng", y), or "ksc" (Kerbin only). Aim a
 //|     splashdown offshore of a coast, so a miss lands in the water.
@@ -24,36 +24,36 @@
 //|     burn is at least 4 minutes ahead. Give expected_duration_s that wait.
 //|   accuracy_km [5]: km the predicted landing may be from the target; a worse best burn fails the
 //|     block before any burn, and a flown burn predicted worse reports success false.
+//|   max_dv ["auto"]: m/s the burn may cost; the cheapest burn within accuracy_km is taken. "auto" is the
+//|     delta-v left less 50 m/s or 10%, plus a powered landing's need without chutes; give it if stock
+//|     reports none left.
 //|   separate ["none"]: what to drop once the burn is flown, so only the capsule re-enters: a stage
-//|     number (the decouplers that fire at that stage, as reentry's jettison_stage), or a list of part
-//|     names or tags (or one), as drop_parts. The burn is chosen for the craft that stays (its mass
-//|     and drag; the burn's propellant is taken to go with the parts dropped), and the landing is
-//|     predicted again once they have gone. Give it for a transfer stage that would otherwise ride
-//|     down with the capsule: its drag and mass move the landing.
+//|     number (its decouplers, as reentry's jettison_stage), or a list of part names or tags (or
+//|     one), as drop_parts. The burn is chosen for the craft that stays (its mass and drag; the
+//|     burn's propellant goes with the parts dropped); the landing is predicted again once they have gone. Give it for a transfer stage that would otherwise ride
+//|     down with the capsule.
 //|   max_duration ["auto"]: the wait to the burn plus 900 s.
 //|   plus min_ec_pct, abort_on_part_loss, stage_limit and drop_empty as for every block.
 //| Extra results: burn_ut (UT of the burn; -1 if it never burned), predicted_geo (lexicon lat, lng:
-//| where the craft comes down, predicted from the orbit after the burn (and the separation), or for
-//| the best burn found when it fails over accuracy; empty without a prediction), predicted_error_km
+//| where the craft comes down, predicted after the burn and separation, or for the best burn when
+//| it fails over accuracy; empty without one), predicted_error_km
 //| (km from the target to predicted_geo; -1 without one); dropped (names of the parts separate
 //| dropped); dv_used is the burn's. Succeeds only with a landing predicted within accuracy_km after
 //| the burn. Fails with "target is required", an option value it can't read, "body has no
 //| atmosphere", "ksc is on Kerbin", a craft on the ground, "a maneuver node is already planned:
-//| remove it first", a separate it can't drop ("separate: no part matches <name>", "...has no
-//| decoupler", "...would drop the part running the script", "no decoupler fires at stage <n>"), an
-//| orbit it can't deorbit from (escaping, or a periapsis already in the atmosphere: fly reentry), "the
-//| best burn ... lands <x> km from the target, over accuracy_km", not enough delta-v, or the reasons
-//| exec_node gives (no thrust, out of fuel, an abort; the node is removed); after the burn, with "the
-//| burn is flown, but separate failed: ...", "...the craft is predicted to land <x> km from the
-//| target, over accuracy_km" or "...its landing can't be predicted". The prediction leaves out
-//| parachutes and lift, so expect a few km more.
+//| remove it first", a separate it can't drop ("separate: ..."), an orbit it can't deorbit from
+//| (escaping, or a periapsis already in the atmosphere: fly reentry), "the best burn ... lands <x> km
+//| from the target, over accuracy_km", "the cheapest burn ... over max_dv" (its cost and UT), not
+//| enough delta-v, or the reasons exec_node gives (no thrust, out of fuel, an abort); after the burn, with "the burn is flown, but separate failed: ...", "...the craft is
+//| predicted to land <x> km from the target, over accuracy_km" or "...its landing can't be predicted".
+//| The prediction leaves out parachutes and lift, so expect a few km more.
 //| Once the burn has started (burn_ut over 0), call reentry whatever the result: the craft is coming down.
 //| Tool: stage_performance for the delta-v; it chooses its own burn, so don't plan one with predict_burn or solve_burn.
 //| Example: `local res is deorbit(lexicon("target", "ksc", "separate", 1)). if res:burn_ut > 0 { set res to reentry(). } addons:claudia:report(res).`
 
 // The block's own options and defaults ("required" means the Mission Script must give it).
 function deorbit_defaults {
-  return lexicon("target", "required", "max_wait", "auto", "accuracy_km", 5, "separate", "none").
+  return lexicon("target", "required", "max_wait", "auto", "accuracy_km", 5, "separate", "none", "max_dv", "auto").
 }
 
 // "" or why a separate option value isn't one the block can use: "none", a whole stage number from
@@ -135,6 +135,13 @@ function deorbit_unreadable {
   if not opt:accuracy_km:istype("Scalar") or opt:accuracy_km <= 0 {
     return "accuracy_km must be km above 0, not " + opt:accuracy_km.
   }
+  if opt:max_dv:istype("String") {
+    if opt:max_dv <> "auto" {
+      return "max_dv must be 'auto' or m/s above 0, not '" + opt:max_dv + "'".
+    }
+  } else if not opt:max_dv:istype("Scalar") or opt:max_dv <= 0 {
+    return "max_dv must be 'auto' or m/s above 0, not " + opt:max_dv.
+  }
   return deorbit_separate_unreadable(opt:separate).
 }
 
@@ -168,30 +175,23 @@ function deorbit_max_wait {
 
 // What deorbit asks ADDONS:CLAUDIA:DEORBITBURN: the site, the window (earliest_ut, then max_wait s),
 // the ground's height at the site (m, sea level for water), accuracy_km, the engines' isp (s, for
-// the mass after the burn; 0 if unknown), leave_out and shield_drop (claudia_shield_drop). The search
-// flies the craft without leave_out, and their propellant is the burn's, so isp goes as 0. Pure.
+// the mass after the burn; 0 if unknown), leave_out and shield_drop (claudia_shield_drop), max_dv (a
+// number, or "auto") and dv_left (stock's, 0 if it can't say). The search flies the craft without leave_out,
+// and their propellant is the burn's, so isp goes as 0. Pure.
 function deorbit_query {
-  parameter site, earliest_ut, max_wait, ground_alt, accuracy_km, isp, leave_out, shield_drop.
+  parameter site, earliest_ut, max_wait, ground_alt, accuracy_km, isp, leave_out, shield_drop, max_dv, dv_left.
   if leave_out:length > 0 {
     set isp to 0.
   }
   return lexicon("lat", site:lat, "lng", site:lng, "earliest_ut", earliest_ut, "max_wait", max_wait,
-    "ground_alt", max(0, ground_alt), "accuracy_km", accuracy_km, "isp", isp, "leave_out", leave_out, "shield_drop", shield_drop).
+    "ground_alt", max(0, ground_alt), "accuracy_km", accuracy_km, "isp", isp, "leave_out", leave_out, "shield_drop", shield_drop,
+    "max_dv", max_dv, "dv_left", dv_left).
 }
 
 // A predicted landing (a block call's result with lat and lng) as the block reports it.
 function deorbit_geo {
   parameter landing.
   return claudia_geo(landing).
-}
-
-// "" or why the delta-v left (dv_left m/s; 0 or less when stock can't say) won't fly a burn of dv m/s.
-function deorbit_short_of_dv {
-  parameter dv, dv_left.
-  if dv_left > 0 and dv_left < dv {
-    return "not enough delta-v: the burn needs " + round(dv, 1) + " m/s, " + round(dv_left, 1) + " m/s left".
-  }
-  return "".
 }
 
 function deorbit {
@@ -233,17 +233,13 @@ function deorbit {
   local ground_alt is body:geopositionlatlng(site:lat, site:lng):terrainheight.
   local max_wait is deorbit_max_wait(opt:max_wait, body:rotationperiod).
   // The burn search is the mod's reentry predictor, a block-internal call (ADR 0007): inline here.
-  local found is addons:claudia:deorbitburn(deorbit_query(site, time:seconds + deorbit_lead_s(), max_wait, ground_alt, opt:accuracy_km, claudia_engine_isp(), claudia_drop_uids(separation), claudia_shield_drop(ship:parts, claudia_drop_uids(separation)))).
+  local found is addons:claudia:deorbitburn(deorbit_query(site, time:seconds + deorbit_lead_s(), max_wait, ground_alt, opt:accuracy_km, claudia_engine_isp(), claudia_drop_uids(separation), claudia_shield_drop(ship:parts, claudia_drop_uids(separation)), opt:max_dv, ship:deltav:current)).
   if found:haskey("lat") {
     set extra:predicted_geo to deorbit_geo(found).
     set extra:predicted_error_km to round(found:error_km, 2).
   }
   if found:error <> "" {
     return claudia_finish(ctx, false, found:error, extra).
-  }
-  local short is deorbit_short_of_dv(found:dv, ship:deltav:current).
-  if short <> "" {
-    return claudia_finish(ctx, false, short, extra).
   }
   addons:claudia:shipsystems("entry").
   if opt:max_duration:istype("String") {
