@@ -1747,7 +1747,6 @@ namespace ClaudiaKerman.Core.Missions
         {
             var wrong = new List<string>();
             if (findings.Crossings.Count > 0) wrong.Add("a Telemetry Check is certain to cross by the plan's own figures");
-            if (findings.ShortDuration != null) wrong.Add("the planned duration leaves out the wait to the first burn");
             if (findings.BiomeMiss != null) wrong.Add(MissionPrompts.GoalBiomeMissed(findings.BiomeMiss));
             return string.Join(" and ", wrong.ToArray());
         }
@@ -1758,7 +1757,7 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         private PlanFindings PlanFigures(Mission mission, SequencePlan plan)
         {
-            var findings = new PlanFindings { ExpectedDeltaV = plan.ExpectedDeltaV, ExpectedDurationSeconds = plan.ExpectedDurationSeconds };
+            var findings = new PlanFindings { ExpectedDeltaV = plan.ExpectedDeltaV };
             if (plan.Manual) return findings;
             // #699: a landing aimed at another biome than the Mission Goal names, for whichever vessel lands.
             var craft = FliesCraft(mission, plan.Vessel);
@@ -1769,13 +1768,13 @@ namespace ClaudiaKerman.Core.Missions
             var start = LiveReadings.DeltaVLeftOf(snapshot);
             findings.StartDeltaV = start ?? 0;
             findings.Crossings = PredictedCrossings.Find(plan.TelemetryChecks, plan.ExpectedDeltaV, start);
-            findings.ShortDuration = BurnPoints.ShortOf(plan, snapshot, _ut, _body);
-            if (findings.ShortDuration != null && findings.ShortDuration.DefaultAim)
+            // #830: a duration short of the first burn (#696) is raised by the mod itself, on every path (the landing target default's wait, #790, was the first):
+            // no request back to Claudia, no prompt text about it; plans.jsonl logs the raise.
+            var shortOf = BurnPoints.ShortOf(plan, snapshot, _ut, _body);
+            if (shortOf != null)
             {
-                // The wait is the landing target default's (#790): covered here, with no second request and no prompt text about it.
-                plan.ExpectedDurationSeconds = findings.ShortDuration.MinimumDurationSeconds;
-                findings.ExpectedDurationSeconds = plan.ExpectedDurationSeconds;
-                findings.ShortDuration = null;
+                findings.DurationRaised = MissionPrompts.DurationRaisedWarning(shortOf, plan.ExpectedDurationSeconds);
+                plan.ExpectedDurationSeconds = shortOf.MinimumDurationSeconds;
             }
             return findings;
         }

@@ -21,10 +21,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The delta-v left the plan starts from (0 when unreadable) and its expected_delta_v, for the crossings' text.</summary>
         public double StartDeltaV;
         public double ExpectedDeltaV;
-        /// <summary>The first burn expected_duration_s doesn't cover (#696); null when it does or none is known.</summary>
-        public BurnWait ShortDuration;
-        /// <summary>The plan's expected_duration_s, for the short duration's text.</summary>
-        public double ExpectedDurationSeconds;
+        /// <summary>#830: what plans.jsonl logs when the mod raised a too-short expected_duration_s (#696) to cover the first burn itself; null when it didn't.</summary>
+        public string DurationRaised;
         /// <summary>A landing aimed at another biome than the Mission Goal names (#699); null when none is.</summary>
         public GoalBiomeMiss BiomeMiss;
 
@@ -37,7 +35,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>Some figure of the plan's own is wrong by the snapshot, or its landing misses the goal's biome.</summary>
         public bool FiguresWrong
         {
-            get { return Crossings.Count > 0 || ShortDuration != null || BiomeMiss != null; }
+            get { return Crossings.Count > 0 || BiomeMiss != null; }
         }
 
         /// <summary>The figures found wrong, without the Script Check's problems: what a correction for them alone would carry.</summary>
@@ -52,7 +50,7 @@ namespace ClaudiaKerman.Core.Missions
         public IList<string> Warnings()
         {
             var warnings = Crossings.Select(c => MissionPrompts.PredictedCrossingWarning(c, StartDeltaV, ExpectedDeltaV)).ToList();
-            if (ShortDuration != null) warnings.Add(MissionPrompts.ShortDurationWarning(ShortDuration, ExpectedDurationSeconds));
+            if (DurationRaised != null) warnings.Add(DurationRaised);
             if (BiomeMiss != null) warnings.Add("landing biome: " + MissionPrompts.GoalBiomeMissed(BiomeMiss));
             return warnings;
         }

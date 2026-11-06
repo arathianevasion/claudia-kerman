@@ -501,7 +501,6 @@ namespace ClaudiaKerman.Core.Missions
                 parts.Add("Its own figures are certain to cross these Telemetry Checks (delta-v left starts at " + Metres(findings.StartDeltaV)
                     + ", expected_delta_v is " + Metres(findings.ExpectedDeltaV) + "):\n" + string.Join("\n", lines.ToArray()));
             }
-            if (findings.ShortDuration != null) parts.Add(ShortDuration(findings.ShortDuration, findings.ExpectedDurationSeconds));
             if (findings.BiomeMiss != null)
                 parts.Add(char.ToUpperInvariant(GoalBiomeMissed(findings.BiomeMiss)[0]) + GoalBiomeMissed(findings.BiomeMiss).Substring(1) + ". Aim it at "
                     + findings.BiomeMiss.Goal.Biome + " (find_landing_site's biome, land's target biome), or keep it and say why in the plan's why.");
@@ -514,20 +513,11 @@ namespace ClaudiaKerman.Core.Missions
         {
             var fixes = new List<string>();
             if (findings.Crossings.Count > 0) fixes.Add("each delta-v left threshold set below what the plan itself leaves");
-            if (findings.ShortDuration != null) fixes.Add("expected_duration_s at least the figure named below");
             if (findings.BiomeMiss != null) fixes.Add("land aimed at " + findings.BiomeMiss.Goal.Biome + " (or why it lands elsewhere in why)");
             var with = string.Join(" and ", fixes.ToArray());
             if (findings.ScriptFailed) return fixes.Count == 0 ? RewriteNotice : RewriteNotice + " Also send it with " + with + ", or change the plan.";
             return "Send the Sequence Plan again with " + with + " (or change the plan): reply with kind \"sequence_plan\" and sequence_plan filled in, "
                 + "with the complete Mission Script. The mod runs it only after the player's Approval.";
-        }
-
-        /// <summary>#696: the plan's expected_duration_s leaves out the wait to its first burn, which the runaway hard stop counts.</summary>
-        private static string ShortDuration(BurnWait wait, double planned)
-        {
-            return "Its expected_duration_s is " + Seconds(planned) + ", but " + wait.Block + " waits about " + Seconds(wait.LongestWaitSeconds) + " (game time, from now) for "
-                + wait.Point + ", then burns about " + Seconds(wait.BurnSeconds) + ". The runaway hard stop counts waits in expected_duration_s: "
-                + "set it to at least " + Seconds(wait.MinimumDurationSeconds) + ".";
         }
 
         /// <summary>#696: the Debrief's event for a run the hard stop cut short mid-warp (<see cref="BurnPoints.WarpCutShort"/>).</summary>
@@ -537,11 +527,11 @@ namespace ClaudiaKerman.Core.Missions
                 + " after the run started; an expected_duration_s of at least " + Seconds(cut.MinimumDurationSeconds) + " would have covered the wait and the burn";
         }
 
-        /// <summary>What a duration short of the first burn is logged as in plans.jsonl when the plan is offered anyway.</summary>
-        public static string ShortDurationWarning(BurnWait wait, double planned)
+        /// <summary>#830: what the mod raising a duration short of the first burn is logged as in plans.jsonl.</summary>
+        public static string DurationRaisedWarning(BurnWait wait, double planned)
         {
-            return "duration short of first burn: expected_duration_s " + Seconds(planned) + ", " + wait.Block + " waits " + Seconds(wait.LongestWaitSeconds)
-                + " for " + wait.Point + "; needs at least " + Seconds(wait.MinimumDurationSeconds);
+            return "duration raised by the mod: expected_duration_s " + Seconds(planned) + " to " + Seconds(wait.MinimumDurationSeconds) + ", " + wait.Block + " waits "
+                + Seconds(wait.LongestWaitSeconds) + " for " + wait.Point;
         }
 
         private static string Seconds(double value)
