@@ -525,7 +525,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>#696: the plan's expected_duration_s leaves out the wait to its first burn, which the runaway hard stop counts.</summary>
         private static string ShortDuration(BurnWait wait, double planned)
         {
-            return "Its expected_duration_s is " + Seconds(planned) + ", but " + wait.Block + " waits about " + Seconds(wait.WaitSeconds) + " (game time, from now) for "
+            return "Its expected_duration_s is " + Seconds(planned) + ", but " + wait.Block + " waits about " + Seconds(wait.LongestWaitSeconds) + " (game time, from now) for "
                 + wait.Point + ", then burns about " + Seconds(wait.BurnSeconds) + ". The runaway hard stop counts waits in expected_duration_s: "
                 + "set it to at least " + Seconds(wait.MinimumDurationSeconds) + ".";
         }
@@ -540,7 +540,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>What a duration short of the first burn is logged as in plans.jsonl when the plan is offered anyway.</summary>
         public static string ShortDurationWarning(BurnWait wait, double planned)
         {
-            return "duration short of first burn: expected_duration_s " + Seconds(planned) + ", " + wait.Block + " waits " + Seconds(wait.WaitSeconds)
+            return "duration short of first burn: expected_duration_s " + Seconds(planned) + ", " + wait.Block + " waits " + Seconds(wait.LongestWaitSeconds)
                 + " for " + wait.Point + "; needs at least " + Seconds(wait.MinimumDurationSeconds);
         }
 
@@ -730,7 +730,7 @@ namespace ClaudiaKerman.Core.Missions
                 text += "TWR in vacuum at the surface gravity of each body the Mission Goal names, per stage: " + json.EndArray() + "\n";
             }
             var transfers = "";
-            foreach (var body in bodies)
+            foreach (var body in TransferTargets(snapshot, bodies))
             {
                 var input = "{\"target\":" + PlanningJson.Quote(body.Name) + ",\"target_pe\":" + ArrivalPe(body).ToString(CultureInfo.InvariantCulture) + "}";
                 var transfer = TransferRow(tools, snapshot, input);
@@ -740,6 +740,24 @@ namespace ClaudiaKerman.Core.Missions
                 text += "Transfers to each body the Mission Goal names, as plan_transfer would give them from this Game Snapshot (JSON data). A tool whose figures are here needs no call.\n" + transfers;
             if (onPad && !string.IsNullOrEmpty(craftCheckAscent)) text += "The Craft Check's plan_ascent " + craftCheckAscent + "\n";
             return text;
+        }
+
+        /// <summary>
+        /// #783: the bodies the stage table's plan_transfer rows are for: each body the Mission Goal names, and for one that is a moon
+        /// of another planet (Ike from Kerbin) the planet the craft's planet transfers to (Duna), once, after the named bodies.
+        /// </summary>
+        private static List<SnapshotBody> TransferTargets(GameSnapshot snapshot, List<SnapshotBody> bodies)
+        {
+            var targets = new List<SnapshotBody>(bodies);
+            var system = new BodySystem(snapshot.Bodies);
+            foreach (var named in bodies)
+            {
+                if (TransferWindows.IsMoonTransfer(snapshot, named.Name) || TransferWindows.IsPlanetTransfer(snapshot, named.Name)) continue;
+                var parent = system.Parent(named);
+                while (parent != null && !TransferWindows.IsPlanetTransfer(snapshot, parent.Name)) parent = system.Parent(parent);
+                if (parent != null && !targets.Any(t => t.Name == parent.Name)) targets.Add(parent);
+            }
+            return targets;
         }
 
         /// <summary>

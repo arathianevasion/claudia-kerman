@@ -106,7 +106,7 @@ namespace ClaudiaKerman.Core.Missions
             var snapshot = MissionVesselSnapshot(mission);
             // The block's own wait takes the window the Mission does, the player's pick included (#686).
             if (snapshot != null) snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
-            var wait = BurnPoints.First(plan.Script, snapshot, _ut, plan.ExpectedDeltaV);
+            var wait = BurnPoints.First(plan.Script, snapshot, _ut, plan.ExpectedDeltaV, _body);
             var due = BurnPoints.DueTime(wait, _ut);
             if (!due.HasValue) return;
             if (plan.DueTimeUt.HasValue && plan.DueTimeUt.Value >= due.Value) return;
