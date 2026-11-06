@@ -199,7 +199,8 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>A pair of signed numbers in a leg's words, "(3.1, 24.6)": a site's latitude and longitude.</summary>
         private static readonly Regex LatLng = new Regex(@"\(\s*(-?\d+(?:\.\d+)?)\s*°?\s*,\s*-?\d+(?:\.\d+)?\s*°?\s*\)");
         /// <summary>A pole in a leg's or goal's words (#806); "non-polar" and "pole-mounted" are not.</summary>
-        private static readonly Regex PoleWord = new Regex(@"(?<![\w-])(poles?|polar)(?![\w-])", RegexOptions.IgnoreCase);
+        private static readonly Regex PoleWord = new Regex(@"(?<!\w)(?<!non-)(poles?|polar)(?!\w)(?!-mounted)", RegexOptions.IgnoreCase);
+        private static readonly char[] ClauseEnds = { ',', '.', ';' };
 
         /// <summary>
         /// The direction an arrival on <paramref name="orbit"/> comes in from: a hyperbola's incoming asymptote, the line any plane cheap to reach contains
@@ -307,7 +308,8 @@ namespace ClaudiaKerman.Core.Tools
                     if (at != null && at != arrival) return MoonOf(system, arrival, at);
                     return OfSite(snapshot, arrival, leg);
                 }
-                if (NamesPole(snapshot, arrival, SequenceWords.Of(leg))) return AtLatitude(arrival, 90);
+                // A leg with no landing counts only for a pole; the biome map still says whether its biome is one.
+                if (WordsLatitude(snapshot, arrival, SequenceWords.Of(leg)) == 90) return AtLatitude(arrival, 90);
                 // The leg in hand's trip is this one.
                 if (i == 0) continue;
                 if (SequenceWords.Trip.IsMatch(words) && !SequenceWords.ReturnHome.IsMatch(words))
@@ -332,8 +334,9 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// Whether <paramref name="words"/> put a pole on the arrival body: a pole word whose nearest named body is this one, or which names no body at all. It is a name match, for
-        /// what words alone can say; it can't read a negation ("not polar") beyond "non-polar".
+        /// Whether <paramref name="words"/> put a pole on the arrival body. A pole word belongs to the body its clause names, the nearest one, and home only if the clause names no other
+        /// ("Launch from Kerbin to a polar orbit of the Mun"); with none there, the last body named before it, else the first after ("Fly to the Mun, land at the north pole, return to Kerbin");
+        /// with none at all, to this arrival. It is a name match, for what words alone can say: it can't read a negation ("not polar") beyond "non-polar".
         /// </summary>
         private static bool NamesPole(GameSnapshot snapshot, SnapshotBody arrival, string words)
         {
@@ -341,24 +344,37 @@ namespace ClaudiaKerman.Core.Tools
                 .SelectMany(b => Regex.Matches(words, @"\b" + Regex.Escape(b.Name) + @"\b", RegexOptions.IgnoreCase).Cast<Match>().Select(m => new { Body = b, m.Index })).ToList();
             foreach (Match pole in PoleWord.Matches(words))
             {
-                if (named.Count == 0) return true;
-                if (named.OrderBy(n => Math.Abs(n.Index - pole.Index)).First().Body == arrival) return true;
+                var start = words.LastIndexOfAny(ClauseEnds, pole.Index) + 1;
+                var end = words.IndexOfAny(ClauseEnds, pole.Index);
+                if (end < 0) end = words.Length;
+                var clause = named.Where(n => n.Index >= start && n.Index < end).ToList();
+                var away = clause.Where(n => n.Body.Name != CraftCheckFlow.HomeBody).ToList();
+                var owner = (away.Count > 0 ? away : clause).OrderBy(n => Math.Abs(n.Index - pole.Index)).FirstOrDefault()
+                    ?? named.Where(n => n.Index < pole.Index).OrderByDescending(n => n.Index).FirstOrDefault()
+                    ?? named.OrderBy(n => n.Index).FirstOrDefault();
+                if (owner == null || owner.Body == arrival) return true;
             }
             return false;
+        }
+
+        /// <summary>The biome of the arrival body <paramref name="words"/> name, the longest name first; null for none.</summary>
+        private static string BiomeNamed(SnapshotBody arrival, string words)
+        {
+            return arrival.BiomeNames.Where(n => n.Trim().Length > 0).OrderByDescending(n => n.Length)
+                .FirstOrDefault(n => Regex.IsMatch(words, @"\b" + Regex.Escape(n) + @"\b", RegexOptions.IgnoreCase));
         }
 
         /// <summary>A leg's own words' latitude: the biome it names, as the game's map has it; else a pole in its words; else null.</summary>
         private static double? WordsLatitude(GameSnapshot snapshot, SnapshotBody arrival, string words)
         {
-            var named = arrival.BiomeNames.Where(n => n.Trim().Length > 0).OrderByDescending(n => n.Length)
-                .FirstOrDefault(n => Regex.IsMatch(words, @"\b" + Regex.Escape(n) + @"\b", RegexOptions.IgnoreCase));
-            return BiomeLatitude(snapshot, arrival, named) ?? (NamesPole(snapshot, arrival, words) ? 90 : (double?)null);
+            return BiomeLatitude(snapshot, arrival, BiomeNamed(arrival, words)) ?? (NamesPole(snapshot, arrival, words) ? 90 : (double?)null);
         }
 
-        /// <summary>The Mission Goal's latitude for this arrival: the biome it names on this body, or a pole; else null.</summary>
+        /// <summary>The Mission Goal's latitude for this arrival: the biome it names on this body (a goal naming no body means this one), or a pole; else null.</summary>
         private static double? GoalLatitude(GameSnapshot snapshot, SnapshotBody arrival)
         {
             var goal = snapshot.MissionGoal ?? "";
+            if (MissionPrompts.GoalBodies(snapshot, goal).Count == 0) return WordsLatitude(snapshot, arrival, goal);
             var biome = MissionPrompts.GoalBiomes(snapshot, goal).FirstOrDefault(g => g.Body == arrival.Name);
             return BiomeLatitude(snapshot, arrival, biome == null ? null : biome.Biome) ?? (NamesPole(snapshot, arrival, goal) ? 90 : (double?)null);
         }

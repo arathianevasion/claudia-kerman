@@ -111,6 +111,37 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(7393 - route * 1.15, 0, 100);
         }
 
+        [Fact]
+        public void Duna_s_row_covers_the_highest_periapsis_it_was_fitted_to()
+        {
+            Assert.True(Polar("Duna").DeltaV >= Added("Kerbin", 100000, "Duna", 180000, 0));
+        }
+
+        [Theory]
+        [InlineData("Fly to the Mun, land at the north pole, return to Kerbin", "Land on the Mun")]
+        [InlineData("Launch from Kerbin to a polar orbit of the Mun", "Capture at the Mun")]
+        [InlineData("Land at the Mun's north-pole", "Land on the Mun")]
+        [InlineData("Land at the north pole", "Land")]
+        public void Natural_goals_at_a_pole_are_read(string goal, string leg)
+        {
+            Assert.Equal(90, new Scene(goal, "Transfer to the Mun", leg).Pick().Inc);
+        }
+
+        [Fact]
+        public void A_biome_only_goal_is_read_from_the_map_for_the_arrival_body()
+        {
+            Assert.Equal(90, new Scene("Land in Ice Caps", "Transfer to the Mun", "Land").WithBiomeMap().Pick().Inc);
+            Assert.InRange(new Scene("Land in Twin Craters", "Transfer to the Mun", "Land").WithBiomeMap().Pick().Inc, 27, 33);
+        }
+
+        [Fact]
+        public void The_map_overrules_a_polar_name_on_a_leg_with_no_landing_too()
+        {
+            var scene = new Scene("", "Transfer to the Mun", "Capture over Polar Lowlands");
+            scene.Snapshot.BiomeLatitudesOf = body => BiomeLatitudes.Survey((lat, lng) => Math.Abs(lat) >= 20 && Math.Abs(lat) <= 40 ? "Polar Lowlands" : "Midlands");
+            Assert.Null(scene.Pick());
+        }
+
         // ---- plane "auto" at a pole or a biome ----
 
         private sealed class Scene
