@@ -386,7 +386,7 @@ namespace ClaudiaKerman.Core.Missions
             }
 
             // The player picks the Transfer Window of a transfer between bodies with the same parent (#686); no request is spent without one.
-            var windows = OfferFor(goal);
+            var windows = OfferFor(goal, _snapshot);
             var window = WindowChoice.Held(start.Window, windows);
             if (windows.Needed && window.IsNone)
             {
@@ -434,6 +434,8 @@ namespace ClaudiaKerman.Core.Missions
             // Raw stream dumps are a debug tool: on with debug_tools = true in the player config.
             if (_config.DebugTools) mission.Dump = new FileStreamDump(Path.Combine(mission.Folder, "stream-dumps"));
             _mission = mission;
+            // The form's goal is spent: no offer is worked out for it any more.
+            _form = null;
             SaveSetupAsDefaults(start);
             Note(LogKind.Player, "Mission Goal: " + goal);
             TakeTarget(mission, target);
@@ -515,7 +517,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             _pendingStart = null;
             _startRefusal = "";
-            var windows = OfferFor((run.Goal ?? "").Trim());
+            var windows = OfferFor((run.Goal ?? "").Trim(), _snapshot);
             _craftCheck.Run(run.Goal, run.Model, _snapshot, run.SpendingCap, run.Remote, ChooseTarget(run.Goal, run.Target).Target, windows.RowFor(run.Window));
         }
 
@@ -2322,7 +2324,7 @@ namespace ClaudiaKerman.Core.Missions
             view.StartForm.Refusal = _startRefusal;
             view.StartForm.Targets = CurrentTargetFacts();
             // Worked out only for a goal the form has pinned, and only while it can start: a search is not for every keystroke or frame.
-            if (view.StartForm.CanStart && _form != null) view.StartForm.Windows = OfferFor((_form.Goal ?? "").Trim());
+            if (view.StartForm.CanStart && _form != null) view.StartForm.Windows = OfferFor((_form.Goal ?? "").Trim(), _snapshot);
             var formWindow = _form == null ? WindowPick.None : WindowChoice.Held(_form.Window, view.StartForm.Windows);
             view.StartForm.WindowPickMissing = view.StartForm.Windows.Needed && formWindow.IsNone;
             _craftCheck.Populate(view.CraftCheck, _snapshot, _form == null ? null : _form.Goal,
@@ -2418,7 +2420,7 @@ namespace ClaudiaKerman.Core.Missions
                 view.PlanDeclined = mission.Declined;
                 view.WindowPick = mission.WindowPick;
                 view.WindowPickNeeded = WindowPickMissing(mission);
-                if (mission.Stage == MissionStage.AwaitingPlanApproval && !mission.Declined) view.Windows = OfferFor(PlanGoal(mission));
+                view.Windows = MissionOffer(mission);
                 view.TargetNeeded = TargetNeeded(mission);
                 view.CanChangeTarget = CanChangeTarget;
                 if (mission.Stage == MissionStage.ManualControl)

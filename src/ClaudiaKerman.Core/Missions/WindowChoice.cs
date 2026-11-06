@@ -69,7 +69,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>Whether the Delta-v Map's leg <paramref name="id"/> is this window's trip.</summary>
         internal bool Budgets(string id)
         {
-            return id == "transfer:" + Body || id == "transfer:" + From + ">" + Body || id == "return:" + From;
+            return id == "transfer:" + Body || id == "transfer:" + From + ">" + Body || (Body == CraftCheckFlow.HomeBody && id == "return:" + From);
         }
     }
 
@@ -109,8 +109,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>What Start and Approval say when the pick is missing.</summary>
         public const string PickFirst = "Pick a Transfer Window first: Soonest or Optimal.";
 
-        /// <summary>A rework at most this often in game time, s, so a row's date and wait stay about right while the player reads them.</summary>
-        private const double ReworkEveryS = 3600;
+        /// <summary>A rework at most this often in game time, s (a Kerbin day), so a row's date and wait stay about right while the player reads them.</summary>
+        private const double ReworkEveryS = 21600;
 
         /// <summary><paramref name="pick"/> when it is a pick from <paramref name="offer"/>; otherwise <see cref="WindowPick.None"/>.</summary>
         public static WindowPick Held(WindowPick pick, WindowOffer offer)
@@ -137,10 +137,20 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>What the offer depends on, so it is worked out again only when one of these moves: one search per change, not per frame.</summary>
         internal static string Key(GameSnapshot snapshot, string goal, int marginPercent, double now)
         {
-            var dv = snapshot.Stages.Sum(s => s.DeltaVVac);
             var orbit = snapshot.Orbit;
-            return (goal ?? "") + "|" + snapshot.Body + "|" + snapshot.Situation + "|" + (orbit == null ? "" : orbit.Body) + "|" + marginPercent
-                + "|" + Math.Round(dv / 10).ToString(CultureInfo.InvariantCulture) + "|" + Math.Floor(now / ReworkEveryS).ToString(CultureInfo.InvariantCulture);
+            return (goal ?? "") + "|" + snapshot.Craft.VesselId + "|" + snapshot.Body + "|" + snapshot.Situation + "|" + (orbit == null ? "" : orbit.Body + ":" + Whole(orbit.SemiMajorAxis / 1000)) + "|" + marginPercent
+                + "|" + Whole(snapshot.Stages.Sum(s => s.DeltaVVac) / 10) + "|" + Whole(snapshot.Stages.Sum(s => s.ThrustVacKn)) + "|" + Whole(Period(now));
+        }
+
+        /// <summary>Which rework period <paramref name="now"/> is in.</summary>
+        internal static double Period(double now)
+        {
+            return Math.Floor(now / ReworkEveryS);
+        }
+
+        private static string Whole(double value)
+        {
+            return Math.Round(value).ToString(CultureInfo.InvariantCulture);
         }
 
         /// <summary>The offer for <paramref name="goal"/> from <paramref name="now"/>, from the same search the Mission request's plan_transfer rows make.</summary>

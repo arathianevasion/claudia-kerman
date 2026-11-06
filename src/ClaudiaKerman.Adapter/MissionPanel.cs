@@ -137,6 +137,7 @@ namespace ClaudiaKerman.Adapter
                 _editingGoal = false;
                 _targetPick = TargetPick.Auto;
                 _windowPick = WindowPick.None;
+                _reportedGoal = null;
                 _choosingTarget = false;
             }
             var settingUp = _view.StartForm.CanStart;
@@ -328,13 +329,15 @@ namespace ClaudiaKerman.Adapter
         private void DrawWindowChoice()
         {
             var settingUp = _view.StartForm.CanStart;
+            if (settingUp && _goal.Length == 0) return;
             var offer = settingUp ? _view.StartForm.Windows : _view.Windows;
             if (offer.Problem.Length > 0) GUILayout.Label(offer.Problem, ClaudiaSkin.Muted);
             if (!offer.Needed) return;
             var picked = settingUp ? WindowChoice.Held(_windowPick, offer) : _view.WindowPickNeeded ? WindowPick.None : WindowChoice.Held(_view.WindowPick, offer);
             ClaudiaSkin.BeginCard();
             GUILayout.Label(offer.Caption, ClaudiaSkin.Secondary);
-            GUI.enabled = settingUp || !_view.Busy;
+            // Not while a check runs for the pick it was given (Start goes on from it), a request is out, or there is no link to answer on.
+            GUI.enabled = settingUp ? _view.CraftCheck.State != CraftCheckState.Running : !_view.Busy && !_view.Blackout;
             foreach (var row in offer.Rows)
             {
                 GUILayout.BeginHorizontal();

@@ -22,23 +22,29 @@ namespace ClaudiaKerman.Core.Missions
             public bool WindowPickUnsaid;
         }
 
-        /// <summary>The offer last worked out, what it was worked for, and the snapshot and goal it last answered.</summary>
+        /// <summary>The offer last worked out, what it was worked for, and the snapshot, goal and rework period it last answered.</summary>
         private WindowOffer _offer;
         private string _offerKey;
         private GameSnapshot _offerFrom;
         private string _offerGoal;
+        private double _offerPeriod;
 
-        /// <summary>The windows on offer for <paramref name="goal"/>: one object until what it depends on moves, so the view can ask on every rebuild.</summary>
-        private WindowOffer OfferFor(string goal)
+        /// <summary>
+        /// The windows on offer for <paramref name="goal"/> from <paramref name="snapshot"/>: one object until what it depends on moves, so
+        /// the view can ask on every rebuild. The start form asks of the craft it checks; a Mission of its own craft (<see cref="MissionVesselSnapshot"/>).
+        /// </summary>
+        private WindowOffer OfferFor(string goal, GameSnapshot snapshot)
         {
-            if (_snapshot == null) return WindowOffer.None;
-            if (_offer != null && ReferenceEquals(_offerFrom, _snapshot) && _offerGoal == goal) return _offer;
-            var now = Math.Max(_ut, _snapshot.Ut);
-            var key = WindowChoice.Key(_snapshot, goal, _config.CraftCheckMarginPercent, now);
-            if (_offer == null || key != _offerKey) _offer = WindowChoice.Work(_snapshot, goal, _config.CraftCheckMarginPercent, now);
+            if (snapshot == null) return WindowOffer.None;
+            var now = Math.Max(_ut, snapshot.Ut);
+            var period = WindowChoice.Period(now);
+            if (_offer != null && ReferenceEquals(_offerFrom, snapshot) && _offerGoal == goal && _offerPeriod == period) return _offer;
+            var key = WindowChoice.Key(snapshot, goal, _config.CraftCheckMarginPercent, now);
+            if (_offer == null || key != _offerKey) _offer = WindowChoice.Work(snapshot, goal, _config.CraftCheckMarginPercent, now);
             _offerKey = key;
-            _offerFrom = _snapshot;
+            _offerFrom = snapshot;
             _offerGoal = goal;
+            _offerPeriod = period;
             return _offer;
         }
 
@@ -50,33 +56,55 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// A Mission Plan is offered: the windows are worked out again for the craft as it is. The first one carries the start form's
-        /// pick; any other waits for a fresh one.
+        /// pick; any other waits for a fresh one. With the player away from the craft it can't be worked out yet, so a Mission that has
+        /// had a pick waits for them to come back; one that never had one has no such transfer.
         /// </summary>
         private void AskForWindow(Mission mission, bool first)
         {
             _offer = null;
-            var offer = OfferFor(PlanGoal(mission));
+            mission.WindowPickUnsaid = false;
+            var snapshot = MissionVesselSnapshot(mission);
+            if (snapshot == null)
+            {
+                mission.WindowPickNeeded = !first && !mission.WindowPick.IsNone;
+                return;
+            }
+            var offer = OfferFor(PlanGoal(mission), snapshot);
             mission.WindowPickNeeded = offer.Needed && !(first && !WindowChoice.Held(mission.WindowPick, offer).IsNone);
         }
 
         /// <summary>The Mission Plan in hand can't be approved yet: it waits for the player's pick, under Auto Mode too.</summary>
         private bool WindowPickMissing(Mission mission)
         {
-            return mission.WindowPickNeeded && mission.Stage == MissionStage.AwaitingPlanApproval && !mission.Declined && OfferFor(PlanGoal(mission)).Needed;
+            if (!mission.WindowPickNeeded || mission.Stage != MissionStage.AwaitingPlanApproval || mission.Declined) return false;
+            var snapshot = MissionVesselSnapshot(mission);
+            return snapshot == null || OfferFor(PlanGoal(mission), snapshot).Needed;
         }
 
-        /// <summary>The player pressed a row of a Mission Plan's choice: never while a request is out, and it can change until Approval.</summary>
+        /// <summary>The Mission Plan in hand offers the choice: a revised one waiting for a pick, or picked and not yet approved. The first carries its pick from the form: after Start only a revision changes it.</summary>
+        private bool WindowChoiceOpen(Mission mission)
+        {
+            return (mission.WindowPickNeeded || mission.WindowPickUnsaid) && mission.Stage == MissionStage.AwaitingPlanApproval && !mission.Declined;
+        }
+
+        /// <summary>The windows the Mission's view shows; none unless the plan in hand offers the choice.</summary>
+        private WindowOffer MissionOffer(Mission mission)
+        {
+            return WindowChoiceOpen(mission) ? OfferFor(PlanGoal(mission), MissionVesselSnapshot(mission)) : WindowOffer.None;
+        }
+
+        /// <summary>The player pressed a row of a revised Mission Plan's choice: never while a request is out, and it can change until Approval.</summary>
         private void WindowChosen(WindowKind kind)
         {
             var mission = _mission;
-            if (!CanAnswerPlan || mission.Stage != MissionStage.AwaitingPlanApproval || mission.Declined) return;
-            var offer = OfferFor(PlanGoal(mission));
+            if (!CanAnswerPlan || !WindowChoiceOpen(mission)) return;
+            var offer = MissionOffer(mission);
             if (!offer.Needed) return;
             mission.WindowPick = new WindowPick(offer.Body, kind);
             mission.WindowPickNeeded = false;
             mission.WindowPickUnsaid = true;
             mission.ConfirmPrompt = null;
-            Note(LogKind.Player,"Transfer Window to " + offer.Body + ": " + kind + ".");
+            Note(LogKind.Player, "Transfer Window to " + offer.Body + ": " + kind + ".");
             Event(mission, "window_picked", mission.WindowPick.Key);
         }
 

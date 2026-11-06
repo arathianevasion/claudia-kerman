@@ -291,6 +291,115 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(before, mission.View.WindowPick.Key);
         }
 
+        [Fact]
+        public void TheFirstPlanCarriesThePickAndOffersNoChoiceButARevisionMayChangeItUntilApproval()
+        {
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), DunaPlan()));
+            ToMissionPlan(mission, Duna(WindowKind.Soonest));
+            Assert.False(mission.View.Windows.Needed);
+            mission.Send(new ChooseWindow(WindowKind.Optimal));
+            Assert.Equal("Duna:Soonest", mission.View.WindowPick.Key);
+
+            ToRevisedPlan(mission);
+            mission.Send(new ChooseWindow(WindowKind.Optimal));
+            mission.Send(new ChooseWindow(WindowKind.Soonest));
+            Assert.True(mission.View.Windows.Needed);
+            Assert.Equal("Duna:Soonest", mission.View.WindowPick.Key);
+        }
+
+        [Fact]
+        public void ThePickIsOfTheMissionsOwnCraftAndWaitsForThePlayerToComeBackToIt()
+        {
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), DunaPlan(), LaunchPlan()));
+            mission.Send(new SceneChanged(GameScene.Flight));
+            mission.Send(new UtAdvanced(NewGame));
+            mission.Send(OnPad(NewGame, 9000, "ours"));
+            CraftCheckRouter.StartChecked(mission, _background, OnPad(NewGame, 9000, "ours"), new StartMission(Goal, 10m, "claude-sonnet-5-5", window: Duna(WindowKind.Soonest)));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            ToRevisedPlan(mission);
+            Assert.True(mission.View.WindowPickNeeded);
+
+            // Another craft's snapshot is not the Mission's: its rows stay this craft's.
+            var rows = mission.View.Windows.Rows[0].Text;
+            mission.Send(OnPad(NewGame, 500, "other"));
+            Assert.Equal(rows, mission.View.Windows.Rows[0].Text);
+
+            // Out of Flight: nothing to show, nothing picked, and Approve is still held.
+            mission.Send(new SceneChanged(GameScene.Other));
+            Assert.True(mission.View.WindowPickNeeded);
+            Assert.False(mission.View.Windows.Needed);
+            mission.Send(new ChooseWindow(WindowKind.Optimal));
+            Assert.Equal("Duna:Soonest", mission.View.WindowPick.Key);
+            mission.Send(new Approve());
+            Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
+
+            mission.Send(new SceneChanged(GameScene.Flight));
+            Assert.True(mission.View.Windows.Needed);
+            mission.Send(new ChooseWindow(WindowKind.Optimal));
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+        }
+
+        [Fact]
+        public void ARevisedPlanWaitingForAPickCallsThePlayerOnceAndNotAgainWhenTheyPick()
+        {
+            var attention = new AttentionWatch();
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), DunaPlan()));
+            ToMissionPlan(mission, Duna(WindowKind.Soonest));
+            attention.Observe(mission.View);
+            ToRevisedPlan(mission);
+            Assert.True(mission.View.WindowPickNeeded);
+            Assert.NotNull(attention.Observe(mission.View));
+            mission.Send(new ChooseWindow(WindowKind.Optimal));
+            Assert.Null(attention.Observe(mission.View));
+        }
+
+        [Fact]
+        public void TheCraftCheckBudgetsAWindowHomeOnTheReturnAndAnotherPlanetsOnItsOwnTrip()
+        {
+            var home = new WindowRow { From = "Duna", Body = "Kerbin" };
+            Assert.True(home.Budgets("return:Duna"));
+            var onward = new WindowRow { From = "Duna", Body = "Jool" };
+            Assert.False(onward.Budgets("return:Duna"));
+            Assert.True(onward.Budgets("transfer:Jool"));
+        }
+
+        [Fact]
+        public void TheOfferIsWorkedOutAgainWhenTheCraftOrItsEnginesChange()
+        {
+            var one = OnPad(NewGame, 9000, "a");
+            var key = WindowChoice.Key(one, Goal, 15, NewGame);
+            Assert.Equal(key, WindowChoice.Key(OnPad(NewGame + 1, 9000, "a"), Goal, 15, NewGame + 1));
+            Assert.NotEqual(key, WindowChoice.Key(OnPad(NewGame, 9000, "b"), Goal, 15, NewGame));
+            Assert.NotEqual(key, WindowChoice.Key(OnPad(NewGame, 9500, "a"), Goal, 15, NewGame));
+            Assert.NotEqual(key, WindowChoice.Key(one, Goal, 15, NewGame + Day));
+            var thrust = OnPad(NewGame, 9000, "a");
+            thrust.Stages[0].ThrustVacKn += 100;
+            Assert.NotEqual(key, WindowChoice.Key(thrust, Goal, 15, NewGame));
+        }
+
+        [Fact]
+        public void InABlackoutARevisedPlanWaitsForThePickAndThePickWaitsForTheLink()
+        {
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), LaunchPlan(), DunaPlan()));
+            ToMissionPlan(mission, Duna(WindowKind.Soonest));
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            ToRevisedPlan(mission);
+
+            var dark = OnPad(NewGame, 9000);
+            dark.HasLink = false;
+            mission.Send(dark);
+            Assert.True(mission.View.Blackout);
+            Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
+            Assert.True(mission.View.WindowPickNeeded);
+
+            mission.Send(new ChooseWindow(WindowKind.Optimal));
+            Assert.Contains(mission.View.Log, e => e.Text == "No link to Kerbin: that waits for the link.");
+            Assert.True(mission.View.WindowPickNeeded);
+            Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
+        }
+
         // ---- Auto Mode ----
 
         [Fact]
