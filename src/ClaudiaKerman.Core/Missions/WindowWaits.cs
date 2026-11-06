@@ -20,6 +20,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool TwoStep;
         /// <summary>The window, leaving at the burn out of the craft's own body's orbit; null when the search found none.</summary>
         public TransferWindow Window;
+        /// <summary>From a moon, the route <see cref="Window"/> is read from; null from a planet.</summary>
+        public RouteRow Route;
         /// <summary>The ascent lead, s (<see cref="WindowWaits.AscentLeadS"/>).</summary>
         public double LeadS;
         /// <summary>When the ascent is due; null when the wait is no more than <see cref="WindowWaits.LongWaitS"/>.</summary>
@@ -188,6 +190,7 @@ namespace ClaudiaKerman.Core.Missions
                 var routes = DirectRoute.Find(view, planet.Name, MissionPrompts.ArrivalPe(planet), capture);
                 if (routes.Error != null) return;
                 var row = departure.TwoStep ? routes.TwoStep : routes.Pick;
+                departure.Route = row;
                 departure.Window = AsWindow(row);
                 due = row.LatestDepartUt - departure.LeadS;
             }

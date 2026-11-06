@@ -24,13 +24,13 @@ namespace ClaudiaKerman.Core.Tests
         private const string DepartScript = "local res is transfer_to(lexicon(\\\"target\\\", \\\"Kerbin\\\", \\\"target_pe\\\", 35000)). addons:claudia:report(res).\\n";
         private const string ReturnScript = "local res is return(lexicon(\\\"target_pe\\\", 35000)). addons:claudia:report(res).\\n";
 
-        private static ScriptedResponse DepartPlan(string name = "Return to Kerbin", string script = DepartScript, int step = 1, double due = -1)
+        private static ScriptedResponse DepartPlan(string name = "Return to Kerbin", string script = DepartScript, int step = 1, double due = -1, double duration = 100000000, double closes = -1)
         {
             return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: leave.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
                 + "\"sequence_plan\":{\"name\":\"" + name + "\",\"plan_step\":" + step + ",\"intent\":\"Leave.\",\"why\":\"Next.\",\"target\":\"Kerbin\","
-                + "\"tolerances\":\"\",\"expected_delta_v\":500,\"expected_duration_s\":100000000,\"abort_conditions\":[],\"risks\":[],"
+                + "\"tolerances\":\"\",\"expected_delta_v\":500,\"expected_duration_s\":" + duration.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"abort_conditions\":[],\"risks\":[],"
                 + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"" + script + "\","
-                + "\"due_time_ut\":" + due.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"window_closes_ut\":-1,\"late_window_dv\":-1},\"debrief\":null}");
+                + "\"due_time_ut\":" + due.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"window_closes_ut\":" + closes.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"late_window_dv\":-1},\"debrief\":null}");
         }
 
         /// <summary>The craft in a low circular orbit of <paramref name="body"/>.</summary>
@@ -50,11 +50,11 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         /// <summary>Started from <paramref name="snapshot"/> with no pick, to its first Sequence Plan awaiting Approval.</summary>
-        private void ToDeparture(MissionControl mission, GameSnapshot snapshot, string goal = Unnamed)
+        private void ToDeparture(MissionControl mission, GameSnapshot snapshot, string goal = Unnamed, MissionSettingsValues settings = null)
         {
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(snapshot);
-            CraftCheckRouter.StartChecked(mission, _background, snapshot, new StartMission(goal, 10m, "claude-sonnet-5-5"));
+            CraftCheckRouter.StartChecked(mission, _background, snapshot, settings != null ? new StartMission(goal, 10m, "claude-sonnet-5-5", settings) : new StartMission(goal, 10m, "claude-sonnet-5-5"));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             Assert.False(mission.View.WindowPickNeeded);
             mission.Send(new Approve());
@@ -155,6 +155,81 @@ namespace ClaudiaKerman.Core.Tests
             var card = mission.View.Log.Last(e => e.Kind == LogKind.SequencePlan);
             Assert.Contains("\"window\", " + Math.Round(row.WindowUt).ToString(System.Globalization.CultureInfo.InvariantCulture) + ")", card.Script);
             Assert.DoesNotContain("5000000", card.Script);
+        }
+
+        [Fact]
+        public void AScriptsReturnAndTransferToBothTakeTheRoutesLiteralWindowsAndNothingElseMoves()
+        {
+            const string script = "local r is return(lexicon(\"target_pe\", 35000, \"window\", 111)).\n// \"window\", 111\n"
+                + "transfer_to(lexicon(\"target\", \"Kerbin\", \"window\", 222.5, \"target_pe\", 35000)).\nother(lexicon(\"window\", 333)).\n"
+                + "transfer_to(lexicon(\"target\", \"Duna\", \"window\", 444)).\n";
+            var retimed = WindowChoice.Retimed(script, new WindowRow { Body = "Kerbin", WindowUt = 9000, ReturnWindow = 8000 });
+            Assert.Contains("local r is return(lexicon(\"target_pe\", 35000, \"window\", 8000)).", retimed);
+            Assert.Contains("\"target\", \"Kerbin\", \"window\", 9000, ", retimed);
+            Assert.Contains("\"window\", 333", retimed);
+            Assert.Contains("\"window\", 444", retimed);
+            // A return with no window of its own, and a row with no return, are left alone.
+            const string plain = "local r is return(lexicon(\"target_pe\", 35000)).\n// \"window\", 111\n";
+            Assert.Equal(plain, WindowChoice.Retimed(plain, new WindowRow { Body = "Kerbin", WindowUt = 9000, ReturnWindow = 8000 }));
+            const string dated = "local r is return(lexicon(\"window\", 111)).\n";
+            Assert.Equal(dated, WindowChoice.Retimed(dated, new WindowRow { Body = "Kerbin", WindowUt = 9000 }));
+        }
+
+        [Fact]
+        public void APickSoonerThanTheSettingsWindowStretchesTheHardStopOverItsWait()
+        {
+            // The setting's Optimal is far off, so the plan passed with one launch lead; Soonest is near, so the run starts now and waits.
+            var near = InOrbit("Duna", NewGame);
+            var kerbin = near.Bodies.Single(b => b.Name == "Kerbin");
+            var start = TransferWindows.Find(near, "Kerbin", MissionPrompts.ArrivalPe(kerbin), false, new PlayerConfig().CraftCheckMarginPercent).Soonest.DepartureUt - 4 * 3600;
+            var from = TransferWindows.Find(InOrbit("Duna", start), "Kerbin", MissionPrompts.ArrivalPe(kerbin), false, new PlayerConfig().CraftCheckMarginPercent);
+            Assert.True(from.Optimal.DepartureUt - start > 2 * Day, "the Optimal window is " + (from.Optimal.DepartureUt - start) + " s off");
+            Assert.True(from.Soonest.DepartureUt - start < WindowWaits.LongWaitS, "the Soonest window is " + (from.Soonest.DepartureUt - start) + " s off");
+
+            var mission = Control(new StreamingFakeTransport(HomePlan("Return to Kerbin", "Reentry"), DepartPlan(duration: 5000)));
+            ToDeparture(mission, InOrbit("Duna", start), Unnamed, new MissionSettingsValues { TimeVersusDeltaV = TimeVersusDeltaV.MostEfficient });
+            mission.Send(new ChooseWindow(WindowKind.Soonest));
+
+            Assert.False(mission.View.DueTime.HasDueTime);
+            var saved = Assert.Single(mission.ExportStates()).SequencePlan;
+            Assert.True(saved.ExpectedDurationSeconds >= from.Soonest.DepartureUt - start - 900, "the plan's duration is " + saved.ExpectedDurationSeconds);
+        }
+
+        [Fact]
+        public void APickReplacesTheLateApprovalDatesOfTheWindowThePlanWasWrittenFor()
+        {
+            var mission = Control(new StreamingFakeTransport(HomePlan("Return to Kerbin", "Reentry"), DepartPlan(closes: NewGame + Day)));
+            ToDeparture(mission, InOrbit("Duna", NewGame));
+            Assert.Equal(NewGame + Day, Assert.Single(mission.ExportStates()).SequencePlan.WindowClosesUt);
+            mission.Send(new ChooseWindow(WindowKind.Optimal));
+            Assert.Null(Assert.Single(mission.ExportStates()).SequencePlan.WindowClosesUt);
+        }
+
+        [Fact]
+        public void TheRowsStandThroughAWarpToTheDueTimeAndAreWorkedOutAgainAtIt()
+        {
+            var mission = Control(new StreamingFakeTransport(HomePlan("Ascend from Duna", "Return to Kerbin"), AscentPlan()));
+            ToDeparture(mission, Landed("Duna", NewGame, 20000));
+            mission.Send(new ChooseWindow(WindowKind.Optimal));
+            var due = mission.View.DueTime.Ut;
+            var rows = mission.View.Windows;
+
+            mission.Send(new UtAdvanced(NewGame + 3 * Day));
+            mission.Send(Landed("Duna", NewGame + 3 * Day, 20000));
+            Assert.Same(rows, mission.View.Windows);
+
+            mission.Send(new UtAdvanced(due + 1));
+            mission.Send(Landed("Duna", due + 1, 20000));
+            Assert.NotSame(rows, mission.View.Windows);
+        }
+
+        [Fact]
+        public void AReturnWhoseLegsSayNothingStillAsksWhenTheScriptGoesOnToAnotherPlanet()
+        {
+            var plan = new SequencePlan { Name = "Leave", Script = "local r is return(lexicon(\"target_pe\", 35000)).\ntransfer_to(lexicon(\"target\", \"Kerbin\", \"target_pe\", 35000)).\n" };
+            Assert.Equal("Kerbin", WindowChoice.Departure(InOrbit("Ike", NewGame), plan, null, 1).Planet.Name);
+            plan.Script = "local r is return(lexicon(\"target_pe\", 35000)).\n";
+            Assert.Null(WindowChoice.Departure(InOrbit("Ike", NewGame), plan, null, 1));
         }
 
         [Fact]

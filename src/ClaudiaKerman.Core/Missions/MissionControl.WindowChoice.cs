@@ -123,7 +123,10 @@ namespace ClaudiaKerman.Core.Missions
             if (departure == null) return WindowOffer.None;
             var snapshot = MissionVesselSnapshot(mission);
             var setting = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV;
-            return OfferFor("departure:" + departure.Planet.Name + ":" + departure.TwoStep + ":" + setting, snapshot, now => WindowChoice.WorkDeparture(snapshot, departure, setting, _config.CraftCheckMarginPercent, now));
+            var goal = "departure:" + departure.Planet.Name + ":" + departure.TwoStep + ":" + setting;
+            // Picked and waiting for its Due Time, as the player warps: the rows stand until a press or the Due Time, not a search per Kerbin day of the warp.
+            if (_offer != null && _offerGoal == goal && mission.WindowPick.IsFor(departure.Planet.Name) && plan.DueTimeUt.HasValue && _ut < plan.DueTimeUt.Value) return _offer;
+            return OfferFor(goal, snapshot, now => WindowChoice.WorkDeparture(snapshot, departure, setting, _config.CraftCheckMarginPercent, now));
         }
 
         /// <summary>#782: <paramref name="plan"/> starts a departure no pick covers. A pick for another transfer (the way out, say) is none for this one.</summary>
@@ -138,6 +141,8 @@ namespace ClaudiaKerman.Core.Missions
         {
             var mission = _mission;
             if (!CanAnswerPlan || !WindowChoiceOpen(mission)) return;
+            // Rows that stood through a warp are worked out again for the press.
+            if (mission.Stage == MissionStage.AwaitingSequenceApproval) _offer = null;
             var offer = MissionOffer(mission);
             if (!offer.Needed) return;
             mission.WindowPick = new WindowPick(offer.Body, kind);
@@ -156,10 +161,16 @@ namespace ClaudiaKerman.Core.Missions
             var hadDue = plan.DueTimeUt.HasValue;
             plan.DueTimeUt = mission.WindowOwnDue;
             plan.Script = WindowChoice.Retimed(plan.Script, row);
+            // Late Approval's dates were the window Claudia wrote the plan for; a missed window is now the Due Time's (NextWindow).
+            plan.WindowClosesUt = null;
+            plan.LateWindowDeltaV = null;
             // A window noted under the setting, from a manual stretch before this, is not the one picked.
             ClearWindow(mission);
             WindowWait(mission, plan);
             TransferWait(mission, plan);
+            // The hard stop counts the wait (ADR 0004): the plan was checked against the setting's window, not this one.
+            var shortOf = BurnPoints.ShortOf(plan, MissionVesselSnapshot(mission), _ut);
+            if (shortOf != null) plan.ExpectedDurationSeconds = shortOf.MinimumDurationSeconds;
             if (hadDue && !plan.DueTimeUt.HasValue) _commands.Add(new ClearDueTimeAlarm(mission.Id));
             DueTimeOffered(mission, plan);
             var card = mission.Log.LastOrDefault(e => e.Kind == LogKind.SequencePlan);

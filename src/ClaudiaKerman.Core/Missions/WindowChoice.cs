@@ -115,8 +115,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>What Start and Approval say when the pick is missing.</summary>
         public const string PickFirst = "Pick a Transfer Window first: Soonest or Optimal.";
 
-        /// <summary>A literal window option in a block's lexicon, as plan_transfer's rows write it.</summary>
-        private static readonly Regex LiteralWindow = new Regex("\"window\"\\s*,\\s*(?<ut>\\d+(\\.\\d+)?)\\s*[,)]", RegexOptions.CultureInvariant);
+        /// <summary>A literal UT as a block's window option, as plan_transfer's rows write it.</summary>
+        private static readonly Regex LiteralUt = new Regex(@"^\d+(\.\d+)?$", RegexOptions.CultureInvariant);
 
         /// <summary>A rework at most this often in game time, s (a Kerbin day), so a row's date and wait stay about right while the player reads them.</summary>
         private const double ReworkEveryS = 21600;
@@ -190,7 +190,9 @@ namespace ClaudiaKerman.Core.Missions
                 if (call.Block == "return")
                 {
                     var moon = SequenceWords.Body(snapshot, !string.IsNullOrEmpty(orbit.Body) ? orbit.Body : snapshot.Body);
-                    return moon == null ? null : WindowWaits.Departure(snapshot, moon, legs ?? new List<PlannedSequence>(), step - 1);
+                    var onward = moon == null ? null : WindowWaits.Departure(snapshot, moon, legs ?? new List<PlannedSequence>(), step - 1);
+                    if (onward != null) return onward;
+                    continue;
                 }
                 if (call.Block != "transfer_to") continue;
                 var target = SequenceWords.Body(snapshot, (call.Option("target") ?? "").Trim('"'));
@@ -209,7 +211,11 @@ namespace ClaudiaKerman.Core.Missions
             {
                 var up = Taken(snapshot, departure, setting, marginPercent, now, WindowKind.Soonest);
                 var late = Taken(snapshot, departure, setting, marginPercent, now, WindowKind.Optimal);
-                return up.Window == null || late.Window == null ? Unworked(name, "no window from its low orbit") : Offer(at, name, now, up.Window, late.Window);
+                if (up.Window == null || late.Window == null) return Unworked(name, "no window from its low orbit");
+                var fromGround = Offer(at, name, now, up.Window, late.Window);
+                if (up.Route != null) Retimes(fromGround.Rows[0], up.Route);
+                if (late.Route != null) Retimes(fromGround.Rows[1], late.Route);
+                return fromGround;
             }
             if (DirectRoute.Applies(at, name))
             {
@@ -251,7 +257,8 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// #782: <paramref name="script"/>, written before the player picked, flying <paramref name="row"/>'s window: a literal window
-        /// option on the departure's own calls becomes that window's. Any other value is left, as "next" reads the pick as it flies.
+        /// option on the departure's own calls becomes that window's. Any other value is left: transfer_to's "next" reads the pick as it
+        /// flies, and return's burns at its next pass with the window taken at transfer_to from the planet.
         /// </summary>
         internal static string Retimed(string script, WindowRow row)
         {
@@ -263,8 +270,10 @@ namespace ClaudiaKerman.Core.Missions
                 if (call.Block == "return") ut = row.ReturnWindow;
                 else if (call.Block == "transfer_to" && string.Equals((call.Option("target") ?? "").Trim('"'), row.Body, StringComparison.OrdinalIgnoreCase)) ut = row.WindowUt;
                 if (!ut.HasValue) continue;
+                string given;
+                if (call.Options == null || !call.Options.TryGetValue("window", out given) || !LiteralUt.IsMatch(given)) continue;
                 var end = i + 1 < calls.Count ? calls[i + 1].Index : script.Length;
-                var written = LiteralWindow.Match(script, call.Index, end - call.Index);
+                var written = new Regex("\"window\"\\s*,\\s*(?<ut>" + Regex.Escape(given) + ")").Match(script, call.Index, end - call.Index);
                 if (written.Success) script = script.Substring(0, written.Groups["ut"].Index) + Whole(ut.Value) + script.Substring(written.Groups["ut"].Index + written.Groups["ut"].Length);
             }
             return script;
