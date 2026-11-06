@@ -84,6 +84,9 @@ namespace ClaudiaKerman.Core.Missions
                 WindowPlanet = mission.WindowPlanet,
                 WindowUt = mission.WindowUt,
                 WindowDeltaV = mission.WindowDeltaV,
+                WindowPick = mission.WindowPick,
+                WindowPickNeeded = mission.WindowPickNeeded,
+                WindowPickUnsaid = mission.WindowPickUnsaid,
                 Remote = mission.Remote,
                 AutoMode = mission.AutoMode,
                 MissionPlanApproved = mission.MissionPlanApproved,
@@ -478,6 +481,9 @@ namespace ClaudiaKerman.Core.Missions
                 WindowPlanet = state.WindowPlanet ?? "",
                 WindowUt = state.WindowUt,
                 WindowDeltaV = state.WindowDeltaV,
+                WindowPick = state.WindowPick,
+                WindowPickNeeded = state.WindowPickNeeded,
+                WindowPickUnsaid = state.WindowPickUnsaid,
             };
             foreach (var setting in state.Settings) mission.Settings[setting.Key] = setting.Value;
             RestoreChildVessels(mission, state.ChildVessels);
@@ -857,7 +863,7 @@ namespace ClaudiaKerman.Core.Missions
                 // A Mission Plan with no sequences has no card: Claudia's line is what the player needs to see again.
                 if (mission.Plan.Sequences.Count == 0 && !string.IsNullOrEmpty(state.LatestLine) && !mission.LogRebuilt) Note(LogKind.Claudia, state.LatestLine);
                 mission.SuppressCards = mission.LogRebuilt;
-                OfferMissionPlan(mission, mission.Plan);
+                OfferMissionPlan(mission, mission.Plan, true);
                 mission.SuppressCards = false;
             }
             else if (stage == MissionStage.AwaitingSequenceApproval && mission.PendingSequence != null)

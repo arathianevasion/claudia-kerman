@@ -152,11 +152,11 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         /// <summary>Through the Mission Plan to the launch's Sequence Plan awaiting Approval, the craft on the pad at <paramref name="ut"/>.</summary>
-        private void ToLaunchPlan(MissionControl mission, double ut, double deltaV = 9000, string vesselId = "")
+        private void ToLaunchPlan(MissionControl mission, double ut, double deltaV = 9000, string vesselId = "", WindowPick pick = null)
         {
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(OnPad(ut, deltaV, vesselId));
-            CraftCheckRouter.StartChecked(mission, _background, OnPad(ut, deltaV, vesselId), new StartMission(Goal, 10m, "claude-sonnet-5-5"));
+            CraftCheckRouter.StartChecked(mission, _background, OnPad(ut, deltaV, vesselId), new StartMission(Goal, 10m, "claude-sonnet-5-5", window: pick ?? WindowPicks.AsTheSetting(OnPad(ut, deltaV, vesselId), Goal)));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
@@ -361,7 +361,8 @@ namespace ClaudiaKerman.Core.Tests
         {
             var clock = new FakeAlarmClock();
             var mission = Control(new StreamingFakeTransport(DunaPlan(), LaunchPlan()));
-            ToLaunchPlan(mission, 1203.48, 20000);
+            // Soonest: from two days late that is the window still open, where Optimal would be the next one.
+            ToLaunchPlan(mission, 1203.48, 20000, "", new WindowPick("Duna", WindowKind.Soonest));
             clock.Take(mission);
 
             // Two days late, the window is still open.

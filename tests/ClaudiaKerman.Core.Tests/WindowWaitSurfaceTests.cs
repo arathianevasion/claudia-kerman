@@ -72,7 +72,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(Landed(body, ut, deltaV));
-            CraftCheckRouter.StartChecked(mission, _background, Landed(body, ut, deltaV), new StartMission(goal, 10m, "claude-sonnet-5-5"));
+            CraftCheckRouter.StartChecked(mission, _background, Landed(body, ut, deltaV), new StartMission(goal, 10m, "claude-sonnet-5-5", window: WindowPicks.AsTheSetting(Landed(body, ut, deltaV), goal)));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
@@ -119,7 +119,7 @@ namespace ClaudiaKerman.Core.Tests
             const double now = 1203.48;
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(OnPad(now, 20000));
-            CraftCheckRouter.StartChecked(mission, _background, OnPad(now, 20000), new StartMission("Go to " + moon + ".", 10m, "claude-sonnet-5-5"));
+            CraftCheckRouter.StartChecked(mission, _background, OnPad(now, 20000), new StartMission("Go to " + moon + ".", 10m, "claude-sonnet-5-5", window: WindowPicks.AsTheSetting(OnPad(now, 20000), "Go to " + moon + ".")));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
@@ -429,6 +429,8 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(Landed("Duna", back, 20000));
             mission.Send(new HandBack("done"));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            // The revised Mission Plan asks for the window again (#686).
+            mission.Send(new ChooseWindow(WindowPicks.AsTheSetting(Landed("Duna", back, 20000), mission.View.Goal).Kind));
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
         }

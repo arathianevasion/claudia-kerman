@@ -136,6 +136,9 @@ namespace ClaudiaKerman.Core.Missions
                 case AdvanceWait.ManualStretch:
                     WaitsForLink(mission, "The manual stretch " + MissionPrompts.Quoted(planName) + " waits for you when the link returns.");
                     break;
+                case AdvanceWait.WindowPick:
+                    WaitsForLink(mission, "The revised Mission Plan waits for you to pick its Transfer Window when the link returns.");
+                    break;
                 case AdvanceWait.DueTime:
                     WaitsForLink(mission, "The Sequence Plan " + MissionPrompts.Quoted(planName) + " has a Due Time for you, so it waits for the link.");
                     break;
@@ -171,7 +174,7 @@ namespace ClaudiaKerman.Core.Missions
                 Note(LogKind.Notice, "Held: there is no link to Kerbin. Claudia gets it when the link returns.");
                 return true;
             }
-            var answer = input is Approve || input is ConfirmApproval || input is Replan || input is AbortSequence || input is AcceptReducedGoal
+            var answer = input is Approve || input is ConfirmApproval || input is ChooseWindow || input is Replan || input is AbortSequence || input is AcceptReducedGoal
                 || (input is Retry && mission.Stage == MissionStage.UnsafeScript);
             if (!answer) return false;
             Note(LogKind.Notice, "No link to Kerbin: that waits for the link.");

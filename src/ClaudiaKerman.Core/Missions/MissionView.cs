@@ -241,6 +241,10 @@ namespace ClaudiaKerman.Core.Missions
         /// on it as the goal is typed, and lists <see cref="TargetVessel.Options"/> for Choose. The same object until the next snapshot.
         /// </summary>
         public TargetFacts Targets = new TargetFacts();
+        /// <summary>The Transfer Windows on offer for the form's goal (#686); none when the setting picks.</summary>
+        public WindowOffer Windows = WindowOffer.None;
+        /// <summary>The form's goal needs a Transfer Window pick and has none: Start stays closed.</summary>
+        public bool WindowPickMissing;
     }
 
     /// <summary>The Due Time of the Sequence Plan awaiting Approval, for the board and the Capcom strip.</summary>
@@ -422,18 +426,24 @@ namespace ClaudiaKerman.Core.Missions
         public bool PlanStaleTarget;
         /// <summary>The pending Mission Plan is Claudia's decline (no sequences): nothing to approve, Auto Mode leaves it (#698).</summary>
         public bool PlanDeclined;
+        /// <summary>The Transfer Windows on offer for the Mission Plan awaiting Approval (#686); none otherwise.</summary>
+        public WindowOffer Windows = WindowOffer.None;
+        /// <summary>The Mission Plan awaiting Approval waits for a pick: no row is picked, and Approve is greyed out.</summary>
+        public bool WindowPickNeeded;
+        /// <summary>The window the player last picked for this Mission; it stands in for the setting's pick on its transfer.</summary>
+        public WindowPick WindowPick = WindowPick.None;
 
         /// <summary>The Mission Settings in force.</summary>
         public MissionSettingsValues Settings = new MissionSettingsValues();
         /// <summary>The margin the Mission's planning keeps, percent (the player config's craft-check margin); read with <see cref="Settings"/> by <see cref="Stamp"/>.</summary>
         public int MarginPercent = new Config.PlayerConfig().CraftCheckMarginPercent;
         /// <summary>
-        /// Stamps a Game Snapshot with the Mission's Time versus delta-v and margin (#733, #739), as the planning snapshot gets them, so a
+        /// Stamps a Game Snapshot with the Mission's Time versus delta-v, margin and window pick (#733, #739, #686), as the planning snapshot gets them, so a
         /// block call's window pick matches plan_transfer's. A null view or one with no Mission (Stage None) keeps the snapshot's defaults.
         /// </summary>
         public static GameSnapshot Stamp(GameSnapshot snapshot, MissionView view)
         {
-            if (view != null && view.Stage != MissionStage.None) snapshot.StampMission(view.Settings.TimeVersusDeltaV, view.MarginPercent);
+            if (view != null && view.Stage != MissionStage.None) snapshot.StampMission(view.Settings.TimeVersusDeltaV, view.MarginPercent, view.WindowPick);
             return snapshot;
         }
         /// <summary>The Mission Settings may be edited now (a plan awaits Approval, or Claudia has not planned yet).</summary>

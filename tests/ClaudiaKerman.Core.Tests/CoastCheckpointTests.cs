@@ -357,7 +357,7 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(new UtAdvanced(parked.Ut));
             mission.Send(Craft(parked));
-            CraftCheckRouter.StartChecked(mission, _background, Craft(parked), new StartMission(Goal, 10m, "claude-sonnet-5-5"));
+            CraftCheckRouter.StartChecked(mission, _background, Craft(parked), new StartMission(Goal, 10m, "claude-sonnet-5-5", window: WindowPicks.AsTheSetting(Craft(parked), Goal)));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
@@ -578,7 +578,7 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(new UtAdvanced(rig.Ut));
             mission.Send(Craft(rig));
-            CraftCheckRouter.StartChecked(mission, _background, Craft(rig), new StartMission(Goal, 10m, "claude-sonnet-5-5"));
+            CraftCheckRouter.StartChecked(mission, _background, Craft(rig), new StartMission(Goal, 10m, "claude-sonnet-5-5", window: WindowPicks.AsTheSetting(Craft(rig), Goal)));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
@@ -598,7 +598,7 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(new UtAdvanced(rig.Ut));
             mission.Send(Craft(rig));
-            CraftCheckRouter.StartChecked(mission, _background, Craft(rig), new StartMission(Goal, 10m, "claude-sonnet-5-5"));
+            CraftCheckRouter.StartChecked(mission, _background, Craft(rig), new StartMission(Goal, 10m, "claude-sonnet-5-5", window: WindowPicks.AsTheSetting(Craft(rig), Goal)));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
@@ -624,7 +624,7 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(new UtAdvanced(rig.Ut));
             mission.Send(Craft(rig));
-            CraftCheckRouter.StartChecked(mission, _background, Craft(rig), new StartMission(Goal, 10m, "claude-sonnet-5-5"));
+            CraftCheckRouter.StartChecked(mission, _background, Craft(rig), new StartMission(Goal, 10m, "claude-sonnet-5-5", window: WindowPicks.AsTheSetting(Craft(rig), Goal)));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);

@@ -323,10 +323,12 @@ namespace ClaudiaKerman.Core.Missions
         /// (and says so), so no separate capture line follows it: the capture can't be counted twice (#776). With the craft's
         /// <paramref name="snapshot"/>, an airless body's landing or ascent is given with the craft's gravity loss, at the lowest TWR of the
         /// stages that fly it (the legs before it spent in firing order, as <see cref="PlanLegs"/> does); with no TWR known, the bare figure, marked.
+        /// With the player's <paramref name="window"/> (#686), that window's trip is at its figures, not the Map's.
         /// </summary>
-        public string ToText(IList<SnapshotBody> named, GameSnapshot snapshot = null)
+        public string ToText(IList<SnapshotBody> named, GameSnapshot snapshot = null, WindowRow window = null)
         {
             var legs = LegsFor(named);
+            var windowLeg = window == null ? null : legs.FirstOrDefault(l => window.Budgets(l.Id));
             var text = new StringBuilder();
             // Spent before the first landing: the launch and the trips in, the last hop to a named body included.
             var goal = new HashSet<string>(named.Select(b => b.Name));
@@ -346,14 +348,23 @@ namespace ClaudiaKerman.Core.Missions
                         ? " (includes this craft's gravity loss at TWR " + twr.Value.ToString("0.0", CultureInfo.InvariantCulture) + "; " + Whole(leg.DeltaV) + " without)"
                         : " (bare figure: this craft's TWR there is unknown, so no gravity loss is added)";
                 }
+                if (leg == windowLeg)
+                {
+                    figure = window.TotalDv;
+                    note = " (the player's " + window.Kind + " window)";
+                }
                 text.Append("- ").Append(leg.Id).Append(": ").Append(leg.Description).Append(": ").Append(Whole(figure)).Append(" m/s").Append(note);
-                if (leg.PlaneChange > 0)
+                if (leg.PlaneChange > 0 && leg != windowLeg)
                     text.Append(" (carries a plane change of ").Append(Whole(leg.PlaneChange)).Append(" m/s)");
-                if (leg.Id.StartsWith("transfer:", StringComparison.Ordinal) && leg.Arrival > 0)
-                    text.Append(" (includes the capture, ").Append(Whole(leg.Arrival)).Append(" m/s)");
+                var arrival = leg == windowLeg ? window.CaptureDv : leg.Arrival;
+                if (leg.Id.StartsWith("transfer:", StringComparison.Ordinal) && arrival > 0)
+                    text.Append(" (includes the capture, ").Append(Whole(arrival)).Append(" m/s)");
                 text.Append('\n');
                 if (IsSurface(leg) && leg.Bodies[0] != Home) used += figure;
             }
+            // A trip the Map has no leg for (between two bodies it doesn't start from): the window's own line.
+            if (window != null && windowLeg == null)
+                text.Append("- transfer:").Append(window.From).Append('>').Append(window.Body).Append(": the player's ").Append(window.Kind.ToString()).Append(" window: ").Append(Whole(window.TotalDv)).Append(" m/s\n");
             return text.ToString();
         }
 

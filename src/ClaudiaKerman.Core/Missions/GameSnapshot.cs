@@ -225,6 +225,8 @@ namespace ClaudiaKerman.Core.Missions
         public TimeVersusDeltaV TimeVersusDeltaV = TimeVersusDeltaV.Balanced;
         /// <summary>The Craft Check's delta-v margin, %, that Soonest's total must fit within over Optimal's; PlayerConfig's default until the Mission sets it.</summary>
         public int MarginPercent = DefaultMarginPercent;
+        /// <summary>The player's pick of a Transfer Window (#686): on its transfer it stands in for <see cref="TimeVersusDeltaV"/>. Not in the JSON.</summary>
+        public WindowPick WindowPick = WindowPick.None;
         /// <summary>The delta-v, m/s, of the Mission Plan's legs after the one this turn plans, flown by the craft; null with no Mission Plan. Set by the Mission before a tool runs; not in the JSON.</summary>
         public double? LaterLegsDv;
         private static readonly int DefaultMarginPercent = new Config.PlayerConfig().CraftCheckMarginPercent;
@@ -233,10 +235,11 @@ namespace ClaudiaKerman.Core.Missions
         /// Stamps the Mission's Time versus delta-v and margin (#739). The only place either field is written: callers pass the
         /// Mission's values, and a snapshot with no Mission never calls this (it keeps the defaults).
         /// </summary>
-        public void StampMission(TimeVersusDeltaV time, int marginPercent)
+        public void StampMission(TimeVersusDeltaV time, int marginPercent, WindowPick window = null)
         {
             TimeVersusDeltaV = time;
             MarginPercent = marginPercent;
+            WindowPick = window ?? WindowPick.None;
         }
 
         // ---- Craft Check facts, computed by the adapter from the game ----

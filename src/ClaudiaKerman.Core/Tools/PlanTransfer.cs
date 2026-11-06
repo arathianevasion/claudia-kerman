@@ -232,7 +232,7 @@ namespace ClaudiaKerman.Core.Tools
         private static ToolOutcome Windows(WindowSearch found, GameSnapshot snapshot, bool capture)
         {
             if (found.Error != null) return PlanningJson.Error(found.Error);
-            var pick = TransferWindows.Pick(found, snapshot.TimeVersusDeltaV);
+            var pick = TransferWindows.Pick(found, snapshot);
             var json = new JsonWriter().BeginObject().Field("model", found.Moon ? MoonWindowModel : WindowModel).Field("target", found.Target).Field("capture", capture);
             json.Field("parking_pe", PlanningJson.Round(found.ParkingPe, 0));
             if (found.ParkingAssumed) json.Field("parking_note", "assumed: the craft is not in a closed orbit clear of the atmosphere");
@@ -263,7 +263,7 @@ namespace ClaudiaKerman.Core.Tools
             Window(json, "soonest", found.Soonest, snapshot.Ut, capture);
             Window(json, "optimal", found.Optimal, snapshot.Ut, capture);
             json.Field("pick", pick == found.Optimal && pick != found.Soonest ? "optimal" : "soonest")
-                .Field("setting", snapshot.TimeVersusDeltaV == TimeVersusDeltaV.Fastest ? "Fastest" : snapshot.TimeVersusDeltaV == TimeVersusDeltaV.MostEfficient ? "Most efficient" : "Balanced")
+                .Field("setting", snapshot.WindowPick.IsFor(found.Target) ? "Player" : snapshot.TimeVersusDeltaV == TimeVersusDeltaV.Fastest ? "Fastest" : snapshot.TimeVersusDeltaV == TimeVersusDeltaV.MostEfficient ? "Most efficient" : "Balanced")
                 .Field("synodic_s", PlanningJson.Round(found.Synodic, 0))
                 .EndObject();
             return new ToolOutcome { Json = json.ToString(), Summary = Summary(found, pick) };
@@ -285,7 +285,7 @@ namespace ClaudiaKerman.Core.Tools
                 Plane(json, w);
                 json.Field("total_dv", PlanningJson.Round(w.TotalDv, 1)).EndObject();
             }
-            var pick = TransferWindows.Pick(found, snapshot.TimeVersusDeltaV);
+            var pick = TransferWindows.Pick(found, snapshot);
             json.Field("pick", pick == found.Optimal && pick != found.Soonest ? "optimal" : "soonest");
             // From the ground (#690, #727) the rows assume this launch: fly launch with this target_inc at this time, not an equatorial orbit.
             if (found.Launch != null) Launch(json, found.Launch, snapshot.Ut, found.Launch.Residual == 0

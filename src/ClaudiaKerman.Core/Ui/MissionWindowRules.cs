@@ -223,6 +223,7 @@ namespace ClaudiaKerman.Core.Ui
         public static string StartLabel(MissionView view)
         {
             var check = view.CraftCheck;
+            if (view.StartForm.WindowPickMissing) return "Start Mission · pick a Transfer Window";
             if (check.State == CraftCheckState.Done && !check.StartAllowed)
             {
                 // A stale result that failed keeps Start Mission closed until the check runs again.
@@ -264,7 +265,7 @@ namespace ClaudiaKerman.Core.Ui
         public const string AutoModeLabel = "Auto Mode";
 
         /// <summary>The switch's tooltip: what Auto Mode does and what still needs the player.</summary>
-        public const string AutoModeTooltip = "Approve Claudia's plans for you while the Spending Cap has room. Starting the Mission, Warnings, Manual stretches and Due Times (not a Coast Checkpoint's, while you stay in the craft) still need you.";
+        public const string AutoModeTooltip = "Approve Claudia's plans for you while the Spending Cap has room. Starting the Mission, Warnings, Manual stretches, Transfer Window picks and Due Times (not a Coast Checkpoint's, while you stay in the craft) still need you.";
 
         /// <summary>The Settings switch for whether new Missions start in Auto Mode (under Mission defaults only).</summary>
         public const string DefaultAutoModeLabel = "Start new Missions in Auto Mode";
@@ -646,6 +647,7 @@ namespace ClaudiaKerman.Core.Ui
                 case MissionStage.AwaitingSequenceApproval:
                     if (view.PlanDeclined) return "Claudia declined the goal: Change something or End Mission";
                     if (replies.Contains(QuickReply.Replan) && view.PlanStale.Length > 0) return StaleWhat(view) + " has changed: Re-plan?";
+                    if (view.WindowPickNeeded) return "Pick a Transfer Window, then Approve";
                     if (!replies.Contains(QuickReply.Approve)) return "";
                     if (view.Stage == MissionStage.AwaitingPlanApproval) return "Approve the Mission Plan?";
                     if (!view.DueTime.HasDueTime) return "Sequence Plan awaiting Approval";

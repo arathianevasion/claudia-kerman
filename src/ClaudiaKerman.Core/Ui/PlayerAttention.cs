@@ -94,7 +94,7 @@ namespace ClaudiaKerman.Core.Ui
                     // A question asked meanwhile hides the quick replies; it is the same wait, so no new alert.
                     if (view.Busy) return _waiting.StartsWith("approval:", System.StringComparison.Ordinal) ? _waiting : "";
                     // A declined goal has no plan to approve; the card count tells one plan from the next.
-                    return view.QuickReplies.Contains(QuickReply.Approve) || view.QuickReplies.Contains(QuickReply.ConfirmApproval)
+                    return view.QuickReplies.Contains(QuickReply.Approve) || view.QuickReplies.Contains(QuickReply.ConfirmApproval) || view.WindowPickNeeded
                         ? "approval:" + view.Log.Count(e => e.Kind == LogKind.MissionPlan || e.Kind == LogKind.SequencePlan) + ":" + view.Stage
                         : "";
                 case MissionStage.AwaitingReducedGoal:

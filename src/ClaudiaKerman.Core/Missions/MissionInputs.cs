@@ -28,18 +28,21 @@ namespace ClaudiaKerman.Core.Missions
         public readonly MissionSettingsValues Settings;
         /// <summary>The form's Target Vessel pick (#643); Auto lets the mod choose. Never saved as a default.</summary>
         public readonly TargetPick Target;
+        /// <summary>The form's Transfer Window pick (#686); <see cref="WindowPick.None"/> when it has none. Never saved as a default.</summary>
+        public readonly WindowPick Window;
 
-        public StartMission(string goal, decimal spendingCap, string model, bool remote = false, TargetPick target = null)
+        public StartMission(string goal, decimal spendingCap, string model, bool remote = false, TargetPick target = null, WindowPick window = null)
         {
             Goal = goal;
             SpendingCap = spendingCap;
             Model = model;
             Remote = remote;
             Target = target ?? TargetPick.Auto;
+            Window = window ?? WindowPick.None;
         }
 
-        public StartMission(string goal, decimal spendingCap, string model, MissionSettingsValues settings, bool remote = false, TargetPick target = null)
-            : this(goal, spendingCap, model, remote, target)
+        public StartMission(string goal, decimal spendingCap, string model, MissionSettingsValues settings, bool remote = false, TargetPick target = null, WindowPick window = null)
+            : this(goal, spendingCap, model, remote, target, window)
         {
             Settings = settings;
         }
@@ -56,30 +59,35 @@ namespace ClaudiaKerman.Core.Missions
         public readonly bool Remote;
         /// <summary>The form's Target Vessel pick (#643); the check judges the craft against the target it chooses.</summary>
         public readonly TargetPick Target;
+        /// <summary>The form's Transfer Window pick (#686); the check budgets that window.</summary>
+        public readonly WindowPick Window;
 
-        public RunCraftCheck(string goal, decimal spendingCap, string model, bool remote = false, TargetPick target = null)
+        public RunCraftCheck(string goal, decimal spendingCap, string model, bool remote = false, TargetPick target = null, WindowPick window = null)
         {
             Goal = goal;
             SpendingCap = spendingCap;
             Model = model;
             Remote = remote;
             Target = target ?? TargetPick.Auto;
+            Window = window ?? WindowPick.None;
         }
     }
 
     /// <summary>
-    /// The start form's Mission Goal text and Target Vessel pick as they stand now (#664): UI state only, never a request to Claude.
-    /// The Craft Check card shows its result as stale when either differs from what the check ran on.
+    /// The start form's Mission Goal text, Target Vessel pick and Transfer Window pick as they stand now (#664, #686): UI state only, never a request to Claude.
+    /// The Craft Check card shows its result as stale when any of them differs from what the check ran on.
     /// </summary>
     public sealed class StartFormChanged : MissionInput
     {
         public readonly string Goal;
         public readonly TargetPick Target;
+        public readonly WindowPick Window;
 
-        public StartFormChanged(string goal, TargetPick target = null)
+        public StartFormChanged(string goal, TargetPick target = null, WindowPick window = null)
         {
             Goal = goal;
             Target = target ?? TargetPick.Auto;
+            Window = window ?? WindowPick.None;
         }
     }
 
@@ -166,6 +174,13 @@ namespace ClaudiaKerman.Core.Missions
     {
         public readonly TargetPick Pick;
         public ChangeTarget(TargetPick pick) { Pick = pick; }
+    }
+
+    /// <summary>A row of a revised Mission Plan's Transfer Window choice (#686): the pick is part of what Approval accepts.</summary>
+    public sealed class ChooseWindow : MissionInput
+    {
+        public readonly WindowKind Kind;
+        public ChooseWindow(WindowKind kind) { Kind = kind; }
     }
 
     /// <summary>
