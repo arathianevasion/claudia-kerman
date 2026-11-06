@@ -114,6 +114,19 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void ABlockTestGivesItsOwnPlanWithPlanLines()
+        {
+            var spec = Core.Kos.BlockTestSpec.Parse("t", "block = drop_parts\nplan = Ascend and Return | 99999 | Burns still planned.\nplan = Coast | 0\n");
+
+            Assert.Equal(2, spec.Plan.Count);
+            Assert.Equal("Ascend and Return", spec.Plan[0].Name);
+            Assert.Equal(99999, spec.Plan[0].DeltaV);
+            Assert.Equal("Burns still planned.", spec.Plan[0].Intent);
+            Assert.Equal("", spec.Plan[1].Intent);
+            Assert.Throws<System.FormatException>(() => Core.Kos.BlockTestSpec.Parse("t", "block = drop_parts\nplan = no delta-v\n"));
+        }
+
+        [Fact]
         public void TheBlockCallTakesBeforeAndLeftAndGivesTheVerdict()
         {
             var input = new Dictionary<string, object> { { "before", 3310.0 }, { "left", 0.0 } };
