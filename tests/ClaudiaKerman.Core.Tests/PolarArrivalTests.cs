@@ -114,7 +114,8 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void Duna_s_row_covers_the_highest_periapsis_it_was_fitted_to()
         {
-            Assert.True(Polar("Duna").DeltaV >= Added("Kerbin", 100000, "Duna", 180000, 0));
+            // From 90 km: on this date a 100 km parking orbit's ejection meets the Mun, so that flight has no solve to compare.
+            Assert.True(Polar("Duna").DeltaV >= Added("Kerbin", 90000, "Duna", 180000, 0));
         }
 
         [Theory]
