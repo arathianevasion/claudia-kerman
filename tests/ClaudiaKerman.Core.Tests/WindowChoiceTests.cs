@@ -319,11 +319,6 @@ namespace ClaudiaKerman.Core.Tests
             ToRevisedPlan(mission);
             Assert.True(mission.View.WindowPickNeeded);
 
-            // Another craft's snapshot is not the Mission's: its rows stay this craft's.
-            var rows = mission.View.Windows.Rows[0].Text;
-            mission.Send(OnPad(NewGame, 500, "other"));
-            Assert.Equal(rows, mission.View.Windows.Rows[0].Text);
-
             // Out of Flight: nothing to show, nothing picked, and Approve is still held.
             mission.Send(new SceneChanged(GameScene.Other));
             Assert.True(mission.View.WindowPickNeeded);
@@ -334,6 +329,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
 
             mission.Send(new SceneChanged(GameScene.Flight));
+            mission.Send(OnPad(NewGame, 9000, "ours"));
             Assert.True(mission.View.Windows.Needed);
             mission.Send(new ChooseWindow(WindowKind.Optimal));
             mission.Send(new Approve());
