@@ -218,6 +218,29 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void The_deorbit_call_logs_the_planned_orbit_after_the_burn_and_the_frame()
+        {
+            var found = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "ground_alt", 70.0),
+                Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            var line = (string)found["plan_log"];
+            Assert.StartsWith("[plan-vs-flown] DEORBITBURN planned orbit: Pe ", line);
+            // The entry periapsis is 30 % of the way up the atmosphere; the burn is from an 80 km circle, so the apoapsis stays 80 km.
+            Assert.Contains("Pe " + Math.Round(0.3 * ReentrySim.AtmTop).ToString(System.Globalization.CultureInfo.InvariantCulture) + " m, Ap 80000 m", line);
+            Assert.Contains(", period ", line);
+            Assert.Contains(", Pe at UT ", line);
+            Assert.Contains("frame LonOffset 0.0000 deg, handed 1, ground_alt 70 m", line);
+        }
+
+        [Fact]
+        public void The_impact_call_logs_the_orbit_it_predicted_and_the_frame()
+        {
+            var flown = BlockCalls.ReentryImpact(Ask("lat", 0.0, "lng", 0.0, "ground_alt", 0.0), Snapshot(pe: 30000), new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            var line = (string)flown["plan_log"];
+            Assert.StartsWith("[plan-vs-flown] REENTRYIMPACT planned orbit: Pe 30000 m, Ap 80000 m, period ", line);
+            Assert.Contains("frame LonOffset 0.0000 deg, handed 1, ground_alt 0 m", line);
+        }
+
+        [Fact]
         public void The_block_call_over_accuracy_gives_the_reason_and_the_best_landing()
         {
             var found = BlockCalls.DeorbitBurn(Ask("lat", 20.0, "lng", KscLng, "earliest_ut", 120.0), Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
