@@ -576,6 +576,33 @@ namespace ClaudiaKerman.Core.Tests
             Assert.DoesNotContain("\"windows\"", table.Split('\n').Single(l => l.StartsWith("plan_transfer {\"target\":\"Mun\"")));
         }
 
+        // #783: Ike is no transfer from Kerbin, so its goal also gets Duna's row, the pick marked as on any planet row.
+        [Fact]
+        public void A_Kerbin_to_Ike_request_carries_Dunas_Soonest_and_Optimal_rows_with_the_pick_marked()
+        {
+            var snapshot = Parked();
+            snapshot.WindowPick = new WindowPick("Duna", WindowKind.Optimal);
+            var lines = MissionPrompts.StageTable(snapshot, "Land on Ike and return to Kerbin.", null).Split('\n');
+            var duna = lines.Single(l => l.StartsWith("plan_transfer {\"target\":\"Duna\""));
+            Assert.Contains("\"soonest\":", duna);
+            Assert.Contains("\"optimal\":", duna);
+            Assert.Contains("\"pick\":\"optimal\"", duna);
+            Assert.Contains("\"setting\":\"Player\"", duna);
+            Assert.DoesNotContain(lines, l => l.StartsWith("plan_transfer {\"target\":\"Ike\""));
+        }
+
+        [Fact]
+        public void A_request_whose_goal_bodies_already_have_rows_gets_no_extra_row()
+        {
+            foreach (var goal in new[] { "Land on Duna.", "Land on Duna and Ike.", "Land on the Mun." })
+            {
+                var targets = MissionPrompts.StageTable(Parked(), goal, null).Split('\n').Count(l => l.StartsWith("plan_transfer {\"target\":\"Duna\""));
+                Assert.Equal(goal.Contains("Duna") ? 1 : 0, targets);
+            }
+            var mun = MissionPrompts.StageTable(Parked(), "Land on the Mun.", null).Split('\n').Where(l => l.StartsWith("plan_transfer")).ToList();
+            Assert.Single(mun);
+        }
+
         // ---- The departure plane from any site (#727) ----
 
         private static GameSnapshot Site(double latitude, double celestialLongitude = 0, TimeVersusDeltaV setting = TimeVersusDeltaV.Balanced, string body = "Kerbin", double ut = 0)
