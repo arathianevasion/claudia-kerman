@@ -460,6 +460,276 @@ namespace ClaudiaKerman.Core.Tests
             Timing.Within(WorstMs, () => Assert.Equal("", Solve(snapshot, 35000, 30)["error"]));
         }
 
+        // ---- aimed at a landing (#792) ----
+
+        private const double KscLat = -0.0972;
+        private const double KscLng = -74.5577;
+
+        /// <summary>The body interface as the frame reads it: the ground turned with Kerbin since UT 1000, as the game has it at <paramref name="ut"/>.</summary>
+        private sealed class FrameBody : PlanningBodyBase
+        {
+            private readonly double _turned;
+
+            public FrameBody(double ut)
+            {
+                _turned = 360 / Kerbin.RotationPeriod * (ut - 1000);
+            }
+
+            public override double TerrainAltitude(string body, double latitude, double longitude) { return 0; }
+            public override string Biome(string body, double latitude, double longitude) { return ""; }
+            public override double SunElevation(string body, double latitude, double longitude, double ut) { return 0; }
+
+            public override bool SurfaceUnder(string body, double x, double y, double z, out double latitude, out double longitude)
+            {
+                var r = Math.Sqrt(x * x + y * y + z * z);
+                latitude = Math.Asin(z / r) * 180 / Math.PI;
+                longitude = LandingSiteSearch.Wrap180(Math.Atan2(y, x) * 180 / Math.PI - _turned);
+                return true;
+            }
+        }
+
+        /// <summary><paramref name="moon"/> with its mean anomaly at epoch set, for a place in its orbit.</summary>
+        private static SnapshotBody Phased(SnapshotBody moon, double phase)
+        {
+            return new SnapshotBody
+            {
+                Name = moon.Name, Parent = moon.Parent, Gm = moon.Gm, Radius = moon.Radius, SoiRadius = moon.SoiRadius, RotationPeriod = moon.RotationPeriod, Sma = moon.Sma,
+                Inclination = moon.Inclination, Lan = moon.Lan, ArgumentOfPeriapsis = moon.ArgumentOfPeriapsis, MeanAnomalyAtEpoch = phase,
+            };
+        }
+
+        /// <summary>A circular orbit over the moon at that place, among only the bodies it needs.</summary>
+        private static GameSnapshot OrbitingAt(SnapshotBody moon, double phase, double altitude = 30000, double ut = 1000)
+        {
+            var phased = Phased(moon, phase);
+            var snapshot = new GameSnapshot { Ut = ut, Situation = "ORBITING", Body = moon.Name };
+            snapshot.Orbit = new SnapshotOrbit { SemiMajorAxis = moon.Radius + altitude, Eccentricity = 0, Body = moon.Name, Periapsis = altitude, Apoapsis = altitude, Epoch = ut };
+            snapshot.Bodies.AddRange(new[] { Sun, Kerbin, phased });
+            return snapshot;
+        }
+
+        private static IDictionary<string, object> Aimed(GameSnapshot snapshot, double lat = KscLat, double lng = KscLng, double pe = 30000, object maxWait = null, double? inc = null)
+        {
+            var input = new Dictionary<string, object> { { "target_pe", pe }, { "earliest_ut", snapshot.Ut }, { "lat", lat }, { "lng", lng } };
+            if (maxWait != null) input["max_wait"] = maxWait;
+            if (inc.HasValue) input["target_inc"] = inc.Value;
+            return BlockCalls.ReturnBurn(input, snapshot, new FrameBody(snapshot.Ut), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+        }
+
+        /// <summary>km from the place to where the node comes down, flown afresh through the patches and the predictor, not by the search's own answer.</summary>
+        private static double FlownKm(GameSnapshot snapshot, IDictionary<string, object> node, double lat, double lng)
+        {
+            var system = new BodySystem(snapshot.Bodies);
+            var moon = system.Find(snapshot.Body);
+            var orbit = Conic.FromElements(moon.Gm, snapshot.Orbit.SemiMajorAxis, 0, 0, 0, 0, 0, snapshot.Orbit.Epoch);
+            var ut = D(node, "ut");
+            var arrival = SingleShooting.Arrive(system, moon, orbit, ut, SingleShooting.FromNodeFrame(orbit, ut, D(node, "prograde"), D(node, "normal"), D(node, "radial")), Kerbin, 2);
+            Assert.NotNull(arrival);
+            var craft = new ReentrySim.Capsule();
+            string problem;
+            var frame = BodyFrame.Read(Kerbin, new FrameBody(snapshot.Ut), snapshot.Ut, out problem);
+            Assert.Null(problem);
+            var landing = ReentryPredictor.Predict(Kerbin, arrival.Orbit, arrival.StartUt, 0, craft.MassKg, new ReentrySim.Atmosphere(), craft, frame);
+            Assert.Null(landing.Error);
+            return LandingSiteSearch.ArcDegrees(landing.Latitude, landing.Longitude, lat, lng) * Math.PI / 180 * 600;
+        }
+
+        /// <summary>
+        /// The acceptance: within a few km of KSC, for under about 2 m/s over the window's least burn, wherever the Mun starts. KSC is 1 km off the
+        /// equator a Mun return's track runs along, so 1 km of it stays.
+        /// </summary>
+        [Theory]
+        [InlineData(0.9)]
+        [InlineData(1.7)]
+        [InlineData(3.0)]
+        [InlineData(4.5)]
+        [InlineData(5.5)]
+        public void A_mun_return_with_a_target_lands_on_it_for_about_a_metre_per_second(double phase)
+        {
+            var snapshot = OrbitingAt(Mun, phase);
+            var node = Aimed(snapshot);
+            Assert.Equal("", node["error"]);
+            Assert.InRange(D(node, "error_km"), 0, 3);
+            Assert.InRange(FlownKm(snapshot, node, KscLat, KscLng), 0, 3);
+            Assert.InRange(D(node, "aim_dv"), 0, 2);
+            Assert.InRange(D(node, "ut"), snapshot.Ut, snapshot.Ut + 7.1 * 3600 + 150);
+            double pe, inc;
+            Flown(snapshot, node, "Kerbin", out pe, out inc);
+            Assert.InRange(pe, 30000 - PeBound, 30000 + PeBound);
+        }
+
+        /// <summary>The same from Minmus where its orbit crosses Kerbin's equator: a track through KSC's latitude.</summary>
+        [Theory]
+        [InlineData(5.5)]
+        public void A_minmus_return_with_a_target_lands_on_it_near_the_moons_node(double phase)
+        {
+            var snapshot = OrbitingAt(Minmus, phase, 20000);
+            var node = Aimed(snapshot);
+            Assert.Equal("", node["error"]);
+            Assert.InRange(D(node, "error_km"), 0, 10);
+            Assert.InRange(FlownKm(snapshot, node, KscLat, KscLng), 0, 10);
+            Assert.InRange(D(node, "aim_dv"), 0, 2);
+            Assert.InRange(D(node, "ut"), snapshot.Ut, snapshot.Ut + 6.2 * 3600 + 150);
+        }
+
+        /// <summary>
+        /// Elsewhere in Minmus's inclined orbit the path's plane holds the moon, so the landing keeps a latitude no cheap burn takes back (about 0.65 km per
+        /// m/s of normal). The burn's time still takes all that is along the track, and predicted_error_km says what is left.
+        /// </summary>
+        [Theory]
+        [InlineData(0.9)]
+        [InlineData(3.0)]
+        [InlineData(4.5)]
+        public void A_minmus_return_off_the_moons_node_is_on_the_track_and_says_what_is_across_it(double phase)
+        {
+            var node = Aimed(OrbitingAt(Minmus, phase, 20000));
+            Assert.Equal("", node["error"]);
+            var acrossKm = Math.Abs(D(node, "lat") - KscLat) * Math.PI / 180 * 600;
+            var alongKm = Math.Abs(LandingSiteSearch.Wrap180(D(node, "lng") - KscLng)) * Math.PI / 180 * 600;
+            Assert.InRange(alongKm, 0, 5);
+            Assert.InRange(acrossKm, 20, 70);
+            Assert.InRange(D(node, "error_km"), acrossKm - 5, acrossKm + 5);
+            Assert.InRange(D(node, "aim_dv"), 0, 2);
+        }
+
+        /// <summary>One turn of the landing's longitude: the ground under a path that turns with the moon. Ike and Duna are locked, so its limit is Ike's orbit.</summary>
+        [Theory]
+        [InlineData("Mun", "Kerbin", 7.0, 7.2)]
+        [InlineData("Minmus", "Kerbin", 6.0, 6.2)]
+        [InlineData("Ike", "Duna", 18.0, 18.3)]
+        public void Auto_max_wait_is_one_turn_of_the_landings_longitude(string moon, string planet, double lowHours, double highHours)
+        {
+            var system = new BodySystem(new[] { Sun, Kerbin, Mun, Minmus, Duna, Ike });
+            Assert.InRange(ReturnAim.LongitudeTurn(system, system.Find(planet), system.Find(moon)) / 3600, lowHours, highHours);
+        }
+
+        /// <summary>Round the longitudes, a target picks the window that falls on it, one spread over the whole turn.</summary>
+        [Fact]
+        public void A_target_chooses_among_the_windows_within_max_wait()
+        {
+            var snapshot = OrbitingAt(Mun, 1.7);
+            var waits = new List<double>();
+            for (var lng = -180.0; lng < 180; lng += 40)
+            {
+                var node = Aimed(snapshot, 0, lng);
+                Assert.InRange(D(node, "error_km"), 0, 3);
+                Assert.InRange(D(node, "aim_dv"), 0, 2);
+                waits.Add(D(node, "ut") - snapshot.Ut);
+            }
+            waits.Sort();
+            Assert.InRange(waits[0], 0, 3600);
+            Assert.InRange(waits[waits.Count - 1], 5 * 3600, 7.2 * 3600);
+        }
+
+        /// <summary>A shorter max_wait is honoured: it costs accuracy, says so, and does not fail.</summary>
+        [Fact]
+        public void A_short_max_wait_keeps_the_burn_in_it_and_reports_the_miss()
+        {
+            var snapshot = OrbitingAt(Mun, 1.7);
+            var free = D(Aimed(snapshot), "ut");
+            Assert.True(free > snapshot.Ut + 3 * 3600, "the free pick waits; this phase's window for KSC is " + (free - snapshot.Ut) + " s off");
+            var node = Aimed(snapshot, maxWait: 3600.0);
+            Assert.Equal("", node["error"]);
+            Assert.InRange(D(node, "ut"), snapshot.Ut, snapshot.Ut + 3600 + 1);
+            Assert.True(D(node, "error_km") > 50, "with no window near, the miss is reported: " + D(node, "error_km"));
+        }
+
+        /// <summary>A Due Time wakes the run an hour before the window (#749): asked again then, the block takes that window and does not wait on for a later one.</summary>
+        [Theory]
+        [InlineData(0.9)]
+        [InlineData(1.7)]
+        [InlineData(3.0)]
+        [InlineData(4.5)]
+        [InlineData(5.5)]
+        public void Asked_again_an_hour_before_the_window_the_block_takes_the_same_one(double phase)
+        {
+            var snapshot = OrbitingAt(Mun, phase);
+            var first = D(Aimed(snapshot), "ut");
+            var later = Math.Max(snapshot.Ut, first - 3600);
+            var again = snapshot.At(later);
+            var node = Aimed(again);
+            Assert.InRange(D(node, "ut"), first - 2 * ReturnAim.ReachS, first + 2 * ReturnAim.ReachS);
+        }
+
+        /// <summary>#792's call on target_pe: the same burn error moves the landing about half as far at 30 km, and at 35 km from Minmus it can skip out.</summary>
+        [Theory]
+        [InlineData("Mun", 30000, 150, 130)]
+        [InlineData("Minmus", 20000, 1000, 600)]
+        public void A_landing_at_30_km_spreads_less_than_at_35_km(string moonName, double altitude, double spreadAt35AtLeast, double spreadAt30AtMost)
+        {
+            var snapshot = OrbitingAt(MoonNamed(moonName), 1.7, altitude);
+            Assert.InRange(D(Aimed(snapshot, pe: 35000), "spread_km"), spreadAt35AtLeast, double.PositiveInfinity);
+            Assert.InRange(D(Aimed(snapshot, pe: 30000), "spread_km"), 1, spreadAt30AtMost);
+        }
+
+        /// <summary>target_inc is still met: only the burn's time moves the landing.</summary>
+        [Fact]
+        public void A_target_inc_is_met_with_a_landing_too()
+        {
+            var snapshot = OrbitingAt(Mun, 1.7);
+            var node = Aimed(snapshot, inc: 30);
+            Assert.Equal("", node["error"]);
+            Assert.InRange(D(node, "inc_predicted"), 30 - IncBound, 30 + IncBound);
+            Assert.InRange(D(node, "pe_predicted"), 30000 - PeBound, 30000 + PeBound);
+        }
+
+        /// <summary>A path that misses the air has no landing to aim: the window's least burn stands, for the correction to draw down, as before #792.</summary>
+        [Fact]
+        public void A_path_over_the_air_stands_as_the_least_burn()
+        {
+            var snapshot = OrbitingAt(Mun, 1.7);
+            var node = Aimed(snapshot, pe: 200000);
+            Assert.Equal("", node["error"]);
+            Assert.Equal(-1.0, D(node, "error_km"));
+            Assert.Equal(-1.0, D(node, "spread_km"));
+            Assert.Equal(D(Solve(snapshot, 200000, earliest: snapshot.Ut), "ut"), D(node, "ut"));
+        }
+
+        [Fact]
+        public void No_target_is_the_same_burn_as_before_with_no_aim_in_it()
+        {
+            var snapshot = OrbitingAt(Mun, 1.7);
+            var node = Solve(snapshot, 35000, earliest: snapshot.Ut);
+            var plain = ReturnBurn.Find(snapshot, new ReturnAsk { TargetPe = 35000, EarliestUt = snapshot.Ut });
+            Assert.Equal(plain.Ut, D(node, "ut"));
+            Assert.Equal(plain.DeltaV, D(node, "dv"));
+            Assert.Equal(-1.0, D(node, "error_km"));
+            Assert.Equal(0.0, D(node, "aim_dv"));
+            Assert.Equal(-1.0, D(node, "spread_km"));
+            Assert.False(node.ContainsKey("lat"));
+            // max_wait means nothing without a target, even one it could not read.
+            var waited = BlockCalls.ReturnBurn(new Dictionary<string, object> { { "target_pe", 35000.0 }, { "earliest_ut", snapshot.Ut }, { "max_wait", "soon" } }, snapshot);
+            Assert.Equal(D(node, "ut"), D(waited, "ut"));
+        }
+
+        [Fact]
+        public void A_landing_it_cannot_read_is_an_error_with_its_reason()
+        {
+            var snapshot = OrbitingAt(Mun, 1.7);
+            Assert.Equal("found no return: lat and lng must both be numbers", BlockCalls.ReturnBurn(new Dictionary<string, object> { { "target_pe", 30000.0 }, { "lat", 0.0 } }, snapshot)["error"]);
+            Assert.Equal("found no return: max_wait must be \"auto\" or seconds above 0, not soon", Aimed(snapshot, maxWait: "soon")["error"]);
+            Assert.Equal("found no return: max_wait must be \"auto\" or seconds above 0, not -5", Aimed(snapshot, maxWait: -5.0)["error"]);
+            Assert.Equal("", Aimed(snapshot, maxWait: "auto")["error"]);
+            Assert.Equal("found no return: the landing needs the planet's air and the craft",
+                BlockCalls.ReturnBurn(new Dictionary<string, object> { { "target_pe", 30000.0 }, { "lat", 0.0 }, { "lng", 0.0 } }, snapshot)["error"]);
+        }
+
+        /// <summary>A craft round a planet gets the solve's own refusal, not one about the landing.</summary>
+        [Fact]
+        public void A_craft_round_a_planet_gets_the_same_refusal_with_a_target()
+        {
+            Assert.Equal("found no return: the craft orbits Kerbin, not a moon: return starts from orbit round a moon", Aimed(Orbiting(Kerbin, 100000))["error"]);
+        }
+
+        /// <summary>The aim's whole search on the same budget as the worst plain solve (ADR 0010).</summary>
+        [Fact]
+        [Trait("Category", "Timing")]
+        public void A_return_with_a_target_is_solved_in_under_200_ms()
+        {
+            var snapshot = OrbitingAt(Mun, 1.7);
+            Timing.Within(WorstMs, () => Assert.Equal("", Aimed(snapshot)["error"]));
+        }
+
         // ---- what it refuses ----
 
         [Fact]

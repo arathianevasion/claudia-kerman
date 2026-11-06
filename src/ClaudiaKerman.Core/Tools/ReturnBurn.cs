@@ -24,6 +24,10 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>How far the answer may be from target_pe (m) and target_inc (degrees) before the solve is an error.</summary>
         public double PeTolerance = 1000;
         public double IncTolerance = 0.5;
+        /// <summary>Where to come down (#792), for <see cref="ReturnAim"/> to pick the window and time the burn; null for the least burn in the window.</summary>
+        public ReturnLanding Landing;
+        /// <summary>With <see cref="Landing"/>, the seconds after <see cref="EarliestUt"/> the burn may wait; null for one turn of the landing's longitude (<see cref="ReturnAim.LongitudeTurn"/>).</summary>
+        public double? MaxWait;
         /// <summary>Start from the coarse grid, as when the analytic seed is undefined: for tests of that worst case.</summary>
         internal bool FromGrid;
         /// <summary>The cap on the SQP's iterations, and whether a best point short of the answer gets its finish: for tests of a solve that stops short.</summary>
@@ -55,6 +59,14 @@ namespace ClaudiaKerman.Core.Tools
         public string FinishedBy;
         public int Iterations;
         public int Evaluations;
+        /// <summary>With a landing asked: where this burn comes down, or null when the predictor can't say (the burn is then the window's least).</summary>
+        public ReentryPrediction Landing;
+        /// <summary>km from the target to <see cref="Landing"/>; -1 without one.</summary>
+        public double ErrorKm = -1;
+        /// <summary>m/s this burn costs over the least burn of its window.</summary>
+        public double AimDv;
+        /// <summary>km <see cref="ReturnAim.ResidualMs"/> of error in the burn moves the landing; -1 when it can't be said.</summary>
+        public double SpreadKm = -1;
     }
 
     /// <summary>
@@ -88,7 +100,7 @@ namespace ClaudiaKerman.Core.Tools
         private const string TimeShift = "a time shift";
         private const string InertialSolve = "the inertial solve, without the bound";
         /// <summary>Out of the moon, round the planet: a last patch round the star no longer throws (#471).</summary>
-        private const int Patches = 2;
+        internal const int Patches = 2;
         /// <summary>The seed's search for the burn point: samples over the window.</summary>
         private const int SeedSamples = 360;
         /// <summary>The fallback grid: burn times over the window, and prograde burns from the escape speed up by these factors of it.</summary>
@@ -112,6 +124,7 @@ namespace ClaudiaKerman.Core.Tools
         public static ReturnPlan Find(BodySystem system, SnapshotBody moon, Conic orbit, double now, ReturnAsk ask)
         {
             if (ask == null) return Fail("no ask given");
+            if (ask.Landing != null) return ReturnAim.Find(system, moon, orbit, now, ask);
             var planet = system.Parent(moon);
             if (planet == null || system.Parent(planet) == null)
                 return Fail("the craft orbits " + moon.Name + ", not a moon: return starts from orbit round a moon");

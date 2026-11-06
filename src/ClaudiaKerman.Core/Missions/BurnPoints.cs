@@ -25,11 +25,16 @@ namespace ClaudiaKerman.Core.Missions
         public double LeftSeconds;
         /// <summary>For transfer_to and return (#749): the UT of the ejection the block waits for, from Core's solver; null for any other burn point.</summary>
         public double? DepartureUt;
+        /// <summary>
+        /// For a return aimed at a landing (#792): the longest the block's own pick of the window may wait, s. <see cref="DepartureUt"/> is an estimate
+        /// (the block has the craft's drag, this has not), and a window just outside the block's near ones leaves it the next turn's.
+        /// </summary>
+        public double PickWaitSeconds;
 
         /// <summary>The least <c>expected_duration_s</c> that covers the wait, the burn and the turn to it, rounded up to 10 s.</summary>
         public double MinimumDurationSeconds
         {
-            get { return Math.Ceiling((WaitSeconds + BurnSeconds + BurnPoints.TurnMarginSeconds) / 10) * 10; }
+            get { return Math.Ceiling((Math.Max(WaitSeconds, PickWaitSeconds) + BurnSeconds + BurnPoints.TurnMarginSeconds) / 10) * 10; }
         }
     }
 
@@ -55,15 +60,17 @@ namespace ClaudiaKerman.Core.Missions
         private static readonly Regex Quoted = new Regex("\"(?<n>[^\"]+)\"", RegexOptions.CultureInvariant);
         private static readonly Regex Number = new Regex(@"^\d+(\.\d+)?$", RegexOptions.CultureInvariant);
         private static readonly Regex FromNow = new Regex(@"^time\s*:\s*seconds\s*\+\s*(?<s>\d+(\.\d+)?)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        /// <summary>A landing target written out: LATLNG(lat, lng) or lexicon("lat", x, "lng", y).</summary>
+        private static readonly Regex Site = new Regex(@"^(latlng\s*\(\s*|lexicon\s*\(\s*""lat""\s*,\s*)(?<lat>-?\d+(\.\d+)?)\s*,\s*(""lng""\s*,\s*)?(?<lng>-?\d+(\.\d+)?)\s*\)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         /// <summary>
         /// The plan's first burn when <c>expected_duration_s</c> doesn't cover it; null when it does or none can be read.
-        /// <paramref name="snapshot"/> is the craft the plan flies (null: no check).
+        /// <paramref name="snapshot"/> is the craft the plan flies (null: no check). <paramref name="body"/> reads the frame for a return aimed at a landing (#792).
         /// </summary>
-        public static BurnWait ShortOf(SequencePlan plan, GameSnapshot snapshot, double now)
+        public static BurnWait ShortOf(SequencePlan plan, GameSnapshot snapshot, double now, IPlanningBody body = null)
         {
             if (plan == null || plan.Manual) return null;
-            var wait = First(plan.Script, snapshot, now, plan.ExpectedDeltaV);
+            var wait = First(plan.Script, snapshot, now, plan.ExpectedDeltaV, body);
             // A departure over WindowWaits.LongWaitS off is a Due Time (DueTime): the run starts one launch lead before it.
             if (wait != null && DueTime(wait, now).HasValue) wait.WaitSeconds = WindowWaits.LaunchLeadS;
             return wait != null && plan.ExpectedDurationSeconds < wait.MinimumDurationSeconds ? wait : null;
@@ -82,7 +89,7 @@ namespace ClaudiaKerman.Core.Missions
         /// The wait to the script's first burn point at <paramref name="now"/> (UT), with its burn time from
         /// <paramref name="expectedDeltaV"/> (or the existing node's delta-v); null when the script doesn't show one.
         /// </summary>
-        public static BurnWait First(string script, GameSnapshot snapshot, double now, double expectedDeltaV)
+        public static BurnWait First(string script, GameSnapshot snapshot, double now, double expectedDeltaV, IPlanningBody body = null)
         {
             if (string.IsNullOrWhiteSpace(script) || snapshot == null) return null;
             var masked = CoreLibrary.MissionScript(script, true);
@@ -98,7 +105,7 @@ namespace ClaudiaKerman.Core.Missions
                     nodeUt = NodeUt(masked, code, added, now);
                     if (!nodeUt.HasValue) return null;
                 }
-                var wait = Wait(call, snapshot, now, nodeUt, Remove.IsMatch(masked.Substring(0, call.Index)));
+                var wait = Wait(call, snapshot, now, nodeUt, Remove.IsMatch(masked.Substring(0, call.Index)), body);
                 if (wait == null) return null;
                 var dv = expectedDeltaV > 0 ? expectedDeltaV : call.Block == "exec_node" && !nodeUt.HasValue && snapshot.Nodes.Count > 0 ? snapshot.Nodes[0].DeltaV : 0;
                 wait.BurnSeconds = (dv > 0 ? Tools.PredictBurn.BurnSeconds(snapshot, dv) : null) ?? BurnAllowanceSeconds;
@@ -127,7 +134,7 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>The wait for this call's burn point, or null when it has none fixed before the run (or isn't a burn).</summary>
-        private static BurnWait Wait(BlockCall call, GameSnapshot snapshot, double now, double? nodeUt, bool removesNodes)
+        private static BurnWait Wait(BlockCall call, GameSnapshot snapshot, double now, double? nodeUt, bool removesNodes, IPlanningBody body)
         {
             switch (call.Block)
             {
@@ -142,7 +149,7 @@ namespace ClaudiaKerman.Core.Missions
                     return TunePe(call, snapshot, now);
                 case "transfer_to":
                 case "return":
-                    return Departure(call, snapshot, now);
+                    return Departure(call, snapshot, now, body);
                 default:
                     return null;
             }
@@ -150,18 +157,21 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// #749: the ejection transfer_to or return waits for. The window option's UT when it is a number; "next" asks Core's
-        /// flight (TRANSFERSTEP's first step) for transfer_to, and gives no fixed point for return (its burn point's next pass).
+        /// flight (TRANSFERSTEP's first step) for transfer_to, and gives no fixed point for return (its burn point's next pass),
+        /// unless it is aimed at a landing written out (#792), when the window it will pick is the point.
         /// </summary>
-        private static BurnWait Departure(BlockCall call, GameSnapshot snapshot, double now)
+        private static BurnWait Departure(BlockCall call, GameSnapshot snapshot, double now, IPlanningBody body)
         {
             var option = call.Option("window");
             var window = Literal(option);
             if (!window.HasValue && option != "\"next\"") return null;
             double ut;
+            var pickWait = 0.0;
             if (call.Block == "return")
             {
-                if (!window.HasValue) return null;
-                ut = TransferFlight.Earliest(now, 0, window);
+                var aimed = AimedDeparture(call, snapshot, now, TransferFlight.Earliest(now, 0, window), body, out pickWait);
+                if (!aimed.HasValue && !window.HasValue) return null;
+                ut = aimed ?? TransferFlight.Earliest(now, 0, window);
             }
             else
             {
@@ -175,8 +185,55 @@ namespace ClaudiaKerman.Core.Missions
                 ut = step.Ut;
             }
             var wait = At(call, "the ejection", ut - now);
-            if (wait != null) wait.DepartureUt = ut;
+            if (wait != null)
+            {
+                wait.DepartureUt = ut;
+                wait.PickWaitSeconds = pickWait;
+            }
             return wait;
+        }
+
+        /// <summary>
+        /// The window a return with a landing target will pick from <paramref name="earliest"/> (<see cref="ReturnAim"/>), with the snapshot's air and an
+        /// estimate of the craft, and in <paramref name="pickWait"/> the longest the block may wait from now. Null without a target written out, or a frame to read it in.
+        /// </summary>
+        private static double? AimedDeparture(BlockCall call, GameSnapshot snapshot, double now, double earliest, IPlanningBody body, out double pickWait)
+        {
+            pickWait = 0;
+            if (body == null) return null;
+            double latitude, longitude;
+            if (!SiteOf(call.Option("target"), out latitude, out longitude)) return null;
+            var wait = call.Option("max_wait");
+            var maxWait = Literal(wait);
+            if (!maxWait.HasValue && wait != "\"auto\"") return null;
+            var at = snapshot.At(now);
+            var planet = ReturnAim.PlanetOf(at);
+            if (planet == null) return null;
+            string problem;
+            var craft = new ChuteAllocation.FallingCraft(Math.Max(1000, at.Craft == null ? 0 : at.Craft.MassTonnes * 1000), new ReentryChute[0]);
+            var landing = ReturnAim.LandingOn(at, latitude, longitude, 0, 0, body, new ChuteAllocation.SnapshotAir(planet), craft, out problem);
+            if (landing == null) return null;
+            string given;
+            var targetPe = call.Options.TryGetValue("target_pe", out given) ? Literal(given) : ReturnAim.DefaultTargetPe;
+            if (!targetPe.HasValue) return null;
+            double latest;
+            var departure = ReturnAim.DepartureUt(at, new ReturnAsk { TargetPe = targetPe.Value, EarliestUt = earliest, Landing = landing, MaxWait = maxWait }, out latest);
+            pickWait = latest - now;
+            return departure;
+        }
+
+        /// <summary>The place a target option's source text names: "ksc" or one written out in numbers.</summary>
+        private static bool SiteOf(string target, out double latitude, out double longitude)
+        {
+            latitude = ReturnAim.KscLatitude;
+            longitude = ReturnAim.KscLongitude;
+            if (target == null || target == "\"none\"") return false;
+            if (string.Equals(target, "\"ksc\"", StringComparison.OrdinalIgnoreCase)) return true;
+            var site = Site.Match(target);
+            if (!site.Success) return false;
+            latitude = double.Parse(site.Groups["lat"].Value, CultureInfo.InvariantCulture);
+            longitude = double.Parse(site.Groups["lng"].Value, CultureInfo.InvariantCulture);
+            return true;
         }
 
         /// <summary>tune_pe's patch "current" burns at the apoapsis (the next one if this is under 2 minutes off).</summary>
