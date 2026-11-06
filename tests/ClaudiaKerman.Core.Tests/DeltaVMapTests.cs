@@ -66,12 +66,12 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void APolarMunOrbitBudgetsAPlaneChangeAtTheCapturesHighestPoint()
+        public void APolarMunOrbitBudgetsThePlaneAimedOnTheApproach()
         {
             var map = DeltaVMap.Compute(KerbinSystem(), "Kerbin");
             var polar = map.Leg("polar:Mun");
-            // 2 v sin(45 degrees) at the speed the craft arrives with relative to the Mun, a few hundred m/s.
-            Assert.InRange(polar.DeltaV, 300, 600);
+            // Tens of m/s; the fit is PolarArrivalTests'.
+            Assert.InRange(polar.DeltaV, 60, 100);
             Assert.Equal(polar.DeltaV, polar.PlaneChange);
             Assert.Contains("polar:Mun: ", map.ToText());
             Assert.Contains("carries a plane change", map.ToText().Split('\n').Single(l => l.StartsWith("- polar:Mun")));
