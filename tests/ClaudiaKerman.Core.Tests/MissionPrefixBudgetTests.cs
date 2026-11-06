@@ -25,13 +25,14 @@ namespace ClaudiaKerman.Core.Tests
         // counts input) for the system prompt and tool definitions of the first Mission request in this test's Mission. The estimate
         // runs low against the API's own count (25,569 in b5f3, 26,865 in 3dc5, whose Mission layer also carried a real body table
         // and goal), so compare this figure only with itself.
-        private const int TodaysEstimate = 21457;
+        private const int TodaysEstimate = 21727;
 
         /// <summary>
         /// Set at 21,500 when the figure was 20,452 (1.05 x 20,452 = 21,475, rounded up to the next hundred), and not raised since.
+        /// Raised to 21,750 by the player's decision for #788 (the arrival plane's option and the capture block), 2026-11-05.
         /// The per-ticket ledger is in docs/prefix-budget/ (one file per ticket); see its README.
         /// </summary>
-        private const int BudgetTokens = 21500;
+        private const int BudgetTokens = 21750;
 
         // The first Mission request's messages for a Mun goal from Kerbin orbit (same estimate): 5,096 tokens before #575, plus 321 for the
         // plan_transfer row and its lead line = 5,417. The row replaces a tool step, a whole request of about $0.22 in b5f3, 3dc5 and

@@ -308,6 +308,14 @@ namespace ClaudiaKerman.Core.Missions
         public KosRunEnded(RunOutcome outcome, int runId, double ut = 0) { Outcome = outcome; RunId = runId; Ut = ut; }
     }
 
+    /// <summary><c>transfer_to</c>'s flight aims for an arrival plane (#788): Core records it for <c>capture</c>.</summary>
+    public sealed class ArrivalPlaneAimed : MissionInput
+    {
+        /// <summary>The plane as <see cref="Tools.TransferFlightStep.AimedPlane"/> gives it; "" for none.</summary>
+        public readonly string Record;
+        public ArrivalPlaneAimed(string record) { Record = record; }
+    }
+
     /// <summary>A Building Block began in the run (<c>ADDONS:CLAUDIA:BLOCKSTART</c>, from the Core Library's <c>claudia_begin</c>).</summary>
     public sealed class KosBlockStarted : MissionInput
     {

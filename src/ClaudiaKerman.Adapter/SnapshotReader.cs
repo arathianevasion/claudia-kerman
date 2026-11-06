@@ -24,7 +24,13 @@ namespace ClaudiaKerman.Adapter
         /// <see cref="Read"/> stamped with the active Mission's Time versus delta-v and margin (#733, #739), for the block calls and the
         /// Planning Tools bridge: a window "next" then picks plan_transfer's window. No Mission, the defaults.
         /// </summary>
-        public static GameSnapshot ReadForMission(Vessel vessel) { return MissionView.Stamp(Read(vessel), MissionDriver.Current != null ? MissionDriver.Current.View : null); }
+        public static GameSnapshot ReadForMission(Vessel vessel)
+        {
+            var snapshot = MissionView.Stamp(Read(vessel), MissionDriver.Current != null ? MissionDriver.Current.View : null);
+            // The Mission's view gets the record a frame later; a block test has no Mission at all.
+            if (snapshot.RecordedPlane.Length == 0) snapshot.RecordedPlane = MissionDriver.AimedPlane;
+            return snapshot;
+        }
 
         /// <summary>
         /// The Encounter Watch's reading (#770): the time, the craft's situation and KSP's own orbit for it, read at warp with no parts.

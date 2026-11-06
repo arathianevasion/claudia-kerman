@@ -647,11 +647,40 @@ namespace ClaudiaKerman.Core.Tools
                 MidUt = Number(ask, "mid_ut", -1),
                 Checkpoints = mode != CoastCheckpoints.Off,
                 Resume = CoastToken.Parse(mode),
+                PlaneOption = PlaneOption.Read(ask.ContainsKey("plane") ? ask["plane"] : null),
             });
             var result = Step(step);
+            result["aimed_plane"] = step.AimedPlane;
             // A resumed flight's token is spent; its later coasts may checkpoint again.
             ((IDictionary<string, object>)result["carry"])[CoastCheckpoints.TokenKey] = mode == CoastCheckpoints.Off ? CoastCheckpoints.Off : CoastCheckpoints.On;
             return result;
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:CAPTURESTEP</c>, for <c>capture</c> (#788, ADR 0014): its next step (<see cref="CaptureFlight"/>), asked again after each.
+        /// Takes <c>alt</c> and <c>max_plane_dv</c> ("auto" or a number), <c>plane</c> (as <see cref="PlaneOption.Read"/>), <c>turn_time</c>, and what the last step
+        /// carried: <c>phase</c>, <c>why</c> (the way the tilt is flown) and <c>drops</c> (the burns flown). Gives what <see cref="TransferStep"/> gives.
+        /// </summary>
+        public static IDictionary<string, object> CaptureStep(IDictionary<string, object> input, GameSnapshot snapshot)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            object phase, why, alt, maxPlane;
+            ask.TryGetValue("phase", out phase);
+            ask.TryGetValue("why", out why);
+            ask.TryGetValue("alt", out alt);
+            ask.TryGetValue("max_plane_dv", out maxPlane);
+            if (alt is string && (string)alt != "auto") return Step(new TransferFlightStep { Error = "alt must be \"auto\" or an altitude in m, not " + alt });
+            if (maxPlane is string && (string)maxPlane != "auto") return Step(new TransferFlightStep { Error = "max_plane_dv must be \"auto\" or m/s, not " + maxPlane });
+            return Step(CaptureFlight.Next(snapshot, new CaptureAsk
+            {
+                Alt = NumberOrNull(ask, "alt"),
+                Plane = PlaneOption.Read(ask.ContainsKey("plane") ? ask["plane"] : null),
+                MaxPlaneDv = NumberOrNull(ask, "max_plane_dv"),
+                TurnTime = Number(ask, "turn_time", 0),
+                Phase = phase as string ?? CaptureFlight.Start,
+                Method = why as string ?? "",
+                Burns = (int)Number(ask, "drops", 0),
+            }));
         }
 
         /// <summary>
