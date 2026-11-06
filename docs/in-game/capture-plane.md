@@ -1,6 +1,6 @@
 # Capture into the Mission's plane and direction (#788)
 
-`transfer_to` now aims the arrival plane on the approach (`plane`, default `"auto"`), and the new `capture` block flies the arrival burn and any leftover tilt. Core worked all of this out on detached orbits; these checks fly it in KSP. The Delta-v Map and Craft Check are unchanged, so read the m/s below against the leg's margin.
+`transfer_to` now aims the arrival plane on the approach (`plane`, default `"auto"`), and the new `capture` block flies the arrival burn and any leftover tilt. Core worked all of this out on detached orbits; these checks fly it in KSP. The Delta-v Map's `polar:` row is the plane aimed this way (#806); for any other plane, read the m/s below against the leg's margin.
 
 Install and the block test runner are as in `phase-3-gate.md` ("Install", "Where to look").
 
@@ -33,3 +33,12 @@ Install and the block test runner are as in `phase-3-gate.md` ("Install", "Where
 3. `transfer_to`: `target_pe_actual` within `pe_tolerance` of 20 km, whatever `target_pe` Claudia gave. `plane_off_deg` may read several degrees: a burn this size swings Minmus's slow approach.
 4. `capture`: circular at 20 km (`ecc` under 0.011), in the vessel's plane and going the same way round: compare `inc` and the map view's orbit lines. If `capture_method` reads "over_max_plane_dv" the block reports the leftover instead, and Claudia decides at the Debrief.
 5. `rendezvous` then phases and meets the vessel, with little or no plane match of its own.
+
+## Check 4: Mun Shot v2 to the Mun's pole (#806)
+
+1. In the editor load Mun Shot v2 with the goal "Land at the Mun's pole and return to Kerbin", with the 15% margin, and run the Craft Check. It passes: the card's route has about 80 m/s for polar and sums to about 6,390 m/s, about 7,350 with the margin, against the craft's 7,393 m/s.
+2. Start the Mission and approve the plan. Read the Mission Script's `transfer_to`: it leaves `plane` out, or passes 90. If it passes another number or "none", note that on the ticket: Claudia's value wins, so the check's figure no longer applies.
+3. In the result of `transfer_to`: `plane_off_deg` under 0.5, and in `KSP.log` the aimed plane reads inc 90, source "site" (or "number" if Claudia passed 90).
+4. Add up `plane_dv` and `correction_dv` from that result and report the sum on the ticket against the `polar:Mun` figure on the card. It should be under it, about 40 to 50 m/s.
+5. In the result of `capture`: `inc` 89.5 to 90.5, with no burn after the capture burn. The landing reaches the pole with no plane change in low orbit (that turn costs about 760 m/s).
+6. Biomes: repeat steps 2 and 3 with the goal "Land in the Mun's Poles biome" (aims 90), then with "Land in the Mun's Twin Craters" (aims the biome's median |latitude| + 0.5). `KSP.log` shows no hitch-related error at the first `transfer_to` step, where the biome map is surveyed once.

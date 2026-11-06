@@ -111,6 +111,161 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(7393 - route * 1.15, 0, 100);
         }
 
+        // ---- plane "auto" at a pole or a biome ----
+
+        private sealed class Scene
+        {
+            public readonly TransferRig Rig = TransferRig.Circular("Kerbin", 100000, 0);
+            public readonly GameSnapshot Snapshot;
+
+            public Scene(string goal = "", params string[] legs)
+            {
+                Snapshot = Rig.Snapshot();
+                Snapshot.MissionGoal = goal;
+                Snapshot.LegsAhead = legs.Select(n => new PlannedSequence { Name = n }).ToList();
+                Snapshot.Bodies.Single(b => b.Name == "Mun").BiomeNames.AddRange(new[] { "Poles", "Polar Lowlands", "Midlands", "Twin Craters", "Ice Caps", "Lowlands" });
+                Snapshot.Bodies.Single(b => b.Name == "Minmus").BiomeNames.AddRange(new[] { "Poles", "Flats" });
+            }
+
+            /// <summary>The Mun's biome map, as the game answers for a point: a polar one named only in the data, a band each side of the equator, and one across it.</summary>
+            public Scene WithBiomeMap()
+            {
+                Snapshot.BiomeLatitudesOf = body => BiomeLatitudes.Survey((lat, lng) =>
+                {
+                    var north = Math.Abs(lat);
+                    return north >= 65 ? "Ice Caps" : north >= 20 && north <= 40 ? "Twin Craters" : "Lowlands";
+                });
+                return this;
+            }
+
+            public ArrivalPlane Pick(string arrival = "Mun", object option = null)
+            {
+                string error;
+                var plane = ArrivalPlanes.Resolve(Snapshot, Rig.System, Rig.System.Find(arrival), PlaneOption.Read(option), out error);
+                Assert.Equal("", error);
+                return plane;
+            }
+        }
+
+        [Theory]
+        [InlineData("Land at the Mun's pole and return to Kerbin", "Transfer to the Mun", "Land on the Mun", "Return to Kerbin")]
+        [InlineData("Plant a flag", "Transfer to the Mun", "Land at the Mun's north pole")]
+        [InlineData("Plant a flag", "Transfer to the Mun", "Land in the Poles biome")]
+        [InlineData("Land in the Polar Lowlands of the Mun", "Transfer to the Mun", "Land")]
+        [InlineData("Polar orbit of the Mun, then come home", "Transfer to the Mun", "Capture at the Mun", "Return to Kerbin")]
+        [InlineData("Survey the Mun", "Transfer to the Mun", "Capture into a polar orbit")]
+        public void Auto_flies_a_goal_or_leg_at_a_pole_in_at_90_prograde(string goal, params string[] legs)
+        {
+            var plane = new Scene(goal, legs).Pick();
+            Assert.Equal(90, plane.Inc);
+            Assert.Equal("site", plane.Source);
+            Assert.Null(plane.Normal);
+        }
+
+        [Fact]
+        public void The_game_s_biome_map_says_a_biome_is_polar_whatever_its_name()
+        {
+            Assert.Null(new Scene("", "Transfer to the Mun", "Land in Ice Caps").Pick());
+            Assert.Equal(90, new Scene("", "Transfer to the Mun", "Land in Ice Caps").WithBiomeMap().Pick().Inc);
+            Assert.Equal(90, new Scene("Land in the Mun's Ice Caps", "Transfer to the Mun", "Land").WithBiomeMap().Pick().Inc);
+        }
+
+        [Fact]
+        public void A_biome_off_the_equator_sets_its_latitude_and_one_across_it_sets_none()
+        {
+            var plane = new Scene("", "Transfer to the Mun", "Land in Twin Craters").WithBiomeMap().Pick();
+            Assert.InRange(plane.Inc, 27, 33);
+            Assert.Null(new Scene("", "Transfer to the Mun", "Land in the Lowlands").WithBiomeMap().Pick());
+        }
+
+        [Fact]
+        public void A_biome_the_game_says_is_not_polar_is_not_flown_as_polar_for_its_name()
+        {
+            var scene = new Scene("", "Transfer to the Mun", "Land in Polar Lowlands");
+            scene.Snapshot.BiomeLatitudesOf = body => BiomeLatitudes.Survey((lat, lng) => Math.Abs(lat) <= 40 ? "Polar Lowlands" : "Midlands");
+            Assert.Null(scene.Pick());
+        }
+
+        [Theory]
+        [InlineData("Land in Twin Craters on the Mun")]
+        [InlineData("Land on the Mun")]
+        public void A_non_polar_biome_with_no_readable_latitude_sets_no_plane_as_today(string leg)
+        {
+            Assert.Null(new Scene("", "Transfer to the Mun", leg).Pick());
+        }
+
+        [Fact]
+        public void A_biome_the_survey_misses_falls_back_on_its_name()
+        {
+            var scene = new Scene("", "Transfer to the Mun", "Land in Polar Lowlands");
+            scene.Snapshot.BiomeLatitudesOf = body => BiomeLatitudes.Survey((lat, lng) => "Midlands");
+            Assert.Equal(90, scene.Pick().Inc);
+        }
+
+        [Theory]
+        [InlineData("Land at the pole", 90.0, 90.0)]
+        [InlineData("Land at the pole", "none", null)]
+        [InlineData("Land at the pole", 12.0, 12.0)]
+        public void Claudia_s_value_wins_over_a_pole(string leg, object option, double? inc)
+        {
+            var plane = new Scene("Land at the Mun's pole", "Transfer to the Mun", leg).Pick("Mun", option);
+            Assert.Equal(inc, plane == null ? (double?)null : plane.Inc);
+            if (plane != null) Assert.Equal("number", plane.Source);
+        }
+
+        [Fact]
+        public void A_landing_site_s_own_latitude_comes_before_the_words_about_a_pole()
+        {
+            var site = new Scene("Land at the Mun's pole", "Transfer to the Mun", "Land near the pole at (85.2, 10)");
+            Assert.Equal(85.7, site.Pick().Inc, 3);
+            var picked = new Scene("Land at the Mun's pole", "Transfer to the Mun", "Land");
+            picked.Snapshot.PickedSite = new PickedSite { Body = "Mun", Latitude = -70 };
+            Assert.Equal(70.5, picked.Pick().Inc, 3);
+            // An equatorial site is still a site: the goal's words don't overrule it.
+            Assert.Null(new Scene("Land at the Mun's pole", "Transfer to the Mun", "Land at (0.2, 10)").Pick());
+        }
+
+        [Theory]
+        [InlineData("Polar orbit of Kerbin, then land on the Mun", "Transfer to the Mun", "Land on the Mun")]
+        [InlineData("Land at Minmus's pole after a Mun flyby", "Transfer to the Mun", "Transfer to Minmus", "Land on Minmus")]
+        [InlineData("A non-polar orbit of the Mun", "Transfer to the Mun", "Capture at the Mun")]
+        [InlineData("Land at the Mun", "Transfer to the Mun", "Land with a pole-mounted camera")]
+        public void Words_about_a_pole_elsewhere_set_no_plane_here(string goal, params string[] legs)
+        {
+            Assert.Null(new Scene(goal, legs).Pick());
+        }
+
+        [Fact]
+        public void A_return_home_that_ends_in_reentry_still_has_no_plane_on_auto()
+        {
+            Assert.Null(new Scene("Land at Kerbin's north pole", "Return to Kerbin").Pick("Kerbin"));
+        }
+
+        [Fact]
+        public void The_Mission_s_goal_reaches_the_flight_and_a_pole_is_flown_there_for_tens_of_m_s()
+        {
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            var view = new MissionView { Stage = MissionStage.Running, Goal = "Land at the Mun's pole and return to Kerbin", PlanLegs = new List<PlannedSequence> { new PlannedSequence { Name = "Transfer to the Mun" }, new PlannedSequence { Name = "Land on the Mun" } } };
+            rig.Stamp = s => MissionView.Stamp(s, view);
+            var step = rig.Run(new TransferFlightAsk { Target = "Mun", TargetPe = 30000, StartUt = 0, TurnTime = 60 }, 30);
+            Assert.True(step.Error == "", step.Error);
+            Assert.Equal(90, ArrivalPlane.FromRecord(step.AimedPlane).Inc);
+            Assert.InRange(rig.Orbit.Inclination, 89.5, 90.5);
+            Assert.True(rig.Burns.Where(b => b.Key != "ejection").Sum(b => b.Value) <= Polar("Mun").DeltaV);
+        }
+
+        // ---- The survey ----
+
+        [Fact]
+        public void The_survey_reads_a_stray_patch_as_noise_and_keeps_what_it_never_found_out()
+        {
+            var read = BiomeLatitudes.Survey((lat, lng) => Math.Abs(lat) >= 70 || (lat == 2 && lng < -170) ? "Poles" : Math.Abs(lat) < 5 ? "Band" : "");
+            Assert.Equal(90, read["Poles"]);
+            Assert.Equal(0, read["Band"]);
+            Assert.False(read.ContainsKey(""));
+            Assert.Empty(BiomeLatitudes.Survey((lat, lng) => ""));
+        }
+
         /// <summary>The whole m/s on a leg's line of the Craft Check's Delta-v Map.</summary>
         private static double Figure(string[] facts, string id)
         {

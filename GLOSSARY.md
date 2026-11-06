@@ -105,7 +105,7 @@ The arrival burn of a transfer: circular at the target periapsis round a body, o
 _Avoid_: insertion, orbit insertion
 
 **Arrival plane**:
-The plane and direction of travel a transfer should arrive in, set on the approach, inside the target's sphere of influence, where any plane containing the approach direction is nearly free (#788). `transfer_to`'s `plane` picks it: Claudia's value, a Target Vessel orbiting the arrival body, the next leg's landing site, the next leg's moon, or none. A body or vessel gives its whole plane in its own direction; a number or a site gives an inclination only, the crossing point free. Core records it for `capture`. The Delta-v Map and Craft Check add no allowance for it (ADR 0016).
+The plane and direction of travel a transfer should arrive in, set on the approach, inside the target's sphere of influence, where any plane containing the approach direction is nearly free (#788). `transfer_to`'s `plane` picks it: Claudia's value, a Target Vessel orbiting the arrival body, the next leg's landing site, the next leg's moon, or none. A pole or a biome, named by a leg or the Mission Goal, is a landing site: 90 degrees at a pole or polar biome, another biome's latitude where the game's map gives one (#806). A body or vessel gives its whole plane in its own direction; a number or a site gives an inclination only, the crossing point free. Core records it for `capture`. The Delta-v Map's `polar:` row prices a polar arrival flown this way, an upper bound fitted to the flight's solves; it adds no allowance for any other plane (ADR 0016).
 _Avoid_: capture plane, target plane
 
 **`capture`**:

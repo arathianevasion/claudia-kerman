@@ -24,7 +24,7 @@ namespace ClaudiaKerman.Core.Missions
         public double Arrival;
         /// <summary>For a trip between inclined orbits: the plane change, included in <see cref="DeltaV"/>.</summary>
         public double PlaneChange;
-        /// <summary>The speed it arrives with relative to the destination, m/s, before the destination's gravity: what a polar orbit's turn is costed at.</summary>
+        /// <summary>The speed it arrives with relative to the destination, m/s, before the destination's gravity: what a polar arrival is costed from.</summary>
         internal double ArrivalExcess;
         /// <summary>The bodies the leg joins, for <see cref="DeltaVMap.ToText(IList{SnapshotBody})"/>.</summary>
         internal string[] Bodies = new string[0];

@@ -231,6 +231,10 @@ namespace ClaudiaKerman.Core.Missions
         public double? LaterLegsDv;
         /// <summary>The Mission Plan's legs from the one in hand on, for <c>transfer_to</c>'s arrival plane (#788); null with no Mission Plan. Not in the JSON.</summary>
         public IList<PlannedSequence> LegsAhead;
+        /// <summary>The Mission Goal, for the arrival plane: it may name a pole or a biome where the legs don't (#806); "" with no Mission. Not in the JSON.</summary>
+        public string MissionGoal = "";
+        /// <summary>A body's <see cref="Tools.BiomeLatitudes"/> from the live game, asked only when a leg or the goal names a biome; null when it can't be read (#806). Not in the JSON.</summary>
+        public Func<string, IDictionary<string, double>> BiomeLatitudesOf;
         /// <summary>The site <c>find_landing_site</c> last gave this Mission (#788); null for none. Not in the JSON.</summary>
         public Tools.PickedSite PickedSite;
         /// <summary>The arrival plane <c>transfer_to</c> last aimed for, as Core recorded it for <c>capture</c> (#788); "" for none. Not in the JSON.</summary>

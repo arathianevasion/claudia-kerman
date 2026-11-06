@@ -263,7 +263,7 @@ namespace ClaudiaKerman.Adapter
         }
 
         /// <summary>The stock biome name, as science uses it; "" for a body with no biome map (stock throws for those).</summary>
-        private static string BiomeAt(CelestialBody body, double latitude, double longitude)
+        internal static string BiomeAt(CelestialBody body, double latitude, double longitude)
         {
             if (body.BiomeMap == null || body.BiomeMap.Attributes == null || body.BiomeMap.Attributes.Length == 0) return "";
             return ScienceUtil.GetExperimentBiome(body, latitude, longitude) ?? "";

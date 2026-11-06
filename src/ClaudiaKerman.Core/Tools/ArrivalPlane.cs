@@ -192,12 +192,14 @@ namespace ClaudiaKerman.Core.Tools
     /// <summary>
     /// Who picks the arrival plane (#788 item 3), first wins: Claudia's explicit value; a Target Vessel orbiting the arrival body;
     /// the next leg's landing site (<c>find_landing_site</c>'s pick, a Point of Interest, a landed Target Vessel, or a latitude in its
-    /// words); the next leg's moon of this body; none, as before. A trip that ends in reentry is out of scope: "auto" gives it none. Pure.
+    /// words, or a pole or biome its words or the Mission Goal name, #806); the next leg's moon of this body; none, as before. A trip that ends in reentry is out of scope: "auto" gives it none. Pure.
     /// </summary>
     internal static class ArrivalPlanes
     {
         /// <summary>A pair of signed numbers in a leg's words, "(3.1, 24.6)": a site's latitude and longitude.</summary>
         private static readonly Regex LatLng = new Regex(@"\(\s*(-?\d+(?:\.\d+)?)\s*°?\s*,\s*-?\d+(?:\.\d+)?\s*°?\s*\)");
+        /// <summary>A pole in a leg's or goal's words (#806); "non-polar" and "pole-mounted" are not.</summary>
+        private static readonly Regex PoleWord = new Regex(@"(?<![\w-])(poles?|polar)(?![\w-])", RegexOptions.IgnoreCase);
 
         /// <summary>
         /// The direction an arrival on <paramref name="orbit"/> comes in from: a hyperbola's incoming asymptote, the line any plane cheap to reach contains
@@ -305,13 +307,69 @@ namespace ClaudiaKerman.Core.Tools
                     if (at != null && at != arrival) return MoonOf(system, arrival, at);
                     return OfSite(snapshot, arrival, leg);
                 }
+                if (NamesPole(snapshot, arrival, SequenceWords.Of(leg))) return AtLatitude(arrival, 90);
                 // The leg in hand's trip is this one.
                 if (i == 0) continue;
                 if (SequenceWords.Trip.IsMatch(words) && !SequenceWords.ReturnHome.IsMatch(words))
-                    return MoonOf(system, arrival, SequenceWords.TripTarget(snapshot, words, arrival, CraftCheckFlow.HomeBody));
-                if (SequenceWords.Ascent.IsMatch(words) || SequenceWords.Reentry.IsMatch(words) || SequenceWords.Aero.IsMatch(words) || SequenceWords.ReturnHome.IsMatch(words)) return null;
+                    return MoonOf(system, arrival, SequenceWords.TripTarget(snapshot, words, arrival, CraftCheckFlow.HomeBody)) ?? OfGoal(snapshot, arrival);
+                if (SequenceWords.Ascent.IsMatch(words) || SequenceWords.Reentry.IsMatch(words) || SequenceWords.Aero.IsMatch(words) || SequenceWords.ReturnHome.IsMatch(words)) return OfGoal(snapshot, arrival);
             }
-            return null;
+            return OfGoal(snapshot, arrival);
+        }
+
+        /// <summary>The plane of a pole or biome the Mission Goal gives this arrival, where no leg gave it one; else null.</summary>
+        private static ArrivalPlane OfGoal(GameSnapshot snapshot, SnapshotBody arrival)
+        {
+            var latitude = GoalLatitude(snapshot, arrival);
+            return latitude.HasValue ? AtLatitude(arrival, latitude.Value) : null;
+        }
+
+        /// <summary>|latitude| + <see cref="ArrivalPlane.SiteMargin"/>, prograde; an equatorial one sets no target.</summary>
+        private static ArrivalPlane AtLatitude(SnapshotBody arrival, double latitude)
+        {
+            if (Math.Abs(latitude) < ArrivalPlane.SiteMargin) return null;
+            return new ArrivalPlane { Arrival = arrival.Name, Source = "site", Inc = Math.Min(90, Math.Abs(latitude) + ArrivalPlane.SiteMargin) };
+        }
+
+        /// <summary>
+        /// Whether <paramref name="words"/> put a pole on the arrival body: a pole word whose nearest named body is this one, or which names no body at all. It is a name match, for
+        /// what words alone can say; it can't read a negation ("not polar") beyond "non-polar".
+        /// </summary>
+        private static bool NamesPole(GameSnapshot snapshot, SnapshotBody arrival, string words)
+        {
+            var named = snapshot.Bodies.Where(b => b.Name.Length > 0)
+                .SelectMany(b => Regex.Matches(words, @"\b" + Regex.Escape(b.Name) + @"\b", RegexOptions.IgnoreCase).Cast<Match>().Select(m => new { Body = b, m.Index })).ToList();
+            foreach (Match pole in PoleWord.Matches(words))
+            {
+                if (named.Count == 0) return true;
+                if (named.OrderBy(n => Math.Abs(n.Index - pole.Index)).First().Body == arrival) return true;
+            }
+            return false;
+        }
+
+        /// <summary>A leg's own words' latitude: the biome it names, as the game's map has it; else a pole in its words; else null.</summary>
+        private static double? WordsLatitude(GameSnapshot snapshot, SnapshotBody arrival, string words)
+        {
+            var named = arrival.BiomeNames.Where(n => n.Trim().Length > 0).OrderByDescending(n => n.Length)
+                .FirstOrDefault(n => Regex.IsMatch(words, @"\b" + Regex.Escape(n) + @"\b", RegexOptions.IgnoreCase));
+            return BiomeLatitude(snapshot, arrival, named) ?? (NamesPole(snapshot, arrival, words) ? 90 : (double?)null);
+        }
+
+        /// <summary>The Mission Goal's latitude for this arrival: the biome it names on this body, or a pole; else null.</summary>
+        private static double? GoalLatitude(GameSnapshot snapshot, SnapshotBody arrival)
+        {
+            var goal = snapshot.MissionGoal ?? "";
+            var biome = MissionPrompts.GoalBiomes(snapshot, goal).FirstOrDefault(g => g.Body == arrival.Name);
+            return BiomeLatitude(snapshot, arrival, biome == null ? null : biome.Biome) ?? (NamesPole(snapshot, arrival, goal) ? 90 : (double?)null);
+        }
+
+        /// <summary>The biome's latitude where the game's map can give one; null for no biome, no map, or a biome too small for its survey.</summary>
+        private static double? BiomeLatitude(GameSnapshot snapshot, SnapshotBody arrival, string biome)
+        {
+            if (biome == null || snapshot.BiomeLatitudesOf == null) return null;
+            var table = snapshot.BiomeLatitudesOf(arrival.Name);
+            double latitude;
+            return table != null && table.TryGetValue(biome, out latitude) ? latitude : (double?)null;
         }
 
         /// <summary><paramref name="body"/>'s plane when it is a moon of the arrival body, else null: a leg elsewhere says nothing of this arrival.</summary>
@@ -324,8 +382,7 @@ namespace ClaudiaKerman.Core.Tools
         private static ArrivalPlane OfSite(GameSnapshot snapshot, SnapshotBody arrival, PlannedSequence leg)
         {
             var latitude = SiteLatitude(snapshot, arrival, leg);
-            if (!latitude.HasValue || Math.Abs(latitude.Value) < ArrivalPlane.SiteMargin) return null;
-            return new ArrivalPlane { Arrival = arrival.Name, Source = "site", Inc = Math.Min(90, Math.Abs(latitude.Value) + ArrivalPlane.SiteMargin) };
+            return latitude.HasValue ? AtLatitude(arrival, latitude.Value) : null;
         }
 
         private static double? SiteLatitude(GameSnapshot snapshot, SnapshotBody arrival, PlannedSequence leg)
@@ -340,7 +397,7 @@ namespace ClaudiaKerman.Core.Tools
             var pair = LatLng.Match(words);
             double latitude;
             if (pair.Success && double.TryParse(pair.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out latitude)) return latitude;
-            return null;
+            return WordsLatitude(snapshot, arrival, words) ?? GoalLatitude(snapshot, arrival);
         }
     }
 }
