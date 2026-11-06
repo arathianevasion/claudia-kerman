@@ -474,7 +474,7 @@ class OneMissionOnceTests(unittest.TestCase):
         self.old = os.path.join(self.root, 'spike')
 
     def missions(self, save):
-        return os.path.join(self.root, save, 'Save', 'ClaudiaKermin', 'missions')
+        return os.path.join(self.root, save, 'Save', 'ClaudiaKerman', 'missions')
 
     def mission(self, save, mid, turns=None):
         return fx.make_mission(self.missions(save), mid, turns or self.turns)
@@ -588,7 +588,7 @@ class PerRequestReportTests(MissionCase):
 
 class BlockerListTests(unittest.TestCase):
     def test_blockers_match_the_mods_craft_check_rules(self):
-        path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'src', 'ClaudiaKermin.Core', 'Missions',
+        path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'src', 'ClaudiaKerman.Core', 'Missions',
                             'CraftCheckRules.cs')
         if not os.path.exists(path):
             self.skipTest('CraftCheckRules.cs not found')

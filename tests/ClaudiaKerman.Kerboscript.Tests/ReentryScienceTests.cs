@@ -1,0 +1,468 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Andrew Watson
+
+using System;
+using System.Globalization;
+using System.Linq;
+using ClaudiaKerman.Core.Kos;
+using Xunit;
+
+namespace ClaudiaKerman.Kerboscript.Tests
+{
+    /// <summary>The pure helpers of the reentry and science blocks, run on kOS.Safe through the real bundle.</summary>
+    public class ReentryScienceTests
+    {
+        private const double KerbinMu = 3.5316e12;
+        private const double KerbinRadius = 600000;
+
+        private static string One(string expression)
+        {
+            return KosHarness.Run(CoreLibrary.Bundle("print " + expression + ".")).Single();
+        }
+
+        private static double Number(string expression)
+        {
+            return double.Parse(One(expression), CultureInfo.InvariantCulture);
+        }
+
+        private static string D(double value)
+        {
+            return value.ToString("R", CultureInfo.InvariantCulture);
+        }
+
+        [Fact]
+        public void The_blocks_are_in_the_bundle()
+        {
+            Assert.Contains(CoreLibrary.Blocks, b => b.Name == "reentry");
+            Assert.Contains(CoreLibrary.Blocks, b => b.Name == "science");
+        }
+
+        [Fact]
+        public void The_reentry_predictor_opens_chutes_and_drops_the_shield_by_reentry_s_own_rules()
+        {
+            // #462: the predictor mirrors these in C# (ReentryRules); a change here must be made there too.
+            Assert.Equal(ClaudiaKerman.Core.Tools.ReentryRules.ChuteMaxSpeed, Number("reentry_chute_max_speed()"));
+            Assert.Equal(ClaudiaKerman.Core.Tools.ReentryRules.ChuteMinPressureAtm, Number("reentry_chute_min_pressure()"));
+            Assert.Equal(ClaudiaKerman.Core.Tools.ReentryRules.ChuteLastAgl, Number("reentry_chute_last_agl()"));
+            Assert.Equal(ClaudiaKerman.Core.Tools.ReentryRules.DrogueMaxSpeed, Number("reentry_drogue_max_speed()"));
+            Assert.Equal(ClaudiaKerman.Core.Tools.ReentryRules.DrogueMinPressureAtm, Number("reentry_drogue_min_pressure()"));
+            Assert.Equal(ClaudiaKerman.Core.Tools.ReentryRules.DrogueLastAgl, Number("reentry_drogue_last_agl()"));
+            Assert.Equal(ClaudiaKerman.Core.Tools.ReentryRules.ShieldSpeed, Number("reentry_shield_speed()"));
+            Assert.Equal(ClaudiaKerman.Core.Tools.ReentryRules.ShieldLastAgl, Number("reentry_shield_last_agl()"));
+        }
+
+        [Fact]
+        public void The_prompt_docs_name_every_spec_option_and_result()
+        {
+            var reentry = CoreLibrary.FullDocs(new[] { "reentry" });
+            foreach (var name in new[] { "chute_mode", "jettison_stage", "hold", "max_g", "max_temp_pct", "geo", "splashed" })
+                Assert.Contains(name, reentry);
+            var science = CoreLibrary.FullDocs(new[] { "science" });
+            foreach (var name in new[] { "experiments", "all_useful", "transmit", "min_ec_pct", "results", "Sandbox" })
+                Assert.Contains(name, science);
+            Assert.Contains("reentry(options)", CoreLibrary.Summaries());
+            Assert.Contains("science(options)", CoreLibrary.Summaries());
+        }
+
+        // ---- reentry: options ----
+
+        [Fact]
+        public void Reentry_takes_the_spec_defaults_and_knows_only_its_options()
+        {
+            Assert.Equal("safe", One("claudia_options(lexicon(), reentry_defaults(), \"auto\"):opt:chute_mode"));
+            Assert.Equal("auto", One("claudia_options(lexicon(), reentry_defaults(), \"auto\"):opt:jettison_stage"));
+            Assert.Equal("retrograde", One("claudia_options(lexicon(), reentry_defaults(), \"auto\"):opt:hold"));
+            Assert.Equal("unknown option chute", One("claudia_options(lexicon(\"chute\", 1), reentry_defaults(), \"auto\"):error"));
+        }
+
+        [Fact]
+        public void Reentry_options_it_cannot_read_are_named()
+        {
+            Assert.Equal("", One("reentry_unreadable(reentry_defaults())"));
+            Assert.Equal("", One("reentry_unreadable(claudia_merge_options(lexicon(\"jettison_stage\", 3, \"chute_mode\", \"none\", \"hold\", \"none\"), reentry_defaults()))"));
+            Assert.StartsWith("chute_mode must be", One("reentry_unreadable(claudia_merge_options(lexicon(\"chute_mode\", \"early\"), reentry_defaults()))"));
+            Assert.StartsWith("hold must be", One("reentry_unreadable(claudia_merge_options(lexicon(\"hold\", \"prograde\"), reentry_defaults()))"));
+            Assert.StartsWith("jettison_stage must be", One("reentry_unreadable(claudia_merge_options(lexicon(\"jettison_stage\", \"soon\"), reentry_defaults()))"));
+        }
+
+        // ---- reentry: chutes ----
+
+        [Theory]
+        [InlineData("safe", false, 200, 9000, 0.3, "deploy")]    // slow enough, thick enough: open
+        [InlineData("safe", false, 900, 20000, 0.2, "wait")]     // far too fast
+        [InlineData("safe", false, 200, 30000, 0.01, "wait")]    // too thin for a chute to hold
+        [InlineData("safe", false, 900, 1400, 0.9, "deploy")]    // last height: open regardless (the #41 failure was opening this late)
+        [InlineData("safe", true, 20, 500, 1.0, "wait")]         // already open
+        [InlineData("none", false, 20, 500, 1.0, "wait")]        // never asked to
+        public void Chutes_open_by_speed_and_pressure_and_never_later_than_the_last_height(string mode, bool open, double speed, double agl, double pressure, string expected)
+        {
+            Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture, "reentry_chute_action(\"{0}\", {1}, {2}, {3}, {4})", mode, open.ToString().ToLowerInvariant(), speed, agl, pressure)));
+        }
+
+        [Fact]
+        public void Chutes_open_high_up_as_soon_as_the_air_and_speed_allow()
+        {
+            // Decelerating through 250 m/s at 14 km, well above the 6000 m the failed script waited for.
+            Assert.Equal("deploy", One("reentry_chute_action(\"safe\", false, 249, 14000, 0.05)"));
+            Assert.Equal("wait", One("reentry_chute_action(\"safe\", false, 251, 14000, 0.05)"));
+        }
+
+        // reentry_chute_stage(mode, has_drogues, drogues_out, mains_out, speed, agl, pressure)
+        [Theory]
+        [InlineData("\"safe\", true, false, false, 450, 20000, 0.1", "drogues")]   // fast but within what a drogue takes
+        [InlineData("\"safe\", true, false, false, 900, 20000, 0.1", "wait")]      // too fast even for the drogues
+        [InlineData("\"safe\", true, false, false, 450, 40000, 0.01", "wait")]     // too thin
+        [InlineData("\"safe\", true, false, false, 200, 9000, 0.3", "drogues")]    // mains would be safe, but drogues still go first
+        [InlineData("\"safe\", true, true, false, 450, 20000, 0.1", "wait")]       // drogues out: mains wait for 250 m/s
+        [InlineData("\"safe\", true, true, false, 200, 9000, 0.3", "mains")]
+        [InlineData("\"safe\", true, true, true, 20, 500, 1.0", "wait")]           // all open
+        [InlineData("\"safe\", false, false, false, 200, 9000, 0.3", "mains")]     // no drogues: mains alone
+        [InlineData("\"safe\", false, false, false, 450, 20000, 0.1", "wait")]
+        [InlineData("\"safe\", true, false, false, 900, 2900, 0.9", "drogues")]    // last resort for the drogues, whatever the speed
+        [InlineData("\"safe\", true, true, false, 900, 1400, 0.9", "mains")]       // last resort for the mains, drogues already out
+        [InlineData("\"safe\", false, false, false, 900, 1400, 0.9", "mains")]
+        [InlineData("\"none\", true, false, false, 100, 500, 1.0", "wait")]
+        public void Drogues_open_before_mains_by_speed_and_pressure(string args, string expected)
+        {
+            Assert.Equal(expected, One("reentry_chute_stage(" + args + ")"));
+        }
+
+        [Fact]
+        public void The_drogues_take_more_speed_and_thinner_air_and_open_higher_than_the_mains()
+        {
+            Assert.True(Number("reentry_drogue_max_speed()") > Number("reentry_chute_max_speed()"));
+            Assert.True(Number("reentry_drogue_min_pressure()") < Number("reentry_chute_min_pressure()"));
+            Assert.True(Number("reentry_drogue_last_agl()") > Number("reentry_chute_last_agl()"));
+        }
+
+        [Theory]
+        [InlineData("parachuteDrogue", "True")]
+        [InlineData("Drogue Chute", "True")]
+        [InlineData("parachuteSingle", "False")]
+        [InlineData("parachuteLarge", "False")]
+        public void A_drogue_chute_is_known_by_its_name(string name, string expected)
+        {
+            Assert.Equal(expected, One("reentry_is_drogue(\"" + name + "\")"));
+        }
+
+        [Theory]
+        [InlineData(false, 380, 9000, true)]
+        [InlineData(false, 900, 20000, false)]
+        [InlineData(false, 900, 2500, true)]
+        [InlineData(true, 100, 100, false)]
+        public void The_heat_shield_goes_once_the_heating_is_over_or_by_the_last_height(bool gone, double speed, double agl, bool due)
+        {
+            Assert.Equal(due ? "True" : "False", One(string.Format(CultureInfo.InvariantCulture, "reentry_shield_due({0}, {1}, {2})", gone.ToString().ToLowerInvariant(), speed, agl)));
+        }
+
+        [Theory]
+        // reentry_warp_cap(hot_pct, drogues_out, mains_out, agl, event_eta): the heat cap, 2x over 50% of a part's limit.
+        [InlineData("20, false, false, 30000, -1", "4")]
+        [InlineData("50, false, false, 30000, -1", "4")]
+        [InlineData("50.1, false, false, 30000, -1", "2")]
+        [InlineData("90, false, false, 30000, -1", "2")]
+        // Drogues 3x, mains 4x, each wherever the heat is (the chutes outlast the heating).
+        [InlineData("90, true, false, 5000, -1", "3")]
+        [InlineData("20, true, true, 1000, -1", "4")]
+        // 1x under 100 m from the ground, chutes or not; 100 m itself is still fast.
+        [InlineData("20, true, true, 99.9, -1", "1")]
+        [InlineData("20, true, true, 100, -1", "4")]
+        [InlineData("20, true, false, 50, -1", "1")]
+        // 1x from 10 s before a predicted chute opening or shield drop; none predicted (-1) or further off is not.
+        [InlineData("20, false, false, 30000, 10", "1")]
+        [InlineData("20, false, false, 30000, 0", "1")]
+        [InlineData("20, false, false, 30000, 10.1", "4")]
+        [InlineData("90, true, false, 5000, 5", "1")]
+        public void The_reentry_physics_rate_is_capped_by_heat_chutes_the_last_100_m_and_coming_events(string args, string expected)
+        {
+            Assert.Equal(expected, One("reentry_warp_cap(" + args + ")"));
+        }
+
+        [Theory]
+        [InlineData(9000, 3000, 100, "60")]
+        [InlineData(3000, 3000, 100, "0")]
+        [InlineData(9000, 3000, 0, "-1")]
+        [InlineData(9000, 3000, -5, "-1")]
+        public void The_time_to_an_event_is_the_distance_over_the_rate(double value, double limit, double rate, string expected)
+        {
+            Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture, "reentry_eta_to({0}, {1}, {2})", value, limit, rate)));
+        }
+
+        [Theory]
+        [InlineData(-1, 8, "8")]
+        [InlineData(8, -1, "8")]
+        [InlineData(8, 5, "5")]
+        [InlineData(-1, -1, "-1")]
+        public void The_sooner_event_counts_and_none_is_ignored(double a, double b, string expected)
+        {
+            Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture, "reentry_eta_first({0}, {1})", a, b)));
+        }
+
+        // #214: stock HeatShield1's ModuleDecouple is renamed by its menuName, so kOS lists its event as
+        // "jettison heat shield", never "decouple", and a lookup by that one name found no shield to drop.
+        [Theory]
+        [InlineData("list(\"jettison heat shield\", \"disable staging\")", "jettison heat shield")]
+        [InlineData("list(\"decouple\")", "decouple")]
+        [InlineData("list(\"Jettison\")", "Jettison")]
+        [InlineData("list(\"toggle staging\", \"decouple top node\")", "decouple top node")]
+        [InlineData("list(\"disable staging\")", "")]
+        [InlineData("list()", "")]
+        public void The_heat_shield_is_dropped_by_whichever_decouple_or_jettison_event_its_module_has(string events, string chosen)
+        {
+            Assert.Equal(chosen, One("claudia_decoupler_event(" + events + ")"));
+        }
+
+        [Fact]
+        public void The_prompt_docs_name_shield_dropped()
+        {
+            Assert.Contains("shield_dropped", CoreLibrary.FullDocs(new[] { "reentry" }));
+        }
+
+        [Fact]
+        public void The_chute_speed_is_below_the_shield_speed_so_the_shield_goes_first()
+        {
+            Assert.True(Number("reentry_chute_max_speed()") < Number("reentry_shield_speed()"));
+        }
+
+        [Fact]
+        public void A_touchdown_under_the_limit_is_fine_and_90_ms_is_not()
+        {
+            Assert.Equal("True", One("reentry_touchdown_ok(7.5)"));
+            Assert.Equal("False", One("reentry_touchdown_ok(90)"));
+        }
+
+        // ---- reentry: measurements ----
+
+        [Fact]
+        public void A_craft_at_rest_on_the_ground_feels_its_own_weight()
+        {
+            // In free fall dv/dt = gravity: 0 g. At rest in a non-rotating frame dv/dt = 0: gravity alone, 1 g.
+            var mu = D(KerbinMu);
+            var r = D(KerbinRadius);
+            var g = KerbinMu / (KerbinRadius * KerbinRadius);
+            Assert.Equal(g / 9.80665, Number("reentry_proper_g(0, 0, 0, 1, " + r + ", 0, 0, " + mu + ")"), 4);
+            Assert.Equal(0, Number("reentry_proper_g(" + D(-g) + ", 0, 0, 1, " + r + ", 0, 0, " + mu + ")"), 6);
+        }
+
+        [Fact]
+        public void Braking_adds_to_gravity_in_the_g_felt()
+        {
+            // Falling straight down at 4 g of drag: dv/dt is up (+x) at 4 g less gravity's pull down.
+            var mu = D(KerbinMu);
+            var r = D(KerbinRadius);
+            var g = KerbinMu / (KerbinRadius * KerbinRadius);
+            var dv = 4 * 9.80665 - g;
+            Assert.Equal(4, Number("reentry_proper_g(" + D(dv) + ", 0, 0, 1, " + r + ", 0, 0, " + mu + ")"), 4);
+        }
+
+        // ---- reentry: time to the atmosphere ----
+
+        private static double TimeToRadius(double ecc, double sma, double trueAnomalyDegrees, double radius, double seconds)
+        {
+            // Independent check: advance the mean anomaly by `seconds`, solve Kepler's equation, read the radius.
+            var ta = trueAnomalyDegrees * Math.PI / 180;
+            var ea = 2 * Math.Atan2(Math.Sqrt(1 - ecc) * Math.Sin(ta / 2), Math.Sqrt(1 + ecc) * Math.Cos(ta / 2));
+            var m = ea - ecc * Math.Sin(ea) + seconds * Math.Sqrt(KerbinMu / Math.Pow(sma, 3));
+            var e = m;
+            for (var i = 0; i < 50; i++) e -= (e - ecc * Math.Sin(e) - m) / (1 - ecc * Math.Cos(e));
+            return sma * (1 - ecc * Math.Cos(e));
+        }
+
+        [Theory]
+        [InlineData(180)]
+        [InlineData(120)]
+        [InlineData(90)]
+        [InlineData(250)]
+        public void The_entry_eta_lands_on_the_top_of_the_atmosphere(double trueAnomaly)
+        {
+            // Apoapsis 200 km, periapsis 30 km above Kerbin; the atmosphere tops out at 70 km.
+            var rPe = KerbinRadius + 30000;
+            var rAp = KerbinRadius + 200000;
+            var sma = (rPe + rAp) / 2;
+            var ecc = (rAp - rPe) / (rAp + rPe);
+            var entry = KerbinRadius + 70000;
+            var eta = Number(string.Format(CultureInfo.InvariantCulture, "reentry_entry_eta({0}, {1}, {2}, {3}, {4})", D(ecc), D(sma), D(KerbinMu), D(entry), D(trueAnomaly)));
+            Assert.True(eta > 0, "eta " + eta);
+            Assert.Equal(entry, TimeToRadius(ecc, sma, trueAnomaly, entry, eta), 0);
+        }
+
+        [Fact]
+        public void The_entry_eta_is_zero_inside_the_atmosphere_and_minus_one_for_an_orbit_that_stays_out()
+        {
+            var rPe = KerbinRadius + 30000;
+            var rAp = KerbinRadius + 200000;
+            var sma = (rPe + rAp) / 2;
+            var ecc = (rAp - rPe) / (rAp + rPe);
+            Assert.Equal(0, Number(string.Format(CultureInfo.InvariantCulture, "reentry_entry_eta({0}, {1}, {2}, {3}, 0)", D(ecc), D(sma), D(KerbinMu), D(KerbinRadius + 70000))));
+
+            var outPe = KerbinRadius + 100000;
+            var outSma = (outPe + rAp) / 2;
+            var outEcc = (rAp - outPe) / (rAp + outPe);
+            Assert.Equal(-1, Number(string.Format(CultureInfo.InvariantCulture, "reentry_entry_eta({0}, {1}, {2}, {3}, 180)", D(outEcc), D(outSma), D(KerbinMu), D(KerbinRadius + 70000))));
+            Assert.Equal(-1, Number(string.Format(CultureInfo.InvariantCulture, "reentry_entry_eta(1.2, {0}, {1}, {2}, 180)", D(outSma), D(KerbinMu), D(KerbinRadius + 70000))));
+        }
+
+        // ---- reentry: a skip-out (#592) ----
+
+        [Theory]
+        [InlineData("true, 70500, 70000, 12", "1")]
+        [InlineData("true, 69000, 70000, 12", "0")]
+        [InlineData("true, 70500, 70000, -12", "0")]
+        [InlineData("false, 70500, 70000, -12", "0")]
+        [InlineData("false, 72000, 70000, 30", "0")]
+        public void A_skip_out_is_a_craft_that_was_in_the_atmosphere_and_is_now_above_it_and_climbing(string args, string expected)
+        {
+            Assert.Equal(expected == "1" ? "True" : "False", One("reentry_skipped_out(" + args + ")"));
+        }
+
+        [Fact]
+        public void A_skip_out_with_the_periapsis_still_inside_waits_for_the_next_pass_and_the_auto_deadline_grows()
+        {
+            Assert.Equal("", One("reentry_skip_refusal(1, 34800, 70000)"));
+            Assert.Equal("", One("reentry_skip_refusal(2, 34800, 70000)"));
+            // 3 s run, 5000 s to the next entry: the deadline is 3 + 5000 + 1800.
+            Assert.Equal(6803, Number("reentry_next_deadline(true, 1900, 3, 5000)"));
+        }
+
+        [Fact]
+        public void A_fourth_pass_fails_with_the_skipped_out_reason()
+        {
+            Assert.Equal("skipped out of the atmosphere 3 times (periapsis 34800 m)", One("reentry_skip_refusal(3, 34800, 70000)"));
+        }
+
+        [Fact]
+        public void A_skip_out_with_the_periapsis_above_the_atmosphere_fails_at_once()
+        {
+            Assert.Equal("skipped out: periapsis 71000 m is above the atmosphere", One("reentry_skip_refusal(1, 71000, 70000)"));
+            Assert.Equal("skipped out: periapsis 71000 m is above the atmosphere", One("reentry_skip_refusal(3, 71000, 70000)"));
+        }
+
+        [Fact]
+        public void An_explicit_max_duration_stays_a_hard_cap_after_a_skip_out()
+        {
+            Assert.Equal(1900, Number("reentry_next_deadline(false, 1900, 3, 5000)"));
+        }
+
+        // ---- science ----
+
+        [Fact]
+        public void Science_takes_the_spec_defaults_and_knows_only_its_options()
+        {
+            Assert.Equal("all_useful", One("claudia_options(lexicon(), science_defaults(), 1800):opt:experiments"));
+            Assert.Equal("auto", One("claudia_options(lexicon(), science_defaults(), 1800):opt:transmit"));
+            Assert.Equal("10", One("claudia_options(lexicon(), science_defaults(), 1800):opt:min_ec_pct"));
+            Assert.Equal("unknown option experiment", One("claudia_options(lexicon(\"experiment\", 1), science_defaults(), 1800):error"));
+        }
+
+        [Fact]
+        public void Science_options_it_cannot_read_are_named()
+        {
+            Assert.Equal("", One("science_unreadable(science_defaults())"));
+            Assert.Equal("", One("science_unreadable(claudia_merge_options(lexicon(\"experiments\", list(\"mysteryGoo\"), \"transmit\", \"keep\"), science_defaults()))"));
+            Assert.StartsWith("transmit must be", One("science_unreadable(claudia_merge_options(lexicon(\"transmit\", \"yes\"), science_defaults()))"));
+            Assert.StartsWith("experiments must be", One("science_unreadable(claudia_merge_options(lexicon(\"experiments\", 3), science_defaults()))"));
+        }
+
+        [Fact]
+        public void All_useful_names_nothing_and_a_single_name_is_a_list()
+        {
+            Assert.Equal("0", One("science_names(\"all_useful\"):length"));
+            Assert.Equal("1", One("science_names(\"temperatureScan\"):length"));
+            Assert.Equal("2", One("science_names(list(\"a\", \"b\")):length"));
+        }
+
+        [Fact]
+        public void A_name_matches_the_experiment_id_part_title_or_part_name()
+        {
+            Assert.Equal("True", One("science_matches(list(\"temperatureScan\"), \"temperatureScan\", \"2HOT Thermometer\", \"sensorThermometer\")"));
+            Assert.Equal("True", One("science_matches(list(\"2HOT Thermometer\"), \"temperatureScan\", \"2HOT Thermometer\", \"sensorThermometer\")"));
+            Assert.Equal("True", One("science_matches(list(\"sensorThermometer\"), \"temperatureScan\", \"2HOT Thermometer\", \"sensorThermometer\")"));
+            Assert.Equal("False", One("science_matches(list(\"mysteryGoo\"), \"temperatureScan\", \"2HOT Thermometer\", \"sensorThermometer\")"));
+        }
+
+        // science_decision(explicit, rerunnable, has_data, inoperable, available, tracked, left)
+        [Theory]
+        [InlineData("false, true, false, false, true, true, 12", "run")]
+        [InlineData("false, true, false, false, true, true, 0", "skip: no science left here")]
+        [InlineData("false, true, false, false, true, false, -1", "run")]                                  // Sandbox: nothing tracked, run once
+        [InlineData("true, true, false, false, true, true, 0", "run")]                                      // named: run whether or not science is left
+        [InlineData("false, false, true, false, true, true, 30", "skip: holds data and is not rerunnable, so it was not overwritten")]
+        [InlineData("true, false, true, false, true, true, 30", "skip: holds data and is not rerunnable, so it was not overwritten")]
+        [InlineData("false, true, true, false, true, false, -1", "skip: holds data, so it was not overwritten")]  // Sandbox: a second run would be a repeat
+        [InlineData("false, true, false, true, true, true, 30", "skip: inoperable")]
+        [InlineData("true, true, false, false, false, true, 30", "skip: nothing to measure in this situation")]
+        public void An_experiment_runs_only_when_it_is_useful_and_would_overwrite_nothing(string args, string expected)
+        {
+            Assert.Equal(expected, One("science_decision(" + args + ")"));
+        }
+
+        // science_transmit_choice(mode, returning, loses_value, can_send, ec_pct, min_ec_pct)
+        [Theory]
+        [InlineData("\"keep\", false, false, true, 90, 10", "keep: transmit is 'keep'")]
+        [InlineData("\"transmit\", false, false, true, 90, 10", "transmit")]
+        [InlineData("\"transmit\", true, true, true, 90, 10", "transmit")]                                 // asked to: transmit even when returning
+        [InlineData("\"auto\", false, true, true, 90, 10", "transmit")]                                    // not coming home: nothing to lose
+        [InlineData("\"auto\", true, false, true, 90, 10", "transmit")]                                    // coming home but transmitting loses nothing
+        [InlineData("\"auto\", true, true, true, 90, 10", "keep: the craft is returning and transmitting would lose value")]
+        [InlineData("\"transmit\", false, false, false, 90, 10", "keep: no antenna or no link")]
+        [InlineData("\"transmit\", false, false, true, 9.9, 10", "keep: electric charge is under min_ec_pct")]
+        [InlineData("\"auto\", false, false, true, 10, 10", "transmit")]
+        public void Data_is_transmitted_or_kept_by_mode_return_trip_link_and_charge(string args, string expected)
+        {
+            Assert.Equal(expected, One("science_transmit_choice(" + args + ")"));
+        }
+
+        // #612: science_held_choice(has_data, inoperable, mode, returning, loses_value, can_send, ec_pct, min_ec_pct)
+        [Theory]
+        [InlineData("true, false, \"transmit\", false, false, true, 90, 10", "transmit")]                  // held crewReport, link up: sent
+        [InlineData("true, false, \"auto\", true, true, true, 90, 10", "keep: the craft is returning and transmitting would lose value")]
+        [InlineData("true, false, \"keep\", false, false, true, 90, 10", "")]                              // left to science_decision, which keeps it
+        [InlineData("true, false, \"transmit\", false, false, false, 90, 10", "keep: no antenna or no link")]
+        [InlineData("false, false, \"transmit\", false, false, true, 90, 10", "")]                         // nothing held: a fresh run
+        [InlineData("true, true, \"transmit\", false, false, true, 90, 10", "")]
+        public void Held_data_is_sent_or_kept_by_the_same_rule_as_fresh_data(string args, string expected)
+        {
+            Assert.Equal(expected, One("science_held_choice(" + args + ")"));
+        }
+
+        [Fact]
+        public void With_keep_held_data_is_never_overwritten()
+        {
+            Assert.Equal("skip: holds data, so it was not overwritten", One("science_decision(true, true, true, false, true, true, 30)"));
+        }
+
+        // #624: a held send says "sent" only once the data transmitted; a failed one says it was not sent.
+        [Theory]
+        [InlineData("transmitted", "held data sent, no new run")]
+        [InlineData("kept", "held data not sent: transmission did not finish, data kept")]
+        public void A_held_sends_detail_follows_whether_it_transmitted(string transmit, string expected)
+        {
+            Assert.Equal(expected, One("science_held_detail(\"" + transmit + "\")"));
+        }
+
+        // #612: data kept for want of a link or charge gets a hint for a transmit-only call; other keeps get none.
+        [Theory]
+        [InlineData("keep: no antenna or no link", "crewReport: no link; call science with transmit once the link is up, from anywhere")]
+        [InlineData("keep: electric charge is under min_ec_pct", "crewReport: low charge; call science with transmit once charged, from anywhere")]
+        [InlineData("keep: transmit is 'keep'", "")]
+        [InlineData("keep: the craft is returning and transmitting would lose value", "")]
+        [InlineData("transmit", "")]
+        public void Data_kept_for_want_of_a_link_or_charge_carries_a_hint(string choice, string expected)
+        {
+            Assert.Equal(expected, One("science_kept_hint(\"crewReport\", \"" + choice + "\")"));
+        }
+
+        [Fact]
+        public void The_kept_list_appears_in_the_result_only_when_a_hint_is_added()
+        {
+            var lines = KosHarness.Run(CoreLibrary.Bundle(
+                "local extra is lexicon(\"results\", list()).\n"
+                + "science_note_kept(extra, \"\").\n"
+                + "print extra:haskey(\"kept\").\n"
+                + "science_note_kept(extra, \"crewReport: no link\").\n"
+                + "science_note_kept(extra, \"\").\n"
+                + "print extra:kept:length.\n"));
+            Assert.Equal(new[] { "False", "1" }, lines.ToArray());
+        }
+    }
+}

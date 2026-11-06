@@ -6,9 +6,9 @@
 ROOT=${GATES_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}
 cd "$ROOT" || exit 1
 K="-p:KOSPluginsDir=$HOME/KSP_spike/GameData/kOS/Plugins"
-if ! out=$(dotnet build ClaudiaKermin.sln -warnaserror $K 2>&1); then echo "FAIL build"; echo "$out" | grep -E 'error' | head -20; exit 1; fi
+if ! out=$(dotnet build ClaudiaKerman.sln -warnaserror $K 2>&1); then echo "FAIL build"; echo "$out" | grep -E 'error' | head -20; exit 1; fi
 for attempt in 1 2; do
-  out=$(dotnet test tests/ClaudiaKermin.Core.Tests --no-build $K --filter "Category=Timing" 2>&1); rc=$?
+  out=$(dotnet test tests/ClaudiaKerman.Core.Tests --no-build $K --filter "Category=Timing" 2>&1); rc=$?
   line=$(echo "$out" | grep -E 'Passed!|Failed!' | tail -1)
   if [ $rc -eq 0 ] && ! echo "$line" | grep -qE 'Passed: +[1-9]'; then echo "FAIL timing: no Category=Timing test ran (tags missing?)"; exit 1; fi
   if [ $rc -eq 0 ]; then echo "PASS timing (attempt $attempt) $line"; exit 0; fi

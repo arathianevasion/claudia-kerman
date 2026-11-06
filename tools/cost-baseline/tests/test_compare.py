@@ -36,7 +36,7 @@ def sequence(name):
 
 def make(saves, mid, turns, paid=0.5):
     """turns: (notice key, reply, cache read, cache write). One committed response each, in order."""
-    folder = os.path.join(saves, 'Save', 'ClaudiaKermin', 'missions', mid)
+    folder = os.path.join(saves, 'Save', 'ClaudiaKerman', 'missions', mid)
     messages = []
     for n, (key, reply, read, write) in enumerate(turns, 1):
         text = json.dumps(reply)

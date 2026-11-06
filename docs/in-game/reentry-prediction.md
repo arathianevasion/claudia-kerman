@@ -2,7 +2,7 @@
 
 In-game checks for #478 (ADR 0014 block migration: the log lines are Kerboscript wiring; the miss distance is Core's `ADDONS:CLAUDIA:PREDICTIONMISS`). `reentry` asks `REENTRYIMPACT` once, before the entry, with the shield drop and chutes it will fly, and notes the prediction; after touchdown it notes the actual landing and the miss. Log-only: the prediction never changes how reentry flies. No test.ks changed. The agent run that wrote this did not launch KSP.
 
-Install as in `phase-3-gate.md` (build, copy `dist/GameData/ClaudiaKermin/`, `debug_tools = true`). Results are in `block-tests.log` and `KSP.log`.
+Install as in `phase-3-gate.md` (build, copy `dist/GameData/ClaudiaKerman/`, `debug_tools = true`). Results are in `block-tests.log` and `KSP.log`.
 
 ## Check 1: Run reentry_orbit, reentry_hop and reentry_tumble
 

@@ -8,4 +8,4 @@ ADR 0014: Building Blocks keep their Kerboscript interface while their flight lo
 
 Example: `Block migration: land's slope scoring moves to Core (SlopeScore); parity test SlopeScoreParityTests; player flies tests/blocks/land-slope.ks.`
 
-The same briefs follow the rest of ADR 0014: a changed `//|` line updates its snapshot under `tests/ClaudiaKermin.Core.Tests/Fixtures/block-docs/` and says so in the commit message; a ticket that shrinks the library lowers `tools/gates/kerboscript-loc.txt`, one that grows it raises it with a reason in the commit message.
+The same briefs follow the rest of ADR 0014: a changed `//|` line updates its snapshot under `tests/ClaudiaKerman.Core.Tests/Fixtures/block-docs/` and says so in the commit message; a ticket that shrinks the library lowers `tools/gates/kerboscript-loc.txt`, one that grows it raises it with a reason in the commit message.

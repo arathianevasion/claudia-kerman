@@ -12,8 +12,8 @@ The agent run that wrote this did not install or launch KSP. The tests and the g
 
 You need KSP 1.12.5 with kOS 1.6 and HarmonyKSP installed (both are your own installs, never bundled), and the .NET 10 SDK.
 
-1. Build: `dotnet build ClaudiaKermin.sln -p:KSPRoot=/path/to/KSP` (`KSPRoot` defaults to `~/KSP_spike`). The build stages the mod in `dist/GameData/ClaudiaKermin/`. It also embeds `tests/blocks/*` in the kOS addon DLL.
-2. Copy the whole `dist/GameData/ClaudiaKermin/` folder into `<KSP>/GameData/`, next to `kOS` and `HarmonyKSP`. Replace the old folder; leave every other folder alone.
+1. Build: `dotnet build ClaudiaKerman.sln -p:KSPRoot=/path/to/KSP` (`KSPRoot` defaults to `~/KSP_spike`). The build stages the mod in `dist/GameData/ClaudiaKerman/`. It also embeds `tests/blocks/*` in the kOS addon DLL.
+2. Copy the whole `dist/GameData/ClaudiaKerman/` folder into `<KSP>/GameData/`, next to `kOS` and `HarmonyKSP`. Replace the old folder; leave every other folder alone.
 3. Set `debug_tools = true` in the player config (it turns on the block test runner window).
 4. Start KSP. The block test runner window is in the main menu, the Space Center and Flight.
 
@@ -93,7 +93,7 @@ Start a Mission with the Mission Goal "rendezvous with <vessel> and dock" in the
 
 1. Put a vessel with a free port in orbit as the Target Vessel (a station or the "Block Test Target"), and a craft with a docking port, RCS, monopropellant and a kOS processor in a different orbit.
 2. Mission Goal: `rendezvous with <vessel> and dock`. Pick Mission Settings, a Spending Cap and a model, then approve.
-3. Expected: Claudia proposes a Mission Plan of Maneuver Sequences built from Building Blocks alone. Read it in the Mission window and in `saves/<save>/ClaudiaKermin/missions/<id>/transcript.json`. Record: **the plan uses `rendezvous` and `dock`, and no Custom Script.** If a Custom Script appears, write down why she gave for it.
+3. Expected: Claudia proposes a Mission Plan of Maneuver Sequences built from Building Blocks alone. Read it in the Mission window and in `saves/<save>/ClaudiaKerman/missions/<id>/transcript.json`. Record: **the plan uses `rendezvous` and `dock`, and no Custom Script.** If a Custom Script appears, write down why she gave for it.
 4. Approve each sequence and let it fly. Expected: the `rendezvous` Sequence ends with the target loaded and under 2 m/s relative, the `dock` Sequence ends docked, and each Debrief is rated Nominal.
 5. #706: the `dock` from that rendezvous hand-off ends docked with monopropellant left: its `monoprop_used` is a modest share of what the craft carried (#706's failed flight used 121.7 of 128 units and stopped 11.6 m short), and `KSP.log` has its `dock trace` lines. Record `monoprop_used` and the units aboard at the start (the first trace line's `monoprop`).
 6. #711: the bound for that real dock, from a rendezvous hand-off about 300 m out: **at most 40 units of monopropellant used** (about twice DOCKFUEL's 12 m/s on #711's craft; #711's flight used 95 of 121), and **at most 40% of the `dock trace` lines read `translating true`** (#711's read 484 of 522). Count them with `grep "dock trace" KSP.log | grep -ci "translating true"` against `grep -c "dock trace" KSP.log` over the dock's lines. Also check:
