@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using ClaudiaKerman.Core.Missions;
 using ClaudiaKerman.Core.Tools;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace ClaudiaKerman.Core.Tests
 {
@@ -16,13 +15,6 @@ namespace ClaudiaKerman.Core.Tests
     /// </summary>
     public sealed class AimedCorrectionTests
     {
-        private readonly ITestOutputHelper _out;
-
-        public AimedCorrectionTests(ITestOutputHelper output)
-        {
-            _out = output;
-        }
-
         private static readonly SnapshotBody Sun = new SnapshotBody { Name = "Sun", Gm = 1.1723328e18, Radius = 261600000, RotationPeriod = 432000 };
         private static readonly SnapshotBody Kerbin = new SnapshotBody
         {
@@ -145,10 +137,280 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("", node["error"]);
             double pe;
             var flown = Flown(snapshot, node, out pe);
-            _out.WriteLine("east " + eastKm + ": dv " + D(node, "dv") + " error_km " + D(node, "error_km") + " flown km " + Km(flown.Latitude, flown.Longitude, lat, target) + " pe " + pe + " lat " + flown.Latitude);
             Assert.InRange(pe, Pe - 1000, Pe + 1000);
             Assert.InRange(Km(flown.Latitude, flown.Longitude, lat, target), 0, 1);
             Assert.InRange(D(node, "error_km"), 0, 1);
+        }
+
+        /// <summary>The miss is more than the burn may reach: it burns its most, the periapsis holds, the landing moves that far, and the rest is reported, no failure.</summary>
+        [Theory]
+        [InlineData(1500)]
+        [InlineData(-1500)]
+        public void What_it_cannot_reach_is_reported_and_is_no_failure(double eastKm)
+        {
+            var snapshot = Falling();
+            double lat, lng;
+            Natural(snapshot, out lat, out lng);
+            var target = lng + eastKm / KmPerDeg;
+            var node = Aim(snapshot, lat, target);
+            Assert.Equal("", node["error"]);
+            double pe;
+            var flown = Flown(snapshot, node, out pe);
+            var left = Km(flown.Latitude, flown.Longitude, lat, target);
+            Assert.InRange(pe, Pe - 1000, Pe + 1000);
+            Assert.InRange(D(node, "dv"), 40, CorrectionBurn.MostLandingDv * 1.1);
+            Assert.InRange(left, 100, Math.Abs(eastKm) - 100);
+            Assert.InRange(D(node, "error_km"), left - 0.01, left + 0.01);
+        }
+
+        /// <summary>The craft's delta-v left limits the burn below its most.</summary>
+        [Fact]
+        public void The_burn_stays_within_the_delta_v_left()
+        {
+            var snapshot = Falling();
+            double lat, lng;
+            Natural(snapshot, out lat, out lng);
+            var node = Aim(snapshot, lat, lng + 500 / KmPerDeg, 300, 10);
+            Assert.Equal("", node["error"]);
+            Assert.InRange(D(node, "dv"), 7, 10);
+            Assert.True(D(node, "error_km") > 300);
+        }
+
+        /// <summary>A path off target_pe comes back to it, the entry steep again, and still lands on the target.</summary>
+        [Theory]
+        [InlineData(38900)]
+        [InlineData(26000)]
+        public void A_path_off_target_pe_is_brought_to_it_and_to_the_target(double arrivalPe)
+        {
+            var snapshot = Falling(arrivalPe);
+            double lat, lng;
+            Natural(snapshot, out lat, out lng);
+            var target = lng + 20 / KmPerDeg;
+            var node = Aim(snapshot, lat, target);
+            Assert.Equal("", node["error"]);
+            double pe;
+            var flown = Flown(snapshot, node, out pe);
+            var left = Km(flown.Latitude, flown.Longitude, lat, target);
+            Assert.InRange(pe, Pe - 1000, Pe + 1000);
+            Assert.InRange(left, 0, 1);
+        }
+
+        /// <summary>So late the track hardly moves for any burn (0.04 km per m/s): the landing isn't burned for, and what is left is reported.</summary>
+        [Fact]
+        public void Too_late_to_move_the_landing_it_burns_nothing_for_it()
+        {
+            var snapshot = Falling(Pe, 0, 3000);
+            double lat, lng;
+            Natural(snapshot, out lat, out lng);
+            var target = lng + 200 / KmPerDeg;
+            var node = Aim(snapshot, lat, target, 120);
+            Assert.Equal("", node["error"]);
+            double pe;
+            var flown = Flown(snapshot, node, out pe);
+            var left = Km(flown.Latitude, flown.Longitude, lat, target);
+            Assert.InRange(pe, Pe - 1000, Pe + 1000);
+            Assert.InRange(D(node, "dv"), 0, 0.1);
+            Assert.InRange(D(node, "error_km"), left - 0.01, left + 0.01);
+        }
+
+        /// <summary>A track inclined to the equator: the landing moves along the way it can, and what is across stays in error_km, no burn spent on it.</summary>
+        [Fact]
+        public void An_inclined_arrival_keeps_what_is_across_and_says_so()
+        {
+            var snapshot = Falling(Pe, 30);
+            double lat, lng;
+            Natural(snapshot, out lat, out lng);
+            var target = lng + 20 / KmPerDeg;
+            var node = Aim(snapshot, lat + 10 / KmPerDeg, target);
+            Assert.Equal("", node["error"]);
+            double pe;
+            var flown = Flown(snapshot, node, out pe);
+            var left = Km(flown.Latitude, flown.Longitude, lat + 10 / KmPerDeg, target);
+            Assert.InRange(pe, Pe - 1000, Pe + 1000);
+            Assert.True(left < Km(lat, lng, lat + 10 / KmPerDeg, target), "the landing moves toward the target");
+            Assert.InRange(D(node, "error_km"), left - 0.01, left + 0.01);
+            Assert.InRange(D(node, "dv"), 0, 10);
+        }
+
+        /// <summary>A target_pe above the air has no landing to read: the burn that holds it stands, as without a target, with no landing given.</summary>
+        [Fact]
+        public void With_no_landing_to_read_the_periapsis_burn_stands()
+        {
+            var snapshot = Falling(90000);
+            var node = Aim(snapshot, 0, 0, 300, 0, 90000);
+            Assert.Equal("", node["error"]);
+            Assert.False(node.ContainsKey("error_km"));
+            Assert.InRange(D(node, "dv"), 0, 0.1);
+        }
+
+        /// <summary>Nothing to move: an arrival already there burns about nothing, which the block doesn't fly.</summary>
+        [Fact]
+        public void An_arrival_already_there_burns_nothing()
+        {
+            var snapshot = Falling();
+            double lat, lng;
+            Natural(snapshot, out lat, out lng);
+            var node = Aim(snapshot, lat, lng);
+            Assert.Equal("", node["error"]);
+            Assert.InRange(D(node, "dv"), 0, 0.1);
+            Assert.InRange(D(node, "error_km"), 0, 0.3);
+        }
+
+        /// <summary>#795: the plan-vs-flown line carries the landing target, so it no longer says none.</summary>
+        [Fact]
+        public void The_plan_log_names_the_landing_target()
+        {
+            var snapshot = Falling();
+            double lat, lng;
+            Natural(snapshot, out lat, out lng);
+            var line = (string)Aim(snapshot, 1.25, lng + 5 / KmPerDeg)["plan_log"];
+            Assert.Contains("CORRECTIONBURN planned arrival", line);
+            Assert.Contains("landing target 1.2500", line);
+        }
+
+        [Theory]
+        [InlineData("lng")]
+        [InlineData("lat")]
+        public void A_landing_needs_both_coordinates(string missing)
+        {
+            var snapshot = Falling();
+            var ask = new Dictionary<string, object>
+            {
+                { "target", "Kerbin" }, { "target_pe", Pe }, { "earliest_ut", snapshot.Ut + 300 }, { "lat", 0.0 }, { "lng", 0.0 },
+            };
+            ask.Remove(missing);
+            var node = BlockCalls.CorrectionBurn(ask, snapshot, new FrameBody(snapshot.Ut), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            Assert.Equal("found no correction: lat and lng must both be numbers", node["error"]);
+        }
+
+        [Fact]
+        public void A_landing_needs_the_air_and_the_craft_and_takes_no_arrival_inclination()
+        {
+            var snapshot = Falling();
+            var ask = new Dictionary<string, object>
+            {
+                { "target", "Kerbin" }, { "target_pe", Pe }, { "earliest_ut", snapshot.Ut + 300 }, { "lat", 0.0 }, { "lng", 0.0 },
+            };
+            Assert.Equal("found no correction: the landing needs the planet's air and the craft", BlockCalls.CorrectionBurn(ask, snapshot)["error"]);
+            ask["target_inc"] = 5.0;
+            Assert.Equal("found no correction: a landing target takes no arrival inclination or plane",
+                BlockCalls.CorrectionBurn(ask, snapshot, new FrameBody(snapshot.Ut), new ReentrySim.Atmosphere(), new ReentrySim.Capsule())["error"]);
+        }
+
+        /// <summary>Without a landing the ask and its answer are as before: no landing keys, the log says none.</summary>
+        [Fact]
+        public void Without_a_landing_nothing_changes()
+        {
+            var snapshot = Falling(33000);
+            var node = BlockCalls.CorrectionBurn(new Dictionary<string, object>
+            {
+                { "target", "Kerbin" }, { "target_pe", Pe }, { "earliest_ut", snapshot.Ut + 300 },
+            }, snapshot);
+            Assert.Equal("", node["error"]);
+            Assert.False(node.ContainsKey("error_km"));
+            Assert.Contains("landing target none", (string)node["plan_log"]);
+            Assert.InRange(D(node, "pe_predicted"), Pe - 1000, Pe + 1000);
+        }
+
+        // ---- a return from another planet: the same landing mode from far out and near Kerbin ----
+
+        private static ReturnLanding LandingOn(double lat, double lng, double ut)
+        {
+            string problem;
+            var frame = BodyFrame.Read(Kerbin, new FrameBody(ut), ut, out problem);
+            Assert.Null(problem);
+            return new ReturnLanding { Latitude = lat, Longitude = lng, Air = new ReentrySim.Atmosphere(), Craft = new ReentrySim.Capsule(), Frame = frame };
+        }
+
+        /// <summary>An arrival at Kerbin from another planet: round the star until <paramref name="daysOut"/> days after <paramref name="now"/>, coming in with about 1.2 km/s to spare.</summary>
+        private static Conic InboundRoundTheSun(BodySystem system, double now, double daysOut)
+        {
+            var enter = now + daysOut * 21600;
+            var kerbin = system.OrbitOf(Kerbin);
+            Vec3 r, v;
+            kerbin.State(enter, out r, out v);
+            var up = r.Normalized;
+            var ahead = v.Normalized;
+            var soi = Kerbin.SoiRadius * 0.98;
+            // At the sphere's edge, off to the side so the path passes the planet rather than through it, and falling toward it.
+            var at = r + up * (-soi) + ahead * (soi * 0.03);
+            var arrive = v + up * 1200;
+            return Conic.FromState(Sun.Gm, at, arrive, enter);
+        }
+
+        [Fact]
+        public void A_far_out_correction_round_the_star_aims_a_landing_with_the_periapsis_held()
+        {
+            var system = new BodySystem(new[] { Sun, Kerbin });
+            const double now = 1000000;
+            var orbit = InboundRoundTheSun(system, now, 10);
+            var sun = system.Find("Sun");
+            var ask = new CorrectionAsk { Target = "Kerbin", TargetPe = Pe, EarliestUt = now + 300, LatestUt = now + 300 };
+            var plain = CorrectionBurn.Find(system, sun, orbit, now, ask);
+            Assert.Null(plain.Error);
+            var landed = LandingOn(0, 0, now);
+            var first = Natural(system, sun, orbit, plain, now, landed);
+            landed.Latitude = first.Latitude;
+            landed.Longitude = LandingSiteSearch.Wrap180(first.Longitude + 100 / KmPerDeg);
+            ask.Landing = landed;
+            var plan = CorrectionBurn.Find(system, sun, orbit, now, ask);
+            Assert.Null(plan.Error);
+            Assert.InRange(plan.PePredicted, Pe - 1000, Pe + 1000);
+            Assert.NotNull(plan.Landing);
+            Assert.InRange(plan.ErrorKm, 0, 1);
+            Assert.InRange(plan.DeltaV, 0, CorrectionBurn.MostLandingDv * 1.1);
+        }
+
+        [Fact]
+        public void A_near_kerbin_correction_on_a_hyperbola_aims_a_landing_with_the_periapsis_held()
+        {
+            var system = new BodySystem(new[] { Sun, Kerbin });
+            const double now = 1000000;
+            // Coming in with 1.2 km/s to spare, an hour and a bit from periapsis.
+            var vInf = 1200.0;
+            var peR = Kerbin.Radius + Pe;
+            var sma = -Kerbin.Gm / (vInf * vInf);
+            var ecc = 1 - peR / sma;
+            var orbit = Conic.FromElements(Kerbin.Gm, sma, ecc, 0, 0, 0, -4000 * Math.Sqrt(Kerbin.Gm / -(sma * sma * sma)), now);
+            var kerbin = system.Find("Kerbin");
+            var ask = new CorrectionAsk { Target = "Kerbin", TargetPe = Pe, EarliestUt = now + 120, LatestUt = now + 120 };
+            var plain = CorrectionBurn.Find(system, kerbin, orbit, now, ask);
+            Assert.Null(plain.Error);
+            var landed = LandingOn(0, 0, now);
+            var first = Natural(system, kerbin, orbit, plain, now, landed);
+            landed.Latitude = first.Latitude;
+            landed.Longitude = LandingSiteSearch.Wrap180(first.Longitude + 10 / KmPerDeg);
+            ask.Landing = landed;
+            var plan = CorrectionBurn.Find(system, kerbin, orbit, now, ask);
+            Assert.Null(plan.Error);
+            Assert.InRange(plan.PePredicted, Pe - 1000, Pe + 1000);
+            Assert.NotNull(plan.Landing);
+            Assert.True(plan.ErrorKm < 10, "the landing moves toward the target");
+        }
+
+        /// <summary>Where <paramref name="plain"/>'s burn comes down, by the predictor.</summary>
+        private static ReentryPrediction Natural(BodySystem system, SnapshotBody from, Conic orbit, CorrectionPlan plain, double now, ReturnLanding landing)
+        {
+            var burn = SingleShooting.FromNodeFrame(orbit, plain.Ut, plain.Prograde, plain.Normal, plain.Radial);
+            for (var patches = 1; patches <= 4; patches++)
+            {
+                var arrival = SingleShooting.Arrive(system, from, orbit, plain.Ut, burn, Kerbin, patches);
+                if (arrival == null) continue;
+                var landed = ReentryPredictor.Predict(Kerbin, arrival.Orbit, arrival.StartUt, 0, landing.Craft.MassKg, landing.Air, landing.Craft, landing.Frame);
+                Assert.Null(landed.Error);
+                return landed;
+            }
+            throw new InvalidOperationException("the burn does not reach Kerbin");
+        }
+
+        [Fact]
+        [Trait("Category", "Timing")]
+        public void The_whole_aimed_solve_takes_under_100_ms()
+        {
+            var snapshot = Falling(33000);
+            double lat, lng;
+            Natural(snapshot, out lat, out lng);
+            Timing.Within(100, () => Assert.Equal("", Aim(snapshot, lat, lng + 40 / KmPerDeg)["error"]));
         }
     }
 }

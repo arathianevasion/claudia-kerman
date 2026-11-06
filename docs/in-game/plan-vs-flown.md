@@ -10,7 +10,7 @@ Fly any Mission with a `deorbit` (or `return` with a landing target). Expect:
 
 - `DEORBITBURN planned orbit: Pe .. m, Ap .. m, period .. s, Pe at UT ..; frame LonOffset .. deg, handed .., ground_alt .. m`: the orbit after the planned burn, and the frame and altitude the landing was read in.
 - `REENTRYIMPACT planned orbit: ...`: the same for the orbit the predictor was given after the burn (for `return`, its planned path round Kerbin).
-- `CORRECTIONBURN` / `RETURNBURN planned arrival: burn at UT .., Pe .. m, inclination .. deg; landing target ..`: the arrival the burn plans. `CORRECTIONBURN` and `RETURNBURN` log `landing target none` until their asks carry the landing site (`lat`/`lng`); that is expected, not a fault. The frame for those burns is on the `REENTRYIMPACT` line that follows.
+- `CORRECTIONBURN` / `RETURNBURN planned arrival: burn at UT .., Pe .. m, inclination .. deg; landing target ..`: the arrival the burn plans. With a `return` target they log its `lat`, `lng` (#792, #793); `landing target none` is a burn with no landing to aim at, not a fault. The frame for those burns is on the `REENTRYIMPACT` line that follows.
 
 To check the frame: read `frame LonOffset` and `handed` on the `DEORBITBURN` line, then the same fields on the `REENTRYIMPACT` line of the same flight. The two should name the same frame for the same site; a different `LonOffset` between them is the mismatch to report.
 

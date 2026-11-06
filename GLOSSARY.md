@@ -77,7 +77,7 @@ The moment a maneuver node's burn lights its engines: ahead of the node by about
 _Avoid_: node time, burn time (the burn's length)
 
 **Course Correction**:
-A burn between departure and arrival that trims the predicted arrival at a body or vessel to the target periapsis or closest approach, and optionally to the target arrival inclination.
+A burn between departure and arrival that trims the predicted arrival at a body or vessel to the target periapsis or closest approach, and optionally to the target arrival inclination or, with the periapsis held, a landing point along the track (#793).
 _Avoid_: mid-course correction, MCC
 
 **Broken-plane transfer**:
