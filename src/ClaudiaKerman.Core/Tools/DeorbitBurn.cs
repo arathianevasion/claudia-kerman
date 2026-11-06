@@ -190,7 +190,7 @@ namespace ClaudiaKerman.Core.Tools
                 var lacking = ShortOfDv(plan.DeltaV, _ask.DeltaVLeft);
                 if (lacking != "") return lacking;
                 // Without chutes the craft lands on its engines, and that costs its speed at the ground.
-                var powered = _craft.Chutes.Count == 0 || !_ask.Chutes ? plan.Landing.LandingSpeed : 0;
+                var powered = _craft.Chutes == null || _craft.Chutes.Count == 0 || !_ask.Chutes ? plan.Landing.LandingSpeed : 0;
                 var limit = _ask.MaxDv > 0 ? _ask.MaxDv : AutoMaxDv(_ask.DeltaVLeft, powered);
                 if (plan.DeltaV <= limit) return null;
                 return "the cheapest burn within accuracy_km needs " + Dv(plan.DeltaV) + " m/s (at UT " + Whole(plan.BurnUt) + "), over max_dv "
