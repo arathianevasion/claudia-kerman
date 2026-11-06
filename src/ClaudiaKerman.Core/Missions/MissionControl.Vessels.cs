@@ -239,8 +239,30 @@ namespace ClaudiaKerman.Core.Missions
         {
             var mission = _mission;
             if (mission == null || MissionOver || !IsRunning(mission)) return;
+            // #775: only warping on a coast that passes the safety test, the block stops at a checkpoint. Otherwise an interruption, as ever.
+            var cannotLeave = CannotLeaveCraft(mission);
+            if (cannotLeave == "")
+            {
+                LeaveAtCheckpoint(mission);
+                return;
+            }
             mission.SwitchingAway = true;
             Interrupt(mission, "the player switched to " + (string.IsNullOrEmpty(vesselName) ? "a vessel" : vesselName) + ", far enough away to unload the craft");
+            if (!string.IsNullOrEmpty(cannotLeave)) Note(LogKind.Notice, "Not a Coast Checkpoint: " + cannotLeave + ".");
+        }
+
+        /// <summary>
+        /// The player confirmed leaving Flight (#777). To the Space Center or the Tracking Station on a coast that passes the safety test, the checkpoint is
+        /// recorded now, before the scene changes; the scene change then finds a Debriefing run with nothing owed and leaves it alone. Otherwise the scene
+        /// change interrupts the run as ever, and only the reason is noted.
+        /// </summary>
+        private void LeavingFlight(LeaveTo destination)
+        {
+            var mission = _mission;
+            if (mission == null || MissionOver || !IsRunning(mission) || !LeaveFlightRules.CanCheckpoint(destination)) return;
+            var cannotLeave = CannotLeaveCraft(mission);
+            if (cannotLeave == "") LeaveAtCheckpoint(mission);
+            else if (!string.IsNullOrEmpty(cannotLeave)) Note(LogKind.Notice, "Not a Coast Checkpoint: " + cannotLeave + ".");
         }
 
         /// <summary>The player is nearby in another vessel: a warning (once per trip out) 10 s before the craft would unload.</summary>

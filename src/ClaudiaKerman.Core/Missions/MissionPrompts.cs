@@ -730,7 +730,7 @@ namespace ClaudiaKerman.Core.Missions
                 text += "TWR in vacuum at the surface gravity of each body the Mission Goal names, per stage: " + json.EndArray() + "\n";
             }
             var transfers = "";
-            foreach (var body in bodies)
+            foreach (var body in TransferTargets(snapshot, bodies))
             {
                 var input = "{\"target\":" + PlanningJson.Quote(body.Name) + ",\"target_pe\":" + ArrivalPe(body).ToString(CultureInfo.InvariantCulture) + "}";
                 var transfer = TransferRow(tools, snapshot, input);
@@ -740,6 +740,24 @@ namespace ClaudiaKerman.Core.Missions
                 text += "Transfers to each body the Mission Goal names, as plan_transfer would give them from this Game Snapshot (JSON data). A tool whose figures are here needs no call.\n" + transfers;
             if (onPad && !string.IsNullOrEmpty(craftCheckAscent)) text += "The Craft Check's plan_ascent " + craftCheckAscent + "\n";
             return text;
+        }
+
+        /// <summary>
+        /// #783: the bodies the stage table's plan_transfer rows are for: each body the Mission Goal names, and for one that is a moon
+        /// of another planet (Ike from Kerbin) the planet the craft's planet transfers to (Duna), once, after the named bodies.
+        /// </summary>
+        private static List<SnapshotBody> TransferTargets(GameSnapshot snapshot, List<SnapshotBody> bodies)
+        {
+            var targets = new List<SnapshotBody>(bodies);
+            var system = new BodySystem(snapshot.Bodies);
+            foreach (var named in bodies)
+            {
+                if (TransferWindows.IsMoonTransfer(snapshot, named.Name) || TransferWindows.IsPlanetTransfer(snapshot, named.Name)) continue;
+                var parent = system.Parent(named);
+                while (parent != null && !TransferWindows.IsPlanetTransfer(snapshot, parent.Name)) parent = system.Parent(parent);
+                if (parent != null && !targets.Any(t => t.Name == parent.Name)) targets.Add(parent);
+            }
+            return targets;
         }
 
         /// <summary>
@@ -772,7 +790,7 @@ namespace ClaudiaKerman.Core.Missions
         private static ToolOutcome TransferRow(PlanningTools tools, GameSnapshot snapshot, string input)
         {
             var rows = TransferRows.GetOrCreateValue(snapshot);
-            var key = snapshot.TimeVersusDeltaV + "|" + snapshot.MarginPercent + "|" + input;
+            var key = snapshot.TimeVersusDeltaV + "|" + snapshot.MarginPercent + "|" + snapshot.WindowPick.Key + "|" + input;
             lock (rows)
             {
                 ToolOutcome found;
@@ -781,6 +799,12 @@ namespace ClaudiaKerman.Core.Missions
             var outcome = tools.Run("plan_transfer", input, snapshot, null);
             lock (rows) rows[key] = outcome;
             return outcome;
+        }
+
+        /// <summary>#686: the Approval's line when the player picked after the plan's request was sent, which named an earlier pick or the setting's.</summary>
+        public static string WindowPicked(WindowPick pick)
+        {
+            return "The player picked the " + pick.Kind + " Transfer Window to " + pick.Body + ".";
         }
 
         /// <summary>The periapsis (m) the Mission request's plan_transfer rows arrive at (#575).</summary>

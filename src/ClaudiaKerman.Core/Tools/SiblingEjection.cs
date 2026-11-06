@@ -80,7 +80,7 @@ namespace ClaudiaKerman.Core.Tools
             {
                 problem.From = earliest;
                 found = TransferWindows.Search(problem, snapshot.MarginPercent);
-                pick = found.Error == null ? TransferWindows.Pick(found, snapshot.TimeVersusDeltaV) : null;
+                pick = found.Error == null ? TransferWindows.Pick(found, snapshot) : null;
             }
             if (found.Error != null) return Fail(found.Error.Replace("found no transfer window: ", ""));
 

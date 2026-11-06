@@ -88,6 +88,12 @@ namespace ClaudiaKerman.Core.Missions
             return new Walk(snapshot, rest, plannedAscent).Run();
         }
 
+        /// <summary>A revised plan lists this sequence as already flown (#784): nothing is left of it to fly.</summary>
+        public static bool IsFlown(PlannedSequence sequence)
+        {
+            return Flown.IsMatch(SequenceWords.Of(sequence));
+        }
+
         /// <summary>What the legs count for in the margin, m/s.</summary>
         public static double Need(IEnumerable<JudgedLeg> legs)
         {

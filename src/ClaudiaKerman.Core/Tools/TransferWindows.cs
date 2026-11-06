@@ -80,8 +80,8 @@ namespace ClaudiaKerman.Core.Tools
     /// heliocentric Lambert grid over departure time and flight time, each cell costed as the ejection from the parking orbit plus,
     /// with capture, the capture into a circular orbit at target_pe; <see cref="BrentMin"/> refines the cheapest. Two answers:
     /// <b>Optimal</b>, the cheapest window within one synodic period; <b>Soonest</b>, the earliest departure whose total fits the
-    /// Craft Check's margin over Optimal's (the Craft Check budgets a leg at its best figure plus the margin). The Mission Setting
-    /// Time versus delta-v picks one (<see cref="Pick"/>). Patched conics at the window level: the planets are points, the
+    /// Craft Check's margin over Optimal's (the Craft Check budgets a leg at its best figure plus the margin). The player picks one
+    /// for a transfer between bodies with the same parent (#686); otherwise the Mission Setting Time versus delta-v does (<see cref="Pick(WindowSearch, TimeVersusDeltaV)"/>). Patched conics at the window level: the planets are points, the
     /// ejection is the Oberth burn at the parking orbit's periapsis in the escape direction's plane, so a parking orbit tilted
     /// from that direction costs more than this says. <see cref="Problem.Of"/> copies what it needs from the Game Snapshot
     /// before the search starts, so the search never reads the snapshot (it runs on a tool thread, ToolStep.cs).
@@ -171,6 +171,19 @@ namespace ClaudiaKerman.Core.Tools
         public static TransferWindow Pick(WindowSearch search, TimeVersusDeltaV setting)
         {
             return TakesOptimal(search.Soonest.TotalDv, search.Optimal.TotalDv, setting) ? search.Optimal : search.Soonest;
+        }
+
+        /// <summary>The window to take: the player's pick for this transfer (#686), or else the setting's.</summary>
+        public static TransferWindow Pick(WindowSearch search, TimeVersusDeltaV setting, WindowPick chosen)
+        {
+            if (chosen != null && chosen.IsFor(search.Target)) return chosen.Kind == WindowKind.Optimal ? search.Optimal : search.Soonest;
+            return Pick(search, setting);
+        }
+
+        /// <summary>The window the Game Snapshot's Mission takes: <see cref="Pick(WindowSearch, TimeVersusDeltaV, WindowPick)"/> on what it was stamped with.</summary>
+        public static TransferWindow Pick(WindowSearch search, GameSnapshot snapshot)
+        {
+            return Pick(search, snapshot.TimeVersusDeltaV, snapshot.WindowPick);
         }
 
         /// <summary>The setting's rule on two totals: whether it takes the cheaper Optimal over Soonest (#760: for routes as for windows).</summary>

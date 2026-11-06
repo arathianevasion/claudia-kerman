@@ -45,6 +45,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The Due Time the Mission's Sequence Plan waits for (UT s), null for none; and what it waits for, e.g. "the Duna window", "" when not a window (#616).</summary>
         public double? DueUt;
         public string DueFor = "";
+        /// <summary>The Mission waits at a Coast Checkpoint the player has left, and the mod's check on return hasn't run (#775).</summary>
+        public bool CheckPending;
 
         public bool Finished
         {

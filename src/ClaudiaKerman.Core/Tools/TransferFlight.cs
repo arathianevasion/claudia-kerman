@@ -48,6 +48,10 @@ namespace ClaudiaKerman.Core.Tools
         public int Drops;
         /// <summary>The UT a far target's halfway correction burns at once its watched coast is over; -1 before it is planned (#770).</summary>
         public double MidUt = -1;
+        /// <summary>The flight may stop at a Coast Checkpoint (#775): a Mission's run. Off for a block test or a bare call.</summary>
+        public bool Checkpoints;
+        /// <summary>Where a checkpoint left this flight: the first step resumes there, with no ejection; null otherwise.</summary>
+        public CoastToken Resume;
     }
 
     /// <summary>The next thing <c>transfer_to</c> does: fly a node, wait until a UT, or end; or why it fails.</summary>
@@ -85,6 +89,8 @@ namespace ClaudiaKerman.Core.Tools
         public bool Restored;
         public int Drops;
         public double MidUt = -1;
+        /// <summary>For return's coast ask (#775): the UT its wait runs to.</summary>
+        public double WaitUt;
         /// <summary>A wait's Encounter Watch (#770); null for a wait with nothing to watch.</summary>
         public EncounterWatchPlan Watch;
         /// <summary>Script Result keys and values to set.</summary>
@@ -103,7 +109,8 @@ namespace ClaudiaKerman.Core.Tools
     /// encounter, not held to pe_tolerance, and the trim to target_pe waits for the target's sphere of influence (<see cref="Near"/>).
     /// A long coast to a far target is watched (<see cref="EncounterWatch"/>, #770). A lost encounter gets a restore on this window,
     /// then the missed-ejection recovery once inside max_duration or, in "auto", <see cref="RecoveryWait"/>
-    /// (<see cref="Recover"/>), before the block fails with the figures.
+    /// (<see cref="Recover"/>), before the block fails with the figures. In a Mission's run a coast of over 6 h to a correction may stop
+    /// at a Coast Checkpoint (<see cref="CoastCheckpoints"/>, #775), and the resumed flight starts where it stopped.
     /// </summary>
     internal static class TransferFlight
     {
@@ -123,6 +130,8 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The next step after the Encounter Watch dropped the warp (#770), and the check after a restore's burn.</summary>
         private const string Restoring = "restore";
         private const string RestoreCheck = "restore_check";
+        /// <summary>The first step of a flight resumed from a Coast Checkpoint (#775).</summary>
+        private const string Resuming = "resuming";
         /// <summary>m/s under which a Course Correction is not flown; the finer one's max_residual (#672); a burn's lead, s, past its turn.</summary>
         private const double SkipDv = 0.1;
         private const double FineResidual = 0.1;
@@ -130,6 +139,8 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>s past the end of max_duration a Course Correction must leave to burn in; s past the arrival "auto" leaves.</summary>
         private const double BurnRoom = 120;
         private const double AutoSlack = 900;
+        /// <summary>The same slack for a resumed plan's expected duration (#775).</summary>
+        internal const double AutoSlackS = AutoSlack;
         /// <summary>s past leaving the sphere of influence the wait ends, as return waits; and past entering a far target's (#747).</summary>
         private const double PastSoi = 30;
         /// <summary>The most patches to the target: out of a moon, round the planet, into another moon.</summary>
@@ -161,6 +172,7 @@ namespace ClaudiaKerman.Core.Tools
                 ask.WatchDropped = false;
                 ask.Drops++;
             }
+            if (ask.Resume != null) ask.Phase = Resuming;
             double? movedMax = null;
             for (var i = 0; i < MaxPhases; i++)
             {
@@ -232,9 +244,71 @@ namespace ClaudiaKerman.Core.Tools
                     return Restore(snapshot, setup, ask);
                 case RestoreCheck:
                     return AfterRestore(snapshot, setup, ask);
+                case Resuming:
+                    return Resume(snapshot, setup, ask);
                 default:
                     return Fail("no transfer_to phase named " + ask.Phase);
             }
+        }
+
+        /// <summary>
+        /// Back from a Coast Checkpoint (#775): no ejection, the flight's carried state from the token, and the watched coast to the
+        /// correction it stopped for, or straight to it when the time has passed. An encounter gone since the mod's check: the recovery.
+        /// </summary>
+        private static TransferFlightStep Resume(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask)
+        {
+            var token = ask.Resume;
+            ask.Resume = null;
+            ask.ArrivalUt = token.ArrivalUt;
+            ask.PlaneUt = token.PlaneUt;
+            ask.Sibling = token.Sibling;
+            ask.Recovered = token.Recovered;
+            ask.Restored = token.Restored;
+            ask.Drops = token.Drops;
+            ask.MidUt = token.MidUt;
+            var enc = Encounter(setup);
+            if (enc == null) return Recover(snapshot, setup, ask, Lost(setup.Target));
+            var step = token.WaitUt > setup.Now
+                ? new TransferFlightStep { Do = TransferFlightStep.Wait, Ut = token.WaitUt, Phase = token.Phase, MidUt = token.MidUt, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Watch = Watch(setup, enc, ask, token.PointUt, token.WaitUt, token.Phase, token.MidUt) }
+                : new TransferFlightStep { Phase = token.Phase, MidUt = token.MidUt, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt };
+            if (ask.Auto) step.MaxDuration = enc.PeUt - ask.StartUt + AutoSlack;
+            // The wait that reported it was the run before this one's; a script after the block reads it from this result.
+            step.Report["encounter_ut"] = Math.Round(token.SoiUt >= 0 ? token.SoiUt : enc.SoiUt);
+            return step;
+        }
+
+        /// <summary>
+        /// The block ends Nominal here (#775) when the correction at <paramref name="pointUt"/> is over <see cref="WindowWaits.LongWaitS"/> off and
+        /// the safety test passes; null when it keeps flying. The token holds all a resumed flight needs.
+        /// </summary>
+        private static TransferFlightStep Checkpoint(PredictBurn.Setup setup, Arrival enc, TransferFlightAsk ask, double pointUt, double waitUt, string phase, double midUt)
+        {
+            if (pointUt - setup.Now <= WindowWaits.LongWaitS) return null;
+            var token = Token(setup, enc, ask, pointUt, waitUt, phase, midUt);
+            if (token == null || CoastCheckpoints.Unsafe(setup, enc, pointUt) != "") return null;
+            var step = new TransferFlightStep();
+            step.Report[CoastCheckpoints.TokenKey] = token.ToString();
+            step.Report[CoastCheckpoints.PointKey] = Math.Round(pointUt);
+            step.Report["encounter_ut"] = Math.Round(enc.SoiUt);
+            step.Report["target_pe_actual"] = Math.Round(enc.Pe);
+            step.Report["arrival_ut"] = Math.Round(enc.PeUt);
+            step.ArrivalUt = ask.ArrivalUt;
+            step.PlaneUt = ask.PlaneUt;
+            return step;
+        }
+
+        /// <summary>The token of a coast on <paramref name="enc"/>; null when the flight may not checkpoint.</summary>
+        private static CoastToken Token(PredictBurn.Setup setup, Arrival enc, TransferFlightAsk ask, double pointUt, double waitUt, string phase, double midUt)
+        {
+            if (!ask.Checkpoints || !string.IsNullOrEmpty(ask.Why)) return null;
+            var bodies = string.Join(",", enc.Bodies.ToArray());
+            if (!CoastToken.Plain(bodies) || !CoastToken.Plain(setup.Target.Name)) return null;
+            return new CoastToken
+            {
+                Target = setup.Target.Name, Pe = enc.Pe, PeLimit = CoastCheckpoints.PeLimit(setup.Target, ask.PeTolerance), PointUt = pointUt, LeadS = CoastCheckpoints.Lead(ask.TurnTime),
+                WaitUt = waitUt, Phase = phase, ArriveUt = enc.PeUt, SoiUt = enc.SoiUt, MidUt = midUt, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Sibling = ask.Sibling,
+                Recovered = ask.Recovered, Restored = ask.Restored, Drops = ask.Drops, Bodies = bodies,
+            };
         }
 
         /// <summary>The ejection: to a moon, <see cref="Transfer"/>'s; to a body sharing the craft's parent, <see cref="SiblingEjection"/>'s.</summary>
@@ -501,9 +575,14 @@ namespace ClaudiaKerman.Core.Tools
             var fix = CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut });
             var far = Far(setup, ask);
             if (far && (!fix.HasBurn || fix.Error != null)) return Go(ask, MidCheck);
+            if (ask.MidUt < 0 && fix.HasBurn && fix.Error == null && fix.DeltaV >= SkipDv)
+            {
+                var held = Checkpoint(setup, enc, ask, ut, ut - lead - Lead, Mid, ut);
+                if (held != null) return held;
+            }
             // exec_node's warp to a node has no stop: a far target's long coast to it is a watched wait, and the node is planned at its end (#770).
             if (far && ask.MidUt < 0 && fix.DeltaV >= SkipDv && ut > setup.Now + 2 * lead + Lead)
-                return new TransferFlightStep { Do = TransferFlightStep.Wait, Ut = ut - lead - Lead, Phase = Mid, MidUt = ut, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Why = ask.Why, Watch = Watch(setup, enc, ask) };
+                return new TransferFlightStep { Do = TransferFlightStep.Wait, Ut = ut - lead - Lead, Phase = Mid, MidUt = ut, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Why = ask.Why, Watch = Watch(setup, enc, ask, ut, ut - lead - Lead, Mid, ut) };
             return FlyCorrection(ask, fix, "correction", MidCheck);
         }
 
@@ -540,12 +619,14 @@ namespace ClaudiaKerman.Core.Tools
                 var into = enc.SoiUt + PastSoi;
                 if (into > setup.Now && (!ask.MaxDuration.HasValue || into + 2 * (lead + BurnRoom) <= ask.StartUt + ask.MaxDuration.Value))
                 {
-                    var wait = new TransferFlightStep { Do = TransferFlightStep.Wait, Ut = into, Phase = Near, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Why = ask.Why, Watch = Watch(setup, enc, ask) };
+                    var held = Checkpoint(setup, enc, ask, into, into, Near, -1);
+                    if (held != null) return held;
+                    var wait = new TransferFlightStep { Do = TransferFlightStep.Wait, Ut = into, Phase = Near, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Why = ask.Why, Watch = Watch(setup, enc, ask, into, into, Near, -1) };
                     wait.Report["encounter_ut"] = Math.Round(enc.SoiUt);
                     return wait;
                 }
             }
-            var mid = (setup.Now + enc.SoiUt) / 2;
+            var mid = ask.MidUt >= 0 ? Math.Max(ask.MidUt, setup.Now + lead) : (setup.Now + enc.SoiUt) / 2;
             if (far) mid = Math.Max(Math.Max(mid, enc.PeUt - ask.PeTolerance / FineResidual), setup.Now + lead);
             string why;
             var ut = CorrectionUt(mid, setup.Now, ask.TurnTime + Lead, ask.StartUt, ask.MaxDuration, out why);
@@ -556,6 +637,11 @@ namespace ClaudiaKerman.Core.Tools
             });
             if (!fix.HasBurn || fix.Error != null) return Go(ask, FineCheck, fix.Error);
             if (fix.DeltaV < SkipDv) return Go(ask, FineCheck, "its burn, under 0.1 m/s, isn't flown");
+            if (ask.MidUt < 0)
+            {
+                var stop = Checkpoint(setup, enc, ask, ut, ut - lead - Lead, Fine, ut);
+                if (stop != null) return stop;
+            }
             var step = Node("correction", fix.Ut, fix.Prograde, fix.Normal, fix.Radial, FineFlown);
             if (setup.Body != setup.Target && fix.Ut > enc.SoiUt) step.Report["encounter_ut"] = Math.Round(enc.SoiUt);
             step.MaxResidual = FineResidual;
@@ -767,13 +853,14 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>The Encounter Watch for a coast on <paramref name="enc"/>; null once the flight has had its <see cref="MaxDrops"/>.</summary>
-        private static EncounterWatchPlan Watch(PredictBurn.Setup setup, Arrival enc, TransferFlightAsk ask)
+        private static EncounterWatchPlan Watch(PredictBurn.Setup setup, Arrival enc, TransferFlightAsk ask, double pointUt, double waitUt, string phase, double midUt)
         {
             if (ask.Drops >= MaxDrops) return null;
             return new EncounterWatchPlan
             {
                 Target = setup.Target.Name, Pe = enc.Pe, SoiUt = enc.SoiUt, SinceUt = setup.Now,
-                PeLimit = Math.Max(ask.PeTolerance, EncounterWatch.DriftShare * setup.Target.SoiRadius), Bodies = enc.Bodies,
+                PeLimit = CoastCheckpoints.PeLimit(setup.Target, ask.PeTolerance), Bodies = enc.Bodies,
+                Checkpoint = Convert.ToString(Token(setup, enc, ask, pointUt, waitUt, phase, midUt), CultureInfo.InvariantCulture) ?? "",
             };
         }
 

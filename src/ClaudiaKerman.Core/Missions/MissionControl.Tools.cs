@@ -186,7 +186,7 @@ namespace ClaudiaKerman.Core.Missions
                 var settings = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config));
                 snapshot.DaylightLandingDefault = settings.DaylightLanding;
                 snapshot.TimeCapHours = settings.TimeCapHours;
-                snapshot.StampMission(settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent);
+                snapshot.StampMission(settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
                 snapshot.LaterLegsDv = LaterLegsDv(mission);
             }
             var purpose = turn.Purpose;

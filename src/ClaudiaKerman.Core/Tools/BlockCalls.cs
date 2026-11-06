@@ -592,7 +592,7 @@ namespace ClaudiaKerman.Core.Tools
         /// asked again after each. Takes <c>target</c> (a body's name), <c>target_pe</c>, <c>window</c> ("next" or a UT),
         /// <c>correction</c>, <c>pe_tolerance</c>, <c>start_ut</c>, <c>max_duration</c> ("auto" or s), <c>auto</c> (whether it began
         /// "auto"), <c>turn_time</c>, <c>dv_left</c>, and what the last step carried: <c>phase</c> ("start" first), <c>arrival_ut</c>,
-        /// <c>plane_ut</c>, <c>why</c>, <c>sibling</c>, <c>recovered</c>, <c>restored</c>, <c>drops</c>, <c>mid_ut</c>, <c>watch_dropped</c> and <c>last_dv</c> (m/s the last burn used). Gives <c>error</c> ("" or why the block fails),
+        /// <c>plane_ut</c>, <c>why</c>, <c>sibling</c>, <c>recovered</c>, <c>restored</c>, <c>drops</c>, <c>mid_ut</c>, <c>watch_dropped</c>, <c>checkpoint</c> ("off", "on" or a resume token, #775) and <c>last_dv</c> (m/s the last burn used). Gives <c>error</c> ("" or why the block fails),
         /// <c>do</c> ("burn", "wait" or "done"), <c>kind</c>, <c>ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c>,
         /// <c>max_residual</c>, <c>fail_prefix</c>, <c>keep_going</c>, <c>report</c> (Script Result keys), <c>max_duration</c> (-1:
         /// unchanged), <c>watch</c> (a wait's Encounter Watch, for <see cref="EncounterWatch"/>; empty for none) and <c>carry</c> (the keys to ask with next).
@@ -612,9 +612,12 @@ namespace ClaudiaKerman.Core.Tools
             ask.TryGetValue("restored", out restored);
             ask.TryGetValue("watch_dropped", out watchDropped);
             object timing;
-            if (ask.TryGetValue("timing", out timing)) return Timing(ask, timing as string);
+            if (ask.TryGetValue("timing", out timing)) return Timing(ask, timing as string, snapshot);
             if (!(target is string)) return Step(new TransferFlightStep { Error = "found no transfer: target must be a body's name" });
             var maxDuration = NumberOrNull(ask, "max_duration");
+            object checkpoint;
+            ask.TryGetValue(CoastCheckpoints.TokenKey, out checkpoint);
+            var mode = checkpoint as string ?? CoastCheckpoints.Off;
             var step = TransferFlight.Next(snapshot, new TransferFlightAsk
             {
                 Target = (string)target,
@@ -638,25 +641,41 @@ namespace ClaudiaKerman.Core.Tools
                 WatchDropped = watchDropped as bool? ?? false,
                 Drops = (int)Number(ask, "drops", 0),
                 MidUt = Number(ask, "mid_ut", -1),
+                Checkpoints = mode != CoastCheckpoints.Off,
+                Resume = CoastToken.Parse(mode),
             });
-            return Step(step);
+            var result = Step(step);
+            // A resumed flight's token is spent; its later coasts may checkpoint again.
+            ((IDictionary<string, object>)result["carry"])[CoastCheckpoints.TokenKey] = mode == CoastCheckpoints.Off ? CoastCheckpoints.Off : CoastCheckpoints.On;
+            return result;
         }
 
         /// <summary>
         /// TRANSFERSTEP's timing asks, for <c>return</c> (#731): <c>timing</c> "earliest" (<c>start_ut</c>, <c>turn_time</c>, <c>window</c>)
         /// gives <c>ut</c>, the earliest departure; "correction" (<c>mid</c>, <c>now</c>, <c>lead</c>, <c>start_ut</c>, <c>max_duration</c>
         /// "auto" or s) gives <c>ut</c> and <c>why</c> ("" or why there is no time for the Course Correction). Shaped as a step, with <c>do</c> "timing".
+        /// "coast" (#775: <c>target</c>, <c>mid</c>, <c>turn_time</c>, <c>arrive_ut</c>, <c>checkpoint</c>) gives <c>do</c> "done" at a Coast Checkpoint, "wait" to <c>wait_ut</c> when resumed, or "go"; <c>ut</c> is the correction's.
         /// </summary>
-        private static IDictionary<string, object> Timing(IDictionary<string, object> ask, string kind)
+        private static IDictionary<string, object> Timing(IDictionary<string, object> ask, string kind, GameSnapshot snapshot)
         {
             var step = new TransferFlightStep { Do = "timing", Kind = kind ?? "" };
             var why = "";
+            if (kind == "coast")
+            {
+                object target, mode;
+                ask.TryGetValue("target", out target);
+                ask.TryGetValue(CoastCheckpoints.TokenKey, out mode);
+                var coast = CoastCheckpoints.ReturnCoast(snapshot, target as string ?? "", Number(ask, "mid", 0), Number(ask, "turn_time", 0), Number(ask, "arrive_ut", 0), mode as string);
+                var asked = Step(coast);
+                asked["wait_ut"] = coast.WaitUt;
+                return asked;
+            }
             if (kind == "earliest")
                 step.Ut = TransferFlight.Earliest(Number(ask, "start_ut", 0), Number(ask, "turn_time", 0), ask.ContainsKey("window") ? ask["window"] as double? : null);
             else if (kind == "correction")
                 step.Ut = TransferFlight.CorrectionUt(Number(ask, "mid", 0), Number(ask, "now", 0), Number(ask, "lead", 0), Number(ask, "start_ut", 0), NumberOrNull(ask, "max_duration"), out why);
             else
-                step.Error = "found no timing: timing must be 'earliest' or 'correction'";
+                step.Error = "found no timing: timing must be 'earliest', 'correction' or 'coast'";
             var result = Step(step);
             result["why"] = why;
             return result;

@@ -86,6 +86,10 @@ namespace ClaudiaKerman.Core.Missions
         public bool Manual;
         /// <summary>The vessel it flies: "" or "craft" for the Mission's craft, otherwise a Child Vessel's name from the Mission Plan.</summary>
         public string Vessel = "";
+        /// <summary>
+        /// The resume token of the mod's own plan at a Coast Checkpoint (#775); "" for any plan Claudia wrote. Its Due Time is soft, and it is the only kind Auto Mode may stand in at.
+        /// </summary>
+        public string CoastCheckpoint = "";
     }
 
     public sealed class Debrief
@@ -403,6 +407,8 @@ namespace ClaudiaKerman.Core.Missions
                     LateWindowDeltaV = NonNegative(sequence["late_window_dv"]),
                     Manual = JsonNode.Bool(sequence["manual"]) ?? false,
                     Vessel = (JsonNode.Str(sequence["vessel"]) ?? "").Trim(),
+                    // The mod's own mark, read back from a save; Claudia's plans have it cleared as they are offered.
+                    CoastCheckpoint = JsonNode.Str(sequence["coast_checkpoint"]) ?? "",
                 };
                 // The badge is read from the script, not taken from a custom_script field (older transcripts and saved plans may still carry one; it is ignored); her reason text is kept when it is custom.
                 var proposed = reply.SequencePlan;

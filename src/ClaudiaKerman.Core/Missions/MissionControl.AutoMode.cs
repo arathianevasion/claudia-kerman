@@ -51,12 +51,14 @@ namespace ClaudiaKerman.Core.Missions
             FirstMissionPlan,
             /// <summary>Only the player flies a manual stretch.</summary>
             ManualStretch,
-            /// <summary>A Due Time is a wait that needs the player (ADR 0004), even once it is reached.</summary>
+            /// <summary>A Due Time is a wait that needs the player (ADR 0004), even once it is reached; a coast checkpoint's only once they have left (#775).</summary>
             DueTime,
             /// <summary>Auto Mode only: the Spending Cap has no room for the Debrief and next plan request that follow.</summary>
             NoRoom,
             /// <summary>Auto Mode only: the script failed the Script Check again after Auto Mode's re-plan.</summary>
             ScriptFailedAgain,
+            /// <summary>A revised Mission Plan's or a departure's Transfer Window is the player's to pick (#686, #782): nothing stands in for them.</summary>
+            WindowPick,
         }
 
         /// <summary>The Auto Mode checkbox, in any stage of a Mission in play. Ticking it lets the check below approve a plan that waits.</summary>
@@ -128,6 +130,11 @@ namespace ClaudiaKerman.Core.Missions
                     WaitsForPlayer(mission, AdvanceWait.FirstMissionPlan, "");
                     return;
                 }
+                if (WindowPickMissing(mission))
+                {
+                    WaitsForPlayer(mission, AdvanceWait.WindowPick, "");
+                    return;
+                }
             }
             else
             {
@@ -137,7 +144,13 @@ namespace ClaudiaKerman.Core.Missions
                     WaitsForPlayer(mission, AdvanceWait.ManualStretch, plan.Name);
                     return;
                 }
-                if (plan.DueTimeUt.HasValue)
+                if (WindowPickMissing(mission))
+                {
+                    WaitsForPlayer(mission, AdvanceWait.WindowPick, plan.Name);
+                    return;
+                }
+                // The one exception (#775): Auto Mode may stand in at a coast checkpoint's Due Time, with the player still in the craft, and at no other kind.
+                if (plan.DueTimeUt.HasValue && !(mission.AutoMode && !mission.Blackout && SoftDueTime(mission, plan)))
                 {
                     WaitsForPlayer(mission, AdvanceWait.DueTime, plan.Name);
                     return;
@@ -233,6 +246,7 @@ namespace ClaudiaKerman.Core.Missions
                 case AdvanceWait.DueTime: mission.AutoModeStop = AutoModeWaitsFor("a Due Time"); break;
                 case AdvanceWait.ScriptFailedAgain: mission.AutoModeStop = AutoModeWaitsFor("the script failed again after a re-plan"); break;
                 case AdvanceWait.NoRoom: mission.AutoModeStop = mission.AutoModeRoomStop; break;
+                case AdvanceWait.WindowPick: mission.AutoModeStop = AutoModeWaitsFor("a Transfer Window to pick"); break;
             }
         }
 

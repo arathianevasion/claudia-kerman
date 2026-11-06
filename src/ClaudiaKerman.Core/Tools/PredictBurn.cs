@@ -362,10 +362,12 @@ namespace ClaudiaKerman.Core.Tools
             return found;
         }
 
-        /// <summary>Seconds to burn <paramref name="dv"/> m/s on the craft's stages from the snapshot (#696); null when they can't give it.</summary>
-        internal static double? BurnSeconds(GameSnapshot snapshot, double dv)
+        /// <summary>Seconds to burn <paramref name="dv"/> m/s on the craft's stages from the snapshot (#696), after <paramref name="spent"/> m/s has gone first (#686: an ascent); null when they can't give it.</summary>
+        internal static double? BurnSeconds(GameSnapshot snapshot, double dv, double spent = 0)
         {
-            return BurnStages(snapshot).Take(dv);
+            var stages = BurnStages(snapshot);
+            if (spent > 0) stages.Take(spent);
+            return stages.Take(dv);
         }
 
         /// <summary>The stages that can burn, first to last, used up burn by burn for the burn times.</summary>

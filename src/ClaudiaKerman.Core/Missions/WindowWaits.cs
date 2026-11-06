@@ -20,6 +20,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool TwoStep;
         /// <summary>The window, leaving at the burn out of the craft's own body's orbit; null when the search found none.</summary>
         public TransferWindow Window;
+        /// <summary>From a moon, the route <see cref="Window"/> is read from; null from a planet.</summary>
+        public RouteRow Route;
         /// <summary>The ascent lead, s (<see cref="WindowWaits.AscentLeadS"/>).</summary>
         public double LeadS;
         /// <summary>When the ascent is due; null when the wait is no more than <see cref="WindowWaits.LongWaitS"/>.</summary>
@@ -115,7 +117,7 @@ namespace ClaudiaKerman.Core.Missions
         /// The legs from <paramref name="from"/>, while they lead on from the ascent: a trip to another planet is the departure; a
         /// return to the craft's own planet and a capture there are the way to it (from a moon, by either route of #760).
         /// </summary>
-        private static SurfaceDeparture Departure(GameSnapshot snapshot, SnapshotBody body, IList<PlannedSequence> legs, int from)
+        internal static SurfaceDeparture Departure(GameSnapshot snapshot, SnapshotBody body, IList<PlannedSequence> legs, int from)
         {
             var atPlanet = false;
             var twoStep = false;
@@ -170,37 +172,47 @@ namespace ClaudiaKerman.Core.Missions
         /// holding the asymptote (plan_transfer's <c>at_ut</c>) when that is earlier. From a moon no launch plane applies: the
         /// departure is the burn out of its orbit (<see cref="RouteRow.LatestDepartUt"/>), less the ascent lead.
         /// </summary>
-        public static void Solve(GameSnapshot snapshot, SurfaceDeparture departure, TimeVersusDeltaV setting, int marginPercent, double now)
+        public static void Solve(GameSnapshot snapshot, SurfaceDeparture departure, TimeVersusDeltaV setting, int marginPercent, double now, WindowPick chosen = null)
         {
             var home = SequenceWords.Body(snapshot, snapshot.Body);
             var planet = departure.Planet;
             var at = snapshot.At(now);
             at.TimeVersusDeltaV = setting;
             at.MarginPercent = marginPercent;
+            at.WindowPick = chosen ?? WindowPick.None;
             var view = DirectRoute.FromLowOrbit(at, home, now);
+            // As the departure flies and the rows show it (#782): a trip home ends in reentry, with no capture to price.
+            var capture = ArrivalRule.Capture(at, planet.Name, null);
             departure.LeadS = AscentLeadS(home);
             double due;
             if (DirectRoute.Applies(view, planet.Name))
             {
-                var routes = DirectRoute.Find(view, planet.Name, MissionPrompts.ArrivalPe(planet), true);
+                var routes = DirectRoute.Find(view, planet.Name, MissionPrompts.ArrivalPe(planet), capture);
                 if (routes.Error != null) return;
                 var row = departure.TwoStep ? routes.TwoStep : routes.Pick;
-                departure.Window = new TransferWindow { DepartureUt = row.LatestDepartUt, ArrivalUt = row.ArrivalUt, TotalDv = row.TotalDv };
+                departure.Route = row;
+                departure.Window = AsWindow(row);
                 due = row.LatestDepartUt - departure.LeadS;
             }
             else
             {
                 string error;
-                var problem = TransferWindows.Problem.Of(view, planet.Name, MissionPrompts.ArrivalPe(planet), true, out error);
+                var problem = TransferWindows.Problem.Of(view, planet.Name, MissionPrompts.ArrivalPe(planet), capture, out error);
                 if (problem == null) return;
                 var found = TransferWindows.Search(problem, marginPercent);
                 if (found.Error != null) return;
-                departure.Window = TransferWindows.Pick(found, setting);
+                departure.Window = TransferWindows.Pick(found, setting, chosen);
                 due = departure.Window.DepartureUt - departure.LeadS;
                 var launch = LaunchFor(snapshot, home, problem, departure.Window, due, now);
                 if (launch != null && launch.Error == null) due = Math.Min(due, launch.Ut);
             }
             if (due - now > LongWaitS) departure.DueUt = due;
+        }
+
+        /// <summary>A route's figures as a window, leaving at the latest burn out of the moon's orbit that makes its ejection.</summary>
+        public static TransferWindow AsWindow(RouteRow row)
+        {
+            return new TransferWindow { DepartureUt = row.LatestDepartUt, ArrivalUt = row.ArrivalUt, EjectionDv = row.EjectionDv, CaptureDv = row.CaptureDv, TotalDv = row.TotalDv };
         }
 
         private static LaunchWindow LaunchFor(GameSnapshot snapshot, SnapshotBody home, TransferWindows.Problem problem, TransferWindow window, double byUt, double now)
@@ -212,12 +224,12 @@ namespace ClaudiaKerman.Core.Missions
             return DeparturePlane.ForAsymptote(home, now, snapshot.Latitude, snapshot.CelestialLongitude + turned, leaving.Value, byUt, problem.ParkingPe);
         }
 
-        /// <summary>The window to <paramref name="planet"/> (a planet or a moon) from <paramref name="snapshot"/>'s UT, picked by the Mission Setting; null when the search found none.</summary>
-        public static TransferWindow Window(GameSnapshot snapshot, SnapshotBody planet, TimeVersusDeltaV setting, int marginPercent)
+        /// <summary>The window to <paramref name="planet"/> (a planet or a moon) from <paramref name="snapshot"/>'s UT, the player's pick for it (#686) or else the Mission Setting's; null when the search found none.</summary>
+        public static TransferWindow Window(GameSnapshot snapshot, SnapshotBody planet, TimeVersusDeltaV setting, int marginPercent, WindowPick chosen = null)
         {
             if (snapshot == null || planet == null) return null;
             var found = TransferWindows.Find(snapshot, planet.Name, MissionPrompts.ArrivalPe(planet), true, marginPercent);
-            return found.Error != null ? null : TransferWindows.Pick(found, setting);
+            return found.Error != null ? null : TransferWindows.Pick(found, setting, chosen);
         }
 
         /// <summary>The Due Time for a window leaving at <paramref name="departureUt"/>: the window less the launch lead, when that is more than <see cref="LongWaitS"/> from <paramref name="now"/>; otherwise null (the script warps there).</summary>

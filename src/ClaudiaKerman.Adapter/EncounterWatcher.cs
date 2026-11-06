@@ -55,6 +55,9 @@ namespace ClaudiaKerman.Adapter
             Reset();
             _watch = new EncounterWatch(plan);
             _vessel = vessel;
+            // The coast a far switch could make a checkpoint of (#775): Core decides when the player asks.
+            object token;
+            _send(new CoastArmed(plan.TryGetValue(CoastArmed.ResultKey, out token) ? token as string : ""));
         }
 
         /// <summary>Each tick of the wait: whether the watch has dropped the warp. Reads the orbit only when a check is due. A failure is logged and ends the watch, never the flight.</summary>

@@ -5,11 +5,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ClaudiaKerman.Adapter;
+using ClaudiaKerman.Core.Missions;
 using kOS;
 using kOS.AddOns;
 using kOS.Module;
 using kOS.Safe.Encapsulation;
 using kOS.Safe.Encapsulation.Suffixes;
+using kOS.Safe.Exceptions;
 using kOS.Safe.Utilities;
 using kOS.Suffixed.Part;
 
@@ -135,7 +137,12 @@ namespace ClaudiaKerman.KOS
         private void BlockResult(StringValue block, Lexicon result)
         {
             var bridge = KosBridge.Instance;
-            if (shared.KSPPart != null && bridge != null) bridge.OnBlock(shared.KSPPart.persistentId, block.ToString(), KosValues.ToDictionary(result));
+            if (shared.KSPPart == null || bridge == null) return;
+            var plain = KosValues.ToDictionary(result);
+            bridge.OnBlock(shared.KSPPart.persistentId, block.ToString(), plain);
+            // A Coast Checkpoint (#775) ends the run here, with this result as its Script Result: nothing after the block runs, and the mod's resume carries the rest of the script.
+            if (plain.ContainsKey(CoastArmed.ResultKey) && bridge.EndRunAtCheckpoint(shared.KSPPart.persistentId, plain))
+                throw new KOSException("Stopped at a Coast Checkpoint: the mod resumes the flight.");
         }
 
         private void BlockTrace(StringValue block, Lexicon state)

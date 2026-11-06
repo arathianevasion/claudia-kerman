@@ -30,6 +30,8 @@ namespace ClaudiaKerman.Core.Missions
             SequencePlan,
             /// <summary>The Debrief of a sequence that was interrupted.</summary>
             Debrief,
+            /// <summary>The mod's own Debrief and resume of a run that ended at a Coast Checkpoint (#775).</summary>
+            CoastCheckpoint,
         }
 
         /// <summary>What a load puts back: a snapshot from the save, or (NoSnapshot) just the Mission folder.</summary>
@@ -82,6 +84,10 @@ namespace ClaudiaKerman.Core.Missions
                 WindowPlanet = mission.WindowPlanet,
                 WindowUt = mission.WindowUt,
                 WindowDeltaV = mission.WindowDeltaV,
+                WindowPick = mission.WindowPick,
+                WindowPickNeeded = mission.WindowPickNeeded,
+                WindowPickUnsaid = mission.WindowPickUnsaid,
+                WindowOwnDue = mission.WindowOwnDue,
                 Remote = mission.Remote,
                 AutoMode = mission.AutoMode,
                 MissionPlanApproved = mission.MissionPlanApproved,
@@ -300,6 +306,11 @@ namespace ClaudiaKerman.Core.Missions
             // It needs the craft's own facts: with the player in another vessel it waits until they are back in the craft.
             if (mission.Stage == MissionStage.Paused || !CraftActive || mission.SwitchingAway) return;
 
+            if (mission.Owed == Owed.CoastCheckpoint && mission.Stage == MissionStage.Debriefing)
+            {
+                TakeOwedCheckpoint(mission);
+                return;
+            }
             Turn turn;
             if (mission.Owed == Owed.Debrief && mission.Stage == MissionStage.Debriefing)
             {
@@ -471,6 +482,10 @@ namespace ClaudiaKerman.Core.Missions
                 WindowPlanet = state.WindowPlanet ?? "",
                 WindowUt = state.WindowUt,
                 WindowDeltaV = state.WindowDeltaV,
+                WindowPick = state.WindowPick,
+                WindowPickNeeded = state.WindowPickNeeded,
+                WindowPickUnsaid = state.WindowPickUnsaid,
+                WindowOwnDue = state.WindowOwnDue,
             };
             foreach (var setting in state.Settings) mission.Settings[setting.Key] = setting.Value;
             RestoreChildVessels(mission, state.ChildVessels);
@@ -850,7 +865,7 @@ namespace ClaudiaKerman.Core.Missions
                 // A Mission Plan with no sequences has no card: Claudia's line is what the player needs to see again.
                 if (mission.Plan.Sequences.Count == 0 && !string.IsNullOrEmpty(state.LatestLine) && !mission.LogRebuilt) Note(LogKind.Claudia, state.LatestLine);
                 mission.SuppressCards = mission.LogRebuilt;
-                OfferMissionPlan(mission, mission.Plan);
+                OfferMissionPlan(mission, mission.Plan, true);
                 mission.SuppressCards = false;
             }
             else if (stage == MissionStage.AwaitingSequenceApproval && mission.PendingSequence != null)
@@ -859,9 +874,11 @@ namespace ClaudiaKerman.Core.Missions
                 mission.SuppressCards = mission.LogRebuilt;
                 OfferSequencePlan(mission, mission.PendingSequence, true);
                 mission.SuppressCards = false;
+                // #775: time has passed by a load, a far switch's reload or a parked Mission's return: the check runs again on the craft.
+                mission.CheckPending = CoastPlanToken(mission.PendingSequence) != null;
                 // The rebuilt card had no "now" to say its Due Time is "in" so long against; the one awaiting Approval has one again.
                 var rebuilt = mission.LogRebuilt ? mission.Log.LastOrDefault(e => e.Kind == LogKind.SequencePlan) : null;
-                if (rebuilt != null) rebuilt.Text = MissionCards.SequencePlanBody(mission.PendingSequence, mission.VesselName, _ut, _config);
+                if (rebuilt != null) rebuilt.Text = PlanCardText(mission, mission.PendingSequence);
                 mission.DueNotified = state.DueNotified;
             }
             else if (stage == MissionStage.UnsafeScript) UnsafeScriptCard(mission, null);

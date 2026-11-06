@@ -136,6 +136,64 @@ namespace ClaudiaKerman.Kerboscript.Tests
             }
         }
 
+        /// <summary>The block's loop with the checkpoint option as transfer_to gives it; prints the reason, the token, the ejection's figures and the correction.</summary>
+        private static string[] FlyCheckpoint(string target, double pe, string mode)
+        {
+            var script = "local extra is lexicon(\"encounter_ut\", -1, \"target_pe_actual\", -1, \"correction_dv\", 0, \"plane_dv\", 0, \"ejection_wait\", -1,"
+                + " \"ejection_node_dv\", -1, \"ejection_dv_used\", -1, \"ejection_burn_time\", -1, \"departure_ut\", -1, \"arrival_ut\", -1, \"v_inf\", -1).\n"
+                + "local opt is lexicon(\"max_duration\", \"auto\").\n"
+                + "local state is lexicon(\"target\", \"" + target + "\", \"target_pe\", " + pe.ToString(CultureInfo.InvariantCulture) + ", \"window\", \"next\","
+                + " \"correction\", true, \"pe_tolerance\", 1000, \"start_ut\", " + TransferToRig.Rig.Ut.ToString("R", CultureInfo.InvariantCulture) + ", \"max_duration\", opt:max_duration, \"auto\", true, \"turn_time\", 60, \"phase\", \"start\", \"checkpoint\", \"" + mode + "\").\n"
+                + "local reason is transfer_to_run(state, opt, extra, { parameter s. return test_tr_ask(s). }, { parameter step. return test_tr_fly(step). },"
+                + " { parameter step. return test_tr_wait(step:ut). }, { return \"\". }).\n"
+                + "print reason. if extra:haskey(\"checkpoint\") { print extra:checkpoint. } else { print \"\". } print extra:ejection_dv_used. print extra:departure_ut. print state:checkpoint. print extra:target_pe_actual.";
+            return KosHarness.Run(CoreLibrary.Bundle(script)).ToArray();
+        }
+
+        [Fact]
+        public void The_resume_mode_enters_the_flight_at_its_phase_with_no_ejection()
+        {
+            TransferToRig.Rig = TransferRig.Circular("Kerbin", 100000, 0);
+            TransferToRig.Rig.BurnError = 0.005;
+            TransferToRig.Rig.Residual = 0.3;
+
+            // The first run: the ejection, then the block ends Nominal at the checkpoint with no error, its token in the result.
+            var first = FlyCheckpoint("Duna", 60000, "on");
+            Assert.Equal("", first[0]);
+            var token = CoastToken.Parse(first[1]);
+            Assert.NotNull(token);
+            Assert.Equal("mid", token.Phase);
+            Assert.True(N(first[2]) > 0, "the first run flew the ejection");
+            var ejections = TransferToRig.Rig.Burns.Count(b => b.Key == "ejection");
+            Assert.Equal(1, ejections);
+            Assert.DoesNotContain(TransferToRig.Rig.Burns, b => b.Key == "correction" && TransferToRig.Rig.Ut >= token.PointUt);
+
+            // Resumed at the Due Time: no second ejection, on to the correction it stopped for, and ending at the next checkpoint with the mode "on" again.
+            TransferToRig.Rig.Residual = 0.05;
+            TransferToRig.Rig.MoveTo(token.DueUt);
+            var corrections = TransferToRig.Rig.Burns.Count(b => b.Key == "correction");
+            var resumed = FlyCheckpoint("Duna", 60000, token.ToString());
+            Assert.Equal("", resumed[0]);
+            Assert.Equal("-1", resumed[2]);
+            Assert.Equal("-1", resumed[3]);
+            Assert.Equal(ejections, TransferToRig.Rig.Burns.Count(b => b.Key == "ejection"));
+            Assert.True(TransferToRig.Rig.Burns.Count(b => b.Key == "correction") > corrections, "the correction it stopped for is flown");
+            Assert.Equal("on", resumed[4]);
+        }
+
+        [Fact]
+        public void Off_a_block_never_stops_at_a_checkpoint()
+        {
+            TransferToRig.Rig = TransferRig.Circular("Kerbin", 100000, 0);
+            TransferToRig.Rig.BurnError = 0.005;
+            TransferToRig.Rig.CorrectionError = 0.05;
+            var printed = FlyCheckpoint("Duna", 60000, "off");
+            Assert.Equal("", printed[0]);
+            Assert.Equal("", printed[1]);
+            Assert.Equal("off", printed[4]);
+            Assert.InRange(N(printed[5]), 59000, 61000);
+        }
+
         [Fact]
         public void A_call_that_threw_ends_the_block_with_its_error()
         {

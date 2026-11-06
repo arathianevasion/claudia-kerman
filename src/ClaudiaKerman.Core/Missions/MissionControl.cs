@@ -101,6 +101,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is Retry || input is Resume) Retried();
             else if (input is RaiseCap) Raised(((RaiseCap)input).SpendingCap);
             else if (input is RetryWithNote) { if (!RefusalRetriedWithNote(((RetryWithNote)input).Note) && !ReducedGoalAsked(((RetryWithNote)input).Note)) ScriptRetried(((RetryWithNote)input).Note ?? "", false); }
+            else if (input is ChooseWindow) WindowChosen(((ChooseWindow)input).Kind);
             else if (input is ChooseModel) ModelChosen(((ChooseModel)input).Model);
             else if (input is Replan) Replanned();
             else if (input is TakeManualControl) TakeManual("the Manual Control button");
@@ -119,6 +120,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is KosRcsSwitched) RcsSwitched((KosRcsSwitched)input);
             else if (input is ShipSystemsMoved) ShipSystemsLine((ShipSystemsMoved)input);
             else if (input is EncounterWatchDropped) EncounterWatchLine((EncounterWatchDropped)input);
+            else if (input is CoastArmed) CoastArmedSeen((CoastArmed)input);
             else if (input is AbortSequence) AbortPressed();
             else if (input is VesselsSeen) VesselsChanged(((VesselsSeen)input).Vessels);
             else if (input is VesselsDocked) Docked((VesselsDocked)input);
@@ -127,6 +129,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is CraftSafingUnreached) SafingUnreached((CraftSafingUnreached)input);
             else if (input is VesselUnloaded) Unloaded(((VesselUnloaded)input).VesselId);
             else if (input is FarSwitchConfirmed) FarSwitched(((FarSwitchConfirmed)input).VesselName);
+            else if (input is LeaveFlightConfirmed) LeavingFlight(((LeaveFlightConfirmed)input).Destination);
             else if (input is RunEventSeen) EventSeen((RunEventSeen)input);
             else if (input is CraftSeparated) Separated(((CraftSeparated)input).Throttle);
             else if (input is AcceptReducedGoal) ReducedGoalAccepted();
@@ -144,6 +147,7 @@ namespace ClaudiaKerman.Core.Missions
             CheckRunaway();
             CheckTelemetry();
             CheckFlyable();
+            CheckCoastReturn();
             TryPlan();
             TryTargetRevision();
             TryOwed();
@@ -381,12 +385,23 @@ namespace ClaudiaKerman.Core.Missions
                 return;
             }
 
-            // No Mission starts on a craft that hasn't been checked for this goal and Target Vessel, or whose check has a Blocker or an open Warning.
+            // The player picks the Transfer Window of a transfer between bodies with the same parent (#686); no request is spent without one.
+            var windows = OfferFor(goal, _snapshot);
+            var window = WindowChoice.Held(start.Window, windows);
+            if (windows.Needed && window.IsNone)
+            {
+                _pendingStart = null;
+                _startRefusal = WindowChoice.PickFirst;
+                NeedsPlayer(_startRefusal);
+                return;
+            }
+
+            // No Mission starts on a craft that hasn't been checked for this goal, Target Vessel and window, or whose check has a Blocker or an open Warning.
             var target = ChooseTarget(goal, start.Target);
-            if (!_craftCheck.IsCurrent(goal, _snapshot, start.Remote, target.Target))
+            if (!_craftCheck.IsCurrent(goal, _snapshot, start.Remote, target.Target, window.Key))
             {
                 _pendingStart = start;
-                _craftCheck.Run(goal, start.Model, _snapshot, start.SpendingCap, start.Remote, target.Target);
+                _craftCheck.Run(goal, start.Model, _snapshot, start.SpendingCap, start.Remote, target.Target, windows.RowFor(window));
                 if (!_craftCheck.Running) _pendingStart = null;
                 return;
             }
@@ -404,6 +419,7 @@ namespace ClaudiaKerman.Core.Missions
                 Stage = MissionStage.WaitingForFlight,
                 Remote = start.Remote,
                 AutoMode = _config.DefaultAutoMode,
+                WindowPick = window,
             };
             // Frozen for the whole Mission, so the cached prefix never changes.
             mission.System.Add(MissionPrompts.BaseLayer);
@@ -418,9 +434,12 @@ namespace ClaudiaKerman.Core.Missions
             // Raw stream dumps are a debug tool: on with debug_tools = true in the player config.
             if (_config.DebugTools) mission.Dump = new FileStreamDump(Path.Combine(mission.Folder, "stream-dumps"));
             _mission = mission;
+            // The form's goal is spent: no offer is worked out for it any more.
+            _form = null;
             SaveSetupAsDefaults(start);
             Note(LogKind.Player, "Mission Goal: " + goal);
             TakeTarget(mission, target);
+            if (!window.IsNone) Note(LogKind.Player, "Transfer Window to " + window.Body + ": " + window.Kind + ".");
             RecordStart(mission);
             LogEffortProblems(mission);
             try
@@ -438,6 +457,14 @@ namespace ClaudiaKerman.Core.Missions
             catch (Exception e) when (IsFileError(e))
             {
                 Note(LogKind.Notice, "Couldn't write the Mission's ascent plan snapshot: " + e.Message);
+            }
+            try
+            {
+                _craftCheck.CopyDumpTo(mission.Folder);
+            }
+            catch (Exception e) when (IsFileError(e))
+            {
+                Note(LogKind.Notice, "Couldn't copy the Craft Check's request and reply: " + e.Message);
             }
             FoldCraftCheckCost(mission, _craftCheck.TakeCost());
             // Started from the editor with her not aboard: the mod puts her in a free seat (the Craft Check made sure there is one).
@@ -490,7 +517,8 @@ namespace ClaudiaKerman.Core.Missions
         {
             _pendingStart = null;
             _startRefusal = "";
-            _craftCheck.Run(run.Goal, run.Model, _snapshot, run.SpendingCap, run.Remote, ChooseTarget(run.Goal, run.Target).Target);
+            var windows = OfferFor((run.Goal ?? "").Trim(), _snapshot);
+            _craftCheck.Run(run.Goal, run.Model, _snapshot, run.SpendingCap, run.Remote, ChooseTarget(run.Goal, run.Target).Target, windows.RowFor(run.Window));
         }
 
         /// <summary>A Craft Check request ended: if Start Mission asked for it and it passed outright, the Mission starts now.</summary>
@@ -529,8 +557,8 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (_snapshot != null)
             {
-                // A planet's plan_transfer row picks its Transfer Window by the Mission Setting, as a tool call would (#458).
-                _snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent);
+                // A planet's plan_transfer row picks its Transfer Window by the player's pick or the Mission Setting, as a tool call would (#458, #686).
+                _snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
             }
             return MissionPrompts.StageTable(_snapshot, goal, mission.PlannedAscent) + MissionPrompts.DeltaVMapLine(_snapshot, goal) + MissionPrompts.PadPlanning(_snapshot);
         }
@@ -543,6 +571,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (saveDirectory == _saveDirectory) return;
             _saveDirectory = saveDirectory;
+            _craftCheck.SaveDirectory = saveDirectory;
             _snapshot = null;
             _active = null;
             _craftLink = null;
@@ -614,6 +643,11 @@ namespace ClaudiaKerman.Core.Missions
                 Note(LogKind.Notice, (mission.TargetChange.Length > 0 ? "The Target Vessel" : "The craft") + " has changed since this plan was made (" + stale + "). Re-plan instead.");
                 return;
             }
+            if (WindowPickMissing(mission))
+            {
+                Note(LogKind.Notice, WindowChoice.PickFirst);
+                return;
+            }
             if (mission.Stage == MissionStage.AwaitingPlanApproval)
             {
                 Notice("Mission Plan approved.");
@@ -627,6 +661,7 @@ namespace ClaudiaKerman.Core.Missions
                     Purpose = Purpose.SequencePlan,
                     UserText = "The player approved the Mission Plan.\n"
                         + (newGoal != null ? "The Mission Goal is now (quoted data): " + MissionPrompts.Quoted(newGoal) + "\n" : "")
+                        + WindowPickLine(mission)
                         + MissionPrompts.Facts(_ut, _snapshot),
                     Notice = MissionPrompts.SequenceNotice,
                 });
@@ -636,8 +671,8 @@ namespace ClaudiaKerman.Core.Missions
             var plan = mission.PendingSequence;
             // Back after the Transfer Window: the next one, or an Alert (#616).
             if (!plan.Manual && WindowWasMissed(mission) && !NextWindow(mission, plan)) return;
-            // The mod never starts a sequence before its Due Time, and never warps there for the player.
-            if (plan.DueTimeUt.HasValue && _ut < plan.DueTimeUt.Value)
+            // The mod never starts a sequence before its Due Time, and never warps there for the player (but for a coast checkpoint's, which is soft: #775).
+            if (plan.DueTimeUt.HasValue && _ut < plan.DueTimeUt.Value && !SoftDueTime(mission, plan))
             {
                 Note(LogKind.Notice, "Not before the Due Time, " + KerbinTime.Date(plan.DueTimeUt.Value) + " (in "
                     + KerbinTime.Span(plan.DueTimeUt.Value - _ut) + "). Warp to Due Time, then Approve.");
@@ -666,6 +701,8 @@ namespace ClaudiaKerman.Core.Missions
             }
             Notice("Sequence Plan approved: the mod is starting the script.");
             mission.Stage = MissionStage.Running;
+            mission.CoastBlocked = CoastBlock(mission, plan);
+            if (mission.CoastBlocked.Length > 0) Note(LogKind.Notice, CoastCheckpoints.BlockerLine(mission.CoastBlocked));
             if (plan.DueTimeUt.HasValue) _commands.Add(new ClearDueTimeAlarm(mission.Id));
             ClearWindow(mission);
             mission.RunningProcessor = processor.Value;
@@ -896,6 +933,7 @@ namespace ClaudiaKerman.Core.Missions
             var outcome = StoppedOutcome(mission, ended.Outcome);
             NoteRunOutcome(mission, outcome);
             Notice("The script ended: " + outcome.Summary + ".");
+            if (RunEndedAtCheckpoint(mission, outcome)) return;
             if (DebriefOnReturn(mission, outcome)) return;
             AwaitPostRunSnapshot(mission, outcome, ended.Ut);
         }
@@ -1077,6 +1115,7 @@ namespace ClaudiaKerman.Core.Missions
                 Enqueue(mission, turn);
                 return;
             }
+            turn.UserText = DepartureLine(mission) + turn.UserText;
             if (turn.Purpose == Purpose.Debrief && PrepareDebrief(mission, turn)) return;
             if (turn.Purpose == Purpose.MissionPlan || (turn.Purpose == Purpose.SequencePlan && !turn.ScriptRewrite)) turn.UserText = WithGoalBiomes(mission, turn.UserText);
             mission.Pending = turn;
@@ -1764,7 +1803,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>What actually runs: the plan's script bundled with the Core Library.</summary>
         private string Bundle(SequencePlan plan)
         {
-            return CoreLibrary.Bundle(plan.Script);
+            // #775: a Mission's run of the craft may stop at a Coast Checkpoint; a block test or a Child Vessel's run never does.
+            return CoreLibrary.Bundle(_mission != null && FliesCraft(_mission, plan.Vessel) ? CoastCheckpoints.Armed(plan.Script) : plan.Script);
         }
 
         /// <summary>
@@ -1874,8 +1914,10 @@ namespace ClaudiaKerman.Core.Missions
             else if (!planPending && reply.SequencePlan != null && (reply.SequencePlan.Manual || reply.SequencePlan.Script.Trim().Length > 0)) OfferSequencePlan(mission, reply.SequencePlan);
         }
 
-        private void OfferMissionPlan(Mission mission, MissionPlan plan)
+        /// <param name="restored">A load offers the saved plan again: its window pick was asked for when it first arrived.</param>
+        private void OfferMissionPlan(Mission mission, MissionPlan plan, bool restored = false)
         {
+            var first = mission.Plan == null;
             mission.Plan = plan;
             mission.PlanBaseline = _snapshot;
             PlanOffered(mission);
@@ -1887,6 +1929,7 @@ namespace ClaudiaKerman.Core.Missions
                 HerNews("Claudia can't fly this Mission Goal as stated.");
                 return;
             }
+            if (!restored) AskForWindow(mission, first);
             // As MissionLogRebuild does with the plan's card, so a load has the same steps.
             mission.GoalSteps = GoalSteps.Replace(mission.GoalSteps, plan.GoalSteps);
             // #757: the Craft Check ran before there was a plan, so the plan's own legs are judged against the Delta-v Map here.
@@ -1902,8 +1945,15 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (!restored)
             {
-                WindowWait(mission, plan);
-                TransferWait(mission, plan);
+                // Only the mod marks its own resume (#775).
+                plan.CoastCheckpoint = "";
+                // A departure that waits for the player's pick has its Due Time from that pick (#782).
+                mission.WindowOwnDue = plan.DueTimeUt;
+                if (!DeparturePickMissing(mission, plan))
+                {
+                    WindowWait(mission, plan);
+                    TransferWait(mission, plan);
+                }
             }
             if (!mission.SequenceCounted)
             {
@@ -1918,6 +1968,17 @@ namespace ClaudiaKerman.Core.Missions
             mission.PlanBaseline = _snapshot;
             PlanOffered(mission);
             mission.Stage = MissionStage.AwaitingSequenceApproval;
+            DueTimeOffered(mission, plan);
+            var card = AddCard(mission, LogKind.SequencePlan, plan.Name, PlanCardText(mission, plan), plan.Why);
+            card.Script = plan.Script;
+            card.CustomScript = plan.CustomScript;
+            card.CustomScriptReason = plan.CustomScriptReason;
+            PlanNews("Claudia has a Sequence Plan for your Approval.");
+        }
+
+        /// <summary>The plan on offer has its Due Time: the alarm for it, and whether the player has been told it is reached.</summary>
+        private void DueTimeOffered(Mission mission, SequencePlan plan)
+        {
             if (plan.DueTimeUt.HasValue)
             {
                 // A stock Alarm Clock alarm at the Due Time; the mod itself never warps between sequences.
@@ -1925,11 +1986,6 @@ namespace ClaudiaKerman.Core.Missions
                 mission.DueNotified = plan.DueTimeUt.Value <= _ut;
             }
             else mission.DueNotified = false;
-            var card = AddCard(mission, LogKind.SequencePlan, plan.Name, MissionCards.SequencePlanBody(plan, mission.VesselName, _ut, _config), plan.Why);
-            card.Script = plan.Script;
-            card.CustomScript = plan.CustomScript;
-            card.CustomScriptReason = plan.CustomScriptReason;
-            PlanNews("Claudia has a Sequence Plan for your Approval.");
         }
 
         private void Debriefed(Mission mission, MissionReply reply)
@@ -2279,8 +2335,12 @@ namespace ClaudiaKerman.Core.Missions
             view.StartForm.DefaultRemote = _config.DefaultRemote;
             view.StartForm.Refusal = _startRefusal;
             view.StartForm.Targets = CurrentTargetFacts();
+            // Worked out only for a goal the form has pinned, and only while it can start: a search is not for every keystroke or frame.
+            if (view.StartForm.CanStart && _form != null) view.StartForm.Windows = OfferFor((_form.Goal ?? "").Trim(), _snapshot);
+            var formWindow = _form == null ? WindowPick.None : WindowChoice.Held(_form.Window, view.StartForm.Windows);
+            view.StartForm.WindowPickMissing = view.StartForm.Windows.Needed && formWindow.IsNone;
             _craftCheck.Populate(view.CraftCheck, _snapshot, _form == null ? null : _form.Goal,
-                _form == null ? null : ChooseTarget(_form.Goal, _form.Target).Target, _form != null);
+                _form == null ? null : ChooseTarget(_form.Goal, _form.Target).Target, _form != null, formWindow.Key);
 
             if (mission != null)
             {
@@ -2337,6 +2397,9 @@ namespace ClaudiaKerman.Core.Missions
                     && mission.Stage != MissionStage.AwaitingReducedGoal;
 
                 view.LeavingFlightNeedsConfirmation = IsRunning(mission);
+                var cannotLeave = CannotLeaveCraft(mission);
+                view.FarSwitchLeavesAtCheckpoint = cannotLeave == "";
+                view.FarSwitchWarning = cannotLeave ?? "";
                 view.CraftVesselId = FollowsCraft(mission) ? mission.VesselId : "";
                 view.ChildVessels = ChildVesselViews(mission);
                 view.RunningChildVesselId = RunningChildVesselId(mission);
@@ -2356,7 +2419,7 @@ namespace ClaudiaKerman.Core.Missions
                         SecondsLeft = Math.Max(0, due.Value - _ut),
                         Reached = _ut >= due.Value,
                         VesselName = mission.VesselName,
-                        WaitsFor = mission.WindowPlanet.Length > 0 ? WindowWaits.WaitsFor(mission.WindowPlanet) : "",
+                        WaitsFor = mission.WindowPlanet.Length > 0 ? WindowWaits.WaitsFor(mission.WindowPlanet) : CoastPlanToken(mission.PendingSequence) != null ? CoastCheckpoints.WaitsFor : "",
                     };
                 }
                 view.Locks = LocksNow();
@@ -2367,6 +2430,9 @@ namespace ClaudiaKerman.Core.Missions
                 view.PlanStale = StaleBecause(mission);
                 view.PlanStaleTarget = view.PlanStale.Length > 0 && mission.TargetChange.Length > 0;
                 view.PlanDeclined = mission.Declined;
+                view.WindowPick = mission.WindowPick;
+                view.WindowPickNeeded = WindowPickMissing(mission);
+                view.Windows = MissionOffer(mission);
                 view.TargetNeeded = TargetNeeded(mission);
                 view.CanChangeTarget = CanChangeTarget;
                 if (mission.Stage == MissionStage.ManualControl)
@@ -2402,6 +2468,11 @@ namespace ClaudiaKerman.Core.Missions
                     view.QuickReplies = mission.ConfirmPrompt != null
                         ? new List<QuickReply> { QuickReply.ConfirmApproval, QuickReply.NotYet }
                         : new List<QuickReply> { first ?? QuickReply.Approve, QuickReply.ChangeSomething, QuickReply.AskQuestion };
+                    // No pick, no Approve (#686): the row draws it greyed out, and the choice is the card above it.
+                    if (view.WindowPickNeeded) view.QuickReplies.Remove(QuickReply.Approve);
+                    // A coast checkpoint's Due Time is soft: with the player in the craft, one Approve warps there too (#775).
+                    if (mission.ConfirmPrompt == null && first == QuickReply.WarpToDueTime && mission.PendingSequence != null && SoftDueTime(mission, mission.PendingSequence))
+                        view.QuickReplies.Insert(0, QuickReply.Approve);
                 }
                 // Paused mid-run, the script still flies: Abort stays on offer.
                 if (mission.Stage == MissionStage.Paused && IsRunning(mission) && mission.RunId.HasValue && mission.StopReason == null)
