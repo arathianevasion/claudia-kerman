@@ -432,6 +432,7 @@ namespace ClaudiaKerman.Core.Tools
             result["normal"] = plan.Normal;
             result["radial"] = 0.0;
             result["dv"] = plan.DeltaV;
+            result["plan_log"] = BurnPlanLog.Orbit("DEORBITBURN", plan.After, at.Radius, frame, Number(ask, "ground_alt", 0), plan.BurnUt);
             return result;
         }
 
@@ -464,6 +465,7 @@ namespace ClaudiaKerman.Core.Tools
                 : -1;
             var result = Landing(landing, km);
             result["error"] = "";
+            result["plan_log"] = BurnPlanLog.Orbit("REENTRYIMPACT", orbit, at.Radius, frame, Number(ask, "ground_alt", 0), Number(ask, "from_ut", snapshot.Ut));
             return result;
         }
 
@@ -889,6 +891,7 @@ namespace ClaudiaKerman.Core.Tools
                 { "dv", plan.DeltaV },
                 { "pe_predicted", plan.PePredicted },
                 { "inc_predicted", plan.IncPredicted },
+                { "plan_log", BurnPlanLog.Arrival("CORRECTIONBURN", plan.Ut, plan.PePredicted, plan.IncPredicted, ask.ContainsKey("lat") && ask.ContainsKey("lng"), Number(ask, "lat", 0), Number(ask, "lng", 0)) },
             };
         }
 
@@ -1044,6 +1047,7 @@ namespace ClaudiaKerman.Core.Tools
                 { "soi_ut", plan.SoiUt },
                 { "from_grid", plan.FromGrid },
                 { "finished_by", plan.FinishedBy ?? "" },
+                { "plan_log", BurnPlanLog.Arrival("RETURNBURN", plan.Ut, plan.PePredicted, plan.IncPredicted, ask.ContainsKey("lat") && ask.ContainsKey("lng"), Number(ask, "lat", 0), Number(ask, "lng", 0)) },
             };
         }
 

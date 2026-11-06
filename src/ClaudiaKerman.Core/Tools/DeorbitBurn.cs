@@ -44,6 +44,8 @@ namespace ClaudiaKerman.Core.Tools
         public double DeltaV;
         /// <summary>The landing of the best burn found; null when none could be predicted.</summary>
         public ReentryPrediction Landing;
+        /// <summary>The orbit after the burn, as the predictor flew it (#791).</summary>
+        public Conic After;
         /// <summary>km from the target to <see cref="Landing"/>; -1 without one.</summary>
         public double ErrorKm = -1;
     }
@@ -290,7 +292,7 @@ namespace ClaudiaKerman.Core.Tools
                 var landing = ReentryPredictor.Predict(_body, after, ut, _ask.GroundAltitude, mass, _air, _craft, _frame, _ask.Chutes);
                 return new DeorbitPlan
                 {
-                    BurnUt = ut, Prograde = -retro, Normal = normal, DeltaV = dv, Landing = landing,
+                    BurnUt = ut, Prograde = -retro, Normal = normal, DeltaV = dv, Landing = landing, After = after,
                     ErrorKm = landing.Error == null ? Distance(landing.Latitude, landing.Longitude) : double.PositiveInfinity,
                 };
             }

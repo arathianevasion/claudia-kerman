@@ -100,6 +100,18 @@ namespace ClaudiaKerman.Core.Tests
             throw new Xunit.Sdk.XunitException("the flown node never reaches " + target + ": " + outcome.Json);
         }
 
+        [Fact]
+        public void A_return_logs_its_planned_arrival_and_the_landing_target_it_is_given()
+        {
+            var snapshot = Orbiting(MoonNamed("Mun"), 30000);
+            var node = Solve(snapshot, 35000);
+            Assert.Equal("", node["error"]);
+            Assert.StartsWith("[plan-vs-flown] RETURNBURN planned arrival: burn at UT ", (string)node["plan_log"]);
+            Assert.EndsWith("; landing target none", (string)node["plan_log"]);
+            var withTarget = BlockCalls.ReturnBurn(new Dictionary<string, object> { { "target_pe", 35000.0 }, { "lat", -0.0972 }, { "lng", -74.5577 } }, snapshot);
+            Assert.EndsWith("; landing target -0.0972, -74.5577", (string)withTarget["plan_log"]);
+        }
+
         [Theory]
         [InlineData("Mun", 30000, "Kerbin", 35000)]
         [InlineData("Minmus", 20000, "Kerbin", 35000)]
