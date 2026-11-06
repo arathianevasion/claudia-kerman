@@ -1013,9 +1013,16 @@ namespace ClaudiaKerman.Core.Tools
         /// (degrees), <c>soi_ut</c> (UT the craft leaves the moon), <c>from_grid</c> (the analytic seed was undefined) and
         /// <c>finished_by</c> (what finished a solve the SQP stopped short, "" for none); a best
         /// burn outside the tolerances gives its <c>error</c> with the rest; a solve that could not start, only <c>error</c>,
-        /// "found no return: &lt;why&gt;".
+        /// "found no return: &lt;why&gt;". Given <c>lat</c> and <c>lng</c> (#792), <see cref="ReturnAim"/> picks the window within
+        /// <c>max_wait</c> (s; "auto" or missing is one turn of the landing's longitude) and <c>max_duration</c> (s from <c>start_ut</c>, when a number) and times the
+        /// burn to come down there, by the reentry predictor with <paramref name="body"/>, <paramref name="air"/> (the planet's) and
+        /// <paramref name="craft"/>; <c>ground_alt</c> (m) and <c>isp</c> (s; 0 or missing leaves the mass as it is) are as for
+        /// <see cref="DeorbitBurn"/>. It adds <c>lat</c>, <c>lng</c>, <c>landing_ut</c> and <c>error_km</c> when the predictor can say,
+        /// else the window's least burn stands with <c>error_km</c> -1. <c>aim_dv</c> (m/s over the window's least burn) and
+        /// <c>spread_km</c> (what <see cref="ReturnAim.ResidualMs"/> of error in the burn moves the landing; -1 unknown) are always there.
         /// </summary>
-        public static IDictionary<string, object> ReturnBurn(IDictionary<string, object> input, GameSnapshot snapshot)
+        public static IDictionary<string, object> ReturnBurn(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body = null,
+            IReentryAir air = null, IReentryCraft craft = null)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
             if (snapshot == null) return Error(Tools.ReturnBurn.Fail("no Game Snapshot").Error);
@@ -1023,7 +1030,7 @@ namespace ClaudiaKerman.Core.Tools
             if (!pe.HasValue) return Error(Tools.ReturnBurn.Fail("target_pe is required").Error);
             foreach (var key in new[] { "target_inc", "earliest_ut", "latest_ut", "pe_tolerance", "inc_tolerance" })
                 if (ask.ContainsKey(key) && !(ask[key] is double)) return Error(Tools.ReturnBurn.Fail(key + " must be a number").Error);
-            var plan = Tools.ReturnBurn.Find(snapshot, new ReturnAsk
+            var returnAsk = new ReturnAsk
             {
                 TargetPe = pe.Value,
                 TargetInc = NumberOrNull(ask, "target_inc"),
@@ -1031,9 +1038,15 @@ namespace ClaudiaKerman.Core.Tools
                 LatestUt = NumberOrNull(ask, "latest_ut"),
                 PeTolerance = Number(ask, "pe_tolerance", 1000),
                 IncTolerance = Number(ask, "inc_tolerance", 0.5),
-            });
+            };
+            if (ask.ContainsKey("lat") || ask.ContainsKey("lng"))
+            {
+                var problem = ReturnLandingOf(ask, snapshot, returnAsk, body, air, craft);
+                if (problem != null) return Error(Tools.ReturnBurn.Fail(problem).Error);
+            }
+            var plan = Tools.ReturnBurn.Find(snapshot, returnAsk);
             if (!plan.HasBurn) return Error(plan.Error);
-            return new Dictionary<string, object>
+            var result = new Dictionary<string, object>
             {
                 { "error", plan.Error ?? "" },
                 { "planet", plan.Planet },
@@ -1047,8 +1060,34 @@ namespace ClaudiaKerman.Core.Tools
                 { "soi_ut", plan.SoiUt },
                 { "from_grid", plan.FromGrid },
                 { "finished_by", plan.FinishedBy ?? "" },
+                { "aim_dv", plan.AimDv },
+                { "spread_km", plan.SpreadKm },
+                { "error_km", plan.ErrorKm },
                 { "plan_log", BurnPlanLog.Arrival("RETURNBURN", plan.Ut, plan.PePredicted, plan.IncPredicted, ask.ContainsKey("lat") && ask.ContainsKey("lng"), Number(ask, "lat", 0), Number(ask, "lng", 0)) },
             };
+            if (plan.Landing != null)
+                foreach (var key in Landing(plan.Landing, plan.ErrorKm)) result[key.Key] = key.Value;
+            return result;
+        }
+
+        /// <summary>Fills in the landing <c>RETURNBURN</c> was asked for: why it can't be read, or null. Round no moon, the solve says why.</summary>
+        private static string ReturnLandingOf(IDictionary<string, object> ask, GameSnapshot snapshot, ReturnAsk into, IPlanningBody body, IReentryAir air, IReentryCraft craft)
+        {
+            var lat = NumberOrNull(ask, "lat");
+            var lng = NumberOrNull(ask, "lng");
+            if (!lat.HasValue || !lng.HasValue) return "lat and lng must both be numbers";
+            object wait;
+            ask.TryGetValue("max_wait", out wait);
+            if (wait is double && (double)wait > 0) into.MaxWait = (double)wait;
+            else if (wait != null && !string.Equals(wait as string, "auto", StringComparison.OrdinalIgnoreCase))
+                return "max_wait must be \"auto\" or seconds above 0, not " + Convert.ToString(wait, CultureInfo.InvariantCulture);
+            object limit;
+            if (ask.TryGetValue("max_duration", out limit) && limit is double)
+                into.LatestUt = Number(ask, "start_ut", snapshot.Ut) + (double)limit - ReturnAim.AfterBurnS;
+            if (body == null || air == null || craft == null) return "the landing needs the planet's air and the craft";
+            string problem;
+            into.Landing = ReturnAim.LandingOn(snapshot, lat.Value, lng.Value, Number(ask, "ground_alt", 0), Number(ask, "isp", 0), body, air, craft, out problem);
+            return problem;
         }
 
         /// <summary>

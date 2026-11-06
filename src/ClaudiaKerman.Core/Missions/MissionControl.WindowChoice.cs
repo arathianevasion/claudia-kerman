@@ -171,7 +171,7 @@ namespace ClaudiaKerman.Core.Missions
             WindowWait(mission, plan);
             TransferWait(mission, plan);
             // The hard stop counts the wait (ADR 0004): the plan was checked against the setting's window, not this one.
-            var shortOf = BurnPoints.ShortOf(plan, MissionVesselSnapshot(mission), _ut);
+            var shortOf = BurnPoints.ShortOf(plan, MissionVesselSnapshot(mission), _ut, _body);
             if (shortOf != null) plan.ExpectedDurationSeconds = shortOf.MinimumDurationSeconds;
             if (hadDue && !plan.DueTimeUt.HasValue) _commands.Add(new ClearDueTimeAlarm(mission.Id));
             DueTimeOffered(mission, plan);
