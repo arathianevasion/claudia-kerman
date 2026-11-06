@@ -29,4 +29,11 @@ Run `local res is return(lexicon("target_pe", 300000, "correction", false)). add
 
 ## With a landing target
 
-Run `tests/blocks/return_target`. It reports `success: true` even with `planet_pe` far from `target_pe`: with a target, the correction aims the landing and `target_pe` only draws the path, so the new check doesn't apply.
+#792: the ejection now aims too. **Block migration:** the window choice and burn-time aim are new logic in Core (`ReturnAim`); `return.ks` only passes the target and `max_wait`; no parity test, as nothing moved.
+
+1. Run `tests/blocks/return_target`, from the Mun to KSC. The `RETURNBURN` line in `KSP.log` ends `aimed <km> km from the target, +<m/s> m/s, spread <km> km`: expect about 1 km, under 2 m/s. It takes that node up to about 7.1 h on.
+2. Note `predicted_error_km` and `aim_spread_km` from the Script Result against `target_km` and `miss_km`, where it came down. Tell the ticket the figures: these are what say whether the craft's drag and the burn's error are what the aim assumes. Expect `correction_dv` of a few m/s at most; tens would mean the burn was far from the plan.
+3. From Minmus, give the same target: `local res is return(lexicon("target", "ksc")). addons:claudia:report(res).` `predicted_error_km` is up to about 60 km depending on where Minmus is in its inclined orbit, and all of it across the track.
+4. Approve a plan with `return(lexicon("target", "ksc"))`: a too-short `expected_duration_s` goes back asking for about 7 h. If the ejection is over 7 h off, the sequence gets a Due Time an hour before it.
+
+The next paragraph holds as before. It reports `success: true` even with `planet_pe` far from `target_pe`: with a target, the correction aims the landing and `target_pe` only draws the path, so the new check doesn't apply.
