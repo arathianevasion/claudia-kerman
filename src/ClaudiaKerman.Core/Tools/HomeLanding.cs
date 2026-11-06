@@ -28,7 +28,7 @@ namespace ClaudiaKerman.Core.Tools
     {
         /// <summary>The delta-v left and covers capture and deorbit over the reserve: fly <c>capture</c>, <c>deorbit</c>, <c>reentry</c>.</summary>
         public bool CaptureFirst;
-        /// <summary>The craft's delta-v on arrival, m/s: what it has now less the departure; null when stock can't say.</summary>
+        /// <summary>The craft's delta-v on arrival, m/s: what it has now less any ascent and the departure; null when stock can't say.</summary>
         public double? DvLeft;
         public double CaptureDv;
         public double DeorbitDv;
@@ -61,6 +61,9 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>A pair of signed numbers in brackets, "(3.1, 24.6)": a site's latitude and longitude.</summary>
         private static readonly Regex LatLng = new Regex(@"\(\s*-?\d+(\.\d+)?\s*°?\s*,\s*-?\d+(\.\d+)?\s*°?\s*\)");
 
+        /// <summary>Where one clause of a Mission Goal or a leg ends. Not at a comma or a bare point, which a latitude and longitude have.</summary>
+        private static readonly Regex Clauses = new Regex(@"\.\s|;|\band\b|\bthen\b", RegexOptions.IgnoreCase);
+
         /// <summary>The target an "auto" stands for: <see cref="Ksc"/> or <see cref="None"/>.</summary>
         public static string DefaultTarget(GameSnapshot snapshot, LandingTargetAsk ask)
         {
@@ -78,9 +81,10 @@ namespace ClaudiaKerman.Core.Tools
             var site = snapshot.PickedSite;
             if (site != null && string.Equals(site.Body, home.Name, StringComparison.OrdinalIgnoreCase)) return true;
             var goal = snapshot.MissionGoal ?? "";
-            if (PlaceWords.IsMatch(goal) || MissionPrompts.GoalBiomes(snapshot, goal).Any(b => string.Equals(b.Body, home.Name, StringComparison.OrdinalIgnoreCase))) return true;
-            var words = new List<string> { goal };
-            if (snapshot.LegsAhead != null) words.AddRange(snapshot.LegsAhead.Select(SequenceWords.Of));
+            if (AboutHome(snapshot, home, goal).Any(clause => PlaceWords.IsMatch(clause))) return true;
+            if (MissionPrompts.GoalBiomes(snapshot, goal).Any(b => string.Equals(b.Body, home.Name, StringComparison.OrdinalIgnoreCase))) return true;
+            var words = AboutHome(snapshot, home, goal).ToList();
+            if (snapshot.LegsAhead != null) words.AddRange(snapshot.LegsAhead.SelectMany(leg => AboutHome(snapshot, home, SequenceWords.Of(leg))));
             foreach (var text in words)
             {
                 if (LatLng.IsMatch(text)) return true;
@@ -88,6 +92,16 @@ namespace ClaudiaKerman.Core.Tools
                     if (Regex.IsMatch(text, @"(?<![\w-])" + Regex.Escape(poi.Name) + @"(?![\w-])", RegexOptions.IgnoreCase)) return true;
             }
             return false;
+        }
+
+        /// <summary>The clauses of <paramref name="words"/> that name no other body: "land at the Mun's north pole and come home" says nothing of where at home.</summary>
+        private static IEnumerable<string> AboutHome(GameSnapshot snapshot, SnapshotBody home, string words)
+        {
+            return Clauses.Split(words ?? "").Where(clause =>
+            {
+                var named = SequenceWords.NamedBody(snapshot, clause);
+                return named == null || named == home;
+            });
         }
 
         /// <summary>
@@ -103,11 +117,13 @@ namespace ClaudiaKerman.Core.Tools
             var home = system.Find(target);
             if (at == null || home == null || InSystemOf(system, at, home) || system.Parent(at) == null) return null;
             if (DefaultTarget(snapshot, new LandingTargetAsk { Planet = home.Name }) != Ksc) return null;
-            var trip = DeltaVMap.Compute(snapshot.Bodies, CraftCheckFlow.HomeBody).Trip(at.Name, home.Name);
+            var map = DeltaVMap.Compute(snapshot.Bodies, CraftCheckFlow.HomeBody);
+            var trip = map.Trip(at.Name, home.Name);
             if (trip == null) return null;
+            var ascent = snapshot.IsGrounded ? map.Legs.Where(leg => leg.Id == "ascend:" + at.Name).Select(leg => leg.DeltaV).FirstOrDefault() : 0;
             var plan = new HomeArrivalPlan { CaptureDv = trip.Arrival, DeorbitDv = DeorbitBurn.FromLowOrbit(home), ArrivalPe = ArrivalRule.EntryPe(home) };
             if (snapshot.DeltaVSimulator && snapshot.Stages.Count > 0 && !snapshot.DeltaVUnreliable)
-                plan.DvLeft = snapshot.Stages.Sum(s => s.DeltaVVac) - trip.Departure - trip.PlaneChange;
+                plan.DvLeft = snapshot.Stages.Sum(s => s.DeltaVVac) - ascent - trip.Departure - trip.PlaneChange;
             var need = plan.Need;
             if (plan.DvLeft.HasValue)
             {

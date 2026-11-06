@@ -775,9 +775,10 @@ namespace ClaudiaKerman.Core.Tools
                 if (miss != "") return Fail(miss, step);
             }
             // It ends before arrival: a capture straight after it would burn at this body's apsis (20ac, #610). Turn text, not docs.
-            var entry = ArrivalRule.Note(snapshot, target.Name, ArrivalRule.Capture(snapshot, target.Name, null));
+            var overTheAir = ArrivalRule.EndsInReentry(snapshot, target.Name) && enc.Pe >= target.AtmosphereHeight;
+            var entry = overTheAir ? null : ArrivalRule.Note(snapshot, target.Name, ArrivalRule.Capture(snapshot, target.Name, null));
             if (entry != null) step.Report["arrival_note"] = entry;
-            else step.Report["next"] = "coast to encounter_ut + 60 before a capture";
+            else step.Report["next"] = "coast to encounter_ut + 60 before a capture" + (overTheAir ? ", then deorbit and reentry" : "");
             return step;
         }
 

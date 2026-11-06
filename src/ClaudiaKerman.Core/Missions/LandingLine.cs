@@ -21,9 +21,18 @@ namespace ClaudiaKerman.Core.Missions
         public static string Record(string block, IDictionary<string, object> result, GameSnapshot snapshot)
         {
             if (block != "return" && block != "deorbit") return null;
+            if (!Homebound(snapshot)) return null;
             var km = KmFromKsc(Geo(result, "predicted_geo"), Home(snapshot));
             if (!km.HasValue) return null;
             return km.Value.ToString("R", CultureInfo.InvariantCulture) + Separator + Text(result, "aim_note");
+        }
+
+        /// <summary>Whether the craft is at Kerbin or a moon of it: the planet an aimed block's landing is on.</summary>
+        private static bool Homebound(GameSnapshot snapshot)
+        {
+            if (Home(snapshot) == null) return false;
+            var at = snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, snapshot.Body, StringComparison.OrdinalIgnoreCase));
+            return string.Equals(snapshot.Body, CraftCheckFlow.HomeBody, StringComparison.OrdinalIgnoreCase) || (at != null && string.Equals(at.Parent, CraftCheckFlow.HomeBody, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>The line for a prediction alone, with the craft still in flight.</summary>
@@ -43,6 +52,9 @@ namespace ClaudiaKerman.Core.Missions
             if (!Read(record, out predicted, out note)) return "";
             var home = Home(snapshot);
             if (home == null || !string.Equals(snapshot.Body, home.Name, StringComparison.OrdinalIgnoreCase)) return "";
+            // Its geo is set before the descent's end: contact is what says it came down.
+            object speed;
+            if (result == null || !result.TryGetValue("touchdown_speed", out speed) || speed == null || Convert.ToDouble(speed, CultureInfo.InvariantCulture) < 0) return "";
             var actual = KmFromKsc(Geo(result, "geo"), home);
             if (!actual.HasValue) return "";
             return "predicted " + Km(predicted) + " km from KSC, came down " + Km(actual.Value) + " km from KSC" + (note.Length > 0 ? "; " + note : "");

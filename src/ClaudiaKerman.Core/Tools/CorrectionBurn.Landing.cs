@@ -18,8 +18,6 @@ namespace ClaudiaKerman.Core.Tools
     {
         /// <summary>The most an aimed correction burns along the track, m/s: about 130 km of the landing halfway home from the Mun, more than an ejection's error leaves (0.5 m/s: about 95 km). A fix across the track (#790) has <see cref="MostFixDv"/> and the reserve in its place.</summary>
         public const double MostLandingDv = 50;
-        /// <summary>The share of the delta-v left it plans for, as the Craft Check's 15% margin: the landing doesn't move quite in line with the burn, so the burn can come out a little over.</summary>
-        private const double DvLeftShare = 0.85;
         /// <summary>Below this the landing is too late to move along the track, km per m/s: the burn would spend its most for a few km (3,000 s from periapsis: 0.04, or 56 m/s for 2 km).</summary>
         private const double LeastKmPerMs = 0.1;
         /// <summary>The solver's own tolerance on the landing, km: under the 2 km a return counts as there.</summary>
@@ -104,7 +102,9 @@ namespace ClaudiaKerman.Core.Tools
                 along.AimNote = "miss accepted: " + DeorbitBurn.Km(along.ErrorKm) + " km from the target" + acrossNote;
                 return along;
             };
-            var most = ask.DvLeft >= 0 ? Math.Min(MostLandingDv, ask.DvLeft * DvLeftShare) : MostLandingDv;
+            var most = ask.DvLeft >= 0
+                ? Math.Min(MostLandingDv, DeorbitBurn.AutoMaxDv(ask.DvLeft, DeorbitBurn.PoweredLandingDv(landing.Craft, true, first.LandingSpeed)))
+                : MostLandingDv;
             var reach = lever.KmPerMs * Math.Max(0, most - plain.DeltaV);
             var moved = Math.Max(-reach, Math.Min(reach, miss));
             if (Math.Abs(moved) <= LandingResidual) return reported(plain);

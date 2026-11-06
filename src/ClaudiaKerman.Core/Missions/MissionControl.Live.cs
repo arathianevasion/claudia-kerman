@@ -679,7 +679,9 @@ namespace ClaudiaKerman.Core.Missions
             }
             if (ended.Block != "reentry") return;
             var landed = LandingLine.Landed(mission.LandingAim, ended.Result, _snapshot);
-            if (landed.Length > 0) mission.RunEvents.Replace(_ut, RunEventKind.Landing, landed);
+            if (landed.Length == 0) return;
+            mission.RunEvents.Replace(_ut, RunEventKind.Landing, landed);
+            mission.LandingAim = "";
         }
 
         /// <summary>A science result's per-experiment entries: "kept" adds the experiment to the run's set, "transmitted" removes it (#624).</summary>

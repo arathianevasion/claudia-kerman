@@ -15,12 +15,20 @@ namespace ClaudiaKerman.Core.Tests
         {
             var snapshot = new GameSnapshot { Ut = 1, Body = body };
             snapshot.Bodies.Add(new SnapshotBody { Name = "Kerbin", Radius = 600000 });
+            snapshot.Bodies.Add(new SnapshotBody { Name = "Mun", Parent = "Kerbin", Radius = 200000 });
+            snapshot.Bodies.Add(new SnapshotBody { Name = "Minmus", Parent = "Kerbin", Radius = 60000 });
+            snapshot.Bodies.Add(new SnapshotBody { Name = "Duna", Parent = "Sun", Radius = 320000 });
             return snapshot;
         }
 
         private static IDictionary<string, object> Geo(double lat, double lng)
         {
             return new Dictionary<string, object> { { "lat", lat }, { "lng", lng } };
+        }
+
+        private static IDictionary<string, object> Down(double lat, double lng)
+        {
+            return new Dictionary<string, object> { { "geo", Geo(lat, lng) }, { "touchdown_speed", 6.0 } };
         }
 
         private static IDictionary<string, object> Aimed(double lat, double lng, string note = "")
@@ -33,7 +41,7 @@ namespace ClaudiaKerman.Core.Tests
         public void The_line_gives_predicted_and_actual_km_from_ksc()
         {
             var record = LandingLine.Record("return", Aimed(ReturnAim.KscLatitude + 1, ReturnAim.KscLongitude), On("Mun"));
-            var line = LandingLine.Landed(record, new Dictionary<string, object> { { "geo", Geo(ReturnAim.KscLatitude, ReturnAim.KscLongitude + 2) } }, On("Kerbin"));
+            var line = LandingLine.Landed(record, Down(ReturnAim.KscLatitude, ReturnAim.KscLongitude + 2), On("Kerbin"));
             Assert.Equal("predicted 10 km from KSC, came down 21 km from KSC", line);
         }
 
@@ -51,7 +59,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             var record = LandingLine.Record("return", Aimed(ReturnAim.KscLatitude, ReturnAim.KscLongitude, note), On("Minmus"));
             Assert.EndsWith("; " + note, LandingLine.Predicted(record));
-            var landed = LandingLine.Landed(record, new Dictionary<string, object> { { "geo", Geo(0, -74) } }, On("Kerbin"));
+            var landed = LandingLine.Landed(record, Down(0, -74), On("Kerbin"));
             Assert.EndsWith("; " + note, landed);
             Assert.Contains("came down", landed);
         }
@@ -61,15 +69,31 @@ namespace ClaudiaKerman.Core.Tests
         {
             Assert.Null(LandingLine.Record("return", new Dictionary<string, object> { { "predicted_geo", new Dictionary<string, object>() } }, On("Mun")));
             Assert.Null(LandingLine.Record("land", Aimed(1, 1), On("Mun")));
-            Assert.Equal("", LandingLine.Landed("", new Dictionary<string, object> { { "geo", Geo(0, 0) } }, On("Kerbin")));
+            Assert.Equal("", LandingLine.Landed("", Down(0, 0), On("Kerbin")));
         }
 
         [Fact]
         public void A_landing_elsewhere_or_with_no_place_read_gives_none()
         {
             var record = LandingLine.Record("return", Aimed(0, -74), On("Mun"));
-            Assert.Equal("", LandingLine.Landed(record, new Dictionary<string, object> { { "geo", Geo(0, 0) } }, On("Duna")));
-            Assert.Equal("", LandingLine.Landed(record, new Dictionary<string, object> { { "geo", new Dictionary<string, object>() } }, On("Kerbin")));
+            Assert.Equal("", LandingLine.Landed(record, Down(0, 0), On("Duna")));
+            Assert.Equal("", LandingLine.Landed(record, new Dictionary<string, object> { { "geo", new Dictionary<string, object>() }, { "touchdown_speed", 6.0 } }, On("Kerbin")));
+        }
+
+        /// <summary>A deorbit at another planet aims there: no km from KSC. A reentry that never touched down reads as no landing, though its geo is set.</summary>
+        [Fact]
+        public void Elsewhere_or_not_down_gives_none()
+        {
+            Assert.Null(LandingLine.Record("deorbit", Aimed(0, -74), On("Duna")));
+            var record = LandingLine.Record("return", Aimed(0, -74), On("Mun"));
+            Assert.Equal("", LandingLine.Landed(record, new Dictionary<string, object> { { "geo", Geo(0, -74) }, { "touchdown_speed", -1.0 } }, On("Kerbin")));
+        }
+
+        /// <summary>The prediction lives in the Mission's save for a reentry in a later run.</summary>
+        [Fact]
+        public void The_prediction_survives_a_save()
+        {
+            Assert.Equal("3|fix flown", MissionSaveState.FromValues(new MissionSaveState { Id = "m1", LandingAim = "3|fix flown" }.ToValues()).LandingAim);
         }
 
         [Fact]

@@ -87,12 +87,13 @@ namespace ClaudiaKerman.Core.Tools
             // A trip home from another planet (#790): capture and deorbit when the delta-v covers them, unless the caller says.
             var homeArrival = JsonNode.Bool(input["capture"]).HasValue ? null : HomeLanding.Arrival(snapshot, target);
             bool? explicitCapture = JsonNode.Bool(input["capture"]) ?? (homeArrival != null && homeArrival.CaptureFirst ? true : (bool?)null);
+            if (homeArrival != null && (!targetPe.HasValue || (homeArrival.CaptureFirst && targetPe.Value < homeArrival.ArrivalPe))) targetPe = homeArrival.ArrivalPe;
             if (target != null && DirectRoute.Applies(snapshot, target))
             {
                 var routeCapture = ArrivalRule.Capture(snapshot, target, explicitCapture);
                 var entry = !routeCapture && ArrivalRule.EndsInReentry(snapshot, target);
-                if (targetPe.HasValue || entry || homeArrival != null)
-                    return Routes(DirectRoute.Find(snapshot, target, entry ? ArrivalRule.EntryPe(new BodySystem(snapshot.Bodies).Find(target)) : targetPe ?? homeArrival.ArrivalPe, routeCapture), snapshot, routeCapture, homeArrival);
+                if (targetPe.HasValue || entry)
+                    return Routes(DirectRoute.Find(snapshot, target, entry ? ArrivalRule.EntryPe(new BodySystem(snapshot.Bodies).Find(target)) : targetPe.Value, routeCapture), snapshot, routeCapture, homeArrival);
             }
             if (target != null && !targetPe.HasValue) return PlanningJson.Error("target needs target_pe, the periapsis altitude to arrive at in metres");
             if (orbit != null && targetPe.HasValue) return PlanningJson.Error("target_pe is for a target body; an orbit is reached at its own altitude");

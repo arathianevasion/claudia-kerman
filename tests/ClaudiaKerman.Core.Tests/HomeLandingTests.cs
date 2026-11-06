@@ -67,6 +67,15 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(HomeLanding.None, Default(Round(Mun, 30000, goal)));
         }
 
+        /// <summary>A place on another body says nothing of where at home.</summary>
+        [Theory]
+        [InlineData("Land at the Mun's north pole and come home.")]
+        [InlineData("Land on the Mun at (3.1, 24.6), then come home.")]
+        public void A_place_on_another_body_is_no_place_at_home(string goal)
+        {
+            Assert.Equal(HomeLanding.Ksc, Default(Round(Mun, 30000, goal)));
+        }
+
         /// <summary>Claudia's own "splashdown" in a leg's words says nothing of where: only the player's goal does.</summary>
         [Fact]
         public void A_legs_word_for_the_ending_is_no_place()
@@ -160,6 +169,31 @@ namespace ClaudiaKerman.Core.Tests
             var result = Plan(snapshot);
             Assert.False(result.GetProperty("capture").GetBoolean());
             Assert.Equal("arrival: entry at 21 km, no capture burn", result.GetProperty("arrival_note").GetString());
+        }
+
+        /// <summary>A planet's plan_transfer needs no target_pe for a trip home, and one under the air can't be the capture's.</summary>
+        [Theory]
+        [InlineData("{\"target\":\"Kerbin\"}")]
+        [InlineData("{\"target\":\"Kerbin\",\"target_pe\":21000}")]
+        public void The_capture_is_priced_at_low_orbit_whatever_was_asked(string input)
+        {
+            var snapshot = Round(Duna, 60000, "Come home.", 5000);
+            var outcome = PlanningTools.Default().Run("plan_transfer", input, snapshot, new NoPlanningBody());
+            Assert.False(outcome.IsError, outcome.Json);
+            var asked = JsonDocument.Parse(outcome.Json).RootElement;
+            Assert.True(asked.GetProperty("capture").GetBoolean());
+            var full = Plan(snapshot);
+            Assert.Equal(full.GetProperty("optimal").GetProperty("total_dv").GetDouble(), asked.GetProperty("optimal").GetProperty("total_dv").GetDouble(), 1);
+        }
+
+        /// <summary>On the ground the ascent comes first: the delta-v on arrival leaves it out.</summary>
+        [Fact]
+        public void A_craft_on_the_ground_pays_its_ascent_first()
+        {
+            var inOrbit = HomeLanding.Arrival(Round(Duna, 60000, "", 5000), "Kerbin");
+            var landed = Round(Duna, 60000, "", 5000);
+            landed.Situation = "LANDED";
+            Assert.True(HomeLanding.Arrival(landed, "Kerbin").DvLeft < inOrbit.DvLeft - 500);
         }
 
         /// <summary>Stock can't say: nothing to spend on the capture, so the same direct way in.</summary>

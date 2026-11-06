@@ -207,6 +207,19 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(450.0, DeorbitBurn.AutoMaxDv(500, 0));
         }
 
+        /// <summary>The along-track burn after an accepted miss doesn't spend the reserve either.</summary>
+        [Fact]
+        public void An_accepted_miss_keeps_the_reserve_on_the_along_track_burn_too()
+        {
+            var snapshot = AtMinmus(3.0);
+            var coasting = Halfway(snapshot, Ejection(snapshot));
+            foreach (var left in new[] { 52.0, 60.0, 70.0 })
+            {
+                var miss = Correction(coasting, left);
+                Assert.InRange(D(miss, "dv"), 0, Math.Max(left - 50, 3));
+            }
+        }
+
         /// <summary>A craft with no chutes keeps its powered landing's need too: what is spare for the chuted one isn't for it.</summary>
         [Fact]
         public void A_chuteless_craft_keeps_what_its_powered_landing_needs()

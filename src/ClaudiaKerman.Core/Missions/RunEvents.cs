@@ -94,6 +94,12 @@ namespace ClaudiaKerman.Core.Missions
         public void Replace(double ut, RunEventKind kind, string text)
         {
             _events.RemoveAll(e => e.Kind == kind);
+            // It is the Debrief's own line: at the bound it takes the latest event's place.
+            if (_events.Count >= Max)
+            {
+                _events.RemoveAt(_events.Count - 1);
+                Dropped++;
+            }
             Add(ut, kind, text);
         }
 

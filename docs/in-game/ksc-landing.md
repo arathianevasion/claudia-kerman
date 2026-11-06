@@ -1,6 +1,6 @@
 # Returns land near KSC by default
 
-In-game checks for #790 (ADR 0017; ADR 0014 block migration: no flight logic moved out of Kerboscript, the default target, the fix across the track and the arrival's choice are new logic in Core; `return.ks` and `deorbit.ks` only ask `ADDONS:CLAUDIA:LANDINGTARGET` and pass on `aim_note`). The agent run that wrote this did not launch KSP.
+In-game checks for #790 (ADR 0017; ADR 0014 block migration: no flight logic moved out of Kerboscript, the default target, the fix across the track and the arrival's choice are new logic in Core; `return.ks` and `deorbit.ks` only ask `ADDONS:CLAUDIA:LANDINGTARGET` and pass on `aim_note`). The agent run that wrote this did not launch KSP. Block scenarios to fly as before: `tests/blocks/return_target`, `return` and `tune_pe_kerbin` (both now with `target` "none", as they fly no landing), `deorbit_kerbin` and `deorbit_kerbin_defaults`.
 
 Install as in `phase-3-gate.md` (build, copy `dist/GameData/ClaudiaKerman/`, `debug_tools = true`). The line is in the Debrief card's events, and in `KSP.log`.
 
@@ -32,4 +32,4 @@ As Check 3, with a craft that has only the ejection and under about 60 m/s more.
 
 ## Check 5 (later): a Duna return
 
-From low Duna orbit with plenty of delta-v, ask for `plan_transfer` to Kerbin. Its `capture` is true and `arrival_note` reads `arrival: <need> of <spare> m/s: target_pe 80000, capture(), deorbit(), reentry()`. Fly that; `deorbit` takes `ksc` by default, and the Debrief has the landing line. With too little delta-v for that plus the reserve, `capture` is false and the note reads `arrival: entry at 21 km, no capture burn`.
+From low Duna orbit with plenty of delta-v, ask for `plan_transfer` to Kerbin; it needs no `target_pe`. Its `capture` is true and `arrival_note` reads `arrival: <need> of <spare> m/s: target_pe 80000, capture(), deorbit(), reentry()`. Fly that; `deorbit` takes `ksc` by default, and the Debrief has the landing line. With too little delta-v for that plus the reserve, `capture` is false and the note reads `arrival: entry at 21 km, no capture burn`.
