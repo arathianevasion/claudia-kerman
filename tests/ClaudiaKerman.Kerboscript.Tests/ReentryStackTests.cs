@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using ClaudiaKerman.Core.Kos;
+using ClaudiaKerman.Core.Missions;
+using ClaudiaKerman.Core.Tools;
 using Xunit;
 
 namespace ClaudiaKerman.Kerboscript.Tests
@@ -17,7 +19,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
     /// </summary>
     public class ReentryStackTests
     {
-        private sealed class Spec
+        public sealed class Spec
         {
             public string Uid;
             public string Name;
@@ -30,7 +32,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         private static readonly string[] Shield = { "ModuleAblator", "ModuleDecouple" };
         private static readonly string[] Decoupler = { "ModuleDecouple" };
 
-        private sealed class Tree
+        public sealed class Tree
         {
             public readonly List<Spec> Parts = new List<Spec>();
 
@@ -291,6 +293,88 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 + "local plan is reentry_separation(\"auto\", below).\n"
                 + "print plan:decouplers[0]:uid. print reentry_names(plan:gone):join(\",\"). print below:kept:length.\n");
             Assert.Equal(new[] { "dec1", "fuelTank,landingLeg1,liquidEngine3.v2,Decoupler.2,fuelTankSmall", "0" }, printed);
+        }
+
+        // ---- Parity with Core (ADR 0014 guardrail 4): one shield, Last Entry. Deleted with the Kerboscript in the same ticket. ----
+
+        public static IEnumerable<object[]> ParityTrees()
+        {
+            Func<Tree> podShield = () =>
+            {
+                var t = new Tree();
+                var pod = t.Add("mk1pod.v2", -1, Command, "pod");
+                t.Add("parachuteSingle", pod, new[] { "ModuleParachute" });
+                t.Add("HeatShield1", pod, Shield, "shield");
+                return t;
+            };
+            Func<Tree> spent = () =>
+            {
+                var t = new Tree();
+                var pod = t.Add("mk1pod.v2", -1, Command, "pod");
+                var shield = t.Add("HeatShield1", pod, Shield, "shield");
+                t.Add("Decoupler.1", shield, Decoupler, "dec1");
+                return t;
+            };
+            Func<Tree> stuck = () =>
+            {
+                var t = new Tree();
+                var pod = t.Add("mk1pod.v2", -1, Command, "pod");
+                var shield = t.Add("HeatShield1", pod, Shield, "shield");
+                t.Add("fuelTank", shield, None);
+                return t;
+            };
+            Func<Tree> farSide = () =>
+            {
+                var t = new Tree();
+                var tank = t.Add("fuelTank", -1, None);
+                var dec = t.Add("Decoupler.1", tank, Decoupler, "dec1");
+                var shield = t.Add("HeatShield1", dec, Shield, "shield");
+                t.Add("mk1pod.v2", shield, Command, "pod");
+                return t;
+            };
+            Func<Tree> spentEngine = () =>
+            {
+                var t = PoweredPod();
+                t.Add("liquidEngine2.v2", t.Parts.Count - 1, new[] { "ModuleEngines" }, "spent");
+                return t;
+            };
+            var none = new string[0];
+            var engine = new[] { "engine" };
+            yield return new object[] { (Func<Tree>)(() => MunShotV2()), none };
+            yield return new object[] { (Func<Tree>)(() => MunShotV2(legsAndRcs: true)), none };
+            yield return new object[] { podShield, none };
+            yield return new object[] { spent, none };
+            yield return new object[] { stuck, none };
+            yield return new object[] { farSide, none };
+            yield return new object[] { (Func<Tree>)PoweredPod, engine };
+            yield return new object[] { spentEngine, engine };
+            yield return new object[] { (Func<Tree>)PoweredPod, none };
+        }
+
+        [Theory]
+        [MemberData(nameof(ParityTrees))]
+        public void Core_walks_a_one_shield_Last_Entry_as_reentry_stack_does(Func<Tree> make, string[] keep)
+        {
+            var tree = make();
+            var printed = Run(tree, "local below is reentry_stack(parts, \"pod\", list(" + string.Join(", ", keep.Select(k => "\"" + k + "\"")) + ")).\n"
+                + "local ids is { parameter ps. local out is list(). for p in ps { out:add(p:uid). } return out:join(\",\"). }.\n"
+                + "print ids(below:decouplers). print ids(below:gone). print ids(below:kept). print reentry_names(below:parts):join(\",\"). print reentry_names(below:stuck):join(\",\").\n");
+
+            Func<uint, string> uid = id => tree.Parts[(int)id - 1].Uid;
+            var snapshot = new GameSnapshot
+            {
+                Craft = new SnapshotCraft
+                {
+                    Parts = tree.Parts.Select((s, i) => new SnapshotPart
+                    {
+                        Id = (uint)(i + 1), ParentId = s.Parent >= 0 ? (uint)(s.Parent + 1) : (uint?)null, Name = s.Name,
+                        Tags = s.Modules.Select(m => m == "ModuleAblator" ? "heat_shield" : m == "ModuleDecouple" ? "decoupler" : "other").ToList(),
+                    }).ToList(),
+                },
+            };
+            var answer = BlockCalls.EntryDropCall(new Dictionary<string, object> { { "home", "pod" }, { "keep_engines", keep.Cast<object>().ToList() } }, snapshot, null, -1, "", uid);
+            Func<string, string> joined = key => string.Join(",", ((IEnumerable<object>)answer[key]).Cast<string>());
+            Assert.Equal(printed, new[] { joined("decouplers"), joined("gone"), joined("kept"), joined("names"), joined("stuck") });
         }
 
         // ---- The option ----

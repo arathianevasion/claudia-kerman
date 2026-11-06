@@ -2393,6 +2393,7 @@ namespace ClaudiaKerman.Core.Missions
                 view.PlanLegs = mission.Plan != null ? mission.Plan.Sequences : null;
                 view.ProcessorPartId = mission.ProcessorPartId;
                 view.ChuteAllocation = mission.Chutes;
+                view.RunningChild = mission.RunningChild;
                 view.ArrivalPlane = mission.ArrivalPlane;
                 view.PickedSite = mission.PickedSite;
                 if (mission.Stage == MissionStage.Running && mission.PendingSequence != null)

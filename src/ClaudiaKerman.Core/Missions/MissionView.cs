@@ -343,6 +343,8 @@ namespace ClaudiaKerman.Core.Missions
         public ChuteAllocation ChuteAllocation;
         /// <summary>The Mission Plan's legs, for the Ship Systems hold (#756); null before there is a plan.</summary>
         public IList<PlannedSequence> PlanLegs;
+        /// <summary>The Child Vessel the run flies, for <c>ENTRYDROP</c>'s count (#823); "" for the craft.</summary>
+        public string RunningChild = "";
         /// <summary>The arrival plane <c>transfer_to</c> recorded for <c>capture</c>, and the last site <c>find_landing_site</c> gave (#788).</summary>
         public string ArrivalPlane = "";
         public Tools.PickedSite PickedSite;

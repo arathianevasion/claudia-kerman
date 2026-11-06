@@ -219,6 +219,13 @@ namespace ClaudiaKerman.Adapter
         public static ChuteAllocation ChuteAllocation;
 
         /// <summary>
+        /// The Mission Plan as it stands and the Child Vessel the run flies ("" for the craft), for <c>ADDONS:CLAUDIA:ENTRYDROP</c> (#823).
+        /// Refreshed every frame; null with no Mission Plan.
+        /// </summary>
+        public static IList<PlannedSequence> PlanLegs;
+        public static string RunningChild = "";
+
+        /// <summary>
         /// The arrival plane <c>transfer_to</c> last aimed for, for <c>capture</c> (#788; <see cref="MissionView.ArrivalPlane"/> holds the Mission's own, in its
         /// save): set at once by the block call, so a capture in the same frame reads it, and kept here for a block test, which has no Mission.
         /// </summary>
@@ -264,6 +271,8 @@ namespace ClaudiaKerman.Adapter
             PhysicsWarpAllowed = _mission.View.PhysicsWarpAllowed;
             TimeCapHours = _mission.View.Settings.TimeCapHours;
             ChuteAllocation = _mission.View.ChuteAllocation;
+            PlanLegs = _mission.View.PlanLegs;
+            RunningChild = _mission.View.RunningChild;
             if (_mission.View.Stage != MissionStage.None) AimedPlane = _mission.View.ArrivalPlane;
             CurrentSequence = _mission.View.CurrentSequence;
             TargetVesselId = _mission.View.TargetVesselId;
