@@ -14,7 +14,8 @@ Run `tests/blocks/deorbit_high_orbit` (a 2,000 km by 100 km equatorial orbit, th
 
 1. Either `success: true` with `dv_used` as the `DEORBITBURN` log line's burn, or `success: false` whose reason reads `the cheapest burn within accuracy_km needs <dv> m/s (at UT <ut>), over max_dv <m> (auto: <left> m/s left, less the reserve and a powered landing)`. Both are right; a burn flown that costs more than the `max_dv` in that reason is not.
 2. If it failed, the craft has not burned (`burn_ut` is -1) and no node is left planned.
-3. If it flew, `predicted_error_km` is under 5 and the capsule lands near KSC as in Check 1.
+3. If it flew, `predicted_error_km` is under 5 and the capsule lands near KSC as in Check 1. On this orbit a burn that saves delta-v may be aimed up to 4 km off the target (80% of `accuracy_km`), so a predicted error near 4 km is the search spending the band, not a miss.
+4. There is no visible hitch beyond a moment at the block's start (the search is about 30 ms in a Release build; on Unity's runtime expect a few times that).
 
 ## Check 3: max_dv by hand
 

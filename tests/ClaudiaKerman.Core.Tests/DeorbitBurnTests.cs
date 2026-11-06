@@ -26,9 +26,9 @@ namespace ClaudiaKerman.Core.Tests
             return Conic.FromState(ReentrySim.Mu, new Vec3(r, 0, 0), new Vec3(0, v * Math.Cos(i), v * Math.Sin(i)), 0);
         }
 
-        private static DeorbitPlan Find(double lat, double lng, Conic orbit = null, double maxWait = ReentrySim.RotationPeriod, double atmosphere = ReentrySim.AtmTop)
+        private static DeorbitPlan Find(double lat, double lng, Conic orbit = null, double maxWait = ReentrySim.RotationPeriod, double atmosphere = ReentrySim.AtmTop, double accuracyKm = 5, double earliest = 120)
         {
-            var ask = new DeorbitAsk { TargetLatitude = lat, TargetLongitude = lng, EarliestUt = 120, MaxWait = maxWait, AccuracyKm = 5, DeltaVLeft = 5000 };
+            var ask = new DeorbitAsk { TargetLatitude = lat, TargetLongitude = lng, EarliestUt = earliest, MaxWait = maxWait, AccuracyKm = accuracyKm, DeltaVLeft = 5000 };
             return DeorbitBurn.Find(ReentrySim.Kerbin(atmosphere), orbit ?? Circular(), ask, new ReentrySim.Atmosphere(), new ReentrySim.Capsule(), ReentrySim.Frame());
         }
 
@@ -71,7 +71,8 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void A_target_beside_the_ground_track_is_reached_with_a_normal_part()
         {
-            var plan = Find(1, KscLng);
+            // A tight band: in a wider one the search spends its width on less normal part (#794).
+            var plan = Find(1, KscLng, accuracyKm: 0.5);
             Assert.Null(plan.Error);
             Assert.InRange(plan.ErrorKm, 0, 0.5);
             // North of a prograde equatorial orbit: along its angular momentum.
@@ -82,12 +83,12 @@ namespace ClaudiaKerman.Core.Tests
         public void In_a_mirrored_frame_the_normal_part_keeps_its_real_sign()
         {
             // The same orbit and target seen in a frame with y flipped: the node's normal is the real angular momentum, so its sign holds.
-            var plain = Find(1, KscLng);
+            var plain = Find(1, KscLng, accuracyKm: 0.5);
             Vec3 r, v;
             Circular().State(0, out r, out v);
             var flipped = Conic.FromState(ReentrySim.Mu, new Vec3(r.X, -r.Y, r.Z), new Vec3(v.X, -v.Y, v.Z), 0);
             var mirrored = new BodyFrame { LonOffset = 0, Handed = -1, Ut = 0, RotationPeriod = ReentrySim.RotationPeriod };
-            var ask = new DeorbitAsk { TargetLatitude = 1, TargetLongitude = KscLng, EarliestUt = 120, MaxWait = ReentrySim.RotationPeriod, DeltaVLeft = 5000 };
+            var ask = new DeorbitAsk { TargetLatitude = 1, TargetLongitude = KscLng, EarliestUt = 120, MaxWait = ReentrySim.RotationPeriod, AccuracyKm = 0.5, DeltaVLeft = 5000 };
             var plan = DeorbitBurn.Find(ReentrySim.Kerbin(), flipped, ask, new ReentrySim.Atmosphere(), new ReentrySim.Capsule(), mirrored);
             Assert.Null(plan.Error);
             Assert.InRange(plan.ErrorKm, 0, 0.5);
@@ -98,7 +99,7 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void An_inclined_orbit_lands_on_its_target_too()
         {
-            var plan = Find(KscLat, KscLng, Circular(inclinationDeg: 6));
+            var plan = Find(KscLat, KscLng, Circular(inclinationDeg: 6), accuracyKm: 0.5);
             Assert.Null(plan.Error);
             Assert.InRange(plan.ErrorKm, 0, 0.5);
         }
@@ -129,7 +130,7 @@ namespace ClaudiaKerman.Core.Tests
         public void It_runs_in_milliseconds()
         {
             // The deorbit block's search to KSC from the 80 km orbit, and one too far off the track (every pass refined). Measured
-            // at about 35 ms alone in a Debug build; the budget is about 15 times that.
+            // at about 280 ms for the two in a Debug build since #794 scans every pass (about 55 ms in Release).
             Timing.Within(500, () =>
             {
                 Find(KscLat, KscLng);
@@ -221,7 +222,7 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void The_deorbit_call_logs_the_planned_orbit_after_the_burn_and_the_frame()
         {
-            var found = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "ground_alt", 70.0),
+            var found = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "ground_alt", 70.0, "dv_left", 5000.0),
                 Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
             var line = (string)found["plan_log"];
             Assert.StartsWith("[plan-vs-flown] DEORBITBURN planned orbit: Pe ", line);
@@ -402,9 +403,94 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void The_cheapest_burn_within_accuracy_wins_over_the_most_accurate()
+        {
+            // From this orbit a pass near UT 5,300 costs about 325 m/s on the target; refining the four passes one prediction
+            // favoured took a 528 m/s burn at UT 16,689 instead.
+            var orbit = Eccentric();
+            var onTarget = Find(KscLat, KscLng, orbit, accuracyKm: 0.05);
+            Assert.InRange(onTarget.BurnUt, 5200, 5400);
+            Assert.InRange(onTarget.DeltaV, 320, 330);
+
+            // With the band to spend, it lands off the target for less delta-v, and an independent flight of it stays in the band.
+            var plan = Find(KscLat, KscLng, orbit);
+            Assert.Null(plan.Error);
+            Assert.InRange(plan.BurnUt, 5200, 5400);
+            Assert.InRange(plan.DeltaV, 300, onTarget.DeltaV - DeorbitBurnTieDv);
+            Assert.InRange(plan.ErrorKm, 1, 5);
+            Conic after;
+            var again = FlyAgain(orbit, plan, out after);
+            Assert.InRange(Km(again.Latitude, again.Longitude, KscLat, KscLng), 0, 5);
+
+            // A wider band buys more.
+            Assert.True(Find(KscLat, KscLng, orbit, accuracyKm: 20).DeltaV < plan.DeltaV - DeorbitBurnTieDv);
+        }
+
+        [Theory]
+        [InlineData(1500000)]
+        [InlineData(2000000)]
+        [InlineData(300000)]
+        public void No_narrow_window_finds_a_burn_cheaper_than_the_whole_window_does(double apoapsis)
+        {
+            var orbit = Eccentric(apoapsis);
+            var whole = Find(KscLat, KscLng, orbit);
+            Assert.Null(whole.Error);
+            Assert.InRange(whole.ErrorKm, 0, 5);
+            var slide = Math.Min(orbit.Period / 16, 600);
+            var hits = 0;
+            for (var start = 120.0; start < 120 + ReentrySim.RotationPeriod; start += slide)
+            {
+                var narrow = Find(KscLat, KscLng, orbit, maxWait: slide, earliest: start);
+                if (narrow.ErrorKm > 5) continue;
+                hits++;
+                Assert.True(whole.DeltaV <= narrow.DeltaV + DeorbitBurnTieDv, "UT " + narrow.BurnUt + " costs " + narrow.DeltaV + ", the whole window took " + whole.DeltaV);
+            }
+            Assert.True(hits > 0);
+        }
+
+        [Fact]
+        public void A_pass_one_prediction_would_overlook_is_found_rather_than_failing()
+        {
+            // From this orbit the first burn's landing, rotated round the orbit, says nothing near UT 7,000 is worth a look.
+            var plan = Find(KscLat, KscLng, Eccentric(2000000));
+            Assert.Null(plan.Error);
+            Assert.InRange(plan.BurnUt, 6900, 7100);
+        }
+
+        [Fact]
+        public void Burns_that_cost_the_same_take_the_first_pass_and_stay_on_the_target()
+        {
+            var plan = Find(KscLat, KscLng);
+            Assert.InRange(plan.BurnUt, 120, 120 + Circular().Period);
+            Assert.InRange(plan.ErrorKm, 0, 0.5);
+            // A wide band with nothing to save in it: not a burn 18 km off, a few seconds earlier.
+            var wide = Find(KscLat, KscLng, accuracyKm: 20);
+            Assert.InRange(wide.ErrorKm, 0, 0.5);
+        }
+
+        [Fact]
+        public void A_window_too_long_to_scan_is_searched_as_far_as_the_budget_and_the_failure_says_how_far()
+        {
+            // Twenty turns of the body, at 80 km: every pass would be over 200 refinements.
+            var plan = Find(20, KscLng, maxWait: 20 * ReentrySim.RotationPeriod);
+            var hours = Assert.Single(System.Text.RegularExpressions.Regex.Matches(plan.Error, @"in the next ([\d.]+) h")).Groups[1].Value;
+            Assert.InRange(double.Parse(hours, CultureInfo.InvariantCulture), 6, 12);
+        }
+
+        [Fact]
+        [Trait("Category", "Timing")]
+        public void A_long_window_is_bounded_too()
+        {
+            // At the prediction budget: measured at about 250 ms in a Debug build (about 50 ms in Release).
+            Timing.Within(500, () => Find(20, KscLng, maxWait: 20 * ReentrySim.RotationPeriod));
+        }
+
+        [Fact]
         public void A_burn_over_max_dv_fails_before_burning_with_its_cost_and_when()
         {
             var cheapest = Find(KscLat, KscLng, Eccentric());
+            // The cheapest burn within accuracy, not the most accurate one's cost.
+            Assert.InRange(cheapest.DeltaV, 300, 324);
             var ask = new DeorbitAsk
             {
                 TargetLatitude = KscLat, TargetLongitude = KscLng, EarliestUt = 120, MaxWait = ReentrySim.RotationPeriod, AccuracyKm = 5,
@@ -481,11 +567,14 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("stock can't say the delta-v left: give max_dv", unknown["error"]);
         }
 
-        /// <summary>A 100 km periapsis, 1,500 km apoapsis equatorial Kerbin orbit that crosses longitude 0 at UT 0: burns cost very differently round it.</summary>
-        private static Conic Eccentric()
+        /// <summary>The cost two burns must differ by not to be a tie, m/s.</summary>
+        private const double DeorbitBurnTieDv = 1;
+
+        /// <summary>A 100 km periapsis, by default 1,500 km apoapsis, equatorial Kerbin orbit that crosses longitude 0 at UT 0: burns cost very differently round it.</summary>
+        private static Conic Eccentric(double apoapsis = 1500000)
         {
             var rp = ReentrySim.R + 100000;
-            var ra = ReentrySim.R + 1500000;
+            var ra = ReentrySim.R + apoapsis;
             var a = (rp + ra) / 2;
             var v = Math.Sqrt(ReentrySim.Mu * (2 / rp - 1 / a));
             return Conic.FromState(ReentrySim.Mu, new Vec3(rp, 0, 0), new Vec3(0, v, 0), 0);

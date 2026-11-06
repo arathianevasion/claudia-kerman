@@ -53,10 +53,10 @@ namespace ClaudiaKerman.Core.Tools
     /// <summary>
     /// The deorbit burn search (#282): the burn, within the window, that brings the craft down on the target by the reentry
     /// predictor. The burn is retrograde to a periapsis well inside the atmosphere (a steep entry is the least sensitive to
-    /// burn and drag errors, the research found), plus a normal part for a target beside the ground track. One prediction gives
-    /// how far round the orbit the craft lands and how long it falls; that, rotated round the orbit, picks the passes worth a
-    /// look; Newton's method on the burn time (along the track) and the normal part (across it) then lands each on the target
-    /// with the predictor in the loop. The best is kept, an earlier one on a near tie.
+    /// burn and drag errors, the research found), plus a normal part for a target beside the ground track. A scan of the window
+    /// with the predictor picks the passes worth a look (on an eccentric orbit one prediction says little about the next); Newton's
+    /// method on the burn time (along the track) and the normal part (across it) lands each on the target; each that lands within
+    /// accuracy_km then walks toward less delta-v inside the band. The cheapest is kept, an earlier one on a near tie (#794).
     /// </summary>
     internal static class DeorbitBurn
     {
@@ -70,8 +70,25 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>Burns within accuracy whose cost differs by less than this are a tie, and the earlier wins, m/s.</summary>
         private const double TieDv = 1;
         private const double G0 = 9.80665;
-        private const int Candidates = 4;
         private const int NewtonSteps = 8;
+        /// <summary>Scan samples are at most this far apart in true anomaly, deg (even in the seconds near a periapsis)...</summary>
+        private const double ScanTrueAnomalyDeg = 30;
+        /// <summary>...and at most this share of a turn of the body (even in the hours near an apoapsis).</summary>
+        private const double ScanRotationShare = 1.0 / 24;
+        /// <summary>
+        /// Predictions the search may spend, so a long max_wait or a far target can't stall the main thread: the scan's (at 12 a
+        /// pass, 20 passes: more than a low orbit's whole turn of the body; a longer window is searched that far and the failure
+        /// says so), the scan and refining together, and everything with the walks.
+        /// </summary>
+        private const int MaxScanTries = 240;
+        private const int MaxRefineTries = 600;
+        private const int MaxTries = 800;
+        /// <summary>A walk ends inside this share of accuracy_km: at the very edge the burn's own error would fail the block's check after the burn.</summary>
+        private const double WalkBandShare = 0.8;
+        private const int WalkRounds = 4;
+        private const int WalkHalvings = 3;
+        /// <summary>A walk step forecast to save less than this isn't flown, m/s; a walk that saves less than <see cref="TieDv"/> in all isn't kept.</summary>
+        private const double WalkFloorDv = 0.1;
         /// <summary>A refined landing this close to the target is done, km.</summary>
         private const double CloseEnoughKm = 0.05;
         /// <summary>Burns this close in error are a tie, and the earlier wins, km.</summary>
@@ -152,6 +169,7 @@ namespace ClaudiaKerman.Core.Tools
             private readonly BodyFrame _frame;
             private readonly double _peRadius;
             private readonly double _latest;
+            private int _tries;
 
             public Search(SnapshotBody body, Conic orbit, DeorbitAsk ask, IReentryAir air, IReentryCraft craft, BodyFrame frame)
             {
@@ -167,18 +185,30 @@ namespace ClaudiaKerman.Core.Tools
 
             public DeorbitPlan Run()
             {
-                var first = Try(_ask.EarliestUt, 0);
-                if (first.Landing.Error != null) return Fail(first.Landing.Error);
+                var scan = Scan();
+                var first = scan.FirstOrDefault(sample => sample.Landing.Error == null);
+                if (first == null) return Fail(scan[0].Landing.Error);
 
-                var best = first;
-                foreach (var ut in Passes(first))
+                // Scan samples only find the passes: one far inside a wide band must not win a cost tie against a burn on the target by being earlier.
+                var burns = new List<DeorbitPlan>();
+                foreach (var ut in Passes(scan))
                 {
+                    if (_tries >= MaxRefineTries) break;
                     var refined = Refine(ut);
-                    if (refined != null && Better(refined, best, _ask.AccuracyKm)) best = refined;
+                    if (refined != null) burns.Add(refined);
                 }
+                foreach (var plan in burns.Where(burn => burn.ErrorKm <= _ask.AccuracyKm).OrderBy(burn => burn.DeltaV).ThenBy(burn => burn.BurnUt).ToList())
+                {
+                    if (_tries >= MaxTries) break;
+                    burns.Add(Walk(plan));
+                }
+                var best = burns.Count > 0 ? burns[0] : first;
+                foreach (var burn in burns)
+                    if (Better(burn, best, _ask.AccuracyKm)) best = burn;
+
                 if (best.ErrorKm <= _ask.AccuracyKm) best.Error = OverBudget(best);
                 else
-                    best.Error = "the best burn in the next " + Hours(_latest - _ask.EarliestUt) + " h lands " + Km(best.ErrorKm)
+                    best.Error = "the best burn in the next " + Hours(scan[scan.Count - 1].BurnUt - _ask.EarliestUt) + " h lands " + Km(best.ErrorKm)
                         + " km from the target, over accuracy_km " + Km(_ask.AccuracyKm)
                         + (best.Normal != 0 && Math.Abs(best.Normal) >= MaxNormal - 1e-6
                             ? " (the target is too far off the ground track; change the orbit's plane, or allow a longer max_wait)"
@@ -200,38 +230,34 @@ namespace ClaudiaKerman.Core.Tools
             }
 
             /// <summary>
-            /// The burn times worth refining: rotating the first landing round the orbit with the burn, the passes whose landing comes
-            /// closest to the target, nearest first.
+            /// A burn with no normal part at samples across the window, the predictor in the loop. The samples follow the orbit and the
+            /// turning body, so they are close enough to catch every pass: near a periapsis the landing moves fast, near an apoapsis slowly.
             /// </summary>
-            private IEnumerable<double> Passes(DeorbitPlan first)
+            private List<DeorbitPlan> Scan()
             {
-                Vec3 rb, vb;
-                _orbit.State(first.BurnUt, out rb, out vb);
-                var w = _orbit.W;
-                var b = rb.Normalized;
-                var p = first.Landing.Position.Normalized;
-                var angle = Math.Atan2(Vec3.Dot(Vec3.Cross(b, p), w), Vec3.Dot(b, p));
-                var fall = first.Landing.LandingUt - first.BurnUt;
-                var step = Math.Min(60, _orbit.Period / 120);
-                var times = new List<double>();
-                var distances = new List<double>();
-                for (var ut = _ask.EarliestUt; ut <= _latest + 1e-6; ut += step)
+                var longest = _frame.RotationPeriod > 0 ? _frame.RotationPeriod * ScanRotationShare : double.PositiveInfinity;
+                var samples = new List<DeorbitPlan>();
+                var ut = _ask.EarliestUt;
+                while (true)
                 {
-                    var u = _orbit.Position(ut).Normalized;
-                    var landing = u * Math.Cos(angle) + Vec3.Cross(w, u) * Math.Sin(angle);
-                    double lat, lng;
-                    _frame.Ground(landing, ut + fall, out lat, out lng);
-                    times.Add(ut);
-                    distances.Add(Distance(lat, lng));
+                    samples.Add(Try(ut, 0));
+                    if (ut >= _latest || _tries >= MaxScanTries) return samples;
+                    var next = _orbit.TimeAtTrue(_orbit.TrueAnomaly(ut) + ScanTrueAnomalyDeg * Math.PI / 180, ut).Value;
+                    ut = Math.Min(_latest, Math.Min(next, ut + longest));
                 }
-                var minima = new List<int>();
-                for (var i = 0; i < times.Count; i++)
+            }
+
+            /// <summary>The burn times worth refining, the scan's local nearest to the target, the cheapest first so a spent budget drops the dearest.</summary>
+            private static IEnumerable<double> Passes(List<DeorbitPlan> scan)
+            {
+                var minima = new List<DeorbitPlan>();
+                for (var i = 0; i < scan.Count; i++)
                 {
-                    var left = i == 0 || distances[i] <= distances[i - 1];
-                    var right = i == times.Count - 1 || distances[i] <= distances[i + 1];
-                    if (left && right) minima.Add(i);
+                    var left = i == 0 || scan[i].ErrorKm <= scan[i - 1].ErrorKm;
+                    var right = i == scan.Count - 1 || scan[i].ErrorKm <= scan[i + 1].ErrorKm;
+                    if (left && right && !double.IsInfinity(scan[i].ErrorKm)) minima.Add(scan[i]);
                 }
-                return minima.OrderBy(i => distances[i]).Take(Candidates).Select(i => times[i]).ToList();
+                return minima.OrderBy(sample => sample.DeltaV).ThenBy(sample => sample.BurnUt).Select(sample => sample.BurnUt).ToList();
             }
 
             /// <summary>Newton's method from a pass: the burn time moves the landing along the track, the normal part across it.</summary>
@@ -271,9 +297,63 @@ namespace ClaudiaKerman.Core.Tools
                 return best;
             }
 
+            /// <summary>
+            /// From a burn within accuracy_km, toward the cheapest in the band. With the landing's and the cost's slopes in the burn time and
+            /// the normal part, the cost falls fastest toward one point on the band's edge: Newton aims there, the step halved when it
+            /// lands outside the band or costs more. Returns <paramref name="start"/> unless the walk saved a real amount, so a burn
+            /// that costs the same anywhere (a circular orbit) stays on the target.
+            /// </summary>
+            private DeorbitPlan Walk(DeorbitPlan start)
+            {
+                var band = WalkBandShare * _ask.AccuracyKm;
+                var here = start;
+                for (var round = 0; round < WalkRounds && _tries < MaxTries; round++)
+                {
+                    const double dt = 2;
+                    const double dn = 1;
+                    var byTime = Try(here.BurnUt + dt, here.Normal);
+                    var byNormal = Try(here.BurnUt, here.Normal + dn);
+                    if (byTime.Landing.Error != null || byNormal.Landing.Error != null) break;
+                    double e0, n0, e1, n1, e2, n2;
+                    Offset(here.Landing, out e0, out n0);
+                    Offset(byTime.Landing, out e1, out n1);
+                    Offset(byNormal.Landing, out e2, out n2);
+                    double a = (e1 - e0) / dt, c = (n1 - n0) / dt, bb = (e2 - e0) / dn, d = (n2 - n0) / dn;
+                    var det = a * d - bb * c;
+                    if (Math.Abs(det) < 1e-12) break;
+                    double costByTime = (byTime.DeltaV - here.DeltaV) / dt, costByNormal = (byNormal.DeltaV - here.DeltaV) / dn;
+                    // The cost's slope in the target's offset from the landing (the inverse transpose of the offsets' slopes).
+                    var costEast = (d * costByTime - c * costByNormal) / det;
+                    var costNorth = (a * costByNormal - bb * costByTime) / det;
+                    var slope = Math.Sqrt(costEast * costEast + costNorth * costNorth);
+                    if (slope <= 0) break;
+                    var moveEast = -band * costEast / slope - e0;
+                    var moveNorth = -band * costNorth / slope - n0;
+                    if (-(costEast * moveEast + costNorth * moveNorth) < WalkFloorDv) break;
+                    var moveT = (moveEast * d - bb * moveNorth) / det;
+                    var moveN = (a * moveNorth - c * moveEast) / det;
+                    var limit = _orbit.Period / 8;
+                    moveT = Math.Max(-limit, Math.Min(limit, moveT));
+                    DeorbitPlan better = null;
+                    var share = 1.0;
+                    for (var halving = 0; halving <= WalkHalvings && better == null; halving++, share /= 2)
+                    {
+                        var normal = Math.Max(-MaxNormal, Math.Min(MaxNormal, here.Normal + share * moveN));
+                        // The cost is least near no normal part: a step past it would only pay the same again on the other side.
+                        if (normal * here.Normal < 0) normal = 0;
+                        var next = Try(Math.Max(_ask.EarliestUt, Math.Min(_latest, here.BurnUt + share * moveT)), normal);
+                        if (next.ErrorKm <= band && next.DeltaV < here.DeltaV) better = next;
+                    }
+                    if (better == null) break;
+                    here = better;
+                }
+                return start.DeltaV - here.DeltaV >= TieDv ? here : start;
+            }
+
             /// <summary>The burn at <paramref name="ut"/> with <paramref name="normal"/> m/s normal and enough retrograde for the entry periapsis, and where it lands.</summary>
             private DeorbitPlan Try(double ut, double normal)
             {
+                _tries++;
                 Vec3 r, v;
                 _orbit.State(ut, out r, out v);
                 var along = v.Normalized;
