@@ -24,7 +24,7 @@ namespace ClaudiaKerman.Core.Missions
         public double Arrival;
         /// <summary>For a trip between inclined orbits: the plane change, included in <see cref="DeltaV"/>.</summary>
         public double PlaneChange;
-        /// <summary>The speed it arrives with relative to the destination, m/s, before the destination's gravity: what a polar orbit's turn is costed at.</summary>
+        /// <summary>The speed it arrives with relative to the destination, m/s, before the destination's gravity: what a polar arrival is costed from.</summary>
         internal double ArrivalExcess;
         /// <summary>The bodies the leg joins, for <see cref="DeltaVMap.ToText(IList{SnapshotBody})"/>.</summary>
         internal string[] Bodies = new string[0];
@@ -62,6 +62,16 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>The inclination of a polar orbit (degrees).</summary>
         private const double PolarInclination = 90;
+        /// <summary>
+        /// A far target's polar arrival over the bare trim (<see cref="PolarArrival"/>): it is all flown as <see cref="Tools.TransferFlight"/>'s trim inside the sphere of
+        /// influence. Duna's flew 17.1 m/s for the trim's 16.9 at low orbit and 20.6 at a 180 km periapsis; 1.25 covers that and comes to 21. Source: PolarArrivalTests on TransferRig.
+        /// </summary>
+        private const double FarApproachFit = 1.25;
+        /// <summary>
+        /// A moon's over the bare trim: the halfway Course Correction aims the plane too (<see cref="Tools.CorrectionBurn"/>'s TargetNormal), so it pays less than the trim alone (108 m/s at
+        /// the Mun, ADR 0016). Flown: the Mun 41 to 50 (and up to 80 for a whole plane, ADR 0016), Ike 60 to 65, Minmus about 1. 0.75 is 80 at the Mun, 76 at Ike and 10 at Minmus.
+        /// </summary>
+        private const double MoonApproachFit = 0.75;
 
         /// <summary>The body whose system the Map covers by default.</summary>
         public const string DefaultHome = "Kerbin";
@@ -130,13 +140,11 @@ namespace ClaudiaKerman.Core.Missions
                 Arrival = inbound.Arrival,
                 Bodies = new[] { body.Name },
             });
-            // A polar orbit round the body, from the equatorial one the transfer captures into: turned at the highest point
-            // of the capture, where the craft moves at the speed it arrived with (the hyperbolic excess).
-            var polar = OrbitChange.PlaneChangeDeltaV(inbound.ArrivalExcess, PolarInclination);
+            var polar = PolarArrival(body, inbound.ArrivalExcess, body.Parent == origin.Name);
             Legs.Add(new DeltaVLeg
             {
                 Id = "polar:" + body.Name,
-                Description = "Extra, added to its capture, for a polar orbit of " + body.Name + " instead of an equatorial one (plane change costed at the arrival speed relative to " + body.Name + ", an upper bound on a turn at the capture orbit's highest point; return:" + body.Name + " does not include it)",
+                Description = "Extra, added to its capture, for a polar orbit of " + body.Name + " instead of an equatorial one (plane aimed on the approach, an upper bound on that; return:" + body.Name + " does not include it)",
                 DeltaV = polar,
                 PlaneChange = polar,
                 Bodies = new[] { body.Name },
@@ -168,6 +176,28 @@ namespace ClaudiaKerman.Core.Missions
                 DeltaV = back.Departure + back.PlaneChange + capture,
                 Bodies = new[] { body.Name, center.Name },
             });
+        }
+
+        /// <summary>
+        /// What a polar arrival adds with the plane aimed on the approach (#806, ADR 0016). A burn at the edge of the sphere of influence turns the velocity
+        /// about the craft's position, and the velocity is off that line by h / (R v), so a 90 degree turn costs sqrt(2) h / R, h being the arrival's
+        /// angular momentum at low orbit and R the sphere's radius. <see cref="FarApproachFit"/> and <see cref="MoonApproachFit"/> scale that to the solves.
+        /// Never above the old turn at the capture's highest point, which is what a body whose sphere of influence is tight against its low orbit would pay.
+        /// </summary>
+        private double PolarArrival(SnapshotBody body, double excess, bool moon)
+        {
+            var low = LowOrbit(body);
+            var angularMomentum = Math.Sqrt(low * low * excess * excess + 2 * body.Gm * low);
+            var trim = Math.Sqrt(2) * angularMomentum / Sphere(body);
+            return Math.Min((moon ? MoonApproachFit : FarApproachFit) * trim, OrbitChange.PlaneChangeDeltaV(excess, PolarInclination));
+        }
+
+        /// <summary>The body's sphere of influence, m; worked out from the masses when the table has none (an older recording).</summary>
+        private double Sphere(SnapshotBody body)
+        {
+            if (body.SoiRadius > 0) return body.SoiRadius;
+            var parent = _bodies.First(b => b.Name == body.Parent);
+            return body.Sma * Math.Pow(body.Gm / parent.Gm, 0.4);
         }
 
         /// <summary>The trips that don't touch home: a moon and the planet it orbits, either way, and two bodies with the same parent.</summary>
