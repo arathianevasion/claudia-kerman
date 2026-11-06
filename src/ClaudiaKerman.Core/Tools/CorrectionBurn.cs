@@ -21,7 +21,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// The whole arrival plane (#788), a unit vector along the angular momentum wanted, direction of travel included, in place of
         /// <see cref="TargetInc"/>; null for any. A burn inside the target's sphere of influence must be given a plane through its own position
-        /// (<see cref="ArrivalPlane.Through"/>).
+        /// (<see cref="ArrivalPlane.Through"/>), and one from further out a plane through the arrival's way in.
         /// </summary>
         public Vec3? TargetNormal;
         /// <summary>The burn's window, UT: equal for a burn at that time, otherwise the burn time is free within it.</summary>
@@ -134,11 +134,18 @@ namespace ClaudiaKerman.Core.Tools
 
             var withInc = ask.TargetInc.HasValue;
             var peR = target.Radius + ask.TargetPe;
-            // A plane's residuals: the normal's two components off the plane wanted. Round the target itself the burn's own position keeps
-            // the normal on a circle, so one of them says it all, and from zero burn the solve could land on the mirror: it starts from the answer's shape.
-            var axes = ask.TargetNormal.HasValue ? PlaneAxes(ask.TargetNormal.Value, coast.Orbit, startUt, from == target) : new Vec3[0];
-            if (ask.TargetNormal.HasValue && from == target) seed = InPlaneSeed(coast.Orbit, startUt, ask.TargetNormal.Value, peR);
-            var m = 1 + (withInc ? Sqp.InclinationConstraints(ask.TargetInc.Value) : 0) + axes.Length;
+            // A plane's residual is one angle (B-plane targeting): how far the arrival is turned from the plane wanted, about the direction it comes in
+            // from. Turning about that is what is cheap; the normal's share along it would need a new approach, and asking for that leaves the solve singular.
+            // An angle, not a component, so it has slope at 90 degrees and no second root at the mirror.
+            var planeAxis = default(Vec3);
+            var withNormal = ask.TargetNormal.HasValue;
+            if (withNormal)
+            {
+                var entry = SingleShooting.Arrive(system, from, coast.Orbit, startUt, seed, target, needed);
+                planeAxis = Vec3.Cross(ask.TargetNormal.Value, from == target ? coast.Orbit.Position(startUt) : ArrivalPlanes.WayIn(entry.Orbit, entry.StartUt)).Normalized;
+                if (from == target) seed = InPlaneSeed(coast.Orbit, startUt, ask.TargetNormal.Value, peR);
+            }
+            var m = 1 + (withInc ? Sqp.InclinationConstraints(ask.TargetInc.Value) : 0) + (withNormal ? 1 : 0);
             var tolerances = new double[m];
             tolerances[0] = PeResidual;
             for (var k = 1; k < m; k++) tolerances[k] = IncResidual;
@@ -163,10 +170,10 @@ namespace ClaudiaKerman.Core.Tools
                     if (arrival == null) return false;
                     c[0] = arrival.Orbit.PeR - peR;
                     if (withInc) Sqp.Inclination(Normal(arrival), ask.TargetInc.Value, c, 1);
-                    if (axes.Length > 0)
+                    if (withNormal)
                     {
                         var unit = Normal(arrival).Normalized;
-                        for (var k = 0; k < axes.Length; k++) c[m - axes.Length + k] = Vec3.Dot(unit, axes[k]);
+                        c[m - 1] = Math.Atan2(Vec3.Dot(unit, planeAxis), Vec3.Dot(unit, ask.TargetNormal.Value));
                     }
                     return true;
                 },
@@ -197,18 +204,9 @@ namespace ClaudiaKerman.Core.Tools
             };
             plan.Error = SingleShooting.ToleranceError(Failure, plan.DeltaV, plan.PePredicted, plan.IncPredicted, ask.TargetPe, ask.TargetInc,
                 ask.PeTolerance, ask.IncTolerance, result.Reason ?? result.Status.ToString());
-            if (plan.Error == null && ask.TargetNormal.HasValue && ArrivalPlane.Angle(reached.Orbit.W, ask.TargetNormal.Value) > ask.IncTolerance)
+            if (plan.Error == null && withNormal && from == target && ArrivalPlane.Angle(reached.Orbit.W, ask.TargetNormal.Value) > ask.IncTolerance)
                 plan.Error = Failure + ": the best burn (" + Num(plan.DeltaV) + " m/s) arrives " + Num(ArrivalPlane.Angle(reached.Orbit.W, ask.TargetNormal.Value)) + " degrees off the plane asked";
             return plan;
-        }
-
-        /// <summary>The directions the arrival's unit normal must have no share of to be <paramref name="wanted"/>: two, or one for a burn round the target itself, whose position fixes the other.</summary>
-        private static Vec3[] PlaneAxes(Vec3 wanted, Conic orbit, double ut, bool roundTarget)
-        {
-            if (roundTarget) return new[] { Vec3.Cross(wanted, orbit.Position(ut)).Normalized };
-            var other = Math.Abs(wanted.Z) < 0.9 ? new Vec3(0, 0, 1) : new Vec3(1, 0, 0);
-            var one = Vec3.Cross(wanted, other).Normalized;
-            return new[] { one, Vec3.Cross(wanted, one) };
         }
 
         /// <summary>

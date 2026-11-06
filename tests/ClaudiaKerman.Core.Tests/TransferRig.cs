@@ -47,12 +47,28 @@ namespace ClaudiaKerman.Core.Tests
             return new TransferRig(body, altitude, ut, inclination);
         }
 
+        /// <summary>A craft on the arrival hyperbola round <paramref name="body"/>: periapsis altitude, v_inf (m/s), the orbit's plane and how long before periapsis.</summary>
+        public static TransferRig Arriving(string body, double peAltitude, double vInf, double inclination, double lan, double argPe, double beforePe)
+        {
+            var rig = new TransferRig(body, 100000, 0);
+            var mu = rig.Body.Gm;
+            var a = -mu / (vInf * vInf);
+            var rp = rig.Body.Radius + peAltitude;
+            var e = 1 - rp / a;
+            rig.Orbit = Conic.FromElements(mu, a, e, inclination, lan, argPe, -beforePe * Math.Sqrt(mu / -(a * a * a)), 0);
+            return rig;
+        }
+
         public GameSnapshot Snapshot()
         {
             var snapshot = new GameSnapshot { Ut = Ut, Situation = Orbit.Closed ? "ORBITING" : "ESCAPING", Body = Body.Name, Orbit = Elements(Orbit, Body) };
             snapshot.Bodies.AddRange(Bodies);
+            if (Stamp != null) Stamp(snapshot);
             return snapshot;
         }
+
+        /// <summary>What the Mission adds to each Game Snapshot (#788): its Target Vessel, legs and picked site.</summary>
+        public Action<GameSnapshot> Stamp { get; set; }
 
         /// <summary>Moves the craft on along its patches to <paramref name="ut"/>.</summary>
         public void MoveTo(double ut)
@@ -111,6 +127,27 @@ namespace ClaudiaKerman.Core.Tests
                 TransferFlight.Carry(ask, step);
             }
             throw new InvalidOperationException("transfer_to took over " + maxSteps + " steps");
+        }
+
+        /// <summary><c>capture</c>'s loop over <see cref="CaptureFlight.Next"/> on the rig, as <see cref="Run"/> is transfer_to's (#788).</summary>
+        public TransferFlightStep RunCapture(CaptureAsk ask, int maxSteps = 12)
+        {
+            var report = new Dictionary<string, object>();
+            for (var i = 0; i < maxSteps; i++)
+            {
+                var step = CaptureFlight.Next(Snapshot(), ask);
+                foreach (var entry in step.Report) report[entry.Key] = entry.Value;
+                if (step.Error != "" || step.Do == TransferFlightStep.Done)
+                {
+                    foreach (var entry in report) step.Report[entry.Key] = entry.Value;
+                    return step;
+                }
+                Fly(step.Kind, step.Ut, step.Prograde, step.Normal, step.Radial);
+                ask.Phase = step.Phase;
+                ask.Method = step.Why;
+                ask.Burns++;
+            }
+            throw new InvalidOperationException("capture took over " + maxSteps + " steps");
         }
 
         /// <summary>m/s burned on burns of <paramref name="kind"/>.</summary>

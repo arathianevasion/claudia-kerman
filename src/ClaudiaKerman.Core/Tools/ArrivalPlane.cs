@@ -196,6 +196,17 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>A pair of signed numbers in a leg's words, "(3.1, 24.6)": a site's latitude and longitude.</summary>
         private static readonly Regex LatLng = new Regex(@"\(\s*(-?\d+(?:\.\d+)?)\s*°?\s*,\s*-?\d+(?:\.\d+)?\s*°?\s*\)");
 
+        /// <summary>
+        /// The direction an arrival on <paramref name="orbit"/> comes in from: a hyperbola's incoming asymptote, the line any plane cheap to reach contains
+        /// (not the point it enters the sphere of influence, which is off it by the miss distance, 10 degrees at the Mun); a closed orbit's position at <paramref name="ut"/>.
+        /// </summary>
+        public static Vec3 WayIn(Conic orbit, double ut)
+        {
+            if (orbit.Closed) return orbit.Position(ut);
+            var nu = Math.Acos(-1 / orbit.E);
+            return orbit.P * Math.Cos(nu) - orbit.Q * Math.Sin(nu);
+        }
+
         /// <summary>The plane for an arrival at <paramref name="arrival"/>; null for none; <paramref name="error"/> says why the option can't be read.</summary>
         public static ArrivalPlane Resolve(GameSnapshot snapshot, BodySystem system, SnapshotBody arrival, PlaneOption option, out string error)
         {

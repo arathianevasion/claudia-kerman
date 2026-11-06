@@ -594,7 +594,8 @@ namespace ClaudiaKerman.Core.Tools
             var enc = Encounter(setup);
             if (enc == null) return Recover(snapshot, setup, ask, Lost(setup.Target));
             var far = Far(setup, ask);
-            // To a moon the halfway burn sets the plane too: its sphere of influence is small, and a change of plane inside it costs more (#788).
+            // To a moon the halfway burn sets the plane too: its sphere of influence is small, and a change of plane inside it costs twice as much (#788).
+            // A burn that size swings a moon's slow approach by some degrees, so a whole plane can come out of the trim that far off; capture takes that up.
             var plane = !far && setup.Body != setup.Target && ask.Plane != null && ask.Plane.OffBy(enc.Normal) > PlaneClose;
             if (!plane && Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, MidCheck);
             string late;
@@ -901,7 +902,7 @@ namespace ClaudiaKerman.Core.Tools
             public double Pe;
             public double PeUt;
             public double VInf;
-            /// <summary>The arrival orbit's normal, and where it enters the sphere of influence, the direction any plane cheap to reach contains (#788).</summary>
+            /// <summary>The arrival orbit's normal, and the direction it comes in from (<see cref="ArrivalPlanes.WayIn"/>, #788).</summary>
             public Vec3 Normal;
             public Vec3 Approach;
             /// <summary>The bodies the path goes round on its way, the target last.</summary>
@@ -922,7 +923,7 @@ namespace ClaudiaKerman.Core.Tools
                     return new Arrival
                     {
                         SoiUt = patch.StartUt, Pe = o.PeR - patch.Body.Radius, PeUt = o.NextPeriapsis(patch.StartUt) ?? patch.StartUt,
-                        VInf = o.Closed ? 0 : Math.Sqrt(o.Mu / Math.Abs(o.A)), Normal = o.W, Approach = o.Position(patch.StartUt), Bodies = bodies,
+                        VInf = o.Closed ? 0 : Math.Sqrt(o.Mu / Math.Abs(o.A)), Normal = o.W, Approach = ArrivalPlanes.WayIn(o, patch.StartUt), Bodies = bodies,
                     };
                 }
                 if (patch.Error != null) return null;
