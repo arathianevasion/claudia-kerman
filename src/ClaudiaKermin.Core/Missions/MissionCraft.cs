@@ -49,6 +49,28 @@ namespace ClaudiaKermin.Core.Missions
             return vessels.FirstOrDefault(v => Is(remote, processorPartId, vesselId, v));
         }
 
+        /// <summary>Why Hand back is disabled while Claudia is out on EVA (#262).</summary>
+        public const string HandBackOutOnEva = "Claudia is out on EVA: board a craft with a kOS processor to hand back";
+
+        /// <summary>
+        /// The craft while Claudia is out on EVA with the player holding it (Manual Control, the EVA-science pause), #262: the
+        /// vessel she left, by id, however many vessels there are. Boarded again (no longer on EVA) she is the ordinary rule,
+        /// so the craft follows her back, to another vessel if she boarded one. Null when the vessel she left isn't seen.
+        /// </summary>
+        public static SeenVessel Follow(bool remote, uint? processorPartId, string vesselId, IEnumerable<SeenVessel> vessels, bool evaHolds)
+        {
+            var all = vessels.ToList();
+            if (evaHolds && !remote && all.Any(v => v.ClaudiaAboard && v.Eva) && !all.Any(v => v.ClaudiaAboard && !v.Eva))
+                return string.IsNullOrEmpty(vesselId) ? null : all.FirstOrDefault(v => v.Id == vesselId && !v.Eva);
+            return Follow(remote, processorPartId, vesselId, all);
+        }
+
+        /// <summary>The Mission log Note when she boards another vessel than the one she left.</summary>
+        public static string BoardedLine(string name)
+        {
+            return "Claudia boarded " + name + ": it is now the Mission's craft.";
+        }
+
         /// <summary>
         /// Why Claudia can fly no vessel, or "" when she can fly <paramref name="craft"/>: aboard, she needs to be in a
         /// vessel with a kOS processor (not on EVA); remote, the original processor must still be on a vessel.

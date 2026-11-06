@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 //
-// Building Block reentry: brings a capsule down through an atmosphere. Built on claudia_lib.ks (and
-// deorbit.ks's stage drop plan, for separate); block-only helpers are prefixed reentry_. The "//|"
+// Building Block reentry: brings a capsule down through an atmosphere. Built on claudia_lib.ks (its
+// stage drop plan, for separate); block-only helpers are prefixed reentry_. The "//|"
 // lines are Claudia's docs for it; the first is its summary.
 
 @lazyglobal off.
@@ -706,7 +706,7 @@ function reentry_names {
 function reentry_separation {
   parameter sep, below.
   if sep:istype("Scalar") {
-    return deorbit_stage_drop_plan(sep).
+    return claudia_stage_drop_plan(sep).
   }
   local plan is claudia_drop_plan(list()).
   if sep = "auto" and below:shielded {

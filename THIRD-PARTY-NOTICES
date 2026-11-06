@@ -2,14 +2,14 @@ Claudia Kermin bundles third-party code under its own license. The notice below 
 kept with the code and ships in GameData/ClaudiaKermin.
 
 ================================================================================
-KSLib: kerboscript/kslib/lib_lazcalc.ks (bundled with one patch, recorded in
-kerboscript/kslib/NOTE.md)
-https://github.com/KSP-KOS/KSLib
+poliastro: src/ClaudiaKermin.Core/Tools/Lambert.cs (ported from MechJebLib's
+Lambert/Izzo.cs, itself a port of poliastro's Izzo solver)
+https://github.com/poliastro/poliastro
 ================================================================================
 
 The MIT License (MIT)
 
-Copyright (c) 2015-2020 The KSLib team
+Copyright (c) 2012 Juan Luis Cano Rodríguez, Jorge Martínez Garrido, and the poliastro development team
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

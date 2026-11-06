@@ -533,7 +533,8 @@ namespace ClaudiaKermin.Core.Missions
             _message = message + " Run the Craft Check again to retry.";
         }
 
-        public void Populate(CraftCheckView view, GameSnapshot snapshot)
+        /// <param name="formReported">The start form has reported its state (#664); <paramref name="formGoal"/> and <paramref name="formTarget"/> are then what it holds now.</param>
+        public void Populate(CraftCheckView view, GameSnapshot snapshot, string formGoal = null, TargetVessel formTarget = null, bool formReported = false)
         {
             view.State = _state;
             view.Verdict = _state == CraftCheckState.Done ? _verdict : CraftVerdict.None;
@@ -543,7 +544,15 @@ namespace ClaudiaKermin.Core.Missions
             {
                 Code = f.Code, Severity = f.Severity, Title = f.Title, Explanation = f.Explanation, Fix = f.Fix, Acknowledged = f.Acknowledged,
             }).ToList();
-            view.Stale = _state == CraftCheckState.Done && snapshot != null && _craftKey != CraftKey(snapshot);
+            var done = _state == CraftCheckState.Done && snapshot != null;
+            var formChanged = "";
+            if (done && formReported)
+            {
+                if (_goal != (formGoal ?? "").Trim()) formChanged = "Stale: the Mission Goal changed since this check. Check again.";
+                else if (_targetId != IdOf(formTarget)) formChanged = "Stale: the Target Vessel changed since this check. Check again.";
+            }
+            view.StaleReason = formChanged;
+            view.Stale = done && (formChanged.Length > 0 || _craftKey != CraftKey(snapshot));
 
             view.MarginPercent = _config.CraftCheckMarginPercent;
             if (snapshot != null)
@@ -567,8 +576,9 @@ namespace ClaudiaKermin.Core.Missions
             if (snapshot == null) view.StartAllowed = false;
             else if (_state == CraftCheckState.Running || _state == CraftCheckState.NeedsSimulator || _state == CraftCheckState.Error)
                 view.StartAllowed = false;
-            // A stale result that had Blockers keeps Start Mission closed until the check runs again; any other stale one lets Start check again.
-            else if (_state == CraftCheckState.Done) view.StartAllowed = view.Stale ? _verdict != CraftVerdict.Fail : Cleared;
+            // A result stale because the form's goal or target changed never blocks Start, which checks again (#664). One stale
+            // only because the craft changed keeps Start Mission closed when it had Blockers; any other stale one lets Start check again.
+            else if (_state == CraftCheckState.Done) view.StartAllowed = formChanged.Length > 0 || (view.Stale ? _verdict != CraftVerdict.Fail : Cleared);
             else view.StartAllowed = true;
         }
 

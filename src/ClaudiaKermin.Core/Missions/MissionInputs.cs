@@ -67,6 +67,22 @@ namespace ClaudiaKermin.Core.Missions
         }
     }
 
+    /// <summary>
+    /// The start form's Mission Goal text and Target Vessel pick as they stand now (#664): UI state only, never a request to Claude.
+    /// The Craft Check card shows its result as stale when either differs from what the check ran on.
+    /// </summary>
+    public sealed class StartFormChanged : MissionInput
+    {
+        public readonly string Goal;
+        public readonly TargetPick Target;
+
+        public StartFormChanged(string goal, TargetPick target = null)
+        {
+            Goal = goal;
+            Target = target ?? TargetPick.Auto;
+        }
+    }
+
     /// <summary>The player accepts a Craft Check Warning knowingly; Start Mission opens once every Warning is accepted.</summary>
     public sealed class AcknowledgeWarning : MissionInput
     {

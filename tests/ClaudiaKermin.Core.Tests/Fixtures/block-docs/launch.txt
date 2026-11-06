@@ -8,7 +8,7 @@ or a body's name: "Minmus") to wait for the pad to pass under the plane of, whic
 target_inc to its plane.
 target_ap ["auto"]: apoapsis to reach, m; "auto" is the atmosphere top + 10 km.
 target_inc [0]: inclination, degrees; negative launches southward.
-heading ["lib_lazcalc"]: compass degrees to fly, or "lib_lazcalc" to fly into target_inc.
+heading ["into_inc"]: compass degrees to fly, or "into_inc" to fly into target_inc.
 turn_start_speed [60]: m/s of airspeed at which the gravity turn starts. Give more than the craft
 will reach (e.g. 100000) to climb straight up.
 turn_shape [0.45]: the turn's pitch is 90 * (1 - f^turn_shape), f the fraction of the way from

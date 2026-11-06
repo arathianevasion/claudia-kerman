@@ -79,33 +79,12 @@ function deorbit_separate_unreadable {
   return "".
 }
 
-// claudia_drop_plan's lexicon for the decouplers that fire at stage number stage_num (kOS's
-// PART:STAGE, as reentry's jettison_stage) and the parts leaving with them.
-function deorbit_stage_drop_plan {
-  parameter stage_num.
-  local plan is claudia_drop_plan(list()).
-  for p in ship:parts {
-    if claudia_is_decoupler(p) and claudia_part_kind(p) <> "shield" and p:stage = stage_num {
-      local with is claudia_dropped_with(p).
-      if claudia_drop_holds_core(with) {
-        set plan:error to "stage " + stage_num + "'s " + p:name + " would drop the part running the script".
-        return plan.
-      }
-      claudia_drop_add(plan, p, with).
-    }
-  }
-  if plan:decouplers:length = 0 {
-    set plan:error to "no decoupler fires at stage " + stage_num.
-  }
-  return plan.
-}
-
 // What separate drops (claudia_drop_plan's lexicon): nothing for "none", a stage's decouplers for a
 // number, else the named parts. Fires nothing.
 function deorbit_separation {
   parameter sep.
   if sep:istype("Scalar") {
-    return deorbit_stage_drop_plan(sep).
+    return claudia_stage_drop_plan(sep).
   }
   if sep:istype("String") {
     if sep = "none" {
@@ -187,17 +166,27 @@ function deorbit_max_wait {
   return opt_value.
 }
 
+// The UIDs of the parts reentry's default (jettison "auto") drops with its heat shield: the shield's parts
+// if reentry_shield_modules finds a decoupler for it (else none), less leave_out. Pure.
+function deorbit_shield_drop {
+  parameter parts, leave_out.
+  local uids is list().
+  if reentry_shield_modules("auto", parts):length = 0 { return uids. }
+  for p in parts { if claudia_part_kind(p) = "shield" and not leave_out:contains(p:uid) { uids:add(p:uid). } }
+  return uids.
+}
+
 // What deorbit asks ADDONS:CLAUDIA:DEORBITBURN: the site, the window (earliest_ut, then max_wait s),
 // the ground's height at the site (m, sea level for water), accuracy_km, the engines' isp (s, for
-// the mass after the burn; 0 if unknown) and leave_out, the UIDs of the parts separate drops: the
-// search flies the craft without them, and their propellant is the burn's, so isp goes as 0. Pure.
+// the mass after the burn; 0 if unknown), leave_out and shield_drop (deorbit_shield_drop). The search
+// flies the craft without leave_out, and their propellant is the burn's, so isp goes as 0. Pure.
 function deorbit_query {
-  parameter site, earliest_ut, max_wait, ground_alt, accuracy_km, isp, leave_out.
+  parameter site, earliest_ut, max_wait, ground_alt, accuracy_km, isp, leave_out, shield_drop.
   if leave_out:length > 0 {
     set isp to 0.
   }
   return lexicon("lat", site:lat, "lng", site:lng, "earliest_ut", earliest_ut, "max_wait", max_wait,
-    "ground_alt", max(0, ground_alt), "accuracy_km", accuracy_km, "isp", isp, "leave_out", leave_out).
+    "ground_alt", max(0, ground_alt), "accuracy_km", accuracy_km, "isp", isp, "leave_out", leave_out, "shield_drop", shield_drop).
 }
 
 // A predicted landing (a block call's result with lat and lng) as the block reports it.
@@ -254,7 +243,7 @@ function deorbit {
   local ground_alt is body:geopositionlatlng(site:lat, site:lng):terrainheight.
   local max_wait is deorbit_max_wait(opt:max_wait, body:rotationperiod).
   // The burn search is the mod's reentry predictor, a block-internal call (ADR 0007): inline here.
-  local found is addons:claudia:deorbitburn(deorbit_query(site, time:seconds + deorbit_lead_s(), max_wait, ground_alt, opt:accuracy_km, claudia_engine_isp(), claudia_drop_uids(separation))).
+  local found is addons:claudia:deorbitburn(deorbit_query(site, time:seconds + deorbit_lead_s(), max_wait, ground_alt, opt:accuracy_km, claudia_engine_isp(), claudia_drop_uids(separation), deorbit_shield_drop(ship:parts, claudia_drop_uids(separation)))).
   if found:haskey("lat") {
     set extra:predicted_geo to deorbit_geo(found).
     set extra:predicted_error_km to round(found:error_km, 2).
@@ -289,7 +278,7 @@ function deorbit {
   }
 
   // Where the orbit actually flown comes down, with the craft as it is now: the burn's own error moves it.
-  local after is addons:claudia:reentryimpact(lexicon("lat", site:lat, "lng", site:lng, "ground_alt", max(0, ground_alt))).
+  local after is addons:claudia:reentryimpact(lexicon("lat", site:lat, "lng", site:lng, "ground_alt", max(0, ground_alt), "shield_drop", deorbit_shield_drop(ship:parts, claudia_drop_uids(separation)))).
   if after:error = "" {
     set extra:predicted_geo to deorbit_geo(after).
     set extra:predicted_error_km to round(after:error_km, 2).

@@ -57,7 +57,7 @@ A stretch of flight with no engine or RCS thrust, in an atmosphere or not (e.g. 
 _Avoid_: drift, glide, cruise
 
 **RCS Use**:
-A stretch on which a Mission Script has RCS switched on, always for a stated reason: a big turn (even with time to spare), turning when the reaction wheels alone can't make the turn in time, settling an attitude error the wheels can't, or translating. Outside RCS Use, RCS is off, whatever the player set before launch, so a craft holding attitude on a Coast doesn't fire thrusters. Two exceptions (#506): `land`'s braking to touchdown keeps RCS off unless the craft has no wheel torque, and on the ground (LANDED, SPLASHED or PRELAUNCH) RCS never comes on, in any block.
+A stretch on which a Mission Script has RCS switched on, always for a stated reason: a big turn (even with time to spare), turning when the reaction wheels alone can't make the turn in time, settling an attitude error the wheels can't, or translating. A turn on a craft with wheels is a burst turn (#692): one RCS burst spins it up, it coasts with RCS off, one burst stops it, and the wheels settle the last degrees, with at most two more burst pairs when the wheels can't close what's left in time. Outside RCS Use, RCS is off, whatever the player set before launch, so a craft holding attitude on a Coast doesn't fire thrusters. Two exceptions (#506): `land`'s braking to touchdown keeps RCS off unless the craft has no wheel torque, and on the ground (LANDED, SPLASHED or PRELAUNCH) RCS never comes on, in any block.
 _Avoid_: RCS mode, RCS assist
 
 **Aligned**:
@@ -105,7 +105,7 @@ The earliest Transfer Window whose total delta-v is within the Craft Check's mar
 _Avoid_: next window, fastest (a Mission Setting)
 
 **Optimal**:
-The cheapest Transfer Window within one synodic period of the two planets, or one orbit of the moon. A moon's Optimal is its Soonest unless it saves at least 5 m/s: the Mun, in the parking orbit's plane, costs the same at any departure; Minmus is cheapest near a node.
+The cheapest Transfer Window within one synodic period of the two planets, or one orbit of the moon. A moon's Optimal is its Soonest unless it saves at least 5 m/s: the Mun, in the parking orbit's plane, costs the same at any departure; Minmus is cheapest near a node. From the pad, a moon out of the equator's plane is costed as a launch into its plane at the next launch window (#690), so Soonest is Optimal and the wait is under a Kerbin day; the row names that launch (its target_inc and time).
 _Avoid_: best window, most efficient (a Mission Setting)
 
 **Daylight**:

@@ -290,6 +290,33 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void The_chutes_input_reaches_the_impact_and_the_deorbit_calls_and_a_bad_value_is_named()
+        {
+            // With chutes false the stowed chute stays stowed: the craft comes down later and farther, as the predictor alone says.
+            var craft = new ReentrySim.Capsule { Chutes = new System.Collections.Generic.List<ReentryChute> { ReentrySim.Mk16() } };
+            var chuted = BlockCalls.ReentryImpact(Ask("lat", 0.0, "lng", 0.0, "ground_alt", 0.0), Snapshot(pe: 30000), new Sphere(), new ReentrySim.Atmosphere(), craft);
+            var kept = BlockCalls.ReentryImpact(Ask("lat", 0.0, "lng", 0.0, "ground_alt", 0.0, "chutes", false), Snapshot(pe: 30000),
+                new Sphere(), new ReentrySim.Atmosphere(), craft);
+            Assert.Equal("", kept["error"]);
+            Assert.True((double)kept["lng"] > (double)chuted["lng"]);
+            Assert.True((double)kept["landing_ut"] < (double)chuted["landing_ut"]);
+
+            var deorbitChuted = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425),
+                Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), craft);
+            var deorbitKept = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "chutes", false),
+                Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), craft);
+            Assert.Equal("", deorbitKept["error"]);
+            Assert.NotEqual((double)deorbitChuted["dv"], (double)deorbitKept["dv"]);
+
+            var badDeorbit = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "chutes", "no"), Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), craft);
+            Assert.Equal("chutes must be true or false", badDeorbit["error"]);
+            Assert.Single(badDeorbit);
+            var badImpact = BlockCalls.ReentryImpact(Ask("chutes", 0.0), Snapshot(pe: 30000), new Sphere(), new ReentrySim.Atmosphere(), craft);
+            Assert.Equal("chutes must be true or false", badImpact["error"]);
+            Assert.Single(badImpact);
+        }
+
+        [Fact]
         public void The_parts_to_leave_out_are_the_uids_given_as_leave_out()
         {
             // kOS gives a part's UID as a string; a list of them, as KosValues turns it, or one bare.

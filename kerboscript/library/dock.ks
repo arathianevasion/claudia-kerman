@@ -22,19 +22,20 @@
 //| processor turns its port to the craft (dock_hold); any other must turn under 1 deg/s.
 //| Options:
 //|   port ["auto"]: the craft's port, by kOS tag or size (size0, size1, ...).
-//|   target_port ["auto"]: the target's, by tag or size; auto: the nearest free one of the craft's port's size.
+//|   target_port ["auto"]: the target's, by tag or size; auto: the nearest free one of the port's size.
 //|   approach_speed [1], final_speed [0.3]: m/s.
-//|   max_lateral [0.2]: m off the axis allowed inside 10 m; further, the craft stops and lines up.
+//|   max_lateral [0.2]: m off the axis allowed inside 10 m; further, it stops and lines up.
+//|   settle_timeout [300]: s to wait for dock_hold; then a loose settle will do.
 //|   max_duration [1800].
 //|   plus min_ec_pct, abort_on_part_loss and rcs_tolerance as for every block.
-//| Extra results: docked, port and target_port (tag or size), monoprop_used (units).
-//| Fails with no loaded Target Vessel, no RCS, too little monoprop for the distance, no free port to match, a passive target
-//| turning over 1 deg/s, drifting 50 m past the start, 15% monoprop left or a dock_hold fault (both after backing off), or an abort.
+//| Extra results: docked, port and target_port, monoprop_used.
+//| Fails with no loaded Target Vessel, no RCS, too little monoprop, no free port, a passive target
+//| over 1 deg/s, dock_hold unsettled by 2 x settle_timeout, drifting 50 m past the start, 15% monoprop left or a dock_hold fault (after backing off), or an abort.
 //| Example: `local res is dock(lexicon()). addons:claudia:report(res).`
 
 // The block's own options and defaults ("auto": chosen by the block).
 function dock_defaults {
-  return lexicon("port", "auto", "target_port", "auto", "approach_speed", 1, "final_speed", 0.3, "max_lateral", 0.2).
+  return lexicon("port", "auto", "target_port", "auto", "approach_speed", 1, "final_speed", 0.3, "max_lateral", 0.2, "settle_timeout", 300).
 }
 
 // deg/s: the fastest a passive target (no dock_hold) may turn.
@@ -55,7 +56,7 @@ function dock_unreadable {
       return key + " must be a port's kOS tag, a size such as size1, or 'auto'".
     }
   }
-  for key in list("approach_speed", "final_speed", "max_lateral") {
+  for key in list("approach_speed", "final_speed", "max_lateral", "settle_timeout") {
     if not opt[key]:istype("Scalar") or opt[key] <= 0 {
       return key + " must be above 0, not " + opt[key].
     }
@@ -87,7 +88,7 @@ function dock_back_off {
 // The block's flight, with its contacts with the game passed in so the kOS harness can fly it. state() is the craft's port
 // against the target port now: lexicon abort ("" or why the block must stop), docked, distance, along and lat (m, as
 // DockGuidance), speed (relative, m/s) and its v_along, v_lat and v_side, align_deg, spin_dps (the target's turn rate),
-// monoprop (units), hold and hold_reason (dock_hold's state: starting, active, settled, passive, fault, docked or none), ut.
+// monoprop (units), hold and hold_reason (dock_hold's state: starting, active, near, settled, passive, fault, docked or none), hold_off_deg, ut.
 // push(s, mode) flies a tick on DOCKGUIDE's answer for s in mode (close, back_off or hold). name is the Target Vessel's.
 // At 15% of its starting monoprop it backs off and fails. Returns lexicon("reason", "" or why it fails, "docked",
 // "monoprop", the last monoprop read undocked, "state", the last state).
@@ -112,7 +113,7 @@ function dock_run {
     local why is "".
     if s:hold = "fault" {
       set why to "dock_hold on " + name + " stopped: " + s:hold_reason.
-    } else if not list("active", "starting", "settled"):contains(s:hold) and s:spin_dps > dock_max_spin() {
+    } else if not list("active", "starting", "near", "settled"):contains(s:hold) and s:spin_dps > dock_max_spin() {
       set why to name + " turns at " + round(s:spin_dps, 1) + " deg/s, over " + dock_max_spin() + " deg/s, with no dock_hold (" + s:hold_reason + ")".
     } else if s:monoprop <= reserve {
       set why to "monopropellant down to " + round(s:monoprop, 1) + " units, 15% of the start's, " + round(s:distance, 1) + " m from " + name + "'s port".
@@ -142,7 +143,7 @@ function dock_run {
 function dock_stopped {
   parameter reason, docked.
   return lexicon("abort", reason, "docked", docked, "distance", 0, "along", 0, "lat", 0, "speed", 0, "align_deg", 0, "spin_dps", 0,
-    "monoprop", 0, "hold", "none", "hold_reason", "", "ut", 0).
+    "monoprop", 0, "hold", "none", "hold_reason", "", "hold_off_deg", 0, "ut", 0).
 }
 
 // The craft's ports option port allows (a kOS tag, a size, or "auto"): its free (Ready) docking ports. Returns
@@ -201,8 +202,8 @@ function dock {
   if mine:error <> "" {
     return claudia_finish(ctx, false, mine:error, extra).
   }
-  // The target is read inline, never passed to a function: the Script Check follows another vessel into every function it is
-  // passed to (ADR 0003), so every name holding it or its parts starts dk_ and no other code uses one.
+  // The target is read inline, never passed to a function: a call that passes another vessel taints the callee's parameter
+  // (ADR 0003, #654), so every name holding it or its parts starts dk_ and no other code uses one.
   local dk_target is named:vessel.
   if not dk_target:loaded {
     return claudia_finish(ctx, false, named:name + " is not loaded (" + round(dk_target:distance) + " m): fly rendezvous first", extra).
@@ -257,12 +258,17 @@ function dock {
   local dk_side is v(0, 0, 0).
   local trace_ut is -1.
   local firing is false.
+  local dk_since is -1.
+  local dk_gave is "".
   lock steering to claudia_keep_roll(-dk_axis).
   local done is dock_run(named:name,
     {
       local ticked is claudia_tick(ctx, 0).
       if ticked <> "" {
         return dock_stopped(ticked, false).
+      }
+      if dk_gave <> "" {
+        return dock_stopped(dk_gave, false).
       }
       if own:state:startswith("Docked") or own:state:startswith("Acquire") {
         return dock_stopped("", true).
@@ -286,14 +292,20 @@ function dock {
       return lexicon("abort", "", "docked", false, "distance", rel:mag, "along", along, "lat", lat, "speed", vel:mag,
         "v_along", vdot(vel, dk_axis), "v_lat", vdot(vel, dk_off), "v_side", vdot(vel, dk_side),
         "align_deg", vang(ship:facing:forevector, -dk_axis), "spin_dps", dk_target:angularvel:mag * constant:radtodeg,
-        "monoprop", mono, "hold", held:state, "hold_reason", held:reason, "ut", time:seconds).
+        "monoprop", mono, "hold", held:state, "hold_reason", held:reason, "hold_off_deg", vang(dk_axis, rel), "ut", time:seconds).
     },
     {
       parameter s, mode.
       local g is addons:claudia:dockguide(lexicon("mode", mode, "hold", s:hold, "along", s:along, "lat", s:lat, "distance", s:distance, "align_deg", s:align_deg,
         "v_along", s:v_along, "v_lat", s:v_lat, "v_side", s:v_side, "firing", firing,
-        "approach_speed", opt:approach_speed, "final_speed", opt:final_speed, "max_lateral", opt:max_lateral)).
+        "approach_speed", opt:approach_speed, "final_speed", opt:final_speed, "max_lateral", opt:max_lateral,
+        "ut", s:ut, "wait_since", dk_since, "settle_timeout", opt:settle_timeout, "target", named:name, "hold_off_deg", s:hold_off_deg, "spin_dps", s:spin_dps)).
       set firing to g:fire.
+      set dk_since to g:wait_since.
+      set dk_gave to g:wait_error.
+      if g:wait_end <> "" {
+        addons:claudia:blocknote("dock", lexicon("note", "dock waited " + round(g:wait_s) + " s for " + named:name + "'s dock_hold (" + g:wait_end + ")")).
+      }
       if firing <> ctx:rcs_translating {
         claudia_rcs_translate(ctx, firing).
       }
@@ -309,7 +321,7 @@ function dock {
       if time:seconds >= trace_ut + 1 {
         set trace_ut to time:seconds.
         addons:claudia:blocknote("dock", lexicon("mode", mode, "distance", round(s:distance, 2), "along", round(s:along, 2), "lat", round(s:lat, 2),
-          "align_deg", round(s:align_deg, 1), "speed", round(s:speed, 3), "dv_error", round(g:dv_error, 3), "translating", firing, "monoprop", round(s:monoprop, 1), "hold", s:hold)).
+          "align_deg", round(s:align_deg, 1), "speed", round(s:speed, 3), "dv_error", round(g:dv_error, 3), "translating", firing, "monoprop", round(s:monoprop, 1), "hold", s:hold, "wait_s", round(g:wait_s))).
       }
       wait 0.
     }).

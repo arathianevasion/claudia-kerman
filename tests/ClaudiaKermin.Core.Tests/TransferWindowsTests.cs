@@ -251,6 +251,69 @@ namespace ClaudiaKermin.Core.Tests
             Assert.False(result.TryGetProperty("soonest", out _));
         }
 
+        private static GameSnapshot WithDv(double dv, double? later)
+        {
+            var snapshot = Parked();
+            snapshot.DeltaVSimulator = true;
+            snapshot.Stages.Clear();
+            snapshot.Stages.Add(new SnapshotStage { Number = 1, DeltaVVac = dv });
+            snapshot.LaterLegsDv = later;
+            return snapshot;
+        }
+
+        private static PlannedSequence Leg(string name, double dv, string vessel = "")
+        {
+            return new PlannedSequence { Name = name, DeltaV = dv, Vessel = vessel };
+        }
+
+        [Fact]
+        public void The_later_legs_of_the_plan_are_the_craft_s_legs_after_the_one_being_planned()
+        {
+            var plan = new MissionPlan();
+            plan.Sequences.Add(Leg("transfer", 1100));
+            plan.Sequences.Add(Leg("land", 600));
+            plan.Sequences.Add(Leg("probe", 300, "Probe"));
+            plan.Sequences.Add(Leg("return", 900, "craft"));
+            Assert.Equal(1500, MissionCards.LaterLegsDv(plan, 0, "Ship"));
+            Assert.Equal(900, MissionCards.LaterLegsDv(plan, 1, "Ship"));
+        }
+
+        [Fact]
+        public void Later_legs_decide_whether_a_window_fits()
+        {
+            var cheapest = Find("Duna").Optimal.TotalDv;
+            // The craft affords the transfer alone but not with 1,500 m/s kept for the later legs.
+            var dv = Math.Ceiling(cheapest) + 200;
+            var result = Run("{\"target\":\"Duna\",\"target_pe\":100000}", WithDv(dv, 1500));
+            Assert.False(result.GetProperty("fits").GetBoolean());
+            Assert.Equal(1500, result.GetProperty("later_legs_dv").GetDouble());
+            Assert.Equal(Math.Round(dv - 1500, 1), result.GetProperty("available_dv").GetDouble());
+            Assert.Contains("later legs", result.GetProperty("note").GetString());
+            var fits = Run("{\"target\":\"Duna\",\"target_pe\":100000}", WithDv(dv + 1500, 1500));
+            Assert.True(fits.GetProperty("fits").GetBoolean());
+            Assert.Equal(1500, fits.GetProperty("later_legs_dv").GetDouble());
+            Assert.Equal(Math.Round(dv, 1), fits.GetProperty("available_dv").GetDouble());
+        }
+
+        [Fact]
+        public void With_no_later_legs_the_result_is_as_it_was()
+        {
+            var dv = Math.Ceiling(Find("Duna").Optimal.TotalDv) + 200;
+            var plain = Run("{\"target\":\"Duna\",\"target_pe\":100000}", WithDv(dv, null));
+            Assert.False(plain.TryGetProperty("later_legs_dv", out _));
+            Assert.False(plain.TryGetProperty("available_dv", out _));
+            Assert.True(plain.GetProperty("fits").GetBoolean());
+        }
+
+        [Fact]
+        public void The_later_legs_are_not_in_the_Snapshot_JSON()
+        {
+            var snapshot = WithDv(3000, 1500);
+            var without = WithDv(3000, null);
+            Assert.Equal(without.ToJson(false), snapshot.ToJson(false));
+            Assert.DoesNotContain("later_legs", snapshot.ToJson(true));
+        }
+
         [Fact]
         public void A_craft_that_can_afford_Duna_gets_the_same_soonest_and_optimal_as_one_with_no_figure()
         {
@@ -406,6 +469,45 @@ namespace ClaudiaKermin.Core.Tests
             Assert.True(result.TryGetProperty("parking_note", out _));
             Assert.True(result.GetProperty("optimal").GetProperty("total_dv").GetDouble() <= result.GetProperty("soonest").GetProperty("total_dv").GetDouble());
             Assert.True(_tools.Run("plan_transfer", "{\"target\":\"Mun\",\"target_pe\":30000}", snapshot, new NoPlanningBody()).IsError);
+        }
+
+        private static GameSnapshot Pad()
+        {
+            var snapshot = Parked();
+            snapshot.Orbit = null;
+            snapshot.Situation = "PRELAUNCH";
+            return snapshot;
+        }
+
+        // #690: from the pad, Minmus's rows are a launch into its plane at the next launch window, then the transfer in that plane.
+        [Fact]
+        public void From_the_pad_Minmus_launches_into_its_plane_and_waits_under_a_day()
+        {
+            var pad = Pad();
+            var found = Find("Minmus", pad);
+            Assert.NotNull(found.Launch);
+            Assert.True(found.Launch.WaitSeconds < Day, "launch wait " + found.Launch.WaitSeconds);
+            Assert.Same(found.Soonest, found.Optimal);
+            Assert.Equal(0, found.Optimal.PlaneDv);
+            Assert.Equal(found.Launch.Ut + WindowWaits.LaunchLeadS, found.Optimal.DepartureUt, 3);
+            Assert.True(found.Optimal.DepartureUt - pad.Ut < Day);
+            Assert.True(Math.Abs(found.Launch.Inclination) > 5);
+            // Never a pad Due Time past the launch window: the window less the lead is the launch itself.
+            var due = WindowWaits.DueTime(found.Optimal.DepartureUt, pad.Ut);
+            Assert.True(due == null || due.Value <= found.Launch.Ut + 1e-6);
+
+            var row = Run("{\"target\":\"Minmus\",\"target_pe\":30000}", pad).GetProperty("launch");
+            Assert.Equal(found.Launch.Ut, row.GetProperty("at_ut").GetDouble(), 0);
+            Assert.Equal(found.Launch.Inclination, row.GetProperty("target_inc").GetDouble(), 1);
+        }
+
+        // From orbit nothing changes, and the Mun (in the equator's plane) is the same from the pad as it was.
+        [Fact]
+        public void From_orbit_and_to_the_Mun_the_rows_do_not_assume_a_launch()
+        {
+            Assert.Null(Find("Minmus").Launch);
+            Assert.Null(Find("Mun", Pad()).Launch);
+            Assert.False(Run("{\"target\":\"Minmus\",\"target_pe\":30000}", Parked()).GetProperty("windows").TryGetProperty("launch", out _));
         }
 
         // The Mission request's stage table rows are plan_transfer's answers, so Minmus's carries its windows.

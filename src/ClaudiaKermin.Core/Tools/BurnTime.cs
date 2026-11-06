@@ -33,24 +33,32 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>Plane normals closer than this (a unit cross product, about 6e-5 degrees) are the same plane: there are no nodes.</summary>
         private const double SamePlane = 1e-6;
 
+        /// <summary>
+        /// The keyword references, read by <see cref="IsNamed"/> and by the bad-<c>at</c> message. <see cref="Named"/> dispatches on the same
+        /// names by hand, so a name added here needs its branch there (<c>Every_reference_resolves_within_a_budget</c> checks each one).
+        /// The altitude form is the one "altitude " prefix, shown as <see cref="AltitudeForm"/>.
+        /// </summary>
+        internal static readonly string[] References =
+        {
+            "ap", "pe", "eq_an", "eq_dn", "eq_nearest", "eq_highest", "rel_an", "rel_dn", "closest_approach",
+        };
+
+        /// <summary>The altitude reference as the bad-<c>at</c> message shows it.</summary>
+        internal const string AltitudeForm = "altitude <m> [ascending|descending]";
+
         /// <summary>Whether <paramref name="text"/> (trimmed, lower case) names a reference this class resolves, a UT or "in &lt;s&gt;" aside.</summary>
         public static bool IsNamed(string text)
         {
-            switch (text)
-            {
-                case "ap":
-                case "pe":
-                case "eq_an":
-                case "eq_dn":
-                case "eq_nearest":
-                case "eq_highest":
-                case "rel_an":
-                case "rel_dn":
-                case "closest_approach":
-                    return true;
-                default:
-                    return text.StartsWith("altitude ", StringComparison.Ordinal);
-            }
+            return Array.IndexOf(References, text) >= 0 || text.StartsWith("altitude ", StringComparison.Ordinal);
+        }
+
+        /// <summary>The bad-<c>at</c> message: every form <c>at</c> accepts, listing <see cref="References"/> (the list <see cref="IsNamed"/> reads).</summary>
+        private static string BadAt(string label)
+        {
+            var forms = new List<string>();
+            foreach (var reference in References) forms.Add("\"" + reference + "\"");
+            forms.Add("\"" + AltitudeForm + "\"");
+            return label + ".at must be " + string.Join(", ", forms) + ", a UT in seconds, or \"in <s>\"";
         }
 
         /// <summary>
@@ -74,7 +82,7 @@ namespace ClaudiaKermin.Core.Tools
             else if (text != null && double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out ut)) { }
             else
             {
-                problem = label + ".at must be \"ap\", \"pe\", a UT in seconds, or \"in <s>\"";
+                problem = BadAt(label);
                 return null;
             }
             if (double.IsNaN(ut) || double.IsInfinity(ut))

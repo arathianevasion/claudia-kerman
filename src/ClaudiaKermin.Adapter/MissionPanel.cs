@@ -46,6 +46,9 @@ namespace ClaudiaKermin.Adapter
         // here, never in the setup saved as the next Mission's defaults (#639); a Mission under way puts it back to Auto.
         private TargetPick _targetPick = TargetPick.Auto;
         private bool _choosingTarget;
+        // The goal and pick last told to the core (#664), so it hears only changes.
+        private string _reportedGoal;
+        private TargetPick _reportedPick;
         // The Mission's Choose list is open (#661): its own flag, since a Mission under way resets the form's every frame.
         private bool _changingTarget;
         // The line's choice, kept until the goal, the pick or the facts (a new snapshot) change.
@@ -143,6 +146,7 @@ namespace ClaudiaKermin.Adapter
 
             DrawGoal(settingUp);
             SetCraftCheckContext(settingUp);
+            ReportForm(settingUp);
             GUILayout.BeginVertical(GUILayout.ExpandHeight(true));
             GUILayout.Space(ClaudiaSkin.Gap / 2);
             GUILayout.BeginHorizontal();
@@ -190,6 +194,16 @@ namespace ClaudiaKermin.Adapter
         {
             _promptFor = toggles && _promptFor == mode ? PromptFor.Reply : mode;
             _focusPrompt = _promptFor == mode;
+        }
+
+        /// <summary>Tells the core the form's goal and Target Vessel pick when they change, so the Craft Check card can show it is stale (#664). UI state only.</summary>
+        private void ReportForm(bool settingUp)
+        {
+            if (!settingUp || _goal.Length == 0) return;
+            if (_goal == _reportedGoal && ReferenceEquals(_targetPick, _reportedPick)) return;
+            _reportedGoal = _goal;
+            _reportedPick = _targetPick;
+            _send(new StartFormChanged(_goal, _targetPick));
         }
 
         // What the Craft Check card in the transcript needs from the setup: the pinned goal, the cost estimate and Check again.
@@ -548,6 +562,12 @@ namespace ClaudiaKermin.Adapter
                         if (Mathf.FloorToInt(Time.realtimeSinceStartup * 2f) % 2 == 0) GUI.color = new Color(1f, 0.75f, 0.4f);
                         clicked = ClaudiaSkin.PrimaryButton(label, GUILayout.ExpandWidth(true), GUILayout.MinWidth(0));
                         GUI.color = tint;
+                    }
+                    else if (reply == QuickReply.HandBack && _view.HandBackUnavailable.Length > 0)
+                    {
+                        // Out on EVA (#262): the reason is in the strip's lock line.
+                        ClaudiaSkin.DisabledButton(label, GUILayout.ExpandWidth(true), GUILayout.MinWidth(0));
+                        clicked = false;
                     }
                     else if (MissionWindowRules.IsPrimary(reply)) clicked = ClaudiaSkin.PrimaryButton(label, GUILayout.ExpandWidth(true), GUILayout.MinWidth(0));
                     else if (reply == QuickReply.ChangeSomething) clicked = ClaudiaSkin.ToggleButton(writing == PromptFor.Change, label, GUILayout.ExpandWidth(false));

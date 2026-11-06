@@ -14,18 +14,21 @@ namespace ClaudiaKermin.Core.Missions
     /// figures the block had to hand. Keys of the lexicon: <c>on</c> (boolean) and <c>reason</c> (one of <see cref="Reasons"/>),
     /// then each optional: <c>error_deg</c> (steering error), <c>rate_dps</c> (turn rate, deg/s), <c>wheels_s</c> and <c>left_s</c>
     /// (the wheels' turn time against the seconds left to the deadline, given together), <c>monoprop</c> and <c>monoprop_max</c>
-    /// (units, given together), <c>stopping_s</c> and <c>kp</c> (the turn override's kOS maxstoppingtime and rate gain, given together).
+    /// (units, given together), <c>coast_dps</c> (a burst turn's planned coast rate, #692). A burst turn's one line at its end
+    /// (reason <c>turned</c>) adds <c>flown_dps</c> (the rate it coasted at), <c>spin_s</c> and <c>stop_s</c> (the bursts' seconds),
+    /// <c>monoprop_used</c>, <c>left_deg</c> (the error the stop burst left), <c>corrections</c> and <c>dv_mps</c> (the change in
+    /// orbital velocity across the turn: the push RCS left).
     /// </summary>
     public sealed class RcsSwitch
     {
         public static readonly string[] Reasons =
         {
-            "turning", "falling behind", "big turn", "no wheel torque", "translating", "aligned", "steering released", "block end", "no monoprop",
+            "turning", "falling behind", "big turn", "no wheel torque", "translating", "aligned", "steering released", "block end", "no monoprop", "turned",
         };
 
         public bool On;
         public string Reason = "";
-        public double? ErrorDeg, RateDps, WheelsS, LeftS, Monoprop, MonopropMax, StoppingS, Kp;
+        public double? ErrorDeg, RateDps, WheelsS, LeftS, Monoprop, MonopropMax, CoastDps, FlownDps, SpinS, StopS, MonopropUsed, LeftDeg, Corrections, DvMps;
 
         /// <summary>Reads the lexicon; null with <paramref name="problem"/> set when it can't be a switch.</summary>
         public static RcsSwitch Parse(IDictionary<string, object> values, out string problem)
@@ -40,7 +43,7 @@ namespace ClaudiaKermin.Core.Missions
                 return null;
             }
             var found = new RcsSwitch { On = (bool)on, Reason = (string)reason };
-            foreach (var key in new[] { "error_deg", "rate_dps", "wheels_s", "left_s", "monoprop", "monoprop_max", "stopping_s", "kp" })
+            foreach (var key in new[] { "error_deg", "rate_dps", "wheels_s", "left_s", "monoprop", "monoprop_max", "coast_dps", "flown_dps", "spin_s", "stop_s", "monoprop_used", "left_deg", "corrections", "dv_mps" })
             {
                 object raw;
                 if (!values.TryGetValue(key, out raw) || raw == null) continue;
@@ -53,8 +56,14 @@ namespace ClaudiaKermin.Core.Missions
                     case "wheels_s": found.WheelsS = number; break;
                     case "left_s": found.LeftS = number; break;
                     case "monoprop": found.Monoprop = number; break;
-                    case "stopping_s": found.StoppingS = number; break;
-                    case "kp": found.Kp = number; break;
+                    case "coast_dps": found.CoastDps = number; break;
+                    case "flown_dps": found.FlownDps = number; break;
+                    case "spin_s": found.SpinS = number; break;
+                    case "stop_s": found.StopS = number; break;
+                    case "monoprop_used": found.MonopropUsed = number; break;
+                    case "left_deg": found.LeftDeg = number; break;
+                    case "corrections": found.Corrections = number; break;
+                    case "dv_mps": found.DvMps = number; break;
                     default: found.MonopropMax = number; break;
                 }
             }
@@ -75,7 +84,12 @@ namespace ClaudiaKermin.Core.Missions
             if (RateDps.HasValue) figures.Add("rate " + Format(RateDps.Value, "0.0") + "°/s");
             if (WheelsS.HasValue && LeftS.HasValue) figures.Add("wheels " + Format(WheelsS.Value, "0") + " s vs " + Format(LeftS.Value, "0") + " s left");
             if (Monoprop.HasValue && MonopropMax.HasValue) figures.Add("monoprop " + Format(Monoprop.Value, "0") + "/" + Format(MonopropMax.Value, "0"));
-            if (StoppingS.HasValue && Kp.HasValue) figures.Add("turn cap T " + Format(StoppingS.Value, "0.0") + " s, kp " + Format(Kp.Value, "0.00"));
+            if (CoastDps.HasValue) figures.Add("coast " + Format(CoastDps.Value, "0.00") + "°/s planned" + (FlownDps.HasValue ? ", " + Format(FlownDps.Value, "0.00") + "°/s flown" : ""));
+            if (SpinS.HasValue && StopS.HasValue) figures.Add("bursts " + Format(SpinS.Value, "0.0") + " s up, " + Format(StopS.Value, "0.0") + " s down");
+            if (MonopropUsed.HasValue) figures.Add("monoprop " + Format(MonopropUsed.Value, "0.00") + " used");
+            if (LeftDeg.HasValue) figures.Add(Format(LeftDeg.Value, "0.0") + "° left after the stop");
+            if (Corrections.HasValue) figures.Add(Format(Corrections.Value, "0") + " corrections");
+            if (DvMps.HasValue) figures.Add("orbital velocity changed " + Format(DvMps.Value, "0.000") + " m/s");
             return "RCS " + (On ? "on" : "off") + ": " + Reason + (figures.Count > 0 ? " (" + string.Join(", ", figures.ToArray()) + ")" : "");
         }
 

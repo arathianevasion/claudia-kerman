@@ -394,7 +394,8 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>ADDONS:CLAUDIA:DEORBITBURN</c>, for <c>deorbit</c>: the deorbit burn search (<see cref="DeorbitBurn"/>) from the craft's
         /// orbit, by the reentry predictor with <paramref name="air"/> and <paramref name="craft"/>. Takes <c>lat</c>, <c>lng</c>
         /// (the target), <c>earliest_ut</c>, <c>max_wait</c> (s), <c>ground_alt</c> (m), <c>accuracy_km</c> and <c>isp</c> (s; 0 or
-        /// missing for none); <c>leave_out</c> (<see cref="LeftOut"/>) is for the adapter's <paramref name="craft"/>. Gives <c>error</c> "", <c>burn_ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver
+        /// missing for none); <c>chutes</c> (#477, true or missing: the predictor opens the stowed chutes; false keeps them stowed;
+        /// anything else is an error); <c>leave_out</c> (<see cref="LeftOut"/>) is for the adapter's <paramref name="craft"/>. Gives <c>error</c> "", <c>burn_ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver
         /// node components), <c>dv</c>, and the landing: <c>lat</c>, <c>lng</c>, <c>error_km</c>, <c>landing_ut</c>. A best burn
         /// outside the accuracy gives its <c>error</c> with the landing; a search that could not run, only <c>error</c>.
         /// </summary>
@@ -402,6 +403,9 @@ namespace ClaudiaKermin.Core.Tools
             IReentryAir air, IReentryCraft craft)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            bool chutes;
+            var chutesProblem = ChutesOf(ask, out chutes);
+            if (chutesProblem != null) return Error(chutesProblem);
             SnapshotBody at;
             Conic orbit;
             BodyFrame frame;
@@ -416,6 +420,7 @@ namespace ClaudiaKermin.Core.Tools
                 GroundAltitude = Number(ask, "ground_alt", 0),
                 AccuracyKm = Number(ask, "accuracy_km", 5),
                 Isp = Number(ask, "isp", 0),
+                Chutes = chutes,
             }, air, craft, frame);
             if (plan.Landing == null || plan.Landing.Error != null) return Error(plan.Error ?? plan.Landing.Error);
             var result = Landing(plan.Landing, plan.ErrorKm);
@@ -436,18 +441,21 @@ namespace ClaudiaKermin.Core.Tools
         /// asks it of its planned path round Kerbin before the craft is there, with <c>from_ut</c> (UT, default now) the UT that
         /// path begins, so the fall is not taken from an earlier pass of the same conic. Gives
         /// <c>error</c> "", <c>lat</c>, <c>lng</c>, <c>landing_ut</c> and <c>error_km</c> (-1 without a target); or only
-        /// <c>error</c>, saying why there is no landing point.
+        /// <c>error</c>, saying why there is no landing point. <c>chutes</c> (#477) is as for <see cref="DeorbitBurn"/>.
         /// </summary>
         public static IDictionary<string, object> ReentryImpact(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body,
             IReentryAir air, IReentryCraft craft)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            bool chutes;
+            var chutesProblem = ChutesOf(ask, out chutes);
+            if (chutesProblem != null) return Error(chutesProblem);
             SnapshotBody at;
             Conic orbit;
             BodyFrame frame;
             var problem = Reentry(snapshot, body, ask, out at, out orbit, out frame);
             if (problem != null) return Error(problem);
-            var landing = ReentryPredictor.Predict(at, orbit, Number(ask, "from_ut", snapshot.Ut), Number(ask, "ground_alt", 0), craft.MassKg, air, craft, frame);
+            var landing = ReentryPredictor.Predict(at, orbit, Number(ask, "from_ut", snapshot.Ut), Number(ask, "ground_alt", 0), craft.MassKg, air, craft, frame, chutes);
             if (landing.Error != null) return Error(landing.Error);
             var km = ask.ContainsKey("lat") && ask.ContainsKey("lng")
                 ? LandingSiteSearch.ArcDegrees(landing.Latitude, landing.Longitude, Number(ask, "lat", 0), Number(ask, "lng", 0)) * Math.PI / 180 * at.Radius / 1000
@@ -684,6 +692,25 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
+        /// <c>ADDONS:CLAUDIA:LAUNCHHEADING</c>, for <c>launch</c>'s heading (#475): <see cref="Tools.LaunchWindow.HeadingInto"/>, the
+        /// compass heading plan_ascent reports, from the pad at <c>lat</c> (degrees) into the plane of inclination <c>inc</c> (degrees;
+        /// negative is southbound) to a circular orbit <c>target_ap</c> m up, on a body of <c>gm</c> (m^3/s^2), <c>radius</c> (m) and
+        /// <c>rotation</c> (s). The block calls it again on the climb, as the pad's latitude moves. Gives <c>error</c> "" and
+        /// <c>heading</c> (degrees), or only <c>error</c>.
+        /// </summary>
+        public static IDictionary<string, object> LaunchHeading(IDictionary<string, object> input)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            foreach (var key in new[] { "inc", "lat", "gm", "radius", "rotation" })
+                if (!NumberOrNull(ask, key).HasValue) return Error(key + " is required");
+            var body = new SnapshotBody { Gm = Number(ask, "gm", 0), Radius = Number(ask, "radius", 0), RotationPeriod = Number(ask, "rotation", 0) };
+            if (body.Gm <= 0 || body.Radius <= 0 || body.RotationPeriod <= 0) return Error("the body needs gm, radius and rotation above zero");
+            var inc = Number(ask, "inc", 0);
+            var heading = Tools.LaunchWindow.HeadingInto(body, Number(ask, "lat", 0), Math.Abs(inc), inc >= 0, Number(ask, "target_ap", 0));
+            return new Dictionary<string, object> { { "error", "" }, { "heading", heading } };
+        }
+
+        /// <summary>
         /// <c>ADDONS:CLAUDIA:CORRECTIONBURN</c>, for <c>transfer_to</c> and <c>return</c> (#449): the Course Correction, the smallest
         /// burn that brings the craft's trajectory to <c>target</c> (a body's name) at <c>target_pe</c> (m) and, if given, at
         /// <c>target_inc</c> (degrees), by <see cref="Tools.CorrectionBurn"/>. <c>earliest_ut</c> (UT; now if missing) and
@@ -902,7 +929,9 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver node components), <c>dv</c>, <c>burn_time</c> (s; -1 when
         /// the craft's stages don't give it) and <c>wanted</c>, a lexicon of each element the goal sets and the figure it aims at
         /// (<see cref="SolvedBurn.Wanted"/>); or only <c>error</c>, solve_burn's reason. It refuses <c>intercept_at</c>, whose aim is
-        /// an arrival, not an element.
+        /// an arrival, not an element. Block-internal (#691), for change_orbit's re-solve after the turn: <c>resolve_ut</c> (the
+        /// node's UT) and <c>resolve_max_dv</c> (a number, or anything else for none). With <c>resolve_ut</c>, a burn more than 5 s
+        /// from it, or <c>resolve_max_dv</c> and a burn over it, gives only an <c>error</c> naming that: the first node is kept.
         /// </summary>
         public static IDictionary<string, object> OrbitBurn(IDictionary<string, object> input, GameSnapshot snapshot)
         {
@@ -917,10 +946,20 @@ namespace ClaudiaKermin.Core.Tools
             if (goal as string == "match_velocities" || goal as string == "course_correction")
                 return Error("ORBITBURN does not solve " + goal + ": it aims at the Target Vessel, not an orbit element; CORRECTIONBURN solves it at fly time");
             var json = new JsonWriter().BeginObject();
+            double? resolveUt = null, resolveMaxDv = null;
             foreach (var entry in ask)
             {
                 var key = entry.Key.ToLowerInvariant();
                 var text = entry.Value as string;
+                if (key == "resolve_ut" || key == "resolve_max_dv")
+                {
+                    if (entry.Value is double && !double.IsNaN((double)entry.Value))
+                    {
+                        if (key == "resolve_ut") resolveUt = (double)entry.Value;
+                        else resolveMaxDv = (double)entry.Value;
+                    }
+                    continue;
+                }
                 switch (key)
                 {
                     case "goal":
@@ -950,6 +989,12 @@ namespace ClaudiaKermin.Core.Tools
             var solved = new SolvedBurn();
             var outcome = new SolveBurn().Solve(JsonReader.Parse(json.EndObject().ToString()), snapshot, solved);
             if (outcome.IsError) return Error(outcome.Summary);
+            if (resolveUt.HasValue && Math.Abs(solved.Ut - resolveUt.Value) > 5)
+                return Error("the burn moved to UT " + Math.Round(solved.Ut, 1).ToString(CultureInfo.InvariantCulture) + " from "
+                    + Math.Round(resolveUt.Value, 1).ToString(CultureInfo.InvariantCulture));
+            if (resolveUt.HasValue && resolveMaxDv.HasValue && solved.DeltaV > resolveMaxDv.Value)
+                return Error("needs " + Math.Round(solved.DeltaV, 1).ToString(CultureInfo.InvariantCulture) + " m/s, over max_dv "
+                    + resolveMaxDv.Value.ToString(CultureInfo.InvariantCulture));
             var wanted = new Dictionary<string, object>();
             foreach (var element in solved.Wanted) wanted[element.Key] = element.Value;
             return new Dictionary<string, object>
@@ -963,6 +1008,17 @@ namespace ClaudiaKermin.Core.Tools
                 { "burn_time", solved.BurnTime ?? -1 },
                 { "wanted", wanted },
             };
+        }
+
+        /// <summary>The <c>chutes</c> a reentry call asks for (#477): true when missing, else a boolean; a problem text otherwise.</summary>
+        private static string ChutesOf(IDictionary<string, object> ask, out bool chutes)
+        {
+            chutes = true;
+            object value;
+            if (!ask.TryGetValue("chutes", out value) || value == null) return null;
+            if (!(value is bool)) return "chutes must be true or false";
+            chutes = (bool)value;
+            return null;
         }
 
         private static double Number(IDictionary<string, object> ask, string key, double fallback)

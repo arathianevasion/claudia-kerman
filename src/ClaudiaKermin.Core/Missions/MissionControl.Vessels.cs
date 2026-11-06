@@ -47,6 +47,35 @@ namespace ClaudiaKermin.Core.Missions
             public string PlannedAscent = "";
             /// <summary>Requests sent when the craft docked: a plan from a later request was made with the facts after docking.</summary>
             public int RecheckSince;
+            /// <summary>Claudia is out on EVA with the player holding the craft (#262): the craft stays the vessel she left. Not saved.</summary>
+            public bool OutOnEva;
+            /// <summary>The craft's vessel id when she went out, to tell a boarding of another vessel from a return.</summary>
+            public string EvaFromVesselId = "";
+        }
+
+        /// <summary>The player holds the craft (Manual Control, or the EVA-science pause) on an aboard Mission, so Claudia on EVA is not the craft.</summary>
+        private static bool EvaKeepsCraft(Mission mission)
+        {
+            return !mission.Remote && (mission.Stage == MissionStage.ManualControl
+                || (mission.Stage == MissionStage.Paused && mission.EvaScience.Length > 0));
+        }
+
+        /// <summary>She is out on EVA: remember the vessel she left, once.</summary>
+        private static void WentOnEva(Mission mission)
+        {
+            if (mission.OutOnEva) return;
+            mission.OutOnEva = true;
+            mission.EvaFromVesselId = mission.VesselId;
+        }
+
+        /// <summary>She is aboard a vessel again: a Note when it isn't the one she left, and the link history starts afresh.</summary>
+        private void Boarded(Mission mission, string vesselId, string name)
+        {
+            if (!mission.OutOnEva) return;
+            mission.OutOnEva = false;
+            _strandedSince = null;
+            if (vesselId.Length > 0 && mission.EvaFromVesselId.Length > 0 && vesselId != mission.EvaFromVesselId)
+                Note(LogKind.Notice, MissionCraft.BoardedLine(name));
         }
 
         /// <summary>The latest Game Snapshot of the vessel the player is in, the craft or not; null outside Flight.</summary>
@@ -81,11 +110,18 @@ namespace ClaudiaKermin.Core.Missions
             _active = snapshot;
             var mission = _mission;
             if (mission == null || !FollowsCraft(mission) || _scene != GameScene.Flight) return true;
+            if (snapshot.Craft.Eva && snapshot.ClaudiaAboard && EvaKeepsCraft(mission))
+            {
+                // Claudia out on EVA: the craft stays the vessel she left, and nothing here judges her Kerbal (#262).
+                WentOnEva(mission);
+                return false;
+            }
             if (!MissionCraft.Is(mission.Remote, mission.ProcessorPartId, mission.VesselId, snapshot))
             {
                 mission.SwitchingAway = false;
                 return false;
             }
+            if (!snapshot.Craft.Eva) Boarded(mission, snapshot.Craft.VesselId, snapshot.Craft.Name);
             if (snapshot.Craft.VesselId.Length > 0) mission.VesselId = snapshot.Craft.VesselId;
             mission.VesselName = snapshot.Craft.Name;
             return true;
@@ -128,7 +164,10 @@ namespace ClaudiaKermin.Core.Missions
             var mission = _mission;
             if (mission != null && vessels != null && _scene == GameScene.Flight) ApplyPendingSafety(mission, vessels);
             if (mission == null || !FollowsCraft(mission) || _scene != GameScene.Flight || vessels == null) return;
-            var craft = MissionCraft.Follow(mission.Remote, mission.ProcessorPartId, mission.VesselId, vessels);
+            var isOut = EvaKeepsCraft(mission) && vessels.Any(v => v.ClaudiaAboard && v.Eva);
+            var craft = MissionCraft.Follow(mission.Remote, mission.ProcessorPartId, mission.VesselId, vessels, EvaKeepsCraft(mission));
+            if (isOut) WentOnEva(mission);
+            else if (craft != null && craft.ClaudiaAboard && !craft.Eva) Boarded(mission, craft.Id, craft.Name);
             if (craft != null)
             {
                 mission.VesselId = craft.Id;

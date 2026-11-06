@@ -197,6 +197,8 @@ namespace ClaudiaKermin.Core.Missions
         public IList<CraftFinding> Findings = new List<CraftFinding>();
         /// <summary>The craft, the Mission Goal or the processor changed since the result.</summary>
         public bool Stale;
+        /// <summary>Why it is stale when the start form's Mission Goal or Target Vessel changed (#664), e.g. "Stale: the Mission Goal changed since this check. Check again."; "" otherwise.</summary>
+        public string StaleReason = "";
         public IList<ProcessorOption> Processors = new List<ProcessorOption>();
         public uint? ChosenProcessor;
         /// <summary>The player picked <see cref="ChosenProcessor"/>; false when it is the default, the one nearest the root.</summary>
@@ -402,6 +404,8 @@ namespace ClaudiaKermin.Core.Missions
         public string ManualControlUnavailable = "";
         /// <summary>In Manual Control with the link down and no other crew aboard: seconds of game time until Claudia takes the craft back; null otherwise.</summary>
         public double? LinkLossTakeBackIn;
+        /// <summary>Why Hand back is disabled (Claudia is out on EVA, #262); "" when it is offered.</summary>
+        public string HandBackUnavailable = "";
         /// <summary>The craft has changed beyond the pending plan's tolerances, so Approve is replaced by Re-plan; "" otherwise.</summary>
         public string PlanStale = "";
         /// <summary><see cref="PlanStale"/> is the Target Vessel's change (#661), not the craft's.</summary>

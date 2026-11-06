@@ -581,14 +581,26 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void AnRcsSwitchLineRecordsTheTurnOverrideWhenItWasApplied()
+        public void AnRcsSwitchLineRecordsABurstTurnsPlanAndItsOneLineAtTheEnd()
         {
+            // #692: the switch on gives the planned coast rate; the turn's one line at its end gives what it flew and spent.
             var values = Switch(true, "big turn");
             values["error_deg"] = 128.0;
-            values["stopping_s"] = 6.2;
-            values["kp"] = 0.258;
+            values["coast_dps"] = 3.55;
             string problem;
-            Assert.Equal("RCS on: big turn (error 128.0°, turn cap T 6.2 s, kp 0.26)", RcsSwitch.Parse(values, out problem).Line());
+            Assert.Equal("RCS on: big turn (error 128.0°, coast 3.55°/s planned)", RcsSwitch.Parse(values, out problem).Line());
+
+            var turned = Switch(false, "turned");
+            turned["coast_dps"] = 3.55;
+            turned["flown_dps"] = 3.1;
+            turned["spin_s"] = 1.3;
+            turned["stop_s"] = 1.2;
+            turned["monoprop_used"] = 0.31;
+            turned["left_deg"] = 4.2;
+            turned["corrections"] = 0.0;
+            turned["dv_mps"] = 0.012;
+            Assert.Equal("RCS off: turned (coast 3.55°/s planned, 3.10°/s flown, bursts 1.3 s up, 1.2 s down, monoprop 0.31 used, "
+                + "4.2° left after the stop, 0 corrections, orbital velocity changed 0.012 m/s)", RcsSwitch.Parse(turned, out problem).Line());
         }
 
         [Fact]

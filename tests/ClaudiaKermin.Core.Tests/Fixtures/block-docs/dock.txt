@@ -4,12 +4,13 @@ up to 2 m/s far out, approach_speed inside 50 m, final_speed inside 10 m. A targ
 processor turns its port to the craft (dock_hold); any other must turn under 1 deg/s.
 Options:
 port ["auto"]: the craft's port, by kOS tag or size (size0, size1, ...).
-target_port ["auto"]: the target's, by tag or size; auto: the nearest free one of the craft's port's size.
+target_port ["auto"]: the target's, by tag or size; auto: the nearest free one of the port's size.
 approach_speed [1], final_speed [0.3]: m/s.
-max_lateral [0.2]: m off the axis allowed inside 10 m; further, the craft stops and lines up.
+max_lateral [0.2]: m off the axis allowed inside 10 m; further, it stops and lines up.
+settle_timeout [300]: s to wait for dock_hold; then a loose settle will do.
 max_duration [1800].
 plus min_ec_pct, abort_on_part_loss and rcs_tolerance as for every block.
-Extra results: docked, port and target_port (tag or size), monoprop_used (units).
-Fails with no loaded Target Vessel, no RCS, too little monoprop for the distance, no free port to match, a passive target
-turning over 1 deg/s, drifting 50 m past the start, 15% monoprop left or a dock_hold fault (both after backing off), or an abort.
+Extra results: docked, port and target_port, monoprop_used.
+Fails with no loaded Target Vessel, no RCS, too little monoprop, no free port, a passive target
+over 1 deg/s, dock_hold unsettled by 2 x settle_timeout, drifting 50 m past the start, 15% monoprop left or a dock_hold fault (after backing off), or an abort.
 Example: `local res is dock(lexicon()). addons:claudia:report(res).`

@@ -217,6 +217,34 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void With_chutes_false_the_stowed_chute_stays_stowed_and_the_craft_lands_farther_and_faster()
+        {
+            var chuted = Fly(craft: new ReentrySim.Capsule { Chutes = new List<ReentryChute> { ReentrySim.Mk16() } });
+            var craft = new ReentrySim.Capsule { Chutes = new List<ReentryChute> { ReentrySim.Mk16() } };
+            var kept = ReentryPredictor.Predict(ReentrySim.Kerbin(), ReentrySim.AfterBurn(80000, 30000), 0, 0, craft.MassKg,
+                new ReentrySim.Atmosphere(), craft, ReentrySim.Frame(), chutes: false);
+            Assert.Null(kept.Error);
+            Assert.Equal(-1, kept.ChuteUt);
+            Assert.True(Downrange(kept) > Downrange(chuted), Downrange(kept) + " km with chutes off, " + Downrange(chuted) + " with");
+            Assert.True(kept.LandingSpeed > chuted.LandingSpeed, kept.LandingSpeed + " m/s with chutes off, " + chuted.LandingSpeed + " with");
+            Assert.True(kept.LandingUt < chuted.LandingUt);
+        }
+
+        [Fact]
+        public void The_default_chutes_setting_is_the_prediction_it_was_before_the_flag()
+        {
+            var craft = new ReentrySim.Capsule { Chutes = new List<ReentryChute> { ReentrySim.Mk16() } };
+            var plain = ReentryPredictor.Predict(ReentrySim.Kerbin(), ReentrySim.AfterBurn(), 0, 0, craft.MassKg,
+                new ReentrySim.Atmosphere(), craft, ReentrySim.Frame());
+            var on = ReentryPredictor.Predict(ReentrySim.Kerbin(), ReentrySim.AfterBurn(), 0, 0, craft.MassKg,
+                new ReentrySim.Atmosphere(), craft, ReentrySim.Frame(), chutes: true);
+            Assert.Equal(plain.Longitude, on.Longitude);
+            Assert.Equal(plain.LandingUt, on.LandingUt);
+            Assert.Equal(plain.ChuteUt, on.ChuteUt);
+            Assert.True(plain.ChuteUt > 0);
+        }
+
+        [Fact]
         public void The_main_chute_waits_for_the_block_s_safe_speed_and_a_drogue_opens_higher()
         {
             var main = Fly(craft: new ReentrySim.Capsule { Chutes = new List<ReentryChute> { ReentrySim.Mk16() } });

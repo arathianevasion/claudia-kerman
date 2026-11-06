@@ -116,6 +116,15 @@ namespace ClaudiaKermin.Core.Ui
     public static class CapcomStripLayout
     {
         /// <summary>
+        /// The height to give the strip's window this frame: 0 makes IMGUI fit it to its content (it only grows on its own).
+        /// Collapsed always asks for 0, so a stale tall rect is never kept; expanded keeps the remembered height until its shape changes.
+        /// </summary>
+        public static float WindowHeight(bool expanded, bool shapeChanged, float rectHeight)
+        {
+            return expanded && !shapeChanged ? rectHeight : 0;
+        }
+
+        /// <summary>
         /// Places the strip the player dragged to (<paramref name="x"/>, <paramref name="y"/>, screen pixels from the top
         /// left): the strip and a tab under it are kept on screen. The panel opens below when it fits there whole, otherwise
         /// on the side with more room, shrunk to that room but never under its floor (and never above into less than it). The side doesn't depend on whether
