@@ -3,7 +3,7 @@
 
 A Kerbal Space Program mod that adds **Claudia**, an AI mission controller. You give her a goal in plain language, such as "Land on the Mun, run 3 experiments, return to Kerbin". She checks your craft, plans the mission, explains each step, asks your go-ahead, flies it through kOS and reports back.
 
-> **Status: in development, not yet released.** The v1 design ([Spec: Claudia Kermin v1](https://github.com/arathianevasion/claudia-kermin/issues/36)) is built and flown in game on macOS: Missions from the Craft Check to the last Debrief, the Building Blocks below, Auto Mode, Blackouts, Manual Control, Child Vessels and the Missions list. Rendezvous and docking (`rendezvous`, `dock`) are the newest blocks and are still waiting on their in-game checks. There is no packaged release yet; build it yourself (see [Building](#building)).
+> **Status: in development, not yet released.** The v1 design ([Spec: Claudia Kerman v1](https://github.com/arathianevasion/claudia-kerman/issues/36)) is built and flown in game on macOS: Missions from the Craft Check to the last Debrief, the Building Blocks below, Auto Mode, Blackouts, Manual Control, Child Vessels and the Missions list. Rendezvous and docking (`rendezvous`, `dock`) are the newest blocks and are still waiting on their in-game checks. There is no packaged release yet; build it yourself (see [Building](#building)).
 
 ## How a Mission works
 
@@ -94,7 +94,7 @@ Claudia uses the Claude API with your own key. Each Mission has its own **Spendi
 
 The start form shows an estimate. As a rough guide, a Mun landing and return costs about $2.40 on Sonnet 5.5 (the default), about $0.25 on Haiku 5.5, or about $5 on Opus 5.5. Failed and retried legs cost the most, so a clean flight costs less.
 
-The key is stored as **plain text** in `~/Library/Application Support/ClaudiaKermin/`, readable only by you. If the `ANTHROPIC_API_KEY` environment variable is set, it is used instead. The key is never written to logs, saves or Mission records, and never placed under GameData.
+The key is stored as **plain text** in `~/Library/Application Support/ClaudiaKerman/`, readable only by you. If the `ANTHROPIC_API_KEY` environment variable is set, it is used instead. The key is never written to logs, saves or Mission records, and never placed under GameData.
 
 ## Settings
 
@@ -115,7 +115,7 @@ The player config is `config.cfg` in the same folder, as `name = value` lines. U
 
 ## Known gaps
 
-- Stock contracts, EVA welding and the construction combine bonus count Claudia as a Pilot, Engineer and Scientist (Harmony patches). ModuleManager patches in `GameData/ClaudiaKermin/Compatibility` cover Kerbalism and Community Trait Icons.
+- Stock contracts, EVA welding and the construction combine bonus count Claudia as a Pilot, Engineer and Scientist (Harmony patches). ModuleManager patches in `GameData/ClaudiaKerman/Compatibility` cover Kerbalism and Community Trait Icons.
 - These mods check crew roles by name and **do not** count Claudia as a Pilot, Engineer or Scientist: KER, USI, Near Future Electrical, SystemHeat, SSPX, StationScience, WildBlue and Contract Configurator contract packs.
 - Claudia doesn't go on EVA in v1. When a goal needs EVA science, she plans a manual stretch and asks you to do it by hand.
 - `transfer_to` and `return` fly between a planet and its moons. Interplanetary transfers are not a Building Block yet.
@@ -129,14 +129,14 @@ You need the .NET 10 SDK. The adapter and kOS addon compile against your own KSP
 
 | What | Command |
 | --- | --- |
-| Build everything | `dotnet build ClaudiaKermin.sln -p:KSPRoot=/path/to/KSP` |
-| Core tests (no KSP needed) | `dotnet test tests/ClaudiaKermin.Core.Tests` |
-| Script Check tests (need only kOS.Safe) | `dotnet test tests/ClaudiaKermin.ScriptCheck.Tests -p:KSPRoot=/path/to/KSP` |
-| Script Check the shipped kerboscript and block tests | `dotnet run --project tools/ClaudiaKermin.KsCompile -p:KSPRoot=/path/to/KSP -- kerboscript tests/blocks` |
-| Core Library tests on kOS.Safe (no KSP needed) | `dotnet test tests/ClaudiaKermin.Kerboscript.Tests -p:KSPRoot=/path/to/KSP` |
+| Build everything | `dotnet build ClaudiaKerman.sln -p:KSPRoot=/path/to/KSP` |
+| Core tests (no KSP needed) | `dotnet test tests/ClaudiaKerman.Core.Tests` |
+| Script Check tests (need only kOS.Safe) | `dotnet test tests/ClaudiaKerman.ScriptCheck.Tests -p:KSPRoot=/path/to/KSP` |
+| Script Check the shipped kerboscript and block tests | `dotnet run --project tools/ClaudiaKerman.KsCompile -p:KSPRoot=/path/to/KSP -- kerboscript tests/blocks` |
+| Core Library tests on kOS.Safe (no KSP needed) | `dotnet test tests/ClaudiaKerman.Kerboscript.Tests -p:KSPRoot=/path/to/KSP` |
 | Every gate above, as one pass or fail | `tools/gates/gates.sh` |
 
-A failing test, or a script that doesn't compile or uses something forbidden, exits non-zero. A build stages the mod in `dist/GameData/ClaudiaKermin/`. To install it, copy that folder into your KSP `GameData` folder, next to kOS and HarmonyKSP. kOS and HarmonyKSP are dependencies you install yourself; they are never bundled.
+A failing test, or a script that doesn't compile or uses something forbidden, exits non-zero. A build stages the mod in `dist/GameData/ClaudiaKerman/`. To install it, copy that folder into your KSP `GameData` folder, next to kOS and HarmonyKSP. kOS and HarmonyKSP are dependencies you install yourself; they are never bundled.
 
 CI (`.github/workflows/ci.yml`) runs on every push: the core tests, then, with kOS.Safe from the public kOS release, the Script Check tests, a Script Check of every shipped script and block test script, the Core Library tests, and a check that the syntax-error and forbidden-call fixtures fail.
 
@@ -150,27 +150,27 @@ The layout follows [ADR 0001](docs/adr/0001-single-in-process-ksp-mod.md): one i
 
 | Path | What it holds |
 | --- | --- |
-| `src/ClaudiaKermin.Core` | The Unity-free core: the Claude client, the Mission state machine (`Missions.MissionControl`), the Craft Check facts, the Planning Tools and the C# solvers. It never references Unity or KSP. |
-| `src/ClaudiaKermin.Adapter` | The thin KSP adapter (`ClaudiaKermin.dll`): the toolbar button, Mission window, Capcom strip, Missions list, Game Snapshots and the `MissionDriver` that feeds the core. |
-| `src/ClaudiaKermin.KOS` | The kOS addon (`ADDONS:CLAUDIA`), the bridge that runs scripts on a processor, the runtime gates and the block test runner. |
-| `src/ClaudiaKermin.ScriptCheck` | The Script Check: compiles a script with kOS.Safe and reads its opcodes against the forbidden list. Block-internal calls are allowed only on the Core Library's lines of a bundle ([ADR 0007](docs/adr/0007-script-check-finds-the-core-library-by-the-bundles-tail.md)). |
+| `src/ClaudiaKerman.Core` | The Unity-free core: the Claude client, the Mission state machine (`Missions.MissionControl`), the Craft Check facts, the Planning Tools and the C# solvers. It never references Unity or KSP. |
+| `src/ClaudiaKerman.Adapter` | The thin KSP adapter (`ClaudiaKerman.dll`): the toolbar button, Mission window, Capcom strip, Missions list, Game Snapshots and the `MissionDriver` that feeds the core. |
+| `src/ClaudiaKerman.KOS` | The kOS addon (`ADDONS:CLAUDIA`), the bridge that runs scripts on a processor, the runtime gates and the block test runner. |
+| `src/ClaudiaKerman.ScriptCheck` | The Script Check: compiles a script with kOS.Safe and reads its opcodes against the forbidden list. Block-internal calls are allowed only on the Core Library's lines of a bundle ([ADR 0007](docs/adr/0007-script-check-finds-the-core-library-by-the-bundles-tail.md)). |
 | `kerboscript/library` | The Core Library: `claudia_lib.ks` with the shared helpers and conventions, and one file per Building Block. Their `//|` doc lines go into Claudia's prompt. |
 | `kerboscript/dock_hold` | The program the mod runs on a Target Vessel's processor to hold it steady for docking. |
 | `tests/` | The core, Script Check and Core Library test projects, plus the in-game `blocks/` and `tools/` tests. |
-| `tools/` | `ClaudiaKermin.KsCompile` (the Script Check from the command line), the merge gates and the cost baseline script. |
-| `GameData/ClaudiaKermin` | Static mod files: the Super Intelligence trait config and icon, the toolbar icons and portrait, and the compatibility patches. |
+| `tools/` | `ClaudiaKerman.KsCompile` (the Script Check from the command line), the merge gates and the cost baseline script. |
+| `GameData/ClaudiaKerman` | Static mod files: the Super Intelligence trait config and icon, the toolbar icons and portrait, and the compatibility patches. |
 
-Each Mission's records live in `saves/<save>/ClaudiaKermin/missions/<id>/`: the transcript, `mission.json` and an append-only `events.jsonl`. The save file holds only a small snapshot per Mission.
+Each Mission's records live in `saves/<save>/ClaudiaKerman/missions/<id>/`: the transcript, `mission.json` and an append-only `events.jsonl`. The save file holds only a small snapshot per Mission.
 
 ## Project docs
 
 - [GLOSSARY.md](GLOSSARY.md): the domain language (Mission, Craft Check, Maneuver Sequence, Debrief and more).
 - [docs/adr/](docs/adr/): architecture decisions.
-- [Map: Claudia Kermin v1](https://github.com/arathianevasion/claudia-kermin/issues/1): the design decisions, each with its own ticket.
+- [Map: Claudia Kerman v1](https://github.com/arathianevasion/claudia-kerman/issues/1): the design decisions, each with its own ticket.
 - [THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES): licenses for bundled and ported code.
 
 ## License
 
-Claudia Kermin is free software under the GNU General Public License, version 3 or (at your option) any later version (`GPL-3.0-or-later`). See [LICENSE](LICENSE).
+Claudia Kerman is free software under the GNU General Public License, version 3 or (at your option) any later version (`GPL-3.0-or-later`). See [LICENSE](LICENSE).
 
-Bundled third-party scripts and ported code keep their own licenses and notices: KSLib's `lib_lazcalc` (MIT). Ported from MechJebLib (MechJeb2 a958383, multi-licensed, ported under GPL-3.0-or-later with its copyright and SPDX lines kept): `BrentRoot`, `BrentMin`, `Newton`, `Scale`, `Shepperd` (from `MechJebLib/TwoBody/Shepperd.cs`), `Bs3` (from `MechJebLib/ODE/BS3.cs`, with the parts of `AbstractRungeKutta.cs` and `AbstractIVP.cs` it uses), `OdeEvent` (from `MechJebLib/ODE/Event.cs`) and `PlaneTiming` (`TimeToPlane` and `MinimumTimeToPlane` from `MechJebLib/Functions/Astro.cs`) in `src/ClaudiaKermin.Core/Tools/Numerics/`, `MechJebLib/Lambert/Izzo.cs` (itself ported from poliastro, MIT) as `src/ClaudiaKermin.Core/Tools/Lambert.cs`, `MechJebLib/Maneuvers/Simple.cs`, `MechJebLib/Maneuvers/ChangeOrbitalElement.cs` and `Astro.VelocityForInclination` from `MechJebLib/Functions/Astro.cs` in `src/ClaudiaKermin.Core/Tools/OrbitChange.cs`, and the formulation of `MechJebLib/Maneuvers/TwoImpulseTransfer.cs` (without its alglib call) in `src/ClaudiaKermin.Core/Tools/Transfer.cs`. Ported from MechJeb2 itself (a958383, GPL-3, its copyright notice kept): `MechJeb2/Maneuver/TimeSelector.cs` and the `OrbitExtensions` node, radius and closest-approach helpers it calls, as `src/ClaudiaKermin.Core/Tools/BurnTime.cs`, and `MechJeb2/OrbitalManeuverCalculator.cs`'s plane-match, LAN-shift and resonant-orbit burns in `src/ClaudiaKermin.Core/Tools/OrbitChange.cs`. The Mission Scripts and Custom Scripts that Claudia writes for your Missions are yours; Claudia Kermin claims no license over them.
+Bundled third-party scripts and ported code keep their own licenses and notices: KSLib's `lib_lazcalc` (MIT). Ported from MechJebLib (MechJeb2 a958383, multi-licensed, ported under GPL-3.0-or-later with its copyright and SPDX lines kept): `BrentRoot`, `BrentMin`, `Newton`, `Scale`, `Shepperd` (from `MechJebLib/TwoBody/Shepperd.cs`), `Bs3` (from `MechJebLib/ODE/BS3.cs`, with the parts of `AbstractRungeKutta.cs` and `AbstractIVP.cs` it uses), `OdeEvent` (from `MechJebLib/ODE/Event.cs`) and `PlaneTiming` (`TimeToPlane` and `MinimumTimeToPlane` from `MechJebLib/Functions/Astro.cs`) in `src/ClaudiaKerman.Core/Tools/Numerics/`, `MechJebLib/Lambert/Izzo.cs` (itself ported from poliastro, MIT) as `src/ClaudiaKerman.Core/Tools/Lambert.cs`, `MechJebLib/Maneuvers/Simple.cs`, `MechJebLib/Maneuvers/ChangeOrbitalElement.cs` and `Astro.VelocityForInclination` from `MechJebLib/Functions/Astro.cs` in `src/ClaudiaKerman.Core/Tools/OrbitChange.cs`, and the formulation of `MechJebLib/Maneuvers/TwoImpulseTransfer.cs` (without its alglib call) in `src/ClaudiaKerman.Core/Tools/Transfer.cs`. Ported from MechJeb2 itself (a958383, GPL-3, its copyright notice kept): `MechJeb2/Maneuver/TimeSelector.cs` and the `OrbitExtensions` node, radius and closest-approach helpers it calls, as `src/ClaudiaKerman.Core/Tools/BurnTime.cs`, and `MechJeb2/OrbitalManeuverCalculator.cs`'s plane-match, LAN-shift and resonant-orbit burns in `src/ClaudiaKerman.Core/Tools/OrbitChange.cs`. The Mission Scripts and Custom Scripts that Claudia writes for your Missions are yours; Claudia Kerman claims no license over them.
