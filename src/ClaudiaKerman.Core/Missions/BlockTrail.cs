@@ -31,6 +31,7 @@ namespace ClaudiaKerman.Core.Missions
             { "science", new[] { "kept" } },
             { "drop_parts", new[] { "parts_dropped", "dropped_dv" } },
             { "circularize", new[] { "ecc" } },
+            { "capture", new[] { "ecc", "inc", "plane_leftover_deg" } },
             { "tune_pe", new[] { "pe_actual" } },
         };
 

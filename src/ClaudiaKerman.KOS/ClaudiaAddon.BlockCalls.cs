@@ -56,6 +56,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (transfer_to): the cheapest departure to target (a moon's name) arriving at target_pe, or to an orbit (target_sma, target_ecc, ...; mode rendezvous or intercept), capture true or false, within one synodic period from earliest_ut or window (to latest_ut, refusing over max_dv); lexicon error, ut, prograde, normal, radial, dv, arrival_dv, encounter_ut, arrival_ut, target_pe_actual, ..."));
             AddSuffix("TRANSFERSTEP", new OneArgsSuffix<Lexicon, Lexicon>(TransferStep,
                 "Core Library only (transfer_to): its next step from phase (start first) with its options and what the last step carried; lexicon error, do (burn, wait or done), kind, ut, prograde, normal, radial, max_residual, fail_prefix, keep_going, report, max_duration, watch, carry"));
+            AddSuffix("CAPTURESTEP", new OneArgsSuffix<Lexicon, Lexicon>(CaptureStep,
+                "Core Library only (capture): its next step from phase (start first) with its options and what the last step carried; lexicon as TRANSFERSTEP's"));
             AddSuffix("ENCOUNTERWATCH", new OneArgsSuffix<Lexicon>(EncounterWatchArm,
                 "Core Library only (transfer_to): arms the Encounter Watch for a wait with TRANSFERSTEP's watch; an empty lexicon watches nothing"));
             AddSuffix("ENCOUNTERWATCHDROPPED", new Suffix<BooleanValue>(EncounterWatchPoll,
@@ -424,6 +426,21 @@ namespace ClaudiaKerman.KOS
             return (Lexicon)Guarded("TRANSFERSTEP", () =>
             {
                 step = BlockCalls.TransferStep(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
+                // Core's record of the plane it aims for, for capture (#788). A timing ask aims for nothing.
+                if (step.ContainsKey("aimed_plane")) MissionDriver.RecordAimedPlane((string)step["aimed_plane"]);
+                return KosValues.FromPlain(step);
+            }, () => (string)step["error"] != "" ? (string)step["error"]
+                : string.Format(CultureInfo.InvariantCulture, "{0} {1} at UT {2:0.0}, prograde {3:0.00}, normal {4:0.00}, radial {5:0.00} m/s; next {6}; {7}",
+                    step["do"], step["kind"], step["ut"], step["prograde"], step["normal"], step["radial"],
+                    ((System.Collections.Generic.IDictionary<string, object>)step["carry"])["phase"], KosValues.Format(step["report"])));
+        }
+
+        private Lexicon CaptureStep(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> step = null;
+            return (Lexicon)Guarded("CAPTURESTEP", () =>
+            {
+                step = BlockCalls.CaptureStep(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
                 return KosValues.FromPlain(step);
             }, () => (string)step["error"] != "" ? (string)step["error"]
                 : string.Format(CultureInfo.InvariantCulture, "{0} {1} at UT {2:0.0}, prograde {3:0.00}, normal {4:0.00}, radial {5:0.00} m/s; next {6}; {7}",

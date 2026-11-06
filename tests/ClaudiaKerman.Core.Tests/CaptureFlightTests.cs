@@ -294,6 +294,56 @@ namespace ClaudiaKerman.Core.Tests
                 Assert.True(off > 0.5);
         }
 
+        // ---- The block call, and what stays as it was ----
+
+        [Fact]
+        public void TRANSFERSTEP_gives_the_plane_it_aims_for_and_reads_the_option()
+        {
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            var input = new Dictionary<string, object> { { "target", "Mun" }, { "target_pe", 30000.0 }, { "plane", 90.0 }, { "turn_time", 60.0 }, { "start_ut", 0.0 } };
+            var aimed = ArrivalPlane.FromRecord((string)BlockCalls.TransferStep(input, rig.Snapshot())["aimed_plane"]);
+            Assert.Equal("number", aimed.Source);
+            Assert.Equal(90, aimed.Inc);
+            input.Remove("plane");
+            Assert.Equal("", BlockCalls.TransferStep(input, rig.Snapshot())["aimed_plane"]);
+        }
+
+        [Fact]
+        public void CAPTURESTEP_carries_the_flight_and_refuses_words_it_does_not_know()
+        {
+            var rig = TransferRig.Arriving("Mun", 30000, 500, 0, 0, 0, 3000);
+            var first = BlockCalls.CaptureStep(new Dictionary<string, object> { { "alt", "auto" }, { "plane", 60.0 }, { "max_plane_dv", 500.0 }, { "turn_time", 60.0 } }, rig.Snapshot());
+            Assert.Equal("", first["error"]);
+            Assert.Equal("burn", first["do"]);
+            Assert.Equal("capture", first["kind"]);
+            var carry = (IDictionary<string, object>)first["carry"];
+            Assert.Equal(CaptureMethod.Apoapsis, carry["why"]);
+            Assert.Equal(1.0, carry["drops"]);
+            Assert.Contains("alt must be", (string)BlockCalls.CaptureStep(new Dictionary<string, object> { { "alt", "low" } }, rig.Snapshot())["error"]);
+            Assert.Contains("max_plane_dv must be", (string)BlockCalls.CaptureStep(new Dictionary<string, object> { { "max_plane_dv", "lots" } }, rig.Snapshot())["error"]);
+        }
+
+        [Fact]
+        public void A_find_landing_site_answer_gives_its_first_site()
+        {
+            var site = MissionControl.PickedSiteOf("{\"body\":\"Mun\",\"sites\":[{\"latitude\":-12.5},{\"latitude\":3}]}");
+            Assert.Equal("Mun", site.Body);
+            Assert.Equal(-12.5, site.Latitude);
+            Assert.Null(MissionControl.PickedSiteOf("{\"body\":\"Mun\",\"sites\":[]}"));
+            Assert.Null(MissionControl.PickedSiteOf("not json"));
+        }
+
+        [Fact]
+        public void The_Delta_v_Map_s_figures_do_not_change_with_a_plane_to_aim_for()
+        {
+            // Budget for the best case (#788 item 5): a plan's legs cost the same with a Target Vessel to match, or a polar arrival asked of it.
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            var legs = new List<PlannedSequence> { new PlannedSequence { Name = "Transfer to the Mun" }, new PlannedSequence { Name = "Capture at the Mun" } };
+            var plain = PlanLegs.Need(PlanLegs.Judge(rig.Snapshot(), legs, ""));
+            rig.Stamp = s => { s.Target = Vessel(90, 10, "Mun", 30000, 40000, 200000); s.RecordedPlane = new ArrivalPlane { Arrival = "Mun", Source = "number", Inc = 90 }.ToRecord(); };
+            Assert.Equal(plain, PlanLegs.Need(PlanLegs.Judge(rig.Snapshot(), legs, "")));
+        }
+
         private static IDictionary<string, object> Lexicon(double inc, double lan)
         {
             return new Dictionary<string, object> { { "inc", inc }, { "lan", lan }, { "name", "Other" }, { "body", "Mun" } };

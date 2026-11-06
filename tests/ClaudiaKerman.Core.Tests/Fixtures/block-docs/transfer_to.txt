@@ -5,6 +5,7 @@ planned time); a planet's or sibling's pe is trimmed in its SOI. It ends before 
 Options:
 target [required]: the body to reach, a name ("Mun") or a body (body("Minmus")).
 target_pe [required]: periapsis altitude at the target, m.
+plane ["auto"]: arrival plane: a number (inclination; over 90 retrograde), body or vessel, or "none". auto: a Target Vessel orbiting target (at its pe), else the next leg's site or moon.
 window ["next"]: "next" departs in the next transfer window once the craft can have turned to
 the burn; a time (UT seconds): the window from then (a planet's: round it). It warps
 there on rails: no Due Time needed.
@@ -26,7 +27,6 @@ already planned: remove it first", "found no transfer: <why>", "found no correct
 <target> after the ejection burn, and no correction fits: <why>" (or "the correction failed:
 <why>"; or "after the correction", "the plane change"), "after the correction, the periapsis ... off
 target_pe", an exec_node failure (its node stays), or an abort. The craft must be the active vessel.
-Capture isn't part of transfer_to: fly
-`circularize(lexicon("at", "pe"))`: in this sequence or the next, after
+Capture isn't part of transfer_to: fly `capture()`: in this sequence or the next, after
 `coast(lexicon("until", res:encounter_ut + 60))` (no Due Time needed).
 Example: `local res is transfer_to(lexicon("target", "Mun", "target_pe", 30000)). addons:claudia:report(res).`

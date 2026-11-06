@@ -97,6 +97,13 @@ namespace ClaudiaKerman.Core.Tools
 
         public static TransferFlightStep Next(GameSnapshot snapshot, CaptureAsk ask)
         {
+            var step = Decide(snapshot, ask);
+            step.Drops = ask.Burns + (step.Do == TransferFlightStep.Burn ? 1 : 0);
+            return step;
+        }
+
+        private static TransferFlightStep Decide(GameSnapshot snapshot, CaptureAsk ask)
+        {
             if (snapshot == null) return Fail("no Game Snapshot");
             ToolOutcome error;
             var setup = PredictBurn.Setup.Prepare(snapshot, null, out error);

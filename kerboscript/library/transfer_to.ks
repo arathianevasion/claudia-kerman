@@ -14,6 +14,7 @@
 //| Options:
 //|   target [required]: the body to reach, a name ("Mun") or a body (body("Minmus")).
 //|   target_pe [required]: periapsis altitude at the target, m.
+//|   plane ["auto"]: arrival plane: a number (inclination; over 90 retrograde), body or vessel, or "none". auto: a Target Vessel orbiting target (at its pe), else the next leg's site or moon.
 //|   window ["next"]: "next" departs in the next transfer window once the craft can have turned to
 //|     the burn; a time (UT seconds): the window from then (a planet's: round it). It warps
 //|     there on rails: no Due Time needed.
@@ -35,14 +36,13 @@
 //| <target> after the ejection burn, and no correction fits: <why>" (or "the correction failed:
 //| <why>"; or "after the correction", "the plane change"), "after the correction, the periapsis ... off
 //| target_pe", an exec_node failure (its node stays), or an abort. The craft must be the active vessel.
-//| Capture isn't part of transfer_to: fly
-//| `circularize(lexicon("at", "pe"))`: in this sequence or the next, after
+//| Capture isn't part of transfer_to: fly `capture()`: in this sequence or the next, after
 //| `coast(lexicon("until", res:encounter_ut + 60))` (no Due Time needed).
 //| Example: `local res is transfer_to(lexicon("target", "Mun", "target_pe", 30000)). addons:claudia:report(res).`
 
 // The block's own options and defaults ("required" means the Mission Script must give it).
 function transfer_to_defaults {
-  return lexicon("target", "required", "target_pe", "required", "window", "next", "correction", true, "pe_tolerance", 1000, "checkpoint", "off").
+  return lexicon("target", "required", "target_pe", "required", "plane", "auto", "window", "next", "correction", true, "pe_tolerance", 1000, "checkpoint", "off").
 }
 
 // "" or why an option value isn't one the block can use.
@@ -63,6 +63,10 @@ function transfer_to_unreadable {
   local pe is claudia_pe_unreadable(opt:target_pe).
   if pe <> "" {
     return pe.
+  }
+  local plane is claudia_plane_unreadable(opt:plane).
+  if plane <> "" {
+    return plane.
   }
   local window is claudia_window_unreadable(opt:window).
   if window <> "" {
@@ -163,7 +167,7 @@ function transfer_to {
     return claudia_finish(ctx, false, turn:error, extra).
   }
   local state is lexicon("target", dest:name, "target_pe", opt:target_pe, "window", opt:window, "correction", opt:correction,
-    "pe_tolerance", opt:pe_tolerance, "start_ut", ctx:start_ut, "max_duration", opt:max_duration,
+    "plane", claudia_plane_ask(opt:plane), "pe_tolerance", opt:pe_tolerance, "start_ut", ctx:start_ut, "max_duration", opt:max_duration,
     "auto", opt:max_duration:istype("String"), "turn_time", turn:turn_time, "phase", "start", "checkpoint", opt:checkpoint).
   local reason is transfer_to_run(state, opt, extra, {
     parameter s.

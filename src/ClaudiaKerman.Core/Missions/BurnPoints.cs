@@ -138,6 +138,8 @@ namespace ClaudiaKerman.Core.Missions
                 case "circularize":
                 case "change_orbit":
                     return Apsis(call, snapshot, now, call.Option("at"));
+                case "capture":
+                    return Apsis(call, snapshot, now, "\"pe\"");
                 case "tune_pe":
                     return TunePe(call, snapshot, now);
                 case "transfer_to":
