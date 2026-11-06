@@ -27,6 +27,8 @@
     <None Include="Fixtures/kos-builtins-documented.txt" CopyToOutputDirectory="PreserveNewest" />
     <!-- The launch trace lines of a flight, as KSP.log has them, for the ascent replay (AscentReplay.cs). -->
     <None Include="Fixtures/ascent-replay/*.txt" CopyToOutputDirectory="PreserveNewest" />
+    <!-- One golden file per Building Block: its //| doc lines (BlockDocsSnapshotTests, ADR 0014). -->
+    <None Include="Fixtures/block-docs/*.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

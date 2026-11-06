@@ -17,6 +17,16 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Theory]
+        [InlineData(true, false, NodeCleanup.Removal.Now)]
+        [InlineData(true, true, NodeCleanup.Removal.Wait)]
+        [InlineData(false, false, NodeCleanup.Removal.Drop)]
+        [InlineData(false, true, NodeCleanup.Removal.Drop)]
+        public void WhenToRemove_waits_only_for_a_loaded_packed_craft(bool loaded, bool packed, NodeCleanup.Removal expected)
+        {
+            Assert.Equal(expected, NodeCleanup.WhenToRemove(loaded, packed));
+        }
+
+        [Theory]
         [InlineData(RunOutcomeKind.NoReport, "", true)]
         [InlineData(RunOutcomeKind.Interrupted, "the game was loaded", true)]
         [InlineData(RunOutcomeKind.Aborted, "blocked: SHUTDOWN", true)]

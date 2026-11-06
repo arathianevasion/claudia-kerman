@@ -1,0 +1,20 @@
+# Block flight logic moves to C# as it changes
+
+Building Blocks keep their Kerboscript interface, while their flight logic moves into C# in Core as tickets rework them. There is no big-bang conversion. Claudia's view of the Core Library doesn't change, and Mission Scripts and Custom Scripts stay in Kerboscript. This ADR changes none of ADR 0001, 0003, 0004, 0006, 0007 or 0010; block-internal calls stay refused in Mission Scripts.
+
+- **Why.** The blocks keep changing: since 2026-10-01 there were 67 commits to `land.ks`, 78 to `claudia_lib.ks`, 30 to `launch.ks` and 26 to `reentry.ks`. Each rewrite and in-game retest happens anyway; the only choice is the language it lands in. Logic in Kerboscript needs scaffolding that C# in Core doesn't: fake-game rigs registered into kOS.Safe (`KosHarness`, `OrbitRig`), C# twins kept in step by cross-check tests (`AscentCrossCheckTests`), raising kOS's instructions per tick (`IpuGuard`), the kOS.Safe static-state flakes (#681) and the gate sharding (#625). C# in Core is tested against the same `Trajectory` and `Conic` the solvers already use (ADR 0010).
+- **Guardrails.**
+  1. **Frozen interface.** The block's name, options and their defaults, `//|` doc lines, Script Result keys and error reasons don't change. A Core test compares each block's `CoreLibrary.FullDocs` with a golden file (`tests/ClaudiaKermin.Core.Tests/Fixtures/block-docs/<block>.txt`), so an accidental change fails the gate; update a snapshot only for a deliberate interface change, noted in the commit message. With no `//|` change there is no prefix-budget change.
+  2. **Steering and throttle stay in kOS.** `lock steering` and `lock throttle`, staging and warp stay in the Kerboscript shell: C# computes, kOS flies. That keeps the runtime gates, Abort and the runaway stop working (ADR 0003, ADR 0004).
+  3. **Ticket scope only.** Move just the logic the ticket already changes, not the whole block. No standalone migration tickets unless one unblocks other work.
+  4. **Parity, then delete.** A test runs the Kerboscript and the C# on the same inputs. Then the Kerboscript and that test are deleted in the same ticket, so no twin outlives its ticket.
+  5. **Block-internal by default.** New `ADDONS:CLAUDIA` calls are block-internal, and the Script Check refuses them in Mission Scripts (ADR 0006, ADR 0007). Exposing one needs its own triaged ticket, evidence from a real flight that Claudia needed it, and an ADR 0006 amendment. Only read-only calls can be exposed.
+  6. **Per-tick budget.** A call made every physics tick logs its time on the block-call path and has a `[Trait("Category", "Timing")]` test against a stated budget.
+  7. **Core stays Unity-free** (ADR 0001). The logic lives in `ClaudiaKermin.Core`; the KOS addon only maps lexicons to and from Core types.
+  8. **The in-game checklist names the block tests to fly** (`docs/in-game/`), so the player retests only what moved.
+- **The ratchet.** `tools/gates/kerboscript-loc.sh` fails the gate and CI when the raw line count of `kerboscript/library/*.ks` (comments and `//|` lines included; not `kslib`, `debug` or `dock_hold`) exceeds the number in `tools/gates/kerboscript-loc.txt`. A ticket that shrinks the library lowers the number in the same commit; one that must grow it, such as a new thin shell, raises it with a one-line reason in its commit message.
+- **The brief convention.** Any agent brief that touches `kerboscript/library/` carries a Block migration line (`docs/agents/block-migration.md`).
+
+We rejected a big-bang rewrite (too costly in tokens and full retesting, for no new capability); phase blocks Claudia sequences herself, such as `land` split into deorbit, brake and touchdown (a small model is more likely to miss a step, and every piece adds to the cached prompt); and a default set of C# calls exposed to Mission Scripts (the same prompt cost; exposure happens only on evidence, guardrail 5). The cost: new logic is written in C# with its Kerboscript shell left thin, and the library's line limit only goes down unless a ticket argues otherwise.
+
+Decided on #705 (spec #435 discoveries, 2026-11-03). Moves no flight logic itself.

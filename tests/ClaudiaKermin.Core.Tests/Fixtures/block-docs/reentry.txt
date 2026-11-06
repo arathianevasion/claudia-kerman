@@ -1,0 +1,24 @@
+reentry(options): lands through the atmosphere: drops the stack below the heat shield,
+waits (on rails) for the atmosphere if still in space, holds the heat shield forward (surface retrograde), drops it once
+the worst heating is over, opens the parachutes only when safe (never staged), physics-warping the fall
+(1x below 100 m), and ends once landed or splashed.
+Options:
+chute_mode ["safe"]: drogues first (under 500 m/s, over 0.02 atm, or by 3000 m above the ground), then
+mains once they are out (under 250 m/s, over 0.04 atm, or by 1500 m); "none" never opens them.
+chutes ["auto"]: the Chute Allocation's for this entry, "all", "none" or a list of part tags; no other is armed.
+touchdown ["chutes"]: or "powered": falls under its chutes (or none), then brakes on its lit engines by
+radar altitude (the stopping distance counts drag and thrust over weight) to 2 m/s; over 6 m/s fails. Its gear goes down as it brakes; with no lit engine it fails at once.
+jettison_stage ["auto"]: the stage whose decouplers drop the heat shield, "auto" for the decoupler on
+or beside it (if powered, not one whose drop takes the engines), or "none". Only its decouplers fire.
+separate ["auto"]: drops the stack (service module, tanks) before the atmosphere, never by the shield's
+decoupler, and if powered only the engineless parts below the engines; "none" keeps it; or a stage number.
+hold ["retrograde"]: points the craft's forward axis at surface retrograde; "none" leaves it.
+max_duration ["auto"]: the wait for the atmosphere plus 1800 s.
+plus min_ec_pct, abort_on_part_loss and stage_limit as for every block (it never stages).
+Extra results: max_g (peak g), max_temp_pct (hottest part, percent of its limit), geo (lat, lng, alt),
+splashed, touchdown_speed (m/s at contact; over 15 m/s fails), passes (max 3; a skip-out waits for the
+next, else "skipped out ..."), shield_dropped, chutes_used and chutes_kept (titles), powered_dv (m/s).
+Fails with "body has no atmosphere", an orbit that never reaches the atmosphere, an option it can't read,
+"stack attached below the heat shield: <names>", a hard touchdown, or an abort (a mid-air abort still
+opens the parachutes if safe). Fly it after a return or a de-orbit burn, periapsis inside the atmosphere;
+it plans no burn. Example: `local res is reentry(). addons:claudia:report(res).`

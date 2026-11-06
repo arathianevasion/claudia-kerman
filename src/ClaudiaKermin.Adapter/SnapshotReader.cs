@@ -91,6 +91,8 @@ namespace ClaudiaKermin.Adapter
             // The start form's target, before Start: the Craft Check judges the craft against it.
             var form = id.HasValue ? null : MissionDriver.FormTargetId;
             if (form.HasValue && form.Value != vessel.persistentId) snapshot.FormTarget = LiveTarget(snapshot, form.Value);
+            snapshot.CraftPersistentId = vessel.persistentId;
+            var here = vessel.GetWorldPos3D();
             foreach (var other in FlightGlobals.Vessels)
                 if (other != null && other != vessel && Nameable(other.vesselType))
                     snapshot.Vessels.Add(new SnapshotVessel
@@ -99,6 +101,8 @@ namespace ClaudiaKermin.Adapter
                         Name = other.vesselName ?? "",
                         Body = other.mainBody != null ? other.mainBody.bodyName : "",
                         Situation = other.situation.ToString(),
+                        // From the craft, so same-named vessels can be told apart and the list puts the nearest first (#709).
+                        Distance = Vector3d.Distance(other.GetWorldPos3D(), here),
                     });
         }
 
@@ -420,8 +424,24 @@ namespace ClaudiaKermin.Adapter
                     MeanAnomalyAtEpoch = orbit != null && body.referenceBody != body ? orbit.meanAnomalyAtEpoch : 0,
                     Epoch = orbit != null && body.referenceBody != body ? orbit.epoch : 0,
                     Air = ReadAir(body),
+                    BiomeNames = BiomeNamesOf(body),
                 });
             }
+        }
+
+        /// <summary>Each body's biome names, read once: they don't change in a game (#699).</summary>
+        private static readonly Dictionary<string, List<string>> BiomeNamesRead = new Dictionary<string, List<string>>();
+
+        /// <summary>The body's biome names (a copy of those read once), as <see cref="PlanningBody.BiomeNames"/> gives them; empty with no biome map.</summary>
+        private static List<string> BiomeNamesOf(CelestialBody body)
+        {
+            List<string> names;
+            if (BiomeNamesRead.TryGetValue(body.bodyName, out names)) return new List<string>(names);
+            // A map not loaded yet is read again next time, never kept as no biomes.
+            if (body.BiomeMap == null || body.BiomeMap.Attributes == null) return new List<string>();
+            names = body.BiomeMap.Attributes.Select(a => a.name).ToList();
+            BiomeNamesRead[body.bodyName] = names;
+            return new List<string>(names);
         }
 
         /// <summary>Rows of the body's air for plan_ascent: every fiftieth of its depth, as <see cref="ReentryAir"/> reads it at the equator.</summary>

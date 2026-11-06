@@ -185,6 +185,123 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(new[] { QuickReply.ChangeSomething, QuickReply.EndMission }, reloaded.View.QuickReplies);
         }
 
+        // ---- Typed words at the decline (#698) ----
+
+        private static ScriptedResponse Answer(string intent)
+        {
+            var text = System.Text.Json.JsonSerializer.Serialize("{\"kind\":\"answer\",\"say\":\"Approved: the plan goes ahead.\",\"reply_intent\":\"" + intent
+                + "\",\"mission_plan\":null,\"sequence_plan\":null,\"debrief\":null}");
+            var sse = "event: message_start\n"
+                + "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_t\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"claude-sonnet-5-5\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":3000,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":1}}}\n\n"
+                + "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n"
+                + "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":" + text + "}}\n\n"
+                + "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n"
+                + "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":200,\"iterations\":[{\"type\":\"message\",\"input_tokens\":3000,\"output_tokens\":200}]}}\n\n"
+                + "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
+            return new ScriptedResponse { Body = System.Text.Encoding.UTF8.GetBytes(sse) };
+        }
+
+        private const string NoPlanNotice = "There was no plan to approve: Claudia is making a new one.";
+
+        [Theory]
+        [InlineData("approve")]
+        [InlineData("unclear")]
+        public void ATypedReplyReadAsApproveOrUnclearAtTheDeclineAsksForANewPlanOnceWithThePlayersWords(string intent)
+        {
+            var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-empty.sse"), Answer(intent), ScriptedResponse.Fixture("mission-plan.sse"));
+            var mission = Control(transport);
+            ToFirstReply(mission);
+
+            mission.Send(new Reply("continue"));
+            DrainUntil(mission, v => transport.Requests.Count == 3 && !v.Busy && v.PlanSequences.Count == 1);
+
+            Assert.Contains("continue", LastUserText(transport.Requests[2]));
+            Assert.Contains("wants a change", LastUserText(transport.Requests[2]));
+            Assert.Single(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text == NoPlanNotice);
+            Assert.Null(mission.View.ConfirmPrompt);
+            Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
+            // Nothing flew: the new plan waits for the player's Approval (ADR 0002).
+            Assert.Contains(QuickReply.Approve, mission.View.QuickReplies);
+        }
+
+        [Fact]
+        public void ATypedReplyReadAsAQuestionAtTheDeclineBeginsNothing()
+        {
+            var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-empty.sse"), Answer("question"));
+            var mission = Control(transport);
+            ToFirstReply(mission);
+
+            mission.Send(new Reply("why not?"));
+            DrainUntil(mission, v => transport.Requests.Count == 2 && !v.Busy);
+
+            Assert.Equal(2, transport.Requests.Count);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text == NoPlanNotice);
+            Assert.Empty(mission.View.PlanSequences);
+        }
+
+        [Fact]
+        public void AQuestionReadAsApproveAtTheDeclineAsksForANewPlanToo()
+        {
+            var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-empty.sse"), Answer("approve"), ScriptedResponse.Fixture("mission-plan.sse"));
+            var mission = Control(transport);
+            ToFirstReply(mission);
+
+            mission.Send(new AskQuestion("go on then"));
+            DrainUntil(mission, v => transport.Requests.Count == 3 && !v.Busy && v.PlanSequences.Count == 1);
+
+            Assert.Contains("go on then", LastUserText(transport.Requests[2]));
+            Assert.Single(mission.View.Log, e => e.Text == NoPlanNotice);
+        }
+
+        [Fact]
+        public void TheDeclineLineIsInTheTypedReplyAndQuestionRequestsOnlyWhileThePlanIsADecline()
+        {
+            var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-empty.sse"), Answer("question"), Answer("question"),
+                ScriptedResponse.Fixture("mission-plan.sse"), Answer("question"));
+            var mission = Control(transport);
+            ToFirstReply(mission);
+
+            mission.Send(new Reply("why?"));
+            DrainUntil(mission, v => transport.Requests.Count == 2 && !v.Busy);
+            mission.Send(new AskQuestion("why?"));
+            DrainUntil(mission, v => transport.Requests.Count == 3 && !v.Busy);
+            Assert.Contains(MissionPrompts.DeclinedPlanLine, transport.Requests[1].Body);
+            Assert.Contains(MissionPrompts.DeclinedPlanLine, transport.Requests[2].Body);
+
+            mission.Send(new ChangeSomething("Just prove the kOS link instead."));
+            DrainUntil(mission, v => transport.Requests.Count == 4 && !v.Busy && v.PlanSequences.Count == 1);
+            mission.Send(new Reply("why?"));
+            DrainUntil(mission, v => transport.Requests.Count == 5 && !v.Busy);
+            // Earlier turns keep their own notice in the history; only the last message is this request's.
+            using (var doc = JsonDocument.Parse(transport.Requests[4].Body))
+                Assert.DoesNotContain(MissionPrompts.DeclinedPlanLine, doc.RootElement.GetProperty("messages").EnumerateArray().Last().GetRawText());
+        }
+
+        [Fact]
+        public void TheStripNamesTheDeclinedState()
+        {
+            var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-empty.sse"));
+            var mission = Control(transport);
+            ToFirstReply(mission);
+
+            Assert.True(mission.View.PlanDeclined);
+            Assert.Equal("Claudia declined the goal: Change something or End Mission", ClaudiaKermin.Core.Ui.MissionWindowRules.NeedsYou(mission.View));
+        }
+
+        [Fact]
+        public void AutoModeStillNeverApprovesADeclinedPlan()
+        {
+            var transport = new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan-empty.sse"));
+            var mission = Control(transport);
+            ToFirstReply(mission);
+
+            mission.Send(new SetAutoMode(true));
+            _background.Drain();
+
+            Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
+            Assert.Single(transport.Requests);
+        }
+
         [Fact]
         public void EndMissionWorksWhileWaitingHere()
         {

@@ -592,6 +592,7 @@ namespace ClaudiaKermin.Core.Missions
                     Purpose = Purpose.MissionPlan,
                     UserText = "Revise the Mission Plan after the Off-Nominal Debrief.\n" + MissionPrompts.Facts(_ut, _snapshot) + PlanFigures(mission, mission.Goal),
                     Notice = DebriefPrompts.RevisedPlanAfterOffNominal,
+                    GoalStands = true,
                 });
                 return;
             }

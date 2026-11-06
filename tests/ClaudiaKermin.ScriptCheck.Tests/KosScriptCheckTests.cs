@@ -624,10 +624,21 @@ namespace ClaudiaKermin.ScriptCheck.Tests
         [InlineData("local c is addons:claudia.\nprint c:TargetVessel:body.")]
         [InlineData("local h is addons:claudia:dockhold(lexicon(\"port\", \"1\", \"toward\", \"2\")).\nprint h:state.")]
         [InlineData("local c is addons:claudia.\nprint c:DockHoldState:reason.")]
+        [InlineData("print addons:claudia:dockguide(lexicon(\"along\", 10)):fire.")]
+        [InlineData("local c is addons:claudia.\nprint c:DockFuel(lexicon(\"distance\", 150)):error.")]
         public void ABlockInternalCallInAMissionScriptFails(string script)
         {
             AssertForbidden("call block-internal calculations", script);
             AssertForbidden("call block-internal calculations", CoreLibrary.Bundle(script));
+        }
+
+        // #711: dock_hold's settled report changes the hold's state, so it is block-internal (ADR 0014 guardrail 5): refused in a
+        // Mission Script. The mod's own dock_hold makes it, and passes as the mod's (TheDockHoldProgramPassesTheCheckAsTheModsOwn).
+        [Fact]
+        public void DockHoldsSettledReportIsRefusedInAMissionScript()
+        {
+            AssertForbidden("call block-internal calculations", "addons:claudia:dockholdsettled(true).");
+            Assert.True(new KosScriptCheck(forCoreLibrary: true).Check(ClaudiaKermin.Core.Kos.DockHold.Program("1", "2")).Passed);
         }
 
         // #335: the warp trace's wait marks are common calls, like BLOCKSTART: a report to the mod's trace, not a calculation
@@ -820,6 +831,10 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             var land = File.ReadAllText(Path.Combine(RepoRoot(), "kerboscript", "library", "land.ks"));
             Assert.True(new KosScriptCheck(forCoreLibrary: true).Check(land).Passed);
             Assert.Contains(_check.Check(land).Forbidden, f => f.EndsWith("(call block-internal calculations)"));
+            // LANDGUARD (#712), made every braking tick, is refused in a Mission Script.
+            Assert.Contains(_check.Check(land).Forbidden, f => f.EndsWith(":LANDGUARD (call block-internal calculations)"));
+            // So is KEEPCLEAR (#713), land's keep-clear decision.
+            Assert.Contains(_check.Check(land).Forbidden, f => f.EndsWith(":KEEPCLEAR (call block-internal calculations)"));
             // The library's check refuses everything else on the list.
             Assert.Contains(new KosScriptCheck(forCoreLibrary: true).Check("kuniverse:quicksave().").Forbidden, f => f.EndsWith("(quicksave)"));
         }
@@ -841,7 +856,7 @@ namespace ClaudiaKermin.ScriptCheck.Tests
             var block = File.ReadAllText(Path.Combine(RepoRoot(), "kerboscript", "library", "dock.ks"));
             Assert.True(new KosScriptCheck(forCoreLibrary: true).Check(block).Passed);
             var forbidden = _check.Check(block).Forbidden;
-            foreach (var call in new[] { "TARGETVESSEL", "DOCKHOLD", "DOCKHOLDSTATE" })
+            foreach (var call in new[] { "TARGETVESSEL", "DOCKHOLD", "DOCKHOLDSTATE", "DOCKGUIDE", "DOCKFUEL" })
                 Assert.Contains(forbidden, f => f.EndsWith(":" + call + " (call block-internal calculations)"));
         }
 

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using ClaudiaKermin.Core.Kos;
+using ClaudiaKermin.Core.Tools;
 using kOS.Safe;
 using kOS.Safe.Encapsulation;
 using kOS.Safe.Function;
@@ -17,6 +18,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
     /// The dock Building Block (#456) flown in the kOS harness: dock_run, the block's own flight, against <see cref="DockRig"/>, a
     /// craft's port moving in the target port's frame (distance out along its axis and off it) under RCS of limited authority,
     /// with the magnetic capture modelled as a distance-and-alignment threshold, and dock_hold's state as the mod reports it.
+    /// The rig's push runs Core's <see cref="DockGuidance"/> as DOCKGUIDE does (#706); its own rules are DockGuidanceTests'.
     /// Flying it in KSP is tests/blocks/dock (#457).
     /// </summary>
     public class DockTests
@@ -47,7 +49,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
         private static string[] Fly(string options = "")
         {
             return Run("local opt is claudia_options(lexicon(" + options + "), dock_defaults(), 1800):opt.\n"
-                + "local done is dock_run(opt, \"Station\", { return test_dk_state(). }, { parameter a, l. test_dk_push(a, l). }).\n"
+                + "local done is dock_run(\"Station\", { return test_dk_state(). }, { parameter s, mode. test_dk_push(s, opt, mode). }).\n"
                 + "print done:reason. print done:docked. print done:monoprop. print done:state:distance.");
         }
 
@@ -71,48 +73,6 @@ namespace ClaudiaKermin.Kerboscript.Tests
         public void An_option_value_it_cannot_use_is_refused(string options, string reason)
         {
             Assert.Equal(reason, One("dock_unreadable(claudia_options(lexicon(" + options + "), dock_defaults(), 1800):opt)"));
-        }
-
-        [Theory]
-        // 1 m/s beyond 50 m, 0.3 m/s inside 10 m, a taper between, up to 5 m/s far out.
-        [InlineData(2000, 5)]
-        [InlineData(300, 3)]
-        [InlineData(80, 1)]
-        [InlineData(50, 1)]
-        [InlineData(30, 0.65)]
-        [InlineData(10, 0.3)]
-        [InlineData(2, 0.3)]
-        public void The_closing_speed_goes_by_distance(double distance, double speed)
-        {
-            Assert.Equal(speed, Number(One("dock_speed(" + distance.ToString(CultureInfo.InvariantCulture) + ", " + Opt + ")")), 9);
-        }
-
-        private static string State(double along, double lat, double align = 0)
-        {
-            var distance = Math.Sqrt(along * along + lat * lat);
-            return string.Format(CultureInfo.InvariantCulture, "lexicon(\"along\", {0}, \"lat\", {1}, \"distance\", {2}, \"align_deg\", {3})", along, lat, distance, align);
-        }
-
-        [Theory]
-        // On the axis: close at the speed for the distance.
-        [InlineData(80, 0, 0, -1, 0)]
-        [InlineData(5, 0.1, 0, -0.3, -0.02)]
-        // Off the cone (0.2 m inside 10 m): hold the distance and line up.
-        [InlineData(5, 0.5, 0, 0, -0.1)]
-        // Off the cone within 2 m: back out at final_speed.
-        [InlineData(1, 0.5, 0, 0.3, -0.1)]
-        // On the cone inside 20 m but pointing 8 degrees off the axis: wait for the turn.
-        [InlineData(15, 0, 8, 0, 0)]
-        // Half a metre behind the face at a port's edge, as just before capture: no 50 m detour, back out and line up.
-        [InlineData(-0.5, 0.5, 0, 0.3, -0.1)]
-        // Over a metre behind the port's face: out to 50 m off the axis first, then out past the face.
-        [InlineData(-80, 10, 0, 0, 1)]
-        [InlineData(-80, 60, 0, 1, 0)]
-        public void The_wanted_velocity_lines_up_on_the_axis_before_it_closes(double along, double lat, double align, double wantAlong, double wantLat)
-        {
-            var printed = Run("local w is dock_want(" + State(along, lat, align) + ", " + Opt + "). print w:along. print w:lat.");
-            Assert.Equal(wantAlong, Number(printed[0]), 6);
-            Assert.Equal(wantLat, Number(printed[1]), 6);
         }
 
         // ---- The flight on the rig ----
@@ -141,7 +101,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
             // dock()'s extra results, as it builds them from dock_run's: docked, port, target_port, monoprop_used.
             DockRig.Reset(along: 80, lateral: 0, alongSpeed: 0);
             var printed = Run("local opt is " + Opt + ".\n"
-                + "local done is dock_run(opt, \"Station\", { return test_dk_state(). }, { parameter a, l. test_dk_push(a, l). }).\n"
+                + "local done is dock_run(\"Station\", { return test_dk_state(). }, { parameter s, mode. test_dk_push(s, opt, mode). }).\n"
                 + "local extra is lexicon(\"docked\", done:docked, \"port\", dock_port_name(\"nose\", \"size0\"), \"target_port\", dock_port_name(\"\", \"size0\"), "
                 + "\"monoprop_used\", round(max(0, " + DockRig.MonopropAtStart.ToString(CultureInfo.InvariantCulture) + " - done:monoprop), 1)).\n"
                 + "print extra:docked. print extra:port. print extra:target_port. print extra:monoprop_used > 0. print done:reason = \"\".");
@@ -209,13 +169,60 @@ namespace ClaudiaKermin.Kerboscript.Tests
         }
 
         [Fact]
-        public void Running_out_of_monopropellant_fails()
+        public void From_150_m_the_craft_coasts_for_most_of_the_approach()
         {
-            DockRig.Reset(along: 80, lateral: 0, alongSpeed: 0, monoprop: 0.3);
+            // #706: RCS translated every tick and drained the tank. With the coast band it fires only when the velocity error
+            // leaves 0.05 to 0.1 m/s.
+            DockRig.Reset(along: 150, lateral: 3, alongSpeed: 0);
             var printed = Fly();
-            Assert.StartsWith("out of monopropellant ", printed[0]);
-            Assert.EndsWith(" m from Station's port", printed[0]);
+            Assert.Equal("", printed[0]);
+            Assert.True(DockRig.Docked);
+            Assert.True(DockRig.FiredTicks < 0.2 * DockRig.Ticks, "RCS translated on " + DockRig.FiredTicks + " of " + DockRig.Ticks + " ticks");
+            var used = DockRig.MonopropAtStart - Number(printed[2]);
+            Assert.True(used < 0.15 * DockRig.MonopropAtStart, "monoprop used " + used + " of " + DockRig.MonopropAtStart);
+        }
+
+        [Fact]
+        public void From_300_m_mostly_sideways_it_waits_for_the_station_to_turn_then_coasts_in()
+        {
+            // #711's Mission: rendezvous handed off 296 m out (along 60 m, lateral 290 m), and dock_hold took minutes to turn the
+            // station's port to the craft. Chasing the turning axis translated on 484 of 522 trace lines. Now the craft only
+            // nulls its relative velocity until the hold settles, and then flies one speed a stretch, coasting between burns.
+            DockRig.Reset(along: 60, lateral: 290, alongSpeed: 0.2, monoprop: 120);
+            DockRig.Turning(Math.Atan2(290, 60) * 180 / Math.PI, 120);
+            var printed = Fly();
+            Assert.Equal("", printed[0]);
+            Assert.Equal("True", printed[1]);
+            Assert.True(DockRig.Docked);
+            Assert.True(DockRig.FiredTicks <= 0.3 * DockRig.Ticks, "RCS translated on " + DockRig.FiredTicks + " of " + DockRig.Ticks + " ticks");
+            Assert.True(DockRig.WorstLateralInside10 <= 0.2 + 1e-6, "lateral " + DockRig.WorstLateralInside10 + " m inside 10 m");
+        }
+
+        [Fact]
+        public void Captured_while_the_merged_vessel_turns_over_1_deg_s_is_success_with_no_back_off()
+        {
+            // #711: dock_hold reported docked and ended, the craft's port wasn't read Docked yet, and the merged vessel turned at
+            // 1 deg/s: dock_run read a passive target spinning, backed off and failed. Any docked state comes first now.
+            DockRig.Reset(along: 20, lateral: 0, alongSpeed: 0);
+            DockRig.CaptureLag = 1000;
+            DockRig.CaptureSpin = 1.5;
+            var printed = Fly();
+            Assert.Equal("", printed[0]);
+            Assert.Equal("True", printed[1]);
+            Assert.Equal(0, DockRig.PushesAfterCapture);
+            Assert.Equal(0, DockRig.BackedOff);
+        }
+
+        [Fact]
+        public void At_15_percent_of_the_starting_monoprop_it_backs_off_and_fails()
+        {
+            // Too little to close from 30 m: at 15% left it stops closing, backs off and fails, rather than run dry at the port.
+            DockRig.Reset(along: 30, lateral: 0, alongSpeed: 0, monoprop: 0.4);
+            var printed = Fly();
+            Assert.Matches("^monopropellant down to 0(\\.[0-9]+)? units, 15% of the start's, [0-9.]+ m from Station's port; backed off to [0-9]+ m$", printed[0]);
             Assert.Equal("False", printed[1]);
+            Assert.True(Number(printed[2]) <= 0.15 * 0.4 + 1e-9, "monoprop " + printed[2]);
+            Assert.False(DockRig.Docked);
         }
 
         [Fact]
@@ -255,9 +262,21 @@ namespace ClaudiaKermin.Kerboscript.Tests
         public static double Along, Lateral, AlongSpeed, LateralSpeed, Align, Spin, Monoprop, MonopropAtStart, Ut, Authority;
         public static string Hold = "", HoldReason = "", AbortReason = "";
         public static double FaultAt, AbortAt, SpinAt;
-        public static bool Docked;
-        public static int Pushes;
+        public static bool Docked, Firing;
+        public static int Pushes, Ticks, FiredTicks, PushesAfterCapture;
         public static double CaptureDistance, CaptureClosing, WorstLateralInside10, FastestInside10, WidestBehind, BackedOff;
+        /// <summary>
+        /// The target port's axis turning toward the craft (dock_hold, #711): degrees still to turn and the rate (deg/s). The rig
+        /// rotates the craft's position and velocity in the port's frame by it each tick, and reports the hold settled
+        /// <see cref="SettleAfter"/> s after the turn ends.
+        /// </summary>
+        public static double TurnLeft, TurnRate, SettleAfter, TurnEndedAt;
+        /// <summary>
+        /// Ticks after capture during which the craft's own port isn't yet read as docked, while dock_hold reports docked and the
+        /// merged vessel turns at <see cref="CaptureSpin"/> deg/s (#711's failure).
+        /// </summary>
+        public static int CaptureLag;
+        public static double CaptureSpin;
         private static double _faultDistance;
 
         public static void Reset(double along, double lateral, double alongSpeed, string hold = "active", string holdReason = "", double spin = 0,
@@ -276,11 +295,34 @@ namespace ClaudiaKermin.Kerboscript.Tests
             HoldReason = holdReason;
             AbortReason = "";
             FaultAt = AbortAt = SpinAt = double.MaxValue;
-            Docked = false;
-            Pushes = 0;
+            Docked = Firing = false;
+            Pushes = Ticks = FiredTicks = PushesAfterCapture = 0;
             CaptureDistance = CaptureClosing = double.MaxValue;
             WorstLateralInside10 = FastestInside10 = WidestBehind = BackedOff = 0;
+            TurnLeft = TurnRate = SettleAfter = 0;
+            TurnEndedAt = double.MaxValue;
+            CaptureLag = 0;
+            CaptureSpin = 0;
             _faultDistance = -1;
+        }
+
+        /// <summary>dock_hold turns the target's port by <paramref name="degrees"/> toward the craft over <paramref name="seconds"/>, then settles.</summary>
+        public static void Turning(double degrees, double seconds, double settleAfter = 2)
+        {
+            TurnLeft = degrees;
+            TurnRate = degrees / seconds;
+            SettleAfter = settleAfter;
+            Spin = TurnRate;
+        }
+
+        /// <summary>
+        /// The hold the rig reports: an active one is settled once its turn is over and the settle time has passed (at once with
+        /// no turn), and active while it turns.
+        /// </summary>
+        private static string HoldNow()
+        {
+            if (Hold != "active") return Hold;
+            return TurnRate <= 0 || Ut >= TurnEndedAt + SettleAfter ? "settled" : "active";
         }
 
         private static double Distance { get { return Math.Sqrt(Along * Along + Lateral * Lateral); } }
@@ -288,41 +330,79 @@ namespace ClaudiaKermin.Kerboscript.Tests
         public static IDictionary<string, object> State()
         {
             var abort = Ut >= AbortAt ? AbortReason : "";
-            var hold = Hold;
+            var hold = HoldNow();
             var reason = HoldReason;
-            if (Ut >= FaultAt && hold == "active")
+            var docked = Docked;
+            var spin = Ut >= SpinAt ? 2 : Spin;
+            if (Docked)
+            {
+                // Captured: dock_hold has ended "docked" and the merged vessel turns, while the craft's port reads docked only after the lag.
+                hold = "docked";
+                spin = CaptureSpin;
+                docked = PushesAfterCapture >= CaptureLag;
+            }
+            if (Ut >= FaultAt && (hold == "active" || hold == "settled"))
             {
                 hold = "fault";
                 reason = "blocked: DOEVENT on another vessel";
                 if (_faultDistance < 0) _faultDistance = Distance;
             }
             if (_faultDistance >= 0) BackedOff = Math.Max(BackedOff, Distance - _faultDistance);
-            var spin = Ut >= SpinAt ? 2 : Spin;
             return new Dictionary<string, object>
             {
-                { "abort", abort }, { "docked", Docked }, { "distance", Distance }, { "along", Along }, { "lat", Math.Abs(Lateral) },
-                { "speed", Math.Sqrt(AlongSpeed * AlongSpeed + LateralSpeed * LateralSpeed) }, { "align_deg", Align }, { "spin_dps", spin },
+                { "abort", abort }, { "docked", docked }, { "distance", Distance }, { "along", Along }, { "lat", Math.Abs(Lateral) },
+                { "speed", Math.Sqrt(AlongSpeed * AlongSpeed + LateralSpeed * LateralSpeed) },
+                { "v_along", AlongSpeed }, { "v_lat", Lateral >= 0 ? LateralSpeed : -LateralSpeed }, { "v_side", 0.0 }, { "align_deg", Align }, { "spin_dps", spin },
                 { "monoprop", Monoprop }, { "hold", hold }, { "hold_reason", reason }, { "ut", Ut },
             };
         }
 
-        /// <summary>One tick toward the wanted relative velocity: along the axis, and off it (away from the axis, positive).</summary>
-        public static void Push(double wantAlong, double wantLat)
+        /// <summary>
+        /// One tick of dock's push: <see cref="DockGuidance.Guide"/> on the state dock_run read, as DOCKGUIDE answers it, and the
+        /// RCS command it gives (clipped to 1 an axis, of <see cref="Authority"/> m/s²) on the ticks it translates.
+        /// </summary>
+        public static void Push(IDictionary<string, object> state, IDictionary<string, object> opt, string mode)
         {
             Pushes++;
+            var input = new Dictionary<string, object>(state);
+            input["mode"] = mode;
+            input["firing"] = Firing;
+            foreach (var key in new[] { "approach_speed", "final_speed", "max_lateral" }) input[key] = opt[key];
+            var tick = DockGuidance.Guide(input);
+            Firing = (bool)tick["fire"];
+            Ticks++;
             var side = Lateral >= 0 ? 1 : -1;
-            var step = Authority * Dt;
-            var dAlong = Math.Max(-step, Math.Min(step, wantAlong - AlongSpeed));
-            var dLateral = Math.Max(-step, Math.Min(step, wantLat * side - LateralSpeed));
-            if (Monoprop > 0)
+            if (Firing && Monoprop > 0)
             {
+                FiredTicks++;
+                var dAlong = Math.Max(-1, Math.Min(1, (double)tick["cmd_along"])) * Authority * Dt;
+                var dLateral = Math.Max(-1, Math.Min(1, (double)tick["cmd_lat"])) * Authority * Dt;
                 AlongSpeed += dAlong;
-                LateralSpeed += dLateral;
+                LateralSpeed += dLateral * side;
                 Monoprop = Math.Max(0, Monoprop - 0.5 * (Math.Abs(dAlong) + Math.Abs(dLateral)));
             }
+            if (Docked) PushesAfterCapture++;
             Along += AlongSpeed * Dt;
             Lateral += LateralSpeed * Dt;
             Align = Math.Max(0, Align - 4 * Dt);
+            if (TurnLeft > 0)
+            {
+                // The port's axis turns toward the craft: the craft's position and velocity, read in the port's frame, turn the other way.
+                var step = Math.Min(TurnLeft, TurnRate * Dt);
+                TurnLeft -= step;
+                var a = -step * Math.PI / 180 * (Lateral >= 0 ? 1 : -1);
+                double cos = Math.Cos(a), sin = Math.Sin(a);
+                double along = Along, lateral = Lateral, vAlong = AlongSpeed, vLateral = LateralSpeed;
+                Along = along * cos - lateral * sin;
+                Lateral = along * sin + lateral * cos;
+                AlongSpeed = vAlong * cos - vLateral * sin;
+                LateralSpeed = vAlong * sin + vLateral * cos;
+                if (TurnLeft <= 0)
+                {
+                    TurnEndedAt = Ut + Dt;
+                    Spin = 0;
+                }
+            }
             Ut += Dt;
             if (Along < 0) WidestBehind = Math.Max(WidestBehind, Math.Abs(Lateral));
             if (Distance < 10 && Along > 0)
@@ -356,10 +436,11 @@ namespace ClaudiaKermin.Kerboscript.Tests
         {
             public override void Execute(SafeSharedObjects shared)
             {
-                var lat = GetDouble(PopStructureAssertEncapsulated(shared, true));
-                var along = GetDouble(PopStructureAssertEncapsulated(shared, true));
+                var mode = PopStructureAssertEncapsulated(shared, true).ToString();
+                var opt = (IDictionary<string, object>)KosPlain.To(PopStructureAssertEncapsulated(shared, true));
+                var state = (IDictionary<string, object>)KosPlain.To(PopStructureAssertEncapsulated(shared, true));
                 AssertArgBottomAndConsume(shared);
-                DockRig.Push(along, lat);
+                DockRig.Push(state, opt, mode);
                 ReturnValue = new BooleanValue(true);
             }
         }

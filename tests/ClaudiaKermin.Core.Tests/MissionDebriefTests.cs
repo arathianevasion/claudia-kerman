@@ -1129,6 +1129,59 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Contains("Revised Mission Plan next: Add a second burn.", rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief.FollowUp);
         }
 
+        /// <summary>A propose_mission_plan input: the named sequences, or none (a plan that declines the goal).</summary>
+        private static string ToolPlan(string why, params string[] names)
+        {
+            return "{\"why\":" + JsonSerializer.Serialize(why) + ",\"sequences\":["
+                + string.Join(",", names.Select(n => "{\"name\":\"" + n + "\",\"intent\":\"Fly it.\",\"delta_v\":100,\"timing\":\"next\",\"due_time_ut\":-1,\"manual\":false,\"vessel\":\"craft\"}"))
+                + "],\"total_delta_v\":" + (names.Length * 100) + ",\"expected_duration\":\"short\",\"mission_time_s\":-1,\"new_goal\":\"\\\"\\\"\",\"child_vessels\":[],\"goal_steps\":[]}";
+        }
+
+        private static ScriptedResponse MissionPlanKind()
+        {
+            return Reply("{\"kind\":\"mission_plan\",\"say\":\"Revised.\",\"reply_intent\":\"none\",\"unsure_because\":\"\",\"sequence_plan\":null,\"debrief\":null,\"alert\":null}");
+        }
+
+        /// <summary>
+        /// #697, Mission m20261103-031325-bac8: the revision after an Off-Nominal Debrief got the full plan and an empty placeholder
+        /// in one reply. Neither is accepted; the re-send of the full plan is, and it is the plan offered, not an empty one.
+        /// </summary>
+        [Fact]
+        public void TheRevisionThatGotAFullAndAnEmptyPlanInOneReplyEndsWithTheFullPlanOffered()
+        {
+            var full = ToolPlan("Land and come home.", "Link check", "Land at Twin Craters", "Return to Kerbin");
+            var rig = new Rig(this, DebriefJson("Off-Nominal", ",\"follow_up\":\"revised_plan\",\"follow_up_text\":\"Land at the craters.\""),
+                ToolUseStreams.ToolUse("two", (ProposedPlans.ToolName, full), (ProposedPlans.ToolName, ToolPlan("placeholder"))));
+            rig.Transport.Add(ToolUseStreams.ToolUse("again", (ProposedPlans.ToolName, full)));
+            rig.Transport.Add(MissionPlanKind());
+            var start = rig.RunToRunning();
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => rig.Transport.Requests.Count == 6 && v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+
+            Assert.Contains(ProposedPlans.OnePerReplyJson, rig.Transport.Requests[4].Body.Replace("\\\"", "\"").Replace("\\\\", "\\"));
+            Assert.Equal(new[] { "Link check", "Land at Twin Craters", "Return to Kerbin" }, rig.Mission.View.PlanSequences);
+            var events = File.ReadAllText(Path.Combine(rig.Folder, MissionStore.EventsFile));
+            Assert.DoesNotContain("tool_loop_repeat_stop", events);
+        }
+
+        [Fact]
+        public void TheRevisionAfterAnOffNominalDebriefRefusesAPlanWithNoSequences()
+        {
+            var full = ToolPlan("Land and come home.", "Link check", "Land at Twin Craters");
+            var rig = new Rig(this, DebriefJson("Off-Nominal", ",\"follow_up\":\"revised_plan\",\"follow_up_text\":\"Land at the craters.\""),
+                ToolUseStreams.ToolUse("empty", (ProposedPlans.ToolName, ToolPlan("Can't do it."))));
+            rig.Transport.Add(ToolUseStreams.ToolUse("full", (ProposedPlans.ToolName, full)));
+            rig.Transport.Add(MissionPlanKind());
+            var start = rig.RunToRunning();
+
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => rig.Transport.Requests.Count == 6 && v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+
+            Assert.Contains("this is a revision of a Mission still under way: give the sequences still to fly", rig.Transport.Requests[4].Body);
+            Assert.Equal(new[] { "Link check", "Land at Twin Craters" }, rig.Mission.View.PlanSequences);
+        }
+
         [Fact]
         public void TheRevisedMissionPlanRequestAfterADebriefCarriesTheStageTable()
         {

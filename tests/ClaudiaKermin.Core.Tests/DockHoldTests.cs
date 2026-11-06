@@ -37,6 +37,20 @@ namespace ClaudiaKermin.Core.Tests
                 Assert.DoesNotContain(word, program);
         }
 
+        [Fact]
+        public void The_program_holds_a_fixed_aim_and_re_aims_only_past_15_degrees()
+        {
+            // #706: steering to the craft's port each tick chased the craft's own turns into a limit cycle. The harness has no
+            // vectors, so the rule is pinned by source: steering locks to a held direction, set at the start and again only
+            // when the craft is over 15 degrees off it with the ports over 10 m apart.
+            var program = DockHold.Program("1", "2").Replace("\r\n", "\n");
+            Assert.Contains("local dh_aim is dh_toward:nodeposition - dh_port:nodeposition.\n", program);
+            Assert.Contains("lock steering to lookdirup(dh_aim, dh_up).\n", program);
+            Assert.Contains("if vang(dh_now, dh_aim) > 15 and dh_now:mag > 10 {\n      set dh_aim to dh_now.\n", program);
+            Assert.Single(System.Text.RegularExpressions.Regex.Matches(program, "set dh_aim to "));
+            Assert.Single(System.Text.RegularExpressions.Regex.Matches(program, @"\block steering to"));
+        }
+
         [Theory]
         [InlineData(true, true, true, true, "")]
         [InlineData(false, true, true, true, "the target is not loaded")]
@@ -90,6 +104,42 @@ namespace ClaudiaKermin.Core.Tests
             int run;
             Assert.True(holds.Stop(Craft, out part, out run));
             Assert.False(holds.Stop(Craft, out part, out run));
+        }
+
+        [Fact]
+        public void The_program_reports_settled_and_again_when_it_re_aims()
+        {
+            // #711: settled is the port within 2 degrees of the aim, turning under 0.1 deg/s, for 2 s; a re-aim unsettles it.
+            var program = DockHold.Program("1", "2").Replace("\r\n", "\n");
+            Assert.Contains("if vang(dh_port:portfacing:forevector, dh_aim) > 2 or ship:angularvel:mag * constant:radtodeg > 0.1 {\n", program);
+            Assert.Contains("} else if not dh_settled and time:seconds >= dh_since + 2 {\n", program);
+            Assert.Contains("addons:claudia:dockholdsettled(true).", program);
+            Assert.Contains("addons:claudia:dockholdsettled(false).", program);
+        }
+
+        [Fact]
+        public void A_running_hold_moves_between_active_and_settled_as_it_reports()
+        {
+            var holds = Running();
+            holds.Settled(TargetProcessor, Run, true);
+            Assert.Equal(DockHoldState.Settled, holds.State(Craft, out _));
+            Assert.Single(holds.Live());
+            holds.Settled(TargetProcessor, Run, false);
+            Assert.Equal(DockHoldState.Active, holds.State(Craft, out _));
+            holds.Settled(TargetProcessor, Run, true);
+            // A settled hold still ends docked or faults like an active one.
+            holds.Ended(TargetProcessor, Run, Outcome(RunOutcomeKind.Finished, report: "docked"));
+            Assert.Equal(DockHoldState.Docked, holds.State(Craft, out _));
+            // A report from another run, or after the hold ended, changes nothing.
+            holds.Settled(TargetProcessor, Run, false);
+            Assert.Equal(DockHoldState.Docked, holds.State(Craft, out _));
+            var other = Running();
+            Assert.False(other.Settled(TargetProcessor, Run - 1, true));
+            Assert.False(other.Settled(Craft, Run, true));
+            Assert.Equal(DockHoldState.Active, other.State(Craft, out _));
+            other.Settled(TargetProcessor, Run, true);
+            other.Faulted(TargetProcessor, Run, "its kOS processor lost power");
+            Assert.Equal(DockHoldState.Fault, other.State(Craft, out _));
         }
 
         [Fact]

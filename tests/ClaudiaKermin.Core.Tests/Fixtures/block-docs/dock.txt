@@ -1,0 +1,15 @@
+dock(options): docks with the Target Vessel.
+From rendezvous's hand-off (loaded, under 2 m/s) on RCS: lines up on the target port's axis and closes along it,
+up to 2 m/s far out, approach_speed inside 50 m, final_speed inside 10 m. A target with a powered, linked kOS
+processor turns its port to the craft (dock_hold); any other must turn under 1 deg/s.
+Options:
+port ["auto"]: the craft's port, by kOS tag or size (size0, size1, ...).
+target_port ["auto"]: the target's, by tag or size; auto: the nearest free one of the craft's port's size.
+approach_speed [1], final_speed [0.3]: m/s.
+max_lateral [0.2]: m off the axis allowed inside 10 m; further, the craft stops and lines up.
+max_duration [1800].
+plus min_ec_pct, abort_on_part_loss and rcs_tolerance as for every block.
+Extra results: docked, port and target_port (tag or size), monoprop_used (units).
+Fails with no loaded Target Vessel, no RCS, too little monoprop for the distance, no free port to match, a passive target
+turning over 1 deg/s, drifting 50 m past the start, 15% monoprop left or a dock_hold fault (both after backing off), or an abort.
+Example: `local res is dock(lexicon()). addons:claudia:report(res).`

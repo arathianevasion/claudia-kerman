@@ -640,6 +640,7 @@ namespace ClaudiaKermin.Core.Ui
             {
                 case MissionStage.AwaitingPlanApproval:
                 case MissionStage.AwaitingSequenceApproval:
+                    if (view.PlanDeclined) return "Claudia declined the goal: Change something or End Mission";
                     if (replies.Contains(QuickReply.Replan) && view.PlanStale.Length > 0) return StaleWhat(view) + " has changed: Re-plan?";
                     if (!replies.Contains(QuickReply.Approve)) return "";
                     if (view.Stage == MissionStage.AwaitingPlanApproval) return "Approve the Mission Plan?";
@@ -722,6 +723,8 @@ namespace ClaudiaKermin.Core.Ui
                 case MissionStage.Running: return new StatusChip("Running", ChipTone.Info);
                 case MissionStage.Debriefing: return new StatusChip("Debriefing", ChipTone.Info);
                 case MissionStage.AwaitingPlanApproval:
+                    if (view.PlanDeclined) return new StatusChip("Goal declined", ChipTone.Attention);
+                    return new StatusChip("Plan awaiting Approval", ChipTone.Info);
                 case MissionStage.AwaitingSequenceApproval: return new StatusChip("Plan awaiting Approval", ChipTone.Info);
                 case MissionStage.Paused: return new StatusChip("Paused", ChipTone.Attention);
                 case MissionStage.UnsafeScript: return new StatusChip("No safe script", ChipTone.Attention);

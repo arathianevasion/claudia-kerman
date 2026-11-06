@@ -228,6 +228,7 @@ namespace ClaudiaKermin.Adapter
         /// <summary>Call each frame, after the background queue has drained.</summary>
         public void Update()
         {
+            ManeuverPlan.RemovePending();
             PhysicsWarpAllowed = _mission.View.PhysicsWarpAllowed;
             TimeCapHours = _mission.View.Settings.TimeCapHours;
             ChuteAllocation = _mission.View.ChuteAllocation;

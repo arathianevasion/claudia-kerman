@@ -1,0 +1,16 @@
+drop_parts(options): drops the named parts now, by firing the decoupler that holds each, and
+reports what it dropped. Use it to shed a spent booster before a landing, with no hand staging.
+Options:
+parts [required]: a list of part names or tags (e.g. list("radialTank", "boosters")), or one name.
+allow_no_engine (false): true lets a drop leave no delta-v in space on an orbit missing the air.
+The common options do nothing here: it never burns, stages or waits, its drops are not part loss,
+and it ignores stage_limit.
+It drops whatever the decoupler holds, fuel or not; use the drop_empty option on a burning block to
+drop tanks only once empty. It drops nothing, and fails, for a part with no decoupler, one whose drop
+would take the part running the script or the root part, or a drop leaving no delta-v in space with
+periapsis above any atmosphere. Extra results: dropped (names of the parts that left),
+parts_dropped, dropped_dv (the delta-v it took).
+Fails with "no part matches <name>", "<name> has no decoupler", "<name> would drop the part
+running the script", or "nothing separated: the decouplers did not fire".
+Tool: stage_performance for the delta-v left once the parts are gone.
+Example: `local res is drop_parts(lexicon("parts", list("boosters"))). addons:claudia:report(res).`

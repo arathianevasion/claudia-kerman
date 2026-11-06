@@ -210,9 +210,9 @@ namespace ClaudiaKermin.Core.Tests
             return TargetVessel.Choose(goal, pick ?? TargetPick.Auto, TargetFacts.Of(snapshot));
         }
 
-        private static SnapshotVessel Vessel(uint id, string name, string body = "Kerbin", string situation = "ORBITING")
+        private static SnapshotVessel Vessel(uint id, string name, string body = "Kerbin", string situation = "ORBITING", double? distance = null)
         {
-            return new SnapshotVessel { Id = id, Name = name, Body = body, Situation = situation };
+            return new SnapshotVessel { Id = id, Name = name, Body = body, Situation = situation, Distance = distance };
         }
 
         [Fact]
@@ -334,15 +334,17 @@ namespace ClaudiaKermin.Core.Tests
 
             var choice = Choose("Dock with the Relay.", snapshot);
 
+            // #709: Auto never guesses between them, nor falls back to KSP's target; the player chooses.
             Assert.Null(choice.Target);
-            Assert.Equal("several vessels are named \"Relay\"", choice.Reason);
-            Assert.Equal("Target Vessel: none (several vessels are named \"Relay\")", choice.Line);
-            Assert.Equal("No Target Vessel: several vessels are named \"Relay\".", choice.LogLine);
+            Assert.Equal("several vessels are named \"Relay\": Choose one", choice.Reason);
+            Assert.Equal("Target Vessel: none (several vessels are named \"Relay\": Choose one)", choice.Line);
+            Assert.Equal("No Target Vessel: several vessels are named \"Relay\": Choose one.", choice.LogLine);
         }
 
         [Fact]
-        public void AVesselNamedAsTheCraftIsNeverTheTargetAndTheLineSaysSo()
+        public void AnEarlierFlightNamedAsTheCraftIsChosenWhenTheGoalMeetsIt()
         {
+            // #709 replaces #643's rule: the one vessel of the name the goal gives is chosen, even when the craft shares the name.
             var snapshot = OnPad();
             snapshot.Craft.Name = "Mun Lander";
             snapshot.Vessels.Add(Vessel(1, "Mun Lander"));
@@ -350,8 +352,8 @@ namespace ClaudiaKermin.Core.Tests
             var choice = Choose("Rendezvous with Mun Lander.", snapshot);
 
             Assert.True(choice.Needed);
-            Assert.Null(choice.Target);
-            Assert.Equal("\"Mun Lander\" is the craft's own name", choice.Reason);
+            Assert.Equal(1u, choice.Target.Id);
+            Assert.Equal("named in the Mission Goal", choice.Reason);
         }
 
         [Fact]
@@ -367,7 +369,10 @@ namespace ClaudiaKermin.Core.Tests
 
             Assert.False(choice.Needed);
             Assert.Null(choice.Target);
-            // A goal that docks still takes KSP's target, whatever the craft is called.
+            // A goal that docks names the earlier flight, the one vessel of that name (#709)...
+            Assert.Equal(1u, Choose("Dock Mun Lander in orbit.", snapshot).Target.Id);
+            // ...and without one still takes KSP's target, whatever the craft is called.
+            snapshot.Vessels.RemoveAt(0);
             Assert.Equal(7u, Choose("Dock Mun Lander in orbit.", snapshot).Target.Id);
         }
 
@@ -402,27 +407,30 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void KspsTargetWhoseNameAnotherVesselSharesIsNotTaken()
+        public void KspsTargetWhoseNameAnotherVesselSharesIsTaken()
         {
+            // #709: KSP's target is one vessel, so a shared name doesn't matter; the line tells it apart by distance.
             var snapshot = OnPad();
             snapshot.KspTarget = Station(7);
-            snapshot.Vessels.Add(Vessel(7, "Kerbin Station Alpha"));
-            snapshot.Vessels.Add(Vessel(8, "kerbin station alpha "));
+            snapshot.Vessels.Add(Vessel(7, "Kerbin Station Alpha", distance: 12400));
+            snapshot.Vessels.Add(Vessel(8, "kerbin station alpha ", distance: 900));
 
             var choice = Choose("Rendezvous in orbit.", snapshot);
 
-            Assert.Null(choice.Target);
-            Assert.Equal("several vessels are named \"Kerbin Station Alpha\"", choice.Reason);
+            Assert.Equal(7u, choice.Target.Id);
+            Assert.Equal("Target Vessel: Kerbin Station Alpha · Kerbin · orbiting · 12 km (KSP's target)", choice.Line);
         }
 
         [Fact]
-        public void KspsTargetNamedAsTheCraftIsNotTaken()
+        public void KspsTargetNamedAsTheCraftIsTakenButNeverTheCraftItself()
         {
             var snapshot = OnPad();
             snapshot.KspTarget = Station(7);
             snapshot.Craft.Name = "Kerbin Station Alpha";
 
-            Assert.Equal("KSP's target \"Kerbin Station Alpha\" is the craft's own name", Choose("Dock in orbit.", snapshot).Reason);
+            Assert.Equal(7u, Choose("Dock in orbit.", snapshot).Target.Id);
+            snapshot.CraftPersistentId = 7;
+            Assert.Equal("no vessel matches", Choose("Dock in orbit.", snapshot).Reason);
         }
 
         // ---- The player's pick ----
@@ -472,8 +480,10 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void TheListLeavesOutTheCraftsNameAndSharedNamesAndSortsTheCraftsBodyFirst()
+        public void WithNoDistancesReadTheListSortsTheCraftsBodyFirstThenByName()
         {
+            // The editor reads no distances: the craft's body first, then by name, then id. Shared names and the craft's name are
+            // listed (#709; #643 left them out).
             var snapshot = OnPad();
             snapshot.Body = "Kerbin";
             snapshot.Craft.Name = "Mun Lander";
@@ -487,8 +497,143 @@ namespace ClaudiaKermin.Core.Tests
 
             var options = TargetVessel.Options(TargetFacts.Of(snapshot));
 
-            Assert.Equal(new uint[] { 6, 4, 5 }, options.Select(v => v.Id).ToArray());
-            Assert.Equal("Alpha Base · Mun · landed", TargetVessel.Describe(options[2]));
+            Assert.Equal(new uint[] { 6, 2, 4, 5, 1, 3 }, options.Select(v => v.Id).ToArray());
+            Assert.Equal("Alpha Base · Mun · landed", TargetVessel.Describe(options[3], options));
+            // A shared name with no distance read shows as before.
+            Assert.Equal("Relay · Kerbin · orbiting", TargetVessel.Describe(options[1], options));
+        }
+
+        // ---- Shared names, the goal's order and near-misses (#709) ----
+
+        /// <summary>The save "Claudia Test 2" (#709): three Kerbin Station Alpha (one the craft on the pad), two Relay Sat 1.</summary>
+        private static GameSnapshot ClaudiaTest2()
+        {
+            var snapshot = OnPad();
+            snapshot.Body = "Kerbin";
+            snapshot.Craft.Name = "Kerbin Station Alpha";
+            snapshot.CraftPersistentId = 555;
+            snapshot.Vessels.Add(Vessel(138571479, "Kerbin Station Alpha", distance: 812000));
+            snapshot.Vessels.Add(Vessel(1158194995, "Kerbin Station Alpha", distance: 12400));
+            snapshot.Vessels.Add(Vessel(11, "Relay Sat 1", distance: 2500000));
+            snapshot.Vessels.Add(Vessel(12, "Relay Sat 1", distance: 650));
+            snapshot.Vessels.Add(Vessel(13, "Lost Lander", "Mun", "LANDED", 11400000));
+            snapshot.Vessels.Add(Vessel(14, "Relay Sat 2", distance: 3100000));
+            snapshot.Vessels.Add(Vessel(15, "Mun Shot v2", "Kerbin", "PRELAUNCH", 40));
+            return snapshot;
+        }
+
+        [Fact]
+        public void TheListHasEveryVesselButTheCraftNearestFirstAndSharedNamesShowTheirDistance()
+        {
+            var snapshot = ClaudiaTest2();
+            // The adapter leaves the craft out; the core does too if it slips in.
+            snapshot.Vessels.Add(Vessel(555, "Kerbin Station Alpha", "Kerbin", "PRELAUNCH", 0));
+
+            var options = TargetVessel.Options(TargetFacts.Of(snapshot));
+
+            Assert.Equal(new uint[] { 15, 12, 1158194995, 138571479, 11, 14, 13 }, options.Select(v => v.Id).ToArray());
+            Assert.DoesNotContain(options, v => v.Id == 555);
+            Assert.Equal(new[]
+            {
+                "Mun Shot v2 · Kerbin · prelaunch",
+                "Relay Sat 1 · Kerbin · orbiting · 650 m",
+                "Kerbin Station Alpha · Kerbin · orbiting · 12 km",
+                "Kerbin Station Alpha · Kerbin · orbiting · 812 km",
+                "Relay Sat 1 · Kerbin · orbiting · 2,500 km",
+                "Relay Sat 2 · Kerbin · orbiting",
+                "Lost Lander · Mun · landed",
+            }, options.Select(v => TargetVessel.Describe(v, options)).ToArray());
+        }
+
+        [Fact]
+        public void AGoalNamingSeveralVesselsListsThemFirstNearestFirstAndAsksThePlayerToChoose()
+        {
+            var snapshot = ClaudiaTest2();
+            snapshot.KspTarget = Station(14);
+            const string goal = "Rendezvous and dock with Kerbin Station Alpha";
+
+            var options = TargetVessel.Options(TargetFacts.Of(snapshot), goal);
+            var choice = Choose(goal, snapshot);
+
+            Assert.Equal(new uint[] { 1158194995, 138571479 }, options.Take(2).Select(v => v.Id).ToArray());
+            Assert.Null(choice.Target);
+            Assert.Equal("Target Vessel: none (several vessels are named \"Kerbin Station Alpha\": Choose one)", choice.Line);
+        }
+
+        [Fact]
+        public void NearMissesHeadTheListAndAskDidYouMean()
+        {
+            var snapshot = ClaudiaTest2();
+            snapshot.KspTarget = Station(14);
+            const string goal = "Dock with Kerbal Station Alpha";
+
+            var options = TargetVessel.Options(TargetFacts.Of(snapshot), goal);
+            var choice = Choose(goal, snapshot);
+
+            Assert.Equal(new uint[] { 1158194995, 138571479 }, options.Take(2).Select(v => v.Id).ToArray());
+            Assert.Null(choice.Target);
+            Assert.Equal("no vessel is named \"Kerbal Station Alpha\": did you mean Kerbin Station Alpha? Choose one", choice.Reason);
+            // A near-miss alone doesn't make a goal need a target.
+            Assert.False(Choose("Fly Kerbal Station Alpha to orbit.", snapshot).Needed);
+        }
+
+        [Fact]
+        public void ANameTheGoalGivesOnceIsStillChosenOverNearMisses()
+        {
+            var snapshot = ClaudiaTest2();
+
+            var choice = Choose("Dock with Relay Sat 2.", snapshot);
+
+            Assert.Equal(14u, choice.Target.Id);
+            Assert.Equal("named in the Mission Goal", choice.Reason);
+            Assert.Equal("Target Vessel: Relay Sat 2 · Kerbin · orbiting (named in the Mission Goal)", choice.Line);
+        }
+
+        [Theory]
+        [InlineData("dock with Kerbal Station Alpha", "Kerbin Station Alpha", 2, "Kerbal Station Alpha")]
+        [InlineData("dock with the Relay Sta 1", "Relay Sat 1", -1, "")]
+        [InlineData("dock with Relya Sat 1", "Relay Sat 1", -1, "")]
+        [InlineData("dock with Relays Sat 1", "Relay Sat 1", 1, "Relays Sat 1")]
+        [InlineData("dock with Relay Sat 2", "Relay Sat 1", -1, "")]
+        [InlineData("land over there", "Rover", -1, "")]
+        [InlineData("dock with the Tag", "Tug", -1, "")]
+        [InlineData("dock with the station in orbit", "Orbiter", -1, "")]
+        [InlineData("land beside the base", "Lander", -1, "")]
+        [InlineData("dock with Kerbin Stations Alpha", "Kerbin Station Alpha", 1, "Kerbin Stations Alpha")]
+        [InlineData("dock with Kebrin Station Alpha", "Kerbin Station Alpha", 2, "Kebrin Station Alpha")]
+        [InlineData("dock with Kerbinite Station Alpha", "Kerbin Station Alpha", -1, "")]
+        public void ANearMissIsWithinEachWordsAllowanceAndKeepsItsFirstLetter(string goal, string name, int edits, string phrase)
+        {
+            // None for a word under 4 letters, 1 for 4 or 5, 2 for 6 or more; the first letter must match.
+            var near = TargetVessel.NearMiss(goal, name);
+
+            if (edits < 0) Assert.Null(near);
+            else
+            {
+                Assert.Equal(edits, near.Item1);
+                Assert.Equal(phrase, near.Item2);
+            }
+        }
+
+        [Fact]
+        public void APickOfOneOfTwoSameNamedVesselsStaysByIdThroughGoalEditsAndStart()
+        {
+            var snapshot = ClaudiaTest2();
+            var pick = TargetPick.Of(snapshot.Vessels.First(v => v.Id == 138571479));
+
+            foreach (var goal in new[] { "Rendezvous with Kerbin Station Alpha.", "Dock with Kerbal Station Alpha.", "Dock in orbit." })
+            {
+                var choice = Choose(goal, snapshot, pick);
+                Assert.Equal(138571479u, choice.Target.Id);
+                Assert.Equal("Target Vessel: Kerbin Station Alpha · Kerbin · orbiting · 812 km (your pick)", choice.Line);
+            }
+
+            var mission = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse")));
+            CraftCheckRouter.StartChecked(mission, _background, snapshot,
+                new StartMission("Rendezvous with Kerbin Station Alpha and dock.", 10m, "claude-sonnet-5-5", false, pick));
+
+            Assert.Equal(138571479u, mission.View.TargetVesselId);
+            Assert.Contains(mission.View.Log, e => e.Text == "Target Vessel: Kerbin Station Alpha (your pick).");
         }
 
         // ---- Through the Mission ----

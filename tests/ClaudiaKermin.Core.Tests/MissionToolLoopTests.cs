@@ -1010,6 +1010,152 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Null(plan.NewGoal);
         }
 
+        // ---- One Mission Plan per reply, and no emptied revision (#697) ----
+
+        /// <summary>Mission bac8's second call: a plan with no sequences, which declines the goal.</summary>
+        private const string EmptyPlan = "{\"why\":\"placeholder\",\"sequences\":[],\"total_delta_v\":0,\"expected_duration\":\"\",\"mission_time_s\":-1,"
+            + "\"new_goal\":\"\\\"\\\"\",\"child_vessels\":[],\"goal_steps\":[]}";
+
+        private const string RevisionProblem = "this is a revision of a Mission still under way: give the sequences still to fly; "
+            + "to give up on the goal, say so in the Debrief's follow-up instead";
+
+        private static ToolUseBlock PlanUse(string id, string plan)
+        {
+            return new ToolUseBlock { Id = id, Name = ProposedPlans.ToolName, InputJson = plan, InputIsValid = true };
+        }
+
+        private static List<string> Problems(string json)
+        {
+            using (var doc = JsonDocument.Parse(json))
+                return doc.RootElement.TryGetProperty("problems", out var problems) ? problems.EnumerateArray().Select(p => p.GetString()).ToList() : new List<string>();
+        }
+
+        [Fact]
+        public void TwoPlanCallsInOneReplyAreBothRefusedAndASingleResendNextStepIsAccepted()
+        {
+            var transport = new StreamingFakeTransport(
+                ToolUseStreams.ToolUse("two", (ProposedPlans.ToolName, ProposedPlan("Full plan")), (ProposedPlans.ToolName, EmptyPlan)),
+                Propose("again", ProposedPlan("Full plan")),
+                Kind("mission_plan"));
+            var mission = Control(transport);
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+
+            var both = Results(transport.Requests[1]);
+            Assert.Equal(2, both.Count);
+            foreach (var result in both)
+            {
+                Assert.False(result.TryGetProperty("is_error", out _));
+                Assert.Equal(ProposedPlans.OnePerReplyJson, result.GetProperty("content").GetString());
+                Assert.Equal("hand in one Mission Plan per reply: send the one you mean again on its own", Assert.Single(Problems(result.GetProperty("content").GetString())));
+            }
+            // The re-send of one of them is checked, not refused as a repeat, and is the plan offered.
+            Assert.Equal(ProposedPlans.AcceptedJson, Assert.Single(Results(transport.Requests[2])).GetProperty("content").GetString());
+            Assert.Equal(new[] { "Full plan" }, mission.View.PlanSequences);
+            Assert.DoesNotContain("tool_loop_repeat_stop", Events(mission));
+        }
+
+        [Fact]
+        public void NoPlanOfAReplyWithTwoPlanCallsIsTheLastAcceptedAndEitherMaySendAgain()
+        {
+            var messages = new List<Message>
+            {
+                new Message { Role = Role.Assistant, Content = { PlanUse("a", ProposedPlan("Full plan")), PlanUse("b", EmptyPlan) } },
+                new Message { Role = Role.User, Content =
+                {
+                    new ToolResultBlock { ToolUseId = "a", Content = ProposedPlans.OnePerReplyJson },
+                    new ToolResultBlock { ToolUseId = "b", Content = ProposedPlans.OnePerReplyJson },
+                } },
+            };
+
+            Assert.Null(ProposedPlans.LastAccepted(messages));
+            Assert.Null(Assert.Single(ToolRepeats.Of(messages, new AssistantMessage { Content = { PlanUse("c", ProposedPlan("Full plan")) } })));
+            Assert.Null(Assert.Single(ToolRepeats.Of(messages, new AssistantMessage { Content = { PlanUse("d", EmptyPlan) } })));
+        }
+
+        [Fact]
+        public void ARevisionWhileTheGoalStandsRefusesAPlanWithNoSequencesAndTheFirstPlanOrATypedOneMayDecline()
+        {
+            var use = PlanUse("u", EmptyPlan);
+            Assert.Equal(RevisionProblem, Assert.Single(Problems(ProposedPlans.Check(use, new List<string>(), false, false, goalStands: true).Json)));
+            Assert.Equal(ProposedPlans.AcceptedJson, ProposedPlans.Check(PlanUse("f", ProposedPlan("Full plan")), new List<string>(), false, false, goalStands: true).Json);
+            // The first Mission Plan (no new goal allowed) and the player's typed Change (allowed) may still decline.
+            Assert.Equal(ProposedPlans.AcceptedJson, ProposedPlans.Check(use, new List<string>(), false, false).Json);
+            Assert.Equal(ProposedPlans.AcceptedJson, ProposedPlans.Check(use, new List<string>(), false, true).Json);
+        }
+
+        [Fact]
+        public void ATypedChangeMayStillHandInAPlanWithNoSequences()
+        {
+            var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), Propose("c", EmptyPlan), Kind("mission_plan"));
+            var mission = Control(transport);
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+            mission.Send(new ChangeSomething("Don't fly it after all."));
+            DrainUntil(mission, v => !v.Busy && transport.Requests.Count == 3);
+
+            Assert.Equal(ProposedPlans.AcceptedJson, Assert.Single(Results(transport.Requests[2])).GetProperty("content").GetString());
+        }
+
+        [Fact]
+        public void TheFirstMissionPlanMayStillHandInAPlanWithNoSequences()
+        {
+            var transport = new StreamingFakeTransport(Propose("p", EmptyPlan), Kind("mission_plan"));
+            var mission = Control(transport);
+            Start(mission);
+            DrainUntil(mission, v => !v.Busy && transport.Requests.Count == 2);
+
+            Assert.Equal(ProposedPlans.AcceptedJson, Assert.Single(Results(transport.Requests[1])).GetProperty("content").GetString());
+        }
+
+        [Fact]
+        public void AnUnansweredRevisionKeepsItsGoalStandsFlagAndAnOlderFileLoadsWithout()
+        {
+            MissionStore.WriteUnanswered(_save.Path, new UnansweredTurn { Purpose = "MissionPlan", UserText = "x", GoalStands = true });
+            var path = Path.Combine(_save.Path, MissionStore.UnansweredFile);
+            var json = File.ReadAllText(path);
+            Assert.Contains("\"goal_stands\":true", json);
+            Assert.True(MissionStore.ReadUnanswered(_save.Path).GoalStands);
+            File.WriteAllText(path, json.Replace(",\"goal_stands\":true", ""));
+            Assert.DoesNotContain("goal_stands", File.ReadAllText(path));
+            Assert.False(MissionStore.ReadUnanswered(_save.Path).GoalStands);
+        }
+
+        [Fact]
+        public void APlanReplacedByALaterAcceptedPlanMaySendAgainButThePlanInForceIsStillARepeat()
+        {
+            var messages = new List<Message>
+            {
+                new Message { Role = Role.Assistant, Content = { PlanUse("a", ProposedPlan("Plan A")) } },
+                new Message { Role = Role.User, Content = { new ToolResultBlock { ToolUseId = "a", Content = ProposedPlans.AcceptedJson } } },
+                new Message { Role = Role.Assistant, Content = { PlanUse("b", ProposedPlan("Plan B")) } },
+                new Message { Role = Role.User, Content = { new ToolResultBlock { ToolUseId = "b", Content = ProposedPlans.AcceptedJson } } },
+            };
+
+            Assert.Null(Assert.Single(ToolRepeats.Of(messages, new AssistantMessage { Content = { PlanUse("a2", ProposedPlan("Plan A")) } })));
+            Assert.Equal("you already called this in step 2; its result is above",
+                Assert.Single(ToolRepeats.Of(messages, new AssistantMessage { Content = { PlanUse("b2", ProposedPlan("Plan B")) } })));
+
+            // A again, accepted: now B is the replaced one and A the plan in force.
+            messages.Add(new Message { Role = Role.Assistant, Content = { PlanUse("a2", ProposedPlan("Plan A")) } });
+            messages.Add(new Message { Role = Role.User, Content = { new ToolResultBlock { ToolUseId = "a2", Content = ProposedPlans.AcceptedJson } } });
+            Assert.Null(Assert.Single(ToolRepeats.Of(messages, new AssistantMessage { Content = { PlanUse("b3", ProposedPlan("Plan B")) } })));
+            Assert.Equal("you already called this in step 3; its result is above",
+                Assert.Single(ToolRepeats.Of(messages, new AssistantMessage { Content = { PlanUse("a3", ProposedPlan("Plan A")) } })));
+        }
+
+        [Fact]
+        public void PlanAThenPlanBThenPlanAAgainThroughTheLoopIsCheckedAndOffered()
+        {
+            var transport = new StreamingFakeTransport(Propose("a", ProposedPlan("Plan A")), Propose("b", ProposedPlan("Plan B")), Propose("a2", ProposedPlan("Plan A")), Kind("mission_plan"));
+            var mission = Control(transport);
+            Start(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval && !v.Busy);
+
+            Assert.Equal(ProposedPlans.AcceptedJson, Assert.Single(Results(transport.Requests[3])).GetProperty("content").GetString());
+            Assert.Equal(new[] { "Plan A" }, mission.View.PlanSequences);
+        }
+
         [Fact]
         public void APlanThatDoesNotFitTheSchemaIsRefusedWithTheField()
         {

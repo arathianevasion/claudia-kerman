@@ -350,14 +350,18 @@ namespace ClaudiaKermin.Core.Missions
                 + "set new_goal to the new goal in their words; otherwise new_goal is empty.";
         }
 
-        public static string ReplyNotice(bool missionPlan)
+        /// <summary>The one line a typed-reply or question request adds while the pending Mission Plan is Claudia's decline (#698).</summary>
+        public const string DeclinedPlanLine =
+            " The pending Mission Plan is your decline (no sequences): approving it does nothing; if the player wants to go on, plan it.";
+
+        public static string ReplyNotice(bool missionPlan, bool declined = false)
         {
             var plan = missionPlan ? "Mission Plan" : "Sequence Plan";
             return "The player typed a reply to your pending " + plan + ". Classify it in reply_intent: \"approve\" only if "
                 + "it clearly approves the " + plan + " as it stands, \"revise\" if they want something changed, \"question\" "
                 + "if they ask something, and \"unclear\" if you can't tell. For \"revise\", " + Revision(missionPlan)
                 + ". Otherwise reply with kind \"answer\" and say a short line (answering any question)."
-                + ManualHint(missionPlan) + GoalHint(missionPlan);
+                + ManualHint(missionPlan) + GoalHint(missionPlan) + (declined ? DeclinedPlanLine : "");
         }
 
         public static string ChangeNotice(bool missionPlan)
@@ -498,6 +502,9 @@ namespace ClaudiaKermin.Core.Missions
                     + ", expected_delta_v is " + Metres(findings.ExpectedDeltaV) + "):\n" + string.Join("\n", lines.ToArray()));
             }
             if (findings.ShortDuration != null) parts.Add(ShortDuration(findings.ShortDuration, findings.ExpectedDurationSeconds));
+            if (findings.BiomeMiss != null)
+                parts.Add(char.ToUpperInvariant(GoalBiomeMissed(findings.BiomeMiss)[0]) + GoalBiomeMissed(findings.BiomeMiss).Substring(1) + ". Aim it at "
+                    + findings.BiomeMiss.Goal.Biome + " (find_landing_site's biome, land's target biome), or keep it and say why in the plan's why.");
             return text + (failed ? "\n" : "The mod sent back your Sequence Plan, so the player hasn't seen it; its Mission Script passed the Script Check. ")
                 + string.Join("\n", parts.ToArray());
         }
@@ -508,6 +515,7 @@ namespace ClaudiaKermin.Core.Missions
             var fixes = new List<string>();
             if (findings.Crossings.Count > 0) fixes.Add("each delta-v left threshold set below what the plan itself leaves");
             if (findings.ShortDuration != null) fixes.Add("expected_duration_s at least the figure named below");
+            if (findings.BiomeMiss != null) fixes.Add("land aimed at " + findings.BiomeMiss.Goal.Biome + " (or why it lands elsewhere in why)");
             var with = string.Join(" and ", fixes.ToArray());
             if (findings.ScriptFailed) return fixes.Count == 0 ? RewriteNotice : RewriteNotice + " Also send it with " + with + ", or change the plan.";
             return "Send the Sequence Plan again with " + with + " (or change the plan): reply with kind \"sequence_plan\" and sequence_plan filled in, "
@@ -784,6 +792,114 @@ namespace ClaudiaKermin.Core.Missions
                 .OrderBy(m => m.At.Index)
                 .Select(m => m.Body)
                 .ToList();
+        }
+
+        /// <summary>
+        /// #699: the biomes the Mission Goal names, as whole words, case-insensitive, in the order it names them. Only the biomes
+        /// of the bodies it names (<see cref="GoalBodies"/>) count, or the craft's body (not Kerbin) when it names none; the longest names
+        /// are matched first, so "Midland Craters" is never read as "Midlands". A name two named bodies share goes to the body
+        /// named nearest it in the goal.
+        /// </summary>
+        internal static List<GoalBiome> GoalBiomes(GameSnapshot snapshot, string goal)
+        {
+            goal = goal ?? "";
+            if (snapshot == null) return new List<GoalBiome>();
+            var bodies = GoalBodies(snapshot, goal);
+            // Never the home body by default: its biomes (Water, Shores) are everyday words, and its landing isn't land's.
+            if (bodies.Count == 0) bodies = snapshot.Bodies.Where(b => b.Name == snapshot.Body && b.Name != CraftCheckFlow.HomeBody).ToList();
+            var named = bodies.ToDictionary(b => b.Name, b => Regex.Match(goal, @"\b" + Regex.Escape(b.Name) + @"\b", RegexOptions.IgnoreCase).Index);
+            var taken = new bool[goal.Length];
+            var found = new List<KeyValuePair<int, GoalBiome>>();
+            foreach (var name in bodies.SelectMany(b => b.BiomeNames).Where(n => n.Trim().Length > 0).Distinct(System.StringComparer.OrdinalIgnoreCase).OrderByDescending(n => n.Length))
+            {
+                foreach (Match at in Regex.Matches(goal, @"\b" + Regex.Escape(name) + @"\b", RegexOptions.IgnoreCase))
+                {
+                    if (Enumerable.Range(at.Index, at.Length).Any(i => taken[i])) continue;
+                    for (var i = at.Index; i < at.Index + at.Length; i++) taken[i] = true;
+                    var body = bodies.Where(b => b.BiomeNames.Contains(name, System.StringComparer.OrdinalIgnoreCase))
+                        .OrderBy(b => System.Math.Abs(named[b.Name] - at.Index)).First();
+                    var biome = body.BiomeNames.First(n => string.Equals(n, name, System.StringComparison.OrdinalIgnoreCase));
+                    if (found.All(f => f.Value.Biome != biome || f.Value.Body != body.Name))
+                        found.Add(new KeyValuePair<int, GoalBiome>(at.Index, new GoalBiome { Body = body.Name, Biome = biome }));
+                }
+            }
+            return found.OrderBy(f => f.Key).Select(f => f.Value).ToList();
+        }
+
+        /// <summary>
+        /// #699: the one line a request carries when the Mission Goal names a biome, e.g. "Twin Craters is a Mun biome: pass it as
+        /// find_landing_site's biome and as land's target biome."; "" for none, so other Missions' requests are unchanged.
+        /// </summary>
+        public static string GoalBiomeLine(IList<GoalBiome> biomes)
+        {
+            if (biomes == null || biomes.Count == 0) return "";
+            var named = string.Join(" and ", biomes.Select(b => b.Biome + " is a " + b.Body + " biome").ToArray());
+            return named + ": pass " + (biomes.Count == 1 ? "it" : "each") + " as find_landing_site's biome and as land's target biome.";
+        }
+
+        /// <summary>
+        /// #713: the Points of Interest the Mission Goal names, by a friendly name or an alias of Core's table (whole words, any
+        /// case, a plural too), longest first so "Monolith TMA-8" is never also read as "monolith". Only the Points of Interest of
+        /// the bodies it names count, or every body's when it names none. Each match keeps every entry its words name, so "monolith"
+        /// on the Mun names three.
+        /// </summary>
+        internal static List<GoalPoi> GoalPois(GameSnapshot snapshot, string goal)
+        {
+            goal = goal ?? "";
+            var named = snapshot == null ? new List<string>() : GoalBodies(snapshot, goal).Select(b => b.Name).ToList();
+            // "...and return to Kerbin" names the home body for the trip home, not for its Points of Interest (as #699's biomes).
+            if (named.Count > 1) named.Remove(CraftCheckFlow.HomeBody);
+            var entries = PointsOfInterest.Table.Where(e => e.IsPoi && (named.Count == 0 || named.Contains(e.Body, System.StringComparer.OrdinalIgnoreCase)));
+            var terms = entries.SelectMany(e => new[] { e.Friendly }.Concat(e.Aliases).Select(t => new { Term = t, Entry = e }))
+                .GroupBy(x => x.Term, System.StringComparer.OrdinalIgnoreCase).OrderByDescending(g => g.Key.Length);
+            var taken = new bool[goal.Length];
+            var found = new List<KeyValuePair<int, GoalPoi>>();
+            foreach (var group in terms)
+            {
+                foreach (Match at in Regex.Matches(goal, @"\b" + Regex.Escape(group.Key) + @"(?:e?s)?\b", RegexOptions.IgnoreCase))
+                {
+                    if (Enumerable.Range(at.Index, at.Length).Any(i => taken[i])) continue;
+                    for (var i = at.Index; i < at.Index + at.Length; i++) taken[i] = true;
+                    var pois = group.Select(x => x.Entry).Distinct().ToList();
+                    if (pois.All(p => found.Any(f => f.Value.Entries.Contains(p)))) continue;
+                    found.Add(new KeyValuePair<int, GoalPoi>(at.Index, new GoalPoi { Term = group.Key, Entries = pois }));
+                }
+            }
+            return found.OrderBy(f => f.Key).Select(f => f.Value).ToList();
+        }
+
+        /// <summary>
+        /// #713: the one line a request carries when the Mission Goal names a Point of Interest, like #699's biome line, e.g.
+        /// "Monolith TMA-8 is a Minmus Point of Interest: land beside it with find_landing_site's poi and land's poi target, not on
+        /// it."; words that name several list them and ask for a choice. "" for none, so other Missions' requests are unchanged.
+        /// </summary>
+        internal static string GoalPoiLine(IList<GoalPoi> pois, GameSnapshot snapshot)
+        {
+            if (pois == null || pois.Count == 0) return "";
+            const string Beside = "land beside it with find_landing_site's poi and land's poi target, not on it.";
+            var lines = new List<string>();
+            foreach (var poi in pois)
+            {
+                if (poi.Entries.Count > 1)
+                {
+                    lines.Add("\"" + poi.Term + "\" names " + poi.Entries.Count + " Points of Interest ("
+                        + string.Join(", ", poi.Entries.Select(e => e.Friendly + " on " + e.Body + (e.Landable ? "" : ", not landable")).ToArray())
+                        + "): choose one, or call find_poi; " + Beside);
+                    continue;
+                }
+                var one = poi.Entries[0];
+                var body = snapshot == null ? null : snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, one.Body, System.StringComparison.OrdinalIgnoreCase));
+                var air = body != null && (body.AtmosphereHeight > 0 || body.SeaLevelAtm > 0);
+                lines.Add(one.Friendly + " is a " + one.Body + " Point of Interest: "
+                    + (!one.Landable ? "not landable (" + one.Note + ")." : air ? "reentry can't aim at it yet (no precision landing through air)." : Beside));
+            }
+            return string.Join(" ", lines.ToArray());
+        }
+
+        /// <summary>#699: why a landing goes back before Approval, e.g. "the Mission Goal names Twin Craters (a Mun biome); this landing targets Midland Craters".</summary>
+        public static string GoalBiomeMissed(GoalBiomeMiss miss)
+        {
+            return "the Mission Goal names " + miss.Goal.Biome + " (a " + miss.Goal.Body + " biome); this landing targets " + miss.Targeted;
         }
 
         /// <summary>The Mission request's pad wording (#508), for a craft on the launch pad; "" anywhere else.</summary>

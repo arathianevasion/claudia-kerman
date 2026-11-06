@@ -362,6 +362,62 @@ namespace ClaudiaKermin.Core.Tests
             Assert.InRange(brakeDv / plan.Best.Result.DvUsed, 0.95, 1.05);
         }
 
+        // ---- Minmus Flats, m20261104-013323-9903 (#712) ----
+
+        /// <summary>land_path_at, as land_descend reads the predicted path where the craft is along the track (m above sea level).</summary>
+        private static double PathAt(IList<BrakePoint> path, double s)
+        {
+            if (s >= path[0].S) return path[0].Alt;
+            for (var i = 1; i < path.Count; i++)
+                if (s >= path[i].S)
+                    return path[i].Alt + (path[i - 1].Alt - path[i].Alt) * (s - path[i].S) / Math.Max(0.001, path[i - 1].S - path[i].S);
+            return path[path.Count - 1].Alt;
+        }
+
+        [Fact]
+        public void From_the_m20261104_braking_start_every_shape_brakepath_clears_is_flown_within_the_path_guards_margin()
+        {
+            // #712: braking began 2289 m short of the Flats site (ground at sea level), 3146 m up at 182 m/s, Mun Shot v2's lander
+            // (60 kN, about 6.1 t). Shape 0.2 held its height and came straight down over the site, as the craft did, but the path
+            // was a point every 500 m and touchdown: the straight line between read 1 km under the craft 190 m out, and the guard
+            // aborted there. Now the path has the point where braking stops, and keeps falling no faster than gravity gives.
+            var world = new BrakeWorld { Mu = MinmusGm, Radius = MinmusR, Ground = TerrainProfile.Sample(d => 0, -3000, 10000, 100) };
+            var craft = new BrakeCraft { ThrustN = 60000, MassKg = 6100, Isp = 345, LagS = BrakePath.TurnLag(59.9, 9.8) };
+            var start = new BrakeStart { S = 2289, Alt = 3146, VH = 182, VUp = -1.4, Braking = true };
+            var choice = BrakePath.FromState(craft, world, start, BrakePath.Shapes);
+            Assert.Null(choice.Error);
+            foreach (var shape in BrakePath.Shapes)
+            {
+                var ticks = new List<BrakePoint>();
+                var flown = BrakePath.Simulate(craft, world, start, shape, ticks);
+                if (!flown.Clears) continue;
+                Assert.Null(BrakePath.FlyableFailure(flown.Path, world, flown.Path.Count - 1));
+                foreach (var tick in ticks.Where(t => t.Alt - t.Ground > 1))
+                {
+                    var predicted = PathAt(flown.Path, tick.S);
+                    Assert.True(tick.Alt - predicted <= LandGuard.Margin(predicted, 0),
+                        "shape " + shape + ": " + Math.Round(tick.S) + " m out at " + Math.Round(tick.Alt) + " m, predicted " + Math.Round(predicted));
+                }
+            }
+            // The one it picks lands on the site.
+            Assert.InRange(choice.Best.Result.StopS, -300, 300);
+        }
+
+        [Fact]
+        public void A_path_that_falls_faster_than_gravity_gives_isnt_flyable()
+        {
+            // The rule (#712): braking never pushes down, so between two points the path drops no more than a fall from the first.
+            var world = new BrakeWorld { Mu = MinmusGm, Radius = MinmusR };
+            var path = new List<BrakePoint>
+            {
+                new BrakePoint { S = 285, Alt = 3134, VUp = -5, T = 0 },
+                new BrakePoint { S = 190, Alt = 2081, VUp = -5, T = 2 },
+            };
+            Assert.Contains("faster than gravity alone", BrakePath.FlyableFailure(path, world, 2));
+            path[1] = new BrakePoint { S = 190, Alt = 3134 - 11, VUp = -6, T = 2 };
+            Assert.Null(BrakePath.FlyableFailure(path, world, 2));
+        }
+
         private static GameSnapshot MinmusOrbit()
         {
             var snapshot = new GameSnapshot { Ut = 1000, Situation = "ORBITING", Body = "Minmus" };
@@ -560,8 +616,8 @@ namespace ClaudiaKermin.Core.Tests
             Assert.DoesNotContain("\"craft\"", tool.InputSchemaJson);
         }
 
-        /// <summary>SHA-256 of find_landing_site's description, a NUL and its input schema, as on main at 9c1d0d5.</summary>
-        private const string ToolTextHash = "E66D5DCF9082BE36E59A90379657D201296C23152A54D5E6E9265A0BA1378232";
+        /// <summary>SHA-256 of find_landing_site's description, a NUL and its input schema, as #713 left them (its poi inputs and trimmed docs).</summary>
+        private const string ToolTextHash = "945F8539DA20E55A618695EF3E1C4C9F5F8322C51316BB045D67E5B7977A765E";
 
         private static string Sha256(string text)
         {

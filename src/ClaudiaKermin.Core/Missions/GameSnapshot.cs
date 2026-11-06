@@ -194,6 +194,8 @@ namespace ClaudiaKermin.Core.Missions
         public SnapshotTarget FormTarget;
         /// <summary>The other vessels in the game a Mission Goal may name (ADR 0013); empty when not read. Not in the JSON.</summary>
         public List<SnapshotVessel> Vessels = new List<SnapshotVessel>();
+        /// <summary>The craft's <c>persistentId</c>, so it is never in the Target Vessel list (#709); 0 when not read. Not in the JSON.</summary>
+        public uint CraftPersistentId;
 
         /// <summary>
         /// What the Mission Settings give a Planning Tool for the inputs Claudia leaves out: daylight landing on, and the time cap in

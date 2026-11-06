@@ -184,6 +184,12 @@ namespace ClaudiaKermin.Core.Missions
             public bool ScriptRewrite;
             /// <summary>A correction after a Mission Plan named a vessel that never left the craft: if it does so again, the Mission Pauses.</summary>
             public bool ChildVesselRetry;
+            /// <summary>
+            /// A revision the mod asked for while the Mission Goal stands (after an Off-Nominal Debrief or a Hand back's Debrief): a plan
+            /// with no sequences is refused (#697). Set where the turn begins; false on the first Mission Plan, a typed one, and the
+            /// revisions that may decline (a missed window, a changed Target Vessel whose ports no longer fit).
+            /// </summary>
+            public bool GoalStands;
             /// <summary>The Debrief asked again, with the player's note, after a Failed Debrief offered no reduced goal: a load while it is out sends it again, not an Interrupted Debrief.</summary>
             public bool ReducedGoalRetry;
             /// <summary>
@@ -681,7 +687,8 @@ namespace ClaudiaKermin.Core.Missions
             {
                 Purpose = Purpose.Reply,
                 UserText = MissionPrompts.PlayerReplied(text),
-                Notice = MissionPrompts.ReplyNotice(_mission.Stage == MissionStage.AwaitingPlanApproval),
+                Notice = MissionPrompts.ReplyNotice(_mission.Stage == MissionStage.AwaitingPlanApproval, _mission.Declined),
+                PlayerText = text,
             });
         }
 
@@ -714,7 +721,7 @@ namespace ClaudiaKermin.Core.Missions
                 Purpose = Purpose.Question,
                 // While Running it carries a compact craft snapshot; it never touches the run.
                 UserText = MissionPrompts.PlayerAsks(text) + (running ? "\n" + CompactFacts(mission) : ""),
-                Notice = mission.AwaitingApproval ? MissionPrompts.QuestionWithPlanPendingNotice : MissionPrompts.QuestionNotice,
+                Notice = mission.AwaitingApproval ? MissionPrompts.QuestionWithPlanPendingNotice + (mission.Declined ? MissionPrompts.DeclinedPlanLine : "") : MissionPrompts.QuestionNotice,
                 PlayerText = mission.AwaitingApproval ? text : null,
                 Waits = running,
             });
@@ -1067,9 +1074,58 @@ namespace ClaudiaKermin.Core.Missions
                 return;
             }
             if (turn.Purpose == Purpose.Debrief && PrepareDebrief(mission, turn)) return;
+            if (turn.Purpose == Purpose.MissionPlan || (turn.Purpose == Purpose.SequencePlan && !turn.ScriptRewrite)) turn.UserText = WithGoalBiomes(mission, turn.UserText);
             mission.Pending = turn;
             RecordUnanswered(mission, turn);
             Send(mission, turn);
+        }
+
+        /// <summary>
+        /// #699: a plan request's text with the line naming the Mission Goal's biomes (<see cref="MissionPrompts.GoalBiomeLine"/>), and #713's naming its Points of Interest,
+        /// while a landing is still to fly: before the Mission Plan's steps, or while one not yet ticked names the biome or a landing.
+        /// Unchanged for a goal that names none, so other Missions' requests don't grow.
+        /// </summary>
+        private string WithGoalBiomes(Mission mission, string text)
+        {
+            foreach (var line in new[] { MissionPrompts.GoalBiomeLine(GoalBiomesToLand(mission)), MissionPrompts.GoalPoiLine(GoalPoisToLand(mission), _snapshot) })
+                if (line.Length > 0 && !(text ?? "").Contains(line)) text = text + "\n" + line;
+            return text;
+        }
+
+        /// <summary>#713: the Mission Goal's Points of Interest whose landing is still to fly, as its biomes' (<see cref="LandingToFly"/>).</summary>
+        private List<GoalPoi> GoalPoisToLand(Mission mission)
+        {
+            return MissionPrompts.GoalPois(_snapshot, mission.Goal).Where(p => PoiToFly(mission.GoalSteps, p)).ToList();
+        }
+
+        /// <summary>#713: before the Mission Plan's steps, always; after, while a step not yet ticked names the words, or a landing on one of their bodies.</summary>
+        internal static bool PoiToFly(IList<GoalItem> steps, GoalPoi poi)
+        {
+            return poi.Entries.Select(e => e.Body).Distinct().Any(body => LandingToFly(steps, new GoalBiome { Body = body, Biome = poi.Term }));
+        }
+
+        /// <summary>The Mission Goal's biomes whose landing is still to fly (<see cref="LandingToFly"/>).</summary>
+        private List<GoalBiome> GoalBiomesToLand(Mission mission)
+        {
+            return MissionPrompts.GoalBiomes(_snapshot, mission.Goal).Where(b => LandingToFly(mission, b)).ToList();
+        }
+
+        private static readonly System.Text.RegularExpressions.Regex LandingStep = new System.Text.RegularExpressions.Regex(@"\bland(ing)?\b",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+        /// <summary>
+        /// Before the Mission Plan's steps, always; after, while a step not yet ticked names the biome, or a landing on its body.
+        /// </summary>
+        internal static bool LandingToFly(IList<GoalItem> steps, GoalBiome biome)
+        {
+            if (steps.Count == 0) return true;
+            return steps.Any(s => !s.Done && (s.Item.IndexOf(biome.Biome, StringComparison.OrdinalIgnoreCase) >= 0
+                || (LandingStep.IsMatch(s.Item) && s.Item.IndexOf(biome.Body, StringComparison.OrdinalIgnoreCase) >= 0)));
+        }
+
+        private static bool LandingToFly(Mission mission, GoalBiome biome)
+        {
+            return LandingToFly(mission.GoalSteps, biome);
         }
 
         private void Send(Mission mission, Turn turn)
@@ -1511,6 +1567,8 @@ namespace ClaudiaKermin.Core.Missions
                     // ADR 0002: Claude's reading of typed words never starts anything; only a button press does.
                     if ((reply.Intent == ReplyIntent.Approve || reply.Intent == ReplyIntent.Unclear) && !mission.Declined)
                         mission.ConfirmPrompt = planPending ? "Approve the Mission Plan?" : "Approve the Sequence Plan?";
+                    else if ((reply.Intent == ReplyIntent.Approve || reply.Intent == ReplyIntent.Unclear) && reply.MissionPlan == null && turn.PlayerText != null)
+                        PlanAgain(mission, turn.PlayerText);
                     else Revised(mission, reply, planPending);
                     break;
                 case Purpose.Change:
@@ -1568,6 +1626,7 @@ namespace ClaudiaKermin.Core.Missions
                 Purpose = turn.Purpose,
                 ChildVesselRetry = true,
                 Waits = turn.Waits,
+                GoalStands = turn.GoalStands,
                 // The refused turn was never committed to the conversation, so what it asked (the player's words, the new settings) goes again.
                 UserText = turn.UserText + "\n" + MissionPrompts.ChildVesselNotLeft(ids),
                 Notice = MissionPrompts.ChildVesselNotice +(typed ? MissionPrompts.ChildVesselTypedNotice : ""),
@@ -1639,17 +1698,23 @@ namespace ClaudiaKermin.Core.Missions
             var wrong = new List<string>();
             if (findings.Crossings.Count > 0) wrong.Add("a Telemetry Check is certain to cross by the plan's own figures");
             if (findings.ShortDuration != null) wrong.Add("the planned duration leaves out the wait to the first burn");
+            if (findings.BiomeMiss != null) wrong.Add(MissionPrompts.GoalBiomeMissed(findings.BiomeMiss));
             return string.Join(" and ", wrong.ToArray());
         }
 
         /// <summary>
         /// The plan's own figures checked against the Game Snapshot of the craft it flies (#674, #696); nothing is found for a
-        /// Manual stretch, another vessel, or when the snapshot can't give the figure.
+        /// Manual stretch, another vessel, or when the snapshot can't give the figure. Its landing's biome against the goal's (#699).
         /// </summary>
         private PlanFindings PlanFigures(Mission mission, SequencePlan plan)
         {
             var findings = new PlanFindings { ExpectedDeltaV = plan.ExpectedDeltaV, ExpectedDurationSeconds = plan.ExpectedDurationSeconds };
-            if (plan.Manual || !FliesCraft(mission, plan.Vessel)) return findings;
+            if (plan.Manual) return findings;
+            // #699: a landing aimed at another biome than the Mission Goal names, for whichever vessel lands.
+            var craft = FliesCraft(mission, plan.Vessel);
+            if (_snapshot != null)
+                findings.BiomeMiss = LandingBiomes.Miss(plan.Script, GoalBiomesToLand(mission), _snapshot, craft ? _snapshot.Body : "", _body.Biome);
+            if (!craft) return findings;
             var snapshot = MissionVesselSnapshot(mission);
             var start = LiveReadings.DeltaVLeftOf(snapshot);
             findings.StartDeltaV = start ?? 0;
@@ -2280,6 +2345,7 @@ namespace ClaudiaKermin.Core.Missions
                 view.LinkLossTakeBackIn = LinkLossTakeBackIn();
                 view.PlanStale = StaleBecause(mission);
                 view.PlanStaleTarget = view.PlanStale.Length > 0 && mission.TargetChange.Length > 0;
+                view.PlanDeclined = mission.Declined;
                 view.TargetNeeded = TargetNeeded(mission);
                 view.CanChangeTarget = CanChangeTarget;
                 if (mission.Stage == MissionStage.ManualControl)

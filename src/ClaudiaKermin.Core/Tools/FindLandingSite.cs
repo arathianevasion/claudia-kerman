@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using ClaudiaKermin.Core.Claude;
 using ClaudiaKermin.Core.Missions;
 
@@ -40,19 +41,16 @@ namespace ClaudiaKermin.Core.Tools
         {
             get
             {
-                return "Up to 3 landing sites on an airless body that the craft's current orbit passes over within a window, from "
-                    + "the game's live terrain, biome and sun: each has latitude and longitude (degrees), biome, terrain altitude (m above "
-                    + "sea level), slope (degrees), the UT the ground track passes over it, the sun's elevation then, and landing_ut, when "
-                    + "land would touch down there from this orbit (correction_dv: its burn onto the site, m/s). Only sites land can fly "
-                    + "come back. Filters: an optional biome, daylight (defaults to the Mission Settings), a slope limit (default 5 "
-                    + "degrees), a window in hours (defaults to the larger of the Mission Settings time cap and one turn of the body, at "
-                    + "most 48) and an optional point to be near. The craft must orbit the body. Its block is land: call it "
-                    + "to see that a biome target or a landing the Mission Goal names can be flown, instead of searching by hand, then pass "
-                    + "land the biome with the site as near (or the site alone as its target), and any within_hours or max_correction_dv "
-                    + "you gave here. plane_changes, for near (else the first site or the biome's): change_orbit calls (set_inc) that put it under the "
-                    + "track, with plane_change_dv, landing_dv and total_dv: cheapest and soonest when land cannot reach it from this orbit, "
-                    + "else one only if it saves 20 m/s net. Fly the one you pick as its own step before land, budgeting its total_dv. "
-                    + "Don't call it for land's target \"any\", or for a body with an atmosphere (an error; deorbit aims those landings).";
+                return "Up to 3 landing sites on an airless body the craft's orbit passes over in a window, from the live terrain, biome "
+                    + "and sun: latitude and longitude (degrees), biome, terrain altitude (m), slope (degrees), the UT the track passes over it, the "
+                    + "sun's elevation then, and landing_ut, when land would touch down there (correction_dv: its burn onto the site, m/s). Only "
+                    + "sites land can fly come back. Filters: biome, daylight (default the Mission Settings), slope (default 5 degrees), a "
+                    + "window in hours (default the larger of the time cap and one turn of the body, at most 48), a near point, or a poi. The "
+                    + "craft must orbit the body. Its block is land: call it to see a biome or a goal's landing can be flown, then pass land "
+                    + "the biome with the site as near (or the site as its target), and any within_hours or max_correction_dv you gave. "
+                    + "plane_changes, for near (else the first site or the biome's): change_orbit (set_inc) calls with plane_change_dv, "
+                    + "landing_dv and total_dv: cheapest and soonest when land can't reach it, else one only if it saves 20 m/s net; fly it as "
+                    + "its own step before land, budgeting its total_dv. Don't call it for land's target \"any\" or a body with air (deorbit aims those).";
             }
         }
 
@@ -61,15 +59,17 @@ namespace ClaudiaKermin.Core.Tools
             get
             {
                 return "{\"type\":\"object\",\"properties\":{"
-                    + "\"body\":{\"type\":\"string\",\"description\":\"The airless body to land on, which the craft is orbiting.\"},"
-                    + "\"biome\":{\"type\":\"string\",\"description\":\"Only sites in this biome (e.g. Highlands, Midlands, Poles); omit for any.\"},"
-                    + "\"daylight\":{\"type\":\"boolean\",\"description\":\"Only sites in Daylight when the track passes: the sun more than 20 degrees above the horizon; defaults to the Mission Settings.\"},"
-                    + "\"max_slope_deg\":{\"type\":\"number\",\"description\":\"The steepest ground allowed, degrees; default 5.\"},"
-                    + "\"within_hours\":{\"type\":\"number\",\"description\":\"How far ahead to look along the ground track, hours (at most 48); defaults to the larger of the Mission Settings time cap and one turn of the body.\"},"
-                    + "\"max_correction_dv\":{\"type\":\"number\",\"description\":\"The most land's correction burn onto a site may cost, m/s; defaults to land's: the smaller of 30 and 5% of the craft's delta-v.\"},"
-                    + "\"edge_margin_m\":{\"type\":\"number\",\"description\":\"With a biome: how far inside its edge a site should be, m; default 5000 (about the landing accuracy), 0 for none. Sites at the edge come back only when nothing deeper is reachable, marked near_biome_edge.\"},"
+                    + "\"body\":{\"type\":\"string\",\"description\":\"The airless body orbited.\"},"
+                    + "\"biome\":{\"type\":\"string\",\"description\":\"Only sites in this biome; omit for any.\"},"
+                    + "\"daylight\":{\"type\":\"boolean\",\"description\":\"Only sites with the sun over 20 degrees up at the pass.\"},"
+                    + "\"max_slope_deg\":{\"type\":\"number\",\"description\":\"The steepest ground, degrees.\"},"
+                    + "\"within_hours\":{\"type\":\"number\",\"description\":\"Hours ahead to search.\"},"
+                    + "\"max_correction_dv\":{\"type\":\"number\",\"description\":\"The most land's correction burn may cost, m/s; default the smaller of 30 and 5% of the craft's delta-v.\"},"
+                    + "\"edge_margin_m\":{\"type\":\"number\",\"description\":\"With a biome: m inside its edge a site should be; default 5000, 0 for none. Sites at the edge come back only when nothing deeper is reachable, marked near_biome_edge.\"},"
                     + "\"near\":{\"type\":\"object\",\"properties\":{\"latitude\":{\"type\":\"number\"},\"longitude\":{\"type\":\"number\"}},"
-                    + "\"required\":[\"latitude\",\"longitude\"],\"additionalProperties\":false,\"description\":\"Prefer sites close to this point, degrees (within 15 degrees of arc of it); plane_changes are for it.\"}"
+                    + "\"required\":[\"latitude\",\"longitude\"],\"additionalProperties\":false,\"description\":\"Prefer sites within 15 degrees of arc of this point; plane_changes are for it.\"},"
+                    + "\"poi\":{\"description\":\"A find_poi name, or {latitude, longitude}: sites only poi_min_m (150) to poi_max_m (1500) m from it, flattest first; never on it.\"},"
+                    + "\"poi_min_m\":{\"type\":\"number\"},\"poi_max_m\":{\"type\":\"number\"}"
                     + "},\"required\":[\"body\"],\"additionalProperties\":false}";
             }
         }
@@ -129,6 +129,16 @@ namespace ClaudiaKermin.Core.Tools
                 if (Math.Abs(query.NearLatitude) > 90) return PlanningJson.Error("near.latitude must be between -90 and 90");
             }
 
+            // #713: a Point of Interest, by name or as coordinates: sites only in the ring round it.
+            var poiName = "";
+            var poi = input["poi"];
+            if (poi != null)
+            {
+                if (!string.IsNullOrEmpty(query.Biome) || near != null) return PlanningJson.Error("poi takes no biome or near: its sites are in the ring round it");
+                var problem = PoiQuery(poi, body, input, query, api, out poiName);
+                if (problem != null) return PlanningJson.Error(problem);
+            }
+
             // #591: a biome the body doesn't have is an error naming the body's own, not an empty search.
             if (!string.IsNullOrEmpty(query.Biome))
             {
@@ -138,8 +148,9 @@ namespace ClaudiaKermin.Core.Tools
 
             var conic = Conic.FromElements(body.Gm, orbit.SemiMajorAxis, orbit.Eccentricity, orbit.Inclination, orbit.Lan, orbit.ArgumentOfPeriapsis,
                 orbit.MeanAnomalyAtEpoch, orbit.Epoch);
-            var found = LandingSiteSearch.Find(body, conic, snapshot.Ut, query, api);
+            var found = query.HasPoi ? LandingSiteSearch.Ring(body, conic, snapshot.Ut, query, api) : LandingSiteSearch.Find(body, conic, snapshot.Ut, query, api);
             if (found.Error != null) return PlanningJson.Error(found.Error);
+            if (query.HasPoi) return RingAnswer(body, poiName, query, found, snapshot.Ut);
             // #545: a biome no pass reaches gets the plane changes for its best site off the track.
             var lookOffTrack = WithPlaneChanges && !query.HasNear && found.Sites.Count == 0 && !found.OutOfTime && !string.IsNullOrEmpty(query.Biome)
                 && query.Craft != null && !deadline.Passed;
@@ -200,6 +211,81 @@ namespace ClaudiaKermin.Core.Tools
             if (offTrack != null && changes > 0) summary += " under the track; plane changes reach the " + offTrack.Biome;
             if (found.OutOfTime)
                 summary += query.HasNear ? " (out of time)" : " (out of time at " + found.SearchedHours.ToString("0.#", CultureInfo.InvariantCulture) + " h)";
+            return new ToolOutcome { Json = json.ToString(), Summary = summary };
+        }
+
+        /// <summary>
+        /// The query's Point of Interest (#713) from the <c>poi</c> input: a find_poi name on the body (one landable), or
+        /// {latitude, longitude}; with the ring's <c>poi_min_m</c> and <c>poi_max_m</c>. Null, or why it can't be used.
+        /// </summary>
+        internal static string PoiQuery(JsonNode poi, SnapshotBody body, JsonNode input, LandingSiteQuery query, IPlanningBody api, out string name)
+        {
+            name = "";
+            if (poi.Kind == JsonKind.String)
+            {
+                var pois = PointsOfInterest.Merge(body.Name, api.SurfaceObjects(body.Name));
+                var one = PointsOfInterest.Find(pois, poi.StringValue);
+                if (one == null)
+                    return PlanningJson.Quote(poi.StringValue) + " names no one Point of Interest on " + body.Name
+                        + (pois.Count == 0 ? "; it has none" : "; its Points of Interest are: " + string.Join(", ", pois.Select(p => p.Name).ToArray()));
+                if (!one.Landable) return one.Name + " is not a landable Point of Interest: " + one.Note;
+                name = one.Name;
+                query.PoiLatitude = one.Latitude;
+                query.PoiLongitude = one.Longitude;
+            }
+            else if (poi.Kind == JsonKind.Object && JsonNode.Double(poi["latitude"]).HasValue && JsonNode.Double(poi["longitude"]).HasValue)
+            {
+                query.PoiLatitude = JsonNode.Double(poi["latitude"]).Value;
+                query.PoiLongitude = JsonNode.Double(poi["longitude"]).Value;
+                if (Math.Abs(query.PoiLatitude) > 90) return "poi.latitude must be between -90 and 90";
+                name = query.PoiLatitude.ToString("0.###", CultureInfo.InvariantCulture) + ", " + query.PoiLongitude.ToString("0.###", CultureInfo.InvariantCulture);
+            }
+            else return "poi must be a find_poi name or {\"latitude\": x, \"longitude\": y}";
+            query.HasPoi = true;
+            query.PoiMinM = JsonNode.Double(input["poi_min_m"]) ?? LandingSiteSearch.PoiMinM;
+            query.PoiMaxM = JsonNode.Double(input["poi_max_m"]) ?? LandingSiteSearch.PoiMaxM;
+            if (!(query.PoiMinM >= 50 && query.PoiMinM <= 5000)) return "poi_min_m must be from 50 to 5000: never on the Point of Interest";
+            if (!(query.PoiMaxM > query.PoiMinM && query.PoiMaxM <= 10000)) return "poi_max_m must be more than poi_min_m, at most 10000";
+            return null;
+        }
+
+        /// <summary>The ring search's answer (#713): each site with its distance and bearing from the Point of Interest, and never the point itself.</summary>
+        private static ToolOutcome RingAnswer(SnapshotBody body, string poiName, LandingSiteQuery query, LandingSiteResult found, double now)
+        {
+            var json = new JsonWriter().BeginObject().Field("body", body.Name).Field("poi", poiName)
+                .Field("poi_latitude", PlanningJson.Round(query.PoiLatitude, 4)).Field("poi_longitude", PlanningJson.Round(query.PoiLongitude, 4)).Field("poi_min_m", query.PoiMinM);
+            json.Name("sites").BeginArray();
+            foreach (var site in found.Sites)
+            {
+                json.BeginObject()
+                    .Field("latitude", PlanningJson.Round(site.Latitude, 4))
+                    .Field("longitude", PlanningJson.Round(site.Longitude, 4))
+                    .Field("from_poi_m", PlanningJson.Round(site.FromPoiM, 0))
+                    .Field("bearing_from_poi_deg", PlanningJson.Round(site.BearingFromPoi, 0))
+                    .Field("biome", site.Biome)
+                    .Field("terrain_altitude", PlanningJson.Round(site.Altitude, 1))
+                    .Field("slope_deg", PlanningJson.Round(site.SlopeDeg, 1))
+                    .Field("sun_elevation_deg", PlanningJson.Round(site.SunElevationDeg, 1));
+                PlanningJson.Time(json, "landing", site.LandingUt, now)
+                    .Field("correction_dv", PlanningJson.Round(site.CorrectionDv, 1));
+                if (!double.IsNaN(site.PredictedDv))
+                    json.Field("predicted_dv", PlanningJson.Round(site.PredictedDv, 0)).Field("descent_shape", PlanningJson.Round(site.DescentShape, 3));
+                json.EndObject();
+            }
+            json.EndArray();
+            json.Field("window_hours", PlanningJson.Round(found.WindowHours, 2));
+            var ring = query.PoiMinM.ToString("0", CultureInfo.InvariantCulture) + " to " + query.PoiMaxM.ToString("0", CultureInfo.InvariantCulture) + " m from " + poiName;
+            if (found.Sites.Count == 0)
+                json.Field("note", (found.OutOfTime ? "partial: out of time; " : "") + "no site in the ring " + ring + ": of " + LandingSiteSearch.Count(found.Candidates)
+                    + " points measured, " + LandingSiteSearch.Count(found.AfterSlope) + " were within max_slope_deg "
+                    + query.MaxSlopeDeg.ToString("0.#", CultureInfo.InvariantCulture)
+                    + (found.Unflyable > 0 ? ", " + LandingSiteSearch.Count(found.Unflyable) + " of them with no pass land can fly in the window" : "")
+                    + "; widen poi_max_m, max_slope_deg or within_hours. The Point of Interest itself is never a site: land beside it, not on it");
+            else if (found.OutOfTime)
+                json.Field("note", "partial: out of time; the sites are those found in the ring " + ring);
+            json.EndObject();
+            var summary = found.Sites.Count == 0 ? "no landing site beside " + poiName + " on " + body.Name
+                : found.Sites.Count + (found.Sites.Count == 1 ? " site" : " sites") + " beside " + poiName + " on " + body.Name;
             return new ToolOutcome { Json = json.ToString(), Summary = summary };
         }
 
