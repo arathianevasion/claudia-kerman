@@ -23,6 +23,12 @@ namespace ClaudiaKermin.Kerboscript.Tests
             return KosHarness.Run(CoreLibrary.Bundle("print " + expression + ".")).Single();
         }
 
+        [Fact]
+        public void LandRefusesABodyWithAnAtmosphereNamingReentry()
+        {
+            Assert.Equal("land flies airless bodies only; Duna has an atmosphere; use reentry (touchdown \"powered\" when chutes are short)", One("land_atmosphere_reason(\"Duna\")"));
+        }
+
         private static string[] Run(string missionScript)
         {
             return KosHarness.Run(CoreLibrary.Bundle(missionScript)).ToArray();
@@ -37,8 +43,8 @@ namespace ClaudiaKermin.Kerboscript.Tests
                 "local o is claudia_options(lexicon(), land_defaults(), \"auto\"):opt.\n"
                 + "print o:target. print o:daylight. print o:max_slope. print o:max_divert.\n"
                 + "print o:touchdown_speed. print o:gear_alt. print o:burn_margin. print o:max_duration.\n"
-                + "print o:within_hours. print o:max_correction_dv.");
-            Assert.Equal(new[] { "any", "True", "8", "300", "2", "1000", "1.1", "auto", "auto", "auto" }, printed);
+                + "print o:within_hours. print o:max_correction_dv. print o:vessel_offset.");
+            Assert.Equal(new[] { "any", "True", "8", "300", "2", "1000", "1.1", "auto", "auto", "auto", "200" }, printed);
         }
 
         [Theory]
@@ -163,14 +169,55 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         {
             Assert.Equal("", One("land_unreadable(claudia_options(lexicon(\"target\", \"any\"), land_defaults(), \"auto\"):opt)"));
             Assert.Equal("", One("land_unreadable(claudia_options(lexicon(\"target\", lexicon(\"lat\", 1, \"lng\", 2)), land_defaults(), \"auto\"):opt)"));
-            Assert.Equal("target must be \"any\", LATLNG(lat, lng), lexicon(\"lat\", x, \"lng\", y) or lexicon(\"biome\", name), not 'somewhere'",
+            Assert.Equal("target must be \"any\", \"vessel\", LATLNG(lat, lng), lexicon(\"lat\", x, \"lng\", y) or lexicon(\"biome\", name), not 'somewhere'",
                 One("land_unreadable(claudia_options(lexicon(\"target\", \"somewhere\"), land_defaults(), \"auto\"):opt)"));
-            Assert.Equal("target must be \"any\", LATLNG(lat, lng), lexicon(\"lat\", x, \"lng\", y) or lexicon(\"biome\", name), not a lexicon without lat and lng",
+            Assert.Equal("target must be \"any\", \"vessel\", LATLNG(lat, lng), lexicon(\"lat\", x, \"lng\", y) or lexicon(\"biome\", name), not a lexicon without lat and lng",
                 One("land_unreadable(claudia_options(lexicon(\"target\", lexicon(\"lat\", 1)), land_defaults(), \"auto\"):opt)"));
             Assert.Equal("max_slope must be a number of degrees from 0 to 45",
                 One("land_unreadable(claudia_options(lexicon(\"max_slope\", 60), land_defaults(), \"auto\"):opt)"));
             Assert.Equal("touchdown_speed must be a speed above 0 m/s",
                 One("land_unreadable(claudia_options(lexicon(\"touchdown_speed\", 0), land_defaults(), \"auto\"):opt)"));
+        }
+
+        // ---- land: beside a landed Target Vessel (#662) ----
+
+        [Theory]
+        [InlineData("\"target\", \"vessel\"", "")]
+        [InlineData("\"target\", \"vessel\", \"vessel_offset\", 50", "")]
+        [InlineData("\"target\", \"vessel\", \"vessel_offset\", 20", "vessel_offset must be metres from 50 to 2000: never on top of the Target Vessel")]
+        [InlineData("\"vessel_offset\", \"far\"", "vessel_offset must be metres from 50 to 2000: never on top of the Target Vessel")]
+        public void Land_reads_a_vessel_target_and_its_offset_never_under_50_m(string options, string expected)
+        {
+            Assert.Equal(expected, One("land_unreadable(claudia_options(lexicon(" + options + "), land_defaults(), \"auto\"):opt)"));
+        }
+
+        [Theory]
+        // 200 m beside it: a site moved 90 m for a slope is still 50 m across the track (0.7 x 200 - 90), so an overshoot misses it.
+        [InlineData(300, 200, "90")]
+        [InlineData(40, 200, "40")]
+        [InlineData(300, 50, "0")]
+        public void A_vessel_target_s_divert_keeps_the_site_50_m_across_the_track(double maxDivert, double offset, string expected)
+        {
+            Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture, "round(land_vessel_divert({0}, {1}), 3)", maxDivert, offset)));
+        }
+
+        [Theory]
+        // An equatorial orbit's track runs east at the equator: the site is due north, across it.
+        [InlineData(0, 22, 0, "0.05730", "22.00000")]
+        // A polar orbit's runs north: due east.
+        [InlineData(0, 22, 90, "0.00000", "22.05730")]
+        // 30 degrees inclined at 10 degrees north: the track runs about 61 degrees from north, within 45 of east, so north.
+        [InlineData(10, -179.99, 30, "10.05730", "-179.99000")]
+        // 80 degrees inclined: about 10 degrees from north, so east, wrapping the longitude.
+        [InlineData(0, 179.99, 80, "0.00000", "-179.95270")]
+        public void A_vessel_target_s_site_is_the_offset_across_the_ground_track_from_the_vessel(double lat, double lng, double inc, string siteLat, string siteLng)
+        {
+            var printed = Run(string.Format(CultureInfo.InvariantCulture,
+                "local s is land_beside({0}, {1}, 200, {2}, 200000).\n"
+                + "print round(s:lat, 5). print round(s:lng, 5). print round(land_surface_distance({0}, {1}, s:lat, s:lng, 200000), 1).", lat, lng, inc));
+            Assert.Equal(double.Parse(siteLat, CultureInfo.InvariantCulture), double.Parse(printed[0], CultureInfo.InvariantCulture), 5);
+            Assert.Equal(double.Parse(siteLng, CultureInfo.InvariantCulture), double.Parse(printed[1], CultureInfo.InvariantCulture), 4);
+            Assert.Equal("200", printed[2]);
         }
 
         // ---- land: a biome target (#281) ----

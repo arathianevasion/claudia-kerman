@@ -259,7 +259,7 @@ function dock {
   }
   // The target is read inline, never passed to a function: the Script Check follows another vessel into every function it is
   // passed to (ADR 0003), so every name holding it or its parts starts dk_ and no other code uses one.
-  local dk_target is vessel(named:name).
+  local dk_target is named:vessel.
   if not dk_target:loaded {
     return claudia_finish(ctx, false, named:name + " is not loaded (" + round(dk_target:distance) + " m): fly rendezvous first", extra).
   }

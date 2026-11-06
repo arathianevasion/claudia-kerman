@@ -74,6 +74,9 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         public List<double[]> Air = new List<double[]>();
 
+        /// <summary>The height above sea level, m, of its highest common terrain, for the Chute Allocation's touchdown; 0 when not read.</summary>
+        public double TerrainHeight;
+
         /// <summary>Surface gravity in m/s².</summary>
         public double SurfaceGravity
         {

@@ -56,7 +56,7 @@ namespace ClaudiaKermin.Core.Missions
         public double ChargeMax;
         /// <summary>
         /// A parachute's own numbers for the reentry predictor, as the adapter's ReentryCraft reads them, held retrograde (#626:
-        /// the Chute Allocation divides the chutes by them); null for other parts, a cut chute, or when not read (the editor).
+        /// the Chute Allocation divides the chutes by them); null for other parts, a cut chute, or when not read.
         /// Only the recording JSON carries it.
         /// </summary>
         public Tools.ReentryChute Chute;
@@ -188,6 +188,8 @@ namespace ClaudiaKermin.Core.Missions
         public SnapshotTarget Target;
         /// <summary>KSP's target vessel as the snapshot was read, which a Mission starting now takes; null for none. Not in the JSON.</summary>
         public SnapshotTarget KspTarget;
+        /// <summary>The start form's Target Vessel as read before Start (#643), so the Craft Check judges the craft against it; null otherwise. Not in the JSON.</summary>
+        public SnapshotTarget FormTarget;
         /// <summary>The other vessels in the game a Mission Goal may name (ADR 0013); empty when not read. Not in the JSON.</summary>
         public List<SnapshotVessel> Vessels = new List<SnapshotVessel>();
 
@@ -459,6 +461,10 @@ namespace ClaudiaKermin.Core.Missions
                     .Field("lan", orbit.Lan).Field("arg_pe", orbit.ArgumentOfPeriapsis).Field("mean_anomaly_at_epoch", orbit.MeanAnomalyAtEpoch)
                     .Field("epoch", orbit.Epoch).EndObject();
             }
+            // A landed or splashed target's place (#662), to about a metre; an orbiting one's entry is unchanged.
+            if (target.IsDown && target.Position != null)
+                json.Field("lat", Math.Round(target.Position.Latitude, 5)).Field("lng", Math.Round(target.Position.Longitude, 5))
+                    .Field("alt", Math.Round(target.Position.Altitude, 1));
             json.Name("free_ports").BeginObject();
             foreach (var size in target.FreePorts) json.Field(size.Key, size.Value);
             json.EndObject();
@@ -498,6 +504,10 @@ namespace ClaudiaKermin.Core.Missions
                     Body = read.Body,
                 };
             }
+            var lat = JsonNode.Double(target["lat"]);
+            var lng = JsonNode.Double(target["lng"]);
+            if (lat.HasValue && lng.HasValue)
+                read.Position = new SnapshotPosition { Latitude = lat.Value, Longitude = lng.Value, Altitude = JsonNode.Double(target["alt"]) ?? 0 };
             var ports = target["free_ports"];
             if (ports != null && ports.Kind == JsonKind.Object)
                 foreach (var size in ports.Members) read.FreePorts[size.Key] = (int)(JsonNode.Long(size.Value) ?? 0);

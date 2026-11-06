@@ -232,6 +232,11 @@ namespace ClaudiaKermin.Core.Missions
         public bool DefaultRemote;
         /// <summary>Why the last Start Mission was turned away before the Craft Check (Claudia Missing for a crewed Mission, no link for a remote one); "" otherwise.</summary>
         public string Refusal = "";
+        /// <summary>
+        /// What the Target Vessel line chooses from (#643), as of the latest snapshot: the form runs <see cref="TargetVessel.Choose"/>
+        /// on it as the goal is typed, and lists <see cref="TargetVessel.Options"/> for Choose. The same object until the next snapshot.
+        /// </summary>
+        public TargetFacts Targets = new TargetFacts();
     }
 
     /// <summary>The Due Time of the Sequence Plan awaiting Approval, for the board and the Capcom strip.</summary>
@@ -298,6 +303,10 @@ namespace ClaudiaKermin.Core.Missions
         public uint? TargetVesselId;
         /// <summary>The Target Vessel's name, shown under the Mission Goal; "" for none.</summary>
         public string TargetVesselName = "";
+        /// <summary>The Mission Goal needs a Target Vessel (#643's rule), so the Mission window shows the line, with none too.</summary>
+        public bool TargetNeeded;
+        /// <summary>Choose and Clear for the Target Vessel are on (#661): between sequences, never while Running or a request is out.</summary>
+        public bool CanChangeTarget;
         public string Model = "";
         public decimal SpendingCap;
         /// <summary>Cost so far from real usage, USD. With <see cref="HeldCharges"/> and <see cref="PendingCharge"/> it is what counts against the Spending Cap.</summary>
@@ -395,6 +404,8 @@ namespace ClaudiaKermin.Core.Missions
         public double? LinkLossTakeBackIn;
         /// <summary>The craft has changed beyond the pending plan's tolerances, so Approve is replaced by Re-plan; "" otherwise.</summary>
         public string PlanStale = "";
+        /// <summary><see cref="PlanStale"/> is the Target Vessel's change (#661), not the craft's.</summary>
+        public bool PlanStaleTarget;
 
         /// <summary>The Mission Settings in force.</summary>
         public MissionSettingsValues Settings = new MissionSettingsValues();

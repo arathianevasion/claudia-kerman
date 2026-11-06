@@ -60,8 +60,8 @@ namespace ClaudiaKermin.Core.Missions
         {
             var check = new MarginCheck();
             if (rest.Count == 0) return check;
-            var repack = Repack.IsMatch(goal ?? "");
-            var finishes = chutes == null ? new List<EntryChutes>() : chutes.Entries.Where(e => !e.Return && e.PoweredFinish && e.TouchdownSpeed >= 0).ToList();
+            var repack = RepackPlan.IsPlanned(goal);
+            var finishes = Finishes(chutes);
             // A goal that has an Engineer repack the chutes reuses them: the finish it would need is a Warning, not delta-v to carry.
             check.DeltaV(snapshot, rest, wantedPercent, repack ? new List<EntryChutes>() : finishes);
             check.Chutes(snapshot, rest, chutes, finishes, repack, firstStep);
@@ -72,13 +72,9 @@ namespace ClaudiaKermin.Core.Missions
             return check;
         }
 
-        /// <summary>The Mission Goal has an Engineer repack the chutes (a Kerbal on EVA does it, in stock).</summary>
-        private static readonly Regex Repack = new Regex(@"(?=.*\bengineer)(?=.*\brepack(s|ed|ing)?\b)(?=.*\bchutes?\b|.*\bparachutes?\b)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
-
         private void DeltaV(GameSnapshot snapshot, IList<PlannedSequence> rest, int wantedPercent, IList<EntryChutes> finishes)
         {
-            if (!snapshot.DeltaVSimulator || snapshot.Stages.Count == 0) DeltaVUnknown = "the stock delta-v simulator gives no figures";
-            else if (snapshot.DeltaVUnreliable) DeltaVUnknown = "stock reads 0 while an engine is lit at a trickle throttle, so it is unknown, not 0";
+            DeltaVUnknown = UnknownDeltaV(snapshot);
             if (DeltaVUnknown.Length > 0) return;
             Margin = MarginBar.Compute(snapshot.Stages.Sum(s => s.DeltaVVac), rest.Sum(s => s.DeltaV) + finishes.Sum(e => e.TouchdownSpeed), wantedPercent);
             if (Margin == null) return;
@@ -92,6 +88,30 @@ namespace ClaudiaKermin.Core.Missions
             }
             var actual = Margin.ActualPercent;
             if (actual.HasValue && actual.Value < 25) Add("margin_under_25", MarginLevel.Enough, Margin.Describe().TrimEnd('.'));
+        }
+
+        /// <summary>
+        /// The chute findings alone (#641): the Craft Check's, from <see cref="ChuteAllocation.ForGoal"/> over the Mission Goal's
+        /// <paramref name="legs"/>, judged as <see cref="Of"/> judges them, with <paramref name="goal"/>'s repack. None for a null allocation.
+        /// </summary>
+        public static IList<MarginFinding> ChuteFindings(GameSnapshot snapshot, IList<PlannedSequence> legs, ChuteAllocation chutes, string goal)
+        {
+            var check = new MarginCheck { DeltaVUnknown = UnknownDeltaV(snapshot) };
+            check.Chutes(snapshot, legs, chutes, Finishes(chutes), RepackPlan.IsPlanned(goal), 0);
+            return check.Findings;
+        }
+
+        /// <summary>The entries the engines finish from a known speed (the return is judged as covered or not).</summary>
+        private static List<EntryChutes> Finishes(ChuteAllocation chutes)
+        {
+            return chutes == null ? new List<EntryChutes>() : chutes.Entries.Where(e => !e.Return && e.PoweredFinish && e.TouchdownSpeed >= 0).ToList();
+        }
+
+        /// <summary>Why the craft's delta-v can't be judged, or "".</summary>
+        private static string UnknownDeltaV(GameSnapshot snapshot)
+        {
+            if (!snapshot.DeltaVSimulator || snapshot.Stages.Count == 0) return "the stock delta-v simulator gives no figures";
+            return snapshot.DeltaVUnreliable ? "stock reads 0 while an engine is lit at a trickle throttle, so it is unknown, not 0" : "";
         }
 
         /// <summary>
@@ -231,13 +251,18 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         public static IList<MarginFinding> Docking(GameSnapshot snapshot, string lead)
         {
+            return Docking(snapshot, lead, snapshot.Target ?? snapshot.KspTarget);
+        }
+
+        /// <summary>The same, judged against <paramref name="target"/>'s free ports: the Craft Check's chosen Target Vessel (#643); null judges no port size.</summary>
+        public static IList<MarginFinding> Docking(GameSnapshot snapshot, string lead, SnapshotTarget target)
+        {
             var found = new List<MarginFinding>();
             var sizes = snapshot.Craft.Parts.Where(p => p.Tags.Contains("docking_port")).Select(p => p.PortSize).Distinct().ToList();
             var lacks = new List<string>();
             if (sizes.Count == 0) lacks.Add("docking port");
             if (!snapshot.Craft.Parts.Any(p => p.Tags.Contains("rcs"))) lacks.Add("RCS");
             if ((LiveReadings.MonopropellantOf(snapshot) ?? 0) <= 0) lacks.Add("monopropellant");
-            var target = snapshot.Target ?? snapshot.KspTarget;
             if (lacks.Count > 0)
                 found.Add(Finding(CraftCheckRules.DockingKit, lead + " and the craft has no " + string.Join(", no ", lacks.ToArray())));
             else if (target != null && target.FreePorts.Count > 0 && !sizes.Any(target.FreePorts.ContainsKey))

@@ -162,11 +162,6 @@ namespace ClaudiaKermin.Core.Tools
         private const int Windows = 3;
         /// <summary>From this relative inclination, deg, a body no window reaches is put down to its orbit's tilt.</summary>
         private const double InclinedDegrees = 1;
-        /// <summary>
-        /// From this angle, deg, between a body at arrival and the craft's plane (between their orbits, with no one-burn plan), a
-        /// broken-plane plan is costed beside the one-burn one (#619): nearer a node, the one-burn plan stands as it was.
-        /// </summary>
-        internal const double BrokenPlaneDegrees = 1;
         /// <summary>The plane change's time on the in-plane arc, as a fraction of its flight time: searched between these.</summary>
         private const double PlaneLow = 0.1;
         private const double PlaneHigh = 0.99;
@@ -219,29 +214,11 @@ namespace ClaudiaKermin.Core.Tools
             var span = Math.Min(intercept ? craft.Period : synodic, until - from);
             var transfer = new Problem(craft, targetOrbit, body, peR, ask.Capture, intercept, Math.Min(home.Radius + home.AtmosphereHeight, craft.PeR));
 
-            // The grid: a departure every span / Seeds from one step before the start (so a window just before it is a
-            // falling edge, not a minimum) to a quarter span past the end, each at its cheapest time of flight.
-            var step = span / Seeds;
-            var count = Seeds + Seeds / 4 + 2;
-            var cheapest = new double[count];
-            var flight = new double[count];
-            var hohmann = new double[count];
-            for (var i = 0; i < count; i++)
-            {
-                var t = from + (i - 1) * step;
-                hohmann[i] = transfer.HohmannTime(t);
-                cheapest[i] = double.PositiveInfinity;
-                for (var j = 0; j < Flights; j++)
-                {
-                    var tof = hohmann[i] * (FlightLow + (FlightHigh - FlightLow) * j / (Flights - 1));
-                    var c = transfer.Cost(t, tof, 0);
-                    if (c < cheapest[i])
-                    {
-                        cheapest[i] = c;
-                        flight[i] = tof;
-                    }
-                }
-            }
+            // The grid (DepartureGrid), shared with BrokenPlane.
+            var grid = DepartureGrid.Build(transfer, from, span);
+            var step = grid.Step;
+            var count = grid.Count;
+            double[] cheapest = grid.Cheapest, flight = grid.Flight, hohmann = grid.Hohmann;
             var picks = intercept ? InterceptPicks(cheapest, step, span, craft.Period) : RendezvousPicks(cheapest, step, span, ask.LatestUt.HasValue);
             if (picks.Count == 0)
                 return Fail("no departure in the " + Num(span) + " s from UT " + Num(from) + " has a path to " + transfer.Name
@@ -280,7 +257,9 @@ namespace ClaudiaKermin.Core.Tools
                 else if (failed == null) failed = tried;
                 if (plan != null && n > 0) plan.CheapestUt = cheapestWindow.T;
             }
-            if (body != null && ask.BrokenPlane && OutOfPlane(craft, targetOrbit, plan) >= BrokenPlaneDegrees)
+            // To a body, the broken-plane plan is costed beside the one-burn one (#619), near the craft's plane too (#653): there
+            // the one-burn arc, near 180°, can take a large normal and radial part.
+            if (body != null && ask.BrokenPlane)
             {
                 var broken = BrokenPlane(setup, craft, targetOrbit, body, peR, ask, from, span, transfer.Floor);
                 if (broken != null && (plan == null || broken.Total(ask.Capture) < plan.Total(ask.Capture))) plan = broken;
@@ -297,6 +276,43 @@ namespace ClaudiaKermin.Core.Tools
             plan.SearchFrom = from;
             plan.Synodic = synodic;
             return plan;
+        }
+
+        /// <summary>
+        /// The departure grid both <see cref="Find"/> and <see cref="BrokenPlane"/> search: a departure every
+        /// <paramref name="span"/> / Seeds from one step before <paramref name="from"/> (so a window just before it is a falling
+        /// edge, not a minimum) to a quarter span past the end, each at its cheapest time of flight. Build it for any Problem.
+        /// </summary>
+        private sealed class DepartureGrid
+        {
+            public double Step;
+            public int Count;
+            public double[] Cheapest, Flight, Hohmann;
+
+            public static DepartureGrid Build(Problem problem, double from, double span)
+            {
+                var g = new DepartureGrid { Step = span / Seeds, Count = Seeds + Seeds / 4 + 2 };
+                g.Cheapest = new double[g.Count];
+                g.Flight = new double[g.Count];
+                g.Hohmann = new double[g.Count];
+                for (var i = 0; i < g.Count; i++)
+                {
+                    var t = from + (i - 1) * g.Step;
+                    g.Hohmann[i] = problem.HohmannTime(t);
+                    g.Cheapest[i] = double.PositiveInfinity;
+                    for (var j = 0; j < Flights; j++)
+                    {
+                        var tof = g.Hohmann[i] * (FlightLow + (FlightHigh - FlightLow) * j / (Flights - 1));
+                        var c = problem.Cost(t, tof, 0);
+                        if (c < g.Cheapest[i])
+                        {
+                            g.Cheapest[i] = c;
+                            g.Flight[i] = tof;
+                        }
+                    }
+                }
+                return g;
+            }
         }
 
         /// <summary>
@@ -323,16 +339,6 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
-        /// How far, deg, the target is out of the craft's plane: at the one-burn plan's arrival, or with none the angle between
-        /// the two orbits (the most it can be).
-        /// </summary>
-        private static double OutOfPlane(Conic craft, Conic target, TransferPlan plan)
-        {
-            if (plan == null) return Math.Acos(Math.Max(-1, Math.Min(1, Vec3.Dot(craft.W, target.W)))) * 180 / Math.PI;
-            return Math.Abs(Math.Asin(Math.Max(-1, Math.Min(1, Vec3.Dot(target.Position(plan.ArrivalUt).Normalized, craft.W))))) * 180 / Math.PI;
-        }
-
-        /// <summary>
         /// The broken-plane plan to a body (#619), or null when there is none: the departure in the craft's plane, to where the
         /// body would arrive with its orbit turned into that plane about the line of nodes; then, where the arc is slow, the
         /// plane change to the body itself; then the arrival burn. The grid and refinement are the one-burn plan's, on the
@@ -345,27 +351,10 @@ namespace ClaudiaKermin.Core.Tools
         {
             var mu = craft.Mu;
             var flat = new Problem(craft, Turned(targetOrbit, craft.W, from), body, peR, ask.Capture, false, floor);
-            var step = span / Seeds;
-            var count = Seeds + Seeds / 4 + 2;
-            var cheapest = new double[count];
-            var flight = new double[count];
-            var hohmann = new double[count];
-            for (var i = 0; i < count; i++)
-            {
-                var t = from + (i - 1) * step;
-                hohmann[i] = flat.HohmannTime(t);
-                cheapest[i] = double.PositiveInfinity;
-                for (var j = 0; j < Flights; j++)
-                {
-                    var tof = hohmann[i] * (FlightLow + (FlightHigh - FlightLow) * j / (Flights - 1));
-                    var c = flat.Cost(t, tof, 0);
-                    if (c < cheapest[i])
-                    {
-                        cheapest[i] = c;
-                        flight[i] = tof;
-                    }
-                }
-            }
+            var grid = DepartureGrid.Build(flat, from, span);
+            var step = grid.Step;
+            var count = grid.Count;
+            double[] cheapest = grid.Cheapest, flight = grid.Flight, hohmann = grid.Hohmann;
             var picks = RendezvousPicks(cheapest, step, span, ask.LatestUt.HasValue);
             if (picks.Count == 0) return null;
             var pick = picks[0];

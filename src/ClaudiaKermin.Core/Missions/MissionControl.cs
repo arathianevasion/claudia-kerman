@@ -134,6 +134,7 @@ namespace ClaudiaKermin.Core.Missions
             else if (input is GoToMissionVessel) GoToMissionVesselRequested(((GoToMissionVessel)input).Id);
             else if (input is CraftLinkSeen) CraftLinkReported((CraftLinkSeen)input);
             else if (input is SetAutoMode) AutoModeSet(((SetAutoMode)input).On);
+            else if (input is ChangeTarget) TargetChanged(((ChangeTarget)input).Pick);
             CheckDue();
             CheckBlackout();
             CheckScriptWarp();
@@ -141,6 +142,7 @@ namespace ClaudiaKermin.Core.Missions
             CheckTelemetry();
             CheckFlyable();
             TryPlan();
+            TryTargetRevision();
             TryOwed();
             Rebuild();
         }
@@ -362,11 +364,12 @@ namespace ClaudiaKermin.Core.Missions
                 return;
             }
 
-            // No Mission starts on a craft that hasn't been checked for this goal, or whose check has a Blocker or an open Warning.
-            if (!_craftCheck.IsCurrent(goal, _snapshot, start.Remote))
+            // No Mission starts on a craft that hasn't been checked for this goal and Target Vessel, or whose check has a Blocker or an open Warning.
+            var target = ChooseTarget(goal, start.Target);
+            if (!_craftCheck.IsCurrent(goal, _snapshot, start.Remote, target.Target))
             {
                 _pendingStart = start;
-                _craftCheck.Run(goal, start.Model, _snapshot, start.SpendingCap, start.Remote);
+                _craftCheck.Run(goal, start.Model, _snapshot, start.SpendingCap, start.Remote, target.Target);
                 if (!_craftCheck.Running) _pendingStart = null;
                 return;
             }
@@ -400,7 +403,7 @@ namespace ClaudiaKermin.Core.Missions
             _mission = mission;
             SaveSetupAsDefaults(start);
             Note(LogKind.Player, "Mission Goal: " + goal);
-            ChooseTarget(mission, goal);
+            TakeTarget(mission, target);
             RecordStart(mission);
             LogEffortProblems(mission);
             try
@@ -470,7 +473,7 @@ namespace ClaudiaKermin.Core.Missions
         {
             _pendingStart = null;
             _startRefusal = "";
-            _craftCheck.Run(run.Goal, run.Model, _snapshot, run.SpendingCap, run.Remote);
+            _craftCheck.Run(run.Goal, run.Model, _snapshot, run.SpendingCap, run.Remote, ChooseTarget(run.Goal, run.Target).Target);
         }
 
         /// <summary>A Craft Check request ended: if Start Mission asked for it and it passed outright, the Mission starts now.</summary>
@@ -591,12 +594,13 @@ namespace ClaudiaKermin.Core.Missions
             var stale = StaleBecause(mission);
             if (stale.Length > 0)
             {
-                Note(LogKind.Notice, "The craft has changed since this plan was made (" + stale + "). Re-plan instead.");
+                Note(LogKind.Notice, (mission.TargetChange.Length > 0 ? "The Target Vessel" : "The craft") + " has changed since this plan was made (" + stale + "). Re-plan instead.");
                 return;
             }
             if (mission.Stage == MissionStage.AwaitingPlanApproval)
             {
                 Notice("Mission Plan approved.");
+                mission.MissionPlanApproved = true;
                 var newGoal = ApplyGoalChange(mission);
                 mission.Stage = MissionStage.Sequencing;
                 AllocateChutes(mission);
@@ -2080,6 +2084,7 @@ namespace ClaudiaKermin.Core.Missions
             view.PhysicsWarpAllowed = _config.PhysicsWarp;
             view.StartForm.DefaultRemote = _config.DefaultRemote;
             view.StartForm.Refusal = _startRefusal;
+            view.StartForm.Targets = CurrentTargetFacts();
             _craftCheck.Populate(view.CraftCheck, _snapshot);
 
             if (mission != null)
@@ -2161,6 +2166,9 @@ namespace ClaudiaKermin.Core.Missions
                 view.ManualControlUnavailable = ManualUnavailableBecause();
                 view.LinkLossTakeBackIn = LinkLossTakeBackIn();
                 view.PlanStale = StaleBecause(mission);
+                view.PlanStaleTarget = view.PlanStale.Length > 0 && mission.TargetChange.Length > 0;
+                view.TargetNeeded = TargetNeeded(mission);
+                view.CanChangeTarget = CanChangeTarget;
                 if (mission.Stage == MissionStage.ManualControl)
                     view.QuickReplies = new List<QuickReply> { QuickReply.HandBack };
                 else if (mission.Stage == MissionStage.Running)

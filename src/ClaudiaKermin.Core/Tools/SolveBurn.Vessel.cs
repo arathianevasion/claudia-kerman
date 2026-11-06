@@ -24,19 +24,19 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The target's orbit round the body it orbits: the Target Vessel's, or the body's.</summary>
         private static Conic TargetOrbit(PredictBurn.Setup setup)
         {
-            return setup.Vessel != null ? setup.Vessel.Orbit : setup.System.OrbitOf(setup.Target);
+            return setup.Aim.OrbitIn(setup.System);
         }
 
         /// <summary>The target's name: the Target Vessel's, or the body's.</summary>
         private static string TargetName(PredictBurn.Setup setup)
         {
-            return setup.Vessel != null ? setup.Vessel.Name : setup.Target.Name;
+            return setup.Aim.Name;
         }
 
         /// <summary>The name of the body the target orbits.</summary>
         private static string TargetParent(PredictBurn.Setup setup)
         {
-            return setup.Vessel != null ? setup.Vessel.Body.Name : setup.Target.Parent;
+            return setup.Aim.Parent;
         }
 
         /// <summary>DeltaVToMatchVelocities: the target's velocity less the craft's, at <paramref name="at"/> (default closest_approach).</summary>

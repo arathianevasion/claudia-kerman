@@ -73,7 +73,7 @@ A burn between departure and arrival that trims the predicted arrival at a body 
 _Avoid_: mid-course correction, MCC
 
 **Broken-plane transfer**:
-A transfer to a body far out of the craft's plane whose departure stays in that plane, with a plane change partway out, where the arc is slow, that makes the encounter; its delta-v is reported as `plane_dv`, apart from the Course Corrections' `correction_dv`. `transfer_to` flies it in place of the halfway Course Correction (#619).
+A transfer to a body out of the craft's plane whose departure stays in that plane, with a plane change partway out, where the arc is slow, that makes the encounter; its delta-v is reported as `plane_dv`, apart from the Course Corrections' `correction_dv`. `transfer_to` flies it in place of the halfway Course Correction (#619).
 _Avoid_: dog-leg
 
 **Rendezvous**:
@@ -97,7 +97,7 @@ The arrival burn of a transfer: circular at the target periapsis round a body, o
 _Avoid_: insertion, orbit insertion
 
 **Transfer Window**:
-A departure time and arrival time for a transfer to another planet, with what it costs: the ejection from the parking orbit and, with Capture, the capture at the target periapsis. The window search gives two, Soonest and Optimal, and the Mission Setting Time versus delta-v picks one: Fastest takes Soonest, Most efficient takes Optimal, Balanced takes Soonest unless Optimal saves at least 10%.
+A departure time and arrival time for a transfer to another planet, or to a moon of the craft's planet (#647), with what it costs: the ejection from the parking orbit and, with Capture, the capture at the target periapsis. The window search gives two, Soonest and Optimal, and the Mission Setting Time versus delta-v picks one: Fastest takes Soonest, Most efficient takes Optimal, Balanced takes Soonest unless Optimal saves at least 10%.
 _Avoid_: porkchop (the plot, which the mod never draws), launch window (the time to lift off into a target's plane)
 
 **Soonest**:
@@ -105,7 +105,7 @@ The earliest Transfer Window whose total delta-v is within the Craft Check's mar
 _Avoid_: next window, fastest (a Mission Setting)
 
 **Optimal**:
-The cheapest Transfer Window within one synodic period of the two planets.
+The cheapest Transfer Window within one synodic period of the two planets, or one orbit of the moon. A moon's Optimal is its Soonest unless it saves at least 5 m/s: the Mun, in the parking orbit's plane, costs the same at any departure; Minmus is cheapest near a node.
 _Avoid_: best window, most efficient (a Mission Setting)
 
 **Daylight**:
@@ -129,7 +129,7 @@ The one number that sets how a landing's braking trades height for speed: a smal
 _Avoid_: glide slope, descent profile (as a name for the number), approach angle
 
 **Chute Allocation**:
-The chutes each remaining atmospheric entry may open, by need, with the pod's chutes kept for the return. The mod works it out at Mission Plan Approval and again at each Debrief, from the craft as it is; an entry its chutes can't bring under reentry's touchdown limit is a powered finish. `reentry` reads its entry's set when its chutes are "auto".
+The chutes each remaining atmospheric entry may open, by need, with the pod's chutes kept for the return. The mod works it out at Mission Plan Approval and again at each Debrief, from the craft as it is, and for the Craft Check from the Mission Goal's own words; an entry its chutes can't bring under reentry's touchdown limit is a powered finish. `reentry` reads its entry's set when its chutes are "auto".
 _Avoid_: chute budget, parachute plan
 
 **Mission Plan**:
@@ -137,7 +137,7 @@ The ordered list of Maneuver Sequences Claudia intends to fly to reach a Mission
 _Avoid_: flight plan, roadmap
 
 **Due Time**:
-The earliest time a Maneuver Sequence may start; the player may fly elsewhere until then, and the Mission calls them back at it. Claudia sets one in a Sequence Plan when the wait before it needs the player (e.g. "come back when you've docked"). The mod sets one on the first Maneuver Sequence when it would wait on the pad more than 6 h for a Transfer Window to another planet: the window less the launch lead. A shorter wait for a window, and any wait for daylight or a hold, is not a Due Time: the Mission Script warps through it (ADR 0004 and its amendment).
+The earliest time a Maneuver Sequence may start; the player may fly elsewhere until then, and the Mission calls them back at it. Claudia sets one in a Sequence Plan when the wait before it needs the player (e.g. "come back when you've docked"). The mod sets one on the first Maneuver Sequence when it would wait on the pad more than 6 h for a Transfer Window to another planet or a moon: the window less the launch lead. A shorter wait for a window, and any wait for daylight or a hold, is not a Due Time: the Mission Script warps through it (ADR 0004 and its amendment).
 _Avoid_: window (which is a transfer window), scheduled time
 
 **Sequence Plan**:
@@ -195,11 +195,11 @@ A vessel that separated from a Mission's craft during the Mission and carries a 
 _Avoid_: probe, drone, secondary craft
 
 **Target Vessel**:
-The one other vessel a Mission rendezvouses or docks with: KSP's target when the Mission starts, or the vessel the Mission Goal names. A Child Vessel can be one. The Game Snapshot carries it as one compact entry only when the Mission has one (ADR 0013). It is flown only by the bundled `dock_hold`, never by Claudia's scripts.
+The one other vessel a Mission rendezvouses or docks with, or lands beside when it is landed (`land`'s target `"vessel"`, #662), only for a Mission Goal that asks for rendezvous or docking or names a vessel: the player's pick in the start form, else the vessel the goal names, else KSP's target. The start form shows it, or why there is none, before Start; changing it makes Start check the craft again. Between sequences the Mission window's Choose and Clear change it, and the pending plan becomes Re-plan for a revised Mission Plan (#661). A Child Vessel can be one. The Game Snapshot carries it as one compact entry only when the Mission has one (ADR 0013). It is flown only by the bundled `dock_hold`, never by Claudia's scripts.
 _Avoid_: target (alone, which is also a transfer's body or orbit), station, other vessel
 
 **Claudia Flag**:
-The flag the mod ships (`ClaudiaKermin/Flags/ClaudiaFlag`). A Mission's craft and Child Vessels fly it, and it is the agency flag while a Mission is under way (in play and not Paused); the player's own agency flag comes back when none is.
+The flag the mod ships (`ClaudiaKermin/Flags/ClaudiaFlag`). A Mission's craft and Child Vessels fly it, and it is the agency flag while a Mission is under way (in play, Paused or not); the player's own agency flag comes back when none is.
 _Avoid_: Mission flag, mod flag
 
 **Spending Cap**:

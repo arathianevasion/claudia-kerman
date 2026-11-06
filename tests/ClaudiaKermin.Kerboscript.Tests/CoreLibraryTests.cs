@@ -661,14 +661,14 @@ namespace ClaudiaKermin.Kerboscript.Tests
         // ---- RCS turn-rate override (#422) ----
 
         [Theory]
-        // T = sqrt(angle / alpha) within 2 to 10 s; kp = 1.6 / T; ki = 0.1 x kp.
-        [InlineData(36, 1, "6|0.267|0.027")]
-        [InlineData(128, 2, "8|0.2|0.02")]
-        // A small turn stays at 2 s (kp 0.8), a huge one at 10 s (kp 0.16); no acceleration is the default T.
-        [InlineData(4, 4, "2|0.8|0.08")]
-        [InlineData(0.5, 3, "2|0.8|0.08")]
-        [InlineData(5000, 1, "10|0.16|0.016")]
-        [InlineData(100, 0, "2|0.8|0.08")]
+        // T = 0.6 x sqrt(angle / alpha) within 2 to 10 s; kp = 1 / T (#678); ki = 0.1 x kp.
+        [InlineData(36, 1, "3.6|0.278|0.028")]
+        [InlineData(128, 2, "4.8|0.208|0.021")]
+        // A small turn stays at 2 s (kp 0.5), a huge one at 10 s (kp 0.1); no acceleration is the default T.
+        [InlineData(4, 4, "2|0.5|0.05")]
+        [InlineData(0.5, 3, "2|0.5|0.05")]
+        [InlineData(5000, 1, "10|0.1|0.01")]
+        [InlineData(100, 0, "2|0.5|0.05")]
         public void The_turn_override_sizes_T_kp_and_ki_from_the_angle_and_alpha(double angle, double alpha, string expected)
         {
             var tuning = "claudia_rcs_turn_tuning(" + angle.ToString(CultureInfo.InvariantCulture) + ", " + alpha.ToString(CultureInfo.InvariantCulture) + ")";
@@ -702,7 +702,7 @@ namespace ClaudiaKermin.Kerboscript.Tests
             var lines = Run(FakeSteering
                 + "claudia_rcs_set_tuning(sm, claudia_rcs_turn_tuning(36, 1)).\nprint show().\n"
                 + "claudia_rcs_set_tuning(sm, claudia_rcs_default_tuning()).\nprint show().");
-            Assert.Equal(new[] { "6|0.267|0.027|0.267|0.027|2", "2|1|0.1|1|0.1|4" }, lines);
+            Assert.Equal(new[] { "3.6|0.278|0.028|0.278|0.028|2", "2|1|0.1|1|0.1|4" }, lines);
         }
 
         [Fact]

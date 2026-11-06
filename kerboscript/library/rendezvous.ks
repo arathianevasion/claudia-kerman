@@ -281,7 +281,7 @@ function rendezvous_run {
 // vessel into every function it is passed to (ADR 0003), so rv_target is a name no other code uses.
 function rendezvous_state {
   parameter ctx, name.
-  local rv_target is vessel(name).
+  local rv_target is addons:claudia:targetvessel():vessel.
   local wait_until is time:seconds + 5.
   until rv_target:loaded or rv_target:distance >= 2200 or time:seconds > wait_until {
     local ticked is claudia_tick(ctx, 0).

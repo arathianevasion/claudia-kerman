@@ -55,18 +55,17 @@ namespace ClaudiaKermin.Core.Tools
 
         /// <summary>
         /// The burn's UT from its <c>at</c>, or why it can't be placed (<paramref name="problem"/>). The reference is worked on the
-        /// patch flown at <paramref name="after"/>; <paramref name="system"/> and <paramref name="target"/> (a body in its table)
-        /// are needed only by <c>rel_an</c>, <c>rel_dn</c> and <c>closest_approach</c>, which take <paramref name="vessel"/>, the
-        /// Target Vessel, in place of a body when it is given.
+        /// patch flown at <paramref name="after"/>; <paramref name="system"/> and <paramref name="target"/>
+        /// are needed only by <c>rel_an</c>, <c>rel_dn</c> and <c>closest_approach</c>; <paramref name="target"/> is
+        /// a body (in its table) or the Target Vessel.
         /// </summary>
-        public static double? Resolve(JsonNode at, List<Patch> path, double after, double now, string label, BodySystem system, SnapshotBody target, out string problem,
-            VesselTarget vessel = null)
+        public static double? Resolve(JsonNode at, List<Patch> path, double after, double now, string label, BodySystem system, BurnTarget target, out string problem)
         {
             problem = null;
             double ut;
             var text = at != null && at.Kind == JsonKind.String ? at.StringValue.Trim().ToLowerInvariant() : null;
             if (text != null && IsNamed(text))
-                return Named(text, path, after, label, system, target, vessel, out problem);
+                return Named(text, path, after, label, system, target, out problem);
             if (at != null && at.Kind == JsonKind.Number)
                 ut = JsonNode.Double(at).Value;
             else if (text != null && text.StartsWith("in ", StringComparison.Ordinal)
@@ -92,7 +91,7 @@ namespace ClaudiaKermin.Core.Tools
             return Math.Max(ut, after);
         }
 
-        private static double? Named(string text, List<Patch> path, double after, string label, BodySystem system, SnapshotBody target, VesselTarget vessel, out string problem)
+        private static double? Named(string text, List<Patch> path, double after, string label, BodySystem system, BurnTarget target, out string problem)
         {
             problem = null;
             var patch = PredictBurn.Containing(path, after);
@@ -118,9 +117,9 @@ namespace ClaudiaKermin.Core.Tools
             else if (text.StartsWith("altitude ", StringComparison.Ordinal))
                 ut = Altitude(text, patch, from, out why);
             else if (text == "closest_approach")
-                ut = ClosestApproach(patch, from, system, target, vessel, out why);
+                ut = ClosestApproach(patch, from, system, target, out why);
             else if (text == "rel_an" || text == "rel_dn")
-                ut = RelativeNode(text == "rel_an", patch, from, system, target, vessel, out why);
+                ut = RelativeNode(text == "rel_an", patch, from, system, target, out why);
             else
                 ut = EquatorialNode(text, patch, from, out why);
             if (why != null)
@@ -227,11 +226,11 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>The nodes of the craft's orbit with the target's orbit round the same parent, the plane change that lines the two up.</summary>
-        private static double? RelativeNode(bool ascending, Patch patch, double from, BodySystem system, SnapshotBody target, VesselTarget vessel, out string why)
+        private static double? RelativeNode(bool ascending, Patch patch, double from, BodySystem system, BurnTarget target, out string why)
         {
             Conic aim;
-            if (!Aim(patch, system, target, vessel, ascending ? "rel_an" : "rel_dn", out aim, out why)) return null;
-            return PlaneNodeTime(patch, aim.W, ascending, from, (vessel != null ? vessel.Name : target.Name) + "'s", out why);
+            if (!Aim(patch, system, target, ascending ? "rel_an" : "rel_dn", out aim, out why)) return null;
+            return PlaneNodeTime(patch, aim.W, ascending, from, target.Name + "'s", out why);
         }
 
         /// <summary>
@@ -269,10 +268,10 @@ namespace ClaudiaKermin.Core.Tools
         /// The craft's nearest approach to the target over the next few orbits (#442 asks for a few, MechJeb searches one; a hyperbola, 100 radians of
         /// mean anomaly), found by <see cref="BodySystem.ClosestApproach"/> on the part of the patch in that window.
         /// </summary>
-        private static double? ClosestApproach(Patch patch, double from, BodySystem system, SnapshotBody target, VesselTarget vessel, out string why)
+        private static double? ClosestApproach(Patch patch, double from, BodySystem system, BurnTarget target, out string why)
         {
             Conic aim;
-            if (!Aim(patch, system, target, vessel, "closest_approach", out aim, out why)) return null;
+            if (!Aim(patch, system, target, "closest_approach", out aim, out why)) return null;
             var orbit = patch.Orbit;
             var span = orbit.Closed ? ApproachOrbits * orbit.Period : HyperbolicMeanAnomalies / orbit.N;
             var end = Math.Min(patch.EndUt, from + span);
@@ -286,29 +285,15 @@ namespace ClaudiaKermin.Core.Tools
             return ut;
         }
 
-        /// <summary>The orbit a relative reference aims at, the Target Vessel's when given, else the body's; false with why when it is not round the patch's body.</summary>
-        private static bool Aim(Patch patch, BodySystem system, SnapshotBody target, VesselTarget vessel, string reference, out Conic aim, out string why)
+        /// <summary>The orbit a relative reference aims at; false with why when the target is not round the patch's body.</summary>
+        private static bool Aim(Patch patch, BodySystem system, BurnTarget target, string reference, out Conic aim, out string why)
         {
             aim = null;
-            if (vessel != null)
-            {
-                why = vessel.Elsewhere(patch.Body, reference);
-                if (why == null) aim = vessel.Orbit;
-                return why == null;
-            }
-            if (!ChildOf(patch, system, target, reference, out why)) return false;
-            aim = system.OrbitOf(target);
-            return true;
-        }
-
-        /// <summary>Whether the target orbits the body the patch is round; otherwise <paramref name="why"/> says so.</summary>
-        private static bool ChildOf(Patch patch, BodySystem system, SnapshotBody target, string reference, out string why)
-        {
-            why = null;
-            if (target == null || system == null)
+            if (target == null || (!target.IsVessel && system == null))
                 why = "it needs target, the body or Target Vessel to measure from";
-            else if (!string.Equals(target.Parent, patch.Body.Name, StringComparison.OrdinalIgnoreCase))
-                why = target.Name + " is not in orbit round " + patch.Body.Name + ", the body the craft is round at that time, so " + reference + " is not defined";
+            else
+                why = target.Elsewhere(patch.Body, reference);
+            if (why == null) aim = target.OrbitIn(system);
             return why == null;
         }
 

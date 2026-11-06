@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using ClaudiaKermin.Core.Tools;
 
 namespace ClaudiaKermin.Core.Missions
@@ -39,6 +40,8 @@ namespace ClaudiaKermin.Core.Missions
         public double TouchdownSpeed = -1;
         /// <summary>Its chutes can't bring it under <see cref="ChuteAllocation.TouchdownLimit"/>: the engines finish the landing from <see cref="TouchdownSpeed"/>.</summary>
         public bool PoweredFinish;
+        /// <summary>The height above sea level, m, its fall was predicted down to (<see cref="ChuteAllocation.EndAltitudeOf"/>).</summary>
+        public double EndAltitude;
         /// <summary>Why <see cref="TouchdownSpeed"/> is unknown; "" when it is known.</summary>
         public string Unpredicted = "";
     }
@@ -64,12 +67,30 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         public const double BodyDragArea = 1;
 
+        /// <summary>The share of a body's radius taken as its highest common terrain when the Game Snapshot gives no figure (Duna's highlands are about 2.5%).</summary>
+        public const double TerrainShareOfRadius = 0.01;
+
+        /// <summary>
+        /// Where an entry on <paramref name="body"/> is predicted to touch down, m above sea level: the body's own terrain
+        /// height from the Game Snapshot when it has one, else sea level for Kerbin (the return lands at KSC) and a conservative
+        /// <see cref="TerrainShareOfRadius"/> of the radius for other bodies, so thinner air never makes the touchdown too soft.
+        /// </summary>
+        public static double EndAltitudeOf(SnapshotBody body)
+        {
+            if (body.TerrainHeight > 0) return body.TerrainHeight;
+            if (string.Equals(body.Name, "Kerbin", StringComparison.OrdinalIgnoreCase)) return 0;
+            return Math.Min(body.Radius * TerrainShareOfRadius, 0.5 * body.AtmosphereHeight);
+        }
+
         /// <summary>The remaining entries, in plan order.</summary>
         public readonly List<EntryChutes> Entries = new List<EntryChutes>();
         /// <summary>The Kerbin return's touchdown can't be brought under the limit by the pod's chutes (the Craft Check's Blocker).</summary>
         public bool ReturnUncovered;
         /// <summary>The craft's usable chutes (stowed or armed), whoever has them.</summary>
         public readonly List<AllocatedChute> Chutes = new List<AllocatedChute>();
+
+        /// <summary>The plan this was made for: <see cref="PlanOf"/> of the steps it covered. "" for an allocation made for no plan.</summary>
+        public string ForPlan = "";
 
         /// <summary>The Kerbin return entry, or null for none.</summary>
         public EntryChutes Return
@@ -107,11 +128,65 @@ namespace ClaudiaKermin.Core.Missions
         {
             var allocation = new ChuteAllocation();
             if (snapshot == null || sequences == null) return allocation;
+            allocation.ForPlan = PlanOf(sequences, firstStep);
             allocation.Entries.AddRange(FindEntries(snapshot, sequences, Math.Max(0, firstStep)));
             var division = new Division(snapshot, remote, processorPartId, allocation);
             allocation.Chutes.AddRange(division.All);
             if (allocation.Entries.Count > 0) division.Divide(sequences, Math.Max(0, firstStep));
             return allocation;
+        }
+
+        /// <summary>
+        /// The Mission Goal as legs for the allocation before any Mission Plan exists (#641): one per clause of the goal (split at
+        /// punctuation, "and" and "then"), read by <see cref="SequenceWords"/> as the plan's legs are. Only a craft on the ground
+        /// has a leg with delta-v: the Delta-v Map's launch from its body, first, so the entries come down at the mass the launch
+        /// leaves. The others carry none (no plan has budgeted them; the Craft Check's delta_v_short judges the route).
+        /// </summary>
+        public static List<PlannedSequence> GoalLegs(GameSnapshot snapshot, string goal)
+        {
+            var legs = new List<PlannedSequence>();
+            if (snapshot == null) return legs;
+            var grounded = snapshot.Situation == "PRELAUNCH" || snapshot.Situation == "LANDED" || snapshot.Situation == "SPLASHED";
+            var launch = grounded ? DeltaVMap.Compute(snapshot.Bodies, snapshot.Body).Leg("launch:" + snapshot.Body) : null;
+            if (launch != null) legs.Add(new PlannedSequence { Name = "Launch from " + snapshot.Body, DeltaV = launch.DeltaV });
+            foreach (var clause in GoalClause.Split(goal ?? ""))
+                if (clause.Trim().Length > 0) legs.Add(new PlannedSequence { Name = clause.Trim() });
+            return legs;
+        }
+
+        private static readonly Regex GoalClause = new Regex(@"[.;:,!?]|\b(?:and|then)\b", RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// The allocation over the goal's <paramref name="legs"/> (<see cref="GoalLegs"/>), made for no plan; null when a parachute
+        /// of the craft has no facts read (a cut chute, or a snapshot that read none), so the chutes aren't judged on a guess, and
+        /// for a craft with no parachute at all (no_parachutes_for_return is Claude's; a powered landing at home isn't refused unasked).
+        /// </summary>
+        public static ChuteAllocation ForGoal(GameSnapshot snapshot, IList<PlannedSequence> legs, bool remote, uint? processorPartId)
+        {
+            if (snapshot == null) return null;
+            var chutes = snapshot.Craft.Parts.Where(p => p.Tags.Contains("parachute")).ToList();
+            if (chutes.Count == 0 || chutes.Any(p => p.Chute == null)) return null;
+            var allocation = Of(snapshot, legs, 0, remote, processorPartId);
+            allocation.ForPlan = "";
+            return allocation;
+        }
+
+        /// <summary>A fingerprint of the plan from step <paramref name="firstStep"/> on: what the allocation reads of each leg (words, manual, delta-v) and where it starts.</summary>
+        public static string PlanOf(IList<PlannedSequence> sequences, int firstStep)
+        {
+            var first = Math.Max(0, firstStep);
+            return first.ToString(CultureInfo.InvariantCulture) + "|" + string.Join("|", sequences.Skip(first)
+                .Select(s => SequenceWords.Of(s) + "\u001f" + (s.Manual ? "m" : "") + s.DeltaV.ToString("R", CultureInfo.InvariantCulture)).ToArray());
+        }
+
+        /// <summary>
+        /// <paramref name="held"/> when it was made for this plan from this step on, else the allocation worked out again (#645: a
+        /// revision between Approval or a Debrief and a Margin Check leaves the held one stale).
+        /// </summary>
+        public static ChuteAllocation Current(ChuteAllocation held, GameSnapshot snapshot, IList<PlannedSequence> sequences, int firstStep, bool remote, uint? processorPartId)
+        {
+            if (held != null && sequences != null && held.ForPlan == PlanOf(sequences, firstStep)) return held;
+            return Of(snapshot, sequences, firstStep, remote, processorPartId);
         }
 
         /// <summary>
@@ -173,7 +248,7 @@ namespace ClaudiaKermin.Core.Missions
                     int module;
                     if (!leaving.TryGetValue(part.Id, out module)) module = -1;
                     if (module < 0) _podMassKg += part.MassT * 1000;
-                    // A chute open already, or one the adapter couldn't read (cut, or the editor), has nothing to give.
+                    // A chute open already, or one the adapter couldn't read (cut), has nothing to give.
                     var chute = part.Chute;
                     if (chute == null || chute.State == ReentryChuteState.SemiDeployed || chute.State == ReentryChuteState.Deployed) continue;
                     _facts[part.Id] = chute;
@@ -301,13 +376,14 @@ namespace ClaudiaKermin.Core.Missions
                     entry.Unpredicted = "the craft's mass is unknown";
                     return;
                 }
+                entry.EndAltitude = EndAltitudeOf(body);
                 var top = body.Radius + body.AtmosphereHeight;
                 var apo = top + Math.Max(5000, 0.1 * body.AtmosphereHeight);
                 var peri = body.Radius + 0.3 * body.AtmosphereHeight;
                 var orbit = Conic.FromElements(body.Gm, (apo + peri) / 2, (apo - peri) / (apo + peri), 0, 0, 0, Math.PI, 0);
                 var frame = new BodyFrame { LonOffset = 0, Handed = 1, Ut = 0, RotationPeriod = body.RotationPeriod };
                 var craft = new FallingCraft(entry.MassKg, chutes);
-                var prediction = ReentryPredictor.Predict(body, orbit, 0, 0, entry.MassKg, new SnapshotAir(body), craft, frame);
+                var prediction = ReentryPredictor.Predict(body, orbit, 0, entry.EndAltitude, entry.MassKg, new SnapshotAir(body), craft, frame);
                 if (prediction.Error != null)
                 {
                     entry.Unpredicted = prediction.Error;

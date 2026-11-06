@@ -140,8 +140,8 @@ namespace ClaudiaKermin.Adapter
             return _mission.ExportStates();
         }
 
-        /// <summary>Writes the player config's Mission defaults; returns the notice when the write failed, "" otherwise. The Loader sets it.</summary>
-        public Func<string> SaveConfigDefaults = () => "";
+        /// <summary>Writes the player config's Mission defaults off the main thread (#663) and tells <c>done</c>, back on it, the notice when the write failed, "" otherwise. The Loader sets it.</summary>
+        public Action<Action<string>> SaveConfigDefaults = done => done("");
 
         /// <summary>The Claudia Flag (#642): which Mission vessels fly it, and when the agency flag is Claudia's.</summary>
         private readonly ClaudiaFlagKeeper _flag = new ClaudiaFlagKeeper();
@@ -175,9 +175,9 @@ namespace ClaudiaKermin.Adapter
 
         public void Send(MissionInput input)
         {
-            // A docking with a Mission vessel: the merged vessel flies the Claudia Flag again, joined parts and all.
+            // A docking: a Mission vessel in it flies the Claudia Flag again, joined parts and all (the keeper doesn't mind the order).
             var docked = input as VesselsDocked;
-            if (docked != null) _flag.Docked(_mission.View, docked.First.Id, docked.Second.Id);
+            if (docked != null) _flag.Docked(docked.First.Id, docked.Second.Id);
             _mission.Send(input);
             Carry();
         }
@@ -214,6 +214,12 @@ namespace ClaudiaKermin.Adapter
         public static uint? BlockTestTargetId;
 
         /// <summary>
+        /// The start form's Target Vessel before Start (#643), read into the snapshot so the Craft Check judges the craft against
+        /// it. Set by the <see cref="MissionPanel"/> as it draws the form; null while a Mission is under way or the goal needs none.
+        /// </summary>
+        public static uint? FormTargetId;
+
+        /// <summary>
         /// The Mission in play is flown remotely (Claudia at Mission Control), for <c>dock</c>'s Child Vessel link test of the
         /// Target Vessel (#456): remote, the target needs a link home; aboard, a link to the craft. Refreshed every frame.
         /// </summary>
@@ -227,6 +233,7 @@ namespace ClaudiaKermin.Adapter
             ChuteAllocation = _mission.View.ChuteAllocation;
             CurrentSequence = _mission.View.CurrentSequence;
             TargetVesselId = _mission.View.TargetVesselId;
+            if (!_mission.View.StartForm.CanStart) FormTargetId = null;
             Remote = _mission.View.Remote;
             // A new Game object means a save was loaded: continue, quickload, revert or another save. A scene
             // change keeps the same Game, so it never counts. The core puts the Missions in step with the save.
@@ -299,7 +306,16 @@ namespace ClaudiaKermin.Adapter
             if (agency != null) ClaudiaFlags.SetAgency(agency);
             if (scene != GameScene.Flight || !FlightGlobals.ready) return;
             foreach (var id in _flag.VesselsToFlag(view))
+            {
                 if (ClaudiaFlags.FlyOn(id)) _flag.Flagged(id);
+                else _flag.Missed(id);
+            }
+        }
+
+        /// <summary>Unsubscribes from the game's events: the Loader is being destroyed.</summary>
+        public void Detach()
+        {
+            GameEvents.onCrewOnEva.Remove(OnCrewOnEva);
         }
 
         /// <summary>A Kerbal leaving a Mission vessel carries the Claudia Flag, so a flag planted on EVA is Claudia's.</summary>
@@ -394,12 +410,12 @@ namespace ClaudiaKermin.Adapter
                 if (command is SaveConfigDefaults)
                 {
                     // A Mission start made its setup the defaults (#639); it has started whether or not this write works.
-                    var error = SaveConfigDefaults();
-                    if (error.Length > 0)
+                    SaveConfigDefaults(error =>
                     {
+                        if (error.Length == 0) return;
                         Debug.LogWarning(ClaudiaKermin.Core.ModInfo.LogTag + " " + error);
                         ScreenMessages.PostScreenMessage(error, 8f, ScreenMessageStyle.UPPER_CENTER);
-                    }
+                    });
                     continue;
                 }
                 if (AlarmClockCommands.Apply(command, DueTimeActions.AlarmClock)) continue;

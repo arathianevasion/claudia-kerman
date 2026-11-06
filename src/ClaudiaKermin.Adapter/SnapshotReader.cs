@@ -82,26 +82,59 @@ namespace ClaudiaKermin.Adapter
         /// </summary>
         private static void ReadTargets(GameSnapshot snapshot, Vessel vessel)
         {
+            // Debris, a flag, an asteroid or a Kerbal on EVA set as KSP's target is never a Target Vessel (#643).
             var ksp = vessel.targetObject != null ? vessel.targetObject.GetVessel() : null;
-            if (ksp != null && ksp != vessel) snapshot.KspTarget = TargetOf(ksp);
+            if (ksp != null && ksp != vessel && Nameable(ksp.vesselType)) snapshot.KspTarget = TargetOf(ksp);
             var id = MissionDriver.TargetVesselId ?? MissionDriver.BlockTestTargetId;
-            if (id.HasValue && id.Value != vessel.persistentId)
-            {
-                Vessel target;
-                if (snapshot.KspTarget != null && snapshot.KspTarget.Id == id.Value) snapshot.Target = snapshot.KspTarget;
-                else if (FlightGlobals.FindVessel(id.Value, out target) && target != null) snapshot.Target = TargetOf(target);
-            }
+            if (id.HasValue && id.Value != vessel.persistentId) snapshot.Target = LiveTarget(snapshot, id.Value);
+            // The start form's target, before Start: the Craft Check judges the craft against it.
+            var form = id.HasValue ? null : MissionDriver.FormTargetId;
+            if (form.HasValue && form.Value != vessel.persistentId) snapshot.FormTarget = LiveTarget(snapshot, form.Value);
             foreach (var other in FlightGlobals.Vessels)
-                if (other != null && other != vessel && Nameable(other.vesselType)) snapshot.Vessels.Add(new SnapshotVessel { Id = other.persistentId, Name = other.vesselName ?? "" });
+                if (other != null && other != vessel && Nameable(other.vesselType))
+                    snapshot.Vessels.Add(new SnapshotVessel
+                    {
+                        Id = other.persistentId,
+                        Name = other.vesselName ?? "",
+                        Body = other.mainBody != null ? other.mainBody.bodyName : "",
+                        Situation = other.situation.ToString(),
+                    });
         }
 
-        /// <summary>The vessels in the save a Mission Goal may name before launch: the editor has no FlightGlobals vessels.</summary>
+        private static SnapshotTarget LiveTarget(GameSnapshot snapshot, uint id)
+        {
+            Vessel target;
+            if (snapshot.KspTarget != null && snapshot.KspTarget.Id == id) return snapshot.KspTarget;
+            return FlightGlobals.FindVessel(id, out target) && target != null ? TargetOf(target) : null;
+        }
+
+        /// <summary>
+        /// The vessels in the save a Mission Goal may name or the player pick before launch (the editor has no FlightGlobals
+        /// vessels), and the start form's target among them.
+        /// </summary>
         private static void ReadSavedVessels(GameSnapshot snapshot)
         {
             var game = HighLogic.CurrentGame;
             if (game == null || game.flightState == null) return;
+            var form = MissionDriver.FormTargetId;
             foreach (var saved in game.flightState.protoVessels)
-                if (saved != null && Nameable(saved.vesselType)) snapshot.Vessels.Add(new SnapshotVessel { Id = saved.persistentId, Name = saved.vesselName ?? "" });
+            {
+                if (saved == null || !Nameable(saved.vesselType)) continue;
+                var body = SavedBody(saved);
+                snapshot.Vessels.Add(new SnapshotVessel { Id = saved.persistentId, Name = saved.vesselName ?? "", Body = body, Situation = saved.situation.ToString() });
+                if (form.HasValue && form.Value == saved.persistentId)
+                {
+                    snapshot.FormTarget = new SnapshotTarget { Id = saved.persistentId, Name = saved.vesselName ?? "", Body = body, Situation = saved.situation.ToString() };
+                    ReadSavedPorts(snapshot.FormTarget, saved);
+                }
+            }
+        }
+
+        private static string SavedBody(ProtoVessel saved)
+        {
+            var bodies = FlightGlobals.Bodies;
+            var index = saved.orbitSnapShot != null ? saved.orbitSnapShot.ReferenceBodyIndex : -1;
+            return bodies != null && index >= 0 && index < bodies.Count && bodies[index] != null ? bodies[index].bodyName : "";
         }
 
         /// <summary>Vessels a Mission could rendezvous or dock with: not debris, flags, asteroids or Kerbals on EVA.</summary>
@@ -122,6 +155,8 @@ namespace ClaudiaKermin.Adapter
                 Situation = vessel.situation.ToString(),
             };
             if (vessel.orbit != null) target.Orbit = OrbitOf(vessel.orbit);
+            // Where a landed or splashed target is, for land's "vessel" target (#662).
+            if (target.IsDown) target.Position = new SnapshotPosition { Latitude = vessel.latitude, Longitude = vessel.longitude, Altitude = vessel.altitude };
             if (vessel.loaded) ReadLoadedPorts(target, vessel);
             else if (vessel.protoVessel != null) ReadSavedPorts(target, vessel.protoVessel);
             return target;
@@ -223,7 +258,11 @@ namespace ClaudiaKermin.Adapter
             snapshot.Craft.Stage = StageManager.LastStage;
             ReadParts(snapshot, ship.parts, ship.vesselDeltaV);
             // The root part's up is the craft's nose, as the control point's is in Flight.
-            snapshot.Craft.NoseDrag = NoseDrag.Read(ship.parts, ship.parts[0].transform.up, true);
+            var nose = ship.parts[0].transform.up;
+            snapshot.Craft.NoseDrag = NoseDrag.Read(ship.parts, nose, true);
+            // The chutes too, for the Craft Check's Chute Allocation (#641), held the same way.
+            for (var i = 0; i < ship.parts.Count && i < snapshot.Craft.Parts.Count; i++)
+                if (snapshot.Craft.Parts[i].Tags.Contains("parachute")) snapshot.Craft.Parts[i].Chute = ReentryCraft.ChuteOf(ship.parts[i], nose);
             var manifest = ShipConstruction.ShipManifest;
             if (manifest != null) snapshot.Crew.AddRange(manifest.GetAllCrew(false).Where(c => c != null).Select(Crew));
             ReadAboard(snapshot);
@@ -254,7 +293,7 @@ namespace ClaudiaKermin.Adapter
             };
         }
 
-        /// <summary>Each parachute's own numbers, held retrograde, for the Chute Allocation (#626); flight only (the editor has no airflow to hold).</summary>
+        /// <summary>Each parachute's own numbers, held retrograde, for the Chute Allocation (#626); the editor's are read in <see cref="ReadEditor"/>.</summary>
         private static void ReadChutes(GameSnapshot snapshot, Vessel vessel)
         {
             var parts = vessel.parts;

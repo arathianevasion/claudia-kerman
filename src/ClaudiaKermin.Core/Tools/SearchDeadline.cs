@@ -41,6 +41,7 @@ namespace ClaudiaKermin.Core.Tools
                 var start = clock.ElapsedMs;
                 return new SearchDeadline(() => clock.ElapsedMs - start, budgetMs);
             }
+            if (SearchBudget.Unlimited) return None;
             var watch = Stopwatch.StartNew();
             return new SearchDeadline(() => watch.Elapsed.TotalMilliseconds, budgetMs);
         }

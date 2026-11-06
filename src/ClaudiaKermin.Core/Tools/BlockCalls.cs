@@ -124,7 +124,7 @@ namespace ClaudiaKermin.Core.Tools
             var orbited = !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body;
             var at = new BodySystem(snapshot.Bodies).Find(orbited);
             if (at == null) return Error("there is no body named " + PlanningJson.Quote(orbited));
-            if (at.AtmosphereHeight > 0 || at.SeaLevelAtm > 0) return Error(at.Name + " has an atmosphere, and land flies airless bodies only");
+            if (at.AtmosphereHeight > 0 || at.SeaLevelAtm > 0) return Error("land flies airless bodies only; " + at.Name + " has an atmosphere; use reentry (touchdown \"powered\" when chutes are short)");
             foreach (var key in new[] { "lat", "lng", "r_pe" })
                 if (!(NumberOrNull(ask, key).HasValue)) return Error(key + " is required");
             object daylight;
@@ -685,13 +685,22 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>
         /// <c>ADDONS:CLAUDIA:TARGETVESSEL</c>, for <c>rendezvous</c> (#455): the Mission's Target Vessel (ADR 0013) as the Game Snapshot
         /// reads it live. Gives <c>error</c> "", <c>name</c> and <c>body</c> (the body it orbits); or only <c>error</c>: there is none,
-        /// or it is landed, or its orbit is missing.
+        /// or it is landed, or its orbit is missing. A landed or splashed one with its position read keeps that error, so rendezvous
+        /// and dock still refuse it, and adds <c>name</c>, <c>body</c> (the body it is on) and <c>lat</c>, <c>lng</c>, <c>alt</c>
+        /// for <c>land</c>'s <c>"vessel"</c> target (#662).
         /// </summary>
         public static IDictionary<string, object> TargetVessel(GameSnapshot snapshot)
         {
             if (snapshot == null) return Error("no Game Snapshot");
             string why;
             var vessel = VesselTarget.Read(snapshot, new BodySystem(snapshot.Bodies), null, out why);
+            var entry = snapshot.Target;
+            if (vessel == null && entry != null && entry.IsDown && entry.Position != null)
+                return new Dictionary<string, object>
+                {
+                    { "error", why }, { "name", entry.Name }, { "body", entry.Body },
+                    { "lat", entry.Position.Latitude }, { "lng", entry.Position.Longitude }, { "alt", entry.Position.Altitude },
+                };
             if (vessel == null) return Error(why);
             return new Dictionary<string, object> { { "error", "" }, { "name", vessel.Name }, { "body", vessel.Body.Name } };
         }

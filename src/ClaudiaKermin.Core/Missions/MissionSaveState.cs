@@ -63,6 +63,8 @@ namespace ClaudiaKermin.Core.Missions
         public bool Remote;
         /// <summary>The Mission is in Auto Mode: the player's Approval is given in advance. A save from before this existed reads as off.</summary>
         public bool AutoMode;
+        /// <summary>The player has approved a Mission Plan (#661), so a revision is never the first one. A save from before this existed reads as not.</summary>
+        public bool MissionPlanApproved;
         /// <summary>While Paused for EVA science: what the player is to do by hand; "" otherwise.</summary>
         public string EvaScience = "";
         /// <summary>In Manual Control (or its Hand back Debrief): the stretch was planned, so its Debrief is judged against the target.</summary>
@@ -111,6 +113,8 @@ namespace ClaudiaKermin.Core.Missions
         public string Recheck = "";
         /// <summary>Requests sent when the craft docked; a plan from a later request was made with the facts after docking.</summary>
         public int RecheckSince;
+        /// <summary>The Target Vessel changed since the pending plan was offered (#661), so Approve is Re-plan; "" for none and in older saves.</summary>
+        public string TargetChange = "";
         /// <summary>What Claudia is still to be told on her next turn (the docking notice, say); "" for none.</summary>
         public string PendingNotice = "";
         /// <summary>Paused because Claudia could fly no vessel, so Resume is offered.</summary>
@@ -199,6 +203,8 @@ namespace ClaudiaKermin.Core.Missions
             if (ScriptError.Length > 0) values["scriptError"] = ScriptError;
             if (Recheck.Length > 0) values["recheck"] = Recheck;
             if (RecheckSince != 0) values["recheckSince"] = RecheckSince.ToString(CultureInfo.InvariantCulture);
+            if (TargetChange.Length > 0) values["targetChange"] = TargetChange;
+            if (MissionPlanApproved) values["missionPlanApproved"] = "true";
             if (PendingNotice.Length > 0) values["pendingNotice"] = PendingNotice;
             if (PausedCannotFly) values["pausedCannotFly"] = "true";
             if (PausedForCap) values["pausedForCap"] = "true";
@@ -248,6 +254,7 @@ namespace ClaudiaKermin.Core.Missions
                 DueNotified = Get(values, "dueNotified") == "true",
                 Remote = Get(values, "remote") == "true",
                 AutoMode = Get(values, "auto_mode") == "true",
+                MissionPlanApproved = Get(values, "missionPlanApproved") == "true",
                 EvaScience = Get(values, "evaScience"),
                 ManualPlanned = Get(values, "manualPlanned") == "true",
                 ManualOrigin = Get(values, "manualOrigin"),
@@ -262,6 +269,7 @@ namespace ClaudiaKermin.Core.Missions
                 BlockTrail = Get(values, "blockTrail"),
                 ScriptError = Get(values, "scriptError"),
                 Recheck = Get(values, "recheck"),
+                TargetChange = Get(values, "targetChange"),
                 PendingNotice = Get(values, "pendingNotice"),
                 PausedCannotFly = Get(values, "pausedCannotFly") == "true",
                 PausedForCap = Get(values, "pausedForCap") == "true",

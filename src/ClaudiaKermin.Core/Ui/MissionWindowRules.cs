@@ -640,7 +640,7 @@ namespace ClaudiaKermin.Core.Ui
             {
                 case MissionStage.AwaitingPlanApproval:
                 case MissionStage.AwaitingSequenceApproval:
-                    if (replies.Contains(QuickReply.Replan) && view.PlanStale.Length > 0) return "The craft has changed: Re-plan?";
+                    if (replies.Contains(QuickReply.Replan) && view.PlanStale.Length > 0) return StaleWhat(view) + " has changed: Re-plan?";
                     if (!replies.Contains(QuickReply.Approve)) return "";
                     if (view.Stage == MissionStage.AwaitingPlanApproval) return "Approve the Mission Plan?";
                     if (!view.DueTime.HasDueTime) return "Sequence Plan awaiting Approval";
@@ -687,13 +687,19 @@ namespace ClaudiaKermin.Core.Ui
             }
         }
 
+        /// <summary>What changed under a stale plan: the Target Vessel (#661) or the craft.</summary>
+        private static string StaleWhat(MissionView view)
+        {
+            return view.PlanStaleTarget ? "The Target Vessel" : "The craft";
+        }
+
         /// <summary>
         /// The strip's lock line: a stale plan's Re-plan note, the link-loss countdown in Manual Control, why Manual Control
         /// is unavailable, or what Claudia's hold on the craft locks; "" when nothing is locked and nothing is pending.
         /// </summary>
         public static string LockLine(MissionView view)
         {
-            if (view.PlanStale.Length > 0) return "The craft has changed (" + view.PlanStale + "): Re-plan";
+            if (view.PlanStale.Length > 0) return StaleWhat(view) + " has changed (" + view.PlanStale + "): Re-plan";
             if (view.LinkLossTakeBackIn.HasValue)
                 return "No link to Kerbin: Claudia takes the craft back in "
                     + System.Math.Ceiling(view.LinkLossTakeBackIn.Value).ToString("0", CultureInfo.InvariantCulture) + " s unless it returns";

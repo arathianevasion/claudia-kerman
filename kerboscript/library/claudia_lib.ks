@@ -1705,16 +1705,17 @@ function claudia_wheels_turn_time {
   return turn:wheels_turn_time.
 }
 
-// The turn-rate override (#422). kOS caps the turn rate at torque x maxstoppingtime / MOI and brakes without
-// overshoot only while the rate gain kp <= 2 / maxstoppingtime. Turns by RCS widen the cap: T = sqrt(angle / alpha)
-// within 2 to 10 s (angle in degrees, alpha in deg/s2: TURNTIME's alpha), kp = 1.6 / T, ki = 0.1 x kp. Pure.
+// The turn-rate override (#422, retuned #678). kOS caps the turn rate at torque x maxstoppingtime / MOI and brakes
+// without overshoot only while kp <= 2 x (real decel / alpha) / T; the craft slows at about 2/3 of alpha, so kp = 1 / T.
+// Turns by RCS widen the cap: T = 0.6 x sqrt(angle / alpha) within 2 to 10 s (angle in degrees, alpha in deg/s2:
+// TURNTIME's alpha), ki = 0.1 x kp. Pure.
 function claudia_rcs_turn_tuning {
   parameter angle, alpha.
   local t is 2.
   if alpha > 0 {
-    set t to min(10, max(2, sqrt(max(0, angle) / alpha))).
+    set t to min(10, max(2, 0.6 * sqrt(max(0, angle) / alpha))).
   }
-  local kp is 1.6 / t.
+  local kp is 1 / t.
   return lexicon("t", t, "kp", kp, "ki", 0.1 * kp).
 }
 
