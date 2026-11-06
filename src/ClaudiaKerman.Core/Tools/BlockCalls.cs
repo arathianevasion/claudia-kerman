@@ -873,6 +873,10 @@ namespace ClaudiaKerman.Core.Tools
         /// starts from the burn whose Lambert arc reaches its centre then. Gives <c>error</c> "", <c>ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver
         /// node components), <c>dv</c>, <c>pe_predicted</c> (m) and <c>inc_predicted</c> (degrees); a best burn outside the
         /// tolerances gives its <c>error</c> with the rest; a solve that could not start, only <c>error</c>, "found no correction: &lt;why&gt;".
+        /// Given <c>lat</c> and <c>lng</c> (#793), in place of target_inc, the burn also moves the landing toward them with the periapsis held, by the reentry
+        /// predictor with <paramref name="body"/>, <paramref name="air"/> (the target's) and <paramref name="craft"/>; <c>ground_alt</c> (m) and <c>isp</c> (s) are as for
+        /// <see cref="ReturnBurn"/>, and <c>dv_left</c> (m/s; 0 or less for unknown) limits the burn. It adds <c>lat</c>, <c>lng</c>, <c>landing_ut</c> and
+        /// <c>error_km</c>, the remainder it couldn't reach, when the predictor can say.
         /// <para>
         /// To the Target Vessel (#454), the two goals the <c>rendezvous</c> block re-solves at fly time: <c>target_distance</c> (m)
         /// in place of target_pe is the Course Correction to that closest approach (<c>distance_tolerance</c>, m, default 10), and
@@ -882,7 +886,8 @@ namespace ClaudiaKerman.Core.Tools
         /// target_distance and at the burn for match_velocities.
         /// </para>
         /// </summary>
-        public static IDictionary<string, object> CorrectionBurn(IDictionary<string, object> input, GameSnapshot snapshot)
+        public static IDictionary<string, object> CorrectionBurn(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body = null,
+            IReentryAir air = null, IReentryCraft craft = null)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
             if (snapshot == null) return Error(Tools.CorrectionBurn.Fail("no Game Snapshot").Error);
@@ -896,7 +901,7 @@ namespace ClaudiaKerman.Core.Tools
             if (ask.ContainsKey("target_inc") && !(ask["target_inc"] is double))
                 return Error(Tools.CorrectionBurn.Fail("target_inc must be a number of degrees").Error);
             var earliest = Number(ask, "earliest_ut", snapshot.Ut);
-            var plan = Tools.CorrectionBurn.Find(snapshot, new CorrectionAsk
+            var correction = new CorrectionAsk
             {
                 Target = (string)target,
                 TargetPe = pe.Value,
@@ -906,9 +911,16 @@ namespace ClaudiaKerman.Core.Tools
                 PeTolerance = Number(ask, "pe_tolerance", 1000),
                 IncTolerance = Number(ask, "inc_tolerance", 0.5),
                 AimUt = NumberOrNull(ask, "aim_ut"),
-            });
+                DvLeft = Number(ask, "dv_left", 0),
+            };
+            if (ask.ContainsKey("lat") || ask.ContainsKey("lng"))
+            {
+                var problem = CorrectionLandingOf(ask, snapshot, correction, body, air, craft);
+                if (problem != null) return Error(Tools.CorrectionBurn.Fail(problem).Error);
+            }
+            var plan = Tools.CorrectionBurn.Find(snapshot, correction);
             if (!plan.HasBurn) return Error(plan.Error);
-            return new Dictionary<string, object>
+            var result = new Dictionary<string, object>
             {
                 { "error", plan.Error ?? "" },
                 { "ut", plan.Ut },
@@ -920,6 +932,28 @@ namespace ClaudiaKerman.Core.Tools
                 { "inc_predicted", plan.IncPredicted },
                 { "plan_log", BurnPlanLog.Arrival("CORRECTIONBURN", plan.Ut, plan.PePredicted, plan.IncPredicted, ask.ContainsKey("lat") && ask.ContainsKey("lng"), Number(ask, "lat", 0), Number(ask, "lng", 0)) },
             };
+            if (plan.Landing != null)
+                foreach (var key in Landing(plan.Landing, plan.ErrorKm)) result[key.Key] = key.Value;
+            return result;
+        }
+
+        /// <summary>Fills in the landing <c>CORRECTIONBURN</c> was asked for: why it can't be read, or null. An unknown target is the solve's to say.</summary>
+        private static string CorrectionLandingOf(IDictionary<string, object> ask, GameSnapshot snapshot, CorrectionAsk into, IPlanningBody body, IReentryAir air, IReentryCraft craft)
+        {
+            var lat = NumberOrNull(ask, "lat");
+            var lng = NumberOrNull(ask, "lng");
+            if (!lat.HasValue || !lng.HasValue) return "lat and lng must both be numbers";
+            if (body == null || air == null || craft == null) return "the landing needs the planet's air and the craft";
+            var planet = new BodySystem(snapshot.Bodies).Find(into.Target);
+            if (planet == null) return null;
+            string problem;
+            var frame = BodyFrame.Read(planet, body, snapshot.Ut, out problem);
+            if (problem != null) return problem;
+            into.Landing = new ReturnLanding
+            {
+                Latitude = lat.Value, Longitude = lng.Value, GroundAltitude = Number(ask, "ground_alt", 0), Isp = Number(ask, "isp", 0), Air = air, Craft = craft, Frame = frame,
+            };
+            return null;
         }
 
         /// <summary>

@@ -42,6 +42,13 @@ namespace ClaudiaKerman.Core.Tools
         public double? TargetDistance;
         /// <summary>How far the answer may be from target_distance, m, before the solve is an error.</summary>
         public double DistanceTolerance = 10;
+        /// <summary>
+        /// Where to come down on the target (#793): the landing's miss is one more equality beside target_pe, in place of <see cref="TargetInc"/> and
+        /// <see cref="TargetNormal"/>; null for no landing. What the burn can't reach is left in <see cref="CorrectionPlan.ErrorKm"/>.
+        /// </summary>
+        public ReturnLanding Landing;
+        /// <summary>The craft's delta-v left, m/s, which an aimed correction stays within; 0 or less for unknown.</summary>
+        public double DvLeft;
     }
 
     /// <summary>The correction node found, or why there is none (<see cref="Error"/>; the rest is set when a best point exists).</summary>
@@ -64,6 +71,9 @@ namespace ClaudiaKerman.Core.Tools
         public double DistancePredicted;
         public double RelativeSpeedPredicted;
         public double ApproachUt;
+        /// <summary>For a correction aimed at a landing: where the burn comes down, null without a prediction, and km from the target to there (-1 without one).</summary>
+        public ReentryPrediction Landing;
+        public double ErrorKm = -1;
         public int Iterations;
         public int Evaluations;
     }
@@ -206,6 +216,8 @@ namespace ClaudiaKerman.Core.Tools
                 ask.PeTolerance, ask.IncTolerance, result.Reason ?? result.Status.ToString());
             if (plan.Error == null && withNormal && from == target && ArrivalPlane.Angle(reached.Orbit.W, ask.TargetNormal.Value) > ask.IncTolerance)
                 plan.Error = Failure + ": the best burn (" + Num(plan.DeltaV) + " m/s) arrives " + Num(ArrivalPlane.Angle(reached.Orbit.W, ask.TargetNormal.Value)) + " degrees off the plane asked";
+            if (ask.Landing != null && plan.Error == null)
+                return AimLanding(coast.Orbit, target, peR, ask, problem, (when, dv) => SingleShooting.Arrive(system, from, coast.Orbit, when, dv, target, needed), plan, burn);
             return plan;
         }
 
@@ -238,6 +250,7 @@ namespace ClaudiaKerman.Core.Tools
             if (ask.LatestUt < ask.EarliestUt)
                 return "the burn must come by latest_ut, UT " + Num(ask.LatestUt) + ", before earliest_ut, UT " + Num(ask.EarliestUt);
             if (!(ask.PeTolerance > 0) || !(ask.IncTolerance > 0)) return "pe_tolerance and inc_tolerance must be above 0";
+            if (ask.Landing != null && (ask.TargetInc.HasValue || ask.TargetNormal.HasValue)) return "a landing target takes no arrival inclination or plane";
             return null;
         }
 
