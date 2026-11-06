@@ -24,6 +24,18 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>How far the answer may be from target_pe (m) and target_inc (degrees) before the solve is an error.</summary>
         public double PeTolerance = 1000;
         public double IncTolerance = 0.5;
+        /// <summary>
+        /// When the path without a burn misses the target, the UT to aim at its centre for the solve's start (a broken-plane
+        /// transfer's plane change, #619): the Lambert burn there. Null: the solve starts from zero burn, which must reach it.
+        /// </summary>
+        public double? AimUt;
+        /// <summary>
+        /// The closest approach to the Target Vessel, m, in place of target_pe (#454): set, the correction is to the Game Snapshot's
+        /// Target Vessel (<see cref="Target"/> its name, or empty for it) and <see cref="TargetPe"/> and <see cref="TargetInc"/> are not read.
+        /// </summary>
+        public double? TargetDistance;
+        /// <summary>How far the answer may be from target_distance, m, before the solve is an error.</summary>
+        public double DistanceTolerance = 10;
     }
 
     /// <summary>The correction node found, or why there is none (<see cref="Error"/>; the rest is set when a best point exists).</summary>
@@ -41,6 +53,11 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>The periapsis (m above sea level) and inclination (degrees) the node arrives at round the target.</summary>
         public double PePredicted;
         public double IncPredicted;
+        /// <summary>For a correction to the Target Vessel: the burn (inertial, m/s), and the closest approach it leads to, its distance (m), the relative speed then (m/s) and its UT.</summary>
+        public Vec3 Burn;
+        public double DistancePredicted;
+        public double RelativeSpeedPredicted;
+        public double ApproachUt;
         public int Iterations;
         public int Evaluations;
     }
@@ -53,7 +70,7 @@ namespace ClaudiaKermin.Core.Tools
     /// its short-way/long-way pair: there is no Lambert step to have two ways (ADR 0010). It replaces kerboscript's
     /// <c>claudia_correct</c> for <c>transfer_to</c> and <c>return</c>. It works on detached orbits and only reads.
     /// </summary>
-    internal static class CorrectionBurn
+    internal static partial class CorrectionBurn
     {
         private const string Failure = "found no correction";
         /// <summary>The solver's own tolerances: periapsis (m, as Transfer's PeClose) and the inclination residuals.</summary>
@@ -67,6 +84,7 @@ namespace ClaudiaKermin.Core.Tools
         public static CorrectionPlan Find(GameSnapshot snapshot, CorrectionAsk ask)
         {
             if (snapshot == null) return Fail("no Game Snapshot");
+            if (ask != null && ask.TargetDistance.HasValue) return FindApproach(snapshot, ask);
             if (ask == null || string.IsNullOrEmpty(ask.Target)) return Fail("target is required");
             ToolOutcome error;
             var setup = PredictBurn.Setup.Prepare(snapshot, ask.Target, out error);
@@ -95,7 +113,13 @@ namespace ClaudiaKermin.Core.Tools
 
             // Follow only as many patches as the uncorrected path takes to the target (a hyperbola round the star ends the list
             // without a throw since #471), and take a throw, or a path that does not get there in as many, as an undefined point.
-            var needed = PatchesTo(system, from, coast.Orbit, startUt, default(Vec3), target);
+            var seed = default(Vec3);
+            var needed = PatchesTo(system, from, coast.Orbit, startUt, seed, target);
+            if (needed == 0 && ask.AimUt.HasValue)
+            {
+                seed = Aim(system, from, coast.Orbit, startUt, ask.AimUt.Value, target);
+                needed = PatchesTo(system, from, coast.Orbit, startUt, seed, target);
+            }
             if (needed == 0)
                 return Fail("the trajectory from the burn does not reach " + target.Name + " within " + MaxPatches + " patches: a Course Correction starts from one that does");
 
@@ -112,7 +136,7 @@ namespace ClaudiaKermin.Core.Tools
                 Variables = free
                     ? new[] { SqpVariable.Velocity, SqpVariable.Velocity, SqpVariable.Velocity, SqpVariable.Time }
                     : new[] { SqpVariable.Velocity, SqpVariable.Velocity, SqpVariable.Velocity },
-                Start = free ? new[] { 0, 0, 0, startUt } : new double[3],
+                Start = free ? new[] { seed.X, seed.Y, seed.Z, startUt } : new[] { seed.X, seed.Y, seed.Z },
                 Lower = free ? new[] { double.NegativeInfinity, double.NegativeInfinity, double.NegativeInfinity, ask.EarliestUt } : null,
                 Upper = free ? new[] { double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity, ask.LatestUt } : null,
                 Objective = x => x[0] * x[0] + x[1] * x[1] + x[2] * x[2],
@@ -194,6 +218,19 @@ namespace ClaudiaKermin.Core.Tools
             for (var count = 1; count <= MaxPatches; count++)
                 if (SingleShooting.Arrive(system, body, orbit, ut, burn, target, count) != null) return count;
             return 0;
+        }
+
+        /// <summary>
+        /// The burn at <paramref name="ut"/> on <paramref name="orbit"/> whose Lambert arc reaches <paramref name="target"/>'s
+        /// centre at <paramref name="aimUt"/>, without its gravity; zero when the target doesn't orbit <paramref name="body"/> or there is no arc.
+        /// </summary>
+        private static Vec3 Aim(BodySystem system, SnapshotBody body, Conic orbit, double ut, double aimUt, SnapshotBody target)
+        {
+            if (!(aimUt > ut) || !string.Equals(target.Parent, body.Name, StringComparison.OrdinalIgnoreCase)) return default(Vec3);
+            Vec3 r, v;
+            orbit.State(ut, out r, out v);
+            var arc = Lambert.Solve(body.Gm, r, system.OrbitOf(target).Position(aimUt), aimUt - ut, orbit.W);
+            return arc.Error == null ? arc.V1 - v : default(Vec3);
         }
 
         private static Vec3 Normal(Patch patch)

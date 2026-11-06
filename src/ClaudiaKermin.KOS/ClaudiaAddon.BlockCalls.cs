@@ -4,8 +4,10 @@
 using System;
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using ClaudiaKermin.Adapter;
 using ClaudiaKermin.Core;
+using ClaudiaKermin.Core.Kos;
 using ClaudiaKermin.Core.Missions;
 using ClaudiaKermin.Core.Tools;
 using kOS.Safe.Encapsulation;
@@ -46,8 +48,71 @@ namespace ClaudiaKermin.KOS
                 "Core Library only (transfer_to): the cheapest departure to target (a moon's name) arriving at target_pe, or to an orbit (target_sma, target_ecc, ...; mode rendezvous or intercept), capture true or false, within one synodic period from earliest_ut or window (to latest_ut, refusing over max_dv); lexicon error, ut, prograde, normal, radial, dv, arrival_dv, encounter_ut, arrival_ut, target_pe_actual, ..."));
             AddSuffix("RETURNBURN", new OneArgsSuffix<Lexicon, Lexicon>(ReturnBurn,
                 "Core Library only (return): the least burn from earliest_ut to latest_ut (one orbit later if missing) that leaves the moon orbited for its planet at target_pe and, if given, target_inc; lexicon error, planet, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted, soi_ut, from_grid"));
+            AddSuffix("TARGETVESSEL", new NoArgsSuffix<Lexicon>(TargetVessel,
+                "Core Library only (rendezvous): the Mission's Target Vessel, read live; lexicon error, name, body"));
+            AddSuffix("DOCKHOLD", new OneArgsSuffix<Lexicon, Lexicon>(DockHoldStart,
+                "Core Library only (dock): the mod starts its dock_hold on the Target Vessel's kOS processor, turning its port (uid) toward the craft's (toward, uid), or meets the target passive; lexicon error, state (starting or passive), reason"));
+            AddSuffix("DOCKHOLDSTATE", new NoArgsSuffix<Lexicon>(DockHoldRead,
+                "Core Library only (dock): the dock_hold dock started; lexicon state (none, starting, active, passive, fault or docked), reason"));
             AddSuffix("CHUTEALLOCATION", new NoArgsSuffix<Lexicon>(ChuteAllocationSet,
                 "Core Library only (reentry): the Chute Allocation's chutes for this entry; lexicon error, all (true: keep every chute), entry, return, uids, titles, powered_finish, touchdown_speed"));
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:DOCKHOLD</c> (#456): the Target Vessel (the Mission's, or a block test's) gets the mod's dock_hold when it
+        /// is loaded, has a kOS processor and electric charge, and passes the Child Vessel link test; otherwise dock meets it passive.
+        /// Changes no vessel itself: the bridge starts the program like any run, under the runtime gates (ADR 0003).
+        /// </summary>
+        private Lexicon DockHoldStart(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> answer = null;
+            return (Lexicon)Guarded("DOCKHOLD", () =>
+            {
+                answer = DockHoldCall(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(answer);
+            }, () => answer["error"] as string != "" ? (string)answer["error"]
+                : answer["state"] + ((string)answer["reason"] == "" ? "" : ": " + answer["reason"]));
+        }
+
+        private System.Collections.Generic.IDictionary<string, object> DockHoldCall(System.Collections.Generic.IDictionary<string, object> ask)
+        {
+            object port, toward;
+            ask.TryGetValue("port", out port);
+            ask.TryGetValue("toward", out toward);
+            var bridge = KosBridge.Instance;
+            var craft = shared.Vessel;
+            if (!DockHold.IsUid(port as string) || !DockHold.IsUid(toward as string)) return DockHoldAnswer("port and toward must be the two ports' uids", "", "");
+            if (bridge == null || craft == null || shared.KSPPart == null) return DockHoldAnswer("no kOS bridge in this scene", "", "");
+            var id = MissionDriver.TargetVesselId ?? MissionDriver.BlockTestTargetId;
+            Vessel target = null;
+            if (!id.HasValue || !FlightGlobals.FindVessel(id.Value, out target) || target == null || target == craft)
+                return DockHoldAnswer("the Mission has no Target Vessel in the game", "", "");
+            var hasProcessor = target.loaded && target.parts.Any(p => p.FindModuleImplementing<kOS.Module.kOSProcessor>() != null);
+            var charged = target.loaded && target.parts.Any(p => p.Resources.Contains("ElectricCharge") && p.Resources["ElectricCharge"].amount > 0.01);
+            var linked = SnapshotReader.LinkedToClaudia(target, craft, MissionDriver.Remote);
+            var passive = DockHold.PassiveReason(target.loaded, hasProcessor, charged, linked);
+            var state = bridge.StartHold(shared.KSPPart.persistentId, target, passive, (string)port, (string)toward);
+            string reason;
+            bridge.HoldState(shared.KSPPart.persistentId, out reason);
+            return DockHoldAnswer("", state, reason);
+        }
+
+        private static System.Collections.Generic.IDictionary<string, object> DockHoldAnswer(string error, string state, string reason)
+        {
+            return new System.Collections.Generic.Dictionary<string, object> { { "error", error }, { "state", state }, { "reason", reason } };
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:DOCKHOLDSTATE</c>, read by dock each tick: not a calculation, so not logged.</summary>
+        private Lexicon DockHoldRead()
+        {
+            var bridge = KosBridge.Instance;
+            var state = DockHoldState.None;
+            var reason = "";
+            if (bridge != null && shared.KSPPart != null) state = bridge.HoldState(shared.KSPPart.persistentId, out reason);
+            var result = new Lexicon();
+            result.Add(new StringValue("state"), new StringValue(state.ToString().ToLowerInvariant()));
+            result.Add(new StringValue("reason"), new StringValue(reason ?? ""));
+            return result;
         }
 
         private Lexicon ChuteAllocationSet()
@@ -148,6 +213,16 @@ namespace ClaudiaKermin.KOS
                 : (string)node["error"]);
         }
 
+        private Lexicon TargetVessel()
+        {
+            System.Collections.Generic.IDictionary<string, object> found = null;
+            return (Lexicon)Guarded("TARGETVESSEL", () =>
+            {
+                found = BlockCalls.TargetVessel(SnapshotReader.Read(shared.Vessel));
+                return KosValues.FromPlain(found);
+            }, () => found["error"] as string == "" ? found["name"] + " round " + found["body"] : (string)found["error"]);
+        }
+
         private Lexicon CorrectionBurn(Lexicon input)
         {
             System.Collections.Generic.IDictionary<string, object> node = null;
@@ -155,11 +230,14 @@ namespace ClaudiaKermin.KOS
             {
                 node = BlockCalls.CorrectionBurn(KosValues.ToDictionary(input), SnapshotReader.Read(shared.Vessel));
                 return KosValues.FromPlain(node);
-            }, () => node.ContainsKey("dv")
-                ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); Pe {5:0} m, inclination {6:0.00}{7}",
-                    node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["pe_predicted"], node["inc_predicted"],
+            }, () => !node.ContainsKey("dv") ? (string)node["error"]
+                : node.ContainsKey("distance_predicted")
+                ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); closest approach {5:0.0} m at {6:0.000} m/s{7}",
+                    node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["distance_predicted"], node["relative_speed_predicted"],
                     node["error"] as string == "" ? "" : "; " + node["error"])
-                : (string)node["error"]);
+                : string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); Pe {5:0} m, inclination {6:0.00}{7}",
+                    node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["pe_predicted"], node["inc_predicted"],
+                    node["error"] as string == "" ? "" : "; " + node["error"]));
         }
 
         private Lexicon LaunchWindow(Lexicon input)

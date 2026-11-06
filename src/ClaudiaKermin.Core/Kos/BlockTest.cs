@@ -60,6 +60,18 @@ namespace ClaudiaKermin.Core.Kos
         /// </summary>
         public double TumbleRate { get; private set; }
 
+        /// <summary>
+        /// The craft file of a second vessel spawned with the first (#455), the Target Vessel of a <c>rendezvous</c> or <c>dock</c>
+        /// test; null for none. It is placed by <see cref="BlockTestTarget.Place"/> from the four <c>target_orbit_*</c> keys:
+        /// <c>target_orbit_along</c> (m round the craft's orbit, negative behind) and the relative velocity
+        /// <c>target_orbit_prograde</c>, <c>target_orbit_normal</c>, <c>target_orbit_radial</c> (m/s), all 0 by default.
+        /// </summary>
+        public string TargetCraft { get; private set; }
+        public double TargetOrbitAlong { get; private set; }
+        public double TargetOrbitPrograde { get; private set; }
+        public double TargetOrbitNormal { get; private set; }
+        public double TargetOrbitRadial { get; private set; }
+
         /// <summary>Real seconds the run may take, warp included, before it is aborted and fails.</summary>
         public double TimeoutSeconds { get; private set; }
 
@@ -77,6 +89,7 @@ namespace ClaudiaKermin.Core.Kos
                 TimeoutSeconds = 900,
                 Checks = new List<string>(),
             };
+            var targetKeys = false;
             foreach (var raw in (text ?? "").Replace("\r\n", "\n").Split('\n'))
             {
                 var line = raw.Trim();
@@ -99,6 +112,11 @@ namespace ClaudiaKermin.Core.Kos
                     case "orbit_inclination": spec.OrbitInclination = Number(name, value); break;
                     case "orbit_pe": spec.OrbitPeriapsis = Number(name, value); break;
                     case "tumble_rate": spec.TumbleRate = Number(name, value); break;
+                    case "target_craft": spec.TargetCraft = value; break;
+                    case "target_orbit_along": spec.TargetOrbitAlong = Number(name, value); targetKeys = true; break;
+                    case "target_orbit_prograde": spec.TargetOrbitPrograde = Number(name, value); targetKeys = true; break;
+                    case "target_orbit_normal": spec.TargetOrbitNormal = Number(name, value); targetKeys = true; break;
+                    case "target_orbit_radial": spec.TargetOrbitRadial = Number(name, value); targetKeys = true; break;
                     case "timeout_s": spec.TimeoutSeconds = Number(name, value); break;
                     case "check":
                         Readable(name, value, Split(name, value));
@@ -108,6 +126,10 @@ namespace ClaudiaKermin.Core.Kos
                 }
             }
             if (string.IsNullOrEmpty(spec.Block)) throw new FormatException(name + ": no block = ...");
+            if (targetKeys && string.IsNullOrEmpty(spec.TargetCraft))
+                throw new FormatException(name + ": target_orbit_* places a second craft, so it needs target_craft = ...");
+            if (!string.IsNullOrEmpty(spec.TargetCraft) && spec.Start == BlockTestStart.LaunchPad)
+                throw new FormatException(name + ": target_craft is placed relative to the craft in orbit, not on the launch pad");
             return spec;
         }
 

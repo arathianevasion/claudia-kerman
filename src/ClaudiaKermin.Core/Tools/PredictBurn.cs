@@ -117,9 +117,14 @@ namespace ClaudiaKermin.Core.Tools
             public double Now;
             /// <summary>The body asked for the closest approach to; null for none.</summary>
             public SnapshotBody Target;
+            /// <summary>The Target Vessel when the target named it rather than a body (only where Prepare was asked to look, #454).</summary>
+            public VesselTarget Vessel;
 
-            /// <summary>The setup, or null with <paramref name="error"/> saying why the snapshot can't be propagated.</summary>
-            public static Setup Prepare(GameSnapshot snapshot, string targetName, out ToolOutcome error)
+            /// <summary>
+            /// The setup, or null with <paramref name="error"/> saying why the snapshot can't be propagated. With
+            /// <paramref name="vessels"/>, a target that names no body may name the Game Snapshot's Target Vessel.
+            /// </summary>
+            public static Setup Prepare(GameSnapshot snapshot, string targetName, out ToolOutcome error, bool vessels = false)
             {
                 error = null;
                 if (snapshot.Bodies.Count == 0) { error = PlanningJson.Error("the Game Snapshot has no body table"); return null; }
@@ -135,13 +140,21 @@ namespace ClaudiaKermin.Core.Tools
                 var at = system.Find(string.IsNullOrEmpty(orbit.Body) ? snapshot.Body : orbit.Body);
                 if (at == null || at.Gm <= 0) { error = PlanningJson.Error("the body table has no " + PlanningJson.Quote(orbit.Body) + " to propagate round"); return null; }
                 SnapshotBody target = null;
+                VesselTarget vessel = null;
                 if (!string.IsNullOrEmpty(targetName))
                 {
                     target = system.Find(targetName);
-                    if (target == null)
+                    string why;
+                    if (target == null && vessels && snapshot.Target != null && string.Equals(targetName.Trim(), snapshot.Target.Name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        vessel = VesselTarget.Read(snapshot, system, targetName, out why);
+                        if (vessel == null) { error = PlanningJson.Error(why); return null; }
+                    }
+                    else if (target == null)
                     {
                         error = PlanningJson.Error("there is no body named " + PlanningJson.Quote(targetName) + "; the bodies are "
-                            + string.Join(", ", snapshot.Bodies.Select(b => b.Name).ToArray()));
+                            + string.Join(", ", snapshot.Bodies.Select(b => b.Name).ToArray())
+                            + (vessels && snapshot.Target != null ? ", and the Target Vessel is " + PlanningJson.Quote(snapshot.Target.Name) : ""));
                         return null;
                     }
                 }
@@ -154,7 +167,7 @@ namespace ClaudiaKermin.Core.Tools
                         + "; the impulsive model has no drag, so wait until it is above " + Math.Round(at.AtmosphereHeight).ToString("0", CultureInfo.InvariantCulture) + " m");
                     return null;
                 }
-                return new Setup { Snapshot = snapshot, System = system, Body = at, Start = start, Now = now, Target = target };
+                return new Setup { Snapshot = snapshot, System = system, Body = at, Start = start, Now = now, Target = target, Vessel = vessel };
             }
         }
 
@@ -176,7 +189,7 @@ namespace ClaudiaKermin.Core.Tools
                 var label = "burn " + (i + 1).ToString(CultureInfo.InvariantCulture);
                 var after = burns.Count > 0 ? burns[burns.Count - 1].Ut : now;
                 string problem;
-                var ut = BurnUt(requests[i].At, path, after, now, label, out problem, system, setup.Target);
+                var ut = BurnUt(requests[i].At, path, after, now, label, out problem, system, setup.Target, setup.Vessel);
                 if (problem != null) return problem;
                 var patch = Containing(path, ut.Value);
                 if (patch == null)
@@ -214,9 +227,9 @@ namespace ClaudiaKermin.Core.Tools
 
         /// <summary>The burn's UT from its <c>at</c> (see <see cref="BurnTime"/>), or why it can't be placed. The system and target are for the relative and closest-approach references.</summary>
         internal static double? BurnUt(JsonNode at, List<Patch> path, double after, double now, string label, out string problem,
-            BodySystem system = null, SnapshotBody target = null)
+            BodySystem system = null, SnapshotBody target = null, VesselTarget vessel = null)
         {
-            return BurnTime.Resolve(at, path, after, now, label, system, target, out problem);
+            return BurnTime.Resolve(at, path, after, now, label, system, target, out problem, vessel);
         }
 
         /// <summary>The patch flown at <paramref name="ut"/>; null when the path has ended (an impact, the atmosphere) before it.</summary>

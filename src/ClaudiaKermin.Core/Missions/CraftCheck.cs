@@ -97,6 +97,8 @@ namespace ClaudiaKermin.Core.Missions
         private bool _noSeat;
         /// <summary>What the mod saw for itself that this remote Mission's craft lacks (probe core, antenna); "" when nothing.</summary>
         private string _remoteMissing = "";
+        /// <summary>The dock block's needs for a goal that docks (#456), the mod's own findings; empty otherwise.</summary>
+        private IList<MarginFinding> _docking = new List<MarginFinding>();
         /// <summary>What the checked craft's staging plan separates, so planned Child Vessels are judged on the mod's own figures.</summary>
         private StagingPlan _staging = new StagingPlan();
         private uint? _preferredProcessor;
@@ -252,6 +254,8 @@ namespace ClaudiaKermin.Core.Missions
             _remote = remote;
             _noSeat = !remote && !snapshot.ClaudiaAboard && snapshot.FreeSeats == 0;
             _remoteMissing = remote ? RemoteBlocker.Missing(snapshot) : "";
+            // dock's needs (#456), from the goal's words: the mod's own findings, not in Claude's prompt.
+            _docking = SequenceWords.Docking.IsMatch(goal ?? "") ? MarginCheck.Docking(snapshot, "The Mission Goal docks") : new List<MarginFinding>();
             _staging = ChildVessels.Staging(snapshot, remote, ProcessorFor(snapshot));
             _craftKey = CraftKey(snapshot);
             var charge = new CraftCheckCharge { Model = request.Model, Pending = worstCase, Input = RequestCharge.InputCost(_config.Prices, request.Model, request, worstCase) };
@@ -448,6 +452,13 @@ namespace ClaudiaKermin.Core.Missions
                 }
             }
             JudgeChildVessels(reply.ChildVesselStages);
+            foreach (var docking in _docking)
+                _findings.Insert(0, new CraftFinding
+                {
+                    Code = docking.Code, Severity = docking.Severity, Title = docking.Title, Explanation = docking.Explanation,
+                    Fix = docking.Code == CraftCheckRules.DockingKit ? "Add a docking port, RCS thrusters and a monopropellant tank."
+                        : "Fit a docking port of a size the target has free.",
+                });
             foreach (var finding in _findings.Where(f => f.Severity == CraftFindingSeverity.Warning && _keptAcknowledgements.Contains(f.Code)))
                 finding.Acknowledged = true;
             _summary = reply.Summary;

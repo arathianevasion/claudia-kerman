@@ -22,7 +22,7 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>Why the fields of an <c>intercept_at</c> don't fit it; null when they do.</summary>
         private static string InterceptInputs(JsonNode input, string target, double? arriveUt, double? tof, bool? retrograde, long? revolutions)
         {
-            if (target == null) return "intercept_at needs target, the body to reach";
+            if (target == null) return "intercept_at needs target, the body or Target Vessel to reach";
             if (input["value"] != null) return "intercept_at takes no value";
             if (arriveUt.HasValue == tof.HasValue) return "intercept_at needs arrive_ut (the UT of arrival) or tof (the flight time in seconds), one of them";
             if (input["arrive_ut"] != null && !arriveUt.HasValue) return "arrive_ut must be a number, a UT in seconds";
@@ -49,27 +49,27 @@ namespace ClaudiaKermin.Core.Tools
             Vec3 r, v;
             var ut = Place(setup, path, at ?? Word(DefaultAt), out patch, out r, out v, out problem);
             if (!ut.HasValue) return PlanningJson.Error(problem);
-            var target = setup.Target;
-            if (!string.Equals(target.Parent, patch.Body.Name, StringComparison.OrdinalIgnoreCase))
-                return PlanningJson.Error(target.Name + " is not in orbit round " + patch.Body.Name + ", the body the craft is round at that time; "
-                    + "intercept_at reaches the bodies of that sphere of influence");
+            var name = TargetName(setup);
+            if (!string.Equals(TargetParent(setup), patch.Body.Name, StringComparison.OrdinalIgnoreCase))
+                return PlanningJson.Error(name + " is not in orbit round " + patch.Body.Name + ", the body the craft is round at that time; "
+                    + "intercept_at reaches what orbits in that sphere of influence");
             var flight = tof ?? arriveUt.Value - ut.Value;
             if (!(flight > 0))
                 return PlanningJson.Error("arrive_ut of " + Num(arriveUt.Value) + " is not after the burn at UT " + Num(ut.Value) + ", so there is no flight time");
             var arrival = ut.Value + flight;
             Vec3 rt, vt;
-            setup.System.OrbitOf(target).State(arrival, out rt, out vt);
+            TargetOrbit(setup).State(arrival, out rt, out vt);
 
             // Near 180 degrees the arc's plane is set by how far the target is off the line through the body, and the burn to it grows
             // without bound as that shrinks. Exactly across in the craft's own plane (a Hohmann arc) is fine: the plane is the craft's.
             var sinTurn = Vec3.Cross(r.Normalized, rt.Normalized).Length;
             var outOfPlane = Math.Abs(Vec3.Dot(rt.Normalized, patch.Orbit.W.Normalized));
             if (sinTurn < HalfTurnSine && Vec3.Dot(r, rt) < 0 && outOfPlane > CoplanarSine)
-                return PlanningJson.Error("the arc is nearly 180 degrees: " + target.Name + " is almost straight across " + patch.Body.Name + " from the craft at UT "
+                return PlanningJson.Error("the arc is nearly 180 degrees: " + name + " is almost straight across " + patch.Body.Name + " from the craft at UT "
                     + Num(arrival) + " but off the craft's orbit plane, so the transfer's plane is set by a sliver and the burn would be enormous; arrive earlier or later, or burn at another time");
 
             var solution = Lambert.Solve(patch.Body.Gm, r, rt, flight, patch.Orbit.W, revolutions, retrograde);
-            if (solution.Error != null) return PlanningJson.Error("no arc to " + target.Name + ": " + solution.Error);
+            if (solution.Error != null) return PlanningJson.Error("no arc to " + name + ": " + solution.Error);
 
             var match = vt - solution.V2;
             double mp, mn, mr;

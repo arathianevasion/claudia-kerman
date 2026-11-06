@@ -280,6 +280,10 @@ namespace ClaudiaKermin.Core.Missions
             public TargetVessel Target;
             /// <summary>The Due Time of the Sequence Plan awaiting Approval has been reached and announced (warp dropped, message posted).</summary>
             public bool DueNotified;
+            /// <summary>The Transfer Window the pending Sequence Plan's Due Time waits for (#616): its planet, departure UT and total delta-v; "" and null for none.</summary>
+            public string WindowPlanet = "";
+            public double? WindowUt;
+            public double? WindowDeltaV;
             /// <summary>Persistence (MissionControl.Persistence.cs): a turn the loop owes Claudia once the craft is in Flight.</summary>
             public Owed Owed;
             public RunOutcome OwedOutcome;
@@ -503,6 +507,12 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>What every request for a Mission Plan carries from its own Game Snapshot (#508, #513): the stage table, and the pad wording while the craft is on the pad.</summary>
         private string PlanFigures(Mission mission, string goal)
         {
+            if (_snapshot != null)
+            {
+                // A planet's plan_transfer row picks its Transfer Window by the Mission Setting, as a tool call would (#458).
+                _snapshot.TimeVersusDeltaV = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV;
+                _snapshot.MarginPercent = _config.CraftCheckMarginPercent;
+            }
             return MissionPrompts.StageTable(_snapshot, goal, mission.PlannedAscent) + MissionPrompts.PadPlanning(_snapshot);
         }
 
@@ -603,6 +613,8 @@ namespace ClaudiaKermin.Core.Missions
             }
 
             var plan = mission.PendingSequence;
+            // Back after the Transfer Window: the next one, or an Alert (#616).
+            if (WindowWasMissed(mission) && !NextWindow(mission, plan)) return;
             // The mod never starts a sequence before its Due Time, and never warps there for the player.
             if (plan.DueTimeUt.HasValue && _ut < plan.DueTimeUt.Value)
             {
@@ -634,6 +646,7 @@ namespace ClaudiaKermin.Core.Missions
             Notice("Sequence Plan approved: the mod is starting the script.");
             mission.Stage = MissionStage.Running;
             if (plan.DueTimeUt.HasValue) _commands.Add(new ClearDueTimeAlarm(mission.Id));
+            ClearWindow(mission);
             mission.RunningProcessor = processor.Value;
             mission.RunId = ++_lastRunId;
             mission.NoRunSinceSnapshot = false;
@@ -1709,8 +1722,10 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         /// <summary>Offers a Sequence Plan for Approval; its script has passed the Script Check (<see cref="Apply"/>).</summary>
-        private void OfferSequencePlan(Mission mission, SequencePlan plan)
+        /// <param name="restored">A load offers the saved plan again: its Due Time and window were decided when it first arrived.</param>
+        private void OfferSequencePlan(Mission mission, SequencePlan plan, bool restored = false)
         {
+            if (!restored) WindowWait(mission, plan);
             if (!mission.SequenceCounted)
             {
                 mission.SequencesProposed++;
@@ -2138,6 +2153,7 @@ namespace ClaudiaKermin.Core.Missions
                         SecondsLeft = Math.Max(0, due.Value - _ut),
                         Reached = _ut >= due.Value,
                         VesselName = mission.VesselName,
+                        WaitsFor = mission.WindowPlanet.Length > 0 ? WindowWaits.WaitsFor(mission.WindowPlanet) : "",
                     };
                 }
                 view.Locks = LocksNow();

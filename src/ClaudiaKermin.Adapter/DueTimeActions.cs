@@ -20,17 +20,26 @@ namespace ClaudiaKermin.Adapter
             return "[Claudia Kermin " + missionId + "]";
         }
 
+        /// <summary>The stock Alarm Clock behind Core's <see cref="IAlarmClock"/> seam (#616).</summary>
+        public static readonly IAlarmClock AlarmClock = new StockAlarmClock();
+
+        private sealed class StockAlarmClock : IAlarmClock
+        {
+            public void Set(string missionId, double ut, string title) { SetAlarm(missionId, ut, title); }
+            public void Clear(string missionId) { ClearAlarm(missionId); }
+        }
+
         /// <summary>A raw alarm at the Due Time that stops warp; replaces the Mission's earlier one.</summary>
-        public static void SetAlarm(SetDueTimeAlarm command)
+        public static void SetAlarm(string missionId, double ut, string title)
         {
             if (AlarmClockScenario.Instance == null) return;
-            ClearAlarm(command.MissionId);
-            var title = command.Title.StartsWith(AlarmPrefix) ? command.Title : AlarmPrefix + command.Title;
+            ClearAlarm(missionId);
+            title = title.StartsWith(AlarmPrefix) ? title : AlarmPrefix + title;
             var alarm = new AlarmTypeRaw
             {
                 title = title,
-                description = "Due Time for Claudia's next Maneuver Sequence. " + Tag(command.MissionId),
-                ut = command.Ut,
+                description = "Due Time for Claudia's next Maneuver Sequence. " + Tag(missionId),
+                ut = ut,
             };
             alarm.actions.warp = AlarmActions.WarpEnum.KillWarp;
             alarm.actions.message = AlarmActions.MessageEnum.Yes;

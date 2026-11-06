@@ -685,5 +685,30 @@ namespace ClaudiaKermin.Core.Tests
             Assert.Equal(new[] { "engine" }, again.Craft.Parts[3].Tags.ToArray());
             Assert.Equal(craft.ToJson(), again.ToJson());
         }
+
+        [Fact]
+        public void AGoalThatDocksWithACraftThatCannotIsBlockedByTheModItself()
+        {
+            // #456: the mod raises dock's Blocker from the parts (no docking port, RCS or monopropellant on the pad craft); it is
+            // not in Claude's prompt.
+            var transport = Replies("craft-check-pass.sse");
+            var mission = Control(transport);
+            mission.Send(Craft());
+            mission.Send(new RunCraftCheck("Rendezvous and dock with Kerbin Station.", Cap, Model));
+            DrainUntil(mission, v => v.CraftCheck.State != CraftCheckState.Running);
+
+            Assert.DoesNotContain(CraftCheckRules.DockingKit, SystemText(transport.Requests.Single()));
+            var finding = Assert.Single(mission.View.CraftCheck.Findings, f => f.Code == CraftCheckRules.DockingKit);
+            Assert.Equal(CraftFindingSeverity.Blocker, finding.Severity);
+            Assert.StartsWith("The Mission Goal docks and the craft has no docking port", finding.Explanation);
+            Assert.False(mission.View.CraftCheck.StartAllowed);
+        }
+
+        [Fact]
+        public void AGoalThatDoesNotDockGetsNoDockingFinding()
+        {
+            var mission = Checked(Replies("craft-check-pass.sse"));
+            Assert.DoesNotContain(mission.View.CraftCheck.Findings, f => f.Code == CraftCheckRules.DockingKit || f.Code == CraftCheckRules.DockingPortSize);
+        }
     }
 }

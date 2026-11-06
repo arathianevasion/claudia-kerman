@@ -91,28 +91,28 @@ namespace ClaudiaKermin.Kerboscript.Tests
         [Fact]
         public void The_correction_is_asked_for_once_the_craft_can_turn_to_it_and_no_dearer_than_its_delta_v()
         {
-            Assert.Equal(new[] { "target,target_pe,earliest_ut,max_dv", "5193", "412.5" }, CorrectionAsk("30000", "true", "412.5"));
+            Assert.Equal(new[] { "target,target_pe,earliest_ut,plane_change,max_dv", "5193", "412.5" }, CorrectionAsk("30000", "true", "412.5"));
         }
 
         [Fact]
         public void A_max_duration_the_script_gave_leaves_the_Course_Correction_its_lead_and_two_minutes()
         {
             // 1000 + 20000 - 120 - (133 + 60): the Course Correction after it needs its 193 s lead and 120 s to burn.
-            Assert.Equal(new[] { "target,target_pe,earliest_ut,latest_ut,max_dv", "5193", "20687", "412.5" }, CorrectionAsk("20000", "false", "412.5"));
+            Assert.Equal(new[] { "target,target_pe,earliest_ut,plane_change,latest_ut,max_dv", "5193", "20687", "412.5" }, CorrectionAsk("20000", "false", "412.5"));
         }
 
         [Fact]
         public void A_max_duration_too_short_for_both_burns_asks_for_a_latest_burn_before_the_earliest()
         {
             // 1000 + 5300 - 313 = 5987 is past earliest 5193; 1000 + 4400 - 313 = 5087 is before it, so the block fails before burning.
-            Assert.Equal(new[] { "target,target_pe,earliest_ut,latest_ut,max_dv", "5193", "5987", "412.5" }, CorrectionAsk("5300", "false", "412.5"));
-            Assert.Equal(new[] { "target,target_pe,earliest_ut,latest_ut,max_dv", "5193", "5087", "412.5" }, CorrectionAsk("4400", "false", "412.5"));
+            Assert.Equal(new[] { "target,target_pe,earliest_ut,plane_change,latest_ut,max_dv", "5193", "5987", "412.5" }, CorrectionAsk("5300", "false", "412.5"));
+            Assert.Equal(new[] { "target,target_pe,earliest_ut,plane_change,latest_ut,max_dv", "5193", "5087", "412.5" }, CorrectionAsk("4400", "false", "412.5"));
         }
 
         [Fact]
         public void An_unknown_delta_v_sets_no_limit()
         {
-            Assert.Equal(new[] { "target,target_pe,earliest_ut", "5193" }, CorrectionAsk("30000", "true", "-1"));
+            Assert.Equal(new[] { "target,target_pe,earliest_ut,plane_change", "5193" }, CorrectionAsk("30000", "true", "-1"));
         }
 
         // ---- The Course Correction's burn time (#368) ----
@@ -152,6 +152,29 @@ namespace ClaudiaKermin.Kerboscript.Tests
         {
             Assert.Equal(new[] { "target,target_pe,earliest_ut,latest_ut", "Mun", "30000", "16500", "16500" },
                 Run("local q is claudia_correction_ask(\"Mun\", 30000, 16500). print q:keys:join(\",\"). print q:target. print q:target_pe. print q:earliest_ut. print q:latest_ut."));
+        }
+
+        [Fact]
+        public void The_correction_after_a_missed_ejection_asks_for_one_burn_not_a_broken_plane()
+        {
+            Assert.Equal("False", One("transfer_to_correction_ask(\"Mun\", 30000, 5000, 133, 1000, 30000, true, 412.5):plane_change"));
+        }
+
+        [Fact]
+        public void A_broken_plane_s_plane_change_asks_the_solver_for_a_burn_at_its_time_aimed_at_the_planned_arrival()
+        {
+            // #619: EJECTIONBURN's plane_ut and arrival_ut; the path before the plane change misses, so the solve starts from aim_ut.
+            Assert.Equal(new[] { "target,target_pe,earliest_ut,latest_ut,aim_ut", "Minmus", "30000", "933632", "933632", "1094922" },
+                Run("local q is transfer_to_plane_ask(\"Minmus\", 30000, 933632, 1094922). print q:keys:join(\",\"). print q:target. print q:target_pe. print q:earliest_ut. print q:latest_ut. print q:aim_ut."));
+        }
+
+        [Fact]
+        public void A_broken_plane_s_plane_change_burns_at_its_planned_time_not_halfway()
+        {
+            // claudia_correction_ut given plane_ut (UT 9000) in place of halfway: it stays there with max_duration auto or later,
+            // and moves sooner only as the Course Correction does when max_duration ends first.
+            Assert.Equal(new[] { "9000", "" }, Run("local w is claudia_correction_ut(9000, 3000, 193, 1000, \"auto\"). print w:ut. print w:reason."));
+            Assert.Equal(new[] { "8880", "" }, Run("local w is claudia_correction_ut(9000, 3000, 193, 1000, 8000). print w:ut. print w:reason."));
         }
 
         // ---- Earliest departure ----

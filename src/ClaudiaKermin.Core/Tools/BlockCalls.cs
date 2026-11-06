@@ -436,11 +436,14 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>earliest_ut</c> (UT; now if missing) and <c>window</c> ("next", the default, or a UT): it searches one synodic period
         /// (an intercept, one orbit of the craft) from the later of the two, so a window sooner than <c>earliest_ut</c> is skipped
         /// for the next. <c>latest_ut</c> (UT) ends the search there and <c>max_dv</c> (m/s) refuses a dearer departure; both are
-        /// optional, for the correction after an ejection that missed (#363). Gives <c>error</c> "", <c>ut</c>, <c>prograde</c>,
+        /// optional, for the correction after an ejection that missed (#363), which also gives <c>plane_change</c> false (default
+        /// true): one burn, never a broken-plane plan. Gives <c>error</c> "", <c>ut</c>, <c>prograde</c>,
         /// <c>normal</c>, <c>radial</c> (m/s, maneuver node components), <c>dv</c>, <c>arrival_dv</c> (m/s: the circular capture at a
         /// body's periapsis, or matching an orbit's velocity), <c>encounter_ut</c>, <c>arrival_ut</c> (periapsis at a body; for an
         /// orbit both are the arrival), <c>target_pe_actual</c> (m; -1 for an orbit), <c>search_from</c> (UT) and <c>synodic</c>
-        /// (s); or only <c>error</c>, "found no transfer: &lt;why&gt;".
+        /// (s), and <c>plane_ut</c> (UT; -1 for none), <c>plane_prograde</c>, <c>plane_normal</c>, <c>plane_radial</c> and
+        /// <c>plane_dv</c> (m/s; 0 for none): a broken-plane plan's plane change (#619), which <c>transfer_to</c> flies with
+        /// CORRECTIONBURN at plane_ut, its aim_ut arrival_ut; or only <c>error</c>, "found no transfer: &lt;why&gt;".
         /// </summary>
         public static IDictionary<string, object> EjectionBurn(IDictionary<string, object> input, GameSnapshot snapshot)
         {
@@ -458,6 +461,9 @@ namespace ClaudiaKermin.Core.Tools
             if (mode != null && !intercept && !string.Equals(mode as string, "rendezvous", StringComparison.OrdinalIgnoreCase))
                 return Error(Transfer.Fail("mode must be \"rendezvous\" or \"intercept\", not " + Convert.ToString(mode, CultureInfo.InvariantCulture)).Error);
             if (capture != null && !(capture is bool)) return Error(Transfer.Fail("capture must be true or false").Error);
+            object planeChange;
+            ask.TryGetValue("plane_change", out planeChange);
+            if (planeChange != null && !(planeChange is bool)) return Error(Transfer.Fail("plane_change must be true or false").Error);
             SnapshotOrbit orbit = null;
             if (toOrbit)
             {
@@ -489,6 +495,7 @@ namespace ClaudiaKermin.Core.Tools
                 WindowUt = window as double?,
                 LatestUt = NumberOrNull(ask, "latest_ut"),
                 MaxDv = NumberOrNull(ask, "max_dv"),
+                BrokenPlane = planeChange as bool? ?? true,
             });
             if (plan.Error != null) return Error(plan.Error);
             return new Dictionary<string, object>
@@ -505,6 +512,11 @@ namespace ClaudiaKermin.Core.Tools
                 { "target_pe_actual", double.IsNaN(plan.PeActual) ? -1.0 : plan.PeActual },
                 { "search_from", plan.SearchFrom },
                 { "synodic", plan.Synodic },
+                { "plane_ut", plan.PlaneUt ?? -1.0 },
+                { "plane_prograde", plan.PlanePrograde },
+                { "plane_normal", plan.PlaneNormal },
+                { "plane_radial", plan.PlaneRadial },
+                { "plane_dv", plan.PlaneDv },
             };
         }
 
@@ -618,14 +630,25 @@ namespace ClaudiaKermin.Core.Tools
         /// <c>target_inc</c> (degrees), by <see cref="Tools.CorrectionBurn"/>. <c>earliest_ut</c> (UT; now if missing) and
         /// <c>latest_ut</c> (UT; earliest_ut if missing) are the burn's window: the same UT burns then, a wider window lets the
         /// solver choose the time. <c>pe_tolerance</c> (m, default 1000) and <c>inc_tolerance</c> (degrees, default 0.5) are how
-        /// close the answer must be. Gives <c>error</c> "", <c>ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver
+        /// close the answer must be. <c>aim_ut</c> (UT, optional, #619): when the path without a burn misses the target, the solve
+        /// starts from the burn whose Lambert arc reaches its centre then. Gives <c>error</c> "", <c>ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver
         /// node components), <c>dv</c>, <c>pe_predicted</c> (m) and <c>inc_predicted</c> (degrees); a best burn outside the
         /// tolerances gives its <c>error</c> with the rest; a solve that could not start, only <c>error</c>, "found no correction: &lt;why&gt;".
+        /// <para>
+        /// To the Target Vessel (#454), the two goals the <c>rendezvous</c> block re-solves at fly time: <c>target_distance</c> (m)
+        /// in place of target_pe is the Course Correction to that closest approach (<c>distance_tolerance</c>, m, default 10), and
+        /// <c>match_velocities</c> true is solve_burn's match_velocities at <c>at</c> (a word or a UT; default closest_approach).
+        /// <c>target</c>, if given, is the vessel's name. Either gives <c>error</c>, <c>ut</c>, the components, <c>dv</c>,
+        /// <c>distance_predicted</c> (m) and <c>relative_speed_predicted</c> (m/s), at the approach (with <c>approach_ut</c>) for
+        /// target_distance and at the burn for match_velocities.
+        /// </para>
         /// </summary>
         public static IDictionary<string, object> CorrectionBurn(IDictionary<string, object> input, GameSnapshot snapshot)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
             if (snapshot == null) return Error(Tools.CorrectionBurn.Fail("no Game Snapshot").Error);
+            if (ask.ContainsKey("match_velocities")) return MatchVelocities(ask, snapshot);
+            if (ask.ContainsKey("target_distance")) return ApproachCorrection(ask, snapshot);
             object target;
             ask.TryGetValue("target", out target);
             if (!(target is string)) return Error(Tools.CorrectionBurn.Fail("target must be a body's name").Error);
@@ -643,6 +666,7 @@ namespace ClaudiaKermin.Core.Tools
                 LatestUt = Number(ask, "latest_ut", earliest),
                 PeTolerance = Number(ask, "pe_tolerance", 1000),
                 IncTolerance = Number(ask, "inc_tolerance", 0.5),
+                AimUt = NumberOrNull(ask, "aim_ut"),
             });
             if (!plan.HasBurn) return Error(plan.Error);
             return new Dictionary<string, object>
@@ -655,6 +679,105 @@ namespace ClaudiaKermin.Core.Tools
                 { "dv", plan.DeltaV },
                 { "pe_predicted", plan.PePredicted },
                 { "inc_predicted", plan.IncPredicted },
+            };
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:TARGETVESSEL</c>, for <c>rendezvous</c> (#455): the Mission's Target Vessel (ADR 0013) as the Game Snapshot
+        /// reads it live. Gives <c>error</c> "", <c>name</c> and <c>body</c> (the body it orbits); or only <c>error</c>: there is none,
+        /// or it is landed, or its orbit is missing.
+        /// </summary>
+        public static IDictionary<string, object> TargetVessel(GameSnapshot snapshot)
+        {
+            if (snapshot == null) return Error("no Game Snapshot");
+            string why;
+            var vessel = VesselTarget.Read(snapshot, new BodySystem(snapshot.Bodies), null, out why);
+            if (vessel == null) return Error(why);
+            return new Dictionary<string, object> { { "error", "" }, { "name", vessel.Name }, { "body", vessel.Body.Name } };
+        }
+
+        /// <summary>CORRECTIONBURN's Course Correction to the Target Vessel's closest approach (<c>target_distance</c>).</summary>
+        private static IDictionary<string, object> ApproachCorrection(Dictionary<string, object> ask, GameSnapshot snapshot)
+        {
+            foreach (var entry in ask)
+            {
+                var key = entry.Key.ToLowerInvariant();
+                if (key == "target")
+                {
+                    if (!(entry.Value is string)) return Error(Tools.CorrectionBurn.Fail("target must be the Target Vessel's name").Error);
+                }
+                else if (key == "target_distance" || key == "earliest_ut" || key == "latest_ut" || key == "distance_tolerance")
+                {
+                    if (!(entry.Value is double)) return Error(Tools.CorrectionBurn.Fail(key + " must be a number").Error);
+                }
+                else
+                    return Error(Tools.CorrectionBurn.Fail("unknown input " + entry.Key + ": a correction to target_distance takes target, earliest_ut, latest_ut and distance_tolerance").Error);
+            }
+            var earliest = Number(ask, "earliest_ut", snapshot.Ut);
+            object target;
+            ask.TryGetValue("target", out target);
+            var plan = Tools.CorrectionBurn.Find(snapshot, new CorrectionAsk
+            {
+                Target = target as string,
+                TargetDistance = (double)ask["target_distance"],
+                EarliestUt = earliest,
+                LatestUt = Number(ask, "latest_ut", earliest),
+                DistanceTolerance = Number(ask, "distance_tolerance", 10),
+            });
+            if (!plan.HasBurn) return Error(plan.Error);
+            return new Dictionary<string, object>
+            {
+                { "error", plan.Error ?? "" },
+                { "ut", plan.Ut },
+                { "prograde", plan.Prograde },
+                { "normal", plan.Normal },
+                { "radial", plan.Radial },
+                { "dv", plan.DeltaV },
+                { "distance_predicted", plan.DistancePredicted },
+                { "relative_speed_predicted", plan.RelativeSpeedPredicted },
+                { "approach_ut", plan.ApproachUt },
+            };
+        }
+
+        /// <summary>CORRECTIONBURN's match_velocities: solve_burn's goal at <c>at</c> (default closest_approach) on the craft's orbit as it is now.</summary>
+        private static IDictionary<string, object> MatchVelocities(Dictionary<string, object> ask, GameSnapshot snapshot)
+        {
+            var json = new JsonWriter().BeginObject().Field("goal", "match_velocities");
+            foreach (var entry in ask)
+            {
+                var key = entry.Key.ToLowerInvariant();
+                var text = entry.Value as string;
+                switch (key)
+                {
+                    case "match_velocities":
+                        if (!(entry.Value is bool) || !(bool)entry.Value) return Error(Tools.CorrectionBurn.Fail("match_velocities must be true").Error);
+                        break;
+                    case "target":
+                        if (text == null) return Error(Tools.CorrectionBurn.Fail("target must be the Target Vessel's name").Error);
+                        json.Field(key, text);
+                        break;
+                    case "at":
+                        if (text != null) json.Field(key, text);
+                        else if (entry.Value is double && !double.IsNaN((double)entry.Value) && !double.IsInfinity((double)entry.Value)) json.Field(key, (double)entry.Value);
+                        else return Error(Tools.CorrectionBurn.Fail("at must be a word or a finite UT, not " + Convert.ToString(entry.Value, CultureInfo.InvariantCulture)).Error);
+                        break;
+                    default:
+                        return Error(Tools.CorrectionBurn.Fail("unknown input " + entry.Key + ": match_velocities takes at and target").Error);
+                }
+            }
+            var solved = new SolvedBurn();
+            var outcome = new SolveBurn().Solve(JsonReader.Parse(json.EndObject().ToString()), snapshot, solved);
+            if (outcome.IsError) return Error(Tools.CorrectionBurn.Fail(outcome.Summary).Error);
+            return new Dictionary<string, object>
+            {
+                { "error", "" },
+                { "ut", solved.Ut },
+                { "prograde", solved.Prograde },
+                { "normal", solved.Normal },
+                { "radial", solved.Radial },
+                { "dv", solved.DeltaV },
+                { "distance_predicted", solved.Distance ?? -1 },
+                { "relative_speed_predicted", solved.RelativeSpeed ?? -1 },
             };
         }
 
@@ -723,6 +846,8 @@ namespace ClaudiaKermin.Core.Tools
             if (ask.TryGetValue("goal", out goal) && goal as string == "intercept_at")
                 return Error("ORBITBURN does not solve intercept_at: change_orbit checks the orbit elements a burn sets, and an intercept "
                     + "aims at an arrival, not an element; exec_node the node solve_burn gives");
+            if (goal as string == "match_velocities" || goal as string == "course_correction")
+                return Error("ORBITBURN does not solve " + goal + ": it aims at the Target Vessel, not an orbit element; CORRECTIONBURN solves it at fly time");
             var json = new JsonWriter().BeginObject();
             foreach (var entry in ask)
             {

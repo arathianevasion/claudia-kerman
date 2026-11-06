@@ -50,9 +50,14 @@ namespace ClaudiaKermin.Core.Tests
             return target;
         }
 
+        /// <summary>The pad craft, fitted to dock (#456): the goal docks, so without a port, RCS and monopropellant the Craft Check blocks it.</summary>
         private static GameSnapshot OnPad()
         {
-            return GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "on-pad.json")));
+            var snapshot = GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "on-pad.json")));
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 9001, Name = "dockingPort2", Title = "Clamp-O-Tron Docking Port", PortSize = "size1", Tags = { "docking_port" } });
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 9002, Name = "RCSBlock.v2", Title = "RV-105 RCS Thruster Block", Tags = { "rcs" } });
+            snapshot.Resources.Add(new SnapshotResource { Name = "MonoPropellant", Amount = 30, Max = 30 });
+            return snapshot;
         }
 
         // ---- The entry ----

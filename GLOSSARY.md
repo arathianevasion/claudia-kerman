@@ -72,9 +72,21 @@ _Avoid_: node time, burn time (the burn's length)
 A burn between departure and arrival that trims the predicted arrival at a body or vessel to the target periapsis or closest approach, and optionally to the target arrival inclination.
 _Avoid_: mid-course correction, MCC
 
+**Broken-plane transfer**:
+A transfer to a body far out of the craft's plane whose departure stays in that plane, with a plane change partway out, where the arc is slow, that makes the encounter; its delta-v is reported as `plane_dv`, apart from the Course Corrections' `correction_dv`. `transfer_to` flies it in place of the halfway Course Correction (#619).
+_Avoid_: dog-leg
+
 **Rendezvous**:
-A transfer that meets its target where the target is at arrival: a body, or a vessel's orbit with the vessel on it. A transfer to a body is always one.
+A transfer that meets its target where the target is at arrival: a body, or a vessel's orbit with the vessel on it. A transfer to a body is always one. This is the transfer mode (`mode` "rendezvous"); the `rendezvous` Building Block is the whole approach to the Target Vessel, of which such a transfer is one step.
 _Avoid_: encounter (the patched-conic event of entering a sphere of influence), meet
+
+**`rendezvous` (the Building Block)**:
+The Building Block that flies the craft from orbit to the Target Vessel's physics range (loaded, about 2.2 km) at under 2 m/s relative, where `dock` takes over: a plane match, a phasing orbit, a Rendezvous transfer, a Course Correction and matching velocities, each step solved when it starts (#455).
+_Avoid_: rendezvous (alone, when the transfer mode could be meant), approach, intercept
+
+**Docking**:
+Joining the craft to the Target Vessel port to port, flown by the `dock` Building Block from `rendezvous`'s hand-off: the craft lines its port up on the target port's axis and closes along it on RCS translation. While it flies, the mod runs its bundled `dock_hold` on the Target Vessel's kOS processor (when it has electric charge and a link by the Child Vessel link test) to turn the target's port to the craft, and stops it when `dock` ends; a target without one is met as it is, and refused if it turns faster than 1°/s (#456).
+_Avoid_: berthing, mating, hard dock (KSP's ports dock on contact)
 
 **Intercept**:
 A transfer that reaches a target orbit anywhere on it, wherever the target is, such as a parking orbit; free to choose the arrival point, it is never dearer than a Rendezvous with the same orbit.
@@ -83,6 +95,18 @@ _Avoid_: flyby, orbit change (one burn, not a transfer)
 **Capture**:
 The arrival burn of a transfer: circular at the target periapsis round a body, or matching the target orbit's velocity. A transfer solved with capture is the cheapest departure and capture together; without, the cheapest departure alone.
 _Avoid_: insertion, orbit insertion
+
+**Transfer Window**:
+A departure time and arrival time for a transfer to another planet, with what it costs: the ejection from the parking orbit and, with Capture, the capture at the target periapsis. The window search gives two, Soonest and Optimal, and the Mission Setting Time versus delta-v picks one: Fastest takes Soonest, Most efficient takes Optimal, Balanced takes Soonest unless Optimal saves at least 10%.
+_Avoid_: porkchop (the plot, which the mod never draws), launch window (the time to lift off into a target's plane)
+
+**Soonest**:
+The earliest Transfer Window whose total delta-v is within the Craft Check's margin of Optimal's.
+_Avoid_: next window, fastest (a Mission Setting)
+
+**Optimal**:
+The cheapest Transfer Window within one synodic period of the two planets.
+_Avoid_: best window, most efficient (a Mission Setting)
 
 **Daylight**:
 At a landing site, the sun is more than 20° above the horizon there. A daylight landing touches down only in Daylight; a sun lower than that, though up, is not Daylight.
@@ -113,7 +137,7 @@ The ordered list of Maneuver Sequences Claudia intends to fly to reach a Mission
 _Avoid_: flight plan, roadmap
 
 **Due Time**:
-The earliest time a Maneuver Sequence may start, set in its Sequence Plan only when the wait before it needs the player (e.g. "come back when you've docked"); the player may fly elsewhere until then. A wait for a window, daylight or a hold is not a Due Time: the Mission Script warps through it (ADR 0004).
+The earliest time a Maneuver Sequence may start; the player may fly elsewhere until then, and the Mission calls them back at it. Claudia sets one in a Sequence Plan when the wait before it needs the player (e.g. "come back when you've docked"). The mod sets one on the first Maneuver Sequence when it would wait on the pad more than 6 h for a Transfer Window to another planet: the window less the launch lead. A shorter wait for a window, and any wait for daylight or a hold, is not a Due Time: the Mission Script warps through it (ADR 0004 and its amendment).
 _Avoid_: window (which is a transfer window), scheduled time
 
 **Sequence Plan**:
@@ -125,7 +149,7 @@ A quantity the mod can measure during a Maneuver Sequence (e.g. delta-v used, ap
 _Avoid_: watch limit, alarm, tripwire, suspended (a disarmed check), held (a check waiting out a burn)
 
 **Alert**:
-The mod's message to Claudia that a Telemetry Check was crossed while Running; she answers by letting the sequence carry on or recommending the player Abort.
+The mod's message to Claudia that a Telemetry Check was crossed while Running; she answers by letting the sequence carry on or recommending the player Abort. Also the mod's message that the player came back after a Due Time's Transfer Window and the next window doesn't fit the Craft Check budget; she answers with a revised Mission Plan or a reduced goal.
 _Avoid_: alarm (the stock Alarm Clock's word), warning (a Craft Check finding)
 
 **Debrief**:
@@ -207,7 +231,7 @@ The player's act, with an optional message about what they did, of giving the cr
 _Avoid_: give back, return control, release
 
 **Manual stretch**:
-A Maneuver Sequence in the Mission Plan that the player flies by hand (e.g. docking, EVA science), so it has no script. Approving it starts Manual Control; the player's Hand back ends it.
+A Maneuver Sequence in the Mission Plan that the player flies by hand (e.g. EVA science; docking is the `dock` block's), so it has no script. Approving it starts Manual Control; the player's Hand back ends it.
 _Avoid_: manual sequence, manual mode (Manual Control is the state)
 
 **Lost**:

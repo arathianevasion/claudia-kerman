@@ -73,6 +73,9 @@ namespace ClaudiaKermin.Core.Missions
                 VesselId = mission.VesselId,
                 VesselName = mission.VesselName,
                 DueNotified = mission.DueNotified,
+                WindowPlanet = mission.WindowPlanet,
+                WindowUt = mission.WindowUt,
+                WindowDeltaV = mission.WindowDeltaV,
                 Remote = mission.Remote,
                 AutoMode = mission.AutoMode,
                 EvaScience = mission.EvaScience,
@@ -451,6 +454,9 @@ namespace ClaudiaKermin.Core.Missions
                 SafePending = state.SafePending ?? "",
                 PlannedTurnShape = state.PlannedTurnShape,
                 PlannedAscent = state.PlannedAscent,
+                WindowPlanet = state.WindowPlanet ?? "",
+                WindowUt = state.WindowUt,
+                WindowDeltaV = state.WindowDeltaV,
             };
             foreach (var setting in state.Settings) mission.Settings[setting.Key] = setting.Value;
             RestoreChildVessels(mission, state.ChildVessels);
@@ -829,7 +835,7 @@ namespace ClaudiaKermin.Core.Missions
             {
                 mission.Stage = MissionStage.AwaitingSequenceApproval;
                 mission.SuppressCards = mission.LogRebuilt;
-                OfferSequencePlan(mission, mission.PendingSequence);
+                OfferSequencePlan(mission, mission.PendingSequence, true);
                 mission.SuppressCards = false;
                 // The rebuilt card had no "now" to say its Due Time is "in" so long against; the one awaiting Approval has one again.
                 var rebuilt = mission.LogRebuilt ? mission.Log.LastOrDefault(e => e.Kind == LogKind.SequencePlan) : null;

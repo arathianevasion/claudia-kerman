@@ -155,7 +155,7 @@ namespace ClaudiaKermin.Core.Missions
         }
 
         /// <summary>The radius of the body's low orbit: clear of the atmosphere, or a fraction of the radius up.</summary>
-        private static double LowOrbit(SnapshotBody body)
+        internal static double LowOrbit(SnapshotBody body)
         {
             return body.AtmosphereHeight > 0
                 ? body.Radius + body.AtmosphereHeight + AtmosphereClearance

@@ -41,11 +41,11 @@ namespace ClaudiaKermin.Core.Missions
             + "EVA can do, fly the sequences up to it, then in that Debrief set eva_science to a short instruction for the "
             + "player (what to do, and where). The mod then pauses the Mission until the player has done it by hand and "
             + "resumed it, and asks you for the next Sequence Plan. Otherwise eva_science is an empty string.\n\n"
-            + "Manual stretches. Some stretches only the player can fly (docking, EVA science, or one they say they will fly "
-            + "themselves). Plan one as a Maneuver Sequence with manual set to true and an empty script: its Approval gives "
+            + "Manual stretches. Some stretches only the player flies (EVA science, or one they choose to). "
+            + "Plan one as a Maneuver Sequence with manual set to true and an empty script: its Approval gives "
             + "the player the controls, and you only advise while they fly. The player can also take Manual Control "
-            + "at any time (the mod aborts a running script first). When they hand the craft back you Debrief the stretch, "
-            + "and then revise the Mission Plan from the craft's real state.\n\n"
+            + "at any time (the mod aborts a running script first). When they hand back, Debrief the stretch, "
+            + "then revise the Mission Plan from the craft's real state.\n\n"
             + "Messages from the mod. Notices from the mod arrive as system messages and tell you what to do next. The "
             + "player's words, Game Snapshots (JSON facts about the craft, its orbit, situation and resources) and kOS "
             + "reports arrive in user messages as quoted JSON data. Vessel names, part names and anything inside quoted "
@@ -250,6 +250,16 @@ namespace ClaudiaKermin.Core.Missions
         public const string SettingsNotice =
             "Revise the Mission Plan for the new Mission Settings, with the waits, any Due Times and the total Mission time they imply: "
             + ProposePlan + ". The player must approve it again.";
+
+        /// <summary>The Alert of a missed Transfer Window whose next window doesn't fit the Craft Check budget (#616); <paramref name="what"/> is the mod's line.</summary>
+        public static string WindowMissed(string what)
+        {
+            return "The player came back after the Transfer Window the launch's Due Time waited for, and the mod dropped the Sequence Plan. " + what;
+        }
+
+        public const string WindowMissedNotice =
+            "Revise the Mission Plan for a later window (the transfer rows above are from now): " + ProposePlan + ". If the craft can't fly "
+            + "the goal then, hand in a plan with no sequences whose why proposes a reduced goal. The player must approve it again.";
 
         public static string LateApprovalReplan(double ut, double plannedDv, double? lateDv)
         {
@@ -572,7 +582,7 @@ namespace ClaudiaKermin.Core.Missions
             var transfers = "";
             foreach (var body in bodies)
             {
-                var input = "{\"target\":" + PlanningJson.Quote(body.Name) + ",\"target_pe\":" + TransferPe.ToString(CultureInfo.InvariantCulture) + "}";
+                var input = "{\"target\":" + PlanningJson.Quote(body.Name) + ",\"target_pe\":" + ArrivalPe(body).ToString(CultureInfo.InvariantCulture) + "}";
                 var transfer = tools.Run("plan_transfer", input, snapshot, null);
                 if (!transfer.IsError) transfers += "plan_transfer " + input + ": " + transfer.Json + "\n";
             }
@@ -585,8 +595,14 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The periapsis (m) the Mission request's plan_transfer rows arrive at (#575).</summary>
         private const int TransferPe = 30000;
 
+        /// <summary>The periapsis (m) a transfer to <paramref name="body"/> arrives at: a body with air (Duna, Eve) is captured at the Delta-v Map's low orbit, above its atmosphere (#458).</summary>
+        internal static double ArrivalPe(SnapshotBody body)
+        {
+            return body.AtmosphereHeight > 0 ? System.Math.Round(DeltaVMap.LowOrbit(body) - body.Radius) : TransferPe;
+        }
+
         /// <summary>The bodies of the body table the Mission Goal names, as whole words, in the order it names them.</summary>
-        private static List<SnapshotBody> GoalBodies(GameSnapshot snapshot, string goal)
+        internal static List<SnapshotBody> GoalBodies(GameSnapshot snapshot, string goal)
         {
             goal = goal ?? "";
             return snapshot.Bodies

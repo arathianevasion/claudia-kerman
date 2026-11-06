@@ -499,6 +499,8 @@ namespace ClaudiaKermin.Core.Ui
                     ? " · flying " + view.PlanSequences[view.CurrentSequence] : "";
                 return new StatusChip("Blackout" + flying, ChipTone.Info);
             }
+            var window = WindowWait(view);
+            if (view.ConfirmPrompt == null && window.Length > 0) return new StatusChip(window, ChipTone.Info);
             if (view.ConfirmPrompt != null || WaitsOnPlayer(view.Stage)) return new StatusChip("Waiting for you", ChipTone.Attention);
             if (view.Stage == MissionStage.Running)
             {
@@ -508,6 +510,17 @@ namespace ClaudiaKermin.Core.Ui
             if (view.Stage == MissionStage.ManualControl) return new StatusChip("Manual Control · you fly", ChipTone.Attention);
             var chip = StageChip(view);
             return chip == null ? null : new StatusChip(chip.Text, ChipTone.Info);
+        }
+
+        /// <summary>
+        /// "Waiting for the Duna window: Y2 D140" while a Sequence Plan's Due Time waits for a Transfer Window (#616): nothing is
+        /// asked of the player until then; "" otherwise, and once the Due Time is reached.
+        /// </summary>
+        public static string WindowWait(MissionView view)
+        {
+            var due = view.DueTime;
+            if (view.Stage != MissionStage.AwaitingSequenceApproval || !due.HasDueTime || due.Reached || due.WaitsFor.Length == 0) return "";
+            return "Waiting for " + due.WaitsFor + ": " + KerbinTime.ShortDate(due.Ut);
         }
 
         /// <summary>

@@ -30,13 +30,15 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The stage the part is in (its inverse stage number): 0 is the last to go.</summary>
         public int Stage;
         /// <summary>What the part can do, as the adapter reads it: command, crew_seat, probe_core, parachute, landing_leg,
-        /// heat_shield, antenna, electric_generator, reaction_wheel, rcs, aero_stabiliser, gimbal, engine, experiment, kos_processor, decoupler.</summary>
+        /// heat_shield, antenna, electric_generator, reaction_wheel, rcs, aero_stabiliser, gimbal, engine, experiment, kos_processor, decoupler, docking_port.</summary>
         public List<string> Tags = new List<string>();
         public int CrewCapacity;
         /// <summary>An antenna's power; 0 for other parts.</summary>
         public double AntennaPower;
         /// <summary>The boot file set on a kOS processor; "" for none.</summary>
         public string BootFile = "";
+        /// <summary>A docking port's size (its node type, e.g. size1), as the Target Vessel's free_ports count them; "" for other parts.</summary>
+        public string PortSize = "";
 
         // ---- Child Vessel facts (#100): enough to work out a separated vessel's own figures ----
 
@@ -195,6 +197,11 @@ namespace ClaudiaKermin.Core.Missions
         /// </summary>
         public bool DaylightLandingDefault = true;
         public double TimeCapHours = MissionSettingsValues.BalancedWaitHours;
+        /// <summary>The Mission Setting that picks a planet's Transfer Window, Soonest or Optimal (#458).</summary>
+        public TimeVersusDeltaV TimeVersusDeltaV = TimeVersusDeltaV.Balanced;
+        /// <summary>The Craft Check's delta-v margin, %, that Soonest's total must fit within over Optimal's; PlayerConfig's default until the Mission sets it.</summary>
+        public int MarginPercent = DefaultMarginPercent;
+        private static readonly int DefaultMarginPercent = new Config.PlayerConfig().CraftCheckMarginPercent;
 
         // ---- Craft Check facts, computed by the adapter from the game ----
 
@@ -273,6 +280,14 @@ namespace ClaudiaKermin.Core.Missions
             return ToJson(true);
         }
 
+        /// <summary>A copy of the snapshot's own fields at <paramref name="ut"/>, sharing its lists: for a search from another time (#616) without touching a snapshot a tool thread may be reading.</summary>
+        internal GameSnapshot At(double ut)
+        {
+            var copy = (GameSnapshot)MemberwiseClone();
+            copy.Ut = ut;
+            return copy;
+        }
+
         /// <summary>
         /// The same; Claudia's turns leave out the bodies (they already carry the Delta-v Map) and the craft's drag table (only
         /// Planning Tools read it).
@@ -329,6 +344,7 @@ namespace ClaudiaKermin.Core.Missions
                     json.EndArray();
                 }
                 if (part.ChargeMax > 0) json.Field("ec_max", part.ChargeMax);
+                if (part.PortSize.Length > 0) json.Field("port", part.PortSize);
                 if (withBodies && part.Chute != null) WriteChute(json, part.Chute);
                 json.Name("tags").BeginArray();
                 foreach (var tag in part.Tags) json.String(tag);
@@ -591,6 +607,7 @@ namespace ClaudiaKermin.Core.Missions
                             CrewCapacity = (int)(JsonNode.Long(part["seats"]) ?? 0),
                             AntennaPower = JsonNode.Double(part["antenna"]) ?? 0,
                             BootFile = JsonNode.Str(part["boot"]) ?? "",
+                            PortSize = JsonNode.Str(part["port"]) ?? "",
                             Tags = tags == null ? new List<string>() : tags.Items.Select(JsonNode.Str).Where(t => t != null).ToList(),
                             MassT = mass,
                             DryMassT = JsonNode.Double(part["dry_t"]) ?? mass,

@@ -496,7 +496,7 @@ namespace ClaudiaKermin.Core.Tests
             {
                 var properties = doc.RootElement.GetProperty("properties");
                 Assert.Equal(new[] { "goal", "at", "target", "value", "pe", "ap", "of", "arrive_ut", "tof", "retrograde", "revolutions", "direction" }, properties.EnumerateObject().Select(p => p.Name).ToArray());
-                Assert.Equal(new[] { "circularize", "set_ap", "set_pe", "next_patch_pe", "set_sma", "set_ecc", "ellipticize", "set_inc", "match_plane", "shift_lan", "resonant", "stationary", "intercept_at" },
+                Assert.Equal(new[] { "circularize", "set_ap", "set_pe", "next_patch_pe", "set_sma", "set_ecc", "ellipticize", "set_inc", "match_plane", "shift_lan", "resonant", "stationary", "intercept_at", "match_velocities", "course_correction" },
                     properties.GetProperty("goal").GetProperty("enum").EnumerateArray().Select(e => e.GetString()).ToArray());
             }
         }
@@ -505,7 +505,7 @@ namespace ClaudiaKermin.Core.Tests
         public void The_description_has_one_clause_per_goal_and_stays_short()
         {
             var description = new SolveBurn().Description;
-            foreach (var goal in new[] { "intercept_at:", "set_sma:", "set_ecc:", "ellipticize:", "set_inc:", "match_plane:", "shift_lan:", "resonant:", "stationary:" })
+            foreach (var goal in new[] { "intercept_at:", "set_sma:", "set_ecc:", "ellipticize:", "set_inc:", "match_plane:", "shift_lan:", "resonant:", "stationary:", "match_velocities:", "course_correction:" })
                 Assert.Single(description.Split(new[] { goal }, StringSplitOptions.None).Skip(1));
             // Prompt cost (#212): 1,100 characters with #443's eight goal clauses, cut from 1,451 so the Mission requests stay under
             // the Spending Cap tests' sizes (MissionDebriefTests' $0.45 cap failed at 1,451); a new goal or option adds at most one clause.
