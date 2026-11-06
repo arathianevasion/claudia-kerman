@@ -346,12 +346,18 @@ namespace ClaudiaKerman.KOS
             // The solve's time against ADR 0010's budget (about 100 ms, under 200 ms from the grid), and the node.
             return (Lexicon)Guarded("RETURNBURN", () =>
             {
-                node = BlockCalls.ReturnBurn(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
+                var vessel = shared.Vessel;
+                var ask = KosValues.ToDictionary(input);
+                // Aimed at a landing (#792), the predictor flies the planet's air: the craft is still at the moon.
+                node = ask.ContainsKey("lat")
+                    ? BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(vessel.mainBody.referenceBody), new ReentryCraft(vessel))
+                    : BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel));
                 return KosValues.FromPlain(node);
             }, () => node.ContainsKey("dv")
                 ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); {5} Pe {6:0} m, inclination {7:0.00}, leaving the moon at UT {8:0}{9}{10}",
                     node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["planet"], node["pe_predicted"], node["inc_predicted"], node["soi_ut"],
-                    ((bool)node["from_grid"] ? " (from the grid)" : "") + (node["finished_by"] as string == "" ? "" : " (the SQP stopped short: finished by " + node["finished_by"] + ")"),
+                    ((bool)node["from_grid"] ? " (from the grid)" : "") + (node["finished_by"] as string == "" ? "" : " (the SQP stopped short: finished by " + node["finished_by"] + ")")
+                        + ((double)node["error_km"] < 0 ? "" : string.Format(CultureInfo.InvariantCulture, "; aimed {0:0.00} km from the target, +{1:0.00} m/s, spread {2:0} km", node["error_km"], node["aim_dv"], node["spread_km"])),
                     node["error"] as string == "" ? "" : "; " + node["error"]) + PlanLine(node)
                 : (string)node["error"]);
         }

@@ -1767,7 +1767,7 @@ namespace ClaudiaKerman.Core.Missions
             var start = LiveReadings.DeltaVLeftOf(snapshot);
             findings.StartDeltaV = start ?? 0;
             findings.Crossings = PredictedCrossings.Find(plan.TelemetryChecks, plan.ExpectedDeltaV, start);
-            findings.ShortDuration = BurnPoints.ShortOf(plan, snapshot, _ut);
+            findings.ShortDuration = BurnPoints.ShortOf(plan, snapshot, _ut, _body);
             return findings;
         }
 

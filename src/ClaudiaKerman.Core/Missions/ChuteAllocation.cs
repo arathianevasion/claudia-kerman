@@ -427,7 +427,7 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>A body's air for the predictor from its rows in the Game Snapshot (<see cref="BodyAir"/>, as plan_ascent reads it).</summary>
-        private sealed class SnapshotAir : IReentryAir
+        internal sealed class SnapshotAir : IReentryAir
         {
             private readonly BodyAir _air;
 
@@ -451,7 +451,7 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>The entry's craft for the predictor: its mass, <see cref="BodyDragArea"/>, no lift, its chutes, the heat shield kept.</summary>
-        private sealed class FallingCraft : IReentryCraft
+        internal sealed class FallingCraft : IReentryCraft
         {
             private readonly double _mass;
             private readonly IList<ReentryChute> _chutes;
