@@ -29,7 +29,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("ORBITBURN", new OneArgsSuffix<Lexicon, Lexicon>(OrbitBurn,
                 "Core Library only (change_orbit): solve_burn's burn to goal (with value, at, target, pe, ap, of, direction as it needs) on the orbit as it is now; lexicon error, ut, prograde, normal, radial, dv, burn_time, wanted (element: figure)"));
             AddSuffix("CORRECTIONBURN", new OneArgsSuffix<Lexicon, Lexicon>(CorrectionBurn,
-                "Core Library only (transfer_to, return, tune_pe): the least burn from earliest_ut to latest_ut that arrives at target (a body's name) at target_pe and, if given, target_inc; lexicon error, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted"));
+                "Core Library only (transfer_to, return, tune_pe): the least burn from earliest_ut to latest_ut that arrives at target (a body's name) at target_pe and, if given, target_inc or a landing at lat, lng; lexicon error, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted, and for a landing lat, lng, landing_ut, error_km"));
             AddSuffix("LAUNCHWINDOW", new OneArgsSuffix<Lexicon, Lexicon>(LaunchWindow,
                 "Core Library only (launch): when the pad next passes under the plane of inc and lan (degrees); lexicon error, wait (s), ut, north, inc (negative southbound), heading"));
             AddSuffix("LAUNCHHEADING", new OneArgsSuffix<Lexicon, Lexicon>(LaunchHeading,
@@ -492,20 +492,35 @@ namespace ClaudiaKerman.KOS
             }, () => found["error"] as string == "" ? found["name"] + " round " + found["body"] : (string)found["error"]);
         }
 
+        /// <summary>The body of that name, or null.</summary>
+        private static CelestialBody BodyNamed(string name)
+        {
+            return FlightGlobals.Bodies.FirstOrDefault(b => string.Equals(b.bodyName, name, StringComparison.OrdinalIgnoreCase));
+        }
+
         private Lexicon CorrectionBurn(Lexicon input)
         {
             System.Collections.Generic.IDictionary<string, object> node = null;
             return (Lexicon)Guarded("CORRECTIONBURN", () =>
             {
-                node = BlockCalls.CorrectionBurn(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
+                var vessel = shared.Vessel;
+                var ask = KosValues.ToDictionary(input);
+                // Aimed at a landing (#793), the predictor flies the air of the planet aimed at: the craft may still be at the moon, or round the star. No such body: Core says why.
+                object target;
+                ask.TryGetValue("target", out target);
+                var planet = BodyNamed(target as string);
+                node = ask.ContainsKey("lat") && planet != null
+                    ? BlockCalls.CorrectionBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(planet), new ReentryCraft(vessel))
+                    : BlockCalls.CorrectionBurn(ask, SnapshotReader.ReadForMission(vessel));
                 return KosValues.FromPlain(node);
             }, () => (!node.ContainsKey("dv") ? (string)node["error"]
                 : node.ContainsKey("distance_predicted")
                 ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); closest approach {5:0.0} m at {6:0.000} m/s{7}",
                     node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["distance_predicted"], node["relative_speed_predicted"],
                     node["error"] as string == "" ? "" : "; " + node["error"])
-                : string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); Pe {5:0} m, inclination {6:0.00}{7}",
+                : string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); Pe {5:0} m, inclination {6:0.00}{7}{8}",
                     node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["pe_predicted"], node["inc_predicted"],
+                    node.ContainsKey("error_km") ? string.Format(CultureInfo.InvariantCulture, "; aimed {0:0.00} km from the target", node["error_km"]) : "",
                     node["error"] as string == "" ? "" : "; " + node["error"])) + PlanLine(node));
         }
 
@@ -624,8 +639,11 @@ namespace ClaudiaKerman.KOS
             {
                 var vessel = shared.Vessel;
                 var ask = KosValues.ToDictionary(input);
+                // Given a path round another body (return's, with the craft still at the moon), that body's air (#793).
+                object named;
+                ask.TryGetValue("orbit_body", out named);
                 landing = BlockCalls.ReentryImpact(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(),
-                    new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
+                    new ReentryAir(BodyNamed(named as string) ?? vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
                 return KosValues.FromPlain(landing);
             }, () => Landing(landing) + PlanLine(landing));
         }

@@ -2343,47 +2343,6 @@ function claudia_geo {
   return lexicon("lat", round(landing:lat, 4), "lng", round(landing:lng, 4)).
 }
 
-// Coordinate descent: lowers cost(x) over the list of numbers x, one coordinate at a time, starting
-// with steps (one per coordinate) and stepping on while that helps; when no step helps, every step
-// halves, up to rounds times. Stops early once the cost is at most good, or after 400 tries.
-// Returns lexicon("x", the best list, "cost", its cost).
-function claudia_descend {
-  parameter cost, x, steps, rounds, good.
-  local best is x:copy.
-  local best_cost is cost(best).
-  local step is steps:copy.
-  local tries is 1.
-  local halvings is 0.
-  until halvings >= rounds or best_cost <= good or tries >= 400 {
-    local moved is false.
-    for i in range(best:length) {
-      for sign in list(1, -1) {
-        local going is true.
-        until not going or best_cost <= good or tries >= 400 {
-          local trial is best:copy.
-          set trial[i] to best[i] + sign * step[i].
-          local trial_cost is cost(trial).
-          set tries to tries + 1.
-          if trial_cost < best_cost {
-            set best to trial.
-            set best_cost to trial_cost.
-            set moved to true.
-          } else {
-            set going to false.
-          }
-        }
-      }
-    }
-    if not moved {
-      for i in range(step:length) {
-        set step[i] to step[i] / 2.
-      }
-      set halvings to halvings + 1.
-    }
-  }
-  return lexicon("x", best, "cost", best_cost).
-}
-
 // The first patch of orb's path (orb itself or a later one) around dest:
 // lexicon("orbit", that patch, "soi_ut", UT it begins), or "none" if the path never gets there.
 function claudia_patch {

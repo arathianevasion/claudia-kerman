@@ -33,3 +33,8 @@ A broken-plane transfer's plane change is a Course Correction whose uncorrected 
 ## Amendment (#459, 2026-11-04)
 
 A Course Correction on a patch round the star (no parent) takes its `Scale` from the coast, not the star: the star's radius made the velocity step about 0.9 m/s, which over a coast of months moves the arrival by thousands of kilometres, and SQP stalled at zero burn. There `CorrectionBurn` sets the velocity unit so the solver's own step (still 1.3e-5 scaled, still not the caller's) moves the arrival by about 600 m, as about 3 cm/s does across a Mun coast, and the time unit to a Kerbin day. Patches round a planet or a moon keep their body's scale, so every measured window above is unchanged there.
+
+
+## Amendment (#793, 2026-11-05)
+
+A Course Correction may take a landing point (`CorrectionAsk.Landing`), in place of an arrival inclination or plane: a second solve from the burn that only holds target_pe, whose extra equality is the landing's miss along the track, with the reentry predictor in the loop. The formulation, the variables and the plain solve are unchanged. Its budget is the predictor's, not the patches': about 20 to 30 predictions and at most 60 in its solve, about 10 to 20 ms in the tests and about 300 ms in the game, on the main thread until #463. What the burn can't reach is no failure: the goal is moved to what `MostLandingDv` (50 m/s, or 85% of the delta-v left) reaches, so the solve always has an answer to converge on, and the remainder is reported. A landing moving under 0.1 km per m/s along the track is not burned for.

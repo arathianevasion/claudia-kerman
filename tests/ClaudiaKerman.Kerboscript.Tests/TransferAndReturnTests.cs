@@ -178,28 +178,6 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Contains("\"window\", opt:window", transfer);
         }
 
-        // ---- Coordinate descent ----
-
-        [Fact]
-        public void Descent_finds_the_minimum_of_each_coordinate()
-        {
-            var printed = Run("local d is claudia_descend({ parameter x. return abs(x[0] - 3) + abs(x[1] + 2). }, list(0, 0), list(1, 1), 6, 0). print d:x[0]. print d:x[1]. print d:cost.");
-            Assert.Equal(new[] { "3", "-2", "0" }, printed);
-        }
-
-        [Fact]
-        public void Descent_halves_its_steps_to_close_in_between_them()
-        {
-            Assert.True(Number("abs(claudia_descend({ parameter x. return abs(x[0] - 0.3). }, list(0), list(1), 10, 0):x[0] - 0.3)") < 0.01);
-        }
-
-        [Fact]
-        public void Descent_stops_once_the_cost_is_good_enough()
-        {
-            var printed = Run("local d is claudia_descend({ parameter x. return abs(x[0] - 3). }, list(0), list(1), 10, 1.5). print d:x[0]. print d:cost.");
-            Assert.Equal(new[] { "2", "1" }, printed);
-        }
-
         // ---- return ----
 
         // return's periapsis time was RSVP's time_at_periapsis; mean anomaly is zero at periapsis.
@@ -276,15 +254,17 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(new[] { "12", "777", "-0.1", "-74.5", "0", "9000000", "0.9", "2", "3", "4", "5", "6", "Kerbin" }, asked);
         }
 
+        /// <summary>#793: Core aims the correction (AimedCorrectionTests); the block hands it the ejection's landing, the craft's Isp and its delta-v left, and no Kerboscript twin is left.</summary>
         [Fact]
-        public void An_aimed_correction_lowers_the_km_to_the_target_and_otherwise_draws_the_path_into_the_air()
+        public void An_aimed_correction_asks_Core_for_the_landing_and_no_Kerboscript_twin_is_left()
         {
-            var patch = "local p is lexicon(\"orbit\", lexicon(\"periapsis\", 80000), \"soi_ut\", 0). ";
-            Assert.Equal("12.5", Run(patch + "print return_aim_cost({ parameter o, u. return 12.5. }, p, 35000).").Single());
-            // No landing: worse than any real one, and nearer to the target periapsis is better.
-            Assert.Equal("10045", Run(patch + "print return_aim_cost({ parameter o, u. return -1. }, p, 35000).").Single());
-            // No path to the planet at all.
-            Assert.Equal("100000", One("return_aim_cost({ parameter o, u. return 1. }, \"none\", 35000)"));
+            Assert.Equal(new[] { "target,target_pe,earliest_ut,latest_ut,lat,lng,ground_alt,isp,dv_left", "-0.1", "-74.5", "20", "345", "88" },
+                Run("local q is return_aimed_ask(claudia_correction_ask(\"Kerbin\", 30000, 5), lexicon(\"lat\", -0.1, \"lng\", -74.5, \"ground_alt\", 20, \"max_wait\", \"auto\"), 345, 88). "
+                    + "print q:keys:join(\",\"). print q:lat. print q:lng. print q:ground_alt. print q:isp. print q:dv_left."));
+            var bundle = CoreLibrary.Bundle("");
+            Assert.DoesNotContain("claudia_descend", bundle);
+            Assert.DoesNotContain("return_aim_cost", bundle);
+            Assert.DoesNotContain("return_aimed_correction", bundle);
         }
 
         // ---- return from any moon (#450) ----

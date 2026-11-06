@@ -22,6 +22,27 @@ namespace ClaudiaKerman.Core.Tools
         public IReentryCraft Craft;
         /// <summary>The planet's frame.</summary>
         public BodyFrame Frame;
+
+        private const double G0 = 9.80665;
+
+        /// <summary>The craft's mass after a burn of <paramref name="deltaV"/> m/s, kg.</summary>
+        public double MassAfter(double deltaV)
+        {
+            return Isp > 0 ? Craft.MassKg * Math.Exp(-deltaV / (Isp * G0)) : Craft.MassKg;
+        }
+
+        /// <summary>km east and north of the target to where <paramref name="landed"/> comes down on <paramref name="planet"/>.</summary>
+        public double[] OffKm(SnapshotBody planet, ReentryPrediction landed)
+        {
+            var km = planet.Radius / 1000 * Math.PI / 180;
+            return new[] { LandingSiteSearch.Wrap180(landed.Longitude - Longitude) * Math.Cos(Latitude * Math.PI / 180) * km, (landed.Latitude - Latitude) * km };
+        }
+
+        /// <summary>km from the target to where <paramref name="landed"/> comes down on <paramref name="planet"/>.</summary>
+        public double ErrorKm(SnapshotBody planet, ReentryPrediction landed)
+        {
+            return LandingSiteSearch.ArcDegrees(landed.Latitude, landed.Longitude, Latitude, Longitude) * Math.PI / 180 * planet.Radius / 1000;
+        }
     }
 
     /// <summary>
@@ -60,7 +81,6 @@ namespace ClaudiaKerman.Core.Tools
         /// it, at a Due Time (#749), the block is sure to pick the same window, where a strict nearest could wait on for a turn.
         /// </summary>
         private const double NearShare = 0.6;
-        private const double G0 = 9.80665;
 
         /// <summary>
         /// Seconds for the landing's longitude to come round once: the ground turns under a path that turns with the moon, about 7.1 h
@@ -278,15 +298,13 @@ namespace ClaudiaKerman.Core.Tools
 
             private double[] Off(ReentryPrediction landed)
             {
-                var target = _ask.Landing;
-                var km = _planet.Radius / 1000 * Math.PI / 180;
-                return new[] { LandingSiteSearch.Wrap180(landed.Longitude - target.Longitude) * Math.Cos(target.Latitude * Math.PI / 180) * km, (landed.Latitude - target.Latitude) * km };
+                return _ask.Landing.OffKm(_planet, landed);
             }
 
             private void Stamp(ReturnPlan plan, ReentryPrediction landed)
             {
                 plan.Landing = landed;
-                plan.ErrorKm = LandingSiteSearch.ArcDegrees(landed.Latitude, landed.Longitude, _ask.Landing.Latitude, _ask.Landing.Longitude) * Math.PI / 180 * _planet.Radius / 1000;
+                plan.ErrorKm = _ask.Landing.ErrorKm(_planet, landed);
             }
 
             /// <summary>Where <paramref name="plan"/>'s burn comes down, by the predictor.</summary>
@@ -300,9 +318,7 @@ namespace ClaudiaKerman.Core.Tools
                 var arrival = SingleShooting.Arrive(_system, _moon, _orbit, ut, SingleShooting.FromNodeFrame(_orbit, ut, prograde, normal, radial), _planet, ReturnBurn.Patches);
                 if (arrival == null) return new ReentryPrediction { Error = "the burn does not reach " + _planet.Name };
                 var landing = _ask.Landing;
-                var mass = landing.Craft.MassKg;
-                if (landing.Isp > 0) mass *= Math.Exp(-deltaV / (landing.Isp * G0));
-                return ReentryPredictor.Predict(_planet, arrival.Orbit, arrival.StartUt, landing.GroundAltitude, mass, landing.Air, landing.Craft, landing.Frame);
+                return ReentryPredictor.Predict(_planet, arrival.Orbit, arrival.StartUt, landing.GroundAltitude, landing.MassAfter(deltaV), landing.Air, landing.Craft, landing.Frame);
             }
 
             /// <summary>km <see cref="ResidualMs"/> of error along the burn moves the landing, the worse way; -1 when either way does not land, which no figure says.</summary>
