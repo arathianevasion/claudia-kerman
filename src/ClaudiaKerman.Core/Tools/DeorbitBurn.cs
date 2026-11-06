@@ -83,6 +83,8 @@ namespace ClaudiaKerman.Core.Tools
         private const int MaxScanTries = 240;
         private const int MaxRefineTries = 600;
         private const int MaxTries = 800;
+        /// <summary>Passes whose scan cost rounds to the same multiple of this are refined nearest the target first, m/s.</summary>
+        private const double PassCostStepDv = 5;
         /// <summary>A walk ends inside this share of accuracy_km: at the very edge the burn's own error would fail the block's check after the burn.</summary>
         private const double WalkBandShare = 0.8;
         private const int WalkRounds = 4;
@@ -144,6 +146,24 @@ namespace ClaudiaKerman.Core.Tools
             return a.BurnUt < b.BurnUt;
         }
 
+        /// <summary>
+        /// The burn to fly, with <see cref="DeorbitPlan.Error"/> from <paramref name="overBudget"/> when it is within accuracy. Near ties are
+        /// measured from the cheapest, so a chain of them can't walk the choice away from it; when the earlier of a near tie is over budget,
+        /// the cheapest answers instead: it may fit, and a refusal must quote the cheapest.
+        /// </summary>
+        internal static DeorbitPlan Choose(List<DeorbitPlan> burns, double accuracyKm, Func<DeorbitPlan, string> overBudget)
+        {
+            var cheapest = burns.Where(burn => burn.ErrorKm <= accuracyKm).OrderBy(burn => burn.DeltaV).FirstOrDefault();
+            var best = cheapest ?? burns[0];
+            foreach (var burn in burns)
+                if ((cheapest == null || burn.DeltaV <= cheapest.DeltaV + TieDv) && Better(burn, best, accuracyKm)) best = burn;
+            if (cheapest == null) return best;
+            best.Error = overBudget(best);
+            if (best.Error == null) return best;
+            cheapest.Error = overBudget(cheapest);
+            return cheapest;
+        }
+
         private static string Dv(double dv)
         {
             return Math.Round(dv, 1).ToString("0.#", CultureInfo.InvariantCulture);
@@ -200,14 +220,13 @@ namespace ClaudiaKerman.Core.Tools
                 foreach (var plan in burns.Where(burn => burn.ErrorKm <= _ask.AccuracyKm).OrderBy(burn => burn.DeltaV).ThenBy(burn => burn.BurnUt).ToList())
                 {
                     if (_tries >= MaxTries) break;
-                    burns.Add(Walk(plan));
+                    var walked = Walk(plan);
+                    if (walked != plan) burns.Add(walked);
                 }
-                var best = burns.Count > 0 ? burns[0] : first;
-                foreach (var burn in burns)
-                    if (Better(burn, best, _ask.AccuracyKm)) best = burn;
+                if (burns.Count == 0) burns.Add(first);
 
-                if (best.ErrorKm <= _ask.AccuracyKm) best.Error = OverBudget(best);
-                else
+                var best = Choose(burns, _ask.AccuracyKm, OverBudget);
+                if (best.ErrorKm > _ask.AccuracyKm)
                     best.Error = "the best burn in the next " + Hours(scan[scan.Count - 1].BurnUt - _ask.EarliestUt) + " h lands " + Km(best.ErrorKm)
                         + " km from the target, over accuracy_km " + Km(_ask.AccuracyKm)
                         + (best.Normal != 0 && Math.Abs(best.Normal) >= MaxNormal - 1e-6
@@ -247,7 +266,7 @@ namespace ClaudiaKerman.Core.Tools
                 }
             }
 
-            /// <summary>The burn times worth refining, the scan's local nearest to the target, the cheapest first so a spent budget drops the dearest.</summary>
+            /// <summary>The burn times worth refining, the scan's local nearest to the target: the cheapest first so a spent budget drops the dearest, and of those about the same cost (a near-circular orbit) the nearest.</summary>
             private static IEnumerable<double> Passes(List<DeorbitPlan> scan)
             {
                 var minima = new List<DeorbitPlan>();
@@ -257,7 +276,7 @@ namespace ClaudiaKerman.Core.Tools
                     var right = i == scan.Count - 1 || scan[i].ErrorKm <= scan[i + 1].ErrorKm;
                     if (left && right && !double.IsInfinity(scan[i].ErrorKm)) minima.Add(scan[i]);
                 }
-                return minima.OrderBy(sample => sample.DeltaV).ThenBy(sample => sample.BurnUt).Select(sample => sample.BurnUt).ToList();
+                return minima.OrderBy(sample => Math.Round(sample.DeltaV / PassCostStepDv)).ThenBy(sample => sample.ErrorKm).Select(sample => sample.BurnUt).ToList();
             }
 
             /// <summary>Newton's method from a pass: the burn time moves the landing along the track, the normal part across it.</summary>
@@ -271,21 +290,11 @@ namespace ClaudiaKerman.Core.Tools
                     if (here.Landing.Error != null) break;
                     if (best == null || here.ErrorKm < best.ErrorKm) best = here;
                     if (here.ErrorKm < CloseEnoughKm) break;
-                    const double dt = 2;
-                    const double dn = 1;
-                    var byTime = Try(ut + dt, normal);
-                    var byNormal = Try(ut, normal + dn);
-                    if (byTime.Landing.Error != null || byNormal.Landing.Error != null) break;
-                    double e0, n0, e1, n1, e2, n2;
-                    Offset(here.Landing, out e0, out n0);
-                    Offset(byTime.Landing, out e1, out n1);
-                    Offset(byNormal.Landing, out e2, out n2);
+                    var slopes = SlopesAt(here);
+                    if (slopes == null) break;
                     // The offsets are of the target from the landing: drive them to 0.
-                    double a = (e1 - e0) / dt, c = (n1 - n0) / dt, bb = (e2 - e0) / dn, d = (n2 - n0) / dn;
-                    var det = a * d - bb * c;
-                    if (Math.Abs(det) < 1e-12) break;
-                    var moveT = (-e0 * d + bb * n0) / det;
-                    var moveN = (-a * n0 + c * e0) / det;
+                    double moveT, moveN;
+                    slopes.Move(-slopes.East, -slopes.North, out moveT, out moveN);
                     var limit = _orbit.Period / 8;
                     moveT = Math.Max(-limit, Math.Min(limit, moveT));
                     var nextUt = Math.Max(_ask.EarliestUt, Math.Min(_latest, ut + moveT));
@@ -309,29 +318,17 @@ namespace ClaudiaKerman.Core.Tools
                 var here = start;
                 for (var round = 0; round < WalkRounds && _tries < MaxTries; round++)
                 {
-                    const double dt = 2;
-                    const double dn = 1;
-                    var byTime = Try(here.BurnUt + dt, here.Normal);
-                    var byNormal = Try(here.BurnUt, here.Normal + dn);
-                    if (byTime.Landing.Error != null || byNormal.Landing.Error != null) break;
-                    double e0, n0, e1, n1, e2, n2;
-                    Offset(here.Landing, out e0, out n0);
-                    Offset(byTime.Landing, out e1, out n1);
-                    Offset(byNormal.Landing, out e2, out n2);
-                    double a = (e1 - e0) / dt, c = (n1 - n0) / dt, bb = (e2 - e0) / dn, d = (n2 - n0) / dn;
-                    var det = a * d - bb * c;
-                    if (Math.Abs(det) < 1e-12) break;
-                    double costByTime = (byTime.DeltaV - here.DeltaV) / dt, costByNormal = (byNormal.DeltaV - here.DeltaV) / dn;
-                    // The cost's slope in the target's offset from the landing (the inverse transpose of the offsets' slopes).
-                    var costEast = (d * costByTime - c * costByNormal) / det;
-                    var costNorth = (a * costByNormal - bb * costByTime) / det;
+                    var slopes = SlopesAt(here);
+                    if (slopes == null) break;
+                    double costEast, costNorth;
+                    slopes.CostSlope(out costEast, out costNorth);
                     var slope = Math.Sqrt(costEast * costEast + costNorth * costNorth);
                     if (slope <= 0) break;
-                    var moveEast = -band * costEast / slope - e0;
-                    var moveNorth = -band * costNorth / slope - n0;
+                    var moveEast = -band * costEast / slope - slopes.East;
+                    var moveNorth = -band * costNorth / slope - slopes.North;
                     if (-(costEast * moveEast + costNorth * moveNorth) < WalkFloorDv) break;
-                    var moveT = (moveEast * d - bb * moveNorth) / det;
-                    var moveN = (a * moveNorth - c * moveEast) / det;
+                    double moveT, moveN;
+                    slopes.Move(moveEast, moveNorth, out moveT, out moveN);
                     var limit = _orbit.Period / 8;
                     moveT = Math.Max(-limit, Math.Min(limit, moveT));
                     DeorbitPlan better = null;
@@ -348,6 +345,47 @@ namespace ClaudiaKerman.Core.Tools
                     here = better;
                 }
                 return start.DeltaV - here.DeltaV >= TieDv ? here : start;
+            }
+
+            /// <summary>How the target's offset from the landing, km east and north, and the cost, m/s, change with the burn time and the normal part.</summary>
+            private sealed class Slopes
+            {
+                public double East, North, EastByTime, NorthByTime, EastByNormal, NorthByNormal, Det, CostByTime, CostByNormal;
+
+                /// <summary>The change of burn time and normal part that moves the offset by the given km.</summary>
+                public void Move(double east, double north, out double moveT, out double moveN)
+                {
+                    moveT = (east * NorthByNormal - EastByNormal * north) / Det;
+                    moveN = (EastByTime * north - NorthByTime * east) / Det;
+                }
+
+                /// <summary>The cost's slope in the offset, m/s per km (the inverse transpose of the offset's slopes).</summary>
+                public void CostSlope(out double east, out double north)
+                {
+                    east = (NorthByNormal * CostByTime - NorthByTime * CostByNormal) / Det;
+                    north = (EastByTime * CostByNormal - EastByNormal * CostByTime) / Det;
+                }
+            }
+
+            /// <summary>The slopes at a burn, from two more predictions; null when one fails or the offset's slopes are singular.</summary>
+            private Slopes SlopesAt(DeorbitPlan here)
+            {
+                const double dt = 2;
+                const double dn = 1;
+                var byTime = Try(here.BurnUt + dt, here.Normal);
+                var byNormal = Try(here.BurnUt, here.Normal + dn);
+                if (byTime.Landing.Error != null || byNormal.Landing.Error != null) return null;
+                double e0, n0, e1, n1, e2, n2;
+                Offset(here.Landing, out e0, out n0);
+                Offset(byTime.Landing, out e1, out n1);
+                Offset(byNormal.Landing, out e2, out n2);
+                var slopes = new Slopes
+                {
+                    East = e0, North = n0, EastByTime = (e1 - e0) / dt, NorthByTime = (n1 - n0) / dt, EastByNormal = (e2 - e0) / dn, NorthByNormal = (n2 - n0) / dn,
+                    CostByTime = (byTime.DeltaV - here.DeltaV) / dt, CostByNormal = (byNormal.DeltaV - here.DeltaV) / dn,
+                };
+                slopes.Det = slopes.EastByTime * slopes.NorthByNormal - slopes.EastByNormal * slopes.NorthByTime;
+                return Math.Abs(slopes.Det) < 1e-12 ? null : slopes;
             }
 
             /// <summary>The burn at <paramref name="ut"/> with <paramref name="normal"/> m/s normal and enough retrograde for the entry periapsis, and where it lands.</summary>

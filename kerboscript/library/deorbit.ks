@@ -232,7 +232,7 @@ function deorbit {
 
   local ground_alt is body:geopositionlatlng(site:lat, site:lng):terrainheight.
   local max_wait is deorbit_max_wait(opt:max_wait, body:rotationperiod).
-  // The burn search is the mod's reentry predictor, a block-internal call (ADR 0007): inline here.
+  ship:deltav:forcecalc(). wait 0.5. // Stock recounts first: after a staging or a load it reads 0. The search is a block-internal call (ADR 0007): inline here.
   local found is addons:claudia:deorbitburn(deorbit_query(site, time:seconds + deorbit_lead_s(), max_wait, ground_alt, opt:accuracy_km, claudia_engine_isp(), claudia_drop_uids(separation), claudia_shield_drop(ship:parts, claudia_drop_uids(separation)), opt:max_dv, ship:deltav:current)).
   if found:haskey("lat") {
     set extra:predicted_geo to deorbit_geo(found).

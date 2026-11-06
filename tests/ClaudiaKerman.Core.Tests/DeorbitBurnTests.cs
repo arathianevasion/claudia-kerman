@@ -387,6 +387,41 @@ namespace ClaudiaKerman.Core.Tests
             Assert.False(DeorbitBurn.Better(Burn(9000, 60, 1), Burn(300, 60.5, 1), 5));
         }
 
+        private static string Under(DeorbitPlan plan, double limit)
+        {
+            return plan.DeltaV <= limit ? null : "needs " + plan.DeltaV + " at " + plan.BurnUt;
+        }
+
+        [Fact]
+        public void A_chain_of_near_ties_does_not_walk_the_choice_away_from_the_cheapest()
+        {
+            var burns = new System.Collections.Generic.List<DeorbitPlan> { Burn(900, 100, 1), Burn(500, 100.9, 1), Burn(300, 101.8, 1), Burn(100, 102.7, 1) };
+            Assert.Equal(500, DeorbitBurn.Choose(burns, 5, plan => null).BurnUt);
+        }
+
+        [Fact]
+        public void When_the_earlier_of_a_near_tie_is_over_budget_the_cheapest_flies_or_is_the_one_quoted()
+        {
+            var burns = new System.Collections.Generic.List<DeorbitPlan> { Burn(500, 100.4, 1), Burn(3000, 99.8, 1) };
+            Assert.Equal(500, DeorbitBurn.Choose(burns, 5, plan => Under(plan, 200)).BurnUt);
+            var fits = DeorbitBurn.Choose(burns, 5, plan => Under(plan, 100));
+            Assert.Equal(3000, fits.BurnUt);
+            Assert.Null(fits.Error);
+            var over = DeorbitBurn.Choose(burns, 5, plan => Under(plan, 90));
+            Assert.Equal(3000, over.BurnUt);
+            Assert.Equal("needs 99.8 at 3000", over.Error);
+        }
+
+        [Fact]
+        public void A_pass_that_reaches_the_target_is_not_dropped_when_the_budget_runs_short()
+        {
+            // An inclined orbit and a target at the edge of its track: over two turns of the body most passes can't reach it, and
+            // their refining runs the full count; those that can must still get their turn.
+            var plan = Find(5.9, KscLng, Circular(inclinationDeg: 6), maxWait: 2 * ReentrySim.RotationPeriod);
+            Assert.Null(plan.Error);
+            Assert.InRange(plan.ErrorKm, 0, 5);
+        }
+
         [Fact]
         public void A_burn_within_accuracy_beats_any_outside_it_however_cheap()
         {
