@@ -60,7 +60,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void Deorbit_and_reentry_cue_only_once_nothing_refuses_them()
         {
             var deorbit = Source("deorbit");
-            Before(deorbit, "return claudia_finish(ctx, false, short, extra).", "addons:claudia:shipsystems(\"entry\")");
+            Before(deorbit, "return claudia_finish(ctx, false, found:error, extra).", "addons:claudia:shipsystems(\"entry\")");
             Before(deorbit, "addons:claudia:shipsystems(\"entry\")", "local flown is");
             var reentry = Source("reentry");
             Before(reentry, "needs a lit engine (reentry never stages)", "addons:claudia:shipsystems(\"entry\")");
