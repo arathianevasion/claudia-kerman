@@ -24,7 +24,29 @@ namespace ClaudiaKerman.Adapter
         /// <see cref="Read"/> stamped with the active Mission's Time versus delta-v and margin (#733, #739), for the block calls and the
         /// Planning Tools bridge: a window "next" then picks plan_transfer's window. No Mission, the defaults.
         /// </summary>
-        public static GameSnapshot ReadForMission(Vessel vessel) { return MissionView.Stamp(Read(vessel), MissionDriver.Current != null ? MissionDriver.Current.View : null); }
+        public static GameSnapshot ReadForMission(Vessel vessel)
+        {
+            var snapshot = MissionView.Stamp(Read(vessel), MissionDriver.Current != null ? MissionDriver.Current.View : null);
+            // The Mission's view gets the record a frame later; a block test has no Mission at all.
+            if (snapshot.RecordedPlane.Length == 0) snapshot.RecordedPlane = MissionDriver.AimedPlane;
+            snapshot.BiomeLatitudesOf = BiomeLatitudesOf;
+            return snapshot;
+        }
+
+        /// <summary>Each body's biome latitudes, surveyed once: they don't change in a game (#806).</summary>
+        private static readonly Dictionary<string, IDictionary<string, double>> BiomeLatitudesRead = new Dictionary<string, IDictionary<string, double>>();
+
+        /// <summary>The body's <see cref="ClaudiaKerman.Core.Tools.BiomeLatitudes"/>, asked by a block's step, on the main thread, only when a leg or the goal names a biome. A map not loaded yet is read again next time.</summary>
+        private static IDictionary<string, double> BiomeLatitudesOf(string name)
+        {
+            IDictionary<string, double> table;
+            if (BiomeLatitudesRead.TryGetValue(name, out table)) return table;
+            var body = FlightGlobals.Bodies.FirstOrDefault(b => b.bodyName == name);
+            if (body == null) return null;
+            table = ClaudiaKerman.Core.Tools.BiomeLatitudes.Survey((lat, lng) => PlanningBody.BiomeAt(body, lat, lng));
+            if (table.Count > 0) BiomeLatitudesRead[name] = table;
+            return table;
+        }
 
         /// <summary>
         /// The Encounter Watch's reading (#770): the time, the craft's situation and KSP's own orbit for it, read at warp with no parts.

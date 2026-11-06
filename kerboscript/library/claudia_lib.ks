@@ -2343,47 +2343,6 @@ function claudia_geo {
   return lexicon("lat", round(landing:lat, 4), "lng", round(landing:lng, 4)).
 }
 
-// Coordinate descent: lowers cost(x) over the list of numbers x, one coordinate at a time, starting
-// with steps (one per coordinate) and stepping on while that helps; when no step helps, every step
-// halves, up to rounds times. Stops early once the cost is at most good, or after 400 tries.
-// Returns lexicon("x", the best list, "cost", its cost).
-function claudia_descend {
-  parameter cost, x, steps, rounds, good.
-  local best is x:copy.
-  local best_cost is cost(best).
-  local step is steps:copy.
-  local tries is 1.
-  local halvings is 0.
-  until halvings >= rounds or best_cost <= good or tries >= 400 {
-    local moved is false.
-    for i in range(best:length) {
-      for sign in list(1, -1) {
-        local going is true.
-        until not going or best_cost <= good or tries >= 400 {
-          local trial is best:copy.
-          set trial[i] to best[i] + sign * step[i].
-          local trial_cost is cost(trial).
-          set tries to tries + 1.
-          if trial_cost < best_cost {
-            set best to trial.
-            set best_cost to trial_cost.
-            set moved to true.
-          } else {
-            set going to false.
-          }
-        }
-      }
-    }
-    if not moved {
-      for i in range(step:length) {
-        set step[i] to step[i] / 2.
-      }
-      set halvings to halvings + 1.
-    }
-  }
-  return lexicon("x", best, "cost", best_cost).
-}
-
 // The first patch of orb's path (orb itself or a later one) around dest:
 // lexicon("orbit", that patch, "soi_ut", UT it begins), or "none" if the path never gets there.
 function claudia_patch {
@@ -2428,14 +2387,38 @@ function claudia_burn_options {
 
 // Flies nd with exec_node (max_residual as claudia_burn_options), counting its delta-v as the block's. Returns exec_node's result.
 function claudia_burn {
-  parameter ctx, nd, max_residual is -1.
-  local burned is exec_node(claudia_burn_options(ctx, nd, max_residual)).
+  parameter ctx, nd, max_residual is -1, stop_at_round is false.
+  local flight is claudia_burn_options(ctx, nd, max_residual).
+  if stop_at_round {
+    set flight:stop_at_min to "ecc".
+  }
+  local burned is exec_node(flight).
   set ctx:dv_used to ctx:dv_used + burned:dv_used.
   claudia_note_dropped(ctx, burned).
   // exec_node's staging dropped parts on purpose; don't count them as lost.
   set ctx:parts to ship:parts:length.
   claudia_restart_clock(ctx).
   return burned.
+}
+
+// The plane option as the mod reads it (#788): a body by name, a vessel by its plane; "" or why it can't be used. Pure.
+function claudia_plane_ask {
+  parameter plane.
+  if plane:istype("Body") {
+    return plane:name.
+  }
+  if plane:istype("Vessel") {
+    return lexicon("inc", plane:orbit:inclination, "lan", plane:orbit:lan, "name", plane:name, "status", plane:status).
+  }
+  return plane.
+}
+
+function claudia_plane_unreadable {
+  parameter plane.
+  if plane:istype("Scalar") or plane:istype("String") or plane:istype("Body") or plane:istype("Vessel") {
+    return "".
+  }
+  return "plane must be " + char(34) + "auto" + char(34) + ", a number, a body or a vessel, not " + plane.
 }
 
 // ---- Course Corrections: shared by transfer_to and return ----

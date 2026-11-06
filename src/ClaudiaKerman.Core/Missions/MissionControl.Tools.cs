@@ -254,6 +254,7 @@ namespace ClaudiaKerman.Core.Missions
                 else
                     turn.RepeatStop = allRepeats && !planWaits;
                 turn.PlanOnly = !turn.PlanOnly && allRepeats && planWaits;
+                NoteSitePicked(mission, step);
                 for (var i = 0; i < step.Calls.Count; i++)
                 {
                     var call = step.Calls[i];

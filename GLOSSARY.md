@@ -77,7 +77,7 @@ The moment a maneuver node's burn lights its engines: ahead of the node by about
 _Avoid_: node time, burn time (the burn's length)
 
 **Course Correction**:
-A burn between departure and arrival that trims the predicted arrival at a body or vessel to the target periapsis or closest approach, and optionally to the target arrival inclination.
+A burn between departure and arrival that trims the predicted arrival at a body or vessel to the target periapsis or closest approach, and optionally to the target arrival inclination or, with the periapsis held, a landing point along the track (#793).
 _Avoid_: mid-course correction, MCC
 
 **Broken-plane transfer**:
@@ -103,6 +103,14 @@ _Avoid_: flyby, orbit change (one burn, not a transfer)
 **Capture**:
 The arrival burn of a transfer: circular at the target periapsis round a body, or matching the target orbit's velocity. A transfer solved with capture is the cheapest departure and capture together; without, the cheapest departure alone.
 _Avoid_: insertion, orbit insertion
+
+**Arrival plane**:
+The plane and direction of travel a transfer should arrive in, set on the approach, inside the target's sphere of influence, where any plane containing the approach direction is nearly free (#788). `transfer_to`'s `plane` picks it: Claudia's value, a Target Vessel orbiting the arrival body, the next leg's landing site, the next leg's moon, or none. A pole or a biome, named by a leg or the Mission Goal, is a landing site: 90 degrees at a pole or polar biome, another biome's latitude where the game's map gives one (#806). A body or vessel gives its whole plane in its own direction; a number or a site gives an inclination only, the crossing point free. Core records it for `capture`. The Delta-v Map's `polar:` row prices a polar arrival flown this way, an upper bound fitted to the flight's solves; it adds no allowance for any other plane (ADR 0016).
+_Avoid_: capture plane, target plane
+
+**`capture`**:
+The Building Block that flies the Capture from inside the arrival body's sphere of influence: a circular orbit at `alt` in the recorded arrival plane. A tilt the approach left over it burns the cheaper way, folded into the burn at periapsis or at a high ellipse's apoapsis; over `max_plane_dv` it captures in the plane it has and reports the leftover without failing. With a Target Vessel orbiting there it circularizes at the vessel's periapsis altitude in its plane, so `rendezvous` only has to phase.
+_Avoid_: insertion burn
 
 **Transfer Window**:
 A departure time and arrival time for a transfer to another planet, or to a moon of the craft's planet (#647), with what it costs: the ejection from the parking orbit and, with Capture, the capture at the target periapsis. The window search gives two, Soonest and Optimal. Between bodies with the same parent (the body the craft departs from and the target, or the target's parent: Kerbin to Duna, Kerbin to Ike through Duna) the player picks one (#686): on the Craft Check card before Start, again for each revised Mission Plan, and (#782) at the first Sequence Plan of a departure no pick covers, such as a return from Duna flown straight on: a landed craft's ascent, otherwise the departure itself. Each time it is for the craft as it is then, before Approval. The pick is Soonest or Optimal, not a date, and it is never Auto Mode's to make. Within one sphere of influence (Kerbin to the Mun, a moon back to its planet, the Mun or Minmus home) the Mission Setting Time versus delta-v picks one: Fastest takes Soonest, Most efficient takes Optimal, Balanced takes Soonest unless Optimal saves at least 10%.

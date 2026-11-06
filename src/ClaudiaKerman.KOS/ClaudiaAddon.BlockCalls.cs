@@ -29,7 +29,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("ORBITBURN", new OneArgsSuffix<Lexicon, Lexicon>(OrbitBurn,
                 "Core Library only (change_orbit): solve_burn's burn to goal (with value, at, target, pe, ap, of, direction as it needs) on the orbit as it is now; lexicon error, ut, prograde, normal, radial, dv, burn_time, wanted (element: figure)"));
             AddSuffix("CORRECTIONBURN", new OneArgsSuffix<Lexicon, Lexicon>(CorrectionBurn,
-                "Core Library only (transfer_to, return, tune_pe): the least burn from earliest_ut to latest_ut that arrives at target (a body's name) at target_pe and, if given, target_inc; lexicon error, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted"));
+                "Core Library only (transfer_to, return, tune_pe): the least burn from earliest_ut to latest_ut that arrives at target (a body's name) at target_pe and, if given, target_inc or a landing at lat, lng; lexicon error, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted, and for a landing lat, lng, landing_ut, error_km"));
             AddSuffix("LAUNCHWINDOW", new OneArgsSuffix<Lexicon, Lexicon>(LaunchWindow,
                 "Core Library only (launch): when the pad next passes under the plane of inc and lan (degrees); lexicon error, wait (s), ut, north, inc (negative southbound), heading"));
             AddSuffix("LAUNCHHEADING", new OneArgsSuffix<Lexicon, Lexicon>(LaunchHeading,
@@ -56,6 +56,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (transfer_to): the cheapest departure to target (a moon's name) arriving at target_pe, or to an orbit (target_sma, target_ecc, ...; mode rendezvous or intercept), capture true or false, within one synodic period from earliest_ut or window (to latest_ut, refusing over max_dv); lexicon error, ut, prograde, normal, radial, dv, arrival_dv, encounter_ut, arrival_ut, target_pe_actual, ..."));
             AddSuffix("TRANSFERSTEP", new OneArgsSuffix<Lexicon, Lexicon>(TransferStep,
                 "Core Library only (transfer_to): its next step from phase (start first) with its options and what the last step carried; lexicon error, do (burn, wait or done), kind, ut, prograde, normal, radial, max_residual, fail_prefix, keep_going, report, max_duration, watch, carry"));
+            AddSuffix("CAPTURESTEP", new OneArgsSuffix<Lexicon, Lexicon>(CaptureStep,
+                "Core Library only (capture): its next step from phase (start first) with its options and what the last step carried; lexicon as TRANSFERSTEP's"));
             AddSuffix("ENCOUNTERWATCH", new OneArgsSuffix<Lexicon>(EncounterWatchArm,
                 "Core Library only (transfer_to): arms the Encounter Watch for a wait with TRANSFERSTEP's watch; an empty lexicon watches nothing"));
             AddSuffix("ENCOUNTERWATCHDROPPED", new Suffix<BooleanValue>(EncounterWatchPoll,
@@ -346,14 +348,27 @@ namespace ClaudiaKerman.KOS
             // The solve's time against ADR 0010's budget (about 100 ms, under 200 ms from the grid), and the node.
             return (Lexicon)Guarded("RETURNBURN", () =>
             {
-                node = BlockCalls.ReturnBurn(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
+                var vessel = shared.Vessel;
+                var ask = KosValues.ToDictionary(input);
+                // Aimed at a landing (#792), the predictor flies the planet's air: the craft is still at the moon.
+                node = ask.ContainsKey("lat")
+                    ? BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(vessel.mainBody.referenceBody), new ReentryCraft(vessel))
+                    : BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel));
                 return KosValues.FromPlain(node);
             }, () => node.ContainsKey("dv")
                 ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); {5} Pe {6:0} m, inclination {7:0.00}, leaving the moon at UT {8:0}{9}{10}",
                     node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["planet"], node["pe_predicted"], node["inc_predicted"], node["soi_ut"],
-                    ((bool)node["from_grid"] ? " (from the grid)" : "") + (node["finished_by"] as string == "" ? "" : " (the SQP stopped short: finished by " + node["finished_by"] + ")"),
-                    node["error"] as string == "" ? "" : "; " + node["error"])
+                    ((bool)node["from_grid"] ? " (from the grid)" : "") + (node["finished_by"] as string == "" ? "" : " (the SQP stopped short: finished by " + node["finished_by"] + ")")
+                        + ((double)node["error_km"] < 0 ? "" : string.Format(CultureInfo.InvariantCulture, "; aimed {0:0.00} km from the target, +{1:0.00} m/s, spread {2:0} km", node["error_km"], node["aim_dv"], node["spread_km"])),
+                    node["error"] as string == "" ? "" : "; " + node["error"]) + PlanLine(node)
                 : (string)node["error"]);
+        }
+
+        /// <summary>The planned-orbit line Core wrote for the call (#791), after the log's own account; "" when the call gave none.</summary>
+        private static string PlanLine(System.Collections.Generic.IDictionary<string, object> result)
+        {
+            object line;
+            return result.TryGetValue("plan_log", out line) ? " " + line : "";
         }
 
         /// <summary><c>ADDONS:CLAUDIA:RETURNMISS</c> (#759, ADR 0014): whether the path flown is the return asked (<see cref="BlockCalls.ReturnMiss"/>), pure.</summary>
@@ -424,6 +439,21 @@ namespace ClaudiaKerman.KOS
             return (Lexicon)Guarded("TRANSFERSTEP", () =>
             {
                 step = BlockCalls.TransferStep(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
+                // Core's record of the plane it aims for, for capture (#788). A timing ask aims for nothing.
+                if (step.ContainsKey("aimed_plane")) MissionDriver.RecordAimedPlane((string)step["aimed_plane"]);
+                return KosValues.FromPlain(step);
+            }, () => (string)step["error"] != "" ? (string)step["error"]
+                : string.Format(CultureInfo.InvariantCulture, "{0} {1} at UT {2:0.0}, prograde {3:0.00}, normal {4:0.00}, radial {5:0.00} m/s; next {6}; {7}",
+                    step["do"], step["kind"], step["ut"], step["prograde"], step["normal"], step["radial"],
+                    ((System.Collections.Generic.IDictionary<string, object>)step["carry"])["phase"], KosValues.Format(step["report"])));
+        }
+
+        private Lexicon CaptureStep(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> step = null;
+            return (Lexicon)Guarded("CAPTURESTEP", () =>
+            {
+                step = BlockCalls.CaptureStep(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
                 return KosValues.FromPlain(step);
             }, () => (string)step["error"] != "" ? (string)step["error"]
                 : string.Format(CultureInfo.InvariantCulture, "{0} {1} at UT {2:0.0}, prograde {3:0.00}, normal {4:0.00}, radial {5:0.00} m/s; next {6}; {7}",
@@ -462,21 +492,36 @@ namespace ClaudiaKerman.KOS
             }, () => found["error"] as string == "" ? found["name"] + " round " + found["body"] : (string)found["error"]);
         }
 
+        /// <summary>The body of that name, or null.</summary>
+        private static CelestialBody BodyNamed(string name)
+        {
+            return FlightGlobals.Bodies.FirstOrDefault(b => string.Equals(b.bodyName, name, StringComparison.OrdinalIgnoreCase));
+        }
+
         private Lexicon CorrectionBurn(Lexicon input)
         {
             System.Collections.Generic.IDictionary<string, object> node = null;
             return (Lexicon)Guarded("CORRECTIONBURN", () =>
             {
-                node = BlockCalls.CorrectionBurn(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
+                var vessel = shared.Vessel;
+                var ask = KosValues.ToDictionary(input);
+                // Aimed at a landing (#793), the predictor flies the air of the planet aimed at: the craft may still be at the moon, or round the star. No such body: Core says why.
+                object target;
+                ask.TryGetValue("target", out target);
+                var planet = BodyNamed(target as string);
+                node = ask.ContainsKey("lat") && planet != null
+                    ? BlockCalls.CorrectionBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(planet), new ReentryCraft(vessel))
+                    : BlockCalls.CorrectionBurn(ask, SnapshotReader.ReadForMission(vessel));
                 return KosValues.FromPlain(node);
-            }, () => !node.ContainsKey("dv") ? (string)node["error"]
+            }, () => (!node.ContainsKey("dv") ? (string)node["error"]
                 : node.ContainsKey("distance_predicted")
                 ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); closest approach {5:0.0} m at {6:0.000} m/s{7}",
                     node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["distance_predicted"], node["relative_speed_predicted"],
                     node["error"] as string == "" ? "" : "; " + node["error"])
-                : string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); Pe {5:0} m, inclination {6:0.00}{7}",
+                : string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); Pe {5:0} m, inclination {6:0.00}{7}{8}",
                     node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["pe_predicted"], node["inc_predicted"],
-                    node["error"] as string == "" ? "" : "; " + node["error"]));
+                    node.ContainsKey("error_km") ? string.Format(CultureInfo.InvariantCulture, "; aimed {0:0.00} km from the target", node["error_km"]) : "",
+                    node["error"] as string == "" ? "" : "; " + node["error"])) + PlanLine(node));
         }
 
         private Lexicon LaunchWindow(Lexicon input)
@@ -584,7 +629,7 @@ namespace ClaudiaKerman.KOS
                 found = BlockCalls.DeorbitBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(),
                     new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
                 return KosValues.FromPlain(found);
-            }, () => Landing(found));
+            }, () => Landing(found) + PlanLine(found));
         }
 
         private Lexicon ReentryImpact(Lexicon input)
@@ -594,10 +639,13 @@ namespace ClaudiaKerman.KOS
             {
                 var vessel = shared.Vessel;
                 var ask = KosValues.ToDictionary(input);
+                // Given a path round another body (return's, with the craft still at the moon), that body's air (#793).
+                object named;
+                ask.TryGetValue("orbit_body", out named);
                 landing = BlockCalls.ReentryImpact(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(),
-                    new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
+                    new ReentryAir(BodyNamed(named as string) ?? vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
                 return KosValues.FromPlain(landing);
-            }, () => Landing(landing));
+            }, () => Landing(landing) + PlanLine(landing));
         }
 
         /// <summary>A predicted landing for the log, so predicted against actual can be read back from KSP.log.</summary>

@@ -27,7 +27,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [Fact]
         public void The_options_take_the_spec_defaults()
         {
-            Assert.Equal("required|auto|5|none|auto", One("deorbit_defaults():values:join(\"|\") + \"|\" + claudia_options(lexicon(), deorbit_defaults(), \"auto\"):opt:max_duration"));
+            Assert.Equal("required|auto|5|none|auto|auto", One("deorbit_defaults():values:join(\"|\") + \"|\" + claudia_options(lexicon(), deorbit_defaults(), \"auto\"):opt:max_duration"));
         }
 
         [Theory]
@@ -122,17 +122,17 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void The_burn_search_is_asked_for_the_site_window_ground_accuracy_and_isp()
         {
             var printed = KosHarness.Run(CoreLibrary.Bundle(
-                "local q is deorbit_query(lexicon(\"lat\", -0.0972, \"lng\", -74.5577), 1240, 21549.425, -150, 10, 320, list(), list()).\n"
-                + "print q:lat. print q:lng. print q:earliest_ut. print q:max_wait. print q:ground_alt. print q:accuracy_km. print q:isp. print q:leave_out:length.")).ToArray();
+                "local q is deorbit_query(lexicon(\"lat\", -0.0972, \"lng\", -74.5577), 1240, 21549.425, -150, 10, 320, list(), list(), \"auto\", 545).\n"
+                + "print q:lat. print q:lng. print q:earliest_ut. print q:max_wait. print q:ground_alt. print q:accuracy_km. print q:isp. print q:leave_out:length. print q:max_dv. print q:dv_left.")).ToArray();
             // Water's ground is the sea, not the sea bed.
-            Assert.Equal(new[] { "-0.0972", "-74.5577", "1240", "21549.425", "0", "10", "320", "0" }, printed);
+            Assert.Equal(new[] { "-0.0972", "-74.5577", "1240", "21549.425", "0", "10", "320", "0", "auto", "545" }, printed);
         }
 
         [Fact]
         public void Parts_to_separate_are_left_out_of_the_burn_search_and_the_burn_does_not_lighten_what_stays()
         {
             var printed = KosHarness.Run(CoreLibrary.Bundle(
-                "local q is deorbit_query(lexicon(\"lat\", 0, \"lng\", 0), 1240, 3600, 0, 10, 320, list(\"11\", \"12\"), list()).\n"
+                "local q is deorbit_query(lexicon(\"lat\", 0, \"lng\", 0), 1240, 3600, 0, 10, 320, list(\"11\", \"12\"), list(), 90, 0).\n"
                 + "print q:leave_out:join(\",\"). print q:isp.")).ToArray();
             // The burn's propellant is in the stage it drops: the craft that re-enters weighs what it does now.
             Assert.Equal(new[] { "11,12", "0" }, printed);
@@ -163,12 +163,13 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Theory]
-        [InlineData(80, 500, "")]
-        [InlineData(80, 0, "")]
-        [InlineData(80, 50, "not enough delta-v: the burn needs 80 m/s, 50 m/s left")]
-        public void A_burn_over_the_delta_v_left_fails_before_burning(double dv, double left, string reason)
+        [InlineData("lexicon(\"target\", \"ksc\", \"max_dv\", 150)", "")]
+        [InlineData("lexicon(\"target\", \"ksc\", \"max_dv\", \"auto\")", "")]
+        [InlineData("lexicon(\"target\", \"ksc\", \"max_dv\", 0)", "max_dv must be 'auto' or m/s above 0, not 0")]
+        [InlineData("lexicon(\"target\", \"ksc\", \"max_dv\", \"none\")", "max_dv must be 'auto' or m/s above 0, not 'none'")]
+        public void Max_dv_is_auto_or_m_s_above_0(string options, string reason)
         {
-            Assert.Equal(reason, One("deorbit_short_of_dv(" + dv + ", " + left + ")"));
+            Assert.Equal(reason, Unreadable(options));
         }
 
         // ---- the heat shield's drop (#476) ----
@@ -239,7 +240,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [Fact]
         public void The_burn_search_and_the_after_burn_ask_both_carry_shield_drop()
         {
-            Assert.Equal(new[] { "shield" }, Printed("print deorbit_query(lexicon(\"lat\", 0, \"lng\", 0), 1240, 3600, 0, 10, 320, list(), list(\"shield\")):shield_drop:join(\",\")."));
+            Assert.Equal(new[] { "shield" }, Printed("print deorbit_query(lexicon(\"lat\", 0, \"lng\", 0), 1240, 3600, 0, 10, 320, list(), list(\"shield\"), 90, 0):shield_drop:join(\",\")."));
             var source = CoreLibrary.Files.Single(f => f.Name == "deorbit").Source;
             Assert.Equal(2, source.Split("claudia_shield_drop(ship:parts, claudia_drop_uids(separation))").Length - 1);
         }

@@ -115,6 +115,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is GoToVessel) GoToRequested();
             else if (input is ClaudiaKilled) Killed(((ClaudiaKilled)input).VesselId, ((ClaudiaKilled)input).Traced);
             else if (input is KosRunBlocked) RunBlocked((KosRunBlocked)input);
+            else if (input is ArrivalPlaneAimed) ArrivalPlaneRecorded((ArrivalPlaneAimed)input);
             else if (input is KosBlockStarted) BlockStarted((KosBlockStarted)input);
             else if (input is KosBlockEnded) BlockEnded((KosBlockEnded)input);
             else if (input is KosRcsSwitched) RcsSwitched((KosRcsSwitched)input);
@@ -1767,7 +1768,7 @@ namespace ClaudiaKerman.Core.Missions
             var start = LiveReadings.DeltaVLeftOf(snapshot);
             findings.StartDeltaV = start ?? 0;
             findings.Crossings = PredictedCrossings.Find(plan.TelemetryChecks, plan.ExpectedDeltaV, start);
-            findings.ShortDuration = BurnPoints.ShortOf(plan, snapshot, _ut);
+            findings.ShortDuration = BurnPoints.ShortOf(plan, snapshot, _ut, _body);
             return findings;
         }
 
@@ -2384,6 +2385,8 @@ namespace ClaudiaKerman.Core.Missions
                 view.PlanLegs = mission.Plan != null ? mission.Plan.Sequences : null;
                 view.ProcessorPartId = mission.ProcessorPartId;
                 view.ChuteAllocation = mission.Chutes;
+                view.ArrivalPlane = mission.ArrivalPlane;
+                view.PickedSite = mission.PickedSite;
                 if (mission.Stage == MissionStage.Running && mission.PendingSequence != null)
                 {
                     view.RunStatus = "Running: " + mission.PendingSequence.Name + (mission.RunningChild.Length > 0 ? " on " + mission.RunningChild : "");

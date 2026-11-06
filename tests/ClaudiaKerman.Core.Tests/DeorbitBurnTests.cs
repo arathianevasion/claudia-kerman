@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
+using System.Globalization;
 using ClaudiaKerman.Core.Tools;
 using Xunit;
 
@@ -25,9 +26,9 @@ namespace ClaudiaKerman.Core.Tests
             return Conic.FromState(ReentrySim.Mu, new Vec3(r, 0, 0), new Vec3(0, v * Math.Cos(i), v * Math.Sin(i)), 0);
         }
 
-        private static DeorbitPlan Find(double lat, double lng, Conic orbit = null, double maxWait = ReentrySim.RotationPeriod, double atmosphere = ReentrySim.AtmTop)
+        private static DeorbitPlan Find(double lat, double lng, Conic orbit = null, double maxWait = ReentrySim.RotationPeriod, double atmosphere = ReentrySim.AtmTop, double accuracyKm = 5, double earliest = 120)
         {
-            var ask = new DeorbitAsk { TargetLatitude = lat, TargetLongitude = lng, EarliestUt = 120, MaxWait = maxWait, AccuracyKm = 5 };
+            var ask = new DeorbitAsk { TargetLatitude = lat, TargetLongitude = lng, EarliestUt = earliest, MaxWait = maxWait, AccuracyKm = accuracyKm, DeltaVLeft = 5000 };
             return DeorbitBurn.Find(ReentrySim.Kerbin(atmosphere), orbit ?? Circular(), ask, new ReentrySim.Atmosphere(), new ReentrySim.Capsule(), ReentrySim.Frame());
         }
 
@@ -70,7 +71,8 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void A_target_beside_the_ground_track_is_reached_with_a_normal_part()
         {
-            var plan = Find(1, KscLng);
+            // A tight band: in a wider one the search spends its width on less normal part (#794).
+            var plan = Find(1, KscLng, accuracyKm: 0.5);
             Assert.Null(plan.Error);
             Assert.InRange(plan.ErrorKm, 0, 0.5);
             // North of a prograde equatorial orbit: along its angular momentum.
@@ -81,12 +83,12 @@ namespace ClaudiaKerman.Core.Tests
         public void In_a_mirrored_frame_the_normal_part_keeps_its_real_sign()
         {
             // The same orbit and target seen in a frame with y flipped: the node's normal is the real angular momentum, so its sign holds.
-            var plain = Find(1, KscLng);
+            var plain = Find(1, KscLng, accuracyKm: 0.5);
             Vec3 r, v;
             Circular().State(0, out r, out v);
             var flipped = Conic.FromState(ReentrySim.Mu, new Vec3(r.X, -r.Y, r.Z), new Vec3(v.X, -v.Y, v.Z), 0);
             var mirrored = new BodyFrame { LonOffset = 0, Handed = -1, Ut = 0, RotationPeriod = ReentrySim.RotationPeriod };
-            var ask = new DeorbitAsk { TargetLatitude = 1, TargetLongitude = KscLng, EarliestUt = 120, MaxWait = ReentrySim.RotationPeriod };
+            var ask = new DeorbitAsk { TargetLatitude = 1, TargetLongitude = KscLng, EarliestUt = 120, MaxWait = ReentrySim.RotationPeriod, AccuracyKm = 0.5, DeltaVLeft = 5000 };
             var plan = DeorbitBurn.Find(ReentrySim.Kerbin(), flipped, ask, new ReentrySim.Atmosphere(), new ReentrySim.Capsule(), mirrored);
             Assert.Null(plan.Error);
             Assert.InRange(plan.ErrorKm, 0, 0.5);
@@ -97,7 +99,7 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void An_inclined_orbit_lands_on_its_target_too()
         {
-            var plan = Find(KscLat, KscLng, Circular(inclinationDeg: 6));
+            var plan = Find(KscLat, KscLng, Circular(inclinationDeg: 6), accuracyKm: 0.5);
             Assert.Null(plan.Error);
             Assert.InRange(plan.ErrorKm, 0, 0.5);
         }
@@ -128,7 +130,7 @@ namespace ClaudiaKerman.Core.Tests
         public void It_runs_in_milliseconds()
         {
             // The deorbit block's search to KSC from the 80 km orbit, and one too far off the track (every pass refined). Measured
-            // at about 35 ms alone in a Debug build; the budget is about 15 times that.
+            // at about 280 ms for the two in a Debug build since #794 scans every pass (about 55 ms in Release).
             Timing.Within(500, () =>
             {
                 Find(KscLat, KscLng);
@@ -202,7 +204,7 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void The_block_call_gives_the_burn_as_node_components_and_its_landing()
         {
-            var found = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "ground_alt", 0.0, "accuracy_km", 5.0),
+            var found = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "ground_alt", 0.0, "accuracy_km", 5.0, "dv_left", 5000.0),
                 Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
             Assert.Equal("", found["error"]);
             Assert.True((double)found["prograde"] < 0);
@@ -218,9 +220,32 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void The_deorbit_call_logs_the_planned_orbit_after_the_burn_and_the_frame()
+        {
+            var found = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "ground_alt", 70.0, "dv_left", 5000.0),
+                Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            var line = (string)found["plan_log"];
+            Assert.StartsWith("[plan-vs-flown] DEORBITBURN planned orbit: Pe ", line);
+            // The entry periapsis is 30 % of the way up the atmosphere; the burn is from an 80 km circle, so the apoapsis stays 80 km.
+            Assert.Contains("Pe " + Math.Round(0.3 * ReentrySim.AtmTop).ToString(System.Globalization.CultureInfo.InvariantCulture) + " m, Ap 80000 m", line);
+            Assert.Contains(", period ", line);
+            Assert.Contains(", Pe at UT ", line);
+            Assert.Contains("frame LonOffset 0.0000 deg, handed 1, ground_alt 70 m", line);
+        }
+
+        [Fact]
+        public void The_impact_call_logs_the_orbit_it_predicted_and_the_frame()
+        {
+            var flown = BlockCalls.ReentryImpact(Ask("lat", 0.0, "lng", 0.0, "ground_alt", 0.0), Snapshot(pe: 30000), new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            var line = (string)flown["plan_log"];
+            Assert.StartsWith("[plan-vs-flown] REENTRYIMPACT planned orbit: Pe 30000 m, Ap 80000 m, period ", line);
+            Assert.Contains("frame LonOffset 0.0000 deg, handed 1, ground_alt 0 m", line);
+        }
+
+        [Fact]
         public void The_block_call_over_accuracy_gives_the_reason_and_the_best_landing()
         {
-            var found = BlockCalls.DeorbitBurn(Ask("lat", 20.0, "lng", KscLng, "earliest_ut", 120.0), Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            var found = BlockCalls.DeorbitBurn(Ask("lat", 20.0, "lng", KscLng, "earliest_ut", 120.0, "dv_left", 5000.0), Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
             // The default accuracy, 5 km since #462 (10 before).
             Assert.Contains("over accuracy_km 5.0", (string)found["error"]);
             Assert.True((double)found["error_km"] > 100);
@@ -301,9 +326,9 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True((double)kept["lng"] > (double)chuted["lng"]);
             Assert.True((double)kept["landing_ut"] < (double)chuted["landing_ut"]);
 
-            var deorbitChuted = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425),
+            var deorbitChuted = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "dv_left", 5000.0),
                 Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), craft);
-            var deorbitKept = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "chutes", false),
+            var deorbitKept = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "chutes", false, "dv_left", 5000.0),
                 Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), craft);
             Assert.Equal("", deorbitKept["error"]);
             Assert.NotEqual((double)deorbitChuted["dv"], (double)deorbitKept["dv"]);
@@ -337,7 +362,7 @@ namespace ClaudiaKerman.Core.Tests
         public void The_engines_isp_lightens_the_craft_after_the_burn_and_the_search_allows_for_it()
         {
             var orbit = Circular();
-            var ask = new DeorbitAsk { TargetLatitude = KscLat, TargetLongitude = KscLng, EarliestUt = 120, MaxWait = ReentrySim.RotationPeriod, Isp = 300 };
+            var ask = new DeorbitAsk { TargetLatitude = KscLat, TargetLongitude = KscLng, EarliestUt = 120, MaxWait = ReentrySim.RotationPeriod, Isp = 300, DeltaVLeft = 5000 };
             var plan = DeorbitBurn.Find(ReentrySim.Kerbin(), orbit, ask, new ReentrySim.Atmosphere(), new ReentrySim.Capsule(), ReentrySim.Frame());
             Assert.Null(plan.Error);
             Assert.InRange(plan.ErrorKm, 0, 0.5);
@@ -345,6 +370,257 @@ namespace ClaudiaKerman.Core.Tests
             Conic after;
             var heavy = FlyAgain(orbit, plan, out after);
             Assert.InRange(Km(heavy.Latitude, heavy.Longitude, KscLat, KscLng), 0.5, 20);
+        }
+
+        private static DeorbitPlan Burn(double ut, double dv, double errorKm)
+        {
+            return new DeorbitPlan { BurnUt = ut, DeltaV = dv, ErrorKm = errorKm };
+        }
+
+        [Fact]
+        public void Of_burns_within_accuracy_the_cheapest_is_chosen_not_the_earliest_or_the_most_accurate()
+        {
+            Assert.True(DeorbitBurn.Better(Burn(9000, 60, 4.5), Burn(300, 400, 0.01), 5));
+            Assert.False(DeorbitBurn.Better(Burn(300, 400, 0.01), Burn(9000, 60, 4.5), 5));
+            // A near tie in cost (under 1 m/s) goes to the earlier burn.
+            Assert.True(DeorbitBurn.Better(Burn(300, 60.5, 1), Burn(9000, 60, 1), 5));
+            Assert.False(DeorbitBurn.Better(Burn(9000, 60, 1), Burn(300, 60.5, 1), 5));
+        }
+
+        private static string Under(DeorbitPlan plan, double limit)
+        {
+            return plan.DeltaV <= limit ? null : "needs " + plan.DeltaV + " at " + plan.BurnUt;
+        }
+
+        [Fact]
+        public void A_chain_of_near_ties_does_not_walk_the_choice_away_from_the_cheapest()
+        {
+            var burns = new System.Collections.Generic.List<DeorbitPlan> { Burn(900, 100, 1), Burn(500, 100.9, 1), Burn(300, 101.8, 1), Burn(100, 102.7, 1) };
+            Assert.Equal(500, DeorbitBurn.Choose(burns, 5, plan => null).BurnUt);
+        }
+
+        [Fact]
+        public void When_the_earlier_of_a_near_tie_is_over_budget_the_cheapest_flies_or_is_the_one_quoted()
+        {
+            var burns = new System.Collections.Generic.List<DeorbitPlan> { Burn(500, 100.4, 1), Burn(3000, 99.8, 1) };
+            Assert.Equal(500, DeorbitBurn.Choose(burns, 5, plan => Under(plan, 200)).BurnUt);
+            var fits = DeorbitBurn.Choose(burns, 5, plan => Under(plan, 100));
+            Assert.Equal(3000, fits.BurnUt);
+            Assert.Null(fits.Error);
+            var over = DeorbitBurn.Choose(burns, 5, plan => Under(plan, 90));
+            Assert.Equal(3000, over.BurnUt);
+            Assert.Equal("needs 99.8 at 3000", over.Error);
+        }
+
+        [Fact]
+        public void A_pass_that_reaches_the_target_is_not_dropped_when_the_budget_runs_short()
+        {
+            // An inclined orbit and a target at the edge of its track: over two turns of the body most passes can't reach it, and
+            // their refining runs the full count; those that can must still get their turn.
+            var plan = Find(5.9, KscLng, Circular(inclinationDeg: 6), maxWait: 2 * ReentrySim.RotationPeriod);
+            Assert.Null(plan.Error);
+            Assert.InRange(plan.ErrorKm, 0, 5);
+        }
+
+        [Fact]
+        public void A_burn_within_accuracy_beats_any_outside_it_however_cheap()
+        {
+            Assert.True(DeorbitBurn.Better(Burn(9000, 800, 4.9), Burn(300, 20, 5.1), 5));
+            Assert.False(DeorbitBurn.Better(Burn(300, 20, 5.1), Burn(9000, 800, 4.9), 5));
+        }
+
+        [Fact]
+        public void Outside_accuracy_the_smallest_error_is_still_the_best_with_the_earlier_on_a_near_tie()
+        {
+            Assert.True(DeorbitBurn.Better(Burn(9000, 800, 8), Burn(300, 20, 30), 5));
+            Assert.True(DeorbitBurn.Better(Burn(300, 800, 8.2), Burn(9000, 20, 8), 5));
+            Assert.False(DeorbitBurn.Better(Burn(9000, 20, 8), Burn(300, 800, 8.2), 5));
+        }
+
+        [Fact]
+        public void The_cheapest_burn_within_accuracy_wins_over_the_most_accurate()
+        {
+            // From this orbit a pass near UT 5,300 costs about 325 m/s on the target; refining the four passes one prediction
+            // favoured took a 528 m/s burn at UT 16,689 instead.
+            var orbit = Eccentric();
+            var onTarget = Find(KscLat, KscLng, orbit, accuracyKm: 0.05);
+            Assert.InRange(onTarget.BurnUt, 5200, 5400);
+            Assert.InRange(onTarget.DeltaV, 320, 330);
+
+            // With the band to spend, it lands off the target for less delta-v, and an independent flight of it stays in the band.
+            var plan = Find(KscLat, KscLng, orbit);
+            Assert.Null(plan.Error);
+            Assert.InRange(plan.BurnUt, 5200, 5400);
+            Assert.InRange(plan.DeltaV, 300, onTarget.DeltaV - DeorbitBurnTieDv);
+            Assert.InRange(plan.ErrorKm, 1, 5);
+            Conic after;
+            var again = FlyAgain(orbit, plan, out after);
+            Assert.InRange(Km(again.Latitude, again.Longitude, KscLat, KscLng), 0, 5);
+
+            // A wider band buys more.
+            Assert.True(Find(KscLat, KscLng, orbit, accuracyKm: 20).DeltaV < plan.DeltaV - DeorbitBurnTieDv);
+        }
+
+        [Theory]
+        [InlineData(1500000)]
+        [InlineData(2000000)]
+        [InlineData(300000)]
+        public void No_narrow_window_finds_a_burn_cheaper_than_the_whole_window_does(double apoapsis)
+        {
+            var orbit = Eccentric(apoapsis);
+            var whole = Find(KscLat, KscLng, orbit);
+            Assert.Null(whole.Error);
+            Assert.InRange(whole.ErrorKm, 0, 5);
+            var slide = Math.Min(orbit.Period / 16, 600);
+            var hits = 0;
+            for (var start = 120.0; start < 120 + ReentrySim.RotationPeriod; start += slide)
+            {
+                var narrow = Find(KscLat, KscLng, orbit, maxWait: slide, earliest: start);
+                if (narrow.ErrorKm > 5) continue;
+                hits++;
+                Assert.True(whole.DeltaV <= narrow.DeltaV + DeorbitBurnTieDv, "UT " + narrow.BurnUt + " costs " + narrow.DeltaV + ", the whole window took " + whole.DeltaV);
+            }
+            Assert.True(hits > 0);
+        }
+
+        [Fact]
+        public void A_pass_one_prediction_would_overlook_is_found_rather_than_failing()
+        {
+            // From this orbit the first burn's landing, rotated round the orbit, says nothing near UT 7,000 is worth a look.
+            var plan = Find(KscLat, KscLng, Eccentric(2000000));
+            Assert.Null(plan.Error);
+            Assert.InRange(plan.BurnUt, 6900, 7100);
+        }
+
+        [Fact]
+        public void Burns_that_cost_the_same_take_the_first_pass_and_stay_on_the_target()
+        {
+            var plan = Find(KscLat, KscLng);
+            Assert.InRange(plan.BurnUt, 120, 120 + Circular().Period);
+            Assert.InRange(plan.ErrorKm, 0, 0.5);
+            // A wide band with nothing to save in it: not a burn 18 km off, a few seconds earlier.
+            var wide = Find(KscLat, KscLng, accuracyKm: 20);
+            Assert.InRange(wide.ErrorKm, 0, 0.5);
+        }
+
+        [Fact]
+        public void A_window_too_long_to_scan_is_searched_as_far_as_the_budget_and_the_failure_says_how_far()
+        {
+            // Twenty turns of the body, at 80 km: every pass would be over 200 refinements.
+            var plan = Find(20, KscLng, maxWait: 20 * ReentrySim.RotationPeriod);
+            var hours = Assert.Single(System.Text.RegularExpressions.Regex.Matches(plan.Error, @"in the next ([\d.]+) h")).Groups[1].Value;
+            Assert.InRange(double.Parse(hours, CultureInfo.InvariantCulture), 6, 12);
+        }
+
+        [Fact]
+        [Trait("Category", "Timing")]
+        public void A_long_window_is_bounded_too()
+        {
+            // At the prediction budget: measured at about 250 ms in a Debug build (about 50 ms in Release).
+            Timing.Within(500, () => Find(20, KscLng, maxWait: 20 * ReentrySim.RotationPeriod));
+        }
+
+        [Fact]
+        public void A_burn_over_max_dv_fails_before_burning_with_its_cost_and_when()
+        {
+            var cheapest = Find(KscLat, KscLng, Eccentric());
+            // The cheapest burn within accuracy, not the most accurate one's cost.
+            Assert.InRange(cheapest.DeltaV, 300, 324);
+            var ask = new DeorbitAsk
+            {
+                TargetLatitude = KscLat, TargetLongitude = KscLng, EarliestUt = 120, MaxWait = ReentrySim.RotationPeriod, AccuracyKm = 5,
+                MaxDv = cheapest.DeltaV - 1, DeltaVLeft = 5000,
+            };
+            var plan = DeorbitBurn.Find(ReentrySim.Kerbin(), Eccentric(), ask, new ReentrySim.Atmosphere(), new ReentrySim.Capsule(), ReentrySim.Frame());
+            Assert.StartsWith("the cheapest burn within accuracy_km needs " + Math.Round(cheapest.DeltaV, 1).ToString("0.#", CultureInfo.InvariantCulture) + " m/s (at UT "
+                + Math.Round(cheapest.BurnUt).ToString("0", CultureInfo.InvariantCulture) + "), over max_dv ", plan.Error);
+            Assert.NotNull(plan.Landing);
+            ask.MaxDv = cheapest.DeltaV + 1;
+            Assert.Null(DeorbitBurn.Find(ReentrySim.Kerbin(), Eccentric(), ask, new ReentrySim.Atmosphere(), new ReentrySim.Capsule(), ReentrySim.Frame()).Error);
+        }
+
+        [Fact]
+        public void Auto_max_dv_is_the_delta_v_left_less_the_larger_of_50_m_s_or_10_percent_and_a_powered_landing_s_need()
+        {
+            Assert.Equal(450, DeorbitBurn.AutoMaxDv(500, 0), 9);
+            Assert.Equal(450 - 120, DeorbitBurn.AutoMaxDv(500, 120), 9);
+            Assert.Equal(1800, DeorbitBurn.AutoMaxDv(2000, 0), 9);
+            Assert.Equal(-20, DeorbitBurn.AutoMaxDv(130, 100), 9);
+        }
+
+        [Fact]
+        public void The_auto_max_dv_refuses_a_burn_that_eats_the_reserve()
+        {
+            var cheapest = Find(KscLat, KscLng, Eccentric());
+            // Left = the burn plus 40 m/s: under the 50 m/s reserve, so the auto budget is short of the burn; plus 60 clears it.
+            Assert.Contains("over max_dv", Auto(cheapest.DeltaV + 40, withChutes: true).Error);
+            Assert.Null(Auto(cheapest.DeltaV + 60, withChutes: true).Error);
+        }
+
+        [Fact]
+        public void A_craft_without_chutes_also_keeps_back_what_a_powered_landing_needs()
+        {
+            var cheapest = Find(KscLat, KscLng, Eccentric());
+            var left = cheapest.DeltaV + 60;
+            Assert.Null(Auto(left, withChutes: true).Error);
+            var bare = Auto(left, withChutes: false);
+            Assert.Contains("over max_dv", bare.Error);
+            Assert.Contains("a powered landing", bare.Error);
+        }
+
+        [Fact]
+        public void Stock_reporting_no_delta_v_left_requires_max_dv_rather_than_passing()
+        {
+            var ask = new DeorbitAsk { TargetLatitude = KscLat, TargetLongitude = KscLng, EarliestUt = 120, MaxWait = ReentrySim.RotationPeriod, AccuracyKm = 5 };
+            Assert.Equal("stock can't say the delta-v left: give max_dv", DeorbitBurn.Find(ReentrySim.Kerbin(), Circular(), ask, new ReentrySim.Atmosphere(), new ReentrySim.Capsule(), ReentrySim.Frame()).Error);
+            ask.MaxDv = 500;
+            Assert.Null(DeorbitBurn.Find(ReentrySim.Kerbin(), Circular(), ask, new ReentrySim.Atmosphere(), new ReentrySim.Capsule(), ReentrySim.Frame()).Error);
+        }
+
+        [Theory]
+        [InlineData(80, 500, "")]
+        [InlineData(80, 80, "")]
+        [InlineData(80, 0, "")]
+        [InlineData(80, 50, "not enough delta-v: the burn needs 80 m/s, 50 m/s left")]
+        [InlineData(402.44, 120.06, "not enough delta-v: the burn needs 402.4 m/s, 120.1 m/s left")]
+        public void A_burn_over_the_delta_v_left_fails_before_burning(double dv, double left, string reason)
+        {
+            Assert.Equal(reason, DeorbitBurn.ShortOfDv(dv, left));
+        }
+
+        [Fact]
+        public void The_block_call_takes_max_dv_and_dv_left()
+        {
+            var cheapest = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_dv", "auto", "dv_left", 5000.0),
+                Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            Assert.Equal("", cheapest["error"]);
+            var tight = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_dv", 10.0, "dv_left", 5000.0),
+                Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            Assert.Contains("over max_dv 10", (string)tight["error"]);
+            Assert.True(tight.ContainsKey("lat"));
+            var unknown = BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "max_dv", "auto", "dv_left", 0.0), Snapshot(), new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            Assert.Equal("stock can't say the delta-v left: give max_dv", unknown["error"]);
+        }
+
+        /// <summary>The cost two burns must differ by not to be a tie, m/s.</summary>
+        private const double DeorbitBurnTieDv = 1;
+
+        /// <summary>A 100 km periapsis, by default 1,500 km apoapsis, equatorial Kerbin orbit that crosses longitude 0 at UT 0: burns cost very differently round it.</summary>
+        private static Conic Eccentric(double apoapsis = 1500000)
+        {
+            var rp = ReentrySim.R + 100000;
+            var ra = ReentrySim.R + apoapsis;
+            var a = (rp + ra) / 2;
+            var v = Math.Sqrt(ReentrySim.Mu * (2 / rp - 1 / a));
+            return Conic.FromState(ReentrySim.Mu, new Vec3(rp, 0, 0), new Vec3(0, v, 0), 0);
+        }
+
+        private static DeorbitPlan Auto(double dvLeft, bool withChutes)
+        {
+            var ask = new DeorbitAsk { TargetLatitude = KscLat, TargetLongitude = KscLng, EarliestUt = 120, MaxWait = ReentrySim.RotationPeriod, AccuracyKm = 5, DeltaVLeft = dvLeft };
+            var craft = new ReentrySim.Capsule();
+            if (withChutes) craft.Chutes = new System.Collections.Generic.List<ReentryChute> { ReentrySim.Mk16() };
+            return DeorbitBurn.Find(ReentrySim.Kerbin(), Eccentric(), ask, new ReentrySim.Atmosphere(), craft, ReentrySim.Frame());
         }
     }
 }

@@ -147,6 +147,17 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void A_correction_logs_its_planned_arrival_and_with_no_landing_says_none()
+        {
+            var coast = Perturbed.Value;
+            var node = Correct(coast.Snapshot, coast.Mid);
+            Assert.Equal("", node["error"]);
+            Assert.StartsWith("[plan-vs-flown] CORRECTIONBURN planned arrival: burn at UT ", (string)node["plan_log"]);
+            Assert.EndsWith("; landing target none", (string)node["plan_log"]);
+            Assert.Contains(", Pe " + Math.Round((double)node["pe_predicted"]).ToString(CultureInfo.InvariantCulture) + " m", (string)node["plan_log"]);
+        }
+
+        [Fact]
         public void A_correction_halfway_reaches_target_pe_by_its_node()
         {
             var coast = Perturbed.Value;

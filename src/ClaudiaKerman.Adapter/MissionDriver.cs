@@ -217,6 +217,20 @@ namespace ClaudiaKerman.Adapter
         /// <c>ADDONS:CLAUDIA:CHUTEALLOCATION</c> (#626). Refreshed every frame; null with no Mission or before Approval.
         /// </summary>
         public static ChuteAllocation ChuteAllocation;
+
+        /// <summary>
+        /// The arrival plane <c>transfer_to</c> last aimed for, for <c>capture</c> (#788; <see cref="MissionView.ArrivalPlane"/> holds the Mission's own, in its
+        /// save): set at once by the block call, so a capture in the same frame reads it, and kept here for a block test, which has no Mission.
+        /// </summary>
+        public static string AimedPlane = "";
+
+        /// <summary>Core records what <c>transfer_to</c> aims for.</summary>
+        public static void RecordAimedPlane(string record)
+        {
+            if (record == AimedPlane) return;
+            AimedPlane = record;
+            if (Current != null) Current.Send(new ArrivalPlaneAimed(record));
+        }
         public static int CurrentSequence = -1;
 
         /// <summary>
@@ -250,6 +264,7 @@ namespace ClaudiaKerman.Adapter
             PhysicsWarpAllowed = _mission.View.PhysicsWarpAllowed;
             TimeCapHours = _mission.View.Settings.TimeCapHours;
             ChuteAllocation = _mission.View.ChuteAllocation;
+            if (_mission.View.Stage != MissionStage.None) AimedPlane = _mission.View.ArrivalPlane;
             CurrentSequence = _mission.View.CurrentSequence;
             TargetVesselId = _mission.View.TargetVesselId;
             if (!_mission.View.StartForm.CanStart) FormTargetId = null;
