@@ -81,6 +81,12 @@ namespace ClaudiaKerman.Core.Kos
         public double TargetLandedLat { get; private set; }
         public double TargetLandedAhead { get; private set; }
 
+        /// <summary>
+        /// The Mission Plan a test has (#825), for <c>ADDONS:CLAUDIA:DROPCHECK</c>; a block test has no Mission. One <c>plan = name | delta-v | intent</c>
+        /// line per Maneuver Sequence, all of them still to fly.
+        /// </summary>
+        public IList<Missions.PlannedSequence> Plan { get; private set; }
+
         /// <summary>Real seconds the run may take, warp included, before it is aborted and fails.</summary>
         public double TimeoutSeconds { get; private set; }
 
@@ -97,6 +103,7 @@ namespace ClaudiaKerman.Core.Kos
                 OrbitAltitude = 100000,
                 TimeoutSeconds = 900,
                 Checks = new List<string>(),
+                Plan = new List<Missions.PlannedSequence>(),
             };
             var targetKeys = false;
             foreach (var raw in (text ?? "").Replace("\r\n", "\n").Split('\n'))
@@ -128,6 +135,11 @@ namespace ClaudiaKerman.Core.Kos
                     case "target_orbit_radial": spec.TargetOrbitRadial = Number(name, value); targetKeys = true; break;
                     case "target_landed_lat": spec.TargetLandedLat = Number(name, value); spec.TargetLanded = true; break;
                     case "target_landed_ahead": spec.TargetLandedAhead = Number(name, value); spec.TargetLanded = true; break;
+                    case "plan":
+                        var fields = value.Split('|');
+                        if (fields.Length < 2) throw new FormatException(name + ": plan is 'name | delta-v | intent': " + value);
+                        spec.Plan.Add(new Missions.PlannedSequence { Name = fields[0].Trim(), DeltaV = Number(name, fields[1].Trim()), Intent = fields.Length > 2 ? fields[2].Trim() : "" });
+                        break;
                     case "timeout_s": spec.TimeoutSeconds = Number(name, value); break;
                     case "check":
                         Readable(name, value, Split(name, value));

@@ -219,6 +219,13 @@ namespace ClaudiaKerman.Adapter
         public static ChuteAllocation ChuteAllocation;
 
         /// <summary>
+        /// The Mission Plan's Maneuver Sequences, for <c>ADDONS:CLAUDIA:DROPCHECK</c> (#825); refreshed every frame, null with no Mission or
+        /// plan. <see cref="BlockTestPlan"/> stands in for it in a block test, which has no Mission.
+        /// </summary>
+        public static System.Collections.Generic.IList<PlannedSequence> PlanLegs;
+        public static System.Collections.Generic.IList<PlannedSequence> BlockTestPlan;
+
+        /// <summary>
         /// The arrival plane <c>transfer_to</c> last aimed for, for <c>capture</c> (#788; <see cref="MissionView.ArrivalPlane"/> holds the Mission's own, in its
         /// save): set at once by the block call, so a capture in the same frame reads it, and kept here for a block test, which has no Mission.
         /// </summary>
@@ -264,6 +271,7 @@ namespace ClaudiaKerman.Adapter
             PhysicsWarpAllowed = _mission.View.PhysicsWarpAllowed;
             TimeCapHours = _mission.View.Settings.TimeCapHours;
             ChuteAllocation = _mission.View.ChuteAllocation;
+            PlanLegs = _mission.View.PlanLegs;
             if (_mission.View.Stage != MissionStage.None) AimedPlane = _mission.View.ArrivalPlane;
             CurrentSequence = _mission.View.CurrentSequence;
             TargetVesselId = _mission.View.TargetVesselId;
