@@ -742,6 +742,17 @@ namespace ClaudiaKerman.Core.Missions
             return text;
         }
 
+        /// <summary>
+        /// #757: the Delta-v Map for the bodies the Mission Goal names, one line, for every request for a Mission Plan: per-turn text,
+        /// never the cached prefix. "" when the goal names no body.
+        /// </summary>
+        public static string DeltaVMapLine(GameSnapshot snapshot, string goal)
+        {
+            if (snapshot == null) return "";
+            var map = DeltaVMap.Compute(snapshot.Bodies, CraftCheckFlow.HomeBody).CompactLine(GoalBodies(snapshot, goal));
+            return map.Length == 0 ? "" : "\nDelta-v Map, m/s, no margin; budget each leg at least this: " + map + "\n";
+        }
+
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<GameSnapshot, Dictionary<string, ToolOutcome>> TransferRows
             = new System.Runtime.CompilerServices.ConditionalWeakTable<GameSnapshot, Dictionary<string, ToolOutcome>>();
 

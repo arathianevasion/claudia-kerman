@@ -27,7 +27,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             KosHarness.Register(typeof(TransferToRigFunctions));
         }
 
-        private static string[] Fly(string target, double pe, string window = "\"next\"")
+        private static string[] Fly(string target, double pe, string window = "\"next\"", string wait = "{ parameter step. return test_tr_wait(step:ut). }")
         {
             var script = "local extra is lexicon(\"encounter_ut\", -1, \"target_pe_actual\", -1, \"correction_dv\", 0, \"plane_dv\", 0, \"ejection_wait\", -1,"
                 + " \"ejection_node_dv\", -1, \"ejection_dv_used\", -1, \"ejection_burn_time\", -1, \"departure_ut\", -1, \"arrival_ut\", -1, \"v_inf\", -1).\n"
@@ -35,9 +35,9 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 + "local state is lexicon(\"target\", \"" + target + "\", \"target_pe\", " + pe.ToString(CultureInfo.InvariantCulture) + ", \"window\", " + window
                 + ", \"correction\", true, \"pe_tolerance\", 1000, \"start_ut\", 0, \"max_duration\", opt:max_duration, \"auto\", true, \"turn_time\", 60, \"phase\", \"start\").\n"
                 + "local reason is transfer_to_run(state, opt, extra, { parameter s. return test_tr_ask(s). }, { parameter step. return test_tr_fly(step). },"
-                + " { parameter ut. return test_tr_wait(ut). }, { return \"\". }).\n"
+                + " " + wait + ", { return \"\". }).\n"
                 + "print reason. print extra:target_pe_actual. print extra:correction_dv. print extra:ejection_dv_used. print extra:departure_ut."
-                + " print extra:encounter_ut. print extra:v_inf. if extra:haskey(\"next\") { print extra:next. } else { print \"\". } print opt:max_duration > 0. print extra:ejection_wait.";
+                + " print extra:encounter_ut. print extra:v_inf. if extra:haskey(\"next\") { print extra:next. } else { print \"\". } print opt:max_duration > 0. print extra:ejection_wait. print extra:haskey(\"recovered\").";
             return KosHarness.Run(CoreLibrary.Bundle(script)).ToArray();
         }
 
@@ -86,6 +86,30 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.InRange(N(printed[3]), 800, 900);
             Assert.InRange(N(printed[9]), 0, 2300);
             Assert.Equal("Kerbin", TransferToRig.Rig.Body.Name);
+        }
+
+        [Fact]
+        public void A_watch_drop_ends_the_wait_and_the_next_step_restores_the_encounter()
+        {
+            // The block's wait, with the rig in place of the warp: the first watched wait loses the encounter and reads as dropped (#770).
+            TransferToRig.Rig = TransferRig.Circular("Kerbin", 100000, 0);
+            TransferToRig.Rig.BurnError = 0.005;
+            TransferToRig.Rig.CorrectionError = 0.05;
+            var printed = Fly("Duna", 50000, "\"next\"",
+                "{ parameter step. if step:watch:haskey(\"target\") and not state:haskey(\"lost\") { set state:lost to true. set state:watch_dropped to test_tr_lose(). return \"\". } return test_tr_wait(step:ut). }");
+            Assert.Equal("", printed[0]);
+            Assert.InRange(N(printed[1]), 49000, 51000);
+            Assert.InRange(N(printed[2]), 5, 40);
+            Assert.Equal("True", printed[10]);
+        }
+
+        [Fact]
+        public void The_block_s_wait_arms_the_watch_and_passes_on_its_drop()
+        {
+            var bundle = CoreLibrary.Bundle("");
+            Assert.Contains("addons:claudia:encounterwatch(step:watch).", bundle);
+            Assert.Contains("claudia_warp_to(ctx, step:ut, 30, { return addons:claudia:encounterwatchdropped. })", bundle);
+            Assert.Contains("set state:watch_dropped to addons:claudia:encounterwatchdropped.", bundle);
         }
 
         [Fact]
@@ -156,6 +180,18 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 {
                     { "success", !failed }, { "reason", TransferToRig.FailWith ?? "" }, { "dv_used", dv }, { "node_dv", dv }, { "burn_time", 10.0 },
                 });
+            }
+        }
+
+        [Function("test_tr_lose")]
+        public class FunctionLose : SafeFunctionBase
+        {
+            public override void Execute(SafeSharedObjects shared)
+            {
+                AssertArgBottomAndConsume(shared);
+                TransferToRig.Rig.MoveTo(TransferToRig.Rig.Ut + 2 * 21600);
+                TransferToRig.Rig.Fly("by_hand", TransferToRig.Rig.Ut, -8, 0, 0);
+                ReturnValue = new BooleanValue(true);
             }
         }
 

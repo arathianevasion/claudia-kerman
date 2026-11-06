@@ -914,6 +914,7 @@ function reentry {
   if powered and ship:availablethrust <= 0 {
     return claudia_finish(ctx, false, "touchdown 'powered' needs a lit engine (reentry never stages)", extra).
   }
+  addons:claudia:shipsystems("entry").
   // The shield's decouplers, found on the craft that is left; a powered touchdown keeps a shield ("auto")
   // whose drop would take the engines with it.
   local shield is reentry_shield_modules(opt:jettison_stage, ship:parts).

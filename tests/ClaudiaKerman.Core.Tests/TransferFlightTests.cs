@@ -50,9 +50,10 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(D(step, "arrival_ut") > D(step, "encounter_ut"));
             Assert.InRange(D(step, "v_inf"), 300, 1500);
             Assert.Equal("coast to encounter_ut + 60 before a capture", step.Report["next"]);
-            // It ends on the Sun's patch, before the arrival: the capture is circularize's.
-            Assert.Equal("Sun", rig.Body.Name);
-            Assert.True(rig.Ut < D(step, "encounter_ut"));
+            // It ends before the arrival (the capture is circularize's): on the Sun's patch with the periapsis already within
+            // pe_tolerance, or inside Duna's sphere of influence after the trim there (#747).
+            Assert.Contains(rig.Body.Name, new[] { "Sun", "Duna" });
+            Assert.True(rig.Ut < D(step, "arrival_ut"));
         }
 
         [Theory]
@@ -72,6 +73,161 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(step.Error == "", step.Error + " | " + string.Join(", ", rig.Burns.Select(b => b.Key + " " + b.Value)));
             Assert.InRange(rig.Burned("correction"), 0, 20);
             Assert.InRange(D(step, "target_pe_actual"), 49000, 51000);
+        }
+
+        // ---- #747: the trim near the target, the encounter kept far out, a lost one recovered ----
+
+        [Theory]
+        [InlineData(0.001, 0.05)]
+        [InlineData(0.001, -0.05)]
+        [InlineData(-0.001, 0.05)]
+        [InlineData(-0.001, -0.05)]
+        public void Kerbin_to_Duna_trims_the_periapsis_inside_Duna_s_sphere_of_influence_within_pe_tolerance(double burnError, double flownError)
+        {
+            // An ejection 1 m/s off its node, and every correction flown 0.05 m/s long or short (the Duna miss of #747: far out,
+            // 0.02 m/s moved the periapsis 57 km, so a trim there can't hold a 1 km pe_tolerance).
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            rig.BurnError = burnError;
+            rig.CorrectionError = flownError;
+            var step = rig.Run(Ask("Duna", 50000), 30);
+            var flown = string.Join(", ", rig.Burns.Select((b, i) => b.Key + " " + b.Value.ToString("0.###") + " round " + rig.BurnBodies[i]));
+            Assert.True(step.Error == "", step.Error + " | " + flown);
+            // The trim is the last correction, flown inside Duna's sphere of influence; the far-out ones only kept the encounter.
+            Assert.Equal("Duna", rig.BurnBodies[rig.BurnBodies.Count - 1]);
+            Assert.Equal("Duna", rig.Body.Name);
+            var duna = rig.System.Find("Duna");
+            Assert.InRange(rig.Orbit.PeR - duna.Radius, 49000, 51000);
+            Assert.InRange(D(step, "target_pe_actual"), 49000, 51000);
+            Assert.True(D(step, "encounter_ut") > D(step, "departure_ut"), flown);
+            Assert.InRange(rig.Burned("correction"), 0, 20);
+        }
+
+        [Fact]
+        public void A_Course_Correction_that_loses_the_Duna_encounter_recovers_instead_of_failing()
+        {
+            // The Duna miss of #747: a Course Correction on the Sun's patch that left no encounter ended the block. Here one is
+            // flown 40 m/s wrong; the check after it plans the missed-ejection recovery from the orbit the craft is on.
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            var ask = Ask("Duna", 50000);
+            for (var i = 0; i < 2; i++)
+            {
+                var s = TransferFlight.Next(rig.Snapshot(), ask);
+                Assert.Equal("", s.Error);
+                if (s.MaxDuration.HasValue) ask.MaxDuration = s.MaxDuration;
+                if (s.Do == TransferFlightStep.Burn) ask.LastDv = rig.Fly(s.Kind, s.Ut, s.Prograde, s.Normal, s.Radial);
+                else rig.MoveTo(s.Ut);
+                TransferFlight.Carry(ask, s);
+            }
+            Assert.Equal("Sun", rig.Body.Name);
+            rig.Fly("correction", rig.Ut + 600, -40, 0, 0);
+            ask.Phase = "mid_check";
+
+            var recovery = TransferFlight.Next(rig.Snapshot(), ask);
+            Assert.True(recovery.Error == "", recovery.Error);
+            Assert.Equal(TransferFlightStep.Burn, recovery.Do);
+            Assert.Equal("correction", recovery.Kind);
+            Assert.Equal("no encounter with Duna after the correction", recovery.Report["recovered"]);
+
+            var step = rig.Run(ask, 30);
+            Assert.True(step.Error == "", step.Error + " | " + string.Join(", ", rig.Burns.Select(b => b.Key + " " + b.Value)));
+            Assert.InRange(D(step, "target_pe_actual"), 49000, 51000);
+            Assert.Equal("no encounter with Duna after the correction", step.Report["recovered"]);
+        }
+
+        [Fact]
+        public void A_second_lost_encounter_fails_rather_than_recovering_again()
+        {
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            var ask = Ask("Mun", 30000);
+            ask.Phase = "mid_check";
+            ask.Recovered = true;
+            var step = TransferFlight.Next(rig.Snapshot(), ask);
+            Assert.StartsWith("no encounter with Mun after the correction; the next window costs ", step.Error);
+        }
+
+        [Fact]
+        public void From_the_Sun_s_orbit_Duna_s_periapsis_is_trimmed_inside_its_sphere_of_influence()
+        {
+            // The corrective transfer_to of #747: a craft round the Sun, Duna a planet of it. Its corrections far out (0.17 and
+            // 0.10 m/s) left the periapsis 2.9 km against target_pe 60 km; now the trim waits for Duna's sphere of influence.
+            var rig = TransferRig.Circular("Sun", 15000000000.0 - 261600000, 0);
+            rig.BurnError = 0.001;
+            rig.CorrectionError = 0.05;
+            var step = rig.Run(Ask("Duna", 60000), 30);
+            var flown = string.Join(", ", rig.Burns.Select((b, i) => b.Key + " " + b.Value.ToString("0.###") + " round " + rig.BurnBodies[i]));
+            Assert.True(step.Error == "", step.Error + " | " + flown);
+            Assert.True(rig.Body.Name == "Duna" && rig.BurnBodies[rig.BurnBodies.Count - 1] == "Duna", flown);
+            Assert.InRange(D(step, "target_pe_actual"), 59000, 61000);
+            Assert.InRange(rig.Orbit.PeR - rig.System.Find("Duna").Radius, 59000, 61000);
+        }
+
+        /// <summary>
+        /// #747's ejection over-burn (node 1,093.6 m/s, used 1,114.8 in 229.8 s from an 80 km Kerbin orbit) is the finite-burn
+        /// loss of flying an impulsive node: exec_node steers along the node's remaining vector, the velocity the planned orbit
+        /// has at the node's UT less the current orbit's then. Thrust before or after the node UT is carried there turned by
+        /// the orbit's motion, so only its share along that vector counts: over a burn sweeping an arc nT of the orbit, about
+        /// (nT)^2/24 of the node is lost. Here a 230 s burn sweeps 44 degrees of a 1,873 s orbit. Not a metering error: a burn
+        /// ten times shorter loses next to nothing, as the corrective flight's 68 s ejection (425.8 m/s, used 425.7) did.
+        /// </summary>
+        [Fact]
+        public void The_ejection_over_burn_is_the_finite_burn_loss_of_chasing_an_impulsive_node()
+        {
+            var gm = 3531600000000.0;
+            var r0 = 600000 + 79456.0;
+            var over = FiniteBurnOver(gm, r0, 1088.07, 101.75, 42.44, 229.8, 1114.8);
+            Assert.InRange(over, 15, 30);
+            // The measured 21.2 m/s is within the same band and under the fixed-direction estimate dv (nT)^2/24.
+            var n = Math.Sqrt(gm / (r0 * r0 * r0));
+            var estimate = 1093.6 * Math.Pow(n * 229.8, 2) / 24;
+            Assert.InRange(estimate, 25, 30);
+            Assert.InRange(1114.8 - 1093.6, 15, estimate);
+            // The same node burned ten times faster: under 1 m/s over.
+            Assert.InRange(FiniteBurnOver(gm, r0, 1088.07, 101.75, 42.44, 22.98, 1094), 0, 1);
+        }
+
+        /// <summary>
+        /// exec_node's guidance on a finite burn (a test model of exec_node.ks): a craft in a circular orbit of radius
+        /// <paramref name="r0"/>, its node at the orbit's UT 0, an engine of constant mass flow that burns <paramref name="dvUsed"/>
+        /// in <paramref name="burnTime"/> s; it starts half the node's delta-v early, steers along the node's remaining vector
+        /// (held once under 1 m/s), throttles down in the last second and stops under 0.1 m/s. Gives m/s burned over the node.
+        /// </summary>
+        private static double FiniteBurnOver(double gm, double r0, double prograde, double normal, double radial, double burnTime, double dvUsed)
+        {
+            var vc = Math.Sqrt(gm / r0);
+            var rNode = new Vec3(r0, 0, 0);
+            var vNode = new Vec3(0, vc, 0);
+            // Stock's node frame at the node: prograde along v, normal along r x v, radial out.
+            var node = new Vec3(radial, prograde, normal);
+            var planned = vNode + node;
+            var ve = 300 * 9.80665;
+            var m0 = 1.0;
+            var mdot = (m0 - m0 / Math.Exp(dvUsed / ve)) / burnTime;
+            var t = -(m0 - m0 / Math.Exp(node.Length / 2 / ve)) / mdot;
+            var orbit = Conic.FromState(gm, rNode, vNode, 0);
+            Vec3 r, v, rAt, vAt;
+            orbit.State(t, out r, out v);
+            var m = m0;
+            var spent = 0.0;
+            var steer = node.Normalized;
+            Vec3? first = null;
+            const double dt = 0.25;
+            while (true)
+            {
+                Conic.FromState(gm, r, v, t).State(0, out rAt, out vAt);
+                var left = planned - vAt;
+                if (!first.HasValue) first = left;
+                if (Vec3.Dot(first.Value, left) < 0 || left.Length < 0.1) break;
+                if (left.Length > 1) steer = left.Normalized;
+                var accel = ve * mdot / m;
+                var throttle = Math.Min(1, Math.Max(0.005, left.Length / accel));
+                var dv = throttle * accel * dt;
+                var after = Conic.FromState(gm, r, v + steer * dv, t);
+                after.State(t + dt, out r, out v);
+                m -= throttle * mdot * dt;
+                t += dt;
+                spent += dv;
+            }
+            return spent - node.Length;
         }
 
         [Fact]
@@ -274,6 +430,111 @@ namespace ClaudiaKerman.Core.Tests
             var step = BlockCalls.TransferStep(input, snapshot);
             Assert.Equal("", step["error"]);
             Assert.InRange(Convert.ToDouble(step["ut"]), expected.DepartureUt - 10 * Day, expected.DepartureUt + 10 * Day);
+        }
+
+        // ---- A trip home prices no capture burn (#761, ArrivalRule from #758) ----
+
+        private static Dictionary<string, object> StartInput(string target, double pe)
+        {
+            return new Dictionary<string, object>
+            {
+                { "target", target }, { "target_pe", pe }, { "correction", true }, { "pe_tolerance", 1000.0 }, { "start_ut", 0.0 },
+                { "max_duration", "auto" }, { "auto", true }, { "turn_time", 60.0 }, { "phase", "start" },
+            };
+        }
+
+        [Fact]
+        public void Duna_to_Kerbin_departs_when_plan_transfer_does_with_no_capture_priced()
+        {
+            var rig = TransferRig.Circular("Duna", 100000, 0);
+            var snapshot = rig.Snapshot();
+            var capture = ArrivalRule.Capture(snapshot, "Kerbin", null);
+            Assert.False(capture);
+            var pick = TransferWindows.Pick(TransferWindows.Find(snapshot, "Kerbin", 30000, capture, snapshot.MarginPercent), snapshot.TimeVersusDeltaV);
+            var step = BlockCalls.TransferStep(StartInput("Kerbin", 30000), snapshot);
+            Assert.Equal("", step["error"]);
+
+            // plan_transfer's departure is the heliocentric one; the ejection burn is flown on the parking orbit, so the two UTs
+            // agree to within half its period (the solvers themselves resolve the window to a second: TimeTolerance 1e-6 of the
+            // time scale). Measured 202 s of 1,558 s. Priced with a capture (the old default) the departure is 34,120 s later.
+            var duna = rig.System.Find("Duna");
+            var half = Math.PI * Math.Sqrt(Math.Pow(duna.Radius + 100000, 3) / duna.Gm);
+            Assert.InRange(Convert.ToDouble(step["ut"]), pick.DepartureUt - half, pick.DepartureUt + half);
+
+            // And the ejection's dv is plan_transfer's within 1 % (measured 0.5 %).
+            var dv = Math.Sqrt(Math.Pow(Convert.ToDouble(step["prograde"]), 2) + Math.Pow(Convert.ToDouble(step["normal"]), 2) + Math.Pow(Convert.ToDouble(step["radial"]), 2));
+            Assert.InRange(dv, pick.EjectionDv * 0.99, pick.EjectionDv * 1.01);
+        }
+
+        [Fact]
+        public void A_trip_home_says_no_capture_is_priced_and_a_trip_elsewhere_still_hints_a_capture()
+        {
+            var home = TransferRig.Circular("Duna", 100000, 0);
+            var homeStep = home.Run(Ask("Kerbin", 30000, correction: false));
+            Assert.Equal("", homeStep.Error);
+            Assert.Equal("arrival: entry at 21 km, no capture burn", homeStep.Report["arrival_note"]);
+            Assert.False(homeStep.Report.ContainsKey("next"));
+            var away = TransferRig.Circular("Kerbin", 100000, 0).Run(Ask("Duna", 50000, correction: false));
+            Assert.False(away.Report.ContainsKey("arrival_note"));
+        }
+
+        /// <summary>A craft ejected from its body and put 40 m/s off by a correction: on the Sun's patch with no encounter, the state a missed-ejection recovery plans from.</summary>
+        private static Tuple<TransferRig, TransferFlightAsk> LostOnTheWay(string from, string to, double pe, double miss = -40)
+        {
+            var rig = TransferRig.Circular(from, 100000, 0);
+            var ask = Ask(to, pe);
+            for (var i = 0; i < 2; i++)
+            {
+                var s = TransferFlight.Next(rig.Snapshot(), ask);
+                Assert.Equal("", s.Error);
+                if (s.MaxDuration.HasValue) ask.MaxDuration = s.MaxDuration;
+                if (s.Do == TransferFlightStep.Burn) ask.LastDv = rig.Fly(s.Kind, s.Ut, s.Prograde, s.Normal, s.Radial);
+                else rig.MoveTo(s.Ut);
+                TransferFlight.Carry(ask, s);
+            }
+            Assert.Equal("Sun", rig.Body.Name);
+            rig.Fly("correction", rig.Ut + 600, miss, 0, 0);
+            ask.Phase = "mid_check";
+            return Tuple.Create(rig, ask);
+        }
+
+        [Fact]
+        public void A_missed_ejection_recovery_on_a_trip_home_is_accepted_when_dv_left_covers_the_ejection_but_not_a_capture()
+        {
+            // Duna to Kerbin, a correction 100 m/s off loses the encounter. Ranked with a capture, the recovery picked is a 100.5 m/s
+            // burn (over dv_left 100, refused before #761); ranked by the burn alone, as the ArrivalRule says a trip home is, 29 m/s.
+            var lost = LostOnTheWay("Duna", "Kerbin", 30000, -100);
+            var input = StartInput("Kerbin", 30000);
+            input["phase"] = "mid_check";
+            input["dv_left"] = 100.0;
+            var step = BlockCalls.TransferStep(input, lost.Item1.Snapshot());
+            Assert.Equal("", step["error"]);
+            Assert.Equal("burn", step["do"]);
+            Assert.Equal("correction", step["kind"]);
+            Assert.Equal("no encounter with Kerbin after the correction", ((IDictionary<string, object>)step["report"])["recovered"]);
+            var dv = Math.Sqrt(Math.Pow(Convert.ToDouble(step["prograde"]), 2) + Math.Pow(Convert.ToDouble(step["normal"]), 2) + Math.Pow(Convert.ToDouble(step["radial"]), 2));
+            Assert.InRange(dv, 1, 100);
+        }
+
+        [Fact]
+        public void The_same_dv_left_to_a_body_that_is_not_home_is_still_refused_for_the_capture_it_prices()
+        {
+            // Kerbin to Duna, a correction 200 m/s off loses the encounter. Duna's capture is priced, so the recovery picked is a
+            // 199.9 m/s burn (a 37.7 m/s one exists, ranked without the capture): over dv_left 100, as before.
+            var lost = LostOnTheWay("Kerbin", "Duna", 50000, 200);
+            var input = StartInput("Duna", 50000);
+            input["phase"] = "mid_check";
+            input["dv_left"] = 100.0;
+            var step = BlockCalls.TransferStep(input, lost.Item1.Snapshot());
+            Assert.Contains("no encounter with Duna after the correction, and no correction fits:", (string)step["error"]);
+            Assert.Contains("more than the craft's 100 m/s", (string)step["error"]);
+        }
+
+        [Fact]
+        public void The_correction_after_a_missed_ejection_takes_the_arrival_rules_capture()
+        {
+            Assert.False(TransferFlight.CorrectionAsk("Kerbin", 30000, 5000, 133, 1000, 30000, true, 412.5, false).Capture);
+            Assert.True(TransferFlight.CorrectionAsk("Kerbin", 30000, 5000, 133, 1000, 30000, true, 412.5).Capture);
         }
 
         // ---- The pure rules, from the Kerboscript (TransferFlightParityTests checked them against it) ----

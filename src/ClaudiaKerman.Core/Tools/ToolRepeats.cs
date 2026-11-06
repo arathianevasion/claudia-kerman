@@ -27,7 +27,7 @@ namespace ClaudiaKerman.Core.Tools
             // Only a call that answered counts: one refused, timed out or over a limit has no result above to point to.
             var results = messages.SelectMany(m => m.Content.OfType<ToolResultBlock>()).Where(r => !r.IsError).ToList();
             var answered = new HashSet<string>(results.Where(r => r.Content != ProposedPlans.OnePerReplyJson).Select(r => r.ToolUseId), StringComparer.Ordinal);
-            var accepted = new HashSet<string>(results.Where(r => r.Content == ProposedPlans.AcceptedJson || r.Content == ProposedPlans.GoalKeptJson)
+            var accepted = new HashSet<string>(results.Where(r => ProposedPlans.IsAccepted(r.Content))
                 .Select(r => r.ToolUseId), StringComparer.Ordinal);
             var planKeyPrefix = ProposedPlans.ToolName + " ";
             // Each earlier call's step, numbered from 1 by the turn's tool_use replies.

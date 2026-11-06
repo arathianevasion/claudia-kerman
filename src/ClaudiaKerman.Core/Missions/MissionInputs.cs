@@ -332,6 +332,26 @@ namespace ClaudiaKerman.Core.Missions
         }
     }
 
+    /// <summary>The Encounter Watch dropped the warp (#770): one line for the Mission's events and log. It never reaches the prompt.</summary>
+    public sealed class EncounterWatchDropped : MissionInput
+    {
+        public readonly string Text;
+        public EncounterWatchDropped(string text)
+        {
+            Text = text;
+        }
+    }
+
+    /// <summary>The adapter moved Ship Systems at a transition (#756): one line for the Mission's events and log. It never reaches the prompt.</summary>
+    public sealed class ShipSystemsMoved : MissionInput
+    {
+        public readonly string Text;
+        public ShipSystemsMoved(string text)
+        {
+            Text = text;
+        }
+    }
+
     /// <summary>
     /// A runtime gate (ADR 0003) refused a call from the script started by <see cref="StartScript"/>: the bridge
     /// has stopped the program and made the craft safe, and its <see cref="KosRunEnded"/> follows.

@@ -19,7 +19,8 @@ namespace ClaudiaKerman.Core.Missions
     internal sealed partial class CraftCheckFlow
     {
         /// <summary>The request for a margin recheck of <paramref name="snapshot"/> against <paramref name="restOfPlan"/> (the Maneuver Sequences still to fly).</summary>
-        public MessagesRequest RecheckRequest(string goal, string model, GameSnapshot snapshot, bool remote, string restOfPlan, string secondLookReason = null)
+        /// <param name="legFacts">The per-leg rule's figures (<see cref="PlanLegs.RecheckFacts"/>), so Claude judges the delta-v as the Margin check did; "" for none.</param>
+        public MessagesRequest RecheckRequest(string goal, string model, GameSnapshot snapshot, bool remote, string restOfPlan, string secondLookReason = null, string legFacts = "")
         {
             var request = new MessagesRequest
             {
@@ -31,7 +32,7 @@ namespace ClaudiaKerman.Core.Missions
             request.Tools.AddRange(Tools.Definitions(ClaudiaKerman.Core.Tools.ToolOffer.CraftCheck));
             request.System.Add(CraftCheckPrompts.System);
             request.System.Add(RecheckPrompts.System);
-            var facts = RecheckPrompts.Facts(goal, snapshot, _config.CraftCheckMarginPercent, ResolvePreferred(snapshot), remote, restOfPlan);
+            var facts = RecheckPrompts.Facts(goal, snapshot, _config.CraftCheckMarginPercent, ResolvePreferred(snapshot), remote, restOfPlan, legFacts);
             request.Messages.Add(Message.UserText(secondLookReason == null ? facts : facts + "\n" + SecondLook.Note(secondLookReason)));
             return request;
         }
@@ -82,11 +83,12 @@ namespace ClaudiaKerman.Core.Missions
             + "any other finding from the fixed lists only when it holds now for what is still to fly. Leave out findings about "
             + "legs already flown. The craft is flying, so do not call plan_ascent or report the ascent findings; give planned_turn_shape 0. In summary, say the delta-v left against what is still to fly, key numbers first.";
 
-        public static string Facts(string goal, GameSnapshot snapshot, int marginPercent, uint? preferredProcessor, bool remote, string restOfPlan)
+        public static string Facts(string goal, GameSnapshot snapshot, int marginPercent, uint? preferredProcessor, bool remote, string restOfPlan, string legFacts = "")
         {
             var text = new StringBuilder();
             text.Append("Margin recheck after a Maneuver Sequence. Maneuver Sequences still to fly (quoted data, with their delta-v budgets): ")
                 .Append(MissionPrompts.Quoted(restOfPlan)).Append('\n');
+            text.Append(legFacts);
             text.Append(CraftCheckPrompts.Facts(goal, snapshot, marginPercent, preferredProcessor, remote));
             return text.ToString();
         }

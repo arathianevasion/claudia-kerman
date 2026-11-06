@@ -7,6 +7,7 @@ using System.Linq;
 using ClaudiaKerman.Core.Claude;
 using ClaudiaKerman.Core.Kos;
 using ClaudiaKerman.Core.Roster;
+using ClaudiaKerman.Core.Tools;
 
 namespace ClaudiaKerman.Core.Missions
 {
@@ -39,6 +40,8 @@ namespace ClaudiaKerman.Core.Missions
         public string BootFile = "";
         /// <summary>A docking port's size (its node type, e.g. size1), as the Target Vessel's free_ports count them; "" for other parts.</summary>
         public string PortSize = "";
+        /// <summary>A Ship System that extends but can never retract, for the Craft Check's info line (<see cref="ShipSystemsHold"/>). Not in the JSON: the prompt doesn't carry it.</summary>
+        public bool CannotRetract;
 
         // ---- Child Vessel facts (#100): enough to work out a separated vessel's own figures ----
 
@@ -459,6 +462,11 @@ namespace ClaudiaKerman.Core.Missions
                     .Field("orbit_body", Orbit.Body)
                     .EndObject();
             }
+            // Claudia's turns only (#748): a request field, worked out from the orbit and body table, never recorded or parsed back.
+            var encounter = withBodies || Orbit == null ? null : NextEncounter.Of(this);
+            if (encounter != null)
+                json.Name("encounter").BeginObject().Field("body", encounter.Body).Field("pe", encounter.Pe)
+                    .Field("ut", encounter.Ut).Field("soi_ut", encounter.SoiUt).EndObject();
             json.Name("resources").BeginArray();
             foreach (var resource in Resources)
                 json.BeginObject().Field("name", resource.Name).Field("amount", resource.Amount).Field("max", resource.Max).EndObject();

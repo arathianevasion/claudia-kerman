@@ -1554,6 +1554,21 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new KosRcsSwitched(new Dictionary<string, object> { { "on", true }, { "reason", "big turn" } }, startUt + 100, start.RunId));
             mission.Send(new UtAdvanced(startUt + 130));
 
+            // #756, in the same run: Ship Systems moved goes to the log and the event log, and adds nothing to the conversation.
+            var messages = Saved(mission)[0].TranscriptMarker;
+            mission.Send(new ShipSystemsMoved("Ship Systems: retracted 4 panels, 1 antenna; entering Duna's atmosphere in 58 s"));
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text == "Ship Systems: retracted 4 panels, 1 antenna; entering Duna's atmosphere in 58 s");
+            Assert.Contains("\"ship_systems\"", File.ReadAllText(Path.Combine(MissionFolder(mission), "events.jsonl")));
+            Assert.Equal(messages, Saved(mission)[0].TranscriptMarker);
+            Assert.DoesNotContain("Ship Systems", File.ReadAllText(TranscriptPath(mission)));
+
+            // #770, the same: the Encounter Watch's drop goes to the log and the event log only.
+            mission.Send(new EncounterWatchDropped("Encounter Watch: Duna encounter lost at UT 44786120; warp dropped to restore it"));
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Encounter Watch: Duna encounter lost"));
+            Assert.Contains("\"encounter_watch\"", File.ReadAllText(Path.Combine(MissionFolder(mission), "events.jsonl")));
+            Assert.Equal(messages, Saved(mission)[0].TranscriptMarker);
+            Assert.DoesNotContain("Encounter Watch", File.ReadAllText(TranscriptPath(mission)));
+
             // The player left Flight with RCS still on: the stretch ends at the interruption's UT, 30 s after it came on.
             mission.Send(new SceneChanged(GameScene.Other));
             Assert.NotEqual(MissionStage.Running, mission.View.Stage);
@@ -1573,6 +1588,7 @@ namespace ClaudiaKerman.Core.Tests
             var turn = string.Join("\n----\n", Messages(after.Requests[0]).Where(m => m.GetProperty("role").GetString() == "user").Select(Text));
             Assert.Contains("Interrupted", turn);
             Assert.Contains("RCS Use this run: switched on 1 time, 30 s in all", turn);
+            Assert.DoesNotContain("Ship Systems", after.Requests[0].Body);
         }
 
         [Fact]

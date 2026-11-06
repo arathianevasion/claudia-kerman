@@ -629,8 +629,12 @@ namespace ClaudiaKerman.ScriptCheck.Tests
         [InlineData("print addons:claudia:dockholdlevel(lexicon(\"level\", \"\")):changed.")]
         [InlineData("local c is addons:claudia.\nprint c:DockFuel(lexicon(\"distance\", 150)):error.")]
         [InlineData("print addons:claudia:burnworth(lexicon(\"block\", \"circularize\")):skip.")]
+        [InlineData("print addons:claudia:returnmiss(lexicon(\"target_pe\", 35000, \"pe\", 36000)):error.")]
         [InlineData("print addons:claudia:turnplan(lexicon(\"angle\", 140, \"left_s\", 60)):coast_rate.")]
         [InlineData("print addons:claudia:burstturn(lexicon(), lexicon(\"error\", 40)):rcs_on.")]
+        [InlineData("print addons:claudia:shipsystems(\"liftoff\"):done.")]
+        [InlineData("addons:claudia:encounterwatch(lexicon()).")]
+        [InlineData("print addons:claudia:encounterwatchdropped.")]
         public void ABlockInternalCallInAMissionScriptFails(string script)
         {
             AssertForbidden("call block-internal calculations", script);

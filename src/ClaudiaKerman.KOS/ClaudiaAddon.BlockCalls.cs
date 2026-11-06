@@ -55,9 +55,15 @@ namespace ClaudiaKerman.KOS
             AddSuffix("EJECTIONBURN", new OneArgsSuffix<Lexicon, Lexicon>(EjectionBurn,
                 "Core Library only (transfer_to): the cheapest departure to target (a moon's name) arriving at target_pe, or to an orbit (target_sma, target_ecc, ...; mode rendezvous or intercept), capture true or false, within one synodic period from earliest_ut or window (to latest_ut, refusing over max_dv); lexicon error, ut, prograde, normal, radial, dv, arrival_dv, encounter_ut, arrival_ut, target_pe_actual, ..."));
             AddSuffix("TRANSFERSTEP", new OneArgsSuffix<Lexicon, Lexicon>(TransferStep,
-                "Core Library only (transfer_to): its next step from phase (start first) with its options and what the last step carried; lexicon error, do (burn, wait or done), kind, ut, prograde, normal, radial, max_residual, fail_prefix, keep_going, report, max_duration, carry"));
+                "Core Library only (transfer_to): its next step from phase (start first) with its options and what the last step carried; lexicon error, do (burn, wait or done), kind, ut, prograde, normal, radial, max_residual, fail_prefix, keep_going, report, max_duration, watch, carry"));
+            AddSuffix("ENCOUNTERWATCH", new OneArgsSuffix<Lexicon>(EncounterWatchArm,
+                "Core Library only (transfer_to): arms the Encounter Watch for a wait with TRANSFERSTEP's watch; an empty lexicon watches nothing"));
+            AddSuffix("ENCOUNTERWATCHDROPPED", new Suffix<BooleanValue>(EncounterWatchPoll,
+                "Core Library only (transfer_to, each tick of a wait): the Encounter Watch's check when one is due; whether the wait should end early"));
             AddSuffix("RETURNBURN", new OneArgsSuffix<Lexicon, Lexicon>(ReturnBurn,
-                "Core Library only (return): the least burn from earliest_ut to latest_ut (one orbit later if missing) that leaves the moon orbited for its planet at target_pe and, if given, target_inc; lexicon error, planet, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted, soi_ut, from_grid"));
+                "Core Library only (return): the least burn from earliest_ut to latest_ut (one orbit later if missing) that leaves the moon orbited for its planet at target_pe and, if given, target_inc; lexicon error, planet, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted, soi_ut, from_grid, finished_by"));
+            AddSuffix("RETURNMISS", new OneArgsSuffix<Lexicon, Lexicon>(ReturnMissCall,
+                "Core Library only (return): whether the path flown (pe, inc) is the return asked (target_pe and, if given, target_inc, within pe_tolerance and inc_tolerance); lexicon error, empty when it is, else why with the figures"));
             AddSuffix("TARGETVESSEL", new NoArgsSuffix<Lexicon>(TargetVessel,
                 "Core Library only (rendezvous, dock, land): the Mission's Target Vessel, read live; lexicon error, name, body, and lat, lng, alt for a landed or splashed one"));
             AddSuffix("DOCKHOLD", new OneArgsSuffix<Lexicon, Lexicon>(DockHoldStart,
@@ -82,6 +88,58 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (land): the site lat, lng moved clear_m clear of keep_lat, keep_lng (straight away, else toward ahead_lat, ahead_lng) by up to max_divert on a body of radius; lexicon lat, lng, dist, moved"));
             AddSuffix("BURNWORTH", new OneArgsSuffix<Lexicon, Lexicon>(BurnWorthCall,
                 "Core Library only (circularize, tune_pe): whether a burn is worth its turn when the tolerance was defaulted, and tune_pe's default tolerance; lexicon safe_height, tolerance, skip, note"));
+            AddSuffix("SHIPSYSTEMS", new OneArgsSuffix<Lexicon, StringValue>(ShipSystemsCall,
+                "Core Library only (launch, ascend, land, deorbit, reentry): a Ship Systems cue (liftoff, final_descent, entry) or stowing to ask after the lift-off stow; lexicon done, capped, note"));
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:SHIPSYSTEMS</c> (#756, ADR 0014): the block's one-line cue for the moments only it knows. The mod's rule
+        /// decides (<see cref="ShipSystemsRule"/>) and the mod moves the parts, the craft's own, from Update; the Script Check refuses
+        /// the call in a Mission Script. A block's stow wait polls it, so its time is logged at most once a second (guardrail 6).
+        /// </summary>
+        private Lexicon ShipSystemsCall(StringValue cue)
+        {
+            ShipSystemsStowAnswer answer = null;
+            return (Lexicon)Guarded("SHIPSYSTEMS", () =>
+            {
+                // A failure here must not stop the block (it reads the answer's keys unguarded): no action, and the block goes on.
+                var keeper = ShipSystemsKeeper.Current;
+                try { answer = keeper == null ? ShipSystemsStowAnswer.Nothing : keeper.Cue(cue.ToString(), shared.Vessel); }
+                catch (Exception e)
+                {
+                    Debug.LogWarning(ModInfo.LogTag + " Ship Systems cue " + cue + " failed: " + e);
+                    answer = ShipSystemsStowAnswer.Nothing;
+                }
+                return KosValues.FromPlain(answer.Lexicon());
+            }, () => cue + ": " + (answer.Done ? "done" : "waiting") + (answer.Capped ? ", capped" : ""), 1);
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:ENCOUNTERWATCH</c> (#770, ADR 0014): a wait of transfer_to's arms its watch; the Script Check refuses the call in a Mission Script.</summary>
+        private void EncounterWatchArm(Lexicon plan)
+        {
+            var watcher = EncounterWatcher.Current;
+            if (watcher != null) watcher.Arm(KosValues.ToDictionary(plan), shared.Vessel);
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:ENCOUNTERWATCHDROPPED</c> (#770): the wait's stop, every tick. Most ticks only compare a time; the time of
+        /// those that read the orbit is logged at most every 10 s (guardrail 6). A drop's line goes in the block trace.
+        /// </summary>
+        private BooleanValue EncounterWatchPoll()
+        {
+            var watcher = EncounterWatcher.Current;
+            if (watcher == null) return false;
+            var dropped = false;
+            Guarded("ENCOUNTERWATCHDROPPED", () =>
+            {
+                dropped = watcher.Poll(shared.Vessel);
+                var line = watcher.TakeLine();
+                var bridge = KosBridge.Instance;
+                if (line.Length > 0 && shared.KSPPart != null && bridge != null)
+                    bridge.OnBlockTrace(shared.KSPPart.persistentId, "transfer_to", new System.Collections.Generic.Dictionary<string, object> { { "encounter_watch", line } });
+                return new BooleanValue(dropped);
+            }, watcher.Describe, 10);
+            return dropped;
         }
 
         /// <summary><c>ADDONS:CLAUDIA:BURNWORTH</c> (#715, ADR 0014): circularize's and tune_pe's skip rule (<see cref="BurnWorth.Call"/>), pure.</summary>
@@ -293,8 +351,20 @@ namespace ClaudiaKerman.KOS
             }, () => node.ContainsKey("dv")
                 ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); {5} Pe {6:0} m, inclination {7:0.00}, leaving the moon at UT {8:0}{9}{10}",
                     node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["planet"], node["pe_predicted"], node["inc_predicted"], node["soi_ut"],
-                    (bool)node["from_grid"] ? " (from the grid)" : "", node["error"] as string == "" ? "" : "; " + node["error"])
+                    ((bool)node["from_grid"] ? " (from the grid)" : "") + (node["finished_by"] as string == "" ? "" : " (the SQP stopped short: finished by " + node["finished_by"] + ")"),
+                    node["error"] as string == "" ? "" : "; " + node["error"])
                 : (string)node["error"]);
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:RETURNMISS</c> (#759, ADR 0014): whether the path flown is the return asked (<see cref="BlockCalls.ReturnMiss"/>), pure.</summary>
+        private Lexicon ReturnMissCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> miss = null;
+            return (Lexicon)Guarded("RETURNMISS", () =>
+            {
+                miss = BlockCalls.ReturnMiss(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(miss);
+            }, () => miss["error"] as string == "" ? "within the tolerances" : (string)miss["error"]);
         }
 
         /// <summary>

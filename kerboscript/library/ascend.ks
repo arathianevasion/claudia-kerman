@@ -255,6 +255,10 @@ function ascend {
     set az to ascend_flight_az(az, az_travel, hv:mag).
   }
 
+  local stowed is claudia_stow_ship_systems(ctx).
+  if stowed <> "" {
+    return claudia_finish(ctx, false, stowed, extra).
+  }
   local pitch is 90.
   local tset is 1.
   sas off.

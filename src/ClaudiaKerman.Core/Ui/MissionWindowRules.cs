@@ -268,6 +268,8 @@ namespace ClaudiaKerman.Core.Ui
 
         /// <summary>The Settings switch for whether new Missions start in Auto Mode (under Mission defaults only).</summary>
         public const string DefaultAutoModeLabel = "Start new Missions in Auto Mode";
+        /// <summary>The Settings switch for the Ship Systems rule (#756).</summary>
+        public const string ManageShipSystemsLabel = "Claudia manages ship systems";
 
         /// <summary>The control bar offers the Auto Mode switch once a Mission has started, and until it is over.</summary>
         public static bool OffersAutoMode(MissionView view)

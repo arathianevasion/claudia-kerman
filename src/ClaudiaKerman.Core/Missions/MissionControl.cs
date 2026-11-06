@@ -117,6 +117,8 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is KosBlockStarted) BlockStarted((KosBlockStarted)input);
             else if (input is KosBlockEnded) BlockEnded((KosBlockEnded)input);
             else if (input is KosRcsSwitched) RcsSwitched((KosRcsSwitched)input);
+            else if (input is ShipSystemsMoved) ShipSystemsLine((ShipSystemsMoved)input);
+            else if (input is EncounterWatchDropped) EncounterWatchLine((EncounterWatchDropped)input);
             else if (input is AbortSequence) AbortPressed();
             else if (input is VesselsSeen) VesselsChanged(((VesselsSeen)input).Vessels);
             else if (input is VesselsDocked) Docked((VesselsDocked)input);
@@ -206,6 +208,8 @@ namespace ClaudiaKerman.Core.Missions
             public bool CutOffRetry;
             /// <summary>The turn was resent once with <see cref="MissionPrompts.PlanCallNote"/> after a mission_plan reply with no accepted plan (#667); not saved.</summary>
             public bool PlanCallRetry;
+            /// <summary>A Debrief turn was resent once with <see cref="EmptyDebrief.Note"/> after a reply with no debrief (#748); not saved.</summary>
+            public bool DebriefRetry;
             /// <summary>The reply to the final request at the step limit was refused off_schema (#668): <see cref="Pause"/> keeps the tool loop and Retry sends the final request again. Memory only.</summary>
             public bool KeepLoop;
             /// <summary>
@@ -528,7 +532,7 @@ namespace ClaudiaKerman.Core.Missions
                 // A planet's plan_transfer row picks its Transfer Window by the Mission Setting, as a tool call would (#458).
                 _snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent);
             }
-            return MissionPrompts.StageTable(_snapshot, goal, mission.PlannedAscent) + MissionPrompts.PadPlanning(_snapshot);
+            return MissionPrompts.StageTable(_snapshot, goal, mission.PlannedAscent) + MissionPrompts.DeltaVMapLine(_snapshot, goal) + MissionPrompts.PadPlanning(_snapshot);
         }
 
         /// <summary>
@@ -631,7 +635,7 @@ namespace ClaudiaKerman.Core.Missions
 
             var plan = mission.PendingSequence;
             // Back after the Transfer Window: the next one, or an Alert (#616).
-            if (WindowWasMissed(mission) && !NextWindow(mission, plan)) return;
+            if (!plan.Manual && WindowWasMissed(mission) && !NextWindow(mission, plan)) return;
             // The mod never starts a sequence before its Due Time, and never warps there for the player.
             if (plan.DueTimeUt.HasValue && _ut < plan.DueTimeUt.Value)
             {
@@ -1394,6 +1398,11 @@ namespace ClaudiaKerman.Core.Missions
             var problem = reply == null ? "it wasn't in the Mission reply format" : Mismatch(turn.Purpose, reply);
             if (problem != null)
             {
+                if (turn.Purpose == Purpose.Debrief && reply != null && !PlanNotProposed(reply) && reply.Debrief == null && mission.DeferredRestore == null)
+                {
+                    EmptyDebriefReply(mission, turn);
+                    return;
+                }
                 if (reply != null && PlanNotProposed(reply) && TakesMissionPlan(turn.Purpose) && !turn.PlanCallRetry && mission.DeferredRestore == null)
                 {
                     PlanCallCorrection(mission, turn, problem);
@@ -1880,7 +1889,10 @@ namespace ClaudiaKerman.Core.Missions
             }
             // As MissionLogRebuild does with the plan's card, so a load has the same steps.
             mission.GoalSteps = GoalSteps.Replace(mission.GoalSteps, plan.GoalSteps);
-            AddCard(mission, LogKind.MissionPlan, "Mission Plan", MissionCards.MissionPlanBody(plan, mission.VesselName), plan.Why);
+            // #757: the Craft Check ran before there was a plan, so the plan's own legs are judged against the Delta-v Map here.
+            var underMap = _snapshot == null ? "" : PlanLegs.CardLine(_snapshot, PlanLegs.Judge(_snapshot, RestOfPlan(mission), mission.PlannedAscent), _config.CraftCheckMarginPercent);
+            if (underMap.Length > 0) Event(mission, "leg_under_map", underMap.Trim());
+            AddCard(mission, LogKind.MissionPlan, "Mission Plan", MissionCards.MissionPlanBody(plan, mission.VesselName) + underMap, plan.Why);
             PlanNews("Claudia has a Mission Plan for your Approval.");
         }
 
@@ -1888,7 +1900,11 @@ namespace ClaudiaKerman.Core.Missions
         /// <param name="restored">A load offers the saved plan again: its Due Time and window were decided when it first arrived.</param>
         private void OfferSequencePlan(Mission mission, SequencePlan plan, bool restored = false)
         {
-            if (!restored) WindowWait(mission, plan);
+            if (!restored)
+            {
+                WindowWait(mission, plan);
+                TransferWait(mission, plan);
+            }
             if (!mission.SequenceCounted)
             {
                 mission.SequencesProposed++;
@@ -2305,6 +2321,8 @@ namespace ClaudiaKerman.Core.Missions
                     view.PlanSequencesManual = mission.Plan.Sequences.Select(s => s.Manual).ToList();
                 }
                 view.CurrentSequence = Math.Min(StepsBegun(mission), view.PlanSequences.Count) - 1;
+                view.PlanLegs = mission.Plan != null ? mission.Plan.Sequences : null;
+                view.ProcessorPartId = mission.ProcessorPartId;
                 view.ChuteAllocation = mission.Chutes;
                 if (mission.Stage == MissionStage.Running && mission.PendingSequence != null)
                 {

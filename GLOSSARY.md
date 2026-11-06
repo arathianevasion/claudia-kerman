@@ -37,7 +37,7 @@ A Craft Check finding that prevents the Mission from starting; it cannot be over
 _Avoid_: error, hard fail
 
 **Warning**:
-A Craft Check finding the player must acknowledge before the Mission starts.
+A Craft Check finding the player must acknowledge before the Mission starts. Once a Mission Plan exists the mod also reports a Warning that a Maneuver Sequence's budget is under the Delta-v Map; that one is shown, not acknowledged.
 _Avoid_: soft fail, notice
 
 **Game Snapshot**:
@@ -49,7 +49,7 @@ The craft is on the ground or the pad (PRELAUNCH, LANDED or SPLASHED): no flight
 _Avoid_: landed (alone, which leaves out PRELAUNCH)
 
 **Delta-v Map**:
-The reference table of delta-v needed for each leg of travel in the Kerbin system, against which a Mission Plan is budgeted.
+The reference table of delta-v needed for each leg of travel between every body, computed from the game's body data, against which a Mission Plan is budgeted.
 _Avoid_: dv chart, cheat sheet
 
 **Maneuver Sequence**:
@@ -116,6 +116,13 @@ _Avoid_: next window, fastest (a Mission Setting)
 The cheapest Transfer Window within one synodic period of the two planets, or one orbit of the moon. A moon's Optimal is its Soonest unless it saves at least 5 m/s: the Mun, in the parking orbit's plane, costs the same at any departure; Minmus is cheapest near a node. From the ground, a moon out of the site's plane is costed as a launch into its plane at the next launch window (#690), so Soonest is Optimal and the wait is under a body day; from a site past the plane, as a launch due east with the residual fixed on the way, and the moon's horizon is bounded by Time versus delta-v (Fastest one parking orbit, Balanced a quarter of the moon's orbit, Most efficient one orbit, #727). Each row names that launch (its target_inc and time), its ascent loss and plane change, and the case it took.
 _Avoid_: best window, most efficient (a Mission Setting)
 
+**Direct Route**:
+From a moon's orbit to another planet of its star, in one Transfer Window (#760): a fall from the moon to a low periapsis at its planet, at the time that lines the periapsis up with the ejection, and the ejection at that periapsis. It saves about twice the capture at the planet over the Two-Step Route. Flown by return, then transfer_to, each with its window from plan_transfer's row. Time versus delta-v picks between the two routes as it does between windows: Soonest is the route arriving first if it is within the Craft Check's margin of the cheaper, else the cheaper.
+_Avoid_: slingshot, gravity assist (the planet's gravity does no turning for free here), Oberth route
+
+**Two-Step Route**:
+From a moon's orbit to another planet of its star: a return to the planet's low orbit, a capture there, and the ejection from that orbit at the Transfer Window.
+
 **Daylight**:
 At a landing site, the sun is more than 20° above the horizon there. A daylight landing touches down only in Daylight; a sun lower than that, though up, is not Daylight.
 _Avoid_: lit, sunlit, daytime
@@ -140,12 +147,20 @@ _Avoid_: glide slope, descent profile (as a name for the number), approach angle
 The chutes each remaining atmospheric entry may open, by need, with the pod's chutes kept for the return. The mod works it out at Mission Plan Approval and again at each Debrief, from the craft as it is, and for the Craft Check from the Mission Goal's own words; an entry its chutes can't bring under reentry's touchdown limit is a powered finish. `reentry` reads its entry's set when its chutes are "auto".
 _Avoid_: chute budget, parachute plan
 
+**Ship Systems**:
+The parts the mod moves at flight transitions on the craft Claudia flies: solar panels, deployable antennas and deployable radiators (extended and retracted) and lights (on and off). Its own rule, with Building Blocks only cueing the moments they alone know; each move goes to the Mission's events and trace, not the prompt, and what the player toggles between transitions stands until the next one. Not cargo bays, drills, ISRU or science parts.
+_Avoid_: deployables, auto-deploy
+
+**Encounter Watch**:
+The mod's check of an encounter during `transfer_to`'s long coasts: at intervals of game time, tighter near the coast's two ends, it reads the craft's orbit from KSP with no physics and asks whether the encounter the coast was planned on still holds. Only a lost encounter, a re-patch onto a body the coast doesn't go round, or a periapsis drifted past its limit ends the wait early, and the block then plans the restore. It never raises warp.
+_Avoid_: encounter guard, warp monitor
+
 **Mission Plan**:
 The ordered list of Maneuver Sequences Claudia intends to fly to reach a Mission Goal, each with its delta-v budget and Due Time or rough timing; approved once to start the Mission and revised as Debriefs require.
 _Avoid_: flight plan, roadmap
 
 **Due Time**:
-The earliest time a Maneuver Sequence may start; the player may fly elsewhere until then, and the Mission calls them back at it. Claudia sets one in a Sequence Plan when the wait before it needs the player (e.g. "come back when you've docked"). The mod sets one on the first Maneuver Sequence when it would wait on the pad more than 6 h for a Transfer Window to another planet or a moon: the window less the launch lead. A shorter wait for a window, and any wait for daylight or a hold, is not a Due Time: the Mission Script warps through it (ADR 0004 and its amendment).
+The earliest time a Maneuver Sequence may start; the player may fly elsewhere until then, and the Mission calls them back at it. Claudia sets one in a Sequence Plan when the wait before it needs the player (e.g. "come back when you've docked"). The mod sets one on the first Maneuver Sequence when it would wait on the pad more than 6 h for a Transfer Window to another planet or a moon: the window less the launch lead. A goal at a moon of another planet waits for that planet's window. A craft landed on another body waits there too: when its next legs are an ascent and a departure for another planet, the ascent carries the Due Time, the departure less the ascent lead. A shorter wait for a window, and any wait for daylight or a hold, is not a Due Time: the Mission Script warps through it (ADR 0004 and its amendment).
 _Avoid_: window (which is a transfer window), scheduled time
 
 **Sequence Plan**:

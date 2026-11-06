@@ -206,6 +206,234 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(D(node, "ut"), snapshot.Ut, snapshot.Ut + Period(snapshot));
         }
 
+        // ---- the Ike Mission's stall (#759) ----
+
+        /// <summary>
+        /// Duna and Ike as that Mission's body table had them, and its craft's orbit at each of the four refused runs (m20261105-032927-1d2c,
+        /// the Game Snapshots of the Debriefs), with the periapsis each asked: a low orbit, inclined 18°, far from the tests' circular ones.
+        /// </summary>
+        private static GameSnapshot MissionOrbit(int run)
+        {
+            var uts = new[] { 31003751.429473974, 31003757.84947383, 31003764.58947368, 31003772.329473507 };
+            var smas = new[] { 148619.81190082472, 148619.8103701323, 148619.8090414372, 148619.80740749335 };
+            var eccs = new[] { 0.0005587174274757639, 0.00055866201228586408, 0.00055861362362367409, 0.000558555232551169 };
+            var lans = new[] { 88.461477049027849, 88.4614765859053, 88.4614761849096, 88.4614757017489 };
+            var argPes = new[] { 131.29871650363029, 131.29754432227273, 131.29643658873084, 131.2949907985855 };
+            var mnas = new[] { 3.3351011583893033, 3.3503904921593866, 3.3664397654256568, 3.3848732687393035 };
+            var snapshot = new GameSnapshot { Ut = uts[run], Situation = "ORBITING", Body = "Ike" };
+            snapshot.Orbit = new SnapshotOrbit
+            {
+                SemiMajorAxis = smas[run], Eccentricity = eccs[run], Inclination = 18.103046, Lan = lans[run], ArgumentOfPeriapsis = argPes[run],
+                MeanAnomalyAtEpoch = mnas[run], Epoch = uts[run], Body = "Ike", Periapsis = 18537, Apoapsis = 18703,
+            };
+            snapshot.Bodies.AddRange(new[]
+            {
+                new SnapshotBody { Name = "Sun", Gm = 1.1723327948324905E+18, Radius = 261600000, RotationPeriod = 432000 },
+                new SnapshotBody
+                {
+                    Name = "Duna", Parent = "Sun", Gm = 301363211975.09772, Radius = 320000, AtmosphereHeight = 50000, SeaLevelAtm = 0.0666666677961107,
+                    SoiRadius = 47921949.369738035, RotationPeriod = 65517.859375, Sma = 20726155264, Eccentricity = 0.0509999990463257,
+                    Inclination = 0.0599999986588955, Lan = 135.5, MeanAnomalyAtEpoch = 3.14000010490417,
+                },
+                new SnapshotBody
+                {
+                    Name = "Ike", Parent = "Duna", Gm = 18568368573.144009, Radius = 130000, SoiRadius = 1049598.9393116189, RotationPeriod = 65517.862134808071,
+                    Sma = 3200000, Eccentricity = 0.0299999993294477, Inclination = 0.200000002980232, MeanAnomalyAtEpoch = 1.70000004768372,
+                },
+            });
+            return snapshot;
+        }
+
+        /// <summary>The asked periapses of the four runs, each with the soonest burn a moment before, at and after the snapshot, as the block's start and turn time move it.</summary>
+        public static IEnumerable<object[]> MissionAsks()
+        {
+            var targets = new[] { 300000.0, 310000, 318000, 323095 };
+            for (var run = 0; run < targets.Length; run++)
+                foreach (var lead in new[] { -6.0, 0, 8, 30, 300, 1500 })
+                    yield return new object[] { run, targets[run], lead };
+        }
+
+        /// <summary>
+        /// The refused runs: from that orbit the least burn sits where the path's apoapsis meets Ike's sphere of influence (114.33 m/s),
+        /// and at a 300 km periapsis the solve ran into that edge. Below it the path never leaves, so no point is defined; just above it
+        /// the periapsis has an infinite slope in the burn (10 km in 0.05 m/s), and the SQP stopped 1 to 8 km off.
+        /// </summary>
+        [Theory]
+        [MemberData(nameof(MissionAsks))]
+        public void The_Ike_Missions_return_solves_within_1_km(int run, double targetPe, double lead)
+        {
+            var snapshot = MissionOrbit(run);
+            var node = Solve(snapshot, targetPe, earliest: snapshot.Ut + lead);
+            Assert.Equal("", node["error"]);
+            double pe, inc;
+            Flown(snapshot, node, "Duna", out pe, out inc);
+            Assert.InRange(pe, targetPe - PeBound, targetPe + PeBound);
+        }
+
+        /// <summary>
+        /// A solve that passed still flew nothing: a 114.35 m/s answer was 0.02 m/s over the edge, and a burn ends up to 0.1 m/s out, so the
+        /// craft could stay in Ike's sphere. The burn the solver gives leaves it even 0.5 m/s short, and that shortfall moves the periapsis
+        /// by what the correction halfway can take back.
+        /// </summary>
+        [Theory]
+        [MemberData(nameof(MissionAsks))]
+        public void The_answer_stays_clear_of_the_sphere_of_influences_edge(int run, double targetPe, double lead)
+        {
+            var snapshot = MissionOrbit(run);
+            var node = Solve(snapshot, targetPe, earliest: snapshot.Ut + lead);
+            Assert.Equal("", node["error"]);
+            var shortBy = 0.5 / D(node, "dv");
+            var underburnt = new Dictionary<string, object>
+            {
+                { "ut", D(node, "ut") }, { "prograde", D(node, "prograde") * (1 - shortBy) }, { "normal", D(node, "normal") * (1 - shortBy) }, { "radial", D(node, "radial") * (1 - shortBy) },
+            };
+            double pe, inc;
+            Flown(snapshot, underburnt, "Duna", out pe, out inc);
+            Assert.InRange(pe, targetPe - 60000, targetPe + 60000);
+        }
+
+        /// <summary>The floor costs about 2 m/s over the edge, and the 35 km return that flew (124 m/s) is not moved by it.</summary>
+        [Fact]
+        public void The_clear_answer_costs_little_more_than_the_edge()
+        {
+            var snapshot = MissionOrbit(0);
+            Assert.InRange(D(Solve(snapshot, 300000), "dv"), 114.33, 118);
+            Assert.InRange(D(Solve(snapshot, 35000), "dv"), 123, 125.5);
+        }
+
+        private static void AssertFlownWithin1Km(GameSnapshot snapshot, ReturnPlan plan, double targetPe)
+        {
+            double pe, inc;
+            Flown(snapshot, new Dictionary<string, object> { { "ut", plan.Ut }, { "prograde", plan.Prograde }, { "normal", plan.Normal }, { "radial", plan.Radial } },
+                "Duna", out pe, out inc);
+            Assert.InRange(pe, targetPe - PeBound, targetPe + PeBound);
+        }
+
+        /// <summary>A best point the SQP stops short at, in a window with no room in time, is finished by a search on its prograde component alone, and says so.</summary>
+        [Fact]
+        public void A_solve_stopped_short_is_finished_along_prograde()
+        {
+            var snapshot = MissionOrbit(0);
+            var ut = snapshot.Ut + 2000;
+            var stopped = ReturnBurn.Find(snapshot, new ReturnAsk { TargetPe = 300000, EarliestUt = ut, LatestUt = ut, SolverIterations = 3, FinishSearch = false });
+            Assert.NotNull(stopped.Error);
+            Assert.Null(stopped.FinishedBy);
+
+            var plan = ReturnBurn.Find(snapshot, new ReturnAsk { TargetPe = 300000, EarliestUt = ut, LatestUt = ut, SolverIterations = 3 });
+            Assert.Null(plan.Error);
+            Assert.Equal("a search on the prograde component", plan.FinishedBy);
+            Assert.Equal(stopped.Ut, plan.Ut);
+            Assert.Equal(stopped.Normal, plan.Normal);
+            Assert.Equal(stopped.Radial, plan.Radial);
+            AssertFlownWithin1Km(snapshot, plan, 300000);
+        }
+
+        /// <summary>One the prograde floor holds, as a stall at the edge would be, cannot be finished by less burn: a time shift does it.</summary>
+        [Fact]
+        public void A_solve_stopped_short_at_the_floor_is_finished_by_a_time_shift()
+        {
+            var snapshot = MissionOrbit(0);
+            var plan = ReturnBurn.Find(snapshot, new ReturnAsk { TargetPe = 300000, EarliestUt = snapshot.Ut, SolverIterations = 4 });
+            Assert.Null(plan.Error);
+            Assert.Equal("a time shift", plan.FinishedBy);
+            AssertFlownWithin1Km(snapshot, plan, 300000);
+        }
+
+        /// <summary>
+        /// The bound's node frame turns with the burn's time, so a large burn against the orbit, as out of a retrograde one round a small moon,
+        /// can stall where the inertial solve (the solve before #759) reaches it: that solve remains behind the bounded one.
+        /// </summary>
+        [Theory]
+        [InlineData(0.0, 50000)]
+        [InlineData(0.2, 50000)]
+        [InlineData(0.2, 170000)]
+        public void A_return_the_bound_cannot_solve_still_gets_the_inertial_solve(double eccentricity, double targetPe)
+        {
+            var snapshot = Orbiting(Minmus, 6000, 170);
+            snapshot.Orbit.SemiMajorAxis = 66000 / (1 - eccentricity);
+            snapshot.Orbit.Eccentricity = eccentricity;
+            snapshot.Orbit.Lan = 30;
+            snapshot.Orbit.ArgumentOfPeriapsis = 40;
+            snapshot.Orbit.MeanAnomalyAtEpoch = 1;
+            var node = Solve(snapshot, targetPe);
+            Assert.Equal("", node["error"]);
+            Assert.Equal("the inertial solve, without the bound", node["finished_by"]);
+            double pe, flownInc;
+            Flown(snapshot, node, "Kerbin", out pe, out flownInc);
+            Assert.InRange(pe, targetPe - PeBound, targetPe + PeBound);
+        }
+
+        /// <summary>The worst the two solves and the finishes add to the Mission's own solve, against ADR 0010's budget.</summary>
+        [Fact]
+        [Trait("Category", "Timing")]
+        public void The_Ike_Missions_return_is_solved_in_under_200_ms()
+        {
+            var snapshot = MissionOrbit(0);
+            Timing.Within(WorstMs, () => Assert.Equal("", Solve(snapshot, 300000)["error"]));
+        }
+
+        /// <summary>A solve that reaches its answer has nothing to finish.</summary>
+        [Fact]
+        public void A_converged_solve_is_not_finished()
+        {
+            Assert.Equal("", Solve(MissionOrbit(0), 300000)["finished_by"]);
+        }
+
+        /// <summary>A periapsis out of the searches' reach stays a failure with its figure: the finish never hides a real miss.</summary>
+        [Fact]
+        public void A_finish_that_cannot_reach_the_target_leaves_the_failure()
+        {
+            var snapshot = MissionOrbit(0);
+            var ut = snapshot.Ut + 1000;
+            var plan = ReturnBurn.Find(snapshot, new ReturnAsk { TargetPe = 300000, EarliestUt = ut, LatestUt = ut });
+            Assert.StartsWith("found no return: the best burn", plan.Error);
+            Assert.Null(plan.FinishedBy);
+        }
+
+        // ---- the flown result (#759) ----
+
+        private static string Miss(double targetPe, double pe, double? targetInc = null, double? inc = null, double? peTolerance = null)
+        {
+            var input = new Dictionary<string, object> { { "target_pe", targetPe }, { "pe", pe } };
+            if (targetInc.HasValue) input["target_inc"] = targetInc.Value;
+            if (inc.HasValue) input["inc"] = inc.Value;
+            if (peTolerance.HasValue) input["pe_tolerance"] = peTolerance.Value;
+            return (string)BlockCalls.ReturnMiss(input)["error"];
+        }
+
+        [Fact]
+        public void A_flown_periapsis_outside_the_tolerance_is_a_failure_with_the_figure()
+        {
+            Assert.Equal("the return flown arrives at periapsis 35440 m, not 300000 m", Miss(300000, 35440));
+            Assert.Equal("the return flown arrives at periapsis 301001 m, not 300000 m", Miss(300000, 301001));
+            Assert.Equal("the return flown arrives at periapsis 298999 m, not 300000 m", Miss(300000, 298999));
+        }
+
+        [Fact]
+        public void A_flown_periapsis_within_the_tolerance_is_no_miss()
+        {
+            Assert.Equal("", Miss(35000, 35440));
+            Assert.Equal("", Miss(300000, 301000));
+            Assert.Equal("", Miss(300000, 299000));
+            Assert.Equal("", Miss(300000, 301500, peTolerance: 2000));
+        }
+
+        /// <summary>What return_needs_correction decided in the block (its table moved here with it): off target_pe, or off a target_inc given.</summary>
+        [Fact]
+        public void A_flown_inclination_counts_only_when_one_was_asked()
+        {
+            Assert.Equal("", Miss(35000, 35900, inc: 12));
+            Assert.NotEqual("", Miss(35000, 36100, inc: 12));
+            Assert.Equal("", Miss(35000, 35000, 30, 30.4));
+            Assert.Equal("the return flown arrives at periapsis 35000 m and inclination 30.60°, not 35000 m and 30.00°", Miss(35000, 35000, 30, 30.6));
+        }
+
+        [Fact]
+        public void A_flown_check_without_its_figures_is_an_error()
+        {
+            Assert.Equal("the return's check: target_pe and pe must be numbers", BlockCalls.ReturnMiss(new Dictionary<string, object> { { "target_pe", 300000.0 } })["error"]);
+        }
+
         // ---- the budget (ADR 0010) ----
 
         [Fact]

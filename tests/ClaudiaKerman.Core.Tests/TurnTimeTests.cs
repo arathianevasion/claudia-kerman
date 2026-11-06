@@ -120,7 +120,7 @@ namespace ClaudiaKerman.Core.Tests
         [Theory]
         [InlineData(5, 5, 500)]
         [InlineData(5, 5, 100)]
-        [InlineData(50, 8, 300)]
+        [InlineData(5, 20, 300)]
         public void With_RCS_the_time_is_TURNPLANs_turn_plus_the_settle(double wheel, double rcs, double moi)
         {
             var craft = new TurnCraft { WheelPitch = wheel, WheelYaw = wheel, RcsPitch = rcs, RcsYaw = rcs, RcsUsable = true, MoiPitch = moi, MoiYaw = moi };
@@ -131,6 +131,18 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(System.Math.Max(TurnTime.FloorSeconds, plan.TurnS + TurnTime.SettleSeconds), turn.Seconds, 6);
             Assert.Equal(plan.CoastRateDegS, turn.TopRateDegS, 6);
             Assert.Equal(plan.AlphaDegS2, turn.AlphaDegS2, 6);
+        }
+
+        [Fact]
+        public void RCS_that_adds_little_to_strong_wheels_plans_no_burst_turn_and_the_capped_model_stands()
+        {
+            // #754: wheels 50 against RCS 8 on 300: a burst turn can't beat the wheels meaningfully, so none is planned.
+            var craft = new TurnCraft { WheelPitch = 50, WheelYaw = 50, RcsPitch = 8, RcsYaw = 8, RcsUsable = true, MoiPitch = 300, MoiYaw = 300 };
+            Assert.Equal(0, TurnPlan.Plan(craft, TurnTime.TurnDegrees, -1).CoastRateDegS);
+            var turn = TurnTime.Predict(craft);
+            Assert.Null(turn.Error);
+            Assert.True(turn.TurnSeconds > 0);
+            Assert.True(turn.TurnSeconds <= TurnTime.PredictWheels(craft).TurnSeconds);
         }
 
         [Fact]
