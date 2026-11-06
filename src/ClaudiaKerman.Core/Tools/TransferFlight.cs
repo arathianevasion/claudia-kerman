@@ -52,6 +52,10 @@ namespace ClaudiaKerman.Core.Tools
         public bool Checkpoints;
         /// <summary>Where a checkpoint left this flight: the first step resumes there, with no ejection; null otherwise.</summary>
         public CoastToken Resume;
+        /// <summary>The <c>plane</c> option (#788).</summary>
+        public PlaneOption PlaneOption = PlaneOption.Auto;
+        /// <summary>The arrival plane <see cref="PlaneOption"/> resolves to, set at each step; null for none.</summary>
+        internal ArrivalPlane Plane;
     }
 
     /// <summary>The next thing <c>transfer_to</c> does: fly a node, wait until a UT, or end; or why it fails.</summary>
@@ -93,6 +97,8 @@ namespace ClaudiaKerman.Core.Tools
         public double WaitUt;
         /// <summary>A wait's Encounter Watch (#770); null for a wait with nothing to watch.</summary>
         public EncounterWatchPlan Watch;
+        /// <summary>The arrival plane this flight aims for, for Core to record for <c>capture</c> (#788): <see cref="ArrivalPlane.ToRecord"/>; "" for none.</summary>
+        public string AimedPlane = "";
         /// <summary>Script Result keys and values to set.</summary>
         public readonly Dictionary<string, object> Report = new Dictionary<string, object>();
     }
@@ -111,6 +117,9 @@ namespace ClaudiaKerman.Core.Tools
     /// then the missed-ejection recovery once inside max_duration or, in "auto", <see cref="RecoveryWait"/>
     /// (<see cref="Recover"/>), before the block fails with the figures. In a Mission's run a coast of over 6 h to a correction may stop
     /// at a Coast Checkpoint (<see cref="CoastCheckpoints"/>, #775), and the resumed flight starts where it stopped.
+    /// With an arrival plane (<see cref="ArrivalPlanes"/>, #788) the flight waits for the target's sphere of influence whatever the target, and the
+    /// trim there aims the periapsis and the plane together (<see cref="PlaneTrim"/>); to a moon, whose sphere of influence is small, the halfway
+    /// correction aims the plane first, where a change of the approach costs less.
     /// </summary>
     internal static class TransferFlight
     {
@@ -161,6 +170,8 @@ namespace ClaudiaKerman.Core.Tools
         internal const double RecoveryWait = 30 * 21600;
         /// <summary>The Encounter Watch's drops one flight may have (#770): after them its coasts go unwatched, and the arrival's check decides.</summary>
         internal const int MaxDrops = 3;
+        /// <summary>Degrees off the arrival plane under which it is not worth a burn on the approach (#788).</summary>
+        internal const double PlaneClose = 0.1;
 
         public static TransferFlightStep Next(GameSnapshot snapshot, TransferFlightAsk ask)
         {
@@ -173,6 +184,21 @@ namespace ClaudiaKerman.Core.Tools
                 ask.Drops++;
             }
             if (ask.Resume != null) ask.Phase = Resuming;
+            var aimed = "";
+            var bodies = new BodySystem(snapshot.Bodies);
+            var arrival = bodies.Find(ask.Target ?? "");
+            if (arrival != null)
+            {
+                string unread;
+                ask.Plane = ArrivalPlanes.Resolve(snapshot, bodies, arrival, ask.PlaneOption, out unread);
+                if (unread != "") return Fail(unread);
+                if (ask.Plane != null)
+                {
+                    aimed = ask.Plane.ToRecord();
+                    // A Target Vessel's capture is circular at its periapsis altitude (#788 item 6): the flight arrives there.
+                    if (ask.Plane.VesselPe.HasValue) ask.TargetPe = ask.Plane.VesselPe.Value;
+                }
+            }
             double? movedMax = null;
             for (var i = 0; i < MaxPhases; i++)
             {
@@ -184,6 +210,7 @@ namespace ClaudiaKerman.Core.Tools
                 step.Recovered |= ask.Recovered;
                 step.Restored |= ask.Restored;
                 step.Drops = ask.Drops;
+                step.AimedPlane = aimed;
                 if (step.MaxDuration.HasValue) movedMax = step.MaxDuration;
                 else step.MaxDuration = movedMax;
                 if (step.Error != "" || step.Do != TransferFlightStep.Done || step.Phase == "") return step;
@@ -566,14 +593,25 @@ namespace ClaudiaKerman.Core.Tools
             if (!ask.Correction) return Go(ask, Fine);
             var enc = Encounter(setup);
             if (enc == null) return Recover(snapshot, setup, ask, Lost(setup.Target));
-            if (Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, MidCheck);
+            var far = Far(setup, ask);
+            // To a moon the halfway burn sets the plane too: its sphere of influence is small, and a change of plane inside it costs more (#788).
+            var plane = !far && setup.Body != setup.Target && ask.Plane != null && ask.Plane.OffBy(enc.Normal) > PlaneClose;
+            if (!plane && Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, MidCheck);
             string late;
             var lead = ask.TurnTime + Lead;
             var ut = CorrectionUt(ask.MidUt >= 0 ? Math.Max(ask.MidUt, setup.Now + lead) : (setup.Now + enc.SoiUt) / 2, setup.Now, lead, ask.StartUt, ask.MaxDuration, out late);
             // A wake too late for the planned burn goes on to the trim: only the first planning of it can fail the block.
             if (late != "") return ask.MidUt >= 0 ? Go(ask, MidCheck) : Fail(late);
-            var fix = CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut });
-            var far = Far(setup, ask);
+            var fix = CorrectionBurn.Find(snapshot, new CorrectionAsk
+            {
+                Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut, TargetNormal = plane ? ask.Plane.Through(enc.Approach, enc.Normal).Normal : (Vec3?)null,
+            });
+            // One the solver can't aim, or the craft can't pay for: the plane waits for the trim, and the plain correction flies.
+            if (plane && (!fix.HasBurn || fix.Error != null || OverDvLeft(ask, fix)))
+            {
+                if (Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, MidCheck);
+                fix = CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut });
+            }
             if (far && (!fix.HasBurn || fix.Error != null)) return Go(ask, MidCheck);
             if (ask.MidUt < 0 && fix.HasBurn && fix.Error == null && fix.DeltaV >= SkipDv)
             {
@@ -606,6 +644,9 @@ namespace ClaudiaKerman.Core.Tools
         {
             if (!ask.Correction) return Arrive(snapshot, setup, ask);
             var enc = Encounter(setup);
+            var lead = ask.TurnTime + Lead;
+            // An arrival plane is set inside the sphere of influence, and the plane's own trim there follows (#788).
+            if (enc != null && ask.Plane != null && setup.Body != setup.Target && FitsNear(enc, ask, setup.Now, lead)) return WaitNear(setup, enc, ask);
             if (enc != null && Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, FineCheck, "");
             if (enc == null) return Go(ask, FineCheck, "");
             // To a far target the coast is long, and a burn halfway flown 0.1 m/s off misses by far more than pe_tolerance
@@ -613,21 +654,10 @@ namespace ClaudiaKerman.Core.Tools
             // planned there from the orbit flown, no sooner than that error, carried to the periapsis, stays within pe_tolerance;
             // the block then ends inside it.
             var far = Far(setup, ask);
-            var lead = ask.TurnTime + Lead;
-            if (far && setup.Body != setup.Target)
-            {
-                var into = enc.SoiUt + PastSoi;
-                if (into > setup.Now && (!ask.MaxDuration.HasValue || into + 2 * (lead + BurnRoom) <= ask.StartUt + ask.MaxDuration.Value))
-                {
-                    var held = Checkpoint(setup, enc, ask, into, into, Near, -1);
-                    if (held != null) return held;
-                    var wait = new TransferFlightStep { Do = TransferFlightStep.Wait, Ut = into, Phase = Near, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Why = ask.Why, Watch = Watch(setup, enc, ask, into, into, Near, -1) };
-                    wait.Report["encounter_ut"] = Math.Round(enc.SoiUt);
-                    return wait;
-                }
-            }
+            if (far && setup.Body != setup.Target && FitsNear(enc, ask, setup.Now, lead)) return WaitNear(setup, enc, ask);
             var mid = ask.MidUt >= 0 ? Math.Max(ask.MidUt, setup.Now + lead) : (setup.Now + enc.SoiUt) / 2;
-            if (far) mid = Math.Max(Math.Max(mid, enc.PeUt - ask.PeTolerance / FineResidual), setup.Now + lead);
+            // Round a moon too once inside its sphere of influence for the plane's trim: the same late burn (#788).
+            if (far || setup.Body == setup.Target) mid = Math.Max(Math.Max(mid, enc.PeUt - ask.PeTolerance / FineResidual), setup.Now + lead);
             string why;
             var ut = CorrectionUt(mid, setup.Now, ask.TurnTime + Lead, ask.StartUt, ask.MaxDuration, out why);
             if (why != "") return Go(ask, FineCheck, why);
@@ -650,6 +680,45 @@ namespace ClaudiaKerman.Core.Tools
             return step;
         }
 
+        /// <summary>Whether there is time to wait for the target's sphere of influence and trim there.</summary>
+        private static bool FitsNear(Arrival enc, TransferFlightAsk ask, double now, double lead)
+        {
+            var into = enc.SoiUt + PastSoi;
+            return into > now && (!ask.MaxDuration.HasValue || into + 2 * (lead + BurnRoom) <= ask.StartUt + ask.MaxDuration.Value);
+        }
+
+        /// <summary>The wait into the target's sphere of influence, or the Coast Checkpoint that stands in for it.</summary>
+        private static TransferFlightStep WaitNear(PredictBurn.Setup setup, Arrival enc, TransferFlightAsk ask)
+        {
+            var into = enc.SoiUt + PastSoi;
+            var held = Checkpoint(setup, enc, ask, into, into, Near, -1);
+            if (held != null) return held;
+            var wait = new TransferFlightStep { Do = TransferFlightStep.Wait, Ut = into, Phase = Near, ArrivalUt = ask.ArrivalUt, PlaneUt = ask.PlaneUt, Why = ask.Why, Watch = Watch(setup, enc, ask, into, into, Near, -1) };
+            wait.Report["encounter_ut"] = Math.Round(enc.SoiUt);
+            return wait;
+        }
+
+        /// <summary>
+        /// The trim inside the target's sphere of influence that aims the periapsis and the plane together (#788, B-plane targeting): the
+        /// plane closest to the one wanted through the craft's position at the burn, and target_pe. Null when the arrival is already in
+        /// that plane, there is no time, or no burn the craft can pay for: the plain trim follows, and <c>capture</c> sees the leftover.
+        /// </summary>
+        private static TransferFlightStep PlaneTrim(GameSnapshot snapshot, PredictBurn.Setup setup, Arrival enc, TransferFlightAsk ask)
+        {
+            var lead = ask.TurnTime + Lead;
+            string late;
+            var ut = CorrectionUt(setup.Now + lead, setup.Now, lead, ask.StartUt, ask.MaxDuration, out late);
+            if (late != "" || ut >= enc.PeUt) return null;
+            var reach = ask.Plane.Through(setup.Start.Position(ut), enc.Normal);
+            if (ArrivalPlane.Angle(enc.Normal, reach.Normal) <= PlaneClose) return null;
+            var fix = CorrectionBurn.Find(snapshot, new CorrectionAsk
+            {
+                Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut, PeTolerance = ask.PeTolerance, TargetNormal = reach.Normal,
+            });
+            if (!fix.HasBurn || fix.Error != null || OverDvLeft(ask, fix)) return null;
+            return FlyCorrection(ask, fix, "plane", Fine);
+        }
+
         /// <summary>
         /// Just inside a far target's sphere of influence (#747): where the trim to target_pe would burn sooner than its flown
         /// error allows (<see cref="FineCorrection"/>), a coarser correction first, now, while moving the periapsis is cheap;
@@ -658,6 +727,11 @@ namespace ClaudiaKerman.Core.Tools
         private static TransferFlightStep NearCorrection(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask)
         {
             var enc = Encounter(setup);
+            if (enc != null && setup.Body == setup.Target && ask.Plane != null)
+            {
+                var trim = PlaneTrim(snapshot, setup, enc, ask);
+                if (trim != null) return trim;
+            }
             if (enc == null || setup.Body != setup.Target || Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, Fine);
             var lead = ask.TurnTime + Lead;
             string late;
@@ -683,6 +757,7 @@ namespace ClaudiaKerman.Core.Tools
             step.Report["target_pe_actual"] = Math.Round(enc.Pe);
             step.Report["arrival_ut"] = Math.Round(enc.PeUt);
             step.Report["v_inf"] = Math.Round(enc.VInf, 1);
+            if (ask.Plane != null) step.Report["plane_off_deg"] = Math.Round(ask.Plane.OffBy(enc.Normal), 2);
             if (ask.Correction)
             {
                 var miss = Miss(target.Name, enc.Pe, ask.TargetPe, ask.PeTolerance, why);
@@ -826,6 +901,9 @@ namespace ClaudiaKerman.Core.Tools
             public double Pe;
             public double PeUt;
             public double VInf;
+            /// <summary>The arrival orbit's normal, and where it enters the sphere of influence, the direction any plane cheap to reach contains (#788).</summary>
+            public Vec3 Normal;
+            public Vec3 Approach;
             /// <summary>The bodies the path goes round on its way, the target last.</summary>
             public List<string> Bodies = new List<string>();
         }
@@ -844,7 +922,7 @@ namespace ClaudiaKerman.Core.Tools
                     return new Arrival
                     {
                         SoiUt = patch.StartUt, Pe = o.PeR - patch.Body.Radius, PeUt = o.NextPeriapsis(patch.StartUt) ?? patch.StartUt,
-                        VInf = o.Closed ? 0 : Math.Sqrt(o.Mu / Math.Abs(o.A)), Bodies = bodies,
+                        VInf = o.Closed ? 0 : Math.Sqrt(o.Mu / Math.Abs(o.A)), Normal = o.W, Approach = o.Position(patch.StartUt), Bodies = bodies,
                     };
                 }
                 if (patch.Error != null) return null;
