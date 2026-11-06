@@ -193,7 +193,7 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void APickFromARevisedPlanOrTheStartFormCoversTheDeparture()
+        public void APickFromTheStartFormCoversTheDeparture()
         {
             // The Start form asks for a goal that names Kerbin, from Duna; its pick covers the chain, and nothing is asked again.
             var transport = new StreamingFakeTransport(HomePlan("Ascend from Duna", "Return to Kerbin"), AscentPlan());
