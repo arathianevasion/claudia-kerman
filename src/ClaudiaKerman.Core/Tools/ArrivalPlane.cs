@@ -23,7 +23,8 @@ namespace ClaudiaKerman.Core.Tools
         public double? OrbitInc;
         public double OrbitLan;
         public string VesselName = "";
-        public string VesselBody = "";
+        /// <summary>The vessel is on the ground, where its orbit says nothing of a plane.</summary>
+        public bool VesselDown;
 
         public static readonly PlaneOption Auto = new PlaneOption();
 
@@ -35,12 +36,12 @@ namespace ClaudiaKerman.Core.Tools
             if (text != null) return new PlaneOption { Word = text };
             var orbit = value as IDictionary<string, object>;
             if (orbit == null) return Auto;
-            object inc, lan, name, body;
+            object inc, lan, name, status;
             orbit.TryGetValue("inc", out inc);
             orbit.TryGetValue("lan", out lan);
             orbit.TryGetValue("name", out name);
-            orbit.TryGetValue("body", out body);
-            return new PlaneOption { Word = null, OrbitInc = inc as double?, OrbitLan = lan as double? ?? 0, VesselName = name as string ?? "", VesselBody = body as string ?? "" };
+            orbit.TryGetValue("status", out status);
+            return new PlaneOption { Word = null, OrbitInc = inc as double?, OrbitLan = lan as double? ?? 0, VesselName = name as string ?? "", VesselDown = GameSnapshot.IsGroundedSituation(status as string ?? "") };
         }
 
         public bool IsAuto
@@ -64,6 +65,8 @@ namespace ClaudiaKerman.Core.Tools
     {
         /// <summary>How far past a site's latitude the orbit is inclined, degrees: the body turns the site under the orbit.</summary>
         public const double SiteMargin = 0.5;
+        /// <summary>The <see cref="Source"/> of a record that says Claudia asked for no plane, so <c>capture</c> doesn't work one out.</summary>
+        public const string NoneSource = "none";
 
         public string Arrival = "";
         /// <summary>Who picked it: "number", "body", "vessel", "target_vessel", "site" or "moon".</summary>
@@ -189,7 +192,7 @@ namespace ClaudiaKerman.Core.Tools
     /// <summary>
     /// Who picks the arrival plane (#788 item 3), first wins: Claudia's explicit value; a Target Vessel orbiting the arrival body;
     /// the next leg's landing site (<c>find_landing_site</c>'s pick, a Point of Interest, a landed Target Vessel, or a latitude in its
-    /// words); the next leg's moon of this body; none, as before. A trip that ends in reentry is out of scope and never has one. Pure.
+    /// words); the next leg's moon of this body; none, as before. A trip that ends in reentry is out of scope: "auto" gives it none. Pure.
     /// </summary>
     internal static class ArrivalPlanes
     {
@@ -213,7 +216,7 @@ namespace ClaudiaKerman.Core.Tools
             error = "";
             option = option ?? PlaneOption.Auto;
             var legs = snapshot.LegsAhead ?? new List<PlannedSequence>();
-            if (option.IsNone || ArrivalRule.EndsInReentry(snapshot, arrival.Name, legs.Skip(1))) return null;
+            if (option.IsNone) return null;
             if (option.Inc.HasValue)
             {
                 if (!(option.Inc.Value >= 0 && option.Inc.Value <= 180))
@@ -223,7 +226,15 @@ namespace ClaudiaKerman.Core.Tools
                 }
                 return new ArrivalPlane { Arrival = arrival.Name, Source = "number", Inc = option.Inc.Value };
             }
-            if (option.OrbitInc.HasValue) return OfVessel(snapshot, arrival, option);
+            if (option.OrbitInc.HasValue)
+            {
+                if (option.VesselDown)
+                {
+                    error = "plane can't be " + option.VesselName + ": it is on the ground, so it has no plane to match";
+                    return null;
+                }
+                return OfVessel(snapshot, arrival, option);
+            }
             if (!option.IsAuto)
             {
                 var named = system.Find(option.Word);
@@ -239,6 +250,8 @@ namespace ClaudiaKerman.Core.Tools
                 }
                 return OfBody(system, arrival, named, "body");
             }
+            // Only Claudia's own value applies to a trip that ends in reentry.
+            if (ArrivalRule.EndsInReentry(snapshot, arrival.Name, legs.Skip(1))) return null;
             return OfTargetVessel(snapshot, arrival) ?? OfLegs(snapshot, system, arrival, legs);
         }
 

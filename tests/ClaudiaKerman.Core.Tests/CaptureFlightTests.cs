@@ -226,6 +226,45 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(rig.Orbit.Inclination, 0, 0.1);
         }
 
+        [Fact]
+        public void An_explicit_none_recorded_by_transfer_to_stands_against_a_Target_Vessel()
+        {
+            var rig = TransferRig.Arriving("Mun", 30000, 500, 0, 0, 0, 3000);
+            rig.Stamp = s =>
+            {
+                s.Target = Vessel(45, 10, "Mun", 50000, 60000, 200000);
+                s.RecordedPlane = new ArrivalPlane { Arrival = "Mun", Source = ArrivalPlane.NoneSource }.ToRecord();
+            };
+            var step = rig.RunCapture(Ask());
+            Assert.True(step.Error == "", step.Error);
+            Assert.InRange(rig.Orbit.Inclination, 0, 0.1);
+            AssertRound(rig, 30000);
+        }
+
+        [Fact]
+        public void From_a_round_orbit_the_high_ellipse_counts_its_climb_and_fall()
+        {
+            // Round already: the ellipse's two burns are all extra, so a small tilt goes at a node, not by way of a climb and a fall.
+            var rig = TransferRig.Circular("Mun", 30000, 0);
+            var choice = Choose(rig, new ArrivalPlane { Arrival = "Mun", Source = "number", Inc = 5 }, 5000);
+            Assert.True(choice.ApoapsisCost > 200, choice.ApoapsisCost.ToString());
+            Assert.Equal(CaptureMethod.Periapsis, choice.Method);
+            var step = rig.RunCapture(Ask(5.0, maxPlaneDv: 5000));
+            Assert.True(step.Error == "", step.Error + " | " + Flown(rig));
+            Assert.InRange(rig.Orbit.Inclination, 4.5, 5.5);
+            Assert.True(Total(rig) < 100, Flown(rig));
+        }
+
+        [Fact]
+        public void A_burn_that_is_no_round_off_is_judged_by_the_orbit_not_exec_node_s_residual()
+        {
+            var rig = TransferRig.Arriving("Mun", 30000, 500, 0, 0, 0, 3000);
+            var high = CaptureFlight.Next(rig.Snapshot(), Ask(60.0, maxPlaneDv: 500));
+            Assert.True(high.MaxResidual >= 100000 && high.MaxResidual < CaptureFlight.RoundResidual, high.MaxResidual.ToString());
+            var plain = CaptureFlight.Next(rig.Snapshot(), Ask());
+            Assert.Equal(CaptureFlight.RoundResidual, plain.MaxResidual);
+        }
+
         // ---- What it refuses, and what it leaves alone ----
 
         [Fact]
@@ -253,6 +292,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("sphere of influence", early.RunCapture(Ask()).Error);
 
             Assert.Contains("alt", TransferRig.Arriving("Duna", 60000, 1000, 0, 0, 0, 3000).RunCapture(Ask(alt: 30000)).Error);
+            Assert.Contains("outside", TransferRig.Arriving("Mun", 30000, 500, 0, 0, 0, 3000).RunCapture(Ask(alt: 3000000)).Error);
         }
 
         // ---- From transfer_to to the capture ----
@@ -346,7 +386,7 @@ namespace ClaudiaKerman.Core.Tests
 
         private static IDictionary<string, object> Lexicon(double inc, double lan)
         {
-            return new Dictionary<string, object> { { "inc", inc }, { "lan", lan }, { "name", "Other" }, { "body", "Mun" } };
+            return new Dictionary<string, object> { { "inc", inc }, { "lan", lan }, { "name", "Other" }, { "status", "ORBITING" } };
         }
 
         private static CaptureChoice Choose(TransferRig rig, ArrivalPlane plane, double? max = null)

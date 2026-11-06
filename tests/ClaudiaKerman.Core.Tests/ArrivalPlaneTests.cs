@@ -169,7 +169,7 @@ namespace ClaudiaKerman.Core.Tests
             var normal = Vec3.Cross(approach, new Vec3(0.2, 0.1, 0.9)).Normalized;
             double inc, lan;
             Elements(normal, out inc, out lan);
-            var step = rig.Run(Ask("Duna", 60000, new Dictionary<string, object> { { "inc", inc }, { "lan", lan }, { "name", "Ike's stand-in" }, { "body", "Duna" } }), 30);
+            var step = rig.Run(Ask("Duna", 60000, new Dictionary<string, object> { { "inc", inc }, { "lan", lan }, { "name", "Ike's stand-in" }, { "status", "ORBITING" } }), 30);
             Assert.True(step.Error == "", step.Error + " | " + Flown(rig));
             Assert.True(ArrivalPlane.Angle(rig.Orbit.W, normal) <= 0.5, ArrivalPlane.Angle(rig.Orbit.W, normal) + " | " + Flown(rig));
             Assert.True(rig.Burned("plane") < 25, Flown(rig));
@@ -338,10 +338,55 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void A_return_home_that_ends_in_reentry_has_no_plane_even_asked()
+        public void A_return_home_that_ends_in_reentry_has_no_plane_on_auto_only_Claudia_s_own()
         {
             var scene = new Scene();
-            Assert.Null(scene.Pick("Kerbin", 90.0));
+            scene.Snapshot.Target = Vessel(45, 10, "Kerbin");
+            Assert.Null(scene.Pick("Kerbin"));
+            Assert.Equal("number", scene.Pick("Kerbin", 90.0).Source);
+        }
+
+        [Fact]
+        public void A_vessel_on_the_ground_has_no_plane_to_match()
+        {
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            var landed = new Dictionary<string, object> { { "inc", 12.0 }, { "lan", 30.0 }, { "name", "Base" }, { "status", "LANDED" } };
+            Assert.Contains("on the ground", TransferFlight.Next(rig.Snapshot(), Ask("Mun", 30000, landed)).Error);
+        }
+
+        [Fact]
+        public void An_explicit_none_is_recorded_so_capture_works_out_no_plane()
+        {
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            rig.Stamp = s => s.Target = Vessel(45, 10, "Mun");
+            var step = TransferFlight.Next(rig.Snapshot(), Ask("Mun", 30000, "none"));
+            Assert.Equal(ArrivalPlane.NoneSource, ArrivalPlane.FromRecord(step.AimedPlane).Source);
+        }
+
+        [Fact]
+        public void A_plane_burn_never_fails_a_flight_with_no_time_for_it()
+        {
+            // The periapsis is within tolerance and max_duration has no room: before #788 this flew on, and an optional plane must not change that.
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            var ask = Ask("Mun", 30000, 90.0);
+            ask.MaxDuration = 300;
+            ask.Auto = false;
+            var step = rig.Run(ask, 30);
+            Assert.True(step.Error == "", step.Error + " | " + Flown(rig));
+            Assert.Equal(0, rig.Burned("plane"));
+        }
+
+        [Fact]
+        public void A_plane_burn_never_spends_the_capture_s_delta_v()
+        {
+            // 200 m/s left is under the Mun's capture burn: the plane gets none of it.
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            var ask = Ask("Mun", 30000, 90.0);
+            ask.DvLeft = 200;
+            var step = rig.Run(ask, 30);
+            Assert.True(step.Error == "", step.Error + " | " + Flown(rig));
+            Assert.Equal(0, rig.Burned("plane"));
+            Assert.True(AfterEjection(rig) < 5, Flown(rig));
         }
 
         // ---- The record ----

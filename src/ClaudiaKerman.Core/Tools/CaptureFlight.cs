@@ -94,6 +94,8 @@ namespace ClaudiaKerman.Core.Tools
         private const double Lead = 60;
         /// <summary>exec_node's max_residual for a burn judged by how round it leaves the orbit, not by the node.</summary>
         internal const double RoundResidual = 1000000;
+        /// <summary>Its max_residual for any other burn here: a long burn's node swings (#532), and the next step works from the orbit as flown, so no residual fails the block.</summary>
+        private const double ByOrbit = 100000;
 
         public static TransferFlightStep Next(GameSnapshot snapshot, CaptureAsk ask)
         {
@@ -115,6 +117,7 @@ namespace ClaudiaKerman.Core.Tools
             var floor = setup.Body.Radius + Math.Max(0, setup.Body.AtmosphereHeight);
             if (!(setup.Body.Radius + altitude > floor)) return Fail("alt " + Num(altitude) + " m is inside the atmosphere or below the surface");
             var targetR = setup.Body.Radius + altitude;
+            if (setup.Body.SoiRadius > 0 && targetR >= setup.Body.SoiRadius) return Fail("alt " + Num(altitude) + " m is outside " + setup.Body.Name + "'s sphere of influence");
             if (ask.Burns > MaxBurns) return Done(setup, plane, ask, targetR, "the orbit is not round at " + Num(altitude) + " m after " + ask.Burns + " burns");
             switch (ask.Phase)
             {
@@ -134,7 +137,7 @@ namespace ClaudiaKerman.Core.Tools
             if (option.IsAuto)
             {
                 var recorded = ArrivalPlane.FromRecord(snapshot.RecordedPlane);
-                if (recorded != null && string.Equals(recorded.Arrival, setup.Body.Name, StringComparison.OrdinalIgnoreCase)) return recorded;
+                if (recorded != null && string.Equals(recorded.Arrival, setup.Body.Name, StringComparison.OrdinalIgnoreCase)) return recorded.Source == ArrivalPlane.NoneSource ? null : recorded;
             }
             return ArrivalPlanes.Resolve(snapshot, setup.System, setup.Body, option, out unread);
         }
@@ -173,7 +176,8 @@ namespace ClaudiaKerman.Core.Tools
             var otherR = Math.Max(orbit.PeR, targetR);
             if (choice.Method == CaptureMethod.Periapsis) keep = plane.Through(r, orbit.W).Normal;
             if (choice.Method == CaptureMethod.Apoapsis) otherR = choice.HighR;
-            var isRound = choice.Method != CaptureMethod.Apoapsis && Math.Abs(otherR - orbit.PeR) <= ShapeTolerance * otherR;
+            // From a closed orbit a folded tilt's eccentricity rises mid-burn, so it can't stop at the roundest.
+            var isRound = choice.Method != CaptureMethod.Apoapsis && Math.Abs(otherR - orbit.PeR) <= ShapeTolerance * otherR && !(orbit.Closed && choice.Method == CaptureMethod.Periapsis);
             var step = Node(orbit, peUt.Value, Tangential(r, v, otherR, keep, orbit.Mu), "capture", choice.Method == CaptureMethod.Apoapsis ? High : Shape, choice.Method, isRound);
             step.Report["capture_method"] = choice.Method;
             if (choice.Method == CaptureMethod.Over) step.Report["plane_leftover_dv"] = Math.Round(choice.BestCost, 1);
@@ -217,7 +221,9 @@ namespace ClaudiaKerman.Core.Tools
                     if (path == null || path.Count == 0 || path[0].End != PatchEnd.Stable) continue;
                     var turn = TiltPoint(ellipse, plane, peUt);
                     if (turn == null) continue;
-                    choice.ApoapsisCost = turn.Burn.Length;
+                    // The ellipse's two burns are the plain capture only from an arrival faster than the ellipse; from a closed orbit they are a climb and a fall.
+                    var ellipseV = Math.Sqrt(mu * (2 / rp - 2 / (rp + highR)));
+                    choice.ApoapsisCost = Math.Abs(vp - ellipseV) + turn.Burn.Length + Math.Abs(ellipseV - after) - plain;
                     choice.HighR = highR;
                     break;
                 }
@@ -343,7 +349,7 @@ namespace ClaudiaKerman.Core.Tools
             return new TransferFlightStep
             {
                 Do = TransferFlightStep.Burn, Kind = kind, Ut = ut, Prograde = prograde, Normal = normal, Radial = radial, Phase = then, Why = method,
-                MaxResidual = round ? RoundResidual : -1,
+                MaxResidual = round ? RoundResidual : ByOrbit,
             };
         }
 

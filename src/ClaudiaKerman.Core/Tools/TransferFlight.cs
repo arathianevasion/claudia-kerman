@@ -192,6 +192,7 @@ namespace ClaudiaKerman.Core.Tools
                 string unread;
                 ask.Plane = ArrivalPlanes.Resolve(snapshot, bodies, arrival, ask.PlaneOption, out unread);
                 if (unread != "") return Fail(unread);
+                if (ask.PlaneOption != null && ask.PlaneOption.IsNone) aimed = new ArrivalPlane { Arrival = arrival.Name, Source = ArrivalPlane.NoneSource }.ToRecord();
                 if (ask.Plane != null)
                 {
                     aimed = ask.Plane.ToRecord();
@@ -507,6 +508,15 @@ namespace ClaudiaKerman.Core.Tools
             return ask.Sibling && setup.Body != setup.Target && !string.Equals(setup.Body.Name, setup.Target.Parent, StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>Whether a plane burn would leave the craft short of the capture burn after it (#788): the plane is worth less than the capture.</summary>
+        private static bool PlaneOverDvLeft(TransferFlightAsk ask, CorrectionPlan fix, Arrival enc, SnapshotBody target)
+        {
+            if (!(ask.DvLeft > 0)) return false;
+            var rp = target.Radius + enc.Pe;
+            var capture = Math.Sqrt(enc.VInf * enc.VInf + 2 * target.Gm / rp) - Math.Sqrt(target.Gm / rp);
+            return fix.DeltaV + capture > ask.DvLeft;
+        }
+
         /// <summary>Whether a correction costs more than the craft's dv_left (0 or less for unknown).</summary>
         private static bool OverDvLeft(TransferFlightAsk ask, CorrectionPlan fix)
         {
@@ -602,13 +612,13 @@ namespace ClaudiaKerman.Core.Tools
             var lead = ask.TurnTime + Lead;
             var ut = CorrectionUt(ask.MidUt >= 0 ? Math.Max(ask.MidUt, setup.Now + lead) : (setup.Now + enc.SoiUt) / 2, setup.Now, lead, ask.StartUt, ask.MaxDuration, out late);
             // A wake too late for the planned burn goes on to the trim: only the first planning of it can fail the block.
-            if (late != "") return ask.MidUt >= 0 ? Go(ask, MidCheck) : Fail(late);
+            if (late != "") return ask.MidUt >= 0 || plane && Within(enc.Pe - ask.TargetPe, ask.PeTolerance) ? Go(ask, MidCheck) : Fail(late);
             var fix = CorrectionBurn.Find(snapshot, new CorrectionAsk
             {
                 Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut, TargetNormal = plane ? ask.Plane.Through(enc.Approach, enc.Normal).Normal : (Vec3?)null,
             });
             // One the solver can't aim, or the craft can't pay for: the plane waits for the trim, and the plain correction flies.
-            if (plane && (!fix.HasBurn || fix.Error != null || OverDvLeft(ask, fix)))
+            if (plane && (!fix.HasBurn || fix.Error != null || PlaneOverDvLeft(ask, fix, enc, setup.Target)))
             {
                 if (Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, MidCheck);
                 fix = CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut });
@@ -716,7 +726,7 @@ namespace ClaudiaKerman.Core.Tools
             {
                 Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut, PeTolerance = ask.PeTolerance, TargetNormal = reach.Normal,
             });
-            if (!fix.HasBurn || fix.Error != null || OverDvLeft(ask, fix)) return null;
+            if (!fix.HasBurn || fix.Error != null || PlaneOverDvLeft(ask, fix, enc, setup.Target)) return null;
             return FlyCorrection(ask, fix, "plane", Fine);
         }
 

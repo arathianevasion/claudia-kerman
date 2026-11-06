@@ -2449,7 +2449,7 @@ function claudia_plane_ask {
     return plane:name.
   }
   if plane:istype("Vessel") {
-    return lexicon("inc", plane:orbit:inclination, "lan", plane:orbit:lan, "name", plane:name, "body", plane:body:name).
+    return lexicon("inc", plane:orbit:inclination, "lan", plane:orbit:lan, "name", plane:name, "status", plane:status).
   }
   return plane.
 }
