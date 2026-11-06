@@ -236,7 +236,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void Return_passes_its_target_and_max_wait_to_the_ejection()
         {
             var source = CoreLibrary.Blocks.Single(b => b.Name == "return").Source;
-            Assert.Contains("set burn_ask to lexicon(\"lat\", site:lat, \"lng\", site:lng, \"ground_alt\", max(0, ground_alt), \"max_wait\", opt:max_wait, \"isp\", claudia_engine_isp()).", source);
+            Assert.Contains("set burn_ask to lexicon(\"lat\", site:lat, \"lng\", site:lng, \"ground_alt\", max(0, ground_alt), \"max_wait\", opt:max_wait, \"max_duration\", opt:max_duration, \"start_ut\", ctx:start_ut, \"isp\", claudia_engine_isp()).", source);
             Assert.Contains("addons:claudia:returnburn(return_with_inc(burn_ask, opt:target_inc))", source);
             Assert.Equal("auto", One("claudia_options(lexicon(), return_defaults(), \"auto\"):opt:max_wait"));
             Assert.Equal("35000", One("claudia_options(lexicon(), return_defaults(), \"auto\"):opt:target_pe"));

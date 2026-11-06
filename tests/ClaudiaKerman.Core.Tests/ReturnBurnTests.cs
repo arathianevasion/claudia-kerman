@@ -634,6 +634,51 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(D(node, "error_km") > 50, "with no window near, the miss is reported: " + D(node, "error_km"));
         }
 
+        /// <summary>A max_duration given bounds the pick: the block would abort before a later window, and still needs to burn before it ends.</summary>
+        [Fact]
+        public void A_max_duration_given_keeps_the_burn_inside_it()
+        {
+            var snapshot = OrbitingAt(Mun, 1.7);
+            var input = new Dictionary<string, object> { { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut }, { "lat", KscLat }, { "lng", KscLng }, { "start_ut", snapshot.Ut }, { "max_duration", 4000.0 } };
+            var node = BlockCalls.ReturnBurn(input, snapshot, new FrameBody(snapshot.Ut), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            Assert.Equal("", node["error"]);
+            Assert.InRange(D(node, "ut"), snapshot.Ut, snapshot.Ut + 4000 - ReturnAim.AfterBurnS);
+            input["max_duration"] = "auto";
+            Assert.True(D(BlockCalls.ReturnBurn(input, snapshot, new FrameBody(snapshot.Ut), new ReentrySim.Atmosphere(), new ReentrySim.Capsule()), "ut") > snapshot.Ut + 3 * 3600);
+        }
+
+        /// <summary>The time lever is a share of the craft's orbit: from higher up, 150 s is fewer degrees of it, and the windows are further apart.</summary>
+        [Fact]
+        public void A_higher_orbits_reach_scales_with_its_period()
+        {
+            var node = Aimed(OrbitingAt(Mun, 1.7, 100000));
+            Assert.Equal("", node["error"]);
+            Assert.InRange(D(node, "error_km"), 0, 5);
+            Assert.InRange(D(node, "aim_dv"), 0, 3);
+        }
+
+        /// <summary>From a very high orbit only a couple of windows fall in a turn, so a target can be out of reach: the block flies and says how far off.</summary>
+        [Fact]
+        public void A_very_high_orbit_says_how_far_off_it_lands()
+        {
+            var node = Aimed(OrbitingAt(Mun, 1.7, 500000));
+            Assert.Equal("", node["error"]);
+            Assert.True(D(node, "error_km") > 100, "the miss is reported: " + D(node, "error_km"));
+        }
+
+        /// <summary>The soonest it may burn holds for the search's first try as for the rest: it is the time to turn to the burn.</summary>
+        [Fact]
+        public void A_very_short_max_wait_never_burns_before_the_earliest()
+        {
+            var snapshot = OrbitingAt(Mun, 1.7);
+            var first = ReturnBurn.Find(snapshot, new ReturnAsk { TargetPe = 30000, EarliestUt = snapshot.Ut });
+            var earliest = first.Ut - 5;
+            var input = new Dictionary<string, object> { { "target_pe", 30000.0 }, { "earliest_ut", earliest }, { "lat", KscLat }, { "lng", KscLng }, { "max_wait", 10.0 } };
+            var node = BlockCalls.ReturnBurn(input, snapshot, new FrameBody(snapshot.Ut), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            Assert.Equal("", node["error"]);
+            Assert.True(D(node, "ut") >= earliest, "the burn is " + (earliest - D(node, "ut")) + " s before the earliest");
+        }
+
         /// <summary>A Due Time wakes the run an hour before the window (#749): asked again then, the block takes that window and does not wait on for a later one.</summary>
         [Theory]
         [InlineData(0.9)]

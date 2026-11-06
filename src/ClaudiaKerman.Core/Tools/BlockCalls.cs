@@ -1009,7 +1009,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <c>finished_by</c> (what finished a solve the SQP stopped short, "" for none); a best
         /// burn outside the tolerances gives its <c>error</c> with the rest; a solve that could not start, only <c>error</c>,
         /// "found no return: &lt;why&gt;". Given <c>lat</c> and <c>lng</c> (#792), <see cref="ReturnAim"/> picks the window within
-        /// <c>max_wait</c> (s; "auto" or missing is one turn of the landing's longitude; it stands in for <c>latest_ut</c>) and times the
+        /// <c>max_wait</c> (s; "auto" or missing is one turn of the landing's longitude) and <c>max_duration</c> (s from <c>start_ut</c>, when a number) and times the
         /// burn to come down there, by the reentry predictor with <paramref name="body"/>, <paramref name="air"/> (the planet's) and
         /// <paramref name="craft"/>; <c>ground_alt</c> (m) and <c>isp</c> (s; 0 or missing leaves the mass as it is) are as for
         /// <see cref="DeorbitBurn"/>. It adds <c>lat</c>, <c>lng</c>, <c>landing_ut</c> and <c>error_km</c> when the predictor can say,
@@ -1075,6 +1075,9 @@ namespace ClaudiaKerman.Core.Tools
             if (wait is double && (double)wait > 0) into.MaxWait = (double)wait;
             else if (wait != null && !string.Equals(wait as string, "auto", StringComparison.OrdinalIgnoreCase))
                 return "max_wait must be \"auto\" or seconds above 0, not " + Convert.ToString(wait, CultureInfo.InvariantCulture);
+            object limit;
+            if (ask.TryGetValue("max_duration", out limit) && limit is double)
+                into.LatestUt = Number(ask, "start_ut", snapshot.Ut) + (double)limit - ReturnAim.AfterBurnS;
             if (body == null || air == null || craft == null) return "the landing needs the planet's air and the craft";
             string problem;
             into.Landing = ReturnAim.LandingOn(snapshot, lat.Value, lng.Value, Number(ask, "ground_alt", 0), Number(ask, "isp", 0), body, air, craft, out problem);

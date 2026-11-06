@@ -26,15 +26,23 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>For transfer_to and return (#749): the UT of the ejection the block waits for, from Core's solver; null for any other burn point.</summary>
         public double? DepartureUt;
         /// <summary>
-        /// For a return aimed at a landing (#792): the longest the block's own pick of the window may wait, s. <see cref="DepartureUt"/> is an estimate
-        /// (the block has the craft's drag, this has not), and a window just outside the block's near ones leaves it the next turn's.
+        /// For a return aimed at a landing (#792): the seconds its max_wait spans, from <see cref="ToEarliestSeconds"/> on. <see cref="DepartureUt"/> is an
+        /// estimate (the block has the craft's drag, this has not), and a window just outside the block's near ones leaves it the next turn's, so a plan covers all of it.
         /// </summary>
-        public double PickWaitSeconds;
+        public double PickSpanSeconds;
+        /// <summary>For a return aimed at a landing: game seconds from now to the soonest it may burn.</summary>
+        public double ToEarliestSeconds;
+
+        /// <summary>The longest the run may wait for the burn.</summary>
+        public double LongestWaitSeconds
+        {
+            get { return Math.Max(WaitSeconds, ToEarliestSeconds + PickSpanSeconds); }
+        }
 
         /// <summary>The least <c>expected_duration_s</c> that covers the wait, the burn and the turn to it, rounded up to 10 s.</summary>
         public double MinimumDurationSeconds
         {
-            get { return Math.Ceiling((Math.Max(WaitSeconds, PickWaitSeconds) + BurnSeconds + BurnPoints.TurnMarginSeconds) / 10) * 10; }
+            get { return Math.Ceiling((LongestWaitSeconds + BurnSeconds + BurnPoints.TurnMarginSeconds) / 10) * 10; }
         }
     }
 
@@ -72,7 +80,11 @@ namespace ClaudiaKerman.Core.Missions
             if (plan == null || plan.Manual) return null;
             var wait = First(plan.Script, snapshot, now, plan.ExpectedDeltaV, body);
             // A departure over WindowWaits.LongWaitS off is a Due Time (DueTime): the run starts one launch lead before it.
-            if (wait != null && DueTime(wait, now).HasValue) wait.WaitSeconds = WindowWaits.LaunchLeadS;
+            if (wait != null && DueTime(wait, now).HasValue)
+            {
+                wait.WaitSeconds = WindowWaits.LaunchLeadS;
+                wait.ToEarliestSeconds = 0;
+            }
             return wait != null && plan.ExpectedDurationSeconds < wait.MinimumDurationSeconds ? wait : null;
         }
 
@@ -166,12 +178,18 @@ namespace ClaudiaKerman.Core.Missions
             var window = Literal(option);
             if (!window.HasValue && option != "\"next\"") return null;
             double ut;
-            var pickWait = 0.0;
+            double? departure;
+            var toEarliest = 0.0;
+            var span = 0.0;
             if (call.Block == "return")
             {
-                var aimed = AimedDeparture(call, snapshot, now, TransferFlight.Earliest(now, 0, window), body, out pickWait);
-                if (!aimed.HasValue && !window.HasValue) return null;
-                ut = aimed ?? TransferFlight.Earliest(now, 0, window);
+                var earliest = TransferFlight.Earliest(now, 0, window);
+                double? estimate;
+                var aimed = Aimed(call, snapshot, now, earliest, body, out estimate, out span);
+                if (!aimed && !window.HasValue) return null;
+                ut = estimate ?? earliest;
+                departure = estimate ?? (window.HasValue ? earliest : (double?)null);
+                if (aimed) toEarliest = earliest - now;
             }
             else
             {
@@ -183,43 +201,56 @@ namespace ClaudiaKerman.Core.Missions
                 });
                 if (step.Error != "" || step.Do != TransferFlightStep.Burn) return null;
                 ut = step.Ut;
+                departure = ut;
             }
             var wait = At(call, "the ejection", ut - now);
             if (wait != null)
             {
-                wait.DepartureUt = ut;
-                wait.PickWaitSeconds = pickWait;
+                wait.DepartureUt = departure;
+                wait.PickSpanSeconds = span;
+                wait.ToEarliestSeconds = toEarliest;
             }
             return wait;
         }
 
         /// <summary>
-        /// The window a return with a landing target will pick from <paramref name="earliest"/> (<see cref="ReturnAim"/>), with the snapshot's air and an
-        /// estimate of the craft, and in <paramref name="pickWait"/> the longest the block may wait from now. Null without a target written out, or a frame to read it in.
+        /// Whether this return is aimed at a landing (#792), and how long its max_wait spans, s. <paramref name="estimate"/> is the window it will pick from
+        /// <paramref name="earliest"/> (<see cref="ReturnAim"/>), with the snapshot's air and an estimate of the craft, when the target and its figures are written out; null
+        /// otherwise, when only the span says anything. "ksc" from a moon of another planet is no wait: the block refuses it at once.
         /// </summary>
-        private static double? AimedDeparture(BlockCall call, GameSnapshot snapshot, double now, double earliest, IPlanningBody body, out double pickWait)
+        private static bool Aimed(BlockCall call, GameSnapshot snapshot, double now, double earliest, IPlanningBody body, out double? estimate, out double span)
         {
-            pickWait = 0;
-            if (body == null) return null;
-            double latitude, longitude;
-            if (!SiteOf(call.Option("target"), out latitude, out longitude)) return null;
-            var wait = call.Option("max_wait");
-            var maxWait = Literal(wait);
-            if (!maxWait.HasValue && wait != "\"auto\"") return null;
+            estimate = null;
+            span = 0;
+            var target = call.Option("target");
+            if (target == null || target == "\"none\"") return false;
             var at = snapshot.At(now);
             var planet = ReturnAim.PlanetOf(at);
-            if (planet == null) return null;
+            if (planet == null) return false;
+            double latitude, longitude;
+            var readable = SiteOf(target, out latitude, out longitude);
+            if (readable && IsKsc(target) && planet.Name != "Kerbin") return false;
+            var maxWait = Literal(call.Option("max_wait"));
+            span = maxWait ?? ReturnAim.LongitudeTurnFor(at, planet);
+            var limit = Literal(call.Option("max_duration"));
+            if (limit.HasValue) span = Math.Min(span, limit.Value);
+            string given;
+            var targetPe = call.Options.TryGetValue("target_pe", out given) ? Literal(given) : ReturnAim.DefaultTargetPe;
+            if (!readable || !targetPe.HasValue || body == null) return true;
             string problem;
             var craft = new ChuteAllocation.FallingCraft(Math.Max(1000, at.Craft == null ? 0 : at.Craft.MassTonnes * 1000), new ReentryChute[0]);
             var landing = ReturnAim.LandingOn(at, latitude, longitude, 0, 0, body, new ChuteAllocation.SnapshotAir(planet), craft, out problem);
-            if (landing == null) return null;
-            string given;
-            var targetPe = call.Options.TryGetValue("target_pe", out given) ? Literal(given) : ReturnAim.DefaultTargetPe;
-            if (!targetPe.HasValue) return null;
-            double latest;
-            var departure = ReturnAim.DepartureUt(at, new ReturnAsk { TargetPe = targetPe.Value, EarliestUt = earliest, Landing = landing, MaxWait = maxWait }, out latest);
-            pickWait = latest - now;
-            return departure;
+            if (landing == null) return true;
+            estimate = ReturnAim.DepartureUt(at, new ReturnAsk
+            {
+                TargetPe = targetPe.Value, EarliestUt = earliest, Landing = landing, MaxWait = span, LatestUt = limit.HasValue ? now + limit.Value : (double?)null,
+            });
+            return true;
+        }
+
+        private static bool IsKsc(string target)
+        {
+            return string.Equals(target, "\"ksc\"", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>The place a target option's source text names: "ksc" or one written out in numbers.</summary>
@@ -227,8 +258,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             latitude = ReturnAim.KscLatitude;
             longitude = ReturnAim.KscLongitude;
-            if (target == null || target == "\"none\"") return false;
-            if (string.Equals(target, "\"ksc\"", StringComparison.OrdinalIgnoreCase)) return true;
+            if (IsKsc(target)) return true;
             var site = Site.Match(target);
             if (!site.Success) return false;
             latitude = double.Parse(site.Groups["lat"].Value, CultureInfo.InvariantCulture);

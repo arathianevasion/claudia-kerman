@@ -19,7 +19,7 @@ namespace ClaudiaKerman.Core.Tools
         public double? TargetInc;
         /// <summary>The soonest UT the burn may be: the block's start plus the turn time, or the window's UT if later; one already past is now.</summary>
         public double EarliestUt;
-        /// <summary>The latest UT the burn may be, or null for one orbit of the craft after <see cref="EarliestUt"/>, so the burn point comes round once.</summary>
+        /// <summary>The latest UT the burn may be, or null for one orbit of the craft after <see cref="EarliestUt"/>, so the burn point comes round once. With <see cref="Landing"/>, a limit on the windows beside <see cref="MaxWait"/>.</summary>
         public double? LatestUt;
         /// <summary>How far the answer may be from target_pe (m) and target_inc (degrees) before the solve is an error.</summary>
         public double PeTolerance = 1000;

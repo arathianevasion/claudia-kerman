@@ -256,7 +256,7 @@ function return {
       return claudia_finish(ctx, false, site:error, extra).
     }
     local ground_alt is planet:geopositionlatlng(site:lat, site:lng):terrainheight.
-    set burn_ask to lexicon("lat", site:lat, "lng", site:lng, "ground_alt", max(0, ground_alt), "max_wait", opt:max_wait, "isp", claudia_engine_isp()).
+    set burn_ask to lexicon("lat", site:lat, "lng", site:lng, "ground_alt", max(0, ground_alt), "max_wait", opt:max_wait, "max_duration", opt:max_duration, "start_ut", ctx:start_ut, "isp", claudia_engine_isp()).
     set predict to {
       parameter orb, from_ut.
       return addons:claudia:reentryimpact(return_impact_query(orb, from_ut, site, ground_alt)).

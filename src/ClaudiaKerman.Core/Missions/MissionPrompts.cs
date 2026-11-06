@@ -525,7 +525,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>#696: the plan's expected_duration_s leaves out the wait to its first burn, which the runaway hard stop counts.</summary>
         private static string ShortDuration(BurnWait wait, double planned)
         {
-            return "Its expected_duration_s is " + Seconds(planned) + ", but " + wait.Block + " waits about " + Seconds(wait.WaitSeconds) + " (game time, from now) for "
+            return "Its expected_duration_s is " + Seconds(planned) + ", but " + wait.Block + " waits about " + Seconds(wait.LongestWaitSeconds) + " (game time, from now) for "
                 + wait.Point + ", then burns about " + Seconds(wait.BurnSeconds) + ". The runaway hard stop counts waits in expected_duration_s: "
                 + "set it to at least " + Seconds(wait.MinimumDurationSeconds) + ".";
         }
@@ -540,7 +540,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>What a duration short of the first burn is logged as in plans.jsonl when the plan is offered anyway.</summary>
         public static string ShortDurationWarning(BurnWait wait, double planned)
         {
-            return "duration short of first burn: expected_duration_s " + Seconds(planned) + ", " + wait.Block + " waits " + Seconds(wait.WaitSeconds)
+            return "duration short of first burn: expected_duration_s " + Seconds(planned) + ", " + wait.Block + " waits " + Seconds(wait.LongestWaitSeconds)
                 + " for " + wait.Point + "; needs at least " + Seconds(wait.MinimumDurationSeconds);
         }
 

@@ -40,8 +40,12 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The KSC as <c>claudia_ksc</c> gives it, for reading a plan's <c>"ksc"</c> before the run.</summary>
         public const double KscLatitude = -0.0972;
         public const double KscLongitude = -74.5577;
-        /// <summary>How far the burn may move off its window's least burn, s: past this the cost climbs fast (±150 s costs 6 to 9 m/s).</summary>
+        /// <summary>How far the burn may move off its window's least burn, s, at the least: past this from a low orbit the cost climbs fast (±150 s costs 6 to 9 m/s).</summary>
         public const double ReachS = 150;
+        /// <summary>The same as a share of the craft's orbit, for a high one: what counts is how far round it the burn moves (150 s of a 38 km Mun orbit's 2,858 s).</summary>
+        private const double ReachShare = 150.0 / 2858;
+        /// <summary>What an explicit max_duration leaves after the burn, s: to fly it and get under way, as the correction's own limit keeps the rest.</summary>
+        public const double AfterBurnS = 600;
         /// <summary>The error <c>exec_node</c> can leave in a burn, m/s, for the spread reported.</summary>
         public const double ResidualMs = 0.5;
         /// <summary>A landing this close along the track is done, km.</summary>
@@ -133,19 +137,24 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// The UT of the window the aim takes, and the latest UT it may take one (#749's wait, before the run: the pick alone, one solve and
-        /// one prediction); null when it would not aim. Before the run the craft and air are estimates, so the block may take another window.
+        /// The UT of the window the aim takes (#749's wait, before the run: the pick alone, one solve and one prediction); null when it would
+        /// not aim. Before the run the craft and air are estimates, so the block may take another window.
         /// </summary>
-        public static double? DepartureUt(GameSnapshot snapshot, ReturnAsk ask, out double latest)
+        public static double? DepartureUt(GameSnapshot snapshot, ReturnAsk ask)
         {
-            latest = 0;
             ToolOutcome error;
             var setup = PredictBurn.Setup.Prepare(snapshot, null, out error);
             if (setup == null) return null;
             var search = Search.Start(setup.System, setup.Body, setup.Start, setup.Now, ask);
             if (search.First.Error != null || search.FirstLanding == null) return null;
-            latest = search.Latest;
             return search.Windows().First();
+        }
+
+        /// <summary>The landing's turn for the Game Snapshot's craft round a moon of <paramref name="planet"/>.</summary>
+        public static double LongitudeTurnFor(GameSnapshot snapshot, SnapshotBody planet)
+        {
+            var system = new BodySystem(snapshot.Bodies);
+            return LongitudeTurn(system, planet, system.Find(snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body));
         }
 
         /// <summary>One aim's facts, and what its tries share.</summary>
@@ -162,11 +171,6 @@ namespace ClaudiaKerman.Core.Tools
             private double _step;
             public ReturnPlan First;
             public ReentryPrediction FirstLanding;
-            public double Latest
-            {
-                get { return _latest; }
-            }
-
             /// <summary>km along the track the last <see cref="Aim"/> left.</summary>
             public double AlongKm;
 
@@ -183,6 +187,7 @@ namespace ClaudiaKerman.Core.Tools
                 }
                 search._planet = system.Parent(moon);
                 search._latest = search._earliest + (ask.MaxWait ?? LongitudeTurn(system, search._planet, moon, ask.Landing.Frame.Handed));
+                if (ask.LatestUt.HasValue) search._latest = Math.Min(search._latest, ask.LatestUt.Value);
                 search._step = WindowStep(system, moon, orbit, search.First.Ut);
                 var landed = search.Predict(search.First);
                 if (landed.Error != null) return search;
@@ -227,12 +232,14 @@ namespace ClaudiaKerman.Core.Tools
                 Stamp(least, landed);
 
                 var centre = least.Ut;
-                var lowest = Math.Max(_earliest, centre - ReachS);
-                var highest = Math.Max(centre, Math.Min(_latest, centre + ReachS));
+                var reach = Math.Max(ReachS, _orbit.Period * ReachShare);
+                var lowest = Math.Max(_earliest, centre - reach);
+                var highest = Math.Max(centre, Math.Min(_latest, centre + reach));
                 var best = least;
                 var t = centre;
                 var at = Off(landed);
-                var dt = centre + TimeProbeS <= highest ? TimeProbeS : -TimeProbeS;
+                var dt = (centre + TimeProbeS <= highest ? centre + TimeProbeS : Math.Max(lowest, centre - TimeProbeS)) - centre;
+                if (dt == 0) return best;
                 var probe = Try(centre + dt, ref best);
                 if (probe == null) return best;
                 double slopeE = (probe[0] - at[0]) / dt, slopeN = (probe[1] - at[1]) / dt;
@@ -298,14 +305,14 @@ namespace ClaudiaKerman.Core.Tools
                 return ReentryPredictor.Predict(_planet, arrival.Orbit, arrival.StartUt, landing.GroundAltitude, mass, landing.Air, landing.Craft, landing.Frame);
             }
 
-            /// <summary>km <see cref="ResidualMs"/> of error along the burn moves the landing, the worse way; -1 when neither way lands.</summary>
+            /// <summary>km <see cref="ResidualMs"/> of error along the burn moves the landing, the worse way; -1 when either way does not land, which no figure says.</summary>
             public double Spread(ReturnPlan plan)
             {
                 var spread = -1.0;
                 foreach (var error in new[] { ResidualMs, -ResidualMs })
                 {
                     var landed = Predict(plan.Ut, plan.Prograde + error, plan.Normal, plan.Radial, plan.DeltaV);
-                    if (landed.Error != null || plan.Landing == null) continue;
+                    if (landed.Error != null) return -1;
                     spread = Math.Max(spread, LandingSiteSearch.ArcDegrees(landed.Latitude, landed.Longitude, plan.Landing.Latitude, plan.Landing.Longitude) * Math.PI / 180 * _planet.Radius / 1000);
                 }
                 return spread;

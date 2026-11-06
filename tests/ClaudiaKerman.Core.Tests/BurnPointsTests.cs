@@ -238,7 +238,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(wait.WaitSeconds, 0, 7.2 * 3600);
             Assert.Equal(1000 + wait.WaitSeconds, wait.DepartureUt.Value, 3);
             // The block's own craft may pick another window (here, with the capsule, a whole turn on): the duration covers any of them.
-            Assert.InRange(wait.PickWaitSeconds, 7 * 3600, 7.2 * 3600);
+            Assert.InRange(wait.PickSpanSeconds, 7 * 3600, 7.2 * 3600);
             Assert.InRange(BlockPick(snapshot, 1000) + 150 - 1000, 0, wait.MinimumDurationSeconds);
         }
 
@@ -267,24 +267,70 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(wait.DepartureUt.Value - WindowWaits.LaunchLeadS, BurnPoints.DueTime(wait, 1000).Value, 3);
             var short_ = BurnPoints.ShortOf(new SequencePlan { Script = script, ExpectedDurationSeconds = 100, ExpectedDeltaV = 300 }, AtTheMun(phase - 0.05), 1000, new AimFrame());
             Assert.Equal(WindowWaits.LaunchLeadS, short_.WaitSeconds);
-            Assert.True(short_.MinimumDurationSeconds > short_.PickWaitSeconds - 1 && short_.PickWaitSeconds > WindowWaits.LaunchLeadS);
+            // The hour before the window or the whole of max_wait from there, not the wait to the run's start.
+            Assert.InRange(short_.MinimumDurationSeconds, 7 * 3600, 7.3 * 3600);
         }
 
         [Theory]
         [InlineData("local res is return().")]
         [InlineData("local res is return(lexicon(\"target\", \"none\")).")]
-        [InlineData("local res is return(lexicon(\"target\", site)).")]
-        [InlineData("local res is return(lexicon(\"target\", \"ksc\", \"max_wait\", w)).")]
-        [InlineData("local res is return(lexicon(\"target\", \"ksc\", \"target_pe\", pe)).")]
-        public void AReturnWithNoTargetWrittenOutGivesNoCheck(string script)
+        public void AReturnWithNoTargetGivesNoCheck(string script)
         {
             Assert.Null(BurnPoints.First(script, AtTheMun(3.0), 1000, 5, new AimFrame()));
         }
 
-        [Fact]
-        public void AnAimedReturnWithNoFrameToReadGivesNoCheck()
+        /// <summary>A target it can't read, or no frame to read it in, still waits up to max_wait: the plan covers all of it, with no window to give a Due Time from.</summary>
+        [Theory]
+        [InlineData("local res is return(lexicon(\"target\", site)).", true)]
+        [InlineData("local res is return(lexicon(\"target\", ship:geoposition)).", true)]
+        [InlineData("local res is return(lexicon(\"target\", \"ksc\", \"max_wait\", w)).", false)]
+        [InlineData("local res is return(lexicon(\"target\", \"ksc\", \"target_pe\", pe)).", true)]
+        [InlineData("local res is return(lexicon(\"target\", \"ksc\")).", false)]
+        public void AnAimedReturnItCannotPlaceCoversAllOfMaxWait(string script, bool withFrame)
         {
-            Assert.Null(BurnPoints.First("local res is return(lexicon(\"target\", \"ksc\")).", AtTheMun(3.0), 1000, 5));
+            var wait = BurnPoints.First(script, AtTheMun(3.0), 1000, 5, withFrame ? new AimFrame() : null);
+            if (script.Contains("max_wait"))
+            {
+                // A max_wait it can't read but a target it can: the estimate takes "auto", without a frame none.
+                Assert.InRange(wait.PickSpanSeconds, 7 * 3600, 7.2 * 3600);
+                return;
+            }
+            Assert.NotNull(wait);
+            Assert.Null(wait.DepartureUt);
+            Assert.Equal(0, wait.WaitSeconds);
+            Assert.InRange(wait.LongestWaitSeconds, 7 * 3600, 7.2 * 3600);
+        }
+
+        /// <summary>The block refuses "ksc" from a moon of another planet at once: there is no wait to cover.</summary>
+        [Fact]
+        public void KscFromAnotherPlanetsMoonIsNoWait()
+        {
+            var snapshot = AtTheMun(3.0);
+            snapshot.Body = "Ike";
+            snapshot.Orbit.Body = "Ike";
+            snapshot.Bodies.AddRange(new[]
+            {
+                new SnapshotBody { Name = "Duna", Parent = "Sun", Gm = 3.0136321e11, Radius = 320000, AtmosphereHeight = 50000, SeaLevelAtm = 0.0667, SoiRadius = 47921949, RotationPeriod = 65517.859, Sma = 20726155264, MeanAnomalyAtEpoch = 3.14 },
+                new SnapshotBody { Name = "Ike", Parent = "Duna", Gm = 1.8568369e10, Radius = 130000, SoiRadius = 1049598.9, RotationPeriod = 65517.862, Sma = 3200000, MeanAnomalyAtEpoch = 1.7 },
+            });
+            Assert.Null(BurnPoints.First("local res is return(lexicon(\"target\", \"ksc\")).", snapshot, 1000, 5, new AimFrame()));
+        }
+
+        /// <summary>A far-off window is a Due Time: the run starts an hour before it, so the duration is max_wait, not the 100 days to the run.</summary>
+        [Fact]
+        public void AFarOffAimedWindowAsksForMaxWaitNotTheWaitToTheRun()
+        {
+            const string script = "local res is return(lexicon(\"target\", \"ksc\", \"window\", 8640000)).";
+            var short_ = BurnPoints.ShortOf(new SequencePlan { Script = script, ExpectedDurationSeconds = 100, ExpectedDeltaV = 300 }, AtTheMun(3.0), 1000, new AimFrame());
+            Assert.InRange(short_.MinimumDurationSeconds, 7 * 3600, 7.3 * 3600);
+        }
+
+        /// <summary>An explicit max_duration bounds the pick as the block's does.</summary>
+        [Fact]
+        public void AnAimedReturnHonoursItsMaxDuration()
+        {
+            var wait = BurnPoints.First("local res is return(lexicon(\"target\", \"ksc\", \"max_duration\", 3600)).", AtTheMun(3.0), 1000, 5, new AimFrame());
+            Assert.Equal(3600, wait.PickSpanSeconds);
         }
 
         /// <summary>A short max_wait is the one the block will use.</summary>
