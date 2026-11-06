@@ -343,6 +343,9 @@ namespace ClaudiaKerman.Core.Missions
         public ChuteAllocation ChuteAllocation;
         /// <summary>The Mission Plan's legs, for the Ship Systems hold (#756); null before there is a plan.</summary>
         public IList<PlannedSequence> PlanLegs;
+        /// <summary>The arrival plane <c>transfer_to</c> recorded for <c>capture</c>, and the last site <c>find_landing_site</c> gave (#788).</summary>
+        public string ArrivalPlane = "";
+        public Tools.PickedSite PickedSite;
         /// <summary>The kOS processor the Mission flies on; null for the default.</summary>
         public uint? ProcessorPartId;
 
@@ -443,7 +446,14 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         public static GameSnapshot Stamp(GameSnapshot snapshot, MissionView view)
         {
-            if (view != null && view.Stage != MissionStage.None) snapshot.StampMission(view.Settings.TimeVersusDeltaV, view.MarginPercent, view.WindowPick);
+            if (view != null && view.Stage != MissionStage.None)
+            {
+                snapshot.StampMission(view.Settings.TimeVersusDeltaV, view.MarginPercent, view.WindowPick);
+                // What the arrival plane reads (#788): the legs from the one in hand on, the site picked, and what transfer_to recorded for capture.
+                snapshot.LegsAhead = view.PlanLegs != null ? System.Linq.Enumerable.ToList(System.Linq.Enumerable.Skip(view.PlanLegs, System.Math.Max(0, view.CurrentSequence))) : null;
+                snapshot.PickedSite = view.PickedSite;
+                snapshot.RecordedPlane = view.ArrivalPlane;
+            }
             return snapshot;
         }
         /// <summary>The Mission Settings may be edited now (a plan awaits Approval, or Claudia has not planned yet).</summary>

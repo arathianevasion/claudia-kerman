@@ -18,6 +18,12 @@ namespace ClaudiaKerman.Core.Tools
         public double TargetPe;
         /// <summary>The arrival inclination round the target, degrees from 0 to 180, or null for any.</summary>
         public double? TargetInc;
+        /// <summary>
+        /// The whole arrival plane (#788), a unit vector along the angular momentum wanted, direction of travel included, in place of
+        /// <see cref="TargetInc"/>; null for any. A burn inside the target's sphere of influence must be given a plane through its own position
+        /// (<see cref="ArrivalPlane.Through"/>), and one from further out a plane through the arrival's way in.
+        /// </summary>
+        public Vec3? TargetNormal;
         /// <summary>The burn's window, UT: equal for a burn at that time, otherwise the burn time is free within it.</summary>
         public double EarliestUt;
         public double LatestUt;
@@ -127,11 +133,22 @@ namespace ClaudiaKerman.Core.Tools
                 return Fail("the trajectory from the burn does not reach " + target.Name + " within " + MaxPatches + " patches: a Course Correction starts from one that does");
 
             var withInc = ask.TargetInc.HasValue;
-            var m = 1 + (withInc ? Sqp.InclinationConstraints(ask.TargetInc.Value) : 0);
+            var peR = target.Radius + ask.TargetPe;
+            // A plane's residual is one angle (B-plane targeting): how far the arrival is turned from the plane wanted, about the direction it comes in
+            // from. Turning about that is what is cheap; the normal's share along it would need a new approach, and asking for that leaves the solve singular.
+            // An angle, not a component, so it has slope at 90 degrees and no second root at the mirror.
+            var planeAxis = default(Vec3);
+            var withNormal = ask.TargetNormal.HasValue;
+            if (withNormal)
+            {
+                var entry = SingleShooting.Arrive(system, from, coast.Orbit, startUt, seed, target, needed);
+                planeAxis = Vec3.Cross(ask.TargetNormal.Value, from == target ? coast.Orbit.Position(startUt) : ArrivalPlanes.WayIn(entry.Orbit, entry.StartUt)).Normalized;
+                if (from == target) seed = InPlaneSeed(coast.Orbit, startUt, ask.TargetNormal.Value, peR);
+            }
+            var m = 1 + (withInc ? Sqp.InclinationConstraints(ask.TargetInc.Value) : 0) + (withNormal ? 1 : 0);
             var tolerances = new double[m];
             tolerances[0] = PeResidual;
             for (var k = 1; k < m; k++) tolerances[k] = IncResidual;
-            var peR = target.Radius + ask.TargetPe;
             var n = free ? 4 : 3;
             var problem = new SqpProblem
             {
@@ -153,6 +170,11 @@ namespace ClaudiaKerman.Core.Tools
                     if (arrival == null) return false;
                     c[0] = arrival.Orbit.PeR - peR;
                     if (withInc) Sqp.Inclination(Normal(arrival), ask.TargetInc.Value, c, 1);
+                    if (withNormal)
+                    {
+                        var unit = Normal(arrival).Normalized;
+                        c[m - 1] = Math.Atan2(Vec3.Dot(unit, planeAxis), Vec3.Dot(unit, ask.TargetNormal.Value));
+                    }
                     return true;
                 },
                 Tolerances = tolerances,
@@ -182,7 +204,26 @@ namespace ClaudiaKerman.Core.Tools
             };
             plan.Error = SingleShooting.ToleranceError(Failure, plan.DeltaV, plan.PePredicted, plan.IncPredicted, ask.TargetPe, ask.TargetInc,
                 ask.PeTolerance, ask.IncTolerance, result.Reason ?? result.Status.ToString());
+            if (plan.Error == null && withNormal && from == target && ArrivalPlane.Angle(reached.Orbit.W, ask.TargetNormal.Value) > ask.IncTolerance)
+                plan.Error = Failure + ": the best burn (" + Num(plan.DeltaV) + " m/s) arrives " + Num(ArrivalPlane.Angle(reached.Orbit.W, ask.TargetNormal.Value)) + " degrees off the plane asked";
             return plan;
+        }
+
+        /// <summary>
+        /// The burn at <paramref name="ut"/> on <paramref name="orbit"/>, keeping its energy, that puts the orbit in the plane of
+        /// <paramref name="normal"/> (through the craft's position) with periapsis radius <paramref name="peR"/>.
+        /// </summary>
+        private static Vec3 InPlaneSeed(Conic orbit, double ut, Vec3 normal, double peR)
+        {
+            Vec3 r, v;
+            orbit.State(ut, out r, out v);
+            var radius = r.Length;
+            var up = r / radius;
+            var energy = Vec3.Dot(v, v) / 2 - orbit.Mu / radius;
+            var h = peR * Math.Sqrt(Math.Max(0, 2 * (energy + orbit.Mu / peR)));
+            var along = h / radius;
+            var outward = Math.Sqrt(Math.Max(0, Vec3.Dot(v, v) - along * along));
+            return up * (Vec3.Dot(v, up) < 0 ? -outward : outward) + Vec3.Cross(normal, up) * along - v;
         }
 
         /// <summary>Why the ask can't be solved as given, or null.</summary>

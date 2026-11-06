@@ -51,6 +51,7 @@ namespace ClaudiaKerman.Core.Tests
 
         [Theory]
         [InlineData("transfer_to", "transfer_to", "Kerbin")]
+        [InlineData("capture_mun_polar", "capture", "Kerbin")]
         [InlineData("return", "return", "Mun")]
         [InlineData("return_ike", "return", "Ike")]
         public void TheTransferAndReturnBlockTestsParseAndShipTheirFiles(string test, string block, string orbitBody)

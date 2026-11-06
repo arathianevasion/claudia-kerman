@@ -2428,14 +2428,38 @@ function claudia_burn_options {
 
 // Flies nd with exec_node (max_residual as claudia_burn_options), counting its delta-v as the block's. Returns exec_node's result.
 function claudia_burn {
-  parameter ctx, nd, max_residual is -1.
-  local burned is exec_node(claudia_burn_options(ctx, nd, max_residual)).
+  parameter ctx, nd, max_residual is -1, stop_at_round is false.
+  local flight is claudia_burn_options(ctx, nd, max_residual).
+  if stop_at_round {
+    set flight:stop_at_min to "ecc".
+  }
+  local burned is exec_node(flight).
   set ctx:dv_used to ctx:dv_used + burned:dv_used.
   claudia_note_dropped(ctx, burned).
   // exec_node's staging dropped parts on purpose; don't count them as lost.
   set ctx:parts to ship:parts:length.
   claudia_restart_clock(ctx).
   return burned.
+}
+
+// The plane option as the mod reads it (#788): a body by name, a vessel by its plane; "" or why it can't be used. Pure.
+function claudia_plane_ask {
+  parameter plane.
+  if plane:istype("Body") {
+    return plane:name.
+  }
+  if plane:istype("Vessel") {
+    return lexicon("inc", plane:orbit:inclination, "lan", plane:orbit:lan, "name", plane:name, "status", plane:status).
+  }
+  return plane.
+}
+
+function claudia_plane_unreadable {
+  parameter plane.
+  if plane:istype("Scalar") or plane:istype("String") or plane:istype("Body") or plane:istype("Vessel") {
+    return "".
+  }
+  return "plane must be " + char(34) + "auto" + char(34) + ", a number, a body or a vessel, not " + plane.
 }
 
 // ---- Course Corrections: shared by transfer_to and return ----

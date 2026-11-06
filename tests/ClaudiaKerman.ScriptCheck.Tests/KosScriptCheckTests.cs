@@ -575,7 +575,7 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             Assert.Null(failed.CompileError);
             Assert.False(failed.Passed);
             var problem = Assert.Single(failed.Problems);
-            Assert.Equal("line 1: transfer_to: missing required option target_pe; options: target*, target_pe*, window, correction, pe_tolerance, checkpoint (* required), plus the common options", problem);
+            Assert.Equal("line 1: transfer_to: missing required option target_pe; options: target*, target_pe*, plane, window, correction, pe_tolerance, checkpoint (* required), plus the common options", problem);
 
             AssertAllowed(CoreLibrary.Bundle("local res is transfer_to(lexicon(\"target\", \"Mun\", \"target_pe\", 30000, \"stage_limit\", 3)).\nprint res.\n"));
         }
@@ -849,6 +849,15 @@ namespace ClaudiaKerman.ScriptCheck.Tests
         }
 
         [Fact]
+        public void CapturesFileAlonePassesOnlyAsCoreLibrary()
+        {
+            // capture makes CAPTURESTEP inline (#788): allowed as the library's, refused as a Mission Script's.
+            var block = File.ReadAllText(Path.Combine(RepoRoot(), "kerboscript", "library", "capture.ks"));
+            Assert.True(new KosScriptCheck(forCoreLibrary: true).Check(block).Passed);
+            Assert.Contains(_check.Check(block).Forbidden, f => f.EndsWith(":CAPTURESTEP (call block-internal calculations)"));
+        }
+
+        [Fact]
         public void ChangeOrbitsFileAlonePassesOnlyAsCoreLibrary()
         {
             // change_orbit makes ORBITBURN inline (#444): allowed as the library's, refused as a Mission Script's.
@@ -1115,6 +1124,7 @@ namespace ClaudiaKerman.ScriptCheck.Tests
 
         [Theory]
         [InlineData("transfer_to")]
+        [InlineData("capture_mun_polar")]
         [InlineData("return")]
         [InlineData("return_ike")]
         [InlineData("change_orbit_inc")]

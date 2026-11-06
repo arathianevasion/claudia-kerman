@@ -32,6 +32,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             Rule("launch", "launch", "lift off", "liftoff", "take off", "takeoff", "orbit", "space", "apoapsis", "periapsis", "kerbin"),
             Rule("transfer_to", "mun", "minmus", "moon", "duna", "eve", "ike", "gilly", "dres", "jool", "laythe", "eeloo", "transfer", "encounter", "flyby", "fly by", "fly-by", "intercept"),
+            Rule("capture", "mun", "minmus", "moon", "duna", "eve", "ike", "gilly", "dres", "jool", "laythe", "eeloo", "transfer", "encounter"),
             Rule("land", "land", "touch down", "touchdown", "set down", "surface"),
             Rule("ascend", "ascend", "leave the", "lift off from", "take off from", "launch from", "back to orbit", "return", "come back", "home"),
             Rule("return", "return", "come back", "home", "back to kerbin", "bring", "recover"),

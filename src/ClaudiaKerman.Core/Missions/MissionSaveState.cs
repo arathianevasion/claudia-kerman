@@ -140,6 +140,9 @@ namespace ClaudiaKerman.Core.Missions
         public double? PlannedTurnShape;
         /// <summary>The Craft Check's last plan_ascent call and result (#508); "" when it made none, and in older saves.</summary>
         public string PlannedAscent = "";
+        /// <summary>The arrival plane <c>transfer_to</c> recorded for <c>capture</c>, and the last site <c>find_landing_site</c> gave (#788).</summary>
+        public string ArrivalPlane = "";
+        public Tools.PickedSite PickedSite;
         public MissionPlan MissionPlan;
         /// <summary>The current Sequence Plan: the one awaiting Approval, running, or just run.</summary>
         public SequencePlan SequencePlan;
@@ -219,6 +222,12 @@ namespace ClaudiaKerman.Core.Missions
             if (SafePending.Length > 0) values["safePending"] = SafePending;
             if (PlannedTurnShape.HasValue) values["plannedTurnShape"] = PlannedTurnShape.Value.ToString("R", CultureInfo.InvariantCulture);
             if (PlannedAscent.Length > 0) values["plannedAscent"] = PlannedAscent;
+            if (ArrivalPlane.Length > 0) values["arrivalPlane"] = ArrivalPlane;
+            if (PickedSite != null)
+            {
+                values["pickedSiteBody"] = PickedSite.Body;
+                values["pickedSiteLatitude"] = PickedSite.Latitude.ToString("R", CultureInfo.InvariantCulture);
+            }
             if (WindowPlanet.Length > 0 && WindowUt.HasValue && WindowDeltaV.HasValue)
             {
                 values["windowPlanet"] = WindowPlanet;
@@ -291,6 +300,8 @@ namespace ClaudiaKerman.Core.Missions
                 PausedForCap = Get(values, "pausedForCap") == "true",
                 SafePending = Get(values, "safePending"),
                 PlannedAscent = Get(values, "plannedAscent"),
+                ArrivalPlane = Get(values, "arrivalPlane"),
+                PickedSite = ReadSite(Get(values, "pickedSiteBody"), Get(values, "pickedSiteLatitude")),
                 WindowPick = Get(values, "windowPickBody").Length == 0 ? WindowPick.None
                     : new WindowPick(Get(values, "windowPickBody"), Get(values, "windowPickKind") == WindowKind.Optimal.ToString() ? WindowKind.Optimal : WindowKind.Soonest),
                 WindowPickNeeded = Get(values, "windowPickNeeded") == "true",
@@ -403,6 +414,12 @@ namespace ClaudiaKerman.Core.Missions
                 }
             }
             return plain.ToString();
+        }
+
+        private static Tools.PickedSite ReadSite(string body, string latitude)
+        {
+            double value;
+            return body.Length > 0 && double.TryParse(latitude, NumberStyles.Float, CultureInfo.InvariantCulture, out value) ? new Tools.PickedSite { Body = body, Latitude = value } : null;
         }
 
         private static string Get(IDictionary<string, string> values, string key)
