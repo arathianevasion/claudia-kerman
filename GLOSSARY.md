@@ -104,6 +104,12 @@ _Avoid_: flyby, orbit change (one burn, not a transfer)
 The arrival burn of a transfer: circular at the target periapsis round a body, or matching the target orbit's velocity. A transfer solved with capture is the cheapest departure and capture together; without, the cheapest departure alone.
 _Avoid_: insertion, orbit insertion
 
+**Landing target default**:
+What a `return` or `deorbit` at Kerbin aims for when Claudia gives no `target`: KSC, set by the mod (`HomeLanding`, #790), with no prompt text, as it sets `transfer_to`'s plane. A target she gives wins, as does a Mission Goal that names another place: a biome, a Point of Interest, water, a splashdown, or a latitude and longitude. A `return` with a periapsis over the air, a `window` or a `target_inc` isn't aimed: the first is no landing, and the others are timed or shaped for something else. From another planet the same default chooses the way in at `plan_transfer`: capture then `deorbit` when the delta-v left less the **reserve** covers both, else straight in.
+
+**Reserve**:
+What aiming a landing never spends: the larger of 50 m/s and 10% of the delta-v left, plus what a craft with no parachutes needs for its powered landing. One rule, `DeorbitBurn.AutoMaxDv`, for `deorbit`'s auto `max_dv`, `return`'s fix across the track and the choice of capture on a trip home.
+
 **Arrival plane**:
 The plane and direction of travel a transfer should arrive in, set on the approach, inside the target's sphere of influence, where any plane containing the approach direction is nearly free (#788). `transfer_to`'s `plane` picks it: Claudia's value, a Target Vessel orbiting the arrival body, the next leg's landing site, the next leg's moon, or none. A body or vessel gives its whole plane in its own direction; a number or a site gives an inclination only, the crossing point free. Core records it for `capture`. The Delta-v Map and Craft Check add no allowance for it (ADR 0016).
 _Avoid_: capture plane, target plane

@@ -33,6 +33,9 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>For a return aimed at a landing: game seconds from now to the soonest it may burn.</summary>
         public double ToEarliestSeconds;
 
+        /// <summary>The wait is the mod's own doing: a return Claudia gave no target (#790). The mod covers it itself, with no second request to her.</summary>
+        public bool DefaultAim;
+
         /// <summary>The longest the run may wait for the burn.</summary>
         public double LongestWaitSeconds
         {
@@ -183,6 +186,7 @@ namespace ClaudiaKerman.Core.Missions
             double? departure;
             var toEarliest = 0.0;
             var span = 0.0;
+            var defaultAim = false;
             if (call.Block == "return")
             {
                 var earliest = TransferFlight.Earliest(now, 0, window);
@@ -192,6 +196,7 @@ namespace ClaudiaKerman.Core.Missions
                 ut = estimate ?? earliest;
                 departure = estimate ?? (window.HasValue ? earliest : (double?)null);
                 if (aimed) toEarliest = earliest - now;
+                defaultAim = aimed && (call.Option("target") == null || call.Option("target") == "\"auto\"");
             }
             else
             {
@@ -211,6 +216,7 @@ namespace ClaudiaKerman.Core.Missions
                 wait.DepartureUt = departure;
                 wait.PickSpanSeconds = span;
                 wait.ToEarliestSeconds = toEarliest;
+                wait.DefaultAim = defaultAim;
             }
             return wait;
         }
@@ -225,10 +231,24 @@ namespace ClaudiaKerman.Core.Missions
             estimate = null;
             span = 0;
             var target = call.Option("target");
-            if (target == null || target == "\"none\"") return false;
+            if (target == "\"none\"") return false;
             var at = snapshot.At(now);
             var planet = ReturnAim.PlanetOf(at);
             if (planet == null) return false;
+            // The block's "auto" (#790), read as it will read it; an option it can't read here stays out of the choice, as it isn't a number.
+            if (target == null || target == "\"auto\"")
+            {
+                string pe;
+                var defaulted = HomeLanding.DefaultTarget(at, new LandingTargetAsk
+                {
+                    Planet = planet.Name,
+                    TargetPe = call.Options.TryGetValue("target_pe", out pe) ? Literal(pe) : null,
+                    TargetInc = Literal(call.Option("target_inc")),
+                    Window = Literal(call.Option("window")),
+                });
+                if (defaulted != HomeLanding.Ksc) return false;
+                target = "\"ksc\"";
+            }
             double latitude, longitude;
             var readable = SiteOf(target, out latitude, out longitude);
             if (readable && IsKsc(target) && planet.Name != "Kerbin") return false;

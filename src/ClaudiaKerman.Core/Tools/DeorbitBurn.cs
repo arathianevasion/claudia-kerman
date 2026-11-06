@@ -126,6 +126,20 @@ namespace ClaudiaKerman.Core.Tools
             return dvLeft - Math.Max(ReserveMin, ReserveShare * dvLeft) - Math.Max(0, poweredLandingDv);
         }
 
+        /// <summary>The least burn from <paramref name="body"/>'s low circular orbit to the entry periapsis, m/s: <c>deorbit</c>'s from there, for planning (#790).</summary>
+        public static double FromLowOrbit(SnapshotBody body)
+        {
+            var low = DeltaVMap.LowOrbit(body);
+            var pe = body.Radius + EntryPeriapsisShare * body.AtmosphereHeight;
+            return Math.Sqrt(body.Gm / low) - Math.Sqrt(body.Gm * (2 / low - 2 / (low + pe)));
+        }
+
+        /// <summary>What a powered landing keeps back (#790, shared with <c>return</c>'s fix across the track): without chutes, or with them left stowed, the craft lands on its engines, and that costs its speed at the ground.</summary>
+        public static double PoweredLandingDv(IReentryCraft craft, bool chutes, double landingSpeed)
+        {
+            return craft.Chutes == null || craft.Chutes.Count == 0 || !chutes ? landingSpeed : 0;
+        }
+
         /// <summary>
         /// Whether burn <paramref name="a"/> beats <paramref name="b"/> (#794): of burns within <paramref name="accuracyKm"/> the cheaper (the
         /// earlier on a near tie in delta-v), and any such burn beats one outside it; of burns outside it the smaller error (the earlier on a near tie).
@@ -240,8 +254,7 @@ namespace ClaudiaKerman.Core.Tools
             {
                 var lacking = ShortOfDv(plan.DeltaV, _ask.DeltaVLeft);
                 if (lacking != "") return lacking;
-                // Without chutes the craft lands on its engines, and that costs its speed at the ground.
-                var powered = _craft.Chutes == null || _craft.Chutes.Count == 0 || !_ask.Chutes ? plan.Landing.LandingSpeed : 0;
+                var powered = PoweredLandingDv(_craft, _ask.Chutes, plan.Landing.LandingSpeed);
                 var limit = _ask.MaxDv > 0 ? _ask.MaxDv : AutoMaxDv(_ask.DeltaVLeft, powered);
                 if (plan.DeltaV <= limit) return null;
                 return "the cheapest burn within accuracy_km needs " + Dv(plan.DeltaV) + " m/s (at UT " + Whole(plan.BurnUt) + "), over max_dv "

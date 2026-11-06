@@ -1,7 +1,7 @@
 return(options): flies home from orbit around any moon to its planet: an ejection
 burn onto a path whose periapsis at the planet is target_pe, then a mid-course correction halfway to
-reentry, both flown with exec_node. It ends after the correction, still in space; the craft comes
-down anywhere on the planet. Call it as a value, `local res is return().`: a bare `return().` is kOS's
+reentry, both flown with exec_node. It ends after the correction, still in space.
+Call it as a value, `local res is return().`: a bare `return().` is kOS's
 own return statement.
 Options:
 target_pe [35000; 30000 with a target]: the periapsis altitude at the planet to aim for, m; inside its atmosphere the
@@ -9,8 +9,8 @@ craft comes down.
 target_inc ["any"]: the inclination round the planet to arrive at, degrees from 0 to 180; "any" for none.
 window ["next"]: "next" ejects at the burn point's next pass once the craft can have turned to the
 burn; a time (UT seconds) ejects at its first pass from that time. It
-warps on rails to the pass.
-target ["none"]: LATLNG(lat, lng), lexicon("lat", x, "lng", y) or "ksc": where to come down. The
+warps to the pass.
+target ["auto"]: LATLNG(lat, lng), lexicon("lat", x, "lng", y), "ksc" or "none": where to come down; auto: KSC at home unless the goal names one. The
 ejection picks the window and times its burn to land there (about 1 m/s more); the correction
 trims the rest, without target_inc. Read predicted_error_km; when too far for the Mission Goal,
 capture and call deorbit. Aim a splashdown offshore.

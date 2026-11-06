@@ -1,10 +1,10 @@
 deorbit(options): from orbit round a body with an atmosphere (Kerbin, Eve, Duna...), burns
-once to bring the craft down near a target, e.g. KSC. It chooses the burn itself with the mod's
+once to bring the craft down near a target. It chooses the burn itself with the mod's
 reentry predictor (the craft's own drag, held retrograde as reentry flies it) and flies it with
 exec_node; it fails rather than burn when no burn in max_wait lands within accuracy_km. It does
 not fly the descent: call reentry next.
 Options:
-target [required]: LATLNG(lat, lng), lexicon("lat", x, "lng", y), or "ksc" (Kerbin only). Aim a
+target ["auto"]: LATLNG(lat, lng), lexicon("lat", x, "lng", y), or "ksc" (auto at Kerbin). Aim a
 splashdown offshore of a coast, so a miss lands in the water.
 max_wait ["auto"]: s the burn may wait; "auto" is one turn of the body (about 6 h at Kerbin). The
 burn is at least 4 minutes ahead. Give expected_duration_s that wait.

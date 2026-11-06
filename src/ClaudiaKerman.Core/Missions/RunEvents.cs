@@ -22,6 +22,8 @@ namespace ClaudiaKerman.Core.Missions
         Science,
         /// <summary>The mod stopped the run: a runtime gate, the runaway hard stop or the player's Abort.</summary>
         Stopped,
+        /// <summary>A landing aimed at Kerbin: km from KSC predicted, and actual once down (#790). The latest stands for the run.</summary>
+        Landing,
     }
 
     public sealed class RunEvent
@@ -88,6 +90,13 @@ namespace ClaudiaKerman.Core.Missions
             Dropped = 0;
         }
 
+        /// <summary>The run's one line of this kind: it replaces any before it.</summary>
+        public void Replace(double ut, RunEventKind kind, string text)
+        {
+            _events.RemoveAll(e => e.Kind == kind);
+            Add(ut, kind, text);
+        }
+
         /// <summary>The events other than science, one line each: "+12 s staging: stage 3 fired".</summary>
         public IList<string> EventLines(double startUt)
         {
@@ -117,6 +126,7 @@ namespace ClaudiaKerman.Core.Missions
                 case RunEventKind.Overheating: return "overheating";
                 case RunEventKind.BlockAborted: return "block aborted";
                 case RunEventKind.Science: return "science";
+                case RunEventKind.Landing: return "landing";
                 default: return "run stopped";
             }
         }

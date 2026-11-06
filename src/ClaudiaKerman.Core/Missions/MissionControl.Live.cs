@@ -196,6 +196,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (_snapshot == null || _scene != GameScene.Flight) return null;
             if (mission.VesselId.Length > 0 && _snapshot.Craft.VesselId != mission.VesselId) return null;
+            _snapshot.MissionGoal = mission.Goal;
             return _snapshot;
         }
 
@@ -663,7 +664,22 @@ namespace ClaudiaKerman.Core.Missions
             var line = BlockLine(ended.Block, ended.Result);
             Note(LogKind.Notice, line);
             if (ended.Block == "science") NoteScienceKept(mission, ended.Result);
+            NoteLanding(mission, ended);
             if (!BlockSucceeded(ended.Result)) mission.RunEvents.Add(_ut, RunEventKind.BlockAborted, line.TrimEnd('.'));
+        }
+
+        /// <summary>The Debrief's one line on a landing aimed at Kerbin (#790): the prediction as the aiming block gives it, kept for the reentry that may come in a later run.</summary>
+        private void NoteLanding(Mission mission, KosBlockEnded ended)
+        {
+            var aimed = LandingLine.Record(ended.Block, ended.Result, _snapshot);
+            if (aimed != null)
+            {
+                mission.LandingAim = aimed;
+                mission.RunEvents.Replace(_ut, RunEventKind.Landing, LandingLine.Predicted(aimed));
+            }
+            if (ended.Block != "reentry") return;
+            var landed = LandingLine.Landed(mission.LandingAim, ended.Result, _snapshot);
+            if (landed.Length > 0) mission.RunEvents.Replace(_ut, RunEventKind.Landing, landed);
         }
 
         /// <summary>A science result's per-experiment entries: "kept" adds the experiment to the run's set, "transmitted" removes it (#624).</summary>

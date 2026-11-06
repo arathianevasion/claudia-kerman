@@ -453,6 +453,7 @@ namespace ClaudiaKerman.Core.Missions
                 snapshot.LegsAhead = view.PlanLegs != null ? System.Linq.Enumerable.ToList(System.Linq.Enumerable.Skip(view.PlanLegs, System.Math.Max(0, view.CurrentSequence))) : null;
                 snapshot.PickedSite = view.PickedSite;
                 snapshot.RecordedPlane = view.ArrivalPlane;
+                snapshot.MissionGoal = view.Goal;
             }
             return snapshot;
         }

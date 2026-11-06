@@ -188,6 +188,8 @@ namespace ClaudiaKerman.Core.Missions
                 snapshot.TimeCapHours = settings.TimeCapHours;
                 snapshot.StampMission(settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
                 snapshot.LaterLegsDv = LaterLegsDv(mission);
+                snapshot.MissionGoal = mission.Goal;
+                snapshot.PickedSite = mission.PickedSite;
             }
             var purpose = turn.Purpose;
             var timeout = _toolCallTimeout;

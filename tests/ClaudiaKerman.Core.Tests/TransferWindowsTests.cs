@@ -313,6 +313,8 @@ namespace ClaudiaKerman.Core.Tests
         public void Duna_to_Kerbin_prices_the_ejection_alone_with_the_entry_note_and_capture_true_adds_the_capture()
         {
             var snapshot = InDunaOrbit();
+            // Stock says nothing of the delta-v left: no capture and deorbit to choose (#790, HomeLandingTests).
+            snapshot.DeltaVSimulator = false;
             var home = Run("{\"target\":\"Kerbin\",\"target_pe\":80000}", snapshot);
             Assert.False(home.GetProperty("capture").GetBoolean());
             Assert.Equal("arrival: entry at 21 km, no capture burn", home.GetProperty("arrival_note").GetString());
@@ -331,7 +333,12 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void The_precomputed_transfer_to_Kerbin_shows_no_capture_burn()
         {
-            var text = MissionPrompts.StageTable(InDunaOrbit(), "Land on Ike and return to Kerbin.", null);
+            var duna = InDunaOrbit();
+            // Short of a capture and a deorbit over the reserve (#790).
+            duna.DeltaVSimulator = true;
+            duna.Stages.Clear();
+            duna.Stages.Add(new SnapshotStage { Number = 1, DeltaVVac = 1300 });
+            var text = MissionPrompts.StageTable(duna, "Land on Ike and return to Kerbin.", null);
             var row = text.Substring(text.IndexOf("plan_transfer {\"target\":\"Kerbin\"", StringComparison.Ordinal));
             row = row.Substring(0, row.IndexOf('\n'));
             Assert.Contains("\"capture\":false", row);

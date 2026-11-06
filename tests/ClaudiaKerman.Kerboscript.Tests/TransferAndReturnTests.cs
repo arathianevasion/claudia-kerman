@@ -223,7 +223,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [Fact]
         public void Return_takes_no_target_by_default()
         {
-            Assert.Equal("none|False", One("claudia_options(lexicon(), return_defaults(), \"auto\"):opt:target + \"|\" + return_aims(claudia_options(lexicon(), return_defaults(), \"auto\"):opt)"));
+            Assert.Equal("auto|False", One("claudia_options(lexicon(), return_defaults(), \"auto\"):opt:target + \"|\" + return_aims(claudia_options(lexicon(), return_defaults(), \"auto\"):opt)"));
         }
 
         [Theory]

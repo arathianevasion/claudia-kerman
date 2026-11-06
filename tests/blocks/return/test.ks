@@ -10,6 +10,6 @@
 
 wait until ship:unpacked.
 // Called as a value: a bare return(). would be kOS's return statement.
-local result is return(lexicon("stage_limit", 2)).
+local result is return(lexicon("target", "none", "stage_limit", 2)).
 print "return test: success " + result:success + ", Kerbin pe " + result:planet_pe + " m, correction " + result:correction_dv + " m/s, reentry at " + result:reentry_ut + ", " + result:reason.
 addons:claudia:report(result).

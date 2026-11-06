@@ -84,19 +84,22 @@ namespace ClaudiaKerman.Core.Tools
             if (string.IsNullOrEmpty(target) == (orbit == null)) return PlanningJson.Error("give target (a body) or orbit, one of them");
             // From a moon's orbit, the two routes to another planet (#760). A trip ending in reentry arrives at the entry periapsis the
             // arrival note gives, whatever target_pe says (the Mission request's row gives a capture's), so it needs none.
+            // A trip home from another planet (#790): capture and deorbit when the delta-v covers them, unless the caller says.
+            var homeArrival = JsonNode.Bool(input["capture"]).HasValue ? null : HomeLanding.Arrival(snapshot, target);
+            bool? explicitCapture = JsonNode.Bool(input["capture"]) ?? (homeArrival != null && homeArrival.CaptureFirst ? true : (bool?)null);
             if (target != null && DirectRoute.Applies(snapshot, target))
             {
-                var routeCapture = ArrivalRule.Capture(snapshot, target, JsonNode.Bool(input["capture"]));
+                var routeCapture = ArrivalRule.Capture(snapshot, target, explicitCapture);
                 var entry = !routeCapture && ArrivalRule.EndsInReentry(snapshot, target);
-                if (targetPe.HasValue || entry)
-                    return Routes(DirectRoute.Find(snapshot, target, entry ? ArrivalRule.EntryPe(new BodySystem(snapshot.Bodies).Find(target)) : targetPe.Value, routeCapture), snapshot, routeCapture);
+                if (targetPe.HasValue || entry || homeArrival != null)
+                    return Routes(DirectRoute.Find(snapshot, target, entry ? ArrivalRule.EntryPe(new BodySystem(snapshot.Bodies).Find(target)) : targetPe ?? homeArrival.ArrivalPe, routeCapture), snapshot, routeCapture, homeArrival);
             }
             if (target != null && !targetPe.HasValue) return PlanningJson.Error("target needs target_pe, the periapsis altitude to arrive at in metres");
             if (orbit != null && targetPe.HasValue) return PlanningJson.Error("target_pe is for a target body; an orbit is reached at its own altitude");
             if (target != null && (TransferWindows.IsPlanetTransfer(snapshot, target) || TransferWindows.IsSiblingTransfer(snapshot, target)))
             {
-                var capture = ArrivalRule.Capture(snapshot, target, JsonNode.Bool(input["capture"]));
-                return Windows(TransferWindows.Find(snapshot, target, targetPe.Value, capture, snapshot.MarginPercent), snapshot, capture);
+                var capture = ArrivalRule.Capture(snapshot, target, explicitCapture);
+                return Windows(TransferWindows.Find(snapshot, target, targetPe.Value, capture, snapshot.MarginPercent), snapshot, capture, homeArrival);
             }
             var ask = new TransferAsk
             {
@@ -183,14 +186,14 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>From a moon's orbit to another planet (#760): the two routes, each its timing, burns and total and the blocks that fly it, and the one the Mission Setting Time versus delta-v picks.</summary>
-        private static ToolOutcome Routes(DirectRoutePlan plan, GameSnapshot snapshot, bool capture)
+        private static ToolOutcome Routes(DirectRoutePlan plan, GameSnapshot snapshot, bool capture, HomeArrivalPlan home)
         {
             if (plan.Error != null) return PlanningJson.Error(plan.Error);
             var pick = plan.Pick;
             var json = new JsonWriter().BeginObject().Field("model", RouteModel).Field("target", plan.Target).Field("capture", capture)
                 .Field("target_pe", PlanningJson.Round(plan.TargetPe, 0)).Field("return_pe", PlanningJson.Round(plan.ReturnPe, 0))
                 .Field("window", plan.WindowName).Field("departure_v_inf", PlanningJson.Round(plan.VInf, 1));
-            var entry = ArrivalRule.Note(snapshot, plan.Target, capture);
+            var entry = home != null ? home.Note : ArrivalRule.Note(snapshot, plan.Target, capture);
             if (entry != null) json.Field("arrival_note", entry);
             if (plan.Direct != null) Route(json, "direct", plan.Direct, snapshot.Ut, capture, plan);
             else json.Field("direct_note", plan.DirectError);
@@ -229,14 +232,14 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>A planet's Transfer Windows (#458), or a moon's from the pad (#647): Soonest and Optimal, and the one the Mission Setting Time versus delta-v picks.</summary>
-        private static ToolOutcome Windows(WindowSearch found, GameSnapshot snapshot, bool capture)
+        private static ToolOutcome Windows(WindowSearch found, GameSnapshot snapshot, bool capture, HomeArrivalPlan home = null)
         {
             if (found.Error != null) return PlanningJson.Error(found.Error);
             var pick = TransferWindows.Pick(found, snapshot);
             var json = new JsonWriter().BeginObject().Field("model", found.Moon ? MoonWindowModel : WindowModel).Field("target", found.Target).Field("capture", capture);
             json.Field("parking_pe", PlanningJson.Round(found.ParkingPe, 0));
             if (found.ParkingAssumed) json.Field("parking_note", "assumed: the craft is not in a closed orbit clear of the atmosphere");
-            var entry = ArrivalRule.Note(snapshot, found.Target, capture);
+            var entry = home != null ? home.Note : ArrivalRule.Note(snapshot, found.Target, capture);
             if (entry != null) json.Field("arrival_note", entry);
             if (!found.Moon && !found.Fits)
             {

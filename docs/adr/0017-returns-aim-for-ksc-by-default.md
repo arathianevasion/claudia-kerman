@@ -1,0 +1,18 @@
+# Returns aim for KSC by default
+
+Every return to Kerbin aims for KSC unless the Mission Goal names another place. The mod sets the target itself (`HomeLanding`, through `ADDONS:CLAUDIA:LANDINGTARGET`), as it sets `transfer_to`'s plane, so it costs no prompt text. The player asked for it on 2026-11-05: "spend any extra delta-v to land as close to KSC as possible".
+
+- **What wins.** A target Claudia gives. A Mission Goal that names a place: a biome, a Point of Interest, water or a splashdown, a latitude and longitude. A `return` with a periapsis over the air (a moon's two-step route out), a `window` (a direct route's timed ejection) or a `target_inc` (the aimed correction leaves that out) isn't aimed. Claudia's legs say "splashdown" of any return, so those words count only in the player's goal.
+- **The reserve.** One rule, `DeorbitBurn.AutoMaxDv`: the larger of 50 m/s and 10% of the delta-v left, plus a chuteless craft's powered landing. Aiming never spends it.
+- **Across the track, the correction and not the ejection.** Off Minmus's node the landing keeps the moon's latitude, 20 to 60 km across the track. The brief asked for the cheaper of a normal part in the ejection or the aimed correction. Measured on the same misses: 20 to 40 m/s in the correction, 29 to 60 m/s more in the ejection (which also needs a radial part, and moves the longitude about 30 km per m/s of normal, so it must pick its window again). So the fix is in `CorrectionBurn`, and the ejection keeps #792's window, so its Due Time stays right. The ejection's own numbers (`0.65 km per m/s`) were a slope at no normal part: the latitude there is nearly flat. The fix never waits for the moon's node.
+- **The cap.** The fix has a limit of its own, 150 m/s and the reserve, in place of the along-track burn's 50 m/s or 85% of the delta-v left. The 50 m/s is what an ejection's error needs; a miss from the moon's latitude isn't that, and 40 m/s of fix sits near it, with no margin to speak of.
+- **A solver of its own.** Newton on the normal part and the in-plane part that leaves the periapsis alone, with the periapsis solved in each try. An SQP with the landing's two axes as equalities stalled at 2 m/s on a 60 km miss, on both burns: the periapsis's slope drowns the landing's in its merit function.
+- **From another planet.** At `plan_transfer` to Kerbin: capture into low orbit then `deorbit` when the delta-v left on arrival, less the reserve, covers both by the Delta-v Map's capture figure and the least deorbit burn from low orbit. Otherwise straight in, with the corrections. The result says which and gives the blocks to fly, so Claudia writes them; the mod doesn't fly a capture she hasn't planned. The Map's return legs stay as they are.
+- **No second request.** A default return's wait (up to one turn of the landing, about 7 h) is the mod's doing, so the mod raises `expected_duration_s` itself rather than sending the plan back to Claude.
+- **The Debrief.** One event line, `predicted <x> km from KSC, came down <y> km from KSC`, with the fix's branch and m/s. The prediction is kept in the Mission's save (`landingAim`), as `reentry` may come in a later run.
+
+We rejected waiting for Minmus's node (hours to days, at the player's word), and a capture and deorbit the mod sequences itself (the plan is Claudia's: ADR 0012).
+
+Known gap: `AutoMaxDv` counts delta-v that `separate` or `stage_limit` forbids (#800), so a fix or a capture can be judged affordable when the stages it may use can't pay for it. Such a burn then fails as any short burn does. Later legs after a return aren't counted either.
+
+Decided on #790 and its amendment (#797), by the player on 2026-11-05. The logic is in Core under ADR 0014; `return.ks` and `deorbit.ks` are wiring.

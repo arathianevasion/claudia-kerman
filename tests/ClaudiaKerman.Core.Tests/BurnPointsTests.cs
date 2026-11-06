@@ -178,7 +178,7 @@ namespace ClaudiaKerman.Core.Tests
         public void ReturnWaitsOnlyForAWindowItNames()
         {
             var rig = TransferRig.Circular("Mun", 50000, 0);
-            Assert.Null(BurnPoints.First("local res is return().", rig.Snapshot(), 0, 100));
+            Assert.Null(BurnPoints.First("local res is return(lexicon(\"target\", \"none\")).", rig.Snapshot(), 0, 100));
             var wait = BurnPoints.First("local res is return(lexicon(\"window\", 9000000)).", rig.Snapshot(), 0, 100);
             Assert.Equal("return", wait.Block);
             Assert.Equal(9000000, wait.WaitSeconds, 0);
@@ -272,11 +272,34 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Theory]
-        [InlineData("local res is return().")]
         [InlineData("local res is return(lexicon(\"target\", \"none\")).")]
-        public void AReturnWithNoTargetGivesNoCheck(string script)
+        [InlineData("local res is return(lexicon(\"target_pe\", 80000)).")]
+        [InlineData("local res is return(lexicon(\"target_inc\", 30)).")]
+        public void AReturnThatAimsAtNoLandingGivesNoCheck(string script)
         {
             Assert.Null(BurnPoints.First(script, AtTheMun(3.0), 1000, 5, new AimFrame()));
+        }
+
+        /// <summary>#790: a return with no target waits for KSC's window, as one aimed there; the wait is the mod's, so it says so, for no second request to Claudia.</summary>
+        [Theory]
+        [InlineData("local res is return().", true)]
+        [InlineData("local res is return(lexicon(\"target\", \"auto\")).", true)]
+        [InlineData("local res is return(lexicon(\"target\", \"ksc\")).", false)]
+        public void AReturnWithNoTargetWaitsForKscsWindow(string script, bool byDefault)
+        {
+            var wait = BurnPoints.First(script, AtTheMun(3.0), 1000, 5, new AimFrame());
+            Assert.NotNull(wait);
+            Assert.InRange(wait.PickSpanSeconds, 7 * 3600, 7.2 * 3600);
+            Assert.Equal(byDefault, wait.DefaultAim);
+        }
+
+        /// <summary>A Mission Goal that names another place needs no wait for KSC.</summary>
+        [Fact]
+        public void AReturnWithAGoalThatNamesAPlaceGivesNoCheck()
+        {
+            var snapshot = AtTheMun(3.0);
+            snapshot.MissionGoal = "Land on the Mun, then splash down in the ocean.";
+            Assert.Null(BurnPoints.First("local res is return().", snapshot, 1000, 5, new AimFrame()));
         }
 
         /// <summary>A target it can't read, or no frame to read it in, still waits up to max_wait: the plan covers all of it, with no window to give a Due Time from.</summary>

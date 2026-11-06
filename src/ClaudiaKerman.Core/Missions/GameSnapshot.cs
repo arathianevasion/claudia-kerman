@@ -229,6 +229,8 @@ namespace ClaudiaKerman.Core.Missions
         public WindowPick WindowPick = WindowPick.None;
         /// <summary>The delta-v, m/s, of the Mission Plan's legs after the one this turn plans, flown by the craft; null with no Mission Plan. Set by the Mission before a tool runs; not in the JSON.</summary>
         public double? LaterLegsDv;
+        /// <summary>The Mission Goal, for the landing target default (#790); "" with no Mission. Not in the JSON.</summary>
+        public string MissionGoal = "";
         /// <summary>The Mission Plan's legs from the one in hand on, for <c>transfer_to</c>'s arrival plane (#788); null with no Mission Plan. Not in the JSON.</summary>
         public IList<PlannedSequence> LegsAhead;
         /// <summary>The site <c>find_landing_site</c> last gave this Mission (#788); null for none. Not in the JSON.</summary>
