@@ -89,7 +89,7 @@ namespace ClaudiaKerman.Core.Tests
             lng = landed.Longitude;
         }
 
-        private static IDictionary<string, object> Aim(GameSnapshot snapshot, double lat, double lng, double burnIn = 300, double dvLeft = 0, double pe = Pe)
+        private static IDictionary<string, object> Aim(GameSnapshot snapshot, double lat, double lng, double burnIn = 300, double dvLeft = -1, double pe = Pe)
         {
             return BlockCalls.CorrectionBurn(new Dictionary<string, object>
             {
@@ -174,6 +174,19 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("", node["error"]);
             Assert.InRange(D(node, "dv"), 7, 10);
             Assert.True(D(node, "error_km") > 300);
+        }
+
+        /// <summary>A craft with nothing left spends nothing on the landing: 0 is a reading, only a negative figure is unknown.</summary>
+        [Fact]
+        public void A_craft_with_no_delta_v_left_burns_nothing_for_the_landing()
+        {
+            var snapshot = Falling();
+            double lat, lng;
+            Natural(snapshot, out lat, out lng);
+            var node = Aim(snapshot, lat, lng + 50 / KmPerDeg, 300, 0);
+            Assert.Equal("", node["error"]);
+            Assert.InRange(D(node, "dv"), 0, 0.1);
+            Assert.InRange(D(node, "error_km"), 49, 51);
         }
 
         /// <summary>A path off target_pe comes back to it, the entry steep again, and still lands on the target.</summary>
@@ -295,6 +308,17 @@ namespace ClaudiaKerman.Core.Tests
             ask["target_inc"] = 5.0;
             Assert.Equal("found no correction: a landing target takes no arrival inclination or plane",
                 BlockCalls.CorrectionBurn(ask, snapshot, new FrameBody(snapshot.Ut), new ReentrySim.Atmosphere(), new ReentrySim.Capsule())["error"]);
+        }
+
+        /// <summary>A target that is no body is the solve's to say, as without a landing, though the adapter has no air to give for it.</summary>
+        [Fact]
+        public void A_landing_on_no_such_body_says_so()
+        {
+            var node = BlockCalls.CorrectionBurn(new Dictionary<string, object>
+            {
+                { "target", "Nowhere" }, { "target_pe", Pe }, { "earliest_ut", Ut + 300 }, { "lat", 0.0 }, { "lng", 0.0 },
+            }, Falling());
+            Assert.Equal("found no correction: there is no body named \"Nowhere\"; the bodies are Sun, Kerbin", node["error"]);
         }
 
         /// <summary>Without a landing the ask and its answer are as before: no landing keys, the log says none.</summary>

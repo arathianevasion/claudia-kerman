@@ -492,6 +492,12 @@ namespace ClaudiaKerman.KOS
             }, () => found["error"] as string == "" ? found["name"] + " round " + found["body"] : (string)found["error"]);
         }
 
+        /// <summary>The body of that name, or null.</summary>
+        private static CelestialBody BodyNamed(string name)
+        {
+            return FlightGlobals.Bodies.FirstOrDefault(b => string.Equals(b.bodyName, name, StringComparison.OrdinalIgnoreCase));
+        }
+
         private Lexicon CorrectionBurn(Lexicon input)
         {
             System.Collections.Generic.IDictionary<string, object> node = null;
@@ -502,7 +508,7 @@ namespace ClaudiaKerman.KOS
                 // Aimed at a landing (#793), the predictor flies the air of the planet aimed at: the craft may still be at the moon, or round the star. No such body: Core says why.
                 object target;
                 ask.TryGetValue("target", out target);
-                var planet = FlightGlobals.Bodies.FirstOrDefault(b => string.Equals(b.bodyName, target as string, StringComparison.OrdinalIgnoreCase));
+                var planet = BodyNamed(target as string);
                 node = ask.ContainsKey("lat") && planet != null
                     ? BlockCalls.CorrectionBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(planet), new ReentryCraft(vessel))
                     : BlockCalls.CorrectionBurn(ask, SnapshotReader.ReadForMission(vessel));
@@ -633,8 +639,11 @@ namespace ClaudiaKerman.KOS
             {
                 var vessel = shared.Vessel;
                 var ask = KosValues.ToDictionary(input);
+                // Given a path round another body (return's, with the craft still at the moon), that body's air (#793).
+                object named;
+                ask.TryGetValue("orbit_body", out named);
                 landing = BlockCalls.ReentryImpact(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(),
-                    new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
+                    new ReentryAir(BodyNamed(named as string) ?? vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
                 return KosValues.FromPlain(landing);
             }, () => Landing(landing) + PlanLine(landing));
         }

@@ -47,8 +47,8 @@ namespace ClaudiaKerman.Core.Tools
         /// <see cref="TargetNormal"/>; null for no landing. What the burn can't reach is left in <see cref="CorrectionPlan.ErrorKm"/>.
         /// </summary>
         public ReturnLanding Landing;
-        /// <summary>The craft's delta-v left, m/s, which an aimed correction stays within; 0 or less for unknown.</summary>
-        public double DvLeft;
+        /// <summary>The craft's delta-v left, m/s, which the burn adds nothing for the landing beyond; negative for unknown. A burn that holds target_pe alone is not limited, as without a landing.</summary>
+        public double DvLeft = -1;
     }
 
     /// <summary>The correction node found, or why there is none (<see cref="Error"/>; the rest is set when a best point exists).</summary>

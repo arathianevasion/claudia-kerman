@@ -25,6 +25,8 @@ namespace ClaudiaKerman.Core.Tools
         private const double LandingResidual = 0.2;
         /// <summary>Each iteration flies the predictor about 7 times, so the solve stops at what it has by then (an iteration's best still holds the periapsis).</summary>
         private const int LandingIterations = 8;
+        /// <summary>The most times one solve flies the predictor, a line search's included: past this every point is undefined and the solve ends on its best. About 630 ms in the game at 10.5 ms each, in one call on the main thread until #463.</summary>
+        private const int LandingPredictions = 60;
 
         /// <summary>The landing's way along the track, from one burn: <see cref="Along"/> east and north, and <see cref="KmPerMs"/> km it moves per m/s with the periapsis held.</summary>
         private sealed class LandingLever
@@ -40,11 +42,9 @@ namespace ClaudiaKerman.Core.Tools
         private static CorrectionPlan AimLanding(Conic orbit, SnapshotBody target, double peR, CorrectionAsk ask, SqpProblem solved, Func<double, Vec3, Patch> arrive, CorrectionPlan plain, Vec3 burn)
         {
             var landing = ask.Landing;
-            Func<double, Vec3, ReentryPrediction> predict = (when, dv) =>
-            {
-                var arrival = arrive(when, dv);
-                return arrival == null ? null : ReentryPredictor.Predict(target, arrival.Orbit, arrival.StartUt, landing.GroundAltitude, landing.MassAfter(dv.Length), landing.Air, landing.Craft, landing.Frame);
-            };
+            Func<Patch, Vec3, ReentryPrediction> fly = (arrival, dv) =>
+                arrival == null ? null : ReentryPredictor.Predict(target, arrival.Orbit, arrival.StartUt, landing.GroundAltitude, landing.MassAfter(dv.Length), landing.Air, landing.Craft, landing.Frame);
+            Func<double, Vec3, ReentryPrediction> predict = (when, dv) => fly(arrive(when, dv), dv);
             var first = predict(plain.Ut, burn);
             if (first == null || first.Error != null) return plain;
             plain.Landing = first;
@@ -54,7 +54,7 @@ namespace ClaudiaKerman.Core.Tools
             if (lever == null || lever.KmPerMs < LeastKmPerMs) return plain;
             var off = landing.OffKm(target, first);
             var miss = off[0] * lever.Along[0] + off[1] * lever.Along[1];
-            var most = ask.DvLeft > 0 ? Math.Min(MostLandingDv, ask.DvLeft * DvLeftShare) : MostLandingDv;
+            var most = ask.DvLeft >= 0 ? Math.Min(MostLandingDv, ask.DvLeft * DvLeftShare) : MostLandingDv;
             var reach = lever.KmPerMs * Math.Max(0, most - plain.DeltaV);
             var moved = Math.Max(-reach, Math.Min(reach, miss));
             if (Math.Abs(moved) <= LandingResidual) return plain;
@@ -62,6 +62,7 @@ namespace ClaudiaKerman.Core.Tools
 
             var free = solved.Variables.Length == 4;
             var fixedUt = plain.Ut;
+            var flights = 0;
             var result = Sqp.Solve(new SqpProblem
             {
                 Scale = solved.Scale,
@@ -76,11 +77,10 @@ namespace ClaudiaKerman.Core.Tools
                 MaxIterations = LandingIterations,
                 Evaluate = (x, c) =>
                 {
-                    var when = free ? x[3] : fixedUt;
+                    if (++flights > LandingPredictions) return false;
                     var dv = new Vec3(x[0], x[1], x[2]);
-                    var arrival = arrive(when, dv);
-                    if (arrival == null) return false;
-                    var landed = predict(when, dv);
+                    var arrival = arrive(free ? x[3] : fixedUt, dv);
+                    var landed = fly(arrival, dv);
                     if (landed == null || landed.Error != null) return false;
                     var at = landing.OffKm(target, landed);
                     c[0] = arrival.Orbit.PeR - peR;
@@ -93,11 +93,12 @@ namespace ClaudiaKerman.Core.Tools
             var ut = free ? result.X[3] : fixedUt;
             var aimed = new Vec3(result.X[0], result.X[1], result.X[2]);
             var reached = arrive(ut, aimed);
-            var down = predict(ut, aimed);
-            if (reached == null || down == null || down.Error != null) return plain;
+            var down = fly(reached, aimed);
+            if (down == null || down.Error != null) return plain;
             var pe = reached.Orbit.PeR - target.Radius;
             var km = landing.ErrorKm(target, down);
-            if (Math.Abs(pe - ask.TargetPe) > ask.PeTolerance || !(km < plain.ErrorKm)) return plain;
+            // The periapsis first, and never more than the craft has for the landing's sake.
+            if (Math.Abs(pe - ask.TargetPe) > ask.PeTolerance || !(km < plain.ErrorKm) || (ask.DvLeft >= 0 && aimed.Length > ask.DvLeft)) return plain;
 
             double prograde, normal, radial;
             SingleShooting.NodeFrame(orbit, ut, aimed, out prograde, out normal, out radial);

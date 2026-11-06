@@ -875,7 +875,7 @@ namespace ClaudiaKerman.Core.Tools
         /// tolerances gives its <c>error</c> with the rest; a solve that could not start, only <c>error</c>, "found no correction: &lt;why&gt;".
         /// Given <c>lat</c> and <c>lng</c> (#793), in place of target_inc, the burn also moves the landing toward them with the periapsis held, by the reentry
         /// predictor with <paramref name="body"/>, <paramref name="air"/> (the target's) and <paramref name="craft"/>; <c>ground_alt</c> (m) and <c>isp</c> (s) are as for
-        /// <see cref="ReturnBurn"/>, and <c>dv_left</c> (m/s; 0 or less for unknown) limits the burn. It adds <c>lat</c>, <c>lng</c>, <c>landing_ut</c> and
+        /// <see cref="ReturnBurn"/>, and <c>dv_left</c> (m/s; negative or missing for unknown) limits what it adds for the landing. It adds <c>lat</c>, <c>lng</c>, <c>landing_ut</c> and
         /// <c>error_km</c>, the remainder it couldn't reach, when the predictor can say.
         /// <para>
         /// To the Target Vessel (#454), the two goals the <c>rendezvous</c> block re-solves at fly time: <c>target_distance</c> (m)
@@ -911,7 +911,7 @@ namespace ClaudiaKerman.Core.Tools
                 PeTolerance = Number(ask, "pe_tolerance", 1000),
                 IncTolerance = Number(ask, "inc_tolerance", 0.5),
                 AimUt = NumberOrNull(ask, "aim_ut"),
-                DvLeft = Number(ask, "dv_left", 0),
+                DvLeft = Number(ask, "dv_left", -1),
             };
             if (ask.ContainsKey("lat") || ask.ContainsKey("lng"))
             {
@@ -943,9 +943,9 @@ namespace ClaudiaKerman.Core.Tools
             var lat = NumberOrNull(ask, "lat");
             var lng = NumberOrNull(ask, "lng");
             if (!lat.HasValue || !lng.HasValue) return "lat and lng must both be numbers";
-            if (body == null || air == null || craft == null) return "the landing needs the planet's air and the craft";
             var planet = new BodySystem(snapshot.Bodies).Find(into.Target);
             if (planet == null) return null;
+            if (body == null || air == null || craft == null) return "the landing needs the planet's air and the craft";
             string problem;
             var frame = BodyFrame.Read(planet, body, snapshot.Ut, out problem);
             if (problem != null) return problem;
