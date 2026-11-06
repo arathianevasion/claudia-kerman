@@ -358,8 +358,15 @@ namespace ClaudiaKerman.KOS
                     node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["planet"], node["pe_predicted"], node["inc_predicted"], node["soi_ut"],
                     ((bool)node["from_grid"] ? " (from the grid)" : "") + (node["finished_by"] as string == "" ? "" : " (the SQP stopped short: finished by " + node["finished_by"] + ")")
                         + ((double)node["error_km"] < 0 ? "" : string.Format(CultureInfo.InvariantCulture, "; aimed {0:0.00} km from the target, +{1:0.00} m/s, spread {2:0} km", node["error_km"], node["aim_dv"], node["spread_km"])),
-                    node["error"] as string == "" ? "" : "; " + node["error"])
+                    node["error"] as string == "" ? "" : "; " + node["error"]) + PlanLine(node)
                 : (string)node["error"]);
+        }
+
+        /// <summary>The planned-orbit line Core wrote for the call (#791), after the log's own account; "" when the call gave none.</summary>
+        private static string PlanLine(System.Collections.Generic.IDictionary<string, object> result)
+        {
+            object line;
+            return result.TryGetValue("plan_log", out line) ? " " + line : "";
         }
 
         /// <summary><c>ADDONS:CLAUDIA:RETURNMISS</c> (#759, ADR 0014): whether the path flown is the return asked (<see cref="BlockCalls.ReturnMiss"/>), pure.</summary>
@@ -475,14 +482,14 @@ namespace ClaudiaKerman.KOS
             {
                 node = BlockCalls.CorrectionBurn(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
                 return KosValues.FromPlain(node);
-            }, () => !node.ContainsKey("dv") ? (string)node["error"]
+            }, () => (!node.ContainsKey("dv") ? (string)node["error"]
                 : node.ContainsKey("distance_predicted")
                 ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); closest approach {5:0.0} m at {6:0.000} m/s{7}",
                     node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["distance_predicted"], node["relative_speed_predicted"],
                     node["error"] as string == "" ? "" : "; " + node["error"])
                 : string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); Pe {5:0} m, inclination {6:0.00}{7}",
                     node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["pe_predicted"], node["inc_predicted"],
-                    node["error"] as string == "" ? "" : "; " + node["error"]));
+                    node["error"] as string == "" ? "" : "; " + node["error"])) + PlanLine(node));
         }
 
         private Lexicon LaunchWindow(Lexicon input)
@@ -590,7 +597,7 @@ namespace ClaudiaKerman.KOS
                 found = BlockCalls.DeorbitBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(),
                     new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
                 return KosValues.FromPlain(found);
-            }, () => Landing(found));
+            }, () => Landing(found) + PlanLine(found));
         }
 
         private Lexicon ReentryImpact(Lexicon input)
@@ -603,7 +610,7 @@ namespace ClaudiaKerman.KOS
                 landing = BlockCalls.ReentryImpact(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(),
                     new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
                 return KosValues.FromPlain(landing);
-            }, () => Landing(landing));
+            }, () => Landing(landing) + PlanLine(landing));
         }
 
         /// <summary>A predicted landing for the log, so predicted against actual can be read back from KSP.log.</summary>
