@@ -393,8 +393,8 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// <c>ADDONS:CLAUDIA:DEORBITBURN</c>, for <c>deorbit</c>: the deorbit burn search (<see cref="DeorbitBurn"/>) from the craft's
         /// orbit, by the reentry predictor with <paramref name="air"/> and <paramref name="craft"/>. Takes <c>lat</c>, <c>lng</c>
-        /// (the target), <c>earliest_ut</c>, <c>max_wait</c> (s), <c>ground_alt</c> (m), <c>accuracy_km</c> and <c>isp</c> (s; 0 or
-        /// missing for none); <c>chutes</c> (#477, true or missing: the predictor opens the stowed chutes; false keeps them stowed;
+        /// (the target), <c>earliest_ut</c>, <c>max_wait</c> (s), <c>ground_alt</c> (m), <c>accuracy_km</c>, <c>isp</c> (s; 0 or
+        /// missing for none), <c>max_dv</c> (m/s; missing or not a number is auto) and <c>dv_left</c> (m/s; 0 when stock can't say, which auto refuses); <c>chutes</c> (#477, true or missing: the predictor opens the stowed chutes; false keeps them stowed;
         /// anything else is an error); <c>leave_out</c> (<see cref="LeftOut"/>) is for the adapter's <paramref name="craft"/>. Gives <c>error</c> "", <c>burn_ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver
         /// node components), <c>dv</c>, and the landing: <c>lat</c>, <c>lng</c>, <c>error_km</c>, <c>landing_ut</c>. A best burn
         /// outside the accuracy gives its <c>error</c> with the landing; a search that could not run, only <c>error</c>.
@@ -421,6 +421,8 @@ namespace ClaudiaKerman.Core.Tools
                 AccuracyKm = Number(ask, "accuracy_km", 5),
                 Isp = Number(ask, "isp", 0),
                 Chutes = chutes,
+                MaxDv = Number(ask, "max_dv", 0),
+                DeltaVLeft = Number(ask, "dv_left", 0),
             }, air, craft, frame);
             if (plan.Landing == null || plan.Landing.Error != null) return Error(plan.Error ?? plan.Landing.Error);
             var result = Landing(plan.Landing, plan.ErrorKm);
