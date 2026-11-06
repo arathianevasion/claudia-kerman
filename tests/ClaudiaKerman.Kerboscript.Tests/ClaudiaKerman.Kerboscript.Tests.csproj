@@ -29,6 +29,7 @@
     <None Include="launch_ascent_sim.ks" CopyToOutputDirectory="PreserveNewest" />
     <!-- transfer_to's scripted universe (#459), shared with the Core tests' TransferFlightTests. -->
     <Compile Include="../ClaudiaKerman.Core.Tests/TransferRig.cs" Link="TransferRig.cs" />
+    <Compile Include="../ClaudiaKerman.Core.Tests/ReentrySim.cs" Link="ReentrySim.cs" />
   </ItemGroup>
 
   <ItemGroup>
