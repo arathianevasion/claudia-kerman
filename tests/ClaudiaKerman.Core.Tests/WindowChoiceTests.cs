@@ -468,5 +468,64 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(state.WindowPick.IsNone);
             Assert.False(state.WindowPickNeeded);
         }
+
+        // ---- #784: a revised plan asks from the legs it still flies ----
+
+        private static PlannedSequence Seq(string name, string intent, double deltaV, bool manual = false)
+        {
+            return new PlannedSequence { Name = name, Intent = intent, DeltaV = deltaV, Manual = manual };
+        }
+
+        private static ScriptedResponse DeorbitPlan()
+        {
+            return Reply("{\"kind\":\"mission_plan\",\"say\":\"Mission Plan: land.\",\"reply_intent\":\"none\","
+                + "\"mission_plan\":{\"why\":\"Back at Kerbin.\",\"sequences\":["
+                + "{\"name\":\"Land on Kerbin\",\"intent\":\"Deorbit and land.\",\"delta_v\":200,\"timing\":\"now\",\"due_time_ut\":-1}],"
+                + "\"total_delta_v\":200,\"expected_duration\":\"an hour\",\"mission_time_s\":-1},\"sequence_plan\":null,\"debrief\":null}");
+        }
+
+        [Fact]
+        public void ADeorbitOnlyPlanBackAtKerbinNeedsNoPickAndAnUnmatchedOrTransferSequenceDoes()
+        {
+            var home = InOrbit("Kerbin", NewGame, 9000);
+            Assert.False(WindowChoice.LegsAsk(home, new[] { Seq("Land on Kerbin", "Deorbit and land.", 200) }, ""));
+            // A sequence PlanLegs can't read is asked about, whatever its name suggests.
+            Assert.True(WindowChoice.LegsAsk(home, new[] { Seq("Land on Kerbin", "Deorbit and land.", 200), Seq("Ejection burn", "Prepare.", 100) }, ""));
+            Assert.True(WindowChoice.LegsAsk(home, new[] { Seq("Duna transfer", "Burn for Duna and capture.", 1600) }, ""));
+            // A manual leg with no words is still unmatched, and a flown one is not to fly.
+            Assert.True(WindowChoice.LegsAsk(home, new[] { Seq("Fly it yourself", "By hand.", 100, manual: true) }, ""));
+            Assert.False(WindowChoice.LegsAsk(home, new[] { Seq("Launch (flown)", "Done: orbit.", 3400), Seq("Land on Kerbin", "Deorbit and land.", 200) }, ""));
+        }
+
+        [Fact]
+        public void ARevisedPlanThatOnlyDeorbitsBackAtKerbinAsksNoPickAndApprovalIsOpen()
+        {
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), DeorbitPlan()));
+            ToMissionPlan(mission, Duna(WindowKind.Soonest));
+
+            const double later = NewGame + 400 * Day;
+            mission.Send(new UtAdvanced(later));
+            mission.Send(InOrbit("Kerbin", later, 9000));
+            ToRevisedPlan(mission);
+
+            var view = mission.View;
+            Assert.False(view.WindowPickNeeded);
+            Assert.False(view.Windows.Needed);
+            Assert.Contains(QuickReply.Approve, view.QuickReplies);
+            Assert.True(MissionWindowRules.ApproveEnabled(view));
+        }
+
+        [Fact]
+        public void ARevisedPlanStillHoldingTheDunaTransferAsksForThePick()
+        {
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), DunaPlan()));
+            ToMissionPlan(mission, Duna(WindowKind.Soonest));
+            const double later = NewGame + 40 * Day;
+            mission.Send(new UtAdvanced(later));
+            mission.Send(InOrbit("Kerbin", later, 9000));
+            ToRevisedPlan(mission);
+            Assert.True(mission.View.WindowPickNeeded);
+            Assert.True(mission.View.Windows.Needed);
+        }
     }
 }
