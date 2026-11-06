@@ -186,8 +186,7 @@ namespace ClaudiaKermin.Core.Missions
                 var settings = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config));
                 snapshot.DaylightLandingDefault = settings.DaylightLanding;
                 snapshot.TimeCapHours = settings.TimeCapHours;
-                snapshot.TimeVersusDeltaV = settings.TimeVersusDeltaV;
-                snapshot.MarginPercent = _config.CraftCheckMarginPercent;
+                snapshot.StampMission(settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent);
                 snapshot.LaterLegsDv = LaterLegsDv(mission);
             }
             var purpose = turn.Purpose;
@@ -198,13 +197,12 @@ namespace ClaudiaKermin.Core.Missions
             var needsNewGoal = mission.Stage != MissionStage.AwaitingPlanApproval && (purpose == Purpose.Reply || purpose == Purpose.Change);
             // Only the player's typed Reply or Change may change the Mission Goal (#590); on any other request a new_goal is ignored.
             var allowsNewGoal = purpose == Purpose.Reply || purpose == Purpose.Change;
-            var goal = mission.Goal;
             var goalStands = turn.GoalStands;
             // One Mission Plan per reply (#697): with two or more calls none is accepted, so "the last one" never picks among them.
             var plans = message.Content.OfType<ToolUseBlock>().Count(u => u.Name == ProposedPlans.ToolName);
             Func<ToolUseBlock, ToolOutcome> answer = use => use.Name != ProposedPlans.ToolName ? null
                 : plans > 1 ? ProposedPlans.OnePerReply()
-                : ProposedPlans.Check(use, left, needsNewGoal, allowsNewGoal, snapshot, goal, goalStands);
+                : ProposedPlans.Check(use, left, needsNewGoal, allowsNewGoal, goalStands);
             _background.Run(
                 () => ToolStep.Run(tools, message, refusal, atLimit, snapshot, body, timeout, answer),
                 step => ToolsAnswered(mission, turn, message, step, atLimit),

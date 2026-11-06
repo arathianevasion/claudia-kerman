@@ -362,7 +362,7 @@ function claudia_autostage {
     wait 0.5.
     set ctx:parts to ship:parts:length.
     // Thrust during the half second above isn't known, so don't count it as delta-v used.
-    set ctx:last_ut to time:seconds.
+    claudia_restart_clock(ctx).
   }
   return "".
 }
@@ -545,6 +545,20 @@ function claudia_stage_drop_plan {
     set plan:error to "no decoupler fires at stage " + stage_num.
   }
   return plan.
+}
+
+// The UIDs of the heat shields the decouplers that fire take (decs: reentry_shield_modules' list, default its "auto"), less leave_out. Pure.
+function claudia_shield_drop {
+  parameter parts, leave_out, decs is "auto".
+  if decs:istype("String") { set decs to reentry_shield_modules("auto", parts). }
+  local uids is list().
+  for p in parts { for d in decs {
+    local dp is d:module:part.
+    if claudia_part_kind(p) = "shield" and not leave_out:contains(p:uid) and not uids:contains(p:uid) {
+      if dp:uid = p:uid or (p:hasparent and p:parent:uid = dp:uid) or (dp:hasparent and dp:parent:uid = p:uid) { uids:add(p:uid). }
+    }
+  } }
+  return uids.
 }
 
 // The names, of those names, whose uid is no longer in now_uids: what left. Names are taken while the
@@ -1037,7 +1051,7 @@ function claudia_drop_empty {
       }
     }
     set ctx:parts to ship:parts:length.
-    set ctx:last_ut to time:seconds.
+    claudia_restart_clock(ctx).
   }
 }
 
@@ -2023,6 +2037,13 @@ function claudia_is_burning {
   return tset > 0.
 }
 
+// Restarts the tick clock (#721): last_ut is now and last_tset the throttle in effect, so the next interval is credited at it.
+function claudia_restart_clock {
+  parameter ctx.
+  set ctx:last_ut to time:seconds.
+  set ctx:last_tset to ship:control:mainthrottle.
+}
+
 function claudia_dv_step {
   parameter prev_tset, thrust_kn, mass_t, dt.
   return choose prev_tset * thrust_kn / mass_t * dt if prev_tset > 0 and mass_t > 0 else 0.
@@ -2058,7 +2079,7 @@ function claudia_add_result {
   set ctx:dv_used to ctx:dv_used + inner:dv_used.
   claudia_note_dropped(ctx, inner).
   set ctx:parts to ship:parts:length.
-  set ctx:last_ut to time:seconds.
+  claudia_restart_clock(ctx).
 }
 
 // Flies a maneuver node the calling block added, with exec_node and the caller's common options,
@@ -2303,18 +2324,6 @@ function claudia_geo {
   return lexicon("lat", round(landing:lat, 4), "lng", round(landing:lng, 4)).
 }
 
-// The earliest departure (UT) of transfer_to's and return's ejection (#346, #357): the block's start_ut plus
-// turn_time (s, ADDONS:CLAUDIA:TURNTIME's), so the craft can have turned to the burn, or window if that is a later UT.
-// Pure.
-function claudia_earliest {
-  parameter start_ut, turn_time, window.
-  local earliest is start_ut + turn_time.
-  if window:istype("Scalar") {
-    set earliest to max(earliest, window).
-  }
-  return earliest.
-}
-
 // Coordinate descent: lowers cost(x) over the list of numbers x, one coordinate at a time, starting
 // with steps (one per coordinate) and stepping on while that helps; when no step helps, every step
 // halves, up to rounds times. Stops early once the cost is at most good, or after 400 tries.
@@ -2406,7 +2415,7 @@ function claudia_burn {
   claudia_note_dropped(ctx, burned).
   // exec_node's staging dropped parts on purpose; don't count them as lost.
   set ctx:parts to ship:parts:length.
-  set ctx:last_ut to time:seconds.
+  claudia_restart_clock(ctx).
   return burned.
 }
 
@@ -2415,28 +2424,6 @@ function claudia_burn {
 // m from target_pe within which a predicted arrival needs no Course Correction.
 function claudia_correction_good_m {
   return 1000.
-}
-
-// The Course Correction's burn UT (#368): mid (halfway to arrival), or sooner when a max_duration the block has as a
-// number ends before then, leaving 120 s of it to burn in, as the correction after a missed ejection is bounded. A burn
-// sooner than lead s from now (the time to turn to it and lead it) can't be flown, so the block fails before it, with the
-// reason. Returns lexicon("reason", "" or why there is no time for it, "ut", the burn's UT). Pure.
-function claudia_correction_ut {
-  parameter mid, now, lead, start_ut, max_duration.
-  local done is lexicon("reason", "", "ut", mid).
-  local bounded is max_duration:istype("Scalar").
-  if bounded {
-    set done:ut to min(mid, start_ut + max_duration - 120).
-  }
-  if done:ut < now + lead {
-    if bounded {
-      set done:reason to "max_duration (" + round(max_duration) + " s) ends at UT " + round(start_ut + max_duration)
-        + ", too soon for the Course Correction: its burn needs " + round(lead + 120) + " s from UT " + round(now).
-    } else {
-      set done:reason to "the arrival comes too soon for the Course Correction".
-    }
-  }
-  return done.
 }
 
 // What a Course Correction asks ADDONS:CLAUDIA:CORRECTIONBURN: the least burn at ut that brings the path to dest_name at

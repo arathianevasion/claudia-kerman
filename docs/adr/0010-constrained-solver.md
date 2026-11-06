@@ -29,3 +29,7 @@ The cost:
 ## Amendment (#619, 2026-11-01)
 
 A broken-plane transfer's plane change is a Course Correction whose uncorrected path misses the target (the departure stays in the craft's plane). For it alone, `CorrectionBurn` may be given `aim_ut`: when zero burn does not reach the target, SQP starts from the burn whose Lambert arc reaches the target's centre then, and solves as before. This is a seed, not a Lambert step in the solve: the formulation, the variables and the single shooting are unchanged, and with zero burn reaching the target the start is zero as before. A correction to the Target Vessel's closest approach (`target_distance`, #454) does not take `aim_ut`.
+
+## Amendment (#459, 2026-11-04)
+
+A Course Correction on a patch round the star (no parent) takes its `Scale` from the coast, not the star: the star's radius made the velocity step about 0.9 m/s, which over a coast of months moves the arrival by thousands of kilometres, and SQP stalled at zero burn. There `CorrectionBurn` sets the velocity unit so the solver's own step (still 1.3e-5 scaled, still not the caller's) moves the arrival by about 600 m, as about 3 cm/s does across a Mun coast, and the time unit to a Kerbin day. Patches round a planet or a moon keep their body's scale, so every measured window above is unchanged there.

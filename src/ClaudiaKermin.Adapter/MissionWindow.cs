@@ -21,6 +21,7 @@ namespace ClaudiaKermin.Adapter
         }
 
         private readonly MissionPanel _panel;
+        private readonly TypingFocus _typing = MissionPanel.NewTypingFocus();
         private readonly WindowFrame _frame =
             new WindowFrame(0x434B03, "", LockId, DefaultRect(DefaultSizes.Mission(ClaudiaSkin.FontScale, 260, 80)),new Vector2(DefaultSizes.MissionMin(ClaudiaSkin.FontScale).Width, DefaultSizes.MissionMin(ClaudiaSkin.FontScale).Height), true);
 
@@ -34,6 +35,7 @@ namespace ClaudiaKermin.Adapter
         {
             _panel = panel;
             _frame.Remember("mission");
+            _frame.LogName = "Mission window";
         }
 
         public void OnGUI()
@@ -48,19 +50,20 @@ namespace ClaudiaKermin.Adapter
             _frame.Show(Draw);
 
             // Keys typed into the window must not stage, throttle or rotate the craft.
-            _frame.SetTyping(MissionPanel.Typing);
+            _frame.SetTyping(_typing.Held);
         }
 
         /// <summary>Releases the input locks; call when the window goes away.</summary>
         public void Unlock()
         {
+            _typing.Reset();
             _frame.Unlock();
         }
 
         private void Draw(int id)
         {
             DrawTitleBar();
-            _panel.Draw(View, _frame.Rect.width, false, ClaudiaSkin.Padding);
+            _panel.Draw(View, _frame.Rect.width, false, ClaudiaSkin.Padding, _typing);
             _frame.DrawResizeZones();
             WindowFrame.DrawTooltip();
             GUI.DragWindow();

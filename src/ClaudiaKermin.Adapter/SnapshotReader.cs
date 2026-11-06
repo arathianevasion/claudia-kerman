@@ -20,6 +20,12 @@ namespace ClaudiaKermin.Adapter
         /// <summary>kOS's processor part module, found by name so the adapter needn't reference kOS.</summary>
         private const string KosProcessorModule = "kOSProcessor";
 
+        /// <summary>
+        /// <see cref="Read"/> stamped with the active Mission's Time versus delta-v and margin (#733, #739), for the block calls and the
+        /// Planning Tools bridge: a window "next" then picks plan_transfer's window. No Mission, the defaults.
+        /// </summary>
+        public static GameSnapshot ReadForMission(Vessel vessel) { return MissionView.Stamp(Read(vessel), MissionDriver.Current != null ? MissionDriver.Current.View : null); }
+
         public static GameSnapshot Read(Vessel vessel)
         {
             var snapshot = new GameSnapshot
@@ -294,7 +300,7 @@ namespace ClaudiaKermin.Adapter
 
         private static bool OnTheGround(Vessel.Situations situation)
         {
-            return situation == Vessel.Situations.PRELAUNCH || situation == Vessel.Situations.LANDED || situation == Vessel.Situations.SPLASHED;
+            return GameSnapshot.IsGroundedSituation(situation.ToString());
         }
 
         /// <summary>Claudia's roster standing and whether the save has CommNet: the facts the aboard and remote rules judge.</summary>

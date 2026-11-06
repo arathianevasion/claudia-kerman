@@ -47,24 +47,13 @@ namespace ClaudiaKermin.Core.Kos
         public const string DocPrefix = "//|";
         public const string SharedFile = "claudia_lib";
         private const string ResourcePrefix = "ClaudiaKermin.Core.library.";
-        private const string VendoredPrefix = "ClaudiaKermin.Core.kslib.";
 
         private static readonly Lazy<IList<LibraryFile>> LoadedFiles = new Lazy<IList<LibraryFile>>(Load);
-        private static readonly Lazy<IList<LibraryFile>> LoadedVendored = new Lazy<IList<LibraryFile>>(LoadVendored);
 
         /// <summary>The shared helpers first, then every block by name.</summary>
         public static IList<LibraryFile> Files
         {
             get { return LoadedFiles.Value; }
-        }
-
-        /// <summary>
-        /// Third-party scripts (<c>kerboscript/kslib/</c>) bundled as they are: part of the compile unit,
-        /// but not Building Blocks, so they are not in <see cref="Files"/> and add nothing to the docs.
-        /// </summary>
-        public static IList<LibraryFile> Vendored
-        {
-            get { return LoadedVendored.Value; }
         }
 
         public static IEnumerable<LibraryFile> Blocks
@@ -74,7 +63,7 @@ namespace ClaudiaKermin.Core.Kos
 
         /// <summary>
         /// One compile unit: the Mission Script first (so kOS's line numbers in its errors match what
-        /// Claudia wrote), then the Core Library, then the vendored scripts. There is no wait cap to pass in: waits warp inside the script (ADR 0004).
+        /// Claudia wrote), then the Core Library. There is no wait cap to pass in: waits warp inside the script (ADR 0004).
         /// kOS hoists file-level functions, so the script can call blocks defined after it. The
         /// library's own <c>@lazyglobal</c> and <c>@clobberbuiltins</c> lines are dropped: kOS allows the directive only at the top.
         /// </summary>
@@ -83,7 +72,7 @@ namespace ClaudiaKermin.Core.Kos
             var text = new StringBuilder();
             text.Append((missionScript ?? "").Replace("\r\n", "\n").TrimEnd('\n')).Append("\n\n");
             text.Append("// ---- The Core Library, bundled by Claudia Kermin ----\n");
-            foreach (var file in Files.Concat(Vendored))
+            foreach (var file in Files)
             {
                 foreach (var line in file.Source.Split('\n'))
                 {
@@ -176,11 +165,6 @@ namespace ClaudiaKermin.Core.Kos
                 .OrderBy(f => f.IsBlock ? 1 : 0)
                 .ThenBy(f => f.Name, StringComparer.Ordinal)
                 .ToList();
-        }
-
-        private static IList<LibraryFile> LoadVendored()
-        {
-            return Resources(VendoredPrefix).OrderBy(f => f.Name, StringComparer.Ordinal).ToList();
         }
 
         private static List<LibraryFile> Resources(string prefix)

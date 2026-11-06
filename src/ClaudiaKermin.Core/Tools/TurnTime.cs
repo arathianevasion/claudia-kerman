@@ -71,19 +71,6 @@ namespace ClaudiaKermin.Core.Tools
         /// <summary>kOS's default <c>steeringmanager:maxstoppingtime</c> (s).</summary>
         public const double KosMaxStoppingTime = 2;
 
-        /// <summary>The override's bounds for <c>maxstoppingtime</c> (s) while RCS Use has RCS on for a turn (#422).</summary>
-        public const double OverrideMinStoppingTime = 2;
-        public const double OverrideMaxStoppingTime = 10;
-
-        /// <summary>The override's rate gain is this over its stopping time: the 1 / T that brakes without overshoot when the craft slows at under 2/3 of the modelled alpha (#678).</summary>
-        public const double OverrideKpGain = 1.0;
-
-        /// <summary>The override's stopping time is this fraction of sqrt(angle / alpha): a cap of 60% of the full-torque peak, one the lagging craft can brake from (#678).</summary>
-        public const double OverrideTimeFraction = 0.6;
-
-        /// <summary>The turn is done when the error is under this (rad): the 2° of the alignment check.</summary>
-        private const double DoneRad = 2 * Math.PI / 180;
-
         /// <summary>The reason given for a craft with nothing to turn with on a Coast.</summary>
         public const string NoTorque = "no usable torque";
 
@@ -112,18 +99,19 @@ namespace ClaudiaKermin.Core.Tools
 
             var angle = TurnDegrees * Math.PI / 180;
             var alphaDeg = alpha * 180 / Math.PI;
-            // RCS Use raises the cap while RCS turns the craft (#422). Thrusters with no torque change nothing: the wheels' model stands.
-            if (withRcs && (craft.RcsPitch > 0 || craft.RcsYaw > 0))
+            // RCS Use flies the burst turn (#692) where RCS adds torque to wheels that can settle it: the turn is TurnPlan's, with
+            // no deadline (#730). Without wheels, or with thrusters that add nothing, the capped model on the torque there is stands.
+            if (withRcs)
             {
-                double top;
-                var seconds = OverrideTurn(angle, alpha, OverrideStoppingTime(angle, alpha), out top);
-                return new TurnPrediction
-                {
-                    Seconds = Math.Max(FloorSeconds, seconds + SettleSeconds),
-                    TurnSeconds = seconds,
-                    TopRateDegS = top * 180 / Math.PI,
-                    AlphaDegS2 = alphaDeg,
-                };
+                var plan = TurnPlan.Plan(craft, TurnDegrees, -1);
+                if (plan.Error == null && plan.TurnS > 0)
+                    return new TurnPrediction
+                    {
+                        Seconds = Math.Max(FloorSeconds, plan.TurnS + SettleSeconds),
+                        TurnSeconds = plan.TurnS,
+                        TopRateDegS = plan.CoastRateDegS,
+                        AlphaDegS2 = alphaDeg,
+                    };
             }
             double peak;
             var turn = CappedTurn(angle, alpha, maxStoppingTime, out peak);
@@ -151,34 +139,6 @@ namespace ClaudiaKermin.Core.Tools
             // Up to the cap and down from it take cap / alpha between them; the rest of the angle is at the cap.
             peak = cap;
             return angle / cap + cap / alpha;
-        }
-
-        /// <summary>The override's <c>maxstoppingtime</c> (s) for a turn of <paramref name="angle"/> at <paramref name="alpha"/> (same angle units): 0.6 x sqrt(angle / alpha), within 2 to 10.</summary>
-        public static double OverrideStoppingTime(double angle, double alpha)
-        {
-            var t = alpha > 0 ? OverrideTimeFraction * Math.Sqrt(Math.Max(0, angle) / alpha) : OverrideMinStoppingTime;
-            return Math.Min(OverrideMaxStoppingTime, Math.Max(OverrideMinStoppingTime, t));
-        }
-
-        // The turn under the override: kOS asks for the rate kp * error (kp = 1 / T), no more than alpha * T, and the craft follows
-        // at no more than alpha. So it speeds up to the cap, holds it, then slows as the error shrinks (the linear gain's exponential
-        // tail) down to DoneRad. Stepped, as the three stretches overlap on a short turn.
-        private static double OverrideTurn(double angle, double alpha, double stopping, out double peak)
-        {
-            const double dt = 0.02;
-            var cap = alpha * stopping;
-            var kp = OverrideKpGain / stopping;
-            double error = angle, rate = 0, t = 0;
-            peak = 0;
-            while (error > DoneRad && t < 3600)
-            {
-                var want = Math.Min(cap, kp * error);
-                rate += Math.Max(-alpha * dt, Math.Min(alpha * dt, want - rate));
-                error -= rate * dt;
-                t += dt;
-                peak = Math.Max(peak, rate);
-            }
-            return t;
         }
 
         /// <summary>The weaker of pitch's and yaw's angular acceleration (rad/s²), on the wheels and, if <paramref name="withRcs"/>, RCS.</summary>

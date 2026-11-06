@@ -8,7 +8,7 @@
 // craft only) and holds that direction, so damps the target's rotation. It re-aims only once the craft is over 15 degrees
 // off the held direction and the ports over 10 m apart, then holds again (#706): tracking the craft's port each tick
 // coupled the two vessels' turns into a limit cycle, and close in a few cm off the axis is many degrees. It reports when its
-// port has settled on the aim, and again when a re-aim unsettles it (#711). It ends once its port leaves Ready (capture or docking), and the mod
+// port has settled on the aim, and again when a re-aim or a knock unsettles it (#711, #722). It ends once its port leaves Ready (capture or docking), and the mod
 // stops it when dock ends, however dock ends. It reports success true with reason "docked" when its port was caught.
 
 @lazyglobal off.
@@ -49,38 +49,24 @@ if not dh_found {
   local dh_aim is dh_toward:nodeposition - dh_port:nodeposition.
   local dh_up is ship:facing:topvector.
   lock steering to lookdirup(dh_aim, dh_up).
-  // Settled (#711): the port within 2 degrees of the aim and turning under 0.1 deg/s for 2 s. The mod passes it to dock,
-  // whose craft holds still until then; a re-aim unsettles it. Near (#714): 5 degrees and 0.5 deg/s, dock
-  // closes on it only after its settle_timeout. A level holds until a re-aim.
-  local dh_level is "".
-  local dh_since is time:seconds.
-  local dh_near is dh_since.
+  // The level (#711, #714, #722) is DockGuidance's rule, asked each tick: settled is the port within 2 degrees of the aim
+  // and turning under 0.1 deg/s for 2 s, near is 5 degrees and 0.5 deg/s; a level drops after 1 s outside its band, and a
+  // re-aim resets it. The mod passes each change to dock, whose craft holds still until settled (near after its settle_timeout).
+  local dh_s is lexicon("level", "", "strict_out", time:seconds, "strict_in", time:seconds, "near_out", time:seconds, "near_in", time:seconds).
   until dh_port:state <> "Ready" {
     local dh_now is dh_toward:nodeposition - dh_port:nodeposition.
+    set dh_s["reaim"] to false.
     if vang(dh_now, dh_aim) > 15 and dh_now:mag > 10 {
       set dh_aim to dh_now.
       set dh_up to ship:facing:topvector.
-      set dh_since to time:seconds.
-      set dh_near to dh_since.
-      if dh_level <> "" {
-        set dh_level to "".
-        addons:claudia:dockholdsettled("").
-      }
+      set dh_s["reaim"] to true.
     }
-    local dh_off is vang(dh_port:portfacing:forevector, dh_aim).
-    local dh_rate is ship:angularvel:mag * constant:radtodeg.
-    if dh_off > 2 or dh_rate > 0.1 {
-      set dh_since to time:seconds.
-    }
-    if dh_off > 5 or dh_rate > 0.5 {
-      set dh_near to time:seconds.
-    }
-    if dh_level <> "settled" and time:seconds >= dh_since + 2 {
-      set dh_level to "settled".
-      addons:claudia:dockholdsettled(dh_level).
-    } else if dh_level = "" and time:seconds >= dh_near + 2 {
-      set dh_level to "near".
-      addons:claudia:dockholdsettled(dh_level).
+    set dh_s["ut"] to time:seconds.
+    set dh_s["off_deg"] to vang(dh_port:portfacing:forevector, dh_aim).
+    set dh_s["rate_dps"] to ship:angularvel:mag * constant:radtodeg.
+    set dh_s to addons:claudia:dockholdlevel(dh_s).
+    if dh_s["changed"] {
+      addons:claudia:dockholdsettled(dh_s["level"]).
     }
     wait 0.
   }

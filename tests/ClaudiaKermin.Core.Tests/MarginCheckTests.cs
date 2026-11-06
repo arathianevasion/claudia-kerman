@@ -147,6 +147,98 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
+        public void AComeHomeLegFromTheMunIsAtKerbinForTheMarginCheckAndTheChuteAllocationAlike()
+        {
+            // Stage 2 at 9 kN is 0.89 on the Mun. The come-home leg starts in stage 3 (1,200 m/s into its 1,678) and runs into stage 2;
+            // the ascent after it is also on Kerbin (#726). Read at the Mun, both would be a TWR finding.
+            var weak = InKerbinOrbit();
+            weak.Stages[1].ThrustVacKn = 9;
+            var rest = new List<PlannedSequence>
+            {
+                Leg("Mun transfer and capture", "Transfer to the Mun with a 30 km periapsis, then circularize into low Mun orbit.", 1200),
+                Leg("Come home from the Mun and land", "Come home from the Mun and land under parachute.", 650),
+                Leg("Ascend and circularize", "Ascend to orbit and circularize.", 300),
+            };
+
+            var check = Check(weak, rest);
+            Assert.DoesNotContain("twr_below_one", Codes(check));
+            Assert.DoesNotContain("landing_twr_low", Codes(check));
+
+            var entry = Assert.Single(ChuteAllocation.Of(weak, rest, 0, false, null).Entries);
+            Assert.Equal("Kerbin", entry.Body);
+            Assert.True(entry.Return);
+        }
+
+        [Fact]
+        public void ALandOnTheMunAndReturnToKerbinKeepsTheMunTwrCheckChuteEntryAtKerbinAndTheNextLegAtKerbin()
+        {
+            // Stage 2 at 9 kN is 0.89 on the Mun (#726). The leg lands on the Mun, then returns to Kerbin: the Margin check reads its TWR
+            // at the Mun; Chute Allocation counts its entry at Kerbin; the ascent after it is at Kerbin, so it has no TWR line.
+            var weak = InKerbinOrbit();
+            weak.Stages[1].ThrustVacKn = 9;
+            var rest = new List<PlannedSequence>
+            {
+                Leg("Mun transfer and capture", "Transfer to the Mun with a 30 km periapsis, then circularize into low Mun orbit.", 1200),
+                Leg("Land on the Mun and return to Kerbin", "Land on the Mun, then return to Kerbin under parachute.", 650),
+                Leg("Ascend and circularize", "Ascend to orbit and circularize.", 300),
+            };
+
+            var check = Check(weak, rest);
+            var twr = check.Findings.Single(f => f.Code == "twr_below_one").Explanation;
+            Assert.Contains("on Mun for \"Land on the Mun and return to Kerbin\"", twr);
+            Assert.DoesNotContain("Ascend and circularize", twr);
+
+            var entry = Assert.Single(ChuteAllocation.Of(weak, rest, 0, false, null).Entries);
+            Assert.Equal("Kerbin", entry.Body);
+            Assert.True(entry.Return);
+        }
+
+        [Theory]
+        [InlineData("Land on the surface of the Mun and return to Kerbin")]
+        [InlineData("Land in the Mun highlands and return to Kerbin")]
+        [InlineData("Descend to the Mun and land, then return to Kerbin")]
+        [InlineData("Ascend from the Mun and return home")]
+        public void AReturnHomeLegThatLandsOrAscendsOnTheMunIsJudgedAtTheMunForItsTwr(string name)
+        {
+            // Stage 2 at 9 kN is 0.89 on the Mun (#740): the return's surface work is at the Mun, not at Kerbin, whatever the phrasing.
+            var weak = InKerbinOrbit();
+            weak.Stages[1].ThrustVacKn = 9;
+            var rest = new List<PlannedSequence>
+            {
+                Leg("Mun transfer and capture", "Transfer to the Mun with a 30 km periapsis, then circularize into low Mun orbit.", 1200),
+                Leg(name, string.Empty, 650),
+            };
+
+            var twr = Check(weak, rest).Findings.Single(f => f.Code == "twr_below_one").Explanation;
+            Assert.Contains("on Mun for \"" + name + "\"", twr);
+        }
+
+        [Fact]
+        public void TheLegAfterAReturnHomeIsAtKerbinSoAMunAscentBelowOneTwrIsNotFlaggedThere()
+        {
+            // Stage 2 at 9 kN is 0.89 on the Mun. The same ascent is flagged when it follows a landing on the Mun (the control), so
+            // its absence after the return proves the leg is at Kerbin, where it has no TWR line (#740).
+            var weak = InKerbinOrbit();
+            weak.Stages[1].ThrustVacKn = 9;
+            var control = new List<PlannedSequence>
+            {
+                Leg("Mun transfer and capture", "Transfer to the Mun with a 30 km periapsis, then circularize into low Mun orbit.", 1200),
+                Leg("Land on the Mun", "Land on the Mun and stay there.", 650),
+                Leg("Ascend and circularize", "Ascend to orbit and circularize.", 300),
+            };
+            Assert.Contains("on Mun for \"Ascend and circularize\"", Check(weak, control).Findings.Single(f => f.Code == "twr_below_one").Explanation);
+
+            var rest = new List<PlannedSequence>
+            {
+                Leg("Mun transfer and capture", "Transfer to the Mun with a 30 km periapsis, then circularize into low Mun orbit.", 1200),
+                Leg("Land on the Mun and return to Kerbin", "Land on the Mun, then return to Kerbin under parachute.", 650),
+                Leg("Ascend and circularize", "Ascend to orbit and circularize.", 300),
+            };
+            var check = Check(weak, rest);
+            Assert.DoesNotContain("Ascend and circularize", check.Findings.Single(f => f.Code == "twr_below_one").Explanation);
+        }
+
+        [Fact]
         public void NoElectricGenerationIsAWarningAndABatteryUnderTheTelemetryCheckLineMakesItTight()
         {
             var snapshot = InKerbinOrbit();

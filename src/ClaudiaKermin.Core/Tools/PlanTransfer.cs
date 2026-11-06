@@ -39,11 +39,11 @@ namespace ClaudiaKermin.Core.Tools
         {
             get
             {
-                // A planet's windows (#458) were paid for by shorter wording, at the same 457 characters (prefix cost). A planet gets
-                // dates and delta-v, not a burn (#670); when #459's transfer_to flies to planets, point a planet at it here.
+                // A planet's windows (#458) were paid for by shorter wording (prefix cost). Since #459, transfer_to flies a planet's
+                // window too, so its block is transfer_to for both; #670's "no burn" went with its planet guard.
                 return "The cheapest two-burn transfer in the next window, from this turn's Game Snapshot: to target (a moon of the "
-                    + "craft's body, or a planet) at target_pe (m), or to orbit (ap, pe m; inc, lan deg) anywhere on it. Gives the departure burn "
-                    + "(maneuver-node components) and time and the arrival burn; a planet: soonest and optimal dates and delta-v, no burn. "
+                    + "craft's body, or a sibling) at target_pe (m), or to orbit (ap, pe m; inc, lan deg) anywhere on it. Gives the departure burn "
+                    + "(maneuver-node components) and time and the arrival burn; a sibling: soonest, optimal windows. "
                     + "capture false minimises the departure alone. Its block is transfer_to. Don't call it for other planets' moons.";
             }
         }
@@ -80,7 +80,7 @@ namespace ClaudiaKermin.Core.Tools
             if (string.IsNullOrEmpty(target) == (orbit == null)) return PlanningJson.Error("give target (a body) or orbit, one of them");
             if (target != null && !targetPe.HasValue) return PlanningJson.Error("target needs target_pe, the periapsis altitude to arrive at in metres");
             if (orbit != null && targetPe.HasValue) return PlanningJson.Error("target_pe is for a target body; an orbit is reached at its own altitude");
-            if (target != null && TransferWindows.IsPlanetTransfer(snapshot, target))
+            if (target != null && (TransferWindows.IsPlanetTransfer(snapshot, target) || TransferWindows.IsSiblingTransfer(snapshot, target)))
             {
                 var capture = JsonNode.Bool(input["capture"]) ?? true;
                 return Windows(TransferWindows.Find(snapshot, target, targetPe.Value, capture, snapshot.MarginPercent), snapshot, capture);
@@ -161,8 +161,8 @@ namespace ClaudiaKermin.Core.Tools
         {
             if (target == null || !TransferWindows.IsMoonTransfer(snapshot, target)) return null;
             var found = TransferWindows.Find(snapshot, target, ask.TargetPe, ask.Capture, snapshot.MarginPercent);
-            // From the pad (#690) the launch it assumes is part of the answer even when Optimal is Soonest.
-            return found.Error == null && (found.Optimal != found.Soonest || found.Launch != null) ? found : null;
+            // From the ground (#690, #727) the launch it assumes, or why there is none, is part of the answer even when Optimal is Soonest.
+            return found.Error == null && (found.Optimal != found.Soonest || found.Launch != null || found.Soonest.Plane != null) ? found : null;
         }
 
         /// <summary>A planet's Transfer Windows (#458), or a moon's from the pad (#647): Soonest and Optimal, and the one the Mission Setting Time versus delta-v picks.</summary>
@@ -171,8 +171,6 @@ namespace ClaudiaKermin.Core.Tools
             if (found.Error != null) return PlanningJson.Error(found.Error);
             var pick = TransferWindows.Pick(found, snapshot.TimeVersusDeltaV);
             var json = new JsonWriter().BeginObject().Field("model", found.Moon ? MoonWindowModel : WindowModel).Field("target", found.Target).Field("capture", capture);
-            // Until #459's transfer_to flies to planets (#670), in a planet's answer alone; #459 removes it with the plan check's guard.
-            if (!found.Moon) json.Field("decline", "no Building Block flies to a planet yet: hand in a Mission Plan with no sequences");
             json.Field("parking_pe", PlanningJson.Round(found.ParkingPe, 0));
             if (found.ParkingAssumed) json.Field("parking_note", "assumed: the craft is not in a closed orbit clear of the atmosphere");
             if (!found.Moon && !found.Fits)
@@ -219,19 +217,31 @@ namespace ClaudiaKermin.Core.Tools
                 var w = named.Item2;
                 json.Name(named.Item1).BeginObject();
                 PlanningJson.Time(json, "depart", w.DepartureUt, snapshot.Ut);
+                Plane(json, w);
                 json.Field("total_dv", PlanningJson.Round(w.TotalDv, 1)).EndObject();
             }
             var pick = TransferWindows.Pick(found, snapshot.TimeVersusDeltaV);
             json.Field("pick", pick == found.Optimal && pick != found.Soonest ? "optimal" : "soonest");
-            // From the pad (#690) the rows assume this launch: fly launch with this target_inc at this time, not an equatorial orbit.
-            if (found.Launch != null)
-            {
-                json.Name("launch").BeginObject();
-                PlanningJson.Time(json, "at", found.Launch.Ut, snapshot.Ut);
-                json.Field("target_inc", PlanningJson.Round(found.Launch.Inclination, 2))
-                    .Field("note", "the rows assume a launch into " + found.Target + "'s plane at this time, then the transfer in that plane (no plane change)")
-                    .EndObject();
-            }
+            // From the ground (#690, #727) the rows assume this launch: fly launch with this target_inc at this time, not an equatorial orbit.
+            if (found.Launch != null) Launch(json, found.Launch, snapshot.Ut, found.Launch.Residual == 0
+                ? "the rows assume a launch into " + found.Target + "'s plane at this time, then the transfer in that plane"
+                : "the rows assume a launch due east at this time, " + Math.Round(found.Launch.Residual, 1).ToString("0.#", CultureInfo.InvariantCulture) + "° from " + found.Target + "'s plane, fixed on the way");
+        }
+
+        /// <summary>From the ground (#727): a row's ascent loss and plane change, each its own field, and the case it took.</summary>
+        private static void Plane(JsonWriter json, TransferWindow w)
+        {
+            if (w.Plane == null) return;
+            json.Field("ascent_loss_dv", PlanningJson.Round(w.AscentLossDv, 1)).Field("plane_dv", PlanningJson.Round(w.PlaneDv, 1)).Field("plane", w.Plane);
+        }
+
+        private static void Launch(JsonWriter json, LaunchWindow launch, double now, string note)
+        {
+            json.Name("launch").BeginObject();
+            PlanningJson.Time(json, "at", launch.Ut, now);
+            json.Field("target_inc", PlanningJson.Round(launch.Inclination, 2));
+            if (note != null) json.Field("note", note);
+            json.EndObject();
         }
 
         private static void Window(JsonWriter json, string name, TransferWindow w, double now, bool capture)
@@ -242,7 +252,11 @@ namespace ClaudiaKermin.Core.Tools
                 .Field("ejection_dv", PlanningJson.Round(w.EjectionDv, 1))
                 .Field("arrival_v_inf", PlanningJson.Round(w.ArrivalVInf, 1));
             if (capture) json.Field("capture_dv", PlanningJson.Round(w.CaptureDv, 1));
-            json.Field("total_dv", PlanningJson.Round(w.TotalDv, 1)).EndObject();
+            Plane(json, w);
+            json.Field("total_dv", PlanningJson.Round(w.TotalDv, 1));
+            // From the ground (#727): the launch whose orbit holds this window's asymptote.
+            if (w.Launch != null) Launch(json, w.Launch, now, null);
+            json.EndObject();
         }
 
         private static string Num(double value)

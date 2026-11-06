@@ -82,128 +82,55 @@ namespace ClaudiaKermin.Kerboscript.Tests
         }
 
         [Fact]
-        public void A_periapsis_8_km_off_is_out_of_a_1_km_tolerance_and_in_a_10_km_one()
-        {
-            // e17d (#672): Minmus at 38,117 m against target_pe 30,000.
-            Assert.Equal("False", One("transfer_to_pe_within(38117 - 30000, 1000)"));
-            Assert.Equal("True", One("transfer_to_pe_within(38117 - 30000, 10000)"));
-            Assert.Equal("True", One("transfer_to_pe_within(-1000, 1000)"));
-            Assert.Equal("False", One("transfer_to_pe_within(1e12, 1000)"));
-        }
-
-        [Fact]
-        public void The_finer_correction_asks_the_solver_for_a_burn_within_pe_tolerance()
-        {
-            Assert.Equal(new[] { "target,target_pe,earliest_ut,latest_ut,pe_tolerance", "Minmus", "30000", "16500", "16500", "1000" },
-                Run("local q is transfer_to_fine_ask(\"Minmus\", 30000, 1000, 16500). print q:keys:join(\",\"). print q:target. print q:target_pe. print q:earliest_ut. print q:latest_ut. print q:pe_tolerance."));
-        }
-
-        [Fact]
-        public void A_periapsis_still_off_after_the_correction_is_the_reason_the_block_fails()
-        {
-            Assert.Equal("after the correction, the periapsis at Minmus is 38.1 km, 8.1 km off target_pe 30 km (pe_tolerance 1 km)",
-                One("transfer_to_miss(\"Minmus\", 38117, 30000, 1000, \"\")"));
-            Assert.Equal("after the correction, the periapsis at Minmus is 29.5 km, 0.5 km off target_pe 30 km (pe_tolerance 1 km): residual 0.3 m/s is over max_residual 0.1 m/s",
-                One("transfer_to_miss(\"Minmus\", 29500, 30000, 1000, \"residual 0.3 m/s is over max_residual 0.1 m/s\")"));
-            Assert.Equal("", One("transfer_to_miss(\"Minmus\", 30400, 30000, 1000, \"\")"));
-            Assert.Equal("", One("transfer_to_miss(\"Minmus\", 38117, 30000, 10000, \"\")"));
-        }
-
-        [Fact]
-        public void The_finer_correction_flies_with_a_tighter_max_residual_and_return_s_with_exec_node_s_default()
+        public void A_max_residual_given_goes_to_exec_node_and_return_s_correction_takes_its_default()
         {
             const string ctx = "local c is lexicon(\"opt\", claudia_options(lexicon(), transfer_to_defaults(), \"auto\"):opt, \"start_ut\", 0). ";
-            Assert.True(Number("transfer_to_fine_residual()") < 0.5);
-            Assert.Equal(new[] { "True", "0.1" }, Run(ctx + "local b is claudia_burn_options(c, \"n\", transfer_to_fine_residual()). print b:haskey(\"max_residual\"). print b:max_residual."));
+            Assert.Equal(new[] { "True", "0.1" }, Run(ctx + "local b is claudia_burn_options(c, \"n\", 0.1). print b:haskey(\"max_residual\"). print b:max_residual."));
             Assert.Equal("False", Run(ctx + "print claudia_burn_options(c, \"n\"):haskey(\"max_residual\").").Single());
-            var transfer = CoreLibrary.Blocks.Single(b => b.Name == "transfer_to").Source;
-            Assert.Contains("transfer_to_fine_residual())", transfer);
             var ret = CoreLibrary.Blocks.Single(b => b.Name == "return").Source;
             Assert.Contains("set fixed to claudia_fly_correction(ctx, addons:claudia:correctionburn(\n          return_with_inc(claudia_correction_ask(planet:name, opt:target_pe, when:ut), opt:target_inc))).", ret.Replace("\r\n", "\n"));
         }
 
-        // ---- A block call that threw (#439) ----
+        // ---- The Course Correction's burn time (#368): return's; transfer_to's is Core's TransferFlight (#459) ----
 
-        [Fact]
-        public void A_block_call_error_is_the_reason_transfer_to_fails_with()
+        // return asks Core's TransferFlight.CorrectionUt and Earliest through TRANSFERSTEP (#731).
+        private static System.Collections.Generic.IDictionary<string, object> Timing(params object[] pairs)
         {
-            // The lexicon ClaudiaAddon.Guarded gives for a throw: only error. transfer_to reads it as it reads Core's own errors.
-            Assert.Equal("EJECTIONBURN failed: boom", One("transfer_to_call_failure(lexicon(\"error\", \"EJECTIONBURN failed: boom\"))"));
-            Assert.Equal("found no transfer: no departure", One("transfer_to_call_failure(lexicon(\"error\", \"found no transfer: no departure\"))"));
+            var ask = new System.Collections.Generic.Dictionary<string, object>();
+            for (var i = 0; i < pairs.Length; i += 2) ask[(string)pairs[i]] = pairs[i + 1];
+            return ClaudiaKermin.Core.Tools.BlockCalls.TransferStep(ask, null);
         }
 
-        [Fact]
-        public void A_block_call_that_gave_a_result_has_no_failure()
+        private static string[] CorrectionUt(double mid, object maxDuration)
         {
-            Assert.Equal("", One("transfer_to_call_failure(lexicon(\"error\", \"\", \"ut\", 5))"));
-        }
-
-        // ---- The correction after a missed ejection (#363) ----
-
-        private static string[] CorrectionAsk(string maxDuration, string auto, string dvLeft)
-        {
-            // Block started at UT 1000, now UT 5000, a 133 s turn (the #363 craft's TURNTIME).
-            return Run("local q is transfer_to_correction_ask(\"Mun\", 30000, 5000, 133, 1000, " + maxDuration + ", " + auto + ", " + dvLeft
-                + "). print q:keys:join(\",\"). print q:earliest_ut. for k in list(\"latest_ut\", \"max_dv\") { if q:haskey(k) { print q[k]. } }");
-        }
-
-        [Fact]
-        public void The_correction_is_asked_for_once_the_craft_can_turn_to_it_and_no_dearer_than_its_delta_v()
-        {
-            Assert.Equal(new[] { "target,target_pe,earliest_ut,plane_change,max_dv", "5193", "412.5" }, CorrectionAsk("30000", "true", "412.5"));
-        }
-
-        [Fact]
-        public void A_max_duration_the_script_gave_leaves_the_Course_Correction_its_lead_and_two_minutes()
-        {
-            // 1000 + 20000 - 120 - (133 + 60): the Course Correction after it needs its 193 s lead and 120 s to burn.
-            Assert.Equal(new[] { "target,target_pe,earliest_ut,plane_change,latest_ut,max_dv", "5193", "20687", "412.5" }, CorrectionAsk("20000", "false", "412.5"));
-        }
-
-        [Fact]
-        public void A_max_duration_too_short_for_both_burns_asks_for_a_latest_burn_before_the_earliest()
-        {
-            // 1000 + 5300 - 313 = 5987 is past earliest 5193; 1000 + 4400 - 313 = 5087 is before it, so the block fails before burning.
-            Assert.Equal(new[] { "target,target_pe,earliest_ut,plane_change,latest_ut,max_dv", "5193", "5987", "412.5" }, CorrectionAsk("5300", "false", "412.5"));
-            Assert.Equal(new[] { "target,target_pe,earliest_ut,plane_change,latest_ut,max_dv", "5193", "5087", "412.5" }, CorrectionAsk("4400", "false", "412.5"));
-        }
-
-        [Fact]
-        public void An_unknown_delta_v_sets_no_limit()
-        {
-            Assert.Equal(new[] { "target,target_pe,earliest_ut,plane_change", "5193" }, CorrectionAsk("30000", "true", "-1"));
-        }
-
-        // ---- The Course Correction's burn time (#368) ----
-
-        private static string[] CorrectionUt(string maxDuration)
-        {
-            // Block started at UT 1000; the ejection is flown and it is now UT 3000; halfway to the encounter is UT 16500; the
-            // craft needs 193 s to turn to and lead a burn (transfer_to's 133 s TURNTIME plus a minute).
-            return Run("local w is claudia_correction_ut(16500, 3000, 193, 1000, " + maxDuration + "). print w:ut. print w:reason.");
+            // Block started at UT 1000; the ejection is flown and it is now UT 3000; the craft needs 193 s to turn to and lead a
+            // burn (transfer_to's 133 s TURNTIME plus a minute).
+            var w = Timing("timing", "correction", "mid", mid, "now", 3000.0, "lead", 193.0, "start_ut", 1000.0, "max_duration", maxDuration);
+            return new[] { ((double)w["ut"]).ToString(CultureInfo.InvariantCulture), (string)w["why"] };
         }
 
         [Fact]
         public void The_correction_burns_halfway_when_max_duration_is_auto_or_ends_after_it()
         {
-            Assert.Equal(new[] { "16500", "" }, CorrectionUt("\"auto\""));
-            Assert.Equal(new[] { "16500", "" }, CorrectionUt("20000"));
+            // Halfway to the encounter is UT 16500.
+            Assert.Equal(new[] { "16500", "" }, CorrectionUt(16500, "auto"));
+            Assert.Equal(new[] { "16500", "" }, CorrectionUt(16500, 20000.0));
         }
 
         [Fact]
         public void A_max_duration_that_admits_the_ejection_admits_its_correction_too_burning_it_sooner()
         {
             // max_duration ends at UT 11000, before halfway: the correction moves to 120 s before the end, not past it into the abort.
-            Assert.Equal(new[] { "10880", "" }, CorrectionUt("10000"));
+            Assert.Equal(new[] { "10880", "" }, CorrectionUt(16500, 10000.0));
             // Just enough: 120 s to burn after the 193 s lead.
-            Assert.Equal(new[] { "3193", "" }, CorrectionUt("2313"));
+            Assert.Equal(new[] { "3193", "" }, CorrectionUt(16500, 2313.0));
         }
 
         [Fact]
         public void A_max_duration_with_no_time_left_for_the_correction_fails_before_the_burn_with_a_reason()
         {
             Assert.Equal(new[] { "3180", "max_duration (2300 s) ends at UT 3300, too soon for the Course Correction: its burn needs 313 s from UT 3000" },
-                CorrectionUt("2300"));
+                CorrectionUt(16500, 2300.0));
         }
 
         [Fact]
@@ -214,48 +141,41 @@ namespace ClaudiaKermin.Kerboscript.Tests
         }
 
         [Fact]
-        public void The_correction_after_a_missed_ejection_asks_for_one_burn_not_a_broken_plane()
-        {
-            Assert.Equal("False", One("transfer_to_correction_ask(\"Mun\", 30000, 5000, 133, 1000, 30000, true, 412.5):plane_change"));
-        }
-
-        [Fact]
-        public void A_broken_plane_s_plane_change_asks_the_solver_for_a_burn_at_its_time_aimed_at_the_planned_arrival()
-        {
-            // #619: EJECTIONBURN's plane_ut and arrival_ut; the path before the plane change misses, so the solve starts from aim_ut.
-            Assert.Equal(new[] { "target,target_pe,earliest_ut,latest_ut,aim_ut", "Minmus", "30000", "933632", "933632", "1094922" },
-                Run("local q is transfer_to_plane_ask(\"Minmus\", 30000, 933632, 1094922). print q:keys:join(\",\"). print q:target. print q:target_pe. print q:earliest_ut. print q:latest_ut. print q:aim_ut."));
-        }
-
-        [Fact]
         public void A_broken_plane_s_plane_change_burns_at_its_planned_time_not_halfway()
         {
-            // claudia_correction_ut given plane_ut (UT 9000) in place of halfway: it stays there with max_duration auto or later,
+            // The correction time given plane_ut (UT 9000) in place of halfway: it stays there with max_duration auto or later,
             // and moves sooner only as the Course Correction does when max_duration ends first.
-            Assert.Equal(new[] { "9000", "" }, Run("local w is claudia_correction_ut(9000, 3000, 193, 1000, \"auto\"). print w:ut. print w:reason."));
-            Assert.Equal(new[] { "8880", "" }, Run("local w is claudia_correction_ut(9000, 3000, 193, 1000, 8000). print w:ut. print w:reason."));
+            Assert.Equal(new[] { "9000", "" }, CorrectionUt(9000, "auto"));
+            Assert.Equal(new[] { "8880", "" }, CorrectionUt(9000, 8000.0));
         }
 
         // ---- Earliest departure ----
 
-        /// <summary>transfer_to's and return's one rule (#346, #357): the block's start plus the turn time, or a later window.</summary>
+        /// <summary>return's rule (#346, #357), as Core's TransferFlight.Earliest is transfer_to's: the block's start plus the turn time, or a later window.</summary>
         [Theory]
-        [InlineData("\"next\"", "1133")]
+        [InlineData("next", "1133")]
         [InlineData("2000", "2000")]
         [InlineData("1100", "1133")]
         public void The_departure_is_searched_from_once_the_craft_can_have_turned_or_from_the_window(string window, string earliest)
         {
-            Assert.Equal(earliest, One("claudia_earliest(1000, 133, " + window + ")"));
+            object w = window == "next" ? (object)"next" : double.Parse(window, CultureInfo.InvariantCulture);
+            var ut = (double)Timing("timing", "earliest", "start_ut", 1000.0, "turn_time", 133.0, "window", w)["ut"];
+            Assert.Equal(earliest, ut.ToString(CultureInfo.InvariantCulture));
         }
 
         [Fact]
-        public void Transfer_to_and_return_both_depart_by_the_shared_rule()
+        public void Return_asks_Core_for_both_timings_and_no_Kerboscript_twin_is_left()
         {
-            foreach (var block in new[] { "transfer_to", "return" })
-            {
-                var source = CoreLibrary.Blocks.Single(b => b.Name == block).Source;
-                Assert.Contains("claudia_earliest(ctx:start_ut, turn:turn_time, opt:window)", source);
-            }
+            var ret = CoreLibrary.Blocks.Single(b => b.Name == "return").Source;
+            Assert.Contains("\"timing\", \"earliest\", \"start_ut\", ctx:start_ut", ret);
+            Assert.Contains("\"timing\", \"correction\"", ret);
+            var bundle = CoreLibrary.Bundle("");
+            Assert.DoesNotContain("claudia_earliest", bundle);
+            Assert.DoesNotContain("claudia_correction_ut", bundle);
+            var transfer = CoreLibrary.Blocks.Single(b => b.Name == "transfer_to").Source;
+            Assert.Contains("\"start_ut\", ctx:start_ut", transfer);
+            Assert.Contains("\"turn_time\", turn:turn_time", transfer);
+            Assert.Contains("\"window\", opt:window", transfer);
         }
 
         // ---- Coordinate descent ----

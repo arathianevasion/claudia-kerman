@@ -471,7 +471,7 @@ namespace ClaudiaKermin.Core.Tools
         /// kOS's <c>steeringmanager:maxstoppingtime</c>; 2 if missing). Gives <c>error</c> "", <c>turn_time</c> (s, at least 30),
         /// <c>turn_s</c> (the 190° turn alone), <c>top_rate</c> (deg/s) and <c>alpha</c> (deg/s², the weaker axis's angular
         /// acceleration), on the wheels and RCS (if the craft has MonoPropellant, whatever the switch; where RCS adds torque the
-        /// figures follow the RCS Use override, #422, and ignore <c>max_stopping_time</c>), and <c>wheels_turn_time</c> and <c>wheels_turn_s</c>, the same on the wheels alone (-1 when the
+        /// figures follow the burst turn, #692 and #730, and ignore <c>max_stopping_time</c>), and <c>wheels_turn_time</c> and <c>wheels_turn_s</c>, the same on the wheels alone (-1 when the
         /// wheels have no torque about pitch or yaw); or only <c>error</c>, "no usable torque".
         /// </summary>
         public static IDictionary<string, object> TurnTime(IDictionary<string, object> input, TurnCraft craft)
@@ -588,6 +588,97 @@ namespace ClaudiaKermin.Core.Tools
         }
 
         /// <summary>
+        /// <c>ADDONS:CLAUDIA:TRANSFERSTEP</c>, for <c>transfer_to</c> (#459, ADR 0014): its next step (<see cref="TransferFlight"/>),
+        /// asked again after each. Takes <c>target</c> (a body's name), <c>target_pe</c>, <c>window</c> ("next" or a UT),
+        /// <c>correction</c>, <c>pe_tolerance</c>, <c>start_ut</c>, <c>max_duration</c> ("auto" or s), <c>auto</c> (whether it began
+        /// "auto"), <c>turn_time</c>, <c>dv_left</c>, and what the last step carried: <c>phase</c> ("start" first), <c>arrival_ut</c>,
+        /// <c>plane_ut</c>, <c>why</c>, <c>sibling</c>, and <c>last_dv</c> (m/s the last burn used). Gives <c>error</c> ("" or why the block fails),
+        /// <c>do</c> ("burn", "wait" or "done"), <c>kind</c>, <c>ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c>,
+        /// <c>max_residual</c>, <c>fail_prefix</c>, <c>keep_going</c>, <c>report</c> (Script Result keys), <c>max_duration</c> (-1:
+        /// unchanged) and <c>carry</c> (the keys to ask with next).
+        /// </summary>
+        public static IDictionary<string, object> TransferStep(IDictionary<string, object> input, GameSnapshot snapshot)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            object target, window, correction, auto, phase, why, sibling;
+            ask.TryGetValue("target", out target);
+            ask.TryGetValue("window", out window);
+            ask.TryGetValue("correction", out correction);
+            ask.TryGetValue("auto", out auto);
+            ask.TryGetValue("phase", out phase);
+            ask.TryGetValue("why", out why);
+            ask.TryGetValue("sibling", out sibling);
+            object timing;
+            if (ask.TryGetValue("timing", out timing)) return Timing(ask, timing as string);
+            if (!(target is string)) return Step(new TransferFlightStep { Error = "found no transfer: target must be a body's name" });
+            var maxDuration = NumberOrNull(ask, "max_duration");
+            var step = TransferFlight.Next(snapshot, new TransferFlightAsk
+            {
+                Target = (string)target,
+                TargetPe = Number(ask, "target_pe", 0),
+                Window = window as double?,
+                Correction = correction as bool? ?? true,
+                PeTolerance = Number(ask, "pe_tolerance", 1000),
+                StartUt = Number(ask, "start_ut", snapshot != null ? snapshot.Ut : 0),
+                MaxDuration = maxDuration,
+                Auto = auto as bool? ?? !maxDuration.HasValue,
+                TurnTime = Number(ask, "turn_time", 0),
+                DvLeft = Number(ask, "dv_left", 0),
+                Phase = phase as string ?? TransferFlight.Start,
+                ArrivalUt = Number(ask, "arrival_ut", -1),
+                PlaneUt = Number(ask, "plane_ut", -1),
+                Why = why as string ?? "",
+                LastDv = Number(ask, "last_dv", 0),
+                Sibling = sibling as bool? ?? false,
+            });
+            return Step(step);
+        }
+
+        /// <summary>
+        /// TRANSFERSTEP's timing asks, for <c>return</c> (#731): <c>timing</c> "earliest" (<c>start_ut</c>, <c>turn_time</c>, <c>window</c>)
+        /// gives <c>ut</c>, the earliest departure; "correction" (<c>mid</c>, <c>now</c>, <c>lead</c>, <c>start_ut</c>, <c>max_duration</c>
+        /// "auto" or s) gives <c>ut</c> and <c>why</c> ("" or why there is no time for the Course Correction). Shaped as a step, with <c>do</c> "timing".
+        /// </summary>
+        private static IDictionary<string, object> Timing(IDictionary<string, object> ask, string kind)
+        {
+            var step = new TransferFlightStep { Do = "timing", Kind = kind ?? "" };
+            var why = "";
+            if (kind == "earliest")
+                step.Ut = TransferFlight.Earliest(Number(ask, "start_ut", 0), Number(ask, "turn_time", 0), ask.ContainsKey("window") ? ask["window"] as double? : null);
+            else if (kind == "correction")
+                step.Ut = TransferFlight.CorrectionUt(Number(ask, "mid", 0), Number(ask, "now", 0), Number(ask, "lead", 0), Number(ask, "start_ut", 0), NumberOrNull(ask, "max_duration"), out why);
+            else
+                step.Error = "found no timing: timing must be 'earliest' or 'correction'";
+            var result = Step(step);
+            result["why"] = why;
+            return result;
+        }
+
+        private static IDictionary<string, object> Step(TransferFlightStep step)
+        {
+            return new Dictionary<string, object>
+            {
+                { "error", step.Error },
+                { "do", step.Do },
+                { "kind", step.Kind },
+                { "ut", step.Ut },
+                { "prograde", step.Prograde },
+                { "normal", step.Normal },
+                { "radial", step.Radial },
+                { "max_residual", step.MaxResidual },
+                { "fail_prefix", step.FailPrefix },
+                { "keep_going", step.KeepGoing },
+                { "report", new Dictionary<string, object>(step.Report) },
+                { "max_duration", step.MaxDuration ?? -1.0 },
+                { "carry", new Dictionary<string, object>
+                    {
+                        { "phase", step.Phase }, { "arrival_ut", step.ArrivalUt }, { "plane_ut", step.PlaneUt }, { "why", step.Why ?? "" }, { "sibling", step.Sibling },
+                    }
+                },
+            };
+        }
+
+        /// <summary>
         /// The parts a reentry call leaves out of the craft (#326): <c>leave_out</c>, the kOS UIDs of the parts <c>deorbit</c> drops
         /// after its burn, so the predictor flies only what stays. One UID may be given bare. The adapter builds the craft from it.
         /// </summary>
@@ -667,7 +758,8 @@ namespace ClaudiaKermin.Core.Tools
         /// under the plane of inclination <c>inc</c> and ascending node <c>lan</c> (degrees; the sign of <c>inc</c> is ignored), by
         /// <see cref="LaunchWindow"/> on the Game Snapshot's pad and body. <c>target_ap</c> (m, default 0) sets the heading's orbital
         /// speed. Gives <c>error</c> "", <c>wait</c> (s), <c>ut</c>, <c>north</c> (the window launches northward), <c>inc</c> (negative for
-        /// a southbound window) and <c>heading</c> (degrees); or only <c>error</c>, saying why the pad never passes under the plane.
+        /// a southbound window), <c>heading</c> (degrees) and <c>residual</c> (degrees: from a site past a prograde plane, the window
+        /// is due east and this far from the plane, #727); or only <c>error</c>, saying why the pad never passes under a retrograde plane.
         /// </summary>
         public static IDictionary<string, object> LaunchWindow(IDictionary<string, object> input, GameSnapshot snapshot)
         {
@@ -688,6 +780,7 @@ namespace ClaudiaKermin.Core.Tools
                 { "north", window.North },
                 { "inc", window.Inclination },
                 { "heading", window.Heading },
+                { "residual", window.Residual },
             };
         }
 

@@ -107,26 +107,14 @@ namespace ClaudiaKermin.Core.Tests
         }
 
         [Fact]
-        public void The_program_reports_settled_and_again_when_it_re_aims()
+        public void The_program_asks_DockGuidance_for_its_level_and_reports_each_change()
         {
-            // #711: settled is the port within 2 degrees of the aim, turning under 0.1 deg/s, for 2 s; a re-aim unsettles it.
+            // #722: the level rule (bands, 2 s to rise, 1 s to fall) is DockGuidance.HoldLevel's; the program reads, steers and reports.
             var program = DockHold.Program("1", "2").Replace("\r\n", "\n");
-            Assert.Contains("if dh_off > 2 or dh_rate > 0.1 {\n", program);
-            Assert.Contains("if dh_level <> \"settled\" and time:seconds >= dh_since + 2 {\n", program);
-            Assert.Contains("set dh_level to \"settled\".", program);
-            Assert.Contains("addons:claudia:dockholdsettled(\"\").", program);
-        }
-
-        [Fact]
-        public void The_program_reports_a_loose_settle_within_5_degrees_and_under_half_a_degree_a_second_not_as_settled()
-        {
-            // #714: near is the port within 5 degrees and turning under 0.5 deg/s for 2 s; it reports near, not settled, and
-            // only when the strict test is not met (a settled port is also within the loose limits).
-            var program = DockHold.Program("1", "2").Replace("\r\n", "\n");
-            Assert.Contains("local dh_off is vang(dh_port:portfacing:forevector, dh_aim).\n", program);
-            Assert.Contains("if dh_off > 5 or dh_rate > 0.5 {\n      set dh_near to time:seconds.", program);
-            Assert.Contains("} else if dh_level = \"\" and time:seconds >= dh_near + 2 {\n      set dh_level to \"near\".\n      addons:claudia:dockholdsettled(dh_level).", program);
-            Assert.Contains("set dh_level to \"settled\".\n      addons:claudia:dockholdsettled(dh_level).", program);
+            Assert.Contains("set dh_s to addons:claudia:dockholdlevel(dh_s).\n", program);
+            Assert.Contains("if dh_s[\"changed\"] {\n      addons:claudia:dockholdsettled(dh_s[\"level\"]).", program);
+            Assert.Contains("set dh_s[\"reaim\"] to true.", program);
+            Assert.DoesNotContain("dh_since", program);
         }
 
         [Fact]

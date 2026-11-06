@@ -47,6 +47,18 @@ namespace ClaudiaKermin.Core.Tools.Numerics
             return new Scale(lengthScale, Math.Sqrt(mu / lengthScale));
         }
 
+        /// <summary>
+        /// Units alone, not from a body: <paramref name="velocity"/> m/s and <paramref name="time"/> s (the length is their product),
+        /// for a solver whose finite-difference steps must follow the problem rather than a body's mu (a Course Correction over a
+        /// year round the star, #459). <see cref="ScaleMu"/> is then not 1 for any body.
+        /// </summary>
+        public static Scale Units(double velocity, double time)
+        {
+            if (!SearchInput.Finite(velocity) || velocity <= 0) throw new ArgumentException("velocity must be a positive number", "velocity");
+            if (!SearchInput.Finite(time) || time <= 0) throw new ArgumentException("time must be a positive number", "time");
+            return new Scale(velocity * time, velocity);
+        }
+
         /// <summary>A gravitational parameter in this scale's units: 1 for the mu the scale was made from.</summary>
         public double ScaleMu(double mu)
         {

@@ -79,6 +79,9 @@ namespace ClaudiaKermin.Core.Tools
         private const int MaxIterations = 50;
         /// <summary>The most patches from the burn to the target: out of a moon, round the planet, into another moon.</summary>
         private const int MaxPatches = 4;
+        /// <summary>Round the star (#459): how far the finite-difference step moves the arrival, m, and the time unit, s.</summary>
+        private const double StarStepMiss = 600;
+        private const double StarTimeUnit = 21600;
 
         /// <summary>The correction for the Game Snapshot's craft.</summary>
         public static CorrectionPlan Find(GameSnapshot snapshot, CorrectionAsk ask)
@@ -132,7 +135,7 @@ namespace ClaudiaKermin.Core.Tools
             var n = free ? 4 : 3;
             var problem = new SqpProblem
             {
-                Scale = Scale.Create(from.Gm, from.Radius),
+                Scale = Units(system, from, coast.Orbit, startUt, seed, target, needed),
                 Variables = free
                     ? new[] { SqpVariable.Velocity, SqpVariable.Velocity, SqpVariable.Velocity, SqpVariable.Time }
                     : new[] { SqpVariable.Velocity, SqpVariable.Velocity, SqpVariable.Velocity },
@@ -231,6 +234,22 @@ namespace ClaudiaKermin.Core.Tools
             orbit.State(ut, out r, out v);
             var arc = Lambert.Solve(body.Gm, r, system.OrbitOf(target).Position(aimUt), aimUt - ut, orbit.W);
             return arc.Error == null ? arc.V1 - v : default(Vec3);
+        }
+
+        /// <summary>
+        /// The solver's units: the burn's body's, as before #459, except on a patch round the star (no parent), whose radius makes
+        /// the finite-difference step about 0.9 m/s, which over a coast of months moves the arrival by thousands of kilometres. There
+        /// the velocity unit is set so the step moves the arrival by <see cref="StarStepMiss"/>, as 3 cm/s does across a Mun coast,
+        /// and the time unit is a day.
+        /// </summary>
+        private static Scale Units(BodySystem system, SnapshotBody from, Conic orbit, double ut, Vec3 seed, SnapshotBody target, int needed)
+        {
+            var body = Scale.Create(from.Gm, from.Radius);
+            if (system.Parent(from) != null) return body;
+            var arrival = SingleShooting.Arrive(system, from, orbit, ut, seed, target, needed);
+            var coast = arrival != null ? arrival.StartUt - ut : 0;
+            if (!(coast > 0)) return body;
+            return Scale.Units(Math.Min(body.VelocityScale, StarStepMiss / coast / Sqp.VelocityStep), StarTimeUnit);
         }
 
         private static Vec3 Normal(Patch patch)

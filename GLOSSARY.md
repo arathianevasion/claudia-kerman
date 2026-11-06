@@ -44,6 +44,10 @@ _Avoid_: soft fail, notice
 A plain copy of the game at one moment (the craft, its stages and parts, orbit, situation, resources, crew, science and link state) that the mod takes and gives to Claudia and the Craft Check, so neither reads the live game; Game Snapshots recorded from real play are also what the mod's tests run against.
 _Avoid_: game state, telemetry (which Telemetry Checks measure while Running), dump
 
+**Grounded**:
+The craft is on the ground or the pad (PRELAUNCH, LANDED or SPLASHED): no flight yet, so its ascent or burn starts from the surface.
+_Avoid_: landed (alone, which leaves out PRELAUNCH)
+
 **Delta-v Map**:
 The reference table of delta-v needed for each leg of travel in the Kerbin system, against which a Mission Plan is budgeted.
 _Avoid_: dv chart, cheat sheet
@@ -51,6 +55,10 @@ _Avoid_: dv chart, cheat sheet
 **Maneuver Sequence**:
 One self-contained stretch of flight that Claudia plans and kOS executes in a single go, e.g. launch to orbit, Mun transfer burn, landing.
 _Avoid_: step, phase, maneuver (alone), burn
+
+**Leg**:
+In code, one entry of a Mission Plan's sequence list (a `PlannedSequence`), read from the Mission Goal's words, which are split into one leg per clause (at punctuation, "and" and "then"). Before a Mission Plan exists, each goal clause is a leg (`ChuteAllocation.GoalLegs`, #641). `SequenceWords.LegBody` gives the body where a leg's surface work happens, and `NextBody` the body the next leg starts from (Kerbin after a return home); for "Land on the Mun and return to Kerbin" these differ. Open: whether the glossary should name this unit Maneuver Sequence or keep leg; until that is decided, the glossary's Maneuver Sequence is what Claudia plans and executes.
+_Avoid_: stage (which is a rocket stage), step
 
 **Coast**:
 A stretch of flight with no engine or RCS thrust, in an atmosphere or not (e.g. launch's climb out of the air after cutoff, a fall under parachutes, the fall before a landing burn); the only stretch on which a Mission Script may use physics warp.
@@ -105,7 +113,7 @@ The earliest Transfer Window whose total delta-v is within the Craft Check's mar
 _Avoid_: next window, fastest (a Mission Setting)
 
 **Optimal**:
-The cheapest Transfer Window within one synodic period of the two planets, or one orbit of the moon. A moon's Optimal is its Soonest unless it saves at least 5 m/s: the Mun, in the parking orbit's plane, costs the same at any departure; Minmus is cheapest near a node. From the pad, a moon out of the equator's plane is costed as a launch into its plane at the next launch window (#690), so Soonest is Optimal and the wait is under a Kerbin day; the row names that launch (its target_inc and time).
+The cheapest Transfer Window within one synodic period of the two planets, or one orbit of the moon. A moon's Optimal is its Soonest unless it saves at least 5 m/s: the Mun, in the parking orbit's plane, costs the same at any departure; Minmus is cheapest near a node. From the ground, a moon out of the site's plane is costed as a launch into its plane at the next launch window (#690), so Soonest is Optimal and the wait is under a body day; from a site past the plane, as a launch due east with the residual fixed on the way, and the moon's horizon is bounded by Time versus delta-v (Fastest one parking orbit, Balanced a quarter of the moon's orbit, Most efficient one orbit, #727). Each row names that launch (its target_inc and time), its ascent loss and plane change, and the case it took.
 _Avoid_: best window, most efficient (a Mission Setting)
 
 **Daylight**:
@@ -227,8 +235,12 @@ The state of a Mission while the player flies the craft and Claudia only advises
 _Avoid_: takeover, override, manual mode
 
 **Interrupted**:
-Of a Maneuver Sequence: it was Running when the scene changed, a save was loaded, or the game quit or crashed, so its script is gone. It is never restarted; Claudia gives it an interrupted-sequence Debrief when the player is back in Flight, judging from the craft as it now is. Not a Debrief outcome: the Debrief still ends Nominal, Off-Nominal or Failed.
+Of a Maneuver Sequence: it was Running when the scene changed, a save was loaded, the game quit or crashed, its kOS processor was lost, or its craft unloaded (the player switched vessels, or went out of range of it), so its script is gone. It is never restarted; Claudia gives it an Interrupted Debrief when the player is back in Flight, judging from the craft as it now is. Not a Debrief outcome: the Debrief still ends Nominal, Off-Nominal or Failed.
 _Avoid_: restarted, resumed (an interrupted sequence is Debriefed, never run again)
+
+**Interrupted Debrief**:
+The Debrief Claudia gives for a Maneuver Sequence that was Interrupted: the Debrief is owed from the interruption and given when the player is back in Flight. It is owed for each cause the Interrupted entry gives.
+_Avoid_: interrupted-sequence Debrief, restart Debrief
 
 **Hand back**:
 The player's act, with an optional message about what they did, of giving the craft back to Claudia and ending Manual Control. Claudia gives the manual stretch a short Debrief (judged against its target if it was planned, a plain account if not), then revises the Mission Plan for Approval.

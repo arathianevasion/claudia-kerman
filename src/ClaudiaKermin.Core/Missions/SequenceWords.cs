@@ -36,18 +36,57 @@ namespace ClaudiaKermin.Core.Missions
         /// <summary>The body named first in <paramref name="words"/>, or null for none.</summary>
         public static SnapshotBody NamedBody(GameSnapshot snapshot, string words)
         {
+            return FirstBody(snapshot, words, false);
+        }
+
+        /// <summary>
+        /// The first body <paramref name="words"/> names, earliest occurrence first. With <paramref name="away"/>, Kerbin is skipped
+        /// and so is an occurrence the return comes from ("Return from the Mun to Kerbin", "come home from Minmus"): that is where
+        /// a come-home leg's return departs, not where its surface work is (#726).
+        /// </summary>
+        private static SnapshotBody FirstBody(GameSnapshot snapshot, string words, bool away)
+        {
             SnapshotBody first = null;
             var firstAt = int.MaxValue;
-            foreach (var body in snapshot.Bodies.Where(b => b.Name.Length > 0))
+            foreach (var body in snapshot.Bodies.Where(b => b.Name.Length > 0 && !(away && string.Equals(b.Name, "Kerbin", StringComparison.OrdinalIgnoreCase))))
             {
-                var match = Regex.Match(words, @"\b" + Regex.Escape(body.Name) + @"\b", RegexOptions.IgnoreCase);
-                if (match.Success && match.Index < firstAt)
+                foreach (Match match in Regex.Matches(words, @"\b" + Regex.Escape(body.Name) + @"\b", RegexOptions.IgnoreCase))
                 {
-                    first = body;
-                    firstAt = match.Index;
+                    if (away && ReturnsFrom.IsMatch(words.Substring(0, match.Index))) continue;
+                    if (match.Index < firstAt)
+                    {
+                        first = body;
+                        firstAt = match.Index;
+                    }
+                    break;
                 }
             }
             return first;
+        }
+
+        /// <summary>The text before a body names a return's origin: "come home from", "return to Kerbin from", "return from" (same clause).</summary>
+        private static readonly Regex ReturnsFrom = new Regex(@"\b(?:com(?:e|es|ing)|return(?:s|ing|ed)?|go(?:es|ing)?|head(?:s|ing|ed)?|fl(?:y|ies|ying)|back|home)\b[^.,;]*\bfrom\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// The body a leg's surface work is at (#726, #740, the Margin check's thrust): a return home is at Kerbin, unless the leg
+        /// also lands, touches down or ascends (<see cref="Surface"/>) at the first body it names other than Kerbin, in any word
+        /// order ("Land on the surface of the Mun and return to Kerbin" is at the Mun). Otherwise the body its words name, else the
+        /// <paramref name="previous"/> leg's.
+        /// </summary>
+        public static SnapshotBody LegBody(GameSnapshot snapshot, string words, SnapshotBody previous)
+        {
+            if (!ReturnHome.IsMatch(words)) return NamedBody(snapshot, words) ?? previous;
+            if (Surface.IsMatch(words) && FirstBody(snapshot, words, true) is SnapshotBody away) return away;
+            return Body(snapshot, "Kerbin") ?? previous;
+        }
+
+        /// <summary>
+        /// The body the leg after this one starts from (#726): Kerbin once a leg returns home, since the craft has come home; else
+        /// the leg's <see cref="LegBody"/>. Chute Allocation takes a return's entry here too.
+        /// </summary>
+        public static SnapshotBody NextBody(GameSnapshot snapshot, string words, SnapshotBody previous)
+        {
+            return ReturnHome.IsMatch(words) ? Body(snapshot, "Kerbin") ?? previous : LegBody(snapshot, words, previous);
         }
 
         public static SnapshotBody Body(GameSnapshot snapshot, string name)

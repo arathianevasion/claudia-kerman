@@ -89,6 +89,7 @@ namespace ClaudiaKermin.Adapter
             _configDirectory = configDirectory;
             _chat = chat;
             _frame.Remember("settings");
+            _frame.LogName = "Settings window";
         }
 
         public void OnGUI()
@@ -106,13 +107,13 @@ namespace ClaudiaKermin.Adapter
             if (!_drafted || _context != _draftFor) Draft();
             _frame.Style = ClaudiaSkin.Window;
             _frame.Show(Draw);
-            var focused = GUI.GetNameOfFocusedControl();
-            _frame.SetTyping(focused == KeyControl || focused == CapControl);
+            _frame.SetTyping(_focus.Held);
         }
 
         /// <summary>Releases the input locks; call when the window goes away.</summary>
         public void Unlock()
         {
+            _focus.Reset();
             _frame.Unlock();
         }
 
@@ -180,9 +181,13 @@ namespace ClaudiaKermin.Adapter
             GUILayout.EndScrollView();
 
             DrawFooter();
+            // Recorded here, inside the window function after the fields are drawn.
+            _focus.Observe(GUI.GetNameOfFocusedControl(), Event.current.type == EventType.Layout);
             _frame.DrawResizeZones();
             GUI.DragWindow();
         }
+
+        private readonly TypingFocus _focus = new TypingFocus(KeyControl, CapControl);
 
         // ---- Mission ----
 

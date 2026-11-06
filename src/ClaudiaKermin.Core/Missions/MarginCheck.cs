@@ -166,13 +166,14 @@ namespace ClaudiaKermin.Core.Missions
             foreach (var leg in rest)
             {
                 var words = SequenceWords.Of(leg);
-                body = SequenceWords.NamedBody(snapshot, words) ?? body;
+                var legBody = SequenceWords.LegBody(snapshot, words, body);
+                body = SequenceWords.NextBody(snapshot, words, body);
                 var start = used;
                 used += Math.Max(0, leg.DeltaV);
-                if (leg.Manual || body == null || body.SeaLevelAtm > 0 || body.SurfaceGravity <= 0 || !SequenceWords.Surface.IsMatch(words)) continue;
-                var twr = LowestTwr(snapshot, body, start, Math.Max(start + 1, used));
+                if (leg.Manual || legBody == null || legBody.SeaLevelAtm > 0 || legBody.SurfaceGravity <= 0 || !SequenceWords.Surface.IsMatch(words)) continue;
+                var twr = LowestTwr(snapshot, legBody, start, Math.Max(start + 1, used));
                 if (!twr.HasValue) continue;
-                var line = TwrText(twr.Value) + " on " + body.Name + " for \"" + leg.Name + "\"";
+                var line = TwrText(twr.Value) + " on " + legBody.Name + " for \"" + leg.Name + "\"";
                 if (twr.Value < 1) below.Add(line);
                 else if (twr.Value < 1.5 && SequenceWords.Landing.IsMatch(words)) low.Add(line);
             }

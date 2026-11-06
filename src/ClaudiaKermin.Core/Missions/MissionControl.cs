@@ -526,8 +526,7 @@ namespace ClaudiaKermin.Core.Missions
             if (_snapshot != null)
             {
                 // A planet's plan_transfer row picks its Transfer Window by the Mission Setting, as a tool call would (#458).
-                _snapshot.TimeVersusDeltaV = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV;
-                _snapshot.MarginPercent = _config.CraftCheckMarginPercent;
+                _snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent);
             }
             return MissionPrompts.StageTable(_snapshot, goal, mission.PlannedAscent) + MissionPrompts.PadPlanning(_snapshot);
         }
@@ -2324,6 +2323,7 @@ namespace ClaudiaKermin.Core.Missions
                 view.ChildVessels = ChildVesselViews(mission);
                 view.RunningChildVesselId = RunningChildVesselId(mission);
                 view.Settings = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config));
+                view.MarginPercent = _config.CraftCheckMarginPercent;
                 view.CanEditSettings = CanEditSettings;
                 view.PhysicsWarpAllowed = view.Settings.PhysicsWarpOn;
                 var due = PendingDueTime;
