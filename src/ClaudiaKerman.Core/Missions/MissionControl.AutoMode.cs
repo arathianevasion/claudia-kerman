@@ -57,7 +57,7 @@ namespace ClaudiaKerman.Core.Missions
             NoRoom,
             /// <summary>Auto Mode only: the script failed the Script Check again after Auto Mode's re-plan.</summary>
             ScriptFailedAgain,
-            /// <summary>A revised Mission Plan's Transfer Window is the player's to pick (#686): nothing stands in for them.</summary>
+            /// <summary>A revised Mission Plan's or a departure's Transfer Window is the player's to pick (#686, #782): nothing stands in for them.</summary>
             WindowPick,
         }
 
@@ -142,6 +142,11 @@ namespace ClaudiaKerman.Core.Missions
                 if (plan.Manual)
                 {
                     WaitsForPlayer(mission, AdvanceWait.ManualStretch, plan.Name);
+                    return;
+                }
+                if (WindowPickMissing(mission))
+                {
+                    WaitsForPlayer(mission, AdvanceWait.WindowPick, plan.Name);
                     return;
                 }
                 // The one exception (#775): Auto Mode may stand in at a coast checkpoint's Due Time, with the player still in the craft, and at no other kind.

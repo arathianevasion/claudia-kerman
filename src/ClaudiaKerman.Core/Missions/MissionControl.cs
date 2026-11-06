@@ -1115,6 +1115,7 @@ namespace ClaudiaKerman.Core.Missions
                 Enqueue(mission, turn);
                 return;
             }
+            turn.UserText = DepartureLine(mission) + turn.UserText;
             if (turn.Purpose == Purpose.Debrief && PrepareDebrief(mission, turn)) return;
             if (turn.Purpose == Purpose.MissionPlan || (turn.Purpose == Purpose.SequencePlan && !turn.ScriptRewrite)) turn.UserText = WithGoalBiomes(mission, turn.UserText);
             mission.Pending = turn;
@@ -1946,8 +1947,13 @@ namespace ClaudiaKerman.Core.Missions
             {
                 // Only the mod marks its own resume (#775).
                 plan.CoastCheckpoint = "";
-                WindowWait(mission, plan);
-                TransferWait(mission, plan);
+                // A departure that waits for the player's pick has its Due Time from that pick (#782).
+                mission.WindowOwnDue = plan.DueTimeUt;
+                if (!DeparturePickMissing(mission, plan))
+                {
+                    WindowWait(mission, plan);
+                    TransferWait(mission, plan);
+                }
             }
             if (!mission.SequenceCounted)
             {
@@ -1962,6 +1968,17 @@ namespace ClaudiaKerman.Core.Missions
             mission.PlanBaseline = _snapshot;
             PlanOffered(mission);
             mission.Stage = MissionStage.AwaitingSequenceApproval;
+            DueTimeOffered(mission, plan);
+            var card = AddCard(mission, LogKind.SequencePlan, plan.Name, PlanCardText(mission, plan), plan.Why);
+            card.Script = plan.Script;
+            card.CustomScript = plan.CustomScript;
+            card.CustomScriptReason = plan.CustomScriptReason;
+            PlanNews("Claudia has a Sequence Plan for your Approval.");
+        }
+
+        /// <summary>The plan on offer has its Due Time: the alarm for it, and whether the player has been told it is reached.</summary>
+        private void DueTimeOffered(Mission mission, SequencePlan plan)
+        {
             if (plan.DueTimeUt.HasValue)
             {
                 // A stock Alarm Clock alarm at the Due Time; the mod itself never warps between sequences.
@@ -1969,11 +1986,6 @@ namespace ClaudiaKerman.Core.Missions
                 mission.DueNotified = plan.DueTimeUt.Value <= _ut;
             }
             else mission.DueNotified = false;
-            var card = AddCard(mission, LogKind.SequencePlan, plan.Name, PlanCardText(mission, plan), plan.Why);
-            card.Script = plan.Script;
-            card.CustomScript = plan.CustomScript;
-            card.CustomScriptReason = plan.CustomScriptReason;
-            PlanNews("Claudia has a Sequence Plan for your Approval.");
         }
 
         private void Debriefed(Mission mission, MissionReply reply)
