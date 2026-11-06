@@ -62,6 +62,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (transfer_to): arms the Encounter Watch for a wait with TRANSFERSTEP's watch; an empty lexicon watches nothing"));
             AddSuffix("ENCOUNTERWATCHDROPPED", new Suffix<BooleanValue>(EncounterWatchPoll,
                 "Core Library only (transfer_to, each tick of a wait): the Encounter Watch's check when one is due; whether the wait should end early"));
+            AddSuffix("LANDINGTARGET", new OneArgsSuffix<Lexicon, Lexicon>(LandingTargetCall,
+                "What a return's or deorbit's \"auto\" target stands for: ksc or none (#790). Internal to the Core Library."));
             AddSuffix("RETURNBURN", new OneArgsSuffix<Lexicon, Lexicon>(ReturnBurn,
                 "Core Library only (return): the least burn from earliest_ut to latest_ut (one orbit later if missing) that leaves the moon orbited for its planet at target_pe and, if given, target_inc; lexicon error, planet, ut, prograde, normal, radial, dv, pe_predicted, inc_predicted, soi_ut, from_grid, finished_by"));
             AddSuffix("RETURNMISS", new OneArgsSuffix<Lexicon, Lexicon>(ReturnMissCall,
@@ -340,6 +342,17 @@ namespace ClaudiaKerman.KOS
                     (bool)set["powered_finish"] ? ", powered finish" : "",
                     (double)set["touchdown_speed"] >= 0 ? string.Format(CultureInfo.InvariantCulture, ", {0:0.0} m/s", set["touchdown_speed"]) : "")
                 : (string)set["error"]);
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:LANDINGTARGET</c> (#790, ADR 0014): the landing target default (<see cref="BlockCalls.LandingTarget"/>).</summary>
+        private Lexicon LandingTargetCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> found = null;
+            return (Lexicon)Guarded("LANDINGTARGET", () =>
+            {
+                found = BlockCalls.LandingTarget(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
+                return KosValues.FromPlain(found);
+            }, () => "auto target: " + found["target"]);
         }
 
         private Lexicon ReturnBurn(Lexicon input)

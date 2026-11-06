@@ -52,7 +52,7 @@ namespace ClaudiaKerman.Core.Tools
     /// max_wait is taken, its least burn solved, and the secant method with the predictor in the loop moves the burn's time along
     /// the track (within <see cref="ReachS"/>), each try re-solved for target_pe, so the periapsis is held and the correction
     /// halfway has only what the burn left. Across the track there is no cheap lever: the path's plane holds the moon, so an inclined
-    /// moon's latitude stays in the landing (Minmus: up to about 60 km, at about 0.65 km per m/s of normal burn), and <see cref="ReturnPlan.ErrorKm"/> says so. It only reads.
+    /// moon's latitude stays in the landing (Minmus: up to about 60 km, at about 0.65 km per m/s of normal burn), and <see cref="ReturnPlan.ErrorKm"/> says so; the Course Correction takes that out when the delta-v covers it (#790). It only reads.
     /// </summary>
     internal static class ReturnAim
     {

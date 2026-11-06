@@ -2337,6 +2337,15 @@ function claudia_target_site {
   return site.
 }
 
+// What a return's or deorbit's target stands for: "auto" is the mod's to read (#790), and any other stands.
+function claudia_landing_target {
+  parameter target_opt, ask.
+  if target_opt:istype("String") and target_opt = "auto" {
+    return addons:claudia:landingtarget(ask):target.
+  }
+  return target_opt.
+}
+
 // A predicted landing (a block call's result with lat and lng) as a block reports it.
 function claudia_geo {
   parameter landing.

@@ -450,6 +450,19 @@ namespace ClaudiaKerman.Core.Missions
             }
         }
 
+        /// <summary>The speed at the ground of a craft of this mass with no chutes, m/s, from a low entry on <paramref name="body"/>, by the predictor, for the reserve (#790); 0 when it can't say.</summary>
+        internal static double TouchdownWithoutChutes(SnapshotBody body, double massKg)
+        {
+            if (body.Gm <= 0 || body.Radius <= 0 || body.AtmosphereHeight <= 0 || massKg <= 0) return 0;
+            var top = body.Radius + body.AtmosphereHeight;
+            var apo = top + Math.Max(5000, 0.1 * body.AtmosphereHeight);
+            var peri = body.Radius + 0.3 * body.AtmosphereHeight;
+            var orbit = Conic.FromElements(body.Gm, (apo + peri) / 2, (apo - peri) / (apo + peri), 0, 0, 0, Math.PI, 0);
+            var frame = new BodyFrame { LonOffset = 0, Handed = 1, Ut = 0, RotationPeriod = body.RotationPeriod };
+            var prediction = ReentryPredictor.Predict(body, orbit, 0, EndAltitudeOf(body), massKg, new SnapshotAir(body), new FallingCraft(massKg, new ReentryChute[0]), frame);
+            return prediction.Error == null ? prediction.LandingSpeed : 0;
+        }
+
         /// <summary>The entry's craft for the predictor: its mass, <see cref="BodyDragArea"/>, no lift, its chutes, the heat shield kept.</summary>
         internal sealed class FallingCraft : IReentryCraft
         {

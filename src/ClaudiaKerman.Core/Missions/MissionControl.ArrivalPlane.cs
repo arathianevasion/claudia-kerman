@@ -14,6 +14,8 @@ namespace ClaudiaKerman.Core.Missions
         {
             /// <summary>The plane <c>transfer_to</c> aimed for, as <see cref="TransferFlightStep.AimedPlane"/> gives it, for <c>capture</c>; "" for none.</summary>
             public string ArrivalPlane = "";
+            /// <summary>What the block that aimed the landing predicted (<see cref="LandingLine.Record"/>), for the reentry that may come in a later run (#790).</summary>
+            public string LandingAim = "";
             /// <summary><c>find_landing_site</c>'s first site in its last answer; null for none.</summary>
             public PickedSite PickedSite;
         }

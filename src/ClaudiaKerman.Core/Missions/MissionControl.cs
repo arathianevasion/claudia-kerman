@@ -560,6 +560,7 @@ namespace ClaudiaKerman.Core.Missions
             {
                 // A planet's plan_transfer row picks its Transfer Window by the player's pick or the Mission Setting, as a tool call would (#458, #686).
                 _snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
+                _snapshot.MissionGoal = goal;
             }
             return MissionPrompts.StageTable(_snapshot, goal, mission.PlannedAscent) + MissionPrompts.DeltaVMapLine(_snapshot, goal) + MissionPrompts.PadPlanning(_snapshot);
         }
@@ -1769,6 +1770,13 @@ namespace ClaudiaKerman.Core.Missions
             findings.StartDeltaV = start ?? 0;
             findings.Crossings = PredictedCrossings.Find(plan.TelemetryChecks, plan.ExpectedDeltaV, start);
             findings.ShortDuration = BurnPoints.ShortOf(plan, snapshot, _ut, _body);
+            if (findings.ShortDuration != null && findings.ShortDuration.DefaultAim)
+            {
+                // The wait is the landing target default's (#790): covered here, with no second request and no prompt text about it.
+                plan.ExpectedDurationSeconds = findings.ShortDuration.MinimumDurationSeconds;
+                findings.ExpectedDurationSeconds = plan.ExpectedDurationSeconds;
+                findings.ShortDuration = null;
+            }
             return findings;
         }
 

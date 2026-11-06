@@ -221,9 +221,17 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Fact]
-        public void Return_takes_no_target_by_default()
+        public void An_explicit_target_stands_and_auto_alone_goes_to_the_mod()
         {
-            Assert.Equal("none|False", One("claudia_options(lexicon(), return_defaults(), \"auto\"):opt:target + \"|\" + return_aims(claudia_options(lexicon(), return_defaults(), \"auto\"):opt)"));
+            Assert.Equal("ksc", One("claudia_landing_target(\"ksc\", lexicon())"));
+            Assert.Equal("none", One("claudia_landing_target(\"none\", lexicon())"));
+            Assert.Equal("3", One("claudia_landing_target(lexicon(\"lat\", 3, \"lng\", 4), lexicon()):lat"));
+        }
+
+        [Fact]
+        public void Return_reads_its_target_as_auto_by_default()
+        {
+            Assert.Equal("auto|False", One("claudia_options(lexicon(), return_defaults(), \"auto\"):opt:target + \"|\" + return_aims(claudia_options(lexicon(), return_defaults(), \"auto\"):opt)"));
         }
 
         [Theory]

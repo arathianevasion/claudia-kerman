@@ -437,6 +437,21 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
+        /// <c>ADDONS:CLAUDIA:LANDINGTARGET</c>, for a <c>return</c> or <c>deorbit</c> whose target is "auto" (#790): <c>target</c> "ksc" or "none" (<see cref="HomeLanding.DefaultTarget"/>), from <c>planet</c> and, for a return,
+        /// <c>target_pe</c> (m), <c>target_inc</c> (degrees; "any" or missing for none) and <c>window</c> (UT; "next" or missing for none).
+        /// </summary>
+        public static IDictionary<string, object> LandingTarget(IDictionary<string, object> input, GameSnapshot snapshot)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            object planet;
+            ask.TryGetValue("planet", out planet);
+            return new Dictionary<string, object>
+            {
+                { "target", HomeLanding.DefaultTarget(snapshot, new LandingTargetAsk { Planet = planet as string ?? "", TargetPe = NumberOrNull(ask, "target_pe"), TargetInc = NumberOrNull(ask, "target_inc"), Window = NumberOrNull(ask, "window") }) },
+            };
+        }
+
+        /// <summary>
         /// <c>ADDONS:CLAUDIA:REENTRYIMPACT</c>, for <c>deorbit</c> once it has burned: where the craft's orbit as it is now comes
         /// down, by the reentry predictor. Takes <c>ground_alt</c> (m) and, for the distance, <c>lat</c> and <c>lng</c>. Given
         /// <c>orbit_sma</c>, <c>orbit_ecc</c>, <c>orbit_inc</c>, <c>orbit_lan</c>, <c>orbit_argpe</c>, <c>orbit_mna</c> (degrees, as kOS
@@ -877,7 +892,8 @@ namespace ClaudiaKerman.Core.Tools
         /// tolerances gives its <c>error</c> with the rest; a solve that could not start, only <c>error</c>, "found no correction: &lt;why&gt;".
         /// Given <c>lat</c> and <c>lng</c> (#793), in place of target_inc, the burn also moves the landing toward them with the periapsis held, by the reentry
         /// predictor with <paramref name="body"/>, <paramref name="air"/> (the target's) and <paramref name="craft"/>; <c>ground_alt</c> (m) and <c>isp</c> (s) are as for
-        /// <see cref="ReturnBurn"/>, and <c>dv_left</c> (m/s; negative or missing for unknown) limits what it adds for the landing. It adds <c>lat</c>, <c>lng</c>, <c>landing_ut</c> and
+        /// <see cref="ReturnBurn"/>, and <c>dv_left</c> (m/s; negative or missing for unknown) limits what it adds for the landing. A miss across the track over 5 km is taken out too
+        /// when the delta-v left less the reserve covers the burn (#790), else accepted: <c>cross_fix</c> "flown", "accepted" or "", <c>cross_dv</c> (the fix's m/s) and <c>aim_note</c> (the same in words). It adds <c>lat</c>, <c>lng</c>, <c>landing_ut</c> and
         /// <c>error_km</c>, the remainder it couldn't reach, when the predictor can say.
         /// <para>
         /// To the Target Vessel (#454), the two goals the <c>rendezvous</c> block re-solves at fly time: <c>target_distance</c> (m)
@@ -936,6 +952,9 @@ namespace ClaudiaKerman.Core.Tools
             };
             if (plan.Landing != null)
                 foreach (var key in Landing(plan.Landing, plan.ErrorKm)) result[key.Key] = key.Value;
+            result["cross_fix"] = plan.CrossFix;
+            result["cross_dv"] = plan.CrossDv;
+            result["aim_note"] = plan.AimNote;
             return result;
         }
 

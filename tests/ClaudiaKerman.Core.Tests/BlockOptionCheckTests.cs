@@ -115,7 +115,6 @@ namespace ClaudiaKerman.Core.Tests
             {
                 { "change_orbit", "goal" },
                 { "coast", "until" },
-                { "deorbit", "target" },
                 { "drop_parts", "parts" },
                 { "transfer_to", "target,target_pe" },
                 { "tune_pe", "value" },

@@ -163,16 +163,16 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(D(node, "error_km"), left - 0.01, left + 0.01);
         }
 
-        /// <summary>The craft's delta-v left limits the burn below its most.</summary>
+        /// <summary>The craft's delta-v left limits the burn below its most: with no more than the reserve (#790), nothing is spent on the landing.</summary>
         [Fact]
-        public void The_burn_stays_within_the_delta_v_left()
+        public void The_burn_keeps_the_reserve()
         {
             var snapshot = Falling();
             double lat, lng;
             Natural(snapshot, out lat, out lng);
             var node = Aim(snapshot, lat, lng + 500 / KmPerDeg, 300, 10);
             Assert.Equal("", node["error"]);
-            Assert.InRange(D(node, "dv"), 7, 10);
+            Assert.InRange(D(node, "dv"), 0, 3);
             Assert.True(D(node, "error_km") > 300);
         }
 

@@ -8,8 +8,8 @@
 
 //| return(options): flies home from orbit around any moon to its planet: an ejection
 //| burn onto a path whose periapsis at the planet is target_pe, then a mid-course correction halfway to
-//| reentry, both flown with exec_node. It ends after the correction, still in space; the craft comes
-//| down anywhere on the planet. Call it as a value, `local res is return().`: a bare `return().` is kOS's
+//| reentry, both flown with exec_node. It ends after the correction, still in space.
+//| Call it as a value, `local res is return().`: a bare `return().` is kOS's
 //| own return statement.
 //| Options:
 //|   target_pe [35000; 30000 with a target]: the periapsis altitude at the planet to aim for, m; inside its atmosphere the
@@ -17,8 +17,8 @@
 //|   target_inc ["any"]: the inclination round the planet to arrive at, degrees from 0 to 180; "any" for none.
 //|   window ["next"]: "next" ejects at the burn point's next pass once the craft can have turned to the
 //|     burn; a time (UT seconds) ejects at its first pass from that time. It
-//|     warps on rails to the pass.
-//|   target ["none"]: LATLNG(lat, lng), lexicon("lat", x, "lng", y) or "ksc": where to come down. The
+//|     warps to the pass.
+//|   target ["auto"]: LATLNG(lat, lng), lexicon("lat", x, "lng", y), "ksc" or "none": where to come down; auto: KSC at home unless the goal names one. The
 //|     ejection picks the window and times its burn to land there (about 1 m/s more); the correction
 //|     trims the rest, without target_inc. Read predicted_error_km; when too far for the Mission Goal,
 //|     capture and call deorbit. Aim a splashdown offshore.
@@ -32,10 +32,10 @@
 //| mid-course correction burned), predicted_geo (lexicon lat, lng: where the craft is predicted to come
 //| down, from the path it is on after the correction, with the prediction leaving out parachutes and
 //| lift; empty without a target or a prediction), predicted_error_km (km from the target to
-//| predicted_geo; -1 without one), aim_dv (m/s) and aim_spread_km (km per 0.5 m/s of burn error).
+//| predicted_geo; -1 without one), aim_dv (m/s), aim_note and aim_spread_km (km per 0.5 m/s of burn error).
 //| The correction is skipped when the prediction is already within 1 km of target_pe and 0.5 degrees of
 //| target_inc (with a target: within 2 km of it) or the fix is under 0.1 m/s. When leaving the moon's
-//| sphere of influence comes before halfway, the block warps through that first.
+//| sphere of influence comes before halfway, it warps through that first.
 //| Fails with an option value it can't read, "not in orbit", "already orbiting <body>, a planet: lower
 //| the periapsis with exec_node instead", "return starts from orbit around a moon, not <body>", "a
 //| maneuver node is already planned: remove it first", "found no return: <why>", "found no correction:
@@ -50,13 +50,13 @@
 
 // The block's own options and defaults.
 function return_defaults {
-  return lexicon("target_pe", 35000, "target_inc", "any", "window", "next", "correction", true, "target", "none", "max_wait", "auto", "checkpoint", "off").
+  return lexicon("target_pe", 35000, "target_inc", "any", "window", "next", "correction", true, "target", "auto", "max_wait", "auto", "checkpoint", "off").
 }
 
-// Whether the Mission Script gave a landing target.
+// Whether the block has a landing target: one given, or "auto" once the mod has read it.
 function return_aims {
   parameter opt.
-  return not (opt:target:istype("String") and opt:target = "none").
+  return not (opt:target:istype("String") and (opt:target = "none" or opt:target = "auto")).
 }
 
 // What return asks REENTRYIMPACT: where orb, from from_ut, comes down, and how far from site whose ground is ground_alt m. Pure.
@@ -179,7 +179,7 @@ function return_aimed_ask {
 
 function return {
   parameter options is lexicon().
-  local extra is lexicon("planet_pe", -1, "reentry_ut", -1, "correction_dv", 0, "predicted_geo", lexicon(), "predicted_error_km", -1, "aim_dv", 0, "aim_spread_km", -1).
+  local extra is lexicon("planet_pe", -1, "reentry_ut", -1, "correction_dv", 0, "predicted_geo", lexicon(), "predicted_error_km", -1, "aim_dv", 0, "aim_spread_km", -1, "aim_note", "").
   local ctx is claudia_begin("return", options, return_defaults(), "auto").
   if ctx:error <> "" {
     return claudia_finish(ctx, false, ctx:error, extra).
@@ -207,6 +207,7 @@ function return {
     return claudia_finish(ctx, false, "a maneuver node is already planned: remove it first", extra).
   }
 
+  set opt:target to claudia_landing_target(opt:target, lexicon("planet", planet:name, "target_pe", opt:target_pe, "target_inc", opt:target_inc, "window", opt:window)).
   // With a target, the mod's reentry prediction says where a path comes down, for a path the craft may not be on yet (ADR 0007).
   local predict is 0.
   local burn_ask is lexicon().
@@ -314,8 +315,9 @@ function return {
       }
       // The Course Correction is the mod's solver, a block-internal call (ADR 0007), so it sits in the block.
       if return_aims(opt) {
-        set fixed to claudia_fly_correction(ctx, addons:claudia:correctionburn(
-          return_aimed_ask(claudia_correction_ask(planet:name, opt:target_pe, when:ut), burn_ask, claudia_engine_isp(), claudia_dv_remaining()))).
+        local aimed is addons:claudia:correctionburn(return_aimed_ask(claudia_correction_ask(planet:name, opt:target_pe, when:ut), burn_ask, claudia_engine_isp(), claudia_dv_remaining())).
+        if aimed:haskey("aim_note") { set extra:aim_note to aimed:aim_note. }
+        set fixed to claudia_fly_correction(ctx, aimed).
       } else {
         set fixed to claudia_fly_correction(ctx, addons:claudia:correctionburn(
           return_with_inc(claudia_correction_ask(planet:name, opt:target_pe, when:ut), opt:target_inc))).

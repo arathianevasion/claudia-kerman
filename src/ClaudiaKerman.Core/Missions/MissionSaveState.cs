@@ -142,6 +142,7 @@ namespace ClaudiaKerman.Core.Missions
         public string PlannedAscent = "";
         /// <summary>The arrival plane <c>transfer_to</c> recorded for <c>capture</c>, and the last site <c>find_landing_site</c> gave (#788).</summary>
         public string ArrivalPlane = "";
+        public string LandingAim = "";
         public Tools.PickedSite PickedSite;
         public MissionPlan MissionPlan;
         /// <summary>The current Sequence Plan: the one awaiting Approval, running, or just run.</summary>
@@ -223,6 +224,7 @@ namespace ClaudiaKerman.Core.Missions
             if (PlannedTurnShape.HasValue) values["plannedTurnShape"] = PlannedTurnShape.Value.ToString("R", CultureInfo.InvariantCulture);
             if (PlannedAscent.Length > 0) values["plannedAscent"] = PlannedAscent;
             if (ArrivalPlane.Length > 0) values["arrivalPlane"] = ArrivalPlane;
+            if (LandingAim.Length > 0) values["landingAim"] = LandingAim;
             if (PickedSite != null)
             {
                 values["pickedSiteBody"] = PickedSite.Body;
@@ -301,6 +303,7 @@ namespace ClaudiaKerman.Core.Missions
                 SafePending = Get(values, "safePending"),
                 PlannedAscent = Get(values, "plannedAscent"),
                 ArrivalPlane = Get(values, "arrivalPlane"),
+                LandingAim = Get(values, "landingAim"),
                 PickedSite = ReadSite(Get(values, "pickedSiteBody"), Get(values, "pickedSiteLatitude")),
                 WindowPick = Get(values, "windowPickBody").Length == 0 ? WindowPick.None
                     : new WindowPick(Get(values, "windowPickBody"), Get(values, "windowPickKind") == WindowKind.Optimal.ToString() ? WindowKind.Optimal : WindowKind.Soonest),

@@ -451,9 +451,9 @@ namespace ClaudiaKerman.Core.Missions
                 snapshot.StampMission(view.Settings.TimeVersusDeltaV, view.MarginPercent, view.WindowPick);
                 // What the arrival plane reads (#788): the legs from the one in hand on, the site picked, and what transfer_to recorded for capture.
                 snapshot.LegsAhead = view.PlanLegs != null ? System.Linq.Enumerable.ToList(System.Linq.Enumerable.Skip(view.PlanLegs, System.Math.Max(0, view.CurrentSequence))) : null;
-                snapshot.MissionGoal = view.Goal;
                 snapshot.PickedSite = view.PickedSite;
                 snapshot.RecordedPlane = view.ArrivalPlane;
+                snapshot.MissionGoal = view.Goal;
             }
             return snapshot;
         }

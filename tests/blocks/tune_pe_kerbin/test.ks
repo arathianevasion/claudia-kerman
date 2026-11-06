@@ -11,7 +11,7 @@
 
 wait until ship:unpacked.
 // Called as a value: a bare return(). would be kOS's return statement.
-local result is return(lexicon("stage_limit", 2)).
+local result is return(lexicon("target", "none", "stage_limit", 2)).
 if result:success {
   local tuned is tune_pe(lexicon("value", 45000, "patch", "current", "stage_limit", 2)).
   print "tune_pe test: success " + tuned:success + ", Kerbin pe " + tuned:pe_actual + " m, burn at " + tuned:burn_ut + ", dv " + tuned:dv_used + ", " + tuned:reason.

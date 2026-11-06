@@ -13,12 +13,12 @@
 @lazyglobal off.
 
 //| deorbit(options): from orbit round a body with an atmosphere (Kerbin, Eve, Duna...), burns
-//| once to bring the craft down near a target, e.g. KSC. It chooses the burn itself with the mod's
+//| once to bring the craft down near a target. It chooses the burn itself with the mod's
 //| reentry predictor (the craft's own drag, held retrograde as reentry flies it) and flies it with
 //| exec_node; it fails rather than burn when no burn in max_wait lands within accuracy_km. It does
 //| not fly the descent: call reentry next.
 //| Options:
-//|   target [required]: LATLNG(lat, lng), lexicon("lat", x, "lng", y), or "ksc" (Kerbin only). Aim a
+//|   target ["auto"]: LATLNG(lat, lng), lexicon("lat", x, "lng", y), or "ksc" (auto at Kerbin). Aim a
 //|     splashdown offshore of a coast, so a miss lands in the water.
 //|   max_wait ["auto"]: s the burn may wait; "auto" is one turn of the body (about 6 h at Kerbin). The
 //|     burn is at least 4 minutes ahead. Give expected_duration_s that wait.
@@ -53,7 +53,7 @@
 
 // The block's own options and defaults ("required" means the Mission Script must give it).
 function deorbit_defaults {
-  return lexicon("target", "required", "max_wait", "auto", "accuracy_km", 5, "separate", "none", "max_dv", "auto").
+  return lexicon("target", "auto", "max_wait", "auto", "accuracy_km", 5, "separate", "none", "max_dv", "auto").
 }
 
 // "" or why a separate option value isn't one the block can use: "none", a whole stage number from
@@ -108,11 +108,6 @@ function deorbit_after_burn {
   return "".
 }
 
-// The launch pad at KSC, on Kerbin.
-function deorbit_ksc {
-  return claudia_ksc().
-}
-
 // How far ahead the burn is at the soonest, s: time to warp out, turn and lead the burn.
 function deorbit_lead_s {
   return 240.
@@ -158,12 +153,6 @@ function deorbit_body_problem {
   return "".
 }
 
-// The target as lexicon("error", "" or why not, "lat", deg, "lng", deg) on the body named body_name.
-function deorbit_site {
-  parameter target_opt, body_name.
-  return claudia_target_site(target_opt, body_name).
-}
-
 // max_wait in seconds: opt_value, or one turn of the body (rotation_period s) for "auto".
 function deorbit_max_wait {
   parameter opt_value, rotation_period.
@@ -188,12 +177,6 @@ function deorbit_query {
     "max_dv", max_dv, "dv_left", dv_left).
 }
 
-// A predicted landing (a block call's result with lat and lng) as the block reports it.
-function deorbit_geo {
-  parameter landing.
-  return claudia_geo(landing).
-}
-
 function deorbit {
   parameter options is lexicon().
   local extra is lexicon("burn_ut", -1, "predicted_geo", lexicon(), "predicted_error_km", -1).
@@ -202,6 +185,8 @@ function deorbit {
     return claudia_finish(ctx, false, ctx:error, extra).
   }
   local opt is ctx:opt.
+  set opt:target to claudia_landing_target(opt:target, lexicon("planet", body:name)).
+  set opt:target to choose "required" if opt:target:istype("String") and opt:target = "none" else opt:target.
   local unreadable is deorbit_unreadable(opt).
   if unreadable <> "" {
     return claudia_finish(ctx, false, unreadable, extra).
@@ -210,7 +195,7 @@ function deorbit {
   if problem <> "" {
     return claudia_finish(ctx, false, problem, extra).
   }
-  local site is deorbit_site(opt:target, body:name).
+  local site is claudia_target_site(opt:target, body:name).
   if site:error <> "" {
     return claudia_finish(ctx, false, site:error, extra).
   }
@@ -235,7 +220,7 @@ function deorbit {
   ship:deltav:forcecalc(). wait 0.5. // Stock recounts first: after a staging or a load it reads 0. The search is a block-internal call (ADR 0007): inline here.
   local found is addons:claudia:deorbitburn(deorbit_query(site, time:seconds + deorbit_lead_s(), max_wait, ground_alt, opt:accuracy_km, claudia_engine_isp(), claudia_drop_uids(separation), claudia_shield_drop(ship:parts, claudia_drop_uids(separation)), opt:max_dv, ship:deltav:current)).
   if found:haskey("lat") {
-    set extra:predicted_geo to deorbit_geo(found).
+    set extra:predicted_geo to claudia_geo(found).
     set extra:predicted_error_km to round(found:error_km, 2).
   }
   if found:error <> "" {
@@ -267,7 +252,7 @@ function deorbit {
   // Where the orbit actually flown comes down, with the craft as it is now: the burn's own error moves it.
   local after is addons:claudia:reentryimpact(lexicon("lat", site:lat, "lng", site:lng, "ground_alt", max(0, ground_alt), "shield_drop", claudia_shield_drop(ship:parts, claudia_drop_uids(separation)))).
   if after:error = "" {
-    set extra:predicted_geo to deorbit_geo(after).
+    set extra:predicted_geo to claudia_geo(after).
     set extra:predicted_error_km to round(after:error_km, 2).
   }
   if separate_failed <> "" {

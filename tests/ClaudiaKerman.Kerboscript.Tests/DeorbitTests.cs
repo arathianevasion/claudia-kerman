@@ -27,7 +27,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [Fact]
         public void The_options_take_the_spec_defaults()
         {
-            Assert.Equal("required|auto|5|none|auto|auto", One("deorbit_defaults():values:join(\"|\") + \"|\" + claudia_options(lexicon(), deorbit_defaults(), \"auto\"):opt:max_duration"));
+            Assert.Equal("auto|auto|5|none|auto|auto", One("deorbit_defaults():values:join(\"|\") + \"|\" + claudia_options(lexicon(), deorbit_defaults(), \"auto\"):opt:max_duration"));
         }
 
         [Theory]
@@ -46,7 +46,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Theory]
-        [InlineData("lexicon()", "target is required")]
+        [InlineData("lexicon(\"target\", \"required\")", "target is required")]
         [InlineData("lexicon(\"target\", \"kerbin\")", "target must be LATLNG(lat, lng), lexicon(\"lat\", x, \"lng\", y) or \"ksc\", not 'kerbin'")]
         [InlineData("lexicon(\"target\", lexicon(\"lat\", 1))", "target must be LATLNG(lat, lng), lexicon(\"lat\", x, \"lng\", y) or \"ksc\", not a lexicon without lat and lng")]
         [InlineData("lexicon(\"target\", lexicon(\"lat\", 1, \"lng\", \"east\"))", "target must be LATLNG(lat, lng), lexicon(\"lat\", x, \"lng\", y) or \"ksc\", not a lexicon whose lat and lng aren't numbers")]
@@ -96,19 +96,19 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [Fact]
         public void Ksc_is_the_launch_pad_on_Kerbin()
         {
-            Assert.Equal("|-0.0972|-74.5577", One("deorbit_site(\"ksc\", \"Kerbin\"):values:join(\"|\")"));
+            Assert.Equal("|-0.0972|-74.5577", One("claudia_target_site(\"ksc\", \"Kerbin\"):values:join(\"|\")"));
         }
 
         [Fact]
         public void Ksc_round_another_body_fails()
         {
-            Assert.Equal("ksc is on Kerbin, and the craft orbits Eve: give a LATLNG there", One("deorbit_site(\"ksc\", \"Eve\"):error"));
+            Assert.Equal("ksc is on Kerbin, and the craft orbits Eve: give a LATLNG there", One("claudia_target_site(\"ksc\", \"Eve\"):error"));
         }
 
         [Fact]
         public void A_lat_lng_lexicon_is_the_site()
         {
-            Assert.Equal("|12.5|-30", One("deorbit_site(lexicon(\"lat\", 12.5, \"lng\", -30), \"Duna\"):values:join(\"|\")"));
+            Assert.Equal("|12.5|-30", One("claudia_target_site(lexicon(\"lat\", 12.5, \"lng\", -30), \"Duna\"):values:join(\"|\")"));
         }
 
         [Fact]
@@ -159,7 +159,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [Fact]
         public void The_predicted_landing_is_reported_to_four_places()
         {
-            Assert.Equal("-0.0972|-74.5577", One("deorbit_geo(lexicon(\"error\", \"\", \"lat\", -0.097213, \"lng\", -74.557712)):values:join(\"|\")"));
+            Assert.Equal("-0.0972|-74.5577", One("claudia_geo(lexicon(\"error\", \"\", \"lat\", -0.097213, \"lng\", -74.557712)):values:join(\"|\")"));
         }
 
         [Theory]

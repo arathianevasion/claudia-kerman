@@ -74,6 +74,12 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>For a correction aimed at a landing: where the burn comes down, null without a prediction, and km from the target to there (-1 without one).</summary>
         public ReentryPrediction Landing;
         public double ErrorKm = -1;
+        /// <summary>With a miss across the track and the delta-v left known (#790): <see cref="CorrectionBurn.FixFlown"/>, <see cref="CorrectionBurn.MissAccepted"/>; "" with nothing to fix.</summary>
+        public string CrossFix = "";
+        /// <summary>m/s of the fix's whole burn: flown, or what it would have cost.</summary>
+        public double CrossDv;
+        /// <summary>The fix in words, for the Debrief's landing line; "" with nothing to fix.</summary>
+        public string AimNote = "";
         public int Iterations;
         public int Evaluations;
     }
