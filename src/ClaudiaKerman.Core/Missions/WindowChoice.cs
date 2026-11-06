@@ -143,6 +143,26 @@ namespace ClaudiaKerman.Core.Missions
             return null;
         }
 
+        /// <summary>
+        /// #784: whether the Maneuver Sequences still to fly (<paramref name="rest"/>) need the player's pick, read from the legs
+        /// <see cref="PlanLegs"/> matches and not from the Mission Goal's words. They do when one is matched to a transfer or return
+        /// leg, or to a launch or ascent (the departure chain of #782). Any sequence this craft still flies that matches no leg is
+        /// asked about too: a guess from a name never skips the player. Sequences listed as flown, and a Child Vessel's, are not the
+        /// craft's to fly.
+        /// </summary>
+        internal static bool LegsAsk(GameSnapshot snapshot, IList<PlannedSequence> rest, string plannedAscent)
+        {
+            foreach (var leg in PlanLegs.Judge(snapshot, rest, plannedAscent))
+            {
+                if (PlanLegs.IsFlown(leg.Sequence) || !MissionCards.FliesCraft(snapshot.Craft.Name, leg.Sequence.Vessel)) continue;
+                if (!leg.Matched) return true;
+                foreach (var id in leg.Legs.Split(new[] { " + " }, StringSplitOptions.None))
+                    if (id.StartsWith("transfer:", StringComparison.Ordinal) || id.StartsWith("return:", StringComparison.Ordinal)
+                        || id.StartsWith("launch:", StringComparison.Ordinal) || id.StartsWith("ascend:", StringComparison.Ordinal)) return true;
+            }
+            return false;
+        }
+
         /// <summary>What the offer depends on, so it is worked out again only when one of these moves: one search per change, not per frame.</summary>
         internal static string Key(GameSnapshot snapshot, string goal, int marginPercent, double now)
         {

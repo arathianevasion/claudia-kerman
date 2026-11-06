@@ -78,7 +78,9 @@ namespace ClaudiaKerman.Core.Missions
                 return;
             }
             var offer = OfferFor(PlanGoal(mission), snapshot);
-            mission.WindowPickNeeded = offer.Needed && !(first && !WindowChoice.Held(mission.WindowPick, offer).IsNone);
+            mission.WindowPickNeeded = offer.Needed && !(first && !WindowChoice.Held(mission.WindowPick, offer).IsNone)
+                // #784: a revised plan asks only for a transfer its remaining legs still fly.
+                && (first || WindowChoice.LegsAsk(snapshot, RestOfPlan(mission), mission.PlannedAscent));
         }
 
         /// <summary>The Mission Plan in hand can't be approved yet: it waits for the player's pick, under Auto Mode too.</summary>
