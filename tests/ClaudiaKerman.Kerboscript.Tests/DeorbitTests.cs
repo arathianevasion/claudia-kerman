@@ -122,20 +122,20 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void The_burn_search_is_asked_for_the_site_window_ground_accuracy_and_isp()
         {
             var printed = KosHarness.Run(CoreLibrary.Bundle(
-                "local q is deorbit_query(lexicon(\"lat\", -0.0972, \"lng\", -74.5577), 1240, 21549.425, -150, 10, 320, list(), list(), \"auto\", 545).\n"
-                + "print q:lat. print q:lng. print q:earliest_ut. print q:max_wait. print q:ground_alt. print q:accuracy_km. print q:isp. print q:leave_out:length. print q:max_dv. print q:dv_left.")).ToArray();
+                "local q is deorbit_query(lexicon(\"lat\", -0.0972, \"lng\", -74.5577), 1240, 21549.425, -150, 10, 320, lexicon(\"leave_out\", list()), \"auto\", 545).\n"
+                + "print q:lat. print q:lng. print q:earliest_ut. print q:max_wait. print q:ground_alt. print q:accuracy_km. print q:isp. print q:craft:leave_out:length. print q:max_dv. print q:dv_left.")).ToArray();
             // Water's ground is the sea, not the sea bed.
             Assert.Equal(new[] { "-0.0972", "-74.5577", "1240", "21549.425", "0", "10", "320", "0", "auto", "545" }, printed);
         }
 
         [Fact]
-        public void Parts_to_separate_are_left_out_of_the_burn_search_and_the_burn_does_not_lighten_what_stays()
+        public void The_burn_search_gets_the_Entrys_craft_as_read_and_the_isp_whatever_is_dropped()
         {
             var printed = KosHarness.Run(CoreLibrary.Bundle(
-                "local q is deorbit_query(lexicon(\"lat\", 0, \"lng\", 0), 1240, 3600, 0, 10, 320, list(\"11\", \"12\"), list(), 90, 0).\n"
-                + "print q:leave_out:join(\",\"). print q:isp.")).ToArray();
-            // The burn's propellant is in the stage it drops: the craft that re-enters weighs what it does now.
-            Assert.Equal(new[] { "11,12", "0" }, printed);
+                "local q is deorbit_query(lexicon(\"lat\", 0, \"lng\", 0), 1240, 3600, 0, 10, 320, lexicon(\"leave_out\", list(\"11\", \"12\")), 90, 0).\n"
+                + "print q:craft:leave_out:join(\",\"). print q:isp.")).ToArray();
+            // #854: who pays the burn is Core's (DropGuard's rule, DeorbitBurnTests), so a kept burner's isp is no longer dropped here.
+            Assert.Equal(new[] { "11,12", "320" }, printed);
         }
 
         // ---- after the burn ----
@@ -237,12 +237,16 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(new[] { "0" }, Printed(Two + "print claudia_shield_drop(parts, list(), list()):length."));
         }
 
+        /// <summary>#814: one ENTRYCRAFT read at block start, with separate's parts, carried by the burn search and the check after the burn; no entrydrop or shield read of its own.</summary>
         [Fact]
-        public void The_burn_search_and_the_after_burn_ask_both_carry_shield_drop()
+        public void The_burn_search_and_the_after_burn_ask_both_carry_the_one_craft_read()
         {
-            Assert.Equal(new[] { "shield" }, Printed("print deorbit_query(lexicon(\"lat\", 0, \"lng\", 0), 1240, 3600, 0, 10, 320, list(), list(\"shield\"), 90, 0):shield_drop:join(\",\")."));
             var source = CoreLibrary.Files.Single(f => f.Name == "deorbit").Source;
-            Assert.Equal(2, source.Split("claudia_shield_drop(ship:parts, claudia_drop_uids(separation), reentry_shield_modules(entry:shield, ship:parts))").Length - 1);
+            Assert.Equal(1, source.Split("addons:claudia:entrycraft(lexicon(\"home\", reentry_home_uid(), \"leave_out\", claudia_drop_uids(separation)))").Length - 1);
+            Assert.Contains("claudia_engine_isp(), craft, opt:max_dv", source);
+            Assert.Contains("\"ground_alt\", max(0, ground_alt), \"craft\", craft))", source);
+            Assert.DoesNotContain("entrydrop", source);
+            Assert.DoesNotContain("claudia_shield_drop", source);
         }
     }
 }

@@ -78,7 +78,8 @@ namespace ClaudiaKerman.Core.Tools
             return string.IsNullOrEmpty(body.Parent) ? null : Find(body.Parent);
         }
 
-        private IEnumerable<SnapshotBody> Children(SnapshotBody body)
+        /// <summary>The bodies with a sphere of influence that orbit <paramref name="body"/>: its moons, or the star's planets.</summary>
+        internal IEnumerable<SnapshotBody> Children(SnapshotBody body)
         {
             return _bodies.Where(b => string.Equals(b.Parent, body.Name, StringComparison.OrdinalIgnoreCase) && b.SoiRadius > 0 && b.Sma > 0);
         }

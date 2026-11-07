@@ -135,6 +135,50 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("3,200 m/s left against 1,000 m/s to fly: plenty.", request);
         }
 
+        /// <summary>#867: a run that leaves the craft in an orbit crossing a moon (908b's, round Duna): the Debrief's request and card carry the fact, the rating Claudia's.</summary>
+        [Fact]
+        public void TheDebriefAfterARunEndingInAnOrbitThatCrossesAMoonCarriesTheFact()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning();
+            var duna = MoonCrossingTests.DunaOrbit(ut: OnPad().Ut);
+            rig.Mission.Send(Craft(s =>
+            {
+                s.Situation = "ORBITING";
+                s.Body = "Duna";
+                s.Orbit = TransferRig.Elements(duna.Orbit, duna.Body);
+                s.Bodies = duna.Bodies;
+            }));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            var request = LastUserText(rig.Transport.Requests[2]);
+            Assert.Contains("orbit crosses a moon: The orbit round Duna crosses Ike's sphere of influence (from 1,734 km up)", request);
+            Assert.Contains("fly change_orbit set_ap 1,520 km (about 26 m/s; a circle costs about 260 m/s) before waiting; a plan that waits in it is blocked", request);
+            var card = rig.Mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Debrief;
+            Assert.Contains(card.Events, e => e.Contains("orbit crosses a moon: The orbit round Duna crosses Ike's"));
+            Assert.Equal("Nominal", card.Rating);
+        }
+
+        [Fact]
+        public void TheDebriefAfterARunEndingInASafeOrbitSaysNothingOfMoons()
+        {
+            var rig = new Rig(this, DebriefJson("Nominal", ""));
+            var start = rig.RunToRunning();
+            var duna = MoonCrossingTests.DunaOrbit(apAlt: 1520000, ut: OnPad().Ut);
+            rig.Mission.Send(Craft(s =>
+            {
+                s.Situation = "ORBITING";
+                s.Body = "Duna";
+                s.Orbit = TransferRig.Elements(duna.Orbit, duna.Body);
+                s.Bodies = duna.Bodies;
+            }));
+            rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
+            rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.DoesNotContain("crosses a moon", LastUserText(rig.Transport.Requests[2]));
+        }
+
         // ---- The blocks trail (#609) ----
 
         [Fact]
