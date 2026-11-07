@@ -32,10 +32,11 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>Between the assignment and the coast, what may pass time, burn or start a loop: any call or suffix (kOS calls a suffix method with no brackets) and these words.</summary>
         private static readonly Regex TakesTime = new Regex(@"\(|:|\b(wait|until|for|from|when|on|warp|warpmode|throttle|stage|run|runpath|runoncepath)\b", Options);
         /// <summary>
-        /// Before the assignment, what may take the craft past the snapshot's patch or move its end: these words, a loop or trigger (what's in one isn't counted as it's written; <c>on</c>
-        /// with nothing after it only switches something), or any call but those that build a value or are counted (an earlier coast). <see cref="SuffixBefore"/> has the rest.
+        /// Before the assignment, what may take the craft past the snapshot's patch or move its end: these words, an action group (one may fire an engine), a loop or trigger (what's in
+        /// one isn't counted as it's written; <c>on</c> with nothing after it only switches something), or any bracket but those of a call that builds a value or is counted (an earlier
+        /// coast): <c>fs[0]()</c> is a call with no name before its bracket. <see cref="SuffixBefore"/> has the rest.
         /// </summary>
-        private static readonly Regex WorkBefore = new Regex(@"\b(wait|until|for|from|when|warp|warpmode|warpto|throttle|stage|run|runpath|runoncepath)\b|\bon\b\s*[^.\s]|\b(?!(lexicon|lex|list|node|coast)\b)[a-z_][a-z0-9_]*\s*\(", Options);
+        private static readonly Regex WorkBefore = new Regex(@"\b(wait|until|for|from|when|warp|warpmode|warpto|throttle|stage|run|runpath|runoncepath|toggle|abort|ag[0-9]+)\b|\bon\b\s*[^.\s]|(?<!\b(lexicon|lex|list|node|coast)\s*)\(", Options);
         /// <summary>The one loop <see cref="WorkBefore"/> lets by, as the recorded scripts clear old nodes with it: it does nothing but remove what it walks.</summary>
         private static readonly Regex ClearsNodes = new Regex(@"\bfor\s+(?<walked>[a-z_][a-z0-9_]*)\s+in\s+[a-z_][a-z0-9_]*\s*\{\s*remove\s+\k<walked>\s*\.\s*\}", Options);
         /// <summary>The one suffix read anywhere before the assignment: an earlier coast's until, or a node's time.</summary>
@@ -109,7 +110,8 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// Whether a suffix before the assignment may do something: kOS calls a suffix method with no brackets, and a write may set the throttle or the warp, so one reads as a read
-        /// only in the condition of an <c>if</c> opening a block, and not as a delegate's <c>call</c> even there. <see cref="TheClock"/> is out of the text by here.
+        /// only in the condition of an <c>if</c> opening a block, and not as a delegate's <c>call</c> even there. A method named there with no brackets is the gap the recorded
+        /// <c>if res:success {</c> leaves, and needs a value to be a condition at all. <see cref="TheClock"/> is out of the text by here.
         /// </summary>
         private static bool SuffixBefore(string text)
         {

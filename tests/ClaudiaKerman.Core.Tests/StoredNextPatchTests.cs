@@ -97,6 +97,10 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("if res:success { print 1. } else if ship:body:name <> \"Kerbin\" { print 2. } local t is " + Ut + ".")]
         // Switching something on is no trigger; "on" opens one only when something follows it.
         [InlineData("sas on. rcs off. if a { lights on. } local t is " + Ut + ".")]
+        // A name that only starts like one of the words.
+        [InlineData("local run_time is 1. local abort_at is 2. local ag1x is 3. local t is " + Ut + ".")]
+        // The calls that build a value or are counted, however they're spaced.
+        [InlineData("local n is node (1, 0, 0, 2). local l is list (1). local r0 is lex (\"a\", 1). local t is " + Ut + ".")]
         public void Other_text_about_the_name_leaves_it_read(string before)
         {
             var wait = BurnPoints.First(before + " " + Coast("t + 60") + Capture, Snapshot(), Now, 600);
@@ -271,6 +275,16 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("stage.")]
         [InlineData("burn_it().")]
         [InlineData("kuniverse:timewarp:warpto(5).")]
+        // A call needs no name before its bracket.
+        [InlineData("local fs is list(late@). fs[0]().")]
+        [InlineData("local fs is list(late@). fs#0().")]
+        [InlineData("(late@)().")]
+        [InlineData("list(late@)[0]().")]
+        [InlineData("mylist(1).")]
+        // An action group may fire an engine.
+        [InlineData("toggle ag1.")]
+        [InlineData("ag1 on.")]
+        [InlineData("abort on.")]
         // A suffix outside an if's condition may be a call (kOS calls one with no brackets) or a write, which no list of names can tell from a read.
         [InlineData("set ship:control:mainthrottle to 1.")]
         [InlineData("set kuniverse:timewarp:rate to 100.")]

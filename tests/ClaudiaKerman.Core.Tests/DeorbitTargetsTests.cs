@@ -85,6 +85,9 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("lock t to time:seconds + 100.\nlocal a is coast(lexicon(\"until\", t)).\n")]
         [InlineData("local a is coast(lexicon(\"until\", t + 60)).\n")]
         [InlineData("local a is coast(lexicon(\"until\", time:seconds + e)).\n")]
+        // Held a time on this orbit, but the coast does more with it than the two forms a variable is read in: unread, so unchecked, which is safe.
+        [InlineData("local t is time:seconds + 100.\nlocal a is coast(lexicon(\"until\", t - 60)).\n")]
+        [InlineData("local e is 100.\nlocal a is coast(lexicon(\"until\", time:seconds + 2 * e)).\n")]
         [InlineData("local s is \"a\nb\". set t to pick().\nlocal t is time:seconds + 100.\nlocal a is coast(lexicon(\"until\", t)).\n")]
         public void A_deorbit_after_a_coast_it_can_not_place_stays_unchecked(string coast)
         {
