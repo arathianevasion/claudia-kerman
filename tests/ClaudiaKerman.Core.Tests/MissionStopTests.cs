@@ -185,6 +185,19 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void WarpEndingBetweenSparseReadingsGetsItsFull60s()
+        {
+            var mission = InFlight(Transport(plannedSeconds: 600), new PlayerConfig());
+            var start = RunToRunning(mission);
+            mission.Send(new KosWarpRequested(ApprovedAt + 1e9, start.RunId));
+            mission.Send(new UtAdvanced(ApprovedAt + 2000, true));
+            mission.Send(new UtAdvanced(ApprovedAt + 500000, false));
+            Assert.Empty(mission.TakeCommands().OfType<AbortScript>());
+            mission.Send(new UtAdvanced(ApprovedAt + 500000 + RunawayStop.WarpAllowanceSeconds, false));
+            Assert.Single(mission.TakeCommands().OfType<AbortScript>());
+        }
+
+        [Fact]
         public void ARefusedWarpThatNeverRanStops60sAfterTheDeadlineAtTheLatest()
         {
             var mission = InFlight(Transport(plannedSeconds: 600), new PlayerConfig());

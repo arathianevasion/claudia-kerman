@@ -39,8 +39,9 @@ namespace ClaudiaKerman.Core.Missions
         {
             var mission = _mission;
             if (mission == null) return;
+            // The first reading after warp ran counts as when it ended: at 100000x the readings are thousands of UT apart.
+            if (warping || mission.Warping) mission.LastWarpingUt = _ut;
             mission.Warping = warping;
-            if (warping) mission.LastWarpingUt = _ut;
         }
 
         /// <summary>After every input: a run still going at its deadline is aborted (with make-safe) and Debriefed as "timed out".</summary>
