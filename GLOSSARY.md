@@ -161,6 +161,18 @@ _Avoid_: glide slope, descent profile (as a name for the number), approach angle
 The chutes each remaining atmospheric entry may open, by need, with the pod's chutes kept for the return. The mod works it out at Mission Plan Approval and again at each Debrief, from the craft as it is, and for the Craft Check from the Mission Goal's own words; an entry its chutes can't bring under reentry's touchdown limit is a powered finish. `reentry` reads its entry's set when its chutes are "auto".
 _Avoid_: chute budget, parachute plan
 
+**Entry**:
+A remaining Maneuver Sequence that lands on a body with air, reenters or returns home. A return and its reentry, or a deorbit and its landing, with no ascent between, are one Entry. Manual legs, airless bodies and aerobraking aren't counted.
+_Avoid_: reentry (the block), atmospheric pass
+
+**Last Entry**:
+An Entry with no later sequence in the current Mission Plan that has delta-v. Only it drops the stack below the pod's own heat shield.
+_Avoid_: final reentry
+
+**Entry Shield**:
+The heat shield an Entry uses: counted from the pod outward, by position and never by stage number, shield number n, where n is the Entries left, this one included, plus one if a sequence after the final Entry has delta-v. Everything below it drops before the air, and it jettisons once the worst heating is over. With no shield n the Entry has none, and nothing drops (ADR 0018).
+_Avoid_: active shield, current shield
+
 **Ship Systems**:
 The parts the mod moves at flight transitions on the craft Claudia flies: solar panels, deployable antennas and deployable radiators (extended and retracted) and lights (on and off). Its own rule, with Building Blocks only cueing the moments they alone know; each move goes to the Mission's events and trace, not the prompt, and what the player toggles between transitions stands until the next one. Not cargo bays, drills, ISRU or science parts.
 _Avoid_: deployables, auto-deploy

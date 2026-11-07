@@ -59,6 +59,47 @@ namespace ClaudiaKerman.Core.Tests
             return mission;
         }
 
+        // ---- The hot entry with no Entry Shield (#823) ----
+
+        private static GameSnapshot WithEve()
+        {
+            var craft = Craft();
+            craft.Bodies.Add(new SnapshotBody { Name = "Eve", AtmosphereHeight = 90000, SeaLevelAtm = 5 });
+            return craft;
+        }
+
+        [Fact]
+        public void AnEveLandingWithBurnsToComeAndOneShieldIsAWarningNamingTheEntryAndNeverABlocker()
+        {
+            var finding = Assert.Single(Checked(WithEve(), "Land on Eve, ascend, and return to Kerbin.").View.CraftCheck.Findings, f => f.Code == CraftCheckRules.HotEntry);
+
+            Assert.Equal(CraftFindingSeverity.Warning, finding.Severity);
+            Assert.Contains("\"Land on Eve\"", finding.Explanation);
+            Assert.Contains("needs heat shield number 2", finding.Explanation);
+            Assert.Contains("Add another heat shield", finding.Fix);
+        }
+
+        [Theory]
+        [InlineData("Land on Duna and return to Kerbin.")]
+        [InlineData("Land on Eve.")]
+        public void DunaFromLowOrbitAndAnEntryWithItsShieldHaveNoHotEntryFinding(string goal)
+        {
+            Assert.DoesNotContain(Checked(WithEve(), goal).View.CraftCheck.Findings, f => f.Code == CraftCheckRules.HotEntry);
+        }
+
+        [Fact]
+        public void AnEntryThatSaysItComesStraightInIsHotOnAnyBody()
+        {
+            var finding = Assert.Single(Checked(WithEve(), "Land on Duna by direct entry, ascend, and return to Kerbin.").View.CraftCheck.Findings, f => f.Code == CraftCheckRules.HotEntry);
+            Assert.Contains("The Duna entry", finding.Explanation);
+        }
+
+        [Fact]
+        public void TheHotEntryRuleIsTheMods()
+        {
+            Assert.True(CraftCheckRules.Find(CraftCheckRules.HotEntry).ModOnly);
+        }
+
         [Fact]
         public void TheGoalsClausesAreItsEntriesTheAirLandingThenTheReturn()
         {

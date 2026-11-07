@@ -79,6 +79,48 @@ namespace ClaudiaKerman.Core.Missions
             return left + (Enumerable.Range(final + 1, Math.Max(0, sequences.Count - final - 1)).Any(i => flown(sequences[i]) && sequences[i].DeltaV > 0) ? 1 : 0);
         }
 
+        /// <summary>
+        /// The Craft Check's Warning (#823): each Entry of the Mission Goal's <paramref name="legs"/> with no Entry Shield that the player
+        /// named as hot: on Eve or Laythe, or in words that say it comes straight in from a transfer. By name, with no figure: no heating
+        /// has been measured off Kerbin, so Duna from low orbit stays quiet until it is (ADR 0018). The goal's clauses carry no budget, so a
+        /// later ascent, trip or docking in words counts as burns to come.
+        /// </summary>
+        public static IList<MarginFinding> HotWithNoShield(GameSnapshot snapshot, IList<PlannedSequence> legs)
+        {
+            var findings = new List<MarginFinding>();
+            var entries = Find(snapshot, legs, 0);
+            if (entries.Count == 0) return findings;
+            var rule = CraftCheckRules.Find(CraftCheckRules.HotEntry);
+            var shields = snapshot.Craft.Parts.Count(p => p.Tags.Contains("heat_shield"));
+            var tail = legs.Skip(entries[entries.Count - 1].Step + 1).Any(BurnsInWords) ? 1 : 0;
+            for (var i = 0; i < entries.Count; i++)
+            {
+                var entry = entries[i];
+                var number = entries.Count - i + tail;
+                if (number <= shields || !IsHot(entry, legs[entry.Step])) continue;
+                findings.Add(new MarginFinding
+                {
+                    Code = rule.Code, Severity = rule.Severity, Title = rule.Title,
+                    Explanation = "The " + entry.Body + " entry for \"" + entry.Sequence + "\" needs heat shield number " + number + " from the pod and the craft has " + shields
+                        + ", so it flies with no Entry Shield",
+                });
+            }
+            return findings;
+        }
+
+        private static bool IsHot(Entry entry, PlannedSequence leg)
+        {
+            return HotBodies.Contains(entry.Body) || SequenceWords.StraightIn.IsMatch(SequenceWords.Of(leg));
+        }
+
+        private static readonly HashSet<string> HotBodies = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Eve", "Laythe" };
+
+        private static bool BurnsInWords(PlannedSequence leg)
+        {
+            var words = SequenceWords.Of(leg);
+            return leg.DeltaV > 0 || SequenceWords.Ascent.IsMatch(words) || SequenceWords.Trip.IsMatch(words) || SequenceWords.Docking.IsMatch(words);
+        }
+
         /// <summary>Whether the sequence flies this vessel: <paramref name="child"/>'s own, or with "" the Mission's craft's.</summary>
         private static bool Flies(GameSnapshot snapshot, PlannedSequence sequence, string child)
         {

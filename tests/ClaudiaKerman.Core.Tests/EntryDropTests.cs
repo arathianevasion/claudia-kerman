@@ -329,6 +329,38 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void A_spent_engine_on_the_drop_tank_isnt_kept_so_its_stage_still_goes()
+        {
+            var c = new Craft();
+            var pod = c.Add("mk1pod.v2", null, "command");
+            var shield = c.Shield(pod);
+            var dec = c.Add("Decoupler.1", shield, "decoupler");
+            var engine = c.Add("liquidEngine3.v2", dec, "engine");
+            var lower = c.Add("Decoupler.2", engine, "decoupler");
+            var tank = c.Add("fuelTankSmall", lower);
+            c.Add("liquidEngine2.v2", tank, "engine");
+            var answer = Call(c, "Duna", new[] { Leg("Land on Duna") }, 0, "", Uid(engine));
+            Assert.Equal(new[] { Uid(lower) }, Strings(answer, "decouplers"));
+            Assert.Equal(new[] { "fuelTankSmall", "liquidEngine2.v2" }, Strings(answer, "names"));
+        }
+
+        [Fact]
+        public void A_pod_and_shield_with_nothing_below_or_only_a_spent_decoupler_have_no_stack()
+        {
+            var c = new Craft();
+            var pod = c.Add("mk1pod.v2", null, "command");
+            var shield = c.Shield(pod);
+            var bare = Call(c, "Kerbin", null);
+            Assert.Equal(Uid(shield), bare["shield"]);
+            Assert.Empty(Strings(bare, "names"));
+            c.Add("Decoupler.1", shield, "decoupler");
+            var spent = Call(c, "Kerbin", null);
+            Assert.Equal(Uid(shield), spent["shield"]);
+            Assert.Empty(Strings(spent, "names"));
+            Assert.Empty(Strings(spent, "decouplers"));
+        }
+
+        [Fact]
         public void A_craft_with_no_shield_drops_nothing()
         {
             var c = new Craft();

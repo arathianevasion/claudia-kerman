@@ -13,13 +13,13 @@ using Xunit;
 namespace ClaudiaKerman.Kerboscript.Tests
 {
     /// <summary>
-    /// reentry's stack (#557): what hangs below the heat shield, how separate drops it and when the block refuses to fly it,
-    /// on fake part trees run on kOS.Safe through the real bundle. Mun Shot v2 is pod, HeatShield1, Decoupler.1, then the
-    /// service module; 44e9's tree is the same craft with its legs and RCS blocks.
+    /// reentry's firing of what its Entry drops (#557, #823): fake part trees run on kOS.Safe through the real bundle, given what Core's
+    /// <c>ENTRYDROP</c> call really answers for that tree and plan. Which shield and which parts is Core's (EntryDropTests); these say
+    /// what the block then fires and when it refuses.
     /// </summary>
     public class ReentryStackTests
     {
-        public sealed class Spec
+        private sealed class Spec
         {
             public string Uid;
             public string Name;
@@ -32,7 +32,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         private static readonly string[] Shield = { "ModuleAblator", "ModuleDecouple" };
         private static readonly string[] Decoupler = { "ModuleDecouple" };
 
-        public sealed class Tree
+        private sealed class Tree
         {
             public readonly List<Spec> Parts = new List<Spec>();
 
@@ -42,41 +42,97 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 return Parts.Count - 1;
             }
 
-            /// <summary>The tree as kOS parts the library can read: uid, name, hasparent, parent and hasmodule.</summary>
+            /// <summary>The tree as kOS parts the library can read and fire: a fired decoupler's uid goes on the list <c>fired</c>.</summary>
             public string Script()
             {
-                var b = new StringBuilder();
+                var b = new StringBuilder("local fired is list().\n");
                 for (var i = 0; i < Parts.Count; i++)
                 {
                     var s = Parts[i];
                     var test = s.Modules.Length == 0 ? "false" : string.Join(" or ", s.Modules.Select(m => "m = \"" + m + "\""));
-                    b.Append("local p_" + i + " is lexicon(\"uid\", \"" + s.Uid + "\", \"name\", \"" + s.Name + "\", "
+                    b.Append("local p_" + i + " is lexicon(\"uid\", \"" + s.Uid + "\", \"name\", \"" + s.Name + "\", \"children\", list(), "
                         + "\"hasparent\", " + (s.Parent >= 0 ? "true" : "false") + ", \"parent\", " + (s.Parent >= 0 ? "p_" + s.Parent : "\"\"") + ", "
-                        + "\"hasmodule\", { parameter m. return " + test + ". }).\n");
+                        + "\"hasmodule\", { parameter m. return " + test + ". }, "
+                        + "\"getmodule\", { parameter m. return lexicon(\"alleventnames\", list(\"decouple\"), \"part\", lexicon(\"uid\", \"" + s.Uid + "\"), \"doevent\", { parameter e. fired:add(\"" + s.Uid + "\"). }). }).\n");
+                    if (s.Parent >= 0) b.Append("p_" + s.Parent + ":children:add(p_" + i + ").\n");
                 }
                 b.Append("local parts is list(" + string.Join(", ", Enumerable.Range(0, Parts.Count).Select(i => "p_" + i)) + ").\n");
                 return b.ToString();
             }
+
+            private static SnapshotPart Part(Spec s, int i)
+            {
+                return new SnapshotPart
+                {
+                    Id = (uint)(i + 1), ParentId = s.Parent >= 0 ? (uint)(s.Parent + 1) : (uint?)null, Name = s.Name,
+                    Tags = s.Modules.Select(m => m == "ModuleAblator" ? "heat_shield" : m == "ModuleDecouple" ? "decoupler" : "other").ToList(),
+                };
+            }
+
+            /// <summary><c>local below</c>: what ENTRYDROP answers for this tree at <paramref name="at"/>.</summary>
+            public string Below(string at, IList<PlannedSequence> legs, params string[] keep)
+            {
+                var snapshot = new GameSnapshot
+                {
+                    Body = at,
+                    Orbit = new SnapshotOrbit { Body = at },
+                    Craft = new SnapshotCraft { Parts = Parts.Select(Part).ToList() },
+                    Bodies = new List<SnapshotBody>
+                    {
+                        new SnapshotBody { Name = "Kerbin", AtmosphereHeight = 70000, SeaLevelAtm = 1 },
+                        new SnapshotBody { Name = "Duna", AtmosphereHeight = 50000, SeaLevelAtm = 0.07 },
+                    },
+                };
+                var answer = BlockCalls.EntryDropCall(new Dictionary<string, object> { { "home", "pod" }, { "keep_engines", keep.Cast<object>().ToList() } },
+                    snapshot, legs, 0, "", id => Parts[(int)id - 1].Uid);
+                Func<string, string> list = key => "list(" + string.Join(", ", ((IEnumerable<object>)answer[key]).Select(u => "\"" + u + "\"")) + ")";
+                return "local below is lexicon(\"error\", \"\", \"shield\", \"" + answer["shield"] + "\", \"decouplers\", " + list("decouplers") + ", \"gone\", " + list("gone")
+                    + ", \"kept\", " + list("kept") + ", \"names\", " + list("names") + ", \"stuck\", " + list("stuck") + ").\n";
+            }
         }
 
+        private static readonly IList<PlannedSequence> Return = new[] { new PlannedSequence { Name = "Return to Kerbin", DeltaV = 600 } };
+        private static readonly IList<PlannedSequence> DunaThenKerbin = new[]
+        {
+            new PlannedSequence { Name = "Land on Duna", DeltaV = 100 }, new PlannedSequence { Name = "Ascend from Duna", DeltaV = 1336 }, new PlannedSequence { Name = "Return to Kerbin", DeltaV = 623 },
+        };
+
         /// <summary>Mun Shot v2 home from the Mun, as in b5f3 and 0de6: the pod's side, the shield, Decoupler.1, the service module.</summary>
-        private static Tree MunShotV2(bool legsAndRcs = false)
+        private static Tree MunShotV2()
         {
             var t = new Tree();
             var pod = t.Add("mk1pod.v2", -1, Command, "pod");
-            t.Add("parachuteSingle", pod, new[] { "ModuleParachute" });
-            var kos = t.Add("kOSMachine1m", pod, new[] { "kOSProcessor" });
-            var battery = t.Add("batteryBank", kos, None);
-            var shield = t.Add("HeatShield1", battery, Shield, "shield");
+            var shield = t.Add("HeatShield1", pod, Shield, "shield");
             var dec = t.Add("Decoupler.1", shield, Decoupler, "dec1");
-            var rcsTank = t.Add("RCSFuelTank", dec, None);
-            var tank = t.Add("fuelTank", rcsTank, None);
-            var small = t.Add("fuelTankSmall", tank, None);
-            if (legsAndRcs)
-                for (var i = 0; i < 4; i++) t.Add("landingLeg1", small, new[] { "ModuleWheelBase" });
-            t.Add("liquidEngine3.v2", small, new[] { "ModuleEnginesFX" });
-            if (legsAndRcs)
-                for (var i = 0; i < 8; i++) t.Add("RCSblock.01.small", tank, new[] { "ModuleRCSFX" });
+            var tank = t.Add("fuelTank", dec, None);
+            t.Add("liquidEngine3.v2", tank, new[] { "ModuleEnginesFX" }, "engine");
+            return t;
+        }
+
+        /// <summary>The flight's layout (m20261106-203509-34a6), cut down: the core stage, its radial tanks on their own decouplers, its engine.</summary>
+        private static Tree TheFlight()
+        {
+            var t = new Tree();
+            var pod = t.Add("mk1pod.v2", -1, Command, "pod");
+            var shield = t.Add("HeatShield1", pod, Shield, "shield");
+            var dec = t.Add("Decoupler.1", shield, Decoupler, "dec1");
+            var core = t.Add("fuelTank", dec, None);
+            for (var i = 0; i < 4; i++) t.Add("radialTank", t.Add("radialDecoupler", core, Decoupler), None);
+            t.Add("toroidalAerospike", core, new[] { "ModuleEnginesFX" }, "engine");
+            return t;
+        }
+
+        /// <summary>Pod, shield 1, the ascent stage, shield 2, the transfer stage.</summary>
+        private static Tree TwoShields()
+        {
+            var t = new Tree();
+            var pod = t.Add("mk1pod.v2", -1, Command, "pod");
+            var s1 = t.Add("shield1", pod, Shield, "s1");
+            var d1 = t.Add("dec1", s1, Decoupler, "d1");
+            var ascent = t.Add("ascentTank", d1, None);
+            var s2 = t.Add("shield2", ascent, Shield, "s2");
+            var d2 = t.Add("dec2", s2, Decoupler, "d2");
+            t.Add("transferTank", d2, None);
             return t;
         }
 
@@ -85,61 +141,111 @@ namespace ClaudiaKerman.Kerboscript.Tests
             return KosHarness.Run(CoreLibrary.Bundle(tree.Script() + script)).ToArray();
         }
 
-        private const string PrintStack =
-            "local names is list(). for g in below:gone { names:add(g:name). }\n"
-            + "local decs is list(). for d in below:decouplers { decs:add(d:uid). }\n"
-            + "print below:shielded. print decs:join(\",\"). print names:join(\",\"). print reentry_names(below:stuck):join(\",\"). print reentry_names(below:parts):join(\",\").\n";
+        private const string Options = "local opt is claudia_merge_options(lexicon(), reentry_defaults()).\n";
+
+        /// <summary>Prints what "auto" fires (decoupler uids), the refusal, and the shield's uid and modules.</summary>
+        private const string PrintFires = Options
+            + "local plan is reentry_separation(\"auto\", below, parts).\n"
+            + "local decs is list(). for d in plan:decouplers { decs:add(d:uid). }\n"
+            + "print decs:join(\",\"). print reentry_stack_refusal(\"auto\", below:stuck, plan:error).\n"
+            + "local jettison is reentry_jettison_uid(opt, below). print jettison. print reentry_shield_modules(jettison, parts):length.\n";
 
         [Fact]
-        public void On_Mun_Shot_v2_the_stack_is_the_service_module_and_it_drops_through_Decoupler_1()
+        public void On_the_flights_layout_a_non_last_entry_fires_nothing_with_chutes()
         {
-            var printed = Run(MunShotV2(), "local below is reentry_stack(parts, \"pod\").\n" + PrintStack
-                + "local plan is reentry_separation(\"auto\", below).\n"
-                + "local gone is list(). for g in plan:gone { gone:add(g:name). }\n"
-                + "print plan:error. print plan:decouplers[0]:name. print \"\" + gone:contains(\"HeatShield1\") +\",\" + gone:contains(\"mk1pod.v2\") + \",\" + gone:contains(\"Decoupler.1\").\n");
-            Assert.Equal(new[]
-            {
-                "True", "dec1", "RCSFuelTank,fuelTank,fuelTankSmall,liquidEngine3.v2", "", "RCSFuelTank,fuelTank,fuelTankSmall,liquidEngine3.v2",
-                // The plan fires Decoupler.1 alone; the shield, the pod and Decoupler.1 itself stay.
-                "", "Decoupler.1", "False,False,False",
-            }, printed);
+            Assert.Equal(new[] { "", "", "", "0" }, Run(TheFlight(), TheFlight().Below("Duna", DunaThenKerbin) + PrintFires));
         }
 
         [Fact]
-        public void On_44e9s_tree_reentry_drops_the_whole_stack_legs_and_RCS_blocks_included()
+        public void On_the_flights_layout_a_non_last_entry_fires_nothing_when_powered()
         {
-            var printed = Run(MunShotV2(legsAndRcs: true), "local below is reentry_stack(parts, \"pod\").\n"
-                + "local plan is reentry_separation(\"auto\", below).\n"
-                + "local decs is list(). for d in plan:decouplers { decs:add(d:uid). }\n"
-                + "print plan:error. print decs:join(\",\"). print plan:gone:length. print reentry_names(plan:gone):join(\",\").\n");
-            // RCSFuelTank, fuelTank, fuelTankSmall, liquidEngine3.v2, four landingLeg1, eight RCSblock.01.small.
-            Assert.Equal(new[] { "", "dec1", "16", "RCSFuelTank,fuelTank,fuelTankSmall,landingLeg1,liquidEngine3.v2,RCSblock.01.small" }, printed);
+            Assert.Equal(new[] { "", "", "", "0" }, Run(TheFlight(), TheFlight().Below("Duna", DunaThenKerbin, "engine") + PrintFires));
         }
 
         [Fact]
-        public void Separate_none_with_the_stack_attached_fails_naming_the_stacks_parts()
+        public void On_the_flights_layout_the_Last_Entry_fires_the_decoupler_under_the_shield_and_jettisons_it()
         {
-            var printed = Run(MunShotV2(legsAndRcs: true), "local below is reentry_stack(parts, \"pod\").\n"
-                + "print reentry_separation(\"none\", below):decouplers:length.\n"
-                + "print reentry_stack_refusal(below:shielded, reentry_names(below:parts), \"\").\n");
+            var printed = Run(TheFlight(), TheFlight().Below("Kerbin", Return) + PrintFires);
+            // The shield's own decoupler and Decoupler.1 beside it; the block drops the stack first, which takes nothing else.
+            Assert.Equal(new[] { "dec1", "", "shield", "2" }, printed);
+        }
+
+        [Fact]
+        public void A_shield_that_isnt_the_Entry_Shield_is_never_fired()
+        {
+            var tree = TwoShields();
+            var printed = Run(tree, tree.Below("Duna", DunaThenKerbin) + PrintFires
+                + "print reentry_shield_drop(jettison, { return parts. }). print fired:join(\",\").\n");
+            // Duna uses shield 2: dec2 drops the transfer stage; only shield 2 and the decoupler beside it are jettisoned.
+            Assert.Equal(new[] { "d2", "", "s2", "2", "2", "s2,d2" }, printed);
+        }
+
+        [Fact]
+        public void The_Entry_Shield_still_goes_by_reentry_shield_due()
+        {
+            var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source.Replace("\r\n", "\n");
+            var body = source.Substring(source.IndexOf("function reentry {", StringComparison.Ordinal));
+            Assert.Contains("local shield is reentry_shield_modules(shield_uid, ship:parts).\n  local shield_gone is shield:length = 0.", body);
+            var due = body.IndexOf("if reentry_shield_due(shield_gone, last_speed, agl) {", StringComparison.Ordinal);
+            Assert.True(due > 0);
+            Assert.True(due < body.IndexOf("reentry_shield_drop(shield_uid, { return ship:parts. })", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void A_part_with_no_decoupler_below_the_Entry_Shield_refuses_and_below_another_shield_it_doesnt()
+        {
+            var t = new Tree();
+            var pod = t.Add("mk1pod.v2", -1, Command, "pod");
+            var shield = t.Add("HeatShield1", pod, Shield, "shield");
+            t.Add("fuelTank", shield, None);
+            const string print = "local plan is reentry_separation(\"auto\", below, parts).\n"
+                + "print plan:error. print plan:decouplers:length. print reentry_stack_refusal(\"auto\", below:names, plan:error).\n";
             Assert.Equal(new[]
             {
-                "0",
-                "stack attached below the heat shield: RCSFuelTank, fuelTank, fuelTankSmall, landingLeg1, liquidEngine3.v2, RCSblock.01.small; drop it first or use separate",
-            }, printed);
+                "fuelTank: no decoupler between it and the heat shield", "0",
+                "stack attached below the heat shield: fuelTank; drop it first or use separate (separate: fuelTank: no decoupler between it and the heat shield)",
+            }, Run(t, t.Below("Kerbin", Return) + print));
+            Assert.Equal(new[] { "", "0", "" }, Run(t, t.Below("Duna", DunaThenKerbin) + print));
+        }
+
+        [Fact]
+        public void Separate_none_keeps_the_stack_with_no_refusal_and_keeps_the_shield_that_would_take_it()
+        {
+            var tree = MunShotV2();
+            var printed = Run(tree, tree.Below("Kerbin", Return) + "local opt is claudia_merge_options(lexicon(\"separate\", \"none\"), reentry_defaults()).\n"
+                + "print reentry_separation(\"none\", below, parts):decouplers:length.\n"
+                + "print reentry_stack_refusal(\"none\", below:names, \"\").\n"
+                + "print reentry_jettison_uid(opt, below).\n");
+            Assert.Equal(new[] { "0", "", "" }, printed);
+        }
+
+        [Fact]
+        public void Jettison_none_keeps_the_shield_and_the_stack_still_drops()
+        {
+            var tree = MunShotV2();
+            var printed = Run(tree, tree.Below("Kerbin", Return) + "local opt is claudia_merge_options(lexicon(\"jettison_stage\", \"none\"), reentry_defaults()).\n"
+                + "print reentry_separation(\"auto\", below, parts):decouplers:length. print reentry_jettison_uid(opt, below).\n");
+            Assert.Equal(new[] { "1", "" }, printed);
+        }
+
+        [Fact]
+        public void A_powered_touchdown_that_keeps_its_engines_keeps_the_shield_whose_drop_would_take_them()
+        {
+            var tree = MunShotV2();
+            Assert.Equal(new[] { "" }, Run(tree, tree.Below("Kerbin", Return, "engine") + Options + "print reentry_jettison_uid(opt, below).\n"));
         }
 
         [Fact]
         public void A_drop_that_failed_is_said_after_the_names()
         {
             Assert.Equal("stack attached below the heat shield: fuelTank; drop it first or use separate (separate: nothing separated: the decouplers did not fire)",
-                Run(new Tree(), "print reentry_stack_refusal(true, list(\"fuelTank\"), \"nothing separated: the decouplers did not fire\").").Single());
+                Run(new Tree(), "print reentry_stack_refusal(\"auto\", list(\"fuelTank\"), \"nothing separated: the decouplers did not fire\").").Single());
         }
 
         [Fact]
         public void The_drop_and_refusal_come_after_the_entry_check_and_before_the_wait_and_the_hold_and_the_shield_is_found_after_them()
         {
-            var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source;
+            var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source.Replace("\r\n", "\n");
             var body = source.Substring(source.IndexOf("function reentry {", StringComparison.Ordinal));
             var refusal = body.IndexOf("reentry_stack_refusal(", StringComparison.Ordinal);
             Assert.True(refusal > 0);
@@ -148,254 +254,33 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.True(body.IndexOf("the orbit never reaches the atmosphere", StringComparison.Ordinal) < body.IndexOf("claudia_fire_drop(ctx, drop)", StringComparison.Ordinal));
             Assert.True(refusal < body.IndexOf("lock steering to srfretrograde", StringComparison.Ordinal));
             Assert.True(refusal < body.IndexOf("claudia_wait_until(", StringComparison.Ordinal));
-            Assert.True(refusal < body.IndexOf("reentry_shield_modules(opt:jettison_stage, ship:parts)", StringComparison.Ordinal));
+            Assert.True(refusal < body.IndexOf("reentry_shield_modules(shield_uid, ship:parts)", StringComparison.Ordinal));
+            // Read fresh at block start, and again for the craft that's left.
+            Assert.True(body.IndexOf("addons:claudia:entrydrop(entry_ask)", StringComparison.Ordinal) < body.IndexOf("claudia_fire_drop(ctx, drop)", StringComparison.Ordinal));
             // The refusal is only above the atmosphere: a craft already in the air flies on.
             Assert.Contains("if ship:altitude > body_:atm:height {\n      local refused is reentry_stack_refusal(", body);
         }
 
-        [Fact]
-        public void A_pod_with_its_shield_and_nothing_below_runs_as_today()
-        {
-            var t = new Tree();
-            var pod = t.Add("mk1pod.v2", -1, Command, "pod");
-            t.Add("parachuteSingle", pod, new[] { "ModuleParachute" });
-            t.Add("HeatShield1", pod, Shield, "shield");
-            var printed = Run(t, "local below is reentry_stack(parts, \"pod\").\n" + PrintStack
-                + "print reentry_stack_refusal(below:shielded, reentry_names(below:parts), \"\") = \"\".\n");
-            Assert.Equal(new[] { "True", "", "", "", "", "True" }, printed);
-        }
+        // ---- The options ----
 
         [Fact]
-        public void A_spent_decoupler_left_on_the_shield_is_not_a_stack()
-        {
-            // Mun Shot v2 after the drop: Decoupler.1 stays with the shield, with nothing below it.
-            var t = new Tree();
-            var pod = t.Add("mk1pod.v2", -1, Command, "pod");
-            var shield = t.Add("HeatShield1", pod, Shield, "shield");
-            t.Add("Decoupler.1", shield, Decoupler, "dec1");
-            Assert.Equal(new[] { "True", "", "", "", "" }, Run(t, "local below is reentry_stack(parts, \"pod\").\n" + PrintStack));
-        }
-
-        [Fact]
-        public void A_craft_with_no_heat_shield_runs_as_today()
-        {
-            // A pod and its chute: no stack, nothing to drop, no refusal.
-            var t = new Tree();
-            var pod = t.Add("mk1pod.v2", -1, Command, "pod");
-            t.Add("parachuteSingle", pod, new[] { "ModuleParachute" });
-            Assert.Equal(new[] { "False", "", "", "", "" }, Run(t, "local below is reentry_stack(parts, \"pod\").\n" + PrintStack));
-            // A stack below a decoupler with no shield anywhere: "auto" drops nothing and "none" is never refused.
-            var u = new Tree();
-            var pod2 = u.Add("mk1pod.v2", -1, Command, "pod");
-            var dec = u.Add("Decoupler.1", pod2, Decoupler, "dec1");
-            u.Add("fuelTank", dec, None);
-            Assert.Equal(new[] { "False", "dec1", "fuelTank", "", "fuelTank", "0", "True" },
-                Run(u, "local below is reentry_stack(parts, \"pod\").\n" + PrintStack
-                    + "print reentry_separation(\"auto\", below):decouplers:length.\n"
-                    + "print reentry_stack_refusal(below:shielded, reentry_names(below:parts), \"\") = \"\".\n"));
-        }
-
-        [Fact]
-        public void With_no_heat_shield_the_stack_is_below_the_first_decoupler_under_the_command_part()
-        {
-            var t = new Tree();
-            var pod = t.Add("mk1pod.v2", -1, Command, "pod");
-            var battery = t.Add("batteryBank", pod, None);
-            var upper = t.Add("Decoupler.1", battery, Decoupler, "upper");
-            var tank = t.Add("fuelTank", upper, None);
-            var lower = t.Add("Decoupler.1", tank, Decoupler, "lower");
-            t.Add("fuelTankSmall", lower, None);
-            // One drop through the upper decoupler takes the lower one and all below it; the battery stays.
-            Assert.Equal(new[] { "False", "upper", "fuelTank,Decoupler.1,fuelTankSmall", "", "fuelTank,Decoupler.1,fuelTankSmall" },
-                Run(t, "local below is reentry_stack(parts, \"pod\").\n" + PrintStack));
-        }
-
-        [Fact]
-        public void A_part_on_the_shield_with_no_decoupler_between_is_stuck_and_the_shield_is_never_the_one_fired()
-        {
-            // #516: the shield's own decoupler never drops a stack, so a tank straight on the shield can't be dropped.
-            var t = new Tree();
-            var pod = t.Add("mk1pod.v2", -1, Command, "pod");
-            var shield = t.Add("HeatShield1", pod, Shield, "shield");
-            t.Add("fuelTank", shield, None);
-            var printed = Run(t, "local below is reentry_stack(parts, \"pod\").\n" + PrintStack
-                + "local plan is reentry_separation(\"auto\", below).\n"
-                + "print plan:error. print plan:decouplers:length.\n"
-                + "print reentry_stack_refusal(below:shielded, reentry_names(below:parts), plan:error).\n");
-            Assert.Equal(new[]
-            {
-                "True", "", "", "fuelTank", "fuelTank",
-                "fuelTank: no decoupler between it and the heat shield", "0",
-                "stack attached below the heat shield: fuelTank; drop it first or use separate (separate: fuelTank: no decoupler between it and the heat shield)",
-            }, printed);
-        }
-
-        [Fact]
-        public void A_craft_built_from_the_far_side_has_its_stack_stuck_rather_than_dropping_the_pod()
-        {
-            // The root is the tank: the pod hangs under the shield, so firing the decoupler would take the pod with it.
-            var t = new Tree();
-            var tank = t.Add("fuelTank", -1, None);
-            var dec = t.Add("Decoupler.1", tank, Decoupler, "dec1");
-            var shield = t.Add("HeatShield1", dec, Shield, "shield");
-            t.Add("mk1pod.v2", shield, Command, "pod");
-            Assert.Equal(new[] { "True", "", "", "fuelTank,Decoupler.1", "fuelTank,Decoupler.1" },
-                Run(t, "local below is reentry_stack(parts, \"pod\").\n" + PrintStack));
-        }
-
-        // ---- A powered touchdown keeps its engines (#628) ----
-
-        /// <summary>A powered pod: pod, shield, Decoupler.1, a tank with legs, its engine, then a decoupler and an empty drop tank below.</summary>
-        private static Tree PoweredPod()
-        {
-            var t = new Tree();
-            var pod = t.Add("mk1pod.v2", -1, Command, "pod");
-            var shield = t.Add("HeatShield1", pod, Shield, "shield");
-            var dec = t.Add("Decoupler.1", shield, Decoupler, "dec1");
-            var tank = t.Add("fuelTank", dec, None);
-            t.Add("landingLeg1", tank, new[] { "ModuleWheelBase" });
-            var engine = t.Add("liquidEngine3.v2", tank, new[] { "ModuleEnginesFX" }, "engine");
-            var lower = t.Add("Decoupler.2", engine, Decoupler, "dec2");
-            t.Add("fuelTankSmall", lower, None);
-            return t;
-        }
-
-        [Fact]
-        public void Separate_auto_with_a_powered_touchdown_keeps_the_engine_and_everything_between_it_and_the_shield()
-        {
-            var printed = Run(PoweredPod(), "local below is reentry_stack(parts, \"pod\", list(\"engine\")).\n" + PrintStack
-                + "local plan is reentry_separation(\"auto\", below).\n"
-                + "local decs is list(). for d in plan:decouplers { decs:add(d:uid). }\n"
-                + "print plan:error. print decs:join(\",\"). print reentry_names(below:kept):join(\",\").\n");
-            Assert.Equal(new[]
-            {
-                // Only the engineless drop tank is the stack, through the decoupler under the engine.
-                "True", "dec2", "fuelTankSmall", "", "fuelTankSmall",
-                "", "dec2", "Decoupler.1,fuelTank,landingLeg1,liquidEngine3.v2",
-            }, printed);
-        }
-
-        [Fact]
-        public void A_spent_engine_on_the_drop_tank_is_not_one_the_touchdown_lands_on_so_its_stage_still_goes()
-        {
-            var t = PoweredPod();
-            t.Add("liquidEngine2.v2", t.Parts.Count - 1, new[] { "ModuleEngines" }, "spent");
-            var printed = Run(t, "local below is reentry_stack(parts, \"pod\", list(\"engine\")).\n"
-                + "local decs is list(). for d in reentry_separation(\"auto\", below):decouplers { decs:add(d:uid). }\n"
-                + "print decs:join(\",\"). print reentry_names(below:gone):join(\",\").\n");
-            Assert.Equal(new[] { "dec2", "fuelTankSmall,liquidEngine2.v2" }, printed);
-        }
-
-        [Fact]
-        public void Without_a_powered_touchdown_the_same_craft_drops_everything_below_the_shield()
-        {
-            var printed = Run(PoweredPod(), "local below is reentry_stack(parts, \"pod\").\n"
-                + "local plan is reentry_separation(\"auto\", below).\n"
-                + "print plan:decouplers[0]:uid. print reentry_names(plan:gone):join(\",\"). print below:kept:length.\n");
-            Assert.Equal(new[] { "dec1", "fuelTank,landingLeg1,liquidEngine3.v2,Decoupler.2,fuelTankSmall", "0" }, printed);
-        }
-
-        // ---- Parity with Core (ADR 0014 guardrail 4): one shield, Last Entry. Deleted with the Kerboscript in the same ticket. ----
-
-        public static IEnumerable<object[]> ParityTrees()
-        {
-            Func<Tree> podShield = () =>
-            {
-                var t = new Tree();
-                var pod = t.Add("mk1pod.v2", -1, Command, "pod");
-                t.Add("parachuteSingle", pod, new[] { "ModuleParachute" });
-                t.Add("HeatShield1", pod, Shield, "shield");
-                return t;
-            };
-            Func<Tree> spent = () =>
-            {
-                var t = new Tree();
-                var pod = t.Add("mk1pod.v2", -1, Command, "pod");
-                var shield = t.Add("HeatShield1", pod, Shield, "shield");
-                t.Add("Decoupler.1", shield, Decoupler, "dec1");
-                return t;
-            };
-            Func<Tree> stuck = () =>
-            {
-                var t = new Tree();
-                var pod = t.Add("mk1pod.v2", -1, Command, "pod");
-                var shield = t.Add("HeatShield1", pod, Shield, "shield");
-                t.Add("fuelTank", shield, None);
-                return t;
-            };
-            Func<Tree> farSide = () =>
-            {
-                var t = new Tree();
-                var tank = t.Add("fuelTank", -1, None);
-                var dec = t.Add("Decoupler.1", tank, Decoupler, "dec1");
-                var shield = t.Add("HeatShield1", dec, Shield, "shield");
-                t.Add("mk1pod.v2", shield, Command, "pod");
-                return t;
-            };
-            Func<Tree> spentEngine = () =>
-            {
-                var t = PoweredPod();
-                t.Add("liquidEngine2.v2", t.Parts.Count - 1, new[] { "ModuleEngines" }, "spent");
-                return t;
-            };
-            var none = new string[0];
-            var engine = new[] { "engine" };
-            yield return new object[] { (Func<Tree>)(() => MunShotV2()), none };
-            yield return new object[] { (Func<Tree>)(() => MunShotV2(legsAndRcs: true)), none };
-            yield return new object[] { podShield, none };
-            yield return new object[] { spent, none };
-            yield return new object[] { stuck, none };
-            yield return new object[] { farSide, none };
-            yield return new object[] { (Func<Tree>)PoweredPod, engine };
-            yield return new object[] { spentEngine, engine };
-            yield return new object[] { (Func<Tree>)PoweredPod, none };
-        }
-
-        [Theory]
-        [MemberData(nameof(ParityTrees))]
-        public void Core_walks_a_one_shield_Last_Entry_as_reentry_stack_does(Func<Tree> make, string[] keep)
-        {
-            var tree = make();
-            var printed = Run(tree, "local below is reentry_stack(parts, \"pod\", list(" + string.Join(", ", keep.Select(k => "\"" + k + "\"")) + ")).\n"
-                + "local ids is { parameter ps. local out is list(). for p in ps { out:add(p:uid). } return out:join(\",\"). }.\n"
-                + "print ids(below:decouplers). print ids(below:gone). print ids(below:kept). print reentry_names(below:parts):join(\",\"). print reentry_names(below:stuck):join(\",\").\n");
-
-            Func<uint, string> uid = id => tree.Parts[(int)id - 1].Uid;
-            var snapshot = new GameSnapshot
-            {
-                Craft = new SnapshotCraft
-                {
-                    Parts = tree.Parts.Select((s, i) => new SnapshotPart
-                    {
-                        Id = (uint)(i + 1), ParentId = s.Parent >= 0 ? (uint)(s.Parent + 1) : (uint?)null, Name = s.Name,
-                        Tags = s.Modules.Select(m => m == "ModuleAblator" ? "heat_shield" : m == "ModuleDecouple" ? "decoupler" : "other").ToList(),
-                    }).ToList(),
-                },
-            };
-            var answer = BlockCalls.EntryDropCall(new Dictionary<string, object> { { "home", "pod" }, { "keep_engines", keep.Cast<object>().ToList() } }, snapshot, null, -1, "", uid);
-            Func<string, string> joined = key => string.Join(",", ((IEnumerable<object>)answer[key]).Cast<string>());
-            Assert.Equal(printed, new[] { joined("decouplers"), joined("gone"), joined("kept"), joined("names"), joined("stuck") });
-        }
-
-        // ---- The option ----
-
-        [Fact]
-        public void Separate_defaults_to_auto_and_takes_none_or_a_stage_number()
+        public void Separate_and_jettison_stage_default_to_auto_and_take_none()
         {
             var t = new Tree();
             Assert.Equal("auto", Run(t, "print claudia_options(lexicon(), reentry_defaults(), \"auto\"):opt:separate.").Single());
-            foreach (var ok in new[] { "\"none\"", "\"auto\"", "0", "2" })
-                Assert.Equal("", Run(t, "print reentry_unreadable(claudia_merge_options(lexicon(\"separate\", " + ok + "), reentry_defaults())).").Single());
+            foreach (var key in new[] { "separate", "jettison_stage" })
+                foreach (var ok in new[] { "\"none\"", "\"auto\"" })
+                    Assert.Equal("", Run(t, "print reentry_unreadable(claudia_merge_options(lexicon(\"" + key + "\", " + ok + "), reentry_defaults())).").Single());
         }
 
         [Theory]
-        [InlineData("\"soon\"", "separate must be 'auto', 'none' or a stage number, not 'soon'")]
-        [InlineData("-1", "separate must be 'auto', 'none' or a stage number, not -1")]
-        [InlineData("1.5", "separate must be 'auto', 'none' or a stage number, not 1.5")]
-        [InlineData("list(\"fuelTank\")", "separate must be 'auto', 'none' or a stage number, not a List")]
-        public void A_separate_it_cannot_read_is_refused(string value, string reason)
+        [InlineData("separate", "2", "separate must be 'auto' or 'none', not 2")]
+        [InlineData("separate", "\"soon\"", "separate must be 'auto' or 'none', not soon")]
+        [InlineData("jettison_stage", "1", "jettison_stage must be 'auto' or 'none', not 1")]
+        [InlineData("jettison_stage", "\"soon\"", "jettison_stage must be 'auto' or 'none', not soon")]
+        public void A_stage_number_or_other_value_is_refused_saying_whats_allowed(string key, string value, string reason)
         {
-            Assert.Equal(reason, Run(new Tree(), "print reentry_unreadable(claudia_merge_options(lexicon(\"separate\", " + value + "), reentry_defaults())).").Single());
+            Assert.Equal(reason, Run(new Tree(), "print reentry_unreadable(claudia_merge_options(lexicon(\"" + key + "\", " + value + "), reentry_defaults())).").Single());
         }
 
         [Fact]
@@ -404,7 +289,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var docs = CoreLibrary.FullDocs(new[] { "reentry" });
             Assert.Contains("separate [\"auto\"]", docs);
             Assert.Contains("stack attached below the heat shield: <names>", docs);
-            Assert.Contains("drops the stack below the heat shield", CoreLibrary.Blocks.Single(b => b.Name == "reentry").Docs[0]);
+            Assert.Contains("drops the stack below this entry's heat shield", CoreLibrary.Blocks.Single(b => b.Name == "reentry").Docs[0]);
         }
     }
 }

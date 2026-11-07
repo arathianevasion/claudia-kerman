@@ -1,0 +1,27 @@
+# Heat shields decide what an Entry drops, working back from the Last Entry
+
+A craft's heat shields are spent from the outside in. Counting from the pod outward, this Entry's Entry Shield is shield number n, where n is the Entries left in the Mission Plan, this one included, plus one if a sequence after the final Entry has delta-v. With no shield n the Entry has no Entry Shield, and nothing drops. This replaces #557's rule, which dropped everything below the first shield on every entry. Flight m20261106-203509-34a6 lost its 3,310 m/s stage to that rule at Duna, with Ascend (1,336 m/s) and Return (623 m/s) still planned. The player chose this rule on 2026-11-06.
+
+| Craft, pod outward | Entries | Result |
+|---|---|---|
+| Pod, shield, ascent stage | Duna, then Kerbin | Duna: n = 2, no Entry Shield, nothing drops. Kerbin: n = 1, the stage drops |
+| Pod, shield 1, ascent stage, shield 2, transfer stage | Duna, then Kerbin | Duna: shield 2, the transfer stage drops, shield 2 jettisons. Kerbin: shield 1, the ascent stage drops |
+| The same | Kerbin return only | n = 1: shield 1, and everything below it goes, shield 2 included |
+| Pod, shield, stage | Land on Duna, then ascend and dock, no later Entry | n = 1 + 1 = 2: no Entry Shield, nothing drops |
+| Pod, shield, stage | Land on Duna, no burns after | n = 1: the Last Entry, the stage drops |
+
+- **Counted by position, never by stage.** Stock shields aren't in the staging list (`stagingEnabled = False`, stage -1). So nothing is keyed on a stage number, and `reentry`'s `separate` and `jettison_stage` take only `"auto"` and `"none"`. `deorbit`'s `separate` and `drop_parts` are unchanged.
+- **What drops.** Everything below the Entry Shield, as far as the end of the craft, through the decouplers nearest it, as #557 had it. A heat shield is never the decoupler that drops a stack (#516). A powered touchdown still keeps its engines (#628). When the drop happens is unchanged here (#815).
+- **Jettison.** Same timing (`reentry_shield_due`), and only the Entry Shield. Another shield is never fired, as it is still needed. Its decoupler is omni and takes what is on both sides, so a stack kept on, by `separate` `"none"` or a powered touchdown's engines, keeps the shield too.
+- **Refusal.** `reentry` refuses only when its Entry Shield can't drop what is below it (a part with no decoupler), and only with `separate` `"auto"`. `separate` `"none"` is no longer refused: before this rule, nothing could keep the flight's stage.
+- **Read fresh, by the vessel flying.** The block asks at its start, through `ADDONS:CLAUDIA:ENTRYDROP`, so a revised plan counts at the next block. A Child Vessel counts its own sequences. With no Mission Plan (block tests), n is 1, the first shield's rule. A reentry whose step the words don't place as an Entry still counts as one, since it is flying one; that errs toward keeping the stage.
+- **In Core, firing in Kerboscript (ADR 0014).** The Entry count, the shield choice and the part-tree walk are C# (`Entries`, `EntryStack`). The block fires the decouplers. `Entries` is the Entry reader the Chute Allocation used, moved out so a rework of the allocation (#826) needn't carry it. It keeps the allocation's meaning of an Entry: a remaining sequence that lands on a body with air, reenters or returns home, with a return and its reentry, or a deorbit and its landing, counted once unless an ascent comes between. Manual legs, airless bodies and aerobraking aren't counted.
+- **Prediction.** `REENTRYIMPACT`'s and `DEORBITBURN`'s `shield_drop` use the Entry Shield, or none.
+
+**The hot-entry Warning has no figure yet.** The Craft Check warns, and never blocks, when an Entry would fly with no Entry Shield and is hot: on Eve or Laythe, or in words that say it comes straight in from a transfer. That is the player's list by name. The brief asked to set a threshold from measured heating, and no data can: every `max_temp_pct` in the recorded Missions is at Kerbin, shield first (about 47% to 66% from the Mun, 95% to 102% with a stack on). None is at Duna, Eve or Laythe, and none flies engine first with no shield. So Duna from low orbit stays quiet until the in-game flight (`docs/in-game/entry-shield.md`) reports its peak heat. The Craft Check reads the Mission Goal before any plan exists, and a goal rarely says how it arrives, so "straight in" fires only on its own words. An arrival it can't read is quiet.
+
+**Aerobraking, for when it is built.** No code here, and it isn't counted today. Once built, an aerobraking pass counts as an Entry, drops what is below its Entry Shield, and jettisons that shield when its block completes. For a plan of aerobraking, Duna, then Kerbin with two shields: aerobraking has none and drops nothing, Duna uses the outer shield, Kerbin the inner.
+
+We rejected the "is this the last entry" flag alone, as it can't say which shield a two-shield craft uses, and shield choice by stage number, which stock shields don't have. A wrong count keeps a stage, or drops one; #825's drop guard is the backstop, and this rule doesn't depend on it.
+
+Decided on #823 (2026-11-06).

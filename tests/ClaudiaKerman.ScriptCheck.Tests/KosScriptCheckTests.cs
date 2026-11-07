@@ -104,46 +104,16 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             + "}\n"
             + "addons:claudia:report(res).";
 
-        private const string StackLint = "with no drop named";
-
+        // #823: "auto" decides from the heat shields, so a reentry with no drop named is no longer worth a warning.
         [Theory]
-        [InlineData(B5f3AscendReturnReentry, "line 8: reentry after return")]
-        [InlineData(Ksp44e9ReturnReentry, "line 8: reentry after return")]
-        public void The_stack_drop_lint_warns_on_b5f3s_and_44e9s_return_then_reentry_and_the_script_still_passes(string script, string warning)
+        [InlineData(B5f3AscendReturnReentry)]
+        [InlineData(Ksp44e9ReturnReentry)]
+        [InlineData(B5f3LowerDropReenter)]
+        public void A_return_then_a_reentry_with_no_drop_named_passes_with_no_stack_warning(string script)
         {
-            // As the mod checks it: the Mission Script with the Core Library bundled after it, whose lines it skips.
             var result = _check.Check(CoreLibrary.Bundle(script));
             Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
-            var lint = Assert.Single(result.Warnings, w => w.Contains(StackLint));
-            Assert.StartsWith(warning, lint);
-            Assert.Contains("separate", lint);
-            Assert.DoesNotContain("drop_parts", lint);
-            Assert.DoesNotContain(result.Problems, p => p.Contains(StackLint));
-        }
-
-        [Fact]
-        public void The_stack_drop_lint_is_quiet_on_b5f3s_lower_periapsis_drop_stack_reenter()
-        {
-            Assert.DoesNotContain(_check.Check(CoreLibrary.Bundle(B5f3LowerDropReenter)).Warnings, w => w.Contains(StackLint));
-        }
-
-        [Theory]
-        [InlineData("local res is transfer_to(lexicon(\"target\", \"Kerbin\")).\nset res to reentry().\n", true)]
-        [InlineData("local res is coast(lexicon(\"until\", time:seconds + 60)).\nset res to reentry().\n", true)]
-        [InlineData("local res is return().\nset res to reentry(lexicon(\"separate\", \"none\")).\n", true)]
-        // Something leaves before the atmosphere: drop_parts, deorbit's separate, or reentry's own.
-        [InlineData("local res is return().\nset res to drop_parts(lexicon(\"parts\", \"Decoupler.1\")).\nset res to reentry().\n", false)]
-        [InlineData("local res is return().\nset res to deorbit(lexicon(\"target\", \"ksc\", \"separate\", 1)).\nset res to reentry().\n", false)]
-        [InlineData("local res is return().\nset res to reentry(lexicon(\"separate\", \"auto\")).\n", false)]
-        [InlineData("local res is return().\nset res to reentry(lexicon(\"separate\", 2)).\n", false)]
-        // No return, transfer_to or coast before it; a reentry before the return; and a comment.
-        [InlineData("local res is reentry(lexicon(\"max_duration\", 20000)).\n", false)]
-        [InlineData("local res is reentry().\nset res to return().\n", false)]
-        [InlineData("// return(lexicon()) then reentry()\nlocal res is reentry().\n", false)]
-        public void The_stack_drop_lint_fires_only_for_a_reentry_after_a_leg_home_with_nothing_dropped(string script, bool fires)
-        {
-            var warnings = _check.Check(script).Warnings;
-            Assert.Equal(fires, warnings.Any(w => w.Contains(StackLint)));
+            Assert.DoesNotContain(result.Warnings, w => w.Contains("no drop named"));
         }
 
         // ---- The deorbit-then-reentry rule of the stack-drop lint (#666) ----
@@ -165,7 +135,9 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             Assert.StartsWith("line 1: ", lint);
             Assert.Contains("separate", lint);
             Assert.DoesNotContain("\"auto\"", lint);
-            Assert.DoesNotContain(result.Warnings, w => w.Contains(StackLint));
+            // It says when the warning holds: never telling a craft with burns to come to drop its stack, as flight 34a6 needed.
+            Assert.Contains("Last Entry", lint);
+            Assert.Contains("burns still to come", lint);
         }
 
         [Theory]
@@ -173,7 +145,6 @@ namespace ClaudiaKerman.ScriptCheck.Tests
         [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\")).\nset res to reentry(lexicon(\"separate\", \"none\")).\n", false)]
         [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\")).\n", false)]
         [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\", \"separate\", \"none\")).\nset res to reentry().\n", true)]
-        [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\")).\nset res to reentry(lexicon(\"separate\", 2)).\n", true)]
         [InlineData("// deorbit(lexicon())\nlocal res is reentry().\n", false)]
         public void The_stack_drop_lint_warns_on_a_deorbit_without_a_separate_before_a_reentry_that_drops(string script, bool fires)
         {
@@ -218,7 +189,7 @@ namespace ClaudiaKerman.ScriptCheck.Tests
                 + "addons:claudia:report(res).";
             var result = _check.Check(CoreLibrary.Bundle(followsAdvice));
             Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
-            Assert.DoesNotContain(result.Warnings, w => w.Contains(StackLint));
+            Assert.DoesNotContain(result.Warnings, w => w.Contains("no drop named"));
             Assert.DoesNotContain(result.Warnings, w => w.Contains(DropLint));
         }
 
