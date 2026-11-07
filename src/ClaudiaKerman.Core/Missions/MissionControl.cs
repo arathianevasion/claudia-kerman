@@ -85,7 +85,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is SaveLoaded) Loaded(((SaveLoaded)input).SaveDirectory);
             else if (input is MissionsRestored) Restored((MissionsRestored)input);
             else if (input is SceneChanged) SceneChanging(((SceneChanged)input).Scene);
-            else if (input is UtAdvanced) { _ut = ((UtAdvanced)input).Ut; ContinueRunEnd(); }
+            else if (input is UtAdvanced) { _ut = ((UtAdvanced)input).Ut; WarpSeen(((UtAdvanced)input).Warping); ContinueRunEnd(); }
             else if (input is StartMission) Start((StartMission)input);
             else if (input is RunCraftCheck) RunCraftCheck((RunCraftCheck)input);
             else if (input is StartFormChanged) _form = (StartFormChanged)input;
@@ -273,6 +273,10 @@ namespace ClaudiaKerman.Core.Missions
             public double? RunDeadlineUt;
             /// <summary>The target UT of the current run's latest warp request (#830); the runaway stop holds while it, plus <see cref="RunawayStop.WarpAllowanceSeconds"/>, is ahead.</summary>
             public double? WarpTargetUt;
+            /// <summary>The UT warp was last seen running during the current run (#834); null if never. Not persisted: a resumed run starts fresh.</summary>
+            public double? LastWarpingUt;
+            /// <summary>Whether warp was running at the latest UtAdvanced (#834).</summary>
+            public bool Warping;
             /// <summary>Why the mod stopped the current run ("blocked: …", "timed out"), for its Debrief; null otherwise.</summary>
             public string StopReason;
             public MissionPlan Plan;
@@ -1767,6 +1771,7 @@ namespace ClaudiaKerman.Core.Missions
             var wrong = new List<string>();
             if (findings.Crossings.Count > 0) wrong.Add("a Telemetry Check is certain to cross by the plan's own figures");
             if (findings.BiomeMiss != null) wrong.Add(MissionPrompts.GoalBiomeMissed(findings.BiomeMiss));
+            if (findings.DeorbitNoTarget != null) wrong.Add(MissionPrompts.DeorbitNoTargetMissed(findings.DeorbitNoTarget));
             return string.Join(" and ", wrong.ToArray());
         }
 
@@ -1786,6 +1791,7 @@ namespace ClaudiaKerman.Core.Missions
             var snapshot = MissionVesselSnapshot(mission);
             var start = LiveReadings.DeltaVLeftOf(snapshot);
             findings.StartDeltaV = start ?? 0;
+            findings.DeorbitNoTarget = DeorbitTargets.Missing(plan.Script, snapshot);
             findings.Crossings = PredictedCrossings.Find(plan.TelemetryChecks, plan.ExpectedDeltaV, start);
             // #830: a duration short of the first burn (#696) is raised by the mod itself, on every path (the landing target default's wait, #790, was the first):
             // no request back to Claudia, no prompt text about it; plans.jsonl logs the raise.

@@ -17,6 +17,14 @@ A script the check can't read (`transfer_to` then `capture`, or a `coast` to an 
 2. If the run is still going 60 s of game time after the warp's target, it is stopped then, with the usual Debrief ("timed out").
 3. A script that hangs without warping is still stopped at 300% of its planned duration.
 
+### Check 2b: the hold ends once warp has (#834)
+
+Each UT reading the adapter sends now says whether warp is running (`TimeWarp.CurrentRateIndex > 0`). Past the deadline the hold continues only while warp runs, or within 60 s of game time after it last ran (a warp that never ran: 60 s after the deadline). The target has no cap.
+
+1. Run a script past its deadline with a long warp running (e.g. 100000x toward a far `transfer_to`/`coast` target): the stop doesn't fire while warp runs.
+2. During that warp, drop to 1x for about 30 s, then warp again: the stop doesn't fire.
+3. Drop to 1x and stay: the run is stopped about 60 s of game time later with the usual "timed out" Debrief.
+
 ## Check 3: the adapter reads the next-patch ETA (#833)
 
 The adapter's read of `orbit.EndUT` into `GameSnapshot.NextPatchEndUt` (only for an ENCOUNTER or ESCAPE end; a MANEUVER end is read as no next patch, unconfirmed) is confirmed from the next interplanetary flight's log: for a `coast` to `time:seconds + ship:orbit:nextpatcheta + n` and then a `capture`, the duration is raised at Approval (as in Check 1) without an extra request, and the plan's `lints` shows the raise. After a coast to the next patch, a `capture` or `circularize` counts only the coast's wait (the next patch's own timing isn't in the snapshot). A second coast to the next patch leaves the plan unchecked.

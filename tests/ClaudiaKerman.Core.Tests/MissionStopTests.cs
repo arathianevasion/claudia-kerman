@@ -132,13 +132,81 @@ namespace ClaudiaKerman.Core.Tests
             var target = ApprovedAt + 5000;
             mission.Send(new KosWarpRequested(target, start.RunId));
 
-            mission.Send(new UtAdvanced(ApprovedAt + 1800));
-            mission.Send(new UtAdvanced(target - 1));
+            mission.Send(new UtAdvanced(ApprovedAt + 1800, true));
+            mission.Send(new UtAdvanced(target - 1, true));
             Assert.Empty(mission.TakeCommands().OfType<AbortScript>());
-            mission.Send(new UtAdvanced(target + RunawayStop.WarpAllowanceSeconds - 1));
+            mission.Send(new UtAdvanced(target + RunawayStop.WarpAllowanceSeconds - 1, true));
             Assert.Empty(mission.TakeCommands().OfType<AbortScript>());
-            mission.Send(new UtAdvanced(target + RunawayStop.WarpAllowanceSeconds));
+            mission.Send(new UtAdvanced(target + RunawayStop.WarpAllowanceSeconds, true));
             Assert.Equal("timed out", mission.TakeCommands().OfType<AbortScript>().Single().Reason);
+        }
+
+        // ---- #834: the hold ends 60 s after warp has ended ----
+
+        [Fact]
+        public void PastTheDeadlineWhileWarpingWithTheTargetAheadTheStopHolds()
+        {
+            var mission = InFlight(Transport(plannedSeconds: 600), new PlayerConfig());
+            var start = RunToRunning(mission);
+            mission.Send(new KosWarpRequested(ApprovedAt + 1e9, start.RunId));
+            for (var ut = ApprovedAt + 1800; ut < ApprovedAt + 1e6; ut += 5e4)
+            {
+                mission.Send(new UtAdvanced(ut, true));
+                Assert.Empty(mission.TakeCommands().OfType<AbortScript>());
+            }
+        }
+
+        [Fact]
+        public void PastTheDeadlineAt1xForOver60sWithTheTargetAheadTheStopFires()
+        {
+            var mission = InFlight(Transport(plannedSeconds: 600), new PlayerConfig());
+            var start = RunToRunning(mission);
+            mission.Send(new KosWarpRequested(ApprovedAt + 1e9, start.RunId));
+            mission.Send(new UtAdvanced(ApprovedAt + 2000, true));
+            mission.Send(new UtAdvanced(ApprovedAt + 2001, false));
+            mission.Send(new UtAdvanced(ApprovedAt + 2001 + RunawayStop.WarpAllowanceSeconds - 1, false));
+            Assert.Empty(mission.TakeCommands().OfType<AbortScript>());
+            mission.Send(new UtAdvanced(ApprovedAt + 2001 + RunawayStop.WarpAllowanceSeconds, false));
+            Assert.Equal("timed out", mission.TakeCommands().OfType<AbortScript>().Single().Reason);
+        }
+
+        [Fact]
+        public void A30sDropTo1xStillHoldsAndWarpResumingRestartsTheAllowance()
+        {
+            var mission = InFlight(Transport(plannedSeconds: 600), new PlayerConfig());
+            var start = RunToRunning(mission);
+            mission.Send(new KosWarpRequested(ApprovedAt + 1e9, start.RunId));
+            mission.Send(new UtAdvanced(ApprovedAt + 2000, true));
+            mission.Send(new UtAdvanced(ApprovedAt + 2030, false));
+            Assert.Empty(mission.TakeCommands().OfType<AbortScript>());
+            mission.Send(new UtAdvanced(ApprovedAt + 2031, true));
+            mission.Send(new UtAdvanced(ApprovedAt + 2090, false));
+            Assert.Empty(mission.TakeCommands().OfType<AbortScript>());
+        }
+
+        [Fact]
+        public void WarpEndingBetweenSparseReadingsGetsItsFull60s()
+        {
+            var mission = InFlight(Transport(plannedSeconds: 600), new PlayerConfig());
+            var start = RunToRunning(mission);
+            mission.Send(new KosWarpRequested(ApprovedAt + 1e9, start.RunId));
+            mission.Send(new UtAdvanced(ApprovedAt + 2000, true));
+            mission.Send(new UtAdvanced(ApprovedAt + 500000, false));
+            Assert.Empty(mission.TakeCommands().OfType<AbortScript>());
+            mission.Send(new UtAdvanced(ApprovedAt + 500000 + RunawayStop.WarpAllowanceSeconds, false));
+            Assert.Single(mission.TakeCommands().OfType<AbortScript>());
+        }
+
+        [Fact]
+        public void ARefusedWarpThatNeverRanStops60sAfterTheDeadlineAtTheLatest()
+        {
+            var mission = InFlight(Transport(plannedSeconds: 600), new PlayerConfig());
+            var start = RunToRunning(mission);
+            mission.Send(new KosWarpRequested(ApprovedAt + 1e9, start.RunId));
+            mission.Send(new UtAdvanced(ApprovedAt + 1800 + RunawayStop.WarpAllowanceSeconds - 1));
+            Assert.Empty(mission.TakeCommands().OfType<AbortScript>());
+            mission.Send(new UtAdvanced(ApprovedAt + 1800 + RunawayStop.WarpAllowanceSeconds));
+            Assert.Single(mission.TakeCommands().OfType<AbortScript>());
         }
 
         [Fact]
