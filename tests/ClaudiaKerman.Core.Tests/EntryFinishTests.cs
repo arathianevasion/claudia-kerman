@@ -310,10 +310,7 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void A_Kerbin_return_too_fast_on_its_chutes_stays_a_Blocker_though_in_flight_the_engines_would_finish_it()
         {
-            var snapshot = Budgeted(6, true);
-            snapshot.Orbit.Body = "Kerbin";
-            snapshot.Craft.Parts.RemoveAll(p => p.Id >= 100 && p.Id < 110);
-            snapshot.Craft.Parts.Single(p => p.Id == Pod).MassT = 6;
+            var snapshot = Flight("Kerbin", 14, 9, radialChutes: 0);
 
             var groups = ChuteGroups.Of(snapshot, KerbinReturn, 0, false, null);
 

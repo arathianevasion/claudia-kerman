@@ -158,7 +158,7 @@ The one number that sets how a landing's braking trades height for speed: a smal
 _Avoid_: glide slope, descent profile (as a name for the number), approach angle
 
 **Chute Group**:
-All the chutes in one stage, by the part's own stage number; a chute with staging disabled (stage -1) is the last group. An Entry that isn't the Last Entry opens the group of the highest stage aboard, part by part and never by staging; a Last Entry opens every chute aboard. Read fresh, with no memory of use, so a repacked chute counts again and a restaged one is in its new group (ADR 0019). The mod judges each Entry's group by the touchdown predictor; one it can't bring under reentry's touchdown limit is a powered finish.
+All the chutes in one stage, by the part's own stage number; a chute with staging disabled (stage -1) is the last group. An Entry that isn't the Last Entry opens the group of the highest stage aboard, part by part and never by staging; a Last Entry opens every chute aboard. Read fresh, with no memory of use, so a repacked chute counts again and a restaged one is in its new group (ADR 0019). The mod judges each Entry's group by the touchdown predictor; over 10 m/s with an engine that has fuel, `reentry` keeps everything and lands on the engines under that group, a powered finish (ADR 0020).
 _Avoid_: Chute Allocation, chute budget, parachute plan
 
 **Entry**:

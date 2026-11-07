@@ -53,6 +53,27 @@ In the editor, with the goal "Land on Duna and return to Kerbin". All are the mo
 3. Stage-2 chutes on radial tanks dropped in stages 3 and 4, as on the flight's craft: a Warning, `chute_group_leaves_early`, saying stage 0 would open at Duna, leaving Kerbin none.
 4. Stage-2 chutes with the next engine in stage 1: a Blocker, `chute_group_above_engine`. Light that engine by hand in flight and run a recheck: the finding goes.
 
+## Landing on its engines (#824, ADR 0020)
+
+The decision moved to Core (`ADDONS:CLAUDIA:ENTRYFINISH`); braking, throttle and lighting the engines stay in `reentry`. `keep_engines` and its walk are deleted on purpose, so no parity test covers this. Each `reentry` writes a `block call ENTRYFINISH took ... ms: ...` line to `KSP.log`, and the same words to a `finish` block note: `engines, keeping everything: <speed> with its drop and chutes, <speed> as kept, on <engine>`, or `chutes, <speed>`.
+
+1. **Run `reentry_duna_powered`** (`chutes: "none"`, no `touchdown`). `KSP.log` reads `engines, keeping everything`. It passes with `touchdown_speed` under 6 and `powered_dv` over 20, and its chute stays stowed.
+2. **The Duna flight's Duna landing, on the craft above.** The script has no `touchdown`. `KSP.log` reads `engines, keeping everything: ...` naming the engine, with a speed near 24 m/s. No `separated` event appears, and the radial tanks are still attached after landing. It lands on the engines under stage 2's chutes at **under 6 m/s**. The Script Result has `powered_dv` over 0 and `chutes_used` with stage 2's four. Stock's delta-v before and after differs only by what the burn used.
+3. **The same craft as the Last Entry.** On a second try, revise the plan so nothing follows the Duna landing. If the capsule alone predicts at or under 10 m/s, `KSP.log` reads `chutes, ...` and the stack drops. If over, it reads `engines, keeping everything` with a second, kept, speed, and nothing drops.
+4. **An unlit engine is lit with no stage fired.** Before the Duna entry, in a throwaway save, right-click the engine and shut it down, leaving the stage list where it is. Run `reentry`. The engine lights at block start, the stage list doesn't move, and the landing brakes on it. In `KSP.log`, check that no stage was fired in that run.
+5. **Heat on the way down with an engine lit at zero throttle.** Watch that no thrust shows before braking starts, and that the throttle reads 0 through the fall. Tell #824 if the craft burns before the braking.
+6. **A shield with nothing below it.** On a throwaway craft, a pod with radial engines and tanks and a shield at its base, on a Duna entry with no chutes: the shield goes at 400 m/s or 3000 m, or as braking starts if that is first, and before the engines fire.
+7. **Short of fuel.** On a throwaway lander with one Mk16 and about 10 m/s of fuel at Duna: it burns to empty. A touchdown at or under 15 m/s reads `success: true`; over it fails with `touchdown at ... m/s is over 15 m/s`, and the fuel running out is not the reason.
+8. **Fuel by fuel line.** On a throwaway lander whose only fuel reaches the engine by a fuel line from a tank on a separate branch: `KSP.log` reads `engines`. With the fuel line's tank drained, or its crossfeed cut by a decoupler with crossfeed off, it reads `chutes, ..., no engine with fuel`.
+9. **A Sepratron isn't an engine for this.** On the throwaway lander, add an unlit Sepratron in a higher stage: it stays unlit, and the log names the liquid engine.
+10. **`reentry_orbit` and a Mun return stay on chutes.** Run `reentry_orbit`: `KSP.log` reads `chutes, ...` at about 7.5 m/s, and the stack drops as before.
+
+Option: run `local res is reentry(lexicon("touchdown", "powered")). addons:claudia:report(res).` from a script variable that the Script Check can't read (put the lexicon in a local first): it fails at once with `touchdown is no longer an option: reentry decides for itself whether to land on its engines`.
+
+### On the card (no flight needed)
+
+In flight with a Mission Plan: an Entry predicted from 10 to 15 m/s with an engine reads `..., powered finish.` on the Mission Plan card's `Chutes:` line and has no chute finding, and the margin's need is that speed higher. Over 15 m/s it reads the same, with the finding it had.
+
 ## A revised plan
 
 On the same flight, before the Duna entry, revise the Mission Plan so nothing follows the Duna landing. The next `reentry` reads `shield number 1`, and the stage drops. Abandon the Mission after this check.

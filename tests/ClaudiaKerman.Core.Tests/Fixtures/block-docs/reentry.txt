@@ -1,16 +1,15 @@
 reentry(options): lands through the atmosphere: drops the stack below this entry's shield,
 waits (on rails) for the atmosphere if still in space, holds the heat shield forward (surface retrograde), drops it once
 the worst heating is over, opens the parachutes only when safe (never staged), physics-warping the fall
-(1x below 100 m), and ends once landed or splashed.
+(1x below 100 m), and ends once landed or splashed. If this entry's drop and chutes would touch down over 10 m/s and an engine has fuel, it
+drops nothing, lights the engine (no stage fires) and brakes on it by radar altitude, chutes open and gear down, to 2 m/s or until the fuel is gone.
 Options:
 chute_mode ["safe"]: drogues first (under 500 m/s, over 0.02 atm, or by 3000 m above the ground), then
 mains once they are out (under 250 m/s, over 0.04 atm, or by 1500 m); "none" never opens them.
 chutes ["auto"]: those of the highest stage aboard, all on the last entry, or "none"; no other is armed.
-touchdown ["chutes"]: or "powered": falls under its chutes (or none), then brakes on its lit engines by
-radar altitude (the stopping distance counts drag and thrust over weight) to 2 m/s; over 6 m/s fails. Its gear goes down as it brakes; with no lit engine it fails at once.
 separate ["auto"]: this entry's heat shield is number n from the pod: the entries left in the Mission Plan,
-plus 1 if burns follow the last. Drops what is below it before the atmosphere (if powered, not the engines); no shield n, nothing drops. Or "none".
-jettison_stage ["auto"]: drops that shield, unless powered keeps it or its stack is kept; or "none".
+plus 1 if burns follow the last. Drops what is below it before the atmosphere; no shield n, nothing drops. Or "none".
+jettison_stage ["auto"]: drops that shield, unless its stack is kept; or "none".
 hold ["retrograde"]: points the craft's forward axis at surface retrograde; "none" leaves it.
 max_duration ["auto"]: the wait for the atmosphere plus 1800 s.
 plus min_ec_pct, abort_on_part_loss and stage_limit as for every block (it never stages).

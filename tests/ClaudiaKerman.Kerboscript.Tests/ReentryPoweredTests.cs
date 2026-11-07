@@ -40,8 +40,17 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [InlineData("chutes")]
         public void Touchdown_given_fails_saying_it_is_automatic(string value)
         {
-            Assert.Equal("touchdown is no longer an option: reentry decides for itself whether to land on its engines",
-                Run("print reentry_unreadable(claudia_options(lexicon(\"touchdown\", \"" + value + "\"), reentry_defaults(), \"auto\"):opt).\n").Single());
+            var opts = "lexicon(\"touchdown\", \"" + value + "\")";
+            Assert.Equal(new[] { "unknown option touchdown", "touchdown is no longer an option: reentry decides for itself whether to land on its engines" },
+                Run("local checked is claudia_options(" + opts + ", reentry_defaults(), \"auto\"). print checked:error. print reentry_option_error(" + opts + ", checked:error).\n"));
+            Assert.Contains("reentry decides for itself whether to land on its engines", BlockOptionCheck.Problems("local r is reentry(" + opts + ").").Single());
+        }
+
+        [Fact]
+        public void Another_unknown_option_keeps_its_plain_reason()
+        {
+            Assert.Equal("unknown option hover", One("reentry_option_error(lexicon(\"hover\", 1), \"unknown option hover\")"));
+            Assert.Empty(BlockOptionCheck.Problems("local r is reentry(lexicon(\"chutes\", \"none\"))."));
         }
 
         [Fact]
@@ -312,13 +321,13 @@ function sim {
         [Fact]
         public void Short_of_fuel_it_burns_to_empty_and_only_a_touchdown_over_the_limit_fails()
         {
-            // Under one chute at 25 m/s: 15 m/s of fuel is all burned and it still lands under the limit, so the block passes.
-            var close = Fly(4000, 60, 12, 4.7e-3, 1, 15);
-            Assert.True(close.DvUsed >= 15, "burned " + close.DvUsed);
+            // Under chutes that leave it at 12 m/s (k 0.0204): 5 m/s of fuel is all burned and it still lands under the limit, so the block passes.
+            var close = Fly(4000, 60, 12, 0.0204, 1, 5);
+            Assert.True(close.DvUsed >= 5, "burned " + close.DvUsed);
             Assert.True(close.TouchdownSpeed > 2 && close.Ok, "touchdown at " + close.TouchdownSpeed + " m/s");
             // With no chute and the same fuel, the fall is too fast: that alone fails it.
-            var fast = Fly(4000, 60, 12, 2.04e-4, 1, 15);
-            Assert.True(fast.DvUsed >= 15, "burned " + fast.DvUsed);
+            var fast = Fly(4000, 60, 12, 2.04e-4, 1, 5);
+            Assert.True(fast.DvUsed >= 5, "burned " + fast.DvUsed);
             Assert.False(fast.Ok, "touchdown at " + fast.TouchdownSpeed + " m/s");
         }
 

@@ -77,12 +77,14 @@ namespace ClaudiaKerman.Core.Kos
                 var missing = options.Where(o => o.Value && !given.Contains(o.Key)).Select(o => o.Key).ToList();
                 var unknown = keys.Where(k => !known.Contains(k)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                 if (missing.Count == 0 && unknown.Count == 0) continue;
+                // An option until #824; a script that names it is told why it went.
+                var removed = name == "reentry" && given.Contains("touchdown") ? "; reentry decides for itself whether to land on its engines" : "";
 
                 var found = new List<string>();
                 if (missing.Count > 0) found.Add("missing required option" + (missing.Count > 1 ? "s " : " ") + string.Join(", ", missing.ToArray()));
                 if (unknown.Count > 0) found.Add("unknown option" + (unknown.Count > 1 ? "s " : " ") + string.Join(", ", unknown.ToArray()));
                 var line = 1 + code.Take(m.Index).Count(c => c == '\n');
-                problems.Add("line " + line + ": " + name + ": " + string.Join("; ", found.ToArray()) + "; options: "
+                problems.Add("line " + line + ": " + name + ": " + string.Join("; ", found.ToArray()) + removed + "; options: "
                     + string.Join(", ", options.Select(o => o.Key + (o.Value ? "*" : "")).ToArray())
                     + (options.Any(o => o.Value) ? " (* required)," : ",") + " plus the common options");
             }

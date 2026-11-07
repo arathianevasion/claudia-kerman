@@ -9,13 +9,12 @@
 //| reentry(options): lands through the atmosphere: drops the stack below this entry's shield,
 //| waits (on rails) for the atmosphere if still in space, holds the heat shield forward (surface retrograde), drops it once
 //| the worst heating is over, opens the parachutes only when safe (never staged), physics-warping the fall
-//| (1x below 100 m), and ends once landed or splashed.
+//| (1x below 100 m), and ends once landed or splashed. If this entry's drop and chutes would touch down over 10 m/s and an engine has fuel, it
+//| drops nothing, lights the engine (no stage fires) and brakes on it by radar altitude, chutes open and gear down, to 2 m/s or until the fuel is gone.
 //| Options:
 //|   chute_mode ["safe"]: drogues first (under 500 m/s, over 0.02 atm, or by 3000 m above the ground), then
 //|     mains once they are out (under 250 m/s, over 0.04 atm, or by 1500 m); "none" never opens them.
 //|   chutes ["auto"]: those of the highest stage aboard, all on the last entry, or "none"; no other is armed.
-//|   If this entry's drop and chutes would touch down over 10 m/s with an engine that has fuel, it decides for itself: it drops
-//|     nothing, lights the engine (no stage fires) and brakes by radar altitude, chutes open and gear down, to 2 m/s or until the fuel is gone.
 //|   separate ["auto"]: this entry's heat shield is number n from the pod: the entries left in the Mission Plan,
 //|     plus 1 if burns follow the last. Drops what is below it before the atmosphere; no shield n, nothing drops. Or "none".
 //|   jettison_stage ["auto"]: drops that shield, unless its stack is kept; or "none".
@@ -75,17 +74,21 @@ function reentry_warp_main_cap { return 4. }
 function reentry_warp_low_agl { return 100. }
 function reentry_warp_event_s { return 10. }
 
-// The block's own options and defaults (max_duration "auto" is resolved once the entry is known). touchdown is here only to be refused with its reason (#824).
+// The block's own options and defaults (max_duration "auto" is resolved once the entry is known).
 function reentry_defaults {
-  return lexicon("chute_mode", "safe", "jettison_stage", "auto", "hold", "retrograde", "separate", "auto", "chutes", "auto", "touchdown", "").
+  return lexicon("chute_mode", "safe", "jettison_stage", "auto", "hold", "retrograde", "separate", "auto", "chutes", "auto").
+}
+
+// Why claudia_begin refused options (error): touchdown, an option until #824, has its own reason.
+function reentry_option_error {
+  parameter options, error.
+  if options:haskey("touchdown") { return "touchdown is no longer an option: reentry decides for itself whether to land on its engines". }
+  return error.
 }
 
 // "" or why an option isn't one the block knows.
 function reentry_unreadable {
   parameter opt.
-  if opt:touchdown <> "" {
-    return "touchdown is no longer an option: reentry decides for itself whether to land on its engines".
-  }
   if opt:chute_mode <> "safe" and opt:chute_mode <> "none" {
     return "chute_mode must be 'safe' or 'none', not '" + opt:chute_mode + "'".
   }
@@ -550,8 +553,7 @@ function reentry_shield_beside {
 }
 
 // The Entry Shield's uid if this entry jettisons it, else "". below: ADDONS:CLAUDIA:ENTRYDROP's lexicon. Its decoupler takes
-// what's on both sides (#516), so a stack kept on (separate "none", which a powered entry also sets) keeps the shield too.
-// One with nothing below it jettisons, before any engine fires.
+// what's on both sides (#516), so a stack kept on (separate "none", which a powered entry also sets) keeps the shield too; with nothing below it, it goes.
 function reentry_jettison_uid {
   parameter opt, below.
   if opt:jettison_stage = "none" or (opt:separate = "none" and below:names:length > 0) {
@@ -695,7 +697,7 @@ function reentry {
     "chutes_used", list(), "chutes_kept", list(), "powered_dv", 0).
   local ctx is claudia_begin("reentry", options, reentry_defaults(), "auto").
   if ctx:error <> "" {
-    return claudia_finish(ctx, false, ctx:error, extra).
+    return claudia_finish(ctx, false, reentry_option_error(options, ctx:error), extra).
   }
   local opt is ctx:opt.
   local unreadable is reentry_unreadable(opt).
@@ -938,8 +940,7 @@ function reentry {
   }
   // The braking burn of a powered touchdown, at 1x: down to reentry_powered_soft by reentry_powered_end m of
   // radar, then held there to the ground, along surface retrograde until slow, then up leaning against
-  // the drift. It never stages, so the delta-v it burns is the throttle's. Out of fuel it lights what else has some, and falls on:
-  // only the touchdown's speed fails the block.
+  // the drift. It never stages, so the delta-v it burns is the throttle's. Out of fuel it lights what else has some and falls on: only the touchdown's speed fails it.
   if fell = "" and braking and not claudia_on_ground() {
     local dv_before is ctx:dv_used.
     local tset is 0.
