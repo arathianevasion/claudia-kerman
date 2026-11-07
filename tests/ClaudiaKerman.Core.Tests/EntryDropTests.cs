@@ -352,6 +352,164 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(2.0, Call(PodShieldStage(), "Duna", new[] { Leg("Corrective", 0), Leg("Return to Kerbin", 623) })["number"]);
         }
 
+        // ---- #838: what a leg does, not prose about what comes next ----
+
+        private static PlannedSequence Said(string name, string intent, double dv = 100)
+        {
+            return new PlannedSequence { Name = name, Intent = intent, DeltaV = dv };
+        }
+
+        private static string[] Found(string at, params PlannedSequence[] legs)
+        {
+            return Entries.Find(Snapshot(new Craft(), at), legs, 0).Select(e => e.Step + ":" + e.Body).ToArray();
+        }
+
+        private static readonly PlannedSequence[] LandBeforeTheReturn =
+        {
+            Said("Land on Duna", "Land on Duna before the return to Kerbin"),
+            Leg("Ascend from Duna", 1336),
+            Leg("Return to Kerbin", 623),
+        };
+
+        [Fact]
+        public void A_later_return_in_an_intent_leaves_Duna_one_Entry_and_the_return_leg_the_second()
+        {
+            var entries = Entries.Find(Snapshot(new Craft(), "Duna"), LandBeforeTheReturn, 0);
+            Assert.Equal(new[] { "0:Duna", "2:Kerbin" }, entries.Select(e => e.Step + ":" + e.Body).ToArray());
+            Assert.False(entries[0].Return);
+            Assert.True(entries[1].Return);
+        }
+
+        [Fact]
+        public void A_two_shield_craft_at_Duna_on_that_plan_uses_shield_2()
+        {
+            var craft = TwoShields();
+            var answer = Call(craft, "Duna", LandBeforeTheReturn);
+            Assert.Equal(2.0, answer["number"]);
+            Assert.Equal(Uid(craft, "shield2"), answer["shield"]);
+        }
+
+        [Fact]
+        public void A_capture_with_the_landing_only_in_its_intent_is_still_an_Entry()
+        {
+            Assert.Equal(new[] { "0:Duna" }, Found("Duna", Said("Capture at Duna", "Capture and land")));
+            Assert.Equal(new[] { "0:Duna", "2:Kerbin" }, Found("Duna", Said("Capture at Duna", "Capture and land before the return to Kerbin"), Leg("Ascend from Duna", 1336), Leg("Return to Kerbin", 623)));
+        }
+
+        [Fact]
+        public void A_name_that_says_nothing_with_a_landing_intent_is_still_an_Entry()
+        {
+            Assert.Equal(new[] { "0:Duna" }, Found("Duna", Said("Phase three", "Land on Duna")));
+            Assert.Equal(new[] { "0:Duna", "2:Kerbin" }, Found("Duna", Said("Phase three", "Land on Duna before the return to Kerbin"), Leg("Ascend from Duna", 1336), Leg("Return to Kerbin", 623)));
+        }
+
+        [Fact]
+        public void A_return_only_in_an_intent_counts_when_no_later_leg_flies_it()
+        {
+            // The recorded plans' shape: the leg that ascends also goes home, and its intent is the only place that says so.
+            Assert.Equal(new[] { "0:Kerbin" }, Found("Mun", Said("Ascend from the Mun", "Ascend from the Mun surface to a low circular orbit, then return toward Kerbin with a periapsis near 35 km at Kerbin.")));
+            Assert.Equal(new[] { "0:Kerbin" }, Found("Mun", Said("Mun return burn", "Eject from Mun orbit onto a Kerbin return path with periapsis near 35 km at Kerbin.")));
+            // No return leg on the plan: the words are all there is, so the doubt keeps the stage (n is 2 at Duna, as it was).
+            Assert.Equal(2.0, Call(PodShieldStage(), "Duna", new[] { Said("Land on Duna", "Land on Duna before the return to Kerbin") })["number"]);
+        }
+
+        [Fact]
+        public void An_ascent_that_goes_home_in_its_intent_and_a_later_reentry_are_one_Kerbin_Entry()
+        {
+            Assert.Equal(new[] { "1:Kerbin" }, Found("Duna", Said("Ascend from Duna", "Ascend from Duna, return to Kerbin, then re-enter and land"), Leg("Reentry at Kerbin", 0)));
+        }
+
+        [Fact]
+        public void A_Kerbin_landing_in_an_intent_before_a_relaunch_stays_its_own_Entry()
+        {
+            // Nothing else is named, so the return in this intent isn't about somewhere else: two trips home, two Entries.
+            Assert.Equal(new[] { "0:Kerbin", "3:Kerbin" }, Found("Mun", Said("Phase one", "Return to Kerbin and land"), Leg("Launch from Kerbin", 3400), Leg("Transfer to the Mun", 860), Leg("Return to Kerbin", 300)));
+            // A trip from home between this leg and the later return: that return isn't this one's.
+            Assert.Equal(new[] { "0:Duna", "1:Kerbin", "4:Kerbin" }, Found("Duna", Said("Land on Duna", "Land on Duna"), Said("Phase two", "Ascend from Duna and return to Kerbin"), Leg("Launch from Kerbin", 3400), Leg("Transfer to the Mun", 860), Leg("Return to Kerbin", 300)));
+        }
+
+        [Fact]
+        public void A_later_leg_only_takes_the_return_if_it_is_an_Entry_itself()
+        {
+            // By hand or only aerobraking, the later leg isn't counted, so the intent's return still is: the doubt keeps the stage.
+            var manual = new PlannedSequence { Name = "Return to Kerbin by hand", Manual = true };
+            Assert.Equal(new[] { "0:Kerbin" }, Found("Duna", Said("Land on Duna", "Land on Duna before the return to Kerbin"), manual));
+            Assert.Equal(new[] { "0:Kerbin" }, Found("Duna", Said("Land on Duna", "Land on Duna before the return to Kerbin"), Leg("Aerobrake on the return to Kerbin", 0)));
+        }
+
+        [Fact]
+        public void A_later_leg_another_vessel_flies_doesnt_take_the_return()
+        {
+            var legs = new[] { Said("Land on Duna", "Land on Duna before the return to Kerbin"), Leg("Return to Kerbin", 623, "Mothership") };
+            var found = Entries.Find(Snapshot(new Craft(), "Duna"), legs, 0, s => s.Vessel.Length == 0);
+            Assert.Equal(new[] { "0:Kerbin" }, found.Select(e => e.Step + ":" + e.Body).ToArray());
+        }
+
+        [Fact]
+        public void A_prose_return_gives_way_to_the_next_return_even_when_the_plan_goes_home_twice()
+        {
+            Assert.Equal(new[] { "0:Duna", "1:Kerbin", "3:Kerbin" }, Found("Duna", Said("Land on Duna", "Land on Duna before the return to Kerbin"), Leg("Return to Kerbin", 623), Leg("Launch from Kerbin", 3400), Leg("Return to Kerbin", 300)));
+        }
+
+        [Fact]
+        public void A_body_named_only_after_the_return_is_a_doubt_and_the_return_stands()
+        {
+            Assert.Equal(new[] { "1:Kerbin" }, Found("Duna", Said("Phase three", "Before the return to Kerbin, land on Duna"), Leg("Return to Kerbin", 623)));
+            Assert.Equal(new[] { "0:Kerbin", "3:Kerbin" }, Found("Kerbin", Said("Phase one", "Return to Kerbin and land, then head for the Mun"), Leg("Launch for the Mun", 3400), Leg("Transfer to the Mun", 860), Leg("Return to Kerbin", 300)));
+        }
+
+        [Fact]
+        public void Two_bodies_named_keep_both_Entries_in_the_count()
+        {
+            // The Mun is where it leaves, not where it lands: reading the Mun would lose this Entry.
+            var found = Found("Duna", Said("Phase three", "Leave the Mun and land on Duna before the return to Kerbin"), Leg("Ascend from Duna", 1336), Leg("Return to Kerbin", 623));
+            Assert.Equal(2, found.Length);
+        }
+
+        [Theory]
+        [InlineData("Land on Kerbin")]
+        [InlineData("Reentry and landing")]
+        public void A_Kerbin_Entry_the_plan_reaches_by_a_transfer_is_the_later_return(string last)
+        {
+            Assert.Equal(new[] { "0:Duna", "3:Kerbin" }, Found("Duna", Said("Land on Duna", "Land on Duna before the return to Kerbin"), Leg("Ascend from Duna", 1336), Leg("Transfer to Kerbin", 623), Leg(last, 0)));
+        }
+
+        [Fact]
+        public void A_launch_from_Kerbin_ends_the_search_for_the_later_return()
+        {
+            var manual = new PlannedSequence { Name = "Launch from Kerbin", Manual = true };
+            Assert.Equal(new[] { "0:Kerbin", "3:Kerbin" }, Found("Kerbin", Said("Phase one", "Land on Duna, return to Kerbin"), manual, Leg("Transfer to Duna", 900), Leg("Return to Kerbin", 300)));
+            Assert.Equal(new[] { "0:Kerbin", "1:Kerbin" }, Found("Kerbin", Said("Phase one", "Land on the Mun, then return to Kerbin"), Said("Launch from Kerbin", "Launch, fly by the Mun and return to Kerbin")));
+        }
+
+        [Fact]
+        public void A_real_return_on_an_airless_trip_keeps_its_Entry_before_a_relaunch_the_words_dont_place()
+        {
+            // "Launch for the Mun" doesn't say it leaves Kerbin. Giving way would lose an Entry here, as the Mun has no air to take it.
+            Assert.Equal(new[] { "0:Kerbin", "3:Kerbin" }, Found("Mun", Said("Phase one", "Land on the Mun, then return to Kerbin"), Leg("Launch for the Mun", 3400), Leg("Transfer to the Mun", 860), Leg("Return to Kerbin", 300)));
+        }
+
+        [Fact]
+        public void Words_after_the_return_belong_to_the_return()
+        {
+            // Nothing lands at Duna on these: the landing and the reentry come after the return in the words.
+            Assert.Equal(new[] { "1:Kerbin" }, Found("Duna", Said("Duna departure", "Depart Duna, return to Kerbin, then land"), Leg("Reentry at Kerbin", 0)));
+            Assert.Equal(new[] { "1:Kerbin" }, Found("Duna", Said("Duna ejection", "Ascend from Duna, return to Kerbin and land"), Leg("Reentry at Kerbin", 0)));
+            Assert.Equal(new[] { "1:Kerbin" }, Found("Duna", Said("Duna to Kerbin reentry", "Re-enter after the return from Duna"), Leg("Land on Kerbin", 0)));
+        }
+
+        [Fact]
+        public void A_later_leg_that_ascends_and_returns_home_is_the_later_return()
+        {
+            Assert.Equal(new[] { "0:Duna", "1:Kerbin" }, Found("Duna", Said("Land on Duna", "Land on Duna before the return to Kerbin"), Leg("Ascend and return to Kerbin", 1959)));
+        }
+
+        [Fact]
+        public void A_leg_that_names_Kerbin_is_at_Kerbin_whatever_its_intent_says_of_a_return()
+        {
+            Assert.Equal(new[] { "1:Kerbin" }, Found("Mun", Said("Reentry at Kerbin", "Coming down after the return from the Mun"), Leg("Return to Kerbin", 0)));
+        }
+
         // ---- The walk ----
 
         [Fact]

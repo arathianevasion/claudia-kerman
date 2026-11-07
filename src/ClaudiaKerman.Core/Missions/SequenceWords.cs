@@ -66,6 +66,14 @@ namespace ClaudiaKerman.Core.Missions
             return FirstBody(snapshot, words, false);
         }
 
+        /// <summary>The one body <paramref name="words"/> name other than Kerbin, or null for none or several.</summary>
+        public static SnapshotBody SoleAwayBody(GameSnapshot snapshot, string words)
+        {
+            var named = snapshot.Bodies.Where(b => b.Name.Length > 0 && !string.Equals(b.Name, "Kerbin", StringComparison.OrdinalIgnoreCase)
+                && Regex.IsMatch(words, @"\b" + Regex.Escape(b.Name) + @"\b", RegexOptions.IgnoreCase)).ToList();
+            return named.Count == 1 ? named[0] : null;
+        }
+
         /// <summary>
         /// The first body <paramref name="words"/> names, earliest occurrence first. With <paramref name="away"/>, Kerbin is skipped
         /// and so is an occurrence the return comes from ("Return from the Mun to Kerbin", "come home from Minmus"): that is where
