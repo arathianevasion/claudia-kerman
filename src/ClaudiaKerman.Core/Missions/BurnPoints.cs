@@ -130,7 +130,7 @@ namespace ClaudiaKerman.Core.Missions
                 {
                     // A coast whose until can't be read leaves nothing to check; a UT already past returns at once.
                     bool toPatch;
-                    var until = Until(call.Option("until"), now + held, snapshot, readStored ? masked : null, call.Index, out toPatch);
+                    var until = Until(call.Option("until"), now + held, snapshot, readStored ? masked : null, call, out toPatch);
                     // A second coast to a next patch can't be read: the snapshot has only the first patch's end.
                     if (!until.HasValue || (toPatch && leftOrbit)) return null;
                     held += Math.Max(0, until.Value - (now + held));
@@ -382,7 +382,7 @@ namespace ClaudiaKerman.Core.Missions
         /// A coast's until as a UT: a number, <c>time:seconds + n</c> from <paramref name="at"/>, or the next patch's end plus n, written out or held in a variable of
         /// <paramref name="masked"/> (null: not looked for); null when it isn't one of those.
         /// </summary>
-        private static double? Until(string text, double at, GameSnapshot snapshot, string masked, int callAt, out bool toPatch)
+        private static double? Until(string text, double at, GameSnapshot snapshot, string masked, BlockCall call, out bool toPatch)
         {
             toPatch = false;
             if (text == null) return null;
@@ -391,7 +391,7 @@ namespace ClaudiaKerman.Core.Missions
             // #833: time:seconds + ship:orbit:nextpatcheta [+ n] is the patch's end UT plus n; no next patch leaves it unread.
             var patch = StoredNextPatch.UtForm.Match(trimmed);
             var secondsPast = patch.Success ? StoredNextPatch.Seconds(patch)
-                : masked != null ? StoredNextPatch.SecondsPastTheEnd(trimmed, masked, callAt) : null;
+                : masked != null ? StoredNextPatch.SecondsPastTheEnd(trimmed, masked, call) : null;
             if (secondsPast.HasValue)
             {
                 // A patch end already behind this point is a later patch's: not read.
@@ -401,14 +401,6 @@ namespace ClaudiaKerman.Core.Missions
             }
             var from = FromNow.Match(trimmed);
             return from.Success ? at + double.Parse(from.Groups["s"].Value, CultureInfo.InvariantCulture) : (double?)null;
-        }
-
-        /// <summary>Whether a coast's until is only a time written out: a number or <c>time:seconds + n</c>. Anything else may be a next patch's, which the text needn't say (#852).</summary>
-        public static bool IsWrittenTime(string until)
-        {
-            if (until == null) return false;
-            var trimmed = until.Trim();
-            return Number.IsMatch(trimmed) || FromNow.IsMatch(trimmed);
         }
 
         private static double? Literal(string text)

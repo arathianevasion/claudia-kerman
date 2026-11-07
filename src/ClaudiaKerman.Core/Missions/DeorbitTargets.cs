@@ -24,7 +24,7 @@ namespace ClaudiaKerman.Core.Missions
             if (snapshot == null || string.IsNullOrWhiteSpace(script) || string.IsNullOrEmpty(snapshot.Body)) return null;
             foreach (var call in BlockOptionCheck.Calls(script))
             {
-                if (call.Block == "transfer_to" || call.Block == "return" || (call.Block == "coast" && LeavesTheBody(call))) return null;
+                if (call.Block == "transfer_to" || call.Block == "return" || (call.Block == "coast" && LeavesTheBody(call, script))) return null;
                 if (call.Block != "deorbit") continue;
                 var target = call.Option("target");
                 if (target == null || !string.Equals(target.Trim(), "\"auto\"", StringComparison.OrdinalIgnoreCase)) continue;
@@ -34,10 +34,10 @@ namespace ClaudiaKerman.Core.Missions
             return null;
         }
 
-        /// <summary>A coast whose until waits for the next patch, or can't be read (a variable may hold that wait, #852): the craft may be at another body after it.</summary>
-        private static bool LeavesTheBody(BlockCall call)
+        /// <summary>A coast whose until waits for the next patch, directly or through a variable (#852), or can't be read as staying on this orbit: the craft may be at another body after it.</summary>
+        private static bool LeavesTheBody(BlockCall call, string script)
         {
-            return !BurnPoints.IsWrittenTime(call.Option("until"));
+            return !StoredNextPatch.StaysOnThisOrbit(call.Option("until"), CoreLibrary.MissionScript(script, true), call.Index);
         }
     }
 }
