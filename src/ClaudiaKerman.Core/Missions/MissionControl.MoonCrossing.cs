@@ -163,6 +163,8 @@ namespace ClaudiaKerman.Core.Missions
         {
             var snapshot = MissionVesselSnapshot(mission);
             if (snapshot == null) return;
+            // A transfer_to that never ejected (refused, failed) planned nothing: only a target the path now meets, or is round, stays planned.
+            mission.RunTransfers = string.Join(",", RunTransfers(mission).Where(t => MoonCrossings.Meets(snapshot.At(_ut), t)).ToArray());
             // The next plan's wait is not known yet: judged as a long one. A moon the run's own transfer_to aims at is planned, not crossed.
             var crossing = MoonCrossings.Judge(snapshot.At(_ut), RunTransfers(mission));
             if (crossing != null) mission.RunEvents.Replace(_ut, RunEventKind.MoonCrossing, MissionPrompts.MoonCrossingFact(crossing));

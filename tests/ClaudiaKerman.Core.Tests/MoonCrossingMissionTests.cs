@@ -276,7 +276,9 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new Approve());
             Assert.Equal(MissionStage.Running, mission.View.Stage);
             var start = mission.TakeCommands().OfType<StartScript>().Single();
-            mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, new System.Collections.Generic.Dictionary<string, object> { { "success", true } }, "", "", false), start.RunId));
+            // The run ejected: the coast now meets Ike on its first loop.
+            mission.Send(OnTheCoastToIke(Now));
+            mission.Send(new KosRunEnded(Ended(true), start.RunId));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval && transport.Requests.Count == 4);
 
             Assert.Contains("Ike", mission.View.NextPatchPlanned.Split(','));
@@ -284,6 +286,48 @@ namespace ClaudiaKerman.Core.Tests
             mission.TakeCommands();
             mission.Send(new WarpToDueTime());
             Assert.Single(mission.TakeCommands().OfType<WarpToUt>());
+        }
+
+        private static RunOutcome Ended(bool success)
+        {
+            return new RunOutcome(RunOutcomeKind.Finished, new System.Collections.Generic.Dictionary<string, object> { { "success", success } }, "", "", false);
+        }
+
+        /// <summary>The craft at <paramref name="ut"/> on an orbit of 908b's shape, its periapsis turned so its path's first loop meets Ike: a transfer flown.</summary>
+        private static GameSnapshot OnTheCoastToIke(double ut)
+        {
+            for (var argPe = 0; argPe < 360; argPe += 5)
+            {
+                var rig = MoonCrossingTests.DunaOrbit(argPe: argPe, ut: ut);
+                if (MoonCrossings.Follow(rig.System, rig.Body, rig.Orbit, ut, ut + rig.Orbit.Period) == null) continue;
+                var snapshot = InDunaOrbit();
+                snapshot.Orbit = TransferRig.Elements(rig.Orbit, rig.Body);
+                return snapshot;
+            }
+            throw new InvalidOperationException("no orbit of 908b's shape meets Ike on its first loop");
+        }
+
+        /// <summary>
+        /// Review of the fix round: a transfer_to Ike that never ejected (refused, failed) planned nothing, so the parking orbit still crossing Ike
+        /// is a crossing between runs and for the next plan's wait.
+        /// </summary>
+        [Fact]
+        public void ATransferToTheMoonThatNeverEjectedLeavesItsMeetingUnplanned()
+        {
+            var due = Now + MoonCrossingTests.Wait908b;
+            var transport = new StreamingFakeTransport(IkePlan(), TransferToIke(), NominalDebrief(), Waiting(due), Waiting(due));
+            var mission = Control(transport);
+            ToSequencePlan(mission, InDunaOrbit(), "Orbit Ike.");
+            mission.Send(new Approve());
+            var start = mission.TakeCommands().OfType<StartScript>().Single();
+            mission.Send(InDunaOrbit());
+            mission.Send(new KosRunEnded(Ended(false), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval && transport.Requests.Count >= 4);
+
+            Assert.DoesNotContain("Ike", mission.View.NextPatchPlanned.Split(','));
+            mission.TakeCommands();
+            mission.Send(new WarpToDueTime());
+            Assert.Empty(mission.TakeCommands().OfType<WarpToUt>());
         }
 
         /// <summary>Fix round (2): leaving Flight takes away the craft's snapshot, not the Blocker: the mod's warp from the Tracking Station is still refused, and Auto Mode still stops.</summary>

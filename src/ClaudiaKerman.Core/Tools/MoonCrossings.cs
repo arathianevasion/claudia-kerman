@@ -156,6 +156,16 @@ namespace ClaudiaKerman.Core.Tools
             return Judge(setup.System, setup.Body, setup.Start, setup.Now, setup.Now + LikelyLoops * setup.Start.Period, planned);
         }
 
+        /// <summary>The craft in <paramref name="snapshot"/> is round <paramref name="body"/>, or its path's first loop meets it: a transfer to it was flown.</summary>
+        public static bool Meets(GameSnapshot snapshot, string body)
+        {
+            var setup = Prepare(snapshot);
+            if (setup == null) return false;
+            if (string.Equals(setup.Body.Name, body, StringComparison.OrdinalIgnoreCase)) return true;
+            var path = SingleShooting.Follow(setup.System, setup.Body, setup.Start, setup.Now, 1);
+            return path != null && path.Count > 0 && path[0].End == PatchEnd.Encounter && string.Equals(path[0].Next.Name, body, StringComparison.OrdinalIgnoreCase);
+        }
+
         private static PredictBurn.Setup Prepare(GameSnapshot snapshot)
         {
             if (snapshot == null) return null;
@@ -203,14 +213,14 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// The path's first loop ends before any wait goes round: at a planned encounter (a transfer_to Minmus whose ellipse also reaches the Mun's band),
-        /// in the atmosphere or at the ground (a return from the Mun with its periapsis at 35 km). No later loop comes, so geometry has nothing to judge.
+        /// in the atmosphere or at the ground (a return from the Mun with its periapsis at 35 km), or out of the body's sphere of influence. No later loop comes, so geometry has nothing to judge.
         /// </summary>
         private static bool EndsFirst(BodySystem system, SnapshotBody body, Conic orbit, double fromUt, ICollection<string> planned)
         {
             var path = SingleShooting.Follow(system, body, orbit, fromUt, 1);
             if (path == null || path.Count == 0) return false;
             var patch = path[0];
-            return patch.End == PatchEnd.Atmosphere || patch.End == PatchEnd.Impact || (patch.End == PatchEnd.Encounter && Planned(patch.Next, planned));
+            return patch.End == PatchEnd.Atmosphere || patch.End == PatchEnd.Impact || patch.End == PatchEnd.Escape || (patch.End == PatchEnd.Encounter && Planned(patch.Next, planned));
         }
 
         private static bool Planned(SnapshotBody moon, ICollection<string> planned)
