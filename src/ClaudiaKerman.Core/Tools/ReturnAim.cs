@@ -54,6 +54,11 @@ namespace ClaudiaKerman.Core.Tools
     /// the track (within <see cref="ReachS"/>), each try re-solved for target_pe, so the periapsis is held and the correction
     /// halfway has only what the burn left. Across the track there is no cheap lever: the path's plane holds the moon, so an inclined
     /// moon's latitude stays in the landing (Minmus: up to about 60 km, at about 0.65 km per m/s of normal burn), and <see cref="ReturnPlan.ErrorKm"/> says so; the Course Correction takes that out when the delta-v covers it (#790). It only reads.
+    /// From an orbit over <see cref="InclinedDeg"/> off the moon's plane (#816) none of that holds: the path's plane is the craft's, the
+    /// windows differ in cost, and near the cheap alignment the time to the planet shortens about as fast as the ground turns, so the
+    /// landings of a band of cheap windows span only about 90° of longitude. Each window is solved and each within
+    /// <see cref="CostCapMs"/> of the cheapest predicted (<see cref="Search.FromWindows"/>); a target outside that band is missed by
+    /// what the band leaves, for the correction.
     /// </summary>
     internal static class ReturnAim
     {
@@ -88,7 +93,6 @@ namespace ClaudiaKerman.Core.Tools
         /// step along with the moon, so each window is solved, and each within <see cref="CostCapMs"/> predicted, on its own.
         /// </summary>
         public const double InclinedDeg = 5;
-        internal static Action<string> Trace;
         /// <summary>The windows kept: those costing no more than the cheapest within max_wait plus this, m/s.</summary>
         public const double CostCapMs = 50;
         /// <summary>Landings within this of each other are a tie, km, which goes to the sooner window.</summary>
@@ -220,6 +224,13 @@ namespace ClaudiaKerman.Core.Tools
             return 1 / (1 / orbit.Period - along / moonOrbit.Period);
         }
 
+        /// <summary>The nearest landing of <paramref name="plans"/>, or the soonest within <see cref="TieKm"/> of it (#816).</summary>
+        internal static ReturnPlan Tied(IList<ReturnPlan> plans)
+        {
+            var nearest = plans.Min(p => p.ErrorKm);
+            return plans.Where(p => p.ErrorKm <= nearest + TieKm).OrderBy(p => p.Ut).First();
+        }
+
         /// <summary>The planet of the moon the Game Snapshot's craft orbits; null round anything else.</summary>
         public static SnapshotBody PlanetOf(GameSnapshot snapshot)
         {
@@ -348,9 +359,13 @@ namespace ClaudiaKerman.Core.Tools
                 if (search.First.Error != null && !search.Inclined) return search;
                 double alignment = 0;
                 search.CostlyPlane = search.Inclined && !ask.MaxWait.HasValue && AlignmentCosts(system, moon, orbit, now, search._earliest, ask.TargetPe, out alignment);
-                search._latest = search._earliest + (ask.MaxWait ?? (search.CostlyPlane
-                    ? alignment - search._earliest + PastAlignmentS
-                    : LongitudeTurn(system, search._planet, moon, ask.Landing == null ? 1 : ask.Landing.Frame.Handed)));
+                var turn = LongitudeTurn(system, search._planet, moon, ask.Landing == null ? 1 : ask.Landing.Frame.Handed);
+                search._latest = search._earliest + (ask.MaxWait ?? (search.CostlyPlane ? alignment - search._earliest + PastAlignmentS : turn));
+                if (search.CostlyPlane)
+                {
+                    search._turnEnd = search._earliest + turn;
+                    search._bandStart = alignment - PastAlignmentS;
+                }
                 if (ask.LatestUt.HasValue) search._latest = Math.Min(search._latest, ask.LatestUt.Value);
                 if (search.Inclined || ask.Landing == null) return search;
                 search._step = WindowStep(system, moon, orbit, search.First.Ut);
@@ -388,6 +403,14 @@ namespace ClaudiaKerman.Core.Tools
             private List<ReturnPlan> _windows;
             private double _cheapest;
 
+            /// <summary>
+            /// With "auto" max_wait over a costly plane, the windows solved are those of one longitude turn from the earliest and those from
+            /// <see cref="PastAlignmentS"/> before the alignment on: between them the way home is out of the plane (at the Mun over the cap),
+            /// and round Minmus, whose alignment can be 150 h off, solving every window would take seconds.
+            /// </summary>
+            private double _turnEnd = double.PositiveInfinity;
+            private double _bandStart = double.NegativeInfinity;
+
             /// <summary>The most a burn may cost while it is aimed: the cap, from an inclined orbit.</summary>
             private double _dvLimit = double.PositiveInfinity;
 
@@ -406,6 +429,7 @@ namespace ClaudiaKerman.Core.Tools
                 for (var k = 0; k < spans.Count; k++)
                 {
                     if (k > 0 && floor > 0 && direct[k] > floor + SkipOverDirectMs) continue;
+                    if (k > 0 && spans[k][0] >= _turnEnd && spans[k][1] <= _bandStart) continue;
                     var plan = k == 0 ? First : ReturnBurn.Find(_system, _moon, _orbit, _now, Plain(spans[k][0], spans[k][1]));
                     if (plan.Error == null) _windows.Add(plan);
                 }
@@ -434,7 +458,6 @@ namespace ClaudiaKerman.Core.Tools
                 foreach (var window in windows.Where(w => w.DeltaV <= _cheapest + CostCapMs))
                 {
                     var landed = Predict(window);
-                    if (Trace != null) Trace(string.Format(CultureInfo.InvariantCulture, "W ut {0:0} dv {1:0.0} inc {2:0.0} lat {3:0.00} lng {4:0.00} {5}", window.Ut, window.DeltaV, window.IncPredicted, landed.Latitude, landed.Longitude, landed.Error));
                     if (landed.Error != null) continue;
                     Stamp(window, landed);
                     ranked.Add(window);
@@ -452,13 +475,6 @@ namespace ClaudiaKerman.Core.Tools
                 return _ask.Landing == null && soonest.DeltaV <= _cheapest + CostCapMs ? soonest : _windows.OrderBy(w => w.DeltaV).First();
             }
 
-            /// <summary>The nearest of <paramref name="plans"/>, or the soonest within <see cref="TieKm"/> of it.</summary>
-            private static ReturnPlan Tied(List<ReturnPlan> plans)
-            {
-                var nearest = plans.Min(p => p.ErrorKm);
-                return plans.Where(p => p.ErrorKm <= nearest + TieKm).OrderBy(p => p.Ut).First();
-            }
-
             /// <summary>The inclined orbit's answer (#816): <see cref="Picked"/>'s rule, each of the nearest few windows aimed, the rule again on where they come down.</summary>
             public ReturnPlan FromWindows()
             {
@@ -469,7 +485,7 @@ namespace ClaudiaKerman.Core.Tools
                 if (ranked.Count == 0) best = Cheap();
                 else
                 {
-                    best = Tied(ranked.Take(InclinedCandidates).Select(w => { var x = Aim(w) ?? w; if (Trace != null) Trace(string.Format(CultureInfo.InvariantCulture, "A from {0:0} err {1:0.0} -> ut {2:0} err {3:0.0} dv {4:0.0} along {5:0.0}", w.Ut, w.ErrorKm, x.Ut, x.ErrorKm, x.DeltaV, AlongKm)); return x; }).ToList());
+                    best = Tied(ranked.Take(InclinedCandidates).Select(w => Aim(w) ?? w).ToList());
                     best.SpreadKm = Spread(best);
                 }
                 best.AimDv = Math.Max(0, best.DeltaV - _cheapest);

@@ -16,19 +16,19 @@
 //|     craft comes down.
 //|   target_inc ["any"]: the inclination round the planet to arrive at, degrees from 0 to 180; "any" for none.
 //|   window ["next"]: "next" ejects at the burn point's next pass once the craft can have turned to the
-//|     burn; a time (UT seconds) ejects at its first pass from that time. It
-//|     warps to the pass.
+//|     burn; a time (UT seconds), its first pass from then. Unset, an inclined orbit
+//|     waits out a dear pass. It warps to the pass.
 //|   target ["auto"]: LATLNG(lat, lng), lexicon("lat", x, "lng", y), "ksc" or "none": where to come down; auto: KSC at home unless the goal names one. The
-//|     ejection picks the window and times its burn to land there (about 1 m/s more); the correction
+//|     ejection picks the window and times its burn to land there; the correction
 //|     trims the rest, without target_inc. Read predicted_error_km; when too far for the Mission Goal,
 //|     capture and call deorbit. Aim a splashdown offshore.
-//|   max_wait ["auto"]: with a target, s the ejection may wait; "auto" is one turn of the landing (about 7 h).
+//|   max_wait ["auto"]: with a target, s the ejection may wait; "auto" is one turn of the landing (7 h), or inclined the cheap plane +3.5 h.
 //|   correction [true]: false leaves out the mid-course correction.
 //|   checkpoint ["off"]: the mod's own, for a coast it resumes.
 //|   max_duration ["auto"]: the time to the predicted reentry plus 900 s; a shorter one moves the correction sooner.
-//|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block; each burn gets them too.
-//| Extra results: planet_pe (m, the periapsis at the planet), reentry_ut (UT of the predicted
-//| entry into the planet's atmosphere, or of periapsis if that is above it), correction_dv (m/s the
+//|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block and each burn.
+//| Extra results: planet_pe (m), reentry_ut (UT of the predicted
+//| entry into the planet's air, or of periapsis above it), correction_dv (m/s the
 //| mid-course correction burned), predicted_geo (lexicon lat, lng: where the craft is predicted to come
 //| down, from the path it is on after the correction, for the craft reentry flies with separate
 //| "auto"; empty without a target or a prediction), predicted_error_km (km from the target to

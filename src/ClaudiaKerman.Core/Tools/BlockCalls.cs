@@ -1137,12 +1137,14 @@ namespace ClaudiaKerman.Core.Tools
         /// <c>finished_by</c> (what finished a solve the SQP stopped short, "" for none); a best
         /// burn outside the tolerances gives its <c>error</c> with the rest; a solve that could not start, only <c>error</c>,
         /// "found no return: &lt;why&gt;". Given <c>lat</c> and <c>lng</c> (#792), <see cref="ReturnAim"/> picks the window within
-        /// <c>max_wait</c> (s; "auto" or missing is one turn of the landing's longitude) and <c>max_duration</c> (s from <c>start_ut</c>, when a number) and times the
+        /// <c>max_wait</c> (s; "auto" or missing is <see cref="ReturnAim.AutoWait"/>) and <c>max_duration</c> (s from <c>start_ut</c>, when a number) and times the
         /// burn to come down there, by the reentry predictor with <paramref name="body"/>, <paramref name="air"/> (the planet's) and
         /// <paramref name="craft"/>; <c>ground_alt</c> (m) and <c>isp</c> (s; 0 or missing leaves the mass as it is) are as for
         /// <see cref="DeorbitBurn"/>. It adds <c>lat</c>, <c>lng</c>, <c>landing_ut</c> and <c>error_km</c> when the predictor can say,
-        /// else the window's least burn stands with <c>error_km</c> -1. <c>aim_dv</c> (m/s over the window's least burn) and
-        /// <c>spread_km</c> (what <see cref="ReturnAim.ResidualMs"/> of error in the burn moves the landing; -1 unknown) are always there.
+        /// else the window's least burn stands with <c>error_km</c> -1. <c>aim_dv</c> (m/s over the window's least burn; from an orbit
+        /// inclined to the moon's, over the cheapest window within max_wait, #816) and <c>spread_km</c> (what
+        /// <see cref="ReturnAim.ResidualMs"/> of error in the burn moves the landing; -1 unknown) are always there. Without a landing,
+        /// <c>cheap_window</c> true (the block was given no window) lets an inclined orbit wait out a dear next pass (<see cref="ReturnAim"/>).
         /// </summary>
         public static IDictionary<string, object> ReturnBurn(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body = null,
             IReentryAir air = null, IReentryCraft craft = null)

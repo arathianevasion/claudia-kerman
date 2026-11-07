@@ -223,6 +223,25 @@ namespace ClaudiaKerman.Core.Tests
             return Convert.ToDouble(node["ut"], CultureInfo.InvariantCulture);
         }
 
+        /// <summary>
+        /// #816: with no target and no window given, from an inclined orbit whose next pass is dear (783 m/s here), the block waits for the
+        /// cheap window, 7.2 h off: the plan covers that wait, and past a Kerbin day's 6 h it is a Due Time. Claudia's own "next" is the next pass.
+        /// </summary>
+        [Fact]
+        public void AnInclinedReturnWithNoTargetAndNoWindowWaitsForTheCheapWindow()
+        {
+            var snapshot = AtTheMun(0.9);
+            snapshot.Orbit.Inclination = 66.43;
+            snapshot.Orbit.Lan = 30;
+            var wait = BurnPoints.First("local res is return(lexicon(\"target\", \"none\")).", snapshot, 1000, 300, new AimFrame());
+            Assert.NotNull(wait);
+            Assert.Equal("return", wait.Block);
+            Assert.InRange(wait.WaitSeconds, 6.5 * 3600, 7.5 * 3600);
+            Assert.Equal(1000 + wait.WaitSeconds, wait.DepartureUt.Value, 3);
+            Assert.NotNull(BurnPoints.DueTime(wait, 1000));
+            Assert.Null(BurnPoints.First("local res is return(lexicon(\"target\", \"none\", \"window\", \"next\")).", snapshot, 1000, 300, new AimFrame()));
+        }
+
         [Theory]
         [InlineData("\"ksc\"")]
         [InlineData("latlng(-0.0972, -74.5577)")]

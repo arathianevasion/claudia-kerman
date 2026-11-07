@@ -26,7 +26,7 @@ namespace ClaudiaKerman.Core.Tools
         public double IncTolerance = 0.5;
         /// <summary>Where to come down (#792), for <see cref="ReturnAim"/> to pick the window and time the burn; null for the least burn in the window.</summary>
         public ReturnLanding Landing;
-        /// <summary>With <see cref="Landing"/>, the seconds after <see cref="EarliestUt"/> the burn may wait; null for one turn of the landing's longitude (<see cref="ReturnAim.LongitudeTurn"/>).</summary>
+        /// <summary>With <see cref="Landing"/>, the seconds after <see cref="EarliestUt"/> the burn may wait; null for <see cref="ReturnAim.AutoWait"/>.</summary>
         public double? MaxWait;
         /// <summary>Without <see cref="Landing"/>: the block was given no window (#816), so from an inclined orbit a next pass over the cheapest within the auto wait plus <see cref="ReturnAim.CostCapMs"/> waits for the cheapest.</summary>
         public bool CheapWindow;
