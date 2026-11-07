@@ -25,4 +25,6 @@ A Mission whose Duna Entry lands on its engines (`reentry`'s `phase finish` note
 
 ## Check 3: a craft that changes between aim and entry
 
-When it happens on a planned flight (a plan revised between `return` and `reentry`, or fuel enough at `return` but not at `reentry` to land on the engines), `reentry`'s `phase finish` blocknote and the `block call ENTRYFINISH` line end with `; the landing was aimed for the craft <aimed>, it flies <flown>`. The record is in the session only: after a quickload between the two blocks there is nothing to compare, and no line.
+When it happens on a planned flight (a plan revised between `return` and `reentry`, or fuel enough at `return` but not at `reentry` to land on the engines), `reentry`'s `phase finish` blocknote and the `block call ENTRYFINISH` line end with `; the landing was aimed for the craft <aimed>, it flies <flown>`. The record is in the session only: after a quickload between the two blocks there is nothing to compare, and no line. It is kept for the vessel that aimed, and dropped when `return` or `deorbit` starts again or ends without success, so another vessel's `reentry`, or one after an aiming block gave up, prints no such line.
+
+Known limit (check 1): `return` reads `ENTRYCRAFT` once, before the ejection, so its correction's who-pays figures (`whole`, `gone_prop`) are the craft's before the ejection burn, paired with the kept mass now. The landing it aims is the kept craft's either way; only the correction's mass-after-burn estimate with a kept burner leans on them.

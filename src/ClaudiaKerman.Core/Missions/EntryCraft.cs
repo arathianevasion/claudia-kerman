@@ -11,7 +11,7 @@ namespace ClaudiaKerman.Core.Missions
     /// <summary>
     /// The craft an Entry flies (#814): what is gone before the air and whether its Entry Shield jettisons, by <c>reentry</c>'s own rules from
     /// <see cref="EntryStack"/> and <see cref="EntryFinish"/>, so <c>return</c>, its aimed correction and <c>deorbit</c> predict the landing of the craft
-    /// that enters. A stack the Entry drops is left out and the shield jettisons. No Entry Shield, a stuck stack, or a stack kept (on the engines, or
+    /// that enters. A stack the Entry drops is left out and the shield jettisons, if a decoupler is on or beside it. No Entry Shield, a stuck stack, or a stack kept (on the engines, or
     /// by <c>separate</c> "none") is the craft as it is; a kept craft's shield jettisons only with nothing below it, as <c>reentry_jettison_uid</c> has it.
     /// A block reads it once, at its start; the predictor then flies the parts it names. It fires nothing.
     /// </summary>
@@ -67,7 +67,7 @@ namespace ClaudiaKerman.Core.Missions
                     foreach (var part in stack.Gone) left.Add(part.Id);
                     craft._why = stack.Gone.Count > 0 ? "without its stack (" + string.Join(", ", EntryStack.Names(stack.Gone).ToArray()) + ")" : "nothing below the shield";
                 }
-                if (stack.Stuck.Count == 0 && (!kept || stack.Parts.Count == 0)) craft.ShieldDropped = stack.Shield;
+                if (stack.Stuck.Count == 0 && (!kept || stack.Parts.Count == 0) && Droppable(snapshot, left, stack.Shield)) craft.ShieldDropped = stack.Shield;
             }
             craft.LeftOut.AddRange(snapshot.Craft.Parts.Where(p => left.Contains(p.Id)));
             craft.KeptT = craft.WholeT - craft.LeftOut.Sum(p => p.MassT);
@@ -76,6 +76,17 @@ namespace ClaudiaKerman.Core.Missions
             craft.Key = string.Join(",", snapshot.Craft.Parts.Where(p => !left.Contains(p.Id)).Select(p => p.Id).OrderBy(id => id)
                 .Select(id => id.ToString(CultureInfo.InvariantCulture)).ToArray()) + (craft.ShieldDropped != null ? "|shield jettisoned" : "|shield kept");
             return craft;
+        }
+
+        /// <summary>
+        /// Whether a decoupler on the craft that is left (not in <paramref name="left"/>) is the shield or sits against it, as <c>reentry_shield_modules</c>
+        /// finds them: with none, nothing jettisons the shield and it stays on. The snapshot's "decoupler" tag has no ModuleJettison and can't tell a
+        /// decoupler already fired, so a shield beside only those reads as kept, or as jettisoned.
+        /// </summary>
+        private static bool Droppable(GameSnapshot snapshot, HashSet<uint> left, SnapshotPart shield)
+        {
+            return snapshot.Craft.Parts.Any(p => !left.Contains(p.Id) && p.Tags.Contains("decoupler")
+                && (p.Id == shield.Id || p.ParentId == shield.Id || shield.ParentId == p.Id));
         }
 
         /// <summary>

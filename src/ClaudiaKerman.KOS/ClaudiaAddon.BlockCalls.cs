@@ -365,10 +365,11 @@ namespace ClaudiaKerman.KOS
                 foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
                 var snapshot = SnapshotReader.ReadForMission(vessel);
                 SnapshotReader.ReadEngineFuel(snapshot, vessel);
+                // Compared once, and only with this vessel's own aim: a later Entry with no aim of its own has nothing to compare.
+                string aimed;
+                var aimedKey = MissionDriver.AimedCraft.Take(vessel.persistentId, out aimed);
                 finish = BlockCalls.EntryFinishCall(KosValues.ToDictionary(input), snapshot, MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
-                    id => uids.ContainsKey(id) ? uids[id] : null, MissionDriver.AimedCraftKey, MissionDriver.AimedCraft);
-                // Compared once: a later Entry with no aim of its own has nothing to compare.
-                MissionDriver.AimedCraftKey = MissionDriver.AimedCraft = "";
+                    id => uids.ContainsKey(id) ? uids[id] : null, aimedKey, aimed);
                 return KosValues.FromPlain(finish);
             }, () => finish["error"] as string == "" ? (string)finish["why"] : (string)finish["error"]);
         }
@@ -385,7 +386,7 @@ namespace ClaudiaKerman.KOS
                 var snapshot = SnapshotReader.ReadForMission(vessel);
                 SnapshotReader.ReadEngineFuel(snapshot, vessel);
                 craft = BlockCalls.EntryCraftCall(KosValues.ToDictionary(input), snapshot, MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
-                    id => uids.ContainsKey(id) ? uids[id] : null, (key, why) => { MissionDriver.AimedCraftKey = key; MissionDriver.AimedCraft = why; });
+                    id => uids.ContainsKey(id) ? uids[id] : null, (key, why) => MissionDriver.AimedCraft.Aimed(vessel.persistentId, key, why));
                 return KosValues.FromPlain(craft);
             }, () => craft["error"] as string == "" ? (string)craft["why"] : (string)craft["error"]);
         }

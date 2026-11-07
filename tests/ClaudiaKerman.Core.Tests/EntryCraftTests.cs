@@ -220,6 +220,23 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(3.2, D(answer, "whole"), 6);
         }
 
+        /// <summary>A shield with no decoupler of its own (reentry_shield_modules' rule): with a decoupler beside it, it jettisons; with none on or beside it, it stays on.</summary>
+        [Theory]
+        [InlineData(true, true)]
+        [InlineData(false, false)]
+        public void The_shield_jettisons_only_with_a_decoupler_on_or_beside_it(bool decouplerBeside, bool shieldGoes)
+        {
+            var parts = Parts(Shape.Drops, stack: false);
+            parts.Single(p => p.Id == Shield).Tags.Remove("decoupler");
+            if (!decouplerBeside) parts.RemoveAll(p => p.Id == Dec);
+            foreach (var answer in new[] { Read(AtKerbin(parts)), Read(AtMun(parts), "Kerbin") })
+            {
+                Assert.Empty(Uids(answer["leave_out"]));
+                Assert.Equal(shieldGoes ? Uids(Shield) : Uids(), Uids(answer["shield_drop"]));
+                Assert.Contains(shieldGoes ? "shield jettisoned" : "shield kept", (string)answer["why"]);
+            }
+        }
+
         [Fact]
         public void An_Entry_on_its_engines_with_a_stack_below_its_shield_keeps_both_in_deorbits_prediction()
         {
@@ -324,11 +341,14 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(aimed, 0.75 * capsule, 1.25 * capsule);
         }
 
-        // ---- Read once per block ----
+        // ---- The burn search predicts the carried answer ----
 
-        /// <summary>The answer is read at block start: the aimed burn, with its loop, reads only it, so a craft changed since (here, its parts gone from the snapshot) is aimed the same.</summary>
+        /// <summary>
+        /// The aimed burn predicts the craft its ask carries, not the snapshot's parts: a craft changed since the read (here, its parts gone from the
+        /// snapshot) is aimed the same. That each block reads ENTRYCRAFT once is checked on the Kerboscript source (TransferAndReturnTests, DeorbitTests), not here.
+        /// </summary>
         [Fact]
-        public void The_answer_is_read_once_and_the_aiming_loop_only_carries_it()
+        public void The_burn_search_predicts_the_carried_answer_not_the_snapshots_parts()
         {
             var stacked = AtMun(Parts(Shape.Drops));
             var answer = Read(stacked, "Kerbin");
@@ -456,6 +476,56 @@ namespace ClaudiaKerman.Core.Tests
             var aimed = Read(AtMun(Parts(Shape.Drops)), "Kerbin");
             var flown = BlockCalls.EntryFinishCall(new Dictionary<string, object> { { "home", Uid(Pod) } }, AtKerbin(Parts(Shape.Drops, stack: false)), null, 0, "", Uid, (string)aimed["key"], (string)aimed["why"]);
             Assert.DoesNotContain("aimed for", (string)flown["why"]);
+        }
+
+        // ---- The aim reentry compares with (EntryAim, held by the adapter) ----
+
+        private static IDictionary<string, object> Result(bool success)
+        {
+            return new Dictionary<string, object> { { "success", success } };
+        }
+
+        [Fact]
+        public void An_aim_that_stands_is_read_once_by_the_vessel_that_aimed()
+        {
+            var aim = new EntryAim();
+            aim.Block("return", null);
+            aim.Aimed(42, "1,2|shield kept", "the capsule");
+            aim.Block("return", Result(true));
+            aim.Block("reentry", null);
+            aim.Block("reentry", Result(false));
+            string why;
+            Assert.Equal("1,2|shield kept", aim.Take(42, out why));
+            Assert.Equal("the capsule", why);
+            Assert.Equal("", aim.Take(42, out why));
+        }
+
+        [Theory]
+        [InlineData("return")]
+        [InlineData("deorbit")]
+        public void An_aiming_block_that_gives_up_leaves_no_aim(string block)
+        {
+            var aim = new EntryAim();
+            aim.Block(block, null);
+            aim.Aimed(42, "1,2|shield kept", "the capsule");
+            aim.Block(block, Result(false));
+            string why;
+            Assert.Equal("", aim.Take(42, out why));
+            Assert.Equal("", why);
+        }
+
+        [Fact]
+        public void Another_vessels_Entry_or_a_new_aiming_block_has_no_aim_to_compare()
+        {
+            var aim = new EntryAim();
+            aim.Aimed(42, "1,2|shield kept", "the capsule");
+            aim.Block("return", Result(true));
+            string why;
+            Assert.Equal("", aim.Take(7, out why));
+
+            aim.Aimed(42, "1,2|shield kept", "the capsule");
+            aim.Block("deorbit", null);
+            Assert.Equal("", aim.Take(42, out why));
         }
     }
 }

@@ -220,7 +220,7 @@ function return {
       return claudia_finish(ctx, false, site:error, extra).
     }
     local ground_alt is planet:geopositionlatlng(site:lat, site:lng):terrainheight.
-    // The craft reentry will fly (#814), read once: every prediction below flies it, assuming reentry's separate stays "auto".
+    // The craft reentry will fly (#814), read once: every prediction below flies it, assuming reentry's separate stays "auto". Read before the ejection, its whole and gone_prop are that craft's, so the correction pairs them with the kept mass now.
     local craft is addons:claudia:entrycraft(lexicon("home", reentry_home_uid(), "body", planet:name)).
     set burn_ask to lexicon("lat", site:lat, "lng", site:lng, "ground_alt", max(0, ground_alt), "max_wait", opt:max_wait, "max_duration", opt:max_duration, "start_ut", ctx:start_ut, "isp", claudia_engine_isp(), "craft", craft).
     set predict to {
