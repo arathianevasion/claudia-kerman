@@ -408,6 +408,12 @@ namespace ClaudiaKerman.Core.Missions
         /// from it, when it unloads, and asks first before a far switch that would unload it while Running.
         /// </summary>
         public string CraftVesselId = "";
+        /// <summary>
+        /// #867: the craft whose next patch the adapter watches while it warps with no script running (<see cref="Tools.NextPatchWatch"/>); "" for none.
+        /// <see cref="NextPatchPlanned"/>: the bodies a planned coast meets (a Coast Checkpoint's), comma-separated, which the watch lets pass.
+        /// </summary>
+        public string NextPatchVesselId = "";
+        public string NextPatchPlanned = "";
         /// <summary>The Mission Plan's Child Vessels while the Mission lasts; empty once it is over (they are ordinary vessels again).</summary>
         public IList<ChildVesselView> ChildVessels = new List<ChildVesselView>();
         /// <summary>The vessel id of the Child Vessel a sequence is running on; "" when the run flies the craft or nothing runs.</summary>

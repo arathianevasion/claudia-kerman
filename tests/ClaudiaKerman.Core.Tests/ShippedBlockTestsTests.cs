@@ -54,6 +54,7 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("capture_mun_polar", "capture", "Kerbin")]
         [InlineData("return", "return", "Mun")]
         [InlineData("return_ike", "return", "Ike")]
+        [InlineData("transfer_to_ike_crossing", "transfer_to", "Duna")]
         public void TheTransferAndReturnBlockTestsParseAndShipTheirFiles(string test, string block, string orbitBody)
         {
             var dir = Path.Combine(RepoRoot(), "tests", "blocks", test);

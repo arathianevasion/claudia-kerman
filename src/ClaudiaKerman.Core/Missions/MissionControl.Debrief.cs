@@ -129,6 +129,8 @@ namespace ClaudiaKerman.Core.Missions
             {
                 turn.Gate = new DebriefGate();
                 mission.Gate = turn.Gate;
+                // #867: the orbit the run left, if it crosses a moon, is one of the run's events, so the request and the card both say so.
+                CrossingFact(mission);
                 // RunFacts first: it finishes a drop being measured, which the run total rebases.
                 var facts = RunFacts(mission);
                 turn.UserText = turn.UserText.Replace(MissionPrompts.RunDeltaVSlot, RunDeltaV(mission, turn.Report)) + facts;

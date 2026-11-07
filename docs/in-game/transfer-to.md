@@ -25,7 +25,7 @@ Install and the block test runner are as in `phase-3-gate.md` ("Install", "Where
 4. The ejection's `ejection_dv_used` may run about 2 % over `ejection_node_dv` on a long burn (#747: a 230 s burn from 80 km lost 21 m/s of 1,094): note both and `ejection_burn_time`. Much more than 3 % on a burn under 4 minutes is worth a ticket.
 5. In `KSP.log`, the `block call TRANSFERSTEP` line for the ejection reports its time; it should be well under a second (the window search's own budget is 250 ms on a quiet machine).
 
-The coasts are also checked by the Encounter Watch (#770): see `encounter-watch.md`.
+The coasts are also checked by the Encounter Watch (#770): see `encounter-watch.md`. A far ejection's wait is watched for a moon nobody planned (#867), and a parking orbit that crosses one is blocked at plan time: see `moon-crossing.md`, with its block test `transfer_to_ike_crossing`.
 
 ## Check 4: the Mission flights
 
