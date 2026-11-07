@@ -24,6 +24,8 @@ namespace ClaudiaKerman.Core.Missions
         Stopped,
         /// <summary>A landing aimed at Kerbin: km from KSC predicted, and actual once down (#790). The latest stands for the run.</summary>
         Landing,
+        /// <summary>Daylight was asked for and the craft landed out of Daylight (#828), with the sun's figure.</summary>
+        DarkLanding,
     }
 
     public sealed class RunEvent
@@ -133,6 +135,7 @@ namespace ClaudiaKerman.Core.Missions
                 case RunEventKind.BlockAborted: return "block aborted";
                 case RunEventKind.Science: return "science";
                 case RunEventKind.Landing: return "landing";
+                case RunEventKind.DarkLanding: return "landed in the dark";
                 default: return "run stopped";
             }
         }

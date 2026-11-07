@@ -80,6 +80,18 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
+        /// Whether the sequence in step <paramref name="step"/> (0 first), for the vessel it names, leads to the Last Entry on the body the craft is at (#828): one Entry left, with no
+        /// sequence after it that has delta-v. A doubt <see cref="ShieldNumber"/> counts as another Entry says no, and so does no Mission Plan.
+        /// </summary>
+        public static bool IsLastEntry(GameSnapshot snapshot, IList<PlannedSequence> sequences, int step)
+        {
+            if (sequences == null || step < 0 || step >= sequences.Count) return false;
+            var vessel = sequences[step].Vessel;
+            var child = MissionCards.FliesCraft(snapshot.Craft.Name, vessel) ? "" : vessel.Trim();
+            return Find(snapshot, sequences, step, s => Flies(snapshot, s, child)).Count > 0 && ShieldNumber(snapshot, sequences, step, child) == 1;
+        }
+
+        /// <summary>
         /// The Craft Check's Warning (#823): each Entry of the Mission Goal's <paramref name="legs"/> with no Entry Shield that the player
         /// named as hot: on Eve or Laythe, or in words that say it comes straight in from a transfer. By name, with no figure: no heating
         /// has been measured off Kerbin, so Duna from low orbit stays quiet until it is (ADR 0018). The goal's clauses carry no budget, so a

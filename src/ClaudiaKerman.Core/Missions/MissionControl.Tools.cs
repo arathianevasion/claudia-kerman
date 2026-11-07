@@ -188,6 +188,7 @@ namespace ClaudiaKerman.Core.Missions
                 snapshot.TimeCapHours = settings.TimeCapHours;
                 snapshot.StampMission(settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
                 snapshot.LaterLegsDv = LaterLegsDv(mission);
+                snapshot.LastEntryPlanned = mission.Plan != null && Entries.IsLastEntry(snapshot, mission.Plan.Sequences, StepsBegun(mission));
                 snapshot.MissionGoal = mission.Goal;
                 snapshot.PickedSite = mission.PickedSite;
             }

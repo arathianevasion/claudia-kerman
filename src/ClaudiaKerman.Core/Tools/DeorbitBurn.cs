@@ -68,7 +68,7 @@ namespace ClaudiaKerman.Core.Tools
         public const double ReserveMin = 50;
         public const double ReserveShare = 0.1;
         /// <summary>Burns within accuracy whose cost differs by less than this are a tie, and the earlier wins, m/s.</summary>
-        private const double TieDv = 1;
+        internal const double TieDv = 1;
         private const double G0 = 9.80665;
         private const int NewtonSteps = 8;
         /// <summary>Scan samples are at most this far apart in true anomaly, deg (even in the seconds near a periapsis)...</summary>

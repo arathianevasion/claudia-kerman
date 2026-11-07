@@ -221,6 +221,8 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         public bool DaylightLandingDefault = true;
         public double TimeCapHours = MissionSettingsValues.BalancedSearchHours;
+        /// <summary>The sequence being planned is the Last Entry (#828: <see cref="Entries.IsLastEntry"/>), so find_landing_site may offer water; false with no Mission Plan.</summary>
+        public bool LastEntryPlanned;
         /// <summary>The Mission Setting that picks a planet's Transfer Window, Soonest or Optimal (#458).</summary>
         public TimeVersusDeltaV TimeVersusDeltaV = TimeVersusDeltaV.Balanced;
         /// <summary>The Craft Check's delta-v margin, %, that Soonest's total must fit within over Optimal's; PlayerConfig's default until the Mission sets it.</summary>

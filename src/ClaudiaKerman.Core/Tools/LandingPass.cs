@@ -57,6 +57,11 @@ namespace ClaudiaKerman.Core.Tools
         /// daylight, only where <see cref="SunAt"/> gives the sun there.
         /// </summary>
         public bool FirstOnly;
+        /// <summary>
+        /// Without a craft, take the pass <c>deorbit</c> takes (#828): the soonest within <see cref="DeorbitBurn.TieDv"/> of the cheapest correction, rather than
+        /// the first in reach.
+        /// </summary>
+        public bool SoonestCheapest;
     }
 
     /// <summary>One pass over the site the search looked at, for <c>land</c>'s trace.</summary>
@@ -332,7 +337,7 @@ namespace ClaudiaKerman.Core.Tools
 
             if (clearing.Count > 0)
             {
-                var chosen = clearing[planning ? ChoosePass(clearing.Select(p => p.LandingDv).ToList()) : 0];
+                var chosen = clearing[planning ? ChoosePass(clearing.Select(p => p.LandingDv).ToList()) : ask.SoonestCheapest ? SoonestCheapest(clearing) : 0];
                 var after = clearing.FirstOrDefault(p => p.ArriveUt > chosen.ArriveUt);
                 var cheapest = planning ? clearing.Min(p => p.LandingDv) : 0;
                 foreach (var pass in clearing)
@@ -392,6 +397,13 @@ namespace ClaudiaKerman.Core.Tools
             for (var i = 0; i < landingDvs.Count; i++)
                 if (landingDvs[i] <= 1.1 * cheapest) return i;
             return 0;
+        }
+
+        /// <summary>The first of the passes, in pass order, whose correction is within <see cref="DeorbitBurn.TieDv"/> of the cheapest.</summary>
+        private static int SoonestCheapest(List<LandingPassLine> passes)
+        {
+            var cheapest = passes.Min(p => p.CorrectionDv);
+            return passes.FindIndex(p => p.CorrectionDv <= cheapest + DeorbitBurn.TieDv);
         }
 
         /// <summary>The descent over a pass's approach to (<paramref name="lat"/>, <paramref name="lng"/>), planned once per site and heading.</summary>
