@@ -94,6 +94,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (drop_parts, deorbit, reentry): whether a drop taking the craft from before to left m/s of delta-v takes what the Mission Plan still needs; lexicon error, refused, reason, taken, need"));
             AddSuffix("LANDGUARD", new OneArgsSuffix<Lexicon, Lexicon>(LandGuardTick,
                 "Core Library only (land, each braking tick): the path guard on alt against path_alt, and near the site the straight-down fallback; lexicon verdict (fly, vertical or abort), error, why, over, and the fallback's al, cr, up, vv, ..."));
+            AddSuffix("LANDSTEER", new OneArgsSuffix<Lexicon, Lexicon>(LandSteerTick,
+                "Core Library only (land, each braking tick): the direction and throttle for the demand want, with the final descent's lean cap and settle; lexicon al, cr, up, mag, throttle, error, lean, settling, settle_s, ..."));
             AddSuffix("KEEPCLEAR", new OneArgsSuffix<Lexicon, Lexicon>(KeepClearCall,
                 "Core Library only (land): the site lat, lng moved clear_m clear of keep_lat, keep_lng (straight away, else toward ahead_lat, ahead_lng) by up to max_divert on a body of radius; lexicon lat, lng, dist, moved"));
             AddSuffix("BURNWORTH", new OneArgsSuffix<Lexicon, Lexicon>(BurnWorthCall,
@@ -208,6 +210,21 @@ namespace ClaudiaKerman.KOS
                 return KosValues.FromPlain(tick);
             }, () => string.Format(CultureInfo.InvariantCulture, "{0}, {1:0} m over the path{2}", tick["verdict"], tick["over"],
                 (string)tick["why"] == "" ? "" : "; " + tick["why"]), 1);
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:LANDSTEER</c> (#865, ADR 0014): one braking tick of land's steering and throttle (<see cref="LandSteer.Tick"/>),
+        /// pure. Called every physics tick, so its time is logged at most once a second (guardrail 6).
+        /// </summary>
+        private Lexicon LandSteerTick(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> tick = null;
+            return (Lexicon)Guarded("LANDSTEER", () =>
+            {
+                tick = LandSteer.Tick(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(tick);
+            }, () => string.Format(CultureInfo.InvariantCulture, "throttle {0:0.00}, {1:0.0} deg off, lean {2:0.0} deg{3}", tick["throttle"], tick["error"],
+                tick["lean"], (bool)tick["settling"] ? ", settling" : ""), 1);
         }
 
         /// <summary>
