@@ -720,6 +720,21 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void A_port_between_shields_warns_when_any_Entry_has_no_shield_of_its_own()
+        {
+            var craft = new Craft();
+            var pod = craft.Add("mk1pod.v2", null, "command");
+            var shieldA = craft.Shield(pod, "shieldA");
+            var dec = craft.Add("dec1", shieldA, "decoupler");
+            var tank = craft.Add("tank1", dec);
+            var port = craft.Add("dockingPort", tank, "docking_port");
+            var tank2 = craft.Add("tank2", port);
+            craft.Shield(tank2, "shieldB");
+            var finding = Assert.Single(PastPort(craft, DunaThenKerbin.ToArray()));
+            Assert.Contains("shieldB", finding.Explanation);
+        }
+
+        [Fact]
         public void A_radial_shield_does_not_warn()
         {
             var craft = PodShieldStage();

@@ -189,9 +189,15 @@ namespace ClaudiaKerman.Core.Missions
         public static IList<MarginFinding> ShieldPastPort(GameSnapshot snapshot, IList<PlannedSequence> legs)
         {
             var findings = new List<MarginFinding>();
-            if (Find(snapshot, legs, 0).Count == 0) return findings;
+            var entries = Find(snapshot, legs, 0);
+            if (entries.Count == 0) return findings;
             var past = EntryStack.ShieldsPastPorts(snapshot.Craft.Parts, null);
-            if (past.Count == 0 || EntryStack.Of(snapshot.Craft.Parts, null, 1).Shield != null) return findings;
+            if (past.Count == 0) return findings;
+            var tail = BurnsAfter(legs, entries[entries.Count - 1].Step, BurnsInWords) ? 1 : 0;
+            var bare = false;
+            for (var number = 1 + tail; number <= entries.Count + tail; number++)
+                bare |= EntryStack.Of(snapshot.Craft.Parts, null, number).Shield == null;
+            if (!bare) return findings;
             var rule = CraftCheckRules.Find(CraftCheckRules.ShieldPastPort);
             findings.Add(new MarginFinding
             {
