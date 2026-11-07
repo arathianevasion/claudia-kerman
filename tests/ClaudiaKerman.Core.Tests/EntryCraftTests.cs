@@ -439,6 +439,17 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void A_part_staged_away_since_the_aim_is_no_difference()
+        {
+            // An empty stage on the capsule's side, dropped by drop_empty between return and reentry: the parts that enter are the same.
+            var parts = Parts(Shape.Drops);
+            parts.Add(Part(99, Pod, "spentBooster", 0.2));
+            var aimed = Read(AtMun(parts), "Kerbin");
+            var flown = BlockCalls.EntryFinishCall(new Dictionary<string, object> { { "home", Uid(Pod) } }, AtKerbin(Parts(Shape.Drops)), null, 0, "", Uid, (string)aimed["key"], (string)aimed["why"]);
+            Assert.DoesNotContain("aimed for", (string)flown["why"]);
+        }
+
+        [Fact]
         public void A_stack_already_dropped_before_reentry_is_the_craft_aimed_for()
         {
             // return aimed for the capsule; the stack went before the air (staged away on the way home): the same parts enter.

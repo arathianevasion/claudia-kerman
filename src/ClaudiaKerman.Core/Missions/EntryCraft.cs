@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -75,6 +76,22 @@ namespace ClaudiaKerman.Core.Missions
             craft.Key = string.Join(",", snapshot.Craft.Parts.Where(p => !left.Contains(p.Id)).Select(p => p.Id).OrderBy(id => id)
                 .Select(id => id.ToString(CultureInfo.InvariantCulture)).ToArray()) + (craft.ShieldDropped != null ? "|shield jettisoned" : "|shield kept");
             return craft;
+        }
+
+        /// <summary>
+        /// Whether the craft aimed for (<paramref name="aimedKey"/>, read earlier) is the one flown (<paramref name="flownKey"/>, read from <paramref name="snapshot"/>):
+        /// the same shield fate, and the same parts entering of those still aboard, so a part staged away since (an empty stage, drop_parts) is no difference.
+        /// </summary>
+        public static bool Same(string aimedKey, string flownKey, GameSnapshot snapshot)
+        {
+            var aboard = new HashSet<string>(snapshot.Craft.Parts.Select(p => p.Id.ToString(CultureInfo.InvariantCulture)));
+            Func<string, string> now = key =>
+            {
+                var bar = key.IndexOf('|');
+                var ids = (bar < 0 ? key : key.Substring(0, bar)).Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Where(aboard.Contains);
+                return string.Join(",", ids.ToArray()) + (bar < 0 ? "" : key.Substring(bar));
+            };
+            return now(aimedKey) == now(flownKey);
         }
 
         /// <summary>The craft in a few words for the log, with its mass.</summary>

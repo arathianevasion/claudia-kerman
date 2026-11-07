@@ -1431,7 +1431,7 @@ namespace ClaudiaKerman.Core.Tools
             var finish = EntryFinish.Decide(snapshot, drop ? stack.Gone.Select(p => p.Id).ToList() : new List<uint>(), number == 1, chutes);
             // The craft it flies, against the one a return or deorbit aimed with (#814): a changed plan or fuel can make them differ.
             var flown = EntryCraft.From(snapshot, null, stack, finish, drop);
-            var why = finish.Why() + (string.IsNullOrEmpty(aimedKey) || aimedKey == flown.Key ? "" : "; the landing was aimed for the craft " + aimed + ", it flies " + flown.Describe());
+            var why = finish.Why() + (string.IsNullOrEmpty(aimedKey) || EntryCraft.Same(aimedKey, flown.Key, snapshot) ? "" : "; the landing was aimed for the craft " + aimed + ", it flies " + flown.Describe());
             Func<IEnumerable<SnapshotPart>, List<object>> uids = parts => parts.Select(p => uidOf(p.Id)).Where(u => u != null).Cast<object>().ToList();
             return new Dictionary<string, object>
             {
