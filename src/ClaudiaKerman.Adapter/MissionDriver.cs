@@ -223,6 +223,9 @@ namespace ClaudiaKerman.Adapter
         /// <summary>The Child Vessel the run flies, for <c>ADDONS:CLAUDIA:ENTRYDROP</c> (#823); "" for the craft.</summary>
         public static string RunningChild = "";
 
+        /// <summary>The craft the last <c>return</c> or <c>deorbit</c> aimed its landing with (#814). Not saved: after a load there is nothing to compare.</summary>
+        public static readonly EntryAim AimedCraft = new EntryAim();
+
         /// <summary>
         /// The arrival plane <c>transfer_to</c> last aimed for, for <c>capture</c> (#788; <see cref="MissionView.ArrivalPlane"/> holds the Mission's own, in its
         /// save): set at once by the block call, so a capture in the same frame reads it, and kept here for a block test, which has no Mission.
