@@ -504,6 +504,8 @@ namespace ClaudiaKerman.Core.Missions
             if (findings.BiomeMiss != null)
                 parts.Add(char.ToUpperInvariant(GoalBiomeMissed(findings.BiomeMiss)[0]) + GoalBiomeMissed(findings.BiomeMiss).Substring(1) + ". Aim it at "
                     + findings.BiomeMiss.Goal.Biome + " (find_landing_site's biome, land's target biome), or keep it and say why in the plan's why.");
+            if (findings.DeorbitNoTarget != null)
+                parts.Add(char.ToUpperInvariant(DeorbitNoTargetMissed(findings.DeorbitNoTarget)[0]) + DeorbitNoTargetMissed(findings.DeorbitNoTarget).Substring(1) + ". Give it a target (LATLNG(lat, lng)).");
             return text + (failed ? "\n" : "The mod sent back your Sequence Plan, so the player hasn't seen it; its Mission Script passed the Script Check. ")
                 + string.Join("\n", parts.ToArray());
         }
@@ -514,6 +516,7 @@ namespace ClaudiaKerman.Core.Missions
             var fixes = new List<string>();
             if (findings.Crossings.Count > 0) fixes.Add("each delta-v left threshold set below what the plan itself leaves");
             if (findings.BiomeMiss != null) fixes.Add("land aimed at " + findings.BiomeMiss.Goal.Biome + " (or why it lands elsewhere in why)");
+            if (findings.DeorbitNoTarget != null) fixes.Add("deorbit given a target");
             var with = string.Join(" and ", fixes.ToArray());
             if (findings.ScriptFailed) return fixes.Count == 0 ? RewriteNotice : RewriteNotice + " Also send it with " + with + ", or change the plan.";
             return "Send the Sequence Plan again with " + with + " (or change the plan): reply with kind \"sequence_plan\" and sequence_plan filled in, "
@@ -921,6 +924,12 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>#699: why a landing goes back before Approval, e.g. "the Mission Goal names Twin Craters (a Mun biome); this landing targets Midland Craters".</summary>
+        /// <summary>#831: a deorbit with no target where the block's auto gives none.</summary>
+        public static string DeorbitNoTargetMissed(string body)
+        {
+            return "deorbit has no target at " + body + ", where auto gives none, so the block refuses it with \"target is required\"";
+        }
+
         public static string GoalBiomeMissed(GoalBiomeMiss miss)
         {
             return "the Mission Goal names " + miss.Goal.Biome + " (a " + miss.Goal.Body + " biome); this landing targets " + miss.Targeted;
