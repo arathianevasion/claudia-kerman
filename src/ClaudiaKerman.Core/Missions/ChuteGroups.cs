@@ -59,7 +59,7 @@ namespace ClaudiaKerman.Core.Missions
         public double Before = -1;
         /// <summary>The script's <c>chutes: "none"</c> was overridden: a certain crash with chutes aboard, or (#846) a touchdown that couldn't be predicted.</summary>
         public bool Overrode;
-        /// <summary>For the Mission window and Debrief: nothing can land the craft, said while it is above the air; "" otherwise.</summary>
+        /// <summary>For the Mission window and Debrief: nothing can land the craft, or (#847) the landing can't be predicted, said while it is above the air; "" otherwise.</summary>
         public string Warning = "";
 
         /// <summary>Why, with the predicted speeds before and after, for the log; "" when nothing was widened or overridden.</summary>
@@ -173,7 +173,7 @@ namespace ClaudiaKerman.Core.Missions
         /// Chute Group of <see cref="ForEntryNow"/>, and while its predicted touchdown is over <see cref="TouchdownLimit"/> the next stage's group too, one at a
         /// time, until it is at or under, or none is left. A predictor error leaves the Entry its own group. With <paramref name="none"/> (the script's
         /// <c>chutes: "none"</c>) the own group is empty, and a fall over the limit overrides it, as a certain crash; so does an unknown speed (#846), with the own group only. With <paramref name="engine"/> (the Entry lands on
-        /// its engines, #824) nothing is widened. A touchdown still over the limit while the craft is above the air gives the <see cref="Widened.Warning"/>.
+        /// its engines, #824) nothing is widened. A touchdown still over the limit, or one that can't be predicted (#847), while the craft is above the air gives the <see cref="Widened.Warning"/>.
         /// </summary>
         public static Widened Widen(GameSnapshot snapshot, bool lastEntry, bool none, bool engine)
         {
@@ -199,7 +199,12 @@ namespace ClaudiaKerman.Core.Missions
                 widened.Entry = entry = next;
             }
             var body = SequenceWords.Body(snapshot, entry.Body);
-            if (entry.TouchdownSpeed > TouchdownLimit && body != null && snapshot.Altitude > body.AtmosphereHeight)
+            var aboveTheAir = body != null && body.AtmosphereHeight > 0 && snapshot.Altitude > body.AtmosphereHeight;
+            if (entry.TouchdownSpeed < 0 && aboveTheAir)
+                // #847: no engine and no predicted speed: say so, as #827's warning does, by the same route (no new text in the prompt).
+                widened.Warning = "This landing can't be predicted (" + entry.Unpredicted + "): opening "
+                    + (entry.Chutes.Count == 0 ? "no chutes" : "its own Chute Group") + ", with no engine to finish it";
+            else if (entry.TouchdownSpeed > TouchdownLimit && body != null && snapshot.Altitude > body.AtmosphereHeight)
                 widened.Warning = "Nothing can land this craft safely: it is predicted to touch down at " + Speed(entry.TouchdownSpeed) + ", over " + Speed(TouchdownLimit)
                     + ", with " + (entry.Chutes.Count == 0 ? "no chutes" : "every chute it can open") + " and no engine to finish it";
             return widened;

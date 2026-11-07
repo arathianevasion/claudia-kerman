@@ -96,7 +96,7 @@ namespace ClaudiaKerman.Core.Tests
         private static ScriptedResponse LaunchPlan(double due = -1)
         {
             return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: Launch.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
-                + "\"sequence_plan\":{\"name\":\"Launch\",\"intent\":\"Reach a 100 km orbit.\",\"why\":\"First step.\",\"target\":\"100 km orbit\","
+                + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"Launch\",\"intent\":\"Reach a 100 km orbit.\",\"why\":\"First step.\",\"target\":\"100 km orbit\","
                 + "\"tolerances\":\"Ap within 5 km\",\"expected_delta_v\":3400,\"expected_duration_s\":600,\"abort_conditions\":[],\"risks\":[],"
                 + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"print \\\"go\\\".\\n\","
                 + "\"due_time_ut\":" + due.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"window_closes_ut\":-1,\"late_window_dv\":-1},\"debrief\":null}");

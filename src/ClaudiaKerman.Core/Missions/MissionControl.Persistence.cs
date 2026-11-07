@@ -750,7 +750,7 @@ namespace ClaudiaKerman.Core.Missions
             var reply = MissionReply.Parse(string.Concat(turn[at].Content.OfType<TextBlock>().Select(b => b.Text)));
             if (reply != null) reply.WithProposed(ProposedPlans.LastAccepted(turn.Take(at)));
             if (reply == null || Mismatch(purpose, reply) != null) return false;
-            if (purpose == Purpose.SequencePlan && !reply.SequencePlan.Manual && !CheckScript(mission, reply.SequencePlan).Passed) return false;
+            if (purpose == Purpose.SequencePlan && !reply.SequencePlan.Manual && !CheckScript(mission, reply.SequencePlan, restored: true).Passed) return false;
 
             mission.Owed = Owed.None;
             mission.LatestLine = SayWithWhy(purpose, reply);
@@ -831,7 +831,7 @@ namespace ClaudiaKerman.Core.Missions
                     if (mission.PendingSequence != null && mission.PendingSequence.Manual) return stage;
                     if (mission.PendingSequence != null)
                     {
-                        var check = CheckScript(mission, mission.PendingSequence);
+                        var check = CheckScript(mission, mission.PendingSequence, restored: true);
                         if (check.Passed) return stage;
                         mission.UnsafeProblems = check.Problems;
                         mission.PendingSequence = null;

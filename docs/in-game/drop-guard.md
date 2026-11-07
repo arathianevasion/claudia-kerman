@@ -20,3 +20,12 @@ Run `tests/blocks/drop_parts`. It passes as before (the guard has no Mission Pla
 Start a Mission whose plan has a burn after the sequence that drops a fuelled stage. The drop is refused with the figures in the reason: `drop_parts` and `deorbit`'s `separate` fail before firing or burning, and `reentry` flies on with the stack kept and a `drop` note in `KSP.log`. A revised plan with that burn removed lets the same drop go.
 
 The Kerboscript tests for the three callers (`drop_parts`, `deorbit`, `reentry`) read the source's order rather than flying them, so this scenario is what proves `deorbit`'s and `reentry`'s refusal.
+
+## Check 4: deorbit's late check counts who pays for the burn (#835)
+
+The figures `claudia_drop_refusal` gives Core are tested on a fake craft, and `DropGuard.AfterBurn` in Core, but the Kerboscript harness can't run `deorbit` itself, so the order of the late check is only read from the source. Who pays is a rule from stock's flow (a dropped stage drains first); no flight has confirmed it.
+
+Run `tests/blocks/deorbit_separate_plan`. The plan needs 3,000 m/s of the upper stage's 3,038 (`test_left` in the result, which must be above 3,000 or the scenario's plan figure needs revising). The run passes, which covers both ways round:
+
+1. **The kept tanks pay: refused before any node.** With the upper engine lit, `test_kept_pays_reason` reads `separate: this drop would take <n> m/s and leave <m> after the <b> m/s burn; the plan still needs 3000 m/s: revise the Mission Plan first`, with no burn and no node left (`test_kept_pays_no_burn`, `test_kept_pays_no_node`).
+2. **The dropped stage pays: the same drop goes.** With the upper engine shut down the first stage flies the burn (`burn_ut` above 0), the reason doesn't name the plan, and `test_left_after` is within 10 m/s of `test_left`, so the kept tanks weren't touched. A flat subtraction of the burn would have refused this.

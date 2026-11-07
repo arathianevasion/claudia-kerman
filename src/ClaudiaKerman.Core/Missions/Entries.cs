@@ -181,6 +181,26 @@ namespace ClaudiaKerman.Core.Missions
             return findings;
         }
 
+        /// <summary>
+        /// The Craft Check's Warning (#845): the Mission Goal has an Entry and a heat shield on the stack sits past a docking port, which the
+        /// Entry Shield count doesn't cross (#843), so the stack stays on. It names each such shield, a docked lander's own included. The count
+        /// itself doesn't change.
+        /// </summary>
+        public static IList<MarginFinding> ShieldPastPort(GameSnapshot snapshot, IList<PlannedSequence> legs)
+        {
+            var findings = new List<MarginFinding>();
+            if (Find(snapshot, legs, 0).Count == 0) return findings;
+            var past = EntryStack.ShieldsPastPorts(snapshot.Craft.Parts, null);
+            if (past.Count == 0) return findings;
+            var rule = CraftCheckRules.Find(CraftCheckRules.ShieldPastPort);
+            findings.Add(new MarginFinding
+            {
+                Code = rule.Code, Severity = rule.Severity, Title = rule.Title,
+                Explanation = "Heat shield past a docking port isn't used for entries: the stack stays on (" + string.Join(", ", EntryStack.Names(past).ToArray()) + ")",
+            });
+            return findings;
+        }
+
         private static bool IsHot(Entry entry, PlannedSequence leg)
         {
             return HotBodies.Contains(entry.Body) || SequenceWords.StraightIn.IsMatch(SequenceWords.Of(leg));
