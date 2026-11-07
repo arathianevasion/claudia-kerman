@@ -16,3 +16,7 @@ A script the check can't read (a `coast` to `ship:orbit:nextpatcheta`, `transfer
 1. On a flight whose script warps past its deadline (a long `transfer_to` then `capture`), read the log: no "The script was still running at 300%" notice appears before the warp's target.
 2. If the run is still going 60 s of game time after the warp's target, it is stopped then, with the usual Debrief ("timed out").
 3. A script that hangs without warping is still stopped at 300% of its planned duration.
+
+## Check 3: the adapter reads the next-patch ETA (#833)
+
+The adapter's read of `orbit.EndUT - UT` into `GameSnapshot.NextPatchEta` is confirmed from the next interplanetary flight's log: for a `coast` to `time:seconds + ship:orbit:nextpatcheta + n` and then a `capture`, the duration is raised at Approval (as in Check 1) without an extra request, and the plan's `lints` shows the raise.
