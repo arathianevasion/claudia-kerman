@@ -118,6 +118,21 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void AKeptEngineThatBurnsCostsTheKeptTanksAtItsOwnIspNotTheMeanOfAllKeptEngines()
+        {
+            // A lit 200 kN engine at 300 s and an unlit 60 kN one at 800 s: the mean is 350 s, which is what measures the 1,753 m/s left,
+            // but the burn is the lit engine's: 100 m/s on 10 t burns 0.334 t, not the 0.287 t the mean would say (about 34 m/s too high).
+            var left = 350 * 9.80665 * System.Math.Log(5.0 / 3.0);
+            var burn = KeptPays(100);
+            burn.BurnersKept = 1;
+
+            var expected = 350 * 9.80665 * System.Math.Log((5 - 10 * (1 - System.Math.Exp(-100 / (300 * 9.80665)))) / 3);
+            Assert.Equal(expected, DropGuard.AfterBurn(left, burn), 6);
+            var byMean = 350 * 9.80665 * System.Math.Log((5 - 10 * (1 - System.Math.Exp(-100 / (350 * 9.80665)))) / 3);
+            Assert.InRange(byMean - expected, 33, 35);
+        }
+
+        [Fact]
         public void WhatTheDroppedStageLeavesIsFlownAtTheKeptEnginesIsp()
         {
             // An 800 s stage with 0.1 t buys 78 m/s of a 300 m/s burn; a 300 s kept engine burns far more for the other 222 than the 800 s figure says.
