@@ -22,6 +22,16 @@ namespace ClaudiaKerman.Core.Missions
             return block == "return" || block == "deorbit";
         }
 
+        /// <summary>
+        /// True when <c>ENTRYFINISH</c>'s <paramref name="ask"/> is <c>reentry</c>'s block-start read (<c>first</c> true, #815): it leaves the aim, so
+        /// the drop point's read, the one that flies, is the one compared.
+        /// </summary>
+        public static bool Leaves(IDictionary<string, object> ask)
+        {
+            object first = null;
+            return ask != null && ask.TryGetValue("first", out first) && Equals(first, true);
+        }
+
         /// <summary><c>ENTRYCRAFT</c> answered for <paramref name="vessel"/> (its persistentId).</summary>
         public void Aimed(uint vessel, string key, string why)
         {

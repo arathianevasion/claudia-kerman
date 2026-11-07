@@ -13,6 +13,13 @@ namespace ClaudiaKerman.Core.Missions
     /// </summary>
     public sealed class EntryStack
     {
+        /// <summary>
+        /// Seconds before the atmosphere <c>reentry</c> drops the stack (#815; <c>ENTRYDROP</c>'s <c>lead</c>): late, so the drop's kick (about 0.1 m/s)
+        /// barely moves the landing, and early enough that the stack is clear above the air. On the capsule model a 0.1 m/s kick this far out moves a
+        /// Mun return's landing 0.6 km at most and a Duna low-orbit descent's 1.8 km, and the capsule is about 80 m off the stack's path at the air (EntryDropLeadTests).
+        /// </summary>
+        public const double DropLeadS = 600;
+
         /// <summary>The Entry Shield; null for none, and then nothing drops and everything below stays empty.</summary>
         public SnapshotPart Shield;
         /// <summary>The stack: what the Entry drops, stuck parts included.</summary>

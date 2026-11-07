@@ -1380,11 +1380,12 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// <c>ADDONS:CLAUDIA:ENTRYDROP</c>, for <c>reentry</c> at block start (#823, ADR 0018): what this Entry drops, read
+        /// <c>ADDONS:CLAUDIA:ENTRYDROP</c>, for <c>reentry</c> at block start and at the drop point (#823, ADR 0018, #815): what this Entry drops, read
         /// fresh from the Mission Plan's <paramref name="legs"/> (null with no plan: the first shield's rule) from <paramref name="step"/>
         /// (0 first) for the vessel flying (<paramref name="child"/>; "" for the craft). Takes <c>home</c> (the kOS UID of the crew's part).
         /// Gives <c>error</c> "", <c>number</c> (n), <c>shield</c> (the Entry Shield's kOS UID; "" for none),
-        /// <c>decouplers</c> and <c>gone</c> (kOS UIDs), <c>names</c> (the stack's part names, each once) and <c>stuck</c> (those with no decoupler).
+        /// <c>decouplers</c> and <c>gone</c> (kOS UIDs), <c>names</c> (the stack's part names, each once), <c>stuck</c> (those with no decoupler)
+        /// and <c>lead</c> (s before the atmosphere the block drops it, <see cref="EntryStack.DropLeadS"/>).
         /// </summary>
         public static IDictionary<string, object> EntryDropCall(IDictionary<string, object> ask, GameSnapshot snapshot, IList<PlannedSequence> legs, int step, string child, Func<uint, string> uidOf)
         {
@@ -1401,6 +1402,7 @@ namespace ClaudiaKerman.Core.Tools
                 { "gone", uids(stack.Gone) },
                 { "names", EntryStack.Names(stack.Parts).Cast<object>().ToList() },
                 { "stuck", EntryStack.Names(stack.Stuck).Cast<object>().ToList() },
+                { "lead", EntryStack.DropLeadS },
             };
         }
 
@@ -1413,9 +1415,9 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// <c>ADDONS:CLAUDIA:ENTRYFINISH</c> (#824), for <c>reentry</c> at block start: <see cref="EntryFinish.Decide"/> for the Entry in hand, its drop
+        /// <c>ADDONS:CLAUDIA:ENTRYFINISH</c> (#824), for <c>reentry</c> at block start and at the drop point (#815): <see cref="EntryFinish.Decide"/> for the Entry in hand, its drop
         /// and Last Entry as <see cref="EntryDropCall"/> and <see cref="ChuteGroupCall"/> have them. Takes <c>home</c>, <c>chutes</c> (false: none will open) and
-        /// <c>drop</c> (false: the block keeps its stack). Gives <c>error</c> "", <c>powered</c>, <c>speed</c> (m/s with that drop and those chutes; -1 unknown),
+        /// <c>drop</c> (false: the block keeps its stack), and <c>first</c> (true: the block-start read, which leaves the aim to the drop point's, <see cref="EntryAim.Leaves"/>). Gives <c>error</c> "", <c>powered</c>, <c>speed</c> (m/s with that drop and those chutes; -1 unknown),
         /// <c>kept_speed</c> (m/s for the craft as kept; -1 on chutes), <c>engines</c> and <c>spare</c> (kOS UIDs) and <c>why</c> for the log.
         /// </summary>
         public static IDictionary<string, object> EntryFinishCall(IDictionary<string, object> ask, GameSnapshot snapshot, IList<PlannedSequence> legs, int step, string child, Func<uint, string> uidOf,

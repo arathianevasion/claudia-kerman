@@ -156,6 +156,14 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void It_says_when_the_block_drops_the_stack_600_s_before_the_air()
+        {
+            // #815: reentry waits to this point, not block start, so the drop's kick barely moves the landing (EntryDropLeadTests).
+            Assert.Equal(600.0, Call(PodShieldStage(), "Kerbin", DunaThenKerbin, step: 2)["lead"]);
+            Assert.Equal(EntryStack.DropLeadS, Call(PodShieldStage(), "Duna", DunaThenKerbin)["lead"]);
+        }
+
+        [Fact]
         public void Two_shields_are_spent_from_the_outside_in()
         {
             var craft = TwoShields();
