@@ -483,6 +483,22 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void A_real_return_on_an_airless_trip_keeps_its_Entry_before_a_relaunch_the_words_dont_place()
+        {
+            // "Launch for the Mun" doesn't say it leaves Kerbin. Giving way would lose an Entry here, as the Mun has no air to take it.
+            Assert.Equal(new[] { "0:Kerbin", "3:Kerbin" }, Found("Mun", Said("Phase one", "Land on the Mun, then return to Kerbin"), Leg("Launch for the Mun", 3400), Leg("Transfer to the Mun", 860), Leg("Return to Kerbin", 300)));
+        }
+
+        [Fact]
+        public void Words_after_the_return_belong_to_the_return()
+        {
+            // Nothing lands at Duna on these: the landing and the reentry come after the return in the words.
+            Assert.Equal(new[] { "1:Kerbin" }, Found("Duna", Said("Duna departure", "Depart Duna, return to Kerbin, then land"), Leg("Reentry at Kerbin", 0)));
+            Assert.Equal(new[] { "1:Kerbin" }, Found("Duna", Said("Duna ejection", "Ascend from Duna, return to Kerbin and land"), Leg("Reentry at Kerbin", 0)));
+            Assert.Equal(new[] { "1:Kerbin" }, Found("Duna", Said("Duna to Kerbin reentry", "Re-enter after the return from Duna"), Leg("Land on Kerbin", 0)));
+        }
+
+        [Fact]
         public void A_later_leg_that_ascends_and_returns_home_is_the_later_return()
         {
             Assert.Equal(new[] { "0:Duna", "1:Kerbin" }, Found("Duna", Said("Land on Duna", "Land on Duna before the return to Kerbin"), Leg("Ascend and return to Kerbin", 1959)));
