@@ -22,6 +22,8 @@ namespace ClaudiaKerman.Core.Missions
         {
             mission.StopReason = null;
             mission.WarpTargetUt = null;
+            mission.LastWarpingUt = null;
+            mission.Warping = false;
             mission.RunDeadlineUt = RunawayStop.Deadline(_ut, plan.ExpectedDurationSeconds, _config.RunawayMultiplier);
         }
 
@@ -32,6 +34,15 @@ namespace ClaudiaKerman.Core.Missions
             mission.WarpTargetUt = requested.TargetUt;
         }
 
+        /// <summary>#834: the warp state arrives with the UT it was read at, so both go stale together: no UtAdvanced, no clock, no stop.</summary>
+        private void WarpSeen(bool warping)
+        {
+            var mission = _mission;
+            if (mission == null) return;
+            mission.Warping = warping;
+            if (warping) mission.LastWarpingUt = _ut;
+        }
+
         /// <summary>After every input: a run still going at its deadline is aborted (with make-safe) and Debriefed as "timed out".</summary>
         private void CheckRunaway()
         {
@@ -39,7 +50,9 @@ namespace ClaudiaKerman.Core.Missions
             if (mission == null || !IsRunning(mission) || !mission.RunId.HasValue || !mission.RunningProcessor.HasValue) return;
             if (!mission.RunDeadlineUt.HasValue || _ut < mission.RunDeadlineUt.Value || mission.StopReason != null) return;
             // #830: the warp's target is still ahead (or only just passed): wait for it, a script not warping or past its warps stops now.
-            if (mission.WarpTargetUt.HasValue && _ut < mission.WarpTargetUt.Value + RunawayStop.WarpAllowanceSeconds) return;
+            // #834: and only while warp is running, or ran within the allowance (a warp that never ran is held 60 s past the deadline).
+            if (mission.WarpTargetUt.HasValue && _ut < mission.WarpTargetUt.Value + RunawayStop.WarpAllowanceSeconds
+                && (mission.Warping || _ut < Math.Max(mission.RunDeadlineUt.Value, mission.LastWarpingUt ?? double.MinValue) + RunawayStop.WarpAllowanceSeconds)) return;
             mission.StopReason = RunawayStop.Reason;
             // As the deadline counted it: a plan of under a minute is held to one.
             var planned = Math.Max(mission.PendingSequence != null ? mission.PendingSequence.ExpectedDurationSeconds : 0, RunawayStop.MinimumPlannedSeconds);

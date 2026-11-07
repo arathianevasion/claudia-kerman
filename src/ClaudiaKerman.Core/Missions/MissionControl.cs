@@ -85,7 +85,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is SaveLoaded) Loaded(((SaveLoaded)input).SaveDirectory);
             else if (input is MissionsRestored) Restored((MissionsRestored)input);
             else if (input is SceneChanged) SceneChanging(((SceneChanged)input).Scene);
-            else if (input is UtAdvanced) { _ut = ((UtAdvanced)input).Ut; ContinueRunEnd(); }
+            else if (input is UtAdvanced) { _ut = ((UtAdvanced)input).Ut; WarpSeen(((UtAdvanced)input).Warping); ContinueRunEnd(); }
             else if (input is StartMission) Start((StartMission)input);
             else if (input is RunCraftCheck) RunCraftCheck((RunCraftCheck)input);
             else if (input is StartFormChanged) _form = (StartFormChanged)input;
@@ -273,6 +273,10 @@ namespace ClaudiaKerman.Core.Missions
             public double? RunDeadlineUt;
             /// <summary>The target UT of the current run's latest warp request (#830); the runaway stop holds while it, plus <see cref="RunawayStop.WarpAllowanceSeconds"/>, is ahead.</summary>
             public double? WarpTargetUt;
+            /// <summary>The UT warp was last seen running during the current run (#834); null if never. Not persisted: a resumed run starts fresh.</summary>
+            public double? LastWarpingUt;
+            /// <summary>Whether warp was running at the latest UtAdvanced (#834).</summary>
+            public bool Warping;
             /// <summary>Why the mod stopped the current run ("blocked: …", "timed out"), for its Debrief; null otherwise.</summary>
             public string StopReason;
             public MissionPlan Plan;
