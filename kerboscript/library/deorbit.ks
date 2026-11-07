@@ -208,8 +208,7 @@ function deorbit {
     return claudia_finish(ctx, false, lit, extra).
   }
 
-  // What separate drops after the burn, worked out now so a separate that can't be dropped fails
-  // before any burn, and so the search flies only the craft that re-enters.
+  // What separate drops after the burn, worked out now: one that can't be dropped fails before any burn, and the search flies only the craft that re-enters.
   local separation is deorbit_separation(opt:separate).
   if separation:error <> "" {
     return claudia_finish(ctx, false, "separate: " + separation:error, extra).
@@ -224,7 +223,6 @@ function deorbit {
   if entry:error <> "" {
     return claudia_finish(ctx, false, entry:error, extra).
   }
-
   local ground_alt is body:geopositionlatlng(site:lat, site:lng):terrainheight.
   local max_wait is deorbit_max_wait(opt:max_wait, body:rotationperiod).
   ship:deltav:forcecalc(). wait 0.5. // Stock recounts first: after a staging or a load it reads 0. The search is a block-internal call (ADR 0007): inline here.
@@ -236,6 +234,8 @@ function deorbit {
   if found:error <> "" {
     return claudia_finish(ctx, false, found:error, extra).
   }
+  local late is claudia_drop_refusal(separation, sqrt(found:prograde^2 + found:normal^2 + found:radial^2)). // #835: again with the burn's delta-v spent, before any node
+  if late <> "" { return claudia_finish(ctx, false, "separate: " + late, extra). }
   addons:claudia:shipsystems("entry").
   if opt:max_duration:istype("String") {
     set opt:max_duration to max(0, found:burn_ut - time:seconds) + 900.

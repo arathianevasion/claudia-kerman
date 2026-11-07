@@ -28,11 +28,14 @@ namespace ClaudiaKerman.Core.Missions
         /// The verdict for a drop. <paramref name="plan"/> is the whole Mission Plan (null: none) and <paramref name="step"/> the index of
         /// the sequence in hand (-1 before the first); <paramref name="before"/> and <paramref name="left"/> the craft's delta-v, m/s,
         /// before the drop and after it.
+        /// <paramref name="spent"/> is delta-v a burn still to fly will use (#835): it comes off what is left, so a drop before a burn is judged
+        /// by what remains after both. It is the estimate of whole-craft stock figures, good to about <see cref="Allowance"/>.
         /// </summary>
-        public static DropVerdict Check(GameSnapshot snapshot, IList<PlannedSequence> plan, int step, double before, double left)
+        public static DropVerdict Check(GameSnapshot snapshot, IList<PlannedSequence> plan, int step, double before, double left, double spent = 0)
         {
             var taken = Math.Max(0, before - left);
             if (snapshot == null || plan == null || taken <= Allowance) return new DropVerdict { Taken = taken };
+            left = Math.Max(0, left - Math.Max(0, spent));
             var rest = plan.Skip(Math.Max(0, step + 1)).Where(s => IsOnThisVessel(plan, snapshot.Craft.Name, s)).ToList();
             var need = PlanLegs.Need(PlanLegs.Judge(snapshot, rest, ""));
             if (left >= need) return new DropVerdict { Taken = taken, Need = need };
