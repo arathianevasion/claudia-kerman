@@ -88,6 +88,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (reentry): the Chute Allocation's chutes for this entry; lexicon error, all (true: keep every chute), entry, return, uids, titles, powered_finish, touchdown_speed"));
             AddSuffix("ENTRYDROP", new OneArgsSuffix<Lexicon, Lexicon>(EntryDrop,
                 "Core Library only (reentry, deorbit): what this Entry drops, from home and keep_engines; lexicon error, number, shield, decouplers, gone, kept, names, stuck"));
+            AddSuffix("DROPCHECK", new OneArgsSuffix<Lexicon, Lexicon>(DropCheckCall,
+                "Core Library only (drop_parts, deorbit, reentry): whether a drop taking the craft from before to left m/s of delta-v takes what the Mission Plan still needs; lexicon error, refused, reason, taken, need"));
             AddSuffix("LANDGUARD", new OneArgsSuffix<Lexicon, Lexicon>(LandGuardTick,
                 "Core Library only (land, each braking tick): the path guard on alt against path_alt, and near the site the straight-down fallback; lexicon verdict (fly, vertical or abort), error, why, over, and the fallback's al, cr, up, vv, ..."));
             AddSuffix("KEEPCLEAR", new OneArgsSuffix<Lexicon, Lexicon>(KeepClearCall,
@@ -356,12 +358,24 @@ namespace ClaudiaKerman.KOS
                 var vessel = shared.Vessel;
                 var uids = new System.Collections.Generic.Dictionary<uint, string>();
                 foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
-                drop = BlockCalls.EntryDropCall(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(vessel), MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
+                drop = BlockCalls.EntryDropCall(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(vessel), MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
                     id => uids.ContainsKey(id) ? uids[id] : null);
                 return KosValues.FromPlain(drop);
             }, () => drop["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "shield number {0}: {1}", drop["number"], drop["shield"] as string == "" ? "none, nothing drops" : "part " + drop["shield"])
                 : (string)drop["error"]);
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:DROPCHECK</c> (#825, ADR 0014): the Mission Plan's need against a drop (<see cref="BlockCalls.DropCheck"/>).</summary>
+        private Lexicon DropCheckCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> verdict = null;
+            return (Lexicon)Guarded("DROPCHECK", () =>
+            {
+                verdict = BlockCalls.DropCheck(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel),
+                    MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence);
+                return KosValues.FromPlain(verdict);
+            }, () => verdict["error"] as string == "" ? (bool)verdict["refused"] ? "refused: " + verdict["reason"] : "allowed" : (string)verdict["error"]);
         }
 
         /// <summary><c>ADDONS:CLAUDIA:LANDINGTARGET</c> (#790, ADR 0014): the landing target default (<see cref="BlockCalls.LandingTarget"/>).</summary>

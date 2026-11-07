@@ -163,6 +163,7 @@ namespace ClaudiaKerman.KOS
                 if (_spec.TargetCraft != null)
                     File.WriteAllText(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.TargetCraft), Resource(test, _spec.TargetCraft));
                 MissionDriver.BlockTestTargetId = null;
+                MissionDriver.BlockTestPlan = _spec.Plan.Count > 0 ? _spec.Plan : null;
 
                 var game = GamePersistence.LoadGame("persistent", SaveFolder, true, false);
                 if (game == null) throw new InvalidOperationException("KSP wouldn't load the scenario save");
@@ -309,6 +310,7 @@ namespace ClaudiaKerman.KOS
             _stage = Stage.Idle;
             ToolTestGate.Shared.Close();
             MissionDriver.BlockTestTargetId = null;
+            MissionDriver.BlockTestPlan = null;
             Note(result.Headline);
             foreach (var line in result.Lines) Note("  " + line);
             try

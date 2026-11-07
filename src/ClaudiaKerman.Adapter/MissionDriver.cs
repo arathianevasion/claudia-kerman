@@ -220,10 +220,13 @@ namespace ClaudiaKerman.Adapter
         public static ChuteAllocation ChuteAllocation;
 
         /// <summary>
-        /// The Mission Plan as it stands and the Child Vessel the run flies ("" for the craft), for <c>ADDONS:CLAUDIA:ENTRYDROP</c> (#823).
-        /// Refreshed every frame; null with no Mission Plan.
+        /// The Mission Plan's Maneuver Sequences, for <c>ADDONS:CLAUDIA:DROPCHECK</c> (#825) and <c>ENTRYDROP</c> (#823); refreshed every frame, null with no Mission or
+        /// plan. <see cref="BlockTestPlan"/> stands in for it in a block test, which has no Mission.
         /// </summary>
-        public static IList<PlannedSequence> PlanLegs;
+        public static System.Collections.Generic.IList<PlannedSequence> PlanLegs;
+        public static System.Collections.Generic.IList<PlannedSequence> BlockTestPlan;
+
+        /// <summary>The Child Vessel the run flies, for <c>ADDONS:CLAUDIA:ENTRYDROP</c> (#823); "" for the craft.</summary>
         public static string RunningChild = "";
 
         /// <summary>

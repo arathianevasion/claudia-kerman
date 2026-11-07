@@ -41,7 +41,7 @@
 //| dropped); dv_used is the burn's. Succeeds only with a landing predicted within accuracy_km after
 //| the burn. Fails with "target is required", an option value it can't read, "body has no
 //| atmosphere", "ksc is on Kerbin", a craft on the ground, "a maneuver node is already planned:
-//| remove it first", a separate it can't drop ("separate: ..."), an orbit it can't deorbit from
+//| remove it first", a separate it can't drop or the plan needs ("separate: ..."), an orbit it can't deorbit from
 //| (escaping, or a periapsis already in the atmosphere: fly reentry), "the best burn ... lands <x> km
 //| from the target, over accuracy_km", "the cheapest burn ... over max_dv" (its cost and UT), not
 //| enough delta-v, or the reasons exec_node gives (no thrust, out of fuel, an abort); after the burn, with "the burn is flown, but separate failed: ...", "...the craft is
@@ -214,6 +214,11 @@ function deorbit {
   if separation:error <> "" {
     return claudia_finish(ctx, false, "separate: " + separation:error, extra).
   }
+  // Refused here too (#825): the drop fires after the burn, but a descent isn't committed to first.
+  local refused is claudia_drop_refusal(separation).
+  if refused <> "" {
+    return claudia_finish(ctx, false, "separate: " + refused, extra).
+  }
   // The heat shield reentry will jettison: this entry's (#823), so the prediction flies what reentry flies.
   local entry is addons:claudia:entrydrop(lexicon("home", reentry_home_uid(), "keep_engines", list())).
   if entry:error <> "" {
@@ -249,10 +254,7 @@ function deorbit {
   }
 
   // The craft that re-enters: drop what separate names, now the burn no longer needs it.
-  local separate_failed is "".
-  if separation:decouplers:length > 0 {
-    set separate_failed to claudia_fire_drop(ctx, separation).
-  }
+  local separate_failed is choose claudia_fire_drop(ctx, separation) if separation:decouplers:length > 0 else "".
 
   // Where the orbit actually flown comes down, with the craft as it is now: the burn's own error moves it.
   local after is addons:claudia:reentryimpact(lexicon("lat", site:lat, "lng", site:lng, "ground_alt", max(0, ground_alt), "shield_drop", claudia_shield_drop(ship:parts, claudia_drop_uids(separation), reentry_shield_modules(entry:shield, ship:parts)))).

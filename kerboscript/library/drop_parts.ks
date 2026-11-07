@@ -8,20 +8,19 @@
 @lazyglobal off.
 
 //| drop_parts(options): drops the named parts now, by firing the decoupler that holds each, and
-//| reports what it dropped. Use it to shed a spent booster before a landing, with no hand staging.
+//| reports what it dropped. Use it to shed a spent booster before a landing.
 //| Options:
 //|   parts [required]: a list of part names or tags (e.g. list("radialTank", "boosters")), or one name.
 //|   allow_no_engine (false): true lets a drop leave no delta-v in space on an orbit missing the air.
 //|   The common options do nothing here: it never burns, stages or waits, its drops are not part loss,
 //|     and it ignores stage_limit.
 //| It drops whatever the decoupler holds, fuel or not; use the drop_empty option on a burning block to
-//| drop tanks only once empty. It drops nothing, and fails, for a part with no decoupler, one whose drop
-//| would take the part running the script or the root part, or a drop leaving no delta-v in space with
-//| periapsis above any atmosphere. Extra results: dropped (names of the parts that left),
+//| drop tanks only once empty. It fails, dropping nothing, for a part with no decoupler, a drop taking
+//| the script's part or the root part, or one leaving no delta-v in space with periapsis above any atmosphere. Extra results: dropped (names of the parts that left),
 //| parts_dropped, dropped_dv (the delta-v it took).
 //| Fails with "no part matches <name>", "<name> has no decoupler", "<name> would drop the part
-//| running the script", or "nothing separated: the decouplers did not fire".
-//| Tool: stage_performance for the delta-v left once the parts are gone.
+//| running the script", a drop the plan needs, or "nothing separated: the decouplers did not fire".
+//| Tool: stage_performance for the delta-v left.
 //| Example: `local res is drop_parts(lexicon("parts", list("boosters"))). addons:claudia:report(res).`
 
 // The block's own options and defaults ("required" means the Mission Script must give it).
@@ -75,14 +74,8 @@ function drop_parts_dv_taken {
 // The refusal's reason: the delta-v the drop would take (dv_taken, m/s; -1 unknown) and the periapsis. Pure.
 function drop_parts_strand_reason {
   parameter dv_taken, pe, atm_height.
-  local took is "all the delta-v".
-  if dv_taken >= 0 {
-    set took to "all " + round(dv_taken) + " m/s of delta-v".
-  }
-  local air is "the body has no atmosphere".
-  if atm_height >= 0 {
-    set air to "periapsis " + round(pe / 1000) + " km is above the atmosphere".
-  }
+  local took is choose "all " + round(dv_taken) + " m/s of delta-v" if dv_taken >= 0 else "all the delta-v".
+  local air is choose "periapsis " + round(pe / 1000) + " km is above the atmosphere" if atm_height >= 0 else "the body has no atmosphere".
   return "the drop would take " + took + " while " + air + ", leaving no way to change the orbit; drop with reentry's separate, which checks the orbit first, or set allow_no_engine to true".
 }
 
@@ -163,17 +156,12 @@ function drop_parts {
   if plan:error <> "" {
     return claudia_finish(ctx, false, plan:error, extra).
   }
-  // A drop can't be undone (#608): one that leaves no delta-v in space, on an orbit missing the air,
-  // strands the craft, so it goes only with allow_no_engine.
+  // A drop that leaves no delta-v in space, on an orbit missing the air, strands the craft (#608): only with allow_no_engine.
   local dv_before is claudia_dv_remaining().
-  local atm_height is -1.
-  if ship:body:atm:exists {
-    set atm_height to ship:body:atm:height.
-  }
+  local atm_height is choose ship:body:atm:height if ship:body:atm:exists else -1.
   local dv_now is drop_parts_dv_left(lexicon("gone", list())).
   local dv_left is drop_parts_dv_left(plan).
   if drop_parts_strands(status, ship:periapsis, atm_height, dv_now, dv_left, ctx:opt:allow_no_engine) {
-    // What it would take: nothing is left.
     set extra:dropped_dv to drop_parts_dv_taken(dv_before, 0, dv_now, dv_left).
     return claudia_finish(ctx, false, drop_parts_strand_reason(extra:dropped_dv, ship:periapsis, atm_height), extra).
   }
@@ -184,8 +172,5 @@ function drop_parts {
   ship:deltav:forcecalc().
   wait 0.5.
   set extra:dropped_dv to drop_parts_dv_taken(dv_before, claudia_dv_remaining(), dv_now, dv_left).
-  if not_fired <> "" {
-    return claudia_finish(ctx, false, not_fired, extra).
-  }
-  return claudia_finish(ctx, true, "", extra).
+  return claudia_finish(ctx, not_fired = "", not_fired, extra).
 }

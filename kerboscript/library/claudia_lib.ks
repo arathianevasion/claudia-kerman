@@ -573,11 +573,22 @@ function claudia_names_left {
   return left.
 }
 
+// "" or why plan's drop is refused (#825): it takes delta-v the rest of the Mission Plan needs (Core's rule).
+function claudia_drop_refusal {
+  parameter plan.
+  return addons:claudia:dropcheck(lexicon("before", drop_parts_dv_left(lexicon("gone", list())), "left", drop_parts_dv_left(plan))):reason.
+}
+
 // Fires a drop plan's decouplers, lets the parts leave, notes the names of those that really left in
 // ctx:dropped and takes the craft as it now is (a drop the block chose is not part loss). Returns ""
-// or "nothing separated: the decouplers did not fire".
+// or why nothing fired: "nothing separated: the decouplers did not fire", or a refused drop (fires nothing).
 function claudia_fire_drop {
   parameter ctx, plan.
+  local refused is claudia_drop_refusal(plan).
+  if refused <> "" {
+    addons:claudia:blocknote(ctx:block, lexicon("phase", "drop", "note", refused)).
+    return refused.
+  }
   local before is ship:parts:length.
   local gone_uids is claudia_drop_uids(plan).
   local gone_names is list().

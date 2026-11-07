@@ -27,7 +27,7 @@ it fails over accuracy; empty without one), predicted_error_km
 dropped); dv_used is the burn's. Succeeds only with a landing predicted within accuracy_km after
 the burn. Fails with "target is required", an option value it can't read, "body has no
 atmosphere", "ksc is on Kerbin", a craft on the ground, "a maneuver node is already planned:
-remove it first", a separate it can't drop ("separate: ..."), an orbit it can't deorbit from
+remove it first", a separate it can't drop or the plan needs ("separate: ..."), an orbit it can't deorbit from
 (escaping, or a periapsis already in the atmosphere: fly reentry), "the best burn ... lands <x> km
 from the target, over accuracy_km", "the cheapest burn ... over max_dv" (its cost and UT), not
 enough delta-v, or the reasons exec_node gives (no thrust, out of fuel, an abort); after the burn, with "the burn is flown, but separate failed: ...", "...the craft is
