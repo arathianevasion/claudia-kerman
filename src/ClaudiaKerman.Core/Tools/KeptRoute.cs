@@ -64,7 +64,8 @@ namespace ClaudiaKerman.Core.Tools
                 var words = SequenceWords.ActionWords(leg);
                 if (SequenceWords.Trip.IsMatch(words) && !SequenceWords.ReturnHome.IsMatch(words))
                 {
-                    var target = SequenceWords.TripTarget(snapshot, words, body, CraftCheckFlow.HomeBody);
+                    // A name that says only "Transfer": its intent names where to.
+                    var target = SequenceWords.TripTarget(snapshot, words, body, CraftCheckFlow.HomeBody) ?? SequenceWords.TripTarget(snapshot, SequenceWords.Of(leg), body, CraftCheckFlow.HomeBody);
                     if (target != null && target != body && string.Equals(target.Parent, body.Name, StringComparison.OrdinalIgnoreCase))
                     {
                         why = "";
@@ -80,6 +81,22 @@ namespace ClaudiaKerman.Core.Tools
                     || SequenceWords.Aero.IsMatch(words) || SequenceWords.ReturnHome.IsMatch(words))) return null;
             }
             return null;
+        }
+
+        /// <summary>
+        /// The moon the craft in <paramref name="snapshot"/> keeps its ellipse for: the next leg's (<see cref="NextMoon"/>, from its <see cref="GameSnapshot.LegsAhead"/>),
+        /// when the orbit is shaped for it (<see cref="IsKept"/>); null otherwise. The Debrief's moon-crossing fact counts it as planned, not crossed.
+        /// </summary>
+        public static string KeptFor(GameSnapshot snapshot)
+        {
+            if (snapshot == null || snapshot.LegsAhead == null) return null;
+            ToolOutcome error;
+            var setup = PredictBurn.Setup.Prepare(snapshot, null, out error);
+            if (setup == null) return null;
+            double? deadline;
+            string why;
+            var moon = NextMoon(snapshot, setup.System, setup.Body, out deadline, out why);
+            return moon != null && IsKept(setup.System, setup.Body, setup.Start, moon) ? moon.Name : null;
         }
 
         /// <summary>A planet round the star, not home: what an interplanetary transfer arrives at.</summary>

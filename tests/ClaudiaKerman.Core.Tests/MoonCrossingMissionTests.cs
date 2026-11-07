@@ -288,6 +288,49 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Single(mission.TakeCommands().OfType<WarpToUt>());
         }
 
+        /// <summary>A Mission Plan at Duna: the capture, then <paramref name="next"/>.</summary>
+        private static ScriptedResponse CapturePlan(string next)
+        {
+            return Reply("{\"kind\":\"mission_plan\",\"say\":\"Mission Plan.\",\"reply_intent\":\"none\",\"sequence_plan\":null,"
+                + "\"mission_plan\":{\"why\":\"Ike.\",\"sequences\":["
+                + "{\"name\":\"Capture\",\"intent\":\"Capture at Duna.\",\"delta_v\":300,\"timing\":\"now\",\"due_time_ut\":-1},"
+                + "{\"name\":\"Next\",\"intent\":\"" + next + "\",\"delta_v\":200,\"timing\":\"after\",\"due_time_ut\":-1}],"
+                + "\"total_delta_v\":500,\"expected_duration\":\"a day\",\"mission_time_s\":-1},\"debrief\":null}");
+        }
+
+        private static ScriptedResponse CaptureAtDuna()
+        {
+            return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: Capture.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
+                + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"Capture\",\"intent\":\"Capture at Duna.\",\"why\":\"Duna.\",\"target\":\"Duna orbit\","
+                + "\"tolerances\":\"Pe within 5 km\",\"expected_delta_v\":300,\"expected_duration_s\":600,\"abort_conditions\":[],\"risks\":[],"
+                + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"local res is capture().\\n\","
+                + "\"due_time_ut\":-1,\"window_closes_ut\":-1,\"late_window_dv\":-1},\"debrief\":null}");
+        }
+
+        /// <summary>
+        /// #866: a capture that kept its ellipse for the next leg's moon (60 × 3,193 km round Duna, through Ike's band) left no stray crossing: the Debrief
+        /// counts Ike as planned. The same ellipse with Kerbin next is a crossing, as #867 has it.
+        /// </summary>
+        [Theory]
+        [InlineData("Transfer to Ike.", false)]
+        [InlineData("Return to Kerbin.", true)]
+        public void TheDebriefCountsTheMoonAKeptEllipseIsForAsPlanned(string next, bool crosses)
+        {
+            var transport = new StreamingFakeTransport(CapturePlan(next), CaptureAtDuna(), NominalDebrief(), Waiting(-1));
+            var mission = Control(transport);
+            ToSequencePlan(mission, InDunaOrbit(), "Orbit Ike.");
+            mission.Send(new Approve());
+            var start = mission.TakeCommands().OfType<StartScript>().Single();
+            var kept = InDunaOrbit();
+            kept.Orbit = TransferRig.Elements(MoonCrossingTests.DunaOrbit(peAlt: 60000, apAlt: 3193000, argPe: 180, ut: Now).Orbit, kept.Bodies.First(b => b.Name == "Duna"));
+            mission.Send(kept);
+            mission.Send(new KosRunEnded(Ended(true), start.RunId));
+            DrainUntil(mission, v => transport.Requests.Count >= 3);
+
+            var debrief = transport.Requests[2].Body;
+            Assert.Equal(crosses, debrief.Contains("orbit crosses a moon"));
+        }
+
         private static RunOutcome Ended(bool success)
         {
             return new RunOutcome(RunOutcomeKind.Finished, new System.Collections.Generic.Dictionary<string, object> { { "success", success } }, "", "", false);
