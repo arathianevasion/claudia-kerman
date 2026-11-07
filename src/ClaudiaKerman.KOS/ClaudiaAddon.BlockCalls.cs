@@ -86,6 +86,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (dock): whether the craft's RCS delta-v covers a dock from distance (m) at speed (m/s); lexicon error, dv, need"));
             AddSuffix("CHUTEALLOCATION", new NoArgsSuffix<Lexicon>(ChuteAllocationSet,
                 "Core Library only (reentry): the Chute Allocation's chutes for this entry; lexicon error, all (true: keep every chute), entry, return, uids, titles, powered_finish, touchdown_speed"));
+            AddSuffix("DROPCHECK", new OneArgsSuffix<Lexicon, Lexicon>(DropCheckCall,
+                "Core Library only (drop_parts, deorbit, reentry): whether a drop taking the craft from before to left m/s of delta-v takes what the Mission Plan still needs; lexicon error, refused, reason, taken, need"));
             AddSuffix("LANDGUARD", new OneArgsSuffix<Lexicon, Lexicon>(LandGuardTick,
                 "Core Library only (land, each braking tick): the path guard on alt against path_alt, and near the site the straight-down fallback; lexicon verdict (fly, vertical or abort), error, why, over, and the fallback's al, cr, up, vv, ..."));
             AddSuffix("KEEPCLEAR", new OneArgsSuffix<Lexicon, Lexicon>(KeepClearCall,
@@ -342,6 +344,18 @@ namespace ClaudiaKerman.KOS
                     (bool)set["powered_finish"] ? ", powered finish" : "",
                     (double)set["touchdown_speed"] >= 0 ? string.Format(CultureInfo.InvariantCulture, ", {0:0.0} m/s", set["touchdown_speed"]) : "")
                 : (string)set["error"]);
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:DROPCHECK</c> (#825, ADR 0014): the Mission Plan's need against a drop (<see cref="BlockCalls.DropCheck"/>).</summary>
+        private Lexicon DropCheckCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> verdict = null;
+            return (Lexicon)Guarded("DROPCHECK", () =>
+            {
+                verdict = BlockCalls.DropCheck(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel),
+                    MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence);
+                return KosValues.FromPlain(verdict);
+            }, () => verdict["error"] as string == "" ? (bool)verdict["refused"] ? "refused: " + verdict["reason"] : "allowed" : (string)verdict["error"]);
         }
 
         /// <summary><c>ADDONS:CLAUDIA:LANDINGTARGET</c> (#790, ADR 0014): the landing target default (<see cref="BlockCalls.LandingTarget"/>).</summary>
