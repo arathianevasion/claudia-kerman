@@ -57,6 +57,11 @@ namespace ClaudiaKerman.Core.Tools
         /// daylight, only where <see cref="SunAt"/> gives the sun there.
         /// </summary>
         public bool FirstOnly;
+        /// <summary>
+        /// Above 0, and without a craft: take the pass <c>deorbit</c> takes (#828), for an entry periapsis at this radius, m from the body's centre, rather than the first in
+        /// reach (<see cref="DeorbitChoice"/>).
+        /// </summary>
+        public double DeorbitPeRadius;
     }
 
     /// <summary>One pass over the site the search looked at, for <c>land</c>'s trace.</summary>
@@ -332,7 +337,7 @@ namespace ClaudiaKerman.Core.Tools
 
             if (clearing.Count > 0)
             {
-                var chosen = clearing[planning ? ChoosePass(clearing.Select(p => p.LandingDv).ToList()) : 0];
+                var chosen = clearing[planning ? ChoosePass(clearing.Select(p => p.LandingDv).ToList()) : ask.DeorbitPeRadius > 0 ? DeorbitChoice(orbit, clearing, ask.DeorbitPeRadius) : 0];
                 var after = clearing.FirstOrDefault(p => p.ArriveUt > chosen.ArriveUt);
                 var cheapest = planning ? clearing.Min(p => p.LandingDv) : 0;
                 foreach (var pass in clearing)
@@ -392,6 +397,24 @@ namespace ClaudiaKerman.Core.Tools
             for (var i = 0; i < landingDvs.Count; i++)
                 if (landingDvs[i] <= 1.1 * cheapest) return i;
             return 0;
+        }
+
+        /// <summary>
+        /// The pass <c>deorbit</c>'s rule picks (<see cref="DeorbitBurn.Choose"/>): the first, in pass order, within <see cref="DeorbitBurn.TieDv"/> of the cheapest. A burn's cost is
+        /// its retrograde part to the entry periapsis, from the burn's radius and speed, in quadrature with the correction standing in for its normal part: an estimate, as
+        /// <c>deorbit</c> itself flies each with the predictor.
+        /// </summary>
+        private static int DeorbitChoice(Conic orbit, List<LandingPassLine> passes, double peRadius)
+        {
+            var costs = passes.Select(p =>
+            {
+                Vec3 r, v;
+                orbit.State(p.BurnUt, out r, out v);
+                var retro = Math.Max(0, v.Length - Math.Sqrt(2 * orbit.Mu * peRadius / (r.Length * (r.Length + peRadius))));
+                return Math.Sqrt(retro * retro + p.CorrectionDv * p.CorrectionDv);
+            }).ToList();
+            var cheapest = costs.Min();
+            return costs.FindIndex(c => c <= cheapest + DeorbitBurn.TieDv);
         }
 
         /// <summary>The descent over a pass's approach to (<paramref name="lat"/>, <paramref name="lng"/>), planned once per site and heading.</summary>

@@ -55,6 +55,8 @@ namespace ClaudiaKerman.Core.Missions
         public double AtmosphereHeight;
         /// <summary>The pressure at sea level in atmospheres (Kerbin is 1); 0 for an airless body.</summary>
         public double SeaLevelAtm;
+        /// <summary>It has an ocean (#828), so terrain at or under sea level is water; for the mod's own use, never written into the snapshot's JSON.</summary>
+        public bool Ocean;
         /// <summary>The semi-major axis of its orbit round <see cref="Parent"/>.</summary>
         public double Sma;
         public double Inclination;

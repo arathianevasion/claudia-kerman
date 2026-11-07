@@ -11,9 +11,10 @@ using ClaudiaKerman.Core.Missions;
 namespace ClaudiaKerman.Core.Tools
 {
     /// <summary>
-    /// <c>find_landing_site</c>: up to 3 landing sites on an airless body, each under the craft's current ground track within a
-    /// window, with the biome, terrain altitude, slope, the UT the track passes over it and the sun's elevation then. The site
-    /// search is <see cref="LandingSiteSearch"/>; terrain, biome and sun come live from the body interface.
+    /// <c>find_landing_site</c>: up to 3 landing sites, each under the craft's current ground track within a window, with the biome,
+    /// terrain altitude, slope, the UT the track passes over it and the sun's elevation then; on a body with air (#828), for
+    /// <c>deorbit</c>'s target, with no slope and the sun at the predicted arrival. The site search is <see cref="LandingSiteSearch"/>;
+    /// terrain, biome and sun come live from the body interface.
     /// </summary>
     internal sealed class FindLandingSite : IPlanningTool
     {
@@ -41,16 +42,16 @@ namespace ClaudiaKerman.Core.Tools
         {
             get
             {
-                return "Up to 3 landing sites on an airless body the craft's orbit passes over in a window, from the live terrain, biome "
+                return "Up to 3 landing sites the craft's orbit passes over in a window, from the terrain, biome "
                     + "and sun: latitude and longitude (degrees), biome, terrain altitude (m), slope (degrees), the UT the track passes over it, the "
                     + "sun's elevation then, and landing_ut, when land would touch down (correction_dv: its burn onto the site, m/s), predicted_dv (m/s land uses from the pass; prefer one the stage fits); descent_shape (small steep and safe, large cheap). Only "
-                    + "sites land can fly come back. Filters: biome, daylight (default the Mission Settings), slope (default 5 degrees), a "
-                    + "window in hours (default the larger of the time cap and one turn of the body, at most 48), a near point, or a poi. The "
+                    + "sites land can fly come back. Filters: biome, daylight (default the Mission Settings), slope (default 5), a "
+                    + "window in hours (default the larger of the time cap and the body's turn, at most 48), a near point, or a poi. The "
                     + "craft must orbit the body. Its block is land: call it to see a biome or goal can be flown, then pass land "
                     + "the biome with the site as near (or as its target), and any within_hours or max_correction_dv you gave. "
                     + "plane_changes, for near (else the first site or the biome's): change_orbit (set_inc) calls with plane_change_dv, "
                     + "landing_dv and total_dv: cheapest and soonest when land can't reach it, else one only if it saves 20 m/s net; fly it as "
-                    + "a step before land, budgeting its total_dv. Don't call it for land's target \"any\" or a body with air (deorbit aims those).";
+                    + "a step before land, budgeting its total_dv. Don't call it for land's target \"any\". With air: deorbit's target; no slope, highest sun first, water only on a Last Entry.";
             }
         }
 
@@ -59,13 +60,13 @@ namespace ClaudiaKerman.Core.Tools
             get
             {
                 return "{\"type\":\"object\",\"properties\":{"
-                    + "\"body\":{\"type\":\"string\",\"description\":\"The airless body orbited.\"},"
+                    + "\"body\":{\"type\":\"string\",\"description\":\"The body orbited.\"},"
                     + "\"biome\":{\"type\":\"string\",\"description\":\"Only sites in this biome; omit for any.\"},"
-                    + "\"daylight\":{\"type\":\"boolean\",\"description\":\"Only sites with the sun over 20 degrees up at the pass.\"},"
-                    + "\"max_slope_deg\":{\"type\":\"number\",\"description\":\"The steepest ground, degrees.\"},"
+                    + "\"daylight\":{\"type\":\"boolean\",\"description\":\"Only sites with the sun over 20 degrees at the pass.\"},"
+                    + "\"max_slope_deg\":{\"type\":\"number\",\"description\":\"Steepest ground, degrees.\"},"
                     + "\"within_hours\":{\"type\":\"number\",\"description\":\"Hours ahead to search.\"},"
                     + "\"max_correction_dv\":{\"type\":\"number\",\"description\":\"The most land's correction burn may cost, m/s; default the smaller of 30 and 5% of the craft's delta-v.\"},"
-                    + "\"edge_margin_m\":{\"type\":\"number\",\"description\":\"With a biome: m inside its edge a site should be; default 5000, 0 for none. Sites at the edge come back only when nothing deeper is reachable, marked near_biome_edge.\"},"
+                    + "\"edge_margin_m\":{\"type\":\"number\",\"description\":\"With a biome: m inside its edge a site should be; default 5000, 0 for none. Edge sites come back only when nothing deeper is reachable, marked near_biome_edge.\"},"
                     + "\"near\":{\"type\":\"object\",\"properties\":{\"latitude\":{\"type\":\"number\"},\"longitude\":{\"type\":\"number\"}},"
                     + "\"required\":[\"latitude\",\"longitude\"],\"additionalProperties\":false,\"description\":\"Prefer sites within 15 degrees of arc of this point; plane_changes are for it.\"},"
                     + "\"poi\":{\"description\":\"A find_poi name, or {latitude, longitude}: sites only poi_min_m (150) to poi_max_m (1500) m from it, flattest first; never on it.\"},"
@@ -96,8 +97,7 @@ namespace ClaudiaKerman.Core.Tools
             if (body == null)
                 return PlanningJson.Error("there is no body named " + PlanningJson.Quote(name) + "; the bodies are "
                     + string.Join(", ", snapshot.Bodies.ConvertAll(b => b.Name).ToArray()));
-            if (body.AtmosphereHeight > 0 || body.SeaLevelAtm > 0)
-                return PlanningJson.Error(body.Name + " has an atmosphere, and find_landing_site is airless-only for now");
+            var air = LandingSiteSearch.HasAir(body);
             var orbit = snapshot.Orbit;
             var orbitBody = orbit == null ? "" : string.IsNullOrEmpty(orbit.Body) ? snapshot.Body : orbit.Body;
             if (orbit == null || !string.Equals(orbitBody, body.Name, StringComparison.OrdinalIgnoreCase))
@@ -112,8 +112,10 @@ namespace ClaudiaKerman.Core.Tools
                 MaxSlopeDeg = JsonNode.Double(input["max_slope_deg"]) ?? 5,
                 WithinHours = LandingPass.WindowHours(within, snapshot.TimeCapHours, body.RotationPeriod),
                 MaxCorrectionDv = JsonNode.Double(input["max_correction_dv"]) ?? LandingPass.DefaultMaxCorrectionDv(LanderDv(snapshot)),
-                Craft = Craft ?? DescentApproach.FromSnapshot(snapshot),
+                // With air there is no braking descent to plan: deorbit and reentry fly it.
+                Craft = air ? null : Craft ?? DescentApproach.FromSnapshot(snapshot),
                 Deadline = deadline,
+                AllowWater = snapshot.LastEntryPlanned,
             };
             if (Exclude != null) query.Exclude.AddRange(Exclude);
             query.EdgeMarginM = JsonNode.Double(input["edge_margin_m"]) ?? LandingSiteSearch.DefaultEdgeMarginM;
@@ -134,6 +136,7 @@ namespace ClaudiaKerman.Core.Tools
             var poi = input["poi"];
             if (poi != null)
             {
+                if (air) return PlanningJson.Error(body.Name + " has an atmosphere, and a site beside a Point of Interest is for land, which flies airless bodies only");
                 if (!string.IsNullOrEmpty(query.Biome) || near != null) return PlanningJson.Error("poi takes no biome or near: its sites are in the ring round it");
                 var problem = PoiQuery(poi, body, input, query, api, out poiName);
                 if (problem != null) return PlanningJson.Error(problem);
@@ -151,6 +154,7 @@ namespace ClaudiaKerman.Core.Tools
             var found = query.HasPoi ? LandingSiteSearch.Ring(body, conic, snapshot.Ut, query, api) : LandingSiteSearch.Find(body, conic, snapshot.Ut, query, api);
             if (found.Error != null) return PlanningJson.Error(found.Error);
             if (query.HasPoi) return RingAnswer(body, poiName, query, found, snapshot.Ut);
+            if (air) return AirAnswer(body, query, found, snapshot.Ut);
             // #545: a biome no pass reaches gets the plane changes for its best site off the track.
             var lookOffTrack = WithPlaneChanges && !query.HasNear && found.Sites.Count == 0 && !found.OutOfTime && !string.IsNullOrEmpty(query.Biome)
                 && query.Craft != null && !deadline.Passed;
@@ -287,6 +291,64 @@ namespace ClaudiaKerman.Core.Tools
             var summary = found.Sites.Count == 0 ? "no landing site beside " + poiName + " on " + body.Name
                 : found.Sites.Count + (found.Sites.Count == 1 ? " site" : " sites") + " beside " + poiName + " on " + body.Name;
             return new ToolOutcome { Json = json.ToString(), Summary = summary };
+        }
+
+        /// <summary>
+        /// The answer on a body with air (#828): each site for <c>deorbit</c>'s target, with the sun at the predicted arrival. It has no slope and no burn onto the site, and says the
+        /// slope wasn't applied, so nobody reads it as checked; on a body with an ocean, whether water was allowed.
+        /// </summary>
+        private static ToolOutcome AirAnswer(SnapshotBody body, LandingSiteQuery query, LandingSiteResult found, double now)
+        {
+            var json = new JsonWriter().BeginObject().Field("body", body.Name);
+            json.Name("sites").BeginArray();
+            foreach (var site in found.Sites)
+            {
+                json.BeginObject()
+                    .Field("latitude", PlanningJson.Round(site.Latitude, 3))
+                    .Field("longitude", PlanningJson.Round(site.Longitude, 3))
+                    .Field("biome", site.Biome)
+                    .Field("terrain_altitude", PlanningJson.Round(site.Altitude, 1));
+                PlanningJson.Time(json, "burn", site.PassUt, now);
+                PlanningJson.Time(json, "landing", site.LandingUt, now)
+                    .Field("sun_elevation_deg", PlanningJson.Round(site.SunElevationDeg, 1))
+                    .Field("max_wait_s", PlanningJson.Round(site.MaxWaitS, 0));
+                if (!double.IsNaN(site.WaitUntilUt)) PlanningJson.Time(json, "wait_until", site.WaitUntilUt, now);
+                if (!double.IsNaN(site.FromNearDeg)) json.Field("from_near_deg", PlanningJson.Round(site.FromNearDeg, 1));
+                if (site.AtEdge) json.Field("near_biome_edge", true);
+                if (site.Water) json.Field("water", true);
+                json.EndObject();
+            }
+            json.EndArray();
+            json.Field("slope", "not applied: a landing through air misses by far more than the slope is measured over, so the ground at a site is unchecked");
+            if (body.Ocean) json.Field("water", query.AllowWater ? "allowed: this is the Last Entry" : "excluded: this is not the Last Entry, or there is no Mission Plan");
+            json.Field("window_hours", PlanningJson.Round(found.WindowHours, 2));
+            var note = AirNote(query, found);
+            if (note.Length > 0) json.Field("note", note);
+            json.EndObject();
+            var summary = found.Sites.Count == 0 ? "no landing site on " + body.Name
+                : found.Sites.Count + (found.Sites.Count == 1 ? " site" : " sites") + " on " + body.Name + ", the first in the " + found.Sites[0].Biome;
+            if (found.OutOfTime) summary += " (out of time)";
+            return new ToolOutcome { Json = json.ToString(), Summary = summary };
+        }
+
+        /// <summary>What a body with air's answer needs said: a search cut short, a wait, sites at a biome's edge, or why there are none.</summary>
+        private static string AirNote(LandingSiteQuery query, LandingSiteResult found)
+        {
+            var notes = new List<string>();
+            if (found.OutOfTime)
+                notes.Add("partial: out of time: " + LandingSiteSearch.Count(found.Tried) + " of the " + LandingSiteSearch.Count(found.NearPoints) + " track points were tried");
+            if (found.Sites.Count > 0)
+                notes.Add("give deorbit the site as target and its max_wait_s as max_wait, so it flies the pass whose sun is given");
+            if (found.Sites.Any(s => !double.IsNaN(s.WaitUntilUt)))
+                notes.Add("the pass deorbit would take first is dark at every site, so these are for a later pass: say so in the plan, hold the craft to wait_until_ut, then call deorbit; called sooner it flies the dark pass");
+            if (found.Sites.Count > 0 && found.Sites[0].AtEdge)
+                notes.Add("no site more than " + query.EdgeMarginM.ToString("0.##", CultureInfo.InvariantCulture) + " m inside the " + found.Sites[0].Biome + " biome was reachable; a landing may come down outside it");
+            if (found.Sites.Count == 0)
+                notes.Add("no site met the limits; of " + LandingSiteSearch.Count(found.Tried) + " ground-track points tried, " + LandingSiteSearch.Count(found.AfterBiome) + " were in the biome, "
+                    + LandingSiteSearch.Count(found.AfterWater) + " also off the water, " + LandingSiteSearch.Count(found.AfterDaylight) + " also in daylight at the arrival"
+                    + (found.Unflyable > 0 ? ", " + LandingSiteSearch.Count(found.Unflyable) + " had no pass in reach (max_correction_dv " + query.MaxCorrectionDv.ToString("0.#", CultureInfo.InvariantCulture) + " m/s)" : "")
+                    + "; widen within_hours or the biome, change the orbit's plane, or give daylight false");
+            return string.Join("; ", notes.ToArray());
         }
 
         /// <summary>A search that ran out of time (#536): how far it got, and that land, searching the whole window, may still find a site.</summary>
