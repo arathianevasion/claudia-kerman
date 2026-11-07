@@ -1466,7 +1466,7 @@ namespace ClaudiaKerman.Core.Missions
                 return;
             }
             if (TakeSecondLook(mission, turn, reply)) return;
-            if (LandingMissSentBack(mission, turn, reply)) return;
+            if (LandingMissSentBack(mission, turn, reply, message)) return;
 
             // Append-only: the turn and its reply join the conversation together, then the transcript is rewritten.
             var committed = message.ToMessage();

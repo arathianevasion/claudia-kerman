@@ -62,6 +62,8 @@ namespace ClaudiaKerman.Core.Tests
             Assert.False(ManualGrounds.Asked("Return to KSC.", new[] { "I'll fly the landing", "No manual stretch, just land as close as you can" }, false));
             Assert.False(ManualGrounds.Asked("Land by hand", new[] { "don't hand over" }, false));
             Assert.True(ManualGrounds.Asked("Return to KSC.", new[] { "no manual", "ok, let me fly it" }, false));
+            Assert.False(ManualGrounds.Asked("Return to KSC.", new[] { "I'll fly it", "don't fly it manually" }, false));
+            Assert.False(ManualGrounds.Asked("Return to KSC.", new[] { "never take manual control" }, false));
         }
 
         [Fact]
@@ -85,6 +87,8 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("Pinpoint the crater", true)]
         [InlineData("Return to KSC and land", false)]
         [InlineData("Orbit the Mun within 10 days", false)]
+        [InlineData("Land within 5 m/s of vertical speed", false)]
+        [InlineData("Land within 100 m of the pad", true)]
         public void APrecisionGoalMakesTheSpotThePoint(string goal, bool precision)
         {
             Assert.Equal(precision, ManualGrounds.PrecisionGoal(goal));

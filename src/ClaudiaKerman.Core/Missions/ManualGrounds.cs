@@ -25,9 +25,12 @@ namespace ClaudiaKerman.Core.Missions
 
         private static readonly string[] Declines = { "no manual", "don't hand over", "do not hand over", "dont hand over", "not by hand", "without manual" };
 
+        /// <summary>A negation shortly before an ask word in one clause: "don't fly it manually", "never take manual control".</summary>
+        private static readonly Regex NegatedAsk = new Regex(@"\b(no|not|never|without|don't|dont|do not|doesn't|won't|wont)\b[^.!?;,]{0,30}\b(manual|manually|by hand)\b", RegexOptions.CultureInvariant);
+
         private static readonly string[] Precision = { "precision", "land exactly", "land on target", "pinpoint" };
 
-        private static readonly Regex WithinDistance = new Regex(@"\bwithin\s+\d+(\.\d+)?\s*(km|kilomet|m\b|met)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        private static readonly Regex WithinDistance = new Regex(@"\bwithin\s+\d+(\.\d+)?\s*(km|kilomet|met(er|re)s?\b|m(?![\w/]))", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         private static readonly Regex Eva = new Regex(@"\bEVA\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
@@ -44,7 +47,7 @@ namespace ClaudiaKerman.Core.Missions
             foreach (var words in new[] { goal }.Concat(playerWords ?? Enumerable.Empty<string>()))
             {
                 var said = Normalize(words);
-                if (Declines.Any(said.Contains)) asked = false;
+                if (Declines.Any(said.Contains) || NegatedAsk.IsMatch(said)) asked = false;
                 else if (Asks.Any(said.Contains)) asked = true;
             }
             return asked;
@@ -79,9 +82,10 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The craft is landed or splashed down and every Kerbal aboard at the run's start still is.</summary>
         public static bool DownAlive(GameSnapshot snapshot, IEnumerable<string> crewAtStart)
         {
-            if (snapshot == null || (snapshot.Situation != "LANDED" && snapshot.Situation != "SPLASHED")) return false;
+            // Null: the crew at the start was never read, so none can be called alive.
+            if (snapshot == null || crewAtStart == null || (snapshot.Situation != "LANDED" && snapshot.Situation != "SPLASHED")) return false;
             var now = snapshot.Crew.Select(c => c.Name).ToList();
-            return (crewAtStart ?? Enumerable.Empty<string>()).All(now.Contains);
+            return crewAtStart.All(now.Contains);
         }
 
         public static string Refusal(string planName)

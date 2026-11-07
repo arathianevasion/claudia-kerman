@@ -37,6 +37,8 @@ namespace ClaudiaKerman.Core.Missions
                 ManualRetry = true,
                 Waits = turn.Waits,
                 GoalStands = turn.GoalStands,
+                ScriptRewrite = turn.ScriptRewrite,
+                Stats = turn.Stats,
                 PlayerText = turn.PlayerText,
                 // The refused turn was never committed, so what it asked goes again with the reason.
                 UserText = turn.UserText + "\n" + reason,
@@ -48,17 +50,20 @@ namespace ClaudiaKerman.Core.Missions
         /// A Failed Debrief for a craft down with its crew alive, on a landing step, with no precision goal: sent back once. True when
         /// it was; the reply is then not committed.
         /// </summary>
-        private bool LandingMissSentBack(Mission mission, Turn turn, MissionReply reply)
+        private bool LandingMissSentBack(Mission mission, Turn turn, MissionReply reply, AssistantMessage message)
         {
             if (turn.Purpose != Purpose.Debrief || reply.Debrief == null || reply.Debrief.Outcome != "Failed" || turn.LandingMissSentBack || mission.DeferredRestore != null) return false;
             var plan = mission.PendingSequence;
             if (plan == null || !ManualGrounds.LandingStep(plan.Script) || ManualGrounds.PrecisionGoal(mission.Goal)) return false;
             if (!ManualGrounds.DownAlive(MissionVesselSnapshot(mission), mission.RunStartCrew)) return false;
             turn.LandingMissSentBack = true;
+            // Her Failed reply stays in front of her, so "reply Failed again" has something to answer; none of it is committed unless she stands by it.
+            var before = turn.Messages.Count;
+            turn.Messages.Add(message.ToMessage());
             turn.Messages.Add(Message.SystemText(ManualGrounds.SendBack));
             if (!HasCapRoom(mission, turn))
             {
-                turn.Messages.RemoveAt(turn.Messages.Count - 1);
+                turn.Messages.RemoveRange(before, turn.Messages.Count - before);
                 return false;
             }
             Event(mission, "debrief_retry", "Failed on a landing step with the craft down and the crew alive");
