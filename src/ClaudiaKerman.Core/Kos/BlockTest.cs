@@ -136,7 +136,7 @@ namespace ClaudiaKerman.Core.Kos
                     case "target_landed_lat": spec.TargetLandedLat = Number(name, value); spec.TargetLanded = true; break;
                     case "target_landed_ahead": spec.TargetLandedAhead = Number(name, value); spec.TargetLanded = true; break;
                     case "plan":
-                        var fields = value.Split('|');
+                        var fields = value.Split(new[] { '|' }, 3);
                         if (fields.Length < 2) throw new FormatException(name + ": plan is 'name | delta-v | intent': " + value);
                         spec.Plan.Add(new Missions.PlannedSequence { Name = fields[0].Trim(), DeltaV = Number(name, fields[1].Trim()), Intent = fields.Length > 2 ? fields[2].Trim() : "" });
                         break;
