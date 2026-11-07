@@ -750,7 +750,7 @@ namespace ClaudiaKerman.Core.Missions
             var reply = MissionReply.Parse(string.Concat(turn[at].Content.OfType<TextBlock>().Select(b => b.Text)));
             if (reply != null) reply.WithProposed(ProposedPlans.LastAccepted(turn.Take(at)));
             if (reply == null || Mismatch(purpose, reply) != null) return false;
-            if (purpose == Purpose.SequencePlan && !reply.SequencePlan.Manual && !CheckScript(mission, reply.SequencePlan).Passed) return false;
+            if (purpose == Purpose.SequencePlan && !reply.SequencePlan.Manual && !CheckScript(mission, reply.SequencePlan, restored: true).Passed) return false;
 
             mission.Owed = Owed.None;
             mission.LatestLine = SayWithWhy(purpose, reply);

@@ -1926,7 +1926,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (mission.Plan == null || (restored && !plan.PlanStep.HasValue)) return null;
             var steps = mission.Plan.Sequences.Count;
-            if (!plan.PlanStep.HasValue) return "plan_step is missing: name the Mission Plan step this sequence flies, 1 to " + steps.ToString(CultureInfo.InvariantCulture) + ".";
+            if (!plan.PlanStep.HasValue) return steps == 0 ? null : "plan_step is missing: name the Mission Plan step this sequence flies, 1 to " + steps.ToString(CultureInfo.InvariantCulture) + ".";
             var step = plan.PlanStep.Value;
             if (step >= 1 && step <= steps) return null;
             return "plan_step " + step.ToString(CultureInfo.InvariantCulture) + " is not a step of the Mission Plan: name the step this sequence flies, "
