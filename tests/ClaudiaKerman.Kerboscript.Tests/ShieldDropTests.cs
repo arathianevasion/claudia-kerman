@@ -45,14 +45,14 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void The_first_event_splits_the_craft_and_the_second_module_is_found_off_the_ship_and_skipped()
         {
             Assert.Equal(new[] { "1", "shield" },
-                Run("print reentry_shield_drop(\"auto\", parts_of). print fired:join(\",\").\n"));
+                Run("print reentry_shield_drop(\"shield\", parts_of). print fired:join(\",\").\n"));
         }
 
         [Fact]
         public void A_shield_whose_part_left_before_the_event_is_not_fired()
         {
             Assert.Equal(new[] { "0", "" },
-                Run("set ship_parts to list(pod, service).\n print reentry_shield_drop(\"auto\", parts_of). print fired:join(\",\").\n"));
+                Run("set ship_parts to list(pod, service).\n print reentry_shield_drop(\"shield\", parts_of). print fired:join(\",\").\n"));
         }
 
         [Fact]

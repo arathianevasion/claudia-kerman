@@ -79,7 +79,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void Reentry_options_it_cannot_read_are_named()
         {
             Assert.Equal("", One("reentry_unreadable(reentry_defaults())"));
-            Assert.Equal("", One("reentry_unreadable(claudia_merge_options(lexicon(\"jettison_stage\", 3, \"chute_mode\", \"none\", \"hold\", \"none\"), reentry_defaults()))"));
+            Assert.Equal("", One("reentry_unreadable(claudia_merge_options(lexicon(\"jettison_stage\", \"none\", \"chute_mode\", \"none\", \"hold\", \"none\"), reentry_defaults()))"));
             Assert.StartsWith("chute_mode must be", One("reentry_unreadable(claudia_merge_options(lexicon(\"chute_mode\", \"early\"), reentry_defaults()))"));
             Assert.StartsWith("hold must be", One("reentry_unreadable(claudia_merge_options(lexicon(\"hold\", \"prograde\"), reentry_defaults()))"));
             Assert.StartsWith("jettison_stage must be", One("reentry_unreadable(claudia_merge_options(lexicon(\"jettison_stage\", \"soon\"), reentry_defaults()))"));

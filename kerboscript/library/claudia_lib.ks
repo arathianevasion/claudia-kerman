@@ -527,7 +527,7 @@ function claudia_drop_uids {
 }
 
 // claudia_drop_plan's lexicon for the decouplers that fire at stage number stage_num (kOS's
-// PART:STAGE, as reentry's jettison_stage) and the parts leaving with them.
+// PART:STAGE) and the parts leaving with them.
 function claudia_stage_drop_plan {
   parameter stage_num.
   local plan is claudia_drop_plan(list()).
@@ -547,10 +547,9 @@ function claudia_stage_drop_plan {
   return plan.
 }
 
-// The UIDs of the heat shields the decouplers that fire take (decs: reentry_shield_modules' list, default its "auto"), less leave_out. Pure.
+// The UIDs of the heat shields the decouplers that fire take (decs: reentry_shield_modules' list), less leave_out. Pure.
 function claudia_shield_drop {
-  parameter parts, leave_out, decs is "auto".
-  if decs:istype("String") { set decs to reentry_shield_modules("auto", parts). }
+  parameter parts, leave_out, decs.
   local uids is list().
   for p in parts { for d in decs {
     local dp is d:module:part.

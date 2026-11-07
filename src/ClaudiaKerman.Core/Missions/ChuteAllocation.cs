@@ -129,7 +129,8 @@ namespace ClaudiaKerman.Core.Missions
             var allocation = new ChuteAllocation();
             if (snapshot == null || sequences == null) return allocation;
             allocation.ForPlan = PlanOf(sequences, firstStep);
-            allocation.Entries.AddRange(FindEntries(snapshot, sequences, Math.Max(0, firstStep)));
+            allocation.Entries.AddRange(Missions.Entries.Find(snapshot, sequences, Math.Max(0, firstStep))
+                .Select(e => new EntryChutes { Step = e.Step, Sequence = e.Sequence, Body = e.Body, Return = e.Return }));
             var division = new Division(snapshot, remote, processorPartId, allocation);
             allocation.Chutes.AddRange(division.All);
             if (allocation.Entries.Count > 0) division.Divide(sequences, Math.Max(0, firstStep));
@@ -187,40 +188,6 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (held != null && sequences != null && held.ForPlan == PlanOf(sequences, firstStep)) return held;
             return Of(snapshot, sequences, firstStep, remote, processorPartId);
-        }
-
-        /// <summary>
-        /// The remaining atmospheric entries: legs that land on a body with air, reenter, or return to Kerbin. The body is the
-        /// one the words name, else the one the plan is at by then (as the Margin check follows it). A leg on the same body as the
-        /// entry before it, with no ascent between, is the same entry (a deorbit leg, then its landing leg); the later leg names it.
-        /// </summary>
-        private static List<EntryChutes> FindEntries(GameSnapshot snapshot, IList<PlannedSequence> sequences, int firstStep)
-        {
-            var entries = new List<EntryChutes>();
-            var at = snapshot.Orbit != null && snapshot.Orbit.Body.Length > 0 ? snapshot.Orbit.Body : snapshot.Body;
-            var body = SequenceWords.Body(snapshot, at);
-            var ascended = false;
-            for (var i = firstStep; i < sequences.Count; i++)
-            {
-                var leg = sequences[i];
-                var words = SequenceWords.Of(leg);
-                var returnsHome = SequenceWords.ReturnHome.IsMatch(words);
-                body = SequenceWords.NextBody(snapshot, words, body);
-                if (SequenceWords.Ascent.IsMatch(words)) ascended = true;
-                if (leg.Manual || body == null) continue;
-                var landing = SequenceWords.Landing.IsMatch(words);
-                var entry = landing || SequenceWords.Reentry.IsMatch(words) || returnsHome;
-                if (!entry || (SequenceWords.Aero.IsMatch(words) && !landing)) continue;
-                if (body.AtmosphereHeight <= 0 && body.SeaLevelAtm <= 0) continue;
-                var last = entries.Count > 0 ? entries[entries.Count - 1] : null;
-                if (last != null && last.Body == body.Name && !ascended) entries.Remove(last);
-                ascended = false;
-                entries.Add(new EntryChutes { Step = i, Sequence = leg.Name, Body = body.Name, Return = body.Name == "Kerbin" });
-            }
-            // Only the last Kerbin entry is the return; an earlier one (a Kerbin landing before a relaunch) is like any other.
-            var home = entries.LastOrDefault(e => e.Return);
-            foreach (var entry in entries) entry.Return = entry == home;
-            return entries;
         }
 
         /// <summary>The division by need: the chutes, the pod's, and the predictor's touchdown for a set.</summary>

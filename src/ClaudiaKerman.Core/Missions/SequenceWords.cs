@@ -27,6 +27,9 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>Aerobraking and aerocapture: through the air, but not down to the ground.</summary>
         public static readonly Regex Aero = new Regex(@"\baero ?(brak(e|es|ed|ing)|captur(e|es|ed|ing))\b", RegexOptions.IgnoreCase);
 
+        /// <summary>An entry that says it comes straight in from a transfer, with no orbit first (#823).</summary>
+        public static readonly Regex StraightIn = new Regex(@"\b(straight[ -]in|direct (re-?)?entry|direct descent)\b", RegexOptions.IgnoreCase);
+
         /// <summary>A capture into orbit at the end of a trip (#757).</summary>
         public static readonly Regex Capture = new Regex(@"\b(captur(e|es|ed|ing)|circulari[sz](e|es|ed|ing)|insertion)\b", RegexOptions.IgnoreCase);
         /// <summary>A trip to another body (#757): a transfer, an ejection or a return. The body it goes to is read separately.</summary>

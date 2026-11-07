@@ -28,7 +28,7 @@
 //|     delta-v left less 50 m/s or 10%, plus a powered landing's need without chutes; give it if stock
 //|     reports none left.
 //|   separate ["none"]: what to drop once the burn is flown, so only the capsule re-enters: a stage
-//|     number (its decouplers, as reentry's jettison_stage), or a list of part names or tags (or
+//|     number (its decouplers), or a list of part names or tags (or
 //|     one), as drop_parts. The burn is chosen for the craft that stays (its mass and drag; the
 //|     burn's propellant goes with the parts dropped); the landing is predicted again once they have gone. Give it for a transfer stage that would otherwise ride
 //|     down with the capsule.
@@ -219,11 +219,16 @@ function deorbit {
   if refused <> "" {
     return claudia_finish(ctx, false, "separate: " + refused, extra).
   }
+  // The heat shield reentry will jettison: this entry's (#823), so the prediction flies what reentry flies.
+  local entry is addons:claudia:entrydrop(lexicon("home", reentry_home_uid(), "keep_engines", list())).
+  if entry:error <> "" {
+    return claudia_finish(ctx, false, entry:error, extra).
+  }
 
   local ground_alt is body:geopositionlatlng(site:lat, site:lng):terrainheight.
   local max_wait is deorbit_max_wait(opt:max_wait, body:rotationperiod).
   ship:deltav:forcecalc(). wait 0.5. // Stock recounts first: after a staging or a load it reads 0. The search is a block-internal call (ADR 0007): inline here.
-  local found is addons:claudia:deorbitburn(deorbit_query(site, time:seconds + deorbit_lead_s(), max_wait, ground_alt, opt:accuracy_km, claudia_engine_isp(), claudia_drop_uids(separation), claudia_shield_drop(ship:parts, claudia_drop_uids(separation)), opt:max_dv, ship:deltav:current)).
+  local found is addons:claudia:deorbitburn(deorbit_query(site, time:seconds + deorbit_lead_s(), max_wait, ground_alt, opt:accuracy_km, claudia_engine_isp(), claudia_drop_uids(separation), claudia_shield_drop(ship:parts, claudia_drop_uids(separation), reentry_shield_modules(entry:shield, ship:parts)), opt:max_dv, ship:deltav:current)).
   if found:haskey("lat") {
     set extra:predicted_geo to claudia_geo(found).
     set extra:predicted_error_km to round(found:error_km, 2).
@@ -252,7 +257,7 @@ function deorbit {
   local separate_failed is choose claudia_fire_drop(ctx, separation) if separation:decouplers:length > 0 else "".
 
   // Where the orbit actually flown comes down, with the craft as it is now: the burn's own error moves it.
-  local after is addons:claudia:reentryimpact(lexicon("lat", site:lat, "lng", site:lng, "ground_alt", max(0, ground_alt), "shield_drop", claudia_shield_drop(ship:parts, claudia_drop_uids(separation)))).
+  local after is addons:claudia:reentryimpact(lexicon("lat", site:lat, "lng", site:lng, "ground_alt", max(0, ground_alt), "shield_drop", claudia_shield_drop(ship:parts, claudia_drop_uids(separation), reentry_shield_modules(entry:shield, ship:parts)))).
   if after:error = "" {
     set extra:predicted_geo to claudia_geo(after).
     set extra:predicted_error_km to round(after:error_km, 2).

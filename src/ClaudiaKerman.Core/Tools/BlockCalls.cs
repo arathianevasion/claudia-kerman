@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using ClaudiaKerman.Core.Claude;
 using ClaudiaKerman.Core.Missions;
 
@@ -1351,6 +1352,43 @@ namespace ClaudiaKerman.Core.Tools
                 { "titles", titles },
                 { "powered_finish", entry != null && entry.PoweredFinish },
                 { "touchdown_speed", entry == null ? -1.0 : entry.TouchdownSpeed },
+            };
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:ENTRYDROP</c>, for <c>reentry</c> and <c>deorbit</c> at block start (#823, ADR 0018): what this Entry drops, read
+        /// fresh from the Mission Plan's <paramref name="legs"/> (null with no plan: the first shield's rule) from <paramref name="step"/>
+        /// (0 first) for the vessel flying (<paramref name="child"/>; "" for the craft). Takes <c>home</c> (the kOS UID of the crew's part) and
+        /// <c>keep_engines</c> (kOS UIDs). Gives <c>error</c> "", <c>number</c> (n), <c>shield</c> (the Entry Shield's kOS UID; "" for none),
+        /// <c>decouplers</c>, <c>gone</c> and <c>kept</c> (kOS UIDs), <c>names</c> (the stack's part names, each once) and <c>stuck</c> (those with no decoupler).
+        /// </summary>
+        public static IDictionary<string, object> EntryDropCall(IDictionary<string, object> ask, GameSnapshot snapshot, IList<PlannedSequence> legs, int step, string child, Func<uint, string> uidOf)
+        {
+            if (snapshot == null) return Error("there is no Game Snapshot of the craft");
+            var homeUid = ask.ContainsKey("home") ? ask["home"] as string : null;
+            var engines = Uids(ask, "keep_engines");
+            uint? home = null;
+            var keep = new List<uint>();
+            foreach (var part in snapshot.Craft.Parts)
+            {
+                var uid = uidOf(part.Id);
+                if (uid == null) continue;
+                if (uid == homeUid) home = part.Id;
+                if (engines.Contains(uid)) keep.Add(part.Id);
+            }
+            var number = Entries.ShieldNumber(snapshot, legs, step, child);
+            var stack = EntryStack.Of(snapshot.Craft.Parts, home, number, keep);
+            Func<IEnumerable<SnapshotPart>, List<object>> uids = parts => parts.Select(p => uidOf(p.Id)).Where(u => u != null).Cast<object>().ToList();
+            return new Dictionary<string, object>
+            {
+                { "error", "" },
+                { "number", (double)number },
+                { "shield", stack.Shield == null ? "" : uidOf(stack.Shield.Id) ?? "" },
+                { "decouplers", uids(stack.Decouplers) },
+                { "gone", uids(stack.Gone) },
+                { "kept", uids(stack.Kept) },
+                { "names", EntryStack.Names(stack.Parts).Cast<object>().ToList() },
+                { "stuck", EntryStack.Names(stack.Stuck).Cast<object>().ToList() },
             };
         }
 

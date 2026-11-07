@@ -4,14 +4,14 @@
 // reentry block test, return from orbit: the Mission Script the debug block test runner starts
 // (bundled with the Core Library, as for a real Mission). The probe arrives at the apoapsis of a
 // 150 km by 20 km orbit; reentry coasts to the atmosphere, flies the entry and touches down under a
-// parachute. jettison_stage 1 names the heat shield's decoupler stage on the reference craft. The
+// parachute, dropping its heat shield (no Mission Plan: the first shield is the Entry Shield). The
 // Script Result is the block's plus the part counts before and after, to show the heat shield went.
 
 @lazyglobal off.
 
 wait until ship:unpacked.
 local parts_before is ship:parts:length.
-local result is reentry(lexicon("jettison_stage", 1)).
+local result is reentry().
 set result["parts_before"] to parts_before.
 set result["parts_after"] to ship:parts:length.
 // The checker compares a field with a literal only, so the test reports the comparisons it needs: how

@@ -7,7 +7,7 @@
 
 @lazyglobal off.
 
-//| reentry(options): lands through the atmosphere: drops the stack below the heat shield,
+//| reentry(options): lands through the atmosphere: drops the stack below this entry's shield,
 //| waits (on rails) for the atmosphere if still in space, holds the heat shield forward (surface retrograde), drops it once
 //| the worst heating is over, opens the parachutes only when safe (never staged), physics-warping the fall
 //| (1x below 100 m), and ends once landed or splashed.
@@ -17,10 +17,9 @@
 //|   chutes ["auto"]: the Chute Allocation's for this entry, "all", "none" or a list of part tags; no other is armed.
 //|   touchdown ["chutes"]: or "powered": falls under its chutes (or none), then brakes on its lit engines by
 //|     radar altitude (the stopping distance counts drag and thrust over weight) to 2 m/s; over 6 m/s fails. Its gear goes down as it brakes; with no lit engine it fails at once.
-//|   jettison_stage ["auto"]: the stage whose decouplers drop the heat shield, "auto" for the decoupler on
-//|     or beside it (if powered, not one whose drop takes the engines), or "none". Only its decouplers fire.
-//|   separate ["auto"]: drops the stack (service module, tanks) before the atmosphere, never by the shield's
-//|     decoupler, and if powered only the engineless parts below the engines; "none" keeps it; or a stage number.
+//|   separate ["auto"]: this entry's heat shield is number n from the pod: the entries left in the Mission Plan,
+//|     plus 1 if burns follow the last. Drops what is below it before the atmosphere (if powered, not the engines); no shield n, nothing drops. Or "none".
+//|   jettison_stage ["auto"]: drops that shield, unless powered keeps it or its stack is kept; or "none".
 //|   hold ["retrograde"]: points the craft's forward axis at surface retrograde; "none" leaves it.
 //|   max_duration ["auto"]: the wait for the atmosphere plus 1800 s.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block (it never stages).
@@ -110,24 +109,10 @@ function reentry_unreadable {
   if opt:hold <> "retrograde" and opt:hold <> "none" {
     return "hold must be 'retrograde' or 'none', not '" + opt:hold + "'".
   }
-  if opt:jettison_stage:istype("String") {
-    if opt:jettison_stage <> "auto" and opt:jettison_stage <> "none" {
-      return "jettison_stage must be 'auto', 'none' or a stage number, not '" + opt:jettison_stage + "'".
+  for key in list("jettison_stage", "separate") {
+    if opt[key]:typename <> "String" or (opt[key] <> "auto" and opt[key] <> "none") {
+      return key + " must be 'auto' or 'none', not " + opt[key].
     }
-  }
-  // separate is read as deorbit's, without part names.
-  local sep is opt:separate.
-  local sep_rule is "separate must be 'auto', 'none' or a stage number, not ".
-  if sep:istype("String") {
-    if sep <> "auto" and sep <> "none" {
-      return sep_rule + "'" + sep + "'".
-    }
-  } else if sep:istype("Scalar") {
-    if sep < 0 or sep <> round(sep) {
-      return sep_rule + sep.
-    }
-  } else {
-    return sep_rule + "a " + sep:typename.
   }
   return "".
 }
@@ -510,23 +495,15 @@ function reentry_next_deadline {
   return current.
 }
 
-// The heat-shield decoupler modules chosen by jettison ("auto", "none" or a stage number).
+// The decoupler modules on or beside the Entry Shield (shield_uid; "" for none): no other shield's (#823).
 function reentry_shield_modules {
-  parameter jettison, parts.
+  parameter shield_uid, parts.
   local found is list().
-  if jettison:istype("String") and jettison = "none" {
+  if shield_uid = "" {
     return found.
   }
   for p in parts {
-    local wanted is false.
-    if claudia_is_decoupler(p) {
-      if jettison:istype("String") {
-        set wanted to reentry_shield_beside(p).
-      } else {
-        set wanted to p:stage = jettison.
-      }
-    }
-    if wanted {
+    if claudia_is_decoupler(p) and reentry_shield_beside(p, shield_uid) {
       for name in list("ModuleDecouple", "ModuleAnchoredDecoupler", "ModuleJettison") {
         if p:hasmodule(name) {
           local m is p:getmodule(name).
@@ -545,11 +522,11 @@ function reentry_shield_modules {
 // parts_of() (a delegate to the craft's parts) before each event, so a module on a part that has left, by
 // an earlier event splitting the craft, is not there to fire (#558).
 function reentry_shield_drop {
-  parameter jettison, parts_of.
+  parameter shield_uid, parts_of.
   local fired is list().
   until false {
     local next is "".
-    for drop in reentry_shield_modules(jettison, parts_of()) {
+    for drop in reentry_shield_modules(shield_uid, parts_of()) {
       if next:istype("String") and not fired:contains(drop:module:part:uid + drop:event) {
         set next to drop.
       }
@@ -562,173 +539,58 @@ function reentry_shield_drop {
   }
 }
 
-// True if the decoupler p is a heat shield or sits against one.
+// True if the decoupler p is the heat shield shield_uid or sits against it.
 function reentry_shield_beside {
-  parameter p.
-  if p:hasmodule("ModuleAblator") {
-    return true.
-  }
-  if p:hasparent and p:parent:hasmodule("ModuleAblator") {
+  parameter p, shield_uid.
+  if p:uid = shield_uid or (p:hasparent and p:parent:uid = shield_uid) {
     return true.
   }
   for child in p:children {
-    if child:hasmodule("ModuleAblator") {
+    if child:uid = shield_uid {
       return true.
     }
   }
   return false.
 }
 
-// ---- The stack (#557) ----
-
-// The stack: the parts on the far side of the heat shield from home (the uid of the crewed or command
-// part), or with no heat shield the parts below the first decouplers under home. parts: kOS parts, or
-// anything answering uid, name, hasparent, parent and hasmodule. Returns lexicon("shielded", the craft
-// has a heat shield, "parts", the stack, "decouplers", those nearest the shield (or home) that drop it,
-// "gone", the parts they take, "stuck", stack parts with no decoupler between them and the shield). A
-// decoupler stays with the part above it, so the one next to the shield is not the stack. keep_engines
-// (a powered touchdown, #628), the uids of the engines it lands on: each of those parts, the parts between it
-// and the shield (or home) and those hanging on them with no decoupler between are not the stack but "kept".
-// Fires nothing.
-function reentry_stack {
-  parameter parts, home_uid, keep_engines is list().
-  local found is lexicon("shielded", false, "parts", list(), "decouplers", list(), "gone", list(), "stuck", list(), "kept", list()).
-  local parent_of is lexicon().
-  local is_dec is lexicon().
-  local anchor is home_uid.
-  local home is "".
-  for p in parts {
-    if p:hasparent {
-      set parent_of[p:uid] to p:parent.
-    } else {
-      set parent_of[p:uid] to "".
-    }
-    local is_shield is p:hasmodule("ModuleAblator").
-    // A heat shield is never the decoupler that drops the stack (#516).
-    set is_dec[p:uid] to claudia_is_decoupler(p) and not is_shield.
-    if is_shield and not found:shielded {
-      set found:shielded to true.
-      set anchor to p:uid.
-    }
-    if p:uid = home_uid {
-      set home to p.
-    }
+// The Entry Shield's uid if this entry jettisons it, else "". below: ADDONS:CLAUDIA:ENTRYDROP's lexicon. Its decoupler takes
+// what's on both sides (#516), so a stack kept on (separate "none", or a powered touchdown's engines) keeps the shield too.
+function reentry_jettison_uid {
+  parameter opt, below.
+  if opt:jettison_stage = "none" or below:kept:length > 0 or (opt:separate = "none" and below:names:length > 0) {
+    return "".
   }
-  // Home under the shield (a craft built from the far side): the stack is what is not under it, and
-  // no decoupler drops it without taking home too.
-  local reversed is false.
-  if found:shielded and not home:istype("String") {
-    set reversed to reentry_walk(home, anchor, parent_of, is_dec):under.
-  }
-  local kept is lexicon().
-  if not reversed {
-    for p in parts {
-      if keep_engines:contains(p:uid) {
-        if reentry_walk(p, anchor, parent_of, is_dec):under {
-          local cur is p.
-          until cur:istype("String") or cur:uid = anchor {
-            set kept[cur:uid] to true.
-            set cur to parent_of[cur:uid].
-          }
-        }
-      }
-    }
-  }
-  local seen is lexicon().
-  for p in parts {
-    if kept:haskey(p:uid) {
-      found:kept:add(p).
-    } else if p:uid <> anchor {
-      local way is reentry_walk(p, anchor, parent_of, is_dec, kept).
-      if reversed {
-        if not way:under {
-          found:parts:add(p).
-          found:stuck:add(p).
-        }
-      } else if way:under {
-        local top is way:top.
-        if top:istype("String") and way:at <> anchor {
-          found:kept:add(p).
-        } else if top:istype("String") {
-          if found:shielded {
-            found:parts:add(p).
-            found:stuck:add(p).
-          }
-        } else if top:uid <> p:uid {
-          found:parts:add(p).
-          found:gone:add(p).
-          if not seen:haskey(top:uid) {
-            set seen[top:uid] to true.
-            found:decouplers:add(top).
-          }
-        }
-      }
-    }
-  }
-  return found.
+  return below:shield.
 }
 
-// Walking up from part p by parent_of (uid -> parent part or ""): lexicon("under", it reaches the part whose uid
-// is anchor, or one in stop (uid -> true), "at", the uid it reached, "top", the decoupler on the way nearest
-// it, p itself included, or "" for none). is_dec: uid -> true for a decoupler that is not a heat shield.
-function reentry_walk {
-  parameter p, anchor, parent_of, is_dec, stop is lexicon().
-  local top is "".
-  local cur is p.
-  until cur:istype("String") {
-    if cur:uid = anchor or stop:haskey(cur:uid) {
-      return lexicon("under", true, "at", cur:uid, "top", top).
-    }
-    if is_dec[cur:uid] {
-      set top to cur.
-    }
-    set cur to parent_of[cur:uid].
-  }
-  return lexicon("under", false, "at", "", "top", "").
-}
+// ---- What this entry drops (#557, #823): ADDONS:CLAUDIA:ENTRYDROP decides, the block fires ----
 
-// The names of parts, each once, in order.
-function reentry_names {
-  parameter parts.
-  local names is list().
-  for p in parts {
-    if not names:contains(p:name) {
-      names:add(p:name).
-    }
-  }
-  return names.
-}
-
-// What separate drops of a reentry_stack, as claudia_drop_plan's lexicon: nothing for "none"; for "auto"
-// the stack through its decouplers, or an error if a part of it has none, and nothing on a craft with no
-// heat shield (as today); for a stage number, that stage's decouplers as deorbit's separate drops them
-// (never a heat shield's).
+// What separate drops, of ENTRYDROP's lexicon below, as claudia_drop_plan's lexicon with the parts themselves: nothing for
+// "none"; for "auto" the stack through its decouplers, or an error if a part of it has none.
 function reentry_separation {
-  parameter sep, below.
-  if sep:istype("Scalar") {
-    return claudia_stage_drop_plan(sep).
-  }
+  parameter sep, below, parts.
   local plan is claudia_drop_plan(list()).
-  if sep = "auto" and below:shielded {
+  if sep = "auto" {
     if below:stuck:length > 0 {
-      set plan:error to reentry_names(below:stuck):join(", ") + ": no decoupler between it and the heat shield".
+      set plan:error to below:stuck:join(", ") + ": no decoupler between it and the heat shield".
       return plan.
     }
-    for d in below:decouplers {
-      plan:decouplers:add(d).
-    }
-    for g in below:gone {
-      plan:gone:add(g).
+    for p in parts {
+      if below:decouplers:contains(p:uid) {
+        plan:decouplers:add(p).
+      }
+      if below:gone:contains(p:uid) {
+        plan:gone:add(p).
+      }
     }
   }
   return plan.
 }
 
-// "" or why reentry fails before the atmosphere: a craft with a heat shield (shielded) whose stack
-// (names, a list) is still on; drop_error: why the drop failed, or "".
+// "" or why reentry fails before the atmosphere: separate "auto" with its stack (names, a list) still on; drop_error: why the drop failed, or "".
 function reentry_stack_refusal {
-  parameter shielded, names, drop_error.
-  if not shielded or names:length = 0 {
+  parameter sep, names, drop_error.
+  if sep <> "auto" or names:length = 0 {
     return "".
   }
   local reason is "stack attached below the heat shield: " + names:join(", ") + "; drop it first or use separate".
@@ -873,9 +735,8 @@ function reentry {
       return claudia_finish(ctx, false, "the orbit never reaches the atmosphere (periapsis " + round(ship:periapsis) + " m)", extra).
     }
   }
-  // The stack (#557) goes once the orbit is known to come down, before the atmosphere and any hold:
-  // with a service module on, the craft flies engine first and the shield can't lead. A craft with a
-  // heat shield that keeps its stack fails here, still above the air; one already in the air flies on.
+  // This entry's stack (#557, #823) goes once the orbit is known to come down, before the atmosphere and any
+  // hold. A stack "auto" can't drop fails here, still above the air; one already in the air flies on.
   local home is reentry_home_uid().
   // A powered touchdown lands on the engines that are lit or ready: not one flamed out in a spent stage.
   local landing_engines is list().
@@ -888,23 +749,26 @@ function reentry {
       }
     }
   }
-  local below is reentry_stack(ship:parts, home, landing_engines).
-  if (below:parts:length > 0 or opt:separate:istype("Scalar")) and not claudia_on_ground() {
-    local drop is reentry_separation(opt:separate, below).
+  local entry_ask is lexicon("home", home, "keep_engines", landing_engines).
+  local below is addons:claudia:entrydrop(entry_ask).
+  if below:error <> "" {
+    return claudia_finish(ctx, false, below:error, extra).
+  }
+  if below:names:length > 0 and not claudia_on_ground() {
+    local drop is reentry_separation(opt:separate, below, ship:parts).
     local drop_error is drop:error.
     if drop_error = "" and claudia_drop_holds_core(drop:gone) {
       set drop_error to "it would drop the part running the script".
     }
-    // A stage number that drops nothing fails as deorbit's does.
-    if drop_error <> "" and opt:separate:istype("Scalar") {
-      return claudia_finish(ctx, false, "separate: " + drop_error, extra).
-    }
     if drop_error = "" and drop:decouplers:length > 0 {
       set drop_error to claudia_fire_drop(ctx, drop).
     }
-    set below to reentry_stack(ship:parts, home, landing_engines).
+    set below to addons:claudia:entrydrop(entry_ask).
+    if below:error <> "" {
+      return claudia_finish(ctx, false, below:error, extra).
+    }
     if ship:altitude > body_:atm:height {
-      local refused is reentry_stack_refusal(below:shielded, reentry_names(below:parts), drop_error).
+      local refused is reentry_stack_refusal(opt:separate, below:names, drop_error).
       if refused <> "" {
         return claudia_finish(ctx, false, refused, extra).
       }
@@ -915,12 +779,9 @@ function reentry {
     return claudia_finish(ctx, false, "touchdown 'powered' needs a lit engine (reentry never stages)", extra).
   }
   addons:claudia:shipsystems("entry").
-  // The shield's decouplers, found on the craft that is left; a powered touchdown keeps a shield ("auto")
-  // whose drop would take the engines with it.
-  local shield is reentry_shield_modules(opt:jettison_stage, ship:parts).
-  if powered and below:shielded and below:kept:length > 0 and opt:jettison_stage:istype("String") {
-    set shield to list().
-  }
+  // The Entry Shield's decouplers, found on the craft that is left.
+  local shield_uid is reentry_jettison_uid(opt, below).
+  local shield is reentry_shield_modules(shield_uid, ship:parts).
   local shield_gone is shield:length = 0.
   // Log-only (#478): where the predictor puts the landing, with the shield drop and chutes this entry flies.
   local shield_uids is claudia_shield_drop(ship:parts, list(), shield).
@@ -1021,7 +882,7 @@ function reentry {
 
     if reentry_shield_due(shield_gone, last_speed, agl) {
       local count_before is ship:parts:length.
-      reentry_shield_drop(opt:jettison_stage, { return ship:parts. }).
+      reentry_shield_drop(shield_uid, { return ship:parts. }).
       set shield_gone to true.
       // The shield leaving is not a part lost: count what is left once it has gone.
       wait 0.5.

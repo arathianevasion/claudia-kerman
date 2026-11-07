@@ -14,7 +14,7 @@ max_dv ["auto"]: m/s the burn may cost; the cheapest burn within accuracy_km is 
 delta-v left less 50 m/s or 10%, plus a powered landing's need without chutes; give it if stock
 reports none left.
 separate ["none"]: what to drop once the burn is flown, so only the capsule re-enters: a stage
-number (its decouplers, as reentry's jettison_stage), or a list of part names or tags (or
+number (its decouplers), or a list of part names or tags (or
 one), as drop_parts. The burn is chosen for the craft that stays (its mass and drag; the
 burn's propellant goes with the parts dropped); the landing is predicted again once they have gone. Give it for a transfer stage that would otherwise ride
 down with the capsule.
