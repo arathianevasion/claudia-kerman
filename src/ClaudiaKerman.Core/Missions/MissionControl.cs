@@ -2007,6 +2007,8 @@ namespace ClaudiaKerman.Core.Missions
                     TransferWait(mission, plan);
                 }
             }
+            // #867: a Due Time the mod set just now (a window's) was not there for the plan's figures: its wait is judged here, a Blocker with no correction.
+            CrossingAtOffer(mission, plan);
             if (!mission.SequenceCounted)
             {
                 mission.SequencesProposed++;

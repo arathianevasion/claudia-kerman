@@ -55,6 +55,19 @@ namespace ClaudiaKerman.Core.Missions
             mission.CrossingBlocker = findings != null && findings.MoonCrossing != null ? MissionPrompts.MoonCrossingBlocker(findings.MoonCrossing) : "";
         }
 
+        /// <summary>
+        /// The plan as it is offered, its Due Time final: one with a Due Time the plan's figures didn't see (the mod's window wait sets it after them),
+        /// or a restored one, is judged here, and a crossing is its Blocker.
+        /// </summary>
+        private void CrossingAtOffer(Mission mission, SequencePlan plan)
+        {
+            if (!plan.DueTimeUt.HasValue || CrossingHeld(mission, plan)) return;
+            var crossing = WaitCrossing(mission, plan, MissionVesselSnapshot(mission));
+            if (crossing == null) return;
+            mission.CrossingPlan = plan;
+            mission.CrossingBlocker = MissionPrompts.MoonCrossingBlocker(crossing);
+        }
+
         /// <summary>The plan in hand holds its Blocker (the stored verdict: Auto Mode asks on every input).</summary>
         private static bool CrossingHeld(Mission mission, SequencePlan plan)
         {
