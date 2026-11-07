@@ -58,7 +58,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <b>Who pays.</b> When every burning engine goes with the drop, the dropped tanks pay first and cost the kept craft nothing: stock's stack
         /// flow drains the higher stage first and a stock decoupler's crossfeed is off by default, so such a stage burns itself out before the kept
         /// tanks are touched. When a burning engine stays it may be cut off from the dropped tanks, so the kept tanks pay. What the dropped tanks
-        /// can't cover comes from the kept tanks at the kept engines' isp (read from <paramref name="left"/>), with the dry dropped parts still aboard,
+        /// can't cover comes from the kept tanks, costed at the burning engines' isp when a kept engine burns and otherwise at the kept engines' mean
+        /// (read from <paramref name="left"/>); the mean always measures what is left. The dry dropped parts stay aboard, with the dry dropped parts still aboard,
         /// which costs the lighter kept craft more than the burn's own figure.
         /// </para>
         /// <para>
@@ -87,7 +88,9 @@ namespace ClaudiaKerman.Core.Missions
             var dry = burn.Kept - burn.KeptPropellant;
             if (left <= 0 || dry <= 0 || burn.KeptPropellant <= 0) return 0;
             var keptExhaust = left / Math.Log(burn.Kept / dry);
-            var fromKept = massAtKeptTanks * (1 - Math.Exp(-spent / keptExhaust));
+            // A kept engine burning is what burns the kept tanks, at its isp; the mean of all kept engines (lit or not) only measures the delta-v left.
+            var burnExhaust = burn.BurnersKept > 0 && burn.Isp > 0 ? burn.Isp * StandardGravity : keptExhaust;
+            var fromKept = massAtKeptTanks * (1 - Math.Exp(-spent / burnExhaust));
             if (fromKept >= burn.KeptPropellant) return 0;
             return keptExhaust * Math.Log((burn.Kept - fromKept) / dry);
         }
