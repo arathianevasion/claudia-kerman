@@ -44,3 +44,31 @@ In-game checks for #713 (ADR 0014 block migration): `find_poi`, `find_landing_si
 1. Fly a Mission with the goal "Land next to the monolith on Minmus".
 2. The plan requests carry `Monolith TMA-8 is a Minmus Point of Interest: land beside it with find_landing_site's poi and land's poi target, not on it.` until the landing step is ticked.
 3. Claudia lands on flat ground 150 m to 1.5 km from TMA-8, never on it; the report's `distance_to_poi` is in that range.
+
+# land in KSP: the final descent stays upright with far more thrust than it needs (#865)
+
+In-game checks for #865 (ADR 0014 block migration): `land`'s steering for a demand (the old `land_steer`), its lean limit, its throttle and the new settle before touchdown run in Core (`ADDONS:CLAUDIA:LANDSTEER`, each braking tick). Steering, throttle and staging are still kOS's; RCS is unchanged (#506). In the final descent (`phase terminal`) the thrust leans at most 20 degrees (tighter in the last 7.5 m, as before), turns its command no faster than TURNTIME's top rate, gives only the vertical need while more than 15 degrees off, and below 10 m holds height while more than 10 degrees off or turning faster than 5 deg/s, for up to 10 s or 2% of its delta-v (`settle_s`). The agent run that wrote this did not launch KSP.
+
+Install as in `phase-3-gate.md`. Results are in `block-tests.log` and `KSP.log`.
+
+## Check 1: Run land_high_twr_ike
+
+The land test lander with its tank 70% full: about 15:1 thrust at Ike by touchdown, like m20261107-055424-908b, which touched down 43 degrees off at 21 deg/s and tipped to 70.
+
+1. Before running, check in the VAB or the flight that the craft's FL-T800 shows 252 of 360 LiquidFuel and 308 of 440 Oxidizer. If it shows full, the craft file's tank contents didn't load: say so on #865.
+2. Pick `land_high_twr_ike` and press **Run** (up to 1800 s). It passes (`PASS land_high_twr_ike`, every `ok` line): `lean` under 10, `touchdown_h_speed` under 0.5 m/s, `settle_s` from 0 to 10.
+3. In `KSP.log`, the `land trace` `phase touchdown` line has `error` no more than 5 and `rate` no more than 2 (degrees, deg/s). That is #865's pass.
+4. From `phase terminal` on, the `phase rcs` lines' `error` stays under about 20 and `rate` under about 10, where 908b's swung 40-110 degrees at 30 deg/s.
+5. About once a second while braking, `block call LANDSTEER took ... ms (the slowest of <n> calls ...): throttle ..., ... deg off, lean ... deg`: the slowest should be well under 1 ms. A `, settling` on lines below 10 m shows the hold.
+6. If it tips (`tipped over on landing`) or `lean` is 10 or more, copy the `land trace` lines from `phase terminal` to the end, and the `LANDSTEER` lines, into #865. Don't change RCS for it: that is a separate ticket.
+
+## Check 2: Run land_high_twr_mun
+
+The same craft on the Mun (about 10:1): the Mun landing still lands clean.
+
+1. Pick `land_high_twr_mun` and press **Run**. It passes, with `lean` under 10 and `touchdown_h_speed` under 0.5.
+2. Note `distance_to_target`. The 20 degree cap leaves less sideways thrust in the final descent, so a craft that starts it still moving across the ground drifts further before it stops. Over 300 m from the site, copy the `phase terminal` lines into #865.
+
+## Check 3: Run land
+
+1. Pick `land` and press **Run**. It passes as before (the reference lander, about 7:1 at the Mun).

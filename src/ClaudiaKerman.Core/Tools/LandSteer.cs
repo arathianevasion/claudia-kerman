@@ -250,10 +250,11 @@ namespace ClaudiaKerman.Core.Tools
             return input.TryGetValue(key, out value) && value is bool && (bool)value;
         }
 
+        /// <summary>The number at key, or fallback: land reads the answer's keys unguarded, so nothing here may throw.</summary>
         private static double Number(IDictionary<string, object> input, string key, double fallback)
         {
             object value;
-            if (!input.TryGetValue(key, out value) || value == null) return fallback;
+            if (!input.TryGetValue(key, out value) || value == null || value is string || value is bool || !(value is IConvertible)) return fallback;
             return Convert.ToDouble(value, CultureInfo.InvariantCulture);
         }
     }

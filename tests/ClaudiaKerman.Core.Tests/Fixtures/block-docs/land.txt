@@ -42,15 +42,15 @@ max_duration ["auto"]: the wait to the deorbit burn, plus the planned fall and b
 plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
 Stages off a stage taking the Underhang before the deorbit if the lander has the landing's delta-v (its delta-v lost), else one short of braking before the fall.
 Drops any Underhang (parts below the landing legs) at underhang_agl [2000] m above the ground during braking, or earlier if it runs dry, then relights on the lander's engines and lands clear of where the Underhang falls. Fails before the deorbit burn if the lander alone can't fly the last underhang_agl m.
-Extra results: dropped_underhang (the names of the parts dropped), underhang_kept (Underhang parts it couldn't drop), underhang_drop_agl (m above the ground at the drop; -1 if none),
+Extra results: dropped_underhang (names of the parts dropped), underhang_kept (Underhang parts it couldn't drop), underhang_drop_agl (m above ground at the drop; -1 if none),
 staged_before_deorbit, staged_before_braking (true if it did; stage_left is the stage it left), slope (degrees where it came to rest), touchdown_speed_actual (m/s),
-touchdown_h_speed (m/s sideways at touchdown), lean (degrees from upright once settled),
-reversals (times the descent turned back after braking began; 0 normally), vertical_fallback (true if, above its predicted path near the site, it came straight down), poi and distance_to_poi (m from it), distance_to_target
+touchdown_h_speed (m/s sideways at touchdown), lean (degrees from upright once settled), settle_s (s it held height until Aligned),
+reversals (times it turned back after braking began; 0 normally), vertical_fallback (true if, above its predicted path near the site, it came straight down), poi and distance_to_poi (m from it), distance_to_target
 (m from the site asked for, or the spot chosen for "any" or a biome), best_effort (true if nothing within
-max_divert was flat enough and it landed on the least steep spot found), burn_start_ut (when braking was planned to start; -1 if it never got that far),
+max_divert was flat enough and it landed on the least steep spot found), burn_start_ut (when braking was planned to start; -1 if never),
 braking_began_ut (when braking began; -1 if never), impact_ut (when the orbit after the deorbit burn meets
-the ground; -1 if it doesn't or it never got that far), biome (the biome it came to rest in; "" if it never landed),
-passes_missed (passes it missed and took the next for; 0 normally), next_pass_ut (when it fails for a missed pass, the touchdown UT of the next it could fly; -1 for none),
+the ground; -1 if it doesn't or it never got that far), biome (where it came to rest; "" if it never landed),
+passes_missed (passes it missed, taking the next; 0 normally), next_pass_ut (when it fails for a missed pass, the touchdown UT of the next it could fly; -1 for none),
 descent_shape (the shape flown), descent_pe (m, the periapsis chosen), predicted_dv and actual_dv (m/s: the deorbit, correction and braking, simulated and flown),
 predicted_clearance (m, the predicted path's lowest over the terrain), moved_for_terrain (true if the site moved up to 5 km for terrain), shape_range (the shapes
 that clear, when it refuses a descent_shape; e.g. "0.2 to 1.2"); find_landing_site gives each site's predicted_dv and descent_shape;
