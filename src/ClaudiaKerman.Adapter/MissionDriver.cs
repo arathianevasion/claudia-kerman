@@ -224,6 +224,13 @@ namespace ClaudiaKerman.Adapter
         public static string RunningChild = "";
 
         /// <summary>
+        /// The craft the last <c>return</c> or <c>deorbit</c> aimed its landing with (#814, <c>ENTRYCRAFT</c>'s key and words), for <c>reentry</c>'s
+        /// <c>ENTRYFINISH</c> to name both when it flies another; "" for none, and cleared once read. Not saved: after a load there is nothing to compare.
+        /// </summary>
+        public static string AimedCraftKey = "";
+        public static string AimedCraft = "";
+
+        /// <summary>
         /// The arrival plane <c>transfer_to</c> last aimed for, for <c>capture</c> (#788; <see cref="MissionView.ArrivalPlane"/> holds the Mission's own, in its
         /// save): set at once by the block call, so a capture in the same frame reads it, and kept here for a block test, which has no Mission.
         /// </summary>
