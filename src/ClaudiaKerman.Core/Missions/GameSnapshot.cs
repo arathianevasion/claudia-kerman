@@ -46,6 +46,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool EngineLit;
         /// <summary>An engine that can brake: its throttle works, and stock's flow reaches every propellant, through crossfeed and fuel lines. Read only for <see cref="EntryFinish"/>'s block call. Not in the JSON: the prompt doesn't carry it.</summary>
         public bool EngineFuelled;
+        /// <summary>The part hangs on its parent's surface (<c>Part.attachMode</c> SRF_ATTACH), not on a stack node: a radial part. <see cref="EntryStack"/> counts shields on the stack only. Not in the JSON: the prompt doesn't carry it.</summary>
+        public bool SurfaceAttached;
 
         // ---- Child Vessel facts (#100): enough to work out a separated vessel's own figures ----
 
