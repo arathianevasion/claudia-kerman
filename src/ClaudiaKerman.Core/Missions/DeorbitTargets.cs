@@ -11,7 +11,7 @@ namespace ClaudiaKerman.Core.Missions
     /// <summary>
     /// #831: before Approval, a <c>deorbit</c> given no target (or "auto") where the block's own answer (<see cref="HomeLanding.DefaultTarget"/>, behind
     /// <c>ADDONS:CLAUDIA:LANDINGTARGET</c>) is none: the block would refuse it in flight with "target is required". It judges by the body the craft is at,
-    /// so a <c>deorbit</c> after a block that leaves it (a trip, or a coast to the next patch) is not judged. Calls are read through <see cref="BlockOptionCheck"/>.
+    /// so a <c>deorbit</c> after a block that may leave it (a trip, or a coast not read as staying on this orbit) is not judged. Calls are read through <see cref="BlockOptionCheck"/>.
     /// </summary>
     public static class DeorbitTargets
     {
@@ -22,9 +22,10 @@ namespace ClaudiaKerman.Core.Missions
         public static string Missing(string script, GameSnapshot snapshot)
         {
             if (snapshot == null || string.IsNullOrWhiteSpace(script) || string.IsNullOrEmpty(snapshot.Body)) return null;
+            var masked = CoreLibrary.MissionScript(script, true);
             foreach (var call in BlockOptionCheck.Calls(script))
             {
-                if (call.Block == "transfer_to" || call.Block == "return" || (call.Block == "coast" && LeavesTheBody(call))) return null;
+                if (call.Block == "transfer_to" || call.Block == "return" || (call.Block == "coast" && LeavesTheBody(call, masked))) return null;
                 if (call.Block != "deorbit") continue;
                 var target = call.Option("target");
                 if (target == null || !string.Equals(target.Trim(), "\"auto\"", StringComparison.OrdinalIgnoreCase)) continue;
@@ -34,10 +35,10 @@ namespace ClaudiaKerman.Core.Missions
             return null;
         }
 
-        /// <summary>A coast whose until waits for the next patch, or can't be read (a variable may hold that wait, #852): the craft may be at another body after it.</summary>
-        private static bool LeavesTheBody(BlockCall call)
+        /// <summary>A coast whose until waits for the next patch, directly or through a variable (#852), or can't be read as staying on this orbit: the craft may be at another body after it.</summary>
+        private static bool LeavesTheBody(BlockCall call, string masked)
         {
-            return !BurnPoints.IsWrittenTime(call.Option("until"));
+            return !StoredNextPatch.StaysOnThisOrbit(call.Option("until"), masked, call.Index);
         }
     }
 }

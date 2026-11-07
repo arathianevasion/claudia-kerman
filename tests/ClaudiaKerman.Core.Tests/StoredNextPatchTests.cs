@@ -89,9 +89,18 @@ namespace ClaudiaKerman.Core.Tests
         // Text that only looks like a second assignment.
         [InlineData("// set t to 5\nlocal t is " + Ut + ".")]
         [InlineData("local t is " + Ut + ". print \"set t to 5\".")]
-        [InlineData("set t2 to 1. set my_t to 2. set x:t to 3. local t is " + Ut + ".")]
+        [InlineData("set t2 to 1. set my_t to 2. if x:t > 3 { print 1. } local t is " + Ut + ".")]
         // Clearing the nodes and building a result pass no time.
         [InlineData("for n in allnodes { remove n. } local r0 is lexicon(\"success\", true). local t is " + Ut + ".")]
+        // m20261101-160346-2997's way of clearing them, and a suffix read in an if's condition.
+        [InlineData("local stale is allnodes. for nd in stale { remove nd. } local t is " + Ut + ".")]
+        [InlineData("if res:success { print 1. } else if ship:body:name <> \"Kerbin\" { print 2. } local t is " + Ut + ".")]
+        // Switching something on is no trigger; "on" opens one only when something follows it.
+        [InlineData("sas on. rcs off. if a { lights on. } local t is " + Ut + ".")]
+        // A name that only starts like one of the words.
+        [InlineData("local run_time is 1. local abort_at is 2. local ag1x is 3. local t is " + Ut + ".")]
+        // The calls that build a value or are counted, however they're spaced.
+        [InlineData("local n is node (1, 0, 0, 2). local l is list (1). local r0 is lex (\"a\", 1). local t is " + Ut + ".")]
         public void Other_text_about_the_name_leaves_it_read(string before)
         {
             var wait = BurnPoints.First(before + " " + Coast("t + 60") + Capture, Snapshot(), Now, 600);
@@ -170,6 +179,9 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("if f({ local t is " + Ut + ". local res is coast(lexicon(\"until\", t + 60)). }) { print 1. }" + Capture)]
         [InlineData("local t is " + Ut + ". if a until done coast(lexicon(\"until\", t + 60))." + Capture)]
         [InlineData("local t is " + Ut + ". if a until done set res to coast(lexicon(\"until\", t + 60))." + Capture)]
+        // A function in a call's brackets, where the call is one that builds a value: only the brackets say so.
+        [InlineData("if list({ local t is " + Ut + ". local res is coast(lexicon(\"until\", t + 60)). }) { print 1. }" + Capture)]
+        [InlineData("if lexicon(\"k\", { local t is " + Ut + ". local res is coast(lexicon(\"until\", t + 60)). }) { print 1. }" + Capture)]
         public void A_variable_in_a_loop_or_function_stays_unread(string script)
         {
             Unread(script);
@@ -192,6 +204,8 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("local t is time:seconds + ship:orbit:nextpatcheta:x.", "t")]
         [InlineData("local t is pick(" + Ut + ").", "t")]
         [InlineData("local t is \"" + Ut + "\".", "t")]
+        // Behind an if with no braces: it may not run, and "t" is then not this.
+        [InlineData("if a set t to " + Ut + ".", "t + 60")]
         // Out of scope (#852): other spellings.
         [InlineData("local t is time:seconds + obt:nextpatcheta.", "t")]
         // A lock is no stored value.
@@ -261,10 +275,73 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("stage.")]
         [InlineData("burn_it().")]
         [InlineData("kuniverse:timewarp:warpto(5).")]
+        // A call needs no name before its bracket.
+        [InlineData("local fs is list(late@). fs[0]().")]
+        [InlineData("local fs is list(late@). fs#0().")]
+        [InlineData("(late@)().")]
+        [InlineData("list(late@)[0]().")]
+        [InlineData("mylist(1).")]
+        // An action group may fire an engine.
+        [InlineData("toggle ag1.")]
+        [InlineData("ag1 on.")]
+        [InlineData("abort on.")]
+        // A suffix outside an if's condition may be a call (kOS calls one with no brackets) or a write, which no list of names can tell from a read.
+        [InlineData("set ship:control:mainthrottle to 1.")]
+        [InlineData("set kuniverse:timewarp:rate to 100.")]
+        [InlineData("local g is late@. g:call.")]
+        [InlineData("local g is late@. local r is g:call.")]
+        [InlineData("if g:call { print 1. }")]
+        [InlineData("if a g:call.")]
+        [InlineData("if a set ship:control:mainthrottle to 1.")]
+        [InlineData("part:activate.")]
+        [InlineData("print x:y.")]
+        [InlineData("set x:t to 3.")]
+        // Repeated, or run later, so the coasts in them aren't counted as written: the craft may be anywhere by the assignment.
+        [InlineData("for i in list(1,2,3) { local a is coast(lexicon(\"until\", time:seconds + 30000)). }")]
+        [InlineData("for n in allnodes { local a is coast(lexicon(\"until\", time:seconds + 30000)). }")]
+        [InlineData("when a then { local b is coast(lexicon(\"until\", time:seconds + 30000)). }")]
+        [InlineData("on ag1 { local b is coast(lexicon(\"until\", time:seconds + 30000)). }")]
+        [InlineData("if a { when b then { print 1. } }")]
+        // Only a loop that does nothing but clear what it walks is left alone.
+        [InlineData("for n in allnodes { print n. }")]
+        [InlineData("for n in allnodes { remove other. }")]
+        [InlineData("for n in allnodes { remove n. print n. }")]
         public void What_can_pass_time_or_burn_before_the_assignment_leaves_it_unread(string before)
         {
             Unread(before + " local t is " + Ut + ". " + Coast("t + 60") + Capture);
             Unread(before + " local e is " + Eta + ". " + Coast("time:seconds + e + 60") + Capture);
+        }
+
+        /// <summary>The coast's other options are worked out before it holds, later than the assignment: a lead that takes a while puts <c>time:seconds + e</c> past the end, and may take the craft past it.</summary>
+        [Theory]
+        [InlineData("\"lead\", slow(), \"until\", {0}")]
+        [InlineData("\"until\", {0}, \"lead\", slow()")]
+        [InlineData("\"lead\", g:call, \"until\", {0}")]
+        [InlineData("\"lead\", ship:orbit:period, \"until\", {0}")]
+        public void What_can_pass_time_in_the_coasts_own_options_leaves_it_unread(string options)
+        {
+            Unread("local e is " + Eta + ". local res is coast(lexicon(" + string.Format(options, "time:seconds + e") + "))." + Capture);
+            Unread("local t is " + Ut + ". local res is coast(lexicon(" + string.Format(options, "t") + "))." + Capture);
+        }
+
+        [Theory]
+        [InlineData("\"lead\", 120, \"until\", {0}")]
+        [InlineData("\"until\", {0}, \"max_duration\", \"auto\", \"abort_on_part_loss\", false")]
+        // Words in a string are no work.
+        [InlineData("\"until\", {0}, \"note\", \"wait: on (x)\"")]
+        public void Plain_options_in_the_coast_leave_it_read(string options)
+        {
+            Assert.Equal(End, BurnPoints.First("local e is " + Eta + ". local res is coast(lexicon(" + string.Format(options, "time:seconds + e") + "))." + Capture, Snapshot(), Now, 600).WaitSeconds, 3);
+            Assert.Equal(End, BurnPoints.First("local t is " + Ut + ". local res is coast(lexicon(" + string.Format(options, "t") + "))." + Capture, Snapshot(), Now, 600).WaitSeconds, 3);
+        }
+
+        /// <summary>A decimal's point ends no statement, so the if is still seen as the block's head.</summary>
+        [Fact]
+        public void A_decimal_in_an_ifs_condition_leaves_it_read()
+        {
+            var wait = BurnPoints.First("if x > 1.5 { local t is " + Ut + ". " + Coast("t + 60") + Capture + " }", Snapshot(), Now, 600);
+            Assert.NotNull(wait);
+            Assert.Equal(End + 60, wait.WaitSeconds, 3);
         }
 
         // ---- After reading, as #833 ----
