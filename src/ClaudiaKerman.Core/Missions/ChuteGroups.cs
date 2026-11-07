@@ -57,7 +57,7 @@ namespace ClaudiaKerman.Core.Missions
         public int Extra;
         /// <summary>The touchdown predicted with the Entry's own group, m/s; -1 unknown.</summary>
         public double Before = -1;
-        /// <summary>The script's <c>chutes: "none"</c> was overridden: a certain crash with chutes aboard.</summary>
+        /// <summary>The script's <c>chutes: "none"</c> was overridden: a certain crash with chutes aboard, or (#846) a touchdown that couldn't be predicted.</summary>
         public bool Overrode;
         /// <summary>For the Mission window and Debrief: nothing can land the craft, said while it is above the air; "" otherwise.</summary>
         public string Warning = "";
@@ -67,7 +67,8 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (Extra == 0 && !Overrode) return "";
             var stages = string.Join(", ", Entry.Chutes.Select(c => c.Stage).Distinct().OrderByDescending(s => s).Select(s => s.ToString(CultureInfo.InvariantCulture)).ToArray());
-            return (Overrode ? "chutes none overridden: no engine, and a crash otherwise. " : "")
+            return (Overrode ? (Before < 0 ? "chutes none overridden: no engine, and the touchdown prediction failed" + (Entry.Unpredicted.Length > 0 ? " (" + Entry.Unpredicted + ")" : "") + ". "
+                    : "chutes none overridden: no engine, and a crash otherwise. ") : "")
                 + "Opening " + Entry.Chutes.Count + " chutes of stage " + stages + (Extra > 0 ? ", " + Extra + " more than its own group" : "")
                 + ": predicted " + ChuteGroups.Speed(Before) + " with its own group, " + ChuteGroups.Speed(Entry.TouchdownSpeed) + " now.";
         }
@@ -171,7 +172,7 @@ namespace ClaudiaKerman.Core.Missions
         /// What the Entry in hand opens when its own group can't land the craft and no engine will (#827, survival beats saving chutes): the
         /// Chute Group of <see cref="ForEntryNow"/>, and while its predicted touchdown is over <see cref="TouchdownLimit"/> the next stage's group too, one at a
         /// time, until it is at or under, or none is left. A predictor error leaves the Entry its own group. With <paramref name="none"/> (the script's
-        /// <c>chutes: "none"</c>) the own group is empty, and a fall over the limit overrides it, as a certain crash. With <paramref name="engine"/> (the Entry lands on
+        /// <c>chutes: "none"</c>) the own group is empty, and a fall over the limit overrides it, as a certain crash; so does an unknown speed (#846), with the own group only. With <paramref name="engine"/> (the Entry lands on
         /// its engines, #824) nothing is widened. A touchdown still over the limit while the craft is above the air gives the <see cref="Widened.Warning"/>.
         /// </summary>
         public static Widened Widen(GameSnapshot snapshot, bool lastEntry, bool none, bool engine)
@@ -181,7 +182,8 @@ namespace ClaudiaKerman.Core.Missions
             if (engine) return widened;
             if (none)
             {
-                if (entry.TouchdownSpeed <= TouchdownLimit) return widened;
+                // An unknown speed (-1) is not a known soft landing: only a known one at or under the limit keeps "none" (#846).
+                if (entry.TouchdownSpeed >= 0 && entry.TouchdownSpeed <= TouchdownLimit) return widened;
                 var forced = ForEntryNow(snapshot, lastEntry);
                 if (forced.Chutes.Count > 0)
                 {
