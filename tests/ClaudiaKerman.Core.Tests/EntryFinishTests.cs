@@ -332,6 +332,96 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("there is no Game Snapshot of the craft", BlockCalls.EntryFinishCall(new Dictionary<string, object>(), null, null, 0, "", Uid)["error"]);
         }
 
+        // ---- The highest stage that can stop the fall (#842) ----
+
+        /// <summary>A fuelled engine in <paramref name="stage"/> of <paramref name="vac"/> kN in vacuum and <paramref name="asl"/> at 1 atm; the Duna craft of 3.9 t weighs 11.5 kN there and needs 17.2.</summary>
+        private static GameSnapshot WithEngines(string body, params double[][] engines)
+        {
+            var snapshot = Flight(body, 3.9, engine: false);
+            uint id = 40;
+            foreach (var e in engines)
+            {
+                var part = Part(id++, Tank, "engine" + (id - 1), 0, (int)e[0], "engine");
+                part.EngineFuelled = true;
+                part.ThrustVacKn = e[1];
+                part.ThrustAslKn = e[2];
+                part.IspVac = 300;
+                snapshot.Craft.Parts.Add(part);
+            }
+            return snapshot;
+        }
+
+        private static IDictionary<string, object> Chosen(GameSnapshot snapshot)
+        {
+            return Ask(snapshot, DunaThenKerbin, chutes: false);
+        }
+
+        [Fact]
+        public void An_ion_in_the_top_stage_gives_way_to_the_Terrier_below_that_can_stop_the_fall()
+        {
+            var answer = Chosen(WithEngines("Duna", new double[] { 3, 2, 2 }, new double[] { 1, 60, 50 }));
+
+            Assert.Equal(new object[] { "uid41" }, (List<object>)answer["engines"]);
+            Assert.Equal(new object[] { "uid40" }, (List<object>)answer["spare"]);
+            Assert.Contains("stage 1, the highest that can stop the fall: stage 3 gives 2 kN at the surface, needing 17.2 kN", (string)answer["why"]);
+        }
+
+        [Fact]
+        public void Two_able_stages_land_on_the_higher_and_say_nothing_of_it()
+        {
+            var answer = Chosen(WithEngines("Duna", new double[] { 3, 60, 50 }, new double[] { 1, 60, 50 }));
+
+            Assert.Equal(new object[] { "uid40" }, (List<object>)answer["engines"]);
+            Assert.Equal(new object[] { "uid41" }, (List<object>)answer["spare"]);
+            Assert.EndsWith("on engine40", (string)answer["why"]);
+        }
+
+        [Fact]
+        public void With_no_stage_able_the_one_with_the_most_thrust_and_the_whole_cluster_lights()
+        {
+            var answer = Chosen(WithEngines("Duna", new double[] { 3, 2, 2 }, new double[] { 1, 6, 5 }, new double[] { 1, 6, 5 }));
+
+            Assert.Equal(new object[] { "uid41", "uid42" }, (List<object>)answer["engines"]);
+            Assert.Equal(new object[] { "uid40" }, (List<object>)answer["spare"]);
+            Assert.Contains("stage 1, none can stop the fall (needs 17.2 kN at the surface), so the most thrust: ", (string)answer["why"]);
+        }
+
+        [Fact]
+        public void One_engine_that_cannot_stop_the_fall_is_still_the_one_chosen()
+        {
+            var answer = Chosen(WithEngines("Duna", new double[] { 3, 2, 2 }));
+
+            Assert.Equal(new object[] { "uid40" }, (List<object>)answer["engines"]);
+            Assert.Empty((List<object>)answer["spare"]);
+        }
+
+        [Fact]
+        public void Thrust_is_judged_at_the_bodys_surface_so_a_vacuum_engine_at_Kerbins_sea_level_counts_for_its_low_thrust()
+        {
+            // 3.9 t on Kerbin weighs 38 kN and needs 57 kN. The vacuum engine gives 80 kN in vacuum but 20 at 1 atm; the sea-level engine 60.
+            var snapshot = WithEngines("Kerbin", new double[] { 3, 80, 20 }, new double[] { 1, 70, 60 });
+            var fuelled = snapshot.Craft.Parts.Where(p => p.EngineFuelled).ToList();
+            string note;
+
+            Assert.Equal(1, EntryFinish.Choose(snapshot, "Kerbin", fuelled, out note));
+            Assert.Contains("stage 3 gives 20 kN", note);
+            // The same engines at Duna's thin air: the vacuum engine's 80 kN is nearly all there, so the higher stage stands.
+            Assert.Equal(3, EntryFinish.Choose(snapshot, "Duna", fuelled, out note));
+        }
+
+        [Fact]
+        public void A_throttle_locked_engine_is_never_chosen()
+        {
+            // The adapter leaves a throttle-locked engine unfuelled, so it is neither chosen nor a spare, however strong.
+            var snapshot = WithEngines("Duna", new double[] { 3, 500, 500 }, new double[] { 1, 60, 50 });
+            snapshot.Craft.Parts.Single(p => p.Name == "engine40").EngineFuelled = false;
+
+            var answer = Chosen(snapshot);
+
+            Assert.Equal(new object[] { "uid41" }, (List<object>)answer["engines"]);
+            Assert.Empty((List<object>)answer["spare"]);
+        }
+
         // ---- The Margin Check and the Craft Check ----
 
         private static GameSnapshot Budgeted(double massT, bool engine)

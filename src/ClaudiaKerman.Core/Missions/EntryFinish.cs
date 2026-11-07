@@ -33,12 +33,16 @@ namespace ClaudiaKerman.Core.Missions
         public double Speed = -1;
         /// <summary>The touchdown predicted for the craft as kept, m/s, before any burn; -1 on chutes or unknown.</summary>
         public double KeptSpeed = -1;
-        /// <summary>The engines to light: those that can brake in the highest stage still aboard. All of a stage's, as one of a cluster would turn the craft.</summary>
+        /// <summary>The engines to light: those that can brake in the highest stage that can stop the fall, or with none that can the one with the most thrust (#842, <see cref="Choose"/>). All of a stage's, as one of a cluster would turn the craft.</summary>
         public readonly List<SnapshotPart> Engines = new List<SnapshotPart>();
         /// <summary>The other engines that can brake, to light if those flame out.</summary>
         public readonly List<SnapshotPart> Spare = new List<SnapshotPart>();
         private string _unknown = "";
         private bool _noEngine;
+        private string _stageNote = "";
+
+        /// <summary>How much more than the weight an engine stage's thrust at the body's surface must be to stop the fall (#842). Core has no braking figure of its own: the block brakes by <c>BrakeGuidance</c> in flight, from where it stands.</summary>
+        public const double StopsTheFallTimesWeight = 1.5;
 
         /// <summary>Whether this prediction calls for engines: over the threshold, or no prediction and nothing to open.</summary>
         public static bool NeedsEngines(EntryChutes entry)
@@ -61,12 +65,43 @@ namespace ClaudiaKerman.Core.Missions
                 finish._noEngine = true;
                 return finish;
             }
-            var top = fuelled.Max(p => p.Stage);
+            var chosen = Choose(snapshot, dropped.Body, fuelled, out finish._stageNote);
             finish.Powered = true;
-            finish.Engines.AddRange(fuelled.Where(p => p.Stage == top));
-            finish.Spare.AddRange(fuelled.Where(p => p.Stage != top));
+            finish.Engines.AddRange(fuelled.Where(p => p.Stage == chosen));
+            finish.Spare.AddRange(fuelled.Where(p => p.Stage != chosen));
             finish.KeptSpeed = ChuteGroups.ForEntryNow(snapshot, lastEntry, null, chutes).TouchdownSpeed;
             return finish;
+        }
+
+        /// <summary>
+        /// The stage to land on (#842): going down from the highest stage with a fuelled engine, the first whose engines together give thrust at the body's surface
+        /// (<see cref="SeaLevelThrust"/>: a vacuum engine counts for its low thrust there) of at least <see cref="StopsTheFallTimesWeight"/> times the weight of the craft as kept.
+        /// With none that can, the stage with the most thrust; a tie goes to the higher stage. <paramref name="note"/> says why when it isn't the highest.
+        /// </summary>
+        public static int Choose(GameSnapshot snapshot, string bodyName, IList<SnapshotPart> fuelled, out string note)
+        {
+            var body = SequenceWords.Body(snapshot, bodyName);
+            var atm = body != null ? body.SeaLevelAtm : 0;
+            var need = StopsTheFallTimesWeight * snapshot.Craft.MassTonnes * (body != null ? body.SurfaceGravity : 0);
+            var stages = fuelled.Select(p => p.Stage).Distinct().OrderByDescending(s => s).ToList();
+            var thrust = stages.ToDictionary(s => s, s => SeaLevelThrust.Of(fuelled.Where(p => p.Stage == s), atm));
+            note = "";
+            var top = stages[0];
+            foreach (var stage in stages)
+            {
+                if (thrust[stage] < need) continue;
+                if (stage != top)
+                    note = "stage " + stage + ", the highest that can stop the fall: stage " + string.Join(", ", stages.TakeWhile(s => s != stage).Select(s => s + " gives " + Kn(thrust[s])).ToArray()) + " at the surface, needing " + Kn(need);
+                return stage;
+            }
+            var strongest = stages.OrderByDescending(s => thrust[s]).ThenByDescending(s => s).First();
+            if (stages.Count > 1) note = "stage " + strongest + ", none can stop the fall (needs " + Kn(need) + " at the surface), so the most thrust: " + Kn(thrust[strongest]);
+            return strongest;
+        }
+
+        private static string Kn(double kn)
+        {
+            return kn.ToString("0.#", CultureInfo.InvariantCulture) + " kN";
         }
 
         /// <summary>The decision, its predicted speeds and which engine, for the block call's log line.</summary>
@@ -76,7 +111,8 @@ namespace ClaudiaKerman.Core.Missions
             if (!Powered) return "chutes, " + speed + (_noEngine ? ", no engine with fuel" : "");
             return "engines, keeping everything: " + speed + " with its drop and chutes, "
                 + (KeptSpeed >= 0 ? KeptSpeed.ToString("0.0", CultureInfo.InvariantCulture) + " m/s" : "speed unknown") + " as kept, on "
-                + string.Join(", ", Engines.Select(p => p.Title.Length > 0 ? p.Title : p.Name).ToArray());
+                + string.Join(", ", Engines.Select(p => p.Title.Length > 0 ? p.Title : p.Name).ToArray())
+                + (_stageNote.Length > 0 ? " (" + _stageNote + ")" : "");
         }
     }
 }
