@@ -125,7 +125,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             + "local m is chute(\"m\", \"parachuteSingle\", 2).\n"
             + "local p is chute(\"p\", \"parachuteSingle\", 0).\n"
             + "local parts is list(d, tank, m, p).\n"
-            + "local group is lexicon(\"error\", \"\", \"last\", false, \"stage\", 2, \"uids\", list(\"d\", \"m\")).\n";
+            + "local group is lexicon(\"error\", \"\", \"last\", false, \"stages\", list(2), \"uids\", list(\"d\", \"m\"), \"why\", \"\").\n";
 
         [Fact]
         public void Within_a_group_drogues_open_before_mains_and_nothing_outside_it_is_armed()
@@ -172,7 +172,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 Run(Chutes + "print reentry_group_gone(group, parts, list()).\n"
                     + "set parts to list(p, tank).\n"
                     + "print reentry_group_gone(group, parts, list()).\n"
-                    + "print reentry_open_chutes(parts, false, reentry_group_of(\"auto\", lexicon(\"error\", \"\", \"last\", false, \"stage\", 0, \"uids\", list(\"p\")), parts)):join(\",\").\n"
+                    + "print reentry_open_chutes(parts, false, reentry_group_of(lexicon(\"none\", false), lexicon(\"error\", \"\", \"last\", false, \"stages\", list(0), \"uids\", list(\"p\"), \"why\", \"\"), parts)):join(\",\").\n"
                     + "print armed:join(\",\").\n"));
         }
 
@@ -202,12 +202,56 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Fact]
-        public void An_answer_in_error_opens_every_chute_aboard_and_choice_none_opens_nothing()
+        public void An_answer_in_error_opens_every_chute_aboard_and_none_opens_nothing()
         {
-            Assert.Equal(new[] { "d,m,p", "True", "0", "False" },
-                Run(Chutes + "local failed is reentry_group_of(\"auto\", lexicon(\"error\", \"no snapshot\"), parts).\n"
+            Assert.Equal(new[] { "d,m,p", "True", "0", "True", "" },
+                Run(Chutes + "local failed is reentry_group_of(lexicon(\"none\", false), lexicon(\"error\", \"no snapshot\"), parts).\n"
                     + "print failed:uids:join(\",\"). print failed:last.\n"
-                    + "local none is reentry_group_of(\"none\", group, parts). print none:uids:length. print none:last.\n"));
+                    + "local none is reentry_group_of(lexicon(\"none\", true), lexicon(\"error\", \"no snapshot\"), parts). print none:uids:length. print none:last. print none:why.\n"));
+        }
+
+        // ---- A group widened to survive (#827) ----
+
+        /// <summary>The group Core gives when stage 2's alone can't land the craft: stages 2 and 0 (d, m and p), and why. "x" is a chute in stage 1, outside it.</summary>
+        private const string Widened =
+            Chutes
+            + "local x is chute(\"x\", \"parachuteSingle\", 1).\n"
+            + "parts:add(x).\n"
+            + "set group to lexicon(\"error\", \"\", \"last\", false, \"stages\", list(2, 0), \"uids\", list(\"d\", \"m\", \"p\"), \"why\", \"Opening 3 chutes of stage 2, 0\").\n"
+            + "local ask is lexicon(\"none\", false, \"engine\", false).\n";
+
+        [Fact]
+        public void A_widened_group_opens_drogues_then_mains_in_order_and_arms_nothing_outside_its_stages()
+        {
+            Assert.Equal(new[] { "drogues", "Chute d", "d", "mains", "Chute m,Chute p", "d,m,p" },
+                Run(Widened + "print reentry_chute_stage(\"safe\", reentry_has_drogues(parts, group), false, false, 400, 20000, 0.03).\n"
+                    + "print reentry_open_chutes(parts, true, group):join(\",\"). print armed:join(\",\").\n"
+                    + "print reentry_chute_stage(\"safe\", true, true, false, 200, 5000, 0.05).\n"
+                    + "print reentry_open_chutes(parts, false, group):join(\",\"). print armed:join(\",\").\n"));
+        }
+
+        [Fact]
+        public void A_widened_group_that_has_gone_is_asked_for_again_and_a_started_one_is_kept()
+        {
+            // Its chutes left with a drop and none opened: gone. After some opened, the skip-out keeps to it.
+            Assert.Equal(new[] { "True", "False" },
+                Run(Widened + "set parts to list(x, tank). print reentry_group_gone(group, parts, list()).\n"
+                    + "print reentry_group_gone(group, parts, list(\"Chute d\")).\n"));
+        }
+
+        [Fact]
+        public void The_block_asks_with_none_from_the_chutes_option_and_engine_from_its_lighting_and_logs_why_it_widened()
+        {
+            var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source.Replace("\r\n", "\n");
+            var body = source.Substring(source.IndexOf("function reentry {", StringComparison.Ordinal));
+            // powered is settled by lighting before the ask, and the "none" override and every widening reach the log through Core's why.
+            var ask = body.IndexOf("local ask is lexicon(\"none\", opt:chutes = \"none\", \"engine\", powered).", StringComparison.Ordinal);
+            Assert.True(ask > body.IndexOf("set powered to ship:availablethrust > 0.", StringComparison.Ordinal));
+            Assert.True(body.IndexOf("addons:claudia:chutegroup(ask)", StringComparison.Ordinal) > ask);
+            Assert.Contains("if group:why <> \"\" { addons:claudia:blocknote(ctx:block, lexicon(\"phase\", \"chutes_widened\", \"why\", group:why)). }", body);
+            // Every later read of the group asks the same way, and chute_mode is untouched: today's timing.
+            Assert.DoesNotContain("opt:chutes, extra:chutes_used", body);
+            Assert.DoesNotContain("chutegroup()", source);
         }
 
         // ---- The stopping distance ----
