@@ -108,6 +108,40 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void AnyBurningEngineThatStaysHasTheKeptTanksPay()
+        {
+            var both = KeptPays(100);
+            both.GonePropellant = 3;
+            both.BurnersKept = 1;
+
+            Assert.Equal(DropGuard.AfterBurn(KeptLeft, KeptPays(100)), DropGuard.AfterBurn(KeptLeft, both), 6);
+        }
+
+        [Fact]
+        public void WhatTheDroppedStageLeavesIsFlownAtTheKeptEnginesIsp()
+        {
+            // An 800 s stage with 0.1 t buys 78 m/s of a 300 m/s burn; a 300 s kept engine burns far more for the other 222 than the 800 s figure says.
+            var burn = KeptPays(300);
+            burn.Isp = 800;
+            burn.GonePropellant = 0.1;
+
+            var dryStage = 800 * 9.80665 * System.Math.Log(10 / 9.9);
+            var fromKept = 9.9 * (1 - System.Math.Exp(-(300 - dryStage) / (300 * 9.80665)));
+            var expected = 300 * 9.80665 * System.Math.Log((5 - fromKept) / 3);
+            Assert.Equal(expected, DropGuard.AfterBurn(KeptLeft, burn), 6);
+        }
+
+        [Fact]
+        public void WithNoIspForTheBurnTheDroppedTanksCountForNothingAndTheKeptTanksPay()
+        {
+            var noIsp = KeptPays(100);
+            noIsp.Isp = 0;
+            noIsp.GonePropellant = 3;
+
+            Assert.Equal(DropGuard.AfterBurn(KeptLeft, KeptPays(100)), DropGuard.AfterBurn(KeptLeft, noIsp), 6);
+        }
+
+        [Fact]
         public void WithNothingDroppedAroundItTheBurnCostsItsOwnFigure()
         {
             // Kept craft = whole craft: the kept tanks pay at the kept mass, so 300 m/s costs 300.
@@ -234,6 +268,9 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(true, refused["refused"]);
             Assert.Contains("leave 1299 after the 100 m/s burn", (string)refused["reason"]);
             Assert.Equal(false, BlockCalls.DropCheck(Ask(1), Craft(), PlanNeeding(1350), 1)["refused"]);
+            var keptEngineBurns = Ask(1);
+            keptEngineBurns["burners_kept"] = 1.0;
+            Assert.Equal(true, BlockCalls.DropCheck(keptEngineBurns, Craft(), PlanNeeding(1350), 1)["refused"]);
 
             // Spent alone comes off flat; taken at the allowance and a negative burn go through the call as through Check.
             var flat = new Dictionary<string, object> { { "before", 3310.0 }, { "left", 2100.0 }, { "spent", 300.0 } };

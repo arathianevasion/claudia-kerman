@@ -577,7 +577,7 @@ function claudia_names_left {
 function claudia_drop_refusal {
   parameter plan, spent is 0.
   local kept is drop_parts_kept(plan).
-  return addons:claudia:dropcheck(lexicon("before", drop_parts_dv_left(lexicon("gone", list())), "left", drop_parts_rocket_dv(kept:isp, kept:wet, kept:prop), "spent", spent, "whole", ship:mass, "kept", kept:wet, "prop", kept:prop, "isp", claudia_engine_isp(), "gone_prop", kept:gone_prop)):reason.
+  return addons:claudia:dropcheck(lexicon("before", drop_parts_dv_left(lexicon("gone", list())), "left", drop_parts_rocket_dv(kept:isp, kept:wet, kept:prop), "spent", spent, "whole", ship:mass, "kept", kept:wet, "prop", kept:prop, "isp", claudia_engine_isp(), "gone_prop", kept:gone_prop, "burners_kept", kept:burners_kept)):reason.
 }
 
 // Fires a drop plan's decouplers, lets the parts leave, notes the names of those that really left in

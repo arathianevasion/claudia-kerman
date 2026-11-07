@@ -37,8 +37,8 @@ namespace ClaudiaKerman.Core.Missions
         {
             var taken = Math.Max(0, before - left);
             if (snapshot == null || plan == null || taken <= Allowance) return new DropVerdict { Taken = taken };
-            var spent = burn == null ? 0 : Math.Max(0, burn.Spent);
-            if (spent > 0) left = AfterBurn(left, burn);
+            var spent = burn == null ? 0 : burn.Spent;
+            if (burn != null) left = AfterBurn(left, burn);
             var rest = plan.Skip(Math.Max(0, step + 1)).Where(s => IsOnThisVessel(plan, snapshot.Craft.Name, s)).ToList();
             var need = PlanLegs.Need(PlanLegs.Judge(snapshot, rest, ""));
             if (left >= need) return new DropVerdict { Taken = taken, Need = need };
@@ -53,30 +53,43 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
-        /// The delta-v the kept craft has once <paramref name="burn"/> is flown, from <paramref name="left"/>, what it has now (#835). The burn
-        /// is worked out in tonnes on the whole craft's mass. <see cref="DropBurn.GonePropellant"/> pays first and costs the kept craft nothing;
-        /// the rest comes from the kept tanks with the dry dropped parts still aboard, which costs the lighter kept craft more than the burn's own figure.
+        /// The delta-v the kept craft has once <paramref name="burn"/> is flown, from <paramref name="left"/>, what it has now (#835).
         /// <para>
-        /// <b>Accuracy.</b> The same rocket equation and masses as the check after the burn, so the two differ by what the flight changes: the burn
-        /// flown against the one planned, and a stage or dry tank let go mid-burn (which this leaves aboard, so it errs towards a refusal). Who pays
-        /// is a rule, not a measurement (<see cref="DropBurn.GonePropellant"/>); when unsure the kept tanks pay and it errs towards a refusal too
-        /// (#825: that costs one plan revision, where a wrong drop can lose the crew). Without the isp or masses the burn comes off flat.
+        /// <b>Who pays.</b> When every burning engine goes with the drop, the dropped tanks pay first and cost the kept craft nothing: stock's stack
+        /// flow drains the higher stage first and a stock decoupler's crossfeed is off by default, so such a stage burns itself out before the kept
+        /// tanks are touched. When a burning engine stays it may be cut off from the dropped tanks, so the kept tanks pay. What the dropped tanks
+        /// can't cover comes from the kept tanks at the kept engines' isp (read from <paramref name="left"/>), with the dry dropped parts still aboard,
+        /// which costs the lighter kept craft more than the burn's own figure.
+        /// </para>
+        /// <para>
+        /// <b>Accuracy.</b> The same rocket equation and masses as the check after the burn, so with the right payer the two differ by what the flight
+        /// changes: the burn flown against the one planned, and a stage or dry tank let go mid-burn. Who pays is a rule, not a measurement. It errs
+        /// towards a refusal for a kept engine on crossfed drop tanks, for a kept and a dropped engine burning together, and for a stage let go
+        /// mid-burn (#825: a refusal costs one plan revision, where a wrong drop can lose the crew). It errs the other way, and the check after the
+        /// burn remains, for a dropped tank the burning engine can't draw on: cut off from it, or holding only one of its propellants.
+        /// Without the masses the burn comes off flat, as nothing better is known; Kerboscript always gives them.
         /// </para>
         /// </summary>
         public static double AfterBurn(double left, DropBurn burn)
         {
             var spent = Math.Max(0, burn.Spent);
             if (spent <= 0) return left;
-            if (burn.Isp <= 0 || burn.Whole <= 0 || burn.Kept <= 0) return Math.Max(0, left - spent);
-            var exhaust = burn.Isp * StandardGravity;
-            var afterGone = burn.Whole - Math.Min(Math.Max(0, burn.GonePropellant), burn.Whole);
-            if (afterGone <= 0) return left;
-            var stillToFly = spent - exhaust * Math.Log(burn.Whole / afterGone);
-            if (stillToFly <= 0) return left;
-            var fromKept = afterGone * (1 - Math.Exp(-stillToFly / exhaust));
+            if (burn.Whole <= 0 || burn.Kept <= 0) return Math.Max(0, left - spent);
+            var massAtKeptTanks = burn.Whole;
+            var gone = burn.BurnersKept > 0 || burn.Isp <= 0 ? 0 : Math.Min(Math.Max(0, burn.GonePropellant), burn.Whole);
+            if (gone > 0)
+            {
+                if (gone >= burn.Whole) return left;
+                massAtKeptTanks = burn.Whole - gone;
+                spent -= burn.Isp * StandardGravity * Math.Log(burn.Whole / massAtKeptTanks);
+                if (spent <= 0) return left;
+            }
             var dry = burn.Kept - burn.KeptPropellant;
-            if (left <= 0 || dry <= 0 || fromKept >= burn.KeptPropellant) return 0;
-            return left * Math.Log((burn.Kept - fromKept) / dry) / Math.Log(burn.Kept / dry);
+            if (left <= 0 || dry <= 0 || burn.KeptPropellant <= 0) return 0;
+            var keptExhaust = left / Math.Log(burn.Kept / dry);
+            var fromKept = massAtKeptTanks * (1 - Math.Exp(-spent / keptExhaust));
+            if (fromKept >= burn.KeptPropellant) return 0;
+            return keptExhaust * Math.Log((burn.Kept - fromKept) / dry);
         }
 
         /// <summary>
@@ -111,13 +124,10 @@ namespace ClaudiaKerman.Core.Missions
         public double KeptPropellant;
         /// <summary>The burning engines' isp, s.</summary>
         public double Isp;
-        /// <summary>
-        /// Tonnes of the burn's propellant in the parts that go, given only when every burning engine goes with the drop: stock's stack flow
-        /// drains the higher stage first and a stock decoupler's crossfeed is off by default, so that stage burns itself out before the kept
-        /// tanks are touched. 0 when any burning engine stays, as it may be cut off from the dropped tanks, so the kept tanks pay. That
-        /// over-counts for a kept engine on crossfed drop tanks: a refusal, settled by one plan revision.
-        /// </summary>
+        /// <summary>Tonnes of the propellants the burning engines use, in the parts that go.</summary>
         public double GonePropellant;
+        /// <summary>How many burning engines stay. Any at all and <see cref="DropGuard.AfterBurn"/> has the kept tanks pay.</summary>
+        public double BurnersKept;
     }
 
     /// <summary>What <see cref="DropGuard.Check"/> found.</summary>

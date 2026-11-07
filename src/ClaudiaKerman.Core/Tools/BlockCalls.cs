@@ -1398,7 +1398,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// <c>ADDONS:CLAUDIA:DROPCHECK</c> (#825, ADR 0014), for <c>claudia_drop_refusal</c>: <see cref="DropGuard.Check"/> on the Mission
         /// Plan (<paramref name="plan"/>, null with none) and the step in hand. Takes <c>before</c> and <c>left</c>, the craft's delta-v
-        /// (m/s) before the drop and after it, and optionally a burn still to fly first (#835), as <see cref="DropBurn"/>: <c>spent</c> (m/s), <c>whole</c>, <c>kept</c>, <c>prop</c>, <c>gone_prop</c> (t) and <c>isp</c> (s). Gives <c>error</c> "", <c>refused</c>, <c>reason</c> (names what the drop takes, what is left
+        /// (m/s) before the drop and after it, and optionally a burn still to fly first (#835), as <see cref="DropBurn"/>: <c>spent</c> (m/s), <c>whole</c>, <c>kept</c>, <c>prop</c>, <c>gone_prop</c> (t), <c>isp</c> (s) and <c>burners_kept</c>. Gives <c>error</c> "", <c>refused</c>, <c>reason</c> (names what the drop takes, what is left
         /// and what the plan needs; "" when not refused), <c>taken</c> and <c>need</c>.
         /// </summary>
         public static IDictionary<string, object> DropCheck(IDictionary<string, object> input, GameSnapshot snapshot, IList<PlannedSequence> plan, int step)
@@ -1409,7 +1409,7 @@ namespace ClaudiaKerman.Core.Tools
             var verdict = DropGuard.Check(snapshot, plan, step, NumberOrNull(ask, "before").Value, NumberOrNull(ask, "left").Value, new DropBurn
             {
                 Spent = Number(ask, "spent", 0), Whole = Number(ask, "whole", 0), Kept = Number(ask, "kept", 0), KeptPropellant = Number(ask, "prop", 0),
-                Isp = Number(ask, "isp", 0), GonePropellant = Number(ask, "gone_prop", 0),
+                Isp = Number(ask, "isp", 0), GonePropellant = Number(ask, "gone_prop", 0), BurnersKept = Number(ask, "burners_kept", 0),
             });
             return new Dictionary<string, object>
             {

@@ -50,7 +50,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             return "global ship is lexicon(\"mass\", 10, \"engines\", list(" + Engine("kept_engine", keptBurns) + ", " + Engine("gone_engine", goneBurns) + "), "
                 + "\"parts\", list(" + Part("kept_tank", 5, 400) + ", " + Part("gone_tank", 5, 600) + ")).\n"
                 + "global addons is lexicon(\"claudia\", lexicon(\"dropcheck\", { parameter ask. "
-                + "for key in list(\"left\", \"spent\", \"whole\", \"kept\", \"prop\", \"isp\", \"gone_prop\") { print key + \" \" + round(ask[key], 1). } "
+                + "for key in list(\"left\", \"spent\", \"whole\", \"kept\", \"prop\", \"isp\", \"gone_prop\", \"burners_kept\") { print key + \" \" + round(ask[key], 1). } "
                 + "return lexicon(\"reason\", \"refused\"). })).\n"
                 + "local plan is lexicon(\"gone\", list(lexicon(\"uid\", \"gone_tank\"), lexicon(\"uid\", \"gone_engine\"))).\n";
         }
@@ -60,18 +60,18 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             var printed = KosHarness.Run(CoreLibrary.Bundle(Craft(goneBurns: true, keptBurns: false) + "print claudia_drop_refusal(plan, 300).\n"));
             // left: 300 s on 5 t with 2 t of propellant.
-            Assert.Equal(new[] { "left 1502.8", "spent 300", "whole 10", "kept 5", "prop 2", "isp 300", "gone_prop 3", "refused" }, printed.ToArray());
+            Assert.Equal(new[] { "left 1502.8", "spent 300", "whole 10", "kept 5", "prop 2", "isp 300", "gone_prop 3", "burners_kept 0", "refused" }, printed.ToArray());
         }
 
-        [Fact]
-        public void A_burning_engine_that_stays_leaves_the_kept_tanks_to_pay()
+        [Theory]
+        [InlineData(false, 0)] // the kept engine alone burns, so nothing burning draws on what goes
+        [InlineData(true, 3)]
+        public void A_burning_engine_that_stays_is_counted_for_core_to_have_the_kept_tanks_pay(bool goneBurns, int goneProp)
         {
-            foreach (var goneBurns in new[] { false, true })
-            {
-                var printed = KosHarness.Run(CoreLibrary.Bundle(Craft(goneBurns, keptBurns: true) + "print claudia_drop_refusal(plan, 300).\n"));
-                Assert.Contains("gone_prop 0", printed);
-                Assert.Contains("prop 2", printed);
-            }
+            var printed = KosHarness.Run(CoreLibrary.Bundle(Craft(goneBurns, keptBurns: true) + "print claudia_drop_refusal(plan, 300).\n"));
+            Assert.Contains("burners_kept 1", printed);
+            Assert.Contains("gone_prop " + goneProp, printed);
+            Assert.Contains("prop 2", printed);
         }
 
         [Fact]

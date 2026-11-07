@@ -88,17 +88,17 @@ function drop_parts_dv_left {
   return drop_parts_rocket_dv(kept:isp, kept:wet, kept:prop).
 }
 
-// drop_parts_dv_left's figures (isp, wet and prop, t), and gone_prop (#835): the t of a burn's propellant in plan's parts when every
-// engine burning now goes with them, so they pay first; 0 when one stays, as the kept tanks pay (DropBurn has the rule).
+// drop_parts_dv_left's figures (isp, wet and prop, t), and for a burn first (#835; DropGuard.AfterBurn has the rule) gone_prop, the t of what the
+// engines burning now use in plan's parts, and burners_kept, how many of those engines stay.
 function drop_parts_kept {
   parameter plan.
   local gone is claudia_drop_uids(plan).
-  local thrusts is list(). local isps is list(). local uses is list(). local burns is list(). local all_go is true.
+  local thrusts is list(). local isps is list(). local uses is list(). local burns is list(). local burners_kept is 0.
   for e in ship:engines {
     local keys is list().
     for k in e:consumedresources:keys { keys:add(drop_parts_res_key(k)). }
     if e:ignition and e:availablethrust > 0 {
-      set all_go to all_go and gone:contains(e:uid).
+      if not gone:contains(e:uid) { set burners_kept to burners_kept + 1. }
       for k in keys { burns:add(k). }
     }
     // A jet (it breathes intake air) can't burn in space.
@@ -117,7 +117,7 @@ function drop_parts_kept {
       if claudia_is_propellant(res:name) and burns:contains(drop_parts_res_key(res:name)) and not stays { set gone_prop to gone_prop + res:amount * res:density. }
     }
   }
-  return lexicon("isp", claudia_mean_isp(thrusts, isps), "wet", wet, "prop", prop, "gone_prop", choose gone_prop if all_go else 0).
+  return lexicon("isp", claudia_mean_isp(thrusts, isps), "wet", wet, "prop", prop, "gone_prop", gone_prop, "burners_kept", burners_kept).
 }
 
 // The wanted names as a list, or the reason the option can't be used (a String).
