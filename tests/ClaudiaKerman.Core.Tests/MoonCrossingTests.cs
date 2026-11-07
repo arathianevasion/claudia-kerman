@@ -153,6 +153,40 @@ namespace ClaudiaKerman.Core.Tests
             Assert.False(watch.Due(rig.Ut + 1));
         }
 
+        /// <summary>
+        /// A new warp re-arms the watch, so an orbit changed at 1x (a burn by hand into Ike's reach) is read at once, not 6 h later; and a meeting
+        /// already answered is not answered again when the player warps on.
+        /// </summary>
+        [Fact]
+        public void ANewWarpReadsAtOnceButTheSameMeetingIsAnsweredOnce()
+        {
+            var safe = DunaOrbit(apAlt: 1520000);
+            var watch = new NextPatchWatch("");
+            Assert.Equal("", watch.Check(safe.Snapshot()));
+            Assert.False(watch.Due(safe.Ut + 1));
+
+            var rig = DunaOrbit();
+            var at = MoonCrossings.Follow(rig.System, rig.Body, rig.Orbit, rig.Ut, rig.Ut + Wait908b).Ut.Value;
+            rig.MoveTo(at - 1000);
+            watch.Rearm();
+            Assert.True(watch.Due(rig.Ut));
+            Assert.NotEqual("", watch.Check(rig.Snapshot()));
+
+            watch.Rearm();
+            rig.MoveTo(at - 500);
+            Assert.Equal("", watch.Check(rig.Snapshot()));
+        }
+
+        [Fact]
+        public void APathRoundTheStarMeetsNoMoon()
+        {
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            var sun = rig.System.Find("Sun");
+            var dunaPath = rig.System.OrbitOf(rig.System.Find("Duna"));
+            Assert.Null(MoonCrossings.Judge(rig.System, sun, dunaPath, 0, 1e8));
+            Assert.Null(MoonCrossings.Follow(rig.System, sun, dunaPath, 0, 1e8));
+        }
+
         [Fact]
         public void TheWatchLetsAPlannedEncounterPass()
         {

@@ -25,6 +25,7 @@ namespace ClaudiaKerman.Adapter
         private List<SnapshotBody> _bodies;
         private int _checks;
         private bool _failed;
+        private bool _warping;
 
         public NextPatchWatcher(Action<MissionInput> send)
         {
@@ -39,6 +40,7 @@ namespace ClaudiaKerman.Adapter
             _bodies = null;
             _checks = 0;
             _failed = false;
+            _warping = false;
         }
 
         /// <summary>Each frame: the craft Core names ("" for none) and the bodies a planned coast meets. Reads the orbit only when a check is due.</summary>
@@ -51,7 +53,11 @@ namespace ClaudiaKerman.Adapter
                 _key = key;
                 if (!string.IsNullOrEmpty(vesselId)) _watch = new NextPatchWatch(planned);
             }
-            if (_watch == null || _failed || TimeWarp.fetch == null || TimeWarp.CurrentRateIndex == 0 || Planetarium.fetch == null) return;
+            var warping = TimeWarp.fetch != null && TimeWarp.CurrentRateIndex > 0;
+            // Each new warp reads the orbit at once: it may have changed at 1x.
+            if (warping && !_warping && _watch != null) _watch.Rearm();
+            _warping = warping;
+            if (_watch == null || _failed || !warping || Planetarium.fetch == null) return;
             var ut = Planetarium.GetUniversalTime();
             if (!_watch.Due(ut)) return;
             try

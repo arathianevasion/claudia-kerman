@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System.Collections.Generic;
+using System.Linq;
+using ClaudiaKerman.Core.Kos;
 using ClaudiaKerman.Core.Tools;
 
 namespace ClaudiaKerman.Core.Missions
@@ -18,6 +21,8 @@ namespace ClaudiaKerman.Core.Missions
             /// <summary>The plan offered with a crossing still there after the correction, and its Blocker line; not saved (the warp to the Due Time judges again).</summary>
             public SequencePlan CrossingPlan;
             public string CrossingBlocker = "";
+            /// <summary>The snapshot the held Blocker was last judged on: a new one (the player may have flown the fix) judges it again.</summary>
+            public GameSnapshot CrossingJudgedOn;
         }
 
         /// <summary>
@@ -68,10 +73,17 @@ namespace ClaudiaKerman.Core.Missions
             mission.CrossingBlocker = MissionPrompts.MoonCrossingBlocker(crossing);
         }
 
-        /// <summary>The plan in hand holds its Blocker (the stored verdict: Auto Mode asks on every input).</summary>
-        private static bool CrossingHeld(Mission mission, SequencePlan plan)
+        /// <summary>The plan in hand holds its Blocker: judged again only on a new snapshot of the craft, since Auto Mode asks on every input.</summary>
+        private bool CrossingHeld(Mission mission, SequencePlan plan)
         {
-            return plan != null && ReferenceEquals(mission.CrossingPlan, plan) && mission.CrossingBlocker.Length > 0;
+            if (plan == null || !ReferenceEquals(mission.CrossingPlan, plan) || mission.CrossingBlocker.Length == 0) return false;
+            var snapshot = MissionVesselSnapshot(mission);
+            if (snapshot != null && !ReferenceEquals(snapshot, mission.CrossingJudgedOn) && ReferenceEquals(mission.PendingSequence, plan))
+            {
+                mission.CrossingJudgedOn = snapshot;
+                CrossingBlockerNow(mission);
+            }
+            return mission.CrossingBlocker.Length > 0;
         }
 
         /// <summary>The adapter dropped the warp before a moon nobody planned, with no script running: one log line, one event, and a request naming the moon and the time.</summary>
@@ -93,13 +105,21 @@ namespace ClaudiaKerman.Core.Missions
             view.NextPatchPlanned = token != null ? token.Bodies : "";
         }
 
+        /// <summary>The bodies a plan's <c>transfer_to</c> calls aim at, as written; empty for none.</summary>
+        private static IList<string> TransferTargets(SequencePlan plan)
+        {
+            if (plan == null || string.IsNullOrEmpty(plan.Script)) return new List<string>();
+            return BlockOptionCheck.Calls(plan.Script).Where(c => c.Block == "transfer_to").Select(c => (c.Option("target") ?? "").Trim().Trim('"'))
+                .Where(t => t.Length > 0).ToList();
+        }
+
         /// <summary>The Debrief's fact (#867): the orbit the run left crosses a moon; the rating is Claudia's as before.</summary>
         private void CrossingFact(Mission mission)
         {
             var snapshot = MissionVesselSnapshot(mission);
             if (snapshot == null) return;
-            // The next plan's wait is not known yet: judged as a long one.
-            var crossing = MoonCrossings.Judge(snapshot.At(_ut));
+            // The next plan's wait is not known yet: judged as a long one. A moon the run's own transfer_to aims at is planned, not crossed.
+            var crossing = MoonCrossings.Judge(snapshot.At(_ut), TransferTargets(mission.PendingSequence));
             if (crossing != null) mission.RunEvents.Replace(_ut, RunEventKind.MoonCrossing, MissionPrompts.MoonCrossingFact(crossing));
         }
     }

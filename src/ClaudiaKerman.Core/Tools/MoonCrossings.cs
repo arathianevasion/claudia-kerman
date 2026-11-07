@@ -66,12 +66,12 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// <c>transfer_to</c>'s clause after an ejection that meets the moon: "and the orbit you're in crosses Ike's SOI: lower its apoapsis
-        /// below 1,734 km (about 26 m/s) before waiting".
+        /// below 1,734 km (set_ap 1,520 km, about 26 m/s) before waiting".
         /// </summary>
         public string RefusalClause(string orbit)
         {
             var fix = !FixAltitude.HasValue ? "leave it"
-                : (Inside ? "lower its apoapsis below " : "raise its periapsis above ") + Km(EdgeAltitude) + " km (about " + Num(FixDv) + " m/s)";
+                : (Inside ? "lower its apoapsis below " : "raise its periapsis above ") + Km(EdgeAltitude) + " km (" + FixOption + " " + Km(FixAltitude.Value) + " km, about " + Num(FixDv) + " m/s)";
             return "and " + orbit + " crosses " + Moon.Name + "'s SOI: " + fix + " before waiting";
         }
 
@@ -112,7 +112,7 @@ namespace ClaudiaKerman.Core.Tools
         /// </summary>
         public static MoonCrossing Judge(BodySystem system, SnapshotBody body, Conic orbit, double fromUt, double untilUt, ICollection<string> planned = null)
         {
-            if (!orbit.Closed || untilUt <= fromUt) return null;
+            if (!orbit.Closed || untilUt <= fromUt || IsStar(system, body)) return null;
             if (untilUt - fromUt <= FollowLoops * orbit.Period) return Follow(system, body, orbit, fromUt, untilUt, planned);
             SnapshotBody first = null;
             var lowest = double.PositiveInfinity;
@@ -121,9 +121,8 @@ namespace ClaudiaKerman.Core.Tools
             foreach (var moon in system.Children(body))
             {
                 if (Planned(moon, planned)) continue;
-                var soi = moon.SoiRadius;
-                var low = moon.Sma * (1 - moon.Eccentricity) - soi;
-                var high = moon.Sma * (1 + moon.Eccentricity) + soi;
+                var low = Edge(moon, true);
+                var high = Edge(moon, false);
                 if (orbit.ApR < low || orbit.PeR > high) continue;
                 // The moon met first going out from the periapsis: the lowest edge inside, the highest outside.
                 var isInside = orbit.PeR < moon.Sma;
@@ -144,20 +143,35 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The craft's own orbit in <paramref name="snapshot"/> over the wait until <paramref name="untilUt"/>; null when it crosses none or the snapshot has no orbit.</summary>
         public static MoonCrossing Judge(GameSnapshot snapshot, double untilUt, ICollection<string> planned = null)
         {
-            if (snapshot == null) return null;
-            ToolOutcome error;
-            var setup = PredictBurn.Setup.Prepare(snapshot, null, out error);
+            var setup = Prepare(snapshot);
             return setup == null ? null : Judge(setup.System, setup.Body, setup.Start, setup.Now, untilUt, planned);
         }
 
         /// <summary>The craft's own orbit over a wait not known yet (the Debrief's fact): long, so judged by geometry, the likely time from <see cref="LikelyLoops"/> followed.</summary>
-        public static MoonCrossing Judge(GameSnapshot snapshot)
+        public static MoonCrossing Judge(GameSnapshot snapshot, ICollection<string> planned)
+        {
+            var setup = Prepare(snapshot);
+            if (setup == null || !setup.Start.Closed) return null;
+            return Judge(setup.System, setup.Body, setup.Start, setup.Now, setup.Now + LikelyLoops * setup.Start.Period, planned);
+        }
+
+        private static PredictBurn.Setup Prepare(GameSnapshot snapshot)
         {
             if (snapshot == null) return null;
             ToolOutcome error;
-            var setup = PredictBurn.Setup.Prepare(snapshot, null, out error);
-            if (setup == null || !setup.Start.Closed) return null;
-            return Judge(setup.System, setup.Body, setup.Start, setup.Now, setup.Now + LikelyLoops * setup.Start.Period);
+            return PredictBurn.Setup.Prepare(snapshot, null, out error);
+        }
+
+        /// <summary>A moon's lowest sphere-of-influence edge from its parent's centre (its periapsis less the radius), or the highest (its apoapsis plus it).</summary>
+        private static double Edge(SnapshotBody moon, bool lowest)
+        {
+            return lowest ? moon.Sma * (1 - moon.Eccentricity) - moon.SoiRadius : moon.Sma * (1 + moon.Eccentricity) + moon.SoiRadius;
+        }
+
+        /// <summary>The star: what goes round it are planets, met by transfers, not moons a parking orbit strays into.</summary>
+        private static bool IsStar(BodySystem system, SnapshotBody body)
+        {
+            return system.Parent(body) == null;
         }
 
         /// <summary>
@@ -166,6 +180,7 @@ namespace ClaudiaKerman.Core.Tools
         /// </summary>
         public static MoonCrossing Follow(BodySystem system, SnapshotBody body, Conic orbit, double fromUt, double untilUt, ICollection<string> planned = null)
         {
+            if (IsStar(system, body)) return null;
             var loop = orbit.Closed ? orbit.Period : double.PositiveInfinity;
             for (var start = fromUt; start < untilUt; start += loop)
             {
@@ -176,8 +191,7 @@ namespace ClaudiaKerman.Core.Tools
                 {
                     if (patch.EndUt > untilUt || Planned(patch.Next, planned)) return null;
                     var inside = orbit.PeR < patch.Next.Sma;
-                    var crossing = Fixed(body, patch.Next, orbit, inside,
-                        inside ? patch.Next.Sma * (1 - patch.Next.Eccentricity) - patch.Next.SoiRadius : patch.Next.Sma * (1 + patch.Next.Eccentricity) + patch.Next.SoiRadius);
+                    var crossing = Fixed(body, patch.Next, orbit, inside, Edge(patch.Next, inside));
                     crossing.Ut = patch.EndUt;
                     return crossing;
                 }

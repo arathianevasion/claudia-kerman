@@ -28,6 +28,9 @@ namespace ClaudiaKerman.Core.Tools
         private readonly string[] _planned;
         private double _nextUt = double.NegativeInfinity;
         private string _body;
+        /// <summary>The meeting last answered, so a warp raised again after the drop isn't dropped for it a second time.</summary>
+        private string _answeredMoon = "";
+        private double _answeredUt = double.NaN;
 
         /// <summary>A watch that lets pass the bodies of <paramref name="planned"/> (comma-separated; "" for none).</summary>
         public NextPatchWatch(string planned)
@@ -41,6 +44,15 @@ namespace ClaudiaKerman.Core.Tools
             return ut >= _nextUt;
         }
 
+        /// <summary>
+        /// Warp has just been raised (the adapter calls it on each new warp): the next read is due at once, since the orbit may have changed at 1x
+        /// since the last one (a burn by hand), and a schedule from before it would miss a meeting it brings nearer.
+        /// </summary>
+        public void Rearm()
+        {
+            _nextUt = double.NegativeInfinity;
+        }
+
         /// <summary>One loop, and at least <see cref="MinMargin"/>: how far ahead of a meeting warp drops.</summary>
         internal static double Margin(Conic orbit)
         {
@@ -49,7 +61,7 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// One check: null while nothing unplanned is within the margin; else the moon and the UT it is met (now, when KSP already has the craft round a
-        /// moon nobody planned), and warp should drop. One meeting is answered once: the next check is due after it.
+        /// moon nobody planned), and warp should drop. One meeting is answered once, even across <see cref="Rearm"/>: the next check is due after it.
         /// </summary>
         internal MoonCrossing Meeting(GameSnapshot snapshot)
         {
@@ -84,6 +96,10 @@ namespace ClaudiaKerman.Core.Tools
             if (met.Ut.Value - ut <= margin)
             {
                 _nextUt = met.Ut.Value + MinGap;
+                // The player raised the warp again after this meeting's drop: it is theirs now.
+                if (met.Moon.Name == _answeredMoon && Math.Abs(met.Ut.Value - _answeredUt) < margin) return null;
+                _answeredMoon = met.Moon.Name;
+                _answeredUt = met.Ut.Value;
                 return met;
             }
             _nextUt = Math.Max(ut + MinGap, met.Ut.Value - margin);

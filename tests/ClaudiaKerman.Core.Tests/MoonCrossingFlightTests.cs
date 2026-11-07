@@ -98,7 +98,7 @@ namespace ClaudiaKerman.Core.Tests
             var ike = rig.System.Find("Ike");
             var refusal = SiblingEjection.MeetsMoon(setup, rig.Ut + MoonCrossingTests.Wait908b, ike);
             Assert.StartsWith("the ejection at UT ", refusal);
-            Assert.EndsWith(" meets Ike on its way out of Duna's sphere of influence and the orbit you're in crosses Ike's SOI: lower its apoapsis below 1,734 km (about 26 m/s) before waiting", refusal);
+            Assert.EndsWith(" meets Ike on its way out of Duna's sphere of influence and the orbit you're in crosses Ike's SOI: lower its apoapsis below 1,734 km (set_ap 1,520 km, about 26 m/s) before waiting", refusal);
 
             var safe = MoonCrossingTests.DunaOrbit(apAlt: 1520000);
             setup = PredictBurn.Setup.Prepare(safe.Snapshot(), null, out error);

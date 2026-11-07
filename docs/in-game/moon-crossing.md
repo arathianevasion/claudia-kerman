@@ -5,7 +5,7 @@
 - **Plan time.** A Sequence Plan that waits for its Due Time in such an orbit goes back to Claudia once, with the fix: `change_orbit` `set_ap` 1,520 km, about 26 m/s (a circle costs about 260 m/s). If it comes back still waiting there, its card has a Blocker, the mod won't warp to its Due Time, and Auto Mode waits for you.
 - **The Debrief.** After a run that leaves the craft in such an orbit, the Debrief's events have an `orbit crosses a moon` line with the moon, the time and the fix. The rating is Claudia's as before.
 - **The next-patch watch.** While the Mission's craft warps with no script running (a plan pending, Auto Mode, the mod's warp to a Due Time, or your own warp, in any scene), the mod reads the craft's path and drops the warp one loop (at least an hour) before a moon nobody planned. You get a screen message and a Mission log line. `transfer_to`'s own warp to a far ejection is watched the same way: the block fails with `would meet Ike at UT ...` instead of burning.
-- **`transfer_to`'s refusal.** When the ejection meets a moon and the orbit itself crosses it, the refusal adds `and the orbit you're in crosses Ike's SOI: lower its apoapsis below 1,734 km (about 26 m/s) before waiting`.
+- **`transfer_to`'s refusal.** When the ejection meets a moon and the orbit itself crosses it, the refusal adds `and the orbit you're in crosses Ike's SOI: lower its apoapsis below 1,734 km (set_ap 1,520 km, about 26 m/s) before waiting`.
 
 Install and the block test runner are as in `phase-3-gate.md` ("Install", "Where to look"). `ClaudiaKerman.Core` and `ClaudiaKerman.Adapter` changed, so install both. No Kerboscript changed.
 
@@ -16,7 +16,7 @@ To put a craft in 908b's orbit, use the cheat menu (Alt+F12, Cheats, Set Orbit):
 1. Pick `transfer_to_ike_crossing` and press **Run**. Don't touch anything.
 2. It ends with `PASS transfer_to_ike_crossing`: `success` false, no burn, still round Duna, and the reason names Ike. Either:
    - the block warped toward the ejection and `KSP.log` has `Next-patch watch: would meet Ike at UT ...; warp dropped before it`, before any `On-Rails SOI Transition from Duna to Ike`, then the block fails with `would meet Ike at UT ...`; or
-   - it refused at once with `... meets Ike on its way out of Duna's sphere of influence and the orbit you're in crosses Ike's SOI: lower its apoapsis below 1,734 km (about 26 m/s) before waiting`.
+   - it refused at once with `... meets Ike on its way out of Duna's sphere of influence and the orbit you're in crosses Ike's SOI: lower its apoapsis below 1,734 km (set_ap 1,520 km, about 26 m/s) before waiting`.
 3. If the craft passes into Ike's sphere of influence at all, it's a failure: tell the ticket the UT.
 
 ## Check 2: the plan is blocked
@@ -40,7 +40,7 @@ Pass: the plan is blocked, naming Ike and a fix of about 25 m/s (26 here).
 1. Put the craft back in 908b's orbit (cheat menu), with a plan pending or none (no script running).
 2. Warp yourself with the warp arrows at the top rate, in Flight, then again from the Tracking Station.
 3. The warp drops to 1x about one loop (19,800 s, about 5.5 h of game time) before Ike, and before any `On-Rails SOI Transition from Duna to Ike` in `KSP.log`. A screen message reads `Warp stopped: the craft would meet Ike's sphere of influence at UT ..., in ... Fly change_orbit set_ap 1,520 km (...) first, or Re-plan.`, the Mission log has the same line, and `KSP.log` has it after `Next-patch watch:` with the check count.
-4. Warp again: it isn't dropped a second time for the same meeting.
+4. Burn by hand at 1x so the apoapsis goes higher, then warp again: the orbit is read again at once (a new warp re-arms the watch). For the same meeting, the warp isn't dropped a second time.
 
 Pass: the warp drops and the request is raised before Ike's sphere of influence.
 
