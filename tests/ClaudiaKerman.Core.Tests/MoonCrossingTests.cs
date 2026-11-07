@@ -224,8 +224,8 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         /// <summary>
-        /// What one check costs (#867 asks it stated): it follows the path 6 h plus a loop ahead, here two loops of 908b's orbit with Ike in reach,
-        /// the dearest kind. It runs once per 6 h of game time at most, so at 100,000x about once every 0.2 s of real time.
+        /// What one check costs (#867 asks it stated): it follows the path 6 h plus the margin ahead, here two loops of 908b's orbit with Ike in reach.
+        /// It runs once per 6 h of game time at most, so at 100,000x about once every 0.2 s of real time.
         /// </summary>
         [Fact]
         [Trait("Category", "Timing")]
@@ -302,6 +302,18 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(found.Orbit.ApR > mun.Sma * (1 - mun.Eccentricity) - mun.SoiRadius, "the apoapsis reaches the Mun's band");
             Assert.Null(MoonCrossings.Judge(found.Snapshot(), new string[0]));
             Assert.Null(MoonCrossings.Judge(found.System, found.Body, found.Orbit, 0, Wait908b));
+        }
+
+        /// <summary>
+        /// The dearest check: a low Kerbin orbit (100 km, about 1,960 s a loop) has a margin of an hour, so one check follows 25,200 s, about 13
+        /// loops, each an encounter search against both the Mun and Minmus: about 1.2 ms measured, against 0.3 ms for 908b's orbit.
+        /// </summary>
+        [Fact]
+        [Trait("Category", "Timing")]
+        public void OneWatchCheckOfALowKerbinOrbitTakesUnderFiveMilliseconds()
+        {
+            var snapshot = TransferRig.Circular("Kerbin", 100000, 0).Snapshot();
+            Timing.Within(5, () => new NextPatchWatch("").Check(snapshot));
         }
 
         [Fact]
