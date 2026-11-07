@@ -41,8 +41,9 @@ namespace ClaudiaKerman.Core.Missions
                 var leg = sequences[i];
                 if (flown != null && !flown(leg)) continue;
                 var words = SequenceWords.Of(leg);
-                var returnsHome = SequenceWords.ReturnHome.IsMatch(words);
-                body = SequenceWords.NextBody(snapshot, words, body);
+                var stays = BeforeLaterReturn(snapshot, sequences, i, flown);
+                var returnsHome = stays == null && SequenceWords.ReturnHome.IsMatch(words);
+                body = stays ?? SequenceWords.NextBody(snapshot, words, body);
                 if (SequenceWords.Ascent.IsMatch(words)) ascended = true;
                 if (leg.Manual || body == null) continue;
                 var landing = SequenceWords.Landing.IsMatch(words);
@@ -58,6 +59,42 @@ namespace ClaudiaKerman.Core.Missions
             var home = entries.LastOrDefault(e => e.Return);
             foreach (var entry in entries) entry.Return = entry == home;
             return entries;
+        }
+
+        /// <summary>
+        /// The body a leg stays at when the return home in its intent is only prose about a later leg (#838: "Land on Duna before the return to
+        /// Kerbin"), else null. Landings and reentries in an intent still count, and so does a return no later leg flies, as a recorded plan's
+        /// leg often goes home in its intent alone ("Ascend from the Mun", "then return toward Kerbin"): a missed Entry drops too much, and a drop
+        /// can't be undone. So the return gives way only when the name doesn't say it or place the leg at Kerbin, the intent names somewhere else,
+        /// the leg doesn't ascend before it lands, and a later leg of this vessel is that return, as an Entry, with no launch from Kerbin before it.
+        /// </summary>
+        private static SnapshotBody BeforeLaterReturn(GameSnapshot snapshot, IList<PlannedSequence> sequences, int step, Func<PlannedSequence, bool> flown)
+        {
+            var leg = sequences[step];
+            var words = SequenceWords.Of(leg);
+            if (!SequenceWords.ReturnHome.IsMatch(words) || SequenceWords.ReturnHome.IsMatch(leg.Name) || IsKerbin(SequenceWords.NamedBody(snapshot, leg.Name))) return null;
+            var action = SequenceWords.ActionWords(leg);
+            var up = SequenceWords.Ascent.Match(action);
+            var down = SequenceWords.Landing.Match(action);
+            if (up.Success && (!down.Success || up.Index < down.Index)) return null;
+            var away = SequenceWords.AwayBody(snapshot, words);
+            if (away == null) return null;
+            for (var i = step + 1; i < sequences.Count; i++)
+            {
+                var later = sequences[i];
+                if (later.Manual || (flown != null && !flown(later))) continue;
+                var laterWords = SequenceWords.Of(later);
+                var kerbin = IsKerbin(SequenceWords.NamedBody(snapshot, laterWords));
+                var landing = SequenceWords.Landing.IsMatch(laterWords);
+                if ((SequenceWords.ReturnHome.IsMatch(laterWords) || (kerbin && SequenceWords.Reentry.IsMatch(laterWords))) && (landing || !SequenceWords.Aero.IsMatch(laterWords))) return away;
+                if (kerbin && SequenceWords.Ascent.IsMatch(laterWords)) return null;
+            }
+            return null;
+        }
+
+        private static bool IsKerbin(SnapshotBody body)
+        {
+            return body != null && body.Name == "Kerbin";
         }
 
         /// <summary>

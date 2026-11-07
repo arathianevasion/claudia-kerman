@@ -66,6 +66,12 @@ namespace ClaudiaKerman.Core.Missions
             return FirstBody(snapshot, words, false);
         }
 
+        /// <summary>The first body <paramref name="words"/> name other than Kerbin and other than where a return comes from, or null for none.</summary>
+        public static SnapshotBody AwayBody(GameSnapshot snapshot, string words)
+        {
+            return FirstBody(snapshot, words, true);
+        }
+
         /// <summary>
         /// The first body <paramref name="words"/> names, earliest occurrence first. With <paramref name="away"/>, Kerbin is skipped
         /// and so is an occurrence the return comes from ("Return from the Mun to Kerbin", "come home from Minmus"): that is where
