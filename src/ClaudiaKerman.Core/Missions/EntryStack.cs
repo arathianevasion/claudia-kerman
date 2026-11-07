@@ -82,9 +82,29 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         private static SnapshotPart ShieldNumbered(IList<SnapshotPart> parts, Dictionary<uint, SnapshotPart> byId, uint? home, int number)
         {
+            var depth = Reach(parts, byId, home, false);
+            return parts.Where(p => p.Tags.Contains("heat_shield") && depth.ContainsKey(p.Id)).OrderBy(p => depth[p.Id]).Skip(number - 1).FirstOrDefault();
+        }
+
+        /// <summary>
+        /// The heat shields reached along stack attachments only by crossing a docking port (#845): the ones <see cref="Of"/> does not count.
+        /// It is the same walk with the port let through, so a radial shield is in neither.
+        /// </summary>
+        public static List<SnapshotPart> ShieldsPastPorts(IList<SnapshotPart> parts, uint? home)
+        {
+            var byId = new Dictionary<uint, SnapshotPart>();
+            foreach (var part in parts) byId[part.Id] = part;
+            var counted = Reach(parts, byId, home, false);
+            var all = Reach(parts, byId, home, true);
+            return parts.Where(p => p.Tags.Contains("heat_shield") && all.ContainsKey(p.Id) && !counted.ContainsKey(p.Id)).ToList();
+        }
+
+        /// <summary>The parts reached from home over stack attachments, with their parts-between depth; a docking port is reached but not passed unless <paramref name="crossPorts"/>.</summary>
+        private static Dictionary<uint, int> Reach(IList<SnapshotPart> parts, Dictionary<uint, SnapshotPart> byId, uint? home, bool crossPorts)
+        {
             var depth = new Dictionary<uint, int>();
             var start = home.HasValue && byId.ContainsKey(home.Value) ? byId[home.Value] : parts.FirstOrDefault(p => !p.ParentId.HasValue);
-            if (start == null) return null;
+            if (start == null) return depth;
             var children = parts.Where(p => p.ParentId.HasValue && !p.SurfaceAttached).ToLookup(p => p.ParentId.Value);
             var queue = new Queue<SnapshotPart>();
             depth[start.Id] = 0;
@@ -92,7 +112,7 @@ namespace ClaudiaKerman.Core.Missions
             while (queue.Count > 0)
             {
                 var part = queue.Dequeue();
-                if (part != start && part.Tags.Contains("docking_port")) continue;
+                if (!crossPorts && part != start && part.Tags.Contains("docking_port")) continue;
                 var near = children[part.Id].ToList();
                 SnapshotPart parent;
                 if (part.ParentId.HasValue && (part == start || !part.SurfaceAttached) && byId.TryGetValue(part.ParentId.Value, out parent)) near.Add(parent);
@@ -103,7 +123,7 @@ namespace ClaudiaKerman.Core.Missions
                     queue.Enqueue(next);
                 }
             }
-            return parts.Where(p => p.Tags.Contains("heat_shield") && depth.ContainsKey(p.Id)).OrderBy(p => depth[p.Id]).Skip(number - 1).FirstOrDefault();
+            return depth;
         }
 
         /// <summary>A walk up from a part: whether it reached the anchor, and the decoupler on the way nearest it.</summary>

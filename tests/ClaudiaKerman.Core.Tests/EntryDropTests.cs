@@ -675,5 +675,76 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(Snapshot(craft, "Kerbin").ToJson(), radial);
             Assert.DoesNotContain("attach", radial.ToLowerInvariant());
         }
+
+        // ---- #845: a shield past a docking port is warned about ----
+
+        private static IList<MarginFinding> PastPort(Craft craft, params PlannedSequence[] legs)
+        {
+            return Entries.ShieldPastPort(Snapshot(craft, "Kerbin"), legs);
+        }
+
+        [Fact]
+        public void Pod_port_shield_stack_with_an_Entry_warns_that_the_stack_stays_on()
+        {
+            var craft = new Craft();
+            var pod = craft.Add("mk1pod.v2", null, "command");
+            var port = craft.Add("dockingPort", pod, "docking_port");
+            var shield = craft.Shield(port, "pastShield");
+            craft.Add("stackTank", shield);
+            var finding = Assert.Single(PastPort(craft, KerbinReturn.ToArray()));
+            Assert.Equal(CraftCheckRules.ShieldPastPort, finding.Code);
+            Assert.Equal(CraftFindingSeverity.Warning, finding.Severity);
+            Assert.Contains("the stack stays on", finding.Explanation);
+            Assert.Contains("pastShield", finding.Explanation);
+            Assert.Null(EntryStack.Of(craft.Parts, null, 1).Shield);
+        }
+
+        [Fact]
+        public void Pod_shield_stack_has_no_warning()
+        {
+            Assert.Empty(PastPort(PodShieldStage(), KerbinReturn.ToArray()));
+        }
+
+        [Fact]
+        public void A_landers_own_shield_past_a_port_is_named_and_the_Entry_Shield_still_counts()
+        {
+            var craft = new Craft();
+            var pod = craft.Add("mk1pod.v2", null, "command");
+            var shield = craft.Shield(pod, "podShield");
+            var tank = craft.Add("stackTank", shield);
+            var port = craft.Add("dockingPort", tank, "docking_port");
+            var lander = craft.Add("landerTank", port);
+            craft.Shield(lander, "landerShield");
+            var finding = Assert.Single(PastPort(craft, KerbinReturn.ToArray()));
+            Assert.Contains("landerShield", finding.Explanation);
+            Assert.DoesNotContain("podShield", finding.Explanation);
+            Assert.Equal(Uid(craft, "podShield"), Call(craft, "Kerbin", KerbinReturn)["shield"]);
+        }
+
+        [Fact]
+        public void A_radial_shield_does_not_warn()
+        {
+            var craft = PodShieldStage();
+            Radial(craft, "sideShield", 4, "heat_shield", "decoupler");
+            Assert.Empty(PastPort(craft, KerbinReturn.ToArray()));
+        }
+
+        [Fact]
+        public void A_shield_past_a_port_with_no_Entry_in_the_goal_does_not_warn()
+        {
+            var craft = new Craft();
+            var pod = craft.Add("mk1pod.v2", null, "command");
+            var port = craft.Add("dockingPort", pod, "docking_port");
+            craft.Shield(port, "pastShield");
+            Assert.Empty(PastPort(craft, Leg("Circularize in orbit")));
+        }
+
+        [Fact]
+        public void The_shield_past_a_port_rule_is_the_mods_own_Warning()
+        {
+            var rule = CraftCheckRules.Find(CraftCheckRules.ShieldPastPort);
+            Assert.True(rule.ModOnly);
+            Assert.Equal(CraftFindingSeverity.Warning, rule.Severity);
+        }
     }
 }
