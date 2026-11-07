@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
+using System.Collections.Generic;
 
 namespace ClaudiaKerman.Core.Missions
 {
@@ -20,6 +21,12 @@ namespace ClaudiaKerman.Core.Missions
         {
             /// <summary>In Manual Control from an Approved manual stretch, so its Debrief is judged against the plan's target.</summary>
             public bool ManualPlanned;
+            /// <summary>The player's latest word on flying a manual stretch (#818): the Mission Goal's, then their typed words and taking Manual Control, the last yes or no. Saved.</summary>
+            public bool ManualAsk;
+            /// <summary>The Mission Goal as the player gave it makes the landing spot the point (#818); Claudia's reduced goals don't change it. Saved.</summary>
+            public bool PrecisionGoal;
+            /// <summary>The Kerbals aboard at the current run's start (#818), for judging a Failed Debrief's crew alive; null when unread. Not saved, as a run never survives a load.</summary>
+            public List<string> RunStartCrew;
             /// <summary>How Manual Control began, for Claudia's Debrief.</summary>
             public string ManualOrigin = "";
             /// <summary>Handed back: the Debrief of the manual stretch is under way, and a revised Mission Plan follows it.</summary>
@@ -148,7 +155,7 @@ namespace ClaudiaKerman.Core.Missions
             TakeManual("input held over " + _config.ManualHoldSeconds.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " s");
         }
 
-        private void TakeManual(string how)
+        private void TakeManual(string how, bool explicitTake = false)
         {
             var mission = _mission;
             if (MissionOver || mission.Stage == MissionStage.ManualControl || !CanTakeManual) return;
@@ -164,6 +171,7 @@ namespace ClaudiaKerman.Core.Missions
 
             var plan = mission.PendingSequence;
             mission.ManualPlanned = false;
+            if (explicitTake) mission.ManualAsk = true;
             if (mission.Stage == MissionStage.Running)
             {
                 mission.ManualOrigin = "while the Sequence Plan " + MissionPrompts.Quoted(plan != null ? plan.Name : "(unknown)")

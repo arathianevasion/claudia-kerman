@@ -74,6 +74,10 @@ namespace ClaudiaKerman.Core.Missions
         public string EvaScience = "";
         /// <summary>In Manual Control (or its Hand back Debrief): the stretch was planned, so its Debrief is judged against the target.</summary>
         public bool ManualPlanned;
+        /// <summary>"true"/"false": the player's latest word on flying a manual stretch (#818); "" in an older save, read again from the goal.</summary>
+        public string ManualAsk = "";
+        /// <summary>"true"/"false": the player's Mission Goal makes the landing spot the point (#818); "" in an older save.</summary>
+        public string PrecisionGoal = "";
         /// <summary>How Manual Control began, in words for Claudia's Debrief; "" outside Manual Control.</summary>
         public string ManualOrigin = "";
         /// <summary>The player handed back and the Debrief of the manual stretch is not finished: a revised Mission Plan follows it.</summary>
@@ -98,6 +102,8 @@ namespace ClaudiaKerman.Core.Missions
         public string RunEvents = "";
         /// <summary>Game time the current or last run began, s of UT; 0 in older saves.</summary>
         public double RunStartUt;
+        /// <summary>#867: the bodies the current or last run's <c>transfer_to</c> calls aimed at, comma-separated; "" for none and in older saves.</summary>
+        public string RunTransfers = "";
         /// <summary>The game's UT when the save was made (#412): a loaded save's open RCS Use is closed there; 0 in older saves.</summary>
         public double SavedUt;
         /// <summary>The run's RCS Use tally (JSON written by RcsUseTally.ToJson); "" for none and in older saves.</summary>
@@ -183,6 +189,8 @@ namespace ClaudiaKerman.Core.Missions
                 { "auto_mode", AutoMode ? "true" : "false" },
                 { "evaScience", EvaScience },
                 { "manualPlanned", ManualPlanned ? "true" : "false" },
+                { "manualAsk", ManualAsk },
+                { "precisionGoal", PrecisionGoal },
                 { "manualOrigin", ManualOrigin },
                 { "handBack", HandBack ? "true" : "false" },
                 { "handBackMessage", HandBackMessage },
@@ -204,6 +212,7 @@ namespace ClaudiaKerman.Core.Missions
             if (Crossings.Length > 0) values["crossings"] = Crossings;
             if (RunEvents.Length > 0) values["runEvents"] = RunEvents;
             if (RunStartUt != 0) values["runStartUt"] = RunStartUt.ToString("R", CultureInfo.InvariantCulture);
+            if (RunTransfers.Length > 0) values["runTransfers"] = RunTransfers;
             if (SavedUt != 0) values["savedUt"] = SavedUt.ToString("R", CultureInfo.InvariantCulture);
             if (RcsUse.Length > 0) values["rcsUse"] = RcsUse;
             if (RunStartMonopropellant.HasValue) values["runStartMonopropellant"] = RunStartMonopropellant.Value.ToString("R", CultureInfo.InvariantCulture);
@@ -284,6 +293,8 @@ namespace ClaudiaKerman.Core.Missions
                 MissionPlanApproved = Get(values, "missionPlanApproved") == "true",
                 EvaScience = Get(values, "evaScience"),
                 ManualPlanned = Get(values, "manualPlanned") == "true",
+                ManualAsk = Get(values, "manualAsk"),
+                PrecisionGoal = Get(values, "precisionGoal"),
                 ManualOrigin = Get(values, "manualOrigin"),
                 HandBack = Get(values, "handBack") == "true",
                 HandBackMessage = Get(values, "handBackMessage"),
@@ -312,6 +323,7 @@ namespace ClaudiaKerman.Core.Missions
             };
             double runStart;
             if (double.TryParse(Get(values, "runStartUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out runStart)) state.RunStartUt = runStart;
+            state.RunTransfers = Get(values, "runTransfers");
             double savedUt;
             if (double.TryParse(Get(values, "savedUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out savedUt)) state.SavedUt = savedUt;
             double reading;

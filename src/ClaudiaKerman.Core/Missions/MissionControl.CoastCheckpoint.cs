@@ -45,7 +45,9 @@ namespace ClaudiaKerman.Core.Missions
         {
             var text = MissionCards.SequencePlanBody(plan, mission.VesselName, _ut, _config);
             var blocked = CoastBlock(mission, plan);
-            return blocked.Length > 0 ? text + "\n" + CoastCheckpoints.BlockerLine(blocked) : text;
+            if (blocked.Length > 0) text += "\n" + CoastCheckpoints.BlockerLine(blocked);
+            // #867: the orbit it waits in crosses a moon.
+            return CrossingHeld(mission, plan) ? text + "\n" + mission.CrossingBlocker : text;
         }
 
         /// <summary>The block's wait armed its Encounter Watch: the coast it is on. An empty token: nothing a switch could checkpoint.</summary>

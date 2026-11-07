@@ -96,6 +96,8 @@ namespace ClaudiaKerman.Core.Missions
                 MissionPlanApproved = mission.MissionPlanApproved,
                 EvaScience = mission.EvaScience,
                 ManualPlanned = mission.ManualPlanned,
+                ManualAsk = mission.ManualAsk ? "true" : "false",
+                PrecisionGoal = mission.PrecisionGoal ? "true" : "false",
                 ManualOrigin = mission.ManualOrigin,
                 HandBack = mission.HandBack,
                 HandBackMessage = mission.HandBackMessage,
@@ -110,6 +112,7 @@ namespace ClaudiaKerman.Core.Missions
                 Crossings = CrossingsJson(mission),
                 RunEvents = RunEventsJson(mission),
                 RunStartUt = mission.RunStartUt,
+                RunTransfers = mission.RunTransfers,
                 RcsUse = mission.RcsUse.ToJson(),
                 RunStartMonopropellant = mission.RunStartMonopropellant,
                 RunStartDeltaVLeft = mission.RunStartDeltaVLeft,
@@ -469,6 +472,8 @@ namespace ClaudiaKerman.Core.Missions
                 MissionPlanApproved = state.MissionPlanApproved,
                 EvaScience = state.EvaScience ?? "",
                 ManualPlanned = state.ManualPlanned,
+                ManualAsk = string.IsNullOrEmpty(state.ManualAsk) ? ManualGrounds.Asked(state.Goal) : state.ManualAsk == "true",
+                PrecisionGoal = string.IsNullOrEmpty(state.PrecisionGoal) ? ManualGrounds.PrecisionGoal(state.Goal) : state.PrecisionGoal == "true",
                 ManualOrigin = state.ManualOrigin,
                 HandBack = state.HandBack,
                 HandBackMessage = state.HandBackMessage,
@@ -499,6 +504,7 @@ namespace ClaudiaKerman.Core.Missions
             RestoreCrossings(mission, state.Crossings);
             RestoreRunEvents(mission, state.RunEvents);
             mission.RunStartUt = state.RunStartUt;
+            mission.RunTransfers = state.RunTransfers ?? "";
             mission.RcsUse.Restore(state.RcsUse);
             mission.RunStartMonopropellant = state.RunStartMonopropellant;
             mission.RunStartDeltaVLeft = state.RunStartDeltaVLeft;

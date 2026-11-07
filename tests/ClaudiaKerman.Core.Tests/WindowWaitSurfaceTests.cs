@@ -419,7 +419,8 @@ namespace ClaudiaKerman.Core.Tests
         private MissionControl ToSurfaceStay(StreamingFakeTransport transport, double now)
         {
             var mission = Control(transport);
-            ToAscent(mission, "Duna", now);
+            // The player asks for the manual stretch (#818), so none is refused.
+            ToAscent(mission, "Duna", now, "Return to Kerbin. I'll fly the surface stay by hand.");
             Assert.False(mission.View.DueTime.HasDueTime);
             return mission;
         }

@@ -27,6 +27,8 @@ namespace ClaudiaKerman.Core.Missions
         public GoalBiomeMiss BiomeMiss;
         /// <summary>#831: the body a deorbit with no target is at, where the block's auto gives none (<see cref="DeorbitTargets"/>); null when there is none.</summary>
         public string DeorbitNoTarget;
+        /// <summary>#867: the moon the craft's orbit crosses while the plan waits for its Due Time (<see cref="MoonCrossings"/>); null when it crosses none.</summary>
+        internal Tools.MoonCrossing MoonCrossing;
 
         /// <summary>The Script Check refused the script.</summary>
         public bool ScriptFailed
@@ -37,7 +39,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>Some figure of the plan's own is wrong by the snapshot, or its landing misses the goal's biome.</summary>
         public bool FiguresWrong
         {
-            get { return Crossings.Count > 0 || BiomeMiss != null || DeorbitNoTarget != null; }
+            get { return Crossings.Count > 0 || BiomeMiss != null || DeorbitNoTarget != null || MoonCrossing != null; }
         }
 
         /// <summary>The figures found wrong, without the Script Check's problems: what a correction for them alone would carry.</summary>
@@ -55,6 +57,7 @@ namespace ClaudiaKerman.Core.Missions
             if (DurationRaised != null) warnings.Add(DurationRaised);
             if (BiomeMiss != null) warnings.Add("landing biome: " + MissionPrompts.GoalBiomeMissed(BiomeMiss));
             if (DeorbitNoTarget != null) warnings.Add("deorbit target: " + MissionPrompts.DeorbitNoTargetMissed(DeorbitNoTarget));
+            if (MoonCrossing != null) warnings.Add(MissionPrompts.MoonCrossingBlocker(MoonCrossing));
             return warnings;
         }
     }

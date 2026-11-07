@@ -376,6 +376,19 @@ namespace ClaudiaKerman.Core.Missions
     }
 
     /// <summary>
+    /// The next-patch watch dropped the warp with no script running (#867, <see cref="Tools.NextPatchWatch"/>): the Mission's line, raised as a request
+    /// (<c>NeedsPlayer</c>) naming the moon and the time.
+    /// </summary>
+    public sealed class NextPatchDropped : MissionInput
+    {
+        public readonly string Text;
+        public NextPatchDropped(string text)
+        {
+            Text = text;
+        }
+    }
+
+    /// <summary>
     /// <c>reentry</c> found, above the air, that nothing can land the craft (#827): one line for the Mission's events, log and Debrief. It is never an Alert, and the
     /// conversation hears of it only in the Debrief.
     /// </summary>
