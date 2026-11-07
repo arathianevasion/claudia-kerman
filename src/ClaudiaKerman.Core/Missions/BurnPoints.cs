@@ -113,6 +113,8 @@ namespace ClaudiaKerman.Core.Missions
             double? nodeUt = null;
             // #830: the game seconds the coasts before this call hold the craft; the burn's wait counts from after them.
             var held = 0.0;
+            // #833: after a coast to the next patch the craft is off the snapshot's orbit, whose apsides no longer say when a burn comes.
+            var leftOrbit = false;
             var nodes = AddNode.Matches(masked).Cast<Match>().ToList();
             foreach (var call in BlockOptionCheck.Calls(script))
             {
@@ -126,12 +128,18 @@ namespace ClaudiaKerman.Core.Missions
                 if (call.Block == "coast")
                 {
                     // A coast whose until can't be read leaves nothing to check; a UT already past returns at once.
-                    var until = Until(call.Option("until"), now + held, snapshot);
-                    if (!until.HasValue) return null;
+                    bool toPatch;
+                    var until = Until(call.Option("until"), now + held, snapshot, out toPatch);
+                    // A second coast to a next patch can't be read: the snapshot has only the first patch's end.
+                    if (!until.HasValue || (toPatch && leftOrbit)) return null;
                     held += Math.Max(0, until.Value - (now + held));
+                    leftOrbit |= toPatch;
                     continue;
                 }
-                var wait = Wait(call, snapshot, now + held, nodeUt, Remove.IsMatch(masked.Substring(0, call.Index)), body);
+                // The snapshot has no next-patch orbit, so the burn's own timing there is unknown: its wait is the coast's alone (a floor).
+                var wait = leftOrbit && OnTheOrbit(call.Block)
+                    ? At(call, "the next patch (its timing isn't known; the wait is the coast's)", 0)
+                    : Wait(call, snapshot, now + held, nodeUt, Remove.IsMatch(masked.Substring(0, call.Index)), body);
                 if (wait == null) return null;
                 wait.WaitSeconds += held;
                 if (wait.ToEarliestSeconds > 0) wait.ToEarliestSeconds += held;
@@ -159,6 +167,12 @@ namespace ClaudiaKerman.Core.Missions
                 BurnSeconds = BurnAllowanceSeconds,
                 LeftSeconds = last.TargetUt.Value - stoppedUt,
             };
+        }
+
+        /// <summary>Blocks whose burn point is found on the craft's orbit.</summary>
+        private static bool OnTheOrbit(string block)
+        {
+            return block == "circularize" || block == "change_orbit" || block == "capture" || block == "tune_pe" || block == "transfer_to" || block == "return";
         }
 
         /// <summary>The wait for this call's burn point, or null when it has none fixed before the run (or isn't a burn).</summary>
@@ -364,17 +378,21 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>A coast's until as a UT: a number, or <c>time:seconds + n</c> from <paramref name="at"/>; null when it isn't one of those.</summary>
-        private static double? Until(string text, double at, GameSnapshot snapshot)
+        private static double? Until(string text, double at, GameSnapshot snapshot, out bool toPatch)
         {
+            toPatch = false;
             if (text == null) return null;
             var trimmed = text.Trim();
             if (Number.IsMatch(trimmed)) return double.Parse(trimmed, CultureInfo.InvariantCulture);
             // #833: time:seconds + ship:orbit:nextpatcheta [+ n] is the patch's end UT plus n; no next patch leaves it unread.
             var patch = ToNextPatch.Match(trimmed);
             if (patch.Success)
-                return snapshot.NextPatchEta.HasValue
-                    ? snapshot.Ut + snapshot.NextPatchEta.Value + (patch.Groups["s"].Success ? double.Parse(patch.Groups["s"].Value, CultureInfo.InvariantCulture) : 0)
-                    : (double?)null;
+            {
+                // A patch end already behind this point is a later patch's: not read.
+                if (!snapshot.NextPatchEndUt.HasValue || snapshot.NextPatchEndUt.Value <= at) return null;
+                toPatch = true;
+                return snapshot.NextPatchEndUt.Value + (patch.Groups["s"].Success ? double.Parse(patch.Groups["s"].Value, CultureInfo.InvariantCulture) : 0);
+            }
             var from = FromNow.Match(trimmed);
             return from.Success ? at + double.Parse(from.Groups["s"].Value, CultureInfo.InvariantCulture) : (double?)null;
         }
