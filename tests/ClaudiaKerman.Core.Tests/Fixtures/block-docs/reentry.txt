@@ -1,8 +1,8 @@
 reentry(options): lands through the atmosphere: drops the stack below this entry's shield,
 waits for the atmosphere if still in space, holds the heat shield forward, drops it once
 the worst heating is over, opens the parachutes only when safe, physics-warping the fall
-(1x below 100 m), and ends once landed or splashed. If this entry's drop and chutes would touch down over 10 m/s and an engine has fuel, it
-drops nothing, lights the engine (no stage fires) and brakes on it by radar altitude, chutes open and gear down, to 2 m/s or until the fuel is gone.
+(1x below 100 m), and ends once landed or splashed. If its drop and chutes would touch down over 10 m/s (15 on Kerbin, Eve, Laythe) and an engine has fuel, it
+drops nothing, lights the engine (no staging) and brakes by radar, chutes and gear down, to 2 m/s or until the fuel is gone.
 Options:
 chute_mode ["safe"]: drogues first (under 500 m/s, over 0.02 atm, or by 3000 m above the ground), then
 mains once they are out (under 250 m/s, over 0.04 atm, or by 1500 m); "none" never opens them.

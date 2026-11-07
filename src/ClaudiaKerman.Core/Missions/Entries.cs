@@ -188,6 +188,12 @@ namespace ClaudiaKerman.Core.Missions
 
         private static readonly HashSet<string> HotBodies = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Eve", "Laythe" };
 
+        /// <summary>Whether a stack kept through an entry here is dangerous (#557, #840): the hot bodies and Kerbin, where heating has been measured. <see cref="EntryFinish"/> keeps its chutes up to the failure limit on them.</summary>
+        internal static bool KeepsStackDangerous(string body)
+        {
+            return HotBodies.Contains(body ?? "") || string.Equals(body, "Kerbin", StringComparison.OrdinalIgnoreCase);
+        }
+
         internal static bool BurnsInWords(PlannedSequence leg)
         {
             var words = SequenceWords.Of(leg);

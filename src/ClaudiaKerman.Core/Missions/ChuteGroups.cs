@@ -41,7 +41,7 @@ namespace ClaudiaKerman.Core.Missions
         public double TouchdownSpeed = -1;
         /// <summary>Its chutes can't bring it under <see cref="ChuteGroups.TouchdownLimit"/>: the engines finish the landing from <see cref="TouchdownSpeed"/>.</summary>
         public bool PoweredFinish;
-        /// <summary>Over <see cref="EntryFinish.EngineThreshold"/> with an engine aboard: <c>reentry</c> would land on it, so the delta-v is budgeted (<see cref="MarginCheck"/>), though under <see cref="ChuteGroups.TouchdownLimit"/> it isn't needed to survive.</summary>
+        /// <summary>Over <see cref="EntryFinish.ThresholdFor"/> its body with an engine aboard: <c>reentry</c> would land on it, so the delta-v is budgeted (<see cref="MarginCheck"/>), though under <see cref="ChuteGroups.TouchdownLimit"/> it isn't needed to survive.</summary>
         public bool EngineFinish;
         /// <summary>The height above sea level, m, its fall was predicted down to (<see cref="ChuteGroups.EndAltitudeOf"/>).</summary>
         public double EndAltitude;
@@ -299,7 +299,7 @@ namespace ClaudiaKerman.Core.Missions
                     : MassAfter(snapshot, sequences.Skip(first).Take(entry.Step - first).Sum(s => Math.Max(0, s.DeltaV)));
                 Judge(snapshot, entry);
                 // An entry that needs them keeps its stack, so it flies with that stack's chutes and engines, and so do the Entries after (ADR 0020).
-                entry.EngineFinish = entry.TouchdownSpeed > EntryFinish.EngineThreshold && engines.Count > 0;
+                entry.EngineFinish = entry.TouchdownSpeed > EntryFinish.ThresholdFor(entry.Body) && engines.Count > 0;
                 if (entry.EngineFinish && !entry.Return && before.Count != aboard.Count + entry.Chutes.Count)
                 {
                     aboard = before;
