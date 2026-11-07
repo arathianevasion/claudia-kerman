@@ -89,7 +89,6 @@ namespace ClaudiaKerman.Adapter
             snapshot.Nodes = ManeuverPlan.ForSnapshot(vessel);
             ReadParts(snapshot, vessel.parts, vessel.VesselDeltaV);
             ReadChutes(snapshot, vessel);
-            ReadEngineFuel(snapshot, vessel);
             MarkTrickleStages(snapshot, vessel.parts);
             // plan_ascent's drag, for a launch: only a craft on the ground of a body with air needs it.
             if (vessel.mainBody != null && vessel.mainBody.atmosphere && OnTheGround(vessel.situation))
@@ -370,8 +369,8 @@ namespace ClaudiaKerman.Adapter
                 if (snapshot.Craft.Parts[i].Tags.Contains("parachute")) snapshot.Craft.Parts[i].Chute = ReentryCraft.ChuteOf(vessel, parts[i]);
         }
 
-        /// <summary>Which engines can brake (<see cref="EntryFinish"/>): stock's own flow answers for crossfeed and fuel lines, so no tank is summed here.</summary>
-        private static void ReadEngineFuel(GameSnapshot snapshot, Vessel vessel)
+        /// <summary>Which engines can brake (<see cref="EntryFinish"/>), asked only by <c>ENTRYFINISH</c>: stock's own flow answers for crossfeed and fuel lines, so no tank is summed here.</summary>
+        public static void ReadEngineFuel(GameSnapshot snapshot, Vessel vessel)
         {
             var parts = vessel.parts;
             for (var i = 0; i < parts.Count && i < snapshot.Craft.Parts.Count; i++)

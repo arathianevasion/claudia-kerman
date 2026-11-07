@@ -358,7 +358,9 @@ namespace ClaudiaKerman.KOS
                 var vessel = shared.Vessel;
                 var uids = new System.Collections.Generic.Dictionary<uint, string>();
                 foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
-                finish = BlockCalls.EntryFinishCall(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(vessel), MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
+                var snapshot = SnapshotReader.ReadForMission(vessel);
+                SnapshotReader.ReadEngineFuel(snapshot, vessel);
+                finish = BlockCalls.EntryFinishCall(KosValues.ToDictionary(input), snapshot, MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
                     id => uids.ContainsKey(id) ? uids[id] : null);
                 return KosValues.FromPlain(finish);
             }, () => finish["error"] as string == "" ? (string)finish["why"] : (string)finish["error"]);
