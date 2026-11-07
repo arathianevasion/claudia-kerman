@@ -142,9 +142,7 @@ namespace ClaudiaKerman.Core.Tools
             var settling = false;
             if (terminal && h < SettleBelowM && !done)
             {
-                // Held last tick, its target is upright; otherwise where it would steer now.
-                var target = settleUt >= 0 ? new[] { 0.0, 0, 1 } : dir;
-                var off = facing != null ? Angle(facing, target) : 0;
+                var off = facing != null ? Angle(facing, dir) : 0;
                 if (off > SettleErrorDeg || Number(input, "rate", 0) > SettleRateDegS)
                 {
                     var dvLeft = Number(input, "dv_left", 0);
@@ -156,12 +154,13 @@ namespace ClaudiaKerman.Core.Tools
             }
             if (settling)
             {
-                // Holding its height, upright: no sideways demand to swing after.
-                al = 0;
-                cr = 0;
+                // Holding its height, and stopping any drift over 2 s within the lean limit, rather than chasing the site.
+                al = -vel[0] / 2;
+                cr = -vel[1] / 2;
                 up = Math.Min(0.95 * aMax, Math.Max(0, Number(input, "g", 0) - 0.5 * vUp));
-                dir = new[] { 0.0, 0, 1 };
-                mag = up;
+                LimitLean(ref al, ref cr, up, tilt);
+                mag = Math.Sqrt(al * al + cr * cr + up * up);
+                dir = mag > 0 ? new[] { al / mag, cr / mag, up / mag } : new[] { 0.0, 0, 1 };
             }
             if (terminal) dir = Slewed(Number(last, "ut", -1), ut, LeanCapped(lastDir, tilt), dir, Number(input, "top_rate", 0));
 
