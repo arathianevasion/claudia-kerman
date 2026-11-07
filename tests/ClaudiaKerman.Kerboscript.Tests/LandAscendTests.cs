@@ -26,7 +26,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [Fact]
         public void LandRefusesABodyWithAnAtmosphereNamingReentry()
         {
-            Assert.Equal("land flies airless bodies only; Duna has an atmosphere; use reentry (touchdown \"powered\" when chutes are short)", One("land_atmosphere_reason(\"Duna\")"));
+            Assert.Equal("land flies airless bodies only; Duna has an atmosphere; use reentry", One("land_atmosphere_reason(\"Duna\")"));
         }
 
         private static string[] Run(string missionScript)

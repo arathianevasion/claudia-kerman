@@ -363,7 +363,6 @@ namespace ClaudiaKerman.Core.Tests
             // 903 isn't aboard: left out.
             Assert.Equal(new object[] { "uid900", "uid901", "uid902" }, (List<object>)set["uids"]);
             Assert.Equal(3, ((List<object>)set["titles"]).Count);
-            Assert.False((bool)set["powered_finish"] && (double)set["touchdown_speed"] < 0);
         }
 
         [Fact]
@@ -380,7 +379,7 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void TheAddonCallKeepsTheTouchdownAndPoweredFinishThatTheBlockReads()
+        public void TheAddonCallKeepsTheTouchdownForTheLog()
         {
             var snapshot = Craft(landerChutes: 1);
             snapshot.Orbit.Body = "Duna";
@@ -388,7 +387,6 @@ namespace ClaudiaKerman.Core.Tests
             var set = BlockCalls.ChuteGroupCall(snapshot, DunaLandingAndReturn(), 1, "", Uid);
 
             Assert.True((double)set["touchdown_speed"] > ChuteGroups.TouchdownLimit);
-            Assert.Equal(true, set["powered_finish"]);
             Assert.Equal("there is no Game Snapshot of the craft", BlockCalls.ChuteGroupCall(null, null, 0, "", Uid)["error"]);
         }
 

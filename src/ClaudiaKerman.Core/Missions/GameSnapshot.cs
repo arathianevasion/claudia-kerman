@@ -44,6 +44,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool CannotRetract;
         /// <summary>An engine already lit, for the Chute Group above it (<see cref="ChuteGroupRules"/>). Not in the JSON: the prompt doesn't carry it.</summary>
         public bool EngineLit;
+        /// <summary>An engine that can brake: its throttle works, and stock's flow reaches every propellant, through crossfeed and fuel lines. Read in flight only, for <see cref="EntryFinish"/>. Not in the JSON: the prompt doesn't carry it.</summary>
+        public bool EngineFuelled;
 
         // ---- Child Vessel facts (#100): enough to work out a separated vessel's own figures ----
 

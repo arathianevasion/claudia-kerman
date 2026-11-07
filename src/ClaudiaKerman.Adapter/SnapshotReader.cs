@@ -89,6 +89,7 @@ namespace ClaudiaKerman.Adapter
             snapshot.Nodes = ManeuverPlan.ForSnapshot(vessel);
             ReadParts(snapshot, vessel.parts, vessel.VesselDeltaV);
             ReadChutes(snapshot, vessel);
+            ReadEngineFuel(snapshot, vessel);
             MarkTrickleStages(snapshot, vessel.parts);
             // plan_ascent's drag, for a launch: only a craft on the ground of a body with air needs it.
             if (vessel.mainBody != null && vessel.mainBody.atmosphere && OnTheGround(vessel.situation))
@@ -367,6 +368,32 @@ namespace ClaudiaKerman.Adapter
             var parts = vessel.parts;
             for (var i = 0; i < parts.Count && i < snapshot.Craft.Parts.Count; i++)
                 if (snapshot.Craft.Parts[i].Tags.Contains("parachute")) snapshot.Craft.Parts[i].Chute = ReentryCraft.ChuteOf(vessel, parts[i]);
+        }
+
+        /// <summary>Which engines can brake (<see cref="EntryFinish"/>): stock's own flow answers for crossfeed and fuel lines, so no tank is summed here.</summary>
+        private static void ReadEngineFuel(GameSnapshot snapshot, Vessel vessel)
+        {
+            var parts = vessel.parts;
+            for (var i = 0; i < parts.Count && i < snapshot.Craft.Parts.Count; i++)
+                snapshot.Craft.Parts[i].EngineFuelled = CanBrake(parts[i]);
+        }
+
+        /// <summary>A solid motor's thrust can't be throttled (a Sepratron would fire on lighting), so it can't brake a landing.</summary>
+        private static bool CanBrake(Part part)
+        {
+            foreach (var module in part.Modules)
+            {
+                var engine = module as ModuleEngines;
+                if (engine == null || engine.throttleLocked) continue;
+                var fuelled = engine.propellants.All(p =>
+                {
+                    double amount, max;
+                    part.GetConnectedResourceTotals(p.id, p.GetFlowMode(), out amount, out max);
+                    return amount > 0;
+                });
+                if (fuelled) return true;
+            }
+            return false;
         }
 
         private static void ReadParts(GameSnapshot snapshot, IList<Part> parts, VesselDeltaV deltaV)

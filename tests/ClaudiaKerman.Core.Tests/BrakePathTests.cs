@@ -765,7 +765,7 @@ namespace ClaudiaKerman.Core.Tests
             var snapshot = MunOrbit();
             snapshot.Bodies.Clear();
             snapshot.Bodies.Add(new SnapshotBody { Name = "Mun", Parent = "Kerbin", Gm = Mun.Gm, Radius = MunR, RotationPeriod = MunTurn, SoiRadius = 2e6, AtmosphereHeight = 70000 });
-            Assert.Equal("land flies airless bodies only; Mun has an atmosphere; use reentry (touchdown \"powered\" when chutes are short)",
+            Assert.Equal("land flies airless bodies only; Mun has an atmosphere; use reentry",
                 BlockCalls.LandingPass(Ask(0, 30), snapshot, new Terrain())["error"]);
         }
     }

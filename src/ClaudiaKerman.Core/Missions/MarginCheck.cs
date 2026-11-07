@@ -106,10 +106,10 @@ namespace ClaudiaKerman.Core.Missions
             return check.Findings;
         }
 
-        /// <summary>The entries the engines finish from a known speed (the return is judged as covered or not).</summary>
+        /// <summary>The entries the engines finish from a known speed, and so the delta-v budgeted for them (the return is judged as covered or not).</summary>
         private static List<EntryChutes> Finishes(ChuteGroups chutes)
         {
-            return chutes == null ? new List<EntryChutes>() : chutes.Entries.Where(e => !e.Return && e.PoweredFinish && e.TouchdownSpeed >= 0).ToList();
+            return chutes == null ? new List<EntryChutes>() : chutes.Entries.Where(e => !e.Return && (e.PoweredFinish || e.EngineFinish) && e.TouchdownSpeed >= 0).ToList();
         }
 
         /// <summary>Why the craft's delta-v can't be judged, or "".</summary>
@@ -124,6 +124,7 @@ namespace ClaudiaKerman.Core.Missions
         /// finishes before it) lack the delta-v for it, or a Kerbin return that can't be covered, is a Blocker; a finish with under
         /// 25% spare is a Warning, and any other group that lands too fast one too. With an Engineer repacking the chutes the shortfalls are Warnings
         /// that say so. The delta-v for a finish is its touchdown speed, from the predictor; an entry that couldn't be predicted is not judged.
+        /// A finish under <see cref="ChuteGroups.TouchdownLimit"/> is carried in the budget and has no finding: its chutes survive without the engines (#824).
         /// <see cref="ChuteGroupRules"/> has the rest.
         /// </summary>
         private void Chutes(GameSnapshot snapshot, IList<PlannedSequence> rest, ChuteGroups chutes, IList<EntryChutes> finishes, bool repack, int firstStep)
@@ -139,6 +140,7 @@ namespace ClaudiaKerman.Core.Missions
                 var through = Math.Max(0, Math.Min(rest.Count, entry.Step - firstStep + 1));
                 var left = have - rest.Take(through).Sum(s => Math.Max(0, s.DeltaV)) - carried;
                 carried += need;
+                if (!entry.PoweredFinish) continue;
                 var where = "The powered finish at " + entry.Body + " for \"" + entry.Sequence + "\" needs " + Whole(need) + " m/s (its chutes leave it falling that fast), "
                     + (left.HasValue ? Whole(Math.Max(0, left.Value)) + " m/s left" : "delta-v left unknown");
                 if (left.HasValue && left.Value < need) AddChute(severity, level, where + (repack ? "; relies on a repack at " + entry.Body : ""));

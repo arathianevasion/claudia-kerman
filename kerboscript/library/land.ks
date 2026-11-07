@@ -1388,7 +1388,7 @@ function land_pass_verdict {
 // land's refusal on a body with an atmosphere; the landing tool (BlockCalls) says the same. Pure.
 function land_atmosphere_reason {
   parameter body_name.
-  return "land flies airless bodies only; " + body_name + " has an atmosphere; use reentry (touchdown " + char(34) + "powered" + char(34) + " when chutes are short)".
+  return "land flies airless bodies only; " + body_name + " has an atmosphere; use reentry".
 }
 
 // Why land fails for a missed pass (land_pass_verdict "fail"), with the search's answer now: found_ok and

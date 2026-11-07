@@ -4,8 +4,8 @@
 // reentry block test, Duna powered touchdown (#628): the Mission Script the debug block test runner starts (bundled
 // with the Core Library, as for a real Mission). The reference craft arrives in an 80 km circular equatorial orbit
 // with no stage fired. deorbit stages into the LV-T45 and burns for 0 N, 0 E, keeping the tank and engine; reentry
-// then falls through Duna's thin air with no chute armed (chutes "none") and brakes to the ground on the engine
-// (touchdown "powered"). The Script Result is reentry's, plus whether it came down and what became of the chute.
+// then falls through Duna's thin air with no chute armed (chutes "none") and, with an engine aboard, decides for itself
+// to brake to the ground on it (#824). The Script Result is reentry's, plus whether it came down and what became of the chute.
 
 @lazyglobal off.
 
@@ -15,7 +15,7 @@ local burn is deorbit(lexicon("target", lexicon("lat", 0, "lng", 0), "stage_limi
 print "reentry powered test: deorbit " + burn:success + ", " + burn:reason.
 local result is burn.
 if burn:success {
-  set result to reentry(lexicon("touchdown", "powered", "chutes", "none", "jettison_stage", "none")).
+  set result to reentry(lexicon("chutes", "none")).
   set result["deorbit_dv"] to burn:dv_used.
 }
 // The checker compares a field with a literal only, so the test reports the comparisons it needs.

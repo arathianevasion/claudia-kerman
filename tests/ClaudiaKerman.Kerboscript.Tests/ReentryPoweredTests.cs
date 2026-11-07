@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System;
 using System.Globalization;
 using System.Linq;
 using ClaudiaKerman.Core.Kos;
@@ -9,8 +10,8 @@ using Xunit;
 namespace ClaudiaKerman.Kerboscript.Tests
 {
     /// <summary>
-    /// reentry's touchdown "powered" and its chutes option (#628), on kOS.Safe through the real bundle: the braking burn
-    /// flown on a point mass falling through a Duna-like atmosphere, and which chutes the block may open on fake parts.
+    /// reentry's powered touchdown (#628, #824) and its chutes option, on kOS.Safe through the real bundle: the braking burn
+    /// flown on a point mass falling through a Duna-like atmosphere, lighting engines, and which chutes the block may open on fake parts.
     /// </summary>
     public class ReentryPoweredTests
     {
@@ -27,25 +28,62 @@ namespace ClaudiaKerman.Kerboscript.Tests
         // ---- Options ----
 
         [Fact]
-        public void Touchdown_defaults_to_chutes_and_chutes_to_auto_so_a_Kerbin_entry_flies_as_before()
+        public void Chutes_default_to_auto_and_15_m_s_is_the_limit_on_chutes_and_engines_alike()
         {
-            Assert.Equal(new[] { "chutes", "auto", "", "True", "False" },
-                Run("local d is reentry_defaults(). print d:touchdown. print d:chutes. print reentry_unreadable(d).\n"
+            Assert.Equal(new[] { "auto", "", "True", "False" },
+                Run("local d is reentry_defaults(). print d:chutes. print reentry_unreadable(d).\n"
                     + "print reentry_touchdown_ok(14.9). print reentry_touchdown_ok(15.1).\n"));
         }
 
-        [Fact]
-        public void A_powered_touchdown_fails_over_its_own_soft_limit()
+        [Theory]
+        [InlineData("powered")]
+        [InlineData("chutes")]
+        public void Touchdown_given_fails_saying_it_is_automatic(string value)
         {
-            Assert.Equal(new[] { "True", "False", "6" },
-                Run("print reentry_touchdown_ok(5.9, true). print reentry_touchdown_ok(6.1, true). print reentry_touchdown_max(true).\n"));
+            Assert.Equal("touchdown is no longer an option: reentry decides for itself whether to land on its engines",
+                Run("print reentry_unreadable(claudia_options(lexicon(\"touchdown\", \"" + value + "\"), reentry_defaults(), \"auto\"):opt).\n").Single());
         }
 
         [Fact]
-        public void Unknown_touchdown_is_refused()
+        public void The_docs_no_longer_offer_touchdown()
         {
-            Assert.Equal("touchdown must be 'chutes' or 'powered', not 'hover'",
-                Run("local d is reentry_defaults(). set d:touchdown to \"hover\". print reentry_unreadable(d).\n").Single());
+            Assert.DoesNotContain("touchdown [", CoreLibrary.FullDocs(new[] { "reentry" }));
+        }
+
+        // ---- Lighting the engines ----
+
+        /// <summary>Fake engines, uid and whether lit: lit logs each one activated, and a stage firing would need the stage command, which the block's source never has.</summary>
+        private const string Engines =
+            "local activated is list().\n"
+            + "function eng {\n parameter uid, ignition.\n"
+            + "  return lexicon(\"uid\", uid, \"ignition\", ignition, \"activate\", { activated:add(uid). }).\n}\n"
+            + "local engs is list(eng(\"low\", false), eng(\"high\", false), eng(\"high2\", false), eng(\"lit\", true)).\n";
+
+        [Fact]
+        public void Only_the_engines_Core_chose_are_lit_part_by_part_and_a_lit_one_is_left()
+        {
+            Assert.Equal(new[] { "high,high2", "high,high2" },
+                Run(Engines + "reentry_light(engs, list(\"high\", \"high2\", \"lit\")). print activated:join(\",\").\n"
+                    + "for e in engs { if e:uid:startswith(\"high\") { set e:ignition to true. } }\n"
+                    + "reentry_light(engs, list(\"high\", \"high2\")). print activated:join(\",\").\n"));
+        }
+
+        [Fact]
+        public void The_block_never_stages_and_lights_the_chosen_engines_then_the_spare_on_a_flameout()
+        {
+            var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source.Replace("\r\n", "\n");
+            var body = source.Substring(source.IndexOf("function reentry {", StringComparison.Ordinal));
+            Assert.DoesNotContain("stage.", body.Replace("_stage.", "").Replace(":stage.", ""));
+            Assert.DoesNotContain("claudia_autostage", source);
+            Assert.DoesNotContain("claudia_stage_into_engines", source);
+            var ask = body.IndexOf("addons:claudia:entryfinish(", StringComparison.Ordinal);
+            var light = body.IndexOf("reentry_light(ship:engines, finish:engines).", StringComparison.Ordinal);
+            Assert.True(ask > 0 && ask < light);
+            Assert.True(light < body.IndexOf("reentry_separation(", StringComparison.Ordinal));
+            Assert.Contains("if ship:availablethrust <= 0 { reentry_light(ship:engines, finish:spare). }", body);
+            // Braking ticks don't autostage, and running dry isn't an abort: burning false, and only the touchdown's speed fails it.
+            Assert.Contains("claudia_tick(ctx, tset, false)", body);
+            Assert.Contains("if not reentry_touchdown_ok(last_speed) {", body);
         }
 
         [Fact]
@@ -206,10 +244,10 @@ namespace ClaudiaKerman.Kerboscript.Tests
         // cd_low below 250 m/s (drag falling off as the craft goes subsonic, which the block's measurement can't see coming).
         // Each 0.05 s tick it flies reentry's powered touchdown: the brake height from the drag felt, sampled every 0.25 s
         // until braking begins, then reentry_brake_throttle on a_max m/s^2 of thrust (no mass lost: the thrust only grows).
-        // Prints the speed at touchdown, the radar altitude braking began at and the delta-v burned.
+        // Prints the speed at touchdown, the radar altitude braking began at and the delta-v burned. fuel: the delta-v (m/s) the craft has.
         private const string Simulation = @"
 function sim {
-  parameter y0, v0, a_max, ground_k, cd_low.
+  parameter y0, v0, a_max, ground_k, cd_low, fuel is 1e9.
   local e is 2.718281828459045. local h_scale is 5000. local p0 is 0.0667. local g is 2.94. local com is 3.
   local y is y0. local v is v0.
   local t is 0. local dt is 0.05. local next_sample is 0.
@@ -230,26 +268,28 @@ function sim {
       if reentry_brake_due(radar, brake_h) { set braking to true. set brake_at to radar. }
     }
     if braking { set tset to reentry_brake_throttle(radar, v, a_max, g). }
+    if used >= fuel { set tset to 0. }
     set last to v.
     set v to v + (g - drag - tset * a_max) * dt.
     set y to y - v * dt.
     set used to used + tset * a_max * dt.
     set t to t + dt.
   }
-  print round(last, 2). print round(brake_at). print round(used).
+  print round(last, 2). print round(brake_at). print round(used). print reentry_touchdown_ok(last).
 }
 ";
 
         private sealed class Landing
         {
             public double TouchdownSpeed, BrakeAt, DvUsed;
+            public bool Ok;
         }
 
-        private static Landing Fly(double y0, double v0, double aMax, double groundK, double cdLow)
+        private static Landing Fly(double y0, double v0, double aMax, double groundK, double cdLow, double fuel = 1e9)
         {
-            var printed = Run(Simulation + string.Format(CultureInfo.InvariantCulture, "sim({0}, {1}, {2}, {3}, {4}).", y0, v0, aMax, groundK, cdLow));
+            var printed = Run(Simulation + string.Format(CultureInfo.InvariantCulture, "sim({0}, {1}, {2}, {3}, {4}, {5}).", y0, v0, aMax, groundK, cdLow, fuel));
             double D(int i) => double.Parse(printed[i], CultureInfo.InvariantCulture);
-            return new Landing { TouchdownSpeed = D(0), BrakeAt = D(1), DvUsed = D(2) };
+            return new Landing { TouchdownSpeed = D(0), BrakeAt = D(1), DvUsed = D(2), Ok = printed[3] == "True" };
         }
 
         [Theory]
@@ -267,6 +307,19 @@ function sim {
             var landing = Fly(y0, v0, aMax, groundK, cdLow);
             Assert.True(landing.BrakeAt > 0, "braking never began");
             Assert.True(landing.TouchdownSpeed > 0 && landing.TouchdownSpeed < 6, "touchdown at " + landing.TouchdownSpeed + " m/s (braking from " + landing.BrakeAt + " m)");
+        }
+
+        [Fact]
+        public void Short_of_fuel_it_burns_to_empty_and_only_a_touchdown_over_the_limit_fails()
+        {
+            // Under one chute at 25 m/s: 15 m/s of fuel is all burned and it still lands under the limit, so the block passes.
+            var close = Fly(4000, 60, 12, 4.7e-3, 1, 15);
+            Assert.True(close.DvUsed >= 15, "burned " + close.DvUsed);
+            Assert.True(close.TouchdownSpeed > 2 && close.Ok, "touchdown at " + close.TouchdownSpeed + " m/s");
+            // With no chute and the same fuel, the fall is too fast: that alone fails it.
+            var fast = Fly(4000, 60, 12, 2.04e-4, 1, 15);
+            Assert.True(fast.DvUsed >= 15, "burned " + fast.DvUsed);
+            Assert.False(fast.Ok, "touchdown at " + fast.TouchdownSpeed + " m/s");
         }
 
         [Fact]

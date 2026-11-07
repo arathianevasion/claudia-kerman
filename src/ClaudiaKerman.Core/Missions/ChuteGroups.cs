@@ -41,6 +41,8 @@ namespace ClaudiaKerman.Core.Missions
         public double TouchdownSpeed = -1;
         /// <summary>Its chutes can't bring it under <see cref="ChuteGroups.TouchdownLimit"/>: the engines finish the landing from <see cref="TouchdownSpeed"/>.</summary>
         public bool PoweredFinish;
+        /// <summary>Over <see cref="EntryFinish.EngineThreshold"/> with an engine aboard: <c>reentry</c> would land on it, so the delta-v is budgeted (<see cref="MarginCheck"/>), though under <see cref="ChuteGroups.TouchdownLimit"/> it isn't needed to survive.</summary>
+        public bool EngineFinish;
         /// <summary>The height above sea level, m, its fall was predicted down to (<see cref="ChuteGroups.EndAltitudeOf"/>).</summary>
         public double EndAltitude;
         /// <summary>Why <see cref="TouchdownSpeed"/> is unknown; "" when it is known.</summary>
@@ -126,11 +128,16 @@ namespace ClaudiaKerman.Core.Missions
             return usable;
         }
 
-        /// <summary>The Entry in hand, for the craft as it is now on the body it is at: what <see cref="Choose"/> gives it, with its predicted touchdown.</summary>
-        public static EntryChutes ForEntryNow(GameSnapshot snapshot, bool lastEntry)
+        /// <summary>
+        /// The Entry in hand, for the craft as it is now on the body it is at, less the parts <paramref name="gone"/> (its drop, if any): what
+        /// <see cref="Choose"/> gives it, or none with <paramref name="chutes"/> false, with its predicted touchdown.
+        /// </summary>
+        public static EntryChutes ForEntryNow(GameSnapshot snapshot, bool lastEntry, ICollection<uint> gone = null, bool chutes = true)
         {
-            var entry = new EntryChutes { Body = Missions.Entries.At(snapshot), Last = lastEntry, MassKg = snapshot.Craft.MassTonnes * 1000 };
-            entry.Chutes.AddRange(Choose(Usable(snapshot), lastEntry));
+            var leaving = gone ?? new uint[0];
+            var mass = snapshot.Craft.MassTonnes - snapshot.Craft.Parts.Where(p => leaving.Contains(p.Id)).Sum(p => p.MassT);
+            var entry = new EntryChutes { Body = Missions.Entries.At(snapshot), Last = lastEntry, MassKg = mass * 1000 };
+            if (chutes) entry.Chutes.AddRange(Choose(Usable(snapshot).Where(c => !leaving.Contains(c.PartId)), lastEntry));
             Judge(snapshot, entry);
             return entry;
         }
@@ -140,7 +147,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             return string.Join(" ", Entries.Select(e => e.Sequence + " (" + e.Body + "): " + GroupOf(e)
                 + (e.TouchdownSpeed >= 0 ? ", " + e.TouchdownSpeed.ToString("0.0", CultureInfo.InvariantCulture) + " m/s" : ", speed unknown (" + e.Unpredicted + ")")
-                + (e.PoweredFinish ? ", powered finish" : "") + ".").ToArray());
+                + (e.PoweredFinish || e.EngineFinish ? ", powered finish" : "") + ".").ToArray());
         }
 
         private static string GroupOf(EntryChutes entry)
@@ -213,16 +220,20 @@ namespace ClaudiaKerman.Core.Missions
             var leaving = new HashSet<uint>(ChildVessels.Staging(snapshot, remote, processorPartId).Separations.SelectMany(s => s.PartIds));
             var podMassKg = snapshot.Craft.Parts.Where(p => !leaving.Contains(p.Id)).Sum(p => p.MassT) * 1000;
             var aboard = groups.Chutes.ToList();
+            var engines = new HashSet<uint>(snapshot.Craft.Parts.Where(p => p.Tags.Contains("engine")).Select(p => p.Id));
             for (var i = 0; i < found.Count; i++)
             {
                 var entry = new EntryChutes { Step = found[i].Step, Sequence = found[i].Sequence, Body = found[i].Body, Return = found[i].Return, Last = i == found.Count - 1 && tail == 0 };
-                var dropped = new HashSet<uint>(EntryStack.Of(snapshot.Craft.Parts, keeper, found.Count - i + tail, new uint[0]).Gone.Select(p => p.Id));
+                var dropped = new HashSet<uint>(EntryStack.Of(snapshot.Craft.Parts, keeper, found.Count - i + tail).Gone.Select(p => p.Id));
                 aboard.RemoveAll(c => dropped.Contains(c.PartId));
                 entry.Chutes.AddRange(Choose(aboard, entry.Last));
                 aboard.RemoveAll(entry.Chutes.Contains);
                 entry.MassKg = entry.Return ? (podMassKg > 0 ? podMassKg : snapshot.Craft.MassTonnes * 1000)
                     : MassAfter(snapshot, sequences.Skip(first).Take(entry.Step - first).Sum(s => Math.Max(0, s.DeltaV)));
                 Judge(snapshot, entry);
+                // An entry that needs them keeps its stack, so its engines count until an earlier Entry's drop.
+                entry.EngineFinish = entry.TouchdownSpeed > EntryFinish.EngineThreshold && engines.Count > 0;
+                engines.ExceptWith(dropped);
                 groups.Entries.Add(entry);
             }
             var home = groups.Return;

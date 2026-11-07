@@ -591,6 +591,7 @@ namespace ClaudiaKerman.ScriptCheck.Tests
         [InlineData("local h is addons:claudia:returnburn(lexicon(\"target_pe\", 35000)).\nadd node(h:ut, h:radial, h:normal, h:prograde).")]
         [InlineData("local c is addons:claudia.\nprint c:ReturnBurn(lexicon(\"target_pe\", 35000, \"target_inc\", 30)):dv.")]
         [InlineData("local a is addons:claudia:chutegroup().\nprint a:uids.")]
+        [InlineData("local a is addons:claudia:entryfinish(lexicon(\"home\", \"1\")).\nprint a:powered.")]
         [InlineData("local a is addons:claudia:dropcheck(lexicon(\"before\", 1, \"left\", 0)).\nprint a:reason.")]
         [InlineData("local c is addons:claudia.\nprint c:ChuteGroup:titles.")]
         [InlineData("local t is addons:claudia:targetvessel().\nprint t:name.")]

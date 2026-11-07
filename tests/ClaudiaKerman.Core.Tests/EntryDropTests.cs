@@ -116,9 +116,9 @@ namespace ClaudiaKerman.Core.Tests
             return Uid(craft.Parts.First(p => p.Name == name).Id);
         }
 
-        private static IDictionary<string, object> Call(Craft craft, string at, IList<PlannedSequence> legs, int step = 0, string child = "", params string[] keepEngines)
+        private static IDictionary<string, object> Call(Craft craft, string at, IList<PlannedSequence> legs, int step = 0, string child = "")
         {
-            var ask = new Dictionary<string, object> { { "home", "1" }, { "keep_engines", keepEngines.Cast<object>().ToList() } };
+            var ask = new Dictionary<string, object> { { "home", "1" } };
             return BlockCalls.EntryDropCall(ask, Snapshot(craft, at), legs, step, child, Uid);
         }
 
@@ -132,7 +132,6 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("", answer["shield"]);
             Assert.Empty(Strings(answer, "decouplers"));
             Assert.Empty(Strings(answer, "gone"));
-            Assert.Empty(Strings(answer, "kept"));
             Assert.Empty(Strings(answer, "names"));
             Assert.Empty(Strings(answer, "stuck"));
         }
@@ -356,11 +355,9 @@ namespace ClaudiaKerman.Core.Tests
         // ---- The walk ----
 
         [Fact]
-        public void On_the_flights_layout_a_non_last_entry_keeps_everything_with_chutes_and_powered_alike()
+        public void On_the_flights_layout_a_non_last_entry_keeps_everything()
         {
-            var craft = TheFlight();
-            DropsNothing(Call(craft, "Duna", DunaThenKerbin));
-            DropsNothing(Call(craft, "Duna", DunaThenKerbin, 0, "", Uid(craft, "toroidalAerospike")));
+            DropsNothing(Call(TheFlight(), "Duna", DunaThenKerbin));
         }
 
         [Fact]
@@ -370,24 +367,6 @@ namespace ClaudiaKerman.Core.Tests
             var answer = Call(craft, "Kerbin", DunaThenKerbin, step: 2);
             Assert.Equal(new[] { Uid(craft, "Decoupler.1") }, Strings(answer, "decouplers"));
             Assert.Equal(new[] { "fuelTank", "radialDecoupler", "radialTank", "parachuteSingle", "toroidalAerospike" }, Strings(answer, "names"));
-        }
-
-        [Fact]
-        public void A_powered_Last_Entry_keeps_its_engine_and_drops_the_stack_below_it()
-        {
-            var c = new Craft();
-            var pod = c.Add("mk1pod.v2", null, "command");
-            var shield = c.Shield(pod);
-            var dec = c.Add("Decoupler.1", shield, "decoupler");
-            var tank = c.Add("fuelTank", dec);
-            c.Add("landingLeg1", tank);
-            var engine = c.Add("liquidEngine3.v2", tank, "engine");
-            var lower = c.Add("Decoupler.2", engine, "decoupler");
-            c.Add("fuelTankSmall", lower);
-            var answer = Call(c, "Duna", new[] { Leg("Land on Duna") }, 0, "", Uid(engine));
-            Assert.Equal(new[] { Uid(lower) }, Strings(answer, "decouplers"));
-            Assert.Equal(new[] { "fuelTankSmall" }, Strings(answer, "names"));
-            Assert.Equal(new[] { Uid(dec), Uid(tank), Uid(tank + 1), Uid(engine) }, Strings(answer, "kept"));
         }
 
         [Fact]
@@ -409,27 +388,11 @@ namespace ClaudiaKerman.Core.Tests
             var dec = c.Add("Decoupler.1", tank, "decoupler");
             var shield = c.Shield(dec);
             var pod = c.Add("mk1pod.v2", shield, "command");
-            var ask = new Dictionary<string, object> { { "home", Uid(pod) }, { "keep_engines", new List<object>() } };
+            var ask = new Dictionary<string, object> { { "home", Uid(pod) } };
             var answer = BlockCalls.EntryDropCall(ask, Snapshot(c, "Kerbin"), null, 0, "", Uid);
             Assert.Equal(Uid(shield), answer["shield"]);
             Assert.Equal(new[] { "fuelTank", "Decoupler.1" }, Strings(answer, "stuck"));
             Assert.Empty(Strings(answer, "decouplers"));
-        }
-
-        [Fact]
-        public void A_spent_engine_on_the_drop_tank_isnt_kept_so_its_stage_still_goes()
-        {
-            var c = new Craft();
-            var pod = c.Add("mk1pod.v2", null, "command");
-            var shield = c.Shield(pod);
-            var dec = c.Add("Decoupler.1", shield, "decoupler");
-            var engine = c.Add("liquidEngine3.v2", dec, "engine");
-            var lower = c.Add("Decoupler.2", engine, "decoupler");
-            var tank = c.Add("fuelTankSmall", lower);
-            c.Add("liquidEngine2.v2", tank, "engine");
-            var answer = Call(c, "Duna", new[] { Leg("Land on Duna") }, 0, "", Uid(engine));
-            Assert.Equal(new[] { Uid(lower) }, Strings(answer, "decouplers"));
-            Assert.Equal(new[] { "fuelTankSmall", "liquidEngine2.v2" }, Strings(answer, "names"));
         }
 
         [Fact]

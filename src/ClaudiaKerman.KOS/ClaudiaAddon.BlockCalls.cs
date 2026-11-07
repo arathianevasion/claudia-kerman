@@ -85,9 +85,11 @@ namespace ClaudiaKerman.KOS
             AddSuffix("DOCKFUEL", new OneArgsSuffix<Lexicon, Lexicon>(DockFuel,
                 "Core Library only (dock): whether the craft's RCS delta-v covers a dock from distance (m) at speed (m/s); lexicon error, dv, need"));
             AddSuffix("CHUTEGROUP", new NoArgsSuffix<Lexicon>(ChuteGroupSet,
-                "Core Library only (reentry): this entry's Chute Group, read fresh; lexicon error, last (true: every chute aboard), stage, uids, titles, powered_finish, touchdown_speed"));
+                "Core Library only (reentry): this entry's Chute Group, read fresh; lexicon error, last (true: every chute aboard), stage, uids, titles, touchdown_speed"));
+            AddSuffix("ENTRYFINISH", new OneArgsSuffix<Lexicon, Lexicon>(EntryFinishSet,
+                "Core Library only (reentry): whether this entry lands on its engines, from home, chutes and drop; lexicon error, powered, speed, kept_speed, engines, spare, why"));
             AddSuffix("ENTRYDROP", new OneArgsSuffix<Lexicon, Lexicon>(EntryDrop,
-                "Core Library only (reentry, deorbit): what this Entry drops, from home and keep_engines; lexicon error, number, shield, decouplers, gone, kept, names, stuck"));
+                "Core Library only (reentry, deorbit): what this Entry drops, from home; lexicon error, number, shield, decouplers, gone, names, stuck"));
             AddSuffix("DROPCHECK", new OneArgsSuffix<Lexicon, Lexicon>(DropCheckCall,
                 "Core Library only (drop_parts, deorbit, reentry): whether a drop taking the craft from before to left m/s of delta-v takes what the Mission Plan still needs; lexicon error, refused, reason, taken, need"));
             AddSuffix("LANDGUARD", new OneArgsSuffix<Lexicon, Lexicon>(LandGuardTick,
@@ -341,11 +343,25 @@ namespace ClaudiaKerman.KOS
                     id => uids.ContainsKey(id) ? uids[id] : null);
                 return KosValues.FromPlain(set);
             }, () => set["error"] as string == ""
-                ? string.Format(CultureInfo.InvariantCulture, "{0}: {1}{2}{3}", (bool)set["last"] ? "Last Entry, every chute aboard" : "stage " + set["stage"],
+                ? string.Format(CultureInfo.InvariantCulture, "{0}: {1}{2}", (bool)set["last"] ? "Last Entry, every chute aboard" : "stage " + set["stage"],
                     string.Join(", ", ((System.Collections.Generic.List<object>)set["titles"]).ConvertAll(t => (string)t).ToArray()),
-                    (bool)set["powered_finish"] ? ", powered finish" : "",
                     (double)set["touchdown_speed"] >= 0 ? string.Format(CultureInfo.InvariantCulture, ", {0:0.0} m/s", set["touchdown_speed"]) : "")
                 : (string)set["error"]);
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:ENTRYFINISH</c> (#824): whether this Entry lands on its engines (<see cref="BlockCalls.EntryFinishCall"/>); the log line is the decision, the speeds and the engine.</summary>
+        private Lexicon EntryFinishSet(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> finish = null;
+            return (Lexicon)Guarded("ENTRYFINISH", () =>
+            {
+                var vessel = shared.Vessel;
+                var uids = new System.Collections.Generic.Dictionary<uint, string>();
+                foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
+                finish = BlockCalls.EntryFinishCall(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(vessel), MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
+                    id => uids.ContainsKey(id) ? uids[id] : null);
+                return KosValues.FromPlain(finish);
+            }, () => finish["error"] as string == "" ? (string)finish["why"] : (string)finish["error"]);
         }
 
         /// <summary><c>ADDONS:CLAUDIA:ENTRYDROP</c> (#823, ADR 0018): what this Entry drops (<see cref="BlockCalls.EntryDropCall"/>), read fresh at block start.</summary>

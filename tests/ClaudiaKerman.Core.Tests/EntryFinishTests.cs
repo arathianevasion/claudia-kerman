@@ -1,0 +1,325 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Andrew Watson
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using ClaudiaKerman.Core.Missions;
+using ClaudiaKerman.Core.Tools;
+using Xunit;
+
+namespace ClaudiaKerman.Core.Tests
+{
+    /// <summary>
+    /// reentry's own choice of its engines (#824, ADR 0020), by the real predictor on the bodies of the recorded snapshot, with stock's Mk16 numbers:
+    /// a craft of the flight's shape (pod and its chute, shield, Decoupler.1, a core tank with radial tanks carrying stage 2's chutes, an engine).
+    /// </summary>
+    public class EntryFinishTests
+    {
+        private const uint Pod = 1, PodChute = 2, Shield = 3, Dec = 4, Tank = 5, Radial = 6, Engine = 7;
+
+        private static SnapshotPart Part(uint id, uint? parent, string name, double massT, int stage, params string[] tags)
+        {
+            return new SnapshotPart { Id = id, ParentId = parent, Name = name, Title = name, MassT = massT, Stage = stage, Tags = tags.ToList() };
+        }
+
+        private static SnapshotPart Chute(uint id, uint parent, int stage)
+        {
+            var part = Part(id, parent, "parachuteSingle", 0.1, stage, "parachute");
+            part.Chute = ReentrySim.Mk16();
+            return part;
+        }
+
+        /// <summary>The craft at <paramref name="body"/>, of total mass <paramref name="massT"/> with a capsule (pod and chute) of <paramref name="capsuleT"/>.</summary>
+        private static GameSnapshot Flight(string body, double massT, double capsuleT = 1.4, int radialChutes = 4, bool podChute = true, bool engine = true, bool fuelled = true)
+        {
+            var snapshot = GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "mun-shot-v2-kerbin-orbit.json")));
+            snapshot.Orbit.Body = body;
+            var parts = snapshot.Craft.Parts;
+            parts.Clear();
+            parts.Add(Part(Pod, null, "mk1pod.v2", capsuleT - (podChute ? 0.1 : 0), 0, "command", "crew_seat"));
+            if (podChute) parts.Add(Chute(PodChute, Pod, 0));
+            parts.Add(Part(Shield, Pod, "HeatShield1", 0, -1, "heat_shield", "decoupler"));
+            parts.Add(Part(Dec, Shield, "Decoupler.1", 0, 3, "decoupler"));
+            parts.Add(Part(Tank, Dec, "fuelTank", 0, 3));
+            parts.Add(Part(Radial, Tank, "radialTank", 0, 3));
+            for (var i = 0; i < radialChutes; i++) parts.Add(Chute((uint)(100 + i), Radial, 2));
+            if (engine)
+            {
+                parts.Add(Part(Engine, Tank, "toroidalAerospike", 0, 3, "engine"));
+                parts.Last().EngineFuelled = fuelled;
+            }
+            parts.Single(p => p.Id == Tank).MassT = massT - parts.Sum(p => p.MassT);
+            snapshot.Craft.MassTonnes = massT;
+            return snapshot;
+        }
+
+        private static string Uid(uint id)
+        {
+            return "uid" + id;
+        }
+
+        private static IDictionary<string, object> Ask(GameSnapshot snapshot, IList<PlannedSequence> legs, bool chutes = true, bool drop = true)
+        {
+            return BlockCalls.EntryFinishCall(new Dictionary<string, object> { { "home", Uid(Pod) }, { "chutes", chutes }, { "drop", drop } }, snapshot, legs, 0, "", Uid);
+        }
+
+        private static readonly IList<PlannedSequence> DunaThenKerbin = new[]
+        {
+            new PlannedSequence { Name = "Land on Duna", DeltaV = 100 }, new PlannedSequence { Name = "Ascend from Duna", DeltaV = 1336 }, new PlannedSequence { Name = "Return to Kerbin", DeltaV = 623 },
+        };
+        private static readonly IList<PlannedSequence> DunaLast = new[] { new PlannedSequence { Name = "Land on Duna", DeltaV = 100 } };
+        private static readonly IList<PlannedSequence> KerbinReturn = new[] { new PlannedSequence { Name = "Return to Kerbin", DeltaV = 623 } };
+
+        private static double Speed(IDictionary<string, object> answer)
+        {
+            return (double)answer["speed"];
+        }
+
+        /// <summary>The total mass, by bisection, at which <paramref name="craft"/>'s chutes predict <paramref name="speed"/> m/s, as a lander on its one group.</summary>
+        private static double MassFor(double speed, Func<double, GameSnapshot> craft)
+        {
+            double low = 0.3, high = 40;
+            for (var i = 0; i < 40; i++)
+            {
+                var mid = (low + high) / 2;
+                if (ChuteGroups.ForEntryNow(craft(mid), false).TouchdownSpeed > speed) high = mid;
+                else low = mid;
+            }
+            return low;
+        }
+
+        // ---- The worked examples ----
+
+        [Fact]
+        public void The_Duna_flight_at_Duna_before_Kerbin_lands_on_its_engines_under_stage_2s_chutes()
+        {
+            var snapshot = Flight("Duna", 3.9);
+
+            var answer = Ask(snapshot, DunaThenKerbin);
+
+            Assert.Equal("", answer["error"]);
+            Assert.Equal(true, answer["powered"]);
+            Assert.InRange(Speed(answer), 10.01, 40);
+            Assert.Equal(new object[] { Uid(Engine) }, (List<object>)answer["engines"]);
+            // Nothing drops at Duna, so the two predictions are of the same craft.
+            Assert.Equal(Speed(answer), (double)answer["kept_speed"], 6);
+            // And the group is stage 2's: the pod's stays for Kerbin.
+            Assert.Equal(new[] { 2, 2, 2, 2 }, ChuteGroups.ForEntryNow(snapshot, false).Chutes.Select(c => c.Stage));
+        }
+
+        [Fact]
+        public void The_same_craft_as_Duna_Last_Entry_drops_the_stack_if_its_capsule_lands_at_or_under_10()
+        {
+            var light = Flight("Duna", 3.9, 0.4);
+
+            var answer = Ask(light, DunaLast);
+
+            Assert.Equal(false, answer["powered"]);
+            Assert.InRange(Speed(answer), 0.1, 10);
+            Assert.Equal(-1.0, (double)answer["kept_speed"]);
+            Assert.Empty((List<object>)answer["engines"]);
+        }
+
+        [Fact]
+        public void The_same_craft_as_Duna_Last_Entry_keeps_everything_if_its_capsule_lands_over_10_and_predicts_again_for_the_kept_craft()
+        {
+            var heavy = Flight("Duna", 3.9, 2.5);
+
+            var answer = Ask(heavy, DunaLast);
+
+            Assert.Equal(true, answer["powered"]);
+            Assert.True(Speed(answer) > EntryFinish.EngineThreshold, "capsule at " + Speed(answer));
+            // The second prediction is the kept craft's: all 3.9 t under all five chutes, not the capsule's 2.5 t under one.
+            var kept = (double)answer["kept_speed"];
+            Assert.Equal(ChuteGroups.ForEntryNow(heavy, true).TouchdownSpeed, kept, 6);
+            Assert.NotEqual(Speed(answer), kept, 3);
+            var capsuleAlone = ChuteGroups.ForEntryNow(heavy, true, new uint[] { Tank, Radial, Engine, 100, 101, 102, 103 });
+            Assert.Equal(capsuleAlone.TouchdownSpeed, Speed(answer), 6);
+        }
+
+        [Fact]
+        public void A_capsule_on_its_pod_chute_home_from_Kerbin_orbit_is_on_chutes_and_the_stack_drops()
+        {
+            var snapshot = Flight("Kerbin", 3.9, 1.4);
+
+            var answer = Ask(snapshot, KerbinReturn);
+
+            Assert.Equal(false, answer["powered"]);
+            Assert.InRange(Speed(answer), 5, 10);
+            var drop = BlockCalls.EntryDropCall(new Dictionary<string, object> { { "home", Uid(Pod) } }, snapshot, KerbinReturn, 0, "", Uid);
+            Assert.Equal(new object[] { Uid(Dec) }, (List<object>)drop["decouplers"]);
+        }
+
+        [Fact]
+        public void A_lander_with_chutes_none_and_an_engine_lands_on_it()
+        {
+            var answer = Ask(Flight("Duna", 3.9), DunaThenKerbin, chutes: false);
+
+            Assert.Equal(true, answer["powered"]);
+            Assert.True(Speed(answer) > 15);
+            Assert.Equal(Speed(answer), (double)answer["kept_speed"], 6);
+        }
+
+        [Fact]
+        public void A_lander_predicting_12_with_an_engine_lands_on_it_and_with_none_stays_on_chutes()
+        {
+            var mass = MassFor(12, m => Flight("Duna", m));
+
+            var engine = Ask(Flight("Duna", mass), DunaThenKerbin);
+            Assert.InRange(Speed(engine), 11.9, 12.1);
+            Assert.Equal(true, engine["powered"]);
+
+            var none = Ask(Flight("Duna", mass, engine: false), DunaThenKerbin);
+            Assert.InRange(Speed(none), 11.9, 12.1);
+            Assert.Equal(false, none["powered"]);
+        }
+
+        // ---- The threshold, and what counts as an engine ----
+
+        [Theory]
+        [InlineData(10.0, false)]
+        [InlineData(10.01, true)]
+        [InlineData(9.99, false)]
+        [InlineData(15.01, true)]
+        public void Exactly_10_stays_on_chutes_and_just_over_uses_the_engines(double speed, bool engines)
+        {
+            Assert.Equal(engines, EntryFinish.NeedsEngines(new EntryChutes { TouchdownSpeed = speed }));
+        }
+
+        [Fact]
+        public void No_prediction_stays_on_the_chutes_it_has_and_with_none_it_needs_the_engines()
+        {
+            var entry = new EntryChutes { TouchdownSpeed = -1 };
+            Assert.True(EntryFinish.NeedsEngines(entry));
+            entry.Chutes.Add(new GroupChute());
+            Assert.False(EntryFinish.NeedsEngines(entry));
+        }
+
+        [Fact]
+        public void An_engine_with_no_fuel_by_stocks_flow_is_the_chute_path_whatever_the_speed()
+        {
+            var answer = Ask(Flight("Duna", 3.9, fuelled: false), DunaThenKerbin);
+
+            Assert.Equal(false, answer["powered"]);
+            Assert.True(Speed(answer) > EntryFinish.EngineThreshold);
+            Assert.Empty((List<object>)answer["engines"]);
+            Assert.EndsWith("no engine with fuel", (string)answer["why"]);
+        }
+
+        [Fact]
+        public void The_highest_stage_with_fuel_is_chosen_all_of_it_whatever_the_current_stage_and_the_rest_are_spare()
+        {
+            var snapshot = Flight("Duna", 3.9);
+            snapshot.Craft.Stage = 0;
+            var parts = snapshot.Craft.Parts;
+            parts.Add(Part(20, Tank, "dry", 0, 6, "engine"));
+            parts.Add(Part(21, Tank, "cluster1", 0, 4, "engine"));
+            parts.Add(Part(22, Tank, "cluster2", 0, 4, "engine"));
+            parts.Add(Part(23, Tank, "noStaging", 0, -1, "engine"));
+            foreach (var part in parts.Where(p => p.Id >= 21 && p.Id <= 23)) part.EngineFuelled = true;
+
+            var answer = Ask(snapshot, DunaThenKerbin);
+
+            Assert.Equal(new object[] { "uid21", "uid22" }, (List<object>)answer["engines"]);
+            Assert.Equal(new object[] { Uid(Engine), "uid23" }, (List<object>)answer["spare"]);
+        }
+
+        [Fact]
+        public void Separate_none_predicts_with_no_drop()
+        {
+            var heavy = Flight("Duna", 3.9, 2.5);
+
+            var answer = Ask(heavy, DunaLast, drop: false);
+
+            Assert.Equal(ChuteGroups.ForEntryNow(heavy, true).TouchdownSpeed, Speed(answer), 6);
+        }
+
+        [Fact]
+        public void The_log_line_gives_the_decision_the_speeds_and_the_engine()
+        {
+            var why = (string)Ask(Flight("Duna", 3.9), DunaThenKerbin)["why"];
+            Assert.StartsWith("engines, keeping everything: ", why);
+            Assert.Contains(" m/s as kept, on toroidalAerospike", why);
+            Assert.StartsWith("chutes, ", (string)Ask(Flight("Kerbin", 3.9), KerbinReturn)["why"]);
+            Assert.Equal("there is no Game Snapshot of the craft", BlockCalls.EntryFinishCall(new Dictionary<string, object>(), null, null, 0, "", Uid)["error"]);
+        }
+
+        // ---- The Margin Check and the Craft Check ----
+
+        private static GameSnapshot Budgeted(double massT, bool engine)
+        {
+            var snapshot = Flight("Duna", massT, engine: engine);
+            snapshot.DeltaVSimulator = true;
+            snapshot.Stages.Clear();
+            snapshot.Stages.Add(new SnapshotStage { Number = 3, DeltaVVac = 3338, StartMassT = massT, EndMassT = massT / 3 });
+            return snapshot;
+        }
+
+        [Fact]
+        public void Over_10_with_an_engine_the_budget_carries_the_finish_and_under_15_there_is_no_finding()
+        {
+            var mass = MassFor(12, m => Flight("Duna", m));
+            var snapshot = Budgeted(mass, true);
+            var groups = ChuteGroups.Of(snapshot, DunaThenKerbin, 0, false, null);
+            var duna = groups.Entries[0];
+            Assert.InRange(duna.TouchdownSpeed, 10.01, 15);
+            Assert.True(duna.EngineFinish);
+            Assert.False(duna.PoweredFinish);
+            // The card's Chutes line.
+            Assert.Contains("powered finish", groups.Describe());
+
+            var with = MarginCheck.Of(snapshot, DunaThenKerbin, 0, 10, false, null, groups, "", 0);
+            var without = MarginCheck.Of(snapshot, DunaThenKerbin, 0, 10, false, null, null, "", 0);
+
+            Assert.Equal(without.Margin.RestOfPlan + duna.TouchdownSpeed, with.Margin.RestOfPlan, 6);
+            Assert.DoesNotContain(with.Findings, f => f.Code == "chutes_short_for_landing" || f.Code == CraftCheckRules.ChuteGroupTooFast || f.Code == "chutes_thin_for_landing");
+        }
+
+        [Fact]
+        public void Over_10_with_no_engine_nothing_is_budgeted_and_there_is_no_finding_under_15()
+        {
+            var mass = MassFor(12, m => Flight("Duna", m));
+            var snapshot = Budgeted(mass, false);
+            var groups = ChuteGroups.Of(snapshot, DunaThenKerbin, 0, false, null);
+            Assert.False(groups.Entries[0].EngineFinish);
+            Assert.DoesNotContain("powered finish", groups.Describe());
+
+            var with = MarginCheck.Of(snapshot, DunaThenKerbin, 0, 10, false, null, groups, "", 0);
+            var without = MarginCheck.Of(snapshot, DunaThenKerbin, 0, 10, false, null, null, "", 0);
+
+            Assert.Equal(without.Margin.RestOfPlan, with.Margin.RestOfPlan, 6);
+        }
+
+        [Fact]
+        public void Chutes_in_one_stage_over_two_Entries_stay_a_Blocker_though_the_first_lands_on_its_engines()
+        {
+            // The first Entry opens that group under its engines all the same, so the Kerbin return has none (#826's case).
+            var snapshot = Budgeted(3.9, true);
+            snapshot.Craft.Parts.RemoveAll(p => p.Id >= 100 && p.Id < 110);
+            Assert.Equal(true, Ask(snapshot, DunaThenKerbin)["powered"]);
+
+            var groups = ChuteGroups.Of(snapshot, DunaThenKerbin, 0, false, null);
+            Assert.Empty(groups.Return.Chutes);
+
+            var finding = Assert.Single(MarginCheck.ChuteFindings(snapshot, DunaThenKerbin, groups, ""), f => f.Code == "chutes_short_for_landing" && f.Explanation.Contains("Kerbin"));
+            Assert.Equal(CraftFindingSeverity.Blocker, finding.Severity);
+        }
+
+        [Fact]
+        public void A_Kerbin_return_too_fast_on_its_chutes_stays_a_Blocker_though_in_flight_the_engines_would_finish_it()
+        {
+            var snapshot = Budgeted(6, true);
+            snapshot.Orbit.Body = "Kerbin";
+            snapshot.Craft.Parts.RemoveAll(p => p.Id >= 100 && p.Id < 110);
+            snapshot.Craft.Parts.Single(p => p.Id == Pod).MassT = 6;
+
+            var groups = ChuteGroups.Of(snapshot, KerbinReturn, 0, false, null);
+
+            Assert.True(groups.ReturnUncovered);
+            Assert.Single(MarginCheck.ChuteFindings(snapshot, KerbinReturn, groups, ""), f => f.Code == "chutes_short_for_landing");
+            Assert.Equal(true, Ask(snapshot, KerbinReturn)["powered"]);
+        }
+    }
+}
