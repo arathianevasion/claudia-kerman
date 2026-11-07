@@ -28,10 +28,11 @@ namespace ClaudiaKerman.Core.Tools
 
         public IDictionary<string, object> ToLexicon()
         {
+            // The next-patch watch has no target: its lexicon says only that it is one.
+            if (NextPatch) return new Dictionary<string, object> { { "next_patch", true }, { "since_ut", SinceUt } };
             return new Dictionary<string, object>
             {
                 { "target", Target }, { "pe", Pe }, { "pe_limit", PeLimit }, { "soi_ut", SoiUt }, { "since_ut", SinceUt }, { "bodies", string.Join(",", Bodies.ToArray()) }, { "checkpoint", Checkpoint },
-                { "next_patch", NextPatch },
             };
         }
     }
