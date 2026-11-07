@@ -1,6 +1,6 @@
-capture(options): arrival burn in a new SOI: a circle in transfer_to's plane; moon next: high orbit timed to it.
+capture(options): arrival burn in a new SOI: a circle in transfer_to's plane.
 Options:
-alt ["auto"]: m, circle or kept pe: Target Vessel's pe here, else pe arrived at, min low orbit.
+alt ["auto"]: m, pe of the circle or, moon next, high orbit timed to it: Target Vessel's pe here, else arrival pe, min low orbit.
 plane ["auto"]: as transfer_to's; auto: its aimed plane.
 max_plane_dv ["auto"]: m/s a tilt may add (max of 50, 5% of burn). Over: captures, reports, no failure.
 Extra results: capture_dv, plane_dv, capture_method, plane_leftover_deg, plane_leftover_dv, ecc, inc, kept.
