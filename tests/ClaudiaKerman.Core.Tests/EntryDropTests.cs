@@ -440,5 +440,82 @@ namespace ClaudiaKerman.Core.Tests
         {
             Assert.Equal("there is no Game Snapshot of the craft", BlockCalls.EntryDropCall(new Dictionary<string, object>(), null, null, 0, "", Uid)["error"]);
         }
+
+        // ---- #843: only shields on the stack count ----
+
+        private static readonly IList<PlannedSequence> KerbinReturn = new[] { Leg("Return to Kerbin", 623), Leg("Reentry", 0) };
+
+        private static uint Radial(Craft c, string name, uint parent, params string[] tags)
+        {
+            var id = c.Add(name, parent, tags);
+            c.Parts[c.Parts.Count - 1].SurfaceAttached = true;
+            return id;
+        }
+
+        [Fact]
+        public void Pod_shield_tanks_shield_tanks_counts_two_shields()
+        {
+            var craft = TwoShields();
+            Assert.Equal(Uid(craft, "shield2"), Call(craft, "Duna", DunaThenKerbin)["shield"]);
+            Assert.Equal(Uid(craft, "shield1"), Call(craft, "Kerbin", DunaThenKerbin, step: 2)["shield"]);
+            Assert.Null(EntryStack.Of(craft.Parts, 1, 3).Shield);
+        }
+
+        [Fact]
+        public void A_radial_pod_and_shield_on_a_side_decoupler_are_not_counted()
+        {
+            var craft = PodShieldStage();
+            var side = Radial(craft, "sideDecoupler", 4, "decoupler");
+            var radialPod = craft.Add("radialPod", side, "command");
+            craft.Shield(radialPod, "sideShield");
+            Assert.Equal(Uid(craft, "HeatShield1"), Call(craft, "Kerbin", KerbinReturn)["shield"]);
+            Assert.Null(EntryStack.Of(craft.Parts, 1, 2).Shield);
+        }
+
+        [Fact]
+        public void A_shield_past_a_docking_port_is_another_vessel_and_is_not_counted()
+        {
+            var craft = new Craft();
+            var pod = craft.Add("mk1pod.v2", null, "command");
+            var shield = craft.Shield(pod, "podShield");
+            var port = craft.Add("dockingPort", shield, "docking_port");
+            var lander = craft.Add("landerTank", port);
+            craft.Shield(lander, "landerShield");
+            Assert.Equal(Uid(craft, "podShield"), Call(craft, "Kerbin", KerbinReturn)["shield"]);
+            Assert.Null(EntryStack.Of(craft.Parts, 1, 2).Shield);
+        }
+
+        [Fact]
+        public void A_side_branch_shield_nearer_home_does_not_take_the_stacks_number()
+        {
+            var craft = new Craft();
+            var pod = craft.Add("mk1pod.v2", null, "command");
+            Radial(craft, "sideShield", pod, "heat_shield", "decoupler");
+            var s1 = craft.Shield(pod, "stackShield");
+            var d1 = craft.Add("dec1", s1, "decoupler");
+            var tank = craft.Add("tank", d1);
+            craft.Shield(tank, "stackShield2");
+            Assert.Equal(Uid(craft, "stackShield"), Call(craft, "Kerbin", KerbinReturn)["shield"]);
+            Assert.Equal(Uid(craft, "stackShield2"), Call(craft, "Duna", DunaThenKerbin)["shield"]);
+        }
+
+        [Fact]
+        public void A_radial_shield_is_never_the_Entry_Shield()
+        {
+            var craft = PodShieldStage();
+            Radial(craft, "sideShield", 4, "heat_shield", "decoupler");
+            Assert.Equal(Uid(craft, "HeatShield1"), Call(craft, "Kerbin", KerbinReturn)["shield"]);
+        }
+
+        [Fact]
+        public void Attach_mode_is_not_in_the_snapshots_json()
+        {
+            var craft = PodShieldStage();
+            craft.Parts[3].SurfaceAttached = true;
+            var radial = Snapshot(craft, "Kerbin").ToJson();
+            craft.Parts[3].SurfaceAttached = false;
+            Assert.Equal(Snapshot(craft, "Kerbin").ToJson(), radial);
+            Assert.DoesNotContain("attach", radial.ToLowerInvariant());
+        }
     }
 }

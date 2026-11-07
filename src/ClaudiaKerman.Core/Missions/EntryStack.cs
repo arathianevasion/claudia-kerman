@@ -76,22 +76,26 @@ namespace ClaudiaKerman.Core.Missions
             return parts.Select(p => p.Name).Distinct().ToList();
         }
 
-        /// <summary>The shields, nearest home first (by parts between, then part order).</summary>
+        /// <summary>
+        /// The shields on the stack, nearest home first (by parts between, then part order). The walk follows stack attachments only and
+        /// stops at a docking port: a shield on a radial branch or past a port (another vessel) takes no number (#843).
+        /// </summary>
         private static SnapshotPart ShieldNumbered(IList<SnapshotPart> parts, Dictionary<uint, SnapshotPart> byId, uint? home, int number)
         {
             var depth = new Dictionary<uint, int>();
             var start = home.HasValue && byId.ContainsKey(home.Value) ? byId[home.Value] : parts.FirstOrDefault(p => !p.ParentId.HasValue);
             if (start == null) return null;
-            var children = parts.Where(p => p.ParentId.HasValue).ToLookup(p => p.ParentId.Value);
+            var children = parts.Where(p => p.ParentId.HasValue && !p.SurfaceAttached).ToLookup(p => p.ParentId.Value);
             var queue = new Queue<SnapshotPart>();
             depth[start.Id] = 0;
             queue.Enqueue(start);
             while (queue.Count > 0)
             {
                 var part = queue.Dequeue();
+                if (part != start && part.Tags.Contains("docking_port")) continue;
                 var near = children[part.Id].ToList();
                 SnapshotPart parent;
-                if (part.ParentId.HasValue && byId.TryGetValue(part.ParentId.Value, out parent)) near.Add(parent);
+                if (part.ParentId.HasValue && (part == start || !part.SurfaceAttached) && byId.TryGetValue(part.ParentId.Value, out parent)) near.Add(parent);
                 foreach (var next in near)
                 {
                     if (depth.ContainsKey(next.Id)) continue;

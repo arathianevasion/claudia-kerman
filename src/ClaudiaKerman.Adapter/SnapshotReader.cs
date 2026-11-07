@@ -416,6 +416,7 @@ namespace ClaudiaKerman.Adapter
                     Id = part.persistentId,
                     CraftId = part.craftID,
                     ParentId = part.parent != null ? (uint?)part.parent.persistentId : null,
+                    SurfaceAttached = part.parent != null && part.attachMode == AttachModes.SRF_ATTACH,
                     Name = part.partInfo != null ? part.partInfo.name : part.name,
                     Title = part.partInfo != null ? part.partInfo.title : "",
                     Stage = part.inverseStage,
