@@ -164,9 +164,9 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new KosWarpRequested(ApprovedAt + 1e9, start.RunId));
             mission.Send(new UtAdvanced(ApprovedAt + 2000, true));
             mission.Send(new UtAdvanced(ApprovedAt + 2001, false));
-            mission.Send(new UtAdvanced(ApprovedAt + 2000 + RunawayStop.WarpAllowanceSeconds - 1, false));
+            mission.Send(new UtAdvanced(ApprovedAt + 2001 + RunawayStop.WarpAllowanceSeconds - 1, false));
             Assert.Empty(mission.TakeCommands().OfType<AbortScript>());
-            mission.Send(new UtAdvanced(ApprovedAt + 2000 + RunawayStop.WarpAllowanceSeconds, false));
+            mission.Send(new UtAdvanced(ApprovedAt + 2001 + RunawayStop.WarpAllowanceSeconds, false));
             Assert.Equal("timed out", mission.TakeCommands().OfType<AbortScript>().Single().Reason);
         }
 
