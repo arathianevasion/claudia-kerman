@@ -147,6 +147,18 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Empty(withEngine.Entry.Chutes);
             Assert.False(withEngine.Overrode);
 
+            // An engine also keeps "none" when the fall can't be predicted.
+            fast.Orbit.Body = "Nowhere";
+            Assert.Empty(Widen(fast, none: true, engine: true).Entry.Chutes);
+        }
+
+        [Fact]
+        public void ChutesNoneWithNoEngineAPredictorErrorAndNoChutesAboardOverridesNothing()
+        {
+            var widened = Widen(Craft(5, true), none: true);
+
+            Assert.False(widened.Overrode);
+            Assert.Empty(widened.Entry.Chutes);
         }
 
         [Fact]

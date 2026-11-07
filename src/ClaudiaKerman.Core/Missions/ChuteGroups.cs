@@ -57,7 +57,7 @@ namespace ClaudiaKerman.Core.Missions
         public int Extra;
         /// <summary>The touchdown predicted with the Entry's own group, m/s; -1 unknown.</summary>
         public double Before = -1;
-        /// <summary>The script's <c>chutes: "none"</c> was overridden: a certain crash with chutes aboard.</summary>
+        /// <summary>The script's <c>chutes: "none"</c> was overridden: a certain crash with chutes aboard, or (#846) a touchdown that couldn't be predicted.</summary>
         public bool Overrode;
         /// <summary>For the Mission window and Debrief: nothing can land the craft, said while it is above the air; "" otherwise.</summary>
         public string Warning = "";
