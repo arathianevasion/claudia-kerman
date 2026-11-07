@@ -64,13 +64,14 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Theory]
-        [InlineData(false, 0)] // the kept engine alone burns, so nothing burning draws on what goes
-        [InlineData(true, 3)]
-        public void A_burning_engine_that_stays_is_counted_for_core_to_have_the_kept_tanks_pay(bool goneBurns, int goneProp)
+        [InlineData(false)]
+        [InlineData(true)]
+        public void A_burning_engine_that_stays_is_counted_for_core_to_have_the_kept_tanks_pay(bool goneBurns)
         {
+            // gone_prop is a raw figure, the same propellant in what goes; AfterBurn ignores it once a burner stays (Core's AnyBurningEngineThatStays test).
             var printed = KosHarness.Run(CoreLibrary.Bundle(Craft(goneBurns, keptBurns: true) + "print claudia_drop_refusal(plan, 300).\n"));
             Assert.Contains("burners_kept 1", printed);
-            Assert.Contains("gone_prop " + goneProp, printed);
+            Assert.Contains("gone_prop 3", printed);
             Assert.Contains("prop 2", printed);
         }
 
