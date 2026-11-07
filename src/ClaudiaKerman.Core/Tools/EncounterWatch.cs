@@ -23,12 +23,15 @@ namespace ClaudiaKerman.Core.Tools
         public List<string> Bodies = new List<string>();
         /// <summary>What the mod would resume from if the player left now (#775, <see cref="CoastToken"/>); "" when the flight may not checkpoint.</summary>
         public string Checkpoint = "";
+        /// <summary>A wait with no planned encounter (#867, the wait for a far ejection): the next-patch watch (<see cref="NextPatchWatch"/>) instead.</summary>
+        public bool NextPatch;
 
         public IDictionary<string, object> ToLexicon()
         {
             return new Dictionary<string, object>
             {
                 { "target", Target }, { "pe", Pe }, { "pe_limit", PeLimit }, { "soi_ut", SoiUt }, { "since_ut", SinceUt }, { "bodies", string.Join(",", Bodies.ToArray()) }, { "checkpoint", Checkpoint },
+                { "next_patch", NextPatch },
             };
         }
     }
@@ -60,13 +63,19 @@ namespace ClaudiaKerman.Core.Tools
         private readonly string[] _bodies;
         private double _nextUt;
         private bool _suspect;
+        /// <summary>The next-patch watch a wait with no planned encounter asks instead (#867); null for an encounter's.</summary>
+        private readonly NextPatchWatch _nextPatch;
 
-        /// <summary>A watch from TRANSFERSTEP's <c>watch</c> lexicon; with no target (the empty lexicon of a wait with nothing to watch) it is never due.</summary>
+        /// <summary>
+        /// A watch from TRANSFERSTEP's <c>watch</c> lexicon; with no target (the empty lexicon of a wait with nothing to watch) it is never due.
+        /// With <c>next_patch</c> (#867) it is the next-patch watch, which drops the warp before a moon nobody planned.
+        /// </summary>
         public EncounterWatch(IDictionary<string, object> plan)
         {
-            object target, bodies;
+            object target, bodies, nextPatch;
             plan.TryGetValue("target", out target);
             plan.TryGetValue("bodies", out bodies);
+            if (plan.TryGetValue("next_patch", out nextPatch) && nextPatch as bool? == true) _nextPatch = new NextPatchWatch("");
             _target = target as string ?? "";
             _pe = Number(plan, "pe");
             _peLimit = Number(plan, "pe_limit");
@@ -79,6 +88,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>Whether a check is due at <paramref name="ut"/>, so the adapter reads a snapshot only then.</summary>
         public bool Due(double ut)
         {
+            if (_nextPatch != null) return _nextPatch.Due(ut);
             return _target != "" && ut >= _nextUt;
         }
 
@@ -94,6 +104,11 @@ namespace ClaudiaKerman.Core.Tools
         /// </summary>
         public string Check(GameSnapshot snapshot)
         {
+            if (_nextPatch != null)
+            {
+                var met = _nextPatch.Meeting(snapshot);
+                return met == null ? "" : "Next-patch watch: " + NextPatchWatch.WouldMeet(met) + "; warp dropped before it";
+            }
             var ut = snapshot.Ut;
             var trouble = Trouble(snapshot);
             if (trouble == "")

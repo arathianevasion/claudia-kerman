@@ -615,7 +615,7 @@ namespace ClaudiaKerman.Core.Tools
         /// asked again after each. Takes <c>target</c> (a body's name), <c>target_pe</c>, <c>window</c> ("next" or a UT),
         /// <c>correction</c>, <c>pe_tolerance</c>, <c>start_ut</c>, <c>max_duration</c> ("auto" or s), <c>auto</c> (whether it began
         /// "auto"), <c>turn_time</c>, <c>dv_left</c>, and what the last step carried: <c>phase</c> ("start" first), <c>arrival_ut</c>,
-        /// <c>plane_ut</c>, <c>why</c>, <c>sibling</c>, <c>recovered</c>, <c>restored</c>, <c>drops</c>, <c>mid_ut</c>, <c>watch_dropped</c>, <c>checkpoint</c> ("off", "on" or a resume token, #775) and <c>last_dv</c> (m/s the last burn used). Gives <c>error</c> ("" or why the block fails),
+        /// <c>plane_ut</c>, <c>why</c>, <c>sibling</c>, <c>recovered</c>, <c>restored</c>, <c>drops</c>, <c>mid_ut</c>, <c>watch_dropped</c>, <c>ejection</c> (the node a far ejection's watched wait carries, #867), <c>checkpoint</c> ("off", "on" or a resume token, #775) and <c>last_dv</c> (m/s the last burn used). Gives <c>error</c> ("" or why the block fails),
         /// <c>do</c> ("burn", "wait" or "done"), <c>kind</c>, <c>ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c>,
         /// <c>max_residual</c>, <c>fail_prefix</c>, <c>keep_going</c>, <c>report</c> (Script Result keys), <c>max_duration</c> (-1:
         /// unchanged), <c>watch</c> (a wait's Encounter Watch, for <see cref="EncounterWatch"/>; empty for none) and <c>carry</c> (the keys to ask with next).
@@ -646,6 +646,7 @@ namespace ClaudiaKerman.Core.Tools
                 Target = (string)target,
                 TargetPe = Number(ask, "target_pe", 0),
                 Window = window as double?,
+                Ejection = ask.ContainsKey("ejection") ? ask["ejection"] as string ?? "" : "",
                 Correction = correction as bool? ?? true,
                 PeTolerance = Number(ask, "pe_tolerance", 1000),
                 StartUt = Number(ask, "start_ut", snapshot != null ? snapshot.Ut : 0),
@@ -667,6 +668,7 @@ namespace ClaudiaKerman.Core.Tools
                 Checkpoints = mode != CoastCheckpoints.Off,
                 Resume = CoastToken.Parse(mode),
                 PlaneOption = PlaneOption.Read(ask.ContainsKey("plane") ? ask["plane"] : null),
+                WatchEjection = true,
             });
             var result = Step(step);
             result["aimed_plane"] = step.AimedPlane;
@@ -735,7 +737,7 @@ namespace ClaudiaKerman.Core.Tools
 
         private static IDictionary<string, object> Step(TransferFlightStep step)
         {
-            return new Dictionary<string, object>
+            var result = new Dictionary<string, object>
             {
                 { "error", step.Error },
                 { "do", step.Do },
@@ -757,6 +759,9 @@ namespace ClaudiaKerman.Core.Tools
                     }
                 },
             };
+            // Only the far ejection's watched wait carries one (#867); every other step clears it.
+            ((IDictionary<string, object>)result["carry"])["ejection"] = step.Ejection ?? "";
+            return result;
         }
 
         /// <summary>
