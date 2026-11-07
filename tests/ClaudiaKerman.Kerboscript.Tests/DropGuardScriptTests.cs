@@ -32,8 +32,53 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             var body = Function("claudia_lib", "function claudia_drop_refusal {");
             Assert.Contains("addons:claudia:dropcheck(", body);
-            Assert.Contains("drop_parts_dv_left(plan)", body);
+            Assert.Contains("drop_parts_kept(plan)", body);
             Assert.Contains(":reason", body);
+        }
+
+        // A fake craft: a kept tank (5 t, 2 t of it propellant) with kept_engine, a tank that goes (5 t, 3 t of it propellant) with gone_engine,
+        // gone_engine or kept_engine burning as given; DROPCHECK prints the figures it was given and refuses nothing.
+        private static string Craft(bool goneBurns, bool keptBurns)
+        {
+            string Engine(string uid, bool burning) =>
+                "lexicon(\"uid\", \"" + uid + "\", \"ignition\", " + (burning ? "true" : "false") + ", \"availablethrust\", " + (burning ? 60 : 0) + ", \"isp\", 300, "
+                + "\"consumedresources\", lexicon(\"Liquid Fuel\", 1, \"Oxidizer\", 1), "
+                + "\"maxpossiblethrustat\", { parameter a. return 60. }, \"ispat\", { parameter a. return 300. })";
+            string Part(string uid, double mass, double fuel) =>
+                "lexicon(\"uid\", \"" + uid + "\", \"mass\", " + mass + ", \"resources\", "
+                + "list(lexicon(\"name\", \"LiquidFuel\", \"amount\", " + fuel + ", \"density\", 0.005), lexicon(\"name\", \"ElectricCharge\", \"amount\", 100, \"density\", 0)))";
+            return "global ship is lexicon(\"mass\", 10, \"engines\", list(" + Engine("kept_engine", keptBurns) + ", " + Engine("gone_engine", goneBurns) + "), "
+                + "\"parts\", list(" + Part("kept_tank", 5, 400) + ", " + Part("gone_tank", 5, 600) + ")).\n"
+                + "global addons is lexicon(\"claudia\", lexicon(\"dropcheck\", { parameter ask. "
+                + "for key in list(\"left\", \"spent\", \"whole\", \"kept\", \"prop\", \"isp\", \"gone_prop\") { print key + \" \" + round(ask[key], 1). } "
+                + "return lexicon(\"reason\", \"refused\"). })).\n"
+                + "local plan is lexicon(\"gone\", list(lexicon(\"uid\", \"gone_tank\"), lexicon(\"uid\", \"gone_engine\"))).\n";
+        }
+
+        [Fact]
+        public void A_stage_burning_itself_out_gives_core_its_propellant_as_the_burns_and_the_kept_craft_as_it_is()
+        {
+            var printed = KosHarness.Run(CoreLibrary.Bundle(Craft(goneBurns: true, keptBurns: false) + "print claudia_drop_refusal(plan, 300).\n"));
+            // left: 300 s on 5 t with 2 t of propellant.
+            Assert.Equal(new[] { "left 1502.8", "spent 300", "whole 10", "kept 5", "prop 2", "isp 300", "gone_prop 3", "refused" }, printed.ToArray());
+        }
+
+        [Fact]
+        public void A_burning_engine_that_stays_leaves_the_kept_tanks_to_pay()
+        {
+            foreach (var goneBurns in new[] { false, true })
+            {
+                var printed = KosHarness.Run(CoreLibrary.Bundle(Craft(goneBurns, keptBurns: true) + "print claudia_drop_refusal(plan, 300).\n"));
+                Assert.Contains("gone_prop 0", printed);
+                Assert.Contains("prop 2", printed);
+            }
+        }
+
+        [Fact]
+        public void With_no_burn_to_come_the_check_asks_with_spent_0()
+        {
+            var printed = KosHarness.Run(CoreLibrary.Bundle(Craft(goneBurns: true, keptBurns: false) + "print claudia_drop_refusal(plan).\n"));
+            Assert.Contains("spent 0", printed);
         }
 
         [Fact]
@@ -73,7 +118,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void Deorbit_checks_the_separate_again_with_the_burns_delta_v_after_the_search_and_before_the_node()
         {
             var body = Function("deorbit", "function deorbit {");
-            var late = body.IndexOf("claudia_drop_refusal(separation, sqrt(", StringComparison.Ordinal);
+            var late = body.IndexOf("claudia_drop_refusal(separation, found:dv)", StringComparison.Ordinal);
             Assert.True(late > body.IndexOf("addons:claudia:deorbitburn(", StringComparison.Ordinal));
             Assert.True(late > body.IndexOf("return claudia_finish(ctx, false, found:error, extra)", StringComparison.Ordinal));
             Assert.True(late < body.IndexOf("add nd.", StringComparison.Ordinal));

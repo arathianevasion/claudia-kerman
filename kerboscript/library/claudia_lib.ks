@@ -573,10 +573,11 @@ function claudia_names_left {
   return left.
 }
 
-// "" or why plan's drop is refused (#825): it takes delta-v the rest of the Mission Plan needs (Core's rule). spent: m/s a burn still to fly will use (#835).
+// "" or why plan's drop is refused (#825): it takes delta-v the rest of the Mission Plan needs (Core's rule). spent: m/s a burn still to fly first will use, on the craft as it is (#835).
 function claudia_drop_refusal {
   parameter plan, spent is 0.
-  return addons:claudia:dropcheck(lexicon("before", drop_parts_dv_left(lexicon("gone", list())), "left", drop_parts_dv_left(plan), "spent", spent)):reason.
+  local kept is drop_parts_kept(plan).
+  return addons:claudia:dropcheck(lexicon("before", drop_parts_dv_left(lexicon("gone", list())), "left", drop_parts_rocket_dv(kept:isp, kept:wet, kept:prop), "spent", spent, "whole", ship:mass, "kept", kept:wet, "prop", kept:prop, "isp", claudia_engine_isp(), "gone_prop", kept:gone_prop)):reason.
 }
 
 // Fires a drop plan's decouplers, lets the parts leave, notes the names of those that really left in
@@ -1668,9 +1669,7 @@ function claudia_mean_isp {
 function claudia_engine_isp {
   local thrusts is list().
   local isps is list().
-  local engs is list().
-  list engines in engs.
-  for e in engs {
+  for e in ship:engines {
     if e:ignition and e:availablethrust > 0 {
       thrusts:add(e:availablethrust).
       isps:add(e:isp).
