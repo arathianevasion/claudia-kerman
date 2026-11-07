@@ -214,12 +214,6 @@ namespace ClaudiaKerman.Adapter
         public static double TimeCapHours = MissionSettingsValues.BalancedSearchHours;
 
         /// <summary>
-        /// The Chute Allocation and the Mission Plan step in hand (0 first; -1 before the first), for reentry's
-        /// <c>ADDONS:CLAUDIA:CHUTEALLOCATION</c> (#626). Refreshed every frame; null with no Mission or before Approval.
-        /// </summary>
-        public static ChuteAllocation ChuteAllocation;
-
-        /// <summary>
         /// The Mission Plan's Maneuver Sequences, for <c>ADDONS:CLAUDIA:DROPCHECK</c> (#825) and <c>ENTRYDROP</c> (#823); refreshed every frame, null with no Mission or
         /// plan. <see cref="BlockTestPlan"/> stands in for it in a block test, which has no Mission.
         /// </summary>
@@ -274,7 +268,6 @@ namespace ClaudiaKerman.Adapter
             ManeuverPlan.RemovePending();
             PhysicsWarpAllowed = _mission.View.PhysicsWarpAllowed;
             TimeCapHours = _mission.View.Settings.TimeCapHours;
-            ChuteAllocation = _mission.View.ChuteAllocation;
             PlanLegs = _mission.View.PlanLegs;
             RunningChild = _mission.View.RunningChild;
             if (_mission.View.Stage != MissionStage.None) AimedPlane = _mission.View.ArrivalPlane;

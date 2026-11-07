@@ -339,8 +339,8 @@ namespace ClaudiaKerman.Core.Missions
         public IList<bool> PlanSequencesManual = new List<bool>();
         /// <summary>Index into <see cref="PlanSequences"/> of the Maneuver Sequence in hand; -1 before the first.</summary>
         public int CurrentSequence = -1;
-        /// <summary>The Chute Allocation (#626) for reentry "auto"; null before Mission Plan Approval.</summary>
-        public ChuteAllocation ChuteAllocation;
+        /// <summary>The Chute Groups of the Entries left (ADR 0019), as of the last Approval, Debrief or Margin Check; null before Mission Plan Approval.</summary>
+        public ChuteGroups ChuteGroups;
         /// <summary>The Mission Plan's legs, for the Ship Systems hold (#756); null before there is a plan.</summary>
         public IList<PlannedSequence> PlanLegs;
         /// <summary>The Child Vessel the run flies, for <c>ENTRYDROP</c>'s count (#823); "" for the craft.</summary>

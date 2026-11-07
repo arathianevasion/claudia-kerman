@@ -275,8 +275,8 @@ namespace ClaudiaKerman.Core.Missions
             /// <summary>Why the mod stopped the current run ("blocked: …", "timed out"), for its Debrief; null otherwise.</summary>
             public string StopReason;
             public MissionPlan Plan;
-            /// <summary>The Chute Allocation (#626): worked out at Mission Plan Approval and each Debrief; null before (or with no Game Snapshot then).</summary>
-            public ChuteAllocation Chutes;
+            /// <summary>The Chute Groups of the Entries left (ADR 0019): worked out at Mission Plan Approval, each Debrief and each Margin Check; null before (or with no Game Snapshot then).</summary>
+            public ChuteGroups Chutes;
             /// <summary>The Mission Goal's steps (<see cref="GoalSteps"/>, #581): set by a Mission Plan, ticked by Debriefs, rebuilt from the transcript on load.</summary>
             public List<GoalItem> GoalSteps = new List<GoalItem>();
             public SequencePlan PendingSequence;
@@ -610,8 +610,8 @@ namespace ClaudiaKerman.Core.Missions
             ContinueRunEnd(mission);
             // A plan restored from a save was never offered against a snapshot: the first one after the load is its baseline.
             if (mission.AwaitingApproval && mission.PlanBaseline == null && !mission.InFlight && _scene == GameScene.Flight) mission.PlanBaseline = snapshot;
-            // An approved plan restored from a save has no Chute Allocation yet: the first snapshot of the craft after the load gives it one.
-            if (mission.Chutes == null && mission.Plan != null && mission.Stage != MissionStage.AwaitingPlanApproval && _scene == GameScene.Flight) AllocateChutes(mission);
+            // An approved plan restored from a save has no Chute Groups yet: the first snapshot of the craft after the load gives it one.
+            if (mission.Chutes == null && mission.Plan != null && mission.Stage != MissionStage.AwaitingPlanApproval && _scene == GameScene.Flight) GroupChutes(mission);
             CarryOnWhenSceneAllows();
         }
 
@@ -659,7 +659,7 @@ namespace ClaudiaKerman.Core.Missions
                 mission.MissionPlanApproved = true;
                 var newGoal = ApplyGoalChange(mission);
                 mission.Stage = MissionStage.Sequencing;
-                AllocateChutes(mission);
+                GroupChutes(mission);
                 mission.SequenceCounted = false;
                 Begin(new Turn
                 {
@@ -1879,15 +1879,15 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
-        /// The Chute Allocation (#626) of the craft as it is now over the Mission Plan's steps not yet begun: at Mission Plan
+        /// The Chute Groups (ADR 0019) of the craft as it is now over the Mission Plan's steps not yet begun: at Mission Plan
         /// Approval, the whole plan; at a Debrief, the steps after the one just flown. Only in Flight, where the snapshot carries
         /// the chutes' numbers: elsewhere (or with no Game Snapshot) there is none until the first snapshot in Flight gives one.
         /// </summary>
-        private void AllocateChutes(Mission mission)
+        private void GroupChutes(Mission mission)
         {
             mission.Chutes = null;
             if (_snapshot == null || mission.Plan == null || _scene != GameScene.Flight) return;
-            mission.Chutes = ChuteAllocation.Of(_snapshot, mission.Plan.Sequences, StepsBegun(mission), mission.Remote, mission.ProcessorPartId);
+            mission.Chutes = ChuteGroups.Of(_snapshot, mission.Plan.Sequences, StepsBegun(mission), mission.Remote, mission.ProcessorPartId);
         }
 
         /// <summary>
@@ -1946,7 +1946,9 @@ namespace ClaudiaKerman.Core.Missions
             // #757: the Craft Check ran before there was a plan, so the plan's own legs are judged against the Delta-v Map here.
             var underMap = _snapshot == null ? "" : PlanLegs.CardLine(_snapshot, PlanLegs.Judge(_snapshot, RestOfPlan(mission), mission.PlannedAscent), _config.CraftCheckMarginPercent);
             if (underMap.Length > 0) Event(mission, "leg_under_map", underMap.Trim());
-            AddCard(mission, LogKind.MissionPlan, "Mission Plan", MissionCards.MissionPlanBody(plan, mission.VesselName) + underMap, plan.Why);
+            // Each Entry's Chute Group and predicted touchdown, from the craft as it is (only Flight's snapshot has the chutes' numbers).
+            var groups = _snapshot == null || _scene != GameScene.Flight ? "" : ChuteGroups.Of(_snapshot, plan.Sequences, StepsBegun(mission), mission.Remote, mission.ProcessorPartId).Describe();
+            AddCard(mission, LogKind.MissionPlan, "Mission Plan", MissionCards.MissionPlanBody(plan, mission.VesselName) + underMap + (groups.Length > 0 ? "\nChutes: " + groups : ""), plan.Why);
             PlanNews("Claudia has a Mission Plan for your Approval.");
         }
 
@@ -2394,7 +2396,7 @@ namespace ClaudiaKerman.Core.Missions
                 view.CurrentSequence = Math.Min(StepsBegun(mission), view.PlanSequences.Count) - 1;
                 view.PlanLegs = mission.Plan != null ? mission.Plan.Sequences : null;
                 view.ProcessorPartId = mission.ProcessorPartId;
-                view.ChuteAllocation = mission.Chutes;
+                view.ChuteGroups = mission.Chutes;
                 view.RunningChild = mission.RunningChild;
                 view.ArrivalPlane = mission.ArrivalPlane;
                 view.PickedSite = mission.PickedSite;

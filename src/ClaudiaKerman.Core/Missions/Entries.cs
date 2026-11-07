@@ -76,7 +76,13 @@ namespace ClaudiaKerman.Core.Missions
             var placed = entries.Count > 0 && string.Equals(entries[0].Body, At(snapshot), StringComparison.OrdinalIgnoreCase);
             var left = placed ? entries.Count : entries.Count + 1;
             var final = entries.Count > 0 ? entries[entries.Count - 1].Step : first;
-            return left + (Enumerable.Range(final + 1, Math.Max(0, sequences.Count - final - 1)).Any(i => flown(sequences[i]) && sequences[i].DeltaV > 0) ? 1 : 0);
+            return left + (BurnsAfter(sequences, final, s => flown(s) && s.DeltaV > 0) ? 1 : 0);
+        }
+
+        /// <summary>A sequence after step <paramref name="final"/> burns: so the final Entry isn't the Last Entry, and each Entry's shield number is one more.</summary>
+        public static bool BurnsAfter(IList<PlannedSequence> sequences, int final, Func<PlannedSequence, bool> burns)
+        {
+            return sequences.Skip(final + 1).Any(burns);
         }
 
         /// <summary>
@@ -104,7 +110,7 @@ namespace ClaudiaKerman.Core.Missions
             if (entries.Count == 0) return findings;
             var rule = CraftCheckRules.Find(CraftCheckRules.HotEntry);
             var shields = snapshot.Craft.Parts.Count(p => p.Tags.Contains("heat_shield"));
-            var tail = legs.Skip(entries[entries.Count - 1].Step + 1).Any(BurnsInWords) ? 1 : 0;
+            var tail = BurnsAfter(legs, entries[entries.Count - 1].Step, BurnsInWords) ? 1 : 0;
             for (var i = 0; i < entries.Count; i++)
             {
                 var entry = entries[i];
@@ -127,21 +133,21 @@ namespace ClaudiaKerman.Core.Missions
 
         private static readonly HashSet<string> HotBodies = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Eve", "Laythe" };
 
-        private static bool BurnsInWords(PlannedSequence leg)
+        internal static bool BurnsInWords(PlannedSequence leg)
         {
             var words = SequenceWords.Of(leg);
             return leg.DeltaV > 0 || SequenceWords.Ascent.IsMatch(words) || SequenceWords.Trip.IsMatch(words) || SequenceWords.Docking.IsMatch(words);
         }
 
         /// <summary>Whether the sequence flies this vessel: <paramref name="child"/>'s own, or with "" the Mission's craft's.</summary>
-        private static bool Flies(GameSnapshot snapshot, PlannedSequence sequence, string child)
+        internal static bool Flies(GameSnapshot snapshot, PlannedSequence sequence, string child)
         {
             return string.IsNullOrEmpty(child)
                 ? MissionCards.FliesCraft(snapshot.Craft.Name, sequence.Vessel)
                 : string.Equals((sequence.Vessel ?? "").Trim(), child, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static string At(GameSnapshot snapshot)
+        internal static string At(GameSnapshot snapshot)
         {
             return snapshot.Orbit != null && snapshot.Orbit.Body.Length > 0 ? snapshot.Orbit.Body : snapshot.Body;
         }

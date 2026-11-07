@@ -113,7 +113,7 @@ namespace ClaudiaKerman.Core.Missions
         private string _remoteMissing = "";
         /// <summary>The dock block's needs for a goal that docks (#456), the mod's own findings; empty otherwise.</summary>
         private IList<MarginFinding> _docking = new List<MarginFinding>();
-        /// <summary>The chute rules on the Chute Allocation for the goal's air landings and return (#641), the mod's own findings.</summary>
+        /// <summary>The chute rules on the Chute Groups for the goal's air landings and return (#641), the mod's own findings.</summary>
         private IList<MarginFinding> _chutes = new List<MarginFinding>();
         /// <summary>The hot entries that fly with no Entry Shield (#823), from the goal's words: the mod's own findings.</summary>
         private IList<MarginFinding> _hotEntries = new List<MarginFinding>();
@@ -298,8 +298,8 @@ namespace ClaudiaKerman.Core.Missions
             // dock's needs (#456), from the goal's words: the mod's own findings, not in Claude's prompt.
             _docking = SequenceWords.Docking.IsMatch(goal ?? "") ? MarginCheck.Docking(snapshot, "The Mission Goal docks", EntryFor(snapshot, target)) : new List<MarginFinding>();
             _staging = ChildVessels.Staging(snapshot, remote, ProcessorFor(snapshot));
-            var legs = ChuteAllocation.GoalLegs(snapshot, goal);
-            _chutes = MarginCheck.ChuteFindings(snapshot, legs, ChuteAllocation.ForGoal(snapshot, legs, remote, ProcessorFor(snapshot)), goal);
+            var legs = ChuteGroups.GoalLegs(snapshot, goal);
+            _chutes = MarginCheck.ChuteFindings(snapshot, legs, ChuteGroups.ForGoal(snapshot, legs, remote, ProcessorFor(snapshot)), goal);
             _hotEntries = Entries.HotWithNoShield(snapshot, legs);
             _craftKey = CraftKey(snapshot);
             var charge = new CraftCheckCharge { Model = request.Model, Pending = worstCase, Input = RequestCharge.InputCost(_config.Prices, request.Model, request, worstCase) };
@@ -525,7 +525,7 @@ namespace ClaudiaKerman.Core.Missions
                 {
                     Code = rule.Key, Severity = rule.First().Severity, Title = rule.First().Title,
                     Explanation = string.Join(". ", rule.Select(c => c.Explanation).ToArray()),
-                    Fix = "Add parachutes, or delta-v for the engines to finish the landing.",
+                    Fix = ChuteGroupRules.Fix(rule.Key),
                 });
             foreach (var rule in _hotEntries.GroupBy(c => c.Code))
                 _findings.Insert(0, new CraftFinding

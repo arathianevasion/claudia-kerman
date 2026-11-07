@@ -258,32 +258,32 @@ namespace ClaudiaKerman.Core.Tests
             Assert.DoesNotContain("The report's dv_remaining", request);
         }
 
-        // ---- The Chute Allocation (#626) ----
+        // ---- The Chute Groups (ADR 0019) ----
 
         private static Action<GameSnapshot> WithChute(ClaudiaKerman.Core.Tools.ReentryChuteState state)
         {
             return s => s.Craft.Parts.Add(new SnapshotPart
             {
-                Id = 4242, ParentId = s.Craft.Parts[0].Id, Name = "parachuteSingle", Title = "Mk16 Parachute", MassT = 0.1,
+                Id = 4242, ParentId = s.Craft.Parts[0].Id, Name = "parachuteSingle", Title = "Mk16 Parachute", MassT = 0.1, Stage = -1,
                 Tags = new List<string> { "parachute" }, Chute = new ClaudiaKerman.Core.Tools.ReentryChute { State = state, FullArea = 337 },
             });
         }
 
         [Fact]
-        public void TheChuteAllocationIsWorkedOutAtMissionPlanApprovalAndAgainAtEachDebriefFromTheCraftAsItIs()
+        public void TheChuteGroupsAreWorkedOutAtMissionPlanApprovalAndAgainAtEachDebriefFromTheCraftAsItIs()
         {
             var rig = new Rig(this, DebriefJson("Nominal", ""));
             var start = rig.RunToRunning(WithChute(ClaudiaKerman.Core.Tools.ReentryChuteState.Stowed));
-            var approved = rig.Mission.View.ChuteAllocation;
+            var approved = rig.Mission.View.ChuteGroups;
             Assert.NotNull(approved);
             Assert.Equal(new uint[] { 4242 }, approved.Chutes.Select(c => c.PartId));
 
-            // The run opened the chute: the Debrief's allocation has none left to give.
+            // The run opened the chute: the Debrief's groups have none left to give.
             rig.Mission.Send(Craft(WithChute(ClaudiaKerman.Core.Tools.ReentryChuteState.Deployed)));
             rig.Mission.Send(new KosRunEnded(Finished(), start.RunId));
             rig.DrainUntil(v => v.Stage == MissionStage.Sequencing || v.Stage == MissionStage.Succeeded || v.Stage == MissionStage.AwaitingSequenceApproval);
 
-            var debriefed = rig.Mission.View.ChuteAllocation;
+            var debriefed = rig.Mission.View.ChuteGroups;
             Assert.NotSame(approved, debriefed);
             Assert.Empty(debriefed.Chutes);
         }

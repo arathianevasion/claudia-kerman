@@ -76,7 +76,7 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         public List<double[]> Air = new List<double[]>();
 
-        /// <summary>The height above sea level, m, of its highest common terrain, for the Chute Allocation's touchdown; 0 when not read.</summary>
+        /// <summary>The height above sea level, m, of its highest common terrain, for a Chute Group's touchdown; 0 when not read.</summary>
         public double TerrainHeight;
 
         /// <summary>

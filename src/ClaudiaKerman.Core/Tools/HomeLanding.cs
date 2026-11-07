@@ -148,7 +148,7 @@ namespace ClaudiaKerman.Core.Tools
         private static double PoweredLanding(GameSnapshot snapshot, SnapshotBody home)
         {
             if (snapshot.Craft == null || snapshot.Craft.Parts.Any(p => p.Chute != null)) return 0;
-            return ChuteAllocation.TouchdownWithoutChutes(home, snapshot.Craft.MassTonnes * 1000);
+            return ChuteGroups.TouchdownWithoutChutes(home, snapshot.Craft.MassTonnes * 1000);
         }
 
         private static string Ms(double value)

@@ -272,8 +272,8 @@ namespace ClaudiaKerman.Core.Missions
             var targetPe = call.Options.TryGetValue("target_pe", out given) ? Literal(given) : ReturnAim.DefaultTargetPe;
             if (!readable || !targetPe.HasValue || body == null) return true;
             string problem;
-            var craft = new ChuteAllocation.FallingCraft(Math.Max(1000, at.Craft == null ? 0 : at.Craft.MassTonnes * 1000), new ReentryChute[0]);
-            var landing = ReturnAim.LandingOn(at, latitude, longitude, 0, 0, body, new ChuteAllocation.SnapshotAir(planet), craft, out problem);
+            var craft = new ChuteGroups.FallingCraft(Math.Max(1000, at.Craft == null ? 0 : at.Craft.MassTonnes * 1000), new ReentryChute[0]);
+            var landing = ReturnAim.LandingOn(at, latitude, longitude, 0, 0, body, new ChuteGroups.SnapshotAir(planet), craft, out problem);
             if (landing == null) return true;
             estimate = ReturnAim.DepartureUt(at, new ReturnAsk
             {

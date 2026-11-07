@@ -13,7 +13,7 @@
 //| Options:
 //|   chute_mode ["safe"]: drogues first (under 500 m/s, over 0.02 atm, or by 3000 m above the ground), then
 //|     mains once they are out (under 250 m/s, over 0.04 atm, or by 1500 m); "none" never opens them.
-//|   chutes ["auto"]: the Chute Allocation's for this entry, "all", "none" or a list of part tags; no other is armed.
+//|   chutes ["auto"]: those of the highest stage aboard, all on the last entry, or "none"; no other is armed.
 //|   touchdown ["chutes"]: or "powered": falls under its chutes (or none), then brakes on its lit engines by
 //|     radar altitude (the stopping distance counts drag and thrust over weight) to 2 m/s; over 6 m/s fails. Its gear goes down as it brakes; with no lit engine it fails at once.
 //|   separate ["auto"]: this entry's heat shield is number n from the pod: the entries left in the Mission Plan,
@@ -82,7 +82,7 @@ function reentry_defaults {
   return lexicon("chute_mode", "safe", "jettison_stage", "auto", "hold", "retrograde", "separate", "auto", "touchdown", "chutes", "chutes", "auto").
 }
 
-// "" or why an option isn't one the block knows. A bare chutes tag becomes a list of one.
+// "" or why an option isn't one the block knows.
 function reentry_unreadable {
   parameter opt.
   if opt:chute_mode <> "safe" and opt:chute_mode <> "none" {
@@ -91,24 +91,10 @@ function reentry_unreadable {
   if opt:touchdown <> "chutes" and opt:touchdown <> "powered" {
     return "touchdown must be 'chutes' or 'powered', not '" + opt:touchdown + "'".
   }
-  local chutes_rule is "chutes must be 'auto', 'none', 'all' or a list of part tags".
-  if opt:chutes:istype("String") {
-    if not list("auto", "none", "all"):contains(opt:chutes) {
-      set opt:chutes to list(opt:chutes).
-    }
-  } else if opt:chutes:istype("List") {
-    for tag in opt:chutes {
-      if not tag:istype("String") {
-        return chutes_rule.
-      }
-    }
-  } else {
-    return chutes_rule.
-  }
   if opt:hold <> "retrograde" and opt:hold <> "none" {
     return "hold must be 'retrograde' or 'none', not '" + opt:hold + "'".
   }
-  for key in list("jettison_stage", "separate") {
+  for key in list("jettison_stage", "separate", "chutes") {
     if opt[key]:typename <> "String" or (opt[key] <> "auto" and opt[key] <> "none") {
       return key + " must be 'auto' or 'none', not " + opt[key].
     }
@@ -247,47 +233,6 @@ function reentry_touchdown_max {
 
 // ---- Chutes (#628) ----
 
-// The chutes reentry may open. choice: "auto", "none", "all" or a list of part tags; aboard: the craft's
-// parachutes (anything answering uid and tag); set: addons:claudia:chuteallocation()'s lexicon, read for
-// "auto" (an error or all keeps every chute, as before the Chute Allocation). Returns lexicon("error", ""
-// or the tag no chute carries, "uids", the uids it may open). Pure.
-function reentry_chute_set {
-  parameter choice, aboard, set.
-  local found is lexicon("error", "", "uids", list()).
-  if choice:istype("String") and choice = "none" {
-    return found.
-  }
-  local every is choice:istype("String") and (choice = "all" or set:error <> "" or set:all).
-  if every {
-    for p in aboard {
-      found:uids:add(p:uid).
-    }
-    return found.
-  }
-  if choice:istype("String") {
-    for uid in set:uids {
-      found:uids:add(uid).
-    }
-    return found.
-  }
-  for tag in choice {
-    local any is false.
-    for p in aboard {
-      if p:tag = tag {
-        set any to true.
-        if not found:uids:contains(p:uid) {
-          found:uids:add(p:uid).
-        }
-      }
-    }
-    if not any {
-      set found:error to "chutes: no parachute is tagged '" + tag + "'".
-      return found.
-    }
-  }
-  return found.
-}
-
 // True if part p is a parachute.
 function reentry_is_chute {
   parameter p.
@@ -306,32 +251,87 @@ function reentry_chutes_in {
   return found.
 }
 
-// True if one of the chutes reentry may open (uids) is a drogue.
-function reentry_has_drogues {
-  parameter parts, uids.
+// This entry's Chute Group (ADR 0019) from CHUTEGROUP's answer. Choice "none" opens nothing; an error, every chute aboard (parts): a shut chute is the worse mistake.
+function reentry_group_of {
+  parameter choice, answer, parts.
+  local group is answer.
+  if answer:error <> "" {
+    set group to lexicon("last", true, "stage", 0, "uids", list()).
+    for p in reentry_chutes_in(parts) {
+      group:uids:add(p:uid).
+    }
+  }
+  if choice = "none" {
+    set group:uids to list().
+  }
+  return group.
+}
+
+// True if chute p is in group now: its stage as read this moment, or any chute on a Last Entry.
+function reentry_in_group {
+  parameter p, group.
+  return group:last or p:stage = group:stage.
+}
+
+// True if chute p is stowed, with its deploy event there to fire.
+function reentry_stowed {
+  parameter p.
+  return p:getmodule("ModuleParachute"):hasevent("deploy chute").
+}
+
+// True if group has nothing left to open and this entry opened nothing (titles): a drop or restage took it. A skip-out's next pass has opened some, so asks for no further group.
+function reentry_group_gone {
+  parameter group, parts, opened.
+  if opened:length > 0 { return false. }
   for p in reentry_chutes_in(parts) {
-    if uids:contains(p:uid) and reentry_is_drogue(p:name) {
+    if reentry_in_group(p, group) and reentry_stowed(p) { return false. }
+  }
+  return true.
+}
+
+// group, or if it has gone (reentry_group_gone), what CHUTEGROUP gives now. Read before each opening, an abort's too.
+function reentry_fresh_group {
+  parameter group, choice, opened.
+  if reentry_group_gone(group, ship:parts, opened) { return reentry_group_of(choice, addons:claudia:chutegroup(), ship:parts). }
+  return group.
+}
+
+// True if a stowed chute of group is a drogue.
+function reentry_has_drogues {
+  parameter parts, group.
+  for p in reentry_chutes_in(parts) {
+    if reentry_in_group(p, group) and reentry_is_drogue(p:name) and reentry_stowed(p) {
       return true.
     }
   }
   return false.
 }
 
-// Opens every stowed parachute of one kind, drogues (true) or mains (false), among parts whose uid is in
-// uids; a chute outside uids is never armed. Returns the titles of those it opened.
+// Opens every stowed parachute of one kind, drogues (true) or mains (false), of group among parts; none outside it is armed. Returns the titles it opened.
 function reentry_open_chutes {
-  parameter parts, drogues, uids.
+  parameter parts, drogues, group.
   local opened is list().
   for p in reentry_chutes_in(parts) {
-    if uids:contains(p:uid) and reentry_is_drogue(p:name) = drogues {
-      local m is p:getmodule("ModuleParachute").
-      if m:hasevent("deploy chute") {
-        m:doevent("deploy chute").
-        opened:add(p:title).
-      }
+    if reentry_in_group(p, group) and reentry_is_drogue(p:name) = drogues and reentry_stowed(p) {
+      p:getmodule("ModuleParachute"):doevent("deploy chute").
+      opened:add(p:title).
     }
   }
   return opened.
+}
+
+// After landing, unless this is the Last Entry: cuts any chute still open, so it can't drag on the ascent. One stock has cut (autoCutSpeed) offers no event. Returns the titles it cut.
+function reentry_cut_chutes {
+  parameter parts, last.
+  local cut is list().
+  if last { return cut. }
+  for p in reentry_chutes_in(parts) {
+    local m is p:getmodule("ModuleParachute").
+    for event in list("cut chute", "cut parachute") {
+      if m:hasevent(event) { m:doevent(event). cut:add(p:title). break. }
+    }
+  }
+  return cut.
 }
 
 // ---- Powered touchdown (#628) ----
@@ -649,19 +649,19 @@ function reentry_note_landing {
   addons:claudia:blocknote(ctx:block, landed).
 }
 
-// What an abort mid-descent leaves behind: the parachutes it may open (uids) open if that is safe, then a
+// What an abort mid-descent leaves behind: the parachutes of group open if that is safe, then a
 // safe craft. mode: chute_mode, "none" with no chute to open. Returns the titles of the chutes it opened.
 function reentry_abort {
-  parameter mode, uids.
+  parameter mode, group.
   local opened is list().
   if ship:body:atm:exists and not claudia_on_ground() {
     local pressure is ship:body:atm:altitudepressure(ship:altitude).
     local speed is ship:velocity:surface:mag.
     if reentry_drogue_action(mode, false, speed, reentry_agl(), pressure) = "deploy" {
-      for t in reentry_open_chutes(ship:parts, true, uids) { opened:add(t). }
+      for t in reentry_open_chutes(ship:parts, true, group) { opened:add(t). }
     }
     if reentry_chute_action(mode, false, speed, reentry_agl(), pressure) = "deploy" {
-      for t in reentry_open_chutes(ship:parts, false, uids) { opened:add(t). }
+      for t in reentry_open_chutes(ship:parts, false, group) { opened:add(t). }
     }
   }
   claudia_make_safe().
@@ -710,22 +710,7 @@ function reentry {
   }
   set extra:geo to reentry_geo().
   local powered is opt:touchdown = "powered".
-  // The chutes it may open (#628): the Chute Allocation's for "auto"; none outside them is ever armed.
-  local allocation is lexicon("error", "", "all", true, "uids", list()).
-  if opt:chutes:istype("String") and opt:chutes = "auto" {
-    set allocation to addons:claudia:chuteallocation().
-  }
-  local allowed is reentry_chute_set(opt:chutes, reentry_chutes_in(ship:parts), allocation).
-  if allowed:error <> "" {
-    return claudia_finish(ctx, false, allowed:error, extra).
-  }
-  local uids is allowed:uids.
-  local chute_mode is opt:chute_mode.
-  if uids:length = 0 {
-    set chute_mode to "none".
-  }
   set extra:chutes_kept to reentry_stowed_titles(ship:parts).
-
   // Wait (on rails) for the atmosphere if the craft is still above it.
   local entry_in is 0.
   if ship:altitude > body_:atm:height and not claudia_on_ground() {
@@ -773,6 +758,12 @@ function reentry {
       }
     }
   }
+  // This entry's Chute Group (ADR 0019), chosen after any drop; none outside it is ever armed.
+  local group is reentry_group_of(opt:chutes, addons:claudia:chutegroup(), ship:parts).
+  local chute_mode is opt:chute_mode.
+  if group:uids:length = 0 {
+    set chute_mode to "none".
+  }
   // A powered touchdown needs its engines lit: reentry never stages.
   if powered and ship:availablethrust <= 0 {
     return claudia_finish(ctx, false, "touchdown 'powered' needs a lit engine (reentry never stages)", extra).
@@ -797,12 +788,12 @@ function reentry {
   if entry_in > 0 {
     local waited is claudia_wait_until(ctx, time:seconds + entry_in).
     if waited <> "" {
-      reentry_abort(chute_mode, uids).
+      reentry_abort(chute_mode, reentry_fresh_group(group, opt:chutes, extra:chutes_used)).
       return claudia_finish(ctx, false, waited, extra).
     }
   }
 
-  local has_drogues is reentry_has_drogues(ship:parts, uids).
+  local has_drogues is reentry_has_drogues(ship:parts, group).
   local drogues_out is false.
   local mains_out is false.
   local last_speed is ship:velocity:surface:mag.
@@ -824,8 +815,14 @@ function reentry {
   local chute_tick is {
     parameter speed, agl, pressure.
     local chute_plan is reentry_chute_stage(chute_mode, has_drogues, drogues_out, mains_out, speed, agl, pressure).
+    // Read again before each opening: the group may have gone, and a drogue with it.
     if chute_plan <> "wait" {
-      for t in reentry_open_chutes(ship:parts, chute_plan = "drogues", uids) {
+      set group to reentry_fresh_group(group, opt:chutes, extra:chutes_used).
+      set has_drogues to reentry_has_drogues(ship:parts, group).
+      set chute_plan to reentry_chute_stage(chute_mode, has_drogues, drogues_out, mains_out, speed, agl, pressure).
+    }
+    if chute_plan <> "wait" {
+      for t in reentry_open_chutes(ship:parts, chute_plan = "drogues", group) {
         extra:chutes_used:add(t).
       }
       if chute_plan = "drogues" {
@@ -978,7 +975,7 @@ function reentry {
     set extra:powered_dv to round(ctx:dv_used - dv_before, 1).
   }
   if fell <> "" {
-    for t in reentry_abort(chute_mode, uids) {
+    for t in reentry_abort(chute_mode, reentry_fresh_group(group, opt:chutes, extra:chutes_used)) {
       extra:chutes_used:add(t).
     }
     set extra:chutes_kept to reentry_stowed_titles(ship:parts).
@@ -994,6 +991,7 @@ function reentry {
     unlock steering.
     claudia_rcs_off("block end").
   }
+  addons:claudia:blocknote(ctx:block, lexicon("phase", "chutes_cut", "titles", reentry_cut_chutes(ship:parts, group:last):join(", "))).
   set extra:chutes_kept to reentry_stowed_titles(ship:parts).
   set extra:touchdown_speed to round(last_speed, 1).
   set extra:max_g to round(extra:max_g, 2).

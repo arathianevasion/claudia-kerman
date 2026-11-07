@@ -150,7 +150,7 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void AComeHomeLegFromTheMunIsAtKerbinForTheMarginCheckAndTheChuteAllocationAlike()
+        public void AComeHomeLegFromTheMunIsAtKerbinForTheMarginCheckAndTheChuteGroupsAlike()
         {
             // Stage 2 at 9 kN is 0.89 on the Mun. The come-home leg starts in stage 3 (1,200 m/s into its 1,678) and runs into stage 2;
             // the ascent after it is also on Kerbin (#726). Read at the Mun, both would be a TWR finding.
@@ -167,7 +167,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.DoesNotContain("twr_below_one", Codes(check));
             Assert.DoesNotContain("landing_twr_low", Codes(check));
 
-            var entry = Assert.Single(ChuteAllocation.Of(weak, rest, 0, false, null).Entries);
+            var entry = Assert.Single(ChuteGroups.Of(weak, rest, 0, false, null).Entries);
             Assert.Equal("Kerbin", entry.Body);
             Assert.True(entry.Return);
         }
@@ -176,7 +176,7 @@ namespace ClaudiaKerman.Core.Tests
         public void ALandOnTheMunAndReturnToKerbinKeepsTheMunTwrCheckChuteEntryAtKerbinAndTheNextLegAtKerbin()
         {
             // Stage 2 at 9 kN is 0.89 on the Mun (#726). The leg lands on the Mun, then returns to Kerbin: the Margin check reads its TWR
-            // at the Mun; Chute Allocation counts its entry at Kerbin; the ascent after it is at Kerbin, so it has no TWR line.
+            // at the Mun; Chute Groups count its entry at Kerbin; the ascent after it is at Kerbin, so it has no TWR line.
             var weak = InKerbinOrbit();
             weak.Stages[1].ThrustVacKn = 9;
             var rest = new List<PlannedSequence>
@@ -191,7 +191,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("on Mun for \"Land on the Mun and return to Kerbin\"", twr);
             Assert.DoesNotContain("Ascend and circularize", twr);
 
-            var entry = Assert.Single(ChuteAllocation.Of(weak, rest, 0, false, null).Entries);
+            var entry = Assert.Single(ChuteGroups.Of(weak, rest, 0, false, null).Entries);
             Assert.Equal("Kerbin", entry.Body);
             Assert.True(entry.Return);
         }

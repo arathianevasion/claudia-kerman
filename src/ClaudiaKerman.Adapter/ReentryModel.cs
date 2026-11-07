@@ -134,7 +134,7 @@ namespace ClaudiaKerman.Adapter
 
         /// <summary>
         /// The part's parachute for the predictor as <paramref name="vessel"/> holds it surface retrograde, for the Game Snapshot
-        /// (#626: the Chute Allocation divides the chutes by these); null for a part without one, or a cut chute.
+        /// (ADR 0019: the Chute Groups read these); null for a part without one, or a cut chute.
         /// </summary>
         public static ReentryChute ChuteOf(Vessel vessel, Part part)
         {

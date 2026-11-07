@@ -42,6 +42,8 @@ namespace ClaudiaKerman.Core.Missions
         public string PortSize = "";
         /// <summary>A Ship System that extends but can never retract, for the Craft Check's info line (<see cref="ShipSystemsHold"/>). Not in the JSON: the prompt doesn't carry it.</summary>
         public bool CannotRetract;
+        /// <summary>An engine already lit, for the Chute Group above it (<see cref="ChuteGroupRules"/>). Not in the JSON: the prompt doesn't carry it.</summary>
+        public bool EngineLit;
 
         // ---- Child Vessel facts (#100): enough to work out a separated vessel's own figures ----
 
@@ -58,8 +60,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The electric charge it can store.</summary>
         public double ChargeMax;
         /// <summary>
-        /// A parachute's own numbers for the reentry predictor, as the adapter's ReentryCraft reads them, held retrograde (#626:
-        /// the Chute Allocation divides the chutes by them); null for other parts, a cut chute, or when not read.
+        /// A parachute's own numbers for the reentry predictor, as the adapter's ReentryCraft reads them, held retrograde, with its
+        /// state (<see cref="ChuteGroups"/> reads them); null for other parts, a cut chute, or when not read.
         /// Only the recording JSON carries it.
         /// </summary>
         public Tools.ReentryChute Chute;

@@ -57,7 +57,7 @@ namespace ClaudiaKerman.Core.Missions
         /// is what the run just flown used (null when unknown, or for a manual stretch): each leg still to fly is taken to need as much.
         /// </summary>
         public static MarginCheck Of(GameSnapshot snapshot, IList<PlannedSequence> rest, int wantedPercent, int chargePercent, bool remote, double? monopropellantUsed,
-            ChuteAllocation chutes = null, string goal = "", int firstStep = 0, string plannedAscent = "")
+            ChuteGroups chutes = null, string goal = "", int firstStep = 0, string plannedAscent = "")
         {
             var check = new MarginCheck();
             if (rest.Count == 0) return check;
@@ -96,10 +96,10 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
-        /// The chute findings alone (#641): the Craft Check's, from <see cref="ChuteAllocation.ForGoal"/> over the Mission Goal's
-        /// <paramref name="legs"/>, judged as <see cref="Of"/> judges them, with <paramref name="goal"/>'s repack. None for a null allocation.
+        /// The chute findings alone (#641): the Craft Check's, from <see cref="ChuteGroups.ForGoal"/> over the Mission Goal's
+        /// <paramref name="legs"/>, judged as <see cref="Of"/> judges them, with <paramref name="goal"/>'s repack. None for null groups.
         /// </summary>
-        public static IList<MarginFinding> ChuteFindings(GameSnapshot snapshot, IList<PlannedSequence> legs, ChuteAllocation chutes, string goal)
+        public static IList<MarginFinding> ChuteFindings(GameSnapshot snapshot, IList<PlannedSequence> legs, ChuteGroups chutes, string goal)
         {
             var check = new MarginCheck { DeltaVUnknown = UnknownDeltaV(snapshot) };
             check.Chutes(snapshot, legs, chutes, Finishes(chutes), RepackPlan.IsPlanned(goal), 0);
@@ -107,7 +107,7 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>The entries the engines finish from a known speed (the return is judged as covered or not).</summary>
-        private static List<EntryChutes> Finishes(ChuteAllocation chutes)
+        private static List<EntryChutes> Finishes(ChuteGroups chutes)
         {
             return chutes == null ? new List<EntryChutes>() : chutes.Entries.Where(e => !e.Return && e.PoweredFinish && e.TouchdownSpeed >= 0).ToList();
         }
@@ -120,12 +120,13 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
-        /// The Chute Allocation's verdicts (#629): a powered finish whose stages (in firing order, after the legs before it and the
+        /// The Chute Groups' verdicts (#629, ADR 0019): a powered finish whose stages (in firing order, after the legs before it and the
         /// finishes before it) lack the delta-v for it, or a Kerbin return that can't be covered, is a Blocker; a finish with under
-        /// 25% spare is a Warning. With an Engineer repacking the chutes the shortfalls are Warnings that say so. The delta-v for a
-        /// finish is its touchdown speed, from the allocation's predictor; an entry that couldn't be predicted is not judged.
+        /// 25% spare is a Warning, and any other group that lands too fast one too. With an Engineer repacking the chutes the shortfalls are Warnings
+        /// that say so. The delta-v for a finish is its touchdown speed, from the predictor; an entry that couldn't be predicted is not judged.
+        /// <see cref="ChuteGroupRules"/> has the rest.
         /// </summary>
-        private void Chutes(GameSnapshot snapshot, IList<PlannedSequence> rest, ChuteAllocation chutes, IList<EntryChutes> finishes, bool repack, int firstStep)
+        private void Chutes(GameSnapshot snapshot, IList<PlannedSequence> rest, ChuteGroups chutes, IList<EntryChutes> finishes, bool repack, int firstStep)
         {
             if (chutes == null) return;
             var severity = repack ? CraftCheckRules.Find("chutes_thin_for_landing") : CraftCheckRules.Find("chutes_short_for_landing");
@@ -138,16 +139,22 @@ namespace ClaudiaKerman.Core.Missions
                 var through = Math.Max(0, Math.Min(rest.Count, entry.Step - firstStep + 1));
                 var left = have - rest.Take(through).Sum(s => Math.Max(0, s.DeltaV)) - carried;
                 carried += need;
-                if (!left.HasValue) continue;
                 var where = "The powered finish at " + entry.Body + " for \"" + entry.Sequence + "\" needs " + Whole(need) + " m/s (its chutes leave it falling that fast), "
-                    + Whole(Math.Max(0, left.Value)) + " m/s left";
-                if (left.Value < need) AddChute(severity, level, where + (repack ? "; relies on a repack at " + entry.Body : ""));
-                else if (left.Value < 1.25 * need) AddChute(CraftCheckRules.Find("chutes_thin_for_landing"), MarginLevel.Enough, where + ", under 25% spare");
+                    + (left.HasValue ? Whole(Math.Max(0, left.Value)) + " m/s left" : "delta-v left unknown");
+                if (left.HasValue && left.Value < need) AddChute(severity, level, where + (repack ? "; relies on a repack at " + entry.Body : ""));
+                else if (left.HasValue && left.Value < 1.25 * need) AddChute(CraftCheckRules.Find("chutes_thin_for_landing"), MarginLevel.Enough, where + ", under 25% spare");
+                else if (entry.Chutes.Count > 0) AddChute(CraftCheckRules.Find(CraftCheckRules.ChuteGroupTooFast), MarginLevel.Enough, where);
             }
             var home = chutes.Return;
-            if (chutes.ReturnUncovered && home != null)
-                AddChute(severity, level, "The Kerbin return's chutes leave it at " + Whole(home.TouchdownSpeed) + " m/s, over " + Whole(ChuteAllocation.TouchdownLimit)
+            // A return with no group at all is the group rule's: one finding, not two.
+            if (chutes.ReturnUncovered && home != null && (home.Chutes.Count > 0 || chutes.Chutes.Count == 0))
+                AddChute(severity, level, "The Kerbin return's chutes leave it at " + Whole(home.TouchdownSpeed) + " m/s, over " + Whole(ChuteGroups.TouchdownLimit)
                     + (repack ? "; relies on a repack at Kerbin" : ""));
+            foreach (var finding in ChuteGroupRules.Of(snapshot, rest, chutes, repack, firstStep))
+            {
+                Findings.Add(finding);
+                Raise(finding.Severity == CraftFindingSeverity.Blocker ? MarginLevel.Short : MarginLevel.Enough);
+            }
         }
 
         private void AddChute(CraftCheckRule rule, MarginLevel level, string explanation)

@@ -13,7 +13,7 @@ using Xunit;
 namespace ClaudiaKerman.Core.Tests
 {
     /// <summary>
-    /// The Craft Check's chute rules (#641): before any Mission Plan, the Chute Allocation is worked out from the Mission Goal's
+    /// The Craft Check's chute rules (#641): before any Mission Plan, the Chute Groups are worked out from the Mission Goal's
     /// own words and the craft, and the mod raises the Margin Check's chutes_short_for_landing and chutes_thin_for_landing from it.
     /// The craft is the recorded Mun Shot v2 in Kerbin orbit with a Mk16 on the pod; Claude's reply is a hand-written pass.
     /// </summary>
@@ -31,10 +31,16 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         /// <summary>The craft, with its stages' delta-v cut to <paramref name="deltaVShare"/> of what they have.</summary>
-        private static GameSnapshot Craft(double deltaVShare = 1)
+        private static GameSnapshot Craft(double deltaVShare = 1, bool landerChute = true)
         {
             var snapshot = GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "mun-shot-v2-kerbin-orbit.json")));
             snapshot.Craft.Parts.Single(p => p.Id == PodChute).Chute = ReentrySim.Mk16();
+            if (landerChute)
+                snapshot.Craft.Parts.Add(new SnapshotPart
+                {
+                    Id = 900, ParentId = 1454380882, Name = "parachuteSingle", Title = "Lander Mk16", Stage = 1, MassT = 0.1,
+                    Tags = new System.Collections.Generic.List<string> { "parachute" }, Chute = ReentrySim.Mk16(),
+                });
             foreach (var stage in snapshot.Stages) stage.DeltaVVac *= deltaVShare;
             return snapshot;
         }
@@ -113,11 +119,10 @@ namespace ClaudiaKerman.Core.Tests
         {
             var snapshot = Craft();
 
-            var allocation = ChuteAllocation.ForGoal(snapshot, ChuteAllocation.GoalLegs(snapshot, Duna), false, null);
+            var groups = ChuteGroups.ForGoal(snapshot, ChuteGroups.GoalLegs(snapshot, Duna), false, null);
 
-            Assert.Equal(new[] { "Duna", "Kerbin" }, allocation.Entries.Select(e => e.Body).ToArray());
-            Assert.True(allocation.Entries[1].Return);
-            Assert.Equal("", allocation.ForPlan);
+            Assert.Equal(new[] { "Duna", "Kerbin" }, groups.Entries.Select(e => e.Body).ToArray());
+            Assert.True(groups.Entries[1].Return);
         }
 
         [Fact]
@@ -127,7 +132,7 @@ namespace ClaudiaKerman.Core.Tests
             snapshot.Situation = "PRELAUNCH";
             snapshot.Orbit = null;
 
-            var legs = ChuteAllocation.GoalLegs(snapshot, Duna);
+            var legs = ChuteGroups.GoalLegs(snapshot, Duna);
 
             Assert.Equal(DeltaVMap.Compute(snapshot.Bodies, "Kerbin").Leg("launch:Kerbin").DeltaV, legs[0].DeltaV, 3);
             Assert.True(legs.Skip(1).All(l => l.DeltaV == 0));
@@ -141,6 +146,7 @@ namespace ClaudiaKerman.Core.Tests
             var finding = Assert.Single(mission.View.CraftCheck.Findings, f => f.Code == "chutes_short_for_landing");
             Assert.Equal(CraftFindingSeverity.Blocker, finding.Severity);
             Assert.StartsWith("The powered finish at Duna for \"Land on Duna\" needs ", finding.Explanation);
+            Assert.Contains("delta-v for the engines", finding.Fix);
             Assert.False(string.IsNullOrEmpty(finding.Fix));
             Assert.Equal(CraftVerdict.Fail, mission.View.CraftCheck.Verdict);
             Assert.False(mission.View.CraftCheck.StartAllowed);
@@ -150,13 +156,13 @@ namespace ClaudiaKerman.Core.Tests
         public void TheCraftChecksChuteFindingsAreTheMarginChecksWordForWord()
         {
             var snapshot = Craft(0.001);
-            var legs = ChuteAllocation.GoalLegs(snapshot, Duna);
+            var legs = ChuteGroups.GoalLegs(snapshot, Duna);
 
-            var mod = MarginCheck.ChuteFindings(snapshot, legs, ChuteAllocation.ForGoal(snapshot, legs, false, null), Duna);
-            var margin = MarginCheck.Of(snapshot, legs, 15, 10, false, null, ChuteAllocation.Of(snapshot, legs, 0, false, null), Duna, 0);
+            var mod = MarginCheck.ChuteFindings(snapshot, legs, ChuteGroups.ForGoal(snapshot, legs, false, null), Duna);
+            var margin = MarginCheck.Of(snapshot, legs, 15, 10, false, null, ChuteGroups.Of(snapshot, legs, 0, false, null), Duna, 0);
 
             Assert.NotEmpty(mod);
-            Assert.Equal(margin.Findings.Where(f => f.Code.StartsWith("chutes_")).Select(f => f.Describe()), mod.Select(f => f.Describe()));
+            Assert.Equal(margin.Findings.Where(f => f.Code.StartsWith("chute")).Select(f => f.Describe()), mod.Select(f => f.Describe()));
         }
 
         [Fact]
@@ -188,6 +194,36 @@ namespace ClaudiaKerman.Core.Tests
             var mission = Checked(Craft(), Duna);
 
             Assert.DoesNotContain(mission.View.CraftCheck.Findings, f => f.Code.StartsWith("chutes_"));
+        }
+
+        // ---- Chute Groups (ADR 0019) ----
+
+        [Fact]
+        public void OneStageOfChutesForTwoEntriesIsABlockerAndWithARepackAWarning()
+        {
+            var blocked = Assert.Single(Checked(Craft(landerChute: false), Duna).View.CraftCheck.Findings, f => f.Explanation.Contains("no Chute Group"));
+            Assert.Equal("chutes_short_for_landing", blocked.Code);
+            Assert.Equal(CraftFindingSeverity.Blocker, blocked.Severity);
+            Assert.Contains("Give each Entry its own stage", blocked.Fix);
+
+            var warned = Assert.Single(Checked(Craft(landerChute: false), "Land on Duna, where an engineer repacks the chutes, and return to Kerbin.").View.CraftCheck.Findings, f => f.Explanation.Contains("no Chute Group"));
+            Assert.Equal(CraftFindingSeverity.Warning, warned.Severity);
+        }
+
+        [Fact]
+        public void AChuteGroupAboveAnEngineTheGoalNeedsIsABlockerWithItsOwnFix()
+        {
+            var craft = Craft();
+            craft.Craft.Stage = 4;
+            craft.Stages.Clear();
+            craft.Stages.Add(new SnapshotStage { Number = 3, DeltaVVac = 100, StartMassT = 12, EndMassT = 11 });
+            craft.Stages.Add(new SnapshotStage { Number = 0, DeltaVVac = 6000, StartMassT = 8, EndMassT = 2 });
+            craft.Craft.Parts.Single(p => p.Tags.Contains("engine") && p.Stage == 2).Stage = 0;
+
+            var finding = Assert.Single(Checked(craft, Duna).View.CraftCheck.Findings, f => f.Code == CraftCheckRules.ChuteGroupAboveEngine);
+
+            Assert.Equal(CraftFindingSeverity.Blocker, finding.Severity);
+            Assert.Contains("Move the chutes", finding.Fix);
         }
 
         [Fact]
