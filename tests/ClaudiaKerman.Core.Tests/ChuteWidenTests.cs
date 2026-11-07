@@ -176,6 +176,66 @@ namespace ClaudiaKerman.Core.Tests
             Assert.DoesNotContain("a crash otherwise", widened.Why());
         }
 
+        private static GameSnapshot Unpredicted(bool above = true)
+        {
+            var snapshot = Craft(5, above, 2, 0);
+            snapshot.Craft.MassTonnes = 0; // the predictor can't run: the craft's mass is unknown
+            return snapshot;
+        }
+
+        [Fact]
+        public void AnUnpredictedLandingAboveTheAirWithNoEngineGivesTheWarning()
+        {
+            var widened = Widen(Unpredicted());
+
+            Assert.Equal(-1, widened.Entry.TouchdownSpeed);
+            Assert.StartsWith("This landing can't be predicted (the craft's mass is unknown): opening its own Chute Group, with no engine to finish it", widened.Warning);
+        }
+
+        [Fact]
+        public void AnUnpredictedLandingWithChutesNoneOverriddenGivesTheWarningAsWellAsTheOverride()
+        {
+            var widened = Widen(Unpredicted(), none: true);
+
+            Assert.True(widened.Overrode);
+            Assert.StartsWith("chutes none overridden: no engine, and the touchdown prediction failed", widened.Why());
+            Assert.Contains("This landing can't be predicted", widened.Warning);
+            Assert.Contains("opening its own Chute Group", widened.Warning);
+        }
+
+        [Fact]
+        public void AnUnpredictedLandingWithNoChutesToOpenSaysNoChutes()
+        {
+            var snapshot = Craft(0, true);
+
+            Assert.Contains("opening no chutes, with no engine", Widen(snapshot, none: true).Warning);
+        }
+
+        [Fact]
+        public void AnUnpredictedLandingGivesNoWarningInsideTheAirWithAnEngineOrWithNoAirOrNoKnownBody()
+        {
+            Assert.Equal("", Widen(Unpredicted(false)).Warning);
+            Assert.Equal("", Widen(Unpredicted(), engine: true).Warning);
+            Assert.Equal("", Widen(Unpredicted(), none: true, engine: true).Warning);
+            var noAir = Unpredicted();
+            noAir.Bodies.Single(b => b.Name == "Duna").AtmosphereHeight = 0;
+            Assert.Equal("", Widen(noAir).Warning);
+            var nowhere = Unpredicted();
+            nowhere.Orbit.Body = "Nowhere";
+            Assert.Equal("", Widen(nowhere).Warning);
+            Assert.Equal("", Widen(nowhere, none: true).Warning);
+        }
+
+        [Fact]
+        public void AKnownSpeedOverTheLimitKeepsNumberEightTwentySevensWarningText()
+        {
+            var warning = Widen(Craft(MassAt(24, new[] { 2, 2 }), true, 2, 2)).Warning;
+
+            Assert.StartsWith("Nothing can land this craft safely: it is predicted to touch down at ", warning);
+            Assert.EndsWith(", with every chute it can open and no engine to finish it", warning);
+            Assert.DoesNotContain("can't be predicted", warning);
+        }
+
         [Fact]
         public void ChutesNoneWithNoEngineAndAKnownSoftLandingStaysNone()
         {
