@@ -340,6 +340,15 @@ namespace ClaudiaKerman.Core.Missions
         }
     }
 
+    /// <summary>A Mission's run asked for warp (#830): where it is headed (null when the request named no target and no wait gave one).</summary>
+    public sealed class KosWarpRequested : MissionInput
+    {
+        public readonly double? TargetUt;
+        /// <summary>The <see cref="StartScript.RunId"/> this answers.</summary>
+        public readonly int RunId;
+        public KosWarpRequested(double? targetUt, int runId) { TargetUt = targetUt; RunId = runId; }
+    }
+
     /// <summary>A block switched RCS on or off (<c>ADDONS:CLAUDIA:RCSSWITCH</c>); <see cref="RcsSwitch"/> says what the lexicon holds.</summary>
     public sealed class KosRcsSwitched : MissionInput
     {

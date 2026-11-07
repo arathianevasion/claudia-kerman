@@ -122,6 +122,58 @@ namespace ClaudiaKerman.Core.Tests
             Assert.DoesNotContain("warp target", LastUserText(transport.Requests[2]));
         }
 
+        // ---- #830: the stop holds while the run's latest warp target is ahead ----
+
+        [Fact]
+        public void AtTheDeadlineWithAWarpTargetAheadTheStopHoldsThenFiresAfterTheTargetAndTheAllowance()
+        {
+            var mission = InFlight(Transport(plannedSeconds: 600), new PlayerConfig());
+            var start = RunToRunning(mission);
+            var target = ApprovedAt + 5000;
+            mission.Send(new KosWarpRequested(target, start.RunId));
+
+            mission.Send(new UtAdvanced(ApprovedAt + 1800));
+            mission.Send(new UtAdvanced(target - 1));
+            Assert.Empty(mission.TakeCommands().OfType<AbortScript>());
+            mission.Send(new UtAdvanced(target + RunawayStop.WarpAllowanceSeconds - 1));
+            Assert.Empty(mission.TakeCommands().OfType<AbortScript>());
+            mission.Send(new UtAdvanced(target + RunawayStop.WarpAllowanceSeconds));
+            Assert.Equal("timed out", mission.TakeCommands().OfType<AbortScript>().Single().Reason);
+        }
+
+        [Fact]
+        public void AWarpTargetAlreadyPastAtTheDeadlineStopsAsToday()
+        {
+            var mission = InFlight(Transport(plannedSeconds: 600), new PlayerConfig());
+            var start = RunToRunning(mission);
+            mission.Send(new KosWarpRequested(ApprovedAt + 1000, start.RunId));
+            mission.Send(new UtAdvanced(ApprovedAt + 1800));
+            Assert.Single(mission.TakeCommands().OfType<AbortScript>());
+        }
+
+        [Fact]
+        public void ARequestWithNoTargetOrFromAnotherRunHoldsNothing()
+        {
+            var mission = InFlight(Transport(plannedSeconds: 600), new PlayerConfig());
+            var start = RunToRunning(mission);
+            mission.Send(new KosWarpRequested(ApprovedAt + 50000, start.RunId + 1));
+            mission.Send(new KosWarpRequested(ApprovedAt + 50000, start.RunId));
+            mission.Send(new KosWarpRequested(null, start.RunId));
+            mission.Send(new UtAdvanced(ApprovedAt + 1800));
+            Assert.Single(mission.TakeCommands().OfType<AbortScript>());
+        }
+
+        [Fact]
+        public void ACustomScriptThatHangsWithoutWarpingStillStopsAt300Percent()
+        {
+            var mission = InFlight(Transport(plannedSeconds: 600), new PlayerConfig());
+            RunToRunning(mission);
+            mission.Send(new UtAdvanced(ApprovedAt + 1799));
+            Assert.Empty(mission.TakeCommands().OfType<AbortScript>());
+            mission.Send(new UtAdvanced(ApprovedAt + 1800));
+            Assert.Single(mission.TakeCommands().OfType<AbortScript>());
+        }
+
         [Fact]
         public void TheMultiplierComesFromThePlayerConfig()
         {

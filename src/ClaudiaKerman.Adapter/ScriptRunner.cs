@@ -58,5 +58,11 @@ namespace ClaudiaKerman.Adapter
         /// Called on the main thread, in order with the run's other events; the Mission driver sets it.
         /// </summary>
         public static Action<int, IDictionary<string, object>, double> RcsSwitched;
+
+        /// <summary>
+        /// A Mission's run asked for warp (#830): the run id and the request's target UT (the wait's own when it named none, null when
+        /// there is none). The runaway stop holds while that target is ahead. Called on the main thread; the Mission driver sets it.
+        /// </summary>
+        public static Action<int, double?> WarpRequested;
     }
 }
