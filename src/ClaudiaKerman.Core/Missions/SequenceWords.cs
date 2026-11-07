@@ -66,10 +66,12 @@ namespace ClaudiaKerman.Core.Missions
             return FirstBody(snapshot, words, false);
         }
 
-        /// <summary>The first body <paramref name="words"/> name other than Kerbin and other than where a return comes from, or null for none.</summary>
-        public static SnapshotBody AwayBody(GameSnapshot snapshot, string words)
+        /// <summary>The one body <paramref name="words"/> name other than Kerbin, or null for none or several.</summary>
+        public static SnapshotBody SoleAwayBody(GameSnapshot snapshot, string words)
         {
-            return FirstBody(snapshot, words, true);
+            var named = snapshot.Bodies.Where(b => b.Name.Length > 0 && !string.Equals(b.Name, "Kerbin", StringComparison.OrdinalIgnoreCase)
+                && Regex.IsMatch(words, @"\b" + Regex.Escape(b.Name) + @"\b", RegexOptions.IgnoreCase)).ToList();
+            return named.Count == 1 ? named[0] : null;
         }
 
         /// <summary>

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace ClaudiaKerman.Core.Missions
 {
@@ -46,9 +47,7 @@ namespace ClaudiaKerman.Core.Missions
                 body = stays ?? SequenceWords.NextBody(snapshot, words, body);
                 if (SequenceWords.Ascent.IsMatch(words)) ascended = true;
                 if (leg.Manual || body == null) continue;
-                var landing = SequenceWords.Landing.IsMatch(words);
-                var entry = landing || SequenceWords.Reentry.IsMatch(words) || returnsHome;
-                if (!entry || (SequenceWords.Aero.IsMatch(words) && !landing)) continue;
+                if (!SaysEntry(words, returnsHome)) continue;
                 if (body.AtmosphereHeight <= 0 && body.SeaLevelAtm <= 0) continue;
                 var last = entries.Count > 0 ? entries[entries.Count - 1] : null;
                 if (last != null && last.Body == body.Name && !ascended) entries.Remove(last);
@@ -61,36 +60,49 @@ namespace ClaudiaKerman.Core.Missions
             return entries;
         }
 
+        /// <summary>The words say this leg comes down through air: a landing, a reentry or a return home, but not aerobraking alone.</summary>
+        private static bool SaysEntry(string words, bool returnsHome)
+        {
+            var landing = SequenceWords.Landing.IsMatch(words);
+            return (landing || SequenceWords.Reentry.IsMatch(words) || returnsHome) && (landing || !SequenceWords.Aero.IsMatch(words));
+        }
+
         /// <summary>
         /// The body a leg stays at when the return home in its intent is only prose about a later leg (#838: "Land on Duna before the return to
         /// Kerbin"), else null. Landings and reentries in an intent still count, and so does a return no later leg flies, as a recorded plan's
         /// leg often goes home in its intent alone ("Ascend from the Mun", "then return toward Kerbin"): a missed Entry drops too much, and a drop
-        /// can't be undone. So the return gives way only when the name doesn't say it or place the leg at Kerbin, the intent names somewhere else,
-        /// the leg doesn't ascend before it lands, and a later leg of this vessel is that return, as an Entry, with no launch from Kerbin before it.
+        /// can't be undone. So the return gives way only when the name doesn't say it or place the leg at Kerbin, the leg doesn't ascend before it
+        /// lands, the words name one other body and name it before the return, and a later leg of this vessel is an Entry at Kerbin, followed as
+        /// the reader follows it, with no launch from Kerbin before it. Any doubt reads the return as this leg's, which only ever keeps a stage.
         /// </summary>
         private static SnapshotBody BeforeLaterReturn(GameSnapshot snapshot, IList<PlannedSequence> sequences, int step, Func<PlannedSequence, bool> flown)
         {
             var leg = sequences[step];
             var words = SequenceWords.Of(leg);
-            if (!SequenceWords.ReturnHome.IsMatch(words) || SequenceWords.ReturnHome.IsMatch(leg.Name) || IsKerbin(SequenceWords.NamedBody(snapshot, leg.Name))) return null;
+            var said = SequenceWords.ReturnHome.Match(words);
+            if (!said.Success || SequenceWords.ReturnHome.IsMatch(leg.Name) || IsKerbin(SequenceWords.NamedBody(snapshot, leg.Name))) return null;
             var action = SequenceWords.ActionWords(leg);
             var up = SequenceWords.Ascent.Match(action);
             var down = SequenceWords.Landing.Match(action);
             if (up.Success && (!down.Success || up.Index < down.Index)) return null;
-            var away = SequenceWords.AwayBody(snapshot, words);
-            if (away == null) return null;
+            var away = SequenceWords.SoleAwayBody(snapshot, words);
+            if (away == null || SequenceWords.NamedBody(snapshot, words.Substring(0, said.Index)) != away) return null;
+            var at = away;
             for (var i = step + 1; i < sequences.Count; i++)
             {
                 var later = sequences[i];
-                if (later.Manual || (flown != null && !flown(later))) continue;
+                if (flown != null && !flown(later)) continue;
                 var laterWords = SequenceWords.Of(later);
-                var kerbin = IsKerbin(SequenceWords.NamedBody(snapshot, laterWords));
-                var landing = SequenceWords.Landing.IsMatch(laterWords);
-                if ((SequenceWords.ReturnHome.IsMatch(laterWords) || (kerbin && SequenceWords.Reentry.IsMatch(laterWords))) && (landing || !SequenceWords.Aero.IsMatch(laterWords))) return away;
-                if (kerbin && SequenceWords.Ascent.IsMatch(laterWords)) return null;
+                var returns = SequenceWords.ReturnHome.IsMatch(laterWords);
+                var from = at;
+                at = SequenceWords.NextBody(snapshot, laterWords, at);
+                if (SequenceWords.Ascent.IsMatch(laterWords) && (IsKerbin(from) || FromKerbin.IsMatch(laterWords) || (IsKerbin(at) && !returns))) return null;
+                if (!later.Manual && IsKerbin(at) && SaysEntry(laterWords, returns)) return away;
             }
             return null;
         }
+
+        private static readonly Regex FromKerbin = new Regex(@"\bfrom\s+Kerbin\b", RegexOptions.IgnoreCase);
 
         private static bool IsKerbin(SnapshotBody body)
         {

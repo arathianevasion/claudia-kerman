@@ -452,9 +452,40 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void A_body_named_after_the_return_in_an_intent_is_where_the_leg_is()
+        public void A_body_named_only_after_the_return_is_a_doubt_and_the_return_stands()
         {
-            Assert.Equal(new[] { "0:Duna", "1:Kerbin" }, Found("Duna", Said("Phase three", "Before the return to Kerbin, land on Duna"), Leg("Return to Kerbin", 623)));
+            Assert.Equal(new[] { "1:Kerbin" }, Found("Duna", Said("Phase three", "Before the return to Kerbin, land on Duna"), Leg("Return to Kerbin", 623)));
+            Assert.Equal(new[] { "0:Kerbin", "3:Kerbin" }, Found("Kerbin", Said("Phase one", "Return to Kerbin and land, then head for the Mun"), Leg("Launch for the Mun", 3400), Leg("Transfer to the Mun", 860), Leg("Return to Kerbin", 300)));
+        }
+
+        [Fact]
+        public void Two_bodies_named_keep_both_Entries_in_the_count()
+        {
+            // The Mun is where it leaves, not where it lands: reading the Mun would lose this Entry.
+            var found = Found("Duna", Said("Phase three", "Leave the Mun and land on Duna before the return to Kerbin"), Leg("Ascend from Duna", 1336), Leg("Return to Kerbin", 623));
+            Assert.Equal(2, found.Length);
+        }
+
+        [Theory]
+        [InlineData("Land on Kerbin")]
+        [InlineData("Reentry and landing")]
+        public void A_Kerbin_Entry_the_plan_reaches_by_a_transfer_is_the_later_return(string last)
+        {
+            Assert.Equal(new[] { "0:Duna", "3:Kerbin" }, Found("Duna", Said("Land on Duna", "Land on Duna before the return to Kerbin"), Leg("Ascend from Duna", 1336), Leg("Transfer to Kerbin", 623), Leg(last, 0)));
+        }
+
+        [Fact]
+        public void A_launch_from_Kerbin_ends_the_search_for_the_later_return()
+        {
+            var manual = new PlannedSequence { Name = "Launch from Kerbin", Manual = true };
+            Assert.Equal(new[] { "0:Kerbin", "3:Kerbin" }, Found("Kerbin", Said("Phase one", "Land on Duna, return to Kerbin"), manual, Leg("Transfer to Duna", 900), Leg("Return to Kerbin", 300)));
+            Assert.Equal(new[] { "0:Kerbin", "1:Kerbin" }, Found("Kerbin", Said("Phase one", "Land on the Mun, then return to Kerbin"), Said("Launch from Kerbin", "Launch, fly by the Mun and return to Kerbin")));
+        }
+
+        [Fact]
+        public void A_later_leg_that_ascends_and_returns_home_is_the_later_return()
+        {
+            Assert.Equal(new[] { "0:Duna", "1:Kerbin" }, Found("Duna", Said("Land on Duna", "Land on Duna before the return to Kerbin"), Leg("Ascend and return to Kerbin", 1959)));
         }
 
         [Fact]
