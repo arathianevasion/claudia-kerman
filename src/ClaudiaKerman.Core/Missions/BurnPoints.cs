@@ -110,6 +110,8 @@ namespace ClaudiaKerman.Core.Missions
             var masked = CoreLibrary.MissionScript(script, true);
             var code = CoreLibrary.MissionScript(script);
             double? nodeUt = null;
+            // #830: the game seconds the coasts before this call hold the craft; the burn's wait counts from after them.
+            var held = 0.0;
             var nodes = AddNode.Matches(masked).Cast<Match>().ToList();
             foreach (var call in BlockOptionCheck.Calls(script))
             {
@@ -117,11 +119,21 @@ namespace ClaudiaKerman.Core.Missions
                 var added = nodes.LastOrDefault(n => n.Index < call.Index);
                 if (added != null)
                 {
-                    nodeUt = NodeUt(masked, code, added, now);
+                    nodeUt = NodeUt(masked, code, added, now + held);
                     if (!nodeUt.HasValue) return null;
                 }
-                var wait = Wait(call, snapshot, now, nodeUt, Remove.IsMatch(masked.Substring(0, call.Index)), body);
+                if (call.Block == "coast")
+                {
+                    // A coast whose until can't be read leaves nothing to check; a UT already past returns at once.
+                    var until = Until(call.Option("until"), now + held);
+                    if (!until.HasValue) return null;
+                    held += Math.Max(0, until.Value - (now + held));
+                    continue;
+                }
+                var wait = Wait(call, snapshot, now + held, nodeUt, Remove.IsMatch(masked.Substring(0, call.Index)), body);
                 if (wait == null) return null;
+                wait.WaitSeconds += held;
+                if (wait.ToEarliestSeconds > 0) wait.ToEarliestSeconds += held;
                 var dv = expectedDeltaV > 0 ? expectedDeltaV : call.Block == "exec_node" && !nodeUt.HasValue && snapshot.Nodes.Count > 0 ? snapshot.Nodes[0].DeltaV : 0;
                 wait.BurnSeconds = (dv > 0 ? Tools.PredictBurn.BurnSeconds(snapshot, dv) : null) ?? BurnAllowanceSeconds;
                 return wait;
@@ -348,6 +360,16 @@ namespace ClaudiaKerman.Core.Missions
             if (Number.IsMatch(first)) return double.Parse(first, CultureInfo.InvariantCulture);
             var from = FromNow.Match(first);
             return from.Success ? now + double.Parse(from.Groups["s"].Value, CultureInfo.InvariantCulture) : (double?)null;
+        }
+
+        /// <summary>A coast's until as a UT: a number, or <c>time:seconds + n</c> from <paramref name="at"/>; null when it isn't one of those.</summary>
+        private static double? Until(string text, double at)
+        {
+            if (text == null) return null;
+            var trimmed = text.Trim();
+            if (Number.IsMatch(trimmed)) return double.Parse(trimmed, CultureInfo.InvariantCulture);
+            var from = FromNow.Match(trimmed);
+            return from.Success ? at + double.Parse(from.Groups["s"].Value, CultureInfo.InvariantCulture) : (double?)null;
         }
 
         private static double? Literal(string text)

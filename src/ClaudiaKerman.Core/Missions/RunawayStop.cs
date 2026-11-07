@@ -19,6 +19,9 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>A plan with no (or a tiny) planned duration is held to this many seconds before the multiplier.</summary>
         public const double MinimumPlannedSeconds = 60;
 
+        /// <summary>#830: at the deadline, a run whose latest warp target is still ahead is held until the target has passed by this many seconds.</summary>
+        public const double WarpAllowanceSeconds = 60;
+
         /// <summary>The UT at which a run started at <paramref name="startUt"/> is stopped.</summary>
         public static double Deadline(double startUt, double plannedSeconds, double multiplier)
         {

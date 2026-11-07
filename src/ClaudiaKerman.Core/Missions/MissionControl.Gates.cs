@@ -21,7 +21,15 @@ namespace ClaudiaKerman.Core.Missions
         private void StartRunawayTimer(Mission mission, SequencePlan plan)
         {
             mission.StopReason = null;
+            mission.WarpTargetUt = null;
             mission.RunDeadlineUt = RunawayStop.Deadline(_ut, plan.ExpectedDurationSeconds, _config.RunawayMultiplier);
+        }
+
+        private void WarpRequestSeen(KosWarpRequested requested)
+        {
+            var mission = _mission;
+            if (mission == null || !IsRunning(mission) || mission.RunId != requested.RunId) return;
+            mission.WarpTargetUt = requested.TargetUt;
         }
 
         /// <summary>After every input: a run still going at its deadline is aborted (with make-safe) and Debriefed as "timed out".</summary>
@@ -30,6 +38,8 @@ namespace ClaudiaKerman.Core.Missions
             var mission = _mission;
             if (mission == null || !IsRunning(mission) || !mission.RunId.HasValue || !mission.RunningProcessor.HasValue) return;
             if (!mission.RunDeadlineUt.HasValue || _ut < mission.RunDeadlineUt.Value || mission.StopReason != null) return;
+            // #830: the warp's target is still ahead (or only just passed): wait for it, a script not warping or past its warps stops now.
+            if (mission.WarpTargetUt.HasValue && _ut < mission.WarpTargetUt.Value + RunawayStop.WarpAllowanceSeconds) return;
             mission.StopReason = RunawayStop.Reason;
             // As the deadline counted it: a plan of under a minute is held to one.
             var planned = Math.Max(mission.PendingSequence != null ? mission.PendingSequence.ExpectedDurationSeconds : 0, RunawayStop.MinimumPlannedSeconds);

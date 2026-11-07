@@ -244,10 +244,65 @@ namespace ClaudiaKerman.Core.Tests
             return snapshot;
         }
 
-        [Fact]
-        public void APlanWhoseDurationLeavesOutTheWaitToItsBurnGoesBackOnceWithTheFigure()
+        /// <summary>#830: the card's duration, as the player sees it at Approval.</summary>
+        private static double CardDuration(MissionControl mission)
         {
-            var transport = new StreamingFakeTransport(PlanReply(), Sequence(1500, RaisePe, 300), Sequence(1500, RaisePe, 305000));
+            var card = mission.View.Log.Last(e => e.Kind == LogKind.SequencePlan);
+            var m = System.Text.RegularExpressions.Regex.Match(card.Text, @"Expected: [^\n]*, (?<s>\d+) s");
+            return double.Parse(m.Groups["s"].Value, System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        [Fact]
+        public void AShortDurationIsRaisedByTheModWithNoRequestAndLogged()
+        {
+            var transport = new StreamingFakeTransport(PlanReply(), Sequence(1500, RaisePe, 300));
+            var mission = Control(transport);
+            ToSequencePlan(mission);
+            mission.Send(FarFromApoapsis());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(2, transport.Requests.Count);
+            Assert.True(CardDuration(mission) >= 304000, "raised to cover the wait: " + CardDuration(mission));
+            var line = Assert.Single(PlanLines(mission));
+            Assert.False(line.GetProperty("script_rewrite").GetBoolean());
+            Assert.Contains(line.GetProperty("lints").EnumerateArray(), l => l.GetString().StartsWith("duration raised by the mod: expected_duration_s 300 s to 304,"));
+        }
+
+        /// <summary>#830, the flight's own case: a coast to a literal UT, then capture, planned at 20,000 s.</summary>
+        [Fact]
+        public void ACoastToALiteralUtThenCaptureIsRaisedAboveTheRealWaitWithNoRequest()
+        {
+            var until = (FarFromApoapsis().Ut + 63300).ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+            var script = "local res is coast(lexicon(\"until\", " + until + ")). set res to capture(lexicon(\"alt\", 60000)). addons:claudia:report(res).";
+            var transport = new StreamingFakeTransport(PlanReply(), Sequence(1500, script, 20000));
+            var mission = Control(transport);
+            ToSequencePlan(mission);
+            mission.Send(FarFromApoapsis());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(2, transport.Requests.Count);
+            Assert.True(CardDuration(mission) > 63300, "raised above the real wait: " + CardDuration(mission));
+            Assert.Contains(Assert.Single(PlanLines(mission)).GetProperty("lints").EnumerateArray(), l => l.GetString().StartsWith("duration raised by the mod: expected_duration_s 20,000 s to "));
+        }
+
+        [Fact]
+        public void AFigureLongerThanTheMinimumStands()
+        {
+            var transport = new StreamingFakeTransport(PlanReply(), Sequence(1500, RaisePe, 500000));
+            var mission = Control(transport);
+            ToSequencePlan(mission);
+            mission.Send(FarFromApoapsis());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal(2, transport.Requests.Count);
+            Assert.Equal(500000, CardDuration(mission));
+            Assert.DoesNotContain(Assert.Single(PlanLines(mission)).GetProperty("lints").EnumerateArray(), l => l.GetString().Contains("duration raised"));
+        }
+
+        [Fact]
+        public void ACrossingGoesBackInOneCorrectionAndTheShortDurationIsRaisedBesideIt()
+        {
+            var transport = new StreamingFakeTransport(PlanReply(), Sequence(2500, RaisePe, 300), Sequence(1500, RaisePe, 300));
             var mission = Control(transport);
             ToSequencePlan(mission);
             mission.Send(FarFromApoapsis());
@@ -255,26 +310,9 @@ namespace ClaudiaKerman.Core.Tests
 
             Assert.Equal(3, transport.Requests.Count);
             var body = transport.Requests[2].Body;
-            Assert.Contains("expected_duration_s is 300 s, but tune_pe waits about 304,000 s", body);
-            Assert.Contains("set it to at least 304,", body);
-            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("leaves out the wait to the first burn"));
-            var line = Assert.Single(PlanLines(mission));
-            Assert.True(line.GetProperty("script_rewrite").GetBoolean());
-            Assert.DoesNotContain(line.GetProperty("lints").EnumerateArray(), l => l.GetString().Contains("duration short"));
-        }
-
-        [Fact]
-        public void AStillShortCorrectedPlanIsOfferedWithTheWarningLogged()
-        {
-            var transport = new StreamingFakeTransport(PlanReply(), Sequence(1500, RaisePe, 300), Sequence(1500, RaisePe, 330));
-            var mission = Control(transport);
-            ToSequencePlan(mission);
-            mission.Send(FarFromApoapsis());
-            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
-
-            Assert.Equal(3, transport.Requests.Count);
-            var line = Assert.Single(PlanLines(mission));
-            Assert.Contains(line.GetProperty("lints").EnumerateArray(), l => l.GetString().StartsWith("duration short of first burn: expected_duration_s 330 s"));
+            Assert.Contains("delta-v left under 2,500 m/s", body);
+            Assert.DoesNotContain("tune_pe waits about", body);
+            Assert.True(CardDuration(mission) >= 304000);
         }
 
         [Fact]
@@ -288,21 +326,6 @@ namespace ClaudiaKerman.Core.Tests
 
             Assert.Equal(2, transport.Requests.Count);
             Assert.False(Assert.Single(PlanLines(mission)).GetProperty("script_rewrite").GetBoolean());
-        }
-
-        [Fact]
-        public void AShortDurationAndACrossingGoBackInOneCorrection()
-        {
-            var transport = new StreamingFakeTransport(PlanReply(), Sequence(2500, RaisePe, 300), Sequence(1500, RaisePe, 305000));
-            var mission = Control(transport);
-            ToSequencePlan(mission);
-            mission.Send(FarFromApoapsis());
-            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
-
-            Assert.Equal(3, transport.Requests.Count);
-            var body = transport.Requests[2].Body;
-            Assert.Contains("delta-v left under 2,500 m/s", body);
-            Assert.Contains("tune_pe waits about 304,000 s", body);
         }
 
         [Fact]
