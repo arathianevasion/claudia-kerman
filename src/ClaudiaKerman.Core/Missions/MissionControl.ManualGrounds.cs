@@ -15,11 +15,7 @@ namespace ClaudiaKerman.Core.Missions
     {
         private static bool ManualHasGrounds(Mission mission, SequencePlan plan)
         {
-            if (ManualGrounds.Asked(mission.Goal, ManualGrounds.TypedWords(mission.Log), mission.TookManual)) return true;
-            if (ManualGrounds.ServesEva(plan, mission.EvaScience)) return true;
-            // The player approved a Mission Plan whose step is itself a manual stretch.
-            var steps = mission.Plan == null ? null : mission.Plan.Sequences;
-            return steps != null && plan.PlanStep.HasValue && plan.PlanStep.Value >= 1 && plan.PlanStep.Value <= steps.Count && steps[plan.PlanStep.Value - 1].Manual;
+            return mission.ManualAsk || ManualGrounds.ServesEva(plan, mission.EvaScience);
         }
 
         private void ManualRefused(Mission mission, Turn turn, SequencePlan plan)
@@ -27,7 +23,11 @@ namespace ClaudiaKerman.Core.Missions
             var reason = ManualGrounds.Refusal(plan.Name);
             if (turn.ManualRetry)
             {
-                Failed(mission, turn, "Claudia still plans a manual stretch (" + MissionPrompts.Quoted(plan.Name) + ") that nothing asked for. Reply that you will fly it by hand, or Retry with a note asking for a script.");
+                // Her reply was committed, so nothing is in hand: the turn goes back in hand for the Pause, or Retry and Retry with a note have nothing to resend.
+                mission.Pending = turn;
+                Failed(mission, turn, "Claudia still plans a manual stretch (" + MissionPrompts.Quoted(plan.Name) + ") that nothing asked for. Retry with a note saying you will fly it by hand, or asking for a script.");
+                // Retry with a note is how the player answers: it takes a Refusal pause.
+                if (mission.Stage == MissionStage.Paused) mission.PauseCause = PauseCause.Refusal;
                 return;
             }
             Note(LogKind.Notice, "The Sequence Plan " + MissionPrompts.Quoted(plan.Name) + " was a manual stretch nothing asked for; Claudia is revising it.");
@@ -54,10 +54,10 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (turn.Purpose != Purpose.Debrief || reply.Debrief == null || reply.Debrief.Outcome != "Failed" || turn.LandingMissSentBack || mission.DeferredRestore != null) return false;
             var plan = mission.PendingSequence;
-            if (plan == null || !ManualGrounds.LandingStep(plan.Script) || ManualGrounds.PrecisionGoal(mission.Goal)) return false;
+            if (plan == null || !ManualGrounds.LandingStep(plan.Script) || mission.PrecisionGoal) return false;
             if (!ManualGrounds.DownAlive(MissionVesselSnapshot(mission), mission.RunStartCrew)) return false;
             turn.LandingMissSentBack = true;
-            // Her Failed reply stays in front of her, so "reply Failed again" has something to answer; none of it is committed unless she stands by it.
+            // Her Failed reply stays in front of her, so "reply Failed again" has something to answer; it and the send-back are committed with the turn.
             var before = turn.Messages.Count;
             turn.Messages.Add(message.ToMessage());
             turn.Messages.Add(Message.SystemText(ManualGrounds.SendBack));

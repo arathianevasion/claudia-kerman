@@ -104,7 +104,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is ChooseWindow) WindowChosen(((ChooseWindow)input).Kind);
             else if (input is ChooseModel) ModelChosen(((ChooseModel)input).Model);
             else if (input is Replan) Replanned();
-            else if (input is TakeManualControl) TakeManual("the Manual Control button");
+            else if (input is TakeManualControl) TakeManual("the Manual Control button", true);
             else if (input is ManualInputHeld) InputHeld(((ManualInputHeld)input).Seconds);
             else if (input is HandBack) HandedBack(((HandBack)input).Message);
             else if (input is CaptureSnapshot) Capture();
@@ -426,6 +426,8 @@ namespace ClaudiaKerman.Core.Missions
             {
                 Id = id,
                 Goal = goal,
+                ManualAsk = ManualGrounds.Asked(goal),
+                PrecisionGoal = ManualGrounds.PrecisionGoal(goal),
                 SpendingCap = start.SpendingCap,
                 Model = start.Model,
                 Folder = MissionFolder.For(_saveDirectory, id),
@@ -2357,6 +2359,8 @@ namespace ClaudiaKerman.Core.Missions
             var entry = new LogEntry { Kind = kind, Text = text ?? "" };
             QueueIfBlackout(_mission, entry);
             if (_mission != null) _mission.Log.Add(entry);
+            if (kind == LogKind.Player && _mission != null && !ManualGrounds.NotTyped.Any(p => entry.Text.StartsWith(p, StringComparison.Ordinal)))
+                _mission.ManualAsk = ManualGrounds.Fold(_mission.ManualAsk, entry.Text);
             return entry;
         }
 

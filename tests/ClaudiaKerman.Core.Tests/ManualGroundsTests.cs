@@ -45,38 +45,57 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("I’ll fly it")]
         public void TheGoalOrAPlayersWordsAskForAManualStretchWithoutRegardToCase(string words)
         {
-            Assert.True(ManualGrounds.Asked(words, new string[0], false));
-            Assert.True(ManualGrounds.Asked("Return to KSC.", new[] { words }, false));
+            Assert.True(ManualGrounds.Asked(words));
+            Assert.True(ManualGrounds.Fold(false, words));
+        }
+
+        [Theory]
+        [InlineData("Why are you asking me to fly manually?")]
+        [InlineData("Is Manual Control available?")]
+        [InlineData("Please avoid manual stretches")]
+        [InlineData("nothing manual")]
+        [InlineData("Land without manual input")]
+        [InlineData("no need for anything manual here")]
+        [InlineData("Why that orbit?")]
+        [InlineData("never take manual control")]
+        [InlineData("don't fly it manually")]
+        [InlineData("don't hand over")]
+        public void AQuestionOrANegationOrNoWordsIsNotAYes(string words)
+        {
+            Assert.False(ManualGrounds.Fold(false, words));
         }
 
         [Fact]
-        public void NoWordsAndNoManualControlAskForNothing()
+        public void AQuestionLeavesAnEarlierYesStandingAndALaterNoCancelsItAndALaterYesStandsAgain()
         {
-            Assert.False(ManualGrounds.Asked("Return to KSC.", new[] { "Why that orbit?" }, false));
-            Assert.True(ManualGrounds.Asked("Return to KSC.", new string[0], true));
+            Assert.True(ManualGrounds.Fold(true, "Why are you asking me to fly manually?"));
+            Assert.False(ManualGrounds.Fold(true, "No manual stretch, just land as close as you can"));
+            Assert.False(ManualGrounds.Fold(true, "Please avoid manual stretches"));
+            Assert.True(ManualGrounds.Fold(false, "ok, let me fly it"));
+            Assert.True(ManualGrounds.Fold(true, "Is that safe?"));
+            Assert.False(ManualGrounds.Fold(ManualGrounds.Asked("Land by hand"), "don't hand over"));
         }
 
         [Fact]
-        public void ALaterNoCancelsAnEarlierYesAndALaterYesStandsAgain()
+        public void TheLogLinesThatAreNotTheirTypedWordsAreListed()
         {
-            Assert.False(ManualGrounds.Asked("Return to KSC.", new[] { "I'll fly the landing", "No manual stretch, just land as close as you can" }, false));
-            Assert.False(ManualGrounds.Asked("Land by hand", new[] { "don't hand over" }, false));
-            Assert.True(ManualGrounds.Asked("Return to KSC.", new[] { "no manual", "ok, let me fly it" }, false));
-            Assert.False(ManualGrounds.Asked("Return to KSC.", new[] { "I'll fly it", "don't fly it manually" }, false));
-            Assert.False(ManualGrounds.Asked("Return to KSC.", new[] { "never take manual control" }, false));
+            Assert.Contains("Mission Goal: ", ManualGrounds.NotTyped);
+            Assert.Contains("EVA science done by hand", ManualGrounds.NotTyped);
         }
 
         [Fact]
-        public void TheLogsTypedWordsLeaveOutTheGoalAndTheEvaNote()
+        public void OnlyNamedEvaScienceServesAManualStretch()
         {
-            var log = new[]
-            {
-                new LogEntry { Kind = LogKind.Player, Text = "Mission Goal: land by hand" },
-                new LogEntry { Kind = LogKind.Player, Text = "EVA science done by hand: surface sample" },
-                new LogEntry { Kind = LogKind.Notice, Text = "let me fly" },
-                new LogEntry { Kind = LogKind.Player, Text = "Why that orbit?" },
-            };
-            Assert.Equal(new[] { "Why that orbit?" }, ManualGrounds.TypedWords(log).ToArray());
+            Assert.True(ManualGrounds.ServesEva(PlanText("Take EVA science at the station."), ""));
+            Assert.True(ManualGrounds.ServesEva(PlanText("Dock."), "Surface sample on the Mun"));
+            Assert.False(ManualGrounds.ServesEva(PlanText("No EVA possible with this craft."), ""));
+            Assert.False(ManualGrounds.ServesEva(PlanText("No EVA science on this flight."), ""));
+            Assert.False(ManualGrounds.ServesEva(PlanText("Dock by hand."), ""));
+        }
+
+        private static SequencePlan PlanText(string intent)
+        {
+            return new SequencePlan { Name = "Hand docking", Intent = intent, Why = "", Target = "", Tolerances = "" };
         }
 
         [Theory]
@@ -89,6 +108,8 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("Orbit the Mun within 10 days", false)]
         [InlineData("Land within 5 m/s of vertical speed", false)]
         [InlineData("Land within 100 m of the pad", true)]
+        [InlineData("Rendezvous within 1 km of the station, then land at KSC", false)]
+        [InlineData("Land at KSC to within 50 m", true)]
         public void APrecisionGoalMakesTheSpotThePoint(string goal, bool precision)
         {
             Assert.Equal(precision, ManualGrounds.PrecisionGoal(goal));
@@ -191,8 +212,74 @@ namespace ClaudiaKerman.Core.Tests
             DrainUntil(mission, v => v.Stage == MissionStage.Paused && !v.Busy);
             Assert.Equal(3, transport.Requests.Count);
             Assert.Contains("manual stretch", mission.View.PauseReason);
-            Assert.Contains("fly it by hand", mission.View.PauseReason);
+            Assert.Contains("Retry with a note", mission.View.PauseReason);
+            Assert.DoesNotContain("Reply", mission.View.PauseReason);
             Assert.DoesNotContain(mission.View.Log, e => e.Title == "Hand docking");
+        }
+
+        [Fact]
+        public void AfterTheSecondRefusalRetryWithANoteSayingIllFlyItGetsTheStretchThrough()
+        {
+            var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), Bare(), Bare(), Bare());
+            var mission = Control(transport, AutoModeOn());
+            ToSequenceTurn(mission, Goal);
+            DrainUntil(mission, v => v.Stage == MissionStage.Paused && !v.Busy);
+            Assert.Contains(QuickReply.RetryWithNote, mission.View.QuickReplies);
+
+            mission.Send(new RetryWithNote("I'll fly it by hand."));
+            DrainUntil(mission, v => v.Stage != MissionStage.Paused && !v.Busy && v.Log.Any(e => e.Title == "Hand docking"));
+            Assert.Equal(4, transport.Requests.Count);
+            Assert.True(mission.ExportStates()[0].ManualAsk == "true");
+        }
+
+        [Fact]
+        public void TheAnswerInARetryNoteSurvivesALoadAndALaterNoStillCancelsIt()
+        {
+            var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), Bare(), Bare(), Bare());
+            var mission = Control(transport);
+            ToSequenceTurn(mission, Goal);
+            DrainUntil(mission, v => v.Stage == MissionStage.Paused && !v.Busy);
+            mission.Send(new RetryWithNote("I'll fly it by hand."));
+            DrainUntil(mission, v => v.Stage != MissionStage.Paused && !v.Busy && v.Log.Any(e => e.Title == "Hand docking"));
+
+            var saved = new List<MissionSaveState> { MissionSaveState.FromValues(mission.ExportStates()[0].ToValues()) };
+            Assert.Equal("true", saved[0].ManualAsk);
+            var resumed = Control(new StreamingFakeTransport());
+            resumed.Send(new MissionsRestored(_save.Path, saved));
+            Assert.Equal("true", resumed.ExportStates()[0].ManualAsk);
+
+            resumed.Send(new Reply("On second thought, no manual stretch."));
+            Assert.Equal("false", resumed.ExportStates()[0].ManualAsk);
+        }
+
+        [Fact]
+        public void TakingManualControlWithTheButtonIsAYesAndALaterNoCancelsIt()
+        {
+            var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), Fixture("mission-sequence-plan.sse"));
+            var mission = Control(transport);
+            ToSequenceTurn(mission, Goal);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            Assert.Equal("false", mission.ExportStates()[0].ManualAsk);
+
+            mission.Send(new TakeManualControl());
+            Assert.Equal(MissionStage.ManualControl, mission.View.Stage);
+            Assert.Equal("true", mission.ExportStates()[0].ManualAsk);
+
+            mission.Send(new HandBack("That's enough, no more manual stretches."));
+            Assert.Equal("false", mission.ExportStates()[0].ManualAsk);
+        }
+
+        [Fact]
+        public void AHeldInputTakeoverIsNotAYes()
+        {
+            var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), Fixture("mission-sequence-plan.sse"));
+            var mission = Control(transport);
+            ToSequenceTurn(mission, Goal);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            mission.Send(new ManualInputHeld(1.5));
+            Assert.Equal(MissionStage.ManualControl, mission.View.Stage);
+            Assert.Equal("false", mission.ExportStates()[0].ManualAsk);
         }
 
         // ---- The Debrief ----

@@ -292,7 +292,7 @@ The player's act, with an optional message about what they did, of giving the cr
 _Avoid_: give back, return control, release
 
 **Manual stretch**:
-A Maneuver Sequence in the Mission Plan that the player flies by hand (e.g. EVA science; docking is the `dock` block's), so it has no script. Approving it starts Manual Control; the player's Hand back ends it. Claudia plans one only when the player asked (the Mission Goal's or their typed words, a later "no" cancelling an earlier yes, or they took Manual Control), the Mission Plan's step is itself manual, or it serves EVA science the plan or a Debrief names; the mod refuses any other once with the reason, and a second one stops the Mission with a request to the player, Auto Mode included. A landing's accuracy is never grounds: she flies it as best she can and reports the miss.
+A Maneuver Sequence in the Mission Plan that the player flies by hand (e.g. EVA science; docking is the `dock` block's), so it has no script. Approving it starts Manual Control; the player's Hand back ends it. Claudia plans one only when the player asked (the Mission Goal's or their typed words, a later "no" cancelling an earlier yes, or they took Manual Control with the button), or it serves EVA science the plan or a Debrief names; the mod refuses any other once with the reason, and a second one stops the Mission with a request to the player, Auto Mode included. A landing's accuracy is never grounds: she flies it as best she can and reports the miss.
 _Avoid_: manual sequence, manual mode (Manual Control is the state)
 
 **Lost**:
