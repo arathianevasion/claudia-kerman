@@ -22,8 +22,8 @@ plus min_ec_pct, abort_on_part_loss and stage_limit as for every block; each bur
 Extra results: planet_pe (m, the periapsis at the planet), reentry_ut (UT of the predicted
 entry into the planet's atmosphere, or of periapsis if that is above it), correction_dv (m/s the
 mid-course correction burned), predicted_geo (lexicon lat, lng: where the craft is predicted to come
-down, from the path it is on after the correction, with the prediction leaving out parachutes and
-lift; empty without a target or a prediction), predicted_error_km (km from the target to
+down, from the path it is on after the correction, for the craft reentry flies with separate
+"auto"; empty without a target or a prediction), predicted_error_km (km from the target to
 predicted_geo; -1 without one), aim_dv (m/s), aim_note and aim_spread_km (km per 0.5 m/s of burn error).
 The correction is skipped when the prediction is already within 1 km of target_pe and 0.5 degrees of
 target_inc (with a target: within 2 km of it) or the fix is under 0.1 m/s. When leaving the moon's
