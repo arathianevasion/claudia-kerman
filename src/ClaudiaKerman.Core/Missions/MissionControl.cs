@@ -618,6 +618,8 @@ namespace ClaudiaKerman.Core.Missions
             if (mission.AwaitingApproval && mission.PlanBaseline == null && !mission.InFlight && _scene == GameScene.Flight) mission.PlanBaseline = snapshot;
             // An approved plan restored from a save has no Chute Groups yet: the first snapshot of the craft after the load gives it one.
             if (mission.Chutes == null && mission.Plan != null && mission.Stage != MissionStage.AwaitingPlanApproval && _scene == GameScene.Flight) GroupChutes(mission);
+            // #867: a plan offered with no snapshot of the craft is judged on the first.
+            CrossingFirstSnapshot(mission);
             CarryOnWhenSceneAllows();
         }
 

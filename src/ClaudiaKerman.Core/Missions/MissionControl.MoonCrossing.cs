@@ -23,6 +23,10 @@ namespace ClaudiaKerman.Core.Missions
             public string CrossingBlocker = "";
             /// <summary>The snapshot the held Blocker was last judged on: a new one (the player may have flown the fix) judges it again.</summary>
             public GameSnapshot CrossingJudgedOn;
+            /// <summary>The plan in hand was offered with no snapshot of the craft (outside Flight, another vessel active): the first one judges it.</summary>
+            public bool CrossingUnjudged;
+            /// <summary>The bodies the current or last run's <c>transfer_to</c> aimed at, comma-separated: planned, not crossed, until the next run. Saved.</summary>
+            public string RunTransfers = "";
         }
 
         /// <summary>
@@ -40,24 +44,42 @@ namespace ClaudiaKerman.Core.Missions
                 due = BurnPoints.DueTime(BurnPoints.First(plan.Script, stamped, _ut, plan.ExpectedDeltaV, _body), _ut);
             }
             if (!due.HasValue || due.Value <= _ut) return null;
-            return MoonCrossings.Judge(snapshot.At(_ut), due.Value);
+            // The last run's transfer_to target is met on the coast it left: planned, not crossed.
+            return MoonCrossings.Judge(snapshot.At(_ut), due.Value, RunTransfers(mission));
         }
 
-        /// <summary>The Blocker the plan in hand holds, judged now from the craft as it is (the player may have flown the fix); "" for none.</summary>
+        private static IList<string> RunTransfers(Mission mission)
+        {
+            return mission.RunTransfers.Split(new[] { ',' }, System.StringSplitOptions.RemoveEmptyEntries);
+        }
+
+        /// <summary>
+        /// The Blocker the plan in hand holds, judged now from the craft as it is (the player may have flown the fix); "" for none. With no snapshot of
+        /// the craft (outside Flight, another vessel active) a held Blocker stands: only a snapshot that shows no crossing lifts it.
+        /// </summary>
         private string CrossingBlockerNow(Mission mission)
         {
             var plan = mission.PendingSequence;
-            if (plan == null || !ReferenceEquals(mission.CrossingPlan, plan) || mission.CrossingBlocker.Length == 0) return "";
-            var crossing = WaitCrossing(mission, plan, MissionVesselSnapshot(mission));
-            mission.CrossingBlocker = crossing != null ? MissionPrompts.MoonCrossingBlocker(crossing) : "";
+            if (plan == null || !ReferenceEquals(mission.CrossingPlan, plan) || (mission.CrossingBlocker.Length == 0 && !mission.CrossingUnjudged)) return "";
+            var snapshot = MissionVesselSnapshot(mission);
+            if (snapshot != null) CrossingJudge(mission, plan, snapshot);
             return mission.CrossingBlocker;
         }
 
-        /// <summary>The plan offered: its Blocker, when its figures still have a crossing (after the one correction, or with no room for it).</summary>
-        private static void CrossingOffered(Mission mission, SequencePlan plan, PlanFindings findings)
+        private void CrossingJudge(Mission mission, SequencePlan plan, GameSnapshot snapshot)
+        {
+            var crossing = WaitCrossing(mission, plan, snapshot);
+            mission.CrossingBlocker = crossing != null ? MissionPrompts.MoonCrossingBlocker(crossing) : "";
+            mission.CrossingJudgedOn = snapshot;
+            mission.CrossingUnjudged = false;
+        }
+
+        /// <summary>The plan offered: its Blocker, when its figures still have a crossing (after the one correction, or with no room for it); unjudged with no snapshot of the craft.</summary>
+        private void CrossingOffered(Mission mission, SequencePlan plan, PlanFindings findings)
         {
             mission.CrossingPlan = plan;
             mission.CrossingBlocker = findings != null && findings.MoonCrossing != null ? MissionPrompts.MoonCrossingBlocker(findings.MoonCrossing) : "";
+            mission.CrossingUnjudged = mission.CrossingBlocker.Length == 0 && !plan.Manual && FliesCraft(mission, plan.Vessel) && MissionVesselSnapshot(mission) == null;
         }
 
         /// <summary>
@@ -67,22 +89,44 @@ namespace ClaudiaKerman.Core.Missions
         private void CrossingAtOffer(Mission mission, SequencePlan plan)
         {
             if (!plan.DueTimeUt.HasValue || CrossingHeld(mission, plan)) return;
-            var crossing = WaitCrossing(mission, plan, MissionVesselSnapshot(mission));
+            var snapshot = MissionVesselSnapshot(mission);
+            if (snapshot == null)
+            {
+                // Offered outside Flight (or restored there): the first snapshot of the craft judges it.
+                if (!plan.Manual && FliesCraft(mission, plan.Vessel))
+                {
+                    mission.CrossingPlan = plan;
+                    mission.CrossingUnjudged = true;
+                }
+                return;
+            }
+            var crossing = WaitCrossing(mission, plan, snapshot);
             if (crossing == null) return;
             mission.CrossingPlan = plan;
             mission.CrossingBlocker = MissionPrompts.MoonCrossingBlocker(crossing);
+            mission.CrossingUnjudged = false;
+        }
+
+        /// <summary>A snapshot has come: a plan offered with none of the craft is judged now, and a crossing is its Blocker, on its card and in the log.</summary>
+        private void CrossingFirstSnapshot(Mission mission)
+        {
+            var plan = mission.PendingSequence;
+            if (!mission.CrossingUnjudged || plan == null || !ReferenceEquals(mission.CrossingPlan, plan) || mission.Stage != MissionStage.AwaitingSequenceApproval) return;
+            var snapshot = MissionVesselSnapshot(mission);
+            if (snapshot == null) return;
+            CrossingJudge(mission, plan, snapshot);
+            if (mission.CrossingBlocker.Length == 0) return;
+            Note(LogKind.Notice, mission.CrossingBlocker);
+            var card = mission.Log.LastOrDefault(e => e.Kind == LogKind.SequencePlan);
+            if (card != null) card.Text = PlanCardText(mission, plan);
         }
 
         /// <summary>The plan in hand holds its Blocker: judged again only on a new snapshot of the craft, since Auto Mode asks on every input.</summary>
         private bool CrossingHeld(Mission mission, SequencePlan plan)
         {
-            if (plan == null || !ReferenceEquals(mission.CrossingPlan, plan) || mission.CrossingBlocker.Length == 0) return false;
+            if (plan == null || !ReferenceEquals(mission.CrossingPlan, plan) || (mission.CrossingBlocker.Length == 0 && !mission.CrossingUnjudged)) return false;
             var snapshot = MissionVesselSnapshot(mission);
-            if (snapshot != null && !ReferenceEquals(snapshot, mission.CrossingJudgedOn) && ReferenceEquals(mission.PendingSequence, plan))
-            {
-                mission.CrossingJudgedOn = snapshot;
-                CrossingBlockerNow(mission);
-            }
+            if (snapshot != null && !ReferenceEquals(snapshot, mission.CrossingJudgedOn) && ReferenceEquals(mission.PendingSequence, plan)) CrossingJudge(mission, plan, snapshot);
             return mission.CrossingBlocker.Length > 0;
         }
 
@@ -96,13 +140,14 @@ namespace ClaudiaKerman.Core.Missions
             NeedsPlayer(dropped.Text);
         }
 
-        /// <summary>The craft the adapter watches between runs, and the bodies a planned coast meets; "" when no Mission's craft is between runs.</summary>
+        /// <summary>The craft the adapter watches between runs, and the bodies a planned coast meets (a Coast Checkpoint's, the last run's transfer_to's); "" when no Mission's craft is between runs.</summary>
         private void NextPatchWatchView(Mission mission, MissionView view)
         {
             if (MissionOver || IsRunning(mission) || !FollowsCraft(mission) || mission.VesselId.Length == 0) return;
             view.NextPatchVesselId = mission.VesselId;
             var token = CoastPlanToken(mission.PendingSequence);
-            view.NextPatchPlanned = token != null ? token.Bodies : "";
+            var planned = (token != null ? token.Bodies : "").Split(new[] { ',' }, System.StringSplitOptions.RemoveEmptyEntries).Select(b => b.Trim()).Concat(RunTransfers(mission));
+            view.NextPatchPlanned = string.Join(",", planned.Distinct(System.StringComparer.OrdinalIgnoreCase).ToArray());
         }
 
         /// <summary>The bodies a plan's <c>transfer_to</c> calls aim at, as written; empty for none.</summary>
@@ -119,7 +164,7 @@ namespace ClaudiaKerman.Core.Missions
             var snapshot = MissionVesselSnapshot(mission);
             if (snapshot == null) return;
             // The next plan's wait is not known yet: judged as a long one. A moon the run's own transfer_to aims at is planned, not crossed.
-            var crossing = MoonCrossings.Judge(snapshot.At(_ut), TransferTargets(mission.PendingSequence));
+            var crossing = MoonCrossings.Judge(snapshot.At(_ut), RunTransfers(mission));
             if (crossing != null) mission.RunEvents.Replace(_ut, RunEventKind.MoonCrossing, MissionPrompts.MoonCrossingFact(crossing));
         }
     }
