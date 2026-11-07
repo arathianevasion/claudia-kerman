@@ -226,6 +226,38 @@ namespace ClaudiaKerman.Core.Tests
             Assert.False(Check(plan, 3310, 0).Refused);
         }
 
+        /// <summary>
+        /// #837's follow-up: under a Mission Plan a step's later legs are counted from its plan_step. A Sequence Plan naming plan_step N
+        /// is the step in hand at index N - 1 (MissionControl passes <c>CurrentSequence</c>, StepsBegun - 1), so its later legs are the
+        /// plan after N. Here plan_step 2 leaves Prepare (1,959) to fly; plan_step 3 leaves none.
+        /// </summary>
+        [Fact]
+        public void UnderAMissionPlanTheLaterLegsCountFromThePlanStepAndABurnThatSpendsThemIsRefused()
+        {
+            var plan = new List<PlannedSequence> { Leg("Capture at Duna", 600), Leg("Drop the lander stage", 0), Leg("Prepare", 1959) };
+            // plan_step 2 (index 1): the drop leaves 2,100, 1,959 is still needed, and a 300 m/s burn takes it to 1,800: refused.
+            var burn = new DropBurn { Spent = 300 };
+
+            var verdict = DropGuard.Check(Craft(), plan, 1, 3310, 2100, burn);
+
+            Assert.True(verdict.Refused);
+            Assert.Equal(1959, verdict.Need);
+            Assert.Equal("this drop would take 1210 m/s and leave 1800 after the 300 m/s burn; the plan still needs 1959 m/s: revise the Mission Plan first", verdict.Reason);
+        }
+
+        [Fact]
+        public void UnderAMissionPlanAStepWithNoLaterLegsLetsTheSameBurnGo()
+        {
+            var plan = new List<PlannedSequence> { Leg("Capture at Duna", 600), Leg("Drop the lander stage", 0), Leg("Prepare", 1959) };
+            // plan_step 3 (index 2) is the last step: nothing after it is counted, so the drop and the burn both pass.
+            var burn = new DropBurn { Spent = 300 };
+
+            var verdict = DropGuard.Check(Craft(), plan, 2, 3310, 2100, burn);
+
+            Assert.False(verdict.Refused);
+            Assert.Equal(0, verdict.Need);
+        }
+
         [Fact]
         public void NoMissionPlanPasses()
         {
