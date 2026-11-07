@@ -168,6 +168,7 @@ namespace ClaudiaKerman.Core.Tests
             var kerbin = Call(craft, "Kerbin", DunaThenKerbin, step: 2);
             Assert.Equal(Uid(craft, "shield1"), kerbin["shield"]);
             Assert.Equal(new[] { Uid(craft, "dec1") }, Strings(kerbin, "decouplers"));
+            Assert.Equal(new[] { "ascentTank", "shield2", "dec2", "transferTank" }, Strings(kerbin, "names"));
         }
 
         [Fact]
@@ -256,6 +257,53 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(1.0, answer["number"]);
             Assert.Equal(Uid(craft, "shield1"), answer["shield"]);
             Assert.Equal(new[] { Uid(craft, "dec1") }, Strings(answer, "decouplers"));
+        }
+
+        [Fact]
+        public void A_reentry_at_home_before_a_trip_doesnt_take_the_later_return_for_itself()
+        {
+            // At Kerbin, but the plan's next Entry is Duna: the return at the end isn't this one, so the stage stays.
+            var legs = new[] { Leg("Suborbital hop", 0), Leg("Transfer to Duna", 1000), Leg("Land on Duna", 100), Leg("Ascend from Duna", 1336), Leg("Return to Kerbin", 623) };
+            var answer = Call(PodShieldStage(), "Kerbin", legs);
+            Assert.Equal(3.0, answer["number"]);
+            DropsNothing(answer);
+        }
+
+        /// <summary>m20261106-203509-34a6's Mission Plan, in its own words.</summary>
+        private static readonly IList<PlannedSequence> TheFlightsPlan = new[]
+        {
+            new PlannedSequence { Name = "Launch to parking orbit", DeltaV = 3089, Intent = "Launch from the pad at the optimal Duna window (UT 162366330, inclination -3.03) to an 80 km circular Kerbin orbit." },
+            new PlannedSequence { Name = "Transfer to Duna", DeltaV = 1071, Intent = "Ejection burn and corrections onto the optimal Duna transfer, periapsis 60 km at Duna, departing UT 162382130." },
+            new PlannedSequence { Name = "Capture into Duna orbit", DeltaV = 617, Intent = "Arrival burn into a circular 60 km orbit at Duna." },
+            new PlannedSequence { Name = "Crew report", Intent = "Run the Crew Report experiment in Duna orbit and transmit it home." },
+            new PlannedSequence { Name = "Land near equator in daylight", DeltaV = 22, Intent = "Land on a daylight site near the equator; the site is chosen with find_landing_site at the pass." },
+            new PlannedSequence { Name = "Ascend from Duna", DeltaV = 1336, Intent = "Launch from the Duna surface to a circular Duna orbit." },
+            new PlannedSequence { Name = "Return to Kerbin", DeltaV = 623, Intent = "Ejection from Duna onto a path with 35 km periapsis at Kerbin, with a mid-course correction." },
+            new PlannedSequence { Name = "Reentry at Kerbin", Intent = "Aerobrake and land at Kerbin on the stage 0 pod parachute; the stage 2 chutes stay with the Duna lander." },
+        };
+
+        [Theory]
+        [InlineData(3)]
+        [InlineData(4)]
+        // A step counted ahead of where the craft is (extra Sequence Plans): still at Duna, so still not the Last Entry.
+        [InlineData(6)]
+        [InlineData(7)]
+        public void The_flights_own_plan_keeps_its_stage_at_Duna(int step)
+        {
+            var answer = Call(TheFlight(), "Duna", TheFlightsPlan, step);
+            Assert.Equal(2.0, answer["number"]);
+            DropsNothing(answer);
+        }
+
+        [Theory]
+        [InlineData(6)]
+        [InlineData(7)]
+        public void The_flights_own_plan_drops_its_stage_at_Kerbin(int step)
+        {
+            var craft = TheFlight();
+            var answer = Call(craft, "Kerbin", TheFlightsPlan, step);
+            Assert.Equal(1.0, answer["number"]);
+            Assert.Equal(new[] { Uid(craft, "Decoupler.1") }, Strings(answer, "decouplers"));
         }
 
         [Fact]

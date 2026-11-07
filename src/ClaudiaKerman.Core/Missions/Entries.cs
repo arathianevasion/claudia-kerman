@@ -63,8 +63,9 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>
         /// n for the Entry a reentry flown in step <paramref name="step"/> (0 first) is, by the vessel it flies (<paramref name="child"/>, a
         /// Child Vessel's name, or "" for the craft): the Entries left, this one included, plus one if a sequence after the final Entry has
-        /// delta-v. The Entry is the step's own or the next on the body the craft is at; with neither (words the reader can't place) this
-        /// reentry is one more. No Mission Plan is 1, the first shield's rule.
+        /// delta-v. This reentry is the plan's next Entry when that is on the body the craft is at; otherwise it is one more: words the reader
+        /// can't place, a hop before a trip, or a step counted ahead of the craft. A doubt keeps the stage, as dropping it can't be undone. No
+        /// Mission Plan is 1, the first shield's rule.
         /// </summary>
         public static int ShieldNumber(GameSnapshot snapshot, IList<PlannedSequence> sequences, int step, string child)
         {
@@ -72,9 +73,8 @@ namespace ClaudiaKerman.Core.Missions
             var first = Math.Max(0, step);
             Func<PlannedSequence, bool> flown = s => Flies(snapshot, s, child);
             var entries = Find(snapshot, sequences, first, flown);
-            var at = At(snapshot);
-            var own = entries.FirstOrDefault(e => string.Equals(e.Body, at, StringComparison.OrdinalIgnoreCase));
-            var left = own == null ? entries.Count + 1 : entries.Count(e => e.Step >= own.Step);
+            var placed = entries.Count > 0 && string.Equals(entries[0].Body, At(snapshot), StringComparison.OrdinalIgnoreCase);
+            var left = placed ? entries.Count : entries.Count + 1;
             var final = entries.Count > 0 ? entries[entries.Count - 1].Step : first;
             return left + (Enumerable.Range(final + 1, Math.Max(0, sequences.Count - final - 1)).Any(i => flown(sequences[i]) && sequences[i].DeltaV > 0) ? 1 : 0);
         }

@@ -7,7 +7,9 @@ Install as in `phase-3-gate.md` (build, copy `dist/GameData/ClaudiaKerman/`, `de
 ## Block tests
 
 1. Run `reentry_orbit`. It passes as before, with `parts_dropped` at least 1 and `shield_dropped` true. Its script no longer names a stage: with no Mission Plan, the first shield is the Entry Shield.
-2. Run `reentry_duna_keep_stage`: `reentry_duna_powered`'s craft with `reentry`'s defaults. It has no Entry Shield, so `parts_dropped` is 0 and `shield_dropped` is false. It brakes to the ground on its engine. **Write down `max_temp_pct`, and the hottest part if the log names one.** It flies engine first, as a stage kept through Duna does.
+2. Run `reentry_duna_keep_stage`: `reentry_duna_powered`'s craft with `reentry`'s defaults. It has no Entry Shield, so `parts_dropped` is 0 and `shield_dropped` is false. It brakes to the ground on its engine. **Write down `max_temp_pct`, and the hottest part if the log names one.** It flies engine first, as a stage kept through Duna does. This scenario has no Mission Plan, so it doesn't exercise n: the Mission below does.
+3. Run `reentry_hop`, `reentry_tumble`, `deorbit_kerbin_defaults` and `return_target`: each calls `reentry` with its defaults and no Mission Plan, so the first shield is the Entry Shield, as before. Each passes as before.
+4. Run `deorbit_kerbin`, `deorbit_duna`, `deorbit_eve` and `deorbit_laythe`: `deorbit` now reads the Entry Shield for its prediction. `predicted_error_km` is as before.
 
 ## The Duna land-and-return (the flight that found this)
 

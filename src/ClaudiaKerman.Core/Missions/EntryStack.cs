@@ -49,12 +49,12 @@ namespace ClaudiaKerman.Core.Missions
             foreach (var part in parts)
             {
                 if (kept.Contains(part.Id)) stack.Kept.Add(part);
-                else if (part.Id != anchor) stack.Sort(part, walker.Up(part, kept), reversed, anchor, seen);
+                else if (part.Id != anchor) stack.Classify(part, walker.Up(part, kept), reversed, anchor, seen);
             }
             return stack;
         }
 
-        private void Sort(SnapshotPart part, Walk way, bool reversed, uint anchor, HashSet<uint> seen)
+        private void Classify(SnapshotPart part, Walk way, bool reversed, uint anchor, HashSet<uint> seen)
         {
             if (reversed)
             {

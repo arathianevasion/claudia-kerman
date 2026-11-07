@@ -79,6 +79,14 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("Add another heat shield", finding.Fix);
         }
 
+        [Fact]
+        public void ALaytheLandingWithBurnsToComeIsHotToo()
+        {
+            var craft = WithEve();
+            craft.Bodies.Add(new SnapshotBody { Name = "Laythe", AtmosphereHeight = 50000, SeaLevelAtm = 0.6 });
+            Assert.Single(Checked(craft, "Land on Laythe, ascend, and return to Kerbin.").View.CraftCheck.Findings, f => f.Code == CraftCheckRules.HotEntry);
+        }
+
         [Theory]
         [InlineData("Land on Duna and return to Kerbin.")]
         [InlineData("Land on Eve.")]
