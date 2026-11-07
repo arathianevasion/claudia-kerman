@@ -170,6 +170,9 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>Null when there is no orbit to read (e.g. in the editor).</summary>
         public SnapshotOrbit Orbit;
 
+        /// <summary>Seconds from <see cref="Ut"/> to the end of the orbit's patch (#833), as kOS's <c>orbit:nextpatcheta</c>; null with no next patch. Plan checks read it; it is not in the JSON, so the prompt doesn't carry it.</summary>
+        public double? NextPatchEta;
+
         /// <summary>The figure a parsed snapshot carried: Claudia's turns leave out the body table that <see cref="ImpactInS"/> is worked from.</summary>
         private double? _parsedImpactInS;
 

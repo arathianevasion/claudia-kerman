@@ -269,6 +269,55 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(late.WaitSeconds >= 5000);
         }
 
+        /// <summary>#833: e64c's form, with the next-patch ETA in the snapshot, raises a short duration above the real wait.</summary>
+        [Fact]
+        public void ACoastToTheNextPatchReadsTheEtaFromTheSnapshot()
+        {
+            var snapshot = Orbiting(1000);
+            snapshot.Ut = Now;
+            snapshot.NextPatchEta = 63000;
+            var plan = new SequencePlan { Script = "local res is coast(lexicon(\"until\", time:seconds + ship:orbit:nextpatcheta + 60)). set res to capture(lexicon(\"target_pe\", 80000)).", ExpectedDurationSeconds = 20000, ExpectedDeltaV = 600 };
+            var wait = BurnPoints.First(plan.Script, snapshot, Now, 600);
+            Assert.InRange(wait.WaitSeconds, 63060, 63060 + Period);
+            var short_ = BurnPoints.ShortOf(plan, snapshot, Now);
+            Assert.NotNull(short_);
+            Assert.True(short_.MinimumDurationSeconds > 63060);
+            plan.ExpectedDurationSeconds = short_.MinimumDurationSeconds;
+            Assert.Null(BurnPoints.ShortOf(plan, snapshot, Now));
+        }
+
+        [Fact]
+        public void TheNextPatchCoastReadsWithAndWithoutAnOffset()
+        {
+            var snapshot = Orbiting(1000);
+            snapshot.Ut = Now;
+            snapshot.NextPatchEta = 5000;
+            var bare = BurnPoints.First("coast(lexicon(\"until\", time:seconds + ship:orbit:nextpatcheta)). circularize().", snapshot, Now, 50);
+            var plus = BurnPoints.First("coast(lexicon(\"until\", time:seconds + ship:orbit:nextpatcheta + 600)). circularize().", snapshot, Now, 50);
+            Assert.InRange(bare.WaitSeconds, 5000, 5000 + Period);
+            Assert.InRange(plus.WaitSeconds, 5600, 5600 + Period);
+            Assert.True(plus.WaitSeconds > bare.WaitSeconds - Period);
+        }
+
+        [Fact]
+        public void AnOrbitWithNoNextPatchLeavesTheNextPatchCoastUnchecked()
+        {
+            var snapshot = Orbiting(1000);
+            snapshot.NextPatchEta = null;
+            Assert.Null(BurnPoints.First("coast(lexicon(\"until\", time:seconds + ship:orbit:nextpatcheta + 60)). capture().", snapshot, Now, 600));
+        }
+
+        [Fact]
+        public void TheNextPatchEtaIsNotInTheSnapshotJson()
+        {
+            var snapshot = Orbiting(1000);
+            var without = snapshot.ToJson(false);
+            var withBodies = snapshot.ToJson(true);
+            snapshot.NextPatchEta = 63000;
+            Assert.Equal(without, snapshot.ToJson(false));
+            Assert.Equal(withBodies, snapshot.ToJson(true));
+        }
+
         [Fact]
         public void ACoastToAnUnreadableTimeLeavesThePlanUnchecked()
         {

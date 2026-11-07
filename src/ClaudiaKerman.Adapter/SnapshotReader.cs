@@ -98,7 +98,13 @@ namespace ClaudiaKerman.Adapter
             // A save with CommNet off counts as linked, whatever the connection says.
             snapshot.HasLink = LinkedHome(vessel);
 
-            if (vessel.orbit != null) snapshot.Orbit = OrbitOf(vessel.orbit);
+            if (vessel.orbit != null)
+            {
+                snapshot.Orbit = OrbitOf(vessel.orbit);
+                // #833: kOS's orbit:nextpatcheta; none when the orbit's patch doesn't end (FINAL).
+                if (vessel.orbit.patchEndTransition != Orbit.PatchTransitionType.FINAL && vessel.orbit.EndUT > snapshot.Ut)
+                    snapshot.NextPatchEta = vessel.orbit.EndUT - snapshot.Ut;
+            }
             ReadTargets(snapshot, vessel);
             return snapshot;
         }

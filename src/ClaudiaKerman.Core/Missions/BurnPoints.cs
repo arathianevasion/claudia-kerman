@@ -71,6 +71,7 @@ namespace ClaudiaKerman.Core.Missions
         private static readonly Regex Quoted = new Regex("\"(?<n>[^\"]+)\"", RegexOptions.CultureInvariant);
         private static readonly Regex Number = new Regex(@"^\d+(\.\d+)?$", RegexOptions.CultureInvariant);
         private static readonly Regex FromNow = new Regex(@"^time\s*:\s*seconds\s*\+\s*(?<s>\d+(\.\d+)?)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        private static readonly Regex ToNextPatch = new Regex(@"^time\s*:\s*seconds\s*\+\s*ship\s*:\s*orbit\s*:\s*nextpatcheta(\s*\+\s*(?<s>\d+(\.\d+)?))?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         /// <summary>A landing target written out: LATLNG(lat, lng) or lexicon("lat", x, "lng", y).</summary>
         private static readonly Regex Site = new Regex(@"^(latlng\s*\(\s*|lexicon\s*\(\s*""lat""\s*,\s*)(?<lat>-?\d+(\.\d+)?)\s*,\s*(""lng""\s*,\s*)?(?<lng>-?\d+(\.\d+)?)\s*\)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
@@ -125,7 +126,7 @@ namespace ClaudiaKerman.Core.Missions
                 if (call.Block == "coast")
                 {
                     // A coast whose until can't be read leaves nothing to check; a UT already past returns at once.
-                    var until = Until(call.Option("until"), now + held);
+                    var until = Until(call.Option("until"), now + held, snapshot);
                     if (!until.HasValue) return null;
                     held += Math.Max(0, until.Value - (now + held));
                     continue;
@@ -363,11 +364,17 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>A coast's until as a UT: a number, or <c>time:seconds + n</c> from <paramref name="at"/>; null when it isn't one of those.</summary>
-        private static double? Until(string text, double at)
+        private static double? Until(string text, double at, GameSnapshot snapshot)
         {
             if (text == null) return null;
             var trimmed = text.Trim();
             if (Number.IsMatch(trimmed)) return double.Parse(trimmed, CultureInfo.InvariantCulture);
+            // #833: time:seconds + ship:orbit:nextpatcheta [+ n] is the patch's end UT plus n; no next patch leaves it unread.
+            var patch = ToNextPatch.Match(trimmed);
+            if (patch.Success)
+                return snapshot.NextPatchEta.HasValue
+                    ? snapshot.Ut + snapshot.NextPatchEta.Value + (patch.Groups["s"].Success ? double.Parse(patch.Groups["s"].Value, CultureInfo.InvariantCulture) : 0)
+                    : (double?)null;
             var from = FromNow.Match(trimmed);
             return from.Success ? at + double.Parse(from.Groups["s"].Value, CultureInfo.InvariantCulture) : (double?)null;
         }
