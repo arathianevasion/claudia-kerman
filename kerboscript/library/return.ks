@@ -210,7 +210,7 @@ function return {
   set opt:target to claudia_landing_target(opt:target, lexicon("planet", planet:name, "target_pe", opt:target_pe, "target_inc", opt:target_inc, "window", opt:window)).
   // With a target, the mod's reentry prediction says where a path comes down, for a path the craft may not be on yet (ADR 0007).
   local predict is 0.
-  local burn_ask is lexicon().
+  local burn_ask is lexicon("cheap_window", not options:haskey("window")).
   if return_aims(opt) {
     if not options:haskey("target_pe") {
       set opt:target_pe to 30000.

@@ -28,6 +28,8 @@ namespace ClaudiaKerman.Core.Tools
         public ReturnLanding Landing;
         /// <summary>With <see cref="Landing"/>, the seconds after <see cref="EarliestUt"/> the burn may wait; null for one turn of the landing's longitude (<see cref="ReturnAim.LongitudeTurn"/>).</summary>
         public double? MaxWait;
+        /// <summary>Without <see cref="Landing"/>: the block was given no window (#816), so from an inclined orbit a next pass over the cheapest within the auto wait plus <see cref="ReturnAim.CostCapMs"/> waits for the cheapest.</summary>
+        public bool CheapWindow;
         /// <summary>Start from the coarse grid, as when the analytic seed is undefined: for tests of that worst case.</summary>
         internal bool FromGrid;
         /// <summary>The cap on the SQP's iterations, and whether a best point short of the answer gets its finish: for tests of a solve that stops short.</summary>
@@ -63,10 +65,12 @@ namespace ClaudiaKerman.Core.Tools
         public ReentryPrediction Landing;
         /// <summary>km from the target to <see cref="Landing"/>; -1 without one.</summary>
         public double ErrorKm = -1;
-        /// <summary>m/s this burn costs over the least burn of its window.</summary>
+        /// <summary>m/s this burn costs over the least burn of its window; from an inclined orbit (#816), over the cheapest window within max_wait.</summary>
         public double AimDv;
         /// <summary>km <see cref="ReturnAim.ResidualMs"/> of error in the burn moves the landing; -1 when it can't be said.</summary>
         public double SpreadKm = -1;
+        /// <summary>From an inclined orbit (#816), the window rule's figures for the log: the cheapest, the cap and the window taken; null otherwise.</summary>
+        public string WindowNote;
     }
 
     /// <summary>
@@ -109,6 +113,8 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The out-of-plane share of the seed tried, in steps of this, to move an inclination target's start off the equator.</summary>
         private const double SeedTilt = 0.02;
         private const int SeedTilts = 5;
+        /// <summary>A least burn over this many times the burn straight onto the asymptote (<see cref="Direct"/>) is solved again from that burn (#816).</summary>
+        private const double OverDirect = 2;
 
         /// <summary>The ejection for the Game Snapshot's craft.</summary>
         public static ReturnPlan Find(GameSnapshot snapshot, ReturnAsk ask)
@@ -124,7 +130,7 @@ namespace ClaudiaKerman.Core.Tools
         public static ReturnPlan Find(BodySystem system, SnapshotBody moon, Conic orbit, double now, ReturnAsk ask)
         {
             if (ask == null) return Fail("no ask given");
-            if (ask.Landing != null) return ReturnAim.Find(system, moon, orbit, now, ask);
+            if (ask.Landing != null || ask.CheapWindow) return ReturnAim.Find(system, moon, orbit, now, ask);
             var planet = system.Parent(moon);
             if (planet == null || system.Parent(planet) == null)
                 return Fail("the craft orbits " + moon.Name + ", not a moon: return starts from orbit round a moon");
@@ -150,6 +156,27 @@ namespace ClaudiaKerman.Core.Tools
                 if (!Grid(system, moon, planet, orbit, earliest, latest, peR, out startUt, out seed))
                     return Fail("no prograde burn in the window leaves " + moon.Name + " for " + planet.Name);
             }
+            var plan = From(system, moon, planet, orbit, ask, earliest, latest, peR, startUt, seed, fromGrid);
+            // #816: far out of the craft's plane the prograde seed can lead the solve to a burn of thousands of m/s that still meets
+            // target_pe (6,196 m/s at UT 1000 from a 66° Mun orbit). Over a window, a solve that fails or costs over twice the burn
+            // straight onto the asymptote starts again from that burn, and the cheaper answer that meets the ask stands.
+            if (latest > earliest)
+            {
+                double directUt;
+                var direct = Direct(system, moon, planet, orbit, earliest, latest, peR, out directUt);
+                if (direct.Length > 0 && (plan.Error != null || plan.DeltaV > OverDirect * direct.Length))
+                {
+                    var again = From(system, moon, planet, orbit, ask, earliest, latest, peR, directUt, direct, false);
+                    if (again.Error == null && (plan.Error != null || again.DeltaV < plan.DeltaV)) plan = again;
+                }
+            }
+            return plan;
+        }
+
+        /// <summary>The solve from <paramref name="seed"/> at <paramref name="startUt"/>: bounded, then inertial, each finished when it stops short.</summary>
+        private static ReturnPlan From(BodySystem system, SnapshotBody moon, SnapshotBody planet, Conic orbit, ReturnAsk ask, double earliest, double latest, double peR,
+            double startUt, Vec3 seed, bool fromGrid)
+        {
             if (ask.TargetInc.HasValue && Sqp.InclinationConstraints(ask.TargetInc.Value) == 1) seed = OffTheEquator(system, moon, planet, orbit, startUt, seed);
 
             var floor = ProgradeFloor(moon, orbit, startUt);
@@ -391,6 +418,56 @@ namespace ClaudiaKerman.Core.Tools
                     ut = t;
                     var speed = Math.Sqrt(vInf * vInf + 2 * moon.Gm / r.Length);
                     bestBurn = v.Normalized * (speed - v.Length);
+                }
+            }
+            return bestBurn;
+        }
+
+        /// <summary>
+        /// The burn straight onto the asymptote (#816): at each sample in the window, the velocity of the hyperbola from the craft's
+        /// place whose asymptote leaves backwards along the moon's orbit at the speed a Hohmann-like descent to <paramref name="peR"/>
+        /// needs, in the plane of the place and the asymptote; the sample whose burn to it is least. Where the prograde seed only
+        /// lines the asymptote up in the craft's plane, this one holds out of it. A seed and a yardstick, not a bound: it takes the
+        /// planet's pull at the moon's distance only (from a 30 km Mun orbit about 310 m/s where the least is 266; from Ike's
+        /// Mission orbit 163 m/s where it is 423). Returns the burn (inertial, m/s) and its time in <paramref name="ut"/>.
+        /// </summary>
+        internal static Vec3 Direct(BodySystem system, SnapshotBody moon, SnapshotBody planet, Conic orbit, double earliest, double latest, double peR, out double ut)
+        {
+            var moonOrbit = system.OrbitOf(moon);
+            ut = earliest;
+            var best = double.PositiveInfinity;
+            var bestBurn = default(Vec3);
+            var samples = latest > earliest ? SeedSamples : 0;
+            for (var i = 0; i <= samples; i++)
+            {
+                var t = samples == 0 ? earliest : earliest + (latest - earliest) * i / samples;
+                Vec3 mr, mv, r, v;
+                moonOrbit.State(t, out mr, out mv);
+                orbit.State(t, out r, out v);
+                var rm = mr.Length;
+                var vInf = Math.Max(1e-3, mv.Length - Math.Sqrt(planet.Gm * 2 * peR / (rm * (rm + peR))));
+                var back = mv.Normalized * -1;
+                var radius = r.Length;
+                var rHat = r * (1 / radius);
+                var cosPhi = Math.Max(-1, Math.Min(1, Vec3.Dot(rHat, back)));
+                var across = back - rHat * cosPhi;
+                // The asymptote along the place itself, or straight back through the moon, has no plane: no hyperbola from here.
+                if (across.Length < 1e-6 || cosPhi > 1 - 1e-9) continue;
+                var tHat = across.Normalized;
+                var sinPhi = Math.Sqrt(Math.Max(0, 1 - cosPhi * cosPhi));
+                // r (1 + e cos(nu)) = a (e^2 - 1) with nu = the asymptote's anomaly less phi: a quadratic in s = sqrt(e^2 - 1).
+                var a = moon.Gm / (vInf * vInf);
+                var s = (radius * sinPhi + Math.Sqrt(radius * radius * sinPhi * sinPhi + 4 * a * radius * (1 - cosPhi))) / (2 * a);
+                var e = Math.Sqrt(1 + s * s);
+                var nu = Math.Acos(-1 / e) - Math.Acos(cosPhi);
+                var h = Math.Sqrt(moon.Gm * a * s * s);
+                var need = rHat * (moon.Gm / h * e * Math.Sin(nu)) + tHat * (moon.Gm / h * (1 + e * Math.Cos(nu)));
+                var burn = need - v;
+                if (burn.Length < best)
+                {
+                    best = burn.Length;
+                    ut = t;
+                    bestBurn = burn;
                 }
             }
             return bestBurn;

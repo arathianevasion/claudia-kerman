@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using ClaudiaKerman.Core.Missions;
 
@@ -81,6 +82,106 @@ namespace ClaudiaKerman.Core.Tools
         /// it, at a Due Time (#749), the block is sure to pick the same window, where a strict nearest could wait on for a turn.
         /// </summary>
         private const double NearShare = 0.6;
+        /// <summary>
+        /// #816: an orbit more than this off the moon's own orbital plane is inclined. Its windows differ in cost (from a 30 km Mun
+        /// orbit at 66°, 266 to about 650 m/s), the cheap one coming round every half orbit of the moon, and its landings don't
+        /// step along with the moon, so each window is solved, and each within <see cref="CostCapMs"/> predicted, on its own.
+        /// </summary>
+        public const double InclinedDeg = 5;
+        internal static Action<string> Trace;
+        /// <summary>The windows kept: those costing no more than the cheapest within max_wait plus this, m/s.</summary>
+        public const double CostCapMs = 50;
+        /// <summary>Landings within this of each other are a tie, km, which goes to the sooner window.</summary>
+        public const double TieKm = 5;
+        /// <summary>From an inclined orbit, "auto" max_wait runs this past the next cheap alignment, s: a window aligned with the target lies within it (about +35 m/s at 66°).</summary>
+        public const double PastAlignmentS = 3.5 * 3600;
+        /// <summary>A window whose burn straight onto the asymptote (<see cref="ReturnBurn.Direct"/>) costs this much over the least such is left unsolved, m/s.</summary>
+        private const double SkipOverDirectMs = 400;
+        /// <summary>The windows the inclined search aims at, nearest landing first.</summary>
+        private const int InclinedCandidates = 3;
+
+        /// <summary>
+        /// Degrees between the craft's orbital plane and the moon's own, 0 to 90: a retrograde orbit in the moon's plane is in it,
+        /// as its cheap burn lines up as well.
+        /// </summary>
+        public static double PlaneAngle(BodySystem system, SnapshotBody moon, Conic orbit, double ut)
+        {
+            Vec3 r, v, mr, mv;
+            orbit.State(ut, out r, out v);
+            system.OrbitOf(moon).State(ut, out mr, out mv);
+            var cos = Math.Abs(Vec3.Dot(Vec3.Cross(r, v).Normalized, Vec3.Cross(mr, mv).Normalized));
+            return Math.Acos(Math.Min(1, cos)) * 180 / Math.PI;
+        }
+
+        /// <summary>
+        /// The first UT from <paramref name="from"/> when the moon's velocity lies in the craft's plane, so the way home (backwards
+        /// along the moon's orbit) does too: the cheap plane alignment, every half orbit of the moon.
+        /// </summary>
+        public static double NextAlignment(BodySystem system, SnapshotBody moon, Conic orbit, double from)
+        {
+            var moonOrbit = system.OrbitOf(moon);
+            Vec3 r, v;
+            orbit.State(from, out r, out v);
+            var normal = Vec3.Cross(r, v).Normalized;
+            Func<double, double> off = t =>
+            {
+                Vec3 mr, mv;
+                moonOrbit.State(t, out mr, out mv);
+                return Vec3.Dot(mv.Normalized, normal);
+            };
+            const int samples = 180;
+            var span = moonOrbit.Period / 2 * 1.05;
+            double t0 = from, f0 = off(from);
+            if (f0 == 0) return from;
+            for (var i = 1; i <= samples; i++)
+            {
+                double t1 = from + span * i / samples, f1 = off(t1);
+                if ((f0 > 0) != (f1 > 0))
+                {
+                    for (var k = 0; k < 40; k++)
+                    {
+                        var mid = (t0 + t1) / 2;
+                        var fm = off(mid);
+                        if ((fm > 0) == (f0 > 0)) { t0 = mid; f0 = fm; } else t1 = mid;
+                    }
+                    return (t0 + t1) / 2;
+                }
+                t0 = t1;
+                f0 = f1;
+            }
+            return from;
+        }
+
+        /// <summary>
+        /// "auto" max_wait from <paramref name="earliest"/>, s: to the next cheap alignment plus <see cref="PastAlignmentS"/> (up to about
+        /// 23 h at the Mun) when the plane costs something (<see cref="AlignmentCosts"/>), otherwise one turn of the landing's longitude.
+        /// </summary>
+        public static double AutoWait(BodySystem system, SnapshotBody planet, SnapshotBody moon, Conic orbit, double now, double earliest, double targetPe, double handed)
+        {
+            double alignment;
+            return AlignmentCosts(system, moon, orbit, now, earliest, targetPe, out alignment)
+                ? alignment - earliest + PastAlignmentS
+                : LongitudeTurn(system, planet, moon, handed);
+        }
+
+        /// <summary>
+        /// Whether waiting for the cheap alignment can save over <see cref="CostCapMs"/>: the orbit is over <see cref="InclinedDeg"/> off
+        /// the moon's plane, and the window a quarter of the moon's orbit past the next alignment (<paramref name="alignment"/>), where the
+        /// way home is furthest out of the craft's plane, costs over the cap more than the one at it. Two solves. A slight tilt, as an
+        /// orbit round Minmus in Kerbin's equator (6°), costs little either way: its windows are predicted each, without the long wait.
+        /// </summary>
+        public static bool AlignmentCosts(BodySystem system, SnapshotBody moon, Conic orbit, double now, double earliest, double targetPe, out double alignment)
+        {
+            alignment = earliest;
+            var planet = system.Parent(moon);
+            if (planet == null || system.Parent(planet) == null || !orbit.Closed || PlaneAngle(system, moon, orbit, earliest) <= InclinedDeg) return false;
+            alignment = NextAlignment(system, moon, orbit, earliest);
+            var half = orbit.Period / 2;
+            var dear = alignment + system.OrbitOf(moon).Period / 4;
+            var cheap = ReturnBurn.Find(system, moon, orbit, now, new ReturnAsk { TargetPe = targetPe, EarliestUt = alignment - half, LatestUt = alignment + half });
+            var costly = ReturnBurn.Find(system, moon, orbit, now, new ReturnAsk { TargetPe = targetPe, EarliestUt = dear - half, LatestUt = dear + half });
+            return cheap.Error != null || costly.Error != null || costly.DeltaV - cheap.DeltaV > CostCapMs;
+        }
 
         /// <summary>
         /// Seconds for the landing's longitude to come round once: the ground turns under a path that turns with the moon, about 7.1 h
@@ -143,7 +244,8 @@ namespace ClaudiaKerman.Core.Tools
         public static ReturnPlan Find(BodySystem system, SnapshotBody moon, Conic orbit, double now, ReturnAsk ask)
         {
             var search = Search.Start(system, moon, orbit, now, ask);
-            if (search.First.Error != null || search.FirstLanding == null) return search.First;
+            if (search.Inclined && (ask.Landing != null || search.CostlyPlane)) return search.FromWindows();
+            if (search.First.Error != null || ask.Landing == null || search.FirstLanding == null) return search.First;
             ReturnPlan best = null;
             foreach (var window in search.Windows().Take(Candidates))
             {
@@ -166,15 +268,47 @@ namespace ClaudiaKerman.Core.Tools
             var setup = PredictBurn.Setup.Prepare(snapshot, null, out error);
             if (setup == null) return null;
             var search = Search.Start(setup.System, setup.Body, setup.Start, setup.Now, ask);
+            if (search.Inclined)
+            {
+                var picked = search.Picked();
+                return picked == null ? (double?)null : picked.Ut;
+            }
             if (search.First.Error != null || search.FirstLanding == null) return null;
             return search.Windows().First();
         }
 
-        /// <summary>The landing's turn for the Game Snapshot's craft round a moon of <paramref name="planet"/>.</summary>
-        public static double LongitudeTurnFor(GameSnapshot snapshot, SnapshotBody planet)
+        /// <summary>
+        /// "auto" max_wait (<see cref="AutoWait"/>) for the Game Snapshot's craft round a moon of <paramref name="planet"/>, from
+        /// <paramref name="earliest"/>. #802: the landing's turn depends on which way the planet's frame turns, read from
+        /// <paramref name="body"/> as the block reads it; without one it is taken to turn with the frame's angle.
+        /// </summary>
+        public static double AutoWaitFor(GameSnapshot snapshot, SnapshotBody planet, double earliest, double targetPe, IPlanningBody body)
         {
             var system = new BodySystem(snapshot.Bodies);
-            return LongitudeTurn(system, planet, system.Find(snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body));
+            var moon = system.Find(snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body);
+            string problem;
+            var frame = body == null ? null : BodyFrame.Read(planet, body, snapshot.Ut, out problem);
+            var handed = frame == null ? 1 : frame.Handed;
+            ToolOutcome error;
+            var setup = PredictBurn.Setup.Prepare(snapshot, null, out error);
+            if (setup == null || setup.Body != moon || !setup.Start.Closed) return LongitudeTurn(system, planet, moon, handed);
+            return AutoWait(system, planet, moon, setup.Start, setup.Now, Math.Max(setup.Now, earliest), targetPe, handed);
+        }
+
+        /// <summary>
+        /// The UT a return with no target and no window given leaves at (#816), before the run: where the plane costs something
+        /// (<see cref="AlignmentCosts"/>), the next pass unless it costs over the cheapest within the auto wait plus
+        /// <see cref="CostCapMs"/>, else the cheapest; null when the next pass is taken, or there is none.
+        /// </summary>
+        public static double? CheapDepartureUt(GameSnapshot snapshot, ReturnAsk ask)
+        {
+            ToolOutcome error;
+            var setup = PredictBurn.Setup.Prepare(snapshot, null, out error);
+            if (setup == null) return null;
+            var search = Search.Start(setup.System, setup.Body, setup.Start, setup.Now, ask);
+            if (!search.Inclined || !search.CostlyPlane) return null;
+            var plan = search.FromWindows();
+            return plan.Error != null || plan.Ut <= search.First.Ut ? (double?)null : plan.Ut;
         }
 
         /// <summary>One aim's facts, and what its tries share.</summary>
@@ -193,21 +327,32 @@ namespace ClaudiaKerman.Core.Tools
             public ReentryPrediction FirstLanding;
             /// <summary>km along the track the last <see cref="Aim"/> left.</summary>
             public double AlongKm;
+            /// <summary>The orbit is more than <see cref="InclinedDeg"/> off the moon's plane (#816): <see cref="FromWindows"/> picks.</summary>
+            public bool Inclined;
+            /// <summary>Waiting for the cheap alignment can save over the cap (<see cref="AlignmentCosts"/>); read only when max_wait is "auto".</summary>
+            public bool CostlyPlane;
 
             public static Search Start(BodySystem system, SnapshotBody moon, Conic orbit, double now, ReturnAsk ask)
             {
                 var search = new Search { _system = system, _moon = moon, _orbit = orbit, _now = now, _ask = ask };
                 search._earliest = Math.Max(now, ask.EarliestUt);
                 search.First = ReturnBurn.Find(system, moon, orbit, now, search.Plain(ask.EarliestUt, null));
-                if (search.First.Error != null) return search;
                 if (ask.MaxWait.HasValue && !(ask.MaxWait.Value > 0))
                 {
                     search.First = ReturnBurn.Fail("max_wait must be seconds above 0");
                     return search;
                 }
                 search._planet = system.Parent(moon);
-                search._latest = search._earliest + (ask.MaxWait ?? LongitudeTurn(system, search._planet, moon, ask.Landing.Frame.Handed));
+                // From an inclined orbit the first window failing is no reason to stop: FromWindows tries them all, and its error stands only when none solves.
+                search.Inclined = search._planet != null && system.Parent(search._planet) != null && orbit.Closed && PlaneAngle(system, moon, orbit, search._earliest) > InclinedDeg;
+                if (search.First.Error != null && !search.Inclined) return search;
+                double alignment = 0;
+                search.CostlyPlane = search.Inclined && !ask.MaxWait.HasValue && AlignmentCosts(system, moon, orbit, now, search._earliest, ask.TargetPe, out alignment);
+                search._latest = search._earliest + (ask.MaxWait ?? (search.CostlyPlane
+                    ? alignment - search._earliest + PastAlignmentS
+                    : LongitudeTurn(system, search._planet, moon, ask.Landing == null ? 1 : ask.Landing.Frame.Handed)));
                 if (ask.LatestUt.HasValue) search._latest = Math.Min(search._latest, ask.LatestUt.Value);
+                if (search.Inclined || ask.Landing == null) return search;
                 search._step = WindowStep(system, moon, orbit, search.First.Ut);
                 var landed = search.Predict(search.First);
                 if (landed.Error != null) return search;
@@ -239,6 +384,101 @@ namespace ClaudiaKerman.Core.Tools
                 return windows.OrderBy(w => soonest.HasValue && w.Key == soonest.Value ? -1 : w.Value).Select(w => w.Key);
             }
 
+            /// <summary>Each window's least burn within max_wait, soonest first, one per orbit of the craft from the earliest (the first a whole orbit, however short max_wait); those that found none left out.</summary>
+            private List<ReturnPlan> _windows;
+            private double _cheapest;
+
+            /// <summary>The most a burn may cost while it is aimed: the cap, from an inclined orbit.</summary>
+            private double _dvLimit = double.PositiveInfinity;
+
+            private List<ReturnPlan> Solved()
+            {
+                if (_windows != null) return _windows;
+                _windows = new List<ReturnPlan>();
+                var period = _orbit.Period;
+                var spans = new List<double[]>();
+                for (var k = 0; k == 0 || _earliest + k * period < _latest; k++)
+                    spans.Add(new[] { _earliest + k * period, Math.Min(_latest, _earliest + (k + 1) * period) });
+                // A window whose burn straight onto the asymptote costs far over the least of them is far over the cap too (at 66°, +400 m/s of it is about +100 of the least burn): it is not solved.
+                var peR = _planet.Radius + _ask.TargetPe;
+                var direct = spans.Select(w => { double ut; return ReturnBurn.Direct(_system, _moon, _planet, _orbit, w[0], w[1], peR, out ut).Length; }).ToList();
+                var floor = direct.Where(d => d > 0).DefaultIfEmpty(0).Min();
+                for (var k = 0; k < spans.Count; k++)
+                {
+                    if (k > 0 && floor > 0 && direct[k] > floor + SkipOverDirectMs) continue;
+                    var plan = k == 0 ? First : ReturnBurn.Find(_system, _moon, _orbit, _now, Plain(spans[k][0], spans[k][1]));
+                    if (plan.Error == null) _windows.Add(plan);
+                }
+                _cheapest = _windows.Count == 0 ? double.NaN : _windows.Min(w => w.DeltaV);
+                return _windows;
+            }
+
+            /// <summary>
+            /// The window an inclined orbit leaves in (#816), before its burn is timed: among those costing no more than the cheapest
+            /// plus <see cref="CostCapMs"/>, the nearest landing (by <see cref="Predict"/>, each), a tie within <see cref="TieKm"/> to the
+            /// sooner. With no target, or no landing to be had, the next window within the cap, else the cheapest. Null when none solves.
+            /// </summary>
+            public ReturnPlan Picked()
+            {
+                var ranked = Ranked();
+                return ranked == null ? null : ranked.Count == 0 ? Cheap() : Tied(ranked);
+            }
+
+            /// <summary>The windows within the cap whose least burn has a landing, nearest first; null when no window solves, empty without a target or a landing.</summary>
+            private List<ReturnPlan> Ranked()
+            {
+                var windows = Solved();
+                if (windows.Count == 0) return null;
+                var ranked = new List<ReturnPlan>();
+                if (_ask.Landing == null) return ranked;
+                foreach (var window in windows.Where(w => w.DeltaV <= _cheapest + CostCapMs))
+                {
+                    var landed = Predict(window);
+                    if (Trace != null) Trace(string.Format(CultureInfo.InvariantCulture, "W ut {0:0} dv {1:0.0} inc {2:0.0} lat {3:0.00} lng {4:0.00} {5}", window.Ut, window.DeltaV, window.IncPredicted, landed.Latitude, landed.Longitude, landed.Error));
+                    if (landed.Error != null) continue;
+                    Stamp(window, landed);
+                    ranked.Add(window);
+                }
+                return ranked.OrderBy(w => w.ErrorKm).ToList();
+            }
+
+            /// <summary>
+            /// With no target (grilled 2026-11-07): the soonest window when it costs no more than the cap, else the cheapest. With a
+            /// target and no landing to be had, the cheapest, as the window's least burn stands without one.
+            /// </summary>
+            private ReturnPlan Cheap()
+            {
+                var soonest = _windows[0];
+                return _ask.Landing == null && soonest.DeltaV <= _cheapest + CostCapMs ? soonest : _windows.OrderBy(w => w.DeltaV).First();
+            }
+
+            /// <summary>The nearest of <paramref name="plans"/>, or the soonest within <see cref="TieKm"/> of it.</summary>
+            private static ReturnPlan Tied(List<ReturnPlan> plans)
+            {
+                var nearest = plans.Min(p => p.ErrorKm);
+                return plans.Where(p => p.ErrorKm <= nearest + TieKm).OrderBy(p => p.Ut).First();
+            }
+
+            /// <summary>The inclined orbit's answer (#816): <see cref="Picked"/>'s rule, each of the nearest few windows aimed, the rule again on where they come down.</summary>
+            public ReturnPlan FromWindows()
+            {
+                var ranked = Ranked();
+                if (ranked == null) return First;
+                ReturnPlan best;
+                _dvLimit = _cheapest + CostCapMs;
+                if (ranked.Count == 0) best = Cheap();
+                else
+                {
+                    best = Tied(ranked.Take(InclinedCandidates).Select(w => { var x = Aim(w) ?? w; if (Trace != null) Trace(string.Format(CultureInfo.InvariantCulture, "A from {0:0} err {1:0.0} -> ut {2:0} err {3:0.0} dv {4:0.0} along {5:0.0}", w.Ut, w.ErrorKm, x.Ut, x.ErrorKm, x.DeltaV, AlongKm)); return x; }).ToList());
+                    best.SpreadKm = Spread(best);
+                }
+                best.AimDv = Math.Max(0, best.DeltaV - _cheapest);
+                best.WindowNote = string.Format(CultureInfo.InvariantCulture,
+                    "; windows {0} over {1:0.0} h, {2:0.0}° off the moon's plane: cheapest {3:0.0} m/s, cap {4:0.0} m/s, chosen UT {5:0} ({6:0.0} m/s, wait {7:0.0} h)",
+                    _windows.Count, (_latest - _earliest) / 3600, PlaneAngle(_system, _moon, _orbit, _earliest), _cheapest, _cheapest + CostCapMs, best.Ut, best.DeltaV, (best.Ut - _now) / 3600);
+                return best;
+            }
+
             /// <summary>The burn near <paramref name="window"/> that comes down nearest the target; null when none is found there.</summary>
             public ReturnPlan Aim(double window)
             {
@@ -250,7 +490,14 @@ namespace ClaudiaKerman.Core.Tools
                 var landed = Predict(least);
                 if (landed.Error != null) return null;
                 Stamp(least, landed);
+                return Aim(least);
+            }
 
+            /// <summary>The burn near <paramref name="least"/>, a window's least burn with its landing stamped, that comes down nearest the target.</summary>
+            private ReturnPlan Aim(ReturnPlan least)
+            {
+                AlongKm = double.PositiveInfinity;
+                var landed = least.Landing;
                 var centre = least.Ut;
                 var reach = Math.Max(ReachS, _orbit.Period * ReachShare);
                 var lowest = Math.Max(_earliest, centre - reach);
@@ -292,7 +539,7 @@ namespace ClaudiaKerman.Core.Tools
                 var landed = Predict(plan);
                 if (landed.Error != null) return null;
                 Stamp(plan, landed);
-                if (plan.ErrorKm < best.ErrorKm) best = plan;
+                if (plan.ErrorKm < best.ErrorKm && plan.DeltaV <= _dvLimit) best = plan;
                 return Off(landed);
             }
 

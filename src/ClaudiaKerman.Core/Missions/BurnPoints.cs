@@ -220,7 +220,9 @@ namespace ClaudiaKerman.Core.Missions
                 var earliest = TransferFlight.Earliest(now, 0, window);
                 double? estimate;
                 var aimed = Aimed(call, snapshot, now, earliest, body, out estimate, out span);
-                if (!aimed && !window.HasValue) return null;
+                // #816: with no target and no window given, from an inclined orbit the block may wait for the cheap window.
+                if (!aimed && !call.Options.ContainsKey("window")) estimate = Cheap(call, snapshot, now, earliest);
+                if (!aimed && !window.HasValue && !estimate.HasValue) return null;
                 ut = estimate ?? earliest;
                 departure = estimate ?? (window.HasValue ? earliest : (double?)null);
                 if (aimed) toEarliest = earliest - now;
@@ -280,12 +282,12 @@ namespace ClaudiaKerman.Core.Missions
             double latitude, longitude;
             var readable = SiteOf(target, out latitude, out longitude);
             if (readable && IsKsc(target) && planet.Name != "Kerbin") return false;
-            var maxWait = Literal(call.Option("max_wait"));
-            span = maxWait ?? ReturnAim.LongitudeTurnFor(at, planet);
-            var limit = Literal(call.Option("max_duration"));
-            if (limit.HasValue) span = Math.Min(span, limit.Value);
             string given;
             var targetPe = call.Options.TryGetValue("target_pe", out given) ? Literal(given) : ReturnAim.DefaultTargetPe;
+            var maxWait = Literal(call.Option("max_wait"));
+            span = maxWait ?? ReturnAim.AutoWaitFor(at, planet, earliest, targetPe ?? ReturnAim.DefaultTargetPe, body);
+            var limit = Literal(call.Option("max_duration"));
+            if (limit.HasValue) span = Math.Min(span, limit.Value);
             if (!readable || !targetPe.HasValue || body == null) return true;
             string problem;
             var craft = new ChuteGroups.FallingCraft(Math.Max(1000, at.Craft == null ? 0 : at.Craft.MassTonnes * 1000), new ReentryChute[0]);
@@ -296,6 +298,15 @@ namespace ClaudiaKerman.Core.Missions
                 TargetPe = targetPe.Value, EarliestUt = earliest, Landing = landing, MaxWait = span, LatestUt = limit.HasValue ? now + limit.Value : (double?)null,
             });
             return true;
+        }
+
+        /// <summary>The UT a return with no target and no window given waits for (<see cref="ReturnAim.CheapDepartureUt"/>), or null for its next pass.</summary>
+        private static double? Cheap(BlockCall call, GameSnapshot snapshot, double now, double earliest)
+        {
+            string given;
+            var targetPe = call.Options.TryGetValue("target_pe", out given) ? Literal(given) : 35000;
+            if (!targetPe.HasValue) return null;
+            return ReturnAim.CheapDepartureUt(snapshot.At(now), new ReturnAsk { TargetPe = targetPe.Value, EarliestUt = earliest, CheapWindow = true });
         }
 
         private static bool IsKsc(string target)

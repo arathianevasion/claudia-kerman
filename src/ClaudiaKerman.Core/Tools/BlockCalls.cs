@@ -1161,6 +1161,7 @@ namespace ClaudiaKerman.Core.Tools
                 LatestUt = NumberOrNull(ask, "latest_ut"),
                 PeTolerance = Number(ask, "pe_tolerance", 1000),
                 IncTolerance = Number(ask, "inc_tolerance", 0.5),
+                CheapWindow = ask.ContainsKey("cheap_window") && Equals(ask["cheap_window"], true),
             };
             if (ask.ContainsKey("lat") || ask.ContainsKey("lng"))
             {
@@ -1186,7 +1187,7 @@ namespace ClaudiaKerman.Core.Tools
                 { "aim_dv", plan.AimDv },
                 { "spread_km", plan.SpreadKm },
                 { "error_km", plan.ErrorKm },
-                { "plan_log", BurnPlanLog.Arrival("RETURNBURN", plan.Ut, plan.PePredicted, plan.IncPredicted, ask.ContainsKey("lat") && ask.ContainsKey("lng"), Number(ask, "lat", 0), Number(ask, "lng", 0)) },
+                { "plan_log", BurnPlanLog.Arrival("RETURNBURN", plan.Ut, plan.PePredicted, plan.IncPredicted, ask.ContainsKey("lat") && ask.ContainsKey("lng"), Number(ask, "lat", 0), Number(ask, "lng", 0)) + plan.WindowNote },
             };
             if (plan.Landing != null)
                 foreach (var key in Landing(plan.Landing, plan.ErrorKm)) result[key.Key] = key.Value;
