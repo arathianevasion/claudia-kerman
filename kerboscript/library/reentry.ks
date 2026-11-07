@@ -7,7 +7,7 @@
 
 @lazyglobal off.
 
-//| reentry(options): lands through the atmosphere: drops the stack below this entry's heat shield,
+//| reentry(options): lands through the atmosphere: drops the stack below this entry's shield,
 //| waits (on rails) for the atmosphere if still in space, holds the heat shield forward (surface retrograde), drops it once
 //| the worst heating is over, opens the parachutes only when safe (never staged), physics-warping the fall
 //| (1x below 100 m), and ends once landed or splashed.

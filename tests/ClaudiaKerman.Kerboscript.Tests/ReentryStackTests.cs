@@ -289,7 +289,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var docs = CoreLibrary.FullDocs(new[] { "reentry" });
             Assert.Contains("separate [\"auto\"]", docs);
             Assert.Contains("stack attached below the heat shield: <names>", docs);
-            Assert.Contains("drops the stack below this entry's heat shield", CoreLibrary.Blocks.Single(b => b.Name == "reentry").Docs[0]);
+            Assert.Contains("drops the stack below this entry's shield", CoreLibrary.Blocks.Single(b => b.Name == "reentry").Docs[0]);
         }
     }
 }
