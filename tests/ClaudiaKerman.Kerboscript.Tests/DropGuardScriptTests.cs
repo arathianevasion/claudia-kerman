@@ -70,6 +70,31 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Fact]
+        public void Deorbit_checks_the_separate_again_with_the_burns_delta_v_after_the_search_and_before_the_node()
+        {
+            var body = Function("deorbit", "function deorbit {");
+            var late = body.IndexOf("claudia_drop_refusal(separation, sqrt(", StringComparison.Ordinal);
+            Assert.True(late > body.IndexOf("addons:claudia:deorbitburn(", StringComparison.Ordinal));
+            Assert.True(late > body.IndexOf("return claudia_finish(ctx, false, found:error, extra)", StringComparison.Ordinal));
+            Assert.True(late < body.IndexOf("add nd.", StringComparison.Ordinal));
+            // A refusal returns before the node and before burn_ut is set, which stays -1; the check after the burn stays.
+            Assert.True(late < body.IndexOf("set extra:burn_ut", StringComparison.Ordinal));
+            Assert.Contains("\"separate: \" + late", body);
+            Assert.Contains("claudia_fire_drop(ctx, separation)", body);
+            Assert.Contains("parameter plan, spent is 0.", Function("claudia_lib", "function claudia_drop_refusal {"));
+        }
+
+        [Fact]
+        public void A_drop_the_plan_does_not_need_flies_as_before()
+        {
+            // The early check keeps its one argument and the late one only returns on a reason, so a drop the plan can spare goes on to the node.
+            var body = Function("deorbit", "function deorbit {");
+            Assert.Contains("local refused is claudia_drop_refusal(separation).", body);
+            Assert.Contains("if late <> \"\" {", body);
+            Assert.Contains("\"spent\", spent", Function("claudia_lib", "function claudia_drop_refusal {"));
+        }
+
+        [Fact]
         public void Reentry_takes_a_refusal_as_a_failed_drop_and_flies_on()
         {
             var body = Function("reentry", "function reentry {");

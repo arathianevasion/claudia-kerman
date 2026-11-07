@@ -573,10 +573,10 @@ function claudia_names_left {
   return left.
 }
 
-// "" or why plan's drop is refused (#825): it takes delta-v the rest of the Mission Plan needs (Core's rule).
+// "" or why plan's drop is refused (#825): it takes delta-v the rest of the Mission Plan needs (Core's rule). spent: m/s a burn still to fly will use (#835).
 function claudia_drop_refusal {
-  parameter plan.
-  return addons:claudia:dropcheck(lexicon("before", drop_parts_dv_left(lexicon("gone", list())), "left", drop_parts_dv_left(plan))):reason.
+  parameter plan, spent is 0.
+  return addons:claudia:dropcheck(lexicon("before", drop_parts_dv_left(lexicon("gone", list())), "left", drop_parts_dv_left(plan), "spent", spent)):reason.
 }
 
 // Fires a drop plan's decouplers, lets the parts leave, notes the names of those that really left in

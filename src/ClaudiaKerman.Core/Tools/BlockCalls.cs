@@ -1389,7 +1389,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// <c>ADDONS:CLAUDIA:DROPCHECK</c> (#825, ADR 0014), for <c>claudia_drop_refusal</c>: <see cref="DropGuard.Check"/> on the Mission
         /// Plan (<paramref name="plan"/>, null with none) and the step in hand. Takes <c>before</c> and <c>left</c>, the craft's delta-v
-        /// (m/s) before the drop and after it. Gives <c>error</c> "", <c>refused</c>, <c>reason</c> (names what the drop takes, what is left
+        /// (m/s) before the drop and after it, and optionally <c>spent</c>, what a burn still to fly will use (#835). Gives <c>error</c> "", <c>refused</c>, <c>reason</c> (names what the drop takes, what is left
         /// and what the plan needs; "" when not refused), <c>taken</c> and <c>need</c>.
         /// </summary>
         public static IDictionary<string, object> DropCheck(IDictionary<string, object> input, GameSnapshot snapshot, IList<PlannedSequence> plan, int step)
@@ -1397,7 +1397,7 @@ namespace ClaudiaKerman.Core.Tools
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
             foreach (var key in new[] { "before", "left" })
                 if (!NumberOrNull(ask, key).HasValue) return Error(key + " is required");
-            var verdict = DropGuard.Check(snapshot, plan, step, NumberOrNull(ask, "before").Value, NumberOrNull(ask, "left").Value);
+            var verdict = DropGuard.Check(snapshot, plan, step, NumberOrNull(ask, "before").Value, NumberOrNull(ask, "left").Value, NumberOrNull(ask, "spent") ?? 0);
             return new Dictionary<string, object>
             {
                 { "error", "" }, { "refused", verdict.Refused }, { "reason", verdict.Reason }, { "taken", verdict.Taken }, { "need", verdict.Need },

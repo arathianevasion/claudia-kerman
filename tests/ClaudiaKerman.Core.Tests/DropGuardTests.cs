@@ -59,6 +59,17 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void ADropThatPassesWithTheBurnUnspentIsRefusedOnceTheBurnIsCounted()
+        {
+            // 2,100 left clears the 1,959 the plan needs; a 300 m/s deorbit burn first leaves 1,800, which does not (#835).
+            Assert.False(DropGuard.Check(Craft(), DunaPlan(), 1, 3310, 2100).Refused);
+            Assert.False(DropGuard.Check(Craft(), DunaPlan(), 1, 3310, 2100, 0).Refused);
+            var verdict = DropGuard.Check(Craft(), DunaPlan(), 1, 3310, 2100, 300);
+            Assert.True(verdict.Refused);
+            Assert.Equal("this drop would take 1210 m/s and leave 1800; the plan still needs 1959 m/s: revise the Mission Plan first", verdict.Reason);
+        }
+
+        [Fact]
         public void ADropJustOverTheAllowanceIsChecked()
         {
             Assert.True(Check(DunaPlan(), 500, 500 - DropGuard.Allowance - 1).Refused);
