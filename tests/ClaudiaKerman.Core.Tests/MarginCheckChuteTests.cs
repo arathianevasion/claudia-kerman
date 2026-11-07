@@ -241,6 +241,18 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void AGroupPartlyOnDroppedTanksSaysTheRestOpen()
+        {
+            var snapshot = OnRadialTanks();
+            snapshot.Craft.Parts.Add(Chute(820, PodChute, 2));
+
+            var finding = Assert.Single(Check(snapshot, Plan(1000), Home).Findings, f => f.Code == CraftCheckRules.ChuteGroupLeaves);
+
+            Assert.Contains("the rest of its chutes open without them", finding.Explanation);
+            Assert.DoesNotContain("would open at", finding.Explanation);
+        }
+
+        [Fact]
         public void AGroupThePlanDoesntBurnDownToHasNoWarning()
         {
             var plan = new List<PlannedSequence>
@@ -301,6 +313,16 @@ namespace ClaudiaKerman.Core.Tests
             snapshot.Orbit.Body = "Duna";
 
             Assert.DoesNotContain(Check(snapshot, plan, Home).Findings, f => f.Code == CraftCheckRules.ChuteGroupAboveEngine);
+        }
+
+        [Fact]
+        public void AnOpenOrCutChuteStillStopsTheStageFromFiring()
+        {
+            // claudia_stage_unsafe looks only for the part, so spent stage-2 chutes still end in "out of fuel".
+            var snapshot = AboveEngine();
+            snapshot.Craft.Parts.Single(p => p.Id == 701).Chute = null;
+
+            Assert.Single(Check(snapshot, Plan(1000), Home).Findings, f => f.Code == CraftCheckRules.ChuteGroupAboveEngine);
         }
 
         [Fact]

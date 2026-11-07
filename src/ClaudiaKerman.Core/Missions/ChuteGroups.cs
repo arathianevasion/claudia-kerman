@@ -16,13 +16,10 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The part's <c>persistentId</c>, as the Game Snapshot has it.</summary>
         public uint PartId;
         public string Title = "";
-        public bool Drogue;
         /// <summary>The part's own stage number (KSP's <c>inverseStage</c>); -1 with staging disabled.</summary>
         public int Stage;
         /// <summary>The stage whose separation takes it, by the staging plan; null when no separation does.</summary>
         public int? LeavesAtStage;
-        /// <summary>The drag area it adds fully open, m².</summary>
-        public double FullArea;
     }
 
     /// <summary>One remaining Entry of the Mission Plan and the chutes the rule gives it.</summary>
@@ -52,8 +49,8 @@ namespace ClaudiaKerman.Core.Missions
 
     /// <summary>
     /// Chute Groups (ADR 0019): the player places chutes by stage, and the staging list decides which open. An Entry that isn't the Last
-    /// Entry opens the Chute Group of the highest stage aboard; a Last Entry opens every chute aboard. <see cref="Choose"/> is the rule,
-    /// and the one place it lives: <c>reentry</c> asks it through <c>ADDONS:CLAUDIA:CHUTEGROUP</c> (<see cref="BlockCalls.ChuteGroupCall"/>)
+    /// Entry opens the Chute Group of the highest stage aboard; a Last Entry opens every chute aboard. <see cref="Choose"/> is the rule:
+    /// <c>reentry</c> asks it (and re-reads each chute's stage and state against the answer before each opening) through <c>ADDONS:CLAUDIA:CHUTEGROUP</c> (<see cref="BlockCalls.ChuteGroupCall"/>)
     /// for the Entry in hand, and <see cref="Of"/> walks it down the Entries left, each taking its group after its own drop, for the
     /// Margin Check, the Craft Check and the cards. Everything is read from the Game Snapshot it is given, with no memory of use: a repacked
     /// chute reads as stowed and counts again, a restaged one is in its new group, an open or cut one doesn't count, and one that has left isn't there.
@@ -122,7 +119,7 @@ namespace ClaudiaKerman.Core.Missions
                 int stage;
                 usable.Add(new GroupChute
                 {
-                    PartId = part.Id, Title = part.Title.Length > 0 ? part.Title : part.Name, Drogue = chute.Drogue, Stage = part.Stage, FullArea = chute.FullArea,
+                    PartId = part.Id, Title = part.Title.Length > 0 ? part.Title : part.Name, Stage = part.Stage,
                     LeavesAtStage = leaving.TryGetValue(part.Id, out stage) ? stage : (int?)null,
                 });
             }
@@ -160,7 +157,8 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         public static ChuteGroups Of(GameSnapshot snapshot, IList<PlannedSequence> sequences, int firstStep, bool remote, uint? processorPartId)
         {
-            return Walked(snapshot, sequences, firstStep, remote, processorPartId, s => s.DeltaV > 0);
+            Func<PlannedSequence, bool> flown = s => snapshot == null || Missions.Entries.Flies(snapshot, s, "");
+            return Walked(snapshot, sequences, firstStep, remote, processorPartId, flown, s => flown(s) && s.DeltaV > 0);
         }
 
         /// <summary>
@@ -194,19 +192,23 @@ namespace ClaudiaKerman.Core.Missions
             if (snapshot == null) return null;
             var chutes = snapshot.Craft.Parts.Where(p => p.Tags.Contains("parachute")).ToList();
             if (chutes.Count == 0 || chutes.Any(p => p.Chute == null)) return null;
-            return Walked(snapshot, legs, 0, remote, processorPartId, Missions.Entries.BurnsInWords);
+            return Walked(snapshot, legs, 0, remote, processorPartId, s => true, Missions.Entries.BurnsInWords);
         }
 
-        /// <summary>The Entries in order, each losing what its own drop takes and then taking its group (<paramref name="burns"/>: a later leg that stops the final Entry being the Last Entry).</summary>
-        private static ChuteGroups Walked(GameSnapshot snapshot, IList<PlannedSequence> sequences, int firstStep, bool remote, uint? processorPartId, Func<PlannedSequence, bool> burns)
+        /// <summary>
+        /// The Entries in order of the sequences the craft flies (<paramref name="flown"/>), each losing what its own drop takes and then taking its group
+        /// (<paramref name="burns"/>: a later leg that stops the final Entry being the Last Entry). A projection: each counts as flown from where it is, so the
+        /// block's own doubt about a reentry the words don't place (<see cref="Entries.ShieldNumber"/>) doesn't apply until it is flown.
+        /// </summary>
+        private static ChuteGroups Walked(GameSnapshot snapshot, IList<PlannedSequence> sequences, int firstStep, bool remote, uint? processorPartId, Func<PlannedSequence, bool> flown, Func<PlannedSequence, bool> burns)
         {
             var groups = new ChuteGroups();
             if (snapshot == null || sequences == null) return groups;
             var first = Math.Max(0, firstStep);
             groups.Chutes.AddRange(Usable(snapshot, remote, processorPartId));
-            var found = Missions.Entries.Find(snapshot, sequences, first);
+            var found = Missions.Entries.Find(snapshot, sequences, first, flown);
             if (found.Count == 0) return groups;
-            var tail = sequences.Skip(found[found.Count - 1].Step + 1).Any(burns) ? 1 : 0;
+            var tail = Missions.Entries.BurnsAfter(sequences, found[found.Count - 1].Step, burns) ? 1 : 0;
             var keeper = ChildVessels.Keeper(snapshot, remote, processorPartId);
             var leaving = new HashSet<uint>(ChildVessels.Staging(snapshot, remote, processorPartId).Separations.SelectMany(s => s.PartIds));
             var podMassKg = snapshot.Craft.Parts.Where(p => !leaving.Contains(p.Id)).Sum(p => p.MassT) * 1000;

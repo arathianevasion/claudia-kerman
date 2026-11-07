@@ -35,6 +35,8 @@ On the craft above, whose chutes are stage 2 (four, on the radial tanks) and sta
 
 **Does stock already cut chutes on landing?** The Mk16's config has `autoCutSpeed = 0.5`, which suggests it does once settled, but no flight has confirmed it. To check, run `reentry_orbit`: with no Mission Plan it is a Last Entry, so the block cuts nothing. Watch the chute for a minute after touchdown. If it cuts itself, stock does it and the block's cut only comes first. If it stays open, the block's cut is the only one. **Write down which applies, on #826.**
 
+5. **A repack at Duna counts again.** After the Duna landing, have an Engineer repack one stage-2 chute on EVA. The next Debrief's `Chutes:` line counts it among those stowed. **A restage counts too:** before the Duna entry on a second try, move one stage-2 chute to stage 1 and read `stage 2:` with three titles.
+
 ### Fresh reads (both need KSP to report them)
 
 Do these on a throwaway craft in a Mission whose plan has burns after the Entry, so it isn't the Last Entry: a pod with a stage-0 Mk16 and two more Mk16s in stage 2, with the Mission Goal "Land on Kerbin, ascend and land on Kerbin".

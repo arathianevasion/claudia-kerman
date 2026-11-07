@@ -97,7 +97,7 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// The chute findings alone (#641): the Craft Check's, from <see cref="ChuteGroups.ForGoal"/> over the Mission Goal's
-        /// <paramref name="legs"/>, judged as <see cref="Of"/> judges them, with <paramref name="goal"/>'s repack. None for a null allocation.
+        /// <paramref name="legs"/>, judged as <see cref="Of"/> judges them, with <paramref name="goal"/>'s repack. None for null groups.
         /// </summary>
         public static IList<MarginFinding> ChuteFindings(GameSnapshot snapshot, IList<PlannedSequence> legs, ChuteGroups chutes, string goal)
         {

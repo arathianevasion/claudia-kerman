@@ -21,7 +21,7 @@ namespace ClaudiaKerman.Core.Missions
             if (!snapshot.DeltaVSimulator || snapshot.Stages.Count == 0 || snapshot.DeltaVUnreliable) return found;
             var legs = PlanLegs.Judge(snapshot, rest, "");
             LeavingEarly(snapshot, groups, legs, firstStep, found);
-            AboveEngine(snapshot, groups, PlanLegs.Need(legs), found);
+            AboveEngine(snapshot, PlanLegs.Need(legs), found);
             return found;
         }
 
@@ -61,7 +61,7 @@ namespace ClaudiaKerman.Core.Missions
                 var leaving = entry.Chutes.Where(c => c.LeavesAtStage.HasValue && BurnedTo(snapshot, c.LeavesAtStage.Value, spent)).ToList();
                 if (leaving.Count == 0) continue;
                 found.Add(Finding(CraftCheckRules.ChuteGroupLeaves, "Stage " + Number(leaving[0].Stage) + "'s chutes sit on parts dropped in stage " + Number(leaving.Max(c => c.LeavesAtStage.Value))
-                    + ", and the plan's delta-v burns through it before the " + entry.Body + " entry for \"" + entry.Sequence + "\"" + MovesOn(groups, i)));
+                    + ", and the plan's delta-v burns through it before the " + entry.Body + " entry for \"" + entry.Sequence + "\"" + (leaving.Count < entry.Chutes.Count ? ": the rest of its chutes open without them" : MovesOn(groups, i))));
             }
         }
 
@@ -82,13 +82,13 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
-        /// A group's stage, not yet fired, at or above an unlit engine the plan still needs: <c>claudia_stage_unsafe</c> won't fire a stage holding
-        /// chutes, so the delta-v from the stages before it, and from engines already lit, is all the craft gets. Stage -1 is never fired.
+        /// A stage holding chutes (in any state: <c>claudia_stage_unsafe</c> looks only for the part), not yet fired, at or above an unlit engine the plan still
+        /// needs: automatic staging won't fire it, so the delta-v from the stages before it, and from engines already lit, is all the craft gets. Stage -1 is never fired.
         /// </summary>
-        private static void AboveEngine(GameSnapshot snapshot, ChuteGroups groups, double need, List<MarginFinding> found)
+        private static void AboveEngine(GameSnapshot snapshot, double need, List<MarginFinding> found)
         {
             var parts = snapshot.Craft.Parts;
-            foreach (var stage in groups.Chutes.Select(c => c.Stage).Where(s => s >= 0 && s < snapshot.Craft.Stage).Distinct().OrderByDescending(s => s))
+            foreach (var stage in parts.Where(p => p.Tags.Contains("parachute")).Select(p => p.Stage).Where(s => s >= 0 && s < snapshot.Craft.Stage).Distinct().OrderByDescending(s => s))
             {
                 var engine = parts.Where(p => p.Tags.Contains("engine") && !p.EngineLit && p.Stage >= 0 && p.Stage <= stage).OrderByDescending(p => p.Stage).FirstOrDefault();
                 if (engine == null) continue;

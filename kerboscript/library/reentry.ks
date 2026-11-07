@@ -283,15 +283,18 @@ function reentry_stowed {
 // True if group has nothing left to open and this entry opened nothing (titles): a drop or restage took it. A skip-out's next pass has opened some, so asks for no further group.
 function reentry_group_gone {
   parameter group, parts, opened.
-  if opened:length > 0 {
-    return false.
-  }
+  if opened:length > 0 { return false. }
   for p in reentry_chutes_in(parts) {
-    if reentry_in_group(p, group) and reentry_stowed(p) {
-      return false.
-    }
+    if reentry_in_group(p, group) and reentry_stowed(p) { return false. }
   }
   return true.
+}
+
+// group, or if it has gone (reentry_group_gone), what CHUTEGROUP gives now. Read before each opening, an abort's too.
+function reentry_fresh_group {
+  parameter group, choice, opened.
+  if reentry_group_gone(group, ship:parts, opened) { return reentry_group_of(choice, addons:claudia:chutegroup(), ship:parts). }
+  return group.
 }
 
 // True if a stowed chute of group is a drogue.
@@ -708,6 +711,7 @@ function reentry {
   }
   set extra:geo to reentry_geo().
   local powered is opt:touchdown = "powered".
+  set extra:chutes_kept to reentry_stowed_titles(ship:parts).
   // Wait (on rails) for the atmosphere if the craft is still above it.
   local entry_in is 0.
   if ship:altitude > body_:atm:height and not claudia_on_ground() {
@@ -761,7 +765,6 @@ function reentry {
   if group:uids:length = 0 {
     set chute_mode to "none".
   }
-  set extra:chutes_kept to reentry_stowed_titles(ship:parts).
   // A powered touchdown needs its engines lit: reentry never stages.
   if powered and ship:availablethrust <= 0 {
     return claudia_finish(ctx, false, "touchdown 'powered' needs a lit engine (reentry never stages)", extra).
@@ -786,7 +789,7 @@ function reentry {
   if entry_in > 0 {
     local waited is claudia_wait_until(ctx, time:seconds + entry_in).
     if waited <> "" {
-      reentry_abort(chute_mode, group).
+      reentry_abort(chute_mode, reentry_fresh_group(group, opt:chutes, extra:chutes_used)).
       return claudia_finish(ctx, false, waited, extra).
     }
   }
@@ -815,9 +818,7 @@ function reentry {
     local chute_plan is reentry_chute_stage(chute_mode, has_drogues, drogues_out, mains_out, speed, agl, pressure).
     // Read again before each opening: the group may have gone, and a drogue with it.
     if chute_plan <> "wait" {
-      if reentry_group_gone(group, ship:parts, extra:chutes_used) {
-        set group to reentry_group_of(opt:chutes, addons:claudia:chutegroup(), ship:parts).
-      }
+      set group to reentry_fresh_group(group, opt:chutes, extra:chutes_used).
       set has_drogues to reentry_has_drogues(ship:parts, group).
       set chute_plan to reentry_chute_stage(chute_mode, has_drogues, drogues_out, mains_out, speed, agl, pressure).
     }
@@ -975,7 +976,7 @@ function reentry {
     set extra:powered_dv to round(ctx:dv_used - dv_before, 1).
   }
   if fell <> "" {
-    for t in reentry_abort(chute_mode, group) {
+    for t in reentry_abort(chute_mode, reentry_fresh_group(group, opt:chutes, extra:chutes_used)) {
       extra:chutes_used:add(t).
     }
     set extra:chutes_kept to reentry_stowed_titles(ship:parts).

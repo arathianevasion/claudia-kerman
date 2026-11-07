@@ -243,6 +243,21 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void AChildVesselsBurnsAfterTheFinalEntryDontStopItBeingTheLastEntry()
+        {
+            var plan = new List<PlannedSequence>
+            {
+                Leg("Land on Duna", "Deorbit and land on Duna under parachute.", 100),
+                new PlannedSequence { Name = "Probe burn", Intent = "Raise the probe's orbit.", DeltaV = 200, Vessel = "Probe" },
+            };
+
+            var duna = Assert.Single(Group(Simple(2, 0), plan).Entries);
+
+            Assert.True(duna.Last);
+            Assert.Equal(new[] { 2, 0 }, Stages(duna));
+        }
+
+        [Fact]
         public void TheDescriptionNamesEachEntrysGroupAndTouchdown()
         {
             var text = Group(Simple(2, 0), DunaLandingAndReturn()).Describe();
