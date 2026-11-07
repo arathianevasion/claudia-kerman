@@ -90,8 +90,8 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("// set t to 5\nlocal t is " + Ut + ".")]
         [InlineData("local t is " + Ut + ". print \"set t to 5\".")]
         [InlineData("set t2 to 1. set my_t to 2. set x:t to 3. local t is " + Ut + ".")]
-        // Work before the assignment is no wait of the variable's.
-        [InlineData("wait 1. stage. for n in allnodes { remove n. } local t is " + Ut + ".")]
+        // Clearing the nodes and building a result pass no time.
+        [InlineData("for n in allnodes { remove n. } local r0 is lexicon(\"success\", true). local t is " + Ut + ".")]
         public void Other_text_about_the_name_leaves_it_read(string before)
         {
             var wait = BurnPoints.First(before + " " + Coast("t + 60") + Capture, Snapshot(), Now, 600);
@@ -122,7 +122,20 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("list parts in t. local t is " + Ut + ". ")]
         [InlineData("lock t to 5. local t is " + Ut + ". ")]
         [InlineData("unset t. local t is " + Ut + ". ")]
+        [InlineData("local t is " + Ut + ". toggle t. ")]
+        [InlineData("local t is " + Ut + ". t off. ")]
+        [InlineData("local t is " + Ut + ". unset all. ")]
         public void A_variable_assigned_more_than_once_stays_unread(string before)
+        {
+            Unread(before + Coast("t + 60") + Capture);
+        }
+
+        /// <summary>A kOS string may span lines; the masking restarts at each line, so what it shows after one can't be trusted, in either direction.</summary>
+        [Theory]
+        [InlineData("local t is " + Ut + ".\nlocal s is \"a\nb\". set t to 5.\n")]
+        [InlineData("local s is \"a\nb\". set t to 5.\nlocal t is " + Ut + ".\n")]
+        [InlineData("local t is " + Ut + ".\nlocal s is \"a\nb\". wait 1000.\n")]
+        public void A_string_across_lines_leaves_it_unread(string before)
         {
             Unread(before + Coast("t + 60") + Capture);
         }
@@ -148,6 +161,15 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("local t is " + Ut + ". function go { return coast(lexicon(\"until\", t + 60)). } local res is go()." + Capture)]
         [InlineData("local go is { local t is " + Ut + ". return coast(lexicon(\"until\", t + 60)). }. local res is go()." + Capture)]
         [InlineData("when a then { local t is " + Ut + ". local res is coast(lexicon(\"until\", t + 60)). }" + Capture)]
+        // A loop or a function behind an if: the first word says branch, the rest doesn't.
+        [InlineData("if a until done { local t is " + Ut + ". local res is coast(lexicon(\"until\", t + 60)). }" + Capture)]
+        [InlineData("if a for n in allnodes { local t is " + Ut + ". local res is coast(lexicon(\"until\", t + 60)). }" + Capture)]
+        [InlineData("if a when b then { local t is " + Ut + ". local res is coast(lexicon(\"until\", t + 60)). }" + Capture)]
+        [InlineData("if a on ag1 { local t is " + Ut + ". local res is coast(lexicon(\"until\", t + 60)). }" + Capture)]
+        [InlineData("if a { print 1. } else until done { local t is " + Ut + ". local res is coast(lexicon(\"until\", t + 60)). }" + Capture)]
+        [InlineData("if f({ local t is " + Ut + ". local res is coast(lexicon(\"until\", t + 60)). }) { print 1. }" + Capture)]
+        [InlineData("local t is " + Ut + ". if a until done coast(lexicon(\"until\", t + 60))." + Capture)]
+        [InlineData("local t is " + Ut + ". if a until done set res to coast(lexicon(\"until\", t + 60))." + Capture)]
         public void A_variable_in_a_loop_or_function_stays_unread(string script)
         {
             Unread(script);
@@ -194,7 +216,7 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Theory]
-        [InlineData(Coast_Then_Assign)]
+        [InlineData("local res is coast(lexicon(\"until\", t + 60)). local t is " + Ut + "." + Capture)]
         // Out of scope by the time of the coast, or in another branch.
         [InlineData("if a { local t is " + Ut + ". } local res is coast(lexicon(\"until\", t + 60))." + Capture)]
         [InlineData("if a { local t is " + Ut + ". } else { local res is coast(lexicon(\"until\", t + 60)). }" + Capture)]
@@ -203,8 +225,6 @@ namespace ClaudiaKerman.Core.Tests
         {
             Unread(script);
         }
-
-        private const string Coast_Then_Assign = "local res is coast(lexicon(\"until\", t + 60)). local t is " + Ut + "." + Capture;
 
         /// <summary>
         /// <c>time:seconds + e</c> at the coast is the patch's end only if no time passed since <c>e</c> was read: a wait of 100 s puts it 100 s past. And a burn moves
@@ -222,10 +242,29 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("local res0 is coast(lexicon(\"until\", time:seconds + 100)).")]
         [InlineData("lock throttle to 1.")]
         [InlineData("stage.")]
+        // kOS calls a suffix method with no brackets; a suffix may also set the throttle.
+        [InlineData("pause:call.")]
+        [InlineData("set ship:control:pilotmainthrottle to 1.")]
         public void What_can_pass_time_or_burn_between_the_assignment_and_the_coast_leaves_it_unread(string between)
         {
             Unread("local e is " + Eta + ". " + between + " " + Coast("time:seconds + e + 60") + Capture);
             Unread("local t is " + Ut + ". " + between + " " + Coast("t + 60") + Capture);
+        }
+
+        /// <summary>A wait or a burn before the assignment may take the craft past the snapshot's patch, or move its end: what the variable then holds isn't the snapshot's figure.</summary>
+        [Theory]
+        [InlineData("wait 100000.")]
+        [InlineData("wait until ship:altitude > 100.")]
+        [InlineData("until done { print 1. }")]
+        [InlineData("lock throttle to 1.")]
+        [InlineData("set ship:control:pilotmainthrottle to 1.")]
+        [InlineData("stage.")]
+        [InlineData("burn_it().")]
+        [InlineData("kuniverse:timewarp:warpto(5).")]
+        public void What_can_pass_time_or_burn_before_the_assignment_leaves_it_unread(string before)
+        {
+            Unread(before + " local t is " + Ut + ". " + Coast("t + 60") + Capture);
+            Unread(before + " local e is " + Eta + ". " + Coast("time:seconds + e + 60") + Capture);
         }
 
         // ---- After reading, as #833 ----
@@ -288,7 +327,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(End + 100, after.WaitSeconds, 3);
         }
 
-        // ---- The Due Time paths in MissionControl (brief item 5) ----
+        // ---- The Due Time paths in MissionControl ----
 
         private const double SunAltitude = 13599840256 - 261600000;
         private const string Transfer = "local res is transfer_to(lexicon(\"target\", \"Duna\", \"target_pe\", 50000, \"window\", 41000000)).";

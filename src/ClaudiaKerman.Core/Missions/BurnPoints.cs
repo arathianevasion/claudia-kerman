@@ -390,14 +390,14 @@ namespace ClaudiaKerman.Core.Missions
             if (Number.IsMatch(trimmed)) return double.Parse(trimmed, CultureInfo.InvariantCulture);
             // #833: time:seconds + ship:orbit:nextpatcheta [+ n] is the patch's end UT plus n; no next patch leaves it unread.
             var patch = StoredNextPatch.UtForm.Match(trimmed);
-            var past = patch.Success ? (patch.Groups["s"].Success ? double.Parse(patch.Groups["s"].Value, CultureInfo.InvariantCulture) : 0)
+            var secondsPast = patch.Success ? StoredNextPatch.Seconds(patch)
                 : masked != null ? StoredNextPatch.SecondsPastTheEnd(trimmed, masked, callAt) : null;
-            if (past.HasValue)
+            if (secondsPast.HasValue)
             {
                 // A patch end already behind this point is a later patch's: not read.
                 if (!snapshot.NextPatchEndUt.HasValue || snapshot.NextPatchEndUt.Value <= at) return null;
                 toPatch = true;
-                return snapshot.NextPatchEndUt.Value + past.Value;
+                return snapshot.NextPatchEndUt.Value + secondsPast.Value;
             }
             var from = FromNow.Match(trimmed);
             return from.Success ? at + double.Parse(from.Groups["s"].Value, CultureInfo.InvariantCulture) : (double?)null;

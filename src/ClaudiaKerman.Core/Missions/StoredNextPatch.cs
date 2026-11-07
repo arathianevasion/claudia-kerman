@@ -20,15 +20,19 @@ namespace ClaudiaKerman.Core.Missions
         private const string Offset = @"(\s*\+\s*(?<s>[0-9]+(\.[0-9]+)?))?$";
         private const string Name = @"(?<name>[a-z_][a-z0-9_]*)";
         private const string NextPatchEta = @"ship\s*:\s*orbit\s*:\s*nextpatcheta";
-        private const string Now = @"time\s*:\s*seconds\s*\+\s*";
+        private const string TimeSecondsPlus = @"time\s*:\s*seconds\s*\+\s*";
 
         /// <summary><c>time:seconds + ship:orbit:nextpatcheta [+ n]</c>: the UT of the patch's end, plus n.</summary>
-        internal static readonly Regex UtForm = new Regex("^" + Now + NextPatchEta + Offset, Options);
+        internal static readonly Regex UtForm = new Regex("^" + TimeSecondsPlus + NextPatchEta + Offset, Options);
         private static readonly Regex WaitForm = new Regex("^" + NextPatchEta + Offset, Options);
         private static readonly Regex NamesUt = new Regex("^" + Name + Offset, Options);
-        private static readonly Regex NamesWait = new Regex("^" + Now + Name + Offset, Options);
-        /// <summary>What may pass time, burn or start a loop: any call (a block's, or a function's that may hold any of these) and these words.</summary>
-        private static readonly Regex TakesTime = new Regex(@"\(|\b(wait|until|for|from|when|on|warp|warpmode|throttle|stage|run|runpath|runoncepath)\b", Options);
+        private static readonly Regex NamesWait = new Regex("^" + TimeSecondsPlus + Name + Offset, Options);
+        /// <summary>Between the assignment and the coast, what may pass time, burn or start a loop: any call or suffix (kOS calls a suffix method with no brackets) and these words.</summary>
+        private static readonly Regex TakesTime = new Regex(@"\(|:|\b(wait|until|for|from|when|on|warp|warpmode|throttle|stage|run|runpath|runoncepath)\b", Options);
+        /// <summary>Before the assignment, what may take the craft past the snapshot's patch or move its end: these words, or any call but those that build a value or are counted (an earlier coast).</summary>
+        private static readonly Regex WorkBefore = new Regex(@"\b(wait|until|warp|warpmode|warpto|throttle|pilotmainthrottle|stage|run|runpath|runoncepath)\b|\b(?!(lexicon|lex|list|node|coast)\b)[a-z_][a-z0-9_]*\s*\(", Options);
+        /// <summary>What repeats its body or runs it later, anywhere in the statement that opens a block.</summary>
+        private static readonly Regex NotOnce = new Regex(@"\b(until|for|from|when|on|function)\b", Options);
         private static readonly Regex FirstWord = new Regex(@"\G\s*(?<word>[a-z_][a-z0-9_]*)", Options);
 
         /// <summary>The seconds past the patch's end that <paramref name="until"/> means, for the coast at <paramref name="callAt"/> in <paramref name="masked"/> (strings and comments blanked); null when it can't be read.</summary>
@@ -43,6 +47,7 @@ namespace ClaudiaKerman.Core.Missions
             }
             if (!named.Success) return null;
             var name = named.Groups["name"].Value;
+            if (StringAcrossLines(masked)) return null;
 
             var writes = Writes(name).Matches(masked);
             if (writes.Count != 1) return null;
@@ -53,23 +58,31 @@ namespace ClaudiaKerman.Core.Missions
             var value = form.Match(assignment.Groups["value"].Value.Trim());
             if (!value.Success) return null;
 
-            if (TakesTime.IsMatch(masked.Substring(end, callAt - end))) return null;
+            if (TakesTime.IsMatch(masked.Substring(end, callAt - end)) || WorkBefore.IsMatch(masked.Substring(0, assignment.Index))) return null;
             if (!Reaches(masked, assignment.Index, callAt) || !RunsOnce(masked, callAt)) return null;
             return Seconds(value) + Seconds(named);
         }
 
-        private static double Seconds(Match form)
+        /// <summary>A kOS string may span lines, and the masking restarts at each one: what it shows after such a string can't be trusted.</summary>
+        private static bool StringAcrossLines(string masked)
+        {
+            return masked.Split('\n').Any(line => line.Count(c => c == '"') % 2 != 0);
+        }
+
+        /// <summary>The n of a form's <c>+ n</c>; 0 without one.</summary>
+        internal static double Seconds(Match form)
         {
             return form.Groups["s"].Success ? double.Parse(form.Groups["s"].Value, CultureInfo.InvariantCulture) : 0;
         }
 
-        /// <summary>Everything that gives the name a value, or is a thing of that name: the assignment, a second one anywhere, a lock, a function, a parameter, a loop variable, <c>list ... in</c>.</summary>
+        /// <summary>Everything that gives the name a value, or is a thing of that name: the assignment, a second one anywhere, a lock, a function, a parameter, a loop variable, <c>list ... in</c>, <c>unset all</c>.</summary>
         private static Regex Writes(string name)
         {
-            return new Regex(@"\b(set|local|global|declare|lock|unset|for|function)\s+((local|global|lock|function)\s+)*" + name + @"\b"
+            return new Regex(@"\b(set|local|global|declare|lock|unset|for|function|toggle)\s+((local|global|lock|function)\s+)*" + name + @"\b"
                 + @"|\bparameter\b([^.]|\.[0-9])*\b" + name + @"\b"
                 + @"|\bin\s+" + name + @"\b"
-                + @"|\b" + name + @"\s+(on|off|toggle)\b", Options);
+                + @"|\b" + name + @"\s+(on|off)\b"
+                + @"|\bunset\s+all\b", Options);
         }
 
         /// <summary>A plain assignment at the match's start, up to the full stop that ends it (a decimal's point doesn't).</summary>
@@ -92,12 +105,18 @@ namespace ClaudiaKerman.Core.Missions
             return outer.SequenceEqual(Blocks(masked, used).Take(outer.Count));
         }
 
-        /// <summary>Whether the coast runs at most once in the order it's written: inside nothing but <c>if</c> and <c>else</c> blocks, and no unbraced loop.</summary>
+        /// <summary>Whether the coast runs at most once in the order it's written: inside nothing but plain <c>if</c> and <c>else</c> blocks. An unbraced loop on the coast's own statement is <see cref="TakesTime"/>'s to catch.</summary>
         private static bool RunsOnce(string masked, int callAt)
         {
-            if (Blocks(masked, callAt).Any(open => !Branch(HeadOf(masked, open)))) return false;
-            var head = HeadOf(masked, callAt);
-            return Branch(head) || head == "local" || head == "set" || head == "global" || head == "declare" || head == "coast";
+            return Blocks(masked, callAt).All(open => Branch(HeadOf(masked, open)) && PlainUpTo(masked, open));
+        }
+
+        /// <summary>Whether the statement up to <paramref name="at"/> has no loop or trigger behind its first word (<c>if a until b {</c>), and <paramref name="at"/> isn't inside a call's brackets (a function passed to one).</summary>
+        private static bool PlainUpTo(string masked, int at)
+        {
+            var start = StatementStart(masked, at);
+            var text = masked.Substring(start, at - start);
+            return !NotOnce.IsMatch(text) && text.Count(c => c == '(') == text.Count(c => c == ')');
         }
 
         private static bool Branch(string head)
