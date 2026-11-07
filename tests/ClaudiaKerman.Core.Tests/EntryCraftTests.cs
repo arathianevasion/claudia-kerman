@@ -515,13 +515,14 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void Another_vessels_Entry_or_a_new_aiming_block_has_no_aim_to_compare()
+        public void Another_vessels_Entry_has_no_aim_and_leaves_it_and_a_new_aiming_block_clears_it()
         {
             var aim = new EntryAim();
             aim.Aimed(42, "1,2|shield kept", "the capsule");
             aim.Block("return", Result(true));
             string why;
             Assert.Equal("", aim.Take(7, out why));
+            Assert.Equal("1,2|shield kept", aim.Take(42, out why));
 
             aim.Aimed(42, "1,2|shield kept", "the capsule");
             aim.Block("deorbit", null);

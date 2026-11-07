@@ -39,11 +39,13 @@ namespace ClaudiaKerman.Core.Missions
             _key = _why = "";
         }
 
-        /// <summary>The aim's key and words for <paramref name="vessel"/>'s Entry, and clears it; "" when it aimed none (or another vessel did).</summary>
+        /// <summary>The aim's key and words for <paramref name="vessel"/>'s Entry, and clears it; "" when it aimed none. Another vessel's Entry leaves it.</summary>
         public string Take(uint vessel, out string why)
         {
-            var key = _vessel == vessel ? _key : "";
-            why = _vessel == vessel ? _why : "";
+            why = "";
+            if (_vessel != vessel) return "";
+            var key = _key;
+            why = _why;
             _key = _why = "";
             return key;
         }
