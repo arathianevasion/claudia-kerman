@@ -49,6 +49,30 @@ namespace ClaudiaKerman.Core.Missions
         public string Unpredicted = "";
     }
 
+    /// <summary>The Entry in hand's chutes as <see cref="ChuteGroups.Widen"/> leaves them (#827).</summary>
+    public sealed class Widened
+    {
+        public EntryChutes Entry;
+        /// <summary>Groups opened beyond the Entry's own.</summary>
+        public int Extra;
+        /// <summary>The touchdown predicted with the Entry's own group, m/s; -1 unknown.</summary>
+        public double Before = -1;
+        /// <summary>The script's <c>chutes: "none"</c> was overridden: a certain crash with chutes aboard.</summary>
+        public bool Overrode;
+        /// <summary>For the Mission window and Debrief: nothing can land the craft, said while it is above the air; "" otherwise.</summary>
+        public string Warning = "";
+
+        /// <summary>Why, with the predicted speeds before and after, for the log; "" when nothing was widened or overridden.</summary>
+        public string Why()
+        {
+            if (Extra == 0 && !Overrode) return "";
+            var stages = string.Join(", ", Entry.Chutes.Select(c => c.Stage).Distinct().OrderByDescending(s => s).Select(s => s.ToString(CultureInfo.InvariantCulture)).ToArray());
+            return (Overrode ? "chutes none overridden: no engine, and a crash otherwise. " : "")
+                + "Opening " + Entry.Chutes.Count + " chutes of stage " + stages + (Extra > 0 ? ", " + Extra + " more than its own group" : "")
+                + ": predicted " + ChuteGroups.Speed(Before) + " with its own group, " + ChuteGroups.Speed(Entry.TouchdownSpeed) + " now.";
+        }
+    }
+
     /// <summary>
     /// Chute Groups (ADR 0019): the player places chutes by stage, and the staging list decides which open. An Entry that isn't the Last
     /// Entry opens the Chute Group of the highest stage aboard; a Last Entry opens every chute aboard. <see cref="Choose"/> is the rule:
@@ -97,14 +121,15 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// The rule: of the chutes <paramref name="aboard"/>, those an Entry opens. A Last Entry opens all of them; any other Entry those of
-        /// the highest stage, and stage -1 (staging disabled) comes after every numbered stage.
+        /// the highest stage, and stage -1 (staging disabled) comes after every numbered stage. <paramref name="extra"/> adds that many of the
+        /// next stages' groups, in that order (#827).
         /// </summary>
-        public static List<GroupChute> Choose(IEnumerable<GroupChute> aboard, bool lastEntry)
+        public static List<GroupChute> Choose(IEnumerable<GroupChute> aboard, bool lastEntry, int extra = 0)
         {
             var left = aboard.ToList();
             if (lastEntry || left.Count == 0) return left;
-            var stage = left.Max(c => c.Stage);
-            return left.Where(c => c.Stage == stage).ToList();
+            var stages = left.Select(c => c.Stage).Distinct().OrderByDescending(s => s).Take(1 + Math.Max(0, extra)).ToList();
+            return left.Where(c => stages.Contains(c.Stage)).ToList();
         }
 
         /// <summary>The craft's usable chutes as this Game Snapshot reads them: an open one, or one with nothing read (cut), has nothing to give.</summary>
@@ -132,14 +157,55 @@ namespace ClaudiaKerman.Core.Missions
         /// The Entry in hand, for the craft as it is now on the body it is at, less the parts <paramref name="gone"/> (its drop, if any): what
         /// <see cref="Choose"/> gives it, or none with <paramref name="chutes"/> false, with its predicted touchdown.
         /// </summary>
-        public static EntryChutes ForEntryNow(GameSnapshot snapshot, bool lastEntry, ICollection<uint> gone = null, bool chutes = true)
+        public static EntryChutes ForEntryNow(GameSnapshot snapshot, bool lastEntry, ICollection<uint> gone = null, bool chutes = true, int extra = 0)
         {
             var leaving = gone ?? new uint[0];
             var mass = snapshot.Craft.MassTonnes - snapshot.Craft.Parts.Where(p => leaving.Contains(p.Id)).Sum(p => p.MassT);
             var entry = new EntryChutes { Body = Missions.Entries.At(snapshot), Last = lastEntry, MassKg = mass * 1000 };
-            if (chutes) entry.Chutes.AddRange(Choose(Usable(snapshot).Where(c => !leaving.Contains(c.PartId)), lastEntry));
+            if (chutes) entry.Chutes.AddRange(Choose(Usable(snapshot).Where(c => !leaving.Contains(c.PartId)), lastEntry, extra));
             Judge(snapshot, entry);
             return entry;
+        }
+
+        /// <summary>
+        /// What the Entry in hand opens when its own group can't land the craft and no engine will (#827, survival beats saving chutes): the
+        /// Chute Group of <see cref="ForEntryNow"/>, and while its predicted touchdown is over <see cref="TouchdownLimit"/> the next stage's group too, one at a
+        /// time, until it is at or under, or none is left. A predictor error leaves the Entry its own group. With <paramref name="none"/> (the script's
+        /// <c>chutes: "none"</c>) the own group is empty, and a fall over the limit overrides it, as a certain crash. With <paramref name="engine"/> (the Entry lands on
+        /// its engines, #824) nothing is widened. A touchdown still over the limit while the craft is above the air gives the <see cref="Widened.Warning"/>.
+        /// </summary>
+        public static Widened Widen(GameSnapshot snapshot, bool lastEntry, bool none, bool engine)
+        {
+            var entry = ForEntryNow(snapshot, lastEntry, null, !none);
+            var widened = new Widened { Entry = entry, Before = entry.TouchdownSpeed };
+            if (engine) return widened;
+            if (none)
+            {
+                if (entry.TouchdownSpeed <= TouchdownLimit) return widened;
+                var forced = ForEntryNow(snapshot, lastEntry);
+                if (forced.Chutes.Count > 0)
+                {
+                    widened.Entry = entry = forced;
+                    widened.Overrode = true;
+                }
+            }
+            while (entry.TouchdownSpeed > TouchdownLimit)
+            {
+                var next = ForEntryNow(snapshot, lastEntry, null, true, widened.Extra + 1);
+                if (next.Chutes.Count == entry.Chutes.Count) break;
+                widened.Extra++;
+                widened.Entry = entry = next;
+            }
+            var body = SequenceWords.Body(snapshot, entry.Body);
+            if (entry.TouchdownSpeed > TouchdownLimit && body != null && snapshot.Altitude > body.AtmosphereHeight)
+                widened.Warning = "Nothing can land this craft safely: it is predicted to touch down at " + Speed(entry.TouchdownSpeed) + ", over " + Speed(TouchdownLimit)
+                    + ", with " + (entry.Chutes.Count == 0 ? "no chutes" : "every chute it can open") + " and no engine to finish it";
+            return widened;
+        }
+
+        internal static string Speed(double speed)
+        {
+            return speed >= 0 ? speed.ToString("0.0", CultureInfo.InvariantCulture) + " m/s" : "speed unknown";
         }
 
         /// <summary>One sentence per entry, for the cards, the log and tests; "" with no Entry left.</summary>

@@ -122,6 +122,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is KosRcsSwitched) RcsSwitched((KosRcsSwitched)input);
             else if (input is ShipSystemsMoved) ShipSystemsLine((ShipSystemsMoved)input);
             else if (input is EncounterWatchDropped) EncounterWatchLine((EncounterWatchDropped)input);
+            else if (input is ChuteWarning) ChuteWarningLine((ChuteWarning)input);
             else if (input is CoastArmed) CoastArmedSeen((CoastArmed)input);
             else if (input is AbortSequence) AbortPressed();
             else if (input is VesselsSeen) VesselsChanged(((VesselsSeen)input).Vessels);

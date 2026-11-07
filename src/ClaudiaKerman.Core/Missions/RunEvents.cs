@@ -26,6 +26,8 @@ namespace ClaudiaKerman.Core.Missions
         Landing,
         /// <summary>Daylight was asked for and the craft landed out of Daylight (#828), with the sun's figure.</summary>
         DarkLanding,
+        /// <summary>Nothing could land the craft, said above the air (#827): no chute that can open and no engine would bring it under the touchdown limit.</summary>
+        ChuteWarning,
     }
 
     public sealed class RunEvent
@@ -136,6 +138,7 @@ namespace ClaudiaKerman.Core.Missions
                 case RunEventKind.Science: return "science";
                 case RunEventKind.Landing: return "landing";
                 case RunEventKind.DarkLanding: return "landed in the dark";
+                case RunEventKind.ChuteWarning: return "no safe landing";
                 default: return "run stopped";
             }
         }

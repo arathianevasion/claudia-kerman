@@ -1312,20 +1312,29 @@ namespace ClaudiaKerman.Core.Tools
         /// Takes no input. Gives <c>error</c> "", <c>last</c>, <c>stage</c> (the group's; 0 for none, and meaningless when last), <c>uids</c> and <c>titles</c> (its stowed
         /// or armed chutes, by kOS part UID) and <c>touchdown_speed</c> (m/s they leave
         /// it at, by the predictor; -1 unknown). <paramref name="uidOf"/> gives a part's kOS UID from its <c>persistentId</c>, or null when it isn't aboard.
+        /// With <paramref name="ask"/> (#827, <see cref="ChuteGroups.Widen"/>): <c>none</c> (the script's <c>chutes: "none"</c>) and <c>engine</c> (the Entry lands on
+        /// its engines), the group is widened to later stages when it can't land the craft and no engine will, and <c>why</c> says so ("" if not), <c>stages</c> are
+        /// its stages (what the block opens, not <c>stage</c>) and <c>warning</c> is the line for the Mission window and Debrief ("" if none).
         /// </summary>
-        public static IDictionary<string, object> ChuteGroupCall(GameSnapshot snapshot, IList<PlannedSequence> legs, int step, string child, Func<uint, string> uidOf)
+        public static IDictionary<string, object> ChuteGroupCall(GameSnapshot snapshot, IList<PlannedSequence> legs, int step, string child, Func<uint, string> uidOf, IDictionary<string, object> ask = null)
         {
             if (snapshot == null) return Error("there is no Game Snapshot of the craft");
-            var entry = ChuteGroups.ForEntryNow(snapshot, Entries.ShieldNumber(snapshot, legs, step, child) == 1);
+            // With no ask the group is today's, never widened.
+            var widened = ChuteGroups.Widen(snapshot, Entries.ShieldNumber(snapshot, legs, step, child) == 1, ask != null && Equals(ask.ContainsKey("none") ? ask["none"] : false, true),
+                ask == null || Equals(ask.ContainsKey("engine") ? ask["engine"] : false, true));
+            var entry = widened.Entry;
             var chosen = entry.Chutes.Where(c => uidOf(c.PartId) != null).ToList();
             return new Dictionary<string, object>
             {
                 { "error", "" },
                 { "last", entry.Last },
-                { "stage", chosen.Count == 0 ? 0.0 : chosen[0].Stage },
+                { "stage", chosen.Count == 0 ? 0.0 : chosen.Max(c => c.Stage) },
+                { "stages", chosen.Select(c => (object)(double)c.Stage).Distinct().ToList() },
                 { "uids", chosen.Select(c => (object)uidOf(c.PartId)).ToList() },
                 { "titles", chosen.Select(c => (object)c.Title).ToList() },
                 { "touchdown_speed", entry.TouchdownSpeed },
+                { "why", widened.Why() },
+                { "warning", widened.Warning },
             };
         }
 

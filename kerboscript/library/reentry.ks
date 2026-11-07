@@ -240,26 +240,21 @@ function reentry_chutes_in {
   return found.
 }
 
-// This entry's Chute Group (ADR 0019) from CHUTEGROUP's answer. Choice "none" opens nothing; an error, every chute aboard (parts): a shut chute is the worse mistake.
+// This entry's Chute Group (ADR 0019) from CHUTEGROUP's answer to ask (none: the script's "none"; engine: it lands on its engines). An error: every chute aboard (parts), or none for "none": a shut chute is the worse mistake.
 function reentry_group_of {
-  parameter choice, answer, parts.
-  local group is answer.
-  if answer:error <> "" {
-    set group to lexicon("last", true, "stage", 0, "uids", list()).
-    for p in reentry_chutes_in(parts) {
-      group:uids:add(p:uid).
-    }
-  }
-  if choice = "none" {
-    set group:uids to list().
+  parameter ask, answer, parts.
+  if answer:error = "" { return answer. }
+  local group is lexicon("last", true, "stages", list(), "uids", list(), "why", "").
+  for p in reentry_chutes_in(parts) {
+    if not ask:none { group:uids:add(p:uid). }
   }
   return group.
 }
 
-// True if chute p is in group now: its stage as read this moment, or any chute on a Last Entry.
+// True if chute p is in group now: its stage as read this moment (a group may span stages, #827), or any chute on a Last Entry.
 function reentry_in_group {
   parameter p, group.
-  return group:last or p:stage = group:stage.
+  return group:last or group:stages:contains(p:stage).
 }
 
 // True if chute p is stowed, with its deploy event there to fire.
@@ -280,8 +275,8 @@ function reentry_group_gone {
 
 // group, or if it has gone (reentry_group_gone), what CHUTEGROUP gives now. Read before each opening, an abort's too.
 function reentry_fresh_group {
-  parameter group, choice, opened.
-  if reentry_group_gone(group, ship:parts, opened) { return reentry_group_of(choice, addons:claudia:chutegroup(), ship:parts). }
+  parameter group, ask, opened.
+  if reentry_group_gone(group, ship:parts, opened) { return reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts). }
   return group.
 }
 
@@ -761,7 +756,9 @@ function reentry {
     }
   }
   // This entry's Chute Group (ADR 0019), chosen after any drop; none outside it is ever armed.
-  local group is reentry_group_of(opt:chutes, addons:claudia:chutegroup(), ship:parts).
+  local ask is lexicon("none", opt:chutes = "none", "engine", powered).
+  local group is reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts).
+  if group:why <> "" { addons:claudia:blocknote(ctx:block, lexicon("phase", "chutes_widened", "why", group:why)). }
   local chute_mode is opt:chute_mode.
   if group:uids:length = 0 {
     set chute_mode to "none".
@@ -786,7 +783,7 @@ function reentry {
   if entry_in > 0 {
     local waited is claudia_wait_until(ctx, time:seconds + entry_in).
     if waited <> "" {
-      reentry_abort(chute_mode, reentry_fresh_group(group, opt:chutes, extra:chutes_used)).
+      reentry_abort(chute_mode, reentry_fresh_group(group, ask, extra:chutes_used)).
       return claudia_finish(ctx, false, waited, extra).
     }
   }
@@ -815,7 +812,7 @@ function reentry {
     local chute_plan is reentry_chute_stage(chute_mode, has_drogues, drogues_out, mains_out, speed, agl, pressure).
     // Read again before each opening: the group may have gone, and a drogue with it.
     if chute_plan <> "wait" {
-      set group to reentry_fresh_group(group, opt:chutes, extra:chutes_used).
+      set group to reentry_fresh_group(group, ask, extra:chutes_used).
       set has_drogues to reentry_has_drogues(ship:parts, group).
       set chute_plan to reentry_chute_stage(chute_mode, has_drogues, drogues_out, mains_out, speed, agl, pressure).
     }
@@ -974,7 +971,7 @@ function reentry {
     set extra:powered_dv to round(ctx:dv_used - dv_before, 1).
   }
   if fell <> "" {
-    for t in reentry_abort(chute_mode, reentry_fresh_group(group, opt:chutes, extra:chutes_used)) {
+    for t in reentry_abort(chute_mode, reentry_fresh_group(group, ask, extra:chutes_used)) {
       extra:chutes_used:add(t).
     }
     set extra:chutes_kept to reentry_stowed_titles(ship:parts).
