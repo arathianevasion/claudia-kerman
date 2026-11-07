@@ -17,7 +17,7 @@ event: content_block_delta
 data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: circularize.\",\"reply_intent\":\"none\",\"mission_plan\":null,"}}
 
 event: content_block_delta
-data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"sequence_plan\":{\"name\":\"Circularize\",\"intent\":\"Circularize with the Building Block.\",\"why\":\"Proves the block path.\",\"target\":\"A report with success true\",\"tolerances\":\"none\",\"expected_delta_v\":0,\"expected_duration_s\":5,\"abort_conditions\":[\"no report within 30 s\"],\"risks\":[\"none\"],"}}
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"sequence_plan\":{\"plan_step\":1,\"name\":\"Circularize\",\"intent\":\"Circularize with the Building Block.\",\"why\":\"Proves the block path.\",\"target\":\"A report with success true\",\"tolerances\":\"none\",\"expected_delta_v\":0,\"expected_duration_s\":5,\"abort_conditions\":[\"no report within 30 s\"],\"risks\":[\"none\"],"}}
 
 event: content_block_delta
 data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"\"custom_script\":true,\"custom_script_reason\":\"Claudia says custom, the script says otherwise.\",\"script\":\"local res is circularize().\\nADDONS:CLAUDIA:REPORT(LEXICON(\\\"success\\\", res:success)).\\n\"},\"debrief\":null}"}}

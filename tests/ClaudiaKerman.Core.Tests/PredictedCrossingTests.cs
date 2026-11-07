@@ -141,7 +141,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Plan.\",\"reply_intent\":\"none\",\"unsure_because\":\"\","
                 + "\"mission_plan\":null,\"debrief\":null,\"alert\":null,"
-                + "\"sequence_plan\":{\"name\":\"Hop\",\"intent\":\"Hop.\",\"why\":\"Because.\",\"target\":\"\",\"tolerances\":\"\",\"expected_delta_v\":1200,\"expected_duration_s\":"
+                + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"Hop\",\"intent\":\"Hop.\",\"why\":\"Because.\",\"target\":\"\",\"tolerances\":\"\",\"expected_delta_v\":1200,\"expected_duration_s\":"
                 + duration.ToString(System.Globalization.CultureInfo.InvariantCulture) + ","
                 + "\"abort_conditions\":[],\"risks\":[],\"telemetry_checks\":[{\"quantity\":\"delta_v_left\",\"direction\":\"below\",\"threshold\":"
                 + threshold.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"resource\":\"\",\"why\":\"Keep a reserve.\"}],"

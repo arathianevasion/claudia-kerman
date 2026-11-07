@@ -114,7 +114,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             return "{\"kind\":\"sequence_plan\",\"say\":\"Plan.\",\"reply_intent\":\"none\",\"unsure_because\":\"\","
                 + "\"mission_plan\":null,\"debrief\":null,\"alert\":null,"
-                + "\"sequence_plan\":{\"name\":\"Hop\",\"intent\":\"Hop.\",\"why\":\"Because.\",\"target\":\"\",\"tolerances\":\"\",\"expected_delta_v\":0,\"expected_duration_s\":60,"
+                + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"Hop\",\"intent\":\"Hop.\",\"why\":\"Because.\",\"target\":\"\",\"tolerances\":\"\",\"expected_delta_v\":0,\"expected_duration_s\":60,"
                 + "\"abort_conditions\":[],\"risks\":[],\"telemetry_checks\":[],\"script\":" + JsonSerializer.Serialize(script) + ",\"custom_script_reason\":\"No block searches a site.\","
                 + "\"due_time_ut\":-1,\"window_closes_ut\":-1,\"late_window_dv\":-1,\"manual\":false,\"vessel\":\"\"}}";
         }

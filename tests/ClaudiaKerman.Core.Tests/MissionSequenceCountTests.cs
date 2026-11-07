@@ -142,9 +142,9 @@ namespace ClaudiaKerman.Core.Tests
         public void ARevisedMissionPlanReplacingAPendingSequencePlanDoesNotLeaveItCounted()
         {
             var transport = new StreamingFakeTransport(
-                ThreeSequenceMissionPlan(), SequencePlan("Launch"),
-                ThreeSequenceMissionPlan("revise", "Land on the Mun, precisely."), SequencePlan("Launch"),
-                NominalDebrief(), SequencePlan("Mun transfer"));
+                ThreeSequenceMissionPlan(), SequencePlan("Launch", 1),
+                ThreeSequenceMissionPlan("revise", "Land on the Mun, precisely."), SequencePlan("Launch", 1),
+                NominalDebrief(), SequencePlan("Mun transfer", 2));
             var client = new ClaudeClient(new CraftCheckRouter(transport), () => "sk-ant-test", l => { });
             client.Timing.Wait = (d, c) => { };
             var mission = new MissionControl(client, _background, new PlayerConfig { CheckDurationPercent = 1000 }, () => true, new PassingScriptCheck());
@@ -237,16 +237,59 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void APlanThatNamesNoStepIsCountedAsBefore()
+        public void APlanThatNamesNoStepUnderAMissionPlanGoesBackToClaudiaWithTheProblem()
         {
             var transport = new StreamingFakeTransport(
-                ThreeSequenceMissionPlan(), SequencePlan("Launch"),
-                Debrief("Off-Nominal", "corrective_sequence"), SequencePlan("Launch (retry)"));
+                ThreeSequenceMissionPlan(), SequencePlan("Launch"), SequencePlan("Launch", 1));
             var mission = Started(transport);
+
+            // The player never saw the stepless plan: the rewrite, naming step 1, is what awaits Approval.
+            Assert.Equal(3, transport.Requests.Count);
+            var asked = LastUserText(transport.Requests[2]);
+            Assert.Contains("plan_step is missing", asked);
+            Assert.Contains("1 to 3", asked);
+            Assert.Single(mission.View.Log, e => e.Kind == LogKind.SequencePlan);
             Assert.Equal(0, mission.View.CurrentSequence);
+        }
+
+        [Fact]
+        public void ACorrectiveNamingItsStepDoesNotAdvanceTheCountAndTheLaterLegsStayToFly()
+        {
+            var transport = new StreamingFakeTransport(
+                ThreeSequenceMissionPlan(), SequencePlan("Launch", 1),
+                Debrief("Off-Nominal", "corrective_sequence"), SequencePlan("Launch fix 1", 1),
+                Debrief("Off-Nominal", "corrective_sequence"), SequencePlan("Launch fix 2", 1),
+                NominalDebrief(), SequencePlan("Mun transfer", 2));
+            var mission = Started(transport);
             FlyAndDebrief(mission);
-            // The count moves on with every plan offered after a Debrief, retry or not.
-            Assert.Equal(1, mission.View.CurrentSequence);
+            FlyAndDebrief(mission);
+            Assert.Equal(0, mission.View.CurrentSequence);
+            var rest = StillToFly(transport.Requests[4]);
+            Assert.Contains("Mun transfer", rest);
+            Assert.Contains("Mun landing", rest);
+        }
+
+        [Fact]
+        public void ASavedMissionWithStepsLessPlansLoadsAndKeepsItsCountWithoutACheck()
+        {
+            var transport = new StreamingFakeTransport(
+                ThreeSequenceMissionPlan(), SequencePlan("Launch", 1),
+                NominalDebrief(), SequencePlan("Mun transfer", 2));
+            var mission = Started(transport);
+            FlyAndDebrief(mission);
+            var state = Assert.Single(mission.ExportStates());
+            // As saved before #837: no step named anywhere, the count is all there is.
+            state.PlanStep = null;
+            state.PlanStepBefore = null;
+            state.SequencePlan.PlanStep = null;
+            Assert.Equal(2, state.SequencesProposed);
+
+            var client = new ClaudeClient(new CraftCheckRouter(new StreamingFakeTransport()), () => "sk-ant-test", l => { });
+            var loaded = new MissionControl(client, _background, new PlayerConfig { CheckDurationPercent = 1000 }, () => true, new PassingScriptCheck());
+            loaded.Send(new SaveLoaded(_save.Path));
+            loaded.Send(new MissionsRestored(_save.Path, new[] { state }));
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, loaded.View.Stage);
+            Assert.Equal(1, loaded.View.CurrentSequence);
         }
 
         [Theory]

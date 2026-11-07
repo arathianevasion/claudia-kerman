@@ -124,7 +124,7 @@ namespace ClaudiaKerman.Core.Tests
         private static string SequenceReply(double dueUt)
         {
             return "{\"kind\":\"sequence_plan\",\"say\":\"Plan.\",\"reply_intent\":\"none\",\"mission_plan\":null,\"debrief\":null,\"alert\":null,"
-                + "\"sequence_plan\":{\"name\":\"Burn\",\"intent\":\"Burn.\",\"why\":\"w\",\"target\":\"t\",\"tolerances\":\"t\",\"expected_delta_v\":1,"
+                + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"Burn\",\"intent\":\"Burn.\",\"why\":\"w\",\"target\":\"t\",\"tolerances\":\"t\",\"expected_delta_v\":1,"
                 + "\"expected_duration_s\":2,\"abort_conditions\":[],\"risks\":[],\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"s\","
                 + "\"due_time_ut\":" + dueUt.ToString(CultureInfo.InvariantCulture) + "}}";
         }
