@@ -87,6 +87,11 @@ namespace ClaudiaKerman.Core.Missions
             var thrust = stages.ToDictionary(s => s, s => SeaLevelThrust.Of(fuelled.Where(p => p.Stage == s), atm));
             note = "";
             var top = stages[0];
+            if (body == null)
+            {
+                note = "stage " + top + ", the highest: the Game Snapshot has no body " + bodyName + " to judge thrust by";
+                return top;
+            }
             foreach (var stage in stages)
             {
                 if (thrust[stage] < need) continue;
@@ -95,7 +100,7 @@ namespace ClaudiaKerman.Core.Missions
                 return stage;
             }
             var strongest = stages.OrderByDescending(s => thrust[s]).ThenByDescending(s => s).First();
-            if (stages.Count > 1) note = "stage " + strongest + ", none can stop the fall (needs " + Kn(need) + " at the surface), so the most thrust: " + Kn(thrust[strongest]);
+            note = "stage " + strongest + ", none can stop the fall (needs " + Kn(need) + " at the surface), so the most thrust: " + Kn(thrust[strongest]);
             return strongest;
         }
 

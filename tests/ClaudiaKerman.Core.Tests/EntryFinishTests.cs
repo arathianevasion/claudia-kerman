@@ -393,6 +393,17 @@ namespace ClaudiaKerman.Core.Tests
 
             Assert.Equal(new object[] { "uid40" }, (List<object>)answer["engines"]);
             Assert.Empty((List<object>)answer["spare"]);
+            Assert.Contains("stage 3, none can stop the fall", (string)answer["why"]);
+        }
+
+        [Fact]
+        public void A_body_the_snapshot_lacks_keeps_the_highest_stage_and_says_so()
+        {
+            var snapshot = WithEngines("Duna", new double[] { 3, 2, 2 }, new double[] { 1, 60, 50 });
+            string note;
+
+            Assert.Equal(3, EntryFinish.Choose(snapshot, "Nowhere", snapshot.Craft.Parts.Where(p => p.EngineFuelled).ToList(), out note));
+            Assert.Contains("no body Nowhere", note);
         }
 
         [Fact]
