@@ -74,6 +74,8 @@ namespace ClaudiaKerman.Core.Missions
         public string EvaScience = "";
         /// <summary>In Manual Control (or its Hand back Debrief): the stretch was planned, so its Debrief is judged against the target.</summary>
         public bool ManualPlanned;
+        /// <summary>The player took Manual Control in this Mission (#818).</summary>
+        public bool TookManual;
         /// <summary>How Manual Control began, in words for Claudia's Debrief; "" outside Manual Control.</summary>
         public string ManualOrigin = "";
         /// <summary>The player handed back and the Debrief of the manual stretch is not finished: a revised Mission Plan follows it.</summary>
@@ -183,6 +185,7 @@ namespace ClaudiaKerman.Core.Missions
                 { "auto_mode", AutoMode ? "true" : "false" },
                 { "evaScience", EvaScience },
                 { "manualPlanned", ManualPlanned ? "true" : "false" },
+                { "tookManual", TookManual ? "true" : "false" },
                 { "manualOrigin", ManualOrigin },
                 { "handBack", HandBack ? "true" : "false" },
                 { "handBackMessage", HandBackMessage },
@@ -284,6 +287,7 @@ namespace ClaudiaKerman.Core.Missions
                 MissionPlanApproved = Get(values, "missionPlanApproved") == "true",
                 EvaScience = Get(values, "evaScience"),
                 ManualPlanned = Get(values, "manualPlanned") == "true",
+                TookManual = Get(values, "tookManual") == "true",
                 ManualOrigin = Get(values, "manualOrigin"),
                 HandBack = Get(values, "handBack") == "true",
                 HandBackMessage = Get(values, "handBackMessage"),

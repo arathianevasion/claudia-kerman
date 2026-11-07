@@ -147,6 +147,8 @@ namespace ClaudiaKerman.Core.Missions
             mission.DockedWith = "";
             mission.RunStartMonopropellant = LiveReadings.MonopropellantOf(MissionVesselSnapshot(mission));
             mission.RunStartOrbit = OrbitFix.Of(MissionVesselSnapshot(mission));
+            var startSnapshot = MissionVesselSnapshot(mission);
+            mission.RunStartCrew = startSnapshot == null ? new List<string>() : startSnapshot.Crew.Select(c => c.Name).ToList();
             mission.Checks.Clear();
             foreach (var check in TelemetryDefaults.Fill(plan, _config)) mission.Checks.Add(new LiveCheck { Check = check });
             mission.Crossings.Clear();

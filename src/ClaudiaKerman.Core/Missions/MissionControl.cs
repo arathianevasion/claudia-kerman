@@ -194,6 +194,10 @@ namespace ClaudiaKerman.Core.Missions
             public bool ScriptRewrite;
             /// <summary>A correction after a Mission Plan named a vessel that never left the craft: if it does so again, the Mission Pauses.</summary>
             public bool ChildVesselRetry;
+            /// <summary>A correction after a manual stretch with no grounds (#818): a second one Pauses the Mission. Memory only.</summary>
+            public bool ManualRetry;
+            /// <summary>A Failed Debrief was sent back once as only a landing miss (#818); a second Failed is accepted. Memory only.</summary>
+            public bool LandingMissSentBack;
             /// <summary>
             /// A revision the mod asked for while the Mission Goal stands (after an Off-Nominal Debrief or a Hand back's Debrief): a plan
             /// with no sequences is refused (#697). Set where the turn begins; false on the first Mission Plan, a typed one, and the
@@ -1462,6 +1466,7 @@ namespace ClaudiaKerman.Core.Missions
                 return;
             }
             if (TakeSecondLook(mission, turn, reply)) return;
+            if (LandingMissSentBack(mission, turn, reply)) return;
 
             // Append-only: the turn and its reply join the conversation together, then the transcript is rewritten.
             var committed = message.ToMessage();
@@ -1602,6 +1607,14 @@ namespace ClaudiaKerman.Core.Missions
                 return;
             }
 
+            // A manual stretch nothing asks for goes back once (#818), before the player sees it.
+            var manual = ManualOffered(turn.Purpose, reply, planPending);
+            if (manual != null && !ManualHasGrounds(mission, manual))
+            {
+                ManualRefused(mission, turn, manual);
+                return;
+            }
+
             // An Alert's verdict is her line, prefixed with the check: a carry on leaves just this log line.
             mission.LatestLine = turn.Purpose == Purpose.Alert
                 ? "Alert, " + turn.Crossing.Check.Name() + ": " + (reply.Alert.Abort ? "Abort recommended. " : "carry on. ") + reply.Say
@@ -1717,9 +1730,22 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The Sequence Plan this reply would offer for Approval, or null (the same cases as <see cref="Apply"/>).</summary>
         private static SequencePlan SequenceOffered(Purpose purpose, MissionReply reply, bool planPending)
         {
-            var plan = reply.SequencePlan;
+            var plan = OfferedPlan(purpose, reply, planPending);
             // A manual stretch has no script to check.
-            if (plan == null || plan.Manual || plan.Script.Trim().Length == 0) return null;
+            return plan == null || plan.Manual || plan.Script.Trim().Length == 0 ? null : plan;
+        }
+
+        /// <summary>The manual stretch this reply would offer for Approval (#818), or null.</summary>
+        private static SequencePlan ManualOffered(Purpose purpose, MissionReply reply, bool planPending)
+        {
+            var plan = OfferedPlan(purpose, reply, planPending);
+            return plan != null && plan.Manual ? plan : null;
+        }
+
+        private static SequencePlan OfferedPlan(Purpose purpose, MissionReply reply, bool planPending)
+        {
+            var plan = reply.SequencePlan;
+            if (plan == null) return null;
             switch (purpose)
             {
                 case Purpose.SequencePlan:

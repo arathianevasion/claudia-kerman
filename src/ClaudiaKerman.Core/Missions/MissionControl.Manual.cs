@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
+using System.Collections.Generic;
 
 namespace ClaudiaKerman.Core.Missions
 {
@@ -20,6 +21,10 @@ namespace ClaudiaKerman.Core.Missions
         {
             /// <summary>In Manual Control from an Approved manual stretch, so its Debrief is judged against the plan's target.</summary>
             public bool ManualPlanned;
+            /// <summary>The player took Manual Control at some point in this Mission (#818): it counts as asking to fly a manual stretch. Saved.</summary>
+            public bool TookManual;
+            /// <summary>The Kerbals aboard at the current run's start (#818), for judging a Failed Debrief's crew alive; not saved, as a run never survives a load.</summary>
+            public List<string> RunStartCrew = new List<string>();
             /// <summary>How Manual Control began, for Claudia's Debrief.</summary>
             public string ManualOrigin = "";
             /// <summary>Handed back: the Debrief of the manual stretch is under way, and a revised Mission Plan follows it.</summary>
@@ -164,6 +169,7 @@ namespace ClaudiaKerman.Core.Missions
 
             var plan = mission.PendingSequence;
             mission.ManualPlanned = false;
+            mission.TookManual = true;
             if (mission.Stage == MissionStage.Running)
             {
                 mission.ManualOrigin = "while the Sequence Plan " + MissionPrompts.Quoted(plan != null ? plan.Name : "(unknown)")
