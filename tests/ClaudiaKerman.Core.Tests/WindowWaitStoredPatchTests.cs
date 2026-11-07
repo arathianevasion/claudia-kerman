@@ -23,7 +23,7 @@ namespace ClaudiaKerman.Core.Tests
         private static ScriptedResponse CoastPlan(double due = -1)
         {
             return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: Coast.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
-                + "\"sequence_plan\":{\"name\":\"Coast\",\"intent\":\"Coast to the patch and capture.\",\"why\":\"First step.\",\"target\":\"80 km orbit\","
+                + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"Coast\",\"intent\":\"Coast to the patch and capture.\",\"why\":\"First step.\",\"target\":\"80 km orbit\","
                 + "\"tolerances\":\"Pe within 5 km\",\"expected_delta_v\":180,\"expected_duration_s\":600,\"abort_conditions\":[],\"risks\":[],"
                 + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":" + JsonSerializer.Serialize(StoredCoast) + ","
                 + "\"due_time_ut\":" + due.ToString(CultureInfo.InvariantCulture) + ",\"window_closes_ut\":-1,\"late_window_dv\":-1},\"debrief\":null}");
