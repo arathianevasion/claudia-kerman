@@ -1634,8 +1634,23 @@ namespace ClaudiaKerman.Core.Missions
                     Alerted(mission, turn, reply);
                     break;
             }
-            if (reply.SequencePlan != null && ReferenceEquals(mission.PendingSequence, reply.SequencePlan)) LogPlan(mission, turn, reply.SequencePlan, checkWarnings);
+            if (reply.SequencePlan != null && ReferenceEquals(mission.PendingSequence, reply.SequencePlan))
+            {
+                ShowWarnings(reply.SequencePlan, checkWarnings);
+                LogPlan(mission, turn, reply.SequencePlan, checkWarnings);
+            }
             if (reply.MissionPlan != null && ReferenceEquals(mission.Plan, reply.MissionPlan)) LogMissionPlan(mission, turn, false);
+        }
+
+        /// <summary>
+        /// #836: each warning of the Script Check and the plan's findings is one Mission window event as the plan is offered, for the
+        /// player only (the Mission's log never goes into a request to the model, the Debrief's included). One the Custom badge's reason
+        /// already shows isn't repeated. It never blocks Approval.
+        /// </summary>
+        private void ShowWarnings(SequencePlan plan, IList<string> warnings)
+        {
+            foreach (var warning in warnings.Distinct())
+                if (!plan.CustomScriptReason.Contains(warning)) Notice("Script Check: " + warning);
         }
 
         /// <summary>The ids a Mission Plan this reply would offer names as Child Vessels without their having left the craft; empty if it offers none.</summary>

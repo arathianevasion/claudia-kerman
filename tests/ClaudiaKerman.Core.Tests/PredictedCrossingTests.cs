@@ -228,6 +228,89 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Single(mission.TakeCommands().OfType<StartScript>());
         }
 
+        // ---- #836: warnings shown to the player ----
+
+        private const string Marker = "line 1: ZZ836 deorbit aims for the whole stack.";
+        private const string LoopScript = "local best is 0. from {local i is 0.} until i > 20 step {set i to i + 1.} do {\n"
+            + "  local p is latlng(i, 10).\n  if p:terrainheight > best { set best to p:terrainheight. }\n}\n";
+
+        /// <summary>A Script Check that passes with one warning of its own, or the ScriptLints' ones as the real check adds them.</summary>
+        private sealed class WarningCheck : IScriptCheck
+        {
+            public ScriptCheckResult Check(string script)
+            {
+                var result = ScriptCheckResult.Pass();
+                result.Warnings = ScriptLints.Warnings(script).Concat(new[] { Marker }).ToList();
+                return result;
+            }
+        }
+
+        private sealed class LintsOnlyCheck : IScriptCheck
+        {
+            public ScriptCheckResult Check(string script)
+            {
+                var result = ScriptCheckResult.Pass();
+                result.Warnings = ScriptLints.Warnings(script);
+                return result;
+            }
+        }
+
+        private static IEnumerable<LogEntry> ScriptCheckEvents(MissionControl mission)
+        {
+            return mission.View.Log.Where(e => e.Kind == LogKind.Notice && e.Text.StartsWith("Script Check: "));
+        }
+
+        [Fact]
+        public void AWarningOfTheScriptCheckIsOneMissionWindowEventAndTheLogKeepsIt()
+        {
+            var mission = Control(new StreamingFakeTransport(PlanReply(), Sequence(1500)), new WarningCheck());
+            ToSequencePlan(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.Equal("Script Check: " + Marker, Assert.Single(ScriptCheckEvents(mission)).Text);
+            Assert.Contains(Assert.Single(PlanLines(mission)).GetProperty("lints").EnumerateArray(), l => l.GetString() == Marker);
+        }
+
+        [Fact]
+        public void APlanFindingsWarningIsOneMissionWindowEvent()
+        {
+            var mission = Control(new StreamingFakeTransport(PlanReply(), Sequence(2500), Sequence(2400)));
+            ToSequencePlan(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            Assert.StartsWith("Script Check: predicted crossing: delta-v left under 2,400 m/s", Assert.Single(ScriptCheckEvents(mission)).Text);
+        }
+
+        [Fact]
+        public void AWarningTheCustomBadgesReasonAlreadyShowsAddsNoEvent()
+        {
+            var mission = Control(new StreamingFakeTransport(PlanReply(), Sequence(1500, LoopScript)), new LintsOnlyCheck());
+            ToSequencePlan(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            var card = mission.View.Log.Last(e => e.Kind == LogKind.SequencePlan);
+            Assert.Contains("landing-site search", card.CustomScriptReason);
+            Assert.Empty(ScriptCheckEvents(mission));
+        }
+
+        [Fact]
+        public void UnderAutoModeAWarnedPlanStillGoesAheadAndItsEventIsInTheLogAndNoRequestCarriesIt()
+        {
+            var transport = new StreamingFakeTransport(PlanReply(), Sequence(1500), ScriptedResponse.Fixture("mission-debrief.sse"));
+            var mission = Control(transport, new WarningCheck());
+            ToSequencePlan(mission, auto: true);
+            DrainUntil(mission, v => v.Stage == MissionStage.Running);
+
+            var start = Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.Single(ScriptCheckEvents(mission));
+            mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, new Dictionary<string, object> { { "success", true } }, "", "", false), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            Assert.Equal(3, transport.Requests.Count);
+            Assert.DoesNotContain(transport.Requests, r => r.Body.Contains("ZZ836"));
+            Assert.Single(ScriptCheckEvents(mission));
+        }
+
         // ---- #696: a duration short of the first burn ----
 
         /// <summary>Mission m20261103-015018-6567's script: tune_pe at the apoapsis.</summary>
