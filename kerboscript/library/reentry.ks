@@ -218,10 +218,7 @@ function reentry_warp_cap {
 }
 
 // Touchdown within what the crew and craft survive: reentry_touchdown_limit.
-function reentry_touchdown_ok {
-  parameter speed.
-  return speed <= reentry_touchdown_limit().
-}
+function reentry_touchdown_ok { parameter speed. return speed <= reentry_touchdown_limit(). }
 
 // ---- Chutes (#628) ----
 
@@ -406,10 +403,11 @@ function reentry_brake_height {
   return s + reentry_powered_end() + max(0, v_down) * reentry_powered_lag().
 }
 
-// True if the braking must start now at radar m (reentry_brake_height's figure brake_h). Pure.
+// True if the braking must start now at radar m (reentry_brake_height's figure brake_h), at speed m/s. A fall the engines can't stop waits for the
+// air to do its work, as for the shield: on a shallow path high up, thrust barely points up, and the fuel would go at orbital speed. Pure.
 function reentry_brake_due {
-  parameter radar, brake_h.
-  return brake_h < 0 or radar <= brake_h.
+  parameter radar, brake_h, speed.
+  return radar <= brake_h or (brake_h < 0 and reentry_shield_due(false, speed, radar)).
 }
 
 // The throttle (0 to 1) braking a powered touchdown, a_up m/s^2 of upward thrust at full throttle against
@@ -728,12 +726,14 @@ function reentry {
   // Its engines or its chutes (#824): Core decides, with this drop and these chutes; the block lights the engines. A powered entry drops nothing.
   local finish is addons:claudia:entryfinish(lexicon("home", entry_ask:home, "chutes", opt:chutes <> "none" and opt:chute_mode <> "none", "drop", opt:separate <> "none")).
   local powered is false.
+  if finish:error <> "" { addons:claudia:blocknote(ctx:block, lexicon("phase", "finish", "error", finish:error)). }
   if finish:error = "" {
     addons:claudia:blocknote(ctx:block, lexicon("phase", "finish", "why", finish:why)).
     if finish:powered and not claudia_on_ground() {
       set ship:control:pilotmainthrottle to 0.
       reentry_light(ship:engines, finish:engines).
       wait 0.1.
+      if ship:availablethrust <= 0 { reentry_light(ship:engines, finish:spare). wait 0.1. }
       set powered to ship:availablethrust > 0.
     }
   }
@@ -874,7 +874,7 @@ function reentry {
       set sample_speed to last_speed.
     }
 
-    if reentry_shield_due(shield_gone, last_speed, agl, powered and reentry_brake_due(agl, brake_h)) {
+    if reentry_shield_due(shield_gone, last_speed, agl, powered and reentry_brake_due(agl, brake_h, last_speed)) {
       local count_before is ship:parts:length.
       reentry_shield_drop(shield_uid, { return ship:parts. }).
       set shield_gone to true.
@@ -884,7 +884,7 @@ function reentry {
       set ctx:parts to ship:parts:length.
     }
     chute_tick(last_speed, agl, pressure).
-    if powered and reentry_brake_due(agl, brake_h) {
+    if powered and reentry_brake_due(agl, brake_h, last_speed) {
       set braking to true.
       return true.
     }

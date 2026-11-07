@@ -227,12 +227,17 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Fact]
-        public void A_fall_the_engines_cant_stop_in_the_height_left_is_minus_one_so_braking_starts_now()
+        public void A_fall_the_engines_cant_stop_in_the_height_left_is_minus_one_so_braking_starts_once_the_air_has_done_its_work()
         {
-            Assert.Equal(new[] { "-1", "-1", "True" },
+            Assert.Equal(new[] { "-1", "-1", "True", "False", "True", "True", "False" },
                 Run("print reentry_stop_distance(100, -1, list(0,0,0,0), 50, 2).\n"
                     + "print reentry_brake_height(300, 12, 2.94, list(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0), 1000).\n"
-                    + "print reentry_brake_due(1000, -1).\n"));
+                    + "print reentry_brake_due(1000, -1, 300).\n"
+                    // High on a shallow path at orbital speed: not yet. Then under the shield's speed, or under its height, or simply within the stopping distance.
+                    + "print reentry_brake_due(40000, -1, 1200).\n"
+                    + "print reentry_brake_due(40000, -1, 390).\n"
+                    + "print reentry_brake_due(900, 1000, 1200).\n"
+                    + "print reentry_brake_due(1100, 1000, 300).\n"));
         }
 
         [Fact]
@@ -274,7 +279,7 @@ function sim {
         set brake_h to reentry_brake_height(v, a_max, g, ks, radar).
         set next_sample to t + 0.25.
       }
-      if reentry_brake_due(radar, brake_h) { set braking to true. set brake_at to radar. }
+      if reentry_brake_due(radar, brake_h, v) { set braking to true. set brake_at to radar. }
     }
     if braking { set tset to reentry_brake_throttle(radar, v, a_max, g). }
     if used >= fuel { set tset to 0. }

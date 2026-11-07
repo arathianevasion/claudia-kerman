@@ -293,6 +293,27 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void An_Entry_that_keeps_its_stack_flies_with_that_stacks_chutes_in_the_checks_walk_and_the_next_keeps_its_own()
+        {
+            // Two shields: at Duna the outer one's stack, with the engine and stage 2's chutes, would drop. The pod's chute alone is far too weak, so it keeps them.
+            var snapshot = Flight("Duna", 12, 1.4);
+            var parts = snapshot.Craft.Parts;
+            parts.Add(Part(30, Tank, "shield2", 0, -1, "heat_shield", "decoupler"));
+            parts.Single(p => p.Id == Dec).ParentId = 30;
+            parts.Add(Part(31, Shield, "dec1", 0, 4, "decoupler"));
+            parts.Add(Part(32, 31, "ascentTank", 0, 4));
+            parts.Single(p => p.Id == 30).ParentId = 32;
+            parts.Single(p => p.Id == Tank).MassT = 8;
+
+            var groups = ChuteGroups.Of(snapshot, DunaThenKerbin, 0, false, null);
+
+            Assert.True(groups.Entries[0].EngineFinish);
+            Assert.Equal(new[] { 2, 2, 2, 2 }, groups.Entries[0].Chutes.Select(c => c.Stage));
+            Assert.Equal(new[] { 0 }, groups.Return.Chutes.Select(c => c.Stage));
+            Assert.DoesNotContain(MarginCheck.ChuteFindings(snapshot, DunaThenKerbin, groups, ""), f => f.Explanation.Contains("no Chute Group"));
+        }
+
+        [Fact]
         public void Chutes_in_one_stage_over_two_Entries_stay_a_Blocker_though_the_first_lands_on_its_engines()
         {
             // The first Entry opens that group under its engines all the same, so the Kerbin return has none (#826's case).

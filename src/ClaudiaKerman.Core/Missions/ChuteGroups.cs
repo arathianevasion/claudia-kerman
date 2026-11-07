@@ -225,15 +225,24 @@ namespace ClaudiaKerman.Core.Missions
             {
                 var entry = new EntryChutes { Step = found[i].Step, Sequence = found[i].Sequence, Body = found[i].Body, Return = found[i].Return, Last = i == found.Count - 1 && tail == 0 };
                 var dropped = new HashSet<uint>(EntryStack.Of(snapshot.Craft.Parts, keeper, found.Count - i + tail).Gone.Select(p => p.Id));
+                var before = aboard.ToList();
                 aboard.RemoveAll(c => dropped.Contains(c.PartId));
                 entry.Chutes.AddRange(Choose(aboard, entry.Last));
                 aboard.RemoveAll(entry.Chutes.Contains);
                 entry.MassKg = entry.Return ? (podMassKg > 0 ? podMassKg : snapshot.Craft.MassTonnes * 1000)
                     : MassAfter(snapshot, sequences.Skip(first).Take(entry.Step - first).Sum(s => Math.Max(0, s.DeltaV)));
                 Judge(snapshot, entry);
-                // An entry that needs them keeps its stack, so its engines count until an earlier Entry's drop.
+                // An entry that needs them keeps its stack, so it flies with that stack's chutes and engines, and so do the Entries after (ADR 0020).
                 entry.EngineFinish = entry.TouchdownSpeed > EntryFinish.EngineThreshold && engines.Count > 0;
-                engines.ExceptWith(dropped);
+                if (entry.EngineFinish && !entry.Return && before.Count != aboard.Count + entry.Chutes.Count)
+                {
+                    aboard = before;
+                    entry.Chutes.Clear();
+                    entry.Chutes.AddRange(Choose(aboard, entry.Last));
+                    aboard.RemoveAll(entry.Chutes.Contains);
+                    Judge(snapshot, entry);
+                }
+                else if (!entry.EngineFinish) engines.ExceptWith(dropped);
                 groups.Entries.Add(entry);
             }
             var home = groups.Return;
