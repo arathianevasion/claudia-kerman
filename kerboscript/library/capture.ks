@@ -6,13 +6,13 @@
 
 @lazyglobal off.
 
-//| capture(options): arrival burn in a new SOI: a circle in transfer_to's plane.
+//| capture(options): arrival burn in a new SOI: a circle in transfer_to's plane; moon next: high orbit timed to it.
 //| Options:
-//|   alt ["auto"]: m: a Target Vessel's pe if it orbits here, else the pe arrived at, at least low orbit.
-//|   plane ["auto"]: as transfer_to's; auto: the plane it aimed for.
-//|   max_plane_dv ["auto"]: m/s a tilt may add (larger of 50, 5% of the burn). Over it: captures as it is and reports, no failure.
-//| Extra results: capture_dv, plane_dv, capture_method, plane_leftover_deg, plane_leftover_dv, ecc, inc.
-//| Fails with a pe in the air or past, or a change of SOI first (coast).
+//|   alt ["auto"]: m, circle or kept pe: Target Vessel's pe here, else pe arrived at, min low orbit.
+//|   plane ["auto"]: as transfer_to's; auto: its aimed plane.
+//|   max_plane_dv ["auto"]: m/s a tilt may add (max of 50, 5% of burn). Over: captures, reports, no failure.
+//| Extra results: capture_dv, plane_dv, capture_method, plane_leftover_deg, plane_leftover_dv, ecc, inc, kept.
+//| Fails: pe in the air or past, or an SOI change first (coast).
 
 // The block's own options and defaults.
 function capture_defaults {
@@ -21,7 +21,7 @@ function capture_defaults {
 
 function capture {
   parameter options is lexicon().
-  local extra is lexicon("capture_dv", 0, "plane_dv", 0, "capture_method", "", "plane_leftover_deg", 0, "plane_leftover_dv", 0, "ecc", -1, "inc", -1).
+  local extra is lexicon("capture_dv", 0, "plane_dv", 0, "capture_method", "", "plane_leftover_deg", 0, "plane_leftover_dv", 0, "ecc", -1, "inc", -1, "kept", "").
   local ctx is claudia_begin("capture", options, capture_defaults(), "auto").
   if ctx:error <> "" {
     return claudia_finish(ctx, false, ctx:error, extra).
