@@ -320,6 +320,13 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         }
 
         [Fact]
+        public void The_report_has_settle_s_0_until_a_settle_holds()
+        {
+            // #865: seconds the final descent held height until Aligned below 10 m; land_descend sets it at touchdown.
+            Assert.Equal("0", One("land_extra():settle_s"));
+        }
+
+        [Fact]
         public void The_poi_report_fields_start_empty()
         {
             Assert.Equal(new[] { "", "-1" }, Run("local e is land_extra(). print e:poi. print e:distance_to_poi."));

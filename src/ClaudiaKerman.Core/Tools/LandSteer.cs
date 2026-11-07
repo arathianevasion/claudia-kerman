@@ -65,6 +65,20 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
+        /// land's lean limit on a demand (al, cr, up m/s², <paramref name="h"/> m over the ground), for the flight and BRAKEPATH
+        /// alike. Above the final descent, and in its last few metres, the sideways part is cut to <see cref="BrakeGuidance.MaxTilt"/>
+        /// as before. In the final descent, where <see cref="TerminalLeanDeg"/> binds, the upward part is raised (to 0.95 of
+        /// <paramref name="aMax"/> at most) so the demand leans that far and still brakes across the ground: cutting the sideways
+        /// part instead left a craft falling with no upward demand drifting 40-145 m past the site.
+        /// </summary>
+        public static void Lean(ref double al, ref double cr, ref double up, double h, bool terminal, double aMax)
+        {
+            if (terminal && BrakeGuidance.MaxTilt(h) > TerminalLeanDeg)
+                up = Math.Max(up, Math.Min(0.95 * aMax, Math.Sqrt(al * al + cr * cr) / Math.Tan(TerminalLeanDeg * Deg)));
+            LimitLean(ref al, ref cr, up, MaxLean(h, terminal));
+        }
+
+        /// <summary>
         /// The steering for a demanded acceleration (#511), in the braking frame: the last direction (<paramref name="last"/>)
         /// while the demand is under 5% of <paramref name="aMax"/>, so a tiny demand flipping each tick doesn't swing the craft;
         /// otherwise the demand, held within 45 degrees of surface retrograde (from <paramref name="vel"/>, m/s) while over
@@ -123,8 +137,10 @@ namespace ClaudiaKerman.Core.Tools
             var al = Number(want, "al", 0);
             var cr = Number(want, "cr", 0);
             var up = Number(want, "up", 0);
+            // The vertical need, before the lean limit adds lift to brake sideways: what the throttle gives while off target.
+            var need = up;
             var tilt = MaxLean(h, terminal);
-            LimitLean(ref al, ref cr, up, tilt);
+            Lean(ref al, ref cr, ref up, h, terminal, aMax);
             var lastDir = new[] { Number(last, "al", -1), Number(last, "cr", 0), Number(last, "up", 0) };
             var vel = new[] { Number(input, "v_al", 0), Number(input, "v_cr", 0), vUp };
             var facingMap = Map(input, "facing");
@@ -140,9 +156,17 @@ namespace ClaudiaKerman.Core.Tools
             var dv0 = Number(last, "settle_dv0", -1);
             var done = Flag(last, "settle_done");
             var settling = false;
+            // Holding its height, and stopping any drift over 2 s within the lean limit, rather than chasing the site.
+            var holdAl = -vel[0] / 2;
+            var holdCr = -vel[1] / 2;
+            var holdUp = Math.Min(0.95 * aMax, Math.Max(0, Number(input, "g", 0) - 0.5 * vUp));
+            LimitLean(ref holdAl, ref holdCr, holdUp, tilt);
+            var holdMag = Math.Sqrt(holdAl * holdAl + holdCr * holdCr + holdUp * holdUp);
+            var holdDir = holdMag > 0 ? new[] { holdAl / holdMag, holdCr / holdMag, holdUp / holdMag } : new[] { 0.0, 0, 1 };
             if (terminal && h < SettleBelowM && !done)
             {
-                var off = facing != null ? Angle(facing, dir) : 0;
+                // Off target: where it would steer, or once holding, where the hold steers.
+                var off = facing != null ? Angle(facing, settleUt >= 0 ? holdDir : dir) : 0;
                 if (off > SettleErrorDeg || Number(input, "rate", 0) > SettleRateDegS)
                 {
                     var dvLeft = Number(input, "dv_left", 0);
@@ -154,15 +178,11 @@ namespace ClaudiaKerman.Core.Tools
             }
             if (settling)
             {
-                // Holding its height, and stopping any drift over 2 s within the lean limit, rather than chasing the site.
-                al = -vel[0] / 2;
-                cr = -vel[1] / 2;
-                up = Math.Min(0.95 * aMax, Math.Max(0, Number(input, "g", 0) - 0.5 * vUp));
-                LimitLean(ref al, ref cr, up, tilt);
-                mag = Math.Sqrt(al * al + cr * cr + up * up);
-                dir = mag > 0 ? new[] { al / mag, cr / mag, up / mag } : new[] { 0.0, 0, 1 };
+                need = holdUp;
+                mag = holdMag;
+                dir = holdDir;
             }
-            if (terminal) dir = Slewed(Number(last, "ut", -1), ut, LeanCapped(lastDir, tilt), dir, Number(input, "top_rate", 0));
+            if (terminal) dir = LeanCapped(Slewed(Number(last, "ut", -1), ut, lastDir, dir, Number(input, "top_rate", 0)), tilt);
 
             var pointing = Dot(dir, dir) > 0.000001 ? dir : new[] { 0.0, 0, 1 };
             var error = facing != null ? Angle(facing, pointing) : 0;
@@ -171,7 +191,7 @@ namespace ClaudiaKerman.Core.Tools
             {
                 // Off target: only the vertical need, along where it points now; nothing sideways until it is back on.
                 var cosLean = Math.Cos(lean * Deg);
-                throttle = cosLean > 0 ? Math.Min(1, Math.Max(0, up) / cosLean / Math.Max(0.001, aMax)) : 0;
+                throttle = cosLean > 0 ? Math.Min(1, Math.Max(0, need) / cosLean / Math.Max(0.001, aMax)) : 0;
             }
             else
             {
@@ -199,12 +219,14 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// <paramref name="to"/>, or the way from <paramref name="from"/> to it that a craft turning at <paramref name="topRate"/>
-        /// °/s covers between <paramref name="lastUt"/> and <paramref name="ut"/>. No last tick or rate: <paramref name="to"/>.
+        /// °/s covers between <paramref name="lastUt"/> and <paramref name="ut"/>: none for a second tick at the same UT. No last
+        /// tick or rate: <paramref name="to"/>.
         /// </summary>
         private static double[] Slewed(double lastUt, double ut, double[] from, double[] to, double topRate)
         {
             var dt = ut - lastUt;
-            if (lastUt < 0 || !(dt > 0) || !(topRate > 0)) return to;
+            if (lastUt < 0 || !(topRate > 0)) return to;
+            if (!(dt > 0)) return from;
             var angle = Angle(from, to);
             var most = topRate * dt;
             if (angle <= most) return to;

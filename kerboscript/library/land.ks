@@ -2694,7 +2694,7 @@ function land_descend {
       // Core's LandSteer (#865): the direction and throttle, with the final descent's lean cap, off-target throttle and settle.
       local nose is ship:facing:forevector.
       set dir to addons:claudia:landsteer(lexicon("want", want, "last", dir, "v_al", v_ahead, "v_cr", vdot(v_h, across), "v_up", v_v, "a_max", a_max,
-        "g", g, "facing", lexicon("al", vdot(nose, ahead), "cr", vdot(nose, across), "up", vdot(nose, up_v)), "rate", ship:angularvel:mag * constant:radtodeg,
+        "g", g, "facing", lexicon("al", vdot(nose, ahead), "cr", vdot(nose, across), "up", vdot(nose, up_v)), "rate", vxcl(nose, ship:angularvel):mag * constant:radtodeg,
         "top_rate", turn:top_rate, "dv_left", ship:deltav:current, "ut", time:seconds)).
       local pointing is ahead * dir:al + across * dir:cr + up_v * dir:up.
       if pointing:mag > 0.001 {
@@ -2757,7 +2757,7 @@ function land_descend {
   set extra:touchdown_h_speed to round(last_h_speed, 2).
   set extra:settle_s to round(land_or(dir, "settle_s", 0), 1).
   addons:claudia:blocktrace("land", lexicon("phase", "touchdown", "speed", extra:touchdown_speed_actual, "v_h", extra:touchdown_h_speed,
-    "error", round(land_or(dir, "error", -1), 1), "rate", round(ship:angularvel:mag * constant:radtodeg, 1), "settle_s", extra:settle_s)).
+    "error", round(land_or(dir, "error", -1), 1), "rate", round(vxcl(ship:facing:forevector, ship:angularvel):mag * constant:radtodeg, 1), "settle_s", extra:settle_s)).
   unlock throttle.
   // Hold upright while it settles on its legs, then leave it safe.
   set steer to ship:up:vector.

@@ -183,7 +183,8 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True((bool)first["settling"]);
             var swinging = LandSteer.Tick(Terminal(0, 1.5, 8, 12, 2, first, 101));
             Assert.True((bool)swinging["settling"]);
-            var settled = LandSteer.Tick(Terminal(0, 1.5, 8, 4, 1, swinging, 102));
+            // Within 10 degrees of the hold's own direction (leaning back against the 0.5 m/s drift) and still.
+            var settled = LandSteer.Tick(Terminal(0, 1.5, 8, -4, 1, swinging, 102));
             Assert.False((bool)settled["settling"]);
             Assert.Equal(1, D(settled, "settle_s"), 9);
         }
@@ -255,9 +256,11 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(flight.MostLean, 0, 20 + 1e-6);
             Assert.InRange(flight.MostTurnRate, 0, TopRate + 1e-6);
             if (!landsUpright) return;
-            // It touches down upright, still and not drifting, where 908b came in 43 degrees off at 21°/s and 1.7 m/s sideways.
-            Assert.InRange(flight.Lean, 0, 5);
+            // #865's pass, where 908b came in 43 degrees off at 21°/s and 1.7 m/s sideways: no more than 5 degrees off and 2°/s, leaning
+            // under 10, not drifting.
+            Assert.InRange(flight.Error, 0, 5);
             Assert.InRange(flight.Rate, 0, 2);
+            Assert.InRange(flight.Lean, 0, 10);
             Assert.InRange(flight.Down, 0, 2.5);
             Assert.InRange(flight.Sideways, 0, 0.5);
         }
@@ -309,6 +312,12 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(0, mag, 9);
             Steer(12, 0, 180, -2, out mag);
             Assert.Equal(0, mag, 9);
+            // An upward demand keeps its upward part, as before (#511): 5 m/s² up at 45 degrees takes 7.07.
+            Steer(0, 5, 567, 0, out mag);
+            Assert.Equal(5 / Math.Sin(Math.PI / 4), mag, 6);
+            // Within the cone, as asked.
+            Steer(-8, 3, 567, -10, out mag);
+            Assert.Equal(Math.Sqrt(73), mag, 6);
         }
 
         [Fact]
