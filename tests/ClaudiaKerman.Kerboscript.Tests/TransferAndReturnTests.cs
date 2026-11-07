@@ -214,7 +214,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void Return_passes_its_target_and_max_wait_to_the_ejection()
         {
             var source = CoreLibrary.Blocks.Single(b => b.Name == "return").Source;
-            Assert.Contains("set burn_ask to lexicon(\"lat\", site:lat, \"lng\", site:lng, \"ground_alt\", max(0, ground_alt), \"max_wait\", opt:max_wait, \"max_duration\", opt:max_duration, \"start_ut\", ctx:start_ut, \"isp\", claudia_engine_isp()).", source);
+            Assert.Contains("set burn_ask to lexicon(\"lat\", site:lat, \"lng\", site:lng, \"ground_alt\", max(0, ground_alt), \"max_wait\", opt:max_wait, \"max_duration\", opt:max_duration, \"start_ut\", ctx:start_ut, \"isp\", claudia_engine_isp(), \"craft\", craft).", source);
             Assert.Contains("addons:claudia:returnburn(return_with_inc(burn_ask, opt:target_inc))", source);
             Assert.Equal("auto", One("claudia_options(lexicon(), return_defaults(), \"auto\"):opt:max_wait"));
             Assert.Equal("35000", One("claudia_options(lexicon(), return_defaults(), \"auto\"):opt:target_pe"));
@@ -260,6 +260,22 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var stub = "local kerbin is lexicon(\"name\", \"Kerbin\"). local orb is lexicon(\"semimajoraxis\", 9e6, \"eccentricity\", 0.9, \"inclination\", 2, \"lan\", 3, \"argumentofperiapsis\", 4, \"meananomalyatepoch\", 5, \"epoch\", 6, \"body\", kerbin). ";
             var asked = Run(stub + "local q is return_impact_query(orb, 777, lexicon(\"lat\", -0.1, \"lng\", -74.5), -20, lexicon(\"why\", \"capsule\")). print q:keys:length. print q:from_ut. print q:lat. print q:lng. print q:ground_alt. print q:orbit_sma. print q:orbit_ecc. print q:orbit_inc. print q:orbit_lan. print q:orbit_argpe. print q:orbit_mna. print q:orbit_epoch. print q:orbit_body. print q:craft:why.");
             Assert.Equal(new[] { "13", "777", "-0.1", "-74.5", "0", "9000000", "0.9", "2", "3", "4", "5", "6", "Kerbin", "capsule" }, asked);
+        }
+
+        /// <summary>
+        /// #814: the craft reentry will fly is read once, with the target, before any prediction: the ejection, the correction (through burn_ask) and
+        /// both checks of the path (through the predict closure) carry that one answer, never a read of their own.
+        /// </summary>
+        [Fact]
+        public void The_craft_reentry_flies_is_read_once_and_every_prediction_carries_it()
+        {
+            var source = CoreLibrary.Blocks.Single(b => b.Name == "return").Source.Replace("\r\n", "\n");
+            var read = "local craft is addons:claudia:entrycraft(lexicon(\"home\", reentry_home_uid(), \"body\", planet:name)).";
+            Assert.Equal(1, source.Split("addons:claudia:entrycraft(").Length - 1);
+            Assert.Contains(read, source);
+            Assert.True(source.IndexOf(read, StringComparison.Ordinal) < source.IndexOf("set predict to {", StringComparison.Ordinal));
+            Assert.Contains("\"isp\", claudia_engine_isp(), \"craft\", craft).", source);
+            Assert.Contains("return addons:claudia:reentryimpact(return_impact_query(orb, from_ut, site, ground_alt, craft)).", source);
         }
 
         /// <summary>#793: Core aims the correction (AimedCorrectionTests); the block hands it the ejection's landing, the craft's Isp and its delta-v left, and no Kerboscript twin is left.</summary>

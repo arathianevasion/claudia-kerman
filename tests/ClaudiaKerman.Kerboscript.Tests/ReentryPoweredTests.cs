@@ -95,6 +95,21 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Contains("if not reentry_touchdown_ok(last_speed) {", body);
         }
 
+        /// <summary>
+        /// #814: when the craft reentry flies isn't the one a return or deorbit aimed with, ENTRYFINISH's why names both (Core's EntryCraftTests), and the block
+        /// writes that why to its blocknote as soon as it is read, before anything drops: so the log names both crafts.
+        /// </summary>
+        [Fact]
+        public void The_block_notes_entryfinishs_why_which_names_both_crafts_when_they_differ()
+        {
+            var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source.Replace("\r\n", "\n");
+            var body = source.Substring(source.IndexOf("function reentry {", StringComparison.Ordinal));
+            var note = body.IndexOf("addons:claudia:blocknote(ctx:block, lexicon(\"phase\", \"finish\", \"why\", finish:why)).", StringComparison.Ordinal);
+            Assert.True(note > body.IndexOf("addons:claudia:entryfinish(", StringComparison.Ordinal));
+            Assert.True(note < body.IndexOf("reentry_separation(", StringComparison.Ordinal));
+            Assert.Equal(1, body.Split("addons:claudia:entryfinish(").Length - 1);
+        }
+
         [Fact]
         public void Chutes_with_a_list_all_or_a_tag_fails_saying_what_is_allowed()
         {
