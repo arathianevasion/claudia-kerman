@@ -20,6 +20,24 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         public const double DropLeadS = 600;
 
+        /// <summary>
+        /// Why <c>reentry</c> with <c>separate</c> "auto" fails on this stack above the air, or "" (#815; it was the block's <c>reentry_stack_refusal</c>).
+        /// At block start (<paramref name="dropError"/> null) a stack it can't drop: one with <see cref="Stuck"/> parts, or one that takes the part
+        /// running the script (<paramref name="takesCore"/>). After its own drop, any stack still on, with what the drop said ("" if it said nothing).
+        /// </summary>
+        public string Refusal(string dropError, bool takesCore)
+        {
+            if (Parts.Count == 0) return "";
+            var why = dropError;
+            if (why == null)
+            {
+                if (Stuck.Count > 0) why = string.Join(", ", Names(Stuck).ToArray()) + ": no decoupler between it and the heat shield";
+                else if (takesCore) why = "it would drop the part running the script";
+                else return "";
+            }
+            return "stack attached below the heat shield: " + string.Join(", ", Names(Parts).ToArray()) + "; drop it first or use separate" + (why == "" ? "" : " (separate: " + why + ")");
+        }
+
         /// <summary>The Entry Shield; null for none, and then nothing drops and everything below stays empty.</summary>
         public SnapshotPart Shield;
         /// <summary>The stack: what the Entry drops, stuck parts included.</summary>

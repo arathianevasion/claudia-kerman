@@ -140,6 +140,25 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void A_stuck_stack_is_refused_at_block_start_unless_the_Entry_lands_on_its_engines_and_keeps_it()
+        {
+            // #815: ENTRYDROP refuses at block start what reentry's separate can't drop, with ENTRYFINISH's own choice of the engines.
+            Func<GameSnapshot, GameSnapshot> stuck = s =>
+            {
+                s.Craft.Parts.Single(p => p.Id == Dec).Tags.Remove("decoupler");
+                s.Altitude = 100000;
+                return s;
+            };
+            Func<GameSnapshot, IList<PlannedSequence>, string> refused = (s, legs) => (string)BlockCalls.EntryDropCall(
+                new Dictionary<string, object> { { "home", Uid(Pod) }, { "separate", "auto" }, { "chutes", true }, { "core", Uid(Pod) } }, s, legs, 0, "", Uid)["error"];
+
+            Assert.Equal(true, Ask(Flight("Duna", 3.9, 2.5), DunaLast)["powered"]);
+            Assert.Equal("", refused(stuck(Flight("Duna", 3.9, 2.5)), DunaLast));
+            Assert.Equal(false, Ask(Flight("Kerbin", 3.9, 1.4), KerbinReturn)["powered"]);
+            Assert.StartsWith("stack attached below the heat shield: Decoupler.1, ", refused(stuck(Flight("Kerbin", 3.9, 1.4)), KerbinReturn));
+        }
+
+        [Fact]
         public void A_capsule_on_its_pod_chute_home_from_Kerbin_orbit_is_on_chutes_and_the_stack_drops()
         {
             var snapshot = Flight("Kerbin", 3.9, 1.4);

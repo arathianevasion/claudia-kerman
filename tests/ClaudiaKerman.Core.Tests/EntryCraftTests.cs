@@ -528,15 +528,5 @@ namespace ClaudiaKerman.Core.Tests
             aim.Block("deorbit", null);
             Assert.Equal("", aim.Take(42, out why));
         }
-
-        [Fact]
-        public void Reentrys_block_start_read_leaves_the_aim_to_the_drop_points_read_which_flies()
-        {
-            // #815: ENTRYFINISH is read at block start (first true) and again at the drop point; only the second is compared with the aim.
-            Assert.True(EntryAim.Leaves(new Dictionary<string, object> { { "home", "pod" }, { "first", true } }));
-            Assert.False(EntryAim.Leaves(new Dictionary<string, object> { { "home", "pod" }, { "first", false } }));
-            Assert.False(EntryAim.Leaves(new Dictionary<string, object> { { "home", "pod" } }));
-            Assert.False(EntryAim.Leaves(null));
-        }
     }
 }

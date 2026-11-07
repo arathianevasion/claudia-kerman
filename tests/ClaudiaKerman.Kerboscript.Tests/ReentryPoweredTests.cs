@@ -260,9 +260,11 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source.Replace("\r\n", "\n");
             var body = source.Substring(source.IndexOf("function reentry {", StringComparison.Ordinal));
             // powered is settled by lighting before the ask, and the "none" override and every widening reach the log through Core's why.
-            var ask = body.IndexOf("local ask is lexicon(\"none\", opt:chutes = \"none\", \"engine\", powered).", StringComparison.Ordinal);
+            // #815: the ask is made before the drop point (an abort there reads the group fresh, no engine lit) and takes engine from the lighting.
+            Assert.True(body.IndexOf("local ask is lexicon(\"none\", opt:chutes = \"none\", \"engine\", false).", StringComparison.Ordinal) > 0);
+            var ask = body.IndexOf("set ask:engine to powered.", StringComparison.Ordinal);
             Assert.True(ask > body.IndexOf("set powered to ship:availablethrust > 0.", StringComparison.Ordinal));
-            Assert.True(body.IndexOf("addons:claudia:chutegroup(ask)", StringComparison.Ordinal) > ask);
+            Assert.True(body.IndexOf("local group is reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts).", StringComparison.Ordinal) > ask);
             Assert.Contains("if group:why <> \"\" { addons:claudia:blocknote(ctx:block, lexicon(\"phase\", \"chutes_widened\", \"why\", group:why)). }", body);
             // Every later read of the group asks the same way, and chute_mode is untouched: today's timing.
             Assert.DoesNotContain("opt:chutes, extra:chutes_used", body);

@@ -63,7 +63,8 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Before(deorbit, "return claudia_finish(ctx, false, found:error, extra).", "addons:claudia:shipsystems(\"entry\")");
             Before(deorbit, "addons:claudia:shipsystems(\"entry\")", "local flown is");
             var reentry = Source("reentry");
-            Before(reentry, "return claudia_finish(ctx, false, refused, extra).", "addons:claudia:shipsystems(\"entry\")");
+            // #815: after the drop point's reads, the last of which refuses a stack still on.
+            Before(reentry, "\"drop_error\", drop_error", "addons:claudia:shipsystems(\"entry\")");
             Before(reentry, "addons:claudia:shipsystems(\"entry\")", "lock steering to srfretrograde.");
         }
     }
