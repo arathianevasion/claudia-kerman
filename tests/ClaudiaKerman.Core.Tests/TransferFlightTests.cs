@@ -451,8 +451,17 @@ namespace ClaudiaKerman.Core.Tests
             var capture = ArrivalRule.Capture(snapshot, "Kerbin", null);
             Assert.False(capture);
             var pick = TransferWindows.Pick(TransferWindows.Find(snapshot, "Kerbin", 30000, capture, snapshot.MarginPercent), snapshot.TimeVersusDeltaV);
-            var step = BlockCalls.TransferStep(StartInput("Kerbin", 30000), snapshot);
+            // #867: the block first waits for its far ejection, watched by the next-patch watch, then solves it again from there.
+            var wait = BlockCalls.TransferStep(StartInput("Kerbin", 30000), snapshot);
+            Assert.Equal("wait", wait["do"]);
+            rig.MoveTo(Convert.ToDouble(wait["ut"]));
+            var eject = StartInput("Kerbin", 30000);
+            foreach (var carried in (IDictionary<string, object>)wait["carry"]) eject[carried.Key] = carried.Value;
+            var step = BlockCalls.TransferStep(eject, rig.Snapshot());
             Assert.Equal("", step["error"]);
+            Assert.Equal("burn", step["do"]);
+            // The node flown is the one the wait was planned for.
+            Assert.Equal(Convert.ToDouble(((IDictionary<string, object>)wait["report"])["departure_ut"]), Math.Round(Convert.ToDouble(step["ut"])));
 
             // plan_transfer's departure is the heliocentric one; the ejection burn is flown on the parking orbit, so the two UTs
             // agree to within half its period (the solvers themselves resolve the window to a second: TimeTolerance 1e-6 of the

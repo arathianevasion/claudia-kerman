@@ -28,6 +28,8 @@ namespace ClaudiaKerman.Core.Missions
         DarkLanding,
         /// <summary>Nothing could land the craft, said above the air (#827): no chute that can open and no engine would bring it under the touchdown limit.</summary>
         ChuteWarning,
+        /// <summary>The orbit the run left crosses a moon's sphere of influence (#867), with the moon, the time and the fix. The latest stands for the run.</summary>
+        MoonCrossing,
     }
 
     public sealed class RunEvent
@@ -139,6 +141,7 @@ namespace ClaudiaKerman.Core.Missions
                 case RunEventKind.Landing: return "landing";
                 case RunEventKind.DarkLanding: return "landed in the dark";
                 case RunEventKind.ChuteWarning: return "no safe landing";
+                case RunEventKind.MoonCrossing: return "orbit crosses a moon";
                 default: return "run stopped";
             }
         }

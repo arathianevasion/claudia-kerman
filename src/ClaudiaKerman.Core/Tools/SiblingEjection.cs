@@ -111,13 +111,25 @@ namespace ClaudiaKerman.Core.Tools
             // of its moons (Kerbin's Mun or Minmus) first, which the block could not correct after the burn.
             var first = SingleShooting.Follow(setup.System, home, AfterBurn(craft, home, ut, aimed.Value), ut, 1);
             if (first != null && first.Count > 0 && first[0].End == PatchEnd.Encounter)
-                return Fail("the ejection at UT " + Num(ut) + " meets " + first[0].Next.Name + " on its way out of " + home.Name + "'s sphere of influence");
+                return Fail(MeetsMoon(setup, ut, first[0].Next));
             SingleShooting.NodeFrame(craft, ut, aimed.Value, out prograde, out normal, out radial);
             return new SiblingPlan
             {
                 Ut = ut, Prograde = prograde, Normal = normal, Radial = radial, DeltaV = aimed.Value.Length,
                 DepartureUt = pick.DepartureUt, ArrivalUt = pick.ArrivalUt, VInf = pick.ArrivalVInf, AimMiss = missBy,
             };
+        }
+
+        /// <summary>
+        /// The refusal of an ejection at <paramref name="ut"/> that meets <paramref name="moon"/> on its way out. When the orbit waited in crosses that
+        /// moon too (#867), it says so with the fix, or the same window is planned again from the same orbit.
+        /// </summary>
+        internal static string MeetsMoon(PredictBurn.Setup setup, double ut, SnapshotBody moon)
+        {
+            var home = setup.Body;
+            var parked = MoonCrossings.Judge(setup.System, home, setup.Start, setup.Now, ut);
+            return "the ejection at UT " + Num(ut) + " meets " + moon.Name + " on its way out of " + home.Name + "'s sphere of influence"
+                + (parked != null && parked.Moon == moon ? " " + parked.RefusalClause("the orbit you're in") : "");
         }
 
         /// <summary>
