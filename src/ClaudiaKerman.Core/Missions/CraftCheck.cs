@@ -117,6 +117,8 @@ namespace ClaudiaKerman.Core.Missions
         private IList<MarginFinding> _chutes = new List<MarginFinding>();
         /// <summary>The hot entries that fly with no Entry Shield (#823), from the goal's words: the mod's own findings.</summary>
         private IList<MarginFinding> _hotEntries = new List<MarginFinding>();
+        /// <summary>A heat shield past a docking port that entries won't use (#845): the mod's own finding.</summary>
+        private IList<MarginFinding> _portShields = new List<MarginFinding>();
         /// <summary>What the checked craft's staging plan separates, so planned Child Vessels are judged on the mod's own figures.</summary>
         private StagingPlan _staging = new StagingPlan();
         private uint? _preferredProcessor;
@@ -301,6 +303,7 @@ namespace ClaudiaKerman.Core.Missions
             var legs = ChuteGroups.GoalLegs(snapshot, goal);
             _chutes = MarginCheck.ChuteFindings(snapshot, legs, ChuteGroups.ForGoal(snapshot, legs, remote, ProcessorFor(snapshot)), goal);
             _hotEntries = Entries.HotWithNoShield(snapshot, legs);
+            _portShields = Entries.ShieldPastPort(snapshot, legs);
             _craftKey = CraftKey(snapshot);
             var charge = new CraftCheckCharge { Model = request.Model, Pending = worstCase, Input = RequestCharge.InputCost(_config.Prices, request.Model, request, worstCase) };
             var cancel = new CancellationTokenSource();
@@ -533,6 +536,12 @@ namespace ClaudiaKerman.Core.Missions
                     Code = rule.Key, Severity = rule.First().Severity, Title = rule.First().Title,
                     Explanation = string.Join(". ", rule.Select(c => c.Explanation).ToArray()),
                     Fix = "Add another heat shield below the stage this entry keeps.",
+                });
+            foreach (var port in _portShields)
+                _findings.Insert(0, new CraftFinding
+                {
+                    Code = port.Code, Severity = port.Severity, Title = port.Title, Explanation = port.Explanation,
+                    Fix = "Move the port or the shield.",
                 });
             foreach (var finding in _findings.Where(f => f.Severity == CraftFindingSeverity.Warning && _keptAcknowledgements.Contains(f.Code)))
                 finding.Acknowledged = true;

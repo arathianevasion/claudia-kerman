@@ -46,6 +46,8 @@ namespace ClaudiaKerman.Core.Missions
         public const string LegUnderMap = "leg_under_map";
         /// <summary>The Warning (#823): an Entry the player named as hot flies with no Entry Shield (<see cref="Entries.HotWithNoShield"/>).</summary>
         public const string HotEntry = "hot_entry_no_shield";
+        /// <summary>The Warning (#845): a heat shield on the stack sits past a docking port, so entries don't use it (<see cref="Entries.ShieldPastPort"/>).</summary>
+        public const string ShieldPastPort = "heat_shield_past_port";
         /// <summary>The Warning (ADR 0019): a Chute Group likely to leave before its Entry (<see cref="ChuteGroupRules"/>).</summary>
         public const string ChuteGroupLeaves = "chute_group_leaves_early";
         /// <summary>The Blocker (ADR 0019): a Chute Group in a stage at or above an unlit engine the plan still needs: automatic staging refuses to fire it.</summary>
@@ -117,6 +119,8 @@ namespace ClaudiaKerman.Core.Missions
                 "a Maneuver Sequence's budget is more than the tolerance under its legs' figure on the Delta-v Map.", modOnly: true),
             new CraftCheckRule(HotEntry, Warning, "A hot entry with no heat shield",
                 "an Entry on Eve or Laythe, or straight in from a transfer, has no Entry Shield.", modOnly: true),
+            new CraftCheckRule(ShieldPastPort, Warning, "A heat shield sits past a docking port",
+                "a heat shield on the stack is reached only by crossing a docking port, and the Mission Goal has an Entry: it isn't an Entry Shield.", modOnly: true),
             new CraftCheckRule("ascent_cannot_reach_orbit", Warning, "The ascent can't reach orbit",
                 "plan_ascent says reaches_orbit is false for the launch (no turn_shape it tried reaches orbit); name the Boost stage that falls short."),
             new CraftCheckRule("ascent_thin_margin", Warning, "The ascent reaches orbit by a thin margin",
