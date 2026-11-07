@@ -34,11 +34,10 @@ namespace ClaudiaKerman.Core.Missions
             return null;
         }
 
-        /// <summary>A coast whose until waits for the next patch, or can't be read: the craft may be at another body after it.</summary>
+        /// <summary>A coast whose until waits for the next patch, or can't be read (a variable may hold that wait, #852): the craft may be at another body after it.</summary>
         private static bool LeavesTheBody(BlockCall call)
         {
-            var until = call.Option("until");
-            return until == null || until.IndexOf("nextpatch", StringComparison.OrdinalIgnoreCase) >= 0;
+            return !BurnPoints.IsWrittenTime(call.Option("until"));
         }
     }
 }
