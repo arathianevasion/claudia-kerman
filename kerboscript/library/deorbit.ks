@@ -234,7 +234,7 @@ function deorbit {
   if found:error <> "" {
     return claudia_finish(ctx, false, found:error, extra).
   }
-  local late is claudia_drop_refusal(separation, sqrt(found:prograde^2 + found:normal^2 + found:radial^2)). // #835: again with the burn's delta-v spent, before any node
+  local late is claudia_drop_refusal(separation, found:dv). // #835: again with the burn counted, before any node
   if late <> "" { return claudia_finish(ctx, false, "separate: " + late, extra). }
   addons:claudia:shipsystems("entry").
   if opt:max_duration:istype("String") {

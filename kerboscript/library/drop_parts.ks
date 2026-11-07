@@ -84,39 +84,40 @@ function drop_parts_strand_reason {
 // stage with their mean vacuum isp; jets don't count. 0 when no engine stays or none of its propellant does.
 function drop_parts_dv_left {
   parameter plan.
+  local kept is drop_parts_kept(plan).
+  return drop_parts_rocket_dv(kept:isp, kept:wet, kept:prop).
+}
+
+// drop_parts_dv_left's figures (isp, wet and prop, t), and for a burn first (#835; DropGuard.AfterBurn has the rule) gone_prop, the t of what the
+// engines burning now use in plan's parts, and burners_kept, how many of those engines stay.
+function drop_parts_kept {
+  parameter plan.
   local gone is claudia_drop_uids(plan).
-  local engs is list().
-  list engines in engs.
-  local thrusts is list().
-  local isps is list().
-  local uses is list().
-  for e in engs {
+  local thrusts is list(). local isps is list(). local uses is list(). local burns is list(). local burners_kept is 0.
+  for e in ship:engines {
     local keys is list().
-    for k in e:consumedresources:keys {
-      keys:add(drop_parts_res_key(k)).
+    for k in e:consumedresources:keys { keys:add(drop_parts_res_key(k)). }
+    if e:ignition and e:availablethrust > 0 {
+      if not gone:contains(e:uid) { set burners_kept to burners_kept + 1. }
+      for k in keys { burns:add(k). }
     }
     // A jet (it breathes intake air) can't burn in space.
     if not gone:contains(e:uid) and not keys:contains("intakeair") {
       thrusts:add(e:maxpossiblethrustat(0)).
       isps:add(e:ispat(0)).
-      for k in keys {
-        uses:add(k).
-      }
+      for k in keys { uses:add(k). }
     }
   }
-  local wet is 0.
-  local prop is 0.
+  local wet is 0. local prop is 0. local gone_prop is 0.
   for p in ship:parts {
-    if not gone:contains(p:uid) {
-      set wet to wet + p:mass.
-      for res in p:resources {
-        if claudia_is_propellant(res:name) and uses:contains(drop_parts_res_key(res:name)) {
-          set prop to prop + res:amount * res:density.
-        }
-      }
+    local stays is not gone:contains(p:uid).
+    if stays { set wet to wet + p:mass. }
+    for res in p:resources {
+      if claudia_is_propellant(res:name) and uses:contains(drop_parts_res_key(res:name)) and stays { set prop to prop + res:amount * res:density. }
+      if claudia_is_propellant(res:name) and burns:contains(drop_parts_res_key(res:name)) and not stays { set gone_prop to gone_prop + res:amount * res:density. }
     }
   }
-  return drop_parts_rocket_dv(claudia_mean_isp(thrusts, isps), wet, prop).
+  return lexicon("isp", claudia_mean_isp(thrusts, isps), "wet", wet, "prop", prop, "gone_prop", gone_prop, "burners_kept", burners_kept).
 }
 
 // The wanted names as a list, or the reason the option can't be used (a String).
