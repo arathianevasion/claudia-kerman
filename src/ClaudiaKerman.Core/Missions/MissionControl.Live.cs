@@ -139,6 +139,8 @@ namespace ClaudiaKerman.Core.Missions
         private void StartLive(Mission mission, SequencePlan plan)
         {
             mission.RunStartUt = _ut;
+            // #867: the bodies this run's transfer_to aims at are planned, not crossed, until the next run.
+            mission.RunTransfers = string.Join(",", TransferTargets(plan).ToArray());
             mission.RunStartDeltaVLeft = LiveReadings.DeltaVLeftOf(MissionVesselSnapshot(mission));
             mission.RunDroppedDeltaV = 0;
             mission.ScienceKept.Clear();

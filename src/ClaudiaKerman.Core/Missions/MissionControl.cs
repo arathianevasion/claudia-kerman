@@ -122,6 +122,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is KosRcsSwitched) RcsSwitched((KosRcsSwitched)input);
             else if (input is ShipSystemsMoved) ShipSystemsLine((ShipSystemsMoved)input);
             else if (input is EncounterWatchDropped) EncounterWatchLine((EncounterWatchDropped)input);
+            else if (input is NextPatchDropped) NextPatchDroppedSeen((NextPatchDropped)input);
             else if (input is ChuteWarning) ChuteWarningLine((ChuteWarning)input);
             else if (input is CoastArmed) CoastArmedSeen((CoastArmed)input);
             else if (input is AbortSequence) AbortPressed();
@@ -623,6 +624,8 @@ namespace ClaudiaKerman.Core.Missions
             if (mission.AwaitingApproval && mission.PlanBaseline == null && !mission.InFlight && _scene == GameScene.Flight) mission.PlanBaseline = snapshot;
             // An approved plan restored from a save has no Chute Groups yet: the first snapshot of the craft after the load gives it one.
             if (mission.Chutes == null && mission.Plan != null && mission.Stage != MissionStage.AwaitingPlanApproval && _scene == GameScene.Flight) GroupChutes(mission);
+            // #867: a plan offered with no snapshot of the craft is judged on the first.
+            CrossingFirstSnapshot(mission);
             CarryOnWhenSceneAllows();
         }
 
@@ -854,7 +857,15 @@ namespace ClaudiaKerman.Core.Missions
         private void WarpRequested()
         {
             var due = PendingDueTime;
-            if (due.HasValue && _ut < due.Value && !_mission.InFlight) _commands.Add(new WarpToUt(due.Value));
+            if (!due.HasValue || _ut >= due.Value || _mission.InFlight) return;
+            // #867: never a warp through an orbit that crosses a moon.
+            var blocker = CrossingBlockerNow(_mission);
+            if (blocker.Length > 0)
+            {
+                Note(LogKind.Notice, blocker + " The mod won't warp to the Due Time: Re-plan, or fly the fix yourself first.");
+                return;
+            }
+            _commands.Add(new WarpToUt(due.Value));
         }
 
         /// <summary>Go to <i>vessel</i> is on offer: the Due Time has been reached and the player is not in the Mission's vessel.</summary>
@@ -1599,6 +1610,8 @@ namespace ClaudiaKerman.Core.Missions
                     return;
                 }
                 checkWarnings = check.Warnings.Concat(findings.Warnings()).ToList();
+                // #867: a crossing the correction left (or had no room to send back) is the plan's Blocker.
+                CrossingOffered(mission, offered, findings);
             }
 
             // Only a vessel that left the craft may be a Child Vessel: the player never sees a plan that names another.
@@ -1800,6 +1813,7 @@ namespace ClaudiaKerman.Core.Missions
             if (findings.Crossings.Count > 0) wrong.Add("a Telemetry Check is certain to cross by the plan's own figures");
             if (findings.BiomeMiss != null) wrong.Add(MissionPrompts.GoalBiomeMissed(findings.BiomeMiss));
             if (findings.DeorbitNoTarget != null) wrong.Add(MissionPrompts.DeorbitNoTargetMissed(findings.DeorbitNoTarget));
+            if (findings.MoonCrossing != null) wrong.Add("the craft would wait in an orbit that crosses " + findings.MoonCrossing.Moon.Name + "'s sphere of influence");
             return string.Join(" and ", wrong.ToArray());
         }
 
@@ -1820,6 +1834,8 @@ namespace ClaudiaKerman.Core.Missions
             var start = LiveReadings.DeltaVLeftOf(snapshot);
             findings.StartDeltaV = start ?? 0;
             findings.DeorbitNoTarget = DeorbitTargets.Missing(plan.Script, snapshot);
+            // #867: the orbit the plan waits in for its Due Time, if it crosses a moon.
+            findings.MoonCrossing = WaitCrossing(mission, plan, snapshot);
             findings.Crossings = PredictedCrossings.Find(plan.TelemetryChecks, plan.ExpectedDeltaV, start);
             // #830: a duration short of the first burn (#696) is raised by the mod itself, on every path (the landing target default's wait, #790, was the first):
             // no request back to Claudia, no prompt text about it; plans.jsonl logs the raise.
@@ -2021,6 +2037,8 @@ namespace ClaudiaKerman.Core.Missions
                     TransferWait(mission, plan);
                 }
             }
+            // #867: a Due Time the mod set just now (a window's) was not there for the plan's figures: its wait is judged here, a Blocker with no correction.
+            CrossingAtOffer(mission, plan);
             if (!mission.SequenceCounted)
             {
                 mission.SequencesProposed++;
@@ -2472,6 +2490,7 @@ namespace ClaudiaKerman.Core.Missions
                 view.FarSwitchLeavesAtCheckpoint = cannotLeave == "";
                 view.FarSwitchWarning = cannotLeave ?? "";
                 view.CraftVesselId = FollowsCraft(mission) ? mission.VesselId : "";
+                NextPatchWatchView(mission, view);
                 view.ChildVessels = ChildVesselViews(mission);
                 view.RunningChildVesselId = RunningChildVesselId(mission);
                 view.Settings = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config));
