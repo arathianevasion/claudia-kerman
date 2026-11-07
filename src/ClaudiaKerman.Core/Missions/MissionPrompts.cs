@@ -923,13 +923,13 @@ namespace ClaudiaKerman.Core.Missions
             return string.Join(" ", lines.ToArray());
         }
 
-        /// <summary>#699: why a landing goes back before Approval, e.g. "the Mission Goal names Twin Craters (a Mun biome); this landing targets Midland Craters".</summary>
         /// <summary>#831: a deorbit with no target where the block's auto gives none.</summary>
         public static string DeorbitNoTargetMissed(string body)
         {
             return "deorbit has no target at " + body + ", where auto gives none, so the block refuses it with \"target is required\"";
         }
 
+        /// <summary>#699: why a landing goes back before Approval, e.g. "the Mission Goal names Twin Craters (a Mun biome); this landing targets Midland Craters".</summary>
         public static string GoalBiomeMissed(GoalBiomeMiss miss)
         {
             return "the Mission Goal names " + miss.Goal.Biome + " (a " + miss.Goal.Body + " biome); this landing targets " + miss.Targeted;

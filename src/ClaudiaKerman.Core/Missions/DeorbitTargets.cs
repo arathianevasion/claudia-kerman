@@ -27,7 +27,7 @@ namespace ClaudiaKerman.Core.Missions
                 if (call.Block == "transfer_to" || call.Block == "return" || (call.Block == "coast" && LeavesTheBody(call))) return null;
                 if (call.Block != "deorbit") continue;
                 var target = call.Option("target");
-                if (target == null || (target.Trim() != "\"auto\"")) continue;
+                if (target == null || !string.Equals(target.Trim(), "\"auto\"", StringComparison.OrdinalIgnoreCase)) continue;
                 // The block asks for "planet" alone: the options a return adds (target_pe, target_inc, window) are not asked.
                 if (HomeLanding.DefaultTarget(snapshot, new LandingTargetAsk { Planet = snapshot.Body }) == HomeLanding.None) return snapshot.Body;
             }

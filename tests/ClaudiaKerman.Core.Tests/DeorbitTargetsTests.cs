@@ -26,6 +26,7 @@ namespace ClaudiaKerman.Core.Tests
         [Theory]
         [InlineData(Bare)]
         [InlineData(Auto)]
+        [InlineData("local r is deorbit(lexicon(\"target\", \"Auto\")).")]
         public void A_deorbit_at_duna_with_no_target_goes_back(string script)
         {
             Assert.Equal("Duna", DeorbitTargets.Missing(script, At(Duna)));
