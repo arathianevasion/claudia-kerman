@@ -300,11 +300,14 @@ namespace ClaudiaKerman.Core.Missions
             return true;
         }
 
+        /// <summary>return's target_pe without a target, m (return.ks's default).</summary>
+        private const double NoTargetPe = 35000;
+
         /// <summary>The UT a return with no target and no window given waits for (<see cref="ReturnAim.CheapDepartureUt"/>), or null for its next pass.</summary>
         private static double? Cheap(BlockCall call, GameSnapshot snapshot, double now, double earliest)
         {
             string given;
-            var targetPe = call.Options.TryGetValue("target_pe", out given) ? Literal(given) : 35000;
+            var targetPe = call.Options.TryGetValue("target_pe", out given) ? Literal(given) : NoTargetPe;
             if (!targetPe.HasValue) return null;
             return ReturnAim.CheapDepartureUt(snapshot.At(now), new ReturnAsk { TargetPe = targetPe.Value, EarliestUt = earliest, CheapWindow = true });
         }

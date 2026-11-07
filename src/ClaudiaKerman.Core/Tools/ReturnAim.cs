@@ -184,7 +184,8 @@ namespace ClaudiaKerman.Core.Tools
             var dear = alignment + system.OrbitOf(moon).Period / 4;
             var cheap = ReturnBurn.Find(system, moon, orbit, now, new ReturnAsk { TargetPe = targetPe, EarliestUt = alignment - half, LatestUt = alignment + half });
             var costly = ReturnBurn.Find(system, moon, orbit, now, new ReturnAsk { TargetPe = targetPe, EarliestUt = dear - half, LatestUt = dear + half });
-            return cheap.Error != null || costly.Error != null || costly.DeltaV - cheap.DeltaV > CostCapMs;
+            // A solve that fails says nothing either way: the long wait is kept for a plane known to cost.
+            return cheap.Error == null && costly.Error == null && costly.DeltaV - cheap.DeltaV > CostCapMs;
         }
 
         /// <summary>
@@ -466,7 +467,7 @@ namespace ClaudiaKerman.Core.Tools
             }
 
             /// <summary>
-            /// With no target (grilled 2026-11-07): the soonest window when it costs no more than the cap, else the cheapest. With a
+            /// With no target (#816): the soonest window when it costs no more than the cap, else the cheapest. With a
             /// target and no landing to be had, the cheapest, as the window's least burn stands without one.
             /// </summary>
             private ReturnPlan Cheap()
