@@ -77,7 +77,8 @@ namespace ClaudiaKerman.Core.Tools
                     if (i == 0) continue;
                     return null;
                 }
-                if (i > 0 && (SequenceWords.Landing.IsMatch(words) || SequenceWords.Ascent.IsMatch(words) || SequenceWords.Reentry.IsMatch(words)
+                // A landing, ascent or entry first (the leg in hand's too: "Capture and land at Duna") starts from a low orbit.
+                if ((SequenceWords.Landing.IsMatch(words) || SequenceWords.Ascent.IsMatch(words) || SequenceWords.Reentry.IsMatch(words)
                     || SequenceWords.Aero.IsMatch(words) || SequenceWords.ReturnHome.IsMatch(words))) return null;
             }
             return null;
@@ -230,7 +231,8 @@ namespace ClaudiaKerman.Core.Tools
             var firstPe = apUt + kept.Period / 2;
             int loop;
             var at = snapshot.At(apUt);
-            var plan = Departure(at, system, body, kept, moon, targetPe, firstPe + (first - 1) * kept.Period - 1, firstPe + (last - 1) * kept.Period + 1, deadline, out loop);
+            // From half a loop before periapsis <paramref name="first"/>, so a burn just before it is tried too.
+            var plan = Departure(at, system, body, kept, moon, targetPe, firstPe + (first - 1.5) * kept.Period, firstPe + (last - 1) * kept.Period + 1, deadline, out loop);
             if (plan == null) return null;
             return new KeptPlan { Moon = moon, HighR = highR, Departure = plan, Loop = loop + first - 1 };
         }

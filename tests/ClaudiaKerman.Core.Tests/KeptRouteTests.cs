@@ -173,6 +173,16 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void ALandingInTheLegInHandBeforeTheMoonIsTheCircle()
+        {
+            var rig = Arrival(180, "Capture and land at Duna", "Transfer to Ike");
+            var step = rig.RunCapture(Ask());
+            Assert.True(step.Error == "", step.Error);
+            Assert.Equal("circle: the next leg isn't to a moon of Duna", Kept(step));
+            Assert.InRange(rig.Orbit.E, 0, 0.011);
+        }
+
+        [Fact]
         public void AKerbinMoonFromKerbinAndNoMissionPlanAreTheCircleAsToday()
         {
             var home = TransferRig.Arriving("Kerbin", 100000, 900, 0, 0, 0, 3000);
