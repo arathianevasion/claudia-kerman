@@ -25,6 +25,8 @@ namespace ClaudiaKerman.Core.Missions
         public string DurationRaised;
         /// <summary>A landing aimed at another biome than the Mission Goal names (#699); null when none is.</summary>
         public GoalBiomeMiss BiomeMiss;
+        /// <summary>#831: the body a deorbit with no target is at, where the block's auto gives none (<see cref="DeorbitTargets"/>); null when there is none.</summary>
+        public string DeorbitNoTarget;
 
         /// <summary>The Script Check refused the script.</summary>
         public bool ScriptFailed
@@ -35,7 +37,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>Some figure of the plan's own is wrong by the snapshot, or its landing misses the goal's biome.</summary>
         public bool FiguresWrong
         {
-            get { return Crossings.Count > 0 || BiomeMiss != null; }
+            get { return Crossings.Count > 0 || BiomeMiss != null || DeorbitNoTarget != null; }
         }
 
         /// <summary>The figures found wrong, without the Script Check's problems: what a correction for them alone would carry.</summary>
@@ -52,6 +54,7 @@ namespace ClaudiaKerman.Core.Missions
             var warnings = Crossings.Select(c => MissionPrompts.PredictedCrossingWarning(c, StartDeltaV, ExpectedDeltaV)).ToList();
             if (DurationRaised != null) warnings.Add(DurationRaised);
             if (BiomeMiss != null) warnings.Add("landing biome: " + MissionPrompts.GoalBiomeMissed(BiomeMiss));
+            if (DeorbitNoTarget != null) warnings.Add("deorbit target: " + MissionPrompts.DeorbitNoTargetMissed(DeorbitNoTarget));
             return warnings;
         }
     }
