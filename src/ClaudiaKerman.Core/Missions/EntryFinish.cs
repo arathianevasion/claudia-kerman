@@ -10,7 +10,7 @@ namespace ClaudiaKerman.Core.Missions
     /// <summary>
     /// How an Entry finishes (#824, ADR 0020): on its chutes, or on its engines with everything kept. <c>reentry</c> asks at block start, through
     /// <c>ADDONS:CLAUDIA:ENTRYFINISH</c>, before it drops anything. <see cref="Decide"/> predicts the touchdown with what the Entry would drop (<see cref="EntryStack"/>)
-    /// and the Chute Group left (<see cref="ChuteGroups"/>). Over <see cref="EngineThreshold"/> with an engine that can brake, it keeps everything and predicts again.
+    /// and the Chute Group left (<see cref="ChuteGroups"/>). Over <see cref="ThresholdFor"/> its body (<see cref="EngineThreshold"/>, or 15 on Kerbin, Eve and Laythe) with an engine that can brake, it keeps everything and predicts again.
     /// Braking, throttle and lighting the engines are the block's.
     /// </summary>
     public sealed class EntryFinish

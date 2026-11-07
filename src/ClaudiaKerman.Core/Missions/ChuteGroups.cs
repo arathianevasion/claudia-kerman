@@ -41,7 +41,7 @@ namespace ClaudiaKerman.Core.Missions
         public double TouchdownSpeed = -1;
         /// <summary>Its chutes can't bring it under <see cref="ChuteGroups.TouchdownLimit"/>: the engines finish the landing from <see cref="TouchdownSpeed"/>.</summary>
         public bool PoweredFinish;
-        /// <summary>Over <see cref="EntryFinish.EngineThreshold"/> with an engine aboard: <c>reentry</c> would land on it, so the delta-v is budgeted (<see cref="MarginCheck"/>), though under <see cref="ChuteGroups.TouchdownLimit"/> it isn't needed to survive.</summary>
+        /// <summary>Over <see cref="EntryFinish.ThresholdFor"/> its body with an engine aboard: <c>reentry</c> would land on it, so the delta-v is budgeted (<see cref="MarginCheck"/>), though under <see cref="ChuteGroups.TouchdownLimit"/> it isn't needed to survive.</summary>
         public bool EngineFinish;
         /// <summary>The height above sea level, m, its fall was predicted down to (<see cref="ChuteGroups.EndAltitudeOf"/>).</summary>
         public double EndAltitude;
