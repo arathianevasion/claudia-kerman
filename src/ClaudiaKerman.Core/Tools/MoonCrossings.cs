@@ -150,6 +150,16 @@ namespace ClaudiaKerman.Core.Tools
             return setup == null ? null : Judge(setup.System, setup.Body, setup.Start, setup.Now, untilUt, planned);
         }
 
+        /// <summary>The craft's own orbit over a wait not known yet (the Debrief's fact): long, so judged by geometry, the likely time from <see cref="LikelyLoops"/> followed.</summary>
+        public static MoonCrossing Judge(GameSnapshot snapshot)
+        {
+            if (snapshot == null) return null;
+            ToolOutcome error;
+            var setup = PredictBurn.Setup.Prepare(snapshot, null, out error);
+            if (setup == null || !setup.Start.Closed) return null;
+            return Judge(setup.System, setup.Body, setup.Start, setup.Now, setup.Now + LikelyLoops * setup.Start.Period);
+        }
+
         /// <summary>
         /// The first moon the path meets between <paramref name="fromUt"/> and <paramref name="untilUt"/>, followed loop by loop, with the UT it is met;
         /// null when it meets none first, or first meets a planned one, leaves the body, or comes down.

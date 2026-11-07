@@ -38,6 +38,8 @@ namespace ClaudiaKerman.Adapter
         /// <summary>Ship Systems (#756): moves the panels, antennas, radiators and lights of the craft Claudia flies.</summary>
         private readonly ShipSystemsKeeper _shipSystems;
         private readonly EncounterWatcher _encounterWatcher;
+        /// <summary>#867: the craft's next patch while it warps between runs.</summary>
+        private readonly NextPatchWatcher _nextPatchWatcher;
 
         /// <summary>The Mission window's body, drawn by the floating window or, docked in Flight, under the Capcom strip.</summary>
         public readonly MissionPanel Panel;
@@ -183,6 +185,7 @@ namespace ClaudiaKerman.Adapter
                 () => _mission.View.CraftVesselId, () => _mission.View.RunningChildVesselId);
             _shipSystems = new ShipSystemsKeeper(Send, () => _mission.View, manageShipSystems ?? (() => true));
             _encounterWatcher = new EncounterWatcher(Send);
+            _nextPatchWatcher = new NextPatchWatcher(Send);
             // Any stock alarm drops a running script's in-script warp (ADR 0004); the core ignores it when nothing runs.
             GameEvents.onAlarmTriggered.Add(alarm => Send(new StockAlarmFired()));
             // Building Block progress, for the strip and the log, with no Claude call behind it.
@@ -283,6 +286,7 @@ namespace ClaudiaKerman.Adapter
                 _saveFolder = HighLogic.SaveFolder;
                 _shipSystems.Reset();
                 _encounterWatcher.Reset();
+                _nextPatchWatcher.Reset();
                 // A save from before the rename (ADR 0015): its Mission folder and Claudia Flag take the new names first.
                 RenameMigration.MissionFolder(SaveDirectory(), LogLine);
                 ClaudiaFlags.Renamed();
@@ -309,6 +313,8 @@ namespace ClaudiaKerman.Adapter
                 _nextUt = Time.realtimeSinceStartup + UtSeconds;
                 Send(new UtAdvanced(Planetarium.GetUniversalTime(), TimeWarp.fetch != null && TimeWarp.CurrentRateIndex > 0));
             }
+            // #867: in every scene too, so the player's warp at the Tracking Station is watched.
+            if (HighLogic.CurrentGame != null) _nextPatchWatcher.Update(_mission.View.NextPatchVesselId, _mission.View.NextPatchPlanned);
 
             // Which vessel is the craft after a switch, docking or EVA: the core decides from what the game shows.
             _vessels.Update(scene == GameScene.Flight && FlightGlobals.ready);

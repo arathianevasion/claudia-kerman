@@ -144,6 +144,9 @@ namespace ClaudiaKerman.Core.Missions
                 case AdvanceWait.DueTime:
                     WaitsForLink(mission, "The Sequence Plan " + MissionPrompts.Quoted(planName) + " has a Due Time for you, so it waits for the link.");
                     break;
+                case AdvanceWait.MoonCrossing:
+                    WaitsForLink(mission, "The Sequence Plan " + MissionPrompts.Quoted(planName) + " has a Blocker (" + mission.CrossingBlocker.Replace("Blocker: ", "").TrimEnd('.') + "), so it waits for the link.");
+                    break;
             }
         }
 
