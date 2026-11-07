@@ -69,6 +69,27 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Null(DeorbitTargets.Missing("local a is coast(lexicon(\"until\", time:seconds + ship:orbit:nextpatcheta)).\n" + Bare, At(Duna)));
         }
 
+        /// <summary>#852: the next-patch time held in a variable is a trip as the direct form is; the coast's text doesn't say "nextpatch" any more.</summary>
+        [Theory]
+        [InlineData("local t is time:seconds + ship:orbit:nextpatcheta.\nlocal a is coast(lexicon(\"until\", t + 60)).\n")]
+        [InlineData("local patch_wait is ship:orbit:nextpatcheta.\nlocal a is coast(lexicon(\"until\", time:seconds + patch_wait + 60)).\n")]
+        // Unread by the plan checks, so nothing says where it ends: assigned twice, or from something else.
+        [InlineData("local t is 0.\nset t to time:seconds + ship:orbit:nextpatcheta.\nlocal a is coast(lexicon(\"until\", t)).\n")]
+        [InlineData("local t is pick().\nlocal a is coast(lexicon(\"until\", t)).\n")]
+        public void A_deorbit_after_a_coast_it_can_not_place_stays_unchecked(string coast)
+        {
+            Assert.Null(DeorbitTargets.Missing(coast + Bare, At(Duna)));
+        }
+
+        [Theory]
+        [InlineData("time:seconds + 100")]
+        [InlineData("1000000")]
+        [InlineData(" time : seconds + 100.5 ")]
+        public void A_deorbit_after_a_coast_to_a_written_time_is_still_judged(string until)
+        {
+            Assert.Equal("Duna", DeorbitTargets.Missing("local a is coast(lexicon(\"until\", " + until + ")).\n" + Bare, At(Duna)));
+        }
+
         [Fact]
         public void No_snapshot_or_no_script_checks_nothing()
         {

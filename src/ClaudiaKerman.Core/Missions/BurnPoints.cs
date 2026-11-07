@@ -71,7 +71,6 @@ namespace ClaudiaKerman.Core.Missions
         private static readonly Regex Quoted = new Regex("\"(?<n>[^\"]+)\"", RegexOptions.CultureInvariant);
         private static readonly Regex Number = new Regex(@"^\d+(\.\d+)?$", RegexOptions.CultureInvariant);
         private static readonly Regex FromNow = new Regex(@"^time\s*:\s*seconds\s*\+\s*(?<s>\d+(\.\d+)?)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-        private static readonly Regex ToNextPatch = new Regex(@"^time\s*:\s*seconds\s*\+\s*ship\s*:\s*orbit\s*:\s*nextpatcheta(\s*\+\s*(?<s>\d+(\.\d+)?))?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         /// <summary>A landing target written out: LATLNG(lat, lng) or lexicon("lat", x, "lng", y).</summary>
         private static readonly Regex Site = new Regex(@"^(latlng\s*\(\s*|lexicon\s*\(\s*""lat""\s*,\s*)(?<lat>-?\d+(\.\d+)?)\s*,\s*(""lng""\s*,\s*)?(?<lng>-?\d+(\.\d+)?)\s*\)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
@@ -82,7 +81,8 @@ namespace ClaudiaKerman.Core.Missions
         public static BurnWait ShortOf(SequencePlan plan, GameSnapshot snapshot, double now, IPlanningBody body = null)
         {
             if (plan == null || plan.Manual) return null;
-            var wait = First(plan.Script, snapshot, now, plan.ExpectedDeltaV, body);
+            // #852: a plan not yet due runs later, when the patch's end may be behind it, and this raise isn't asked again then: a next-patch time in a variable stays unread on it.
+            var wait = First(plan.Script, snapshot, now, plan.ExpectedDeltaV, body, !(plan.DueTimeUt > now));
             // A departure over WindowWaits.LongWaitS off is a Due Time (DueTime): the run starts one launch lead before it.
             if (wait != null && DueTime(wait, now).HasValue)
             {
@@ -104,8 +104,9 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>
         /// The wait to the script's first burn point at <paramref name="now"/> (UT), with its burn time from
         /// <paramref name="expectedDeltaV"/> (or the existing node's delta-v); null when the script doesn't show one.
+        /// <paramref name="readStored"/>: whether a coast's until may be a next-patch time held in a variable (#852).
         /// </summary>
-        public static BurnWait First(string script, GameSnapshot snapshot, double now, double expectedDeltaV, IPlanningBody body = null)
+        public static BurnWait First(string script, GameSnapshot snapshot, double now, double expectedDeltaV, IPlanningBody body = null, bool readStored = true)
         {
             if (string.IsNullOrWhiteSpace(script) || snapshot == null) return null;
             var masked = CoreLibrary.MissionScript(script, true);
@@ -129,7 +130,7 @@ namespace ClaudiaKerman.Core.Missions
                 {
                     // A coast whose until can't be read leaves nothing to check; a UT already past returns at once.
                     bool toPatch;
-                    var until = Until(call.Option("until"), now + held, snapshot, out toPatch);
+                    var until = Until(call.Option("until"), now + held, snapshot, readStored ? masked : null, call.Index, out toPatch);
                     // A second coast to a next patch can't be read: the snapshot has only the first patch's end.
                     if (!until.HasValue || (toPatch && leftOrbit)) return null;
                     held += Math.Max(0, until.Value - (now + held));
@@ -377,24 +378,37 @@ namespace ClaudiaKerman.Core.Missions
             return from.Success ? now + double.Parse(from.Groups["s"].Value, CultureInfo.InvariantCulture) : (double?)null;
         }
 
-        /// <summary>A coast's until as a UT: a number, or <c>time:seconds + n</c> from <paramref name="at"/>; null when it isn't one of those.</summary>
-        private static double? Until(string text, double at, GameSnapshot snapshot, out bool toPatch)
+        /// <summary>
+        /// A coast's until as a UT: a number, <c>time:seconds + n</c> from <paramref name="at"/>, or the next patch's end plus n, written out or held in a variable of
+        /// <paramref name="masked"/> (null: not looked for); null when it isn't one of those.
+        /// </summary>
+        private static double? Until(string text, double at, GameSnapshot snapshot, string masked, int callAt, out bool toPatch)
         {
             toPatch = false;
             if (text == null) return null;
             var trimmed = text.Trim();
             if (Number.IsMatch(trimmed)) return double.Parse(trimmed, CultureInfo.InvariantCulture);
             // #833: time:seconds + ship:orbit:nextpatcheta [+ n] is the patch's end UT plus n; no next patch leaves it unread.
-            var patch = ToNextPatch.Match(trimmed);
-            if (patch.Success)
+            var patch = StoredNextPatch.UtForm.Match(trimmed);
+            var secondsPast = patch.Success ? StoredNextPatch.Seconds(patch)
+                : masked != null ? StoredNextPatch.SecondsPastTheEnd(trimmed, masked, callAt) : null;
+            if (secondsPast.HasValue)
             {
                 // A patch end already behind this point is a later patch's: not read.
                 if (!snapshot.NextPatchEndUt.HasValue || snapshot.NextPatchEndUt.Value <= at) return null;
                 toPatch = true;
-                return snapshot.NextPatchEndUt.Value + (patch.Groups["s"].Success ? double.Parse(patch.Groups["s"].Value, CultureInfo.InvariantCulture) : 0);
+                return snapshot.NextPatchEndUt.Value + secondsPast.Value;
             }
             var from = FromNow.Match(trimmed);
             return from.Success ? at + double.Parse(from.Groups["s"].Value, CultureInfo.InvariantCulture) : (double?)null;
+        }
+
+        /// <summary>Whether a coast's until is only a time written out: a number or <c>time:seconds + n</c>. Anything else may be a next patch's, which the text needn't say (#852).</summary>
+        public static bool IsWrittenTime(string until)
+        {
+            if (until == null) return false;
+            var trimmed = until.Trim();
+            return Number.IsMatch(trimmed) || FromNow.IsMatch(trimmed);
         }
 
         private static double? Literal(string text)
