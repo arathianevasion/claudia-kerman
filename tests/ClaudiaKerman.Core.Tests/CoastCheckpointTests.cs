@@ -568,6 +568,28 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("", mission.View.AutoModeStop);
         }
 
+        /// <summary>#830: the runaway stop's warp hold doesn't carry across a checkpoint; the resumed run is timed and held on its own.</summary>
+        [Fact]
+        public void A_run_resumed_from_a_checkpoint_stops_at_its_deadline_as_today_and_holds_only_for_its_own_warp()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var transport = new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer"));
+            var mission = Control(transport);
+            var first = ToRunning(mission, rig);
+            // The first run was warping to a far target when it checkpointed.
+            mission.Send(new KosWarpRequested(rig.Ut + 1e10, first.RunId));
+            mission.Send(new SetAutoMode(true));
+            mission.Send(AtCheckpoint(token, first.RunId));
+            _background.Drain();
+            var resumed = mission.TakeCommands().OfType<StartScript>().Single();
+            Assert.NotEqual(first.RunId, resumed.RunId);
+
+            // Nothing from the first run holds the resumed one: it stops at 300% of its own figure.
+            mission.Send(new UtAdvanced(rig.Ut + 1e9));
+            Assert.Single(mission.TakeCommands().OfType<AbortScript>());
+        }
+
         [Fact]
         public void Auto_Mode_still_stops_at_a_due_time_of_Claudias_own()
         {

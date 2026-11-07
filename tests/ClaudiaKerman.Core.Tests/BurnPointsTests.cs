@@ -242,6 +242,43 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(BlockPick(snapshot, 1000) + 150 - 1000, 0, wait.MinimumDurationSeconds);
         }
 
+        /// <summary>#830: flight m20261106-203509-34a6: a coast to the SOI, then capture, planned at 20,000 s with about 63,000 s to wait.</summary>
+        [Fact]
+        public void ACoastIsReadThroughAndTheBurnsWaitCountsFromAfterIt()
+        {
+            var snapshot = Orbiting(1000);
+            var plan = new SequencePlan { Script = "local res is coast(lexicon(\"until\", time:seconds + 63000)). set res to capture(lexicon(\"target_pe\", 80000)).", ExpectedDurationSeconds = 20000, ExpectedDeltaV = 600 };
+            var wait = BurnPoints.First(plan.Script, snapshot, Now, 600);
+            Assert.Equal("capture", wait.Block);
+            Assert.True(wait.WaitSeconds >= 63000, "the coast counts: " + wait.WaitSeconds);
+            Assert.InRange(wait.WaitSeconds, 63000, 63000 + Period);
+            var short_ = BurnPoints.ShortOf(plan, snapshot, Now);
+            Assert.NotNull(short_);
+            Assert.True(short_.MinimumDurationSeconds > 63000);
+            plan.ExpectedDurationSeconds = short_.MinimumDurationSeconds;
+            Assert.Null(BurnPoints.ShortOf(plan, snapshot, Now));
+        }
+
+        [Fact]
+        public void ACoastUntilAUtCountsFromNowAndAPastUtAddsNothing()
+        {
+            var snapshot = Orbiting(1000);
+            var late = BurnPoints.First("coast(lexicon(\"until\", " + (Now + 5000).ToString(CultureInfo.InvariantCulture) + ")). circularize().", snapshot, Now, 50);
+            var past = BurnPoints.First("coast(lexicon(\"until\", 10)). circularize().", snapshot, Now, 50);
+            Assert.Equal(1000, past.WaitSeconds, 0);
+            Assert.True(late.WaitSeconds >= 5000);
+        }
+
+        [Fact]
+        public void ACoastToAnUnreadableTimeLeavesThePlanUnchecked()
+        {
+            var snapshot = Orbiting(1000);
+            Assert.Null(BurnPoints.First("coast(lexicon(\"until\", time:seconds + ship:orbit:nextpatcheta)). capture().", snapshot, Now, 600));
+            Assert.Null(BurnPoints.First("coast(). capture().", snapshot, Now, 600));
+            var plan = new SequencePlan { Script = "coast(lexicon(\"until\", someUt)). capture().", ExpectedDurationSeconds = 20000, ExpectedDeltaV = 600 };
+            Assert.Null(BurnPoints.ShortOf(plan, snapshot, Now));
+        }
+
         [Fact]
         public void AnAimedReturnWithAShortDurationGoesBack()
         {
