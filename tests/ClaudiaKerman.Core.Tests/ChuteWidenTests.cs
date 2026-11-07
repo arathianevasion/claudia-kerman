@@ -140,18 +140,65 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void ChutesNoneIsHonouredWithAnEngineOrWhenTheFallCantBePredicted()
+        public void ChutesNoneIsHonouredWithAnEngine()
         {
             var fast = Craft(MassAt(20, new[] { 2, 0 }), true, 2, 0);
             var withEngine = Widen(fast, none: true, engine: true);
             Assert.Empty(withEngine.Entry.Chutes);
             Assert.False(withEngine.Overrode);
 
-            // A fall that can't be predicted gives no certain crash to override.
-            fast.Orbit.Body = "Nowhere";
-            var unknown = Widen(fast, none: true);
-            Assert.Empty(unknown.Entry.Chutes);
-            Assert.False(unknown.Overrode);
+        }
+
+        [Fact]
+        public void ChutesNoneWithNoEngineAndAPredictorErrorOpensTheOwnGroupOnlyAndSaysThePredictionFailed()
+        {
+            var snapshot = Craft(MassAt(20, new[] { 2, 0 }), true, 2, 0);
+            snapshot.Orbit.Body = "Nowhere";
+
+            var widened = Widen(snapshot, none: true);
+
+            Assert.True(widened.Overrode);
+            Assert.Equal(new[] { 2 }, Stages(widened));
+            Assert.Equal(0, widened.Extra);
+            Assert.StartsWith("chutes none overridden: no engine, and the touchdown prediction failed", widened.Why());
+            Assert.DoesNotContain("a crash otherwise", widened.Why());
+        }
+
+        [Fact]
+        public void ChutesNoneWithNoEngineAndAKnownSoftLandingStaysNone()
+        {
+            // With "none" the own group is empty, so the known speed is the fall with no chute: here a light craft on a weak-gravity Eve, 9.5 m/s.
+            var snapshot = Weak(0.05);
+            Assert.InRange(ChuteGroups.ForEntryNow(snapshot, false, null, false).TouchdownSpeed, 0, ChuteGroups.TouchdownLimit);
+
+            var widened = Widen(snapshot, none: true);
+
+            Assert.Empty(widened.Entry.Chutes);
+            Assert.False(widened.Overrode);
+            Assert.Equal("", widened.Why());
+        }
+
+        [Fact]
+        public void ChutesNoneWithNoEngineAndAKnownFastFallIsOverriddenAsBefore()
+        {
+            // The same craft with gravity 0.3 of Eve's falls at 23 m/s with no chute: a certain crash, #827's override.
+            var snapshot = Weak(0.3);
+            Assert.True(ChuteGroups.ForEntryNow(snapshot, false, null, false).TouchdownSpeed > ChuteGroups.TouchdownLimit);
+
+            var widened = Widen(snapshot, none: true);
+
+            Assert.True(widened.Overrode);
+            Assert.NotEmpty(widened.Entry.Chutes);
+            Assert.StartsWith("chutes none overridden: no engine, and a crash otherwise.", widened.Why());
+        }
+
+        /// <summary>A light craft at Eve with its gravity set to <paramref name="share"/> of the real figure, so its fall with no chute is a known speed near the limit.</summary>
+        private static GameSnapshot Weak(double share)
+        {
+            var snapshot = Craft(0.21, true, 2, 0);
+            snapshot.Orbit.Body = "Eve";
+            snapshot.Bodies.Single(b => b.Name == "Eve").Gm *= share;
+            return snapshot;
         }
 
         // ---- The limit and the order ----
