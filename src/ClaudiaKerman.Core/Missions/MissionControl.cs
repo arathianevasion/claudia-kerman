@@ -1771,6 +1771,7 @@ namespace ClaudiaKerman.Core.Missions
             var wrong = new List<string>();
             if (findings.Crossings.Count > 0) wrong.Add("a Telemetry Check is certain to cross by the plan's own figures");
             if (findings.BiomeMiss != null) wrong.Add(MissionPrompts.GoalBiomeMissed(findings.BiomeMiss));
+            if (findings.DeorbitNoTarget != null) wrong.Add(MissionPrompts.DeorbitNoTargetMissed(findings.DeorbitNoTarget));
             return string.Join(" and ", wrong.ToArray());
         }
 
@@ -1790,6 +1791,7 @@ namespace ClaudiaKerman.Core.Missions
             var snapshot = MissionVesselSnapshot(mission);
             var start = LiveReadings.DeltaVLeftOf(snapshot);
             findings.StartDeltaV = start ?? 0;
+            findings.DeorbitNoTarget = DeorbitTargets.Missing(plan.Script, snapshot);
             findings.Crossings = PredictedCrossings.Find(plan.TelemetryChecks, plan.ExpectedDeltaV, start);
             // #830: a duration short of the first burn (#696) is raised by the mod itself, on every path (the landing target default's wait, #790, was the first):
             // no request back to Claudia, no prompt text about it; plans.jsonl logs the raise.
