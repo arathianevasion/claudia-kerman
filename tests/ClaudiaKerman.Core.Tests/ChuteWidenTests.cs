@@ -208,6 +208,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             var snapshot = Craft(0, true);
 
+            Assert.Equal(-1, Widen(snapshot, none: true).Entry.TouchdownSpeed);
             Assert.Contains("opening no chutes, with no engine", Widen(snapshot, none: true).Warning);
         }
 
