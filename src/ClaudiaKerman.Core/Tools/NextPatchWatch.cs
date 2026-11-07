@@ -83,6 +83,8 @@ namespace ClaudiaKerman.Core.Tools
                 if (moved)
                 {
                     _nextUt = ut + MaxGap;
+                    // The meeting the watch already answered, which the player let through: one meeting is answered once.
+                    if (string.Equals(setup.Body.Name, _answeredMoon, StringComparison.OrdinalIgnoreCase) && ut - _answeredUt < MaxGap) return null;
                     return new MoonCrossing { Body = parent, Moon = setup.Body, Ut = ut, EdgeR = setup.Body.Sma - setup.Body.SoiRadius };
                 }
             }

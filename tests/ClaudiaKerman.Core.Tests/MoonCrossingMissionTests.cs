@@ -10,6 +10,7 @@ using System.Text.Json;
 using System.Threading;
 using ClaudiaKerman.Core.Claude;
 using ClaudiaKerman.Core.Config;
+using ClaudiaKerman.Core.Kos;
 using ClaudiaKerman.Core.Missions;
 using ClaudiaKerman.Core.Tools;
 using ClaudiaKerman.Core.Ui;
@@ -233,6 +234,111 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new NextPatchDropped("Warp stopped: the craft would meet Ike's sphere of influence at UT 1."));
             Assert.DoesNotContain(mission.TakeCommands().OfType<PostScreenMessage>(), m => m.Text.Contains("Ike"));
             Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("Warp stopped"));
+        }
+
+        /// <summary>A two-leg Mission Plan at Duna: a transfer to Ike, then a capture that waits.</summary>
+        private static ScriptedResponse IkePlan()
+        {
+            return Reply("{\"kind\":\"mission_plan\",\"say\":\"Mission Plan: Ike.\",\"reply_intent\":\"none\",\"sequence_plan\":null,"
+                + "\"mission_plan\":{\"why\":\"Ike is near.\",\"sequences\":["
+                + "{\"name\":\"Transfer\",\"intent\":\"Transfer to Ike.\",\"delta_v\":200,\"timing\":\"now\",\"due_time_ut\":-1},"
+                + "{\"name\":\"Capture\",\"intent\":\"Capture at Ike.\",\"delta_v\":100,\"timing\":\"at Ike\",\"due_time_ut\":-1}],"
+                + "\"total_delta_v\":300,\"expected_duration\":\"a day\",\"mission_time_s\":-1},\"debrief\":null}");
+        }
+
+        private static ScriptedResponse TransferToIke()
+        {
+            return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: Transfer.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
+                + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"Transfer\",\"intent\":\"Transfer to Ike.\",\"why\":\"Ike.\",\"target\":\"Ike encounter\","
+                + "\"tolerances\":\"Pe within 5 km\",\"expected_delta_v\":200,\"expected_duration_s\":600,\"abort_conditions\":[],\"risks\":[],"
+                + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"local res is transfer_to(lexicon(\\\"target\\\", \\\"Ike\\\")).\\n\","
+                + "\"due_time_ut\":-1,\"window_closes_ut\":-1,\"late_window_dv\":-1},\"debrief\":null}");
+        }
+
+        private static ScriptedResponse NominalDebrief()
+        {
+            return Reply("{\"kind\":\"debrief\",\"say\":\"Debrief.\",\"reply_intent\":\"none\",\"mission_plan\":null,\"sequence_plan\":null,\"alert\":null,"
+                + "\"debrief\":{\"outcome\":\"Nominal\",\"why\":\"It went.\",\"what_happened\":\"It went.\",\"goal_reached\":false,\"next\":\"Capture.\",\"eva_science\":\"\"}}");
+        }
+
+        /// <summary>
+        /// Fix round (1): after transfer_to Ike, coasting with no script running, the meeting with Ike is the transfer's: the between-runs watch is told
+        /// it is planned, and the next plan's wait for its Due Time on that coast holds no Blocker.
+        /// </summary>
+        [Fact]
+        public void AfterTransferToTheMoonItsMeetingIsPlannedForTheWatchAndTheNextPlansWait()
+        {
+            var due = Now + MoonCrossingTests.Wait908b;
+            var transport = new StreamingFakeTransport(IkePlan(), TransferToIke(), NominalDebrief(), Waiting(due));
+            var mission = Control(transport);
+            ToSequencePlan(mission, InDunaOrbit(), "Orbit Ike.");
+            Assert.DoesNotContain("Blocker", PlanCard(mission));
+            mission.Send(new Approve());
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            var start = mission.TakeCommands().OfType<StartScript>().Single();
+            mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, new System.Collections.Generic.Dictionary<string, object> { { "success", true } }, "", "", false), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval && transport.Requests.Count == 4);
+
+            Assert.Contains("Ike", mission.View.NextPatchPlanned.Split(','));
+            Assert.DoesNotContain("Blocker", PlanCard(mission));
+            mission.TakeCommands();
+            mission.Send(new WarpToDueTime());
+            Assert.Single(mission.TakeCommands().OfType<WarpToUt>());
+        }
+
+        /// <summary>Fix round (2): leaving Flight takes away the craft's snapshot, not the Blocker: the mod's warp from the Tracking Station is still refused, and Auto Mode still stops.</summary>
+        [Fact]
+        public void TheBlockerStandsWithNoSnapshotOfTheCraft()
+        {
+            var due = Now + MoonCrossingTests.Wait908b;
+            var transport = new StreamingFakeTransport(HomePlan(), Waiting(due), Waiting(due));
+            var mission = Control(transport);
+            ToSequencePlan(mission, InDunaOrbit());
+            Assert.Contains("Blocker:", PlanCard(mission));
+
+            mission.Send(new SceneChanged(GameScene.Other));
+            mission.TakeCommands();
+            mission.Send(new WarpToDueTime());
+            Assert.Empty(mission.TakeCommands().OfType<WarpToUt>());
+            mission.Send(new WarpToDueTime());
+            Assert.Empty(mission.TakeCommands().OfType<WarpToUt>());
+            mission.Send(new SetAutoMode(true));
+            Assert.Contains("Auto Mode is waiting for you: a Blocker: the orbit round Duna crosses Ike's", mission.View.AutoModeStop);
+
+            // Back in Flight with the fix flown, it lifts.
+            mission.Send(new SceneChanged(GameScene.Flight));
+            mission.Send(InDunaOrbit(apAlt: 1520000));
+            mission.Send(new SetAutoMode(false));
+            mission.TakeCommands();
+            mission.Send(new WarpToDueTime());
+            Assert.Single(mission.TakeCommands().OfType<WarpToUt>());
+        }
+
+        /// <summary>Fix round (2): a plan offered with no snapshot of the craft (outside Flight) is judged on the first one: its Blocker on the card and in the log, and the warp refused.</summary>
+        [Fact]
+        public void APlanOfferedOutsideFlightIsJudgedOnTheFirstSnapshot()
+        {
+            var due = Now + MoonCrossingTests.Wait908b;
+            var transport = new StreamingFakeTransport(HomePlan(), Waiting(due));
+            var mission = Control(transport);
+            var snapshot = InDunaOrbit();
+            mission.Send(new SceneChanged(GameScene.Flight));
+            mission.Send(new UtAdvanced(Now, false));
+            CraftCheckRouter.StartChecked(mission, _background, snapshot, new StartMission(Goal, 10m, "claude-sonnet-5-5", window: WindowPicks.AsTheSetting(snapshot, Goal)));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new SceneChanged(GameScene.Other));
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            Assert.Equal(2, transport.Requests.Count);
+            Assert.DoesNotContain("Blocker", PlanCard(mission));
+
+            mission.Send(new SceneChanged(GameScene.Flight));
+            mission.Send(InDunaOrbit());
+            Assert.Contains("Blocker: the orbit round Duna crosses Ike's sphere of influence", PlanCard(mission));
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("crosses Ike's sphere of influence"));
+            mission.TakeCommands();
+            mission.Send(new WarpToDueTime());
+            Assert.Empty(mission.TakeCommands().OfType<WarpToUt>());
         }
 
         [Fact]

@@ -114,6 +114,7 @@ namespace ClaudiaKerman.Core.Tools
         {
             if (!orbit.Closed || untilUt <= fromUt || IsStar(system, body)) return null;
             if (untilUt - fromUt <= FollowLoops * orbit.Period) return Follow(system, body, orbit, fromUt, untilUt, planned);
+            if (EndsFirst(system, body, orbit, fromUt, planned)) return null;
             SnapshotBody first = null;
             var lowest = double.PositiveInfinity;
             var inside = true;
@@ -198,6 +199,18 @@ namespace ClaudiaKerman.Core.Tools
                 if (patch.End != PatchEnd.Stable || patch.Error != null) return null;
             }
             return null;
+        }
+
+        /// <summary>
+        /// The path's first loop ends before any wait goes round: at a planned encounter (a transfer_to Minmus whose ellipse also reaches the Mun's band),
+        /// in the atmosphere or at the ground (a return from the Mun with its periapsis at 35 km). No later loop comes, so geometry has nothing to judge.
+        /// </summary>
+        private static bool EndsFirst(BodySystem system, SnapshotBody body, Conic orbit, double fromUt, ICollection<string> planned)
+        {
+            var path = SingleShooting.Follow(system, body, orbit, fromUt, 1);
+            if (path == null || path.Count == 0) return false;
+            var patch = path[0];
+            return patch.End == PatchEnd.Atmosphere || patch.End == PatchEnd.Impact || (patch.End == PatchEnd.Encounter && Planned(patch.Next, planned));
         }
 
         private static bool Planned(SnapshotBody moon, ICollection<string> planned)

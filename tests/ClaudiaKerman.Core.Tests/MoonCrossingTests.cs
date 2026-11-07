@@ -236,6 +236,74 @@ namespace ClaudiaKerman.Core.Tests
             Timing.Within(2, () => new NextPatchWatch("").Check(snapshot));
         }
 
+        /// <summary>Fix round (4): the meeting the watch dropped warp for, let through by the player, is not answered again when KSP has the craft round the moon.</summary>
+        [Fact]
+        public void AMeetingAnsweredBeforeTheSoiChangeIsNotAnsweredAgainAfterIt()
+        {
+            var rig = DunaOrbit();
+            var at = MoonCrossings.Follow(rig.System, rig.Body, rig.Orbit, rig.Ut, rig.Ut + Wait908b).Ut.Value;
+            var watch = new NextPatchWatch("");
+            rig.MoveTo(at - 600);
+            Assert.StartsWith("Warp stopped: the craft would meet Ike's", watch.Check(rig.Snapshot()));
+            rig.MoveTo(at + 600);
+            Assert.Equal("Ike", rig.Body.Name);
+            Assert.Equal("", watch.Check(rig.Snapshot()));
+        }
+
+        /// <summary>A Kerbin orbit from <paramref name="peAlt"/> to <paramref name="apR"/> m from the centre, starting at <paramref name="meanAnomaly"/> rad.</summary>
+        private static TransferRig KerbinEllipse(double peAlt, double apR, double inc, double lan, double argPe, double meanAnomaly)
+        {
+            var rig = TransferRig.Circular("Kerbin", 100000, 0);
+            var rp = rig.Body.Radius + peAlt;
+            rig.Orbit = Conic.FromElements(rig.Body.Gm, (rp + apR) / 2, (apR - rp) / (apR + rp), inc, lan, argPe, meanAnomaly, 0);
+            return rig;
+        }
+
+        /// <summary>
+        /// Fix round (3): after transfer_to Minmus the 680 × 47,000 km ellipse reaches the Mun's band too, but its first loop ends at Minmus, planned:
+        /// no crossing by geometry (the Debrief's fact). Unplanned, the same path still crosses.
+        /// </summary>
+        [Fact]
+        public void APathWhoseFirstLoopEndsAtAPlannedEncounterIsNoCrossing()
+        {
+            var probe = TransferRig.Circular("Kerbin", 100000, 0);
+            var minmus = probe.System.Find("Minmus");
+            var minmusOrbit = probe.System.OrbitOf(minmus);
+            TransferRig found = null;
+            // A transfer ellipse in Minmus's plane whose apoapsis meets it on the first loop.
+            for (var argPe = 0; argPe < 360 && found == null; argPe += 2)
+            {
+                var rig = KerbinEllipse(80000, minmus.Sma, minmus.Inclination, minmus.Lan, argPe, 0);
+                var path = SingleShooting.Follow(rig.System, rig.Body, rig.Orbit, 0, 1);
+                if (path != null && path.Count > 0 && path[0].End == PatchEnd.Encounter && path[0].Next.Name == "Minmus") found = rig;
+            }
+            Assert.NotNull(found);
+            Assert.True(minmusOrbit.Closed);
+            Assert.Null(MoonCrossings.Judge(found.Snapshot(), new[] { "Minmus" }));
+            Assert.Null(MoonCrossings.Judge(found.System, found.Body, found.Orbit, 0, Wait908b, new[] { "Minmus" }));
+            Assert.NotNull(MoonCrossings.Judge(found.System, found.Body, found.Orbit, 0, Wait908b));
+        }
+
+        /// <summary>Fix round (3): a return from the Mun with its periapsis at 35 km meets the atmosphere on its first loop: its apoapsis near the Mun is no crossing.</summary>
+        [Fact]
+        public void APathWhoseFirstLoopEndsInTheAtmosphereIsNoCrossing()
+        {
+            var probe = TransferRig.Circular("Kerbin", 100000, 0);
+            var mun = probe.System.Find("Mun");
+            TransferRig found = null;
+            // Just past the apoapsis, with the Mun elsewhere, so the first loop runs down into the atmosphere.
+            for (var argPe = 0; argPe < 360 && found == null; argPe += 30)
+            {
+                var rig = KerbinEllipse(35000, mun.Sma - 1.5e6, 0, 0, argPe, Math.PI + 0.1);
+                var path = SingleShooting.Follow(rig.System, rig.Body, rig.Orbit, 0, 1);
+                if (path != null && path.Count > 0 && path[0].End == PatchEnd.Atmosphere) found = rig;
+            }
+            Assert.NotNull(found);
+            Assert.True(found.Orbit.ApR > mun.Sma * (1 - mun.Eccentricity) - mun.SoiRadius, "the apoapsis reaches the Mun's band");
+            Assert.Null(MoonCrossings.Judge(found.Snapshot(), new string[0]));
+            Assert.Null(MoonCrossings.Judge(found.System, found.Body, found.Orbit, 0, Wait908b));
+        }
+
         [Fact]
         public void TheBlocksFailureNamesTheMoonAndTheTime()
         {
