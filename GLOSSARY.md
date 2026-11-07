@@ -57,7 +57,7 @@ One self-contained stretch of flight that Claudia plans and kOS executes in a si
 _Avoid_: step, phase, maneuver (alone), burn
 
 **Leg**:
-In code, one entry of a Mission Plan's sequence list (a `PlannedSequence`), read from the Mission Goal's words, which are split into one leg per clause (at punctuation, "and" and "then"). Before a Mission Plan exists, each goal clause is a leg (`ChuteAllocation.GoalLegs`, #641). `SequenceWords.LegBody` gives the body where a leg's surface work happens, and `NextBody` the body the next leg starts from (Kerbin after a return home); for "Land on the Mun and return to Kerbin" these differ. Open: whether the glossary should name this unit Maneuver Sequence or keep leg; until that is decided, the glossary's Maneuver Sequence is what Claudia plans and executes.
+In code, one entry of a Mission Plan's sequence list (a `PlannedSequence`), read from the Mission Goal's words, which are split into one leg per clause (at punctuation, "and" and "then"). Before a Mission Plan exists, each goal clause is a leg (`ChuteGroups.GoalLegs`, #641). `SequenceWords.LegBody` gives the body where a leg's surface work happens, and `NextBody` the body the next leg starts from (Kerbin after a return home); for "Land on the Mun and return to Kerbin" these differ. Open: whether the glossary should name this unit Maneuver Sequence or keep leg; until that is decided, the glossary's Maneuver Sequence is what Claudia plans and executes.
 _Avoid_: stage (which is a rocket stage), step
 
 **Coast**:
@@ -157,9 +157,9 @@ _Avoid_: parts below the legs, lower stage
 The one number that sets how a landing's braking trades height for speed: a small shape holds height until the craft is nearly stopped and then drops steeply, and a large one sinks early. `land` picks it from the terrain under its approach (ADR 0011).
 _Avoid_: glide slope, descent profile (as a name for the number), approach angle
 
-**Chute Allocation**:
-The chutes each remaining atmospheric entry may open, by need, with the pod's chutes kept for the return. The mod works it out at Mission Plan Approval and again at each Debrief, from the craft as it is, and for the Craft Check from the Mission Goal's own words; an entry its chutes can't bring under reentry's touchdown limit is a powered finish. `reentry` reads its entry's set when its chutes are "auto".
-_Avoid_: chute budget, parachute plan
+**Chute Group**:
+All the chutes in one stage, by the part's own stage number; a chute with staging disabled (stage -1) is the last group. An Entry that isn't the Last Entry opens the group of the highest stage aboard, part by part and never by staging; a Last Entry opens every chute aboard. Read fresh, with no memory of use, so a repacked chute counts again and a restaged one is in its new group (ADR 0019). The mod judges each Entry's group by the touchdown predictor; one it can't bring under reentry's touchdown limit is a powered finish.
+_Avoid_: Chute Allocation, chute budget, parachute plan
 
 **Entry**:
 A remaining Maneuver Sequence that lands on a body with air, reenters or returns home. A return and its reentry, or a deorbit and its landing, with no ascent between, are one Entry. Manual legs, airless bodies and aerobraking aren't counted.

@@ -133,7 +133,7 @@ namespace ClaudiaKerman.Core.Missions
                 var facts = RunFacts(mission);
                 turn.UserText = turn.UserText.Replace(MissionPrompts.RunDeltaVSlot, RunDeltaV(mission, turn.Report)) + facts;
                 // The chutes the entries still to fly may open, from the craft as the run left it (one may be used or lost).
-                AllocateChutes(mission);
+                GroupChutes(mission);
                 if (mission.ScienceKept.Count > 0 && !mission.HandBack) turn.Notice += MissionPrompts.ScienceKeptNoticeLine;
             }
             return !turn.Gate.Done && StartRecheck(mission, turn);
@@ -191,7 +191,7 @@ namespace ClaudiaKerman.Core.Missions
             if (snapshot == null) return Skip(gate, "there is no Game Snapshot of the craft");
             // The mod's own check goes with every Debrief; Claudia is asked as well only when it is not enough, or always if the config says so.
             var check = MarginCheckOf(mission, snapshot);
-            gate.RecheckSummary = check.Line();
+            gate.RecheckSummary = check.Line() + (mission.Chutes != null && mission.Chutes.Entries.Count > 0 ? " Chutes: " + mission.Chutes.Describe() : "");
             gate.RecheckFindings.AddRange(check.FindingLines());
             turn.UserText += "\n" + check.Text();
             if (_config.MarginRecheck == MarginRecheckMode.Never) return Skip(gate, "margin_recheck is never in the player config");
@@ -231,9 +231,9 @@ namespace ClaudiaKerman.Core.Missions
             // Measured as the run's monopropellant line is, on the Mission's own vessel.
             var now = LiveReadings.MonopropellantOf(MissionVesselSnapshot(mission));
             if (!mission.HandBack && mission.RunStartMonopropellant.HasValue && now.HasValue) used = Math.Max(0, mission.RunStartMonopropellant.Value - now.Value);
-            // A revision since the allocation was made (#645) leaves it stale: it is worked out again for the plan judged.
+            // No memory (ADR 0019, #645): worked out again from the craft as it is, for the plan judged.
             if (mission.Chutes != null && mission.Plan != null)
-                mission.Chutes = ChuteAllocation.Current(mission.Chutes, _snapshot, mission.Plan.Sequences, StepsBegun(mission), mission.Remote, mission.ProcessorPartId);
+                mission.Chutes = ChuteGroups.Of(_snapshot, mission.Plan.Sequences, StepsBegun(mission), mission.Remote, mission.ProcessorPartId);
             return MarginCheck.Of(snapshot, RestOfPlan(mission), _config.CraftCheckMarginPercent, _config.CheckElectricChargePercent, mission.Remote, used, mission.Chutes, mission.Goal, StepsBegun(mission), mission.PlannedAscent);
         }
 

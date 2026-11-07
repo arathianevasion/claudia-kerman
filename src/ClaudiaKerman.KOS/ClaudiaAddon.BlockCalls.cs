@@ -84,8 +84,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (dock, each tick): DockGuidance's wanted velocity and coast band for the craft's port in the target port's frame; lexicon along, lat, dv_error, fire, cmd_along, cmd_lat, cmd_side"));
             AddSuffix("DOCKFUEL", new OneArgsSuffix<Lexicon, Lexicon>(DockFuel,
                 "Core Library only (dock): whether the craft's RCS delta-v covers a dock from distance (m) at speed (m/s); lexicon error, dv, need"));
-            AddSuffix("CHUTEALLOCATION", new NoArgsSuffix<Lexicon>(ChuteAllocationSet,
-                "Core Library only (reentry): the Chute Allocation's chutes for this entry; lexicon error, all (true: keep every chute), entry, return, uids, titles, powered_finish, touchdown_speed"));
+            AddSuffix("CHUTEGROUP", new NoArgsSuffix<Lexicon>(ChuteGroupSet,
+                "Core Library only (reentry): this entry's Chute Group, read fresh; lexicon error, last (true: every chute aboard), stage, uids, titles, powered_finish, touchdown_speed"));
             AddSuffix("ENTRYDROP", new OneArgsSuffix<Lexicon, Lexicon>(EntryDrop,
                 "Core Library only (reentry, deorbit): what this Entry drops, from home and keep_engines; lexicon error, number, shield, decouplers, gone, kept, names, stuck"));
             AddSuffix("DROPCHECK", new OneArgsSuffix<Lexicon, Lexicon>(DropCheckCall,
@@ -328,20 +328,20 @@ namespace ClaudiaKerman.KOS
                 monoprop, fuel["isp"], mass, fuel["dv"], fuel["need"], fuel["error"] as string == "" ? "" : "; " + fuel["error"]));
         }
 
-        private Lexicon ChuteAllocationSet()
+        private Lexicon ChuteGroupSet()
         {
             System.Collections.Generic.IDictionary<string, object> set = null;
-            // The set and why, so a reentry's chutes can be read back from KSP.log.
-            return (Lexicon)Guarded("CHUTEALLOCATION", () =>
+            // The group and why, so a reentry's chutes can be read back from KSP.log.
+            return (Lexicon)Guarded("CHUTEGROUP", () =>
             {
                 var vessel = shared.Vessel;
                 var uids = new System.Collections.Generic.Dictionary<uint, string>();
                 foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
-                set = BlockCalls.ChuteAllocationCall(MissionDriver.ChuteAllocation, MissionDriver.CurrentSequence, SnapshotReader.ReadForMission(vessel),
+                set = BlockCalls.ChuteGroupCall(SnapshotReader.ReadForMission(vessel), MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
                     id => uids.ContainsKey(id) ? uids[id] : null);
                 return KosValues.FromPlain(set);
             }, () => set["error"] as string == ""
-                ? string.Format(CultureInfo.InvariantCulture, "{0}: {1}{2}{3}", (bool)set["all"] ? "every chute aboard" : "entry " + set["entry"],
+                ? string.Format(CultureInfo.InvariantCulture, "{0}: {1}{2}{3}", (bool)set["last"] ? "Last Entry, every chute aboard" : "stage " + set["stage"],
                     string.Join(", ", ((System.Collections.Generic.List<object>)set["titles"]).ConvertAll(t => (string)t).ToArray()),
                     (bool)set["powered_finish"] ? ", powered finish" : "",
                     (double)set["touchdown_speed"] >= 0 ? string.Format(CultureInfo.InvariantCulture, ", {0:0.0} m/s", set["touchdown_speed"]) : "")

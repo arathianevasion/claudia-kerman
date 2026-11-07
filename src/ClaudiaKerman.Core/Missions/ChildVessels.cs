@@ -52,6 +52,16 @@ namespace ClaudiaKerman.Core.Missions
             return plan;
         }
 
+        /// <summary>The <c>persistentId</c> of the part the craft keeps (<see cref="Anchor"/>); null with no parts.</summary>
+        internal static uint? Keeper(GameSnapshot snapshot, bool remote, uint? processorPartId)
+        {
+            var parts = snapshot.Craft.Parts;
+            if (parts.Count == 0) return null;
+            var byId = new Dictionary<uint, SnapshotPart>();
+            foreach (var part in parts) byId[part.Id] = part;
+            return Anchor(parts, byId, remote, processorPartId).Id;
+        }
+
         /// <summary>The part the craft keeps: aboard, the crew part nearest the root; remote (or with no crew part), the processor; else the root.</summary>
         private static SnapshotPart Anchor(IList<SnapshotPart> parts, Dictionary<uint, SnapshotPart> byId, bool remote, uint? processorPartId)
         {

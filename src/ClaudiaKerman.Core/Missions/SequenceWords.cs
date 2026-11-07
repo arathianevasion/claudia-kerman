@@ -9,7 +9,7 @@ namespace ClaudiaKerman.Core.Missions
 {
     /// <summary>
     /// What a Maneuver Sequence of the Mission Plan does, read from its own words (name and intent): a landing, an ascent, a
-    /// reentry, a return home (to Kerbin, or "come home" and the like), and the body it names. The Margin check (#574) and the Chute Allocation (#626) share it.
+    /// reentry, a return home (to Kerbin, or "come home" and the like), and the body it names. The Margin check (#574) and the Entries reader share it.
     /// </summary>
     internal static class SequenceWords
     {
@@ -109,7 +109,7 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// The body the leg after this one starts from (#726): Kerbin once a leg returns home, since the craft has come home; else
-        /// the leg's <see cref="LegBody"/>. Chute Allocation takes a return's entry here too.
+        /// the leg's <see cref="LegBody"/>. The Entries reader takes a return's entry here too.
         /// </summary>
         public static SnapshotBody NextBody(GameSnapshot snapshot, string words, SnapshotBody previous)
         {

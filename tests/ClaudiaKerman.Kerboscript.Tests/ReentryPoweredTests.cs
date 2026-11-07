@@ -42,66 +42,125 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Fact]
-        public void Unknown_touchdown_and_chutes_values_are_refused_and_a_bare_tag_is_a_list_of_one()
+        public void Unknown_touchdown_is_refused()
         {
-            Assert.Equal(new[]
-            {
-                "touchdown must be 'chutes' or 'powered', not 'hover'",
-                "chutes must be 'auto', 'none', 'all' or a list of part tags",
-                "chutes must be 'auto', 'none', 'all' or a list of part tags",
-                "", "List", "main",
-            }, Run("local d is reentry_defaults(). set d:touchdown to \"hover\". print reentry_unreadable(d).\n"
-                + "set d to reentry_defaults(). set d:chutes to 3. print reentry_unreadable(d).\n"
-                + "set d to reentry_defaults(). set d:chutes to list(3). print reentry_unreadable(d).\n"
-                + "set d to reentry_defaults(). set d:chutes to \"main\". print reentry_unreadable(d). print d:chutes:typename. print d:chutes[0].\n"));
+            Assert.Equal("touchdown must be 'chutes' or 'powered', not 'hover'",
+                Run("local d is reentry_defaults(). set d:touchdown to \"hover\". print reentry_unreadable(d).\n").Single());
         }
 
-        // ---- Chutes ----
+        [Fact]
+        public void Chutes_with_a_list_all_or_a_tag_fails_saying_what_is_allowed()
+        {
+            foreach (var value in new[] { "list(\"main\")", "\"all\"", "\"main\"", "3" })
+            {
+                Assert.StartsWith("chutes must be 'auto' or 'none', not ",
+                    Run("local d is reentry_defaults(). set d:chutes to " + value + ". print reentry_unreadable(d).\n").Single());
+            }
+            Assert.Equal(new[] { "", "" },
+                Run("local d is reentry_defaults(). print reentry_unreadable(d). set d:chutes to \"none\". print reentry_unreadable(d).\n"));
+        }
+
+        // ---- Chutes (ADR 0019) ----
 
         /// <summary>
-        /// Two chutes, as on a Duna lander short of chutes: "a" (tag main) and "b" (tag spare), each logging the events fired on it
-        /// into armed, and a fuel tank. parts is the craft, chutes its parachutes.
+        /// The Duna land-and-return's chutes, on fake parts: "d" (a drogue) and "m" (a main) in stage 2, "p" (a main) in stage 0, and a fuel
+        /// tank. armed logs each chute opened or cut; a chute reads as stowed until opened, and open until cut. parts is the craft.
         /// </summary>
         private const string Chutes =
             "local armed is list().\n"
-            + "function chute {\n parameter uid, name, tag.\n"
-            + "  local m is lexicon(\"hasevent\", { parameter e. return e = \"deploy chute\" and not armed:contains(uid). }).\n"
-            + "  set m:doevent to { parameter e. armed:add(uid). }.\n"
-            + "  return lexicon(\"uid\", uid, \"name\", name, \"tag\", tag, \"title\", \"Chute \" + uid, \"hasmodule\", { parameter n. return n = \"ModuleParachute\". }, \"getmodule\", { parameter n. return m. }).\n}\n"
-            + "local tank is lexicon(\"uid\", \"t\", \"name\", \"fuelTank\", \"tag\", \"\", \"hasmodule\", { parameter n. return false. }).\n"
-            + "local parts is list(chute(\"a\", \"parachuteSingle\", \"main\"), tank, chute(\"b\", \"parachuteRadial\", \"spare\")).\n"
-            + "local chutes is reentry_chutes_in(parts).\n"
-            + "local everything is lexicon(\"error\", \"\", \"all\", true, \"uids\", list()).\n";
+            + "local cuts is list().\n"
+            + "function chute {\n parameter uid, name, stage_.\n"
+            + "  local m is lexicon(\"hasevent\", { parameter e. if e = \"deploy chute\" { return not armed:contains(uid). } return e = \"cut chute\" and armed:contains(uid) and not cuts:contains(uid). }).\n"
+            + "  set m:doevent to { parameter e. if e = \"deploy chute\" { armed:add(uid). } else { cuts:add(uid). } }.\n"
+            + "  return lexicon(\"uid\", uid, \"name\", name, \"stage\", stage_, \"title\", \"Chute \" + uid, \"hasmodule\", { parameter n. return n = \"ModuleParachute\". }, \"getmodule\", { parameter n. return m. }).\n}\n"
+            + "local tank is lexicon(\"uid\", \"t\", \"name\", \"fuelTank\", \"stage\", 2, \"hasmodule\", { parameter n. return false. }).\n"
+            + "local d is chute(\"d\", \"parachuteDrogue\", 2).\n"
+            + "local m is chute(\"m\", \"parachuteSingle\", 2).\n"
+            + "local p is chute(\"p\", \"parachuteSingle\", 0).\n"
+            + "local parts is list(d, tank, m, p).\n"
+            + "local group is lexicon(\"error\", \"\", \"last\", false, \"stage\", 2, \"uids\", list(\"d\", \"m\")).\n";
 
         [Fact]
-        public void With_one_of_two_chutes_allowed_the_other_is_never_armed()
+        public void Within_a_group_drogues_open_before_mains_and_nothing_outside_it_is_armed()
         {
-            // The Chute Allocation keeps b for a later entry: auto opens a alone, mains and drogues alike.
-            Assert.Equal(new[] { "a", "Chute a", "", "a", "False" },
-                Run(Chutes + "local set is reentry_chute_set(\"auto\", chutes, lexicon(\"error\", \"\", \"all\", false, \"uids\", list(\"a\"))).\n"
-                    + "print set:uids:join(\",\"). print reentry_open_chutes(parts, false, set:uids):join(\",\").\n"
-                    + "print reentry_open_chutes(parts, true, set:uids):join(\",\"). print armed:join(\",\"). print reentry_has_drogues(parts, set:uids).\n"));
+            Assert.Equal(new[] { "True", "drogues", "Chute d", "d", "mains", "Chute m", "d,m" },
+                Run(Chutes + "print reentry_has_drogues(parts, group).\n"
+                    + "print reentry_chute_stage(\"safe\", true, false, false, 400, 20000, 0.03).\n"
+                    + "print reentry_open_chutes(parts, true, group):join(\",\"). print armed:join(\",\").\n"
+                    + "print reentry_chute_stage(\"safe\", true, true, false, 200, 5000, 0.05).\n"
+                    + "print reentry_open_chutes(parts, false, group):join(\",\"). print armed:join(\",\").\n"));
         }
 
         [Fact]
-        public void Auto_with_no_allocation_keeps_every_chute_as_reentry_did_before()
+        public void A_last_entry_opens_every_stowed_chute_aboard()
         {
-            Assert.Equal(new[] { "a,b", "a,b", "a,b" },
-                Run(Chutes + "print reentry_chute_set(\"auto\", chutes, everything):uids:join(\",\").\n"
-                    + "print reentry_chute_set(\"auto\", chutes, lexicon(\"error\", \"no snapshot\")):uids:join(\",\").\n"
-                    + "reentry_open_chutes(parts, false, reentry_chute_set(\"auto\", chutes, everything):uids). print armed:join(\",\").\n"));
+            Assert.Equal(new[] { "Chute m,Chute p" },
+                Run(Chutes + "set group:last to true. print reentry_open_chutes(parts, false, group):join(\",\").\n"));
         }
 
         [Fact]
-        public void The_plans_list_none_or_all_overrides_the_allocation()
+        public void A_restaged_chute_is_read_at_the_opening_so_it_joins_its_new_group()
         {
-            Assert.Equal(new[] { "b", "", "a,b", "chutes: no parachute is tagged 'drogue'", "" },
-                Run(Chutes + "local only_a is lexicon(\"error\", \"\", \"all\", false, \"uids\", list(\"a\")).\n"
-                    + "print reentry_chute_set(list(\"spare\"), chutes, only_a):uids:join(\",\").\n"
-                    + "print reentry_chute_set(\"none\", chutes, only_a):uids:join(\",\").\n"
-                    + "print reentry_chute_set(\"all\", chutes, only_a):uids:join(\",\").\n"
-                    + "print reentry_chute_set(list(\"drogue\"), chutes, only_a):error.\n"
-                    + "reentry_open_chutes(parts, false, reentry_chute_set(\"none\", chutes, only_a):uids). print armed:join(\",\").\n"));
+            Assert.Equal(new[] { "Chute m,Chute p" },
+                Run(Chutes + "set p:stage to 2. print reentry_open_chutes(parts, false, group):join(\",\").\n"));
+            // And one restaged out of the group stays shut.
+            Assert.Equal(new[] { "", "" },
+                Run(Chutes + "set m:stage to 0. print reentry_open_chutes(parts, false, group):join(\",\"). print armed:join(\",\").\n"));
+        }
+
+        [Fact]
+        public void A_repacked_chute_reads_as_stowed_and_opens_again()
+        {
+            Assert.Equal(new[] { "Chute m", "", "Chute m" },
+                Run(Chutes + "print reentry_open_chutes(parts, false, group):join(\",\").\n"
+                    + "print reentry_open_chutes(parts, false, group):join(\",\").\n"
+                    + "armed:remove(armed:find(\"m\")). print reentry_open_chutes(parts, false, group):join(\",\").\n"));
+        }
+
+        [Fact]
+        public void Chutes_dropped_after_the_choice_are_read_as_gone_and_the_block_works_from_what_is_aboard()
+        {
+            // The stage-2 chutes leave with a drop: the group has gone, nothing has been opened, so the block asks again and opens the pod's.
+            Assert.Equal(new[] { "False", "True", "Chute p", "p" },
+                Run(Chutes + "print reentry_group_gone(group, parts, list()).\n"
+                    + "set parts to list(p, tank).\n"
+                    + "print reentry_group_gone(group, parts, list()).\n"
+                    + "print reentry_open_chutes(parts, false, reentry_group_of(\"auto\", lexicon(\"error\", \"\", \"last\", false, \"stage\", 0, \"uids\", list(\"p\")), parts)):join(\",\").\n"
+                    + "print armed:join(\",\").\n"));
+        }
+
+        [Fact]
+        public void A_skip_out_opens_no_new_group()
+        {
+            // The first pass opened all of stage 2. The next pass reads none of it stowed, but has opened some, so it keeps to that group: the pod's stays shut.
+            Assert.Equal(new[] { "False", "False", "", "d,m" },
+                Run(Chutes + "local used is list().\n"
+                    + "for t in reentry_open_chutes(parts, true, group) { used:add(t). }\n"
+                    + "for t in reentry_open_chutes(parts, false, group) { used:add(t). }\n"
+                    + "print reentry_group_gone(group, parts, used).\n"
+                    + "print reentry_has_drogues(parts, group).\n"
+                    + "print reentry_open_chutes(parts, false, group):join(\",\").\n"
+                    + "print armed:join(\",\").\n"));
+        }
+
+        [Fact]
+        public void Open_chutes_are_cut_after_landing_on_a_non_last_entry_only()
+        {
+            Assert.Equal(new[] { "", "", "Chute d,Chute m", "d,m", "" },
+                Run(Chutes + "reentry_open_chutes(parts, true, group). reentry_open_chutes(parts, false, group).\n"
+                    + "print reentry_cut_chutes(parts, true):join(\",\"). print cuts:join(\",\").\n"
+                    + "print reentry_cut_chutes(parts, false):join(\",\"). print cuts:join(\",\").\n"
+                    // One stock has already cut, or one never opened, offers no event: the cut does nothing.
+                    + "print reentry_cut_chutes(parts, false):join(\",\").\n"));
+        }
+
+        [Fact]
+        public void An_answer_in_error_opens_every_chute_aboard_and_choice_none_opens_nothing()
+        {
+            Assert.Equal(new[] { "d,m,p", "True", "0", "False" },
+                Run(Chutes + "local failed is reentry_group_of(\"auto\", lexicon(\"error\", \"no snapshot\"), parts).\n"
+                    + "print failed:uids:join(\",\"). print failed:last.\n"
+                    + "local none is reentry_group_of(\"none\", group, parts). print none:uids:length. print none:last.\n"));
         }
 
         // ---- The stopping distance ----

@@ -46,6 +46,12 @@ namespace ClaudiaKerman.Core.Missions
         public const string LegUnderMap = "leg_under_map";
         /// <summary>The Warning (#823): an Entry the player named as hot flies with no Entry Shield (<see cref="Entries.HotWithNoShield"/>).</summary>
         public const string HotEntry = "hot_entry_no_shield";
+        /// <summary>The Warning (ADR 0019): a Chute Group likely to leave before its Entry (<see cref="ChuteGroupRules"/>).</summary>
+        public const string ChuteGroupLeaves = "chute_group_leaves_early";
+        /// <summary>The Blocker (ADR 0019): a Chute Group in a stage at or above an unlit engine the plan still needs: automatic staging refuses to fire it.</summary>
+        public const string ChuteGroupAboveEngine = "chute_group_above_engine";
+        /// <summary>The Warning (ADR 0019): a Chute Group that lands too fast, on delta-v the engines have.</summary>
+        public const string ChuteGroupTooFast = "chute_group_too_fast";
 
         public static readonly IList<CraftCheckRule> All = new List<CraftCheckRule>
         {
@@ -63,7 +69,9 @@ namespace ClaudiaKerman.Core.Missions
             new CraftCheckRule("no_parachutes_for_return", Blocker, "No parachutes for the return",
                 "a crewed Mission returns to Kerbin and the craft has no parachutes."),
             new CraftCheckRule("chutes_short_for_landing", Blocker, "Chutes short for an air landing",
-                "a powered finish lacks delta-v, or the Kerbin return is uncovered.", modOnly: true),
+                "a later Entry has no Chute Group, a powered finish lacks delta-v, or the Kerbin return is uncovered.", modOnly: true),
+            new CraftCheckRule(ChuteGroupAboveEngine, Blocker, "Chutes in a stage above an engine still needed",
+                "automatic staging won't fire a stage holding chutes, and an unlit engine at or below it is still needed.", modOnly: true),
             new CraftCheckRule("required_experiments_missing", Blocker, "Required experiments missing",
                 "the Mission Goal needs experiments the craft has no parts for."),
             new CraftCheckRule(DockingKit, Blocker, "Nothing to dock with",
@@ -81,6 +89,10 @@ namespace ClaudiaKerman.Core.Missions
                 "the delta-v margin over the need is under 25% (not short: a Blocker)."),
             new CraftCheckRule("chutes_thin_for_landing", Warning, "Thin chutes for an air landing",
                 "a powered finish has under 25% spare delta-v, or an Engineer repack is relied on.", modOnly: true),
+            new CraftCheckRule(ChuteGroupLeaves, Warning, "A Chute Group may leave before its Entry",
+                "the parts holding it drop in a stage the plan's delta-v burns through first.", modOnly: true),
+            new CraftCheckRule(ChuteGroupTooFast, Warning, "A Chute Group lands too fast",
+                "its predicted touchdown is over the limit, and the engines have the delta-v to finish it.", modOnly: true),
             new CraftCheckRule("no_landing_legs", Warning, "No landing legs",
                 "the Mission Goal includes a landing and the craft has no landing legs."),
             new CraftCheckRule("no_electric_generation_or_low_battery", Warning, "No electric charge generation or a low battery",

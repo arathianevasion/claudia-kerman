@@ -115,7 +115,7 @@ namespace ClaudiaKerman.Core.Missions
 
         private static readonly HashSet<string> HotBodies = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Eve", "Laythe" };
 
-        private static bool BurnsInWords(PlannedSequence leg)
+        internal static bool BurnsInWords(PlannedSequence leg)
         {
             var words = SequenceWords.Of(leg);
             return leg.DeltaV > 0 || SequenceWords.Ascent.IsMatch(words) || SequenceWords.Trip.IsMatch(words) || SequenceWords.Docking.IsMatch(words);
@@ -129,7 +129,7 @@ namespace ClaudiaKerman.Core.Missions
                 : string.Equals((sequence.Vessel ?? "").Trim(), child, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static string At(GameSnapshot snapshot)
+        internal static string At(GameSnapshot snapshot)
         {
             return snapshot.Orbit != null && snapshot.Orbit.Body.Length > 0 ? snapshot.Orbit.Body : snapshot.Body;
         }

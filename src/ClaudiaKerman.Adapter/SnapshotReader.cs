@@ -328,7 +328,7 @@ namespace ClaudiaKerman.Adapter
             // The root part's up is the craft's nose, as the control point's is in Flight.
             var nose = ship.parts[0].transform.up;
             snapshot.Craft.NoseDrag = NoseDrag.Read(ship.parts, nose, true);
-            // The chutes too, for the Craft Check's Chute Allocation (#641), held the same way.
+            // The chutes too, for the Craft Check's Chute Groups (#641), held the same way.
             for (var i = 0; i < ship.parts.Count && i < snapshot.Craft.Parts.Count; i++)
                 if (snapshot.Craft.Parts[i].Tags.Contains("parachute")) snapshot.Craft.Parts[i].Chute = ReentryCraft.ChuteOf(ship.parts[i], nose);
             var manifest = ShipConstruction.ShipManifest;
@@ -361,7 +361,7 @@ namespace ClaudiaKerman.Adapter
             };
         }
 
-        /// <summary>Each parachute's own numbers, held retrograde, for the Chute Allocation (#626); the editor's are read in <see cref="ReadEditor"/>.</summary>
+        /// <summary>Each parachute's own numbers, held retrograde, for the Chute Groups (ADR 0019); the editor's are read in <see cref="ReadEditor"/>.</summary>
         private static void ReadChutes(GameSnapshot snapshot, Vessel vessel)
         {
             var parts = vessel.parts;
@@ -399,6 +399,8 @@ namespace ClaudiaKerman.Adapter
                 {
                     Classify(snapshot, part, info, module);
                     if (ShipSystemsKeeper.CannotRetract(module)) info.CannotRetract = true;
+                    var engine = module as ModuleEngines;
+                    if (engine != null && engine.EngineIgnited) info.EngineLit = true;
                 }
                 snapshot.Craft.Parts.Add(info);
 
