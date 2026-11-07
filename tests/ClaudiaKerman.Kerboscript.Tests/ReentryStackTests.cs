@@ -180,7 +180,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source.Replace("\r\n", "\n");
             var body = source.Substring(source.IndexOf("function reentry {", StringComparison.Ordinal));
             Assert.Contains("local shield is reentry_shield_modules(shield_uid, ship:parts).\n  local shield_gone is shield:length = 0.", body);
-            var due = body.IndexOf("if reentry_shield_due(shield_gone, last_speed, agl, powered and reentry_brake_due(agl, brake_h)) {", StringComparison.Ordinal);
+            var due = body.IndexOf("if reentry_shield_due(shield_gone, last_speed, agl, powered and reentry_brake_due(agl, brake_h, last_speed)) {", StringComparison.Ordinal);
             Assert.True(due > 0);
             Assert.True(due < body.IndexOf("reentry_shield_drop(shield_uid, { return ship:parts. })", StringComparison.Ordinal));
         }
