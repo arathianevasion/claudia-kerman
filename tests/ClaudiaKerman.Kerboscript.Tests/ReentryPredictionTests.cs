@@ -41,6 +41,16 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Fact]
+        public void A_landing_reports_the_suns_elevation_and_its_docs_say_so()
+        {
+            var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source;
+            var report = source.IndexOf("set extra:sun_elevation_deg to round(90 - vang(ship:up:vector, body(\"Sun\"):position), 1).", System.StringComparison.Ordinal);
+            Assert.True(report > source.IndexOf("if fell <> \"\" {", System.StringComparison.Ordinal), "the field is set once the craft is down, past the abort");
+            Assert.True(report < source.IndexOf("return claudia_finish(ctx, true, \"\", extra).", System.StringComparison.Ordinal), "and before the block ends");
+            Assert.Contains("//| next, else \"skipped out ...\"), shield_dropped, chutes_used, chutes_kept (titles), powered_dv (m/s), sun_elevation_deg.", source);
+        }
+
+        [Fact]
         public void The_prediction_only_goes_to_the_log_and_never_into_how_reentry_flies()
         {
             var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source;

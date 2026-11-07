@@ -134,16 +134,18 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void A_body_with_an_atmosphere_is_an_error_saying_airless_only_and_the_body_interface_is_not_asked()
+        public void An_airless_result_keeps_its_slope_its_pass_and_its_landing_and_takes_the_soonest_site_not_the_highest_sun()
         {
-            var fake = new FakeBody();
-            var snapshot = Snapshot();
-            snapshot.Orbit.Body = "Kerbin";
-            snapshot.Body = "Kerbin";
-            var error = Error(snapshot, "{\"body\":\"Kerbin\"}", fake);
-            Assert.Contains("airless-only", error);
-            Assert.Equal(0, fake.Surveys);
-            Assert.Contains("airless-only", Error(Snapshot(atmosphere: true), "{\"body\":\"Mun\"}", fake));
+            // #828 changes bodies with air only: the airless search stays in pass order, with the sun at 21 degrees as good as at noon.
+            var sun = new FakeBody { Sun = (lat, lon, ut) => ut < 2000 ? 21 : 80 };
+            var result = Run(Snapshot(meanAnomaly: Math.PI / 2), "{\"body\":\"Mun\"}", sun);
+            var first = Sites(result)[0];
+            Assert.Equal(21, Num(first, "sun_elevation_deg"));
+            Assert.True(first.TryGetProperty("slope_deg", out _));
+            Assert.True(first.TryGetProperty("pass_ut", out _));
+            Assert.True(first.TryGetProperty("correction_dv", out _));
+            Assert.False(result.TryGetProperty("slope", out _));
+            Assert.False(result.TryGetProperty("water", out _));
         }
 
         [Fact]
@@ -569,7 +571,7 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void The_block_call_passes_on_the_searchs_errors()
         {
-            Assert.Contains("airless-only", (string)BlockCalls.LandingSite(Ask("biome", "Midlands"), Snapshot(atmosphere: true), new FakeBody())["error"]);
+            Assert.Contains("airless bodies only", (string)BlockCalls.LandingSite(Ask("biome", "Midlands"), Snapshot(atmosphere: true), new FakeBody())["error"]);
             Assert.Contains("max_slope_deg", (string)BlockCalls.LandingSite(Ask("biome", "Midlands", "max_slope_deg", 0.0), Snapshot(), new FakeBody())["error"]);
             var landed = Snapshot();
             landed.Orbit = null;

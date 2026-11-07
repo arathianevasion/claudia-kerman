@@ -269,6 +269,46 @@ namespace ClaudiaKerman.Core.Tests
             DropsNothing(answer);
         }
 
+        // ---- The Last Entry for find_landing_site's water (#828) ----
+
+        [Theory]
+        [InlineData("Duna", 3, false)]
+        [InlineData("Duna", 4, false)]
+        // Words the reader can't place: the craft is still at Duna, so not the Last Entry.
+        [InlineData("Duna", 7, false)]
+        [InlineData("Kerbin", 6, true)]
+        [InlineData("Kerbin", 7, true)]
+        public void The_flights_plan_is_at_its_Last_Entry_only_on_the_way_home(string at, int step, bool last)
+        {
+            Assert.Equal(last, Entries.IsLastEntry(Snapshot(new Craft(), at), TheFlightsPlan, step));
+        }
+
+        [Fact]
+        public void No_Mission_Plan_or_a_step_past_it_is_not_a_Last_Entry()
+        {
+            var snapshot = Snapshot(new Craft(), "Kerbin");
+            Assert.False(Entries.IsLastEntry(snapshot, null, 0));
+            Assert.False(Entries.IsLastEntry(snapshot, new PlannedSequence[0], 0));
+            Assert.False(Entries.IsLastEntry(snapshot, TheFlightsPlan, TheFlightsPlan.Count));
+        }
+
+        [Fact]
+        public void An_entry_with_burns_to_come_or_a_plan_with_no_entry_is_not_a_Last_Entry()
+        {
+            var snapshot = Snapshot(new Craft(), "Kerbin");
+            Assert.False(Entries.IsLastEntry(snapshot, new[] { Leg("Reenter at Kerbin", 0), Leg("Hop to the island", 500) }, 0));
+            Assert.False(Entries.IsLastEntry(snapshot, new[] { Leg("Circularize at Kerbin", 50) }, 0));
+            Assert.True(Entries.IsLastEntry(snapshot, new[] { Leg("Reenter at Kerbin", 0), Leg("Crew report", 0) }, 0));
+        }
+
+        [Fact]
+        public void A_Child_Vessels_step_is_read_by_its_own_legs()
+        {
+            var snapshot = Snapshot(new Craft(), "Kerbin");
+            var legs = new[] { Leg("Reenter at Kerbin", 0, "Probe"), Leg("Transfer to Duna", 900) };
+            Assert.True(Entries.IsLastEntry(snapshot, legs, 0));
+        }
+
         /// <summary>m20261106-203509-34a6's Mission Plan, in its own words.</summary>
         private static readonly IList<PlannedSequence> TheFlightsPlan = new[]
         {

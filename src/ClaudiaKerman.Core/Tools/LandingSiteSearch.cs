@@ -39,6 +39,8 @@ namespace ClaudiaKerman.Core.Tools
         public double PoiLongitude;
         public double PoiMinM = LandingSiteSearch.PoiMinM;
         public double PoiMaxM = LandingSiteSearch.PoiMaxM;
+        /// <summary>On a body with an ocean: sites on water may come back (#828: the entry is the Last Entry).</summary>
+        public bool AllowWater;
     }
 
     internal sealed class LandingSite
@@ -67,6 +69,12 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>With a Point of Interest (#713): the site's distance from it, m, and its bearing from it, degrees; NaN without one.</summary>
         public double FromPoiM = double.NaN;
         public double BearingFromPoi = double.NaN;
+        /// <summary>On a body with air (#828): the site is on water.</summary>
+        public bool Water;
+        /// <summary>On a body with air (#828): the UT to hold the craft to before <c>deorbit</c>, when the pass it takes first is dark; NaN for no wait.</summary>
+        public double WaitUntilUt = double.NaN;
+        /// <summary>On a body with air (#828): the <c>max_wait</c> that keeps <c>deorbit</c> from a pass later than this site's, s, called then. <see cref="PassUt"/> is that pass's burn.</summary>
+        public double MaxWaitS;
     }
 
     internal sealed class LandingSiteResult
@@ -78,6 +86,8 @@ namespace ClaudiaKerman.Core.Tools
         public int AfterBiome;
         public int AfterDaylight;
         public int AfterSlope;
+        /// <summary>On a body with air (#828), in place of the slope test: track points left after the biome and the water test.</summary>
+        public int AfterWater;
         /// <summary>Sites that passed every test but have no pass <c>land</c> can fly in the window.</summary>
         public int Unflyable;
         /// <summary>The window actually searched, hours (the ask, held to what the search can cover).</summary>
@@ -102,7 +112,7 @@ namespace ClaudiaKerman.Core.Tools
     /// code did not expect). Each point of the track within the window is a candidate site, tried in order of pass time (or
     /// closeness to a <c>near</c> point) against the biome, the sun and the slope, so a site is always one the craft will fly over,
     /// and kept only if <c>land</c>'s pass search (<see cref="LandingPass"/>) has a pass to it in the window (#510). The body
-    /// interface is asked in batches, and the track in rounds in pass order; it is asked nothing about a body with an atmosphere, which is refused.
+    /// interface is asked in batches, and the track in rounds in pass order. A body with air has its own search (<see cref="InAir"/>).
     /// </summary>
     internal static class LandingSiteSearch
     {
@@ -140,6 +150,16 @@ namespace ClaudiaKerman.Core.Tools
         private const int RingBearings = 16;
         /// <summary>A ring site lies at least this much of <see cref="LandingSiteQuery.PoiMinM"/> across either pass's track from the Point of Interest, so a miss along the track passes it (#662's 0.7).</summary>
         public const double RingAcrossShare = 0.7;
+        /// <summary><c>deorbit</c>'s burn is at least this far ahead of its call, s (deorbit_lead_s in deorbit.ks).</summary>
+        public const double DeorbitLeadS = 240;
+        /// <summary>A site that needs a wait (#828): this many seconds before its burn the craft is held to, for <c>deorbit</c>'s lead and the script's start.</summary>
+        public const double WaitLeadS = 600;
+
+        /// <summary>Whether the body has air: <see cref="InAir"/>'s search, and no <c>land</c>.</summary>
+        public static bool HasAir(SnapshotBody body)
+        {
+            return body.AtmosphereHeight > 0 || body.SeaLevelAtm > 0;
+        }
 
         /// <summary>
         /// The ring search beside a Point of Interest (#713): the flattest sites within the query's slope limit from
@@ -152,9 +172,9 @@ namespace ClaudiaKerman.Core.Tools
         public static LandingSiteResult Ring(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, IPlanningBody api)
         {
             var result = new LandingSiteResult();
-            if (body.AtmosphereHeight > 0)
+            if (HasAir(body))
             {
-                result.Error = body.Name + " has an atmosphere, and find_landing_site is airless-only for now";
+                result.Error = body.Name + " has an atmosphere, and a site beside a Point of Interest is for land, which flies airless bodies only";
                 return result;
             }
             if (!orbit.Closed || orbit.Period <= 0)
@@ -288,16 +308,12 @@ namespace ClaudiaKerman.Core.Tools
         public static LandingSiteResult Find(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, IPlanningBody api)
         {
             var result = new LandingSiteResult();
-            if (body.AtmosphereHeight > 0)
-            {
-                result.Error = body.Name + " has an atmosphere, and find_landing_site is airless-only for now";
-                return result;
-            }
             if (!orbit.Closed || orbit.Period <= 0)
             {
                 result.Error = "the craft's orbit round " + body.Name + " is not closed, so it has no repeating ground track to search";
                 return result;
             }
+            if (HasAir(body)) return InAir(body, orbit, now, query, api, result);
 
             double lonOffset, handed;
             var frame = Frame(body.Name, api, out lonOffset, out handed);
@@ -368,6 +384,153 @@ namespace ClaudiaKerman.Core.Tools
             }
             result.Sites.AddRange(sites);
             return result;
+        }
+
+        /// <summary>
+        /// The search on a body with air (#828), for a <c>deorbit</c> target: the track's points in the biome and off the water, each with the pass
+        /// <c>deorbit</c> takes to it (<see cref="AirPass"/>: from this orbit, in the same reach as <c>land</c>'s) and the sun at that arrival. With
+        /// daylight, the sites with Daylight there, highest sun first, as a large miss then still lands in Daylight; without, in the track's order. The
+        /// slope isn't tested: the miss is far larger than its scale. If no pass <c>deorbit</c> takes has Daylight, the sites come from the passes in reach that do,
+        /// each with the wait that leaves <c>deorbit</c> that pass (<see cref="LandingSite.WaitUntilUt"/>). Each site gives the <c>max_wait</c> that holds it to the pass.
+        /// </summary>
+        private static LandingSiteResult InAir(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, IPlanningBody api, LandingSiteResult result)
+        {
+            double lonOffset, handed;
+            var frame = Frame(body.Name, api, out lonOffset, out handed);
+            if (frame != null)
+            {
+                result.Error = frame;
+                return result;
+            }
+            var window = Math.Max(0.05, Math.Min(MaxWindowHours, query.WithinHours)) * 3600;
+            result.WindowHours = window / 3600;
+            var all = Candidates(Track(body, orbit, now, window, lonOffset, handed), query);
+            result.Candidates = all.Count;
+            result.NearPoints = all.Count;
+            var wantBiome = !string.IsNullOrEmpty(query.Biome);
+            var deadline = query.Deadline ?? SearchDeadline.None;
+
+            // In rounds that each span the window, as the highest sun may come at any point of it.
+            var stride = Math.Max(1, (int)Math.Ceiling(all.Count / (double)MaxCandidates));
+            var kept = new List<Candidate>();
+            var read = 0;
+            var unreadable = 0;
+            for (var offset = 0; offset < stride && kept.Count < MaxCandidates; offset++)
+            {
+                if (deadline.Passed)
+                {
+                    result.OutOfTime = true;
+                    break;
+                }
+                var round = all.Where((c, i) => i % stride == offset).ToList();
+                result.Tried += round.Count;
+                api.Survey(body.Name, round.Select(c => c.Sample).ToList(), SiteFacts.Biome);
+                if (wantBiome) round = round.Where(c => SameBiome(c.Sample.Biome, query.Biome)).ToList();
+                result.AfterBiome += round.Count;
+                if (round.Count == 0) continue;
+                api.Survey(body.Name, round.Select(c => c.Sample).ToList(), SiteFacts.Altitude);
+                read += round.Count;
+                unreadable += round.Count(c => double.IsNaN(c.Sample.Altitude));
+                kept.AddRange(round.Where(c => !double.IsNaN(c.Sample.Altitude) && (query.AllowWater || !OnWater(body, c.Sample))));
+            }
+            if (read > 0 && unreadable == read)
+            {
+                result.Error = "the terrain on " + body.Name + " could not be read";
+                return result;
+            }
+            result.AfterWater = kept.Count;
+
+            var sites = AirSites(body, orbit, now, query, api, kept, false, result);
+            var chosen = query.Daylight ? sites.Where(s => s.SunElevationDeg > MinSunElevationDeg).ToList() : sites;
+            result.AfterDaylight = chosen.Count;
+            if (query.Daylight && chosen.Count == 0 && sites.Count > 0 && !deadline.Passed)
+                chosen = AirSites(body, orbit, now, query, api, kept.Take(SlopeBatch).ToList(), true, result);
+            Pick(body, query, api, query.Daylight ? chosen.OrderByDescending(s => s.SunElevationDeg).ToList() : chosen, result);
+            return result;
+        }
+
+        /// <summary>On water: terrain at or under sea level on a body with an ocean (Duna's low ground is land).</summary>
+        private static bool OnWater(SnapshotBody body, SiteSample sample)
+        {
+            return body.Ocean && sample.Altitude <= 0;
+        }
+
+        /// <summary>The candidates each with its pass and the sun at the arrival (<paramref name="waiting"/>: among the passes with Daylight, for a wait). With no pass, a first look counts them unflyable.</summary>
+        private static List<LandingSite> AirSites(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, IPlanningBody api, List<Candidate> candidates, bool waiting, LandingSiteResult result)
+        {
+            var deadline = query.Deadline ?? SearchDeadline.None;
+            var sites = new List<LandingSite>();
+            foreach (var c in candidates)
+            {
+                if (deadline.Passed)
+                {
+                    result.OutOfTime = true;
+                    break;
+                }
+                var pass = AirPass(body, orbit, now, query, c.Sample, waiting, api);
+                if (pass.Error != null)
+                {
+                    if (!waiting) result.Unflyable++;
+                    continue;
+                }
+                var from = waiting ? Math.Max(now, pass.BurnUt - WaitLeadS) : now;
+                sites.Add(new LandingSite
+                {
+                    Latitude = c.Sample.Latitude, Longitude = c.Sample.Longitude, Biome = c.Sample.Biome, Altitude = c.Sample.Altitude, PassUt = pass.BurnUt, FromNearDeg = c.FromNear,
+                    LandingUt = pass.ArriveUt, CorrectionDv = pass.CorrectionDv, Water = OnWater(body, c.Sample), SunElevationDeg = pass.SunDeg,
+                    WaitUntilUt = waiting ? from : double.NaN, MaxWaitS = Math.Max(0, pass.BurnUt - from - DeorbitLeadS) + orbit.Period / 4,
+                });
+            }
+            if (!waiting && sites.Count > 0)
+            {
+                var sun = sites.Select(s => new SiteSample { Latitude = s.Latitude, Longitude = s.Longitude, Ut = s.LandingUt }).ToList();
+                api.Survey(body.Name, sun, SiteFacts.Sun);
+                for (var i = 0; i < sun.Count; i++) sites[i].SunElevationDeg = sun[i].SunElevation;
+            }
+            return sites;
+        }
+
+        /// <summary>
+        /// The pass <c>deorbit</c> takes to a track point (<see cref="LandingPassAsk.DeorbitPeRadius"/>), over the search's reach from its earliest burn: on a near-equatorial
+        /// orbit that is the next pass, not the one at the point's own time. With <paramref name="daylightOnly"/>, the same among the passes with Daylight.
+        /// </summary>
+        private static LandingPassResult AirPass(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, SiteSample at, bool daylightOnly, IPlanningBody api)
+        {
+            return LandingPass.Find(body, orbit, now, new LandingPassAsk
+            {
+                Latitude = at.Latitude, Longitude = at.Longitude, PeRadius = body.Radius + Math.Max(0, at.Altitude) + LandingPass.ApproachM, EarliestUt = now + DeorbitLeadS,
+                LatestUt = now + LandingPass.ReachSeconds(Math.Max(0.05, Math.Min(MaxWindowHours, query.WithinHours)), query.Daylight, body.RotationPeriod),
+                Daylight = daylightOnly, MaxCorrectionDv = query.MaxCorrectionDv, DeorbitPeRadius = body.Radius + DeorbitBurn.EntryPeriapsisShare * body.AtmosphereHeight,
+            }, api);
+        }
+
+        /// <summary>The first sites of the order, far enough apart, and with a biome those inside its margin; the sites at its edge only with none inside.</summary>
+        private static void Pick(SnapshotBody body, LandingSiteQuery query, IPlanningBody api, List<LandingSite> ordered, LandingSiteResult result)
+        {
+            var deadline = query.Deadline ?? SearchDeadline.None;
+            var checkEdge = !string.IsNullOrEmpty(query.Biome) && query.EdgeMarginM > 0;
+            var inside = new List<LandingSite>();
+            var edge = new List<LandingSite>();
+            Func<List<LandingSite>, LandingSite, bool> room = (list, site) =>
+                list.Count < query.MaxSites && !list.Any(s => ArcDegrees(s.Latitude, s.Longitude, site.Latitude, site.Longitude) < MinSeparationDeg);
+            foreach (var site in ordered)
+            {
+                if (inside.Count >= query.MaxSites) break;
+                if (!room(inside, site)) continue;
+                if (deadline.Passed)
+                {
+                    result.OutOfTime = true;
+                    break;
+                }
+                if (checkEdge)
+                {
+                    var one = new List<Candidate> { new Candidate { Sample = new SiteSample { Latitude = site.Latitude, Longitude = site.Longitude, Ut = site.LandingUt } } };
+                    site.AtEdge = DeepInBiome(body, one, new List<int> { 0 }, query, api).Count == 0;
+                }
+                if (!site.AtEdge) inside.Add(site);
+                else if (room(edge, site)) edge.Add(site);
+            }
+            result.Sites.AddRange(inside.Count > 0 ? inside : edge);
         }
 
         /// <summary>

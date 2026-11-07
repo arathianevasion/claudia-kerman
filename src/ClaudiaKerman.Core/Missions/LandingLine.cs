@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using ClaudiaKerman.Core.Tools;
 
 namespace ClaudiaKerman.Core.Missions
@@ -59,6 +60,25 @@ namespace ClaudiaKerman.Core.Missions
             if (!actual.HasValue) return "";
             return "predicted " + Km(predicted) + " km from KSC, came down " + Km(actual.Value) + " km from KSC" + (note.Length > 0 ? "; " + note : "");
         }
+
+        /// <summary>
+        /// The Debrief's line on a landing out of Daylight (#828), from a reentry's <paramref name="result"/>: "" unless it came down, with the sun not over 20 degrees, and daylight
+        /// was asked for: by the Mission Settings (<paramref name="settingsDaylight"/>) or in the Mission Goal's words.
+        /// </summary>
+        public static string Dark(IDictionary<string, object> result, bool settingsDaylight, string goal)
+        {
+            object speed, sun;
+            if (result == null || !result.TryGetValue("touchdown_speed", out speed) || speed == null || Convert.ToDouble(speed, CultureInfo.InvariantCulture) < 0) return "";
+            if (!result.TryGetValue("sun_elevation_deg", out sun) || sun == null) return "";
+            var degrees = Convert.ToDouble(sun, CultureInfo.InvariantCulture);
+            if (degrees > LandingSiteSearch.MinSunElevationDeg) return "";
+            var inGoal = DaylightWord.IsMatch(goal ?? "");
+            if (!inGoal && !settingsDaylight) return "";
+            return "the sun was " + degrees.ToString("0.#", CultureInfo.InvariantCulture) + " degrees up at the landing, not over " + LandingSiteSearch.MinSunElevationDeg.ToString("0", CultureInfo.InvariantCulture)
+                + ", and " + (inGoal ? "the Mission Goal" : "the Mission Settings") + " asked for daylight";
+        }
+
+        private static readonly Regex DaylightWord = new Regex(@"\b(daylight|daytime)\b", RegexOptions.IgnoreCase);
 
         private static bool Read(string record, out double km, out string note)
         {

@@ -45,6 +45,46 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("predicted 10 km from KSC, came down 21 km from KSC", line);
         }
 
+        private static IDictionary<string, object> DownAt(double sun)
+        {
+            return new Dictionary<string, object> { { "geo", Geo(0, 0) }, { "touchdown_speed", 6.0 }, { "sun_elevation_deg", sun } };
+        }
+
+        [Fact]
+        public void A_dark_landing_with_daylight_in_the_Mission_Settings_gets_a_line_with_the_figure()
+        {
+            Assert.Equal("the sun was -12.3 degrees up at the landing, not over 20, and the Mission Settings asked for daylight", LandingLine.Dark(DownAt(-12.3), true, "Land on Duna"));
+        }
+
+        [Fact]
+        public void A_dark_landing_with_daylight_in_the_Mission_Goal_gets_a_line_with_settings_off()
+        {
+            Assert.Contains("the Mission Goal asked for daylight", LandingLine.Dark(DownAt(5), false, "Fly to Duna and land near the equator in Daylight"));
+        }
+
+        [Fact]
+        public void A_landing_gets_no_dark_line_if_daylight_was_not_asked_for()
+        {
+            Assert.Equal("", LandingLine.Dark(DownAt(-12.3), false, "Land on Duna"));
+            Assert.Equal("", LandingLine.Dark(DownAt(-12.3), false, null));
+        }
+
+        [Fact]
+        public void A_landing_in_Daylight_gets_no_dark_line_and_20_degrees_is_not_Daylight()
+        {
+            Assert.Equal("", LandingLine.Dark(DownAt(20.1), true, "in daylight"));
+            Assert.NotEqual("", LandingLine.Dark(DownAt(20), true, "in daylight"));
+        }
+
+        [Fact]
+        public void A_reentry_that_did_not_come_down_or_reported_no_sun_gets_no_dark_line()
+        {
+            var aborted = new Dictionary<string, object> { { "touchdown_speed", -1.0 }, { "sun_elevation_deg", -30.0 } };
+            Assert.Equal("", LandingLine.Dark(aborted, true, "in daylight"));
+            Assert.Equal("", LandingLine.Dark(Down(0, 0), true, "in daylight"));
+            Assert.Equal("", LandingLine.Dark(null, true, "in daylight"));
+        }
+
         [Fact]
         public void A_prediction_alone_says_so_before_the_craft_is_down()
         {

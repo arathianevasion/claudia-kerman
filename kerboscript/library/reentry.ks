@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 //
-// Building Block reentry: brings a capsule down through an atmosphere. Built on claudia_lib.ks (its
-// stage drop plan, for separate); block-only helpers are prefixed reentry_. The "//|"
-// lines are Claudia's docs for it; the first is its summary.
+// Building Block reentry: brings a capsule down through an atmosphere. Built on claudia_lib.ks (its stage drop plan,
+// for separate); block-only helpers are prefixed reentry_. The "//|" lines are Claudia's docs for it; the first is its summary.
 
 @lazyglobal off.
 
@@ -23,9 +22,9 @@
 //|   hold ["retrograde"]: points the craft's forward axis at surface retrograde; "none" leaves it.
 //|   max_duration ["auto"]: the wait for the atmosphere plus 1800 s.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block (it never stages).
-//| Extra results: max_g (peak g), max_temp_pct (hottest part, percent of its limit), geo (lat, lng, alt),
+//| Extra results: max_g (peak g), max_temp_pct (hottest part, % of limit), geo (lat, lng, alt),
 //| splashed, touchdown_speed (m/s at contact; over 15 m/s fails), passes (max 3; a skip-out waits for the
-//| next, else "skipped out ..."), shield_dropped, chutes_used and chutes_kept (titles), powered_dv (m/s).
+//| next, else "skipped out ..."), shield_dropped, chutes_used, chutes_kept (titles), powered_dv (m/s), sun_elevation_deg.
 //| Fails with "body has no atmosphere", an orbit that never reaches the atmosphere, an option it can't read,
 //| "stack attached below the heat shield: <names>", a hard touchdown, or an abort (a mid-air abort still
 //| opens the parachutes if safe). Fly it after a return or a de-orbit burn, periapsis inside the atmosphere;
@@ -1001,6 +1000,7 @@ function reentry {
   set extra:max_temp_pct to round(max(extra:max_temp_pct, reentry_hottest()), 1).
   set extra:geo to reentry_geo().
   set extra:splashed to status = "SPLASHED".
+  set extra:sun_elevation_deg to round(90 - vang(ship:up:vector, body("Sun"):position), 1).
   reentry_note_landing(ctx, predicted, last_speed).
   if not reentry_touchdown_ok(last_speed, powered) {
     return claudia_finish(ctx, false, "touchdown at " + round(last_speed, 1) + " m/s is over " + reentry_touchdown_max(powered) + " m/s", extra).

@@ -481,6 +481,7 @@ namespace ClaudiaKerman.Adapter
                     AtmosphereHeight = body.atmosphere ? body.atmosphereDepth : 0,
                     // Sea-level pressure in atmospheres, so thrust never depends on the body the delta-v app has selected.
                     SeaLevelAtm = body.atmosphere ? body.GetPressure(0) / 101.325 : 0,
+                    Ocean = body.ocean,
                     Sma = orbit != null && body.referenceBody != body ? orbit.semiMajorAxis : 0,
                     Inclination = orbit != null ? orbit.inclination : 0,
                     SoiRadius = body.sphereOfInfluence,
