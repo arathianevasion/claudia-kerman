@@ -101,9 +101,11 @@ namespace ClaudiaKerman.Adapter
             if (vessel.orbit != null)
             {
                 snapshot.Orbit = OrbitOf(vessel.orbit);
-                // #833: kOS's orbit:nextpatcheta; none when the orbit's patch doesn't end (FINAL).
-                if (vessel.orbit.patchEndTransition != Orbit.PatchTransitionType.FINAL && vessel.orbit.EndUT > snapshot.Ut)
-                    snapshot.NextPatchEta = vessel.orbit.EndUT - snapshot.Ut;
+                // #833: the UT kOS's orbit:nextpatcheta points at; none when the patch doesn't end (FINAL). A patch ending at a
+                // planned node (MANEUVER) may carry the node's time, not an encounter's: not confirmed against the game, so no next patch.
+                var end = vessel.orbit.patchEndTransition;
+                if ((end == Orbit.PatchTransitionType.ENCOUNTER || end == Orbit.PatchTransitionType.ESCAPE) && vessel.orbit.EndUT > snapshot.Ut)
+                    snapshot.NextPatchEndUt = vessel.orbit.EndUT;
             }
             ReadTargets(snapshot, vessel);
             return snapshot;

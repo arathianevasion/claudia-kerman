@@ -11,7 +11,7 @@ The duration check reads through `coast`, and the mod raises a too-short `expect
 
 ## Check 2: the stop holds while a warp's target is ahead
 
-A script the check can't read (a `coast` to `ship:orbit:nextpatcheta`, `transfer_to` then `capture`) can still outrun 300% of its planned duration. The kOS bridge now tells the core each warp request's target UT while the run goes (`KosWarpRequested`). At the deadline, if the latest request's target is still ahead, the stop waits until that target has passed plus an allowance of 60 s (`RunawayStop.WarpAllowanceSeconds`). A script that isn't warping, or is past all its warps, stops at the deadline as before, with the same make-safe and Debrief and no Alert.
+A script the check can't read (`transfer_to` then `capture`, or a `coast` to an `until` the check doesn't read) can still outrun 300% of its planned duration. The kOS bridge now tells the core each warp request's target UT while the run goes (`KosWarpRequested`). At the deadline, if the latest request's target is still ahead, the stop waits until that target has passed plus an allowance of 60 s (`RunawayStop.WarpAllowanceSeconds`). A script that isn't warping, or is past all its warps, stops at the deadline as before, with the same make-safe and Debrief and no Alert.
 
 1. On a flight whose script warps past its deadline (a long `transfer_to` then `capture`), read the log: no "The script was still running at 300%" notice appears before the warp's target.
 2. If the run is still going 60 s of game time after the warp's target, it is stopped then, with the usual Debrief ("timed out").
@@ -19,4 +19,4 @@ A script the check can't read (a `coast` to `ship:orbit:nextpatcheta`, `transfer
 
 ## Check 3: the adapter reads the next-patch ETA (#833)
 
-The adapter's read of `orbit.EndUT - UT` into `GameSnapshot.NextPatchEta` is confirmed from the next interplanetary flight's log: for a `coast` to `time:seconds + ship:orbit:nextpatcheta + n` and then a `capture`, the duration is raised at Approval (as in Check 1) without an extra request, and the plan's `lints` shows the raise.
+The adapter's read of `orbit.EndUT` into `GameSnapshot.NextPatchEndUt` (only for an ENCOUNTER or ESCAPE end; a MANEUVER end is read as no next patch, unconfirmed) is confirmed from the next interplanetary flight's log: for a `coast` to `time:seconds + ship:orbit:nextpatcheta + n` and then a `capture`, the duration is raised at Approval (as in Check 1) without an extra request, and the plan's `lints` shows the raise. After a coast to the next patch, a `capture` or `circularize` counts only the coast's wait (the next patch's own timing isn't in the snapshot). A second coast to the next patch leaves the plan unchecked.
