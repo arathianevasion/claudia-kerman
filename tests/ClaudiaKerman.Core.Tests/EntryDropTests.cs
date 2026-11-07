@@ -706,7 +706,7 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void A_landers_own_shield_past_a_port_is_named_and_the_Entry_Shield_still_counts()
+        public void A_docked_landers_shield_past_a_port_says_nothing_when_the_Entry_has_its_own_and_it_still_counts()
         {
             var craft = new Craft();
             var pod = craft.Add("mk1pod.v2", null, "command");
@@ -715,10 +715,23 @@ namespace ClaudiaKerman.Core.Tests
             var port = craft.Add("dockingPort", tank, "docking_port");
             var lander = craft.Add("landerTank", port);
             craft.Shield(lander, "landerShield");
-            var finding = Assert.Single(PastPort(craft, KerbinReturn.ToArray()));
-            Assert.Contains("landerShield", finding.Explanation);
-            Assert.DoesNotContain("podShield", finding.Explanation);
+            Assert.Empty(PastPort(craft, KerbinReturn.ToArray()));
             Assert.Equal(Uid(craft, "podShield"), Call(craft, "Kerbin", KerbinReturn)["shield"]);
+        }
+
+        [Fact]
+        public void A_port_between_shields_warns_when_any_Entry_has_no_shield_of_its_own()
+        {
+            var craft = new Craft();
+            var pod = craft.Add("mk1pod.v2", null, "command");
+            var shieldA = craft.Shield(pod, "shieldA");
+            var dec = craft.Add("dec1", shieldA, "decoupler");
+            var tank = craft.Add("tank1", dec);
+            var port = craft.Add("dockingPort", tank, "docking_port");
+            var tank2 = craft.Add("tank2", port);
+            craft.Shield(tank2, "shieldB");
+            var finding = Assert.Single(PastPort(craft, DunaThenKerbin.ToArray()));
+            Assert.Contains("shieldB", finding.Explanation);
         }
 
         [Fact]
