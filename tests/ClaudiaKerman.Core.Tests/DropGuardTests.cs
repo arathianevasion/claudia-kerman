@@ -234,10 +234,12 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void UnderAMissionPlanTheLaterLegsCountFromThePlanStepAndABurnThatSpendsThemIsRefused()
         {
-            // plan_step 2 (index 1): the drop leaves 2,100, 1,959 is still needed, and a 300 m/s burn takes it to 1,800: refused.
+            // plan_step 2 (index 1) names a leg with delta-v of its own, so counting from step 1 instead would add 40 to the need and fail here.
+            var plan = new List<PlannedSequence> { Leg("Capture at Duna", 600), Leg("Trim before the drop", 40), Leg("Prepare", 1959) };
+            // The drop leaves 2,100, 1,959 is still needed, and a 300 m/s burn takes it to 1,800: refused.
             var burn = new DropBurn { Spent = 300 };
 
-            var verdict = DropGuard.Check(Craft(), DunaPlan(), 1, 3310, 2100, burn);
+            var verdict = DropGuard.Check(Craft(), plan, 1, 3310, 2100, burn);
 
             Assert.True(verdict.Refused);
             Assert.Equal(1959, verdict.Need);
