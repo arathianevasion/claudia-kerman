@@ -831,7 +831,7 @@ namespace ClaudiaKerman.Core.Missions
                     if (mission.PendingSequence != null && mission.PendingSequence.Manual) return stage;
                     if (mission.PendingSequence != null)
                     {
-                        var check = CheckScript(mission, mission.PendingSequence);
+                        var check = CheckScript(mission, mission.PendingSequence, restored: true);
                         if (check.Passed) return stage;
                         mission.UnsafeProblems = check.Problems;
                         mission.PendingSequence = null;

@@ -264,7 +264,7 @@ namespace ClaudiaKerman.Core.Tests
         private static ScriptedResponse TimedSequencePlan()
         {
             return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: link check.\",\"reply_intent\":null,\"mission_plan\":null,\"debrief\":null,\"alert\":null,"
-                + "\"sequence_plan\":{\"name\":\"Link check\",\"intent\":\"Prove the link.\",\"why\":\"First things first.\",\"target\":\"A report\","
+                + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"Link check\",\"intent\":\"Prove the link.\",\"why\":\"First things first.\",\"target\":\"A report\","
                 + "\"tolerances\":\"none\",\"expected_delta_v\":0,\"expected_duration_s\":10,\"abort_conditions\":[\"no link\"],\"telemetry_checks\":[],\"risks\":[\"none\"],"
                 + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"print \\\"go\\\".\\n\","
                 + "\"due_time_ut\":" + Due + ",\"window_closes_ut\":null,\"late_window_dv\":null,\"manual\":false}}");

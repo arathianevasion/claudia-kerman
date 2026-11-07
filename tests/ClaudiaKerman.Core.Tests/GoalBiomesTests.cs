@@ -285,7 +285,7 @@ namespace ClaudiaKerman.Core.Tests
             var script = "local res is land(lexicon(\"target\", lexicon(\"biome\", \"" + biome + "\", \"near\", latlng(3.1, 22)))). addons:claudia:report(res).";
             return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Plan.\",\"reply_intent\":\"none\",\"unsure_because\":\"\","
                 + "\"mission_plan\":null,\"debrief\":null,\"alert\":null,"
-                + "\"sequence_plan\":{\"name\":\"Land\",\"intent\":\"Land.\",\"why\":\"Because.\",\"target\":\"\",\"tolerances\":\"\",\"expected_delta_v\":600,\"expected_duration_s\":900,"
+                + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"Land\",\"intent\":\"Land.\",\"why\":\"Because.\",\"target\":\"\",\"tolerances\":\"\",\"expected_delta_v\":600,\"expected_duration_s\":900,"
                 + "\"abort_conditions\":[],\"risks\":[],\"telemetry_checks\":[],"
                 + "\"script\":" + JsonSerializer.Serialize(script) + ",\"custom_script_reason\":\"\","
                 + "\"due_time_ut\":-1,\"window_closes_ut\":-1,\"late_window_dv\":-1,\"manual\":false,\"vessel\":\"\"}}");

@@ -51,7 +51,7 @@ namespace ClaudiaKerman.Core.Tests
         private static ScriptedResponse SequencePlan(string name, string vessel)
         {
             return Mothership.Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: " + name + ".\",\"reply_intent\":\"none\",\"mission_plan\":null,"
-                + "\"sequence_plan\":{\"name\":\"" + name + "\",\"intent\":\"Fly it.\",\"why\":\"It is next.\",\"target\":\"done\",\"tolerances\":\"none\","
+                + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"" + name + "\",\"intent\":\"Fly it.\",\"why\":\"It is next.\",\"target\":\"done\",\"tolerances\":\"none\","
                 + "\"expected_delta_v\":10,\"expected_duration_s\":60,\"abort_conditions\":[],\"telemetry_checks\":[],\"risks\":[],"
                 + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"print \\\"go\\\".\\n\","
                 + "\"due_time_ut\":-1,\"window_closes_ut\":-1,\"late_window_dv\":-1,\"manual\":false,\"vessel\":\"" + vessel + "\"},\"debrief\":null}");

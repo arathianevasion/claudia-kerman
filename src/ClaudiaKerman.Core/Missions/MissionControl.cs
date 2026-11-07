@@ -1838,10 +1838,10 @@ namespace ClaudiaKerman.Core.Missions
         /// The Script Check over what would run (<see cref="Bundle"/>): the script comes first in it, so the line numbers are
         /// the script's. A Mission Plan step the plan names outside the Mission Plan fails it too (<see cref="PlanStepProblem"/>).
         /// </summary>
-        private ScriptCheckResult CheckScript(Mission mission, SequencePlan plan)
+        private ScriptCheckResult CheckScript(Mission mission, SequencePlan plan, bool restored = false)
         {
             var check = _scriptCheck.Check(Bundle(plan));
-            var step = PlanStepProblem(mission, plan);
+            var step = PlanStepProblem(mission, plan, restored);
             if (step == null) return check;
             return new ScriptCheckResult(check.CompileError, check.Forbidden.Concat(new[] { step }).ToList()) { Warnings = check.Warnings, BlockOptions = check.BlockOptions };
         }
@@ -1918,12 +1918,15 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// The Script Check's problem with the step a Sequence Plan names, or null when it names one in the Mission Plan
-        /// or none at all (the count stands in). Checked with the script, so Claudia corrects it as she would a script.
+        /// or the Mission has no Mission Plan. Under a Mission Plan a plan naming none is a problem too (#837): the count
+        /// would stand in and could run ahead of the craft. (A saved Mission's stepless plans are never re-checked on load,
+        /// so <see cref="StepsBegun"/> keeps the count for them: <paramref name="restored"/>.) Checked with the script, so Claudia corrects it as she would a script.
         /// </summary>
-        private static string PlanStepProblem(Mission mission, SequencePlan plan)
+        private static string PlanStepProblem(Mission mission, SequencePlan plan, bool restored = false)
         {
-            if (!plan.PlanStep.HasValue || mission.Plan == null) return null;
+            if (mission.Plan == null || (restored && !plan.PlanStep.HasValue)) return null;
             var steps = mission.Plan.Sequences.Count;
+            if (!plan.PlanStep.HasValue) return "plan_step is missing: name the Mission Plan step this sequence flies, 1 to " + steps.ToString(CultureInfo.InvariantCulture) + ".";
             var step = plan.PlanStep.Value;
             if (step >= 1 && step <= steps) return null;
             return "plan_step " + step.ToString(CultureInfo.InvariantCulture) + " is not a step of the Mission Plan: name the step this sequence flies, "

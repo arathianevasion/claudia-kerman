@@ -182,7 +182,7 @@ namespace ClaudiaKerman.Core.Tests
         private static ScriptedResponse HoldPlan()
         {
             var json = "{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: hold, then deorbit.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
-                + "\"sequence_plan\":{\"name\":\"Hold and deorbit\",\"intent\":\"Hold three orbits, then lower the periapsis.\",\"why\":\"The player asked for a hold.\","
+                + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"Hold and deorbit\",\"intent\":\"Hold three orbits, then lower the periapsis.\",\"why\":\"The player asked for a hold.\","
                 + "\"target\":\"Periapsis 30 km\",\"tolerances\":\"Pe within 5 km\",\"expected_delta_v\":60,\"expected_duration_s\":17000,"
                 + "\"abort_conditions\":[],\"risks\":[],\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":" + JsonSerializer.Serialize(HoldScript) + ","
                 + "\"due_time_ut\":-1,\"window_closes_ut\":-1,\"late_window_dv\":-1},\"debrief\":null}";

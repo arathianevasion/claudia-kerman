@@ -70,7 +70,7 @@ namespace ClaudiaKerman.Core.Tests
         private static ScriptedResponse SequencePlan(double? due, double? windowCloses = null, double? lateDv = null, double expectedDv = 100, string name = "Mun transfer")
         {
             return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: " + name + ".\",\"reply_intent\":\"none\",\"mission_plan\":null,"
-                + "\"sequence_plan\":{\"name\":\"" + name + "\",\"intent\":\"Burn for the Mun.\",\"why\":\"The window is open then.\",\"target\":\"Mun encounter\","
+                + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"" + name + "\",\"intent\":\"Burn for the Mun.\",\"why\":\"The window is open then.\",\"target\":\"Mun encounter\","
                 + "\"tolerances\":\"Pe within 20 km\",\"expected_delta_v\":" + D(expectedDv) + ",\"expected_duration_s\":600,\"abort_conditions\":[],\"risks\":[],"
                 + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"print \\\"go\\\".\\n\","
                 + "\"due_time_ut\":" + D(due) + ",\"window_closes_ut\":" + D(windowCloses) + ",\"late_window_dv\":" + D(lateDv) + "},\"debrief\":null}");
@@ -767,7 +767,7 @@ namespace ClaudiaKerman.Core.Tests
         public void AReplyWithoutTheNewTimingFieldsStillParses()
         {
             // Earlier replies and saves have none of the Due Time fields.
-            var plans = "{\"kind\":\"sequence_plan\",\"say\":\"x\",\"reply_intent\":null,\"mission_plan\":null,\"sequence_plan\":{\"name\":\"n\",\"intent\":\"i\",\"why\":\"w\","
+            var plans = "{\"kind\":\"sequence_plan\",\"say\":\"x\",\"reply_intent\":null,\"mission_plan\":null,\"sequence_plan\":{\"plan_step\":1,\"name\":\"n\",\"intent\":\"i\",\"why\":\"w\","
                 + "\"target\":\"t\",\"tolerances\":\"t\",\"expected_delta_v\":1,\"expected_duration_s\":2,\"abort_conditions\":[],\"risks\":[],\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"s\"},\"debrief\":null}";
             var state = MissionSaveState.FromValues(new Dictionary<string, string> { { "id", "m1" }, { "plans", plans.Replace("\\", "\\\\").Replace("/", "\\s").Replace("{", "\\o").Replace("}", "\\c") } });
             Assert.Null(state.SequencePlan.DueTimeUt);
