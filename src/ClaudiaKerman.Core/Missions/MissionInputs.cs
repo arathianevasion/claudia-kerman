@@ -264,11 +264,12 @@ namespace ClaudiaKerman.Core.Missions
         public SceneChanged(GameScene scene) { Scene = scene; }
     }
 
-    /// <summary>Game time, in seconds of UT.</summary>
+    /// <summary>Game time, in seconds of UT, and whether time warp was running when it was read (#834: the runaway stop's warp hold ends once warp has).</summary>
     public sealed class UtAdvanced : MissionInput
     {
         public readonly double Ut;
-        public UtAdvanced(double ut) { Ut = ut; }
+        public readonly bool Warping;
+        public UtAdvanced(double ut, bool warping = false) { Ut = ut; Warping = warping; }
     }
 
     /// <summary>

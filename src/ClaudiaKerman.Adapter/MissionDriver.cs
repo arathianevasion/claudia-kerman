@@ -307,7 +307,7 @@ namespace ClaudiaKerman.Adapter
             if (HighLogic.CurrentGame != null && Planetarium.fetch != null && Time.realtimeSinceStartup >= _nextUt)
             {
                 _nextUt = Time.realtimeSinceStartup + UtSeconds;
-                Send(new UtAdvanced(Planetarium.GetUniversalTime()));
+                Send(new UtAdvanced(Planetarium.GetUniversalTime(), TimeWarp.fetch != null && TimeWarp.CurrentRateIndex > 0));
             }
 
             // Which vessel is the craft after a switch, docking or EVA: the core decides from what the game shows.
@@ -316,7 +316,7 @@ namespace ClaudiaKerman.Adapter
             if (vessel != null && Time.realtimeSinceStartup >= _nextSnapshot)
             {
                 _nextSnapshot = Time.realtimeSinceStartup + SnapshotSeconds;
-                Send(new UtAdvanced(Planetarium.GetUniversalTime()));
+                Send(new UtAdvanced(Planetarium.GetUniversalTime(), TimeWarp.fetch != null && TimeWarp.CurrentRateIndex > 0));
                 Send(SnapshotReader.Read(vessel));
                 _vessels.Range(_mission.View.CraftVesselId);
                 _vessels.Link(_mission.View.CraftVesselId);
