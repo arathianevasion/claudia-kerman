@@ -78,6 +78,35 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void Capped_at_20_degrees_it_adds_lift_to_keep_braking_but_never_more_than_holds_its_height()
+        {
+            var tan20 = Math.Tan(20 * Math.PI / 180);
+            // Falling 20 m/s with 2 m/s² wanted sideways and nothing up: lift for the 20 degree lean (2 / tan 20 = 5.5), under the
+            // 1.1 + 10 that would hold its height, so all 2 m/s² brake.
+            double al = 2, cr = 0, up = 0;
+            LandSteer.Lean(ref al, ref cr, ref up, 300, true, IkeAMax, IkeG, -20);
+            Assert.Equal(2 / tan20, up, 9);
+            Assert.Equal(2, al, 9);
+            // Not falling: no more lift than gravity, so the sideways part is cut to fit 20 degrees and it never climbs.
+            al = 2;
+            up = 0;
+            LandSteer.Lean(ref al, ref cr, ref up, 300, true, IkeAMax, IkeG, 0);
+            Assert.Equal(IkeG, up, 9);
+            Assert.Equal(IkeG * tan20, al, 9);
+            // In the last 7.5 m and above the final descent: the sideways part cut as before, no lift added.
+            al = 2;
+            up = 1;
+            LandSteer.Lean(ref al, ref cr, ref up, 3, true, IkeAMax, IkeG, -20);
+            Assert.Equal(1, up, 9);
+            Assert.Equal(Math.Tan(11 * Math.PI / 180), al, 9);
+            al = 2;
+            up = 0.5;
+            LandSteer.Lean(ref al, ref cr, ref up, 300, false, IkeAMax, IkeG, -20);
+            Assert.Equal(0.5, up, 9);
+            Assert.Equal(2, al, 9);
+        }
+
+        [Fact]
         public void Above_the_final_descent_the_lean_is_free_as_before()
         {
             var input = Terminal(1, 1.1, 300, 0, 0);

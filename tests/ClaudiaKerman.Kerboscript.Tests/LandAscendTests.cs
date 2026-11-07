@@ -1311,7 +1311,7 @@ function tsim {
     local w is land_guide(lexicon(""s"", site_x - x, ""c"", 0, ""v_al"", vx, ""v_cr"", 0, ""v_up"", vy, ""h"", h, ""h_start"", h_start,
       ""v0"", v0, ""shape"", shape, ""v_top"", v_top, ""a_max"", a_max, ""g"", g, ""radius"", rad + y, ""lag"", lag), 2, margin).
     set to_go to w:to_go.
-    set dir to test_land_steer(lexicon(""want"", w, ""last"", dir, ""v_al"", vx, ""v_cr"", 0, ""v_up"", vy, ""a_max"", a_max)).
+    set dir to test_land_steer(lexicon(""want"", w, ""last"", dir, ""v_al"", vx, ""v_cr"", 0, ""v_up"", vy, ""a_max"", a_max, ""g"", g)).
     local mag is min(a_max, dir:mag).
     // The zero-thrust coast (#511): climbing while the demand is under 5% of what the engines give.
     if vy > 0 and mag < 0.05 * a_max { set idle to idle + 1. }
@@ -1426,9 +1426,17 @@ function tsim {
             List<double> alts;
             var flown = FlyOverInCSharp(Corners(FlatsProfile), 22808, 2097, 0.2, out alts, 191.7, -10.4, MinmusMu, 60000, 5000, 60000,
                 Core.Tools.BrakePath.TurnLag(59.9, 9.8));
-            AssertTheSameFlight(kos, flown, alts);
+            // The same approach: soft, and the same altitudes every 5 km. #865: the final descent here starts about 1 km up still
+            // moving across the ground, and leaning no more than 20 degrees without climbing it brakes at under a third of Minmus's
+            // gravity, so kOS now lands about 230 m beyond BRAKEPATH's stop (which doesn't model the cap) and takes about 300 s.
+            Assert.Null(flown.Failure);
+            Assert.Equal("False", kos[0]);
+            var kosAlts = kos.Skip(5).Select(a => double.Parse(a, CultureInfo.InvariantCulture)).ToList();
+            Assert.Equal(kosAlts.Count, alts.Count);
+            for (var i = 0; i < alts.Count; i++) Assert.InRange(alts[i] - kosAlts[i], -10, 10);
+            Assert.InRange(double.Parse(kos[2], CultureInfo.InvariantCulture) + flown.StopS, 0, 250);
             Assert.InRange(double.Parse(kos[2], CultureInfo.InvariantCulture), -300, 300);
-            Assert.InRange(double.Parse(kos[3], CultureInfo.InvariantCulture), 0, 250);
+            Assert.InRange(double.Parse(kos[3], CultureInfo.InvariantCulture), 0, 320);
             Assert.InRange(flown.DvUsed, 150, 300);
             // Never back over its starting height plus the arrest of its fall above circular speed (BrakePathTests), let alone 2.4 km.
             Assert.True(alts.Max() < 2097 + 300, string.Join(", ", alts));

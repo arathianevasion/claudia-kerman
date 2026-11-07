@@ -67,14 +67,16 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// land's lean limit on a demand (al, cr, up m/s², <paramref name="h"/> m over the ground), for the flight and BRAKEPATH
         /// alike. Above the final descent, and in its last few metres, the sideways part is cut to <see cref="BrakeGuidance.MaxTilt"/>
-        /// as before. In the final descent, where <see cref="TerminalLeanDeg"/> binds, the upward part is raised (to 0.95 of
-        /// <paramref name="aMax"/> at most) so the demand leans that far and still brakes across the ground: cutting the sideways
-        /// part instead left a craft falling with no upward demand drifting 40-145 m past the site.
+        /// as before. In the final descent, where <see cref="TerminalLeanDeg"/> binds, the upward part is raised so the demand
+        /// leans that far and still brakes across the ground, but never past what holds its height (gravity <paramref name="g"/>
+        /// less half its vertical speed <paramref name="vUp"/>, m/s, as the settle holds it; nor 0.95 of <paramref name="aMax"/>):
+        /// falling fast it brakes hard, and it never climbs. Cutting the sideways part alone left a craft falling with no upward
+        /// demand drifting 40-145 m past the site; raising it without a bound held one climbing over Minmus Flats for 900 s.
         /// </summary>
-        public static void Lean(ref double al, ref double cr, ref double up, double h, bool terminal, double aMax)
+        public static void Lean(ref double al, ref double cr, ref double up, double h, bool terminal, double aMax, double g, double vUp)
         {
             if (terminal && BrakeGuidance.MaxTilt(h) > TerminalLeanDeg)
-                up = Math.Max(up, Math.Min(0.95 * aMax, Math.Sqrt(al * al + cr * cr) / Math.Tan(TerminalLeanDeg * Deg)));
+                up = Math.Max(up, Math.Min(Math.Min(0.95 * aMax, g - 0.5 * vUp), Math.Sqrt(al * al + cr * cr) / Math.Tan(TerminalLeanDeg * Deg)));
             LimitLean(ref al, ref cr, up, MaxLean(h, terminal));
         }
 
@@ -140,7 +142,7 @@ namespace ClaudiaKerman.Core.Tools
             // The vertical need, before the lean limit adds lift to brake sideways: what the throttle gives while off target.
             var need = up;
             var tilt = MaxLean(h, terminal);
-            Lean(ref al, ref cr, ref up, h, terminal, aMax);
+            Lean(ref al, ref cr, ref up, h, terminal, aMax, Number(input, "g", 0), vUp);
             var lastDir = new[] { Number(last, "al", -1), Number(last, "cr", 0), Number(last, "up", 0) };
             var vel = new[] { Number(input, "v_al", 0), Number(input, "v_cr", 0), vUp };
             var facingMap = Map(input, "facing");
