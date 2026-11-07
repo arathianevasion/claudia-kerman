@@ -1507,6 +1507,30 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void ANoSafeLandingWarningIsAMissionEventAndADebriefLineAndNeverAnAlertOrARequest()
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"));
+            var mission = Control(transport);
+            ToRunning(mission);
+            var requests = transport.Requests.Count;
+            var messages = Saved(mission)[0].TranscriptMarker;
+            var line = "Nothing can land this craft safely: it is predicted to touch down at 24.0 m/s, over 15.0 m/s, with every chute it can open and no engine to finish it";
+
+            mission.Send(new ChuteWarning(line));
+
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text == line);
+            Assert.Contains("\"chute_warning\"", File.ReadAllText(Path.Combine(MissionFolder(mission), "events.jsonl")));
+            Assert.Contains("Nothing can land this craft safely", Saved(mission)[0].RunEvents);
+            // An Alert costs a request and pauses the run: neither happened, and the conversation heard nothing.
+            Assert.Equal(requests, transport.Requests.Count);
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            Assert.Equal(messages, Saved(mission)[0].TranscriptMarker);
+            Assert.DoesNotContain("Nothing can land", File.ReadAllText(TranscriptPath(mission)));
+        }
+
+        [Fact]
         public void TheRcsUseTallyAndStartReadingsSurviveALoadAndReachTheInterruptedDebrief()
         {
             var transport = new StreamingFakeTransport(

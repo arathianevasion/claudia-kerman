@@ -374,6 +374,19 @@ namespace ClaudiaKerman.Core.Missions
         }
     }
 
+    /// <summary>
+    /// <c>reentry</c> found, above the air, that nothing can land the craft (#827): one line for the Mission's events, log and Debrief. It is never an Alert, and the
+    /// conversation hears of it only in the Debrief.
+    /// </summary>
+    public sealed class ChuteWarning : MissionInput
+    {
+        public readonly string Text;
+        public ChuteWarning(string text)
+        {
+            Text = text;
+        }
+    }
+
     /// <summary>The adapter moved Ship Systems at a transition (#756): one line for the Mission's events and log. It never reaches the prompt.</summary>
     public sealed class ShipSystemsMoved : MissionInput
     {

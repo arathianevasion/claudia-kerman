@@ -642,6 +642,16 @@ namespace ClaudiaKerman.Core.Missions
             if (mission.Folder != null) Event(mission, "ship_systems", moved.Text);
         }
 
+        /// <summary>Nothing can land the craft, found above the air (#827): a log row, a line in the Mission's events and the run's events for the Debrief. Never an Alert, and no request.</summary>
+        private void ChuteWarningLine(ChuteWarning warning)
+        {
+            var mission = _mission;
+            if (mission == null) return;
+            Note(LogKind.Notice, warning.Text);
+            if (mission.Folder != null) Event(mission, "chute_warning", warning.Text);
+            if (IsRunning(mission)) mission.RunEvents.Add(_ut, RunEventKind.ChuteWarning, warning.Text);
+        }
+
         /// <summary>The Encounter Watch dropped the warp (#770): one log row and one line in the Mission's events; the conversation hears of it only through the block's result.</summary>
         private void EncounterWatchLine(EncounterWatchDropped dropped)
         {

@@ -34,3 +34,5 @@ A second `reentry` block after a failed one on the same Entry chooses afresh, an
 We rejected a chute's module or need deciding, as the plan then lives where the player can't see it, and a memory of which chutes were spent, as a repack or a restage would make it wrong.
 
 Decided on #826 (2026-11-06).
+
+**Survival beats saving chutes (#827).** When an Entry's own group is predicted to touch down over 15 m/s and no engine lands it (ADR 0020), `ChuteGroups.Widen` adds the next stage's group, one at a time, until the prediction is at or under 15 m/s or none is left. `chutes: "none"` is overridden then, as a certain crash, and the log says so. A predictor error leaves the Entry its own group. Which chutes may open widens; opening stays `reentry`'s, in order, at `chute_mode`'s timing, and the prediction is judged once at that moment. A touchdown still over 15 m/s while the craft is above the air raises a Mission window event and a Debrief line, never an Alert. The Margin Check's existing finding flags the later Entry at the next Debrief, as the chutes used read as open. `CHUTEGROUP` takes `none` and `engine` and answers `stages`, `why` and `warning`.
