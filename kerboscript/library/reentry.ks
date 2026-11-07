@@ -9,16 +9,15 @@
 //| reentry(options): lands through the atmosphere: drops the stack below this entry's shield,
 //| waits (on rails) for the atmosphere if still in space, holds the heat shield forward (surface retrograde), drops it once
 //| the worst heating is over, opens the parachutes only when safe (never staged), physics-warping the fall
-//| (1x below 100 m), and ends once landed or splashed.
+//| (1x below 100 m), and ends once landed or splashed. If this entry's drop and chutes would touch down over 10 m/s and an engine has fuel, it
+//| drops nothing, lights the engine (no stage fires) and brakes on it by radar altitude, chutes open and gear down, to 2 m/s or until the fuel is gone.
 //| Options:
 //|   chute_mode ["safe"]: drogues first (under 500 m/s, over 0.02 atm, or by 3000 m above the ground), then
 //|     mains once they are out (under 250 m/s, over 0.04 atm, or by 1500 m); "none" never opens them.
 //|   chutes ["auto"]: those of the highest stage aboard, all on the last entry, or "none"; no other is armed.
-//|   touchdown ["chutes"]: or "powered": falls under its chutes (or none), then brakes on its lit engines by
-//|     radar altitude (the stopping distance counts drag and thrust over weight) to 2 m/s; over 6 m/s fails. Its gear goes down as it brakes; with no lit engine it fails at once.
 //|   separate ["auto"]: this entry's heat shield is number n from the pod: the entries left in the Mission Plan,
-//|     plus 1 if burns follow the last. Drops what is below it before the atmosphere (if powered, not the engines); no shield n, nothing drops. Or "none".
-//|   jettison_stage ["auto"]: drops that shield, unless powered keeps it or its stack is kept; or "none".
+//|     plus 1 if burns follow the last. Drops what is below it before the atmosphere; no shield n, nothing drops. Or "none".
+//|   jettison_stage ["auto"]: drops that shield, unless its stack is kept; or "none".
 //|   hold ["retrograde"]: points the craft's forward axis at surface retrograde; "none" leaves it.
 //|   max_duration ["auto"]: the wait for the atmosphere plus 1800 s.
 //|   plus min_ec_pct, abort_on_part_loss and stage_limit as for every block (it never stages).
@@ -52,13 +51,11 @@ function reentry_shield_last_agl { return 3000. }
 // Touchdown faster than this (m/s) fails the block.
 function reentry_touchdown_limit { return 15. }
 
-// Powered touchdown (#628). The braking burn comes down to soft m/s by end m of radar altitude (the craft's
-// centre of mass stands a few metres up on its legs), then holds soft to the ground; a touchdown over
-// limit m/s fails the block, well under reentry_touchdown_limit since the engines can do better than chutes.
+// Powered touchdown (#628, #824). The braking burn comes down to soft m/s by end m of radar altitude (the craft's
+// centre of mass stands a few metres up on its legs), then holds soft to the ground.
 // Braking starts with the thrust over margin, lag s of the fall early (the throttle and the last of the turn).
 function reentry_powered_soft { return 2. }
 function reentry_powered_end { return 10. }
-function reentry_powered_limit { return 6. }
 function reentry_powered_margin { return 1.2. }
 function reentry_powered_lag { return 1. }
 // The height steps the stopping distance is worked over, and the share of the drag measured now it counts:
@@ -79,7 +76,14 @@ function reentry_warp_event_s { return 10. }
 
 // The block's own options and defaults (max_duration "auto" is resolved once the entry is known).
 function reentry_defaults {
-  return lexicon("chute_mode", "safe", "jettison_stage", "auto", "hold", "retrograde", "separate", "auto", "touchdown", "chutes", "chutes", "auto").
+  return lexicon("chute_mode", "safe", "jettison_stage", "auto", "hold", "retrograde", "separate", "auto", "chutes", "auto").
+}
+
+// Why claudia_begin refused options (error): touchdown, an option until #824, has its own reason.
+function reentry_option_error {
+  parameter options, error.
+  if options:haskey("touchdown") { return "touchdown is no longer an option: reentry decides for itself whether to land on its engines". }
+  return error.
 }
 
 // "" or why an option isn't one the block knows.
@@ -87,9 +91,6 @@ function reentry_unreadable {
   parameter opt.
   if opt:chute_mode <> "safe" and opt:chute_mode <> "none" {
     return "chute_mode must be 'safe' or 'none', not '" + opt:chute_mode + "'".
-  }
-  if opt:touchdown <> "chutes" and opt:touchdown <> "powered" {
-    return "touchdown must be 'chutes' or 'powered', not '" + opt:touchdown + "'".
   }
   if opt:hold <> "retrograde" and opt:hold <> "none" {
     return "hold must be 'retrograde' or 'none', not '" + opt:hold + "'".
@@ -159,13 +160,13 @@ function reentry_is_drogue {
   return name:tolower:contains("drogue").
 }
 
-// True if the heat shield should drop now. gone: it has already been dropped (or there is none).
+// True if the heat shield should drop now. gone: it has already been dropped (or there is none); braking: the engines are about to fire, and it goes first.
 function reentry_shield_due {
-  parameter gone, speed, agl.
+  parameter gone, speed, agl, braking is false.
   if gone {
     return false.
   }
-  return speed <= reentry_shield_speed() or agl <= reentry_shield_last_agl().
+  return braking or speed <= reentry_shield_speed() or agl <= reentry_shield_last_agl().
 }
 
 // Seconds until a falling value (height in m or speed in m/s) reaches limit, at rate per second: 0 if
@@ -216,20 +217,8 @@ function reentry_warp_cap {
   return 4.
 }
 
-// Touchdown within what the crew and craft survive: reentry_touchdown_limit, or reentry_powered_limit if powered.
-function reentry_touchdown_ok {
-  parameter speed, powered is false.
-  return speed <= reentry_touchdown_max(powered).
-}
-
-// The touchdown speed (m/s) over which reentry fails: reentry_powered_limit if powered, else reentry_touchdown_limit. Pure.
-function reentry_touchdown_max {
-  parameter powered.
-  if powered {
-    return reentry_powered_limit().
-  }
-  return reentry_touchdown_limit().
-}
+// Touchdown within what the crew and craft survive: reentry_touchdown_limit.
+function reentry_touchdown_ok { parameter speed. return speed <= reentry_touchdown_limit(). }
 
 // ---- Chutes (#628) ----
 
@@ -334,7 +323,15 @@ function reentry_cut_chutes {
   return cut.
 }
 
-// ---- Powered touchdown (#628) ----
+// ---- Powered touchdown (#628, #824) ----
+
+// Lights those of engs (the craft's engines) whose uid is in uids, part by part: no stage fires.
+function reentry_light {
+  parameter engs, uids.
+  for e in engs {
+    if uids:contains(e:uid) and not e:ignition { e:activate(). }
+  }
+}
 
 // Metres of fall a braking burn takes to bring the downward speed v_down (m/s) to soft, with net m/s^2
 // of thrust over gravity (it may be negative) and drag k v^2 (k in 1/m) for each step m of height below
@@ -406,10 +403,11 @@ function reentry_brake_height {
   return s + reentry_powered_end() + max(0, v_down) * reentry_powered_lag().
 }
 
-// True if the braking must start now at radar m (reentry_brake_height's figure brake_h). Pure.
+// True if the braking must start now at radar m (reentry_brake_height's figure brake_h), at speed m/s. A fall the engines can't stop waits for the
+// air to do its work, as for the shield: on a shallow path high up, thrust barely points up, and the fuel would go at orbital speed. Pure.
 function reentry_brake_due {
-  parameter radar, brake_h.
-  return brake_h < 0 or radar <= brake_h.
+  parameter radar, brake_h, speed.
+  return radar <= brake_h or (brake_h < 0 and reentry_shield_due(false, speed, radar)).
 }
 
 // The throttle (0 to 1) braking a powered touchdown, a_up m/s^2 of upward thrust at full throttle against
@@ -553,10 +551,10 @@ function reentry_shield_beside {
 }
 
 // The Entry Shield's uid if this entry jettisons it, else "". below: ADDONS:CLAUDIA:ENTRYDROP's lexicon. Its decoupler takes
-// what's on both sides (#516), so a stack kept on (separate "none", or a powered touchdown's engines) keeps the shield too.
+// what's on both sides (#516), so a stack kept on (separate "none", which a powered entry also sets) keeps the shield too; with nothing below it, it goes.
 function reentry_jettison_uid {
   parameter opt, below.
-  if opt:jettison_stage = "none" or below:kept:length > 0 or (opt:separate = "none" and below:names:length > 0) {
+  if opt:jettison_stage = "none" or (opt:separate = "none" and below:names:length > 0) {
     return "".
   }
   return below:shield.
@@ -697,7 +695,7 @@ function reentry {
     "chutes_used", list(), "chutes_kept", list(), "powered_dv", 0).
   local ctx is claudia_begin("reentry", options, reentry_defaults(), "auto").
   if ctx:error <> "" {
-    return claudia_finish(ctx, false, ctx:error, extra).
+    return claudia_finish(ctx, false, reentry_option_error(options, ctx:error), extra).
   }
   local opt is ctx:opt.
   local unreadable is reentry_unreadable(opt).
@@ -709,7 +707,6 @@ function reentry {
     return claudia_finish(ctx, false, "body has no atmosphere", extra).
   }
   set extra:geo to reentry_geo().
-  local powered is opt:touchdown = "powered".
   set extra:chutes_kept to reentry_stowed_titles(ship:parts).
   // Wait (on rails) for the atmosphere if the craft is still above it.
   local entry_in is 0.
@@ -721,22 +718,27 @@ function reentry {
   }
   // This entry's stack (#557, #823) goes once the orbit is known to come down, before the atmosphere and any
   // hold. A stack "auto" can't drop fails here, still above the air; one already in the air flies on.
-  local home is reentry_home_uid().
-  // A powered touchdown lands on the engines that are lit or ready: not one flamed out in a spent stage.
-  local landing_engines is list().
-  if powered {
-    local engs is list().
-    list engines in engs.
-    for e in engs {
-      if not e:flameout {
-        landing_engines:add(e:uid).
-      }
-    }
-  }
-  local entry_ask is lexicon("home", home, "keep_engines", landing_engines).
+  local entry_ask is lexicon("home", reentry_home_uid()).
   local below is addons:claudia:entrydrop(entry_ask).
   if below:error <> "" {
     return claudia_finish(ctx, false, below:error, extra).
+  }
+  // Its engines or its chutes (#824): Core decides, with this drop and these chutes; the block lights the engines. A powered entry drops nothing.
+  local finish is addons:claudia:entryfinish(lexicon("home", entry_ask:home, "chutes", opt:chutes <> "none" and opt:chute_mode <> "none", "drop", opt:separate <> "none")).
+  local powered is false.
+  if finish:error <> "" { addons:claudia:blocknote(ctx:block, lexicon("phase", "finish", "error", finish:error)). }
+  if finish:error = "" {
+    addons:claudia:blocknote(ctx:block, lexicon("phase", "finish", "why", finish:why)).
+    if finish:powered and not claudia_on_ground() {
+      set ship:control:pilotmainthrottle to 0.
+      reentry_light(ship:engines, finish:engines).
+      wait 0.1.
+      if ship:availablethrust <= 0 { reentry_light(ship:engines, finish:spare). wait 0.1. }
+      set powered to ship:availablethrust > 0.
+    }
+  }
+  if powered {
+    set opt:separate to "none".
   }
   if below:names:length > 0 and not claudia_on_ground() {
     local drop is reentry_separation(opt:separate, below, ship:parts).
@@ -763,10 +765,6 @@ function reentry {
   local chute_mode is opt:chute_mode.
   if group:uids:length = 0 {
     set chute_mode to "none".
-  }
-  // A powered touchdown needs its engines lit: reentry never stages.
-  if powered and ship:availablethrust <= 0 {
-    return claudia_finish(ctx, false, "touchdown 'powered' needs a lit engine (reentry never stages)", extra).
   }
   addons:claudia:shipsystems("entry").
   // The Entry Shield's decouplers, found on the craft that is left.
@@ -876,7 +874,7 @@ function reentry {
       set sample_speed to last_speed.
     }
 
-    if reentry_shield_due(shield_gone, last_speed, agl) {
+    if reentry_shield_due(shield_gone, last_speed, agl, powered and reentry_brake_due(agl, brake_h, last_speed)) {
       local count_before is ship:parts:length.
       reentry_shield_drop(shield_uid, { return ship:parts. }).
       set shield_gone to true.
@@ -886,7 +884,7 @@ function reentry {
       set ctx:parts to ship:parts:length.
     }
     chute_tick(last_speed, agl, pressure).
-    if powered and reentry_brake_due(agl, brake_h) {
+    if powered and reentry_brake_due(agl, brake_h, last_speed) {
       set braking to true.
       return true.
     }
@@ -942,7 +940,7 @@ function reentry {
   }
   // The braking burn of a powered touchdown, at 1x: down to reentry_powered_soft by reentry_powered_end m of
   // radar, then held there to the ground, along surface retrograde until slow, then up leaning against
-  // the drift. It never stages, so the delta-v it burns is the throttle's.
+  // the drift. It never stages, so the delta-v it burns is the throttle's. Out of fuel it lights what else has some and falls on: only the touchdown's speed fails it.
   if fell = "" and braking and not claudia_on_ground() {
     local dv_before is ctx:dv_used.
     local tset is 0.
@@ -957,6 +955,7 @@ function reentry {
       local vel is ship:velocity:surface.
       set last_speed to vel:mag.
       local agl is reentry_agl().
+      if ship:availablethrust <= 0 { reentry_light(ship:engines, finish:spare). }
       if vel:mag > 5 and ship:verticalspeed < 0 {
         set steer to -vel.
       } else {
@@ -1000,8 +999,8 @@ function reentry {
   set extra:splashed to status = "SPLASHED".
   set extra:sun_elevation_deg to round(90 - vang(ship:up:vector, body("Sun"):position), 1).
   reentry_note_landing(ctx, predicted, last_speed).
-  if not reentry_touchdown_ok(last_speed, powered) {
-    return claudia_finish(ctx, false, "touchdown at " + round(last_speed, 1) + " m/s is over " + reentry_touchdown_max(powered) + " m/s", extra).
+  if not reentry_touchdown_ok(last_speed) {
+    return claudia_finish(ctx, false, "touchdown at " + round(last_speed, 1) + " m/s is over " + reentry_touchdown_limit() + " m/s", extra).
   }
   return claudia_finish(ctx, true, "", extra).
 }

@@ -16,7 +16,7 @@ print "reentry keep stage test: deorbit " + burn:success + ", " + burn:reason.
 local result is burn.
 local parts_before is ship:parts:length.
 if burn:success {
-  set result to reentry(lexicon("touchdown", "powered", "chutes", "none")).
+  set result to reentry(lexicon("chutes", "none")).
   set result["deorbit_dv"] to burn:dv_used.
 }
 // The checker compares a field with a literal only, so the test reports the comparisons it needs.

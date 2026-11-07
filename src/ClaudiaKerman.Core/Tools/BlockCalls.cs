@@ -40,7 +40,7 @@ namespace ClaudiaKerman.Core.Tools
             ask["body"] = orbited ?? "";
             // land stays airless-only (#828): the tool's search on a body with air is for deorbit's target.
             var over = snapshot == null ? null : snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, orbited, StringComparison.OrdinalIgnoreCase));
-            if (over != null && LandingSiteSearch.HasAir(over)) return Error("land flies airless bodies only; " + over.Name + " has an atmosphere; use reentry (touchdown \"powered\" when chutes are short)");
+            if (over != null && LandingSiteSearch.HasAir(over)) return Error("land flies airless bodies only; " + over.Name + " has an atmosphere; use reentry");
             object checkOnly;
             if (ask.TryGetValue("check_only", out checkOnly) && checkOnly is bool && (bool)checkOnly)
             {
@@ -187,7 +187,7 @@ namespace ClaudiaKerman.Core.Tools
             var orbited = !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body;
             var at = new BodySystem(snapshot.Bodies).Find(orbited);
             if (at == null) return Error("there is no body named " + PlanningJson.Quote(orbited));
-            if (at.AtmosphereHeight > 0 || at.SeaLevelAtm > 0) return Error("land flies airless bodies only; " + at.Name + " has an atmosphere; use reentry (touchdown \"powered\" when chutes are short)");
+            if (at.AtmosphereHeight > 0 || at.SeaLevelAtm > 0) return Error("land flies airless bodies only; " + at.Name + " has an atmosphere; use reentry");
             foreach (var key in new[] { "lat", "lng", "r_pe" })
                 if (!(NumberOrNull(ask, key).HasValue)) return Error(key + " is required");
             object daylight;
@@ -1310,7 +1310,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <see cref="ChuteGroups.Choose"/> gives the Entry in hand, read fresh from the craft, with the Last Entry as for the Entry Shield
         /// (shield number 1, ADR 0018; <paramref name="legs"/> null with no plan, <paramref name="step"/> 0 first, <paramref name="child"/> "" for the craft).
         /// Takes no input. Gives <c>error</c> "", <c>last</c>, <c>stage</c> (the group's; 0 for none, and meaningless when last), <c>uids</c> and <c>titles</c> (its stowed
-        /// or armed chutes, by kOS part UID), <c>powered_finish</c> (they can't bring it under 15 m/s) and <c>touchdown_speed</c> (m/s they leave
+        /// or armed chutes, by kOS part UID) and <c>touchdown_speed</c> (m/s they leave
         /// it at, by the predictor; -1 unknown). <paramref name="uidOf"/> gives a part's kOS UID from its <c>persistentId</c>, or null when it isn't aboard.
         /// </summary>
         public static IDictionary<string, object> ChuteGroupCall(GameSnapshot snapshot, IList<PlannedSequence> legs, int step, string child, Func<uint, string> uidOf)
@@ -1325,7 +1325,6 @@ namespace ClaudiaKerman.Core.Tools
                 { "stage", chosen.Count == 0 ? 0.0 : chosen[0].Stage },
                 { "uids", chosen.Select(c => (object)uidOf(c.PartId)).ToList() },
                 { "titles", chosen.Select(c => (object)c.Title).ToList() },
-                { "powered_finish", entry.PoweredFinish },
                 { "touchdown_speed", entry.TouchdownSpeed },
             };
         }
@@ -1333,26 +1332,15 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// <c>ADDONS:CLAUDIA:ENTRYDROP</c>, for <c>reentry</c> and <c>deorbit</c> at block start (#823, ADR 0018): what this Entry drops, read
         /// fresh from the Mission Plan's <paramref name="legs"/> (null with no plan: the first shield's rule) from <paramref name="step"/>
-        /// (0 first) for the vessel flying (<paramref name="child"/>; "" for the craft). Takes <c>home</c> (the kOS UID of the crew's part) and
-        /// <c>keep_engines</c> (kOS UIDs). Gives <c>error</c> "", <c>number</c> (n), <c>shield</c> (the Entry Shield's kOS UID; "" for none),
-        /// <c>decouplers</c>, <c>gone</c> and <c>kept</c> (kOS UIDs), <c>names</c> (the stack's part names, each once) and <c>stuck</c> (those with no decoupler).
+        /// (0 first) for the vessel flying (<paramref name="child"/>; "" for the craft). Takes <c>home</c> (the kOS UID of the crew's part).
+        /// Gives <c>error</c> "", <c>number</c> (n), <c>shield</c> (the Entry Shield's kOS UID; "" for none),
+        /// <c>decouplers</c> and <c>gone</c> (kOS UIDs), <c>names</c> (the stack's part names, each once) and <c>stuck</c> (those with no decoupler).
         /// </summary>
         public static IDictionary<string, object> EntryDropCall(IDictionary<string, object> ask, GameSnapshot snapshot, IList<PlannedSequence> legs, int step, string child, Func<uint, string> uidOf)
         {
             if (snapshot == null) return Error("there is no Game Snapshot of the craft");
-            var homeUid = ask.ContainsKey("home") ? ask["home"] as string : null;
-            var engines = Uids(ask, "keep_engines");
-            uint? home = null;
-            var keep = new List<uint>();
-            foreach (var part in snapshot.Craft.Parts)
-            {
-                var uid = uidOf(part.Id);
-                if (uid == null) continue;
-                if (uid == homeUid) home = part.Id;
-                if (engines.Contains(uid)) keep.Add(part.Id);
-            }
             var number = Entries.ShieldNumber(snapshot, legs, step, child);
-            var stack = EntryStack.Of(snapshot.Craft.Parts, home, number, keep);
+            var stack = EntryStack.Of(snapshot.Craft.Parts, Home(ask, snapshot, uidOf), number);
             Func<IEnumerable<SnapshotPart>, List<object>> uids = parts => parts.Select(p => uidOf(p.Id)).Where(u => u != null).Cast<object>().ToList();
             return new Dictionary<string, object>
             {
@@ -1361,9 +1349,40 @@ namespace ClaudiaKerman.Core.Tools
                 { "shield", stack.Shield == null ? "" : uidOf(stack.Shield.Id) ?? "" },
                 { "decouplers", uids(stack.Decouplers) },
                 { "gone", uids(stack.Gone) },
-                { "kept", uids(stack.Kept) },
                 { "names", EntryStack.Names(stack.Parts).Cast<object>().ToList() },
                 { "stuck", EntryStack.Names(stack.Stuck).Cast<object>().ToList() },
+            };
+        }
+
+        /// <summary>The part whose kOS UID is <c>home</c> in <paramref name="ask"/>; null when none is.</summary>
+        private static uint? Home(IDictionary<string, object> ask, GameSnapshot snapshot, Func<uint, string> uidOf)
+        {
+            var uid = ask.ContainsKey("home") ? ask["home"] as string : null;
+            var home = snapshot.Craft.Parts.FirstOrDefault(p => uid != null && uidOf(p.Id) == uid);
+            return home == null ? (uint?)null : home.Id;
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:ENTRYFINISH</c> (#824), for <c>reentry</c> at block start: <see cref="EntryFinish.Decide"/> for the Entry in hand, its drop
+        /// and Last Entry as <see cref="EntryDropCall"/> and <see cref="ChuteGroupCall"/> have them. Takes <c>home</c>, <c>chutes</c> (false: none will open) and
+        /// <c>drop</c> (false: the block keeps its stack). Gives <c>error</c> "", <c>powered</c>, <c>speed</c> (m/s with that drop and those chutes; -1 unknown),
+        /// <c>kept_speed</c> (m/s for the craft as kept; -1 on chutes), <c>engines</c> and <c>spare</c> (kOS UIDs) and <c>why</c> for the log.
+        /// </summary>
+        public static IDictionary<string, object> EntryFinishCall(IDictionary<string, object> ask, GameSnapshot snapshot, IList<PlannedSequence> legs, int step, string child, Func<uint, string> uidOf)
+        {
+            if (snapshot == null) return Error("there is no Game Snapshot of the craft");
+            bool chutes;
+            var unreadable = ChutesOf(ask, out chutes);
+            if (unreadable != null) return Error(unreadable);
+            var number = Entries.ShieldNumber(snapshot, legs, step, child);
+            var drop = !ask.ContainsKey("drop") || Equals(ask["drop"], true);
+            var gone = drop ? EntryStack.Of(snapshot.Craft.Parts, Home(ask, snapshot, uidOf), number).Gone.Select(p => p.Id).ToList() : new List<uint>();
+            var finish = EntryFinish.Decide(snapshot, gone, number == 1, chutes);
+            Func<IEnumerable<SnapshotPart>, List<object>> uids = parts => parts.Select(p => uidOf(p.Id)).Where(u => u != null).Cast<object>().ToList();
+            return new Dictionary<string, object>
+            {
+                { "error", "" }, { "powered", finish.Powered }, { "speed", finish.Speed }, { "kept_speed", finish.KeptSpeed },
+                { "engines", uids(finish.Engines) }, { "spare", uids(finish.Spare) }, { "why", finish.Why() },
             };
         }
 

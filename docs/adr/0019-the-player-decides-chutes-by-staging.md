@@ -25,7 +25,7 @@ An Entry that isn't the Last Entry opens every stowed chute in the highest-numbe
 - **Warning:** a group likely to leave before its Entry (`chute_group_leaves_early`): the parts holding it drop in a stage the delta-v through that Entry burns through first. The walk still gives the Entry that group, as a likely drop is not a certain one.
 - **Warning:** a group that lands too fast (`chute_group_too_fast`). A powered finish short of delta-v stays the Blocker it was, and one under 25% spare stays the thin Warning, as #629 has them.
 
-**Kept:** the touchdown predictor and its verdicts, `powered_finish` and `touchdown_speed`, which #824 reads. What a group too weak to land does is #824's with an engine and #827's without; `Choose` is the seam they extend.
+**Kept:** the touchdown predictor. What a group too weak to land does is #824's with an engine (ADR 0020) and #827's without; `Choose` is the seam they extend.
 
 **Removed:** the by-need split, the pod's reservation for the return, and the plan fingerprint that reused a held allocation (#645): the checks now work the groups out afresh each time.
 

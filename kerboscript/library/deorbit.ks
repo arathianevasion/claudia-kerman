@@ -220,7 +220,7 @@ function deorbit {
     return claudia_finish(ctx, false, "separate: " + refused, extra).
   }
   // The heat shield reentry will jettison: this entry's (#823), so the prediction flies what reentry flies.
-  local entry is addons:claudia:entrydrop(lexicon("home", reentry_home_uid(), "keep_engines", list())).
+  local entry is addons:claudia:entrydrop(lexicon("home", reentry_home_uid())).
   if entry:error <> "" {
     return claudia_finish(ctx, false, entry:error, extra).
   }

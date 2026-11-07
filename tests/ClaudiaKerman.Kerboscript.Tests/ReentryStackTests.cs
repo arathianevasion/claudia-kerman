@@ -70,7 +70,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             }
 
             /// <summary><c>local below</c>: what ENTRYDROP answers for this tree at <paramref name="at"/>.</summary>
-            public string Below(string at, IList<PlannedSequence> legs, params string[] keep)
+            public string Below(string at, IList<PlannedSequence> legs)
             {
                 var snapshot = new GameSnapshot
                 {
@@ -83,11 +83,11 @@ namespace ClaudiaKerman.Kerboscript.Tests
                         new SnapshotBody { Name = "Duna", AtmosphereHeight = 50000, SeaLevelAtm = 0.07 },
                     },
                 };
-                var answer = BlockCalls.EntryDropCall(new Dictionary<string, object> { { "home", "pod" }, { "keep_engines", keep.Cast<object>().ToList() } },
+                var answer = BlockCalls.EntryDropCall(new Dictionary<string, object> { { "home", "pod" } },
                     snapshot, legs, 0, "", id => Parts[(int)id - 1].Uid);
                 Func<string, string> list = key => "list(" + string.Join(", ", ((IEnumerable<object>)answer[key]).Select(u => "\"" + u + "\"")) + ")";
                 return "local below is lexicon(\"error\", \"\", \"shield\", \"" + answer["shield"] + "\", \"decouplers\", " + list("decouplers") + ", \"gone\", " + list("gone")
-                    + ", \"kept\", " + list("kept") + ", \"names\", " + list("names") + ", \"stuck\", " + list("stuck") + ").\n";
+                    + ", \"names\", " + list("names") + ", \"stuck\", " + list("stuck") + ").\n";
             }
         }
 
@@ -157,12 +157,6 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Fact]
-        public void On_the_flights_layout_a_non_last_entry_fires_nothing_when_powered()
-        {
-            Assert.Equal(new[] { "", "", "", "0" }, Run(TheFlight(), TheFlight().Below("Duna", DunaThenKerbin, "engine") + PrintFires));
-        }
-
-        [Fact]
         public void On_the_flights_layout_the_Last_Entry_fires_the_decoupler_under_the_shield_and_jettisons_it()
         {
             var printed = Run(TheFlight(), TheFlight().Below("Kerbin", Return) + PrintFires);
@@ -186,7 +180,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source.Replace("\r\n", "\n");
             var body = source.Substring(source.IndexOf("function reentry {", StringComparison.Ordinal));
             Assert.Contains("local shield is reentry_shield_modules(shield_uid, ship:parts).\n  local shield_gone is shield:length = 0.", body);
-            var due = body.IndexOf("if reentry_shield_due(shield_gone, last_speed, agl) {", StringComparison.Ordinal);
+            var due = body.IndexOf("if reentry_shield_due(shield_gone, last_speed, agl, powered and reentry_brake_due(agl, brake_h, last_speed)) {", StringComparison.Ordinal);
             Assert.True(due > 0);
             Assert.True(due < body.IndexOf("reentry_shield_drop(shield_uid, { return ship:parts. })", StringComparison.Ordinal));
         }
@@ -228,11 +222,63 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(new[] { "1", "" }, printed);
         }
 
+        // ---- A powered entry (#824): the block sets separate to "none", so it fires nothing, on each of #823's layouts ----
+
+        /// <summary>Prints what a powered entry fires and jettisons, and that it refuses nothing.</summary>
+        private const string PrintPowered = "local opt is claudia_merge_options(lexicon(), reentry_defaults()).\n"
+            + "set opt:separate to \"none\".\n"
+            + "print reentry_separation(opt:separate, below, parts):decouplers:length. print reentry_stack_refusal(opt:separate, below:names, \"\"). print reentry_jettison_uid(opt, below).\n";
+
+        private static readonly IList<PlannedSequence> DunaLast = new[] { new PlannedSequence { Name = "Land on Duna", DeltaV = 100 } };
+
         [Fact]
-        public void A_powered_touchdown_that_keeps_its_engines_keeps_the_shield_whose_drop_would_take_them()
+        public void A_powered_entry_on_the_flights_layout_fires_no_decoupler_so_radial_tanks_and_their_chutes_stay()
+        {
+            // No Entry Shield at Duna before Kerbin; and the Last Entry, which would drop the stack and the radial tanks with their chutes.
+            var tree = TheFlight();
+            Assert.Equal(new[] { "0", "", "" }, Run(tree, tree.Below("Duna", DunaThenKerbin) + PrintPowered + "\n"));
+            Assert.Equal(new[] { "0", "", "" }, Run(tree, tree.Below("Duna", DunaLast) + PrintPowered));
+            Assert.Contains("set opt:separate to \"none\".", CoreLibrary.Files.Single(f => f.Name == "reentry").Source);
+        }
+
+        [Fact]
+        public void A_powered_entry_on_two_shields_keeps_the_outer_shield_with_the_stage_below_it_and_the_inner_is_never_fired()
+        {
+            var tree = TwoShields();
+            Assert.Equal(new[] { "0", "", "" }, Run(tree, tree.Below("Duna", DunaThenKerbin) + PrintPowered));
+            Assert.Equal(new[] { "0", "", "" }, Run(tree, tree.Below("Kerbin", Return) + PrintPowered));
+        }
+
+        [Fact]
+        public void A_powered_entry_with_its_shield_above_the_engines_keeps_it_on_a_pod_shield_stage()
         {
             var tree = MunShotV2();
-            Assert.Equal(new[] { "" }, Run(tree, tree.Below("Kerbin", Return, "engine") + Options + "print reentry_jettison_uid(opt, below).\n"));
+            Assert.Equal(new[] { "0", "", "" }, Run(tree, tree.Below("Duna", DunaThenKerbin) + PrintPowered));
+            Assert.Equal(new[] { "0", "", "" }, Run(tree, tree.Below("Kerbin", Return) + PrintPowered));
+        }
+
+        [Fact]
+        public void A_powered_entry_with_nothing_below_its_shield_jettisons_it_by_todays_timing_or_as_braking_starts()
+        {
+            // The engines are above the shield, on the pod's side.
+            var t = new Tree();
+            var pod = t.Add("mk1pod.v2", -1, Command, "pod");
+            t.Add("radialEngine", pod, new[] { "ModuleEnginesFX" }, "engine");
+            t.Add("HeatShield1", pod, Shield, "shield");
+            Assert.Equal(new[] { "0", "", "shield", "False", "True", "True" },
+                Run(t, t.Below("Duna", DunaLast) + PrintPowered
+                    + "print reentry_shield_due(false, 900, 20000).\n print reentry_shield_due(false, 400, 20000).\n print reentry_shield_due(false, 900, 20000, true).\n"));
+        }
+
+        [Fact]
+        public void A_craft_built_from_the_far_side_on_a_powered_entry_refuses_nothing_and_keeps_its_shield()
+        {
+            var t = new Tree();
+            var tank = t.Add("fuelTank", -1, None);
+            var dec = t.Add("Decoupler.1", tank, Decoupler);
+            var shield = t.Add("HeatShield1", dec, Shield, "shield");
+            t.Add("mk1pod.v2", shield, Command, "pod");
+            Assert.Equal(new[] { "0", "", "" }, Run(t, t.Below("Duna", DunaLast) + PrintPowered));
         }
 
         [Fact]

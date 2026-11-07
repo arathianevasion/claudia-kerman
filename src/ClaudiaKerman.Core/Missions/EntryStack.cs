@@ -23,16 +23,13 @@ namespace ClaudiaKerman.Core.Missions
         public readonly List<SnapshotPart> Gone = new List<SnapshotPart>();
         /// <summary>Stack parts with no decoupler between them and the shield: the Entry can't drop them.</summary>
         public readonly List<SnapshotPart> Stuck = new List<SnapshotPart>();
-        /// <summary>A powered touchdown's: its engines, the parts between them and the shield, and those hanging on them with no decoupler between.</summary>
-        public readonly List<SnapshotPart> Kept = new List<SnapshotPart>();
 
         /// <summary>
         /// The stack of <paramref name="parts"/> for shield number <paramref name="number"/> counted from <paramref name="home"/> (the part the
         /// crew rides in; the root if null) outward, by parts between, never by stage: stock shields aren't in the staging list. With home under
         /// the shield (a craft built from the far side) no decoupler drops the rest without taking home, so all of it is stuck.
-        /// <paramref name="keepEngines"/>, the engines a powered touchdown lands on, aren't the stack.
         /// </summary>
-        public static EntryStack Of(IList<SnapshotPart> parts, uint? home, int number, ICollection<uint> keepEngines)
+        public static EntryStack Of(IList<SnapshotPart> parts, uint? home, int number)
         {
             var stack = new EntryStack();
             var byId = new Dictionary<uint, SnapshotPart>();
@@ -43,18 +40,13 @@ namespace ClaudiaKerman.Core.Missions
             var anchor = stack.Shield.Id;
             var walker = new Walker(byId, anchor);
             var reversed = home.HasValue && byId.ContainsKey(home.Value) && walker.Up(byId[home.Value]).Under;
-            var kept = new HashSet<uint>();
-            if (!reversed) walker.MarkKept(parts, keepEngines, kept);
             var seen = new HashSet<uint>();
             foreach (var part in parts)
-            {
-                if (kept.Contains(part.Id)) stack.Kept.Add(part);
-                else if (part.Id != anchor) stack.Classify(part, walker.Up(part, kept), reversed, anchor, seen);
-            }
+                if (part.Id != anchor) stack.Classify(part, walker.Up(part), reversed, seen);
             return stack;
         }
 
-        private void Classify(SnapshotPart part, Walk way, bool reversed, uint anchor, HashSet<uint> seen)
+        private void Classify(SnapshotPart part, Walk way, bool reversed, HashSet<uint> seen)
         {
             if (reversed)
             {
@@ -64,8 +56,7 @@ namespace ClaudiaKerman.Core.Missions
             }
             else if (way.Under)
             {
-                if (way.Top == null && way.At != anchor) Kept.Add(part);
-                else if (way.Top == null)
+                if (way.Top == null)
                 {
                     Parts.Add(part);
                     Stuck.Add(part);
@@ -111,11 +102,10 @@ namespace ClaudiaKerman.Core.Missions
             return parts.Where(p => p.Tags.Contains("heat_shield") && depth.ContainsKey(p.Id)).OrderBy(p => depth[p.Id]).Skip(number - 1).FirstOrDefault();
         }
 
-        /// <summary>A walk up from a part: whether it reached the anchor or a kept part, which one, and the decoupler on the way nearest it.</summary>
+        /// <summary>A walk up from a part: whether it reached the anchor, and the decoupler on the way nearest it.</summary>
         private struct Walk
         {
             public bool Under;
-            public uint At;
             public SnapshotPart Top;
         }
 
@@ -130,25 +120,15 @@ namespace ClaudiaKerman.Core.Missions
                 _anchor = anchor;
             }
 
-            public Walk Up(SnapshotPart part, HashSet<uint> stop = null)
+            public Walk Up(SnapshotPart part)
             {
                 SnapshotPart top = null;
                 for (var cur = part; cur != null; cur = Parent(cur))
                 {
-                    if (cur.Id == _anchor || (stop != null && stop.Contains(cur.Id))) return new Walk { Under = true, At = cur.Id, Top = top };
+                    if (cur.Id == _anchor) return new Walk { Under = true, Top = top };
                     if (cur.Tags.Contains("decoupler") && !cur.Tags.Contains("heat_shield")) top = cur;
                 }
                 return new Walk();
-            }
-
-            /// <summary>Each kept engine under the anchor, and the parts between it and the anchor.</summary>
-            public void MarkKept(IList<SnapshotPart> parts, ICollection<uint> keepEngines, HashSet<uint> kept)
-            {
-                foreach (var part in parts)
-                {
-                    if (!keepEngines.Contains(part.Id) || !Up(part).Under) continue;
-                    for (var cur = part; cur != null && cur.Id != _anchor; cur = Parent(cur)) kept.Add(cur.Id);
-                }
             }
 
             private SnapshotPart Parent(SnapshotPart part)
