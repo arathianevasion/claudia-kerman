@@ -30,8 +30,8 @@
 //| Extra results: planet_pe (m, the periapsis at the planet), reentry_ut (UT of the predicted
 //| entry into the planet's atmosphere, or of periapsis if that is above it), correction_dv (m/s the
 //| mid-course correction burned), predicted_geo (lexicon lat, lng: where the craft is predicted to come
-//| down, from the path it is on after the correction, with the prediction leaving out parachutes and
-//| lift; empty without a target or a prediction), predicted_error_km (km from the target to
+//| down, from the path it is on after the correction, for the craft reentry flies with separate
+//| "auto"; empty without a target or a prediction), predicted_error_km (km from the target to
 //| predicted_geo; -1 without one), aim_dv (m/s), aim_note and aim_spread_km (km per 0.5 m/s of burn error).
 //| The correction is skipped when the prediction is already within 1 km of target_pe and 0.5 degrees of
 //| target_inc (with a target: within 2 km of it) or the fix is under 0.1 m/s. When leaving the moon's
@@ -59,10 +59,10 @@ function return_aims {
   return not (opt:target:istype("String") and (opt:target = "none" or opt:target = "auto")).
 }
 
-// What return asks REENTRYIMPACT: where orb, from from_ut, comes down, and how far from site whose ground is ground_alt m. Pure.
+// What return asks REENTRYIMPACT: where orb, from from_ut, comes down, and how far from site whose ground is ground_alt m, for craft (ENTRYCRAFT's). Pure.
 function return_impact_query {
-  parameter orb, from_ut, site, ground_alt.
-  return lexicon("lat", site:lat, "lng", site:lng, "ground_alt", max(0, ground_alt), "from_ut", from_ut,
+  parameter orb, from_ut, site, ground_alt, craft.
+  return lexicon("lat", site:lat, "lng", site:lng, "ground_alt", max(0, ground_alt), "from_ut", from_ut, "craft", craft,
     "orbit_sma", orb:semimajoraxis, "orbit_ecc", orb:eccentricity, "orbit_inc", orb:inclination,
     "orbit_lan", orb:lan, "orbit_argpe", orb:argumentofperiapsis, "orbit_mna", orb:meananomalyatepoch,
     "orbit_epoch", orb:epoch, "orbit_body", orb:body:name).
@@ -169,7 +169,7 @@ function return_leave_moon {
 // The Course Correction's ask with the landing in it (#793), from the ejection's: Core holds target_pe and moves the landing. Pure.
 function return_aimed_ask {
   parameter ask, burn_ask, isp, dv_left.
-  for key in list("lat", "lng", "ground_alt") {
+  for key in list("lat", "lng", "ground_alt", "craft") {
     set ask[key] to burn_ask[key].
   }
   set ask:isp to isp.
@@ -220,10 +220,12 @@ function return {
       return claudia_finish(ctx, false, site:error, extra).
     }
     local ground_alt is planet:geopositionlatlng(site:lat, site:lng):terrainheight.
-    set burn_ask to lexicon("lat", site:lat, "lng", site:lng, "ground_alt", max(0, ground_alt), "max_wait", opt:max_wait, "max_duration", opt:max_duration, "start_ut", ctx:start_ut, "isp", claudia_engine_isp()).
+    // The craft reentry will fly (#814), read once: every prediction below flies it, assuming reentry's separate stays "auto". Read before the ejection, its whole and gone_prop are that craft's, so the correction pairs them with the kept mass now.
+    local craft is addons:claudia:entrycraft(lexicon("home", reentry_home_uid(), "body", planet:name)).
+    set burn_ask to lexicon("lat", site:lat, "lng", site:lng, "ground_alt", max(0, ground_alt), "max_wait", opt:max_wait, "max_duration", opt:max_duration, "start_ut", ctx:start_ut, "isp", claudia_engine_isp(), "craft", craft).
     set predict to {
       parameter orb, from_ut.
-      return addons:claudia:reentryimpact(return_impact_query(orb, from_ut, site, ground_alt)).
+      return addons:claudia:reentryimpact(return_impact_query(orb, from_ut, site, ground_alt, craft)).
     }.
   }
 

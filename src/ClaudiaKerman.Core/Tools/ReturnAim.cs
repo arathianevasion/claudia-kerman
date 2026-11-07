@@ -17,18 +17,18 @@ namespace ClaudiaKerman.Core.Tools
         public double GroundAltitude;
         /// <summary>The engines' Isp, s, for the mass after the burn; 0 takes the mass as it is now.</summary>
         public double Isp;
+        /// <summary>Who pays the burn when <see cref="Craft"/> leaves parts out (#814: <see cref="EntryCraft"/>'s masses); null: the craft pays it all.</summary>
+        public DropBurn Payer;
         /// <summary>The planet's air, not the moon's the craft is at.</summary>
         public IReentryAir Air;
         public IReentryCraft Craft;
         /// <summary>The planet's frame.</summary>
         public BodyFrame Frame;
 
-        private const double G0 = 9.80665;
-
         /// <summary>The craft's mass after a burn of <paramref name="deltaV"/> m/s, kg.</summary>
         public double MassAfter(double deltaV)
         {
-            return Isp > 0 ? Craft.MassKg * Math.Exp(-deltaV / (Isp * G0)) : Craft.MassKg;
+            return DropGuard.MassAfterBurn(Craft.MassKg, deltaV, Isp, Payer);
         }
 
         /// <summary>km east and north of the target to where <paramref name="landed"/> comes down on <paramref name="planet"/>.</summary>

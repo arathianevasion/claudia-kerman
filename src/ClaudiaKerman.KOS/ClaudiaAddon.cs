@@ -131,14 +131,17 @@ namespace ClaudiaKerman.KOS
         private void BlockStart(StringValue block)
         {
             var bridge = KosBridge.Instance;
+            MissionDriver.AimedCraft.Block(block.ToString(), null);
             if (shared.KSPPart != null && bridge != null) bridge.OnBlock(shared.KSPPart.persistentId, block.ToString(), null);
         }
 
         private void BlockResult(StringValue block, Lexicon result)
         {
             var bridge = KosBridge.Instance;
-            if (shared.KSPPart == null || bridge == null) return;
             var plain = KosValues.ToDictionary(result);
+            // An aiming block that gave up leaves no aim for a later Entry to compare with (#814).
+            MissionDriver.AimedCraft.Block(block.ToString(), plain);
+            if (shared.KSPPart == null || bridge == null) return;
             bridge.OnBlock(shared.KSPPart.persistentId, block.ToString(), plain);
             // A Coast Checkpoint (#775) ends the run here, with this result as its Script Result: nothing after the block runs, and the mod's resume carries the rest of the script.
             if (plain.ContainsKey(CoastArmed.ResultKey) && bridge.EndRunAtCheckpoint(shared.KSPPart.persistentId, plain))

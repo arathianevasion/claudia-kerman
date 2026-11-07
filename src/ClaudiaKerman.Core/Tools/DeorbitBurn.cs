@@ -24,6 +24,8 @@ namespace ClaudiaKerman.Core.Tools
         public double AccuracyKm = 5;
         /// <summary>The engines' Isp, s, for the mass after the burn; 0 takes the mass as it is now.</summary>
         public double Isp;
+        /// <summary>Who pays the burn when the craft leaves parts out (#814, #854: <see cref="EntryCraft"/>'s masses); null: the craft pays it all.</summary>
+        public DropBurn Payer;
         /// <summary>Whether the predictor opens the craft's stowed chutes (#477); false keeps them stowed.</summary>
         public bool Chutes = true;
         /// <summary>m/s the burn may cost (#794); 0 or less is "auto": <see cref="DeorbitBurn.AutoMaxDv"/> of <see cref="DeltaVLeft"/>.</summary>
@@ -418,8 +420,7 @@ namespace ClaudiaKerman.Core.Tools
                 var retro = usable ? found.X : under(0) <= 0 ? 0 : v.Length;
                 var after = Conic.FromState(_body.Gm, r, v - along * retro + up * normal, ut);
                 var dv = Math.Sqrt(retro * retro + normal * normal);
-                var mass = _craft.MassKg;
-                if (_ask.Isp > 0) mass *= Math.Exp(-dv / (_ask.Isp * G0));
+                var mass = DropGuard.MassAfterBurn(_craft.MassKg, dv, _ask.Isp, _ask.Payer);
                 var landing = ReentryPredictor.Predict(_body, after, ut, _ask.GroundAltitude, mass, _air, _craft, _frame, _ask.Chutes);
                 return new DeorbitPlan
                 {
