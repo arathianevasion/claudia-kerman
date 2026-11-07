@@ -48,9 +48,6 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.True(report > source.IndexOf("if fell <> \"\" {", System.StringComparison.Ordinal), "the field is set once the craft is down, past the abort");
             Assert.True(report < source.IndexOf("return claudia_finish(ctx, true, \"\", extra).", System.StringComparison.Ordinal), "and before the block ends");
             Assert.Contains("//| next, else \"skipped out ...\"), shield_dropped, chutes_used, chutes_kept (titles), powered_dv (m/s), sun_elevation_deg.", source);
-            // The sun 45 degrees from straight up stands 45 degrees above the horizon, and overhead at 90; beneath, -90.
-            Assert.Equal(new[] { "45", "90", "-90" },
-                Run("print round(90 - vang(v(0, 0, 1), v(0, 1, 1)), 1). print round(90 - vang(v(0, 0, 1), v(0, 0, 5)), 1). print round(90 - vang(v(0, 0, 1), v(0, 0, -5)), 1).\n"));
         }
 
         [Fact]

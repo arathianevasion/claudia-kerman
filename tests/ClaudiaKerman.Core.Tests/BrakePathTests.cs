@@ -616,8 +616,8 @@ namespace ClaudiaKerman.Core.Tests
             Assert.DoesNotContain("\"craft\"", tool.InputSchemaJson);
         }
 
-        /// <summary>SHA-256 of find_landing_site's description, a NUL and its input schema, as #529 left them (predicted_dv and descent_shape named in the description).</summary>
-        private const string ToolTextHash = "550EA38527B3AAE598DF6BAB3E3AEA36C43D82FC29A3BEE752C167384682FAC5";
+        /// <summary>SHA-256 of find_landing_site's description, a NUL and its input schema, as #828 left them (a body with air is deorbit's target; #529 named predicted_dv and descent_shape in the description).</summary>
+        private const string ToolTextHash = "6F383109311A7216BBC7729DAD27B569C2DC1C92512CA9EA95949BC53CAF1582";
 
         private static string Sha256(string text)
         {

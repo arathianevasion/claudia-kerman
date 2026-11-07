@@ -4,9 +4,9 @@
 
 Install as in `phase-3-gate.md` (build, copy `dist/GameData/ClaudiaKerman/`, `debug_tools = true`). Results are in `block-tests.log` and `KSP.log`.
 
-## Block test
+## Scenario
 
-Run `reentry_duna_site`. It asks `find_landing_site` for a daylight site near the equator, gives the first to `deorbit` as its target with the stack kept, and flies `reentry`.
+Run `tools/reentry_duna_site`. It's in `tests/tools`, not `tests/blocks`, because only a tool scenario may call the test-only Planning Tool bridge. It asks `find_landing_site` for a daylight site near the equator, gives the first to `deorbit` as its target with the stack kept, and flies `reentry`.
 
 1. **Daylight:** the Script Result has `site_sun_deg` over 20 and `sun_elevation_deg` over 20.
 2. **The miss from the site.** Write down `miss_km` below, and post it on #828.
@@ -15,7 +15,7 @@ Run `reentry_duna_site`. It asks `find_landing_site` for a daylight site near th
 |---|---|---|---|---|
 | | | | | |
 
-**This figure is not yet a measure of the search's accuracy.** #814 (predict the craft after the drop) isn't in, so `deorbit` aims for the stack as it is now, and the miss may read high until it lands. The flight that found this ticket predicted 149 km with the stack on. No accuracy is promised, and the block test doesn't judge the figure.
+**This figure is not yet a measure of the search's accuracy.** #814 (predict the craft after the drop) isn't in, so `deorbit` aims for the stack as it is now, and the miss may read high until it lands. The flight that found this ticket predicted 149 km with the stack on. No accuracy is promised, and the scenario doesn't judge the figure.
 
 ## On a Mission
 

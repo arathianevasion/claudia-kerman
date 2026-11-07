@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 //
-// reentry block test, a Duna landing at a site from find_landing_site (#828): the Mission Script the debug block test runner starts
+// A Duna landing at a site from find_landing_site (tests/tools, #828): the Mission Script the debug block test runner starts
 // (bundled with the Core Library, as for a real Mission). The reference craft arrives in an 80 km circular equatorial orbit with no
 // stage fired. find_landing_site, through the test-only bridge, gives a daylight site near the equator; deorbit burns for it keeping
 // the tank and engine; reentry brings the craft down. The Script Result is reentry's, with the site and the miss from it in km.
