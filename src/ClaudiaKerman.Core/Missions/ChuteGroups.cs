@@ -299,7 +299,7 @@ namespace ClaudiaKerman.Core.Missions
                     : MassAfter(snapshot, sequences.Skip(first).Take(entry.Step - first).Sum(s => Math.Max(0, s.DeltaV)));
                 Judge(snapshot, entry);
                 // An entry that needs them keeps its stack, so it flies with that stack's chutes and engines, and so do the Entries after (ADR 0020).
-                entry.EngineFinish = entry.TouchdownSpeed > EntryFinish.EngineThreshold && engines.Count > 0;
+                entry.EngineFinish = entry.TouchdownSpeed > EntryFinish.ThresholdFor(entry.Body) && engines.Count > 0;
                 if (entry.EngineFinish && !entry.Return && before.Count != aboard.Count + entry.Chutes.Count)
                 {
                     aboard = before;

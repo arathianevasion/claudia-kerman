@@ -18,6 +18,15 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The touchdown speed, m/s, over which an Entry lands on its engines: under <see cref="ChuteGroups.TouchdownLimit"/>, which the Craft Check judges by and the block fails on, for the prediction's error (#682).</summary>
         public const double EngineThreshold = 10;
 
+        /// <summary>The threshold on Kerbin, Eve and Laythe (<see cref="Entries.KeepsStackDangerous"/>, #840): a kept stack there runs close to the heat limit, so chutes up to the failure limit beat engines. The prediction's error has no room left there.</summary>
+        public const double DangerousStackThreshold = ChuteGroups.TouchdownLimit;
+
+        /// <summary>The touchdown speed over which an Entry on <paramref name="body"/> lands on its engines.</summary>
+        public static double ThresholdFor(string body)
+        {
+            return Entries.KeepsStackDangerous(body) ? DangerousStackThreshold : EngineThreshold;
+        }
+
         /// <summary>It keeps everything and lands on its engines.</summary>
         public bool Powered;
         /// <summary>The touchdown predicted with the Entry's drop and chutes, m/s; -1 unknown.</summary>
@@ -34,7 +43,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>Whether this prediction calls for engines: over the threshold, or no prediction and nothing to open.</summary>
         public static bool NeedsEngines(EntryChutes entry)
         {
-            return entry.TouchdownSpeed > EngineThreshold || (entry.TouchdownSpeed < 0 && entry.Chutes.Count == 0);
+            return entry.TouchdownSpeed > ThresholdFor(entry.Body) || (entry.TouchdownSpeed < 0 && entry.Chutes.Count == 0);
         }
 
         /// <summary>

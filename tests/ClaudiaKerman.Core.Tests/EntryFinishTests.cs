@@ -188,6 +188,91 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(engines, EntryFinish.NeedsEngines(new EntryChutes { TouchdownSpeed = speed }));
         }
 
+        // ---- Kerbin, Eve and Laythe stay on chutes up to the failure limit (#840) ----
+
+        [Theory]
+        [InlineData("Kerbin", 15.0, false)]
+        [InlineData("Kerbin", 15.01, true)]
+        [InlineData("Kerbin", 12.0, false)]
+        [InlineData("Eve", 12.0, false)]
+        [InlineData("Laythe", 12.0, false)]
+        [InlineData("Laythe", 15.01, true)]
+        [InlineData("Duna", 12.0, true)]
+        [InlineData("Duna", 10.0, false)]
+        [InlineData("Mars", 12.0, true)]
+        [InlineData("", 12.0, true)]
+        public void The_threshold_is_15_on_Kerbin_Eve_and_Laythe_and_10_everywhere_else(string body, double speed, bool engines)
+        {
+            Assert.Equal(engines, EntryFinish.NeedsEngines(new EntryChutes { Body = body, TouchdownSpeed = speed }));
+        }
+
+        /// <summary>The capsule's mass, by bisection, at which its pod chute alone predicts <paramref name="speed"/> m/s with the stack dropped.</summary>
+        private static double CapsuleFor(string body, double speed)
+        {
+            var gone = new uint[] { Dec, Tank, Radial, Engine, 100, 101, 102, 103 };
+            double low = 0.2, high = 20;
+            for (var i = 0; i < 40; i++)
+            {
+                var mid = (low + high) / 2;
+                if (ChuteGroups.ForEntryNow(Flight(body, 3.9 + mid, mid), true, gone).TouchdownSpeed > speed) high = mid;
+                else low = mid;
+            }
+            return low;
+        }
+
+        private static IList<PlannedSequence> LandOn(string body)
+        {
+            return new[] { new PlannedSequence { Name = "Land on " + body, DeltaV = 100 } };
+        }
+
+        [Theory]
+        [InlineData("Kerbin", 12, false)]
+        [InlineData("Kerbin", 14.9, false)]
+        [InlineData("Kerbin", 16, true)]
+        [InlineData("Duna", 12, true)]
+        [InlineData("Eve", 12, false)]
+        [InlineData("Laythe", 12, false)]
+        [InlineData("Laythe", 16, true)]
+        public void Decide_by_the_worked_examples_with_a_fuelled_engine(string body, double predicted, bool powered)
+        {
+            var capsule = CapsuleFor(body, predicted);
+            var answer = Ask(Flight(body, 3.9 + capsule, capsule), LandOn(body));
+
+            Assert.InRange(Speed(answer), predicted - 0.2, predicted + 0.2);
+            Assert.Equal(powered, answer["powered"]);
+        }
+
+        [Fact]
+        public void Kerbin_over_15_with_no_engine_stays_on_chutes()
+        {
+            var capsule = CapsuleFor("Kerbin", 16);
+            var answer = Ask(Flight("Kerbin", 3.9 + capsule, capsule, engine: false), KerbinReturn);
+            Assert.Equal(false, answer["powered"]);
+        }
+
+        [Theory]
+        [InlineData("Kerbin", false)]
+        [InlineData("Duna", true)]
+        public void The_Craft_Checks_powered_finish_agrees_with_Decide_at_12(string body, bool powered)
+        {
+            var legs = LandOn(body);
+            double low = 0.2, high = 20;
+            for (var i = 0; i < 40; i++)
+            {
+                var mid = (low + high) / 2;
+                var walked = ChuteGroups.Of(Flight(body, 3.9 + mid, mid), legs, 0, false, null).Entries[0].TouchdownSpeed;
+                if (walked > 12) high = mid;
+                else low = mid;
+            }
+            var at = Flight(body, 3.9 + low, low);
+            var groups = ChuteGroups.Of(at, legs, 0, false, null);
+
+            Assert.InRange(groups.Entries[0].TouchdownSpeed, 11.5, 12.5);
+            Assert.Equal(powered, groups.Entries[0].EngineFinish);
+            Assert.Equal(powered, groups.Describe().Contains("powered finish"));
+            Assert.Equal(powered, Ask(at, legs)["powered"]);
+        }
+
         [Fact]
         public void No_prediction_stays_on_the_chutes_it_has_and_with_none_it_needs_the_engines()
         {
