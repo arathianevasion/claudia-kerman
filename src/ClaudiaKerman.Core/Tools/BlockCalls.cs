@@ -40,7 +40,7 @@ namespace ClaudiaKerman.Core.Tools
             ask["body"] = orbited ?? "";
             // land stays airless-only (#828): the tool's search on a body with air is for deorbit's target.
             var over = snapshot == null ? null : snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, orbited, StringComparison.OrdinalIgnoreCase));
-            if (over != null && LandingSiteSearch.HasAir(over)) return Error("land flies airless bodies only; " + over.Name + " has an atmosphere");
+            if (over != null && LandingSiteSearch.HasAir(over)) return Error("land flies airless bodies only; " + over.Name + " has an atmosphere; use reentry (touchdown \"powered\" when chutes are short)");
             object checkOnly;
             if (ask.TryGetValue("check_only", out checkOnly) && checkOnly is bool && (bool)checkOnly)
             {

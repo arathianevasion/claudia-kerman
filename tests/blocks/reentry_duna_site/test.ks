@@ -25,7 +25,7 @@ if found:haskey("error") {
   local site is found:sites[0].
   local aim is lexicon("lat", site:latitude, "lng", site:longitude).
   print "site test: " + site:latitude + ", " + site:longitude + ", sun " + site:sun_elevation_deg + " at UT " + site:landing_ut.
-  local burn is deorbit(lexicon("target", aim, "stage_limit", 2, "accuracy_km", 5)).
+  local burn is deorbit(lexicon("target", aim, "stage_limit", 2, "max_wait", site:max_wait_s)).
   print "site test: deorbit " + burn:success + ", " + burn:reason.
   local sites is found:sites:length.
   set result to burn.

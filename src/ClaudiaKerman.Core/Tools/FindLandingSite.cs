@@ -308,8 +308,10 @@ namespace ClaudiaKerman.Core.Tools
                     .Field("longitude", PlanningJson.Round(site.Longitude, 3))
                     .Field("biome", site.Biome)
                     .Field("terrain_altitude", PlanningJson.Round(site.Altitude, 1));
+                PlanningJson.Time(json, "burn", site.PassUt, now);
                 PlanningJson.Time(json, "landing", site.LandingUt, now)
-                    .Field("sun_elevation_deg", PlanningJson.Round(site.SunElevationDeg, 1));
+                    .Field("sun_elevation_deg", PlanningJson.Round(site.SunElevationDeg, 1))
+                    .Field("max_wait_s", PlanningJson.Round(site.MaxWaitS, 0));
                 if (!double.IsNaN(site.WaitUntilUt)) PlanningJson.Time(json, "wait_until", site.WaitUntilUt, now);
                 if (!double.IsNaN(site.FromNearDeg)) json.Field("from_near_deg", PlanningJson.Round(site.FromNearDeg, 1));
                 if (site.AtEdge) json.Field("near_biome_edge", true);
@@ -335,8 +337,10 @@ namespace ClaudiaKerman.Core.Tools
             var notes = new List<string>();
             if (found.OutOfTime)
                 notes.Add("partial: out of time: " + LandingSiteSearch.Count(found.Tried) + " of the " + LandingSiteSearch.Count(found.NearPoints) + " track points were tried");
+            if (found.Sites.Count > 0)
+                notes.Add("give deorbit the site as target and its max_wait_s as max_wait, so it flies the pass whose sun is given");
             if (found.Sites.Any(s => !double.IsNaN(s.WaitUntilUt)))
-                notes.Add("the pass deorbit would take first is dark at every site, so these are for a later pass: hold the craft to wait_until_ut, then call deorbit; called sooner it flies the dark pass");
+                notes.Add("the pass deorbit would take first is dark at every site, so these are for a later pass: say so in the plan, hold the craft to wait_until_ut, then call deorbit; called sooner it flies the dark pass");
             if (found.Sites.Count > 0 && found.Sites[0].AtEdge)
                 notes.Add("no site more than " + query.EdgeMarginM.ToString("0.##", CultureInfo.InvariantCulture) + " m inside the " + found.Sites[0].Biome + " biome was reachable; a landing may come down outside it");
             if (found.Sites.Count == 0)

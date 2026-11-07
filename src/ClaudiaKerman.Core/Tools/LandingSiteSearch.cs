@@ -73,6 +73,8 @@ namespace ClaudiaKerman.Core.Tools
         public bool Water;
         /// <summary>On a body with air (#828): the UT to hold the craft to before <c>deorbit</c>, when the pass it takes first is dark; NaN for no wait.</summary>
         public double WaitUntilUt = double.NaN;
+        /// <summary>On a body with air (#828): the <c>max_wait</c> that keeps <c>deorbit</c> from a pass later than this site's, s, called then. <see cref="PassUt"/> is that pass's burn.</summary>
+        public double MaxWaitS;
     }
 
     internal sealed class LandingSiteResult
@@ -148,8 +150,10 @@ namespace ClaudiaKerman.Core.Tools
         private const int RingBearings = 16;
         /// <summary>A ring site lies at least this much of <see cref="LandingSiteQuery.PoiMinM"/> across either pass's track from the Point of Interest, so a miss along the track passes it (#662's 0.7).</summary>
         public const double RingAcrossShare = 0.7;
-        /// <summary>A site that needs a wait (#828): this many seconds before its burn the craft may call <c>deorbit</c>, whose burn is at least 4 minutes ahead.</summary>
-        public const double WaitLeadS = 300;
+        /// <summary><c>deorbit</c>'s burn is at least this far ahead of its call, s (deorbit_lead_s in deorbit.ks).</summary>
+        public const double DeorbitLeadS = 240;
+        /// <summary>A site that needs a wait (#828): this many seconds before its burn the craft is held to, for <c>deorbit</c>'s lead and the script's start.</summary>
+        public const double WaitLeadS = 600;
 
         /// <summary>Whether the body has air: <see cref="InAir"/>'s search, and no <c>land</c>.</summary>
         public static bool HasAir(SnapshotBody body)
@@ -386,8 +390,8 @@ namespace ClaudiaKerman.Core.Tools
         /// The search on a body with air (#828), for a <c>deorbit</c> target: the track's points in the biome and off the water, each with the pass
         /// <c>deorbit</c> takes to it (<see cref="AirPass"/>: from this orbit, in the same reach as <c>land</c>'s) and the sun at that arrival. With
         /// daylight, the sites with Daylight there, highest sun first, as a large miss then still lands in Daylight; without, in the track's order. The
-        /// slope isn't tested: the miss is far larger than its scale. If every pass <c>deorbit</c> takes is dark, the sites come from the first lit pass in
-        /// reach, each with the wait that leaves <c>deorbit</c> that pass (<see cref="LandingSite.WaitUntilUt"/>).
+        /// slope isn't tested: the miss is far larger than its scale. If no pass <c>deorbit</c> takes has Daylight, the sites come from the passes in reach that do,
+        /// each with the wait that leaves <c>deorbit</c> that pass (<see cref="LandingSite.WaitUntilUt"/>). Each site gives the <c>max_wait</c> that holds it to the pass.
         /// </summary>
         private static LandingSiteResult InAir(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, IPlanningBody api, LandingSiteResult result)
         {
@@ -451,7 +455,7 @@ namespace ClaudiaKerman.Core.Tools
             return body.Ocean && sample.Altitude <= 0;
         }
 
-        /// <summary>The candidates each with its pass and the sun at the arrival (<paramref name="waiting"/>: the first lit pass, for a wait). With no pass, a first look counts them unflyable.</summary>
+        /// <summary>The candidates each with its pass and the sun at the arrival (<paramref name="waiting"/>: among the passes with Daylight, for a wait). With no pass, a first look counts them unflyable.</summary>
         private static List<LandingSite> AirSites(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, IPlanningBody api, List<Candidate> candidates, bool waiting, LandingSiteResult result)
         {
             var deadline = query.Deadline ?? SearchDeadline.None;
@@ -469,11 +473,12 @@ namespace ClaudiaKerman.Core.Tools
                     if (!waiting) result.Unflyable++;
                     continue;
                 }
+                var from = waiting ? Math.Max(now, pass.BurnUt - WaitLeadS) : now;
                 sites.Add(new LandingSite
                 {
-                    Latitude = c.Sample.Latitude, Longitude = c.Sample.Longitude, Biome = c.Sample.Biome, Altitude = c.Sample.Altitude, PassUt = c.Sample.Ut, FromNearDeg = c.FromNear,
+                    Latitude = c.Sample.Latitude, Longitude = c.Sample.Longitude, Biome = c.Sample.Biome, Altitude = c.Sample.Altitude, PassUt = pass.BurnUt, FromNearDeg = c.FromNear,
                     LandingUt = pass.ArriveUt, CorrectionDv = pass.CorrectionDv, Water = OnWater(body, c.Sample), SunElevationDeg = pass.SunDeg,
-                    WaitUntilUt = waiting ? Math.Max(now, pass.BurnUt - WaitLeadS) : double.NaN,
+                    WaitUntilUt = waiting ? from : double.NaN, MaxWaitS = Math.Max(0, pass.BurnUt - from - DeorbitLeadS) + orbit.Period / 4,
                 });
             }
             if (!waiting && sites.Count > 0)
@@ -486,25 +491,17 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// The pass <c>deorbit</c> takes to a track point: it burns for the cheapest, the earlier on a near tie, and on a near-equatorial orbit that is the next pass, not
-        /// the one at the point's own time. The point is under the track at its own time, so no later pass is cheaper, and the search stops just past it unless that finds
-        /// none. With <paramref name="lit"/>, the same among the passes with Daylight, out to the search's reach.
+        /// The pass <c>deorbit</c> takes to a track point (<see cref="LandingPassAsk.DeorbitPeRadius"/>), over the search's reach from its earliest burn: on a near-equatorial
+        /// orbit that is the next pass, not the one at the point's own time. With <paramref name="daylightOnly"/>, the same among the passes with Daylight.
         /// </summary>
-        private static LandingPassResult AirPass(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, SiteSample at, bool lit, IPlanningBody api)
+        private static LandingPassResult AirPass(SnapshotBody body, Conic orbit, double now, LandingSiteQuery query, SiteSample at, bool daylightOnly, IPlanningBody api)
         {
-            var latest = now + LandingPass.ReachSeconds(Math.Max(0.05, Math.Min(MaxWindowHours, query.WithinHours)), query.Daylight, body.RotationPeriod);
-            var ask = new LandingPassAsk
+            return LandingPass.Find(body, orbit, now, new LandingPassAsk
             {
-                Latitude = at.Latitude, Longitude = at.Longitude, PeRadius = body.Radius + Math.Max(0, at.Altitude) + LandingPass.ApproachM, EarliestUt = now + LandingPass.LeadS,
-                LatestUt = lit ? latest : Math.Min(latest, at.Ut + 1.5 * orbit.Period), Daylight = lit, MaxCorrectionDv = query.MaxCorrectionDv, SoonestCheapest = true,
-            };
-            var pass = LandingPass.Find(body, orbit, now, ask, api);
-            if (pass.Error != null && ask.LatestUt < latest)
-            {
-                ask.LatestUt = latest;
-                pass = LandingPass.Find(body, orbit, now, ask, api);
-            }
-            return pass;
+                Latitude = at.Latitude, Longitude = at.Longitude, PeRadius = body.Radius + Math.Max(0, at.Altitude) + LandingPass.ApproachM, EarliestUt = now + DeorbitLeadS,
+                LatestUt = now + LandingPass.ReachSeconds(Math.Max(0.05, Math.Min(MaxWindowHours, query.WithinHours)), query.Daylight, body.RotationPeriod),
+                Daylight = daylightOnly, MaxCorrectionDv = query.MaxCorrectionDv, DeorbitPeRadius = body.Radius + DeorbitBurn.EntryPeriapsisShare * body.AtmosphereHeight,
+            }, api);
         }
 
         /// <summary>The first sites of the order, far enough apart, and with a biome those inside its margin; the sites at its edge only with none inside.</summary>

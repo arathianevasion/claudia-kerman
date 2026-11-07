@@ -22,9 +22,9 @@ Run `reentry_duna_site`. It asks `find_landing_site` for a daylight site near th
 Fly the craft from m20261106-203509-34a6 with the goal "Fly to Duna and land near the equator in daylight".
 
 1. **The search:** in Duna orbit, `find_landing_site` answers with sites, not a refusal. Each has `landing_ut` and `sun_elevation_deg`, and the answer's `slope` says it wasn't applied.
-2. **The site is `deorbit`'s:** the Sequence Plan's `deorbit` has that site as its `target`.
-3. **The sun holds:** the `reentry` result's `sun_elevation_deg` is near the site's `sun_elevation_deg`. If not, compare the `deorbit` result's `burn_ut` with the site's `landing_ut`: `deorbit` should fly the pass the site was read for. A different pass means the search's model of `deorbit`'s choice is wrong: post it on #828.
-4. **A dark exact place:** start a second flight with a goal naming one place on the far side from the sun, such as "land at 0N 180E". The site comes back with `wait_until_ut` and a note. Hold the craft to that time, then `deorbit` flies the lit pass.
+2. **The site is `deorbit`'s:** the Sequence Plan's `deorbit` has that site as its `target` and the site's `max_wait_s` as its `max_wait`.
+3. **The sun holds:** the `reentry` result's `sun_elevation_deg` is near the site's `sun_elevation_deg`. If not, compare the `deorbit` result's `burn_ut` with the site's `burn_ut`. A different pass means the search's estimate of `deorbit`'s choice is wrong: post it on #828. On an eccentric orbit, check this one twice: the estimate has been tested in Core only against a circular and a slightly eccentric orbit, without `deorbit`'s predictor.
+4. **A dark exact place:** start a second flight with a goal naming one place on the far side from the sun, such as "land at 0N 180E". The site comes back with `wait_until_ut` and a note. Claudia says so in the plan, holds the craft to that time and gives `max_wait_s`, and `deorbit` flies the pass with Daylight.
 
 ## Saying when it failed
 
@@ -35,5 +35,5 @@ Land on Duna or Kerbin on the night side, with Daylight landing on in Mission Se
 These read from Core tests too. Check one in flight if a Kerbin return is due.
 
 1. In Kerbin orbit before a further burn (say a Kerbin landing with a relaunch still in the plan), the answer says `water` is excluded, and no site's `terrain_altitude` is 0.
-2. On the last reentry of a Mission, it says `water` is allowed, and a site over the sea has `"water": true`.
+2. On a Mission's Last Entry, it says `water` is allowed, and a site over the sea has `"water": true`.
 3. `land` still refuses a body with air, as does `find_landing_site`'s `poi`.

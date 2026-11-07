@@ -145,6 +145,52 @@ namespace ClaudiaKerman.Core.Tests
             });
         }
 
+        [Fact]
+        public void On_an_eccentric_orbit_a_site_lands_from_the_burn_deorbit_finds_cheapest_near_apoapsis()
+        {
+            // 80 x 100 km: the retrograde part to a 15 km periapsis costs about 11 m/s less at apoapsis than at periapsis, against a tie of 1 m/s. So the burn is near apoapsis, not the soonest pass.
+            var snapshot = Orbiting(Duna());
+            snapshot.Orbit.SemiMajorAxis = 320000 + 90000;
+            snapshot.Orbit.Eccentricity = 10000 / 410000.0;
+            snapshot.Orbit.Periapsis = 80000;
+            snapshot.Orbit.Apoapsis = 100000;
+            var sites = Sites(Run(snapshot, "{\"body\":\"Duna\",\"daylight\":true}", new World()));
+            Assert.NotEmpty(sites);
+            var conic = Conic.FromElements(Duna().Gm, snapshot.Orbit.SemiMajorAxis, snapshot.Orbit.Eccentricity, 0, 0, 0, 0, Now);
+            Assert.All(sites, s =>
+            {
+                var fromApoapsis = Math.Abs(LandingSiteSearch.Wrap180(conic.TrueAnomaly(Num(s, "burn_ut")) * 180 / Math.PI - 180));
+                Assert.True(fromApoapsis < 60, fromApoapsis + " degrees from apoapsis: " + s);
+            });
+        }
+
+        [Fact]
+        public void Each_site_gives_the_max_wait_that_holds_deorbit_to_its_pass_and_says_how_to_use_it()
+        {
+            var period = 2 * Math.PI * Math.Sqrt(Math.Pow(400000, 3) / Duna().Gm);
+            var result = Run(Orbiting(Duna()), "{\"body\":\"Duna\",\"daylight\":true}", new World { SunLongitude = 120 });
+            Assert.All(Sites(result), s =>
+            {
+                // The burn is inside the window from deorbit's earliest; the next pass, an orbit on, is outside it.
+                var last = Now + LandingSiteSearch.DeorbitLeadS + Num(s, "max_wait_s");
+                Assert.InRange(Num(s, "burn_ut"), Now + LandingSiteSearch.DeorbitLeadS, last);
+                Assert.True(Num(s, "burn_ut") + period > last, s.ToString());
+            });
+            Assert.Contains("max_wait_s", result.GetProperty("note").GetString());
+        }
+
+        [Fact]
+        public void A_wait_leaves_deorbit_only_the_pass_with_Daylight()
+        {
+            var period = 2 * Math.PI * Math.Sqrt(Math.Pow(400000, 3) / Duna().Gm);
+            var sites = Sites(Run(Orbiting(Duna()), "{\"body\":\"Duna\",\"daylight\":true,\"near\":{\"latitude\":0,\"longitude\":180}}", new World()));
+            Assert.All(sites, s =>
+            {
+                Assert.Equal(LandingSiteSearch.WaitLeadS, Num(s, "burn_ut") - Num(s, "wait_until_ut"), 0);
+                Assert.True(Num(s, "max_wait_s") < period, s.ToString());
+            });
+        }
+
         private sealed class SlowWorld : World, IPlanningClock
         {
             public double ElapsedMs { get; private set; }

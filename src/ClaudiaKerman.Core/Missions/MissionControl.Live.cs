@@ -679,7 +679,7 @@ namespace ClaudiaKerman.Core.Missions
             }
             if (ended.Block != "reentry") return;
             var dark = LandingLine.Dark(ended.Result, MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).DaylightLanding, mission.Goal);
-            mission.RunEvents.Add(_ut, RunEventKind.DarkLanding, dark);
+            if (dark.Length > 0) mission.RunEvents.Replace(_ut, RunEventKind.DarkLanding, dark);
             var landed = LandingLine.Landed(mission.LandingAim, ended.Result, _snapshot);
             if (landed.Length == 0) return;
             mission.RunEvents.Replace(_ut, RunEventKind.Landing, landed);
