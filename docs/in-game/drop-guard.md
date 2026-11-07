@@ -18,3 +18,5 @@ Run `tests/blocks/drop_parts`. It passes as before (the guard has no Mission Pla
 ## Check 3: a Mission (optional, with an API key)
 
 Start a Mission whose plan has a burn after the sequence that drops a fuelled stage. The drop is refused with the figures in the reason: `drop_parts` and `deorbit`'s `separate` fail before firing or burning, and `reentry` flies on with the stack kept and a `drop` note in `KSP.log`. A revised plan with that burn removed lets the same drop go.
+
+The Kerboscript tests for the three callers (`drop_parts`, `deorbit`, `reentry`) read the source's order rather than flying them, so this scenario is what proves `deorbit`'s and `reentry`'s refusal.
