@@ -65,8 +65,8 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// land's lean limit on a demand (al, cr, up m/s², <paramref name="h"/> m over the ground), for the flight and BRAKEPATH
-        /// alike. Above the final descent, and in its last few metres, the sideways part is cut to <see cref="BrakeGuidance.MaxTilt"/>
+        /// land's lean limit on a demand (al, cr, up m/s², <paramref name="h"/> m over the ground), for the flight (BRAKEPATH
+        /// still cuts by <see cref="BrakeGuidance.MaxTilt"/> alone and doesn't model the cap). Above the final descent, and in its last few metres, the sideways part is cut to <see cref="BrakeGuidance.MaxTilt"/>
         /// as before. In the final descent, where <see cref="TerminalLeanDeg"/> binds, the upward part is raised so the demand
         /// leans that far and still brakes across the ground, but never past what holds its height (gravity <paramref name="g"/>
         /// less half its vertical speed <paramref name="vUp"/>, m/s, as the settle holds it; nor 0.95 of <paramref name="aMax"/>):
