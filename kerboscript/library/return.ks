@@ -22,7 +22,7 @@
 //|     ejection picks the window and times its burn to land there; the correction
 //|     trims the rest, without target_inc. Read predicted_error_km; when too far for the Mission Goal,
 //|     capture and call deorbit. Aim a splashdown offshore.
-//|   max_wait ["auto"]: s the ejection may wait; "auto" is one turn of the landing (7 h), or inclined the cheap plane +3.5 h.
+//|   max_wait ["auto"]: s the ejection may wait; "auto" is one turn of the landing (7 h), more if inclined.
 //|   correction [true]: false leaves out the mid-course correction.
 //|   checkpoint ["off"]: the mod's own, for a coast it resumes.
 //|   max_duration ["auto"]: the time to the predicted reentry plus 900 s; a shorter one moves the correction sooner.
