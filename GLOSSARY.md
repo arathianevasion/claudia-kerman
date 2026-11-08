@@ -137,6 +137,10 @@ _Avoid_: slingshot, gravity assist (the planet's gravity does no turning for fre
 **Two-Step Route**:
 From a moon's orbit to another planet of its star: a return to the planet's low orbit, a capture there, and the ejection from that orbit at the Transfer Window.
 
+**High Route** (#866):
+The route on which `capture`, arriving at a planet with a moon of it next in the Mission Plan, keeps a high ellipse timed to meet that moon instead of circling; `transfer_to` then leaves from the ellipse's periapsis at the moon's window. The Delta-v Map prices a Mission Goal at such a moon by it. Falls back to the circle when no window fits before the next fixed date (plain wording, not a term).
+_Avoid_: kept orbit, high orbit, kept ellipse
+
 **Daylight**:
 At a landing site, the sun is more than 20° above the horizon there. A daylight landing touches down only in Daylight; a sun lower than that, though up, is not Daylight.
 _Avoid_: lit, sunlit, daytime

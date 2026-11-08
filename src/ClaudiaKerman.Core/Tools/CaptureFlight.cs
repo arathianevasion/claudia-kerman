@@ -201,7 +201,7 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// #866: with a moon of this planet next (<see cref="KeptRoute.NextMoon"/>), the capture burn into the high ellipse timed to it (<see cref="KeptRoute.Plan"/>),
+        /// #866: with a moon of this planet next (<see cref="HighRoute.NextMoon"/>), the capture burn into the high ellipse timed to it (<see cref="HighRoute.Plan"/>),
         /// in the arrival plane: a tilt is flown at its node high up, as the apoapsis method's. Null for the circle, <paramref name="circle"/> saying why ("" with no Mission Plan).
         /// </summary>
         private static TransferFlightStep BeginKeep(GameSnapshot snapshot, PredictBurn.Setup setup, ArrivalPlane plane, CaptureChoice choice, double peUt, Vec3 r, Vec3 v,
@@ -209,14 +209,14 @@ namespace ClaudiaKerman.Core.Tools
         {
             double? deadline;
             var body = setup.Body;
-            var moon = KeptRoute.NextMoon(snapshot, setup.System, body, out deadline, out circle);
+            var moon = HighRoute.NextMoon(snapshot, setup.System, body, out deadline, out circle);
             if (moon == null)
             {
                 if (circle != "") circle = "circle: " + circle;
                 return null;
             }
             var orbit = setup.Start;
-            var plan = KeptRoute.Plan(snapshot, setup.System, body, moon, r, orbit.W, peUt, targetR, KeptRoute.TopR(body.SoiRadius, moon), MoonPe(moon), deadline, out circle);
+            var plan = HighRoute.Plan(snapshot, setup.System, body, moon, r, orbit.W, peUt, targetR, HighRoute.TopR(body.SoiRadius, moon), MoonPe(moon), deadline, out circle);
             if (plan == null)
             {
                 circle = "circle: " + circle;
@@ -225,7 +225,7 @@ namespace ClaudiaKerman.Core.Tools
             var method = CaptureMethod.Plain;
             if (choice.TiltDeg > InPlaneDeg)
             {
-                var ellipse = Conic.FromState(orbit.Mu, r, Vec3.Cross(orbit.W, r.Normalized) * KeptRoute.Speed(orbit.Mu, r.Length, plan.HighR), peUt);
+                var ellipse = Conic.FromState(orbit.Mu, r, Vec3.Cross(orbit.W, r.Normalized) * HighRoute.Speed(orbit.Mu, r.Length, plan.HighR), peUt);
                 var turn = TiltPoint(ellipse, plane, peUt);
                 method = turn != null && turn.Burn.Length <= choice.MaxPlaneDv ? CaptureMethod.Apoapsis : CaptureMethod.Over;
                 if (method == CaptureMethod.Over && turn != null) choice.ApoapsisCost = turn.Burn.Length;
@@ -239,7 +239,7 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// In the kept ellipse: the tilt at its node, then the periapsis set to alt at the apoapsis, then the window checked on the orbit as flown. A window
-        /// within <see cref="KeptRoute.MaxLoops"/> loops ends the capture there; none (a burn off, a Due Time moved): the circle at alt, saying why.
+        /// within <see cref="HighRoute.MaxLoops"/> loops ends the capture there; none (a burn off, a Due Time moved): the circle at alt, saying why.
         /// </summary>
         private static TransferFlightStep InKeep(GameSnapshot snapshot, PredictBurn.Setup setup, CaptureAsk ask, ArrivalPlane plane, double targetR)
         {
@@ -256,18 +256,18 @@ namespace ClaudiaKerman.Core.Tools
             double? deadline;
             string why;
             var body = setup.Body;
-            var moon = KeptRoute.NextMoon(snapshot, setup.System, body, out deadline, out why);
-            if (moon != null && KeptRoute.IsKept(setup.System, body, orbit, moon))
+            var moon = HighRoute.NextMoon(snapshot, setup.System, body, out deadline, out why);
+            if (moon != null && HighRoute.IsKept(setup.System, body, orbit, moon))
             {
                 int loop;
-                var window = KeptRoute.Departure(snapshot, setup.System, body, orbit, moon, MoonPe(moon), after, after + KeptRoute.MaxLoops * orbit.Period, deadline, out loop);
+                var window = HighRoute.Departure(snapshot, setup.System, body, orbit, moon, MoonPe(moon), after, after + HighRoute.MaxLoops * orbit.Period, deadline, out loop);
                 if (window != null)
                 {
                     var done = Done(setup, plane, ask, targetR, "");
                     done.Report[KeptKey] = KeptLine(body, moon, orbit.PeR, orbit.ApR, window.Ut, loop);
                     return done;
                 }
-                why = "no " + moon.Name + " window within " + KeptRoute.MaxLoops + " loops of this orbit" + (deadline.HasValue ? " before the next fixed date" : "");
+                why = "no " + moon.Name + " window within " + HighRoute.MaxLoops + " loops of this orbit" + (deadline.HasValue ? " before the next fixed date" : "");
             }
             var step = Round(setup, ask, plane, targetR);
             step.Report[KeptKey] = "circle: " + (why != "" ? why : "the orbit kept no longer reaches " + (moon != null ? moon.Name : "the moon"));
@@ -283,7 +283,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>"kept 60 x 3,300 km for Ike: window at periapsis 1, UT 169,104,601".</summary>
         private static string KeptLine(SnapshotBody body, SnapshotBody moon, double peR, double apR, double windowUt, int loop)
         {
-            return "kept " + KeptRoute.Shape(body, peR, apR) + " for " + moon.Name + ": window at periapsis " + loop + ", UT " + MoonCrossing.Num(windowUt);
+            return "kept " + HighRoute.Shape(body, peR, apR) + " for " + moon.Name + ": window at periapsis " + loop + ", UT " + MoonCrossing.Num(windowUt);
         }
 
         /// <summary>

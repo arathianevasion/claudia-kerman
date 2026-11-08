@@ -274,12 +274,12 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
-        /// #866: home to a moon of another planet by the planet's high orbit, as <c>capture</c> keeps it (<see cref="KeptRoute"/>): the trip in captures at the
-        /// low orbit's height into an ellipse reaching <see cref="KeptRoute.TopR"/>, and the trip on lowers its apoapsis to the
+        /// #866: home to a moon of another planet by the planet's high orbit, as <c>capture</c> keeps it (<see cref="HighRoute"/>): the trip in captures at the
+        /// low orbit's height into an ellipse reaching <see cref="HighRoute.TopR"/>, and the trip on lowers its apoapsis to the
         /// moon from there. The two legs, <c>transfer:Duna</c> and <c>transfer:Duna&gt;Ike</c>, priced as one route in place of the low circle's (about 600 m/s
         /// less at Ike); null when the moon's planet isn't another of the star's, or its high orbit doesn't reach past the moon.
         /// </summary>
-        internal DeltaVLeg[] HighRoute(string moonName)
+        internal DeltaVLeg[] HighRouteLegs(string moonName)
         {
             var moon = _bodies.FirstOrDefault(b => string.Equals(b.Name, moonName, StringComparison.OrdinalIgnoreCase));
             var center = _bodies.FirstOrDefault(b => b.Name == Home);
@@ -289,9 +289,9 @@ namespace ClaudiaKerman.Core.Missions
             var inbound = Trip(center, planet);
             var hop = Trip(planet, moon);
             var low = LowOrbit(planet);
-            var high = KeptRoute.TopR(Sphere(planet), moon);
+            var high = HighRoute.TopR(Sphere(planet), moon);
             if (inbound == null || hop == null || high <= moon.Sma * (1 + moon.Eccentricity)) return null;
-            var atHigh = KeptRoute.Speed(planet.Gm, low, high);
+            var atHigh = HighRoute.Speed(planet.Gm, low, high);
             var saving = atHigh - Circular(planet.Gm, low);
             inbound.Id = "transfer:" + planet.Name;
             inbound.Description = "Low " + center.Name + " orbit to high " + planet.Name + " orbit (departure, plane change and capture)";
@@ -301,7 +301,7 @@ namespace ClaudiaKerman.Core.Missions
             inbound.HighSaving = saving;
             hop.Id = "transfer:" + planet.Name + ">" + moon.Name;
             hop.Description = "High " + planet.Name + " orbit to low " + moon.Name + " orbit (departure, plane change and capture)";
-            hop.Departure = atHigh - KeptRoute.Speed(planet.Gm, low, moon.Sma);
+            hop.Departure = atHigh - HighRoute.Speed(planet.Gm, low, moon.Sma);
             hop.DeltaV = hop.Departure + hop.PlaneChange + hop.Arrival;
             return new[] { inbound, hop };
         }
@@ -312,7 +312,7 @@ namespace ClaudiaKerman.Core.Missions
             foreach (var moon in named)
             {
                 if (named.Any(b => b.Name == moon.Parent)) continue;
-                var route = HighRoute(moon.Name);
+                var route = HighRouteLegs(moon.Name);
                 if (route == null) continue;
                 foreach (var leg in route)
                 {
