@@ -70,6 +70,29 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(0, MissionView.Stamp(new GameSnapshot(), view).LaterLegsDv);
         }
 
+        /// <summary>#898: the planning tool path and Stamp share one rule; a rewrite of the leg in hand (SequenceCounted) counts the next leg, a fresh plan is unchanged.</summary>
+        [Theory]
+        [InlineData(1, false, 400)] // fresh plan: one leg begun, the leg planned is index 1, later is 400
+        [InlineData(1, true, 1200)] // rewrite of leg 0 in hand: leg 1's 800 stays a later leg
+        [InlineData(2, true, 400)]
+        [InlineData(0, false, 1200)]
+        [InlineData(0, true, 1200)]
+        public void A_rewrite_of_the_leg_in_hand_counts_the_next_leg_as_later(int stepsBegun, bool counted, double expected)
+        {
+            var legs = new System.Collections.Generic.List<PlannedSequence>
+            {
+                new PlannedSequence { Name = "Launch", DeltaV = 3400 },
+                new PlannedSequence { Name = "Transfer", DeltaV = 800, Vessel = "Kerbal X" },
+                new PlannedSequence { Name = "Probe", DeltaV = 600, Vessel = "Probe" },
+                new PlannedSequence { Name = "Land", DeltaV = 400, Vessel = "craft" },
+            };
+            Assert.Equal(expected, MissionCards.LaterLegsDv(legs, stepsBegun, counted, "Kerbal X", ""));
+            Assert.Equal(0, MissionCards.LaterLegsDv(legs, stepsBegun, counted, "Kerbal X", "Probe"));
+            // Stamp is the same rule with the leg in hand counted.
+            var view = new MissionView { Stage = MissionStage.Running, CurrentSequence = stepsBegun - 1, CraftName = "Kerbal X", PlanLegs = legs };
+            Assert.Equal(MissionCards.LaterLegsDv(legs, stepsBegun, true, "Kerbal X", ""), MissionView.Stamp(new GameSnapshot(), view).LaterLegsDv);
+        }
+
         [Fact]
         public void With_no_Mission_the_snapshot_keeps_the_defaults()
         {

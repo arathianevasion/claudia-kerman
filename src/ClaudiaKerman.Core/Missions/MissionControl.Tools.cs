@@ -220,7 +220,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The craft's delta-v for the Mission Plan's legs after the one being planned (#694): the rest of the plan less its first, a Child Vessel's legs left out; null with no Mission Plan.</summary>
         private static double? LaterLegsDv(Mission mission)
         {
-            return mission.Plan == null ? (double?)null : MissionCards.LaterLegsDv(mission.Plan, StepsBegun(mission), mission.VesselName);
+            return mission.Plan == null ? (double?)null : MissionCards.LaterLegsDv(mission.Plan.Sequences, StepsBegun(mission), mission.SequenceCounted, mission.VesselName, mission.RunningChild);
         }
 
         private void ToolsAnswered(Mission mission, Turn turn, AssistantMessage message, ToolStepResult step, bool atLimit)
