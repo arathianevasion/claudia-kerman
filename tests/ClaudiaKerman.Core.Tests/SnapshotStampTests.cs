@@ -56,6 +56,21 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void While_a_child_vessel_runs_the_craft_s_later_legs_are_not_taken_from_its_delta_v()
+        {
+            var view = new MissionView
+            {
+                Stage = MissionStage.Running, CurrentSequence = 0, CraftName = "Kerbal X", RunningChild = "Capsule",
+                PlanLegs = new System.Collections.Generic.List<PlannedSequence>
+                {
+                    new PlannedSequence { Name = "Deorbit", DeltaV = 150, Vessel = "Capsule" },
+                    new PlannedSequence { Name = "Station", DeltaV = 300, Vessel = "Kerbal X" },
+                },
+            };
+            Assert.Equal(0, MissionView.Stamp(new GameSnapshot(), view).LaterLegsDv);
+        }
+
+        [Fact]
         public void With_no_Mission_the_snapshot_keeps_the_defaults()
         {
             var defaults = new PlayerConfig();

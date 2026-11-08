@@ -250,7 +250,7 @@ namespace ClaudiaKerman.Core.Tools
         {
             double low, high;
             CorridorOf(target, ask, out low, out high);
-            return (pe >= low && pe <= high) || Math.Abs(pe - ask.TargetPe) <= PlainSlack * ask.PeTolerance;
+            return (pe >= low && pe <= high) || (pe >= low && Math.Abs(pe - ask.TargetPe) <= PlainSlack * ask.PeTolerance);
         }
 
         /// <summary>
@@ -375,6 +375,7 @@ namespace ClaudiaKerman.Core.Tools
         private static CorrectionPlan PlainOnly(Func<double, Vec3, Patch> arrive, double startUt, SnapshotBody target, CorrectionAsk ask, CorrectionPlan plain, Vec3 burn)
         {
             var why = plain.Error;
+            if (ask.DvLeft >= 0 && burn.Length > ask.DvLeft) return Unsolved(arrive, startUt, target, ask, why + "; the plain burn needs " + Ms(burn.Length) + " m/s, more than is left");
             var landed = PredictOn(target, ask.Landing, arrive(plain.Ut, burn), burn.Length);
             if (landed != null && landed.Error == null && landed.PeakG > MostEntryG)
                 return Unsolved(arrive, startUt, target, ask, why + "; the plain burn's entry pulls " + Ms(landed.PeakG) + " g, over " + Ms(MostEntryG));
@@ -418,6 +419,11 @@ namespace ClaudiaKerman.Core.Tools
             if (landed == null || landed.Error != null)
             {
                 plan.Error = failed + "; without it the path has no landing to read" + (landed == null ? "" : " (" + landed.Error + ")");
+                return plan;
+            }
+            if (landed.PeakG > MostEntryG)
+            {
+                plan.Error = failed + "; without it the entry pulls " + Ms(landed.PeakG) + " g, over " + Ms(MostEntryG);
                 return plan;
             }
             plan.Landing = landed;

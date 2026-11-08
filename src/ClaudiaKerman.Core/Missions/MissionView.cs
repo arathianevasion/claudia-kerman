@@ -464,7 +464,8 @@ namespace ClaudiaKerman.Core.Missions
                 // What the arrival plane reads (#788): the legs from the one in hand on, the site picked, and what transfer_to recorded for capture.
                 snapshot.LegsAhead = view.PlanLegs != null ? System.Linq.Enumerable.ToList(System.Linq.Enumerable.Skip(view.PlanLegs, System.Math.Max(0, view.CurrentSequence))) : null;
                 // What the legs after the one in hand need (#832), kept back by a block's reserve: CurrentSequence is the leg in hand, counted as begun.
-                snapshot.LaterLegsDv = view.PlanLegs != null ? MissionCards.LaterLegsDv(view.PlanLegs, System.Math.Max(0, view.CurrentSequence), view.CraftName) : (double?)null;
+                // In a Child Vessel run the active ship is the child, whose dv_left is not the craft's: the craft's later legs are not taken from it.
+                snapshot.LaterLegsDv = view.PlanLegs == null ? (double?)null : !string.IsNullOrEmpty(view.RunningChild) ? 0 : MissionCards.LaterLegsDv(view.PlanLegs, System.Math.Max(0, view.CurrentSequence), view.CraftName);
                 snapshot.PickedSite = view.PickedSite;
                 snapshot.RecordedPlane = view.ArrivalPlane;
                 snapshot.MissionGoal = view.Goal;
