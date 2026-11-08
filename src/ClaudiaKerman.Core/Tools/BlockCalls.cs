@@ -1142,12 +1142,14 @@ namespace ClaudiaKerman.Core.Tools
         /// <c>finished_by</c> (what finished a solve the SQP stopped short, "" for none); a best
         /// burn outside the tolerances gives its <c>error</c> with the rest; a solve that could not start, only <c>error</c>,
         /// "found no return: &lt;why&gt;". Given <c>lat</c> and <c>lng</c> (#792), <see cref="ReturnAim"/> picks the window within
-        /// <c>max_wait</c> (s; "auto" or missing is one turn of the landing's longitude) and <c>max_duration</c> (s from <c>start_ut</c>, when a number) and times the
+        /// <c>max_wait</c> (s; "auto" or missing is <see cref="ReturnAim.AutoWait"/>) and <c>max_duration</c> (s from <c>start_ut</c>, when a number) and times the
         /// burn to come down there, by the reentry predictor with <paramref name="body"/>, <paramref name="air"/> (the planet's) and
         /// <paramref name="craft"/>; <c>ground_alt</c> (m) and <c>isp</c> (s; 0 or missing leaves the mass as it is) are as for
         /// <see cref="DeorbitBurn"/>. It adds <c>lat</c>, <c>lng</c>, <c>landing_ut</c> and <c>error_km</c> when the predictor can say,
-        /// else the window's least burn stands with <c>error_km</c> -1. <c>aim_dv</c> (m/s over the window's least burn) and
-        /// <c>spread_km</c> (what <see cref="ReturnAim.ResidualMs"/> of error in the burn moves the landing; -1 unknown) are always there.
+        /// else the window's least burn stands with <c>error_km</c> -1. <c>aim_dv</c> (m/s over the window's least burn; from an orbit
+        /// inclined to the moon's, over the cheapest window within max_wait, #816) and <c>spread_km</c> (what
+        /// <see cref="ReturnAim.ResidualMs"/> of error in the burn moves the landing; -1 unknown) are always there. Without a landing,
+        /// <c>cheap_window</c> true (the block was given no window) lets an inclined orbit wait out a dear next pass (<see cref="ReturnAim"/>).
         /// </summary>
         public static IDictionary<string, object> ReturnBurn(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body = null,
             IReentryAir air = null, IReentryCraft craft = null)
@@ -1166,11 +1168,20 @@ namespace ClaudiaKerman.Core.Tools
                 LatestUt = NumberOrNull(ask, "latest_ut"),
                 PeTolerance = Number(ask, "pe_tolerance", 1000),
                 IncTolerance = Number(ask, "inc_tolerance", 0.5),
+                CheapWindow = ask.ContainsKey("cheap_window") && Equals(ask["cheap_window"], true),
             };
             if (ask.ContainsKey("lat") || ask.ContainsKey("lng"))
             {
                 var problem = ReturnLandingOf(ask, snapshot, returnAsk, body, air, craft);
                 if (problem != null) return Error(Tools.ReturnBurn.Fail(problem).Error);
+            }
+            else if (returnAsk.CheapWindow)
+            {
+                // #816: the wait for the cheap window ends within max_wait and max_duration, else the next pass inside them goes.
+                var problem = WaitOf(ask, snapshot, returnAsk);
+                if (problem != null) return Error(Tools.ReturnBurn.Fail(problem).Error);
+                if (returnAsk.MaxWait.HasValue) returnAsk.LatestUt = Math.Min(returnAsk.LatestUt ?? double.PositiveInfinity, returnAsk.EarliestUt + returnAsk.MaxWait.Value);
+                returnAsk.MaxWait = null;
             }
             var plan = Tools.ReturnBurn.Find(snapshot, returnAsk);
             if (!plan.HasBurn) return Error(plan.Error);
@@ -1191,7 +1202,7 @@ namespace ClaudiaKerman.Core.Tools
                 { "aim_dv", plan.AimDv },
                 { "spread_km", plan.SpreadKm },
                 { "error_km", plan.ErrorKm },
-                { "plan_log", BurnPlanLog.Arrival("RETURNBURN", plan.Ut, plan.PePredicted, plan.IncPredicted, ask.ContainsKey("lat") && ask.ContainsKey("lng"), Number(ask, "lat", 0), Number(ask, "lng", 0)) },
+                { "plan_log", BurnPlanLog.Arrival("RETURNBURN", plan.Ut, plan.PePredicted, plan.IncPredicted, ask.ContainsKey("lat") && ask.ContainsKey("lng"), Number(ask, "lat", 0), Number(ask, "lng", 0)) + plan.WindowNote },
             };
             if (plan.Landing != null)
                 foreach (var key in Landing(plan.Landing, plan.ErrorKm)) result[key.Key] = key.Value;
@@ -1204,14 +1215,8 @@ namespace ClaudiaKerman.Core.Tools
             var lat = NumberOrNull(ask, "lat");
             var lng = NumberOrNull(ask, "lng");
             if (!lat.HasValue || !lng.HasValue) return "lat and lng must both be numbers";
-            object wait;
-            ask.TryGetValue("max_wait", out wait);
-            if (wait is double && (double)wait > 0) into.MaxWait = (double)wait;
-            else if (wait != null && !string.Equals(wait as string, "auto", StringComparison.OrdinalIgnoreCase))
-                return "max_wait must be \"auto\" or seconds above 0, not " + Convert.ToString(wait, CultureInfo.InvariantCulture);
-            object limit;
-            if (ask.TryGetValue("max_duration", out limit) && limit is double)
-                into.LatestUt = Number(ask, "start_ut", snapshot.Ut) + (double)limit - ReturnAim.AfterBurnS;
+            var waitProblem = WaitOf(ask, snapshot, into);
+            if (waitProblem != null) return waitProblem;
             DropBurn payer;
             var craftProblem = EntryCraftOf(ask, out payer);
             if (craftProblem != null) return craftProblem;
@@ -1220,6 +1225,20 @@ namespace ClaudiaKerman.Core.Tools
             into.Landing = ReturnAim.LandingOn(snapshot, lat.Value, lng.Value, Number(ask, "ground_alt", 0), Number(ask, "isp", 0), body, air, craft, out problem);
             if (into.Landing != null) into.Landing.Payer = payer;
             return problem;
+        }
+
+        /// <summary><c>max_wait</c> into <see cref="ReturnAsk.MaxWait"/> and a numeric <c>max_duration</c> into <see cref="ReturnAsk.LatestUt"/>: why max_wait can't be read, or null.</summary>
+        private static string WaitOf(IDictionary<string, object> ask, GameSnapshot snapshot, ReturnAsk into)
+        {
+            object wait;
+            ask.TryGetValue("max_wait", out wait);
+            if (wait is double && (double)wait > 0) into.MaxWait = (double)wait;
+            else if (wait != null && !string.Equals(wait as string, "auto", StringComparison.OrdinalIgnoreCase))
+                return "max_wait must be \"auto\" or seconds above 0, not " + Convert.ToString(wait, CultureInfo.InvariantCulture);
+            object limit;
+            if (ask.TryGetValue("max_duration", out limit) && limit is double)
+                into.LatestUt = Number(ask, "start_ut", snapshot.Ut) + (double)limit - ReturnAim.AfterBurnS;
+            return null;
         }
 
         /// <summary>
