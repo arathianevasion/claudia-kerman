@@ -31,13 +31,7 @@ namespace ClaudiaKerman.Adapter
             return data.areaDrag;
         }
 
-        /// <summary>Stock's DragCubeList.AddSurfaceDragDirection's areaDrag (decompiled), with the face areas given.</summary>
-        public static double Area(DragCubeList cubes, float[] areas, Vector3 direction, float mach)
-        {
-            return Area(cubes, areas, cubes.WeightedDrag, direction, mach);
-        }
-
-        /// <summary>The same with the faces' drag coefficients given too: one cube's own, for a parachute's open cubes (#462).</summary>
+        /// <summary>Stock's DragCubeList.AddSurfaceDragDirection's areaDrag (decompiled), with the face areas and drag coefficients given: one cube's own for a parachute's open cubes (#462), a bared face's un-occluded ones (#924).</summary>
         public static double Area(DragCubeList cubes, float[] areas, float[] drags, Vector3 direction, float mach)
         {
             double sum = 0;
