@@ -291,7 +291,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             var src = System.Text.RegularExpressions.Regex.Replace(CoreLibrary.Files.Single(f => f.Name == "launch").Source, "\\s+", " ");
             Assert.Contains("launch_plane_pitch(pitch, arctan2(vdot(flow, ship:up:vector), vdot(flow, along)), off_plane, allowed)", src);
-            Assert.Contains("if coasting { set want to launch_limit_aoa(want, flow, allowed). }", src);
+            Assert.Contains("if coasting or burn_through { set want to launch_limit_aoa(want, flow, allowed). }", src);
             Assert.Contains("set want to launch_limit_aoa(vxcl(normal, flow), flow, allowed).", src);
         }
 
