@@ -20,9 +20,9 @@ namespace ClaudiaKerman.Adapter
     public sealed class NextPatchWatcher
     {
         private readonly Action<MissionInput> _send;
+        private readonly NextPatchWatchKeeper _keeper = new NextPatchWatchKeeper();
         private NextPatchWatch _watch;
         private string _key = "";
-        private string _vesselId;
         private List<SnapshotBody> _bodies;
         private int _checks;
         private bool _failed;
@@ -36,9 +36,9 @@ namespace ClaudiaKerman.Adapter
         /// <summary>A save was loaded: a watch held belongs to another timeline.</summary>
         public void Reset()
         {
+            _keeper.Reset();
             _watch = null;
             _key = "";
-            _vesselId = null;
             _bodies = null;
             _checks = 0;
             _failed = false;
@@ -51,12 +51,13 @@ namespace ClaudiaKerman.Adapter
             var key = (vesselId ?? "") + "|" + (planned ?? "");
             if (key != _key)
             {
-                // The same craft with another planned set keeps the meeting it answered (#878); another craft or a loaded save starts clean.
-                var kept = vesselId == _vesselId ? _watch : null;
-                Reset();
+                // Core's keeper carries the answered meeting across another planned set and through a run (no craft) for the same craft (#878).
+                _watch = _keeper.Watch(vesselId, planned);
                 _key = key;
-                _vesselId = vesselId;
-                if (!string.IsNullOrEmpty(vesselId)) _watch = new NextPatchWatch(planned, kept);
+                _bodies = null;
+                _checks = 0;
+                _failed = false;
+                _warping = false;
             }
             var warping = TimeWarp.fetch != null && TimeWarp.CurrentRateIndex > 0;
             // Each new warp reads the orbit at once: it may have changed at 1x.

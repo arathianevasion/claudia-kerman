@@ -195,6 +195,41 @@ namespace ClaudiaKerman.Core.Tests
             Assert.NotEqual("", new NextPatchWatch("Kerbin").Check(rig.Snapshot()));
         }
 
+        /// <summary>#878: the view names no craft while a run is going; the answered meeting survives that stretch for the same craft only.</summary>
+        [Fact]
+        public void TheAnsweredMeetingSurvivesARunForTheSameCraft()
+        {
+            var rig = DunaOrbit();
+            var at = MoonCrossings.Follow(rig.System, rig.Body, rig.Orbit, rig.Ut, rig.Ut + Wait908b).Ut.Value;
+            rig.MoveTo(at - 1000);
+            var keeper = new NextPatchWatchKeeper();
+            Assert.NotEqual("", keeper.Watch("craft", "").Check(rig.Snapshot()));
+            Assert.Null(keeper.Watch("", "Kerbin"));
+            rig.MoveTo(at - 500);
+            Assert.Equal("", keeper.Watch("craft", "").Check(rig.Snapshot()));
+        }
+
+        [Fact]
+        public void ADifferentCraftAfterARunAnswersTheMeeting()
+        {
+            var rig = DunaOrbit();
+            var at = MoonCrossings.Follow(rig.System, rig.Body, rig.Orbit, rig.Ut, rig.Ut + Wait908b).Ut.Value;
+            rig.MoveTo(at - 1000);
+            var keeper = new NextPatchWatchKeeper();
+            Assert.NotEqual("", keeper.Watch("craft", "").Check(rig.Snapshot()));
+            Assert.Null(keeper.Watch("", ""));
+            rig.MoveTo(at - 500);
+            Assert.NotEqual("", keeper.Watch("other", "").Check(rig.Snapshot()));
+        }
+
+        [Fact]
+        public void AMeetingMovedByACorrectionIsNotTheOneAnswered()
+        {
+            Assert.True(NextPatchWatch.SameMeeting(1000, 1300, 7200));
+            Assert.False(NextPatchWatch.SameMeeting(1000, 3000, 7200));
+            Assert.False(NextPatchWatch.SameMeeting(1000, 1300, 200));
+        }
+
         [Fact]
         public void ARebuiltWatchStillAnswersALaterPassOfTheSameMoon()
         {
