@@ -98,7 +98,7 @@ namespace ClaudiaKerman.Adapter
         /// </summary>
         public ShipSystemsStowAnswer Cue(string cue, Vessel vessel)
         {
-            if (_rule == null || !ReferenceEquals(vessel, _flown) || !_managed()) return ShipSystemsStowAnswer.Nothing;
+            if (!Manages(vessel)) return ShipSystemsStowAnswer.Nothing;
             var ut = Planetarium.GetUniversalTime();
             switch (cue)
             {
@@ -126,6 +126,22 @@ namespace ClaudiaKerman.Adapter
                     Debug.LogWarning(ModInfo.LogTag + " unknown Ship Systems cue '" + cue + "'");
                     return ShipSystemsStowAnswer.Nothing;
             }
+        }
+
+        /// <summary>
+        /// The persistentIds of <paramref name="vessel"/>'s parts its entry meets the air with stowed (#868, <see cref="ShipSystemsMoves.StowedForEntry"/>):
+        /// none unless this keeper would act on the block's entry cue for it.
+        /// </summary>
+        public static ICollection<uint> StowedForEntry(Vessel vessel)
+        {
+            var keeper = Current;
+            return ShipSystemsMoves.StowedForEntry(ReadParts(vessel, null), keeper != null && keeper.Manages(vessel));
+        }
+
+        /// <summary>Whether this keeper acts on a block's cue from <paramref name="vessel"/>: the craft it flies, with the setting on.</summary>
+        private bool Manages(Vessel vessel)
+        {
+            return _rule != null && ReferenceEquals(vessel, _flown) && _managed();
         }
 
         private static ShipSystemsReading Read(Vessel vessel)

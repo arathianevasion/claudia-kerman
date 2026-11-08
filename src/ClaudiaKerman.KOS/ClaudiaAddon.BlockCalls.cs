@@ -715,19 +715,21 @@ namespace ClaudiaKerman.KOS
         private Lexicon DeorbitBurn(Lexicon input)
         {
             System.Collections.Generic.IDictionary<string, object> found = null;
+            ReentryCraft craft = null;
             return (Lexicon)Guarded("DEORBITBURN", () =>
             {
                 var vessel = shared.Vessel;
                 var ask = KosValues.ToDictionary(input);
-                found = BlockCalls.DeorbitBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(),
-                    new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
+                craft = new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask));
+                found = BlockCalls.DeorbitBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(vessel.mainBody), craft);
                 return KosValues.FromPlain(found);
-            }, () => Landing(found) + PlanLine(found));
+            }, () => Landing(found) + CraftLine(craft) + PlanLine(found));
         }
 
         private Lexicon ReentryImpact(Lexicon input)
         {
             System.Collections.Generic.IDictionary<string, object> landing = null;
+            ReentryCraft craft = null;
             return (Lexicon)Guarded("REENTRYIMPACT", () =>
             {
                 var vessel = shared.Vessel;
@@ -735,10 +737,19 @@ namespace ClaudiaKerman.KOS
                 // Given a path round another body (return's, with the craft still at the moon), that body's air (#793).
                 object named;
                 ask.TryGetValue("orbit_body", out named);
+                craft = new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask));
                 landing = BlockCalls.ReentryImpact(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(),
-                    new ReentryAir(BodyNamed(named as string) ?? vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
+                    new ReentryAir(BodyNamed(named as string) ?? vessel.mainBody), craft);
                 return KosValues.FromPlain(landing);
-            }, () => Landing(landing) + PlanLine(landing));
+            }, () => Landing(landing) + CraftLine(craft) + PlanLine(landing));
+        }
+
+        /// <summary>The craft the prediction flew, for the log (#868): its mass, drag area held retrograde at Mach 2, and the Ship Systems out now that it read stowed.</summary>
+        private static string CraftLine(ReentryCraft craft)
+        {
+            if (craft == null) return "";
+            return string.Format(CultureInfo.InvariantCulture, "; craft {0:0.000} t, drag area {1:0.00} m² at Mach 2, {2} Ship Systems read stowed",
+                craft.MassKg / 1000, craft.DragArea(2, 1000), craft.StowedCount);
         }
 
         /// <summary>A predicted landing for the log, so predicted against actual can be read back from KSP.log.</summary>
