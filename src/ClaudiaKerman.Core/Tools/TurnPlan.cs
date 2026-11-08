@@ -93,7 +93,8 @@ namespace ClaudiaKerman.Core.Tools
         /// deadline (negative: none). <paramref name="corrections"/> is negative for a turn's first plan; after a stop burst it is
         /// the corrections already taken, and <see cref="BurstTurn.Rcs"/> is the correction rule: the leftover is over
         /// <see cref="CorrectionDeg"/>, the wheels can't close it by the deadline, and fewer than <see cref="MaxCorrections"/>
-        /// were taken.
+        /// were taken. A deadline already passed (0 left, #933) counts as no time left for that rule, but doesn't hurry the plan:
+        /// more monoprop can't meet a deadline that has gone.
         /// </summary>
         public static BurstTurn Plan(TurnCraft craft, double angleDeg, double leftS, int corrections = -1)
         {
@@ -110,7 +111,7 @@ namespace ClaudiaKerman.Core.Tools
 
             // A quick turn: a share of the wheels' time (#754), held down by the deadline (never filling it) and by the 120 s wait.
             var budget = Math.Min(plan.WheelsS, MaxSeconds) * QuickShare;
-            if (leftS >= 0) budget = Math.Min(budget, Math.Min(leftS, MaxSeconds) * MarginShare);
+            if (leftS > 0) budget = Math.Min(budget, Math.Min(leftS, MaxSeconds) * MarginShare);
             plan.WheelsDeg = Math.Min(HandOverDeg, angle / 4);
             var settle = TurnTime.CappedTurn(plan.WheelsDeg, alphaW, TurnTime.KosMaxStoppingTime, out peak) + SettleSeconds;
             var rcsDeg = angle - plan.WheelsDeg;
@@ -145,7 +146,7 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// The answer to a block's ask: <c>angle</c> (deg), <c>left_s</c> (s to the deadline; -1 or missing for none) and
+        /// The answer to a block's ask: <c>angle</c> (deg), <c>left_s</c> (s to the deadline, 0 once it has passed; -1 or missing for none) and
         /// <c>corrections</c> (missing for a turn's first plan; else those taken). Gives <c>error</c> ("" or "no usable torque"), <c>phase</c> ("": not flown yet),
         /// <c>rcs</c>, <c>wheels_s</c>, <c>coast_rate</c> (deg/s), <c>spin_s</c>, <c>coast_s</c>, <c>stop_s</c>,
         /// <c>stop_deg</c>, <c>wheels_deg</c>, <c>turn_s</c>, <c>alpha</c> (deg/s²) and lexicons <c>spin</c>, <c>coast</c>
@@ -180,15 +181,22 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>A coast ends at twice its planned time and this many seconds, wherever the craft points.</summary>
         public const double CoastSlackSeconds = 5;
 
+        /// <summary>
+        /// A coast ends early once its error is this far (deg) over where the coast began (#933). A coast flown as planned only closes
+        /// the error, and a target's own drift is slower than the slowest coast; this leaves room for spin left over from before the turn.
+        /// </summary>
+        public const double CoastLosingDeg = 10;
+
         /// <summary>The stop burst also ends once the rate is under this share of the coast rate: the craft has stopped.</summary>
         public const double StoppedShare = 0.05;
 
         /// <summary>
         /// One tick of a burst turn, through the block-internal <c>ADDONS:CLAUDIA:BURSTTURN</c>: <paramref name="turn"/> is
         /// <see cref="Call"/>'s plan the first time and this call's answer after; <paramref name="now"/> gives <c>ut</c>,
-        /// <c>error</c> (deg), <c>rate</c> (deg/s), <c>left_s</c> (-1: no deadline), <c>aligned</c>, <c>monoprop</c> (units),
+        /// <c>error</c> (deg), <c>rate</c> (deg/s), <c>left_s</c> (-1: no deadline; 0: passed), <c>aligned</c>, <c>monoprop</c> (units),
         /// and <c>energy</c> (J/kg) and <c>speed</c> (m/s) of the orbit. The spin-up ends at the coast rate (or twice its time),
-        /// the coast at <c>stop_deg</c> (or at twice its time and <see cref="CoastSlackSeconds"/>), the stop burst after its time or
+        /// the coast at <c>stop_deg</c> (or at twice its time and <see cref="CoastSlackSeconds"/>, or once it has lost
+        /// <see cref="CoastLosingDeg"/> on where it began), the stop burst after its time or
         /// once stopped; then the correction rule (<see cref="Plan"/> on
         /// <paramref name="craft"/>) flies one more burst pair, or the turn reports and the wheels settle until Aligned or
         /// <see cref="SettleMaxSeconds"/>. Gives the turn back with <c>phase</c>, <c>rcs_on</c> (what RCS should be: on in spin
@@ -218,6 +226,7 @@ namespace ClaudiaKerman.Core.Tools
             if (phase == "spin" && (rate >= Number(t, "coast_rate", 0) || took >= 2 * Number(t, "spin_s", 0)))
             {
                 t["spin_total"] = Number(t, "spin_total", 0) + took;
+                t["coast_began_deg"] = error;
                 return Enter(t, "coast", ut);
             }
             if (phase == "coast")
@@ -225,7 +234,8 @@ namespace ClaudiaKerman.Core.Tools
                 t["flown"] = Math.Max(Number(t, "flown", 0), rate);
                 // A coast that runs well past its plan (the target moved away, or warp stopped the turn) stops and is re-planned.
                 var over = took > 2 * Number(t, "coast_s", 0) + CoastSlackSeconds;
-                return error <= Number(t, "stop_deg", 0) || over ? Enter(t, "stop", ut) : t;
+                var losing = error > Number(t, "coast_began_deg", double.PositiveInfinity) + CoastLosingDeg;
+                return error <= Number(t, "stop_deg", 0) || over || losing ? Enter(t, "stop", ut) : t;
             }
             if (phase == "stop" && (took >= Number(t, "stop_s", 0) || rate <= StoppedShare * Number(t, "coast_rate", 0)))
             {
