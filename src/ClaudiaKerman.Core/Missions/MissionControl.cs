@@ -2498,7 +2498,7 @@ namespace ClaudiaKerman.Core.Missions
                 view.RunningChild = mission.RunningChild;
                 view.ArrivalPlane = mission.ArrivalPlane;
                 view.PickedSite = mission.PickedSite;
-                view.LandingTarget = mission.LandingTarget;
+                view.LandingTargets = mission.LandingTargets.Copy();
                 if (mission.Stage == MissionStage.Running && mission.PendingSequence != null)
                 {
                     view.RunStatus = "Running: " + mission.PendingSequence.Name + (mission.RunningChild.Length > 0 ? " on " + mission.RunningChild : "");

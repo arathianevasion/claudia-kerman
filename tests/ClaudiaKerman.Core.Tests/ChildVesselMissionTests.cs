@@ -708,5 +708,116 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("Reach a stable orbit of Kerbin.", saved.ReducedGoal);
             Assert.Equal(children, saved.ChildVessels);
         }
+
+        // ---- The aimed landing, per vessel (#913) ----
+
+        private static Tools.LandingTarget Aim(double longitude)
+        {
+            return new Tools.LandingTarget { Body = "Kerbin", Latitude = -0.1, Longitude = longitude, TargetPe = 30000 };
+        }
+
+        /// <summary>What a block call on this vessel reads for the aimed landing.</summary>
+        private static Tools.LandingTarget ReadBy(MissionControl mission, string vesselId)
+        {
+            var snapshot = new GameSnapshot();
+            snapshot.Craft.VesselId = vesselId;
+            return MissionView.Stamp(snapshot, mission.View).LandingTarget;
+        }
+
+        [Fact]
+        public void AChildVesselsAimLeavesTheParentsTargetAndEachReadsItsOwn()
+        {
+            var mission = Control(new StreamingFakeTransport(MissionPlan(), SequencePlan("Release", "craft")));
+            ToFirstSequencePlan(mission);
+
+            mission.Send(new LandingTargetAimed(Aim(-74.5), "craft"));
+            mission.Send(new LandingTargetAimed(Aim(10), "probe"));
+
+            Assert.Equal(-74.5, ReadBy(mission, "craft").Longitude);
+            Assert.Equal(10, ReadBy(mission, "probe").Longitude);
+            Assert.Null(ReadBy(mission, "bystander"));
+
+            // An aim at no landing forgets only the caller's own.
+            mission.Send(new LandingTargetAimed(null, "probe"));
+            Assert.Null(ReadBy(mission, "probe"));
+            Assert.Equal(-74.5, ReadBy(mission, "craft").Longitude);
+        }
+
+        [Fact]
+        public void AChildVesselsReentryClearsItsOwnTargetAndNotTheParents()
+        {
+            var transport = new StreamingFakeTransport(MissionPlan(), SequencePlan("Release", "craft"), Debrief(false), SequencePlan("Probe burn", "Probe"));
+            var mission = Control(transport);
+            ToProbeSequence(mission);
+            mission.Send(new VesselsSeparated(CraftSeen(), ProbeSeen(), false));
+            mission.Send(new VesselsSeen(new List<SeenVessel> { CraftSeen(), ProbeSeen() }));
+            mission.Send(new LandingTargetAimed(Aim(-74.5), "craft"));
+            mission.Send(new LandingTargetAimed(Aim(10), "probe"));
+            mission.Send(new Approve());
+            var script = mission.TakeCommands().OfType<StartScript>().Single();
+
+            mission.Send(new KosBlockEnded("reentry", new Dictionary<string, object> { { "success", true } }, script.RunId));
+
+            Assert.Null(ReadBy(mission, "probe"));
+            Assert.Equal(-74.5, ReadBy(mission, "craft").Longitude);
+        }
+
+        [Fact]
+        public void TheCraftsTargetFollowsItWhenItsVesselIdChanges()
+        {
+            var mission = Control(new StreamingFakeTransport(MissionPlan(), SequencePlan("Release", "craft")));
+            ToFirstSequencePlan(mission);
+            mission.Send(new VesselsSeen(new List<SeenVessel> { CraftSeen() }));
+            mission.Send(new LandingTargetAimed(Aim(-74.5), "craft"));
+
+            // Staging can leave the Mission's craft a new vessel, with a new id.
+            var renamed = CraftSeen();
+            renamed.Id = "craft-after-staging";
+            mission.Send(new VesselsSeen(new List<SeenVessel> { renamed }));
+
+            Assert.Equal("craft-after-staging", mission.View.CraftVesselId);
+            Assert.Equal(-74.5, ReadBy(mission, "craft-after-staging").Longitude);
+            Assert.Null(ReadBy(mission, "craft"));
+        }
+
+        [Fact]
+        public void EachVesselsTargetSurvivesSaveAndLoad()
+        {
+            var transport = new StreamingFakeTransport(MissionPlan(), SequencePlan("Release", "craft"));
+            var mission = Control(transport);
+            ToFirstSequencePlan(mission);
+            mission.Send(new LandingTargetAimed(Aim(-74.5), "craft"));
+            mission.Send(new LandingTargetAimed(Aim(10), "probe"));
+
+            var saved = mission.ExportStates().Select(s => MissionSaveState.FromValues(s.ToValues())).ToList();
+            var loaded = Control(transport);
+            loaded.Send(new MissionsRestored(_save.Path, saved));
+
+            Assert.Equal(-74.5, ReadBy(loaded, "craft").Longitude);
+            Assert.Equal(30000.0, ReadBy(loaded, "craft").TargetPe);
+            Assert.Equal(10, ReadBy(loaded, "probe").Longitude);
+        }
+
+        [Fact]
+        public void AnOldSavesSingleTargetLoadsAsTheMissionsOwnCraft()
+        {
+            var transport = new StreamingFakeTransport(MissionPlan(), SequencePlan("Release", "craft"));
+            var mission = Control(transport);
+            ToFirstSequencePlan(mission);
+            mission.Send(new VesselsSeen(new List<SeenVessel> { CraftSeen() }));
+
+            var values = Assert.Single(mission.ExportStates()).ToValues();
+            Assert.False(values.ContainsKey("landingTargets"));
+            values["landingTargetBody"] = "Kerbin";
+            values["landingTargetLatitude"] = "-0.1";
+            values["landingTargetLongitude"] = "-74.5";
+            values["landingTargetPe"] = "30000";
+            var loaded = Control(transport);
+            loaded.Send(new MissionsRestored(_save.Path, new List<MissionSaveState> { MissionSaveState.FromValues(values) }));
+
+            Assert.Equal(-74.5, ReadBy(loaded, "craft").Longitude);
+            Assert.Equal(30000.0, ReadBy(loaded, "craft").TargetPe);
+            Assert.Null(ReadBy(loaded, "probe"));
+        }
     }
 }

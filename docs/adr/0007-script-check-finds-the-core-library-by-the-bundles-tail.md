@@ -20,3 +20,5 @@ The calls only read the game, like the Planning Tools beneath them, so there is 
 Decided in #281, from spec #265.
 
 **Dated note, 2026-11-04 (#729).** The tail is the Core Library alone. #475 removed the vendored KSLib script, and with it the `kerboscript/kslib` glob, `CoreLibrary.Vendored` and the vendored half of the bundle went too; the bundle's text is unchanged, since the vendored half was empty. Where this ADR says "the Core Library and the vendored scripts", read "the Core Library". The removed script is recoverable from 5319e54 if one is ever needed again.
+
+**Dated note, 2026-11-08 (#913).** The calls no longer only read the game. `RETURNBURN`, `CORRECTIONBURN`, `DEORBITBURN` and `TRANSFERSTEP` record the aimed landing target for the calling vessel, and write nothing else. There is still no runtime gate on them: a call typed at the player's terminal writes that vessel's entry too. The record is keyed by vessel, so a Child Vessel's call can't replace its parent's target.
