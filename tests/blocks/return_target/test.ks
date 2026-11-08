@@ -26,14 +26,20 @@ print "return target test: success " + result:success + ", Kerbin pe " + result:
 // The checker compares a field with a literal only, so the test reports the comparisons it needs; a
 // distance it never measured stays far over its check.
 set result["landed_or_splashed"] to false.
+set result["shield_dropped"] to false.
+set result["parts_dropped"] to 0.
 set result["miss_km"] to 9999.
 set result["target_km"] to 9999.
 set result["actual_geo"] to lexicon().
 if result:success {
+  local before is ship:parts:length.
   local down is reentry().
   set result["reentry_success"] to down:success.
   set result["reentry_reason"] to down:reason.
   set result["landed_or_splashed"] to status = "LANDED" or status = "SPLASHED".
+  // The Entry Shield drops the stack below it (#815, #823): reentry's own shield_dropped, and how many parts went.
+  set result["shield_dropped"] to down:haskey("shield_dropped") and down:shield_dropped.
+  set result["parts_dropped"] to before - ship:parts:length.
   if down:haskey("geo") {
     set result["actual_geo"] to down:geo.
     set result["target_km"] to round(test_km(aim, down:geo), 2).

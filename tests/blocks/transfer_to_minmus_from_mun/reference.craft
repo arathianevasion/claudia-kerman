@@ -221,6 +221,10 @@ PART
 	modMass = 0
 	modSize = 0,0,0
 	link = batteryBank_4294592424
+	link = solarPanels5_4294500101
+	link = solarPanels5_4294500102
+	link = solarPanels5_4294500103
+	link = solarPanels5_4294500104
 	attN = bottom,batteryBank_4294592424_0|-0.172999993|0_0|-1|0_0|-0.172999993|0_0|-1|0
 	attN = top,probeCoreOcto2.v2_4294601898_0|0.172999993|0_0|1|0_0|0.172999993|0_0|1|0
 	EVENTS
@@ -1762,5 +1766,153 @@ PART
 		UPGRADESAPPLIED
 		{
 		}
+	}
+}
+PART
+{
+	part = solarPanels5_4294500101
+	partName = Part
+	persistentId = 2290342701
+	pos = 0.625,14.7659378,0
+	attPos = 0,0,0
+	attPos0 = 0.625,0,0
+	rot = 0,-0.7071068,0,0.7071068
+	attRot = 0,0,0,1
+	attRot0 = 0,-0.7071068,0,0.7071068
+	mir = 1,1,1
+	symMethod = Radial
+	autostrutMode = Off
+	rigidAttachment = False
+	istg = -1
+	resPri = 0
+	dstg = 0
+	sidx = -1
+	sqor = -1
+	sepI = -1
+	attm = 1
+	sameVesselCollision = False
+	modCost = 0
+	modMass = 0
+	modSize = 0,0,0
+	srfN = srfAttach,kOSMachine1m_4294597990,COL4,0.625|0|0,1.0|0|0,0.625|0|0
+	EVENTS
+	{
+	}
+	ACTIONS
+	{
+	}
+	PARTDATA
+	{
+	}
+}
+PART
+{
+	part = solarPanels5_4294500102
+	partName = Part
+	persistentId = 2290342702
+	pos = 0,14.7659378,0.625
+	attPos = 0,0,0
+	attPos0 = 0,0,0.625
+	rot = 0,-1.0,0,0
+	attRot = 0,0,0,1
+	attRot0 = 0,-1.0,0,0
+	mir = 1,1,1
+	symMethod = Radial
+	autostrutMode = Off
+	rigidAttachment = False
+	istg = -1
+	resPri = 0
+	dstg = 0
+	sidx = -1
+	sqor = -1
+	sepI = -1
+	attm = 1
+	sameVesselCollision = False
+	modCost = 0
+	modMass = 0
+	modSize = 0,0,0
+	srfN = srfAttach,kOSMachine1m_4294597990,COL4,0|0|0.625,0|0|1.0,0|0|0.625
+	EVENTS
+	{
+	}
+	ACTIONS
+	{
+	}
+	PARTDATA
+	{
+	}
+}
+PART
+{
+	part = solarPanels5_4294500103
+	partName = Part
+	persistentId = 2290342703
+	pos = -0.625,14.7659378,0
+	attPos = 0,0,0
+	attPos0 = -0.625,0,0
+	rot = 0,0.7071068,0,0.7071068
+	attRot = 0,0,0,1
+	attRot0 = 0,0.7071068,0,0.7071068
+	mir = 1,1,1
+	symMethod = Radial
+	autostrutMode = Off
+	rigidAttachment = False
+	istg = -1
+	resPri = 0
+	dstg = 0
+	sidx = -1
+	sqor = -1
+	sepI = -1
+	attm = 1
+	sameVesselCollision = False
+	modCost = 0
+	modMass = 0
+	modSize = 0,0,0
+	srfN = srfAttach,kOSMachine1m_4294597990,COL4,-0.625|0|0,-1.0|0|0,-0.625|0|0
+	EVENTS
+	{
+	}
+	ACTIONS
+	{
+	}
+	PARTDATA
+	{
+	}
+}
+PART
+{
+	part = solarPanels5_4294500104
+	partName = Part
+	persistentId = 2290342704
+	pos = 0,14.7659378,-0.625
+	attPos = 0,0,0
+	attPos0 = 0,0,-0.625
+	rot = 0,0,0,1.0
+	attRot = 0,0,0,1
+	attRot0 = 0,0,0,1.0
+	mir = 1,1,1
+	symMethod = Radial
+	autostrutMode = Off
+	rigidAttachment = False
+	istg = -1
+	resPri = 0
+	dstg = 0
+	sidx = -1
+	sqor = -1
+	sepI = -1
+	attm = 1
+	sameVesselCollision = False
+	modCost = 0
+	modMass = 0
+	modSize = 0,0,0
+	srfN = srfAttach,kOSMachine1m_4294597990,COL4,0|0|-0.625,0|0|-1.0,0|0|-0.625
+	EVENTS
+	{
+	}
+	ACTIONS
+	{
+	}
+	PARTDATA
+	{
 	}
 }
