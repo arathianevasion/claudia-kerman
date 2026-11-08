@@ -1164,6 +1164,7 @@ namespace ClaudiaKerman.Core.Tools
             if (!pe.HasValue) return Error(Tools.ReturnBurn.Fail("target_pe is required").Error);
             foreach (var key in new[] { "target_inc", "earliest_ut", "latest_ut", "pe_tolerance", "inc_tolerance" })
                 if (ask.ContainsKey(key) && !(ask[key] is double)) return Error(Tools.ReturnBurn.Fail(key + " must be a number").Error);
+            var handedNote = "";
             var returnAsk = new ReturnAsk
             {
                 TargetPe = pe.Value,
@@ -1189,7 +1190,13 @@ namespace ClaudiaKerman.Core.Tools
                 returnAsk.MaxWait = null;
                 // #888: no landing, so the turn direction comes from the planet's frame, not 1.
                 var planet = ReturnAim.PlanetOf(snapshot);
-                if (planet != null) returnAsk.Handed = ReturnAim.HandedOn(planet, snapshot.Ut, body);
+                if (planet != null)
+                {
+                    string frameProblem;
+                    returnAsk.Handed = ReturnAim.HandedOn(planet, snapshot.Ut, body, out frameProblem);
+                    // #912: say why the old default (1) was used.
+                    if (frameProblem != null) handedNote = " [turn direction 1: " + frameProblem + "]";
+                }
             }
             var plan = Tools.ReturnBurn.Find(snapshot, returnAsk);
             if (!plan.HasBurn) return Error(plan.Error);
@@ -1210,7 +1217,7 @@ namespace ClaudiaKerman.Core.Tools
                 { "aim_dv", plan.AimDv },
                 { "spread_km", plan.SpreadKm },
                 { "error_km", plan.ErrorKm },
-                { "plan_log", BurnPlanLog.Arrival("RETURNBURN", plan.Ut, plan.PePredicted, plan.IncPredicted, ask.ContainsKey("lat") && ask.ContainsKey("lng"), Number(ask, "lat", 0), Number(ask, "lng", 0)) + plan.WindowNote },
+                { "plan_log", BurnPlanLog.Arrival("RETURNBURN", plan.Ut, plan.PePredicted, plan.IncPredicted, ask.ContainsKey("lat") && ask.ContainsKey("lng"), Number(ask, "lat", 0), Number(ask, "lng", 0)) + plan.WindowNote + handedNote },
             };
             if (plan.Landing != null)
                 foreach (var key in Landing(plan.Landing, plan.ErrorKm)) result[key.Key] = key.Value;
