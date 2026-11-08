@@ -40,12 +40,12 @@ namespace ClaudiaKerman.Kerboscript.Tests
 
         /// <summary>
         /// exec_node's burn loop, tick by tick at 0.02 s: the throttle claudia_burn_throttle gives, capped at BURNWORTH's max_throttle, until the node is overshot or
-        /// under a quarter of max_residual (exec_node's done_dv). Prints the first tick's m/s, what is left (negative: overshot) and the ticks.
+        /// under exec_node's done_dv (BURNWORTH's, under a quarter of its 0.5 m/s max_residual). Prints the first tick's m/s, what is left (negative: overshot) and the ticks.
         /// </summary>
-        private static double[] Fly(double dv, double accel, double maxThrottle, double maxResidual)
+        private static double[] Fly(double dv, double accel, double maxThrottle, double doneDv)
         {
             var printed = KosHarness.Run(CoreLibrary.Bundle(
-                "local left is " + N(dv) + ". local done_dv is min(0.1, " + N(maxResidual) + " / 4). local first is -1. local ticks is 0.\n"
+                "local left is " + N(dv) + ". local done_dv is min(" + N(doneDv) + ", 0.5 / 4). local first is -1. local ticks is 0.\n"
                 + "until left < done_dv or ticks > 100000 {\n"
                 + "  local tset is min(" + N(maxThrottle) + ", claudia_burn_throttle(left, " + N(accel) + ", 0)).\n"
                 + "  local tick is tset * " + N(accel) + " * 0.02.\n"
@@ -76,7 +76,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             var worth = Worth(dv, accel);
             Assert.False((bool)worth["skip"]);
-            var flown = Fly(dv, accel, (double)worth["max_throttle"], (double)worth["max_residual"]);
+            var flown = Fly(dv, accel, (double)worth["max_throttle"], (double)worth["done_dv"]);
             Assert.InRange(flown[0], 0, BurnWorth.TickShare * dv * 1.0001);
             Assert.InRange(Math.Abs(flown[1]), 0, Math.Min(0.05, dv / 10));
         }
@@ -85,7 +85,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [Fact]
         public void Without_the_cap_a_tiny_burn_on_a_strong_engine_takes_big_ticks()
         {
-            Assert.True(Fly(0.05, 60, 1, 0.02)[0] > 2 * BurnWorth.TickShare * 0.05);
+            Assert.True(Fly(0.05, 60, 1, BurnWorth.LeastDone)[0] > 2 * BurnWorth.TickShare * 0.05);
         }
 
         /// <summary>
@@ -102,7 +102,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 .Replace("ship:availablethrust / max(0.001, ship:mass)", "19");
             Assert.Contains("test_worth(lexicon(\"block\", \"correction\", \"fix\", fix,", fly);
             var printed = KosHarness.Run(CoreLibrary.Bundle(
-                "function test_worth { parameter ask. return lexicon(\"skip\", " + (skip ? "true" : "false") + ", \"max_throttle\", 1, \"max_residual\", -1). }\n"
+                "function test_worth { parameter ask. return lexicon(\"skip\", " + (skip ? "true" : "false") + ", \"max_throttle\", 1, \"max_residual\", -1, \"done_dv\", 0.1). }\n"
                 + fly.Replace("function claudia_fly_correction", "function test_fly") + "\n"
                 + "local done is test_fly(lexicon(), lexicon(\"error\", \"" + error + "\", \"dv\", " + N(dv) + ", \"error_km\", 300)).\n"
                 + "print \"[\" + done:reason + \"]\". print done:dv.")).ToArray();
@@ -116,12 +116,14 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var lib = Library();
             var fly = Body(lib, "claudia_fly_correction");
             Assert.Contains("addons:claudia:burnworth(lexicon(\"block\", \"correction\", \"fix\", fix, \"accel\", ship:availablethrust / max(0.001, ship:mass), \"max_residual\", max_residual))", fly);
-            Assert.Contains("claudia_burn(ctx, nextnode, worth:max_residual, false, worth:max_throttle)", fly);
+            Assert.Contains("claudia_burn(ctx, nextnode, worth:max_residual, false, worth)", fly);
             Assert.DoesNotContain("fix:dv < 0.1", fly);
-            Assert.Contains("set flight:max_throttle to max_throttle.", Body(lib, "claudia_burn"));
+            Assert.Contains("set flight:max_throttle to fine:max_throttle.", Body(lib, "claudia_burn"));
+            Assert.Contains("set flight:done_dv to fine:done_dv.", Body(lib, "claudia_burn"));
             var exec = CoreLibrary.Blocks.Single(b => b.Name == "exec_node").Source;
             Assert.Contains("set tset to min(opt:max_throttle, claudia_burn_throttle(", exec);
-            Assert.Contains("\"max_throttle\", 1)", exec);
+            Assert.Contains("local done_dv is min(opt:done_dv, opt:max_residual / 4).", exec);
+            Assert.Contains("\"max_throttle\", 1, \"done_dv\", 0.1)", exec);
         }
     }
 }

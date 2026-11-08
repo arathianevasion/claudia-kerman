@@ -181,19 +181,23 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("found no correction: off", answer["note"]);
         }
 
-        /// <summary>Under 2 m/s the throttle is capped so a 0.02 s tick at the cap is 5% of the burn, and the residual is 0.4 of the burn, from 0.02 to 0.2 m/s.</summary>
+        /// <summary>
+        /// Under 2 m/s the throttle is capped so a 0.02 s tick at the cap is 5% of the burn, and it stops at a tenth of the burn left, from 0.005 to 0.05 m/s. Its max_residual stays exec_node's
+        /// (-1 here): a residual of a few tenths of a m/s is done, as before #817.
+        /// </summary>
         [Theory]
-        [InlineData(0.5, 19, 0.025 / 0.38, 0.2)]
-        [InlineData(0.9, 19, 0.045 / 0.38, 0.2)]
-        [InlineData(0.2, 19, 0.01 / 0.38, 0.08)]
-        [InlineData(0.03, 60, 0.0015 / 1.2, 0.02)]
-        [InlineData(1.9, 1, 1, 0.2)]
-        public void A_small_correction_flies_with_its_throttle_capped_and_a_tight_residual(double dv, double accel, double throttle, double residual)
+        [InlineData(0.5, 19, 0.025 / 0.38, 0.05)]
+        [InlineData(0.9, 19, 0.045 / 0.38, 0.05)]
+        [InlineData(0.2, 19, 0.01 / 0.38, 0.02)]
+        [InlineData(0.03, 60, 0.0015 / 1.2, 0.005)]
+        [InlineData(1.9, 1, 1, 0.05)]
+        public void A_small_correction_flies_with_its_throttle_capped_and_a_tight_stop(double dv, double accel, double throttle, double done)
         {
             var answer = Correction(dv, 50, accel);
             Assert.False((bool)answer["skip"]);
             Assert.Equal(throttle, (double)answer["max_throttle"], 9);
-            Assert.Equal(residual, (double)answer["max_residual"], 9);
+            Assert.Equal(done, (double)answer["done_dv"], 9);
+            Assert.Equal(-1.0, (double)answer["max_residual"]);
         }
 
         [Fact]
@@ -202,6 +206,7 @@ namespace ClaudiaKerman.Core.Tests
             var big = Correction(2.5, 50, 19, 0.1);
             Assert.Equal(1.0, (double)big["max_throttle"]);
             Assert.Equal(0.1, (double)big["max_residual"]);
+            Assert.Equal(BurnWorth.ExecNodeDone, (double)big["done_dv"]);
             Assert.Equal(0.1, (double)Correction(0.5, 50, 19, 0.1)["max_residual"], 9);
             Assert.Equal(1.0, (double)Correction(0.5, 50, 0)["max_throttle"]);
         }
