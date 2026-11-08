@@ -540,7 +540,7 @@ namespace ClaudiaKerman.Core.Missions
             if (mission == null || mission.Stage != MissionStage.AwaitingReducedGoal || mission.ReducedGoal.Length > 0) return false;
             note = (note ?? "").Trim();
             if (note.Length == 0 || mission.InFlight) return true;
-            Note(LogKind.Player, "Retry with a note: " + note);
+            Note(LogKind.Player, "Retry with a note: " + note, typed: true);
             mission.Stage = MissionStage.Debriefing;
             // The margin recheck and the run's facts went with the first Debrief: this one is not charged for them again.
             var turn = new Turn
