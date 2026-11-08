@@ -466,7 +466,7 @@ namespace ClaudiaKerman.KOS
                 var ask = KosValues.ToDictionary(input);
                 // Aimed at a landing (#792), the predictor flies the planet's air: the craft is still at the moon.
                 node = ask.ContainsKey("lat")
-                    ? BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(vessel.mainBody.referenceBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)))
+                    ? BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(vessel.mainBody.referenceBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId()))
                     : BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody()); // #888: the body reads the planet's frame for the turn direction
                 // A return aimed at no landing clears the last one (#892): a later reentry mustn't trim toward it.
                 MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, vessel.mainBody.referenceBody.bodyName));
@@ -568,7 +568,7 @@ namespace ClaudiaKerman.KOS
                     SnapshotReader.ReadEngineFuel(snapshot, vessel);
                     ask["craft"] = BlockCalls.EntryCraftCall(new System.Collections.Generic.Dictionary<string, object> { { "core", ask.ContainsKey("core") ? ask["core"] : "" }, { "body", planet.bodyName }, { "stage_limit", ask.ContainsKey("stage_limit") ? ask["stage_limit"] : 0.0 } }, snapshot,
                         MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild, id => uids.ContainsKey(id) ? uids[id] : null, (key, why) => { });
-                    step = BlockCalls.TransferStep(ask, snapshot, new PlanningBody(), new ReentryAir(planet), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
+                    step = BlockCalls.TransferStep(ask, snapshot, new PlanningBody(), new ReentryAir(planet), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId()));
                 }
                 else step = BlockCalls.TransferStep(ask, snapshot);
                 // Core's record of the plane it aims for, for capture (#788). A timing ask aims for nothing.
@@ -644,7 +644,7 @@ namespace ClaudiaKerman.KOS
                 ask.TryGetValue("target", out target);
                 var planet = BodyNamed(target as string);
                 node = ask.ContainsKey("lat") && planet != null
-                    ? BlockCalls.CorrectionBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(planet), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)))
+                    ? BlockCalls.CorrectionBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(planet), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId()))
                     : BlockCalls.CorrectionBurn(ask, SnapshotReader.ReadForMission(vessel));
                 if (ask.ContainsKey("lat") && planet != null) MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, planet.bodyName));
                 return KosValues.FromPlain(node);
@@ -677,7 +677,7 @@ namespace ClaudiaKerman.KOS
                     var entryCraft = BlockCalls.EntryCraftCall(new System.Collections.Generic.Dictionary<string, object> { { "home", ask.ContainsKey("home") ? ask["home"] : "" }, { "body", vessel.mainBody.bodyName }, { "stage_limit", ask.ContainsKey("stage_limit") ? ask["stage_limit"] : 0.0 } }, snapshot,
                         MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild, id => uids.ContainsKey(id) ? uids[id] : null, (key, why) => { });
                     ask["craft"] = entryCraft;
-                    fix = BlockCalls.EntryTrim(ask, snapshot, new PlanningBody(), new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
+                    fix = BlockCalls.EntryTrim(ask, snapshot, new PlanningBody(), new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId()));
                     return KosValues.FromPlain(fix);
                 }
                 finally
@@ -799,11 +799,17 @@ namespace ClaudiaKerman.KOS
             {
                 var vessel = shared.Vessel;
                 var ask = KosValues.ToDictionary(input);
-                craft = new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask));
+                craft = new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId());
                 found = BlockCalls.DeorbitBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(vessel.mainBody), craft);
                 MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, vessel.mainBody.bodyName));
                 return KosValues.FromPlain(found);
             }, () => Landing(found) + CraftLine(craft) + PlanLine(found));
+        }
+
+        /// <summary>The part running this script, whose side of a docking is the Mission's own (#926); null when the call has no processor.</summary>
+        private uint? CoreId()
+        {
+            return shared.KSPPart == null ? (uint?)null : shared.KSPPart.persistentId;
         }
 
         private Lexicon ReentryImpact(Lexicon input)
@@ -817,7 +823,7 @@ namespace ClaudiaKerman.KOS
                 // Given a path round another body (return's, with the craft still at the moon), that body's air (#793).
                 object named;
                 ask.TryGetValue("orbit_body", out named);
-                craft = new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask));
+                craft = new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId());
                 UnityEngine.Debug.Log(ClaudiaKerman.Core.ModInfo.LogTag + " REENTRYIMPACT read: " + craft.Diagnosis());
                 landing = BlockCalls.ReentryImpact(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(),
                     new ReentryAir(BodyNamed(named as string) ?? vessel.mainBody), craft);

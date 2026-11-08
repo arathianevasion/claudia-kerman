@@ -116,5 +116,68 @@ namespace ClaudiaKerman.Core.Tests
             var nose = EntryAttitude.Of(parts, null).NoseOf(id => id == Pod ? new[] { 0.0, 0, 1 } : new[] { 1.0, 0, 0 }, id => new double[3]);
             Assert.Equal(new[] { 0.0, 0, 1 }, nose);
         }
+
+        private const uint Mine = 10, Theirs = 11, MyPort = 12, TheirPort = 13, MyProbe = 14;
+
+        private static SnapshotPart Port(uint id, uint? parent, string state)
+        {
+            var port = Part(id, parent, 0, "docking_port");
+            port.PortState = state;
+            return port;
+        }
+
+        /// <summary>The partner's pod is the root and comes first; ours hangs off the far side of the docking, with its own shield.</summary>
+        private static List<SnapshotPart> DockedPair()
+        {
+            return new List<SnapshotPart>
+            {
+                Part(Theirs, null, 3, "command", "crew_seat"),
+                Port(TheirPort, Theirs, "Docked (docker)"),
+                Port(MyPort, TheirPort, "Docked (dockee)"),
+                Part(Mine, MyPort, 1, "command", "crew_seat"),
+                Part(Shield, Mine, 0, "heat_shield"),
+            };
+        }
+
+        [Fact]
+        public void On_a_docked_pair_the_Mission_s_own_pod_is_home_given_its_core()
+        {
+            var attitude = EntryAttitude.Of(DockedPair(), null, Mine);
+            Assert.Equal(Mine, attitude.Home.Id);
+            Assert.Equal(Shield, attitude.Shield.Id);
+        }
+
+        [Fact]
+        public void A_core_that_is_not_a_command_part_still_reads_its_own_side_of_the_docking()
+        {
+            var parts = DockedPair();
+            parts.Add(Part(MyProbe, Mine, 0, "probe_core"));
+            Assert.Equal(Mine, EntryAttitude.Of(parts, null, MyProbe).Home.Id);
+        }
+
+        [Fact]
+        public void With_no_core_a_docked_pair_reads_as_before()
+        {
+            Assert.Equal(Theirs, EntryAttitude.Of(DockedPair(), null).Home.Id);
+        }
+
+        [Fact]
+        public void A_core_left_out_with_the_stack_is_as_no_core()
+        {
+            var parts = Capsule();
+            parts.Add(Part(MyProbe, Tank, 0, "command", "probe_core"));
+            var attitude = EntryAttitude.Of(parts, new uint[] { Dec, Tank, MyProbe }, MyProbe);
+            Assert.Equal(Pod, attitude.Home.Id);
+            Assert.Equal(Shield, attitude.Shield.Id);
+        }
+
+        [Fact]
+        public void A_single_craft_is_unchanged_with_or_without_its_core()
+        {
+            var without = EntryAttitude.Of(Capsule(), new uint[] { Dec, Tank });
+            var with = EntryAttitude.Of(Capsule(), new uint[] { Dec, Tank }, Pod);
+            Assert.Equal(without.Home.Id, with.Home.Id);
+            Assert.Equal(without.Shield.Id, with.Shield.Id);
+        }
     }
 }

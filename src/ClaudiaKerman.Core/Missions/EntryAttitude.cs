@@ -28,12 +28,15 @@ namespace ClaudiaKerman.Core.Missions
             return Nose(up(Shield.Id), new[] { to[0] - from[0], to[1] - from[1], to[2] - from[2] });
         }
 
-        /// <summary>The attitude of <paramref name="parts"/> without those in <paramref name="gone"/> (the stack the Entry drops, by <see cref="SnapshotPart.Id"/>).</summary>
-        public static EntryAttitude Of(IList<SnapshotPart> parts, ICollection<uint> gone)
+        /// <summary>
+        /// The attitude of <paramref name="parts"/> without those in <paramref name="gone"/> (the stack the Entry drops, by <see cref="SnapshotPart.Id"/>). Given the part running the script
+        /// (<paramref name="core"/>, #926) home is the Mission's own command part by <see cref="PartTree.CommandPart"/> (#909), never a docked partner's pod; with none, or one that is gone, as before.
+        /// </summary>
+        public static EntryAttitude Of(IList<SnapshotPart> parts, ICollection<uint> gone, uint? core = null)
         {
             var kept = parts.Where(p => gone == null || !gone.Contains(p.Id)).ToList();
             var ids = new HashSet<uint>(kept.Select(p => p.Id));
-            var command = PartTree.CommandPart(kept, null);
+            var command = PartTree.CommandPart(kept, core.HasValue && ids.Contains(core.Value) ? core : null);
             var home = kept.FirstOrDefault(p => p.Id == command) ?? kept.FirstOrDefault(p => !p.ParentId.HasValue || !ids.Contains(p.ParentId.Value));
             return new EntryAttitude { Home = home, Shield = home == null ? null : EntryStack.Of(kept, home.Id, 1).Shield };
         }

@@ -65,7 +65,7 @@ namespace ClaudiaKerman.Adapter
         }
 
         /// <summary>The axis of <paramref name="vessel"/> with <paramref name="leaveOut"/> gone, by kOS UID as the predictor takes them.</summary>
-        public static EntryAxis Of(Vessel vessel, ICollection<string> leaveOut)
+        public static EntryAxis Of(Vessel vessel, ICollection<string> leaveOut, uint? core = null)
         {
             var gone = new HashSet<string>(leaveOut ?? new string[0]);
             var goneIds = new List<uint>();
@@ -75,7 +75,7 @@ namespace ClaudiaKerman.Adapter
                 byId[part.persistentId] = part;
                 if (gone.Contains(part.flightID.ToString(CultureInfo.InvariantCulture))) goneIds.Add(part.persistentId);
             }
-            var attitude = EntryAttitude.Of(SnapshotReader.PartsOf(vessel), goneIds);
+            var attitude = EntryAttitude.Of(SnapshotReader.PartsOf(vessel), goneIds, core);
             var home = attitude.Home != null ? byId[attitude.Home.Id] : vessel.rootPart;
             var shield = attitude.Shield != null ? byId[attitude.Shield.Id] : null;
             var homeUp = home.partTransform.up;
@@ -146,8 +146,8 @@ namespace ClaudiaKerman.Adapter
         /// <summary>Ship Systems out now that this craft reads stowed (#868), for the block-call lines.</summary>
         public int StowedCount { get; private set; }
 
-        public ReentryCraft(Vessel vessel, ICollection<string> leaveOut = null, ICollection<string> shieldDrop = null)
-            : this(vessel, leaveOut, shieldDrop, ShipSystemsKeeper.StowedForEntry(vessel), EntryAxis.Of(vessel, leaveOut))
+        public ReentryCraft(Vessel vessel, ICollection<string> leaveOut = null, ICollection<string> shieldDrop = null, uint? core = null)
+            : this(vessel, leaveOut, shieldDrop, ShipSystemsKeeper.StowedForEntry(vessel), EntryAxis.Of(vessel, leaveOut, core))
         {
         }
 
