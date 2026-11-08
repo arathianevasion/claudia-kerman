@@ -427,6 +427,34 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("On course to meet Ike at UT ", DebriefOnTheCoastToIke(CapturePlan(words), CaptureAtDuna()));
         }
 
+        /// <summary>
+        /// #890: the Debrief, the Next-patch Watch and the next plan's wait judge a moon planned by one rule. A hand-written coast to Ike named in the Sequence
+        /// Plan triggers none of the three; a moon named only as the origin, or by nothing, triggers all three.
+        /// </summary>
+        [Theory]
+        [InlineData("Coast to Ike", "Return to Kerbin.", true)]
+        [InlineData("Return from Ike to Duna", "Return to Kerbin.", false)]
+        [InlineData("Coast", "Return to Kerbin.", false)]
+        public void TheDebriefTheWatchAndTheBlockerShareThePlannedMoonRule(string words, string next, bool planned)
+        {
+            var due = Now + MoonCrossingTests.Wait908b;
+            var transport = new StreamingFakeTransport(CapturePlan(next), CoastPlan(words), NominalDebrief(), Waiting(due), Waiting(due));
+            var mission = Control(transport);
+            ToSequencePlan(mission, InDunaOrbit(), "Orbit Ike.");
+            mission.Send(new Approve());
+            var start = mission.TakeCommands().OfType<StartScript>().Single();
+            mission.Send(OnTheCoastToIke(Now));
+            mission.Send(new KosRunEnded(Ended(true), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval && transport.Requests.Count >= 4);
+
+            Assert.Equal(!planned, transport.Requests[2].Body.Contains("On course to meet Ike at UT "));
+            Assert.Equal(planned, mission.View.NextPatchPlanned.Split(',').Contains("Ike"));
+            mission.TakeCommands();
+            mission.Send(new WarpToDueTime());
+            Assert.Equal(planned, mission.TakeCommands().OfType<WarpToUt>().Any());
+            Assert.Equal(!planned, PlanCard(mission).Contains("Blocker"));
+        }
+
         /// <summary>Fix round: a leg already begun (plan_step 2) that named the moon no longer plans it.</summary>
         [Fact]
         public void APastLegThatNamedTheMoonDoesNotPlanItsEncounter()

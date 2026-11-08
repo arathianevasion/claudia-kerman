@@ -82,7 +82,28 @@ namespace ClaudiaKerman.Core.Missions
             }
             if (!due.HasValue || due.Value <= _ut) return null;
             // The last run's transfer_to target is met on the coast it left: planned, not crossed.
-            return MoonCrossings.Judge(snapshot.At(_ut), due.Value, RunTransfers(mission));
+            return MoonCrossings.Judge(snapshot.At(_ut), due.Value, PlannedMoons(mission, snapshot.At(_ut), plan));
+        }
+
+        /// <summary>
+        /// #890: the one answer to "which moons are planned", for the Debrief, <see cref="WaitCrossing"/> and the Next-patch Watch. The bodies the run's <c>transfer_to</c>
+        /// aimed at, and (#871) a moon the run's words, the Mission Plan's current or later legs or <paramref name="plan"/> name as a destination (origin excluded)
+        /// that the craft is round or meets on its first loop; a parking orbit that merely reaches a moon is still a crossing.
+        /// </summary>
+        private IList<string> PlannedMoons(Mission mission, GameSnapshot at, SequencePlan plan = null)
+        {
+            var planned = RunTransfers(mission).ToList();
+            var texts = new List<string> { mission.RunWords };
+            if (plan != null) texts.Add(plan.Name + " " + plan.Intent);
+            if (mission.Plan != null) texts.AddRange(LegsAhead(mission).Select(SequenceWords.Of));
+            planned.AddRange(texts.SelectMany(t => SequenceWords.Destinations(at, t)).Select(b => b.Name).Distinct(System.StringComparer.OrdinalIgnoreCase)
+                .Where(n => MoonCrossings.Meets(at, n)));
+            return planned;
+        }
+
+        private static List<PlannedSequence> LegsAhead(Mission mission)
+        {
+            return mission.Plan.Sequences.Skip(System.Math.Max(0, StepsBegun(mission) - 1)).ToList();
         }
 
         private static IList<string> RunTransfers(Mission mission)
@@ -196,7 +217,9 @@ namespace ClaudiaKerman.Core.Missions
             if (MissionOver || IsRunning(mission) || !FollowsCraft(mission) || mission.VesselId.Length == 0) return;
             view.NextPatchVesselId = mission.VesselId;
             var token = CoastPlanToken(mission.PendingSequence);
-            var planned = (token != null ? token.Bodies : "").Split(new[] { ',' }, System.StringSplitOptions.RemoveEmptyEntries).Select(b => b.Trim()).Concat(RunTransfers(mission));
+            var snapshot = CrossingSnapshot(mission);
+            var planned = (token != null ? token.Bodies : "").Split(new[] { ',' }, System.StringSplitOptions.RemoveEmptyEntries).Select(b => b.Trim())
+                .Concat(snapshot != null ? PlannedMoons(mission, snapshot.At(_ut), mission.PendingSequence) : RunTransfers(mission));
             view.NextPatchPlanned = string.Join(",", planned.Distinct(System.StringComparer.OrdinalIgnoreCase).ToArray());
         }
 
@@ -217,16 +240,10 @@ namespace ClaudiaKerman.Core.Missions
             mission.RunTransfers = string.Join(",", RunTransfers(mission).Where(t => MoonCrossings.Meets(snapshot.At(_ut), t)).ToArray());
             // The next plan's wait is not known yet: judged as a long one. A moon the run's own transfer_to aims at is planned, not crossed.
             // An ellipse capture kept for the next leg's moon (#866) waits only to its window: that wait is followed, the moon met after the burn.
-            var planned = RunTransfers(mission).ToList();
             var at = snapshot.At(_ut);
-            if (mission.Plan != null) at.LegsAhead = mission.Plan.Sequences.Skip(System.Math.Max(0, StepsBegun(mission) - 1)).ToList();
-            // #871: a moon the Sequence Plan or the Mission Plan's current or later legs name is planned too (a capture met without transfer_to, a gravity assist),
-            // when the craft is on its way to meet it; a parking orbit that merely reaches it is still a crossing.
-            // Named as a destination only: a moon a leg departs or returns from is where the craft was, not where it goes.
-            var texts = new List<string> { mission.RunWords };
-            if (at.LegsAhead != null) texts.AddRange(at.LegsAhead.Select(SequenceWords.Of));
-            planned.AddRange(texts.SelectMany(t => SequenceWords.Destinations(snapshot, t)).Select(b => b.Name).Distinct(System.StringComparer.OrdinalIgnoreCase)
-                .Where(n => MoonCrossings.Meets(at, n)));
+            if (mission.Plan != null) at.LegsAhead = LegsAhead(mission);
+            // #871, #890: the planned moons are PlannedMoons's, as the Blocker and the watch judge them.
+            var planned = PlannedMoons(mission, at);
             var window = KeptRoute.KeptWindow(at);
             var crossing = window.HasValue ? MoonCrossings.Judge(snapshot.At(_ut), window.Value, planned) : MoonCrossings.Judge(snapshot.At(_ut), planned);
             if (crossing != null) mission.RunEvents.Replace(_ut, RunEventKind.MoonCrossing, MissionPrompts.MoonCrossingFact(crossing, MoonCrossings.Meets(at, crossing.Moon.Name)));
