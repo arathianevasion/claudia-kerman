@@ -12,4 +12,4 @@ The glossary term stays for code and briefs. The _Avoid_ line governs those, not
 
 ## Prior requests
 
-- #902: "kept" and "high orbit" in Claudia's text
+- #902: "Reword the remaining 'kept orbit' / 'high orbit' text Claudia sees to High Route (from #882)"
