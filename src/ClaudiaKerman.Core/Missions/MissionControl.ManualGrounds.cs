@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System.Linq;
+using ClaudiaKerman.Core.Tools;
 using ClaudiaKerman.Core.Claude;
 
 namespace ClaudiaKerman.Core.Missions
@@ -39,6 +40,40 @@ namespace ClaudiaKerman.Core.Missions
                 });
         }
 
+        /// <summary>A Kerbal other than Claudia died (#874): kept with the UT, so #818's crew check reads deaths and not who is still aboard.</summary>
+        private void CrewDeathSeen(string name)
+        {
+            var mission = _mission;
+            if (mission == null || MissionOver || name.Length == 0) return;
+            mission.CrewDeaths[name] = _ut;
+        }
+
+        private static string CrewDeathsJson(Mission mission)
+        {
+            if (mission.CrewDeaths.Count == 0) return "";
+            var json = new JsonWriter().BeginArray();
+            foreach (var d in mission.CrewDeaths) json.BeginObject().Field("name", d.Key).Field("ut", d.Value).EndObject();
+            return json.EndArray().ToString();
+        }
+
+        private static void RestoreCrewDeaths(Mission mission, string text)
+        {
+            mission.CrewDeaths.Clear();
+            if (string.IsNullOrEmpty(text)) return;
+            try
+            {
+                foreach (var node in JsonReader.Parse(text).Items.Where(n => n.Kind == JsonKind.Object))
+                {
+                    var name = JsonNode.Str(node["name"]);
+                    if (!string.IsNullOrEmpty(name)) mission.CrewDeaths[name] = JsonNode.Double(node["ut"]) ?? 0;
+                }
+            }
+            catch (JsonException)
+            {
+                mission.CrewDeaths.Clear();
+            }
+        }
+
         /// <summary>
         /// A Failed Debrief for a craft down with its crew alive, on a landing step, with no precision goal: sent back once. True when
         /// it was; the reply is then not committed.
@@ -48,7 +83,7 @@ namespace ClaudiaKerman.Core.Missions
             if (turn.Purpose != Purpose.Debrief || reply.Debrief == null || reply.Debrief.Outcome != "Failed" || turn.LandingMissSentBack || mission.DeferredRestore != null) return false;
             var plan = mission.PendingSequence;
             if (plan == null || !ManualGrounds.LandingStep(plan.Script) || mission.PrecisionGoal) return false;
-            if (!ManualGrounds.DownAlive(MissionVesselSnapshot(mission), mission.RunStartCrew)) return false;
+            if (!ManualGrounds.DownAlive(MissionVesselSnapshot(mission), mission.RunStartCrew, mission.CrewDeaths, mission.RunStartUt)) return false;
             turn.LandingMissSentBack = true;
             // Her Failed reply stays in front of her, so "reply Failed again" has something to answer; it and the send-back are committed with the turn.
             var before = turn.Messages.Count;

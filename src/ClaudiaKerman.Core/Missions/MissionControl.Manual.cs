@@ -27,6 +27,8 @@ namespace ClaudiaKerman.Core.Missions
             public bool PrecisionGoal;
             /// <summary>The Kerbals aboard at the current run's start (#818), for judging a Failed Debrief's crew alive; null when unread. Not saved, as a run never survives a load.</summary>
             public List<string> RunStartCrew;
+            /// <summary>Kerbals killed while the Mission was live (#874), each with the UT of the death. Saved.</summary>
+            public readonly Dictionary<string, double> CrewDeaths = new Dictionary<string, double>();
             /// <summary>How Manual Control began, for Claudia's Debrief.</summary>
             public string ManualOrigin = "";
             /// <summary>Handed back: the Debrief of the manual stretch is under way, and a revised Mission Plan follows it.</summary>

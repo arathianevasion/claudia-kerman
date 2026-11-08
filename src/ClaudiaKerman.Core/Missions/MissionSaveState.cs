@@ -106,6 +106,8 @@ namespace ClaudiaKerman.Core.Missions
         public string RunTransfers = "";
         /// <summary>#871: the current or last run's Sequence Plan name and intent; "" for none and in older saves.</summary>
         public string RunWords = "";
+        /// <summary>JSON of the Kerbals killed (#874), name and UT; "" for none.</summary>
+        public string CrewDeaths = "";
         /// <summary>The game's UT when the save was made (#412): a loaded save's open RCS Use is closed there; 0 in older saves.</summary>
         public double SavedUt;
         /// <summary>The run's RCS Use tally (JSON written by RcsUseTally.ToJson); "" for none and in older saves.</summary>
@@ -216,6 +218,7 @@ namespace ClaudiaKerman.Core.Missions
             if (RunStartUt != 0) values["runStartUt"] = RunStartUt.ToString("R", CultureInfo.InvariantCulture);
             if (RunTransfers.Length > 0) values["runTransfers"] = RunTransfers;
             if (RunWords.Length > 0) values["runWords"] = RunWords;
+            if (CrewDeaths.Length > 0) values["crewDeaths"] = CrewDeaths;
             if (SavedUt != 0) values["savedUt"] = SavedUt.ToString("R", CultureInfo.InvariantCulture);
             if (RcsUse.Length > 0) values["rcsUse"] = RcsUse;
             if (RunStartMonopropellant.HasValue) values["runStartMonopropellant"] = RunStartMonopropellant.Value.ToString("R", CultureInfo.InvariantCulture);
@@ -328,6 +331,7 @@ namespace ClaudiaKerman.Core.Missions
             if (double.TryParse(Get(values, "runStartUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out runStart)) state.RunStartUt = runStart;
             state.RunTransfers = Get(values, "runTransfers");
             state.RunWords = Get(values, "runWords");
+            state.CrewDeaths = Get(values, "crewDeaths");
             double savedUt;
             if (double.TryParse(Get(values, "savedUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out savedUt)) state.SavedUt = savedUt;
             double reading;
