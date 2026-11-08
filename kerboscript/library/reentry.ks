@@ -27,7 +27,7 @@
 //| Fails with "body has no atmosphere", an orbit that never reaches the atmosphere, an option it can't read,
 //| "stack attached below the heat shield: <names>", a hard touchdown, or an abort (a mid-air abort still
 //| opens the parachutes if safe). Fly it after a return or a de-orbit burn, periapsis inside the atmosphere;
-//| it plans no burn. Example: `local res is reentry(). addons:claudia:report(res).`
+//| at most one small trim. Example: `local res is reentry(). addons:claudia:report(res).`
 
 // Main parachutes: the most speed (m/s) and least air pressure (atm) at which opening is safe, and the
 // height above the ground (m) by which they open regardless. That last resort is not speed-aware on
