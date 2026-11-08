@@ -19,4 +19,4 @@ next, else "skipped out ..."), shield_dropped, chutes_used, chutes_kept (titles)
 Fails with "body has no atmosphere", an orbit that never reaches the atmosphere, an option it can't read,
 "stack attached below the heat shield: <names>", a hard touchdown, or an abort (a mid-air abort still
 opens the parachutes if safe). Fly it after a return or a de-orbit burn, periapsis inside the atmosphere;
-it plans no burn. Example: `local res is reentry(). addons:claudia:report(res).`
+at most one small trim. Example: `local res is reentry(). addons:claudia:report(res).`
