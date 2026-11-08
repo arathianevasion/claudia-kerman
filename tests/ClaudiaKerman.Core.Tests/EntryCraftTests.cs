@@ -277,22 +277,41 @@ namespace ClaudiaKerman.Core.Tests
 
         // ---- The axis the drag is read along (#924): the Entry's attitude, never the control point ----
 
+        private const uint StackProbe = 8;
         private static readonly double[] PodUp = { 0, 1, 0 };
         private static readonly double[] ReversedControlUp = { 0, -1, 0 };
 
-        /// <summary>The nose <see cref="EntryAttitude"/>'s rule gives for the craft that enters, every part built pod-up with the shield below home.</summary>
+        /// <summary>The Drops craft with Decoupler.1 releasing the shield and a probe core on the stack, listed first and built upside down: the part a control point on the stack would be.</summary>
+        private static List<SnapshotPart> WithStackProbe()
+        {
+            var parts = Releasing(Shield);
+            parts.Insert(0, Part(StackProbe, Tank, "probeCore", 0.1, "command", "probe_core"));
+            return parts;
+        }
+
+        /// <summary>Each part's own up in the fixture: pod-up, but for the probe on the stack and the shield, built upside down, so a rule that takes either's up unturned reads the craft tail first.</summary>
+        private static double[] BuiltUp(uint id)
+        {
+            return id == StackProbe || id == Shield ? ReversedControlUp : PodUp;
+        }
+
+        /// <summary>Each part's place on the stack, pod highest.</summary>
+        private static double[] Place(uint id)
+        {
+            var heights = new Dictionary<uint, double> { { PodChute, 4 }, { Pod, 3 }, { Shield, 2 }, { Dec, 1.5 }, { Tank, 0 }, { Engine, -1 }, { StackProbe, -2 } };
+            return new[] { 0, heights[id], 0 };
+        }
+
+        /// <summary>The nose <see cref="EntryAttitude"/>'s rule gives for the craft that enters, from the parts' built axes and places as the adapter hands them over.</summary>
         private static double[] EntryNose(GameSnapshot snapshot, IDictionary<string, object> ask)
         {
             var left = new HashSet<string>(BlockCalls.LeftOut(ask));
-            var attitude = EntryAttitude.Of(snapshot.Craft.Parts, snapshot.Craft.Parts.Where(p => left.Contains(Uid(p.Id))).Select(p => p.Id).ToList());
-            Assert.Equal(Pod, attitude.Home.Id);
-            Assert.Equal(Shield, attitude.Shield.Id);
-            return EntryAttitude.Nose(PodUp, PodUp);
+            return EntryAttitude.Of(snapshot.Craft.Parts, snapshot.Craft.Parts.Where(p => left.Contains(Uid(p.Id))).Select(p => p.Id).ToList()).NoseOf(BuiltUp, Place);
         }
 
         /// <summary>
-        /// The capsule read along <paramref name="nose"/>: shield first it meets the 2.24 m² <c>reentry</c> logged; tail first it is the 0.11 m² <c>return</c> logged. The two figures are the ticket's; what
-        /// these tests pin is which axis the rule hands the read, and that a control point can't change it. The adapter's read of the real cubes needs the game (docs/in-game/entry-craft.md, check 5).
+        /// The capsule read along <paramref name="nose"/>: shield first it meets the 2.24 m² <c>reentry</c> logged; tail first, the 0.11 m² <c>return</c> logged. The figures are the ticket's and this mapping is
+        /// the fixture's: what these tests pin is the axis the rule hands the read. That the real cubes give those figures along it needs the game (docs/in-game/entry-craft.md, check 5).
         /// </summary>
         private static IReentryCraft ReadAlong(double[] nose)
         {
@@ -326,7 +345,7 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void Return_at_the_mun_and_reentry_above_the_air_land_within_10_km_read_along_the_entry_s_attitude()
         {
-            var snapshot = AtMun(Releasing(Shield));
+            var snapshot = AtMun(WithStackProbe());
             var ask = new Dictionary<string, object> { { "craft", Read(snapshot, "Kerbin") } };
             var ret = LandedAlong(snapshot, ask, EntryNose(snapshot, ask));
             var ent = LandedAsReentryReads();

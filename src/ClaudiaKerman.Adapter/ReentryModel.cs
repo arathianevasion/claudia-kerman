@@ -49,7 +49,7 @@ namespace ClaudiaKerman.Adapter
     }
 
     /// <summary>
-    /// The axis of <see cref="ReentryCraft"/>'s read (#924), by <see cref="EntryAttitude"/>'s rule: the Entry Shield's own axis turned toward home, or home's up with no shield, and never
+    /// The axis of <see cref="ReentryCraft"/>'s read (#924), by <see cref="EntryAttitude"/>'s rule: the heat shield's own axis turned toward home, or home's up with no shield, and never
     /// the vessel's <c>ReferenceTransform</c>, which at the Mun may be a part on the stack or a Reversed control point. Occlusion needs no such care: flight works it out above the air too
     /// (<c>reentry</c>'s read after its drop, in vacuum and with nothing bared by this code, found the face the drop had just uncovered).
     /// </summary>
@@ -64,8 +64,8 @@ namespace ClaudiaKerman.Adapter
             return _described;
         }
 
-        /// <summary>The axis of <paramref name="vessel"/> (its parts as <paramref name="parts"/>) with <paramref name="leaveOut"/> gone, by kOS UID as the predictor takes them.</summary>
-        public static EntryAxis Of(Vessel vessel, IList<SnapshotPart> parts, ICollection<string> leaveOut)
+        /// <summary>The axis of <paramref name="vessel"/> with <paramref name="leaveOut"/> gone, by kOS UID as the predictor takes them.</summary>
+        public static EntryAxis Of(Vessel vessel, ICollection<string> leaveOut)
         {
             var gone = new HashSet<string>(leaveOut ?? new string[0]);
             var goneIds = new List<uint>();
@@ -75,15 +75,12 @@ namespace ClaudiaKerman.Adapter
                 byId[part.persistentId] = part;
                 if (gone.Contains(part.flightID.ToString(CultureInfo.InvariantCulture))) goneIds.Add(part.persistentId);
             }
-            var attitude = EntryAttitude.Of(parts, goneIds);
-            Part home;
-            if (attitude.Home == null || !byId.TryGetValue(attitude.Home.Id, out home)) home = vessel.rootPart;
-            Part shield = null;
-            if (attitude.Shield != null) byId.TryGetValue(attitude.Shield.Id, out shield);
+            var attitude = EntryAttitude.Of(SnapshotReader.PartsOf(vessel), goneIds);
+            var home = attitude.Home != null ? byId[attitude.Home.Id] : vessel.rootPart;
+            var shield = attitude.Shield != null ? byId[attitude.Shield.Id] : null;
             var homeUp = home.partTransform.up;
-            var nose = shield != null
-                ? Vector(EntryAttitude.Nose(Doubles(shield.partTransform.up), Doubles(home.partTransform.position - shield.partTransform.position)))
-                : homeUp;
+            var read = attitude.NoseOf(id => Doubles(byId[id].partTransform.up), id => Doubles(byId[id].partTransform.position));
+            var nose = read != null ? Vector(read) : homeUp;
             var top = Vector3.ProjectOnPlane(-home.partTransform.forward, nose);
             if (top.sqrMagnitude < 1e-6f) top = Vector3.ProjectOnPlane(home.partTransform.right, nose);
             var control = vessel.GetReferenceTransformPart();
@@ -96,7 +93,7 @@ namespace ClaudiaKerman.Adapter
             };
         }
 
-        private static string Name(Part part)
+        internal static string Name(Part part)
         {
             return part == null ? "none" : part.partInfo != null ? part.partInfo.name : part.name;
         }
@@ -150,7 +147,7 @@ namespace ClaudiaKerman.Adapter
         public int StowedCount { get; private set; }
 
         public ReentryCraft(Vessel vessel, ICollection<string> leaveOut = null, ICollection<string> shieldDrop = null)
-            : this(vessel, leaveOut, shieldDrop, ShipSystemsKeeper.StowedForEntry(vessel), EntryAxis.Of(vessel, SnapshotReader.PartsOf(vessel), leaveOut))
+            : this(vessel, leaveOut, shieldDrop, ShipSystemsKeeper.StowedForEntry(vessel), EntryAxis.Of(vessel, leaveOut))
         {
         }
 
@@ -167,7 +164,11 @@ namespace ClaudiaKerman.Adapter
             {
                 if (Gone(part, gone)) continue;
                 if (gone.Count > 0) _mass += (part.mass + part.GetResourceMass()) * 1000;
-                if (!DragCubeDrag.MeetsAir(part)) continue;
+                if (!DragCubeDrag.MeetsAir(part))
+                {
+                    _read.Add(EntryAxis.Name(part) + " shielded");
+                    continue;
+                }
                 var local = part.partTransform.InverseTransformDirection(flow);
                 var bared = BaredFaces(part, gone);
                 var chute = part.FindModuleImplementing<ModuleParachute>();
@@ -178,8 +179,7 @@ namespace ClaudiaKerman.Adapter
                 if (retracted != null) StowedCount++;
                 for (var i = 0; i < Machs.Length; i++)
                     _area[i] += PartArea(part, local, (float)Machs[i], packed, retracted, bared);
-                _read.Add(string.Format(CultureInfo.InvariantCulture, "{0} {1} {2:0.00}", part.partInfo != null ? part.partInfo.name : part.name, bared != null ? "bare" : "-",
-                    PartArea(part, local, 2f, packed, retracted, bared) * DragCubeDrag.Multiplier * PhysicsGlobals.DragCurvePseudoReynolds.Evaluate(1000f)));
+                _read.Add(string.Format(CultureInfo.InvariantCulture, "{0} {1} {2:0.00}", EntryAxis.Name(part), bared != null ? "bare" : "-", Drag(PartArea(part, local, 2f, packed, retracted, bared), 1000)));
                 if (!part.hasLiftModule)
                 {
                     for (var a = 0; a < Angles.Length; a++)
@@ -249,9 +249,15 @@ namespace ClaudiaKerman.Adapter
         }
 
         /// <summary>
-        /// The part's parachute for the predictor held with <paramref name="nose"/> at surface retrograde, for the Game Snapshot (ADR 0019: the Chute Groups read these; the Entry's
-        /// nose in flight, the root part's up in the editor, #641); null for a part without one, or a cut chute.
+        /// The part's parachute for the predictor as <paramref name="vessel"/> holds it surface retrograde, for the Game Snapshot
+        /// (ADR 0019: the Chute Groups read these); null for a part without one, or a cut chute.
         /// </summary>
+        public static ReentryChute ChuteOf(Vessel vessel, Part part)
+        {
+            return ChuteOf(part, vessel.ReferenceTransform.up);
+        }
+
+        /// <summary>The same for a part of the editor's ship (#641), held with <paramref name="nose"/> (the root part's up) retrograde.</summary>
         public static ReentryChute ChuteOf(Part part, Vector3 nose)
         {
             var chute = part.FindModuleImplementing<ModuleParachute>();
@@ -339,7 +345,11 @@ namespace ClaudiaKerman.Adapter
 
         public double DragArea(double mach, double densitySpeed)
         {
-            var area = Interpolate(mach);
+            return Drag(Interpolate(mach), densitySpeed);
+        }
+
+        private static double Drag(double area, double densitySpeed)
+        {
             return area * DragCubeDrag.Multiplier * PhysicsGlobals.DragCurvePseudoReynolds.Evaluate((float)densitySpeed);
         }
 

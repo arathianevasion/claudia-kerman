@@ -109,7 +109,7 @@ namespace ClaudiaKerman.Core.Tests
             _out.WriteLine("capsule {0:0.0000} m² off {1:0.00}°; flat {2:0.0000} m² off {3:0.00}°", capsule[0], capsule[1], flat[0], flat[1]);
             Assert.True(capsule[1] < 3, "capsule shape: " + capsule[1]);
             Assert.True(flat[1] < 3, "flat shape: " + flat[1]);
-            // The two ends of the shapes the real occluded craft's curve can have bracket the logged figure, and the same craft nearby in area lands round the planet.
+            // On this orbit a drag area of about a tenth of a m² reaches the logged landing, whichever shape its curve has. It shows the drag can do it, not that the read was exactly 0.11.
             Assert.InRange(flat[0], 0.08, 0.11);
             Assert.InRange(capsule[0], 0.11, 0.16);
         }

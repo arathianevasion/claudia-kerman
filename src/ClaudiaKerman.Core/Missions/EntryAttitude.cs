@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -14,8 +15,18 @@ namespace ClaudiaKerman.Core.Missions
     {
         /// <summary>The part the crew rides in, else the first command part, else the root of what enters; null with no parts.</summary>
         public SnapshotPart Home;
-        /// <summary>The Entry Shield nearest home; null when none enters, and then the axis is home's own.</summary>
+        /// <summary>The heat shield nearest home, whichever shield number this Entry flies (they lie on one axis); null when none enters, and then the axis is home's own.</summary>
         public SnapshotPart Shield;
+
+        /// <summary>The craft's nose by this attitude, given each part's own up and its place (any one frame): the shield's up turned toward home, or home's up with no shield; null with no parts.</summary>
+        public double[] NoseOf(Func<uint, double[]> up, Func<uint, double[]> place)
+        {
+            if (Home == null) return null;
+            if (Shield == null) return up(Home.Id);
+            var from = place(Shield.Id);
+            var to = place(Home.Id);
+            return Nose(up(Shield.Id), new[] { to[0] - from[0], to[1] - from[1], to[2] - from[2] });
+        }
 
         /// <summary>The attitude of <paramref name="parts"/> without those in <paramref name="gone"/> (the stack the Entry drops, by <see cref="SnapshotPart.Id"/>).</summary>
         public static EntryAttitude Of(IList<SnapshotPart> parts, ICollection<uint> gone)

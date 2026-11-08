@@ -97,6 +97,24 @@ namespace ClaudiaKerman.Core.Tests
             var attitude = EntryAttitude.Of(new List<SnapshotPart>(), null);
             Assert.Null(attitude.Home);
             Assert.Null(attitude.Shield);
+            Assert.Null(attitude.NoseOf(id => new double[3], id => new double[3]));
+        }
+
+        [Fact]
+        public void The_nose_is_the_shield_s_axis_turned_toward_home_from_where_the_parts_are()
+        {
+            var attitude = EntryAttitude.Of(Capsule(), new uint[] { Dec, Tank });
+            // The shield is built tipped and upside down; home sits above it, so the nose is the shield's axis the other way round.
+            var nose = attitude.NoseOf(id => id == Shield ? new[] { 0.0, -0.8, 0.6 } : new[] { 1.0, 0, 0 }, id => id == Pod ? new[] { 0.0, 3, 0 } : new[] { 0.0, 2, 0 });
+            Assert.Equal(new[] { 0.0, 0.8, -0.6 }, nose);
+        }
+
+        [Fact]
+        public void With_no_shield_the_nose_is_home_s_own_up()
+        {
+            var parts = Capsule().Where(p => p.Id == Pod || p.Id == Chute).ToList();
+            var nose = EntryAttitude.Of(parts, null).NoseOf(id => id == Pod ? new[] { 0.0, 0, 1 } : new[] { 1.0, 0, 0 }, id => new double[3]);
+            Assert.Equal(new[] { 0.0, 0, 1 }, nose);
         }
     }
 }

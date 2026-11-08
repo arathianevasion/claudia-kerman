@@ -407,10 +407,8 @@ namespace ClaudiaKerman.Adapter
         private static void ReadChutes(GameSnapshot snapshot, Vessel vessel)
         {
             var parts = vessel.parts;
-            if (!snapshot.Craft.Parts.Any(p => p.Tags.Contains("parachute"))) return;
-            var nose = EntryAxis.Of(vessel, snapshot.Craft.Parts, null).Nose;
             for (var i = 0; i < parts.Count && i < snapshot.Craft.Parts.Count; i++)
-                if (snapshot.Craft.Parts[i].Tags.Contains("parachute")) snapshot.Craft.Parts[i].Chute = ReentryCraft.ChuteOf(parts[i], nose);
+                if (snapshot.Craft.Parts[i].Tags.Contains("parachute")) snapshot.Craft.Parts[i].Chute = ReentryCraft.ChuteOf(vessel, parts[i]);
         }
 
         /// <summary>The craft's parts as the snapshot reads them, on their own: the Entry's attitude (<see cref="EntryAxis"/>) needs only their tree and tags.</summary>
