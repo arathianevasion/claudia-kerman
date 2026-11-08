@@ -440,6 +440,7 @@ namespace ClaudiaKerman.Adapter
                     if (engine != null && engine.EngineIgnited) info.EngineLit = true;
                     if (engine != null)
                     {
+                        ReadRelight(info, engine);
                         if (engine.isOperational) info.EngineAvailableThrustKn += engine.maxThrust * engine.thrustPercentage / 100.0;
                         // a multi-mode engine's other mode doesn't burn: only the running module's propellants, as kOS consumedresources
                         if (engine.isEnabled)
@@ -467,6 +468,22 @@ namespace ClaudiaKerman.Adapter
 
             if (snapshot.DeltaVSimulator && deltaV != null) ReadStages(snapshot, deltaV);
             ReadBodies(snapshot);
+        }
+
+        /// <summary>Whether an engine will light again (#889), from stock's staged, allowRestart and flameout, and an ignition count read by name from modules that carry one (no mod is referenced): absent is unknown, so unlimited.</summary>
+        private static void ReadRelight(SnapshotPart info, ModuleEngines engine)
+        {
+            if (!engine.isEnabled) return;
+            if (engine.staged) info.EngineWasLit = true;
+            if (!engine.allowRestart) info.EngineAllowsRestart = false;
+            if (engine.flameout) info.EngineFlameout = true;
+            foreach (var name in new[] { "ignitions", "ignitionsRemained" })
+            {
+                var field = engine.GetType().GetField(name, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                if (field == null || field.FieldType != typeof(int)) continue;
+                var left = (int)field.GetValue(engine);
+                if (left >= 0 && (info.EngineIgnitionsLeft < 0 || left < info.EngineIgnitionsLeft)) info.EngineIgnitionsLeft = left;
+            }
         }
 
         /// <summary>The stock simulator's figures per stage. Vacuum delta-v does not depend on the delta-v app's chosen body; nothing is written back.</summary>
