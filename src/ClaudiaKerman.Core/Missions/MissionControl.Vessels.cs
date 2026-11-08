@@ -122,7 +122,7 @@ namespace ClaudiaKerman.Core.Missions
                 return false;
             }
             if (!snapshot.Craft.Eva) Boarded(mission, snapshot.Craft.VesselId, snapshot.Craft.Name);
-            if (snapshot.Craft.VesselId.Length > 0) CraftVesselIs(mission, snapshot.Craft.VesselId);
+            if (snapshot.Craft.VesselId.Length > 0) SetCraftVessel(mission, snapshot.Craft.VesselId);
             mission.VesselName = snapshot.Craft.Name;
             return true;
         }
@@ -130,7 +130,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The first snapshot in Flight makes the craft: its vessel and (for a remote Mission to follow) its processor.</summary>
         private void NoteCraft(Mission mission, GameSnapshot snapshot)
         {
-            CraftVesselIs(mission, snapshot.Craft.VesselId);
+            SetCraftVessel(mission, snapshot.Craft.VesselId);
             mission.VesselName = snapshot.Craft.Name;
             mission.ProcessorPartId = _craftCheck.ProcessorFor(snapshot);
         }
@@ -170,7 +170,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (craft != null && craft.ClaudiaAboard && !craft.Eva) Boarded(mission, craft.Id, craft.Name);
             if (craft != null)
             {
-                CraftVesselIs(mission, craft.Id);
+                SetCraftVessel(mission, craft.Id);
                 mission.VesselName = craft.Name;
                 // An aboard Mission's processor is one on the vessel Claudia is in: after an undock the original may have gone with the other half.
                 // (A remote Mission's craft is found by its processor, so that one never moves.)

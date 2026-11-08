@@ -35,10 +35,17 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>The craft is this vessel now; staging or an undock can change its id, and its aimed landing goes with it.</summary>
-        private static void CraftVesselIs(Mission mission, string vesselId)
+        private static void SetCraftVessel(Mission mission, string vesselId)
         {
             mission.LandingTargets.Move(mission.VesselId, vesselId);
             mission.VesselId = vesselId;
+        }
+
+        /// <summary>The Child Vessel is this vessel now, and its aimed landing goes with it. An unknown id on either side moves nothing: the "" entry, if any, is the craft's.</summary>
+        private static void SetChildVessel(Mission mission, ChildVessel child, string vesselId)
+        {
+            if (child.VesselId.Length > 0 && vesselId.Length > 0) mission.LandingTargets.Move(child.VesselId, vesselId);
+            child.VesselId = vesselId;
         }
 
         /// <summary>The vessel the run flies, whose reentry this is: the running Child Vessel's id ("" if it has none yet), else the craft's.</summary>

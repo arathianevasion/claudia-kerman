@@ -26,11 +26,17 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>Records the vessel's aim, replacing its last; a null target (an aim at no landing) forgets it.</summary>
         public void Aim(string vesselId, LandingTarget target)
         {
-            if (target == null) _byVessel.Remove(vesselId ?? "");
+            if (target == null) Forget(vesselId);
             else _byVessel[vesselId ?? ""] = target;
         }
 
-        /// <summary>A vessel's id changed (staging or an undock can give the Mission's craft a new one): its aim goes with it. An aim already made under the new id is the newer, and stands.</summary>
+        /// <summary>The vessel has no aimed landing any more: its reentry has flown it.</summary>
+        public void Forget(string vesselId)
+        {
+            _byVessel.Remove(vesselId ?? "");
+        }
+
+        /// <summary>A vessel's id changed (staging or an undock can give a vessel a new one): its aim goes with it. An entry already under the new id stands: it may be an aim made since the id changed.</summary>
         public void Move(string fromId, string toId)
         {
             fromId = fromId ?? "";

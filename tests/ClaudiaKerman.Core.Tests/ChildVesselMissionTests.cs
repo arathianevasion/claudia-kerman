@@ -781,6 +781,23 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void AChildVesselsTargetFollowsItWhenItsVesselIdChanges()
+        {
+            var mission = Control(new StreamingFakeTransport(MissionPlan(), SequencePlan("Release", "craft")));
+            ToFirstSequencePlan(mission);
+            mission.Send(new VesselsSeparated(CraftSeen(), ProbeSeen(), false));
+            mission.Send(new VesselsSeen(new List<SeenVessel> { CraftSeen(), ProbeSeen() }));
+            mission.Send(new LandingTargetAimed(Aim(10), "probe"));
+
+            // Its processor stages away onto a new vessel.
+            mission.Send(new VesselsSeen(new List<SeenVessel> { CraftSeen(), ProbeSeen(id: "probe-after-staging") }));
+
+            Assert.Equal("probe-after-staging", mission.View.ChildVessels.Single().VesselId);
+            Assert.Equal(10, ReadBy(mission, "probe-after-staging").Longitude);
+            Assert.Null(ReadBy(mission, "probe"));
+        }
+
+        [Fact]
         public void EachVesselsTargetSurvivesSaveAndLoad()
         {
             var transport = new StreamingFakeTransport(MissionPlan(), SequencePlan("Release", "craft"));
