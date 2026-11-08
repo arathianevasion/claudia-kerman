@@ -99,6 +99,26 @@ namespace ClaudiaKerman.Core.Tests
             }
         }
 
+        /// <summary>
+        /// B1: the block gets the planning body only if the addon passes one, so the block's no-target answer with a frame at -1 is the planner's
+        /// (<see cref="ReturnAim.CheapDepartureUt"/> with the same handedness); with no body it flies 1 and the two would disagree.
+        /// </summary>
+        [Fact]
+        public void The_block_and_the_planner_read_the_same_handedness_for_a_no_target_return()
+        {
+            var snapshot = Orbiting(1.7, 90);
+            var body = new FrameBody(-1);
+            var viaBlock = NoTarget(snapshot, body);
+            var handed = ReturnAim.HandedOn(Kerbin, snapshot.Ut, body);
+            Assert.Equal(-1, handed);
+            double? dueBy;
+            var planned = ReturnAim.CheapDepartureUt(snapshot, new ReturnAsk { TargetPe = 35000, EarliestUt = snapshot.Ut, CheapWindow = true, Handed = handed }, out dueBy);
+            Assert.Equal(Direct(snapshot, -1).Ut, Ut(viaBlock), 6);
+            if (planned.HasValue) Assert.Equal(planned.Value, Ut(viaBlock), 3);
+            // The addon's old call (no body) is the handed = 1 answer.
+            Assert.Equal(Direct(snapshot, 1).Ut, Ut(NoTarget(snapshot, null)), 6);
+        }
+
         [Fact]
         public void The_handedness_of_the_planets_frame_is_read_without_a_landing()
         {
