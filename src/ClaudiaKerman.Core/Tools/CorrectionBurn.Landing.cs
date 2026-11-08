@@ -82,8 +82,7 @@ namespace ClaudiaKerman.Core.Tools
         private static CorrectionPlan AimLanding(Conic orbit, SnapshotBody target, double peR, CorrectionAsk ask, SqpProblem solved, Func<double, Vec3, Patch> arrive, CorrectionPlan plain, Vec3 burn)
         {
             var landing = ask.Landing;
-            Func<Patch, Vec3, ReentryPrediction> fly = (arrival, dv) =>
-                arrival == null ? null : ReentryPredictor.Predict(target, arrival.Orbit, arrival.StartUt, landing.GroundAltitude, landing.MassAfter(dv.Length), landing.Air, landing.Craft, landing.Frame);
+            Func<Patch, Vec3, ReentryPrediction> fly = (arrival, dv) => PredictOn(target, landing, arrival, dv.Length);
             Func<double, Vec3, ReentryPrediction> predict = (when, dv) => fly(arrive(when, dv), dv);
             var first = predict(plain.Ut, burn);
             if (first == null || first.Error != null) return Kept(plain, plain, ask, "no landing to read" + (first == null ? "" : " (" + first.Error + ")"));
@@ -371,22 +370,28 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// #805: the plain burn, solved but off pe_tolerance, flies when its periapsis is one the landing may be left on (<see cref="PeAcceptable"/>): no aiming from it, and why in
-        /// <see cref="CorrectionPlan.AimNote"/>, with where it comes down when the predictor can say.
+        /// <see cref="CorrectionPlan.AimNote"/>, with where it comes down when the predictor can say. Its entry is checked as the aimed burn's is: over <see cref="MostEntryG"/>, none flies.
         /// </summary>
-        private static CorrectionPlan PlainOnly(Func<double, Vec3, Patch> arrive, SnapshotBody target, CorrectionAsk ask, CorrectionPlan plain, Vec3 burn)
+        private static CorrectionPlan PlainOnly(Func<double, Vec3, Patch> arrive, double startUt, SnapshotBody target, CorrectionAsk ask, CorrectionPlan plain, Vec3 burn)
         {
             var why = plain.Error;
+            var landed = PredictOn(target, ask.Landing, arrive(plain.Ut, burn), burn.Length);
+            if (landed != null && landed.Error == null && landed.PeakG > MostEntryG)
+                return Unsolved(arrive, startUt, target, ask, why + "; the plain burn's entry pulls " + Ms(landed.PeakG) + " g, over " + Ms(MostEntryG));
             plain.Error = null;
-            var landing = ask.Landing;
-            var arrival = arrive(plain.Ut, burn);
-            var landed = arrival == null ? null
-                : ReentryPredictor.Predict(target, arrival.Orbit, arrival.StartUt, landing.GroundAltitude, landing.MassAfter(burn.Length), landing.Air, landing.Craft, landing.Frame);
             if (landed != null && landed.Error == null)
             {
                 plain.Landing = landed;
-                plain.ErrorKm = landing.ErrorKm(target, landed);
+                plain.ErrorKm = ask.Landing.ErrorKm(target, landed);
             }
             return Kept(plain, plain, ask, why);
+        }
+
+        /// <summary>Where <paramref name="arrival"/> comes down on <paramref name="target"/> for the craft after a burn of <paramref name="dv"/> m/s; null with no arrival.</summary>
+        private static ReentryPrediction PredictOn(SnapshotBody target, ReturnLanding landing, Patch arrival, double dv)
+        {
+            return arrival == null ? null
+                : ReentryPredictor.Predict(target, arrival.Orbit, arrival.StartUt, landing.GroundAltitude, landing.MassAfter(dv), landing.Air, landing.Craft, landing.Frame);
         }
 
         /// <summary>
@@ -409,7 +414,7 @@ namespace ClaudiaKerman.Core.Tools
                 return plan;
             }
             var landing = ask.Landing;
-            var landed = ReentryPredictor.Predict(target, arrival.Orbit, arrival.StartUt, landing.GroundAltitude, landing.MassAfter(0), landing.Air, landing.Craft, landing.Frame);
+            var landed = PredictOn(target, landing, arrival, 0);
             if (landed == null || landed.Error != null)
             {
                 plan.Error = failed + "; without it the path has no landing to read" + (landed == null ? "" : " (" + landed.Error + ")");

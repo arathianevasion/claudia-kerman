@@ -232,7 +232,7 @@ namespace ClaudiaKerman.Core.Tools
             if (ask.Landing == null) return plan;
             if (plan.Error == null) return AimLanding(coast.Orbit, target, peR, ask, problem, arrive, plan, burn);
             // #805: aimed at a landing, the plain burn flies if it was solved (its periapsis one the landing may be left on, PeAcceptable), and otherwise none.
-            return PeAcceptable(target, ask, plan.PePredicted) ? PlainOnly(arrive, target, ask, plan, burn) : Unsolved(arrive, startUt, target, ask, plan.Error);
+            return PeAcceptable(target, ask, plan.PePredicted) ? PlainOnly(arrive, startUt, target, ask, plan, burn) : Unsolved(arrive, startUt, target, ask, plan.Error);
         }
 
         /// <summary>
