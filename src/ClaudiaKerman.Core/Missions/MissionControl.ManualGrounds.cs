@@ -51,7 +51,7 @@ namespace ClaudiaKerman.Core.Missions
         private void CrewDeathSeen(string name)
         {
             var mission = _mission;
-            if (mission == null || MissionOver || name.Length == 0 || mission.CrewDeaths.ContainsKey(name)) return;
+            if (mission == null || MissionOver || name.Length == 0) return;
             mission.CrewDeaths[name] = _ut;
         }
 
