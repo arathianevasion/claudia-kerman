@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
@@ -274,6 +275,32 @@ namespace ClaudiaKerman.Core.Missions
 
         public const string WindowMissedNotice =
             "Revise the Mission Plan for a later window (the transfer rows above are from now): " + ProposePlan + ". If the craft can't fly "
+            + "the goal then, hand in a plan with no sequences whose why proposes a reduced goal. The player must approve it again.";
+
+        /// <summary>#905: a missed return window's line for the player and the log; <paramref name="nextUt"/> is the next cheap window, null when none was found.</summary>
+        public static string ReturnWindowMissedLine(double missedUt, double? nextUt, double nowUt)
+        {
+            return "Missed the return window the Due Time waited for (UT " + Ut(missedUt) + "). "
+                + (nextUt.HasValue ? "Next cheap window: UT " + Ut(nextUt.Value) + " (in " + ((nextUt.Value - nowUt) / 3600).ToString("0.#", CultureInfo.InvariantCulture) + " h)." : ReturnWindowNone);
+        }
+
+        /// <summary>#905: the Alert's line to Claudia for a missed return window, in place of <see cref="WindowMissed"/>'s.</summary>
+        public static string ReturnWindowMissed(double? nextUt)
+        {
+            return "The return window this step waited for has passed. "
+                + (nextUt.HasValue ? "`return` will take the next one at UT " + Ut(nextUt.Value) + " unless you re-plan." : ReturnWindowNone);
+        }
+
+        private const string ReturnWindowNone = "No return window found within the alignment plus 60 h.";
+
+        private static string Ut(double ut)
+        {
+            return Math.Round(ut).ToString("0", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary><see cref="WindowMissedNotice"/> for a return, which has no transfer rows.</summary>
+        public const string ReturnWindowMissedNotice =
+            "Revise the Mission Plan for a later window: " + ProposePlan + ". If the craft can't fly "
             + "the goal then, hand in a plan with no sequences whose why proposes a reduced goal. The player must approve it again.";
 
         public static string LateApprovalReplan(double ut, double plannedDv, double? lateDv)

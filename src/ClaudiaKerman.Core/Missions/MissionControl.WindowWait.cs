@@ -164,8 +164,13 @@ namespace ClaudiaKerman.Core.Missions
             var planned = mission.WindowDeltaV ?? 0;
             var planet = _snapshot == null ? null : _snapshot.Bodies.FirstOrDefault(b => b.Name == mission.WindowPlanet);
             var surface = SurfaceWait(mission, plan);
-            // #887: a return has no transfer window to move to, so a missed one goes to Claudia.
-            var next = surface != null ? surface.Window : FirstIsReturn(plan) ? null : WindowFor(mission, planet);
+            // #887: a return has no transfer window to move to, so a missed one goes to Claudia, in a return's own words (#905).
+            if (surface == null && FirstIsReturn(plan))
+            {
+                ReturnWindowAlert(mission, plan, missed);
+                return false;
+            }
+            var next = surface != null ? surface.Window : WindowFor(mission, planet);
             // On the pad that is the whole plan; from a surface in mid-Mission, the legs still to fly (this one too), which the craft's delta-v is for.
             var budget = mission.Plan == null ? 0 : mission.Plan.Sequences.Skip(surface != null ? Math.Max(0, StepOf(mission, plan) - 1) : 0).Sum(s => Math.Max(0, s.DeltaV));
             var head = "The " + mission.WindowPlanet + " window of " + KerbinTime.Date(missed) + " was missed";
@@ -200,6 +205,29 @@ namespace ClaudiaKerman.Core.Missions
             var why = next == null ? "no next window was found" : "the next one, leaving " + KerbinTime.Date(next.DepartureUt) + ", costs "
                 + MetresPerSecond(next.TotalDv) + " against " + MetresPerSecond(planned) + " planned, outside the Craft Check budget";
             Note(LogKind.Notice, head + " and " + why + ", so Claudia is revising the Mission Plan.");
+            AskForRevisedPlan(mission, MissionPrompts.WindowMissed(head + " and " + why + "."), MissionPrompts.WindowMissedNotice);
+        }
+
+        /// <summary>#905: a return's planned window was missed: the plan is dropped and Claudia is asked, with the next cheap window if the block's own search finds one.</summary>
+        private void ReturnWindowAlert(Mission mission, SequencePlan plan, double missed)
+        {
+            var next = NextReturnWindowUt(mission, plan);
+            Note(LogKind.Notice, MissionPrompts.ReturnWindowMissedLine(missed, next, _ut));
+            AskForRevisedPlan(mission, MissionPrompts.ReturnWindowMissed(next), MissionPrompts.ReturnWindowMissedNotice);
+        }
+
+        /// <summary>The UT the return's block would take from now (<see cref="BurnPoints.First"/>, as the Due Time reads it); null when it finds none.</summary>
+        private double? NextReturnWindowUt(Mission mission, SequencePlan plan)
+        {
+            var snapshot = MissionVesselSnapshot(mission);
+            if (snapshot == null) return null;
+            snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
+            var wait = BurnPoints.First(plan.Script, snapshot, _ut, plan.ExpectedDeltaV, _body);
+            return wait != null && wait.DepartureUt.HasValue && wait.DepartureUt.Value > _ut ? wait.DepartureUt : null;
+        }
+
+        private void AskForRevisedPlan(Mission mission, string alert, string notice)
+        {
             DropPendingSequence(mission);
             ClearWindow(mission);
             mission.ConfirmPrompt = null;
@@ -207,8 +235,8 @@ namespace ClaudiaKerman.Core.Missions
             Begin(new Turn
             {
                 Purpose = Purpose.MissionPlan,
-                UserText = MissionPrompts.WindowMissed(head + " and " + why + ".") + "\n" + MissionPrompts.Facts(_ut, _snapshot) + PlanFigures(mission, mission.Goal),
-                Notice = MissionPrompts.WindowMissedNotice,
+                UserText = alert + "\n" + MissionPrompts.Facts(_ut, _snapshot) + PlanFigures(mission, mission.Goal),
+                Notice = notice,
             });
         }
 
