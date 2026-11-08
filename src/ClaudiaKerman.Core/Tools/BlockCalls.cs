@@ -20,7 +20,7 @@ namespace ClaudiaKerman.Core.Tools
     /// <see cref="TurnCraft"/>. The Script Check lets the Core Library call them and refuses them in a Mission Script. Inputs and
     /// results are plain values, as <c>KosValues</c> converts a kOS lexicon.
     /// </summary>
-    public static class BlockCalls
+    public static partial class BlockCalls
     {
         /// <summary>
         /// <c>ADDONS:CLAUDIA:LANDINGSITE</c>, for <c>land</c> with a biome target: <c>find_landing_site</c>'s search on the body the
@@ -976,6 +976,7 @@ namespace ClaudiaKerman.Core.Tools
                 AimUt = NumberOrNull(ask, "aim_ut"),
                 DvLeft = Number(ask, "dv_left", -1),
                 LaterLegsDv = snapshot.LaterLegsDv ?? 0,
+                CorridorPe = NumberOrNull(ask, "corridor_pe"),
             };
             if (ask.ContainsKey("lat") || ask.ContainsKey("lng"))
             {

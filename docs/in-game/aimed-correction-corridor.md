@@ -18,8 +18,8 @@ In-game check for #817 (with #805 and #832). The agent run that wrote this did n
 
 Fly `tests/blocks/return_target` (Mun to KSC). Install as in `phase-3-gate.md`. If you have it, use a Mun polar return as well, after #816's aimed departure.
 
-1. The block test passes its checks, and `return` succeeds.
-2. Run `grep "CORRECTIONBURN" KSP.log`. The correction's line ends with `Pe <m> m`, then `aimed <km> km from the target`. If the solve stopped short, a `; ` note follows with its reason, the km and the m/s left. `Pe` is between 24,000 and 36,000 m.
+1. The block test passes its checks, and `return` succeeds. If the test script sets `correction` to false, edit it back first: steps 2 to 4 read the correction.
+2. Run `grep "CORRECTIONBURN" KSP.log`. The correction's line ends with `Pe <m> m`, then `aimed <km> km from the target`. If the solve stopped short, a `; ` note follows with its reason, the km and the m/s left. `return_target` aims at KSC with `target_pe` 30,000 m, so the corridor is 25,000 to 35,000 m and `Pe` is in it.
 3. Run `grep "BURNWORTH" KSP.log`. A correction under 2 m/s shows `fly it: throttle at most <x>, stopping within <y> m/s`. A skipped one shows why it was skipped.
 4. The `exec_node` result after the correction has a `residual` under 0.05 m/s for a correction under 1 m/s.
 5. Write down the final miss against each stage's prediction:
@@ -34,6 +34,19 @@ Fly `tests/blocks/return_target` (Mun to KSC). Install as in `phase-3-gate.md`. 
 7. On a Mission with a leg after the landing, `grep "DEORBITBURN\|CORRECTIONBURN" KSP.log`: a burn the reserve refuses says `and <m/s> m/s for the later legs`, and the correction's note gives the m/s it may spend above the reserve less those legs.
 8. Note how long the frame hitches at the correction. The corridor adds up to 14 predictions to the solve's 60, about 150 ms more at 10.5 ms each.
 
-## Not in this ticket
+## The late trim at `reentry`'s start (#892, carries #317)
 
-The late trim at the start of `reentry` (from #317) is not built yet. `reentry` has no landing target to aim at. See the result notes for #817.
+**Block migration:** the judgment is in Core: `BlockCalls.EntryTrim` (`ENTRYTRIM`), which solves through `CorrectionBurn`. `reentry` only makes the call and flies it with `claudia_fly_correction`, before its wait to #815's drop. No `//|` line changed; the library stays at its limit (its chute and drogue rules now share `reentry_open_action`). Parity test: none, no Kerboscript logic moved.
+
+`return` and `deorbit` now keep the target they aimed at on the Mission, in its save (`RETURNBURN`, `CORRECTIONBURN` and `DEORBITBURN` record it). A `return` that aims at no landing clears it, and so does the end of a `reentry`. A Child Vessel's run never trims toward it.
+
+`ENTRYTRIM` flies at most one trim: over 1,200 s to the air, a predicted miss over 5 km, no maneuver node already planned. It spends by #817's rule, capped at 150 m/s, and keeps the periapsis in the corridor round the target_pe the aim used (so a correction that left the path at 34 km of 30 still can't take it past 35 km). Anything else flies nothing: `dv` 0, the block goes on, and the `block call ENTRYTRIM` line in `KSP.log` says why (`no trim: ...`, or the correction's own `no correction flown: ...`).
+
+Fly `tests/blocks/return_target` (Mun to KSC), or a Mun return Mission:
+
+1. In `KSP.log`, one `block call ENTRYTRIM` line appears during `reentry`, after `ENTRYDROP`'s first line and before the warp to the drop point. It comes with either a burn (`node at UT ...; Pe <m> m; aimed <km> km from the target`) or `no trim: ...` with a reason.
+2. If the correction left the landing within 5 km, expect `no trim: <km> km from the target, within 5 km`. To see a trim fly, start `reentry` with `return`'s `correction` set to false, which leaves the ejection's miss.
+3. A trim that flies: an `exec_node` burn before the warp, its `Pe` between 24,000 and 36,000 m on a return aimed at 30 km, and `dv` no more than 150 m/s or the delta-v left less the reserve and later legs.
+4. The stack still drops about 600 s before the air: a `phase stack_dropped` blocknote follows, with the `ENTRYDROP` read at the drop point after the trim's burn. The wait re-reads the time to the air after the trim, so the drop isn't late by the burn's own time.
+5. Start `reentry` less than 1,200 s from the air (quicksave near the end of the coast and reload, or warp most of the way before starting it): the log says `no trim: <s> s to the air, not over 1200`, and nothing burns.
+6. Save and reload between `return` and `reentry`: the trim still fires, or names a reason other than `no landing target`.

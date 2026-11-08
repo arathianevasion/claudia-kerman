@@ -406,6 +406,28 @@ namespace ClaudiaKerman.Core.Tests
             return mission.View.Log.Where(e => e.Kind == LogKind.Notice && e.Text.StartsWith("Rated Off-Nominal")).Select(e => e.Text).ToList();
         }
 
+        /// <summary>#892: the aim is kept on the Mission, stamped on a block call's snapshot but not a Child Vessel's, cleared by an aim at no landing and by the reentry that flies it.</summary>
+        [Fact]
+        public void TheAimedLandingTargetIsKeptForReentryAndClearedWhenAReentryEnds()
+        {
+            var mission = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), ScriptedResponse.Fixture("mission-sequence-plan.sse")));
+            var start = ToRunning(mission, 10m);
+            mission.Send(new LandingTargetAimed(new Tools.LandingTarget { Body = "Kerbin", Latitude = -0.1, Longitude = -74.5, TargetPe = 30000 }));
+            Assert.Equal(-74.5, MissionView.Stamp(new GameSnapshot(), mission.View).LandingTarget.Longitude);
+
+            var child = mission.View;
+            child.RunningChild = "Lander";
+            Assert.Null(MissionView.Stamp(new GameSnapshot(), child).LandingTarget);
+            child.RunningChild = "";
+
+            mission.Send(new LandingTargetAimed(null));
+            Assert.Null(mission.View.LandingTarget);
+
+            mission.Send(new LandingTargetAimed(new Tools.LandingTarget { Body = "Kerbin", Latitude = 1, Longitude = 2 }));
+            mission.Send(new KosBlockEnded("reentry", new Dictionary<string, object> { { "success", true } }, start.RunId));
+            Assert.Null(mission.View.LandingTarget);
+        }
+
         [Fact]
         public void AReturnThatFlewNoCorrectionIsRatedOffNominalWithItsNotice()
         {

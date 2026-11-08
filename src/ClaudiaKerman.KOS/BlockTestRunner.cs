@@ -163,6 +163,7 @@ namespace ClaudiaKerman.KOS
                 if (_spec.TargetCraft != null)
                     File.WriteAllText(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.TargetCraft), Resource(test, _spec.TargetCraft));
                 MissionDriver.BlockTestTargetId = null;
+                Core.Tools.BlockTestAim.Clear(); // a block test never sees an earlier test's aim (#892)
                 MissionDriver.BlockTestPlan = _spec.Plan.Count > 0 ? _spec.Plan : null;
 
                 var game = GamePersistence.LoadGame("persistent", SaveFolder, true, false);

@@ -327,7 +327,10 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         private const string StartRead = "local below is addons:claudia:entrydrop(entry_ask).";
-        private const string DropPoint = "if entry_in > below:lead {\n    local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).";
+        private const string DropPoint = "if entry_in > below:lead {\n";
+        private const string DropWait = "    local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).";
+        private const string Trim = "  claudia_fly_correction(ctx, addons:claudia:entrytrim(lexicon(\"to_air\", entry_in, \"home\", entry_ask:home, \"has_node\", hasnode, \"dv_left\", claudia_dv_remaining(), \"isp\", claudia_engine_isp()))).\n";
+        private const string AirAgain = "    set entry_in to reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).\n";
         private const string Fire = "set drop_error to claudia_fire_drop(ctx, drop).";
 
         /// <summary>The wait to the drop point: from its if to the closing brace at the block's own indent.</summary>
@@ -345,6 +348,25 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.True(At(body, DropPoint) < At(body, Fire));
             // The wait warps on rails and is back at 1x 30 s before the point (claudia_wait_until), so the drop fires off rails.
             Assert.DoesNotContain("claudia_fire_drop", body.Substring(0, At(body, DropPoint)));
+        }
+
+        /// <summary>#892: Core's ENTRYTRIM, flown through the Course Correction's own path, once, ahead of #815's drop and outside its wait, so the log has the decision however late the block starts; the eta is read again after it, and neither can fail the block.</summary>
+        [Fact]
+        public void The_late_trim_is_asked_and_flown_once_before_the_wait_to_the_drop_and_never_ends_the_block()
+        {
+            var body = Body();
+            Assert.Equal(1, body.Split("addons:claudia:entrytrim(").Length - 1);
+            Assert.Equal(1, body.Split("claudia_fly_correction(").Length - 1);
+            var trim = At(body, Trim);
+            var from = At(body, DropPoint);
+            var again = body.IndexOf(AirAgain, trim, StringComparison.Ordinal);
+            var wait = At(body, DropWait);
+            Assert.Equal(from + DropPoint.Length, again);
+            Assert.True(trim < from && again < wait, "trim, then the eta read again, then the wait");
+            Assert.True(wait < At(body, Fire));
+            Assert.DoesNotContain("claudia_finish", body.Substring(trim, wait - trim));
+            // The trim's craft is read in the addon: a second ENTRYCRAFT from the block would overwrite the craft aimed with, which ENTRYFINISH compares (#814).
+            Assert.DoesNotContain("addons:claudia:entrycraft(", body);
         }
 
         [Fact]
@@ -394,7 +416,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void A_block_starting_inside_the_lead_drops_at_once_and_the_abort_before_the_drop_fires_nothing_and_arms_the_fresh_group()
         {
             var wait = DropPointWait(Body());
-            // Only the wait and the read are inside the if: inside the lead (or when a warp ran past the point) nothing waits and the drop is next.
+            // Only the late trim, the wait and the read are inside the if: inside the lead (or when a warp ran past the point) nothing waits and the drop is next.
             Assert.DoesNotContain("claudia_fire_drop", wait);
             Assert.DoesNotContain("reentry_light(", wait);
             Assert.Contains("    if waited <> \"\" {\n      reentry_abort(opt:chute_mode, reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts)).\n"
