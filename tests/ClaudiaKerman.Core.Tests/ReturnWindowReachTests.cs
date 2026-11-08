@@ -204,6 +204,61 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(Math.Abs(wait.DepartureUt.Value - D(block, "ut")) < 1200, "plan UT " + wait.DepartureUt + " against the block's " + D(block, "ut"));
         }
 
+        private static GameSnapshot Planned(double ut)
+        {
+            var snapshot = Orbiting(66.43, 0, 3.0);
+            snapshot.ReturnWindowUt = ut;
+            return snapshot;
+        }
+
+        /// <summary>The plan took the late window; the block, with more to spend than the plan counted, would leave sooner, but keeps to it rather than re-anchor past the cap.</summary>
+        [Fact]
+        public void A_restart_keeps_the_planned_window_when_it_still_lands_near_and_is_affordable()
+        {
+            var late = ToKsc(Orbiting(66.43, 0, 3.0), 390);
+            var sooner = ToKsc(Orbiting(66.43, 0, 3.0), 480);
+            Assert.True(D(sooner, "ut") < D(late, "ut") - 3600, "the premise: unplanned, it leaves sooner");
+
+            var node = ToKsc(Planned(D(late, "ut")), 480);
+
+            Assert.Equal("", node["error"]);
+            Assert.True(Math.Abs(D(node, "ut") - D(late, "ut")) < 600, "planned " + D(late, "ut") + ", flown " + D(node, "ut"));
+            Assert.InRange(D(node, "error_km"), 0, 2 * ReturnAim.ReachKm);
+            Assert.Contains("window waits ", (string)node["aim_note"]);
+        }
+
+        [Fact]
+        public void A_planned_window_it_cannot_afford_is_passed_over_for_the_search()
+        {
+            var late = ToKsc(Orbiting(66.43, 0, 3.0), 390);
+            var dear = ToKsc(Orbiting(66.43, 0, 3.0), 480);
+
+            var node = ToKsc(Planned(D(dear, "ut")), 390);
+
+            Assert.Equal("", node["error"]);
+            Assert.True(Math.Abs(D(node, "ut") - D(dear, "ut")) > 600, "not the dear window: " + D(node, "ut"));
+            Assert.Equal(D(late, "ut"), D(node, "ut"), 3);
+        }
+
+        [Fact]
+        public void A_planned_window_landing_too_far_is_passed_over_for_the_search()
+        {
+            var late = ToKsc(Orbiting(66.43, 0, 3.0), 390);
+            var period = 2 * Math.PI * Math.Sqrt(Math.Pow(230000, 3) / 6.5138398e10);
+            var far = D(late, "ut") + 3 * period;
+            const double dvLeft = 800;
+            var snapshot = Orbiting(66.43, 0, 3.0);
+            var alone = BlockCalls.ReturnBurn(new Dictionary<string, object> { { "target_pe", 30000.0 }, { "earliest_ut", far - period / 2 }, { "latest_ut", far + period / 2 }, { "lat", ReturnAim.KscLatitude }, { "lng", ReturnAim.KscLongitude } }, snapshot, new FrameBody(), new ReentrySim.Atmosphere(), new Chuted());
+            Assert.True(D(alone, "error_km") > 2 * ReturnAim.ReachKm, "the premise: that pass lands far off: " + D(alone, "error_km") + " km");
+            Assert.True(D(alone, "dv") <= DeorbitBurn.SpareDv(dvLeft, 0, 0, null) - Math.Max(50, 0.1 * dvLeft), "the premise: it can afford that pass: " + D(alone, "dv") + " m/s");
+
+            var node = ToKsc(Planned(far), dvLeft);
+
+            Assert.Equal("", node["error"]);
+            Assert.True(Math.Abs(D(node, "ut") - far) > 600, "not the far window: " + D(node, "ut"));
+            Assert.InRange(D(node, "error_km"), 0, ReturnAim.ReachKm);
+        }
+
         [Fact]
         public void When_stock_cannot_say_the_delta_v_it_keeps_816s_rule()
         {

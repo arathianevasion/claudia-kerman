@@ -102,7 +102,10 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>#880: the search for a landing near the target runs this far past the next cheap alignment, s (several alignments, so a band landing near KSC comes round).</summary>
         public const double ReachPastAlignmentS = 60 * 3600;
         /// <summary>#880: a landing this close counts as reaching the target, km.</summary>
-        public const double ReachKm = 50;        /// <summary>#880: a window's least burn landing this close is worth aiming, for the time shift (<see cref="Search.Aim(double)"/>) can bring it within <see cref="ReachKm"/>, km.</summary>
+        public const double ReachKm = 50;
+        /// <summary>#880: a window the plan recorded is kept if it lands this close, km: the plan's craft and air are estimates, so one near <see cref="ReachKm"/> may read a little over it here.</summary>
+        private const double PlannedKm = 2 * ReachKm;
+        /// <summary>#880: a window's least burn landing this close is worth aiming, for the time shift (<see cref="Search.Aim(double)"/>) can bring it within <see cref="ReachKm"/>, km.</summary>
         private const double WorthAimingKm = 300;
         /// <summary>#880: the most predictions one search spends before it stops looking further on (an aim counts as <see cref="AimPredictions"/>): about 1.3 s in the game at 10.5 ms each, in one call on the main thread until #463.</summary>
         private const int MostReachPredictions = 120;
@@ -622,6 +625,8 @@ namespace ClaudiaKerman.Core.Tools
                 _latest = _reachLatest;
                 try
                 {
+                    var planned = PlannedWindow(most);
+                    if (planned != null) return Chosen(planned, most);
                     var spans = Spans(_reachLatest);
                     var direct = DirectBurns(spans);
                     var floor = direct.Where(d => d > 0).DefaultIfEmpty(0).Min();
@@ -653,12 +658,7 @@ namespace ClaudiaKerman.Core.Tools
                         predictions += AimPredictions;
                         var aimed = window.ErrorKm <= CloseKm ? window : Aim(window);
                         if (aimed.ErrorKm > ReachKm || aimed.DeltaV > most) continue;
-                        aimed.SpreadKm = Spread(aimed);
-                        aimed.AimDv = Math.Max(0, aimed.DeltaV - _cheapest);
-                        aimed.WindowNote = string.Format(CultureInfo.InvariantCulture, "; windows to {0:0.0} h, cheapest {1:0.0} m/s, up to {2:0.0} m/s, chosen UT {3:0} ({4:0.0} m/s, wait {5:0.0} h)",
-                            (_reachLatest - _earliest) / 3600, _cheapest, most, aimed.Ut, aimed.DeltaV, (aimed.Ut - _now) / 3600);
-                        Report(aimed, null);
-                        return aimed;
+                        return Chosen(aimed, most);
                     }
                     return null;
                 }
@@ -666,6 +666,37 @@ namespace ClaudiaKerman.Core.Tools
                 {
                     _latest = latest;
                 }
+            }
+
+            /// <summary>
+            /// #880: the window the plan recorded (<see cref="ReturnAsk.PlannedUt"/>), aimed, when it still lands within <see cref="PlannedKm"/> and fits <paramref name="most"/>; null otherwise, for the search.
+            /// Plan and block can read a window near <see cref="ReachKm"/> differently, and a restart for a late window re-anchors on its alignment (#887): keeping the plan's stops the block waiting on past the cap.
+            /// </summary>
+            private ReturnPlan PlannedWindow(double most)
+            {
+                if (!_ask.PlannedUt.HasValue) return null;
+                var low = Math.Max(_earliest, _ask.PlannedUt.Value - _orbit.Period / 2);
+                var high = Math.Min(_reachLatest, _ask.PlannedUt.Value + _orbit.Period / 2);
+                if (low >= high) return null;
+                var least = ReturnBurn.Find(_system, _moon, _orbit, _now, Plain(low, high));
+                if (least.Error != null || least.DeltaV > most) return null;
+                var landed = Predict(least);
+                if (landed.Error != null) return null;
+                Stamp(least, landed);
+                if (least.ErrorKm > WorthAimingKm) return null;
+                var aimed = least.ErrorKm <= CloseKm ? least : Aim(least);
+                return aimed.ErrorKm <= PlannedKm && aimed.DeltaV <= most ? aimed : null;
+            }
+
+            /// <summary>#880: <paramref name="aimed"/>, the window taken, with its spread, its cost over the cheapest and its notes.</summary>
+            private ReturnPlan Chosen(ReturnPlan aimed, double most)
+            {
+                aimed.SpreadKm = Spread(aimed);
+                aimed.AimDv = Math.Max(0, aimed.DeltaV - _cheapest);
+                aimed.WindowNote = string.Format(CultureInfo.InvariantCulture, "; windows to {0:0.0} h, cheapest {1:0.0} m/s, up to {2:0.0} m/s, chosen UT {3:0} ({4:0.0} m/s, wait {5:0.0} h)",
+                    (_reachLatest - _earliest) / 3600, _cheapest, most, aimed.Ut, aimed.DeltaV, (aimed.Ut - _now) / 3600);
+                Report(aimed, null);
+                return aimed;
             }
 
             /// <summary>#880: the same report from an orbit in the moon's plane, whose windows step with the moon and land near the target within one turn.</summary>

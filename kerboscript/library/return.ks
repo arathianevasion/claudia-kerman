@@ -246,7 +246,7 @@ function return {
       return claudia_finish(ctx, false, found:error, extra).
     }
     set extra:aim_dv to round(found:aim_dv, 2).
-    set extra:aim_note to found:aim_note.
+    if found:aim_note <> "" { set extra:aim_note to found:aim_note. }
     set extra:aim_spread_km to round(found:spread_km).
     local nd is node(found:ut, found:radial, found:normal, found:prograde).
     add nd.
@@ -318,7 +318,7 @@ function return {
       // The Course Correction is the mod's solver, a block-internal call (ADR 0007), so it sits in the block.
       if return_aims(opt) {
         local aimed is addons:claudia:correctionburn(return_aimed_ask(claudia_correction_ask(planet:name, opt:target_pe, when:ut), burn_ask, claudia_engine_isp(), claudia_dv_recounted())).
-        if aimed:haskey("aim_note") { set extra:aim_note to (extra:aim_note + " " + aimed:aim_note):trim. }
+        if aimed:haskey("aim_note") { set extra:aim_note to (aimed:aim_note + " " + extra:aim_note):trim. }
         set fixed to claudia_fly_correction(ctx, aimed).
       } else {
         set fixed to claudia_fly_correction(ctx, addons:claudia:correctionburn(

@@ -91,6 +91,15 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Contains("set fixed to claudia_fly_correction(ctx, addons:claudia:correctionburn(\n          return_with_inc(claudia_correction_ask(planet:name, opt:target_pe, when:ut), opt:target_inc))).", ret.Replace("\r\n", "\n"));
         }
 
+        [Fact]
+        public void Return_s_aim_note_leads_with_the_correction_s_and_keeps_an_empty_window_note_out()
+        {
+            var ret = CoreLibrary.Blocks.Single(b => b.Name == "return").Source;
+            // LandingLine.NoCorrection (#899) reads the note's start.
+            Assert.Contains("set extra:aim_note to (aimed:aim_note + \" \" + extra:aim_note):trim.", ret);
+            Assert.Contains("if found:aim_note <> \"\" { set extra:aim_note to found:aim_note. }", ret);
+        }
+
         // ---- The Course Correction's burn time (#368): return's; transfer_to's is Core's TransferFlight (#459) ----
 
         // return asks Core's TransferFlight.CorrectionUt and Earliest through TRANSFERSTEP (#731).
