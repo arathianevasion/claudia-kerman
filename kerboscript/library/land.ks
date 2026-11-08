@@ -2692,17 +2692,15 @@ function land_descend {
           "v_h", round(v_h:mag, 1), "v_down", round(-v_v, 1), "sink", round(want:sink, 1), "alt", round(altitude))).
       }
       // Core's LandSteer (#865): the direction and throttle, with the final descent's lean cap, off-target throttle and settle.
+      // If the call fails it holds the last direction with no throttle, as LandGuard's results are read.
       local nose is ship:facing:forevector.
-      set dir to addons:claudia:landsteer(lexicon("want", want, "last", dir, "v_al", v_ahead, "v_cr", vdot(v_h, across), "v_up", v_v, "a_max", a_max,
+      local got is addons:claudia:landsteer(lexicon("want", want, "last", dir, "v_al", v_ahead, "v_cr", vdot(v_h, across), "v_up", v_v, "a_max", a_max,
         "g", g, "facing", lexicon("al", vdot(nose, ahead), "cr", vdot(nose, across), "up", vdot(nose, up_v)), "rate", vxcl(nose, ship:angularvel):mag * constant:radtodeg,
         "top_rate", turn:top_rate, "dv_left", ship:deltav:current, "ut", time:seconds)).
+      if got:haskey("al") { set dir to got. }
       local pointing is ahead * dir:al + across * dir:cr + up_v * dir:up.
-      if pointing:mag > 0.001 {
-        set steer to pointing.
-      } else {
-        set steer to up_v.
-      }
-      set tset to dir:throttle.
+      set steer to choose pointing if pointing:mag > 0.001 else up_v.
+      set tset to land_or(got, "throttle", 0).
       if radar < opt:gear_alt and not gear {
         gear on.
       }

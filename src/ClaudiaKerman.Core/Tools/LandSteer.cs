@@ -12,7 +12,9 @@ namespace ClaudiaKerman.Core.Tools
     /// <c>ADDONS:CLAUDIA:LANDSTEER</c> (<see cref="Tick"/>); kOS still locks the steering and throttle to what it gives. It takes
     /// the demand land_guide (or LandGuard's fallback) asks for, limits its lean, points the thrust (<see cref="Steer"/>, the
     /// old land_steer) and sets the throttle. In the final descent (the demand's <c>h_ref</c> 0) it caps the lean at
-    /// <see cref="TerminalLeanDeg"/>, turns the commanded direction no faster than the craft turns, thrusts only for the
+    /// <see cref="TerminalLeanDeg"/> below <see cref="CapBelowM"/> or slower across the ground than <see cref="CapSlowerMs"/>
+    /// (the player's call, 2026-11-07: capped from 1 km up at 12 m/s across, a Minmus landing hovered 300 s and landed 230 m
+    /// long), turns the commanded direction no faster than the craft turns, thrusts only for the
     /// vertical need while more than <see cref="OffTargetDeg"/> off, and below <see cref="SettleBelowM"/> holds its height
     /// while the craft swings (<see cref="SettleErrorDeg"/>, <see cref="SettleRateDegS"/>) for up to <see cref="SettleMaxS"/>
     /// or <see cref="SettleDvShare"/> of its delta-v. On Ike, at about 15:1 thrust, the craft chased a swinging direction to
@@ -22,6 +24,10 @@ namespace ClaudiaKerman.Core.Tools
     {
         /// <summary>The most the thrust may lean from vertical in the final descent, degrees.</summary>
         public const double TerminalLeanDeg = 20;
+        /// <summary>m over the ground under which the final descent's lean is capped.</summary>
+        public const double CapBelowM = 50;
+        /// <summary>m/s across the ground under which the final descent's lean is capped, at any height.</summary>
+        public const double CapSlowerMs = 2;
         /// <summary>Degrees off its target over which, in the final descent, the throttle gives only the vertical need.</summary>
         public const double OffTargetDeg = 15;
         /// <summary>m over the ground under which the final descent settles before touchdown.</summary>
@@ -39,13 +45,13 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// The most the thrust may lean from vertical (degrees) <paramref name="h"/> m over the ground: upright for the last few
-        /// metres, free from about 40 m up (<see cref="BrakeGuidance.MaxTilt"/>); in the final descent never over
-        /// <see cref="TerminalLeanDeg"/>.
+        /// metres, free from about 40 m up (<see cref="BrakeGuidance.MaxTilt"/>); where the final descent is
+        /// <paramref name="capped"/>, never over <see cref="TerminalLeanDeg"/>.
         /// </summary>
-        public static double MaxLean(double h, bool terminal)
+        public static double MaxLean(double h, bool capped)
         {
             var tilt = BrakeGuidance.MaxTilt(h);
-            return terminal ? Math.Min(TerminalLeanDeg, tilt) : tilt;
+            return capped ? Math.Min(TerminalLeanDeg, tilt) : tilt;
         }
 
         /// <summary>
@@ -66,18 +72,18 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// land's lean limit on a demand (al, cr, up m/s², <paramref name="h"/> m over the ground), for the flight (BRAKEPATH
-        /// still cuts by <see cref="BrakeGuidance.MaxTilt"/> alone and doesn't model the cap). Above the final descent, and in its last few metres, the sideways part is cut to <see cref="BrakeGuidance.MaxTilt"/>
-        /// as before. In the final descent, where <see cref="TerminalLeanDeg"/> binds, the upward part is raised so the demand
+        /// still cuts by <see cref="BrakeGuidance.MaxTilt"/> alone and doesn't model the cap). Uncapped, and in the last few metres, the sideways part is cut to <see cref="BrakeGuidance.MaxTilt"/>
+        /// as before. Where the final descent is <paramref name="capped"/> and <see cref="TerminalLeanDeg"/> binds, the upward part is raised so the demand
         /// leans that far and still brakes across the ground, but never past what holds its height (gravity <paramref name="g"/>
         /// less half its vertical speed <paramref name="vUp"/>, m/s, as the settle holds it; nor 0.95 of <paramref name="aMax"/>):
         /// falling fast it brakes hard, and it never climbs. Cutting the sideways part alone left a craft falling with no upward
         /// demand drifting 40-145 m past the site; raising it without a bound held one climbing over Minmus Flats for 900 s.
         /// </summary>
-        public static void Lean(ref double al, ref double cr, ref double up, double h, bool terminal, double aMax, double g, double vUp)
+        public static void Lean(ref double al, ref double cr, ref double up, double h, bool capped, double aMax, double g, double vUp)
         {
-            if (terminal && BrakeGuidance.MaxTilt(h) > TerminalLeanDeg)
+            if (capped && BrakeGuidance.MaxTilt(h) > TerminalLeanDeg)
                 up = Math.Max(up, Math.Min(Math.Min(0.95 * aMax, g - 0.5 * vUp), Math.Sqrt(al * al + cr * cr) / Math.Tan(TerminalLeanDeg * Deg)));
-            LimitLean(ref al, ref cr, up, MaxLean(h, terminal));
+            LimitLean(ref al, ref cr, up, MaxLean(h, capped));
         }
 
         /// <summary>
@@ -139,16 +145,18 @@ namespace ClaudiaKerman.Core.Tools
             var al = Number(want, "al", 0);
             var cr = Number(want, "cr", 0);
             var up = Number(want, "up", 0);
+            var vel = new[] { Number(input, "v_al", 0), Number(input, "v_cr", 0), vUp };
+            // The lean cap's zone: near the ground, or slow across it (the player's call, #865).
+            var capped = terminal && (h < CapBelowM || Math.Sqrt(vel[0] * vel[0] + vel[1] * vel[1]) < CapSlowerMs);
             // The vertical need, before the lean limit adds lift to brake sideways: what the throttle gives while off target.
             var need = up;
-            var tilt = MaxLean(h, terminal);
-            Lean(ref al, ref cr, ref up, h, terminal, aMax, Number(input, "g", 0), vUp);
+            var tilt = MaxLean(h, capped);
+            Lean(ref al, ref cr, ref up, h, capped, aMax, Number(input, "g", 0), vUp);
             var lastDir = new[] { Number(last, "al", -1), Number(last, "cr", 0), Number(last, "up", 0) };
-            var vel = new[] { Number(input, "v_al", 0), Number(input, "v_cr", 0), vUp };
             var facingMap = Map(input, "facing");
             double mag;
             var dir = Steer(new[] { al, cr, up }, lastDir, vel, aMax, out mag);
-            if (terminal) dir = LeanCapped(dir, tilt);
+            if (capped) dir = LeanCapped(dir, tilt);
             var facing = facingMap.Count > 0 ? new[] { Number(facingMap, "al", 0), Number(facingMap, "cr", 0), Number(facingMap, "up", 1) } : null;
             var lean = facing != null ? Angle(facing, new[] { 0.0, 0, 1 }) : Angle(dir, new[] { 0.0, 0, 1 });
 
@@ -184,16 +192,18 @@ namespace ClaudiaKerman.Core.Tools
                 mag = holdMag;
                 dir = holdDir;
             }
-            if (terminal) dir = LeanCapped(Slewed(Number(last, "ut", -1), ut, lastDir, dir, Number(input, "top_rate", 0)), tilt);
+            // Turning no faster than the craft, even onto the cap as it enters the zone: the cap binds once it is there.
+            if (terminal) dir = Slewed(Number(last, "ut", -1), ut, lastDir, dir, Number(input, "top_rate", 0));
 
             var pointing = Dot(dir, dir) > 0.000001 ? dir : new[] { 0.0, 0, 1 };
             var error = facing != null ? Angle(facing, pointing) : 0;
             double throttle;
             if (terminal && error > OffTargetDeg)
             {
-                // Off target: only the vertical need, along where it points now; nothing sideways until it is back on.
+                // Off target: only the vertical need, along where it points now; nothing sideways until it is back on. No thrust
+                // or a need not finite gives none (#595).
                 var cosLean = Math.Cos(lean * Deg);
-                throttle = cosLean > 0 ? Math.Min(1, Math.Max(0, need) / cosLean / Math.Max(0.001, aMax)) : 0;
+                throttle = cosLean > 0 && aMax > 0 && !double.IsNaN(need) && !double.IsInfinity(need) ? Math.Min(1, Math.Max(0, need) / cosLean / aMax) : 0;
             }
             else
             {

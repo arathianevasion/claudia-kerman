@@ -107,6 +107,26 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void In_the_final_descent_the_cap_holds_only_below_50_m_or_under_2_m_s_across_the_ground()
+        {
+            // The player's call (2026-11-07): 300 m up at 12 m/s across, the lean is free as before #865, with no lift added.
+            var fast = Terminal(1, 1.1, 300, 0, 0);
+            fast["v_al"] = 12.0;
+            Assert.Equal(Math.Atan2(1, 1.1) * 180 / Math.PI, LeanOf(LandSteer.Tick(fast)), 6);
+            Assert.Equal(Math.Sqrt(1 + 1.1 * 1.1), D(LandSteer.Tick(fast), "mag"), 9);
+            // Below 50 m at that speed, or 300 m up under 2 m/s across (across and cross together): capped.
+            var low = Terminal(1, 1.1, 49, 0, 0);
+            low["v_al"] = 12.0;
+            Assert.Equal(20, LeanOf(LandSteer.Tick(low)), 6);
+            var slow = Terminal(1, 1.1, 300, 0, 0);
+            slow["v_al"] = 1.2;
+            slow["v_cr"] = 1.5;
+            Assert.Equal(20, LeanOf(LandSteer.Tick(slow)), 6);
+            slow["v_cr"] = 1.7;
+            Assert.Equal(Math.Atan2(1, 1.1) * 180 / Math.PI, LeanOf(LandSteer.Tick(slow)), 6);
+        }
+
+        [Fact]
         public void Above_the_final_descent_the_lean_is_free_as_before()
         {
             var input = Terminal(1, 1.1, 300, 0, 0);
@@ -133,6 +153,17 @@ namespace ClaudiaKerman.Core.Tests
             // Leaning over: never more than full, and none past 90 degrees.
             Assert.Equal(1, D(LandSteer.Tick(Terminal(0, 15, 200, 80, 0)), "throttle"), 9);
             Assert.Equal(0, D(LandSteer.Tick(Terminal(0, 2, 200, 120, 0)), "throttle"), 9);
+        }
+
+        [Fact]
+        public void Off_target_with_no_thrust_or_a_need_not_finite_the_throttle_is_0()
+        {
+            // #595: a stage run dry (a_max 0), or a vertical need infinite or not a number, gives none rather than 1 or NaN.
+            foreach (var need in new[] { double.PositiveInfinity, double.NaN })
+                Assert.Equal(0, D(LandSteer.Tick(Terminal(0, need, 200, 30, 0)), "throttle"));
+            var dry = Terminal(0, 2, 200, 30, 0);
+            dry["a_max"] = 0.0;
+            Assert.Equal(0, D(LandSteer.Tick(dry), "throttle"));
         }
 
         [Fact]
@@ -223,6 +254,10 @@ namespace ClaudiaKerman.Core.Tests
         private sealed class Flight
         {
             public double MostLean, MostTurnRate, Error, Rate, Lean, Down, Sideways, Settle;
+            /// <summary>Seconds from first coming below 50 m (always in the cap's zone) to the command first within the cap; -1 never.</summary>
+            public double IntoCapS = -1;
+            /// <summary>The most the command leaned above 50 m, slow across the ground (the zone's other half) and not slow or high.</summary>
+            public double MostLeanSlowHigh, MostLeanFastHigh;
         }
 
         /// <summary>
@@ -239,6 +274,7 @@ namespace ClaudiaKerman.Core.Tests
             double x = -5, y = h, vx = vH, vy = -vDown, theta = lean, omega = rate, dv = 600, ut = 1000;
             IDictionary<string, object> last = null;
             var lastCmd = double.NaN;
+            var zoneUt = -1.0;
             var flight = new Flight();
             while (y > 0 && ut < 1300)
             {
@@ -247,7 +283,13 @@ namespace ClaudiaKerman.Core.Tests
                 last = LandSteer.Tick(Lex("want", want, "last", last ?? Lex("al", 0.0, "cr", 0.0, "up", 1.0), "v_al", vx, "v_cr", 0.0, "v_up", vy,
                     "a_max", IkeAMax, "g", IkeG, "facing", Nose(theta), "rate", Math.Abs(omega), "top_rate", TopRate, "dv_left", dv, "ut", ut));
                 var cmd = Math.Atan2(D(last, "al"), D(last, "up")) * 180 / Math.PI;
-                flight.MostLean = Math.Max(flight.MostLean, Math.Abs(cmd));
+                // The lean is checked below 50 m, once the command has turned onto the cap (it turns no faster than the craft). Above
+                // it the craft can speed past 2 m/s across and leave the zone, as the player asked, so it is only recorded there.
+                if (zoneUt < 0 && y < LandSteer.CapBelowM) zoneUt = ut;
+                if (zoneUt < 0 && Math.Abs(vx) < LandSteer.CapSlowerMs) flight.MostLeanSlowHigh = Math.Max(flight.MostLeanSlowHigh, Math.Abs(cmd));
+                if (zoneUt < 0 && Math.Abs(vx) >= LandSteer.CapSlowerMs) flight.MostLeanFastHigh = Math.Max(flight.MostLeanFastHigh, Math.Abs(cmd));
+                if (zoneUt >= 0 && flight.IntoCapS < 0 && Math.Abs(cmd) <= LandSteer.TerminalLeanDeg + 1e-6) flight.IntoCapS = ut - zoneUt;
+                if (flight.IntoCapS >= 0) flight.MostLean = Math.Max(flight.MostLean, Math.Abs(cmd));
                 if (!double.IsNaN(lastCmd)) flight.MostTurnRate = Math.Max(flight.MostTurnRate, Math.Abs(cmd - lastCmd) / dt);
                 lastCmd = cmd;
                 // The craft: a rate towards the command, braked in time, within the top rate and the torque's angular acceleration.
@@ -278,10 +320,13 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData(165, 30.6, 5.3, -44, 27, true)]
         [InlineData(37, 6.2, 0.4, 54, 11, true)]
         [InlineData(8, 2.8, 1.3, 43, 21, false)]
-        public void From_908bs_final_descent_the_command_leans_at_most_20_degrees_and_turns_no_faster_than_the_craft(double h, double vDown, double vH, double lean,
-            double rate, bool landsUpright)
+        public void From_908bs_final_descent_the_command_leans_at_most_20_degrees_where_capped_and_turns_no_faster_than_the_craft(double h, double vDown, double vH,
+            double lean, double rate, bool landsUpright)
         {
+            // The cap's zone is below 50 m or under 2 m/s across (the player's call): from coming below 50 m the command turns onto
+            // the cap within 2 s and stays there to touchdown. Its turn rate is checked over the whole final descent.
             var flight = Fly(h, vDown, vH, lean, rate);
+            Assert.InRange(flight.IntoCapS, 0, 2);
             Assert.InRange(flight.MostLean, 0, 20 + 1e-6);
             Assert.InRange(flight.MostTurnRate, 0, TopRate + 1e-6);
             if (!landsUpright) return;
