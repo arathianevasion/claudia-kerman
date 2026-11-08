@@ -80,7 +80,7 @@ namespace ClaudiaKerman.Adapter
         private readonly ReentryCraft _afterShield;
 
         /// <summary>Ship Systems out now that this craft reads stowed (#868), for the block-call lines.</summary>
-        public int Stowed { get; private set; }
+        public int StowedCount { get; private set; }
 
         public ReentryCraft(Vessel vessel, ICollection<string> leaveOut = null, ICollection<string> shieldDrop = null)
             : this(vessel, leaveOut, shieldDrop, ShipSystemsKeeper.StowedForEntry(vessel))
@@ -107,7 +107,7 @@ namespace ClaudiaKerman.Adapter
                 // drag here is its PACKED cube's.
                 var packed = chute != null && Open(chute) ? Cube(part, "PACKED") : null;
                 var retracted = packed == null ? Retracted(part, stowed) : null;
-                if (retracted != null) Stowed++;
+                if (retracted != null) StowedCount++;
                 for (var i = 0; i < Machs.Length; i++)
                 {
                     _area[i] += packed != null

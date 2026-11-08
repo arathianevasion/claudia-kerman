@@ -119,7 +119,7 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void The_search_on_the_craft_with_its_deployables_out_misses_the_check_after_the_burn_by_about_the_flights_145_km()
         {
-            // Four 1x6 panels (about 1.1 m² a face out, 0.1 to 0.3 stowed) and four DTS-M1 dishes (0.7 m² against 0.02) beside a
+            // Four 1x6 panels (about 1.1 m² a face out, 0.1 to 0.3 stowed) and four DTS-M1 dishes (0.7 m² against 0.02; the fifth antenna, a Communotron 16, is a whip) beside a
             // 1.27 m² shield face: 3.5 times the stowed drag is inside what they can add, as the sun-tracking panels turn.
             var search = Land(15000, new Stack { Out = 3.5 });
             var after = Land(15169, new Stack());

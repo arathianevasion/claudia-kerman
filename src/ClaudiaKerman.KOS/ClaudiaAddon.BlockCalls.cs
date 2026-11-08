@@ -746,7 +746,7 @@ namespace ClaudiaKerman.KOS
         {
             if (craft == null) return "";
             return string.Format(CultureInfo.InvariantCulture, "; craft {0:0.000} t, drag area {1:0.00} m² at Mach 2, {2} Ship Systems read stowed",
-                craft.MassKg / 1000, craft.DragArea(2, 1000), craft.Stowed);
+                craft.MassKg / 1000, craft.DragArea(2, 1000), craft.StowedCount);
         }
 
         /// <summary>A predicted landing for the log, so predicted against actual can be read back from KSP.log.</summary>

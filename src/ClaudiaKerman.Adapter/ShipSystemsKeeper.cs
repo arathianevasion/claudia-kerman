@@ -98,7 +98,7 @@ namespace ClaudiaKerman.Adapter
         /// </summary>
         public ShipSystemsStowAnswer Cue(string cue, Vessel vessel)
         {
-            if (_rule == null || !ReferenceEquals(vessel, _flown) || !_managed()) return ShipSystemsStowAnswer.Nothing;
+            if (!Manages(vessel)) return ShipSystemsStowAnswer.Nothing;
             var ut = Planetarium.GetUniversalTime();
             switch (cue)
             {
@@ -135,8 +135,13 @@ namespace ClaudiaKerman.Adapter
         public static ICollection<uint> StowedForEntry(Vessel vessel)
         {
             var keeper = Current;
-            var managed = keeper != null && keeper._rule != null && ReferenceEquals(vessel, keeper._flown) && keeper._managed();
-            return managed ? ShipSystemsMoves.StowedForEntry(ReadParts(vessel, null), true) : new List<uint>();
+            return ShipSystemsMoves.StowedForEntry(ReadParts(vessel, null), keeper != null && keeper.Manages(vessel));
+        }
+
+        /// <summary>Whether this keeper acts on a block's cue from <paramref name="vessel"/>: the craft it flies, with the setting on.</summary>
+        private bool Manages(Vessel vessel)
+        {
+            return _rule != null && ReferenceEquals(vessel, _flown) && _managed();
         }
 
         private static ShipSystemsReading Read(Vessel vessel)
