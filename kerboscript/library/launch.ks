@@ -2,14 +2,13 @@
 // Copyright (C) 2026 Andrew Watson
 //
 // Building Block launch: flies from the ground of a body with an atmosphere to a coast out of it.
-// Built on claudia_lib.ks; its heading is Core's (ADDONS:CLAUDIA:LAUNCHHEADING, the one plan_ascent reports, #475);
-// block-only helpers are prefixed launch_. The "//|" lines are Claudia's docs for it; the first is
-// its summary.
+// Built on claudia_lib.ks; its heading is Core's (ADDONS:CLAUDIA:LAUNCHHEADING, the one plan_ascent reports, #475); block-only
+// helpers are prefixed launch_. The "//|" lines are Claudia's docs for it; the first is its summary.
 
 @lazyglobal off.
 
 //| launch(options): flies from the ground of a body with an atmosphere to a coast out of it; then circularize.
-//| It ends once the craft is coasting out of the atmosphere with its apoapsis at target_ap; follow it
+//| It ends once the craft is coasting out of the atmosphere with its apoapsis at target_ap (a stage too weak to coast and circularize burns on past it until the periapsis clears the air); follow it
 //| with circularize in the same Mission Script (one Maneuver Sequence, one Approval). A target_ap
 //| below the atmosphere top makes it a hop that ends at the top of the climb.
 //| Options:
@@ -41,7 +40,6 @@
 //| craft until cutoff, and the craft never steers more than max_aoa off the airflow. With no thrust (a
 //| hop's coast, between stages) only fins and reaction wheels hold it: a craft with neither tumbles in
 //| thick air. Engines are staged into from the pad, and launch clamps released.
-//| It traces the climb to the log (ADDONS:CLAUDIA:BLOCKTRACE) every 2 s and at each change of phase or stage.
 //| Extra results: ap_error (m, apoapsis minus target_ap when the block ended; a hop's shows drag
 //| loss), max_q (Pa, highest dynamic pressure), coast_ap (m, apoapsis at first engine cutoff), lan_actual (degrees, the orbit's LAN at the end).
 //| Fails with "launch starts on the ground", "no atmosphere on <body>: use ascend", "no thrust", a
@@ -101,11 +99,9 @@ function launch_pitch {
   return 90 * (1 - fraction ^ shape).
 }
 
-// Whether the turn waits at dynamic pressure q_now (Pa) and pressure_ratio of surface pressure:
-// while max_q (Pa, -1 for no limit) has the throttle easing back (from 90% of it, as launch_throttle
-// eases) in thick air, the craft is too slow to turn over without its path falling with it (#235),
-// so it climbs as steeply as max_aoa lets it instead: launch starts the turn again from vertical
-// wherever this holds.
+// Whether the turn waits at dynamic pressure q_now (Pa) and pressure_ratio of surface pressure: while max_q (Pa, -1 for no limit) has the throttle
+// easing back (from 90% of it, as launch_throttle eases) in thick air, the craft is too slow to turn over without its path falling with it (#235),
+// so it climbs as steeply as max_aoa lets it instead: launch starts the turn again from vertical wherever this holds.
 function launch_turn_held {
   parameter q_now, max_q, pressure_ratio.
   return max_q > 0 and q_now > 0.9 * max_q and launch_thick_air(pressure_ratio).
@@ -117,17 +113,15 @@ function launch_topup_tol {
   return max(100, 0.005 * target_ap).
 }
 
-// How close to target_ap (m) the engines cut off: half the top-up band, so a cutoff can't be undone
-// at once by the top-up.
+// How close to target_ap (m) the engines cut off: half the top-up band, so a cutoff can't be undone at once by the top-up.
 function launch_cutoff_tol {
   parameter target_ap.
   return launch_topup_tol(target_ap) / 2.
 }
 
-// The throttle on the way to target_ap: 0 once ap is within launch_cutoff_tol of it (only that cuts the
-// engines off, so the throttle never trickles near the target); easing off linearly over the last ramp metres of apoapsis; easing off from 90% to 110% of max_q
-// (Pa, -1 for no limit) at dynamic pressure q_now (Pa), down to 5%; but never below t_floor, so the
-// throttle can't collapse in thick air (the floor wins over max_q).
+// The throttle on the way to target_ap: 0 once ap is within launch_cutoff_tol of it (only that cuts the engines off, so the throttle never trickles near the target);
+// easing off linearly over the last ramp metres of apoapsis; easing off from 90% to 110% of max_q (Pa, -1 for no limit) at dynamic pressure q_now (Pa), down to 5%;
+// but never below t_floor, so the throttle can't collapse in thick air (the floor wins over max_q).
 function launch_throttle {
   parameter ap, target_ap, ramp, q_now, max_q, t_floor.
   if ap >= target_ap - launch_cutoff_tol(target_ap) {
@@ -140,9 +134,8 @@ function launch_throttle {
   return min(1, max(t_floor, max(0, t))).
 }
 
-// The phase of the climb, for its trace (#531), named as plan_ascent's sim names it: "coast" with the throttle off; "vertical"
-// before the turn starts; "turn_held" while throttle_max_q holds the turn (see launch_turn_held); "thin_air" when the thin-air rule
-// raised the pitch (launch_thin_pitch); otherwise "turn". Pure.
+// The phase of the climb, for its trace (#531), named as plan_ascent's sim names it: "coast" with the throttle off; "vertical" before the turn starts; "turn_held"
+// while throttle_max_q holds the turn (see launch_turn_held); "thin_air" when the thin-air rule raised the pitch (launch_thin_pitch); otherwise "turn". Pure.
 function launch_phase {
   parameter coasting, turn_started, held, thin.
   if coasting {
@@ -184,8 +177,7 @@ function launch_thick_air {
   return pressure_ratio > 0.1.
 }
 
-// The lowest throttle allowed before cutoff: in thick air (pressure_ratio of surface pressure),
-// enough for thrust to match weight (mass_t at g m/s^2 against thrust_kn); otherwise none.
+// The lowest throttle allowed before cutoff: in thick air (pressure_ratio of surface pressure), enough for thrust to match weight (mass_t at g m/s^2 against thrust_kn); otherwise none.
 function launch_throttle_floor {
   parameter pressure_ratio, mass_t, g, thrust_kn.
   if not launch_thick_air(pressure_ratio) or thrust_kn <= 0 {
@@ -199,14 +191,12 @@ function launch_aero_q {
   return 500.
 }
 
-// Dynamic pressure (Pa) up to which the full max_aoa is allowed; above it the allowed angle falls in
-// proportion, so a craft with weak aerodynamic stability is held nearer the airflow where q is highest.
+// Dynamic pressure (Pa) up to which the full max_aoa is allowed; above it the allowed angle falls in proportion, so a craft with weak aerodynamic stability is held nearer the airflow where q is highest.
 function launch_aoa_q_ref {
   return 8000.
 }
 
-// Degrees the nose may be off the airflow at dynamic pressure q_pa: max_aoa up to q_ref, then
-// max_aoa * q_ref / q_pa, never less than a tenth of max_aoa.
+// Degrees the nose may be off the airflow at dynamic pressure q_pa: max_aoa up to q_ref, then max_aoa * q_ref / q_pa, never less than a tenth of max_aoa.
 function launch_allowed_aoa {
   parameter max_aoa, q_pa, q_ref.
   if q_pa <= q_ref {
@@ -220,9 +210,8 @@ function launch_thin_lead {
   return 3.
 }
 
-// pitch (degrees above the horizon) raised, in thin air (q_pa under launch_aero_q, where max_aoa
-// does not apply), to no lower than lead degrees below prograde_pitch, so the upper turn follows
-// the trajectory; otherwise pitch as it was (#236).
+// pitch (degrees above the horizon) raised, in thin air (q_pa under launch_aero_q, where max_aoa does not apply), to no lower than
+// lead degrees below prograde_pitch, so the upper turn follows the trajectory; otherwise pitch as it was (#236).
 function launch_thin_pitch {
   parameter pitch, prograde_pitch, q_pa, lead.
   if q_pa > launch_aero_q() {
@@ -231,8 +220,7 @@ function launch_thin_pitch {
   return max(pitch, prograde_pitch - lead).
 }
 
-// The body's values, each option's own or, for "body", the game's: lexicon("g", m/s^2,
-// "atm_height", m, "surface_pressure", Pa).
+// The body's values, each option's own or, for "body", the game's: lexicon("g", m/s^2, "atm_height", m, "surface_pressure", Pa).
 function launch_body {
   parameter opt.
   local b is ship:body.
@@ -281,10 +269,8 @@ function launch_heading {
     "gm", body:mu, "radius", body:radius, "rotation", body:rotationperiod)).
 }
 
-// Why the block stopped for lost control: burning is whether an engine gave thrust (not what the
-// throttle asked: between stages it asks with none), tset the throttle (0..1), q_pa the dynamic
-// pressure (Pa), off_aim and off_flow the nose's degrees off the aim and off the airflow
-// (srfprograde), alt_m the altitude (m).
+// Why the block stopped for lost control: burning is whether an engine gave thrust (not what the throttle asked: between stages it asks with none),
+// tset the throttle (0..1), q_pa the dynamic pressure (Pa), off_aim and off_flow the nose's degrees off the aim and off the airflow (srfprograde), alt_m the altitude (m).
 function launch_lost_control {
   parameter burning, tset, q_pa, off_aim, off_flow, alt_m.
   local doing is "coasting".
@@ -294,8 +280,7 @@ function launch_lost_control {
   return "lost control: " + round(off_aim) + " degrees off the ascent path at " + round(alt_m) + " m, " + doing + " at " + round(100 * tset) + "% throttle, q " + round(q_pa) + " Pa, " + round(off_flow) + " degrees off the airflow".
 }
 
-// When to launch and into what inclination: lexicon("error", "" or why not, "wait", s, "inc", degrees).
-// options are the ones given (to tell whether target_inc was).
+// When to launch and into what inclination: lexicon("error", "" or why not, "wait", s, "inc", degrees). options are the ones given (to tell whether target_inc was).
 function launch_when {
   parameter opt, options, target_ap.
   local plan is lexicon("error", "", "wait", 0, "inc", opt:target_inc).
@@ -327,8 +312,7 @@ function launch_when {
   return launch_apply_window(plan, win, go_at:name, options:haskey("target_inc")).
 }
 
-// plan with the window win (ADDONS:CLAUDIA:LAUNCHWINDOW's lexicon) for the plane of name: its error, or the wait and,
-// unless target_inc was given, the inclination (negative for the southbound window).
+// plan with the window win (ADDONS:CLAUDIA:LAUNCHWINDOW's lexicon) for the plane of name: its error, or the wait and, unless target_inc was given, the inclination (negative for the southbound window).
 function launch_apply_window {
   parameter plan, win, name, inc_given.
   if win:error <> "" {
@@ -442,12 +426,12 @@ function launch {
   local ramp is max(500, 0.02 * target_ap).
   local topup_tol is launch_topup_tol(target_ap).
   local coasting is false.
+  local burn_through is false.
   local off_since is -1.
   local q_max is 0.
   local reason is "".
   local done is false.
-  // The trace (ADDONS:CLAUDIA:BLOCKTRACE, #531): the last line's phase, stage and UT, and the UT of the last pass of this
-  // loop (the gap between passes is traced, as the nose holds its last aim between them).
+  // The trace (ADDONS:CLAUDIA:BLOCKTRACE, #531): the last line's phase, stage and UT, and the UT of the last pass of this loop (the gap between passes is traced, as the nose holds its last aim between them).
   local last_phase is "".
   local last_stage is -1.
   local last_trace_ut is -1e9.
@@ -466,6 +450,10 @@ function launch {
       set ratio to ship:body:atm:altitudepressure(altitude) * constant:atmtokpa * 1000 / body_values:surface_pressure.
     }
 
+    if burn_through and ship:periapsis > body_values:atm_height {
+      set done to true.
+      return.
+    }
     if coasting {
       if hop and ship:verticalspeed <= 0 {
         set done to true.
@@ -491,10 +479,17 @@ function launch {
       set tset to 0.
     } else {
       local t_floor is launch_throttle_floor(ratio, ship:mass, body_values:g, ship:availablethrust).
-      set tset to launch_throttle(ap, target_ap, ramp, q_pa, max_q_pa, t_floor).
+      // Burning through (#932), as if target_ap were far off: throttle_max_q and the thick-air floor still hold.
+      set tset to launch_throttle(ap, choose ap + 1e7 if burn_through else target_ap, ramp, q_pa, max_q_pa, t_floor).
       if tset = 0 {
-        set coasting to true.
+        // The first cutoff only: Core says whether this stage can coast to apoapsis and circularize there (#932; its figures go to KSP.log).
         if extra:coast_ap = 0 {
+          set burn_through to addons:claudia:burnthrough(lexicon("ap", ap, "sma", ship:orbit:semimajoraxis, "gm", ship:body:mu, "radius", ship:body:radius, "eta_ap", eta:apoapsis, "target_ap", target_ap, "atm_height", body_values:atm_height,
+            "stages", claudia_burn_stages(opt:stage_limit), "turn", addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime)))):burn_through.
+        }
+        set tset to choose 1 if burn_through else 0.
+        set coasting to not burn_through.
+        if extra:coast_ap = 0 and coasting {
           set extra:coast_ap to round(ap).
         }
       }
@@ -513,7 +508,7 @@ function launch {
     local thin is false.
     local want is ship:up:vector.
     local pitch is 90.
-    if not coasting {
+    if not coasting and not burn_through {
       if turn_start_alt >= 0 {
         set pitch to launch_pitch(altitude, turn_start_alt, turn_end, opt:turn_shape).
       }
@@ -527,7 +522,7 @@ function launch {
       }
       set want to heading(hdg, pitch):vector.
     } else if spd > 30 {
-      if hop or q_pa > 2 * launch_aero_q() {
+      if hop or (q_pa > 2 * launch_aero_q() and not burn_through) {
         set want to ship:srfprograde:vector.
       } else {
         set want to ship:prograde:vector.
@@ -540,7 +535,7 @@ function launch {
       local along is heading(hdg, 0):vector.
       local normal is vcrs(ship:up:vector, along).
       local off_plane is arcsin(min(1, abs(vdot(flow:normalized, normal)))).
-      if coasting {
+      if coasting or burn_through {
         set want to launch_limit_aoa(want, flow, allowed).
       } else if off_plane >= allowed {
         // Further out than allowed: turn from the airflow toward the plane (where the branch below starts).
@@ -554,7 +549,7 @@ function launch {
     set aim to want.
 
     // The trace, only when due: the checks are strings and numbers already to hand.
-    local phase is launch_phase(coasting, turn_start_alt >= 0, held, thin).
+    local phase is choose "burn_through" if burn_through else launch_phase(coasting, turn_start_alt >= 0, held, thin).
     local why is launch_trace_due(phase, last_phase, stage:number, last_stage, time:seconds, last_trace_ut).
     if why <> "" {
       set last_phase to phase.
@@ -596,7 +591,12 @@ function launch {
       if not done {
         // Burning while climbing, not in the coast out of the air (#379).
         local ticked is claudia_tick(ctx, tset, not coasting).
-        if ticked <> "" {
+        if burn_through and ticked:startswith("out of fuel") {
+          // Fuel or stage_limit ended the burn-through (#932): the craft coasts on from here, as it would have from the cutoff.
+          set burn_through to false.
+          set coasting to true.
+          set extra:coast_ap to round(ship:apoapsis).
+        } else if ticked <> "" {
           set reason to ticked.
           set done to true.
         }

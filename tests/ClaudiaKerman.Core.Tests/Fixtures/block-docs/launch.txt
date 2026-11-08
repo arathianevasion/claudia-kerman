@@ -1,5 +1,5 @@
 launch(options): flies from the ground of a body with an atmosphere to a coast out of it; then circularize.
-It ends once the craft is coasting out of the atmosphere with its apoapsis at target_ap; follow it
+It ends once the craft is coasting out of the atmosphere with its apoapsis at target_ap (a stage too weak to coast and circularize burns on past it until the periapsis clears the air); follow it
 with circularize in the same Mission Script (one Maneuver Sequence, one Approval). A target_ap
 below the atmosphere top makes it a hop that ends at the top of the climb.
 Options:
@@ -31,7 +31,6 @@ In thick air (over a tenth of surface pressure) the throttle never drops below t
 craft until cutoff, and the craft never steers more than max_aoa off the airflow. With no thrust (a
 hop's coast, between stages) only fins and reaction wheels hold it: a craft with neither tumbles in
 thick air. Engines are staged into from the pad, and launch clamps released.
-It traces the climb to the log (ADDONS:CLAUDIA:BLOCKTRACE) every 2 s and at each change of phase or stage.
 Extra results: ap_error (m, apoapsis minus target_ap when the block ended; a hop's shows drag
 loss), max_q (Pa, highest dynamic pressure), coast_ap (m, apoapsis at first engine cutoff), lan_actual (degrees, the orbit's LAN at the end).
 Fails with "launch starts on the ground", "no atmosphere on <body>: use ascend", "no thrust", a

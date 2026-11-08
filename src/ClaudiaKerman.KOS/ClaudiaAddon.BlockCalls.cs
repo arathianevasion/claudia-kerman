@@ -34,6 +34,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (launch): when the pad next passes under the plane of inc and lan (degrees); lexicon error, wait (s), ut, north, inc (negative southbound), heading"));
             AddSuffix("LAUNCHHEADING", new OneArgsSuffix<Lexicon, Lexicon>(LaunchHeading,
                 "Core Library only (launch): the heading into the plane of inc (negative southbound) from lat, with gm, radius and rotation of the body and target_ap (m); lexicon error, heading"));
+            AddSuffix("BURNTHROUGH", new OneArgsSuffix<Lexicon, Lexicon>(BurnThrough,
+                "Core Library only (launch, at its first cutoff): whether the stage is too weak to coast to apoapsis and circularize there, from ap, sma, gm, radius, eta_ap, target_ap, atm_height, stages and turn; lexicon error, burn_through, dv, half_burn, turn_time, eta_ap"));
             AddSuffix("LANDINGSITE", new OneArgsSuffix<Lexicon, Lexicon>(LandingSite,
                 "Core Library only (land): find_landing_site's search on the body orbited; gives the first site as lexicon error, lat, lng, biome, ..."));
             AddSuffix("LANDINGPASS", new OneArgsSuffix<Lexicon, Lexicon>(LandingPass,
@@ -720,6 +722,23 @@ namespace ClaudiaKerman.KOS
             }, () => heading["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "heading {0:0.00}", heading["heading"])
                 : (string)heading["error"], 2);
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:BURNTHROUGH</c> (#932, ADR 0014): launch's burn-through decision (<see cref="LaunchBurnThrough.Call"/>), pure, called
+        /// once at the first cutoff. Its line in KSP.log gives the figures. A failure (logged by Guarded) coasts, as a launch always did.
+        /// </summary>
+        private Lexicon BurnThrough(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> decision = null;
+            var answer = Guarded("BURNTHROUGH", () =>
+            {
+                decision = LaunchBurnThrough.Call(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(decision);
+            }, () => string.Format(CultureInfo.InvariantCulture, "burn_through {0}: half burn {1:0.0} s for {2:0.0} m/s + turn {3:0.0} s against {4:0.0} s to apoapsis{5}",
+                decision["burn_through"], decision["half_burn"], decision["dv"], decision["turn_time"], decision["eta_ap"],
+                decision["error"] as string == "" ? "" : " (" + decision["error"] + ")"));
+            return decision != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(LaunchBurnThrough.Call(null));
         }
 
         private Lexicon TurnTime(Lexicon input)
