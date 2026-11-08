@@ -97,18 +97,23 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// The UT the moon must be reached by (#881): the first leg after the trip at <paramref name="trip"/> with a fixed date, a Due Time (the outline carries no
+        /// The UT the moon must be reached by (#881): the tightest Due Time of the legs after the trip at <paramref name="trip"/> (the outline carries no
         /// return window: <see cref="PlannedSequence"/> has no such field), less one low orbit of <paramref name="moon"/> for each leg in between; null with no such leg.
         /// </summary>
         private static double? FixedDate(IList<PlannedSequence> legs, int trip, SnapshotBody moon)
         {
+            if (moon == null) return null;
             var orbit = DeltaVMap.LowOrbit(moon);
             var lap = 2 * Math.PI * Math.Sqrt(orbit * orbit * orbit / moon.Gm);
+            // The tightest of them: each dated leg less the legs before it.
+            double? tightest = null;
             for (var j = trip + 1; j < legs.Count; j++)
             {
-                if (legs[j].DueTimeUt.HasValue) return legs[j].DueTimeUt.Value - (j - trip - 1) * lap;
+                if (!legs[j].DueTimeUt.HasValue) continue;
+                var by = legs[j].DueTimeUt.Value - (j - trip - 1) * lap;
+                if (!tightest.HasValue || by < tightest.Value) tightest = by;
             }
-            return null;
+            return tightest;
         }
 
         /// <summary>
