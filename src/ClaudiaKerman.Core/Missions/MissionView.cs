@@ -447,6 +447,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool WindowPickNeeded;
         /// <summary>The window the player last picked for this Mission; it stands in for the setting's pick on its transfer.</summary>
         public WindowPick WindowPick = WindowPick.None;
+        /// <summary>The window the running <c>return</c> was planned for (#887), for <see cref="Stamp"/>; null for none.</summary>
+        public double? ReturnWindowUt;
 
         /// <summary>The Mission Settings in force.</summary>
         public MissionSettingsValues Settings = new MissionSettingsValues();
@@ -467,6 +469,7 @@ namespace ClaudiaKerman.Core.Missions
                 // In a Child Vessel run the active ship is the child, whose dv_left is not the craft's: the craft's later legs are not taken from it.
                 snapshot.LaterLegsDv = view.PlanLegs == null ? (double?)null : MissionCards.LaterLegsDv(view.PlanLegs, view.CurrentSequence + 1, true, view.CraftName, view.RunningChild);
                 snapshot.PickedSite = view.PickedSite;
+                snapshot.ReturnWindowUt = view.ReturnWindowUt;
                 snapshot.RecordedPlane = view.ArrivalPlane;
                 snapshot.MissionGoal = view.Goal;
             }
