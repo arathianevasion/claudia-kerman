@@ -60,7 +60,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// The moon the Mission Plan's next trip for this craft goes to, when it is a moon of <paramref name="body"/> and <paramref name="body"/> is a planet
         /// reached by an interplanetary transfer; else null, with <paramref name="why"/> saying why ("" with no Mission Plan). <paramref name="deadline"/> is
-        /// the earliest Due Time of the legs after that trip, which the moon must be reached by; null for none.
+        /// the tightest Due Time of the legs after that trip, each less one low orbit of the moon per leg in between (<see cref="FixedDate"/>), which the moon must be reached by; null for none.
         /// </summary>
         public static SnapshotBody NextMoon(GameSnapshot snapshot, BodySystem system, SnapshotBody body, out double? deadline, out string why)
         {
@@ -82,9 +82,9 @@ namespace ClaudiaKerman.Core.Tools
                     if (target != null && target != body && string.Equals(target.Parent, body.Name, StringComparison.OrdinalIgnoreCase))
                     {
                         why = "";
-                        var dates = legs.Skip(i + 1).Where(l => l.DueTimeUt.HasValue).Select(l => l.DueTimeUt.Value).ToList();
-                        if (dates.Count > 0) deadline = dates.Min();
-                        return system.Find(target.Name);
+                        var moon = system.Find(target.Name);
+                        deadline = FixedDate(snapshot, system, body, legs, i, moon);
+                        return moon;
                     }
                     // The leg in hand's trip is the one that came here; it may land too.
                     if (i != 0) return null;
@@ -92,6 +92,81 @@ namespace ClaudiaKerman.Core.Tools
                 // A landing, ascent or entry first (the leg in hand's too: "Capture and land at Duna") starts from a low orbit.
                 if ((SequenceWords.Landing.IsMatch(words) || SequenceWords.Ascent.IsMatch(words) || SequenceWords.Reentry.IsMatch(words)
                     || SequenceWords.Aero.IsMatch(words) || SequenceWords.ReturnHome.IsMatch(words))) return null;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// The UT the moon must be reached by (#881): the tightest Due Time of the legs after the trip at <paramref name="trip"/> (the outline carries no
+        /// return window: <see cref="PlannedSequence"/> has no such field), or the next transfer window's date (<see cref="NextWindow"/>) of a later leg that
+        /// leaves <paramref name="planet"/> for another planet (#895), less one low orbit of <paramref name="moon"/> for each leg in between; null with no such leg.
+        /// </summary>
+        private static double? FixedDate(GameSnapshot snapshot, BodySystem system, SnapshotBody planet, IList<PlannedSequence> legs, int trip, SnapshotBody moon)
+        {
+            if (moon == null) return null;
+            var orbit = DeltaVMap.LowOrbit(moon);
+            var lap = 2 * Math.PI * Math.Sqrt(orbit * orbit * orbit / moon.Gm);
+            // The tightest of them: each dated leg less the legs before it.
+            double? tightest = null;
+            var between = 0;
+            for (var j = trip + 1; j < legs.Count; j++)
+            {
+                // A leg of the player's or another vessel's is no leg of this craft's between.
+                if (legs[j].Manual || !(string.IsNullOrEmpty(legs[j].Vessel) || string.Equals(legs[j].Vessel, "craft", StringComparison.OrdinalIgnoreCase))) continue;
+                if (legs[j].DueTimeUt.HasValue && !double.IsNaN(legs[j].DueTimeUt.Value))
+                {
+                    var by = legs[j].DueTimeUt.Value - between * lap;
+                    if (!tightest.HasValue || by < tightest.Value) tightest = by;
+                }
+                var window = WindowOf(snapshot, system, planet, legs[j]);
+                if (window.HasValue && (!tightest.HasValue || window.Value - between * lap < tightest.Value)) tightest = window.Value - between * lap;
+                between++;
+            }
+            return tightest;
+        }
+
+        /// <summary>The next transfer window's date (<see cref="NextWindow"/>) when <paramref name="leg"/> is a trip, or a return home, from <paramref name="planet"/> to another planet; else null.</summary>
+        private static double? WindowOf(GameSnapshot snapshot, BodySystem system, SnapshotBody planet, PlannedSequence leg)
+        {
+            var words = SequenceWords.ActionWords(leg);
+            if (!SequenceWords.Trip.IsMatch(words) && !SequenceWords.ReturnHome.IsMatch(words)) return null;
+            var target = SequenceWords.TripTarget(snapshot, words, planet, CraftCheckFlow.HomeBody) ?? SequenceWords.TripTarget(snapshot, SequenceWords.Of(leg), planet, CraftCheckFlow.HomeBody);
+            var to = target;
+            while (to != null && system.Parent(to) != null && system.Parent(system.Parent(to)) != null) to = system.Parent(to);
+            if (to == null || to == planet || system.Parent(to) != system.Parent(planet)) return null;
+            return NextWindow(system, planet, to, snapshot.Ut);
+        }
+
+        /// <summary>
+        /// The UT the next transfer window from <paramref name="from"/> to <paramref name="to"/> (two planets of one star) is centred on, from <paramref name="now"/>, to
+        /// within hours (#895): the day the target leads the origin by the Hohmann phase angle, a closed-form scan of at most 361 steps over one synodic
+        /// period and 40 bisections, a few hundred Kepler solves (microseconds), no Lambert and no search over loops; null for none.
+        /// </summary>
+        internal static double? NextWindow(BodySystem system, SnapshotBody from, SnapshotBody to, double now)
+        {
+            var o1 = system.OrbitOf(from);
+            var o2 = system.OrbitOf(to);
+            if (o1 == null || o2 == null || !o1.Closed || !o2.Closed) return null;
+            var a = (o1.A + o2.A) / 2;
+            var lead = Math.PI - 2 * Math.PI / o2.Period * Math.PI * Math.Sqrt(a * a * a / o1.Mu);
+            var rate = 2 * Math.PI / o2.Period - 2 * Math.PI / o1.Period;
+            if (Math.Abs(rate) < 1e-12) return null;
+            var ex = o1.Position(now).Normalized;
+            var ey = Vec3.Cross(o1.W, ex);
+            Func<double, double> miss = t =>
+            {
+                var d = Math.Atan2(Vec3.Dot(o2.Position(t), ey), Vec3.Dot(o2.Position(t), ex)) - Math.Atan2(Vec3.Dot(o1.Position(t), ey), Vec3.Dot(o1.Position(t), ex)) - lead;
+                return Math.Atan2(Math.Sin(d), Math.Cos(d));
+            };
+            var synodic = 2 * Math.PI / Math.Abs(rate);
+            var step = synodic / 360;
+            var last = miss(now);
+            for (var i = 1; i <= 361; i++)
+            {
+                var t = now + i * step;
+                var at = miss(t);
+                if (Math.Sign(at) != Math.Sign(last) && Math.Abs(at - last) < Math.PI) return Bisect(miss, now + (i - 1) * step, t);
+                last = at;
             }
             return null;
         }

@@ -148,7 +148,7 @@ namespace ClaudiaKerman.Core.Tools
             var up = Number(want, "up", 0);
             var vel = new[] { Number(input, "v_al", 0), Number(input, "v_cr", 0), vUp };
             // The lean cap's zone: near the ground, or slow across it (the player's call, #865).
-            var capped = terminal && (h < CapBelowM || Math.Sqrt(vel[0] * vel[0] + vel[1] * vel[1]) < CapSlowerMs);
+            var capped = LeanCapApplies(terminal, h, Math.Sqrt(vel[0] * vel[0] + vel[1] * vel[1]));
             // The vertical need, before the lean limit adds lift to brake sideways: what the throttle gives while off target.
             var need = up;
             var tilt = MaxLean(h, capped);
@@ -216,6 +216,12 @@ namespace ClaudiaKerman.Core.Tools
                 { "settling", settling }, { "settle_s", settleS }, { "settle_ut", settling ? ut : -1.0 }, { "settle_dv0", dv0 }, { "settle_done", done },
                 { "ut", ut },
             };
+        }
+
+        /// <summary>Whether land's lean cap (and the want:vv-bound lift) applies: the final descent, below <see cref="CapBelowM"/> or slower than <see cref="CapSlowerMs"/> across the ground. LandSteer.Tick and BrakeGuidance.Steer both ask this.</summary>
+        internal static bool LeanCapApplies(bool terminal, double h, double acrossMs)
+        {
+            return terminal && (h < CapBelowM || acrossMs < CapSlowerMs);
         }
 
         /// <summary>The direction <paramref name="dir"/> leaning no more than <paramref name="tilt"/> degrees from upright, on its own side.</summary>
