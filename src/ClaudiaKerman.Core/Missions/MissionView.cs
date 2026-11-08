@@ -345,6 +345,8 @@ namespace ClaudiaKerman.Core.Missions
         public ChuteGroups ChuteGroups;
         /// <summary>The Mission Plan's legs, for the Ship Systems hold (#756); null before there is a plan.</summary>
         public IList<PlannedSequence> PlanLegs;
+        /// <summary>The Mission's craft's name, so a Child Vessel's legs are left out of the later legs' delta-v (#832); "" before there is one.</summary>
+        public string CraftName = "";
         /// <summary>The Child Vessel the run flies, for <c>ENTRYDROP</c>'s count (#823); "" for the craft.</summary>
         public string RunningChild = "";
         /// <summary>The arrival plane <c>transfer_to</c> recorded for <c>capture</c>, and the last site <c>find_landing_site</c> gave (#788).</summary>
@@ -461,6 +463,9 @@ namespace ClaudiaKerman.Core.Missions
                 snapshot.StampMission(view.Settings.TimeVersusDeltaV, view.MarginPercent, view.WindowPick);
                 // What the arrival plane reads (#788): the legs from the one in hand on, the site picked, and what transfer_to recorded for capture.
                 snapshot.LegsAhead = view.PlanLegs != null ? System.Linq.Enumerable.ToList(System.Linq.Enumerable.Skip(view.PlanLegs, System.Math.Max(0, view.CurrentSequence))) : null;
+                // What the legs after the one in hand need (#832), kept back by a block's reserve: CurrentSequence is the leg in hand, counted as begun.
+                // In a Child Vessel run the active ship is the child, whose dv_left is not the craft's: the craft's later legs are not taken from it.
+                snapshot.LaterLegsDv = view.PlanLegs == null ? (double?)null : !string.IsNullOrEmpty(view.RunningChild) ? 0 : MissionCards.LaterLegsDv(view.PlanLegs, System.Math.Max(0, view.CurrentSequence), view.CraftName);
                 snapshot.PickedSite = view.PickedSite;
                 snapshot.RecordedPlane = view.ArrivalPlane;
                 snapshot.MissionGoal = view.Goal;

@@ -26,6 +26,50 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(25, snapshot.MarginPercent);
         }
 
+        /// <summary>
+        /// #832: a block call's snapshot gets the later legs' delta-v as the planning tools' does: the legs after the one in hand (CurrentSequence, the leg counted as begun), the craft's only.
+        /// Neither the leg in hand nor one before it counts, nor a Child Vessel's.
+        /// </summary>
+        [Theory]
+        [InlineData(0, 1200)]
+        [InlineData(1, 400)]
+        [InlineData(2, 400)]
+        [InlineData(3, 0)]
+        [InlineData(-1, 1200)]
+        public void The_later_legs_delta_v_is_the_craft_s_legs_after_the_one_in_hand(int current, double expected)
+        {
+            var view = new MissionView
+            {
+                Stage = MissionStage.Running, CurrentSequence = current, CraftName = "Kerbal X",
+                PlanLegs = new System.Collections.Generic.List<PlannedSequence>
+                {
+                    new PlannedSequence { Name = "Launch", DeltaV = 3400 },
+                    new PlannedSequence { Name = "Transfer", DeltaV = 800, Vessel = "Kerbal X" },
+                    new PlannedSequence { Name = "Probe", DeltaV = 600, Vessel = "Probe" },
+                    new PlannedSequence { Name = "Land", DeltaV = 400, Vessel = "craft" },
+                },
+            };
+            // Legs 0 to 3: after leg 0, 800 + 400 (the probe's left out); after leg 1, 400; after leg 2 (the probe), 400; after 3, none.
+            var snapshot = MissionView.Stamp(new GameSnapshot(), view);
+            Assert.Equal(expected, snapshot.LaterLegsDv);
+            Assert.Null(MissionView.Stamp(new GameSnapshot(), new MissionView { Stage = MissionStage.Running }).LaterLegsDv);
+        }
+
+        [Fact]
+        public void While_a_child_vessel_runs_the_craft_s_later_legs_are_not_taken_from_its_delta_v()
+        {
+            var view = new MissionView
+            {
+                Stage = MissionStage.Running, CurrentSequence = 0, CraftName = "Kerbal X", RunningChild = "Capsule",
+                PlanLegs = new System.Collections.Generic.List<PlannedSequence>
+                {
+                    new PlannedSequence { Name = "Deorbit", DeltaV = 150, Vessel = "Capsule" },
+                    new PlannedSequence { Name = "Station", DeltaV = 300, Vessel = "Kerbal X" },
+                },
+            };
+            Assert.Equal(0, MissionView.Stamp(new GameSnapshot(), view).LaterLegsDv);
+        }
+
         [Fact]
         public void With_no_Mission_the_snapshot_keeps_the_defaults()
         {
