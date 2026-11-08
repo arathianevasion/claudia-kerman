@@ -16,6 +16,11 @@ namespace ClaudiaKerman.Kerboscript.Tests
     /// </summary>
     public class LandAscendTests
     {
+        static LandAscendTests()
+        {
+            KosHarness.Register(typeof(LandSteerRigFunctions));
+        }
+
         private const string MunMu = "6.5138398e10";
 
         private static string One(string expression)
@@ -312,6 +317,13 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
                 One("land_unknown_biome(lexicon(\"error\", \"Monolith TMA-7 is not a landable Point of Interest: buried\"))"));
             Assert.Equal("\"x\" names no one Point of Interest on Mun",
                 One("land_unknown_biome(lexicon(\"error\", char(34) + \"x\" + char(34) + \" names no one Point of Interest on Mun\"))"));
+        }
+
+        [Fact]
+        public void The_report_has_settle_s_0_until_a_settle_holds()
+        {
+            // #865: seconds the final descent held height until Aligned below 10 m; land_descend sets it at touchdown.
+            Assert.Equal("0", One("land_extra():settle_s"));
         }
 
         [Fact]
@@ -867,14 +879,6 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         }
 
         [Fact]
-        public void Land_keeps_upright_near_the_ground()
-        {
-            Assert.Equal("5", One("land_max_tilt(0)"));
-            Assert.Equal("25", One("land_max_tilt(10)"));
-            Assert.Equal("90", One("land_max_tilt(50)"));
-        }
-
-        [Fact]
         public void Land_gives_vertical_acceleration_first()
         {
             Assert.Equal(new[] { "6", "8" }, Run("local s is land_split_accel(10, 6, 10). print s:v. print round(s:h, 3)."));
@@ -1047,91 +1051,12 @@ print land_brake_estimate(samples, a_brake, 1.1).");
                 + "print land_path_ground_ahead(pred, 35000). print land_path_ground_ahead(pred, 15000). print land_path_ground_ahead(pred, 0)."));
         }
 
-        // land_steer for a demand (al, up) at a velocity (v_al, v_up), the last direction straight back; prints the direction and the
-        // degrees it lies from surface retrograde.
-        private static double[] Steer(double al, double up, double vAl, double vUp)
-        {
-            return Run(string.Format(CultureInfo.InvariantCulture,
-                "local d is land_steer(lexicon(\"al\", {0}, \"cr\", 0, \"up\", {1}), lexicon(\"al\", -1, \"cr\", 0, \"up\", 0), lexicon(\"al\", {2}, \"cr\", 0, \"up\", {3}), 10).\n"
-                + "print d:al. print d:up. print arccos(max(-1, min(1, -(d:al * {2} + d:up * {3}) / sqrt({2} ^ 2 + {3} ^ 2)))). print d:mag.", al, up, vAl, vUp))
-                .Select(x => double.Parse(x, CultureInfo.InvariantCulture)).ToArray();
-        }
-
-        [Fact]
-        public void A_demand_under_5_percent_of_the_maximum_holds_the_last_direction_and_the_steering_stays_within_45_degrees_of_retrograde()
-        {
-            // #511: the tiny demand that flipped every tick on Twin Craters (attitude errors of 40-106 degrees) moves nothing.
-            foreach (var tiny in new[] { Steer(0.3, 0.2, 567, 13), Steer(-0.3, -0.2, 567, 13), Steer(0, 0.49, 567, -5) })
-            {
-                Assert.Equal(-1, tiny[0], 9);
-                Assert.Equal(0, tiny[1], 9);
-            }
-            // Straight up at 567 m/s across the ground: laid 45 degrees off retrograde, upward.
-            var up = Steer(0, 5, 567, 0);
-            Assert.Equal(45, up[2], 3);
-            Assert.True(up[1] > 0);
-            // Ahead along the track: never.
-            foreach (var d in new[] { Steer(5, 0, 567, 13), Steer(3, 4, 300, -40), Steer(-1, 9, 100, 0), Steer(0, -5, 567, 13) })
-                Assert.InRange(d[2], 0, 45.0001);
-            // Within the cone: as asked.
-            var within = Steer(-8, 3, 567, -10);
-            Assert.Equal(-8 / Math.Sqrt(73), within[0], 6);
-            // Slow (the approach, 50 m/s or under): as asked, straight up if need be.
-            Assert.Equal(1, Steer(0, 5, 40, -5)[1], 9);
-        }
-
-        [Fact]
-        public void The_steering_port_matches_land_steer()
-        {
-            foreach (var c in new[] { new[] { 0.0, 5, 567, 0 }, new[] { 3.0, 4, 300, -40 }, new[] { 0.2, 0.1, 567, 13 }, new[] { -8.0, 3, 567, -10 }, new[] { 12.0, 0, 180, 2 } })
-            {
-                double al, up, mag;
-                Core.Tools.BrakeGuidance.Steer(c[0], c[1], -1, 0, c[2], c[3], 10, out al, out up, out mag);
-                var kos = Steer(c[0], c[1], c[2], c[3]);
-                Assert.Equal(kos[0], al, 9);
-                Assert.Equal(kos[1], up, 9);
-                Assert.Equal(kos[3], mag, 9);
-            }
-        }
-
-        [Fact]
-        public void land_steer_holds_the_last_direction_with_no_thrust_or_a_demand_that_is_zero_or_not_finite()
-        {
-            // #595: a_max 0 divided by zero in a stage that ran dry; a zero or non-finite demand did the same by its magnitude.
-            var cases = new[]
-            {
-                new[] { "0", "0, \"cr\", 0, \"up\", 0" },
-                new[] { "0", "3, \"cr\", 0, \"up\", 4" },
-                new[] { "10", "0, \"cr\", 0, \"up\", 0" },
-                new[] { "10", "1e300 * 1e300, \"cr\", 0, \"up\", 0" },
-            };
-            foreach (var c in cases)
-            {
-                var printed = Run("local d is land_steer(lexicon(\"al\", " + c[1] + "), lexicon(\"al\", -1, \"cr\", 0, \"up\", 0), lexicon(\"al\", 567, \"cr\", 0, \"up\", 13), " + c[0] + ").\n"
-                    + "print d:al. print d:cr. print d:up. print d:mag.");
-                Assert.Equal(new[] { "-1", "0", "0", "0" }, printed);
-            }
-        }
-
         [Fact]
         public void The_descent_stages_before_guidance_only_when_braking_dry_with_no_Underhang_pending()
         {
             Assert.Equal(new[] { "True", "False", "False", "False" }, Run(
                 "print land_stage_before_guidance(true, false, 0). print land_stage_before_guidance(true, false, 40).\n"
                 + "print land_stage_before_guidance(false, false, 0). print land_stage_before_guidance(true, true, 0)."));
-        }
-
-        [Fact]
-        public void A_demand_ahead_over_50_m_s_thrusts_nothing_rather_than_being_turned_up_and_back()
-        {
-            // #530: on Minmus Flats a push ahead for the starting speed at 50 m/s was laid 45 degrees off retrograde at its full
-            // 12 m/s^2, and climbed the craft. Now the cone keeps only the demand's part along where it points: none.
-            Assert.Equal(0, Steer(12, 0, 52, 0.5)[3], 9);
-            Assert.Equal(0, Steer(12, 0, 180, -2)[3], 9);
-            // An upward demand keeps its upward part, as before (#511): 5 m/s^2 up at 45 degrees takes 7.07.
-            Assert.Equal(5 / Math.Sin(Math.PI / 4), Steer(0, 5, 567, 0)[3], 6);
-            // Within the cone, as asked.
-            Assert.Equal(Math.Sqrt(73), Steer(-8, 3, 567, -10)[3], 6);
         }
 
         [Fact]
@@ -1178,8 +1103,9 @@ print land_brake_estimate(samples, a_brake, 1.1).");
             var stopped = Run(Guide("-200, 0, 0, 0, -5, 80"));
             Assert.Equal("0", stopped[0]);
             Assert.Equal("0", stopped[1]);
-            // 3 m up, still drifting 1 m/s sideways: at most 11 degrees of lean to null it.
-            var low = Run(Guide("0, 0, 1, 0, -2, 3") + " print round(arctan2(abs(w:al), w:up), 3) <= 11.");
+            // 3 m up, still drifting 1 m/s sideways: at most 11 degrees of lean to null it, as Core's LandSteer limits it (#865).
+            var low = Run(Guide("0, 0, 1, 0, -2, 3") + " local k is test_land_steer(lexicon(\"want\", w, \"last\", lexicon(\"al\", 0, \"cr\", 0, \"up\", 1), "
+                + "\"v_al\", 1, \"v_cr\", 0, \"v_up\", -2, \"a_max\", 60000 / 5400)). print round(arctan2(sqrt(k:al ^ 2 + k:cr ^ 2), k:up), 3) <= 11.");
             Assert.Equal("True", low[3]);
         }
 
@@ -1191,6 +1117,51 @@ print land_brake_estimate(samples, a_brake, 1.1).");
             return "local w is land_guide(lexicon(\"s\", " + p[0] + ", \"c\", " + p[1] + ", \"v_al\", " + p[2] + ", \"v_cr\", " + p[3]
                 + ", \"v_up\", " + p[4] + ", \"h\", " + p[5] + ", \"h_start\", 3000, \"v0\", 575, \"shape\", 2, \"v_top\", 575, \"a_max\", 60000 / 5400, \"g\", 1.63, \"radius\", 200000), 2, 1.1).\n"
                 + "print round(w:al, 3). print round(w:cr, 3). print round(w:up, 3).";
+        }
+
+        [Fact]
+        public void On_the_Mun_landing_of_7bc7_the_final_descent_steers_as_before_865_and_throttles_as_before_unless_over_15_degrees_off()
+        {
+            // m20261107-051747-7bc7's terminal trace (Mun Shot v2: 60 kN, about 5.2 t): h, v_h, v_down, m to go, every 2 s to 8 m. Each
+            // state's demand from land_guide goes through Core's tick as the final descent and as before #865 (h_ref not 0: the old
+            // land_max_tilt, land_steer and cos(error) throttle, which LandSteerParityTests matched to land.ks before they were deleted).
+            // The direction and its m/s² are the same in every state: the 20 degree cap binds in none (at 322 and 284 m, where land laid
+            // the craft flat, it is 5.9 and 2.3 m/s across, outside the cap's zone). At 240 and 112 m the nose is over 15 degrees off,
+            // so the throttle gives only the vertical need: 0.129 to 0.124 and 0.321 to 0.308.
+            var states = new[]
+            {
+                new[] { 357, 11.2, 16.7, 30 }, new[] { 322, 5.9, 17.3, 13 }, new[] { 284, 2.3, 20.4, 5 }, new[] { 240, 0.9, 23.7, 2 },
+                new[] { 192, 1.1, 25.3, 2 }, new[] { 147, 0.3, 19.8, 4 }, new[] { 112, 1.4, 15.3, 2 }, new[] { 85, 0.3, 11.7, 0 },
+                new[] { 65, 0.2, 8.9, 0 }, new[] { 49, 0.1, 6.8, 0 }, new[] { 38, 0.1, 5.1, 0 }, new double[] { 29, 0, 3.9, 0 },
+                new double[] { 22, 0, 3, 0 }, new double[] { 17, 0, 2.3, 0 }, new double[] { 12, 0, 2.1, 0 }, new double[] { 8, 0, 2, 0 },
+            };
+            var source = new System.Text.StringBuilder("local a_max is 60000 / 5200.\n");
+            foreach (var st in states)
+                source.Append(string.Format(CultureInfo.InvariantCulture, @"
+local w is land_guide(lexicon(""s"", {3}, ""c"", 0.5, ""v_al"", {1}, ""v_cr"", 0.1, ""v_up"", -{2}, ""h"", {0}, ""h_start"", 3000, ""v0"", 575,
+  ""shape"", 2, ""v_top"", 575, ""a_max"", a_max, ""g"", 1.63, ""radius"", 200000 + {0}), 2, 1.1).
+local input is lexicon(""want"", w, ""last"", lexicon(""al"", 0.06, ""cr"", -0.02, ""up"", 0.998), ""v_al"", {1}, ""v_cr"", 0.1, ""v_up"", -{2},
+  ""a_max"", a_max, ""g"", 1.63, ""facing"", lexicon(""al"", 0.11, ""cr"", -0.05, ""up"", 1.018), ""rate"", 1, ""top_rate"", 0, ""dv_left"", 900, ""ut"", 100).
+local k is test_land_steer(input).
+print w:h_ref. print k:al. print k:cr. print k:up. print k:mag. print k:throttle.
+local before is w:copy. set before[""h_ref""] to 1. set input[""want""] to before.
+set k to test_land_steer(input).
+print k:al. print k:cr. print k:up. print k:mag. print k:throttle.", st[0], st[1], st[2], st[3]));
+            var printed = Run(source.ToString()).Select(x => double.Parse(x, CultureInfo.InvariantCulture)).ToArray();
+            Assert.Equal(states.Length * 11, printed.Length);
+            var changed = new List<string>();
+            var throttled = new List<double>();
+            for (var i = 0; i < states.Length; i++)
+            {
+                var t = printed.Skip(i * 11).ToArray();
+                if (Math.Abs(t[5] - t[10]) > 1e-9) throttled.Add(states[i][0]);
+                if (Enumerable.Range(1, 4).Any(j => Math.Abs(t[j] - t[j + 5]) > 1e-9))
+                    changed.Add(string.Format(CultureInfo.InvariantCulture, "{0} m (h_ref {1}): lean {2:0.0} to {3:0.0}, mag {4:0.00} to {5:0.00}",
+                        states[i][0], t[0], Math.Atan2(Math.Sqrt(t[6] * t[6] + t[7] * t[7]), t[8]) * 180 / Math.PI, Math.Atan2(Math.Sqrt(t[1] * t[1] + t[2] * t[2]), t[3]) * 180 / Math.PI,
+                        t[9], t[4]));
+            }
+            Assert.True(changed.Count == 0, string.Join(" | ", changed));
+            Assert.Equal(new double[] { 240, 112 }, throttled);
         }
 
         // ---- land: the powered descent, simulated (#233) ----
@@ -1340,7 +1311,7 @@ function sim {
         // 575 m/s along and 5 m/s down, with the reference lander (60 kN, 5.4 t, lag 1 s), the site at
         // site_x, on the Descent Shape shape (#511). It steers by land_clearance over the terrain at land_lookahead's
         // distances and the highest ground on to where it stops (the rest of its path), as land_descend does, holds to
-        // the speed braking began at, or the slowest since (land_v_top), and points as land_steer says. BrakePath.Simulate is
+        // the speed braking began at, or the slowest since (land_v_top), and points as Core's LandSteer says (test_land_steer). BrakePath.Simulate is
         // this loop in C#. Another body and craft (mu, rad; m kg, thrust N, a lag s) may be given after t_end.
         // Prints whether it hit the ground hard (over 5 m/s), the fastest descent, the m past the site and the seconds
         // flown, then the altitude (m) each time it passed another 5 km along.
@@ -1385,7 +1356,7 @@ function tsim {
     local w is land_guide(lexicon(""s"", site_x - x, ""c"", 0, ""v_al"", vx, ""v_cr"", 0, ""v_up"", vy, ""h"", h, ""h_start"", h_start,
       ""v0"", v0, ""shape"", shape, ""v_top"", v_top, ""a_max"", a_max, ""g"", g, ""radius"", rad + y, ""lag"", lag), 2, margin).
     set to_go to w:to_go.
-    set dir to land_steer(w, dir, lexicon(""al"", vx, ""cr"", 0, ""up"", vy), a_max).
+    set dir to test_land_steer(lexicon(""want"", w, ""last"", dir, ""v_al"", vx, ""v_cr"", 0, ""v_up"", vy, ""a_max"", a_max, ""g"", g)).
     local mag is min(a_max, dir:mag).
     // The zero-thrust coast (#511): climbing while the demand is under 5% of what the engines give.
     if vy > 0 and mag < 0.05 * a_max { set idle to idle + 1. }
@@ -1466,7 +1437,7 @@ function tsim {
         [MemberData(nameof(Profiles))]
         public void Brakepaths_simulation_flies_the_kOS_guidance_laws_to_the_same_stop_and_altitudes(string profile, double siteX, double startY, double shape)
         {
-            // #511: the C# port BRAKEPATH predicts with, against land_guide, land_steer and the look-ahead on kOS, the same loop.
+            // #511: the C# port BRAKEPATH predicts with, against land_guide, Core's LandSteer and the look-ahead on kOS, the same loop.
             var kos = FlyOver(profile, siteX, startY, shape);
             List<double> alts;
             var flown = FlyOverInCSharp(Corners(profile), siteX, startY, shape, out alts);
@@ -1500,9 +1471,18 @@ function tsim {
             List<double> alts;
             var flown = FlyOverInCSharp(Corners(FlatsProfile), 22808, 2097, 0.2, out alts, 191.7, -10.4, MinmusMu, 60000, 5000, 60000,
                 Core.Tools.BrakePath.TurnLag(59.9, 9.8));
-            AssertTheSameFlight(kos, flown, alts);
+            // The same approach: soft, and the same altitudes every 5 km. #865: the final descent's 20 degree cap holds only below 50 m
+            // or under 2 m/s across (the player's call), but here it slows under 2 m/s about 260 m up while land_guide still asks
+            // to brake sideways with nothing up, and the cap's lift holds its height there for about 40 s. So kOS lands 22 m past the
+            // site, 48 m beyond BRAKEPATH's stop (which doesn't model the cap), in 300 s rather than under 250.
+            Assert.Null(flown.Failure);
+            Assert.Equal("False", kos[0]);
+            var kosAlts = kos.Skip(5).Select(a => double.Parse(a, CultureInfo.InvariantCulture)).ToList();
+            Assert.Equal(kosAlts.Count, alts.Count);
+            for (var i = 0; i < alts.Count; i++) Assert.InRange(alts[i] - kosAlts[i], -10, 10);
+            Assert.InRange(double.Parse(kos[2], CultureInfo.InvariantCulture) + flown.StopS, 0, 60);
             Assert.InRange(double.Parse(kos[2], CultureInfo.InvariantCulture), -300, 300);
-            Assert.InRange(double.Parse(kos[3], CultureInfo.InvariantCulture), 0, 250);
+            Assert.InRange(double.Parse(kos[3], CultureInfo.InvariantCulture), 0, 310);
             Assert.InRange(flown.DvUsed, 150, 300);
             // Never back over its starting height plus the arrest of its fall above circular speed (BrakePathTests), let alone 2.4 km.
             Assert.True(alts.Max() < 2097 + 300, string.Join(", ", alts));
