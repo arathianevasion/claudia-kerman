@@ -244,7 +244,7 @@ namespace ClaudiaKerman.Core.Missions
             // #871, #890: the planned moons are PlannedMoons's, as the Blocker and the watch judge them.
             var planned = PlannedMoons(mission, at);
             mission.RunTransfers = string.Join(",", planned.ToArray());
-            var window = KeptRoute.KeptWindow(at);
+            var window = HighRoute.KeptWindow(at);
             var crossing = window.HasValue ? MoonCrossings.Judge(snapshot.At(_ut), window.Value, planned) : MoonCrossings.Judge(snapshot.At(_ut), planned);
             if (crossing != null) mission.RunEvents.Replace(_ut, RunEventKind.MoonCrossing, MissionPrompts.MoonCrossingFact(crossing, MoonCrossings.Meets(at, crossing.Moon.Name)));
         }

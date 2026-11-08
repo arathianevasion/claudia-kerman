@@ -9,13 +9,13 @@ using ClaudiaKerman.Core.Missions;
 
 namespace ClaudiaKerman.Core.Tools
 {
-    /// <summary>The high orbit <c>capture</c> keeps for a moon (#866): its apoapsis, and the periapsis <c>transfer_to</c> leaves from.</summary>
+    /// <summary>The High Route's ellipse <c>capture</c> keeps for a moon (#866): its apoapsis, and the periapsis <c>transfer_to</c> leaves from.</summary>
     internal sealed class KeptPlan
     {
         public SnapshotBody Moon;
         /// <summary>The ellipse's apoapsis radius, m from the body's centre.</summary>
         public double HighR;
-        /// <summary>The departure <see cref="KeptRoute.Departure"/> found from it, and which periapsis after the capture it is at (1: the next).</summary>
+        /// <summary>The departure <see cref="HighRoute.Departure"/> found from it, and which periapsis after the capture it is at (1: the next).</summary>
         public TransferPlan Departure;
         public int Loop;
         /// <summary>The apoapsis was chosen so that periapsis meets the window; false: the highest safe one, the window a loop or more on.</summary>
@@ -29,7 +29,7 @@ namespace ClaudiaKerman.Core.Tools
     /// trip from that periapsis (<see cref="Ideal"/>), solved by <see cref="Transfer"/>; the wait is up to <see cref="MaxLoops"/> loops, every one of them
     /// followed by <see cref="MoonCrossings.Follow"/> so the path meets nothing before it, and never past the Mission Plan's next fixed date.
     /// </summary>
-    internal static class KeptRoute
+    internal static class HighRoute
     {
         /// <summary>The longest wait, in loops of the kept ellipse: the moon-crossing check's own followed span.</summary>
         internal const int MaxLoops = MoonCrossings.FollowLoops;

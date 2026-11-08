@@ -172,7 +172,7 @@ namespace ClaudiaKerman.Core.Missions
             /// <summary>A trip came here with its capture still to pay, from <see cref="_origin"/>.</summary>
             private bool _captureOwed;
             private SnapshotBody _origin;
-            /// <summary>#866: the trip in to a planet whose next trip goes on to its moon, and that trip, by the planet's high orbit (<see cref="DeltaVMap.HighRoute"/>); null otherwise.</summary>
+            /// <summary>#866: the trip in to a planet whose next trip goes on to its moon, and that trip, by the planet's high orbit (<see cref="DeltaVMap.HighRouteLegs"/>); null otherwise.</summary>
             private DeltaVLeg[] _high;
             /// <summary>The delta-v the walk has spent, for the stages a leg will burn.</summary>
             private double _used;
@@ -302,7 +302,7 @@ namespace ClaudiaKerman.Core.Missions
                 _orbiting = captured && !_captureOwed;
             }
 
-            /// <summary>The high route (<see cref="DeltaVMap.HighRoute"/>) when the plan's next trip from <paramref name="planet"/>, from leg <paramref name="index"/> on, is to one of its moons (<see cref="KeptRoute.NextMoon"/>); else null.</summary>
+            /// <summary>The high route (<see cref="DeltaVMap.HighRouteLegs"/>) when the plan's next trip from <paramref name="planet"/>, from leg <paramref name="index"/> on, is to one of its moons (<see cref="HighRoute.NextMoon"/>); else null.</summary>
             private DeltaVLeg[] HighRouteOn(SnapshotBody planet, int index)
             {
                 var ahead = _snapshot.At(_snapshot.Ut);
@@ -311,8 +311,8 @@ namespace ClaudiaKerman.Core.Missions
                 var at = system.Find(planet.Name);
                 double? deadline;
                 string why;
-                var moon = at == null ? null : KeptRoute.NextMoon(ahead, system, at, out deadline, out why);
-                return moon == null ? null : _map.HighRoute(moon.Name);
+                var moon = at == null ? null : HighRoute.NextMoon(ahead, system, at, out deadline, out why);
+                return moon == null ? null : _map.HighRouteLegs(moon.Name);
             }
 
             /// <summary>The next leg that does anything captures or lands, so the capture is in its budget; an ascent or another trip means it isn't.</summary>

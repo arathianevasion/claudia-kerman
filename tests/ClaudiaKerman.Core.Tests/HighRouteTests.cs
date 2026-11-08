@@ -15,7 +15,7 @@ namespace ClaudiaKerman.Core.Tests
     /// Flight m20261107-055424-908b burned 253.6 m/s at a 60 km Duna periapsis into a 60 × 24,434 km orbit (so it arrived at about 821 m/s clear of Duna), then
     /// 6.1 for the plane, 359.3 to a 60 km circle, 289.0 out to Ike and 120.7 into low Ike orbit: 1,029 m/s. The triage model kept the ellipse for about 440.
     /// </summary>
-    public sealed class KeptRouteTests
+    public sealed class HighRouteTests
     {
         /// <summary>908b's speed clear of Duna, m/s: 253.6 m/s at a 60 km periapsis made a 60 × 24,434 km orbit.</summary>
         internal const double VInf908b = 821;
@@ -58,7 +58,7 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void From908bsArrivalTheKeptRouteToLowIkeOrbitIsWithinTenPercentOf440()
+        public void From908bsArrivalTheHighRouteToLowIkeOrbitIsWithinTenPercentOf440()
         {
             var rig = IkeNext();
             var capture = rig.RunCapture(Ask());
@@ -87,11 +87,11 @@ namespace ClaudiaKerman.Core.Tests
             var peUt = rig.Orbit.NextPeriapsis(0).Value;
             rig.Orbit.State(peUt, out r, out v);
             string why;
-            var plan = KeptRoute.Plan(rig.Snapshot(), rig.System, rig.Body, rig.System.Find("Ike"), r, rig.Orbit.W, peUt, r.Length, 0.5 * rig.Body.SoiRadius, IkePe, null, out why);
+            var plan = HighRoute.Plan(rig.Snapshot(), rig.System, rig.Body, rig.System.Find("Ike"), r, rig.Orbit.W, peUt, r.Length, 0.5 * rig.Body.SoiRadius, IkePe, null, out why);
             Assert.NotNull(plan);
             Assert.True(plan.Timed);
             Assert.Equal(1, plan.Loop);
-            var ellipse = Conic.FromState(rig.Body.Gm, r, Vec3.Cross(rig.Orbit.W, r.Normalized) * KeptRoute.Speed(rig.Body.Gm, r.Length, plan.HighR), peUt);
+            var ellipse = Conic.FromState(rig.Body.Gm, r, Vec3.Cross(rig.Orbit.W, r.Normalized) * HighRoute.Speed(rig.Body.Gm, r.Length, plan.HighR), peUt);
             // One loop: the departure is at the next periapsis.
             Assert.InRange(plan.Departure.Ut, peUt + ellipse.Period * 0.9, peUt + ellipse.Period * 1.1);
             Assert.Null(MoonCrossings.Follow(rig.System, rig.Body, ellipse, peUt, plan.Departure.Ut));
@@ -111,7 +111,7 @@ namespace ClaudiaKerman.Core.Tests
                 var ike = rig.System.Find("Ike");
                 var top = ike.Sma * (1 + ike.Eccentricity) * 1.01;
                 string why;
-                var plan = KeptRoute.Plan(rig.Snapshot(), rig.System, rig.Body, ike, r, rig.Orbit.W, peUt, r.Length, top, IkePe, null, out why);
+                var plan = HighRoute.Plan(rig.Snapshot(), rig.System, rig.Body, ike, r, rig.Orbit.W, peUt, r.Length, top, IkePe, null, out why);
                 if (plan == null)
                 {
                     Assert.StartsWith("no Ike window within 3 loops", why);
@@ -120,7 +120,7 @@ namespace ClaudiaKerman.Core.Tests
                 found++;
                 Assert.False(plan.Timed);
                 Assert.Equal(top, plan.HighR);
-                Assert.InRange(plan.Loop, 1, KeptRoute.MaxLoops);
+                Assert.InRange(plan.Loop, 1, HighRoute.MaxLoops);
             }
             Assert.True(found > 0, "no arrival kept the highest apoapsis");
         }
@@ -188,11 +188,11 @@ namespace ClaudiaKerman.Core.Tests
             var rig = Arrival(180, "Transfer to Duna and land", "Transfer to Ike");
             double? deadline;
             string why;
-            Assert.Null(KeptRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why));
+            Assert.Null(HighRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why));
             Assert.Equal("the next leg isn't to a moon of Duna", why);
             // Without the landing, the same trip keeps it.
             var on = Arrival(180, "Transfer to Duna", "Transfer to Ike");
-            Assert.Equal("Ike", KeptRoute.NextMoon(on.Snapshot(), on.System, on.Body, out deadline, out why).Name);
+            Assert.Equal("Ike", HighRoute.NextMoon(on.Snapshot(), on.System, on.Body, out deadline, out why).Name);
         }
 
         [Fact]
@@ -216,31 +216,31 @@ namespace ClaudiaKerman.Core.Tests
         public void ALaterReturnLegsWindowIsAFixedDateAndTheTightestOfItAndADueTimeWins()
         {
             var rig = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Return to Kerbin");
-            var window = KeptRoute.NextWindow(rig.System, rig.Body, rig.System.Find("Kerbin"), rig.Snapshot().Ut);
+            var window = HighRoute.NextWindow(rig.System, rig.Body, rig.System.Find("Kerbin"), rig.Snapshot().Ut);
             Assert.True(window.HasValue);
             Assert.InRange(window.Value - rig.Snapshot().Ut, 0, 1.1 * Transfer.Synodic(rig.System.OrbitOf(rig.Body).Period, rig.System.OrbitOf(rig.System.Find("Kerbin")).Period));
             double? deadline;
             string why;
-            KeptRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
+            HighRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
             Assert.Equal(window.Value, deadline.Value, 3);
 
             // The player's Kerbin-to-Duna trip leg out of Duna's moon's orbit is no window: it is not a trip to another planet.
             // A Due Time nearer than the window wins; a farther one does not.
             rig.Snapshot().LegsAhead[2].DueTimeUt = window.Value - 1000;
-            KeptRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
+            HighRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
             Assert.Equal(window.Value - 1000, deadline.Value, 3);
             rig.Snapshot().LegsAhead[2].DueTimeUt = window.Value + 1000;
-            KeptRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
+            HighRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
             Assert.Equal(window.Value, deadline.Value, 3);
 
             // A leg in between counts one low Ike orbit off the window.
             var between = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Land on Ike", "Return to Kerbin");
-            KeptRoute.NextMoon(between.Snapshot(), between.System, between.Body, out deadline, out why);
+            HighRoute.NextMoon(between.Snapshot(), between.System, between.Body, out deadline, out why);
             var ike = between.System.Find("Ike");
             Assert.Equal(window.Value - 2 * Math.PI * Math.Sqrt(Math.Pow(DeltaVMap.LowOrbit(ike), 3) / ike.Gm), deadline.Value, 3);
 
             // The window's own phase: the target leads the origin by the Hohmann angle there (Duna to Kerbin: Kerbin trails by about 44 degrees less than a half turn).
-            var back = KeptRoute.NextWindow(rig.System, rig.System.Find("Kerbin"), rig.Body, rig.Snapshot().Ut);
+            var back = HighRoute.NextWindow(rig.System, rig.System.Find("Kerbin"), rig.Body, rig.Snapshot().Ut);
             Assert.True(back.HasValue);
         }
 
@@ -249,10 +249,10 @@ namespace ClaudiaKerman.Core.Tests
         {
             var arrival = KeptArrival();
             var plan = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Return to Kerbin");
-            var window = KeptRoute.NextWindow(plan.System, plan.Body, plan.System.Find("Kerbin"), plan.Snapshot().Ut).Value;
+            var window = HighRoute.NextWindow(plan.System, plan.Body, plan.System.Find("Kerbin"), plan.Snapshot().Ut).Value;
             Assert.True(window > arrival, "the window " + window + " is before the arrival " + arrival);
 
-            // Kerbin turned on its orbit until the window falls soon after the capture but before the kept arrival: the date is a fixed date, so the kept orbit is refused.
+            // Kerbin turned on its orbit until the window falls soon after the capture but before the High Route arrival: the date is a fixed date, so the High Route is refused.
             var soon = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Return to Kerbin");
             var kerbin = soon.Snapshot().Bodies.First(b => b.Name == "Kerbin");
             var start = kerbin.MeanAnomalyAtEpoch;
@@ -260,7 +260,7 @@ namespace ClaudiaKerman.Core.Tests
             for (var turn = 0; turn < 360 && !opens.HasValue; turn += 2)
             {
                 kerbin.MeanAnomalyAtEpoch = start + turn * Math.PI / 180;
-                var at = KeptRoute.NextWindow(new BodySystem(soon.Snapshot().Bodies), soon.Body, soon.System.Find("Kerbin"), soon.Snapshot().Ut);
+                var at = HighRoute.NextWindow(new BodySystem(soon.Snapshot().Bodies), soon.Body, soon.System.Find("Kerbin"), soon.Snapshot().Ut);
                 if (at.HasValue && at.Value > soon.Ut + 7200 && at.Value < arrival - 7200) opens = at;
             }
             Assert.True(opens.HasValue, "no turn of Kerbin puts the window before the arrival " + arrival);
@@ -275,11 +275,11 @@ namespace ClaudiaKerman.Core.Tests
             var rig = IkeNext();
             double? deadline;
             string why;
-            KeptRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
+            HighRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
             Assert.Null(deadline);
             // A later trip to a moon of Duna itself, and a return to Duna's own planet, are no window.
             var home = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Return to Duna");
-            KeptRoute.NextMoon(home.Snapshot(), home.System, home.Body, out deadline, out why);
+            HighRoute.NextMoon(home.Snapshot(), home.System, home.Body, out deadline, out why);
             Assert.Null(deadline);
         }
 
@@ -303,7 +303,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.StartsWith("kept", Kept(rig.RunCapture(Ask())));
             var ask = new TransferFlightAsk { Target = "Ike", TargetPe = IkePe, StartUt = rig.Ut, TurnTime = 60, WatchEjection = false };
             var ike = rig.System.Find("Ike");
-            var latest = rig.Ut + KeptRoute.MaxLoops * rig.Orbit.Period;
+            var latest = rig.Ut + HighRoute.MaxLoops * rig.Orbit.Period;
             var cheapest = TransferFlight.Fallback(rig.Snapshot(), ike, ask, rig.Ut, latest, null);
             Assert.Null(cheapest.Error);
             // A Due Time before the cheapest's arrival: whatever is planned arrives by it, and an earlier window is found for at least one such date.
@@ -324,7 +324,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("", TransferFlight.Fallback(rig.Snapshot(), ike, ask, rig.Ut, latest, cheapest.Ut + 1).Error);
         }
 
-        /// <summary>The UT the kept route's Ike arrival is, with no fixed date in the plan.</summary>
+        /// <summary>The UT the High Route's Ike arrival is, with no fixed date in the plan.</summary>
         private static double KeptArrival()
         {
             var rig = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Land on Ike", "Return to Kerbin");
@@ -365,7 +365,7 @@ namespace ClaudiaKerman.Core.Tests
             double? deadline;
             string why;
             var ike = rig.System.Find("Ike");
-            KeptRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
+            HighRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
             var lap = 2 * Math.PI * Math.Sqrt(Math.Pow(DeltaVMap.LowOrbit(ike), 3) / ike.Gm);
             Assert.Equal(arrival + 100 - lap, deadline.Value, 3);
         }
@@ -377,7 +377,7 @@ namespace ClaudiaKerman.Core.Tests
             rig.Snapshot().LegsAhead[2].DueTimeUt = 50000;
             double? deadline;
             string why;
-            KeptRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
+            HighRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
             Assert.Equal(50000, deadline.Value, 3);
         }
 
