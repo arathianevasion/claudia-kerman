@@ -802,12 +802,12 @@ namespace ClaudiaKerman.Core.Tools
             string why;
             var ut = CorrectionUt(mid, setup.Now, ask.TurnTime + Lead, ask.StartUt, ask.MaxDuration, out why);
             if (why != "") return Go(ask, FineCheck, why);
-            var log = "";
-            var fix = setup.Body == setup.Target && AimsLanding(ask)
-                ? HomeAim(snapshot, setup.Target, ask, ut, out log)
-                : CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut, PeTolerance = ask.PeTolerance });
-            if (!fix.HasBurn || fix.Error != null) return Logged(Go(ask, FineCheck, fix.Error), log);
-            if (fix.DeltaV < SkipDv) return Logged(Go(ask, FineCheck, "its burn, under 0.1 m/s, isn't flown"), log);
+            var fix = CorrectionBurn.Find(snapshot, new CorrectionAsk
+            {
+                Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut, PeTolerance = ask.PeTolerance,
+            });
+            if (!fix.HasBurn || fix.Error != null) return Go(ask, FineCheck, fix.Error);
+            if (fix.DeltaV < SkipDv) return Go(ask, FineCheck, "its burn, under 0.1 m/s, isn't flown");
             if (ask.MidUt < 0)
             {
                 var stop = Checkpoint(setup, enc, ask, ut, ut - lead - Lead, Fine, ut);
@@ -818,7 +818,6 @@ namespace ClaudiaKerman.Core.Tools
             step.MaxResidual = FineResidual;
             step.KeepGoing = true;
             step.ArrivalUt = ask.ArrivalUt;
-            step.PlanLog = log;
             return step;
         }
 
@@ -874,20 +873,22 @@ namespace ClaudiaKerman.Core.Tools
                 var trim = PlaneTrim(snapshot, setup, enc, ask);
                 if (trim != null) return trim;
             }
-            var aiming = AimsLanding(ask);
-            if (enc == null || setup.Body != setup.Target || (!aiming && Within(enc.Pe - ask.TargetPe, ask.PeTolerance))) return Go(ask, Fine);
+            if (enc == null || setup.Body != setup.Target) return Go(ask, Fine);
             var lead = ask.TurnTime + Lead;
             string late;
             var ut = CorrectionUt(setup.Now + lead, setup.Now, lead, ask.StartUt, ask.MaxDuration, out late);
             if (late != "" || ut >= enc.PeUt) return Go(ask, Fine);
-            // Worth it only when the trim's own burn is at least as far again off: a coarse burn there is no cheaper. A landing's aim is worth it regardless (#915).
-            if (!aiming && enc.PeUt - ask.PeTolerance / FineResidual - ut < ask.PeTolerance / FineResidual) return Go(ask, Fine);
             var log = "";
-            var fix = aiming
-                ? HomeAim(snapshot, setup.Target, ask, ut, out log)
-                : CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut });
-            if (!fix.HasBurn || fix.Error != null) return Logged(Go(ask, Fine), log);
-            return Logged(FlyCorrection(ask, fix, "correction", Fine), log);
+            if (AimsLanding(ask))
+            {
+                var aimed = HomeAim(snapshot, setup.Target, ask, ut, out log);
+                if (aimed != null) return WithLog(FlyCorrection(ask, aimed, "correction", Fine), log);
+            }
+            // Worth it only when the trim's own burn is at least as far again off: a coarse burn there is no cheaper.
+            if (Within(enc.Pe - ask.TargetPe, ask.PeTolerance) || enc.PeUt - ask.PeTolerance / FineResidual - ut < ask.PeTolerance / FineResidual) return WithLog(Go(ask, Fine), log);
+            var fix = CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut });
+            if (!fix.HasBurn || fix.Error != null) return WithLog(Go(ask, Fine), log);
+            return WithLog(FlyCorrection(ask, fix, "correction", Fine), log);
         }
 
         /// <summary>Whether this trip home has a landing to aim at (#915). A plane asked for goes first: a landing target takes no arrival plane (#793).</summary>
@@ -899,7 +900,8 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// #915: the correction inside the home planet's sphere of influence, aimed at the landing target by #817's aimed solve: the periapsis inside both its corridor and pe_tolerance, the time of
         /// arrival with the periapsis held, the spend limited by <see cref="DeorbitBurn.SpareDv"/>. Only here, not on the star's patch, where a burn flown 0.05 m/s off moves the periapsis by tens of km
-        /// (#747) and the landing with it. What it can't do leaves the target_pe-only burn, and <paramref name="log"/> says why (the block call's log line only, as #912).
+        /// (#747) and the landing with it; and not in the finer trim after it, the last chance to come within pe_tolerance, which holds target_pe. Null when it can't aim: the flight goes on as with no
+        /// landing, target_pe only, and <paramref name="log"/> says why (the block call's log line only, as #912).
         /// </summary>
         private static CorrectionPlan HomeAim(GameSnapshot snapshot, SnapshotBody target, TransferFlightAsk ask, double ut, out string log)
         {
@@ -916,6 +918,7 @@ namespace ClaudiaKerman.Core.Tools
                     DvLeft = Math.Max(0, ask.DvLeft), LaterLegsDv = snapshot.LaterLegsDv ?? 0, CorridorHalf = CorrectionBurn.CorridorWithin(ask.PeTolerance),
                 });
                 if (!aimed.HasBurn || aimed.Error != null) why = aimed.Error ?? "no burn found";
+                else if (aimed.NotAimed) why = aimed.AimNote;
                 else if (!Within(aimed.PePredicted - ask.TargetPe, ask.PeTolerance)) why = "the aimed periapsis, " + Km(aimed.PePredicted) + " km, is outside pe_tolerance of target_pe " + Km(ask.TargetPe) + " km";
             }
             if (why == null)
@@ -925,10 +928,10 @@ namespace ClaudiaKerman.Core.Tools
                 return aimed;
             }
             log = "landing aim: target_pe only: " + why;
-            return CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut, PeTolerance = ask.PeTolerance });
+            return null;
         }
 
-        private static TransferFlightStep Logged(TransferFlightStep step, string log)
+        private static TransferFlightStep WithLog(TransferFlightStep step, string log)
         {
             step.PlanLog = log;
             return step;

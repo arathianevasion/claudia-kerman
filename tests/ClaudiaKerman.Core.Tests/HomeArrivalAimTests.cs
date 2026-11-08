@@ -161,10 +161,45 @@ namespace ClaudiaKerman.Core.Tests
 
             Assert.Equal("", step["error"]);
             var log = (string)step["plan_log"];
+            Assert.Contains("target_pe only", log);
             Assert.Contains("reserve", log);
             Assert.DoesNotContain("reserve", string.Join(" ", ((IDictionary<string, object>)step["report"]).Values));
-            if (arrivalPe == 30000) SameStep(plain, step);
-            else Assert.InRange(rig.Fly("correction", D(step, "ut"), D(step, "prograde"), D(step, "normal"), D(step, "radial")), 0, dvLeft);
+            SameStep(plain, step);
+        }
+
+        /// <summary>The later legs' delta-v is held back too (#907's rule): 1,000 m/s left with 1,000 for the legs ahead spends nothing on the landing.</summary>
+        [Fact]
+        public void The_later_legs_are_held_back_from_the_spare()
+        {
+            var rig = Arriving(30000);
+            var turned = TurnedFor(rig, 40);
+            var snapshot = ForKsc(rig);
+            snapshot.LaterLegsDv = 1000;
+
+            var step = Aimed(rig, snapshot, NearInput(30000, 1000), turned);
+
+            Assert.Contains("target_pe only", (string)step["plan_log"]);
+            SameStep(BlockCalls.TransferStep(NearInput(30000, 1000), rig.Snapshot()), step);
+        }
+
+        /// <summary>A miss past what the spare reaches: it spends up to the spare and no more, and comes down nearer, inside pe_tolerance.</summary>
+        [Fact]
+        public void A_miss_past_the_spare_spends_up_to_the_spare_and_no_more()
+        {
+            const double dvLeft = 300;
+            var rig = Arriving(30000);
+            var turned = TurnedFor(rig, 1500);
+            var natural = FromKsc(Predict(rig, rig.Orbit, rig.Ut, turned));
+            var withChutes = DeorbitBurn.SpareDv(dvLeft, 0, 0, null);
+
+            var step = Aimed(rig, ForKsc(rig), NearInput(30000, dvLeft), turned);
+
+            var log = (string)step["plan_log"];
+            Assert.True((string)step["do"] == "burn", log);
+            var spent = Fly(rig, step);
+            Assert.True(spent <= withChutes + 0.5, spent + " m/s: " + log);
+            Assert.InRange(rig.Orbit.PeR - rig.Body.Radius, 29000, 31000);
+            Assert.True(FromKsc(Predict(rig, rig.Orbit, rig.Ut, turned)) < natural, log);
         }
 
         /// <summary>A target_pe under the corridor's floor leaves no corridor inside pe_tolerance: target_pe only, and why.</summary>
@@ -182,9 +217,9 @@ namespace ClaudiaKerman.Core.Tests
             SameStep(plain, step);
         }
 
-        /// <summary>A pe_tolerance too tight for the solve to hold leaves the plain burn rather than a periapsis outside it.</summary>
+        /// <summary>However tight pe_tolerance is, the burn flown leaves the periapsis inside it: aimed if the solve can hold that, target_pe only if not.</summary>
         [Fact]
-        public void A_periapsis_it_cannot_hold_inside_pe_tolerance_falls_back()
+        public void A_tight_pe_tolerance_is_never_left()
         {
             var rig = Arriving(31500);
             var turned = TurnedFor(rig, 200);
@@ -214,6 +249,31 @@ namespace ClaudiaKerman.Core.Tests
 
             Assert.Equal("wait", step["do"]);
             Assert.Equal("near", ((IDictionary<string, object>)step["carry"])["phase"]);
+
+            // Out here KSC is the default target, so a goal naming another place is what stops the aim.
+            var named = inbound.Rig.Snapshot();
+            named.MissionGoal = "Land in the ocean.";
+            aimedInput = NearInput(inbound.Pe, 1000);
+            aimedInput["phase"] = "fine";
+            Assert.Equal("done", Aimed(inbound.Rig, named, aimedInput, turned)["do"]);
+        }
+
+        /// <summary>The finer trim is the last chance to come within pe_tolerance (#672), so it holds target_pe even with a landing to aim at.</summary>
+        [Fact]
+        public void The_finer_trim_holds_target_pe_only()
+        {
+            var rig = Arriving(31500);
+            var input = NearInput(30000, 1000);
+            input["phase"] = "fine";
+            var plain = BlockCalls.TransferStep(input, rig.Snapshot());
+            Assert.Equal("burn", plain["do"]);
+
+            input = NearInput(30000, 1000);
+            input["phase"] = "fine";
+            var step = Aimed(rig, ForKsc(rig), input, TurnedFor(rig, 40));
+
+            SameStep(plain, step);
+            Assert.False(step.ContainsKey("plan_log"));
         }
 
         /// <summary>A craft round the star meeting Kerbin, with its periapsis there: the snapshot is outside Kerbin's sphere of influence, so the default landing (KSC) applies.</summary>
