@@ -1185,6 +1185,9 @@ namespace ClaudiaKerman.Core.Tools
                 if (problem != null) return Error(Tools.ReturnBurn.Fail(problem).Error);
                 if (returnAsk.MaxWait.HasValue) returnAsk.LatestUt = Math.Min(returnAsk.LatestUt ?? double.PositiveInfinity, returnAsk.EarliestUt + returnAsk.MaxWait.Value);
                 returnAsk.MaxWait = null;
+                // #888: no landing, so the turn direction comes from the planet's frame, not 1.
+                var planet = ReturnAim.PlanetOf(snapshot);
+                if (planet != null) returnAsk.Handed = ReturnAim.HandedOn(planet, snapshot.Ut, body);
             }
             var plan = Tools.ReturnBurn.Find(snapshot, returnAsk);
             if (!plan.HasBurn) return Error(plan.Error);
