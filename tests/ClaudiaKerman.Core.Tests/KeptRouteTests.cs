@@ -222,7 +222,35 @@ namespace ClaudiaKerman.Core.Tests
             rig.Snapshot().LegsAhead[2].DueTimeUt = rig.Ut + 1;
             var first = TransferFlight.Next(rig.Snapshot(), new TransferFlightAsk { Target = "Ike", TargetPe = IkePe, StartUt = rig.Ut, TurnTime = 60, WatchEjection = false });
             // #881: the bounded fallback's arrivals are all past that Due Time, so none is planned: as when the search finds nothing, the circle.
-            Assert.Equal("no Ike window at a periapsis within 3 loops of the kept orbit before the next fixed date, nor anywhere in them: circularize at alt and try again", first.Error);
+            Assert.StartsWith("no Ike window at a periapsis within 3 loops of the kept orbit before the next fixed date, nor anywhere in them: circularize at alt and try again", first.Error);
+        }
+
+        [Fact]
+        public void TheFallbackPlansAnEarlierOnTimeWindowWhenTheCheapestIsLate()
+        {
+            var rig = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Land on Ike");
+            Assert.StartsWith("kept", Kept(rig.RunCapture(Ask())));
+            var ask = new TransferFlightAsk { Target = "Ike", TargetPe = IkePe, StartUt = rig.Ut, TurnTime = 60, WatchEjection = false };
+            var ike = rig.System.Find("Ike");
+            var latest = rig.Ut + KeptRoute.MaxLoops * rig.Orbit.Period;
+            var cheapest = TransferFlight.Fallback(rig.Snapshot(), ike, ask, rig.Ut, latest, null);
+            Assert.Null(cheapest.Error);
+            // A Due Time before the cheapest's arrival: whatever is planned arrives by it, and an earlier window is found for at least one such date.
+            var found = 0;
+            for (var due = cheapest.ArrivalUt - 3000; due < cheapest.ArrivalUt; due += 600)
+            {
+                var plan = TransferFlight.Fallback(rig.Snapshot(), ike, ask, rig.Ut, latest, due);
+                if (plan.Error != null) continue;
+                Assert.True(plan.ArrivalUt <= due, "arrives " + plan.ArrivalUt + " past " + due);
+                found++;
+            }
+            Assert.True(found > 0, "no on-time earlier window planned");
+            // A NaN Due Time is none.
+            Assert.Equal(cheapest.Ut, TransferFlight.Fallback(rig.Snapshot(), ike, ask, rig.Ut, latest, double.NaN).Ut);
+            // A Due Time before any departure plans none.
+            Assert.NotNull(TransferFlight.Fallback(rig.Snapshot(), ike, ask, rig.Ut, latest, rig.Ut + 1).Error);
+            // Every arrival late: the circle, as when nothing is found.
+            Assert.Equal("", TransferFlight.Fallback(rig.Snapshot(), ike, ask, rig.Ut, latest, cheapest.Ut + 1).Error);
         }
 
         /// <summary>The UT the kept route's Ike arrival is, with no fixed date in the plan.</summary>

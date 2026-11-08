@@ -386,11 +386,8 @@ namespace ClaudiaKerman.Core.Tools
                 string kept;
                 double? due;
                 var plan = KeptDeparture(snapshot, setup, ask, earliest, out kept, out due)
-                    ?? Transfer.Find(snapshot, new TransferAsk { Target = target.Name, TargetPe = ask.TargetPe, EarliestUt = earliest, WindowUt = ask.Window, Capture = ArrivalRule.Capture(snapshot, target.Name, null),
-                        LatestUt = kept != "" ? earliest + KeptRoute.MaxLoops * setup.Start.Period : (double?)null });
-                if (plan.Error != null) return Fail(kept != "" ? kept + ", nor anywhere in them: circularize at alt and try again (" + plan.Error + ")" : plan.Error);
-                // #881: the bounded fallback obeys the next fixed date too; every arrival past it dropped is as the search finding nothing.
-                if (kept != "" && due.HasValue && plan.ArrivalUt > due.Value) return Fail(kept + ", nor anywhere in them: circularize at alt and try again");
+                    ?? Fallback(snapshot, target, ask, earliest, kept != "" ? earliest + KeptRoute.MaxLoops * setup.Start.Period : (double?)null, kept != "" ? due : null);
+                if (plan.Error != null) return Fail(kept != "" ? kept + ", nor anywhere in them: circularize at alt and try again" + (plan.Error != "" ? " (" + plan.Error + ")" : "") : plan.Error);
                 step = Node("ejection", plan.Ut, plan.Prograde, plan.Normal, plan.Radial, Ejected);
                 if (kept != "") step.Report[CaptureFlight.KeptKey] = kept;
                 arrival = plan.ArrivalUt;
@@ -415,6 +412,26 @@ namespace ClaudiaKerman.Core.Tools
             };
             foreach (var entry in step.Report) wait.Report[entry.Key] = entry.Value;
             return wait;
+        }
+
+        /// <summary>
+        /// The ejection search; with a <paramref name="due"/> (#881) the cheapest whose arrival is by it: a late cheapest is cut away (the search re-run
+        /// from before its departure) until one is on time, or none is left (the search's own "found nothing" error).
+        /// </summary>
+        internal static TransferPlan Fallback(GameSnapshot snapshot, SnapshotBody target, TransferFlightAsk ask, double earliest, double? latest, double? due)
+        {
+            if (due.HasValue && double.IsNaN(due.Value)) due = null;
+            // A departure is no later than its arrival.
+            if (due.HasValue) latest = Math.Min(latest ?? double.PositiveInfinity, due.Value);
+            TransferPlan plan = null;
+            for (var tries = 0; tries < 16; tries++)
+            {
+                plan = Transfer.Find(snapshot, new TransferAsk { Target = target.Name, TargetPe = ask.TargetPe, EarliestUt = earliest, WindowUt = ask.Window, Capture = ArrivalRule.Capture(snapshot, target.Name, null), LatestUt = latest });
+                if (plan.Error != null || !due.HasValue || plan.ArrivalUt <= due.Value) return plan;
+                latest = plan.Ut - 1;
+                if (latest.Value < earliest) break;
+            }
+            return new TransferPlan { Error = "" };
         }
 
         /// <summary>

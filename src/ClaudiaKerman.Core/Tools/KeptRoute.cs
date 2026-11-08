@@ -60,7 +60,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// The moon the Mission Plan's next trip for this craft goes to, when it is a moon of <paramref name="body"/> and <paramref name="body"/> is a planet
         /// reached by an interplanetary transfer; else null, with <paramref name="why"/> saying why ("" with no Mission Plan). <paramref name="deadline"/> is
-        /// the earliest Due Time of the legs after that trip, which the moon must be reached by; null for none.
+        /// the tightest Due Time of the legs after that trip, each less one low orbit of the moon per leg in between (<see cref="FixedDate"/>), which the moon must be reached by; null for none.
         /// </summary>
         public static SnapshotBody NextMoon(GameSnapshot snapshot, BodySystem system, SnapshotBody body, out double? deadline, out string why)
         {
@@ -107,11 +107,17 @@ namespace ClaudiaKerman.Core.Tools
             var lap = 2 * Math.PI * Math.Sqrt(orbit * orbit * orbit / moon.Gm);
             // The tightest of them: each dated leg less the legs before it.
             double? tightest = null;
+            var between = 0;
             for (var j = trip + 1; j < legs.Count; j++)
             {
-                if (!legs[j].DueTimeUt.HasValue) continue;
-                var by = legs[j].DueTimeUt.Value - (j - trip - 1) * lap;
-                if (!tightest.HasValue || by < tightest.Value) tightest = by;
+                // A leg of the player's or another vessel's is no leg of this craft's between.
+                if (legs[j].Manual || !(string.IsNullOrEmpty(legs[j].Vessel) || string.Equals(legs[j].Vessel, "craft", StringComparison.OrdinalIgnoreCase))) continue;
+                if (legs[j].DueTimeUt.HasValue && !double.IsNaN(legs[j].DueTimeUt.Value))
+                {
+                    var by = legs[j].DueTimeUt.Value - between * lap;
+                    if (!tightest.HasValue || by < tightest.Value) tightest = by;
+                }
+                between++;
             }
             return tightest;
         }
