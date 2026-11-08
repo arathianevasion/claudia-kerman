@@ -394,6 +394,76 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("Telemetry Checks crossed: delta-v used 100 m/s over 50 m/s: Abort recommended", debrief.Text);
         }
 
+        private static KosBlockEnded ReturnEnded(string note, int runId)
+        {
+            return new KosBlockEnded("return", new Dictionary<string, object> { { "success", true }, { "aim_note", note } }, runId);
+        }
+
+        private static List<string> Notices(MissionControl mission)
+        {
+            return mission.View.Log.Where(e => e.Kind == LogKind.Notice && e.Text.StartsWith("Rated Off-Nominal")).Select(e => e.Text).ToList();
+        }
+
+        [Fact]
+        public void AReturnThatFlewNoCorrectionIsRatedOffNominalWithItsNotice()
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"),
+                ScriptedResponse.Fixture("mission-debrief.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission, 10m);
+            mission.Send(ReturnEnded("no correction flown: the solver gave up; 40 km from the target, 80 m/s left", start.RunId));
+            mission.Send(new KosRunEnded(Finished(), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            var debrief = mission.View.Log.Last(e => e.Kind == LogKind.Debrief);
+            Assert.Equal("Off-Nominal", debrief.Outcome);
+            Assert.Equal(new[] { "Rated Off-Nominal, not Nominal: return's Course Correction couldn't be solved, so none was flown." }, Notices(mission));
+        }
+
+        [Fact]
+        public void AReturnThatFlewACorrectionKeepsItsRating()
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"),
+                ScriptedResponse.Fixture("mission-debrief.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission, 10m);
+            mission.Send(ReturnEnded("fix flown: 12 m/s, 40 km down to 2 km", start.RunId));
+            mission.Send(new KosRunEnded(Finished(), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            Assert.Equal("Nominal", mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Outcome);
+            Assert.Empty(Notices(mission));
+        }
+
+        [Fact]
+        public void AReturnThatFlewNoCorrectionWithACrossedCheckShowsBothNotices()
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                WithSequenceFields(ScriptedResponse.Fixture("mission-sequence-plan.sse"), DeltaVCheck(50)),
+                ScriptedResponse.Fixture("mission-alert-abort.sse"),
+                ScriptedResponse.Fixture("mission-debrief.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission, 10m);
+            mission.Send(Snapshot(s => s.Stages[0].DeltaVVac = 3100));
+            mission.Send(Snapshot(s => s.Stages[0].DeltaVVac = 3100));
+            DrainUntil(mission, v => v.AbortRecommended.Length > 0);
+            mission.Send(ReturnEnded("no correction flown: the solver gave up; 40 km from the target, 80 m/s left", start.RunId));
+            mission.Send(new KosRunEnded(Finished(), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            Assert.Equal("Off-Nominal", mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Outcome);
+            Assert.Equal(new[]
+            {
+                "Rated Off-Nominal, not Nominal: a Telemetry Check was crossed during the run.",
+                "Rated Off-Nominal, not Nominal: return's Course Correction couldn't be solved, so none was flown.",
+            }, Notices(mission));
+        }
+
         [Fact]
         public void ACarryOnLeavesALogLineAndItsFollowUpThresholdFiresOnceMore()
         {

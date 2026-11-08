@@ -71,6 +71,33 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("Debrief: Off-Nominal", Rebuild(turn, DebriefReply("Nominal")).Single(e => e.Kind == LogKind.Debrief).Title);
         }
 
+        private const string NoCorrectionReport = "Report (JSON data): {\"success\":true,\"aim_note\":\"no correction flown: the solver gave up; 40 km from the target, 80 m/s left\"}";
+
+        [Fact]
+        public void ARebuiltDebriefOfAReturnThatFlewNoCorrectionIsOffNominalWithItsNotice()
+        {
+            var log = Rebuild(NoCorrectionReport, DebriefReply("Nominal"));
+            Assert.Equal("Debrief: Off-Nominal", log.Single(e => e.Kind == LogKind.Debrief).Title);
+            Assert.Equal(new[] { LandingLine.NoCorrectionNotice }, log.Where(e => e.Kind == LogKind.Notice).Select(e => e.Text).ToArray());
+        }
+
+        [Fact]
+        public void ARebuiltDebriefOfAReturnThatFlewACorrectionIsUnchanged()
+        {
+            var log = Rebuild("Report (JSON data): {\"success\":true,\"aim_note\":\"fix flown: 12 m/s, 40 km down to 2 km\"}", DebriefReply("Nominal"));
+            Assert.Equal("Debrief: Nominal", log.Single(e => e.Kind == LogKind.Debrief).Title);
+            Assert.DoesNotContain(log, e => e.Kind == LogKind.Notice);
+        }
+
+        [Fact]
+        public void ARebuiltDebriefWithBothReasonsShowsBothNotices()
+        {
+            var log = Rebuild(NoCorrectionReport + MissionPrompts.CrossedChecks("a: Abort recommended [standing]"), DebriefReply("Nominal"));
+            Assert.Equal("Debrief: Off-Nominal", log.Single(e => e.Kind == LogKind.Debrief).Title);
+            Assert.Equal(new[] { "Rated Off-Nominal, not Nominal: a Telemetry Check was crossed during the run.", LandingLine.NoCorrectionNotice },
+                log.Where(e => e.Kind == LogKind.Notice).Select(e => e.Text).ToArray());
+        }
+
         [Fact]
         public void APlanRequestKeepsTheDueTimeSpanAgainstItsUt()
         {

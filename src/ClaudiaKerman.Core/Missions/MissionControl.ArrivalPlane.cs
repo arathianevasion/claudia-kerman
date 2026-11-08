@@ -16,6 +16,8 @@ namespace ClaudiaKerman.Core.Missions
             public string ArrivalPlane = "";
             /// <summary>What the block that aimed the landing predicted (<see cref="LandingLine.Record"/>), for the reentry that may come in a later run (#790).</summary>
             public string LandingAim = "";
+            /// <summary>A <c>return</c> this run flew no Course Correction (its aim_note, #899); the Debrief rates the run Off-Nominal and clears it.</summary>
+            public bool NoCorrection;
             /// <summary><c>find_landing_site</c>'s first site in its last answer; null for none.</summary>
             public PickedSite PickedSite;
         }

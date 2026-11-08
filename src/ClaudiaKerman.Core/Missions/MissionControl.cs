@@ -2088,10 +2088,19 @@ namespace ClaudiaKerman.Core.Missions
             // A standing crossing rules out Nominal (story 107), whatever Claudia rated it; a recovered one doesn't (#572). The card lists them all.
             var crossings = CrossingsText(mission);
             mission.Crossings.Clear();
-            if (MissionPrompts.RulesOutNominal(crossings) && debrief.Outcome == "Nominal")
+            // #899: so does a return that flew no Course Correction; both notices show when both reasons stand.
+            var noCorrection = mission.NoCorrection;
+            mission.NoCorrection = false;
+            var nominal = debrief.Outcome == "Nominal";
+            if (MissionPrompts.RulesOutNominal(crossings) && nominal)
             {
                 debrief.Outcome = "Off-Nominal";
                 Note(LogKind.Notice, "Rated Off-Nominal, not Nominal: a Telemetry Check was crossed during the run.");
+            }
+            if (noCorrection && nominal)
+            {
+                debrief.Outcome = "Off-Nominal";
+                Note(LogKind.Notice, LandingLine.NoCorrectionNotice);
             }
             // Ticking twice is harmless: a Debrief already in a log rebuilt from the transcript has ticked them once.
             GoalSteps.Tick(mission.GoalSteps, debrief.GoalStepsDone);

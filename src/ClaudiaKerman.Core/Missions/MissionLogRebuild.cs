@@ -160,10 +160,16 @@ namespace ClaudiaKerman.Core.Missions
         {
             // The turn that asked for it listed the Telemetry Checks crossed; a standing one rules out Nominal, as the loop rated it.
             var crossings = Crossings(userText);
-            if (MissionPrompts.RulesOutNominal(crossings) && debrief.Outcome == "Nominal")
+            var nominal = debrief.Outcome == "Nominal";
+            if (MissionPrompts.RulesOutNominal(crossings) && nominal)
             {
                 debrief.Outcome = "Off-Nominal";
                 log.Add(new LogEntry { Kind = LogKind.Notice, Text = "Rated Off-Nominal, not Nominal: a Telemetry Check was crossed during the run." });
+            }
+            if (LandingLine.NoCorrection(userText) && nominal)
+            {
+                debrief.Outcome = "Off-Nominal";
+                log.Add(new LogEntry { Kind = LogKind.Notice, Text = LandingLine.NoCorrectionNotice });
             }
             var outcome = debrief.Outcome;
             log.Add(new LogEntry
