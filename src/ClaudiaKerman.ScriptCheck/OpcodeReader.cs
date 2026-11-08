@@ -88,6 +88,10 @@ namespace ClaudiaKerman.ScriptCheck
         /// <summary>The line each labelled opcode is on: a function's code starts at the label its definition pushes.</summary>
         private readonly Dictionary<string, int> _labelLines = new Dictionary<string, int>(StringComparer.Ordinal);
         private string _delegateLabel;
+        /// <summary>Every name any store opcode binds, anywhere: a bare call to one of these is a delegate in a variable.</summary>
+        private readonly HashSet<string> _storedNames = new HashSet<string>(StringComparer.Ordinal);
+        /// <summary>Calls to a name nothing defines (#928), "line N: NAME", before the Core Library's lines.</summary>
+        private readonly List<string> _undefinedCalls = new List<string>();
 
         /// <summary>The code is a Mission Script bundled with the Core Library, so it has library functions to replace.</summary>
         private bool IsBundle
@@ -100,7 +104,8 @@ namespace ClaudiaKerman.ScriptCheck
         /// new about which variables, parameters and functions hold another vessel, wherever they are assigned; then once more
         /// to record the findings.
         /// </summary>
-        public static List<string> Read(IEnumerable<List<Opcode>> sections, bool allowPlanningTools = false, int libraryFromLine = int.MaxValue)
+        public static List<string> Read(IEnumerable<List<Opcode>> sections, bool allowPlanningTools = false, int libraryFromLine = int.MaxValue,
+            List<string> undefinedCalls = null)
         {
             var reader = new OpcodeReader { _allowPlanningTools = allowPlanningTools, _libraryFromLine = libraryFromLine };
             var list = new List<List<Opcode>>(sections);
@@ -114,6 +119,7 @@ namespace ClaudiaKerman.ScriptCheck
             while (reader._learned != learned);
             reader._recording = true;
             foreach (var section in list) reader.Walk(section);
+            if (undefinedCalls != null) undefinedCalls.AddRange(reader._undefinedCalls);
             return reader._findings;
         }
 
@@ -130,6 +136,9 @@ namespace ClaudiaKerman.ScriptCheck
                         _parents[push.ScopeId] = push.ParentScopeId;
                         if (!string.IsNullOrEmpty(op.Label)) _scopeAtLabel[op.Label] = push.ScopeId;
                     }
+                    var stored = op as OpcodeIdentifierBase;
+                    if (stored != null && (op is OpcodeStore || op is OpcodeStoreLocal || op is OpcodeStoreGlobal || op is OpcodeStoreExist))
+                        _storedNames.Add(Lower(stored.Identifier).TrimStart('$'));
                     var later = op as OpcodePushRelocateLater;
                     if (later != null) _entries.Add(later.DestinationLabel ?? "");
                     if (op is OpcodePushDelegateRelocateLater) delegates.Add(later.DestinationLabel ?? "");
@@ -764,6 +773,14 @@ namespace ClaudiaKerman.ScriptCheck
             var raw = Lower(destination);
             var function = raw.StartsWith("$", StringComparison.Ordinal) && raw.EndsWith("*", StringComparison.Ordinal) ? raw.Substring(1) : null;
             var user = !ForbiddenList.BuiltIns.Contains(name);
+            // kOS writes a built-in as "name()", a function as "$name*", and any other name bare: a delegate in a variable if the
+            // script ever stores that name, else a function nothing defines, which kOS only finds out when the line runs (#928).
+            var bare = !raw.StartsWith("$", StringComparison.Ordinal) && !raw.EndsWith("()", StringComparison.Ordinal);
+            if (_recording && bare && line < _libraryFromLine && !_storedNames.Contains(raw))
+            {
+                var undefinedCall = "line " + line.ToString(CultureInfo.InvariantCulture) + ": " + name;
+                if (!_undefinedCalls.Contains(undefinedCall)) _undefinedCalls.Add(undefinedCall);
+            }
             foreach (var arg in args) Consumed(arg, line);
             if (user) PassedTo(function, args);
             if (name == "makebuiltindelegate")
