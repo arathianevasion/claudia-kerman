@@ -465,7 +465,7 @@ namespace ClaudiaKerman.KOS
                 // Aimed at a landing (#792), the predictor flies the planet's air: the craft is still at the moon.
                 node = ask.ContainsKey("lat")
                     ? BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(vessel.mainBody.referenceBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)))
-                    : BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel));
+                    : BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody()); // #888: the body reads the planet's frame for the turn direction
                 return KosValues.FromPlain(node);
             }, () => node.ContainsKey("dv")
                 ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); {5} Pe {6:0} m, inclination {7:0.00}, leaving the moon at UT {8:0}{9}{10}",
