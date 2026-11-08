@@ -657,6 +657,27 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("not enough delta-v", Auto(cheapest + 100, withChutes: true, payer: new ClaudiaKerman.Core.Missions.DropBurn { HeldDv = 2000 }).Error);
         }
 
+        [Fact]
+        public void The_one_spend_rule_counts_the_kept_delta_v_the_dropped_share_and_the_engine()
+        {
+            Assert.Equal(DeorbitBurn.AutoMaxDv(900, 10, 20), DeorbitBurn.SpareDv(900, 10, 20, null), 9);
+            Assert.Equal(DeorbitBurn.AutoMaxDv(900, 10, 20), DeorbitBurn.SpareDv(900, 10, 20, new ClaudiaKerman.Core.Missions.DropBurn()), 9);
+            Assert.Equal(DeorbitBurn.AutoMaxDv(700, 10, 20), DeorbitBurn.SpareDv(900, 10, 20, new ClaudiaKerman.Core.Missions.DropBurn { HeldDv = 200 }), 9);
+            Assert.Equal(DeorbitBurn.AutoMaxDv(900, 10, 20, 0.5), DeorbitBurn.SpareDv(900, 10, 20, new ClaudiaKerman.Core.Missions.DropBurn { KeptShare = 0.5 }), 9);
+            Assert.Equal(DeorbitBurn.AutoMaxDv(900, 0, 20), DeorbitBurn.SpareDv(900, 10, 20, new ClaudiaKerman.Core.Missions.DropBurn { KeepsEngine = false }), 9);
+            Assert.Equal(-1, DeorbitBurn.KeptDv(-1, new ClaudiaKerman.Core.Missions.DropBurn { HeldDv = 50 }), 9);
+        }
+
+        [Fact]
+        public void The_over_budget_message_prints_the_kept_delta_v_not_stock_s()
+        {
+            var cheapest = Find(KscLat, KscLng, Eccentric()).DeltaV;
+            var left = cheapest + 20 + 30;
+            var plan = Auto(left, withChutes: true, payer: new ClaudiaKerman.Core.Missions.DropBurn { HeldDv = 30 });
+            Assert.Contains("over max_dv", plan.Error);
+            Assert.Contains("(auto: " + Math.Round(left - 30, 1).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " m/s left, less the reserve", plan.Error);
+        }
+
         private static DeorbitPlan Auto(double dvLeft, bool withChutes, ClaudiaKerman.Core.Missions.DropBurn payer = null)
         {
             var ask = new DeorbitAsk { TargetLatitude = KscLat, TargetLongitude = KscLng, EarliestUt = 120, MaxWait = ReentrySim.RotationPeriod, AccuracyKm = 5, DeltaVLeft = dvLeft };

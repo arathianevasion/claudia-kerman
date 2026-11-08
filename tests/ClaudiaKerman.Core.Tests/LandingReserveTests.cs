@@ -194,6 +194,20 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains(PartTree.OwnSide(parts, Pod), x => x.Id == EngU);
         }
 
+        /// <summary>#907: ENTRYCRAFT reads stage_limit, so the library's passing it changes held_dv and whether an engine stays.</summary>
+        [Fact]
+        public void Stage_limit_reaches_ENTRYCRAFT_and_changes_the_reserve()
+        {
+            Func<double, IDictionary<string, object>> call = limit => BlockCalls.EntryCraftCall(new Dictionary<string, object> { { "stage_limit", limit } }, Snapshot(Stack()), null, 0, "", id => id.ToString());
+            var none = call(0);
+            var held = call(3);
+            Assert.Equal("", none["error"]);
+            Assert.Equal(0.0, Convert.ToDouble(none["held_dv"]));
+            Assert.InRange(Convert.ToDouble(held["held_dv"]), StockStage2 * 0.98, StockStage2 * 1.02);
+            Assert.Equal(true, none["keeps_engine"]);
+            Assert.Equal(false, call(5)["keeps_engine"]);
+        }
+
         private static GameSnapshot Snapshot(List<SnapshotPart> parts, int stage = 4)
         {
             return new GameSnapshot { Ut = 0, Craft = new SnapshotCraft { Stage = stage, Parts = parts, MassTonnes = parts.Sum(p => p.MassT) } };

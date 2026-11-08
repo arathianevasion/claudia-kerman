@@ -89,12 +89,14 @@ namespace ClaudiaKerman.Core.Tests
             lng = landed.Longitude;
         }
 
-        private static IDictionary<string, object> Aim(GameSnapshot snapshot, double lat, double lng, double burnIn = 300, double dvLeft = -1, double pe = Pe)
+        private static IDictionary<string, object> Aim(GameSnapshot snapshot, double lat, double lng, double burnIn = 300, double dvLeft = -1, double pe = Pe, IDictionary<string, object> craft = null)
         {
-            return BlockCalls.CorrectionBurn(new Dictionary<string, object>
+            var ask = new Dictionary<string, object>
             {
                 { "target", "Kerbin" }, { "target_pe", pe }, { "earliest_ut", snapshot.Ut + burnIn }, { "latest_ut", snapshot.Ut + burnIn }, { "lat", lat }, { "lng", lng }, { "dv_left", dvLeft },
-            }, snapshot, new FrameBody(snapshot.Ut), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            };
+            if (craft != null) ask["craft"] = craft;
+            return BlockCalls.CorrectionBurn(ask, snapshot, new FrameBody(snapshot.Ut), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
         }
 
         private static double D(IDictionary<string, object> node, string key)
@@ -181,6 +183,22 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("", node["error"]);
             Assert.InRange(D(node, "dv"), 0, 3);
             Assert.True(D(node, "error_km") > 300);
+        }
+
+        /// <summary>#907: the delta-v a stage below stage_limit holds (ENTRYCRAFT's held_dv) isn't the craft's to spend: the correction spends by the kept delta-v.</summary>
+        [Fact]
+        public void The_burn_spends_only_the_kept_delta_v()
+        {
+            var snapshot = Falling();
+            double lat, lng;
+            Natural(snapshot, out lat, out lng);
+            var whole = Aim(snapshot, lat, lng + 500 / KmPerDeg, 300, 450);
+            var kept = Aim(snapshot, lat, lng + 500 / KmPerDeg, 300, 450, craft: new Dictionary<string, object> { { "whole", 10.0 }, { "held_dv", 170.0 } });
+            Assert.Equal("", kept["error"]);
+            // A capsule with no chutes lands on its engines (about 230 m/s). 450 left: whole spends what the miss takes (about 54); 170 held leaves 280, less the 50 reserve and the landing: about nothing.
+            Assert.True(D(whole, "dv") > 40, D(whole, "dv") + " " + whole["aim_note"]);
+            Assert.InRange(D(kept, "dv"), 0, 20);
+            Assert.True(D(kept, "dv") < D(whole, "dv") - 20, D(kept, "dv") + " " + kept["aim_note"]);
         }
 
         /// <summary>A craft with nothing left spends nothing on the landing: 0 is a reading, only a negative figure is unknown.</summary>

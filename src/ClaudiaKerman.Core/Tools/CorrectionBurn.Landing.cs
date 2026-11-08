@@ -106,7 +106,7 @@ namespace ClaudiaKerman.Core.Tools
                 if (whole != null)
                 {
                     acrossDv = whole.DeltaV;
-                    var spare = Math.Min(MostFixDv, DeorbitBurn.AutoMaxDv(ask.DvLeft, DeorbitBurn.PoweredLandingDv(landing.Craft, true, whole.Landing.LandingSpeed), ask.LaterLegsDv));
+                    var spare = Math.Min(MostFixDv, DeorbitBurn.SpareDv(ask.DvLeft, DeorbitBurn.PoweredLandingDv(landing.Craft, true, whole.Landing.LandingSpeed), ask.LaterLegsDv, landing.Payer));
                     if (whole.DeltaV <= spare)
                     {
                         whole.CrossFix = FixFlown;
@@ -128,7 +128,7 @@ namespace ClaudiaKerman.Core.Tools
                 return kept;
             };
             var most = ask.MostLandingDv ?? (ask.DvLeft >= 0
-                ? Math.Min(MostFixDv, DeorbitBurn.AutoMaxDv(ask.DvLeft, DeorbitBurn.PoweredLandingDv(landing.Craft, true, first.LandingSpeed), ask.LaterLegsDv))
+                ? Math.Min(MostFixDv, DeorbitBurn.SpareDv(ask.DvLeft, DeorbitBurn.PoweredLandingDv(landing.Craft, true, first.LandingSpeed), ask.LaterLegsDv, landing.Payer))
                 : MostLandingDv);
             Func<ReentryPrediction, double> along = landed =>
             {
