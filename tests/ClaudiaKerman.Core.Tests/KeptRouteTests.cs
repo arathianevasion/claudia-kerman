@@ -213,6 +213,77 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void ALaterReturnLegsWindowIsAFixedDateAndTheTightestOfItAndADueTimeWins()
+        {
+            var rig = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Return to Kerbin");
+            var window = KeptRoute.NextWindow(rig.System, rig.Body, rig.System.Find("Kerbin"), rig.Snapshot().Ut);
+            Assert.True(window.HasValue);
+            Assert.InRange(window.Value - rig.Snapshot().Ut, 0, 1.1 * Transfer.Synodic(rig.System.OrbitOf(rig.Body).Period, rig.System.OrbitOf(rig.System.Find("Kerbin")).Period));
+            double? deadline;
+            string why;
+            KeptRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
+            Assert.Equal(window.Value, deadline.Value, 3);
+
+            // The player's Kerbin-to-Duna trip leg out of Duna's moon's orbit is no window: it is not a trip to another planet.
+            // A Due Time nearer than the window wins; a farther one does not.
+            rig.Snapshot().LegsAhead[2].DueTimeUt = window.Value - 1000;
+            KeptRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
+            Assert.Equal(window.Value - 1000, deadline.Value, 3);
+            rig.Snapshot().LegsAhead[2].DueTimeUt = window.Value + 1000;
+            KeptRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
+            Assert.Equal(window.Value, deadline.Value, 3);
+
+            // A leg in between counts one low Ike orbit off the window.
+            var between = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Land on Ike", "Return to Kerbin");
+            KeptRoute.NextMoon(between.Snapshot(), between.System, between.Body, out deadline, out why);
+            var ike = between.System.Find("Ike");
+            Assert.Equal(window.Value - 2 * Math.PI * Math.Sqrt(Math.Pow(DeltaVMap.LowOrbit(ike), 3) / ike.Gm), deadline.Value, 3);
+
+            // The window's own phase: the target leads the origin by the Hohmann angle there (Duna to Kerbin: Kerbin trails by about 44 degrees less than a half turn).
+            var back = KeptRoute.NextWindow(rig.System, rig.System.Find("Kerbin"), rig.Body, rig.Snapshot().Ut);
+            Assert.True(back.HasValue);
+        }
+
+        [Fact]
+        public void AKeptArrivalAfterALaterWindowIsRefusedAndBeforeItIsKept()
+        {
+            var arrival = KeptArrival();
+            var plan = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Return to Kerbin");
+            var window = KeptRoute.NextWindow(plan.System, plan.Body, plan.System.Find("Kerbin"), plan.Snapshot().Ut).Value;
+            Assert.True(window > arrival, "the window " + window + " is before the arrival " + arrival);
+
+            // Kerbin turned on its orbit until the window falls soon after the capture but before the kept arrival: the date is a fixed date, so the kept orbit is refused.
+            var soon = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Return to Kerbin");
+            var kerbin = soon.Snapshot().Bodies.First(b => b.Name == "Kerbin");
+            var start = kerbin.MeanAnomalyAtEpoch;
+            double? opens = null;
+            for (var turn = 0; turn < 360 && !opens.HasValue; turn += 2)
+            {
+                kerbin.MeanAnomalyAtEpoch = start + turn * Math.PI / 180;
+                var at = KeptRoute.NextWindow(new BodySystem(soon.Snapshot().Bodies), soon.Body, soon.System.Find("Kerbin"), soon.Snapshot().Ut);
+                if (at.HasValue && at.Value > soon.Ut + 7200 && at.Value < arrival - 7200) opens = at;
+            }
+            Assert.True(opens.HasValue, "no turn of Kerbin puts the window before the arrival " + arrival);
+            Assert.StartsWith("circle: ", Kept(soon.RunCapture(Ask())));
+            // And the same plan with the window itself, long after the arrival, keeps it.
+            Assert.StartsWith("kept", Kept(plan.RunCapture(Ask())));
+        }
+
+        [Fact]
+        public void APlanWithNeitherAWindowNorADueTimeIsAsToday()
+        {
+            var rig = IkeNext();
+            double? deadline;
+            string why;
+            KeptRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
+            Assert.Null(deadline);
+            // A later trip to a moon of Duna itself, and a return to Duna's own planet, are no window.
+            var home = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Return to Duna");
+            KeptRoute.NextMoon(home.Snapshot(), home.System, home.Body, out deadline, out why);
+            Assert.Null(deadline);
+        }
+
+        [Fact]
         public void TransferToFromTheKeptEllipseWithNoWindowAtAPeriapsisDropsFallbackArrivalsPastTheDueTimeAndCircularizes()
         {
             var rig = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Land on Ike");
