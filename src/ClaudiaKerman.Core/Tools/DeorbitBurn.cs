@@ -32,6 +32,8 @@ namespace ClaudiaKerman.Core.Tools
         public double MaxDv;
         /// <summary>The delta-v stock reports left, m/s; 0 or less when it can't say.</summary>
         public double DeltaVLeft;
+        /// <summary>m/s the Mission Plan's later legs need (#832), kept back from the auto max_dv; 0 for none.</summary>
+        public double LaterLegsDv;
     }
 
     /// <summary>The burn <see cref="DeorbitBurn.Find"/> chose, in maneuver-node components, and where it lands.</summary>
@@ -122,10 +124,10 @@ namespace ClaudiaKerman.Core.Tools
             return "";
         }
 
-        /// <summary>The auto <c>max_dv</c>: the delta-v left less the reserve (the larger of 50 m/s or 10% of it), less a powered landing's need.</summary>
-        public static double AutoMaxDv(double dvLeft, double poweredLandingDv)
+        /// <summary>The auto <c>max_dv</c>: the delta-v left less the reserve (the larger of 50 m/s or 10% of it), less a powered landing's need, less what the Mission Plan's later legs need (#832).</summary>
+        public static double AutoMaxDv(double dvLeft, double poweredLandingDv, double laterLegsDv = 0)
         {
-            return dvLeft - Math.Max(ReserveMin, ReserveShare * dvLeft) - Math.Max(0, poweredLandingDv);
+            return dvLeft - Math.Max(ReserveMin, ReserveShare * dvLeft) - Math.Max(0, poweredLandingDv) - Math.Max(0, laterLegsDv);
         }
 
         /// <summary>The least burn from <paramref name="body"/>'s low circular orbit to the entry periapsis, m/s: <c>deorbit</c>'s from there, for planning (#790).</summary>
@@ -257,10 +259,11 @@ namespace ClaudiaKerman.Core.Tools
                 var lacking = ShortOfDv(plan.DeltaV, _ask.DeltaVLeft);
                 if (lacking != "") return lacking;
                 var powered = PoweredLandingDv(_craft, _ask.Chutes, plan.Landing.LandingSpeed);
-                var limit = _ask.MaxDv > 0 ? _ask.MaxDv : AutoMaxDv(_ask.DeltaVLeft, powered);
+                var limit = _ask.MaxDv > 0 ? _ask.MaxDv : AutoMaxDv(_ask.DeltaVLeft, powered, _ask.LaterLegsDv);
                 if (plan.DeltaV <= limit) return null;
                 return "the cheapest burn within accuracy_km needs " + Dv(plan.DeltaV) + " m/s (at UT " + Whole(plan.BurnUt) + "), over max_dv "
-                    + Dv(Math.Max(0, limit)) + (_ask.MaxDv > 0 ? "" : " (auto: " + Dv(_ask.DeltaVLeft) + " m/s left, less the reserve and a powered landing)");
+                    + Dv(Math.Max(0, limit)) + (_ask.MaxDv > 0 ? "" : " (auto: " + Dv(_ask.DeltaVLeft) + " m/s left, less the reserve and a powered landing"
+                    + (_ask.LaterLegsDv > 0 ? ", and " + Dv(_ask.LaterLegsDv) + " m/s for the later legs" : "") + ")");
             }
 
             /// <summary>

@@ -431,6 +431,7 @@ namespace ClaudiaKerman.Core.Tools
                 Chutes = chutes,
                 MaxDv = Number(ask, "max_dv", 0),
                 DeltaVLeft = Number(ask, "dv_left", 0),
+                LaterLegsDv = snapshot.LaterLegsDv ?? 0,
             }, air, craft, frame);
             if (plan.Landing == null || plan.Landing.Error != null) return Error(plan.Error ?? plan.Landing.Error);
             var result = Landing(plan.Landing, plan.ErrorKm);
@@ -973,6 +974,7 @@ namespace ClaudiaKerman.Core.Tools
                 IncTolerance = Number(ask, "inc_tolerance", 0.5),
                 AimUt = NumberOrNull(ask, "aim_ut"),
                 DvLeft = Number(ask, "dv_left", -1),
+                LaterLegsDv = snapshot.LaterLegsDv ?? 0,
             };
             if (ask.ContainsKey("lat") || ask.ContainsKey("lng"))
             {

@@ -49,6 +49,10 @@ namespace ClaudiaKerman.Core.Tools
         public ReturnLanding Landing;
         /// <summary>The craft's delta-v left, m/s, which the burn adds nothing for the landing beyond; negative for unknown. A burn that holds target_pe alone is not limited, as without a landing.</summary>
         public double DvLeft = -1;
+        /// <summary>m/s the Mission Plan's later legs need (#832), kept back from what the landing may spend; 0 for none.</summary>
+        public double LaterLegsDv;
+        /// <summary>For measuring (#880): the most the landing may spend along the track, m/s, in place of the rule; null for the rule.</summary>
+        public double? MostLandingDv;
     }
 
     /// <summary>The correction node found, or why there is none (<see cref="Error"/>; the rest is set when a best point exists).</summary>
@@ -196,13 +200,16 @@ namespace ClaudiaKerman.Core.Tools
                 Tolerances = tolerances,
                 MaxIterations = MaxIterations,
             };
+            Func<double, Vec3, Patch> arrive = (when, dv) => SingleShooting.Arrive(system, from, coast.Orbit, when, dv, target, needed);
             var result = Sqp.Solve(problem);
-            if (result.Status == SqpStatus.Invalid) return Fail(result.Reason);
+            if (result.Status == SqpStatus.Invalid)
+                return ask.Landing != null ? Unsolved(arrive, startUt, target, ask, result.Reason) : Fail(result.Reason);
 
             var ut = free ? result.X[3] : startUt;
             var burn = new Vec3(result.X[0], result.X[1], result.X[2]);
             var reached = SingleShooting.Arrive(system, from, coast.Orbit, ut, burn, target, needed);
-            if (reached == null) return Fail("the solver's best burn does not reach " + target.Name);
+            if (reached == null)
+                return ask.Landing != null ? Unsolved(arrive, startUt, target, ask, "the solver's best burn does not reach " + target.Name) : Fail("the solver's best burn does not reach " + target.Name);
             double prograde, normal, radial;
             SingleShooting.NodeFrame(coast.Orbit, ut, burn, out prograde, out normal, out radial);
             var plan = new CorrectionPlan
@@ -222,8 +229,9 @@ namespace ClaudiaKerman.Core.Tools
                 ask.PeTolerance, ask.IncTolerance, result.Reason ?? result.Status.ToString());
             if (plan.Error == null && withNormal && from == target && ArrivalPlane.Angle(reached.Orbit.W, ask.TargetNormal.Value) > ask.IncTolerance)
                 plan.Error = Failure + ": the best burn (" + Num(plan.DeltaV) + " m/s) arrives " + Num(ArrivalPlane.Angle(reached.Orbit.W, ask.TargetNormal.Value)) + " degrees off the plane asked";
-            if (ask.Landing != null && plan.Error == null)
-                return AimLanding(coast.Orbit, target, peR, ask, problem, (when, dv) => SingleShooting.Arrive(system, from, coast.Orbit, when, dv, target, needed), plan, burn);
+            // #805: aimed at a landing, a burn that can't hold target_pe is no failure: none flies, and the return carries on to reentry.
+            if (ask.Landing != null)
+                return plan.Error == null ? AimLanding(coast.Orbit, target, peR, ask, problem, arrive, plan, burn) : Unsolved(arrive, startUt, target, ask, plan.Error);
             return plan;
         }
 
