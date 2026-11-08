@@ -566,19 +566,6 @@ function reentry_separation {
   return plan.
 }
 
-// The uid of the part the crew rides in, else of the first command part, else of the part running the script.
-function reentry_home_uid {
-  if ship:crew:length > 0 {
-    return ship:crew[0]:part:uid.
-  }
-  for p in ship:parts {
-    if p:hasmodule("ModuleCommand") {
-      return p:uid.
-    }
-  }
-  return core:part:uid.
-}
-
 function reentry_agl {
   return ship:altitude - max(0, ship:geoposition:terrainheight).
 }
@@ -687,11 +674,12 @@ function reentry {
   }
   // This entry's stack (#557, #823) is read at block start, where ENTRYDROP refuses one separate can't drop, still above the air, and again at the drop
   // point (#815), its lead s before the air or at once inside it: that read flies, the engines light, the stack drops (Pe and stack noted at the air) and ENTRYDROP refuses one still on.
-  local entry_ask is lexicon("home", reentry_home_uid(), "separate", opt:separate, "jettison_stage", opt:jettison_stage, "chutes", opt:chutes <> "none" and opt:chute_mode <> "none", "core", core:part:uid).
+  local entry_ask is lexicon("separate", opt:separate, "jettison_stage", opt:jettison_stage, "chutes", opt:chutes <> "none" and opt:chute_mode <> "none", "core", core:part:uid).
   local below is addons:claudia:entrydrop(entry_ask).
   if below:error <> "" {
     return claudia_finish(ctx, false, below:error, extra).
   }
+  set entry_ask:home to below:home.
   local auto_duration is opt:max_duration:istype("String").
   if auto_duration {
     set opt:max_duration to entry_in + 1800.

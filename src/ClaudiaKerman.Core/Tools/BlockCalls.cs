@@ -1421,10 +1421,10 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// <c>ADDONS:CLAUDIA:ENTRYDROP</c>, for <c>reentry</c> at block start and at the drop point (#823, ADR 0018, #815): what this Entry drops, read
         /// fresh from the Mission Plan's <paramref name="legs"/> (null with no plan: the first shield's rule) from <paramref name="step"/>
-        /// (0 first) for the vessel flying (<paramref name="child"/>; "" for the craft). Takes <c>home</c> (the kOS UID of the crew's part) and, from the block,
+        /// (0 first) for the vessel flying (<paramref name="child"/>; "" for the craft). Takes <c>home</c> (the kOS UID of the Mission's command part; left out, Core finds it from <c>core</c>, see <see cref="Home"/>) and, from the block,
         /// <c>separate</c>, <c>jettison_stage</c> (#869), <c>chutes</c> (as <see cref="EntryFinishCall"/>), <c>core</c> (the kOS UID of the part running the script) and, after its own
         /// drop, <c>drop_error</c> (what that said): above the air, <c>error</c> is then <see cref="EntryStack.Refusal"/>'s refusal, unless at block start
-        /// the Entry lands on its engines and keeps its stack. Gives <c>error</c> "", <c>number</c> (n), <c>shield</c> (the Entry Shield's kOS UID; "" for none),
+        /// the Entry lands on its engines and keeps its stack. Gives <c>error</c> "", <c>home</c> (the kOS UID it used), <c>number</c> (n), <c>shield</c> (the Entry Shield's kOS UID; "" for none),
         /// <c>jettison</c> (the same when this Entry jettisons it, <see cref="EntryCraft.Jettisons"/>; else ""),
         /// <c>decouplers</c> and <c>gone</c> (kOS UIDs), <c>names</c> (the stack's part names, each once), <c>stuck</c> (those with no decoupler)
         /// and <c>lead</c> (s before the atmosphere the block drops it, <see cref="EntryStack.DropLeadS"/>).
@@ -1433,13 +1433,15 @@ namespace ClaudiaKerman.Core.Tools
         {
             if (snapshot == null) return Error("there is no Game Snapshot of the craft");
             var number = Entries.ShieldNumber(snapshot, legs, step, child);
-            var stack = EntryStack.Of(snapshot.Craft.Parts, Home(ask, snapshot, uidOf), number);
+            var home = Home(ask, snapshot, uidOf);
+            var stack = EntryStack.Of(snapshot.Craft.Parts, home, number);
             var refusal = StackRefusal(ask, snapshot, stack, number, uidOf);
             if (refusal != "") return Error(refusal);
             Func<IEnumerable<SnapshotPart>, List<object>> uids = parts => parts.Select(p => uidOf(p.Id)).Where(u => u != null).Cast<object>().ToList();
             return new Dictionary<string, object>
             {
                 { "error", "" },
+                { "home", home.HasValue ? uidOf(home.Value) ?? "" : "" },
                 { "number", (double)number },
                 { "shield", stack.Shield == null ? "" : uidOf(stack.Shield.Id) ?? "" },
                 { "jettison", stack.Shield == null || !EntryCraft.Jettisons(JettisonStage(ask), IsWord(ask, "separate", "none"), stack.Parts.Count > 0) ? "" : uidOf(stack.Shield.Id) ?? "" },
@@ -1480,12 +1482,23 @@ namespace ClaudiaKerman.Core.Tools
             return ask.ContainsKey("jettison_stage") ? ask["jettison_stage"] as string ?? "auto" : "auto";
         }
 
-        /// <summary>The part whose kOS UID is <c>home</c> in <paramref name="ask"/>; null when none is.</summary>
+        /// <summary>
+        /// The part whose kOS UID is <c>home</c> in <paramref name="ask"/>, which wins; null when none is. With no <c>home</c>, the Mission's command part (#914):
+        /// from the part running the script (<c>core</c>), the first command part with seats on its own side (<see cref="PartTree.OwnSide"/>, #909), else the first
+        /// command part there, else <c>core</c> itself. Null with neither, the root as before.
+        /// </summary>
         private static uint? Home(IDictionary<string, object> ask, GameSnapshot snapshot, Func<uint, string> uidOf)
         {
             var uid = ask.ContainsKey("home") ? ask["home"] as string : null;
             var home = snapshot.Craft.Parts.FirstOrDefault(p => uid != null && uidOf(p.Id) == uid);
-            return home == null ? (uint?)null : home.Id;
+            if (home != null) return home.Id;
+            if (ask.ContainsKey("home")) return null;
+            var core = ask.ContainsKey("core") ? ask["core"] as string : null;
+            var from = snapshot.Craft.Parts.FirstOrDefault(p => core != null && uidOf(p.Id) == core);
+            if (from == null) return null;
+            var own = PartTree.OwnSide(snapshot.Craft.Parts, from.Id).Where(p => p.Tags.Contains("command")).ToList();
+            var command = own.FirstOrDefault(p => p.CrewCapacity > 0) ?? own.FirstOrDefault();
+            return command == null ? from.Id : command.Id;
         }
 
         /// <summary>
@@ -1520,7 +1533,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <c>ADDONS:CLAUDIA:ENTRYCRAFT</c> (#814), for <c>return</c> and <c>deorbit</c> at block start: the craft the Entry ahead will fly
         /// (<see cref="EntryCraft"/>), read once and passed on as it is in each landing prediction's <c>craft</c>. The Entry Shield and
         /// Last Entry are as <see cref="EntryDropCall"/> has them; <c>reentry</c>'s <c>separate</c> is taken as "auto" and its chutes as opening.
-        /// Takes <c>home</c> (the kOS UID of the crew's part), <c>leave_out</c> (kOS UIDs the block drops itself first) and <c>body</c> (where the
+        /// Takes <c>home</c> (as <see cref="EntryDropCall"/>; with <c>core</c> instead, Core finds it), <c>leave_out</c> (kOS UIDs the block drops itself first) and <c>body</c> (where the
         /// Entry is, when not where the craft is: a return's planet). Gives <c>error</c> "", <c>leave_out</c> and <c>shield_drop</c> (kOS UIDs, as
         /// <see cref="LeftOut"/> and <see cref="ShieldDrop"/>), <c>whole</c>, <c>kept</c> and <c>gone_prop</c> (t) and <c>burners_kept</c> (who pays a
         /// burn, <see cref="DropGuard.MassAfterBurn"/>), <c>key</c> and <c>why</c> (the craft in words); <paramref name="aimed"/> receives the key and words.
