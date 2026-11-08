@@ -1106,6 +1106,8 @@ namespace ClaudiaKerman.ScriptCheck.Tests
         [InlineData("rendezvous")]
         [InlineData("dock")]
         [InlineData("land_vessel")]
+        [InlineData("land_high_twr_ike")]
+        [InlineData("land_high_twr_mun")]
         public void EachBlockTestScriptBundledWithTheLibraryPasses(string test)
         {
             // transfer_to calls the ejection solver inline; return calls the block kOS lets be named return; change_orbit
