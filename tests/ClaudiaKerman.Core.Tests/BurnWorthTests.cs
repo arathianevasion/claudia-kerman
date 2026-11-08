@@ -136,5 +136,74 @@ namespace ClaudiaKerman.Core.Tests
             });
             Assert.Equal("", answer["note"]);
         }
+
+        // ---- a Course Correction's flight (#817) ----
+
+        private static IDictionary<string, object> Correction(double dv, double errorKm = -1, double accel = 19, double maxResidual = -1, string error = "")
+        {
+            var fix = new Dictionary<string, object> { { "error", error }, { "dv", dv } };
+            if (errorKm >= 0) fix["error_km"] = errorKm;
+            return BurnWorth.Call(new Dictionary<string, object> { { "block", "correction" }, { "fix", fix }, { "accel", accel }, { "max_residual", maxResidual } });
+        }
+
+        /// <summary>The flight's correction (m20261106-132839-970f): 0.05 m/s with the landing 172 km off was skipped by the 0.1 m/s rule. Now it is flown.</summary>
+        [Fact]
+        public void A_correction_under_0_1_m_s_flies_when_its_landing_is_still_off()
+        {
+            var answer = Correction(0.05, 171.86);
+            Assert.False((bool)answer["skip"]);
+        }
+
+        [Theory]
+        [InlineData(0.05, 1.5)]
+        [InlineData(0.09, 2)]
+        [InlineData(0.05, -1)]
+        public void A_correction_under_0_1_m_s_is_skipped_once_the_landing_is_there_or_there_is_none(double dv, double errorKm)
+        {
+            var answer = Correction(dv, errorKm);
+            Assert.True((bool)answer["skip"]);
+            Assert.StartsWith("a " + dv.ToString(System.Globalization.CultureInfo.InvariantCulture) + " m/s correction isn't worth the turn", (string)answer["note"]);
+        }
+
+        /// <summary>#805: an aimed correction that can't be solved comes as no burn and no error: nothing flies, and no reason fails the block.</summary>
+        [Fact]
+        public void An_aimed_correction_with_no_burn_flies_nothing()
+        {
+            var answer = Correction(0, 300);
+            Assert.True((bool)answer["skip"]);
+        }
+
+        [Fact]
+        public void A_correction_with_an_error_flies_nothing_and_says_it()
+        {
+            var answer = Correction(3, -1, 19, -1, "found no correction: off");
+            Assert.True((bool)answer["skip"]);
+            Assert.Equal("found no correction: off", answer["note"]);
+        }
+
+        /// <summary>Under 2 m/s the throttle is capped so a 0.02 s tick at the cap is 5% of the burn, and the residual is 0.4 of the burn, from 0.02 to 0.2 m/s.</summary>
+        [Theory]
+        [InlineData(0.5, 19, 0.025 / 0.38, 0.2)]
+        [InlineData(0.9, 19, 0.045 / 0.38, 0.2)]
+        [InlineData(0.2, 19, 0.01 / 0.38, 0.08)]
+        [InlineData(0.03, 60, 0.0015 / 1.2, 0.02)]
+        [InlineData(1.9, 1, 1, 0.2)]
+        public void A_small_correction_flies_with_its_throttle_capped_and_a_tight_residual(double dv, double accel, double throttle, double residual)
+        {
+            var answer = Correction(dv, 50, accel);
+            Assert.False((bool)answer["skip"]);
+            Assert.Equal(throttle, (double)answer["max_throttle"], 9);
+            Assert.Equal(residual, (double)answer["max_residual"], 9);
+        }
+
+        [Fact]
+        public void A_correction_of_2_m_s_or_more_flies_as_before_and_a_smaller_residual_given_stands()
+        {
+            var big = Correction(2.5, 50, 19, 0.1);
+            Assert.Equal(1.0, (double)big["max_throttle"]);
+            Assert.Equal(0.1, (double)big["max_residual"]);
+            Assert.Equal(0.1, (double)Correction(0.5, 50, 19, 0.1)["max_residual"], 9);
+            Assert.Equal(1.0, (double)Correction(0.5, 50, 0)["max_throttle"]);
+        }
     }
 }

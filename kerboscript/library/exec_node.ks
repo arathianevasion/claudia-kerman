@@ -35,10 +35,10 @@
 // stop_at_min is for other blocks, so not in Claudia's docs (#532): "ecc" also stops the burn once the
 // orbit's eccentricity stops falling (circularize asks for it), and the result's stop says which stop
 // ended it; "" keeps only the node's. resolve is for other blocks too (#673): "" or a function of the node that re-solves it from
-// the orbit as it is after the turn, just before the burn, keeping its UT, and returns "" or why the block must fail.
+// the orbit as it is after the turn, just before the burn, keeping its UT, and returns "" or why the block must fail. max_throttle (#817) caps it.
 function exec_node_defaults {
   return lexicon("node", "next", "max_residual", 0.5, "lead", "half_burn", "rcs_trim", false, "finish_fraction", 0.05, "stop_at_min", "",
-    "resolve", "").
+    "resolve", "", "max_throttle", 1).
 }
 
 // "" or why a string value of node or lead isn't one the block knows.
@@ -173,7 +173,7 @@ function exec_node {
     if left:mag > 1 {
       set steer to left.
     }
-    set tset to claudia_burn_throttle(left:mag, ship:availablethrust / ship:mass, vang(ship:facing:forevector, steer)).
+    set tset to min(opt:max_throttle, claudia_burn_throttle(left:mag, ship:availablethrust / ship:mass, vang(ship:facing:forevector, steer))).
     if tset > 0 and burn_start < 0 {
       set burn_start to time:seconds.
     }

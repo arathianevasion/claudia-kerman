@@ -21,6 +21,32 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>... on an orbit under this eccentricity.</summary>
         public const double CircularizeMaxEcc = 0.03;
 
+        /// <summary>A Course Correction (#817) under this many m/s is small: flown with the throttle capped and to <see cref="SmallResidual"/>.</summary>
+        public const double SmallCorrectionDv = 2;
+
+        /// <summary>A small correction's throttle is capped so one physics tick (<see cref="PhysicsTick"/>, s) at the cap is at most this share of it.</summary>
+        public const double TickShare = 0.05;
+
+        public const double PhysicsTick = 0.02;
+
+        /// <summary>
+        /// A small correction's max_residual, m/s: this share of the burn, from <see cref="LeastResidual"/> to <see cref="SmallResidual"/>. exec_node stops a quarter of it short,
+        /// so it ends within 0.05 m/s of its node and within a tenth of the burn, and a residual under it is done.
+        /// </summary>
+        public const double ResidualShare = 0.4;
+
+        public const double SmallResidual = 0.2;
+
+        public const double LeastResidual = 0.02;
+
+        /// <summary>A correction under this many m/s isn't flown once its landing is within <see cref="ThereKm"/> km of the target, or it has no landing: its own error is that size.</summary>
+        public const double CorrectionSkipDv = 0.1;
+
+        public const double ThereKm = 2;
+
+        /// <summary>A correction under this many m/s is none (#805: an aimed correction that can't be solved flies none).</summary>
+        private const double NoBurnDv = 0.001;
+
         /// <summary><c>tune_pe</c>'s default tolerance is at least this, m, and ...</summary>
         public const double TunePeMinTolerance = 1000;
 
@@ -88,6 +114,7 @@ namespace ClaudiaKerman.Core.Tools
                 answer["note"] = SafeHint(Bool(input, "to_moon"), Number(input, "pe", double.NegativeInfinity), Text(input, "body"), safeHeight);
                 return answer;
             }
+            if (block == "correction") return Correction(input, answer);
             if (Bool(input, "given")) return answer;
             var pe = Number(input, "pe", double.NegativeInfinity);
             var safe = Safe(pe, safeHeight);
@@ -110,6 +137,40 @@ namespace ClaudiaKerman.Core.Tools
             answer["note"] = "within its default tolerance: the periapsis is " + Format(off) + " m from " + Format(value) + " m, inside "
                 + Format(tolerance) + " m, so a burn isn't worth the turn";
             return answer;
+        }
+
+        /// <summary>
+        /// A Course Correction's flight (#817): <c>fix</c> is CORRECTIONBURN's answer, <c>accel</c> the craft's full thrust over its mass (m/s²), <c>max_residual</c> the block's (m/s;
+        /// -1 for exec_node's own). Skips one with an error (its <c>note</c>), none, or one under <see cref="CorrectionSkipDv"/> whose landing is already there; one under
+        /// <see cref="SmallCorrectionDv"/> gets <c>max_throttle</c> (0 to 1) and a <c>max_residual</c> by <see cref="ResidualShare"/>. Kerboscript caps the throttle.
+        /// </summary>
+        private static IDictionary<string, object> Correction(IDictionary<string, object> input, Dictionary<string, object> answer)
+        {
+            object found;
+            var fix = input.TryGetValue("fix", out found) ? found as IDictionary<string, object> : null;
+            var given = Number(input, "max_residual", -1);
+            answer["max_throttle"] = 1.0;
+            answer["max_residual"] = given;
+            var error = fix == null ? "no correction" : Text(fix, "error");
+            var dv = Number(fix, "dv", 0);
+            var km = Number(fix, "error_km", -1);
+            if (error != "" || dv < NoBurnDv || (dv < CorrectionSkipDv && km <= ThereKm))
+            {
+                answer["skip"] = true;
+                answer["note"] = error != "" ? error : "a " + Small(dv) + " m/s correction isn't worth the turn" + (km >= 0 ? ", " + Small(km) + " km from the target" : "");
+                return answer;
+            }
+            if (!(dv < SmallCorrectionDv)) return answer;
+            var accel = Number(input, "accel", 0);
+            if (accel > 0) answer["max_throttle"] = Math.Min(1, TickShare * dv / (accel * PhysicsTick));
+            var small = Math.Max(LeastResidual, Math.Min(SmallResidual, ResidualShare * dv));
+            answer["max_residual"] = given > 0 ? Math.Min(given, small) : small;
+            return answer;
+        }
+
+        private static string Small(double x)
+        {
+            return Math.Round(x, 2).ToString("0.##", CultureInfo.InvariantCulture);
         }
 
         private static string Format(double x)
