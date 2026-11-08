@@ -156,6 +156,81 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void It_says_when_the_block_drops_the_stack_600_s_before_the_air()
+        {
+            // #815: reentry waits to this point, not block start, so the drop's kick barely moves the landing (EntryDropLeadTests).
+            Assert.Equal(600.0, Call(PodShieldStage(), "Kerbin", DunaThenKerbin, step: 2)["lead"]);
+            Assert.Equal(EntryStack.DropLeadS, Call(PodShieldStage(), "Duna", DunaThenKerbin)["lead"]);
+        }
+
+        // ---- The block's refusal (#815: reentry_stack_refusal, moved to Core; read at block start and again after the drop) ----
+
+        private static readonly IList<PlannedSequence> HomeToKerbin = new[] { Leg("Return to Kerbin", 600) };
+
+        /// <summary>Pod, shield, then a tank with no decoupler between it and the shield.</summary>
+        private static Craft Stuck()
+        {
+            var c = new Craft();
+            var pod = c.Add("mk1pod.v2", null, "command");
+            c.Add("fuelTank", c.Shield(pod));
+            return c;
+        }
+
+        /// <summary>ENTRYDROP's error as reentry asks it: separate, chutes and core, and after its drop drop_error; the craft at altitude m.</summary>
+        private static string Refused(Craft craft, string at, IList<PlannedSequence> legs, double altitude = 100000, string separate = "auto", string core = "1", string dropError = null)
+        {
+            var ask = new Dictionary<string, object> { { "home", "1" }, { "separate", separate }, { "chutes", true }, { "core", core } };
+            if (dropError != null) ask["drop_error"] = dropError;
+            var snapshot = Snapshot(craft, at);
+            snapshot.Altitude = altitude;
+            return (string)BlockCalls.EntryDropCall(ask, snapshot, legs, 0, "", Uid)["error"];
+        }
+
+        [Fact]
+        public void At_block_start_a_stuck_stack_above_the_air_is_refused_as_the_block_said_it()
+        {
+            Assert.Equal("stack attached below the heat shield: fuelTank; drop it first or use separate (separate: fuelTank: no decoupler between it and the heat shield)",
+                Refused(Stuck(), "Kerbin", HomeToKerbin));
+        }
+
+        [Fact]
+        public void A_stack_that_can_drop_is_not_refused_at_block_start_it_drops_at_the_drop_point()
+        {
+            Assert.Equal("", Refused(PodShieldStage(), "Kerbin", HomeToKerbin));
+        }
+
+        [Fact]
+        public void In_the_air_with_separate_none_or_with_no_stack_for_this_shield_nothing_is_refused()
+        {
+            Assert.Equal("", Refused(Stuck(), "Kerbin", HomeToKerbin, altitude: 60000));
+            Assert.Equal("", Refused(Stuck(), "Kerbin", HomeToKerbin, separate: "none"));
+            // Below another shield (Duna before Kerbin) the tank is no stack of this Entry's.
+            Assert.Equal("", Refused(Stuck(), "Duna", DunaThenKerbin));
+            // Without separate (return, deorbit, today's callers) the answer is only what drops.
+            Assert.Equal("", Call(Stuck(), "Kerbin", HomeToKerbin)["error"]);
+        }
+
+        [Fact]
+        public void A_stack_that_takes_the_part_running_the_script_is_refused()
+        {
+            var c = PodShieldStage();
+            Assert.Equal("stack attached below the heat shield: fuelTank, liquidEngine; drop it first or use separate (separate: it would drop the part running the script)",
+                Refused(c, "Kerbin", HomeToKerbin, core: Uid(c, "fuelTank")));
+        }
+
+        [Fact]
+        public void After_the_drop_a_stack_still_on_is_refused_with_what_the_drop_said_and_one_gone_is_not()
+        {
+            Assert.Equal("stack attached below the heat shield: fuelTank, liquidEngine; drop it first or use separate (separate: nothing separated: the decouplers did not fire)",
+                Refused(PodShieldStage(), "Kerbin", HomeToKerbin, dropError: "nothing separated: the decouplers did not fire"));
+            Assert.Equal("stack attached below the heat shield: fuelTank, liquidEngine; drop it first or use separate",
+                Refused(PodShieldStage(), "Kerbin", HomeToKerbin, dropError: ""));
+            var gone = PodShieldStage();
+            gone.Parts.RemoveAll(p => p.Name == "fuelTank" || p.Name == "liquidEngine");
+            Assert.Equal("", Refused(gone, "Kerbin", HomeToKerbin, dropError: ""));
+        }
+
+        [Fact]
         public void Two_shields_are_spent_from_the_outside_in()
         {
             var craft = TwoShields();
