@@ -171,9 +171,9 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 "slope=-1", "touchdown_speed_actual=-1", "touchdown_h_speed=-1", "lean=-1", "reversals=0", "distance_to_target=-1", "best_effort=False",
                 "burn_start_ut=-1", "braking_began_ut=-1", "impact_ut=-1", "biome=", "staged_before_braking=False", "stage_left=-1",
                 "staged_before_deorbit=False", "lander_dv=-1", "lander_need=-1",
-                // 28 keys: #511 added descent_shape, descent_pe, predicted_dv, actual_dv, predicted_clearance, moved_for_terrain and shape_range;
-                // #596 staged_before_deorbit, lander_dv and lander_need; #712 vertical_fallback; #713 poi and distance_to_poi.
-                "0", "0", "-1", "31",
+                // 32 keys: #511 added descent_shape, descent_pe, predicted_dv, actual_dv, predicted_clearance, moved_for_terrain and shape_range;
+                // #596 staged_before_deorbit, lander_dv and lander_need; #712 vertical_fallback; #713 poi and distance_to_poi; #865 settle_s.
+                "0", "0", "-1", "32",
             }, printed);
         }
 
