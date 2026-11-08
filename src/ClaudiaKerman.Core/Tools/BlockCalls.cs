@@ -493,7 +493,7 @@ namespace ClaudiaKerman.Core.Tools
                 : -1;
             var result = Landing(landing, km);
             result["error"] = "";
-            result["plan_log"] = BurnPlanLog.Orbit("REENTRYIMPACT", orbit, at.Radius, frame, Number(ask, "ground_alt", 0), Number(ask, "from_ut", snapshot.Ut));
+            result["plan_log"] = BurnPlanLog.Orbit("REENTRYIMPACT", orbit, at.Radius, frame, Number(ask, "ground_alt", 0), Number(ask, "from_ut", snapshot.Ut)) + LastResortNote(landing);
             return result;
         }
 
@@ -897,6 +897,15 @@ namespace ClaudiaKerman.Core.Tools
             string error;
             frame = BodyFrame.Read(at, body, snapshot.Ut, out error);
             return error;
+        }
+
+        /// <summary>#923: for the log only, never a limit or a line Claudia reads: the main chutes opened by reentry's last resort over its speed rule, and the g at the opening.</summary>
+        internal static string LastResortNote(ReentryPrediction landing)
+        {
+            if (landing.LastResortSpeed <= 0) return "";
+            return string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "; chute last resort: armed at {0:0} m/s above {1:0} m/s by the {2:0} m rule, opening peak {3:0.0} g (not in PeakG)",
+                landing.LastResortSpeed, ReentryRules.ChuteMaxSpeed, ReentryRules.ChuteLastAgl, landing.OpeningPeakG);
         }
 
         private static Dictionary<string, object> Landing(ReentryPrediction landing, double km)

@@ -160,6 +160,13 @@ namespace ClaudiaKerman.Core.Tools
         public double PeakG;
         /// <summary>The air speed it reaches the ground at, m/s.</summary>
         public double LandingSpeed;
+        /// <summary>
+        /// The most the air pulls on the craft, in g, while a parachute is opening (#923), read at the integrator's accepted steps only, never its trial states; 0 when none opened. It is no part of
+        /// <see cref="PeakG"/> and no limit judges it: it is for the log.
+        /// </summary>
+        public double OpeningPeakG;
+        /// <summary>The air speed, m/s, a main parachute was armed at by <see cref="ReentryRules.ChuteLastAgl"/> over <see cref="ReentryRules.ChuteMaxSpeed"/>: a craft too dense to slow for its chutes. 0 for none.</summary>
+        public double LastResortSpeed;
         /// <summary>When the first parachute starts to open (semi-deploys), and when the heat shield goes; -1 for never.</summary>
         public double ChuteUt = -1;
         public double ShieldUt = -1;
@@ -205,6 +212,8 @@ namespace ClaudiaKerman.Core.Tools
         private IReentryCraft _craft;
         private double _mass;
         private double _peak;
+        private double _openingPeak;
+        private double _lastResortSpeed;
         private int _evaluations;
         private bool _shieldGone;
         /// <summary>The unit normal of the airflow's plane as the craft entered the air: lift is square to it.</summary>
@@ -254,7 +263,7 @@ namespace ClaudiaKerman.Core.Tools
             var top = radius + _body.AtmosphereHeight;
             var prediction = new ReentryPrediction();
             if (orbit.Radius(t) <= radius + _ground) return Fail("the craft is already on the ground");
-            var solver = new Bs3 { Rtol = Rtol, Atol = 1e-6, Hmax = MaxStep, MaxSteps = MaxSteps };
+            var solver = new Bs3 { Rtol = Rtol, Atol = 1e-6, Hmax = MaxStep, MaxSteps = MaxSteps, OnStep = ReadOpening };
             OdeFunction f = Derivative;
             var groundEvent = new OdeEvent((y, ut) => Height(y) - _ground, -1);
             var outEvent = new OdeEvent((y, ut) => Height(y) - _body.AtmosphereHeight, 1);
@@ -301,6 +310,8 @@ namespace ClaudiaKerman.Core.Tools
                         prediction.LandingUt = t;
                         prediction.Position = at;
                         prediction.PeakG = _peak;
+                        prediction.OpeningPeakG = _openingPeak;
+                        prediction.LastResortSpeed = _lastResortSpeed;
                         prediction.LandingSpeed = AirSpeed(y);
                         return prediction;
                     }
@@ -310,7 +321,7 @@ namespace ClaudiaKerman.Core.Tools
                         skipped = true;
                         break;
                     }
-                    changes[leg.Event](t);
+                    changes[leg.Event](t, y);
                 }
                 if (!skipped) return Fail("the craft is still flying after " + Metres(MaxAtmosphereSeconds) + " s in " + _body.Name + "'s atmosphere");
             }
@@ -321,15 +332,15 @@ namespace ClaudiaKerman.Core.Tools
         /// The changes the next stretch may end at, each with its event: a function that crosses 0 upward where the change's
         /// condition comes true (its conditions' shares of their limits, combined by min for "and", max for "or").
         /// </summary>
-        private Dictionary<OdeEvent, Action<double>> Changes(ReentryPrediction prediction)
+        private Dictionary<OdeEvent, Action<double, double[]>> Changes(ReentryPrediction prediction)
         {
-            var changes = new Dictionary<OdeEvent, Action<double>>();
+            var changes = new Dictionary<OdeEvent, Action<double, double[]>>();
             foreach (var chute in _chutes)
             {
                 var c = chute;
-                if (Pending(c)) changes.Add(new OdeEvent((y, ut) => Due(c, y), 1), ut => Advance(c, ut, prediction));
+                if (Pending(c)) changes.Add(new OdeEvent((y, ut) => Due(c, y), 1), (ut, at) => Advance(c, ut, at, prediction));
             }
-            if (!ShieldStays) changes.Add(new OdeEvent((y, ut) => ShieldDue(y), 1), ut => DropShield(ut, prediction));
+            if (!ShieldStays) changes.Add(new OdeEvent((y, ut) => ShieldDue(y), 1), (ut, at) => DropShield(ut, prediction));
             return changes;
         }
 
@@ -342,7 +353,7 @@ namespace ClaudiaKerman.Core.Tools
             foreach (var chute in _chutes)
             {
                 if (!Pending(chute) || Due(chute, y) < 0) continue;
-                Advance(chute, t, prediction);
+                Advance(chute, t, y, prediction);
                 return true;
             }
             if (ShieldStays || ShieldDue(y) < 0) return false;
@@ -368,8 +379,11 @@ namespace ClaudiaKerman.Core.Tools
             }
         }
 
-        private void Advance(Chute chute, double t, ReentryPrediction prediction)
+        private void Advance(Chute chute, double t, double[] y, ReentryPrediction prediction)
         {
+            // A main armed over its speed rule is the height rule's last resort (#923); the first one is the one logged.
+            if (chute.State == ReentryChuteState.Stowed && !chute.Of.Drogue && _lastResortSpeed <= 0 && Slower(y, ReentryRules.ChuteMaxSpeed) < 0)
+                _lastResortSpeed = AirSpeed(y);
             chute.State++;
             if (chute.State < ReentryChuteState.SemiDeployed) return;
             chute.OpenedUt = t;
@@ -452,6 +466,27 @@ namespace ClaudiaKerman.Core.Tools
             dy[3] = a.X;
             dy[4] = a.Y;
             dy[5] = a.Z;
+        }
+
+        /// <summary>At an accepted step: the air's pull in g with the chutes' drag in, while one is still opening (#923).</summary>
+        private void ReadOpening(double[] y, double t)
+        {
+            var opening = false;
+            foreach (var chute in _chutes)
+                if ((chute.State == ReentryChuteState.SemiDeployed && Opening(t, chute, chute.Of.SemiSeconds) < 1)
+                    || (chute.State == ReentryChuteState.Deployed && Opening(t, chute, chute.Of.FullSeconds) < 1))
+                    opening = true;
+            if (!opening) return;
+            var r = new Vec3(y[0], y[1], y[2]);
+            var length = r.Length;
+            var h = length - _body.Radius;
+            if (h >= _body.AtmosphereHeight) return;
+            double density, sound;
+            _air.Air(h, Math.Asin(Math.Max(-1, Math.Min(1, r.Z / length))) * 180 / Math.PI, out density, out sound);
+            var speed = AirSpeed(y);
+            if (density <= 0 || speed <= 0) return;
+            var bare = _craft.DragArea(sound > 0 ? speed / sound : 0, density * speed);
+            _openingPeak = Math.Max(_openingPeak, 0.5 * density * speed * speed * (bare + ChuteArea(t)) / _mass / G0);
         }
 
         private Vec3 Accel(Vec3 r, Vec3 v, double t)
