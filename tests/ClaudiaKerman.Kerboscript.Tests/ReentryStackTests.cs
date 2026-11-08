@@ -329,7 +329,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         private const string StartRead = "local below is addons:claudia:entrydrop(entry_ask).";
         private const string DropPoint = "if entry_in > below:lead {\n";
         private const string DropWait = "    local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).";
-        private const string Trim = "    claudia_fly_correction(ctx, addons:claudia:entrytrim(lexicon(\"to_air\", entry_in, \"home\", entry_ask:home, \"has_node\", hasnode, \"dv_left\", claudia_dv_remaining(), \"isp\", claudia_engine_isp()))).\n";
+        private const string Trim = "  claudia_fly_correction(ctx, addons:claudia:entrytrim(lexicon(\"to_air\", entry_in, \"home\", entry_ask:home, \"has_node\", hasnode, \"dv_left\", claudia_dv_remaining(), \"isp\", claudia_engine_isp()))).\n";
         private const string AirAgain = "    set entry_in to reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).\n";
         private const string Fire = "set drop_error to claudia_fire_drop(ctx, drop).";
 
@@ -350,20 +350,19 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.DoesNotContain("claudia_fire_drop", body.Substring(0, At(body, DropPoint)));
         }
 
-        /// <summary>#892: Core's ENTRYTRIM, flown through the Course Correction's own path, once, ahead of the wait to #815's drop; the eta is read again after it, and neither can fail the block.</summary>
+        /// <summary>#892: Core's ENTRYTRIM, flown through the Course Correction's own path, once, ahead of #815's drop and outside its wait, so the log has the decision however late the block starts; the eta is read again after it, and neither can fail the block.</summary>
         [Fact]
         public void The_late_trim_is_asked_and_flown_once_before_the_wait_to_the_drop_and_never_ends_the_block()
         {
             var body = Body();
             Assert.Equal(1, body.Split("addons:claudia:entrytrim(").Length - 1);
             Assert.Equal(1, body.Split("claudia_fly_correction(").Length - 1);
-            Assert.Contains(DropPoint, body);
-            var from = At(body, DropPoint);
-            Assert.Equal(from + DropPoint.Length, body.IndexOf("    // Core decides one late trim", from, StringComparison.Ordinal));
             var trim = At(body, Trim);
+            var from = At(body, DropPoint);
             var again = body.IndexOf(AirAgain, trim, StringComparison.Ordinal);
             var wait = At(body, DropWait);
-            Assert.True(from < trim && trim < again && again < wait, "trim, then the eta read again, then the wait");
+            Assert.Equal(from + DropPoint.Length, again);
+            Assert.True(trim < from && again < wait, "trim, then the eta read again, then the wait");
             Assert.True(wait < At(body, Fire));
             Assert.DoesNotContain("claudia_finish", body.Substring(trim, wait - trim));
             // The trim's craft is read in the addon: a second ENTRYCRAFT from the block would overwrite the craft aimed with, which ENTRYFINISH compares (#814).

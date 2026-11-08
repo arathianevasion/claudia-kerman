@@ -41,7 +41,7 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// <c>ADDONS:CLAUDIA:ENTRYTRIM</c>, for <c>reentry</c> (#892): at most one late trim before the stack drop, toward the Mission's <see cref="GameSnapshot.LandingTarget"/>. Takes <c>to_air</c> (s),
-        /// <c>dv_left</c>, <c>isp</c>, <c>craft</c> (<see cref="EntryCraftCall"/>'s answer) and <c>has_node</c>. Only with over <see cref="TrimLeastToAirS"/> s to the air and a predicted miss over
+        /// <c>dv_left</c>, <c>isp</c>, <c>has_node</c> and <c>craft</c> (<see cref="EntryCraftCall"/>'s answer, which the adapter adds). Only with over <see cref="TrimLeastToAirS"/> s to the air and a predicted miss over
         /// <see cref="TrimWorthKm"/> km does it solve, as <see cref="CorrectionBurn"/> aimed at a landing: #817's spare delta-v rule and its corridor round the aim's own target_pe. Its answer is CORRECTIONBURN's
         /// shape; any trim not to fly has <c>dv</c> 0, no <c>error</c> (the block goes on, #805) and why in <c>aim_note</c>.
         /// </summary>
