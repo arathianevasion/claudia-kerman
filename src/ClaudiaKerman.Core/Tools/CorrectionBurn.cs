@@ -208,8 +208,8 @@ namespace ClaudiaKerman.Core.Tools
             var ut = free ? result.X[3] : startUt;
             var burn = new Vec3(result.X[0], result.X[1], result.X[2]);
             var reached = SingleShooting.Arrive(system, from, coast.Orbit, ut, burn, target, needed);
-            if (reached == null)
-                return ask.Landing != null ? Unsolved(arrive, startUt, target, ask, "the solver's best burn does not reach " + target.Name) : Fail("the solver's best burn does not reach " + target.Name);
+            var unreached = "the solver's best burn does not reach " + target.Name;
+            if (reached == null) return ask.Landing != null ? Unsolved(arrive, startUt, target, ask, unreached) : Fail(unreached);
             double prograde, normal, radial;
             SingleShooting.NodeFrame(coast.Orbit, ut, burn, out prograde, out normal, out radial);
             var plan = new CorrectionPlan

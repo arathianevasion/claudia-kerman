@@ -27,6 +27,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>A small correction's throttle is capped so one physics tick (<see cref="PhysicsTick"/>, s) at the cap is at most this share of it.</summary>
         public const double TickShare = 0.05;
 
+        /// <summary>KSP's physics tick, s.</summary>
         public const double PhysicsTick = 0.02;
 
         /// <summary>
@@ -35,13 +36,16 @@ namespace ClaudiaKerman.Core.Tools
         /// </summary>
         public const double ResidualShare = 0.4;
 
+        /// <summary>The most a small correction's max_residual is, m/s.</summary>
         public const double SmallResidual = 0.2;
 
+        /// <summary>The least a small correction's max_residual is, m/s.</summary>
         public const double LeastResidual = 0.02;
 
         /// <summary>A correction under this many m/s isn't flown once its landing is within <see cref="ThereKm"/> km of the target, or it has no landing: its own error is that size.</summary>
         public const double CorrectionSkipDv = 0.1;
 
+        /// <summary>km from the target within which a return's landing counts as there.</summary>
         public const double ThereKm = 2;
 
         /// <summary>A correction under this many m/s is none (#805: an aimed correction that can't be solved flies none).</summary>
@@ -157,7 +161,7 @@ namespace ClaudiaKerman.Core.Tools
             if (error != "" || dv < NoBurnDv || (dv < CorrectionSkipDv && km <= ThereKm))
             {
                 answer["skip"] = true;
-                answer["note"] = error != "" ? error : "a " + Small(dv) + " m/s correction isn't worth the turn" + (km >= 0 ? ", " + Small(km) + " km from the target" : "");
+                answer["note"] = error != "" ? error : "a " + Hundredths(dv) + " m/s correction isn't worth the turn" + (km >= 0 ? ", " + Hundredths(km) + " km from the target" : "");
                 return answer;
             }
             if (!(dv < SmallCorrectionDv)) return answer;
@@ -168,7 +172,7 @@ namespace ClaudiaKerman.Core.Tools
             return answer;
         }
 
-        private static string Small(double x)
+        private static string Hundredths(double x)
         {
             return Math.Round(x, 2).ToString("0.##", CultureInfo.InvariantCulture);
         }
