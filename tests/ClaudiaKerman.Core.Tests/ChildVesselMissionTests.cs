@@ -389,6 +389,51 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void AfterTheSecondChildVesselRefusalRetrySendsANewTurnWithoutTheCommittedTextAgain()
+        {
+            var transport = new StreamingFakeTransport(MissionPlan(NeverLeft, "Bystander"), MissionPlan(NeverLeft, "Bystander"), MissionPlan("[]", "craft"));
+            var mission = StartedWith(transport);
+            DrainUntil(mission, v => v.Stage == MissionStage.Paused);
+            Assert.Contains(QuickReply.Retry, mission.View.QuickReplies);
+            Assert.Contains(QuickReply.RetryWithNote, mission.View.QuickReplies);
+
+            mission.Send(new Retry());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            Assert.Equal(3, transport.Requests.Count);
+            var asked = UserTexts(transport.Requests[0]).Last(t => t.Contains("Mission Goal"));
+            Assert.Equal(1, UserTexts(transport.Requests[1]).Count(t => t == asked));
+            Assert.Equal(1, UserTexts(transport.Requests[2]).Count(t => t == asked));
+            Assert.Equal(2, UserTexts(transport.Requests[2]).Count(t => t.Contains("The mod refused your Mission Plan")));
+        }
+
+        [Fact]
+        public void RetryWithANoteAfterTheSecondChildVesselRefusalSendsANewTurnWithTheNoteOnce()
+        {
+            var transport = new StreamingFakeTransport(MissionPlan(NeverLeft, "Bystander"), MissionPlan(NeverLeft, "Bystander"), MissionPlan("[]", "craft"));
+            var mission = StartedWith(transport);
+            DrainUntil(mission, v => v.Stage == MissionStage.Paused);
+
+            mission.Send(new RetryWithNote("Name the separation stage."));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            Assert.Equal(3, transport.Requests.Count);
+            Assert.Equal(1, UserTexts(transport.Requests[2]).Count(t => t.Contains("Name the separation stage.")));
+        }
+
+        private static List<string> UserTexts(HttpRequestSpec request)
+        {
+            var texts = new List<string>();
+            using (var doc = JsonDocument.Parse(request.Body))
+                foreach (var m in doc.RootElement.GetProperty("messages").EnumerateArray())
+                {
+                    if (m.GetProperty("role").GetString() != "user") continue;
+                    var content = m.GetProperty("content");
+                    if (content.ValueKind == JsonValueKind.String) texts.Add(content.GetString());
+                    else foreach (var b in content.EnumerateArray()) if (b.TryGetProperty("text", out var t)) texts.Add(t.GetString());
+                }
+            return texts;
+        }
+
+        [Fact]
         public void TheIdsOfVesselsThatLeftTheCraftAreKeptWithTheMissionInTheSave()
         {
             var transport = new StreamingFakeTransport(MissionPlan("[]", "craft"), SequencePlan("Release", "craft"));
