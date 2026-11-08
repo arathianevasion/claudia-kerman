@@ -315,7 +315,7 @@ namespace ClaudiaKerman.Core.Tests
             return kept;
         }
 
-        /// <summary>The first such ellipse with an Ike window within three loops, the wait to it meeting nothing (<see cref="KeptRoute.KeptWindow"/>).</summary>
+        /// <summary>The first such ellipse with an Ike window within three loops, the wait to it meeting nothing (<see cref="HighRoute.KeptWindow"/>).</summary>
         private static GameSnapshot TimedForIke()
         {
             foreach (var apAlt in new[] { 3193000.0, 4000000, 5000000, 6000000 })
@@ -327,7 +327,7 @@ namespace ClaudiaKerman.Core.Tests
                     {
                         new PlannedSequence { Name = "Capture", Intent = "Capture at Duna." }, new PlannedSequence { Name = "Next", Intent = "Transfer to Ike." },
                     };
-                    if (KeptRoute.KeptWindow(at).HasValue) return kept;
+                    if (HighRoute.KeptWindow(at).HasValue) return kept;
                 }
             throw new Exception("no ellipse through Ike's band has a window within three loops");
         }
