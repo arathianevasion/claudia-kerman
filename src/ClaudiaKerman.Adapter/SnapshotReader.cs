@@ -664,8 +664,8 @@ namespace ClaudiaKerman.Adapter
                 Tag(info, "docking_port");
                 var port = module as ModuleDockingNode;
                 if (port != null && info.PortSize.Length == 0) info.PortSize = string.IsNullOrEmpty(port.nodeType) ? "unknown" : port.nodeType.Trim();
-                // Docked to another vessel (not PreAttached, a joint built in the VAB): the Mission's own side ends at it (#909).
-                if (port != null && port.state != null && port.state.StartsWith("Docked")) Tag(info, "docked");
+                // The module's state (PreAttached is a joint built in the VAB, Docked a docking): the Mission's own side ends at a docking (#909).
+                if (port != null && !string.IsNullOrEmpty(port.state)) info.PortState = port.state;
             }
             else if (Is(module, "ModuleLiftingSurface")) Tag(info, "aero_stabiliser");
             else if (Is(module, "ModuleGimbal")) Tag(info, "gimbal");

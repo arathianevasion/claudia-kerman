@@ -59,14 +59,21 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
-        /// Whether the attachment between two parts is a docking, not a structural joint: the adapter tags a port "docked" when its module says so,
-        /// and with no state read, two docking ports joined to each other count. A port in the craft's own stack (a joint built in the VAB) is not one.
+        /// Whether the attachment between two parts is a docking, not a structural joint: two docking ports joined to each other, one of which
+        /// the adapter read Docked to another vessel (PortState). With no state read at all (an old snapshot) two joined ports count. A PreAttached pair
+        /// (a joint built in the VAB) and a port beside non-port parts are not one.
         /// </summary>
         private static bool Docked(SnapshotPart a, SnapshotPart b)
         {
-            var portA = a.Tags.Contains("docking_port");
-            var portB = b.Tags.Contains("docking_port");
-            return portA && portB || portA && a.Tags.Contains("docked") || portB && b.Tags.Contains("docked");
+            if (!a.Tags.Contains("docking_port") || !b.Tags.Contains("docking_port")) return false;
+            if (a.PortState.Length == 0 && b.PortState.Length == 0) return true;
+            return DockedState(a.PortState) || DockedState(b.PortState);
+        }
+
+        /// <summary>A port docked to another vessel: not PreAttached, and not "Docked (same vessel)", which is the craft's own.</summary>
+        private static bool DockedState(string state)
+        {
+            return state.StartsWith("Docked") && !state.Contains("same vessel");
         }
 
         /// <summary>The parts hanging below <paramref name="id"/> (its far side from home, by <paramref name="toward"/>), itself included.</summary>
