@@ -454,10 +454,11 @@ namespace ClaudiaKerman.Core.Tools
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
             object planet;
             ask.TryGetValue("planet", out planet);
-            return new Dictionary<string, object>
-            {
-                { "target", HomeLanding.DefaultTarget(snapshot, new LandingTargetAsk { Planet = planet as string ?? "", TargetPe = NumberOrNull(ask, "target_pe"), TargetInc = NumberOrNull(ask, "target_inc"), Window = NumberOrNull(ask, "window") }) },
-            };
+            var targetAsk = new LandingTargetAsk { Planet = planet as string ?? "", TargetPe = NumberOrNull(ask, "target_pe"), TargetInc = NumberOrNull(ask, "target_inc"), Window = NumberOrNull(ask, "window") };
+            // #880: only return reads the Mission's target here; it alone asks with target_pe, and deorbit's aim is out of that ticket.
+            var recorded = ask.ContainsKey("target_pe") ? HomeLanding.Recorded(snapshot, targetAsk) : null;
+            if (recorded != null) return new Dictionary<string, object> { { "target", new Dictionary<string, object> { { "lat", recorded.Latitude }, { "lng", recorded.Longitude } } } };
+            return new Dictionary<string, object> { { "target", HomeLanding.DefaultTarget(snapshot, targetAsk) } };
         }
 
         /// <summary>
@@ -680,6 +681,14 @@ namespace ClaudiaKerman.Core.Tools
             });
             var result = Step(step);
             result["aimed_plane"] = step.AimedPlane;
+            // #880: a trip home from another planet comes in for the default landing, so the Late Trim has a target to aim at.
+            var landingHome = HomeLanding.ArrivalTarget(snapshot, (string)target, Number(ask, "target_pe", 0));
+            if (landingHome != null)
+            {
+                result["lat"] = landingHome.Latitude;
+                result["lng"] = landingHome.Longitude;
+                result["landing_body"] = landingHome.Body;
+            }
             // A resumed flight's token is spent; its later coasts may checkpoint again.
             ((IDictionary<string, object>)result["carry"])[CoastCheckpoints.TokenKey] = mode == CoastCheckpoints.Off ? CoastCheckpoints.Off : CoastCheckpoints.On;
             return result;
@@ -1217,6 +1226,7 @@ namespace ClaudiaKerman.Core.Tools
                 { "aim_dv", plan.AimDv },
                 { "spread_km", plan.SpreadKm },
                 { "error_km", plan.ErrorKm },
+                { "aim_note", plan.AimNote },
                 { "plan_log", BurnPlanLog.Arrival("RETURNBURN", plan.Ut, plan.PePredicted, plan.IncPredicted, ask.ContainsKey("lat") && ask.ContainsKey("lng"), Number(ask, "lat", 0), Number(ask, "lng", 0)) + plan.WindowNote + handedNote },
             };
             if (plan.Landing != null)
@@ -1239,6 +1249,13 @@ namespace ClaudiaKerman.Core.Tools
             string problem;
             into.Landing = ReturnAim.LandingOn(snapshot, lat.Value, lng.Value, Number(ask, "ground_alt", 0), Number(ask, "isp", 0), body, air, craft, out problem);
             if (into.Landing != null) into.Landing.Payer = payer;
+            // #880: with no figure for the delta-v (stock can't say) nothing is known to be affordable: #816's rule, as the plan takes it.
+            var dvLeft = Number(ask, "dv_left", -1);
+            if (dvLeft >= 0)
+            {
+                into.DvLeft = dvLeft;
+                into.LaterLegsDv = snapshot.LaterLegsDv ?? 0;
+            }
             return problem;
         }
 

@@ -557,6 +557,8 @@ namespace ClaudiaKerman.KOS
                 step = BlockCalls.TransferStep(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
                 // Core's record of the plane it aims for, for capture (#788). A timing ask aims for nothing.
                 if (step.ContainsKey("aimed_plane")) MissionDriver.RecordAimedPlane((string)step["aimed_plane"]);
+                // #880: a trip home from another planet aims at the default landing, for the Late Trim.
+                if (step.ContainsKey("lat")) MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(step, (string)step["landing_body"]));
                 return KosValues.FromPlain(step);
             }, () => (string)step["error"] != "" ? (string)step["error"]
                 : string.Format(CultureInfo.InvariantCulture, "{0} {1} at UT {2:0.0}, prograde {3:0.00}, normal {4:0.00}, radial {5:0.00} m/s; next {6}; {7}",

@@ -446,6 +446,24 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(new[] { "Rated Off-Nominal, not Nominal: return's Course Correction couldn't be solved, so none was flown." }, Notices(mission));
         }
 
+        /// <summary>#880: the correction's note leads <c>aim_note</c>, the window's follows, and the return is still rated for the correction it couldn't fly.</summary>
+        [Fact]
+        public void AReturnThatFlewNoCorrectionAfterAWindowNoteIsRatedOffNominalWithItsNotice()
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"),
+                ScriptedResponse.Fixture("mission-debrief.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission, 10m);
+            mission.Send(ReturnEnded("no correction flown: the solver gave up; 40 km from the target, 80 m/s left window waits 20.0 h, 300.0 m/s, expected 12.0 km from the target", start.RunId));
+            mission.Send(new KosRunEnded(Finished(), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            Assert.Equal("Off-Nominal", mission.View.Log.Last(e => e.Kind == LogKind.Debrief).Outcome);
+            Assert.Equal(new[] { LandingLine.NoCorrectionNotice }, Notices(mission));
+        }
+
         [Fact]
         public void AReturnThatFlewACorrectionKeepsItsRating()
         {

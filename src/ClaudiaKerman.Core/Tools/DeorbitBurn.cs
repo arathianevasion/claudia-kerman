@@ -152,6 +152,12 @@ namespace ClaudiaKerman.Core.Tools
             return AutoMaxDv(KeptDv(dvLeft, payer), payer.KeepsEngine ? poweredLandingDv : 0, laterLegsDv, payer.KeptShare);
         }
 
+        /// <summary>#880: what <c>return</c>'s window search holds back on top of <see cref="SpareDv"/> for the Course Correction and the Late Trim: the larger of 50 m/s or 10% of the delta-v the landing keeps.</summary>
+        public static double WindowBuffer(double dvLeft, DropBurn payer)
+        {
+            return Math.Max(ReserveMin, ReserveShare * KeptDv(dvLeft, payer));
+        }
+
         /// <summary>The least burn from <paramref name="body"/>'s low circular orbit to the entry periapsis, m/s: <c>deorbit</c>'s from there, for planning (#790).</summary>
         public static double FromLowOrbit(SnapshotBody body)
         {

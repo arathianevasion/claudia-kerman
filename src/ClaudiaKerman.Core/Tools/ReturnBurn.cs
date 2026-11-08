@@ -34,6 +34,15 @@ namespace ClaudiaKerman.Core.Tools
         public double Handed = 1;
         /// <summary>With the search over a costly plane (#887): the window the Mission planned, so a restart past the cheap alignment keeps that alignment's window; null for the next alignment.</summary>
         public double? PlannedUt;
+        /// <summary>
+        /// With <see cref="Landing"/> at Kerbin (#880): the delta-v left, m/s, which turns on the search for the earliest window landing within
+        /// <see cref="ReturnAim.ReachKm"/>; null, as when stock can't say, for #816's rule alone.
+        /// </summary>
+        public double? DvLeft;
+        /// <summary>m/s the Mission Plan's later legs need (#832), kept back from <see cref="DvLeft"/>.</summary>
+        public double LaterLegsDv;
+        /// <summary>#880, from the plan: what the landing keeps for its engines, m/s, read from the craft's own chutes where <see cref="ReturnLanding.Craft"/> is an estimate without any; null to read it from the prediction, as the block does.</summary>
+        public double? PoweredLandingDv;
         /// <summary>Start from the coarse grid, as when the analytic seed is undefined: for tests of that worst case.</summary>
         internal bool FromGrid;
         /// <summary>The cap on the SQP's iterations, and whether a best point short of the answer gets its finish: for tests of a solve that stops short.</summary>
@@ -75,6 +84,8 @@ namespace ClaudiaKerman.Core.Tools
         public double SpreadKm = -1;
         /// <summary>From an inclined orbit (#816), the window rule's figures for the log: the cheapest, the cap and the window taken; null otherwise.</summary>
         public string WindowNote;
+        /// <summary>The window search's answer in words (#880): the wait (hours), the delta-v and the expected landing distance, or the miss; "" without that search.</summary>
+        public string AimNote = "";
     }
 
     /// <summary>

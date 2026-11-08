@@ -91,6 +91,15 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Contains("set fixed to claudia_fly_correction(ctx, addons:claudia:correctionburn(\n          return_with_inc(claudia_correction_ask(planet:name, opt:target_pe, when:ut), opt:target_inc))).", ret.Replace("\r\n", "\n"));
         }
 
+        [Fact]
+        public void Return_s_aim_note_leads_with_the_correction_s()
+        {
+            var ret = CoreLibrary.Blocks.Single(b => b.Name == "return").Source;
+            // LandingLine.NoCorrection (#899) reads the note's start.
+            Assert.Contains("set extra:aim_note to (aimed:aim_note + \" \" + extra:aim_note):trim.", ret);
+            Assert.Contains("if found:aim_note <> \"\" { set extra:aim_note to found:aim_note. }", ret);
+        }
+
         // ---- The Course Correction's burn time (#368): return's; transfer_to's is Core's TransferFlight (#459) ----
 
         // return asks Core's TransferFlight.CorrectionUt and Earliest through TRANSFERSTEP (#731).
@@ -214,7 +223,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void Return_passes_its_target_and_max_wait_to_the_ejection()
         {
             var source = CoreLibrary.Blocks.Single(b => b.Name == "return").Source;
-            Assert.Contains("set burn_ask to lexicon(\"lat\", site:lat, \"lng\", site:lng, \"ground_alt\", max(0, ground_alt), \"max_wait\", opt:max_wait, \"max_duration\", opt:max_duration, \"start_ut\", ctx:start_ut, \"isp\", claudia_engine_isp(), \"craft\", craft).", source);
+            Assert.Contains("set burn_ask to lexicon(\"lat\", site:lat, \"lng\", site:lng, \"ground_alt\", max(0, ground_alt), \"max_wait\", opt:max_wait, \"max_duration\", opt:max_duration, \"start_ut\", ctx:start_ut, \"isp\", claudia_engine_isp(), \"craft\", craft, \"dv_left\", claudia_dv_recounted()).", source);
             Assert.Contains("addons:claudia:returnburn(return_with_inc(burn_ask, opt:target_inc))", source);
             Assert.Equal("auto", One("claudia_options(lexicon(), return_defaults(), \"auto\"):opt:max_wait"));
             Assert.Equal("35000", One("claudia_options(lexicon(), return_defaults(), \"auto\"):opt:target_pe"));
@@ -274,7 +283,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(1, source.Split("addons:claudia:entrycraft(").Length - 1);
             Assert.Contains(read, source);
             Assert.True(source.IndexOf(read, StringComparison.Ordinal) < source.IndexOf("set predict to {", StringComparison.Ordinal));
-            Assert.Contains("\"isp\", claudia_engine_isp(), \"craft\", craft).", source);
+            Assert.Contains("\"isp\", claudia_engine_isp(), \"craft\", craft, \"dv_left\", claudia_dv_recounted()).", source);
             Assert.Contains("return addons:claudia:reentryimpact(return_impact_query(orb, from_ut, site, ground_alt, craft)).", source);
         }
 
