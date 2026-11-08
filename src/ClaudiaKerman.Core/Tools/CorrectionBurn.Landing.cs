@@ -29,7 +29,7 @@ namespace ClaudiaKerman.Core.Tools
         public const double MostEntryG = 8;
         /// <summary>How far an end of the corridor moves back toward target_pe when its entry pulls too hard, m.</summary>
         private const double CorridorStepM = 1000;
-        /// <summary>The corridor's search: regula falsi steps on a side that crosses, the step under which it stops, m, and the most predictions in all.</summary>
+        /// <summary>The corridor's search: regula falsi steps on a side that crosses, the step under which it stops, m, and the most predictions in all (about 150 ms in the game at 10.5 ms each, before the held-periapsis solve).</summary>
         private const int CorridorSecants = 4;
         private const double CorridorRootM = 50;
         private const int CorridorPredictions = 14;
