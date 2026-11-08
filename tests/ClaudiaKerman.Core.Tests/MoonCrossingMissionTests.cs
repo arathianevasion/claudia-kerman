@@ -455,6 +455,51 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(!planned, PlanCard(mission).Contains("Blocker"));
         }
 
+        /// <summary>
+        /// #894: a moon named only to be avoided is not planned: the Debrief keeps the on-course fact, the watch does not plan it and the Blocker fires,
+        /// whether the words are the Sequence Plan's or a later Mission Plan leg's. A moon that is a destination in another word is still planned.
+        /// </summary>
+        [Theory]
+        [InlineData("Raise Ap clear of Ike", false)]
+        [InlineData("Raise Ap clear of Ike's SOI", false)]
+        [InlineData("Avoid Ike", false)]
+        [InlineData("Coast, avoiding Ike", false)]
+        [InlineData("Burn away from Ike", false)]
+        [InlineData("Stay below Ike's SOI", false)]
+        [InlineData("Stay under Ike's SOI", false)]
+        [InlineData("Stay outside Ike's orbit", false)]
+        [InlineData("Coast to miss Ike", false)]
+        [InlineData("Coast, missing Ike", false)]
+        [InlineData("Transfer to Ike, avoiding Dres", true)]
+        public void AMoonNamedOnlyToBeAvoidedIsNotPlanned(string words, bool planned)
+        {
+            var due = Now + MoonCrossingTests.Wait908b;
+            var transport = new StreamingFakeTransport(CapturePlan("Return to Kerbin."), CoastPlan(words), NominalDebrief(), Waiting(due), Waiting(due));
+            var mission = Control(transport);
+            ToSequencePlan(mission, InDunaOrbit(), "Orbit Ike.");
+            mission.Send(new Approve());
+            var start = mission.TakeCommands().OfType<StartScript>().Single();
+            mission.Send(OnTheCoastToIke(Now));
+            mission.Send(new KosRunEnded(Ended(true), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval && transport.Requests.Count >= 4);
+
+            Assert.Equal(!planned, transport.Requests[2].Body.Contains("On course to meet Ike at UT "));
+            Assert.Equal(planned, mission.View.NextPatchPlanned.Split(',').Contains("Ike"));
+            Assert.DoesNotContain("Dres", mission.View.NextPatchPlanned.Split(','));
+            mission.TakeCommands();
+            mission.Send(new WarpToDueTime());
+            Assert.Equal(planned, mission.TakeCommands().OfType<WarpToUt>().Any());
+            Assert.Equal(!planned, PlanCard(mission).Contains("Blocker"));
+        }
+
+        /// <summary>#894: a moon that is a destination in one leg and avoided in another is planned by the leg that goes to it.</summary>
+        [Fact]
+        public void AMoonAvoidedInOneLegAndGoneToInAnotherIsPlanned()
+        {
+            var debrief = DebriefOnTheCoastToIke(CapturePlan("Capture at Ike."), CoastPlan("Coast, avoiding Ike"));
+            Assert.DoesNotContain("On course to meet", debrief);
+        }
+
         /// <summary>The craft at <see cref="Now"/> on an orbit of 908b's shape whose path meets Ike on a later loop (4th or so) but not on the first.</summary>
         private static GameSnapshot OnALateEncounterWithIke(out double period)
         {
