@@ -117,6 +117,24 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(reserve(PartnerPod).KeptShare > 0.99);
         }
 
+        [Fact]
+        public void A_port_used_as_a_structural_joint_in_the_craft_s_own_stack_keeps_the_engine_and_reserve()
+        {
+            // Pod, a docking port as a VAB joint, tank, engine: the same craft with or without the port (a lone port is not a docking).
+            const uint Port = 20;
+            Func<bool, LandingReserve> reserve = withPort =>
+            {
+                var parts = new List<SnapshotPart> { Part(Pod, null, -1, 1.0, tags: "command") };
+                if (withPort) parts.Add(Part(Port, Pod, -1, 0.05, tags: "docking_port"));
+                parts.Add(Tank(TankU, withPort ? Port : Pod, 0, 3.0, 0.5));
+                parts.Add(Engine(EngU, TankU, 0));
+                return LandingReserve.Of(Snapshot(parts, 0), new SnapshotPart[0], 0, Pod);
+            };
+            Assert.True(reserve(true).KeepsEngine);
+            Assert.Equal(reserve(false).KeptShare, reserve(true).KeptShare, 3);
+            Assert.True(reserve(true).KeptShare > 0.9);
+        }
+
         private static GameSnapshot Snapshot(List<SnapshotPart> parts, int stage = 4)
         {
             return new GameSnapshot { Ut = 0, Craft = new SnapshotCraft { Stage = stage, Parts = parts, MassTonnes = parts.Sum(p => p.MassT) } };

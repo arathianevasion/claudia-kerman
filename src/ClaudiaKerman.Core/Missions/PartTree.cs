@@ -38,8 +38,8 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
-        /// The parts on the Mission's own craft: those reached from <paramref name="home"/> along any attachment without passing a docking port
-        /// (the port itself is reached; what is docked beyond it is another vessel's). All of <paramref name="parts"/> with no home or one not aboard.
+        /// The parts on the Mission's own craft: those reached from <paramref name="home"/> along any attachment without crossing a docking (see Docked:
+        /// a port used as a structural joint is crossed; the port on the near side of a docking is reached, what is docked beyond it is another vessel's). All of <paramref name="parts"/> with no home or one not aboard.
         /// </summary>
         public static List<SnapshotPart> OwnSide(IList<SnapshotPart> parts, uint? home)
         {
@@ -52,11 +52,21 @@ namespace ClaudiaKerman.Core.Missions
             while (queue.Count > 0)
             {
                 var id = queue.Dequeue();
-                if (id != home.Value && byId[id].Tags.Contains("docking_port")) continue;
                 foreach (var next in edges[id])
-                    if (seen.Add(next)) queue.Enqueue(next);
+                    if (!Docked(byId[id], byId[next]) && seen.Add(next)) queue.Enqueue(next);
             }
             return parts.Where(p => seen.Contains(p.Id)).ToList();
+        }
+
+        /// <summary>
+        /// Whether the attachment between two parts is a docking, not a structural joint: the adapter tags a port "docked" when its module says so,
+        /// and with no state read, two docking ports joined to each other count. A port in the craft's own stack (a joint built in the VAB) is not one.
+        /// </summary>
+        private static bool Docked(SnapshotPart a, SnapshotPart b)
+        {
+            var portA = a.Tags.Contains("docking_port");
+            var portB = b.Tags.Contains("docking_port");
+            return portA && portB || portA && a.Tags.Contains("docked") || portB && b.Tags.Contains("docked");
         }
 
         /// <summary>The parts hanging below <paramref name="id"/> (its far side from home, by <paramref name="toward"/>), itself included.</summary>

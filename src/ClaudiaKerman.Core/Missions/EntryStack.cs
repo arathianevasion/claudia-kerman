@@ -51,8 +51,8 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// The stack of <paramref name="parts"/> for shield number <paramref name="number"/> counted from <paramref name="home"/> (the part the
-        /// crew rides in; the root if null) outward, by parts between, never by stage: stock shields aren't in the staging list. With home under
-        /// the shield (a craft built from the far side) no decoupler drops the rest without taking home, so all of it is stuck.
+        /// crew rides in; the root if null) outward, by parts between, never by stage: stock shields aren't in the staging list. Parts are
+        /// judged from home through the undirected tree (<see cref="PartTree.TowardHome"/>), so a craft built from the far side is judged like any other.
         /// </summary>
         public static EntryStack Of(IList<SnapshotPart> parts, uint? home, int number)
         {
@@ -64,22 +64,15 @@ namespace ClaudiaKerman.Core.Missions
 
             var anchor = stack.Shield.Id;
             var walker = new Walker(byId, anchor, PartTree.TowardHome(parts, home));
-            var reversed = home.HasValue && byId.ContainsKey(home.Value) && walker.Up(byId[home.Value]).Under;
             var seen = new HashSet<uint>();
             foreach (var part in parts)
-                if (part.Id != anchor) stack.Classify(part, walker.Up(part), reversed, seen);
+                if (part.Id != anchor) stack.Classify(part, walker.Up(part), seen);
             return stack;
         }
 
-        private void Classify(SnapshotPart part, Walk way, bool reversed, HashSet<uint> seen)
+        private void Classify(SnapshotPart part, Walk way, HashSet<uint> seen)
         {
-            if (reversed)
-            {
-                if (way.Under) return;
-                Parts.Add(part);
-                Stuck.Add(part);
-            }
-            else if (way.Under)
+            if (way.Under)
             {
                 if (way.Top == null)
                 {
