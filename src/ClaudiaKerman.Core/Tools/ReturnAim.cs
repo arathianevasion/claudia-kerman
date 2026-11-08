@@ -300,8 +300,17 @@ namespace ClaudiaKerman.Core.Tools
         public static double HandedOn(SnapshotBody planet, double now, IPlanningBody body)
         {
             string problem;
-            var frame = body == null ? null : BodyFrame.Read(planet, body, now, out problem);
-            return frame == null ? 1 : frame.Handed;
+            return HandedOn(planet, now, body, out problem);
+        }
+
+        /// <summary><see cref="HandedOn(SnapshotBody, double, IPlanningBody)"/> (#912): <paramref name="problem"/> is why the frame couldn't be read and 1 was taken, else null.</summary>
+        public static double HandedOn(SnapshotBody planet, double now, IPlanningBody body, out string problem)
+        {
+            problem = null;
+            if (body == null) { problem = "no planning body"; return 1; }
+            var frame = BodyFrame.Read(planet, body, now, out problem);
+            if (frame == null) { problem = problem ?? "frame unreadable"; return 1; }
+            return frame.Handed;
         }
 
         /// <summary>

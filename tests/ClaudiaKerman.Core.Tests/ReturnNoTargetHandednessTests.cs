@@ -144,5 +144,35 @@ namespace ClaudiaKerman.Core.Tests
                 Assert.Equal(a.DeltaV, b.DeltaV, 6);
             }
         }
+
+        private sealed class BlindBody : PlanningBodyBase
+        {
+            public override double TerrainAltitude(string body, double latitude, double longitude) { return 0; }
+            public override string Biome(string body, double latitude, double longitude) { return ""; }
+            public override double SunElevation(string body, double latitude, double longitude, double ut) { return 0; }
+            public override bool SurfaceUnder(string body, double x, double y, double z, out double latitude, out double longitude) { latitude = 0; longitude = 0; return false; }
+        }
+
+        /// <summary>#912: the fallback to handed = 1 says why in the block's plan log; a readable frame adds nothing.</summary>
+        [Fact]
+        public void A_no_target_return_logs_why_its_frame_could_not_be_read()
+        {
+            var snapshot = Orbiting(1.7, 90);
+            string problem;
+            Assert.Equal(1, ReturnAim.HandedOn(Kerbin, snapshot.Ut, new BlindBody(), out problem));
+            Assert.False(string.IsNullOrEmpty(problem));
+            Assert.Contains("[turn direction 1: " + problem + "]", (string)NoTarget(snapshot, new BlindBody())["plan_log"]);
+            Assert.DoesNotContain("turn direction", (string)NoTarget(snapshot, new FrameBody(-1))["plan_log"]);
+            Assert.DoesNotContain("turn direction", (string)NoTarget(snapshot, new FrameBody(1))["plan_log"]);
+        }
+
+        [Fact]
+        public void A_return_with_a_target_logs_no_turn_direction_note()
+        {
+            var snapshot = Orbiting(1.7, 90);
+            var input = new Dictionary<string, object> { { "target_pe", 35000.0 }, { "earliest_ut", snapshot.Ut }, { "lat", -0.0972 }, { "lng", -74.5577 } };
+            var result = BlockCalls.ReturnBurn(input, snapshot, new BlindBody());
+            if (result.ContainsKey("plan_log")) Assert.DoesNotContain("turn direction", (string)result["plan_log"]);
+        }
     }
 }
