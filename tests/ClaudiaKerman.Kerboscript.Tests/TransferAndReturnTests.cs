@@ -270,7 +270,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void The_craft_reentry_flies_is_read_once_and_every_prediction_carries_it()
         {
             var source = CoreLibrary.Blocks.Single(b => b.Name == "return").Source.Replace("\r\n", "\n");
-            var read = "local craft is addons:claudia:entrycraft(lexicon(\"home\", reentry_home_uid(), \"body\", planet:name)).";
+            var read = "local craft is addons:claudia:entrycraft(lexicon(\"home\", reentry_home_uid(), \"stage_limit\", opt:stage_limit, \"body\", planet:name)).";
             Assert.Equal(1, source.Split("addons:claudia:entrycraft(").Length - 1);
             Assert.Contains(read, source);
             Assert.True(source.IndexOf(read, StringComparison.Ordinal) < source.IndexOf("set predict to {", StringComparison.Ordinal));

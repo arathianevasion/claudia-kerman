@@ -242,7 +242,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void The_burn_search_and_the_after_burn_ask_both_carry_the_one_craft_read()
         {
             var source = CoreLibrary.Files.Single(f => f.Name == "deorbit").Source;
-            Assert.Equal(1, source.Split("addons:claudia:entrycraft(lexicon(\"home\", reentry_home_uid(), \"leave_out\", claudia_drop_uids(separation)))").Length - 1);
+            Assert.Equal(1, source.Split("addons:claudia:entrycraft(lexicon(\"home\", reentry_home_uid(), \"stage_limit\", opt:stage_limit, \"leave_out\", claudia_drop_uids(separation)))").Length - 1);
             Assert.Contains("claudia_engine_isp(), craft, opt:max_dv", source);
             Assert.Contains("\"ground_alt\", max(0, ground_alt), \"craft\", craft))", source);
             Assert.DoesNotContain("entrydrop", source);
