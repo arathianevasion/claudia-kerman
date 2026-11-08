@@ -113,7 +113,7 @@ namespace ClaudiaKerman.Core.Missions
             if (plan.DueTimeUt.HasValue && plan.DueTimeUt.Value >= due.Value) return;
             plan.DueTimeUt = due.Value;
             // #887: a return's window is kept, so a late Approval is a missed window (WindowWaits.Missed) rather than a search on to the next band.
-            var home = wait.Block == "return" ? ReturnAim.PlanetOf(snapshot.At(_ut)) : null;
+            var home = wait.Block == "return" && wait.DueByUt.HasValue && wait.DueByUt.Value < wait.DepartureUt.Value ? ReturnAim.PlanetOf(snapshot.At(_ut)) : null;
             if (home != null)
             {
                 mission.WindowPlanet = home.Name;
@@ -125,7 +125,7 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>The plan's first burn is a <c>return</c> (#887), the one whose window <see cref="BurnPoints"/> reads.</summary>
-        private static bool FirstIsReturn(SequencePlan plan)
+        internal static bool FirstIsReturn(SequencePlan plan)
         {
             if (plan == null || plan.Manual || string.IsNullOrWhiteSpace(plan.Script)) return false;
             var first = BlockOptionCheck.Calls(plan.Script).FirstOrDefault(c => c.Block != "coast");

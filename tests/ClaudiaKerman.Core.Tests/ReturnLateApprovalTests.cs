@@ -30,12 +30,12 @@ namespace ClaudiaKerman.Core.Tests
                 + "\"total_delta_v\":320,\"expected_duration\":\"a day\",\"mission_time_s\":-1},\"sequence_plan\":null,\"debrief\":null}");
         }
 
-        private static ScriptedResponse ReturnSequencePlan()
+        private static ScriptedResponse ReturnSequencePlan(string script = CheapReturnScript)
         {
             return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: Return.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
                 + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"Return\",\"intent\":\"Fly home.\",\"why\":\"Only step.\",\"target\":\"Kerbin\","
                 + "\"tolerances\":\"Pe within 5 km\",\"expected_delta_v\":320,\"expected_duration_s\":90000,\"abort_conditions\":[],\"risks\":[],"
-                + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":" + JsonSerializer.Serialize(CheapReturnScript) + ","
+                + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":" + JsonSerializer.Serialize(script) + ","
                 + "\"due_time_ut\":-1,\"window_closes_ut\":-1,\"late_window_dv\":-1},\"debrief\":null}");
         }
 
@@ -75,9 +75,9 @@ namespace ClaudiaKerman.Core.Tests
             throw new Exception("no node with a Due Time ahead of its window");
         }
 
-        private MissionControl ToReturnPlan(GameSnapshot snapshot)
+        private MissionControl ToReturnPlan(GameSnapshot snapshot, string script = CheapReturnScript)
         {
-            var mission = Control(new StreamingFakeTransport(ReturnMissionPlan(), ReturnSequencePlan()));
+            var mission = Control(new StreamingFakeTransport(ReturnMissionPlan(), ReturnSequencePlan(script)));
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(snapshot);
             CraftCheckRouter.StartChecked(mission, _background, snapshot, new StartMission("Return to Kerbin.", 10m, "claude-sonnet-5-5", window: WindowPicks.AsTheSetting(snapshot, "Return to Kerbin.")));
@@ -106,6 +106,40 @@ namespace ClaudiaKerman.Core.Tests
 
             Assert.Empty(commands.OfType<StartScript>());
             Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("window of " + KerbinTime.Date(window)) && e.Text.Contains("was missed"));
+        }
+
+        [Fact]
+        public void ALateReturnOverAPlaneThatCostsNothingIsUnchangedFromBeforeTheKeptWindow()
+        {
+            // A fixed window over three Kerbin days off: a Due Time, but no costly plane, so no window is kept and a late Approval just flies.
+            var ut = CheapReturnStart + 3 * 21600;
+            var snapshot = OverTheMun(90);
+            snapshot.Orbit.Inclination = 0;
+            var clock = new FakeAlarmClock();
+            var mission = ToReturnPlan(snapshot, "local res is return(lexicon(\"target\", \"none\", \"window\", " + ut.ToString(CultureInfo.InvariantCulture) + ")).\n");
+            clock.Take(mission);
+            Assert.True(mission.View.DueTime.HasDueTime);
+            Assert.Equal("", mission.View.DueTime.WaitsFor);
+
+            var back = ut + 600;
+            mission.Send(new UtAdvanced(back));
+            var late = OverTheMun(90, back);
+            late.Orbit.Inclination = 0;
+            mission.Send(late);
+            clock.Take(mission);
+            mission.Send(new Approve());
+            Assert.Single(clock.Take(mission).OfType<StartScript>());
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("was missed") || e.Text.Contains("no next window"));
+        }
+
+        [Fact]
+        public void TheMissionListNamesNoTransferWindowForAReturnsDueTime()
+        {
+            var entry = new MissionListEntry();
+            var plan = new SequencePlan { Script = CheapReturnScript, DueTimeUt = 5000 };
+            MissionHistory.Due(entry, MissionStage.AwaitingSequenceApproval, plan, "Kerbin", false);
+            Assert.Equal(5000, entry.DueUt);
+            Assert.Equal("", entry.DueFor);
         }
 
         [Fact]
