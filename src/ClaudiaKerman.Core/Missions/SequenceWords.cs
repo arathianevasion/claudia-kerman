@@ -99,6 +99,16 @@ namespace ClaudiaKerman.Core.Missions
             return first;
         }
 
+        /// <summary>The text before a body names where a trip starts, not where it goes: "from the", "depart", "leave", "eject from".</summary>
+        private static readonly Regex Origin = new Regex(@"\b(?:from|depart(?:s|ing|ure)?|leav(?:e|es|ing)|eject(?:s|ion|ing)?)\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
+
+        /// <summary>The bodies <paramref name="words"/> name as a place to be at or go to (#871): every body with an occurrence that isn't an origin ("Return from Ike to Duna" names Duna, not Ike).</summary>
+        public static System.Collections.Generic.IList<SnapshotBody> Destinations(GameSnapshot snapshot, string words)
+        {
+            return snapshot.Bodies.Where(b => b.Name.Length > 0 && Regex.Matches(words, @"\b" + Regex.Escape(b.Name) + @"\b", RegexOptions.IgnoreCase).Cast<Match>()
+                .Any(m => !Origin.IsMatch(words.Substring(0, m.Index)) && !ReturnsFrom.IsMatch(words.Substring(0, m.Index)))).ToList();
+        }
+
         /// <summary>The text before a body names a return's origin: "come home from", "return to Kerbin from", "return from" (same clause).</summary>
         private static readonly Regex ReturnsFrom = new Regex(@"\b(?:com(?:e|es|ing)|return(?:s|ing|ed)?|go(?:es|ing)?|head(?:s|ing|ed)?|fl(?:y|ies|ying)|back|home)\b[^.,;]*\bfrom\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
 
