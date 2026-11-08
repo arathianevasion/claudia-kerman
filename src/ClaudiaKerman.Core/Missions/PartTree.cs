@@ -58,6 +58,14 @@ namespace ClaudiaKerman.Core.Missions
             return parts.Where(p => seen.Contains(p.Id)).ToList();
         }
 
+        /// <summary>The command part the craft flies from, among those on <paramref name="from"/>'s own side (all of <paramref name="parts"/> with none): the first with seats, else the first, else <paramref name="from"/>.</summary>
+        public static uint? CommandPart(IList<SnapshotPart> parts, uint? from)
+        {
+            var own = OwnSide(parts, from).Where(p => p.Tags.Contains("command")).ToList();
+            var command = own.FirstOrDefault(p => p.CrewCapacity > 0) ?? own.FirstOrDefault();
+            return command == null ? from : command.Id;
+        }
+
         /// <summary>
         /// Whether the attachment between two parts is a docking, not a structural joint: two docking ports joined to each other, one of which
         /// the adapter read Docked to another vessel (PortState). With no state read at all (an old snapshot) two joined ports count. A PreAttached pair

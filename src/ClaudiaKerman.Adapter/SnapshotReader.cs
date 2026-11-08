@@ -407,8 +407,18 @@ namespace ClaudiaKerman.Adapter
         private static void ReadChutes(GameSnapshot snapshot, Vessel vessel)
         {
             var parts = vessel.parts;
+            if (!snapshot.Craft.Parts.Any(p => p.Tags.Contains("parachute"))) return;
+            var nose = EntryAxis.Of(vessel, snapshot.Craft.Parts, null).Nose;
             for (var i = 0; i < parts.Count && i < snapshot.Craft.Parts.Count; i++)
-                if (snapshot.Craft.Parts[i].Tags.Contains("parachute")) snapshot.Craft.Parts[i].Chute = ReentryCraft.ChuteOf(vessel, parts[i]);
+                if (snapshot.Craft.Parts[i].Tags.Contains("parachute")) snapshot.Craft.Parts[i].Chute = ReentryCraft.ChuteOf(parts[i], nose);
+        }
+
+        /// <summary>The craft's parts as the snapshot reads them, on their own: the Entry's attitude (<see cref="EntryAxis"/>) needs only their tree and tags.</summary>
+        internal static List<SnapshotPart> PartsOf(Vessel vessel)
+        {
+            var snapshot = new GameSnapshot();
+            ReadParts(snapshot, vessel.parts, vessel.VesselDeltaV);
+            return snapshot.Craft.Parts;
         }
 
         /// <summary>Which engines can brake (<see cref="EntryFinish"/>), asked only by <c>ENTRYFINISH</c>: stock's own flow answers for crossfeed and fuel lines, so no tank is summed here.</summary>

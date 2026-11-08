@@ -275,15 +275,28 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(EntryCraft.Same(aimed, after.Key, flown), aimed + " against " + after.Key);
         }
 
-        /// <summary>
-        /// The predictor's craft for the capsule of #924: the shield's face is bare only with the decoupler off it, 2.24 m² as <c>reentry</c> read it, and the 0.11 m²
-        /// <c>return</c> read while the decoupler was counted as staying on it.
-        /// </summary>
-        private static IReentryCraft CapsuleOf(GameSnapshot snapshot, IDictionary<string, object> ask)
+        // ---- The axis the drag is read along (#924): the Entry's attitude, never the control point ----
+
+        private static readonly double[] PodUp = { 0, 1, 0 };
+        private static readonly double[] ReversedControlUp = { 0, -1, 0 };
+
+        /// <summary>The nose <see cref="EntryAttitude"/>'s rule gives for the craft that enters, every part built pod-up with the shield below home.</summary>
+        private static double[] EntryNose(GameSnapshot snapshot, IDictionary<string, object> ask)
         {
             var left = new HashSet<string>(BlockCalls.LeftOut(ask));
-            var bare = left.Contains(Uid(Dec)) || snapshot.Craft.Parts.All(p => p.Id != Dec);
-            return ReturnEntryDragTests.Capsule(bare ? 2.24 : 0.11);
+            var attitude = EntryAttitude.Of(snapshot.Craft.Parts, snapshot.Craft.Parts.Where(p => left.Contains(Uid(p.Id))).Select(p => p.Id).ToList());
+            Assert.Equal(Pod, attitude.Home.Id);
+            Assert.Equal(Shield, attitude.Shield.Id);
+            return EntryAttitude.Nose(PodUp, PodUp);
+        }
+
+        /// <summary>
+        /// The capsule read along <paramref name="nose"/>: shield first it meets the 2.24 m² <c>reentry</c> logged; tail first it is the 0.11 m² <c>return</c> logged. The two figures are the ticket's; what
+        /// these tests pin is which axis the rule hands the read, and that a control point can't change it. The adapter's read of the real cubes needs the game (docs/in-game/entry-craft.md, check 5).
+        /// </summary>
+        private static IReentryCraft ReadAlong(double[] nose)
+        {
+            return ReturnEntryDragTests.Capsule(nose[0] * PodUp[0] + nose[1] * PodUp[1] + nose[2] * PodUp[2] > 0 ? 2.24 : 0.11);
         }
 
         private static double MassOf(GameSnapshot snapshot, IDictionary<string, object> ask)
@@ -292,37 +305,42 @@ namespace ClaudiaKerman.Core.Tests
             return snapshot.Craft.Parts.Where(p => !left.Contains(Uid(p.Id))).Sum(p => p.MassT) * 1000;
         }
 
-        private static ReentryPrediction LandedAsReturnReads(List<SnapshotPart> parts)
+        private static ReentryPrediction LandedAlong(GameSnapshot snapshot, IDictionary<string, object> ask, double[] nose)
         {
-            var snapshot = AtMun(parts);
-            var ask = new Dictionary<string, object> { { "craft", Read(snapshot, "Kerbin") } };
-            return ReturnEntryDragTests.Fly(CapsuleOf(snapshot, ask), MassOf(snapshot, ask), ReturnEntryDragTests.LoggedFrame(ReturnEntryDragTests.Offset()));
+            return ReturnEntryDragTests.Fly(ReadAlong(nose), MassOf(snapshot, ask), ReturnEntryDragTests.LoggedFrame(ReturnEntryDragTests.Offset()));
         }
 
-        private static ReentryPrediction LandedAsReentryReads()
+        private static double KmApart(ReentryPrediction a, ReentryPrediction b)
         {
-            // Reentry reads the craft after its own drop: the stack and the decoupler have gone.
+            return LandingSiteSearch.ArcDegrees(a.Latitude, a.Longitude, b.Latitude, b.Longitude) * Math.PI / 180 * Kerbin.Radius / 1000;
+        }
+
+        /// <summary><c>reentry</c>'s read, after its own drop: the stack and the decoupler have gone.</summary>
+        private ReentryPrediction LandedAsReentryReads()
+        {
             var snapshot = AtKerbin(Parts(Shape.Drops, stack: false).Where(p => p.Id != Dec).ToList());
             var ask = new Dictionary<string, object> { { "craft", Read(snapshot) } };
-            return ReturnEntryDragTests.Fly(CapsuleOf(snapshot, ask), MassOf(snapshot, ask), ReturnEntryDragTests.LoggedFrame(ReturnEntryDragTests.Offset()));
+            return LandedAlong(snapshot, ask, EntryNose(snapshot, ask));
         }
 
         [Fact]
-        public void Return_and_reentry_land_within_10_km_once_the_decoupler_goes_with_the_stack()
+        public void Return_at_the_mun_and_reentry_above_the_air_land_within_10_km_read_along_the_entry_s_attitude()
         {
-            var ret = LandedAsReturnReads(Releasing(Shield));
+            var snapshot = AtMun(Releasing(Shield));
+            var ask = new Dictionary<string, object> { { "craft", Read(snapshot, "Kerbin") } };
+            var ret = LandedAlong(snapshot, ask, EntryNose(snapshot, ask));
             var ent = LandedAsReentryReads();
-            var km = LandingSiteSearch.ArcDegrees(ret.Latitude, ret.Longitude, ent.Latitude, ent.Longitude) * Math.PI / 180 * Kerbin.Radius / 1000;
-            _out.WriteLine("return {0:0.000}, {1:0.000}; reentry {2:0.000}, {3:0.000}; {4:0.00} km", ret.Latitude, ret.Longitude, ent.Latitude, ent.Longitude, km);
-            Assert.True(km <= 10, km + " km");
+            _out.WriteLine("return {0:0.000}, {1:0.000}; reentry {2:0.000}, {3:0.000}; {4:0.00} km", ret.Latitude, ret.Longitude, ent.Latitude, ent.Longitude, KmApart(ret, ent));
+            Assert.True(KmApart(ret, ent) <= 10, KmApart(ret, ent) + " km");
         }
 
         [Fact]
-        public void Read_as_staying_the_decoupler_covers_the_shield_and_return_lands_far_from_reentry()
+        public void Read_along_the_control_point_at_the_mun_as_it_was_return_lands_far_from_reentry()
         {
-            var ret = LandedAsReturnReads(Parts(Shape.Drops));
-            var ent = LandedAsReentryReads();
-            var km = LandingSiteSearch.ArcDegrees(ret.Latitude, ret.Longitude, ent.Latitude, ent.Longitude) * Math.PI / 180 * Kerbin.Radius / 1000;
+            var snapshot = AtMun(Releasing(Shield));
+            var ask = new Dictionary<string, object> { { "craft", Read(snapshot, "Kerbin") } };
+            var km = KmApart(LandedAlong(snapshot, ask, ReversedControlUp), LandedAsReentryReads());
+            _out.WriteLine("{0:0} km", km);
             Assert.True(km > 300, km + " km");
         }
 

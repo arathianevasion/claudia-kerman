@@ -12,13 +12,11 @@ namespace ClaudiaKerman.Core.Tests
     /// <summary>
     /// #924, step 1: which input put <c>return</c>'s aimed landing 115° off (Mission m20261108-180219-f40a). The two REENTRYIMPACT lines rebuilt: Pe 29,912 m, Ap
     /// 10,762,541 m, Pe at UT 147485117.3, inclination 3.2°. <c>return</c> read 0.11 m² on 1.455 t and landed it at -73.8417 (8 km from KSC); <c>reentry</c> read 2.24 m²
-    /// on 1.415 t and landed it at 170.9142; the capsule splashed down at 169.9957. A frame or rotation error is ruled out, and the Mun's place is not an input: same
-    /// orbit, same frame, only the drag differs.
+    /// on 1.415 t and landed it at 170.9142; the capsule splashed down at 169.9957. The conclusion: the drag area is the miss (same orbit, same rotation step; the Mun isn't an input).
     /// <para>
-    /// This skim is steep in the drag: round 0.11 m² the landing sweeps about 13° per 0.001 m². The game's own air and the occluded craft's own Mach curve aren't in the log, so
-    /// the research's capsule at exactly 0.11 m² lands at 131° east, not -73.8. What pins the cause is that the logged landing lies between the two ends of the curve's shape:
-    /// a drag flat with Mach reaches it at 0.0896 m² and the capsule's curve at 0.1366 m². The cause (<see cref="EntryCraftTests"/>): stock's TD-12 lets go of its top node, so it
-    /// left with the stack, but the Entry's craft kept it on the shield, whose face it then covered.
+    /// This skim is steep in the drag: round 0.11 m² the landing sweeps about 13° per 0.001 m², and the game's own air and the craft's own Mach curve aren't in the log, so these
+    /// tests don't reproduce -73.8 from 0.11 m² exactly (the research's capsule at exactly 0.11 m² lands at 131° east). A drag area near it does land at -73.8 (the bracket below
+    /// shows only that), and a drag area near 2.24 m² stays at 170.9. Why <c>return</c> read 0.11 m² is a separate question (<see cref="EntryAttitudeTests"/>, <see cref="EntryCraftTests"/>).
     /// </para>
     /// </summary>
     public sealed class ReturnEntryDragTests

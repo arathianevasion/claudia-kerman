@@ -1538,10 +1538,7 @@ namespace ClaudiaKerman.Core.Tools
             if (ask.ContainsKey("home")) return null;
             var core = ask.ContainsKey("core") ? ask["core"] as string : null;
             var from = snapshot.Craft.Parts.FirstOrDefault(p => core != null && uidOf(p.Id) == core);
-            if (from == null) return null;
-            var own = PartTree.OwnSide(snapshot.Craft.Parts, from.Id).Where(p => p.Tags.Contains("command")).ToList();
-            var command = own.FirstOrDefault(p => p.CrewCapacity > 0) ?? own.FirstOrDefault();
-            return command == null ? from.Id : command.Id;
+            return from == null ? null : PartTree.CommandPart(snapshot.Craft.Parts, from.Id);
         }
 
         /// <summary>
