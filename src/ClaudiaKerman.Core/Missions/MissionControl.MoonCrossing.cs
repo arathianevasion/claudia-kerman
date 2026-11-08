@@ -28,7 +28,7 @@ namespace ClaudiaKerman.Core.Missions
             public bool CrossingUnjudged;
             /// <summary>The bodies the current or last run's <c>transfer_to</c> aimed at, comma-separated: planned, not crossed, until the next run. Saved.</summary>
             public string RunTransfers = "";
-            /// <summary>#871: the current or last run's Sequence Plan name and intent: a moon it names is planned. Not saved: after a restart the encounter reads as not shown planned.</summary>
+            /// <summary>#871: the current or last run's Sequence Plan name and intent: a moon it names is planned. Saved with <see cref="RunTransfers"/>.</summary>
             public string RunWords = "";
         }
 
@@ -175,9 +175,11 @@ namespace ClaudiaKerman.Core.Missions
             if (mission.Plan != null) at.LegsAhead = mission.Plan.Sequences.Skip(System.Math.Max(0, StepsBegun(mission) - 1)).ToList();
             // #871: a moon the Sequence Plan or the Mission Plan's current or later legs name is planned too (a capture met without transfer_to, a gravity assist),
             // when the craft is on its way to meet it; a parking orbit that merely reaches it is still a crossing.
-            var words = mission.RunWords + (at.LegsAhead == null ? "" : " " + string.Join(" ", at.LegsAhead.Select(SequenceWords.Of).ToArray()));
-            planned.AddRange(snapshot.Bodies.Where(b => b.Name.Length > 0 && Regex.IsMatch(words, @"\b" + Regex.Escape(b.Name) + @"\b", RegexOptions.IgnoreCase)
-                && MoonCrossings.Meets(at, b.Name)).Select(b => b.Name));
+            // Named as a destination only: a moon a leg departs or returns from is where the craft was, not where it goes.
+            var texts = new List<string> { mission.RunWords };
+            if (at.LegsAhead != null) texts.AddRange(at.LegsAhead.Select(SequenceWords.Of));
+            planned.AddRange(texts.SelectMany(t => SequenceWords.Destinations(snapshot, t)).Select(b => b.Name).Distinct(System.StringComparer.OrdinalIgnoreCase)
+                .Where(n => MoonCrossings.Meets(at, n)));
             var window = KeptRoute.KeptWindow(at);
             var crossing = window.HasValue ? MoonCrossings.Judge(snapshot.At(_ut), window.Value, planned) : MoonCrossings.Judge(snapshot.At(_ut), planned);
             if (crossing != null) mission.RunEvents.Replace(_ut, RunEventKind.MoonCrossing, MissionPrompts.MoonCrossingFact(crossing, MoonCrossings.Meets(at, crossing.Moon.Name)));

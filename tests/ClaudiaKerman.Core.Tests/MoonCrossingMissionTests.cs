@@ -289,11 +289,11 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         /// <summary>A Mission Plan at Duna: the capture, then <paramref name="next"/>.</summary>
-        private static ScriptedResponse CapturePlan(string next)
+        private static ScriptedResponse CapturePlan(string next, string first = "Capture at Duna.")
         {
             return Reply("{\"kind\":\"mission_plan\",\"say\":\"Mission Plan.\",\"reply_intent\":\"none\",\"sequence_plan\":null,"
                 + "\"mission_plan\":{\"why\":\"Ike.\",\"sequences\":["
-                + "{\"name\":\"Capture\",\"intent\":\"Capture at Duna.\",\"delta_v\":300,\"timing\":\"now\",\"due_time_ut\":-1},"
+                + "{\"name\":\"Capture\",\"intent\":\"" + first + "\",\"delta_v\":300,\"timing\":\"now\",\"due_time_ut\":-1},"
                 + "{\"name\":\"Next\",\"intent\":\"" + next + "\",\"delta_v\":200,\"timing\":\"after\",\"due_time_ut\":-1}],"
                 + "\"total_delta_v\":500,\"expected_duration\":\"a day\",\"mission_time_s\":-1},\"debrief\":null}");
         }
@@ -376,10 +376,10 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         /// <summary>A Sequence Plan with a hand-written script (no transfer_to) whose name and intent are <paramref name="words"/>.</summary>
-        private static ScriptedResponse CoastPlan(string words)
+        private static ScriptedResponse CoastPlan(string words, int step = 1)
         {
             return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
-                + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"" + words + "\",\"intent\":\"" + words + "\",\"why\":\"x.\",\"target\":\"orbit\","
+                + "\"sequence_plan\":{\"plan_step\":" + step + ",\"name\":\"" + words + "\",\"intent\":\"" + words + "\",\"why\":\"x.\",\"target\":\"orbit\","
                 + "\"tolerances\":\"Pe within 5 km\",\"expected_delta_v\":0,\"expected_duration_s\":600,\"abort_conditions\":[],\"risks\":[],"
                 + "\"custom_script\":true,\"custom_script_reason\":\"a coast\",\"script\":\"wait 10.\\n\","
                 + "\"due_time_ut\":-1,\"window_closes_ut\":-1,\"late_window_dv\":-1},\"debrief\":null}");
@@ -414,6 +414,34 @@ namespace ClaudiaKerman.Core.Tests
             var debrief = DebriefOnTheCoastToIke(CapturePlan("Capture at Ike."), CaptureAtDuna());
             Assert.DoesNotContain("orbit crosses a moon", debrief);
             Assert.DoesNotContain("On course to meet", debrief);
+        }
+
+        /// <summary>Fix round: a moon a leg or the plan departs or returns from is where the craft was, not where it goes: the on-course fact stays.</summary>
+        [Theory]
+        [InlineData("Return from Ike to Duna")]
+        [InlineData("Depart Ike for Duna orbit")]
+        [InlineData("Ascend from Ike")]
+        public void AMoonNamedAsTheOriginIsNotPlanned(string words)
+        {
+            Assert.Contains("On course to meet Ike at UT ", DebriefOnTheCoastToIke(CapturePlan("Return to Kerbin."), CoastPlan(words)));
+            Assert.Contains("On course to meet Ike at UT ", DebriefOnTheCoastToIke(CapturePlan(words), CaptureAtDuna()));
+        }
+
+        /// <summary>Fix round: a leg already begun (plan_step 2) that named the moon no longer plans it.</summary>
+        [Fact]
+        public void APastLegThatNamedTheMoonDoesNotPlanItsEncounter()
+        {
+            var debrief = DebriefOnTheCoastToIke(CapturePlan("Return to Kerbin.", first: "Capture at Ike."), CoastPlan("Coast", step: 2));
+            Assert.Contains("On course to meet Ike at UT ", debrief);
+        }
+
+        /// <summary>Fix round: the run's words are saved, so after a restart a moon the run named still reads as planned.</summary>
+        [Fact]
+        public void TheRunsWordsSurviveASaveAndLoad()
+        {
+            var state = new MissionSaveState { Id = "m1", RunWords = "Coast to Ike Coast to Ike" };
+            Assert.Equal("Coast to Ike Coast to Ike", MissionSaveState.FromValues(state.ToValues()).RunWords);
+            Assert.Equal("", MissionSaveState.FromValues(new MissionSaveState { Id = "m1" }.ToValues()).RunWords);
         }
 
         /// <summary>#871: an encounter path nothing names says so, and offers the fix only if it isn't intended.</summary>
