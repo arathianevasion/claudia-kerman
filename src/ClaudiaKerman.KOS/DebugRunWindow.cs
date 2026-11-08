@@ -9,28 +9,21 @@ using UnityEngine;
 namespace ClaudiaKerman.KOS
 {
     /// <summary>
-    /// With <c>debug_tools = true</c>: a Flight window that runs a test script on the active vessel's
+    /// With <c>debug_tools = true</c>: the "kOS Bridge Tests" tab of the block test window (<see cref="BlockTestRunner"/>), which runs a test script on the active vessel's
     /// processor (nearest the root) through the kOS bridge and shows its report or error. A developer
     /// tool: the player starts each fixed test script by hand and Claude is never involved, so it sits
     /// outside the Approval rule of ADR 0002.
     /// </summary>
-    [KSPAddon(KSPAddon.Startup.Flight, false)]
-    public class DebugRunWindow : MonoBehaviour
+    public class DebugRunWindow
     {
         private static readonly string[] Tests = { "report", "runtime_error", "no_report", "long_run" };
 
-        private Rect _rect = new Rect(80, 120, 460, 300);
         private Vector2 _scroll;
         private uint? _partId;
         private string _status = "Idle.";
         private string _result = "";
 
-        private void Awake()
-        {
-            if (!DebugToolsOn()) Destroy(this);
-        }
-
-        // Decided once per scene by each debug tool. Any failure reading the player config counts as off.
+        // Read once per session by the runner (BlockTestRunner.Awake). The status, result and part id below carry over between Flight scenes. Any failure reading the player config counts as off.
         internal static bool DebugToolsOn()
         {
             // Stood down beside the old copy (ADR 0015): its config folder is left where it is.
@@ -46,13 +39,14 @@ namespace ClaudiaKerman.KOS
             }
         }
 
-        private void OnGUI()
+        /// <summary>Draws the tab's contents: in Flight the processor line, buttons, Abort, status and result; elsewhere a note that the tests need Flight.</summary>
+        internal void Draw()
         {
-            _rect = GUILayout.Window(GetInstanceID(), _rect, Draw, "Claudia Kerman: kOS bridge test (debug_tools)");
-        }
-
-        private void Draw(int id)
-        {
+            if (HighLogic.LoadedScene != GameScenes.FLIGHT)
+            {
+                GUILayout.Label("The kOS bridge tests need Flight: they run on the active vessel's kOS processor.");
+                return;
+            }
             var vessel = FlightGlobals.ActiveVessel;
             var bridge = KosBridge.Instance;
             var target = KosBridge.ChooseProcessor(vessel, null);
@@ -76,7 +70,6 @@ namespace ClaudiaKerman.KOS
             _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Height(160));
             GUILayout.Label(_result);
             GUILayout.EndScrollView();
-            GUI.DragWindow();
         }
 
         private void Run(KosBridge bridge, uint partId, string test)
