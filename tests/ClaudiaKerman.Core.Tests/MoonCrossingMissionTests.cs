@@ -466,7 +466,7 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("Coast, avoiding Ike", false)]
         [InlineData("Burn away from Ike", false)]
         [InlineData("Stay below Ike's SOI", false)]
-        [InlineData("Stay under Ike", false)]
+        [InlineData("Stay under Ike's SOI", false)]
         [InlineData("Stay outside Ike's orbit", false)]
         [InlineData("Coast to miss Ike", false)]
         [InlineData("Coast, missing Ike", false)]
