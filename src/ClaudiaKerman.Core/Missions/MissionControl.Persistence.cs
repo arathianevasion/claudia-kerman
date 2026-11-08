@@ -253,12 +253,12 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>Saves why the Debrief was rated Off-Nominal (#904), so a log rebuilt on load keeps the notices; nothing is saved when it was left as Claudia rated it.</summary>
-        private void SaveRating(Mission mission, bool telemetryCheck, bool noCorrection)
+        private void SaveRating(Mission mission, int messages, bool telemetryCheck, bool noCorrection)
         {
             if (mission.Folder == null || !(telemetryCheck || noCorrection)) return;
             try
             {
-                MissionStore.AppendRating(mission.Folder, _ut, mission.Conversation.Count, telemetryCheck, noCorrection);
+                MissionStore.AppendRating(mission.Folder, _ut, messages, telemetryCheck, noCorrection);
             }
             catch (Exception e) when (IsFileError(e))
             {
@@ -796,7 +796,7 @@ namespace ClaudiaKerman.Core.Missions
                 mission.PlanStepBefore = state.PlanStepBefore;
                 mission.OwedOutcome = null;
                 mission.InterruptReason = null;
-                Debriefed(mission, reply);
+                Debriefed(mission, reply, state.TranscriptMarker + at + 1);
                 mission.SuppressCards = false;
                 Event(mission, "advanced", "the reply to the in-flight Debrief request was already in the transcript");
                 Note(LogKind.Notice, "Claudia's last request had already been answered; her Debrief was applied.");
