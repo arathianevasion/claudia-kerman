@@ -26,6 +26,8 @@ namespace ClaudiaKerman.Adapter
         private Game _game;
         private GameScene? _scene;
         private float _nextSnapshot;
+        private const float SavedOrbitSeconds = 3f;
+        private float _nextSaved;
         private readonly AttentionWatch _watch = new AttentionWatch();
         private int _watchedVersion = -1;
         private const float UtSeconds = 0.5f;
@@ -337,6 +339,16 @@ namespace ClaudiaKerman.Adapter
                 _nextSnapshot = Time.realtimeSinceStartup + SnapshotSeconds;
                 var ship = SnapshotReader.ReadEditor(EditorLogic.fetch.ship);
                 if (ship != null) Send(ship);
+            }
+
+            // #877: outside Flight, the Mission craft's saved orbit judges a plan offered there for a moon crossing.
+            if (scene != GameScene.Flight && HighLogic.CurrentGame != null && !string.IsNullOrEmpty(_mission.View.CraftVesselId) && Time.realtimeSinceStartup >= _nextSaved)
+            {
+                _nextSaved = Time.realtimeSinceStartup + SavedOrbitSeconds;
+                GameSnapshot saved = null;
+                try { saved = SnapshotReader.ReadSavedCraft(_mission.View.CraftVesselId); }
+                catch (System.Exception e) { Debug.LogWarning("[ClaudiaKerman] saved orbit read failed: " + e.Message); }
+                Send(new SavedOrbitRead(saved));
             }
 
             // The core says what Claudia's hold on the craft locks; the player's own input held over a second is

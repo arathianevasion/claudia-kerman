@@ -151,6 +151,7 @@ namespace ClaudiaKerman.Core.Missions
                     WaitsForPlayer(mission, AdvanceWait.WindowPick, plan.Name);
                     return;
                 }
+                if (CrossingAwaitsRead(mission, plan)) return;
                 if (CrossingHeld(mission, plan))
                 {
                     WaitsForPlayer(mission, AdvanceWait.MoonCrossing, plan.Name);

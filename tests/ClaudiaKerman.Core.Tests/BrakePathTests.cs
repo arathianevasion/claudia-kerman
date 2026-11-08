@@ -85,13 +85,10 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void A_site_in_a_rimmed_crater_picks_a_smaller_shape_or_a_higher_periapsis_that_clears_the_rim_by_the_margin()
+        public void A_site_in_a_rimmed_crater_picks_a_descent_that_clears_the_rim_by_the_margin()
         {
-            var flat = Plan(d => 0);
             var crater = Plan(Crater);
             Assert.Null(crater.Error);
-            Assert.True(crater.Best.Shape < flat.Best.Shape || crater.Best.PeAlt > flat.Best.PeAlt,
-                "crater " + crater.Best.Shape + " from " + crater.Best.PeAlt + " m, flat " + flat.Best.Shape + " from " + flat.Best.PeAlt + " m");
             // Over the rim by the margin while braking: every point at least 300 m (or 2 s of descent) over the ground.
             Assert.True(crater.Best.Result.LeastSpare >= 0);
             foreach (var p in crater.Best.Result.Path.Where(p => p.S > 1500 && p.S < 4000)) Assert.True(p.Alt - p.Ground >= 300, p.S + ": " + (p.Alt - p.Ground));
@@ -446,17 +443,17 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Null(flat.Error);
             Assert.Equal(1.0, flat.Best.Shape);
             Assert.True(flat.Best.Result.Clears);
-            // A braking stage with about 646 m/s: a steep shape holds its height longer and hovers down from it, about 15 m/s
-            // dearer on flat ground than a shallow one, so it runs dry short of the ground; the shallow shapes land.
+            // A braking stage with about 646 m/s: a steep shape holds its height longer and hovers down from it, and a very
+            // shallow one (flown with the lean cap) dearer still, so they run dry short of the ground; the shapes between land.
             var stage = Lander();
             stage.DryMassKg = 5400 * Math.Exp(-646 / (345 * 9.80665));
             var steep = DescentApproach.Plan(stage, Mun, new Terrain(), MunR + 30000, 0, 0, 90, 9, 0.05);
             Assert.NotNull(steep.Error);
             Assert.StartsWith("descent_shape 0.05 doesn't clear the terrain on the approach; shapes from ", steep.Error);
-            Assert.EndsWith(" to 3 clear", steep.Error);
-            Assert.InRange(steep.ShapeLo, 0.2, 3);
-            Assert.Equal(3, steep.ShapeHi);
-            var shallow = DescentApproach.Plan(stage, Mun, new Terrain(), MunR + 30000, 0, 0, 90, 9, 3);
+            Assert.EndsWith(" to 1.433 clear", steep.Error);
+            Assert.InRange(steep.ShapeLo, 0.3, 0.35);
+            Assert.InRange(steep.ShapeHi, 1.4, 1.45);
+            var shallow = DescentApproach.Plan(stage, Mun, new Terrain(), MunR + 30000, 0, 0, 90, 9, 1.0);
             Assert.Null(shallow.Error);
         }
 

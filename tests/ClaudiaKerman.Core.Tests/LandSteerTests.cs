@@ -107,6 +107,20 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void Slow_at_260_m_the_lift_follows_the_wanted_descent_and_never_holds_height()
+        {
+            // Minmus Flats (g 0.458): slow across the ground at 260 m, not falling, 1 m/s² wanted sideways, wanting 0.5 m/s down.
+            double al = 1, cr = 0, up = 0;
+            LandSteer.Lean(ref al, ref cr, ref up, 260, true, 1.6, 0.458, 0, -0.5);
+            Assert.True(up < 0.458, "lift " + up + " holds height");
+            Assert.Equal(0.458 - 0.25, up, 9);
+            // Falling faster than wanted it still brakes the fall: lift over gravity.
+            al = 1; up = 0;
+            LandSteer.Lean(ref al, ref cr, ref up, 260, true, 1.6, 0.458, -15, -5);
+            Assert.True(up > 0.458);
+        }
+
+        [Fact]
         public void In_the_final_descent_the_cap_holds_only_below_50_m_or_under_2_m_s_across_the_ground()
         {
             // The player's call (2026-11-07): 300 m up at 12 m/s across, the lean is free as before #865, with no lift added.
