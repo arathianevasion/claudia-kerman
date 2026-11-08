@@ -71,8 +71,7 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// land's lean limit on a demand (al, cr, up m/s², <paramref name="h"/> m over the ground), for the flight (BRAKEPATH
-        /// still cuts by <see cref="BrakeGuidance.MaxTilt"/> alone and doesn't model the cap). Uncapped, and in the last few metres, the sideways part is cut to <see cref="BrakeGuidance.MaxTilt"/>
+        /// land's lean limit on a demand (al, cr, up m/s², <paramref name="h"/> m over the ground), for the flight (BRAKEPATH calls it too, #886). Uncapped, and in the last few metres, the sideways part is cut to <see cref="BrakeGuidance.MaxTilt"/>
         /// as before. Where the final descent is <paramref name="capped"/> and <see cref="TerminalLeanDeg"/> binds, the upward part is raised so the demand
         /// leans that far and still brakes across the ground, but never past what holds its height (gravity <paramref name="g"/>
         /// less half its vertical speed <paramref name="vUp"/>, m/s, as the settle holds it; nor 0.95 of <paramref name="aMax"/>):
@@ -220,7 +219,7 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>The direction <paramref name="dir"/> leaning no more than <paramref name="tilt"/> degrees from upright, on its own side.</summary>
-        private static double[] LeanCapped(double[] dir, double tilt)
+        internal static double[] LeanCapped(double[] dir, double tilt)
         {
             var side = Math.Sqrt(dir[0] * dir[0] + dir[1] * dir[1]);
             var norm = Math.Sqrt(side * side + dir[2] * dir[2]);
