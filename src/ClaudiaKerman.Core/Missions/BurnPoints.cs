@@ -236,7 +236,7 @@ namespace ClaudiaKerman.Core.Missions
                 double? estimate;
                 var aimed = Aimed(call, snapshot, now, earliest, body, out estimate, out span, out dueBy);
                 // #816: with no target and no window given, from an inclined orbit the block may wait for the cheap window.
-                if (!aimed && !call.Options.ContainsKey("window")) { estimate = Cheap(call, snapshot, now, earliest, out dueBy); costly = estimate.HasValue; }
+                if (!aimed && !call.Options.ContainsKey("window")) { estimate = Cheap(call, snapshot, now, earliest, body, out dueBy); costly = estimate.HasValue; }
                 if (!aimed && !window.HasValue && !estimate.HasValue) return null;
                 ut = estimate ?? earliest;
                 departure = estimate ?? (window.HasValue ? earliest : (double?)null);
@@ -323,7 +323,7 @@ namespace ClaudiaKerman.Core.Missions
         private const double NoTargetPe = 35000;
 
         /// <summary>The UT a return with no target and no window given waits for (<see cref="ReturnAim.CheapDepartureUt"/>), or null for its next pass.</summary>
-        private static double? Cheap(BlockCall call, GameSnapshot snapshot, double now, double earliest, out double? dueBy)
+        private static double? Cheap(BlockCall call, GameSnapshot snapshot, double now, double earliest, IPlanningBody body, out double? dueBy)
         {
             dueBy = null;
             string given;
@@ -333,9 +333,11 @@ namespace ClaudiaKerman.Core.Missions
             var maxWait = Literal(call.Option("max_wait"));
             var limit = Literal(call.Option("max_duration"));
             var latest = Math.Min(maxWait.HasValue ? earliest + maxWait.Value : double.PositiveInfinity, limit.HasValue ? now + limit.Value - ReturnAim.AfterBurnS : double.PositiveInfinity);
-            return ReturnAim.CheapDepartureUt(snapshot.At(now), new ReturnAsk
+            var at = snapshot.At(now);
+            var planet = ReturnAim.PlanetOf(at);
+            return ReturnAim.CheapDepartureUt(at, new ReturnAsk
             {
-                TargetPe = targetPe.Value, EarliestUt = earliest, CheapWindow = true, LatestUt = double.IsPositiveInfinity(latest) ? (double?)null : latest,
+                TargetPe = targetPe.Value, EarliestUt = earliest, CheapWindow = true, Handed = planet == null ? 1 : ReturnAim.HandedOn(planet, at.Ut, body), LatestUt = double.IsPositiveInfinity(latest) ? (double?)null : latest,
             }, out dueBy);
         }
 
