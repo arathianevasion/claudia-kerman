@@ -83,6 +83,8 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         private static bool WillLight(GameSnapshot snapshot, SnapshotPart engine)
         {
+            // #889: flamed out, no ignitions left, or shut down after a lit run with allowRestart false: it won't light again
+            if (engine.EngineFlameout || engine.EngineIgnitionsLeft == 0 || (engine.EngineWasLit && !engine.EngineAllowsRestart && !engine.EngineLit)) return false;
             if (!snapshot.Craft.Parts.Any(p => p.Resources.Count > 0)) return true;
             return engine.EnginePropellants.Count > 0
                 && engine.EnginePropellants.All(name => name.StartsWith("Intake", StringComparison.Ordinal)
