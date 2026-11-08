@@ -91,7 +91,7 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         public static bool Jettisons(string jettisonStage, bool stackKept, bool stackBelow)
         {
-            return jettisonStage != "none" && !(stackKept && stackBelow);
+            return !string.Equals(jettisonStage, "none", System.StringComparison.OrdinalIgnoreCase) && !(stackKept && stackBelow);
         }
 
         /// <summary>The unlit engines in the highest stage still to fire (at or below the craft's current stage): what the next staging lights.</summary>

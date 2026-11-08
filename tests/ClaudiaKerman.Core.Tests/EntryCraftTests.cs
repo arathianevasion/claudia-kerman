@@ -254,6 +254,29 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void The_words_none_and_auto_are_read_whatever_their_case_as_kOS_compares_them()
+        {
+            Assert.Equal("", Jettison(Parts(Shape.Drops), "auto", "NONE"));
+            Assert.Equal("", Jettison(Parts(Shape.Drops), "None", "auto"));
+            Assert.False(EntryCraft.Jettisons("None", false, false));
+            // separate "AUTO" is still auto: above the air it refuses a stack that can't drop, as "auto" does.
+            var upper = new Dictionary<string, object> { { "home", Uid(Pod) }, { "separate", "AUTO" } };
+            var lower = new Dictionary<string, object> { { "home", Uid(Pod) }, { "separate", "auto" } };
+            Assert.Equal(BlockCalls.EntryDropCall(lower, AtKerbin(Parts(Shape.Stuck)), null, 0, "", Uid)["error"],
+                BlockCalls.EntryDropCall(upper, AtKerbin(Parts(Shape.Stuck)), null, 0, "", Uid)["error"]);
+        }
+
+        [Fact]
+        public void The_finish_compares_the_craft_it_flies_with_jettison_stage()
+        {
+            var parts = AtKerbin(Parts(Shape.Drops));
+            var auto = (string)BlockCalls.EntryFinishCall(new Dictionary<string, object> { { "home", Uid(Pod) }, { "chutes", true } }, parts, null, 0, "", Uid, "x", "aimed")["why"];
+            var none = (string)BlockCalls.EntryFinishCall(new Dictionary<string, object> { { "home", Uid(Pod) }, { "chutes", true }, { "jettison_stage", "none" } }, parts, null, 0, "", Uid, "x", "aimed")["why"];
+            Assert.Contains("it flies without its stack (fuelTank, liquidEngine3.v2), shield jettisoned", auto);
+            Assert.Contains("shield kept", none);
+        }
+
+        [Fact]
         public void The_craft_prediction_follows_jettison_stage_and_the_rule_decides_both()
         {
             var ask = new Dictionary<string, object> { { "home", Uid(Pod) }, { "jettison_stage", "none" } };

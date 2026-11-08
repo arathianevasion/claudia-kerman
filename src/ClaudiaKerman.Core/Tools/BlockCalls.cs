@@ -1408,7 +1408,7 @@ namespace ClaudiaKerman.Core.Tools
                 { "error", "" },
                 { "number", (double)number },
                 { "shield", stack.Shield == null ? "" : uidOf(stack.Shield.Id) ?? "" },
-                { "jettison", stack.Shield == null || !EntryCraft.Jettisons(JettisonStage(ask), Equals(ask.ContainsKey("separate") ? ask["separate"] : null, "none"), stack.Parts.Count > 0) ? "" : uidOf(stack.Shield.Id) ?? "" },
+                { "jettison", stack.Shield == null || !EntryCraft.Jettisons(JettisonStage(ask), IsWord(ask, "separate", "none"), stack.Parts.Count > 0) ? "" : uidOf(stack.Shield.Id) ?? "" },
                 { "decouplers", uids(stack.Decouplers) },
                 { "gone", uids(stack.Gone) },
                 { "names", EntryStack.Names(stack.Parts).Cast<object>().ToList() },
@@ -1425,13 +1425,19 @@ namespace ClaudiaKerman.Core.Tools
         private static string StackRefusal(IDictionary<string, object> ask, GameSnapshot snapshot, EntryStack stack, int number, Func<uint, string> uidOf)
         {
             var body = snapshot.Bodies.FirstOrDefault(b => b.Name == Entries.At(snapshot));
-            if (!Equals(ask.ContainsKey("separate") ? ask["separate"] : null, "auto") || snapshot.IsGrounded || body == null || snapshot.Altitude <= body.AtmosphereHeight) return "";
+            if (!IsWord(ask, "separate", "auto") || snapshot.IsGrounded || body == null || snapshot.Altitude <= body.AtmosphereHeight) return "";
             if (ask.ContainsKey("drop_error")) return stack.Refusal(ask["drop_error"] as string ?? "", false);
             var core = ask.ContainsKey("core") ? ask["core"] as string : null;
             var refusal = stack.Refusal(null, stack.Gone.Any(p => p.ParentId == null || (core != null && uidOf(p.Id) == core)));
             bool chutes;
             if (refusal == "" || ChutesOf(ask, out chutes) != null) return refusal;
             return EntryFinish.Decide(snapshot, stack.Gone.Select(p => p.Id).ToList(), number == 1, chutes).Powered ? "" : refusal;
+        }
+
+        /// <summary>Whether <paramref name="key"/> in <paramref name="ask"/> is the string <paramref name="word"/>, whatever its case (kOS compares strings so).</summary>
+        private static bool IsWord(IDictionary<string, object> ask, string key, string word)
+        {
+            return ask.ContainsKey(key) && string.Equals(ask[key] as string, word, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>The block's <c>jettison_stage</c> in <paramref name="ask"/>; "auto" when not given.</summary>
@@ -1451,7 +1457,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// <c>ADDONS:CLAUDIA:ENTRYFINISH</c> (#824), for <c>reentry</c> at the drop point (#815): <see cref="EntryFinish.Decide"/> for the Entry in hand, its drop
         /// and Last Entry as <see cref="EntryDropCall"/> and <see cref="ChuteGroupCall"/> have them. Takes <c>home</c>, <c>chutes</c> (false: none will open) and
-        /// <c>drop</c> (false: the block keeps its stack). Gives <c>error</c> "", <c>powered</c>, <c>speed</c> (m/s with that drop and those chutes; -1 unknown),
+        /// <c>drop</c> (false: the block keeps its stack) and <c>jettison_stage</c> (for the craft it compares). Gives <c>error</c> "", <c>powered</c>, <c>speed</c> (m/s with that drop and those chutes; -1 unknown),
         /// <c>kept_speed</c> (m/s for the craft as kept; -1 on chutes), <c>engines</c> and <c>spare</c> (kOS UIDs) and <c>why</c> for the log.
         /// </summary>
         public static IDictionary<string, object> EntryFinishCall(IDictionary<string, object> ask, GameSnapshot snapshot, IList<PlannedSequence> legs, int step, string child, Func<uint, string> uidOf,
@@ -1466,7 +1472,7 @@ namespace ClaudiaKerman.Core.Tools
             var stack = EntryStack.Of(snapshot.Craft.Parts, Home(ask, snapshot, uidOf), number);
             var finish = EntryFinish.Decide(snapshot, drop ? stack.Gone.Select(p => p.Id).ToList() : new List<uint>(), number == 1, chutes);
             // The craft it flies, against the one a return or deorbit aimed with (#814): a changed plan or fuel can make them differ.
-            var flown = EntryCraft.From(snapshot, null, stack, finish, drop);
+            var flown = EntryCraft.From(snapshot, null, stack, finish, drop, JettisonStage(ask));
             var why = finish.Why() + (string.IsNullOrEmpty(aimedKey) || EntryCraft.Same(aimedKey, flown.Key, snapshot) ? "" : "; the landing was aimed for the craft " + aimed + ", it flies " + flown.Describe());
             Func<IEnumerable<SnapshotPart>, List<object>> uids = parts => parts.Select(p => uidOf(p.Id)).Where(u => u != null).Cast<object>().ToList();
             return new Dictionary<string, object>

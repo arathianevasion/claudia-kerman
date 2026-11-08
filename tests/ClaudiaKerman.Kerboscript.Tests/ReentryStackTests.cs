@@ -262,6 +262,16 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Fact]
+        public void A_powered_decision_sets_separate_none_before_the_drop_point_ask_jettison_is_read_from()
+        {
+            var body = Body();
+            var powered = At(body, "set opt:separate to \"none\".");
+            var reask = At(body, "\"jettison_stage\", opt:jettison_stage, \"drop_error\"");
+            Assert.True(powered < reask, "separate is set to none after the entrydrop re-ask");
+            Assert.True(reask < At(body, "local shield_uid is below:jettison."));
+        }
+
+        [Fact]
         public void A_powered_entry_on_two_shields_keeps_the_outer_shield_with_the_stage_below_it_and_the_inner_is_never_fired()
         {
             var tree = TwoShields();
