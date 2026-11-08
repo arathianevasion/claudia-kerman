@@ -67,7 +67,7 @@ The land test lander with its tank 70% full: about 15:1 thrust at Ike by touchdo
 The same craft on the Mun (about 10:1): the Mun landing still lands clean.
 
 1. Pick `land_high_twr_mun` and press **Run**. It passes, with `lean` under 10 and `touchdown_h_speed` under 0.5.
-2. Note `distance_to_target`. The simulated Minmus Flats approach lands 22 m past the site in 300 s (about 50 s longer than before #865: slowed under 2 m/s about 260 m up, the cap's lift holds its height for about 40 s while land still asks to brake sideways). Over 300 m from the site, or a `phase hover` line, copy the `phase terminal` lines into #865.
+2. Note `distance_to_target`. The Minmus and Mun landings no longer hold height above 50 m (the cap's lift is bounded by land's wanted descent rate, #886) and land near the site: the simulated Minmus Flats approach lands within 25 m of it in about 250 s. Over 300 m from the site, a `phase hover` line, or a hold of about 5 s or more above 50 m, copy the `phase terminal` lines into #886.
 3. Against m20261107-051747-7bc7's Mun terminal states (every 2 s from 357 m to 8 m), the direction and its thrust are as before #865 in every state. The 20 degree cap binds in none: at 322 and 284 m, where land laid that craft flat at 21% and 9% throttle, it was 5.9 and 2.3 m/s across, outside the cap's zone, so it still does. Only the throttle changes, where the nose is over 15 degrees off (in the replay, 240 and 112 m: 0.129 to 0.124 and 0.321 to 0.308).
 
 ## Check 3: Run land

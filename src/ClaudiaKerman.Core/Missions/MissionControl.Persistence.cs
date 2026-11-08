@@ -196,6 +196,7 @@ namespace ClaudiaKerman.Core.Missions
                     PlayerText = turn.PlayerText,
                     ScriptRewrite = turn.ScriptRewrite,
                     ChildVesselRetry = turn.ChildVesselRetry,
+                    ManualRetry = turn.ManualRetry,
                     GoalStands = turn.GoalStands,
                     ReducedGoalRetry = turn.ReducedGoalRetry,
                     Waits = turn.Waits,
@@ -279,6 +280,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             var leaving = _scene == GameScene.Flight && scene != GameScene.Flight;
             _scene = scene;
+            if (scene == GameScene.Flight) ForgetSavedOrbit();
             if (!leaving)
             {
                 // Entering Flight waits for its first snapshot, which says which vessel the player is in.
@@ -695,6 +697,7 @@ namespace ClaudiaKerman.Core.Missions
                     PlayerText = unanswered.PlayerText,
                     ScriptRewrite = unanswered.ScriptRewrite,
                     ChildVesselRetry = unanswered.ChildVesselRetry,
+                    ManualRetry = unanswered.ManualRetry,
                     GoalStands = unanswered.GoalStands,
                     ReducedGoalRetry = unanswered.ReducedGoalRetry,
                     Waits = unanswered.Waits,
