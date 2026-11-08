@@ -53,7 +53,7 @@ namespace ClaudiaKerman.Core.Missions
                 {
                     previousUser = Text(message);
                     var said = PlayerLine(previousUser);
-                    if (said != null) log.Add(new LogEntry { Kind = LogKind.Player, Text = said });
+                    if (said != null) log.Add(new LogEntry { Kind = LogKind.Player, Text = said, Typed = true });
                     AddModDebrief(log, previousUser, steps);
                 }
                 else if (message.Role == Role.Assistant)

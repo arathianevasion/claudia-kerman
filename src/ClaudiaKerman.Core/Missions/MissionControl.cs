@@ -742,7 +742,7 @@ namespace ClaudiaKerman.Core.Missions
             text = (text ?? "").Trim();
             if (text.Length == 0 || !CanAnswerPlan) return;
             _mission.ConfirmPrompt = null;
-            Note(LogKind.Player, text);
+            Note(LogKind.Player, text, typed: true);
             Begin(new Turn
             {
                 Purpose = Purpose.Reply,
@@ -757,7 +757,7 @@ namespace ClaudiaKerman.Core.Missions
             text = (text ?? "").Trim();
             if (text.Length == 0 || !CanAnswerPlan) return;
             _mission.ConfirmPrompt = null;
-            Note(LogKind.Player, "Change: " + text);
+            Note(LogKind.Player, "Change: " + text, typed: true);
             Begin(new Turn
             {
                 Purpose = Purpose.Change,
@@ -775,7 +775,7 @@ namespace ClaudiaKerman.Core.Missions
             // While Running a question queues behind the request in hand; otherwise one at a time.
             var running = mission.Stage == MissionStage.Running;
             if (mission.InFlight && !running) return;
-            Note(LogKind.Player, text);
+            Note(LogKind.Player, text, typed: true);
             Begin(new Turn
             {
                 Purpose = Purpose.Question,
@@ -1905,7 +1905,7 @@ namespace ClaudiaKerman.Core.Missions
             {
                 note = note.Trim();
                 if (note.Length == 0) return;
-                Note(LogKind.Player, "Retry with a note: " + note);
+                Note(LogKind.Player, "Retry with a note: " + note, typed: true);
             }
             mission.Stage = MissionStage.Sequencing;
             Begin(ScriptRetryTurn(mission, note, replan));
@@ -2372,12 +2372,13 @@ namespace ClaudiaKerman.Core.Missions
 
         // ---- View ----
 
-        private LogEntry Note(LogKind kind, string text)
+        /// <param name="typed">The text is the player's own typed words (#873); only a Player line can be.</param>
+        private LogEntry Note(LogKind kind, string text, bool typed = false)
         {
-            var entry = new LogEntry { Kind = kind, Text = text ?? "" };
+            var entry = new LogEntry { Kind = kind, Text = text ?? "", Typed = typed && kind == LogKind.Player };
             QueueIfBlackout(_mission, entry);
             if (_mission != null) _mission.Log.Add(entry);
-            if (kind == LogKind.Player && _mission != null && !ManualGrounds.NotTyped.Any(p => entry.Text.StartsWith(p, StringComparison.Ordinal)))
+            if (entry.Typed && _mission != null)
                 _mission.ManualAsk = ManualGrounds.Fold(_mission.ManualAsk, entry.Text);
             return entry;
         }

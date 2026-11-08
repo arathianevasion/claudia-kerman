@@ -531,6 +531,8 @@ namespace ClaudiaKerman.Core.Missions
                 List<GoalItem> steps;
                 mission.Log.AddRange(MissionLogRebuild.From(transcript, state.Goal, mission.VesselName, _config, MissionStore.ReadNotices(mission.Folder), out steps));
                 mission.GoalSteps = steps;
+                // A Mission saved before ManualAsk was kept reads the log it has: flagged words, or the prefix rule when none are (#873).
+                if (string.IsNullOrEmpty(state.ManualAsk)) mission.ManualAsk = ManualGrounds.Asked(state.Goal, mission.Log);
                 mission.LogRebuilt = transcript.Messages.Count > 0;
             }
             else
