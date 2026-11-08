@@ -374,7 +374,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             var body = Body();
             // reentry's ask carries what Core's refusal needs (EntryDropTests, EntryFinishTests); its error ends the block before any wait.
-            Assert.Contains("local entry_ask is lexicon(\"home\", reentry_home_uid(), \"separate\", opt:separate, \"jettison_stage\", opt:jettison_stage, \"chutes\", opt:chutes <> \"none\" and opt:chute_mode <> \"none\", \"core\", core:part:uid).", body);
+            Assert.Contains("local entry_ask is lexicon(\"separate\", opt:separate, \"jettison_stage\", opt:jettison_stage, \"chutes\", opt:chutes <> \"none\" and opt:chute_mode <> \"none\", \"core\", core:part:uid).", body);
             var read = At(body, StartRead);
             Assert.True(read < At(body, "if below:error <> \"\" {\n    return claudia_finish(ctx, false, below:error, extra)."));
             Assert.True(read < At(body, "claudia_wait_until("));

@@ -835,5 +835,78 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(rule.ModOnly);
             Assert.Equal(CraftFindingSeverity.Warning, rule.Severity);
         }
+
+        // ---- #914: Core finds the home from the part running the script ----
+
+        private static IDictionary<string, object> FromCore(Craft craft, string coreName, params KeyValuePair<string, object>[] more)
+        {
+            var ask = new Dictionary<string, object> { { "core", Uid(craft, coreName) } };
+            foreach (var pair in more) ask[pair.Key] = pair.Value;
+            return BlockCalls.EntryDropCall(ask, Snapshot(craft, "Kerbin"), KerbinReturn, 0, "", Uid);
+        }
+
+        [Fact]
+        public void A_docked_pair_rooted_in_the_partner_has_the_Missions_command_part_as_home_and_counts_its_shield_and_stack()
+        {
+            var craft = new Craft();
+            var partnerPod = craft.Add("partnerPod", null, "command");
+            craft.Parts[craft.Parts.Count - 1].CrewCapacity = 1;
+            craft.Shield(partnerPod, "partnerShield");
+            var partnerPort = craft.Add("partnerPort", partnerPod, "docking_port");
+            var port = craft.Add("missionPort", partnerPort, "docking_port");
+            craft.Parts.Single(p => p.Name == "partnerPort").PortState = "Docked (docker)";
+            craft.Parts.Single(p => p.Name == "missionPort").PortState = "Docked (docker)";
+            var pod = craft.Add("missionPod", port, "command");
+            craft.Parts[craft.Parts.Count - 1].CrewCapacity = 1;
+            var shield = craft.Shield(pod, "missionShield");
+            var dec = craft.Add("missionDec", shield, "decoupler");
+            craft.Add("missionTank", dec);
+
+            var answer = FromCore(craft, "missionPod");
+
+            Assert.Equal(Uid(craft, "missionPod"), answer["home"]);
+            Assert.Equal(Uid(craft, "missionShield"), answer["shield"]);
+            Assert.Equal(new[] { Uid(craft, "missionDec") }, Strings(answer, "decouplers"));
+            Assert.Equal(new[] { Uid(craft, "missionTank") }, Strings(answer, "gone"));
+        }
+
+        [Fact]
+        public void A_single_craft_with_crew_in_the_pod_has_the_same_home_shield_and_stack_from_core_as_from_the_pod()
+        {
+            var craft = PodShieldStage();
+            var fromCore = FromCore(craft, "mk1pod.v2");
+            var explicitHome = Call(craft, "Kerbin", KerbinReturn);
+
+            Assert.Equal(Uid(craft, "mk1pod.v2"), fromCore["home"]);
+            foreach (var key in new[] { "shield", "jettison", "lead" }) Assert.Equal(explicitHome[key], fromCore[key]);
+            foreach (var key in new[] { "decouplers", "gone", "names" }) Assert.Equal(Strings(explicitHome, key), Strings(fromCore, key));
+        }
+
+        [Fact]
+        public void A_re_rooted_craft_has_the_Missions_command_part_as_home_not_the_root_or_the_script_part()
+        {
+            var craft = new Craft();
+            var tank = craft.Add("serviceTank", null);
+            craft.Add("kosProcessor", tank);
+            var dec = craft.Add("Decoupler.1", tank, "decoupler");
+            var shield = craft.Shield(dec, "capsuleShield");
+            craft.Add("mk1pod.v2", shield, "command");
+
+            var answer = FromCore(craft, "kosProcessor");
+
+            Assert.Equal(Uid(craft, "mk1pod.v2"), answer["home"]);
+            Assert.Equal(Uid(craft, "capsuleShield"), answer["shield"]);
+        }
+
+        [Fact]
+        public void An_explicit_home_wins_over_core()
+        {
+            var craft = PodShieldStage();
+            craft.Add("probeCore", 1, "command");
+
+            var answer = FromCore(craft, "mk1pod.v2", new KeyValuePair<string, object>("home", Uid(craft, "probeCore")));
+
+            Assert.Equal(Uid(craft, "probeCore"), answer["home"]);
+        }
     }
 }
