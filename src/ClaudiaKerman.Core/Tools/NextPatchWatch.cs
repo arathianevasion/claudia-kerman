@@ -38,6 +38,17 @@ namespace ClaudiaKerman.Core.Tools
             _planned = (planned ?? "").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Select(p => p.Trim()).ToArray();
         }
 
+        /// <summary>
+        /// A watch for a changed planned set (a run started or ended during a coast, #878) that keeps <paramref name="previous"/>'s answered meeting,
+        /// so that meeting, still ahead, is not answered a second time. A different meeting (another moon, or a later pass) is still answered.
+        /// </summary>
+        public NextPatchWatch(string planned, NextPatchWatch previous) : this(planned)
+        {
+            if (previous == null) return;
+            _answeredMoon = previous._answeredMoon;
+            _answeredUt = previous._answeredUt;
+        }
+
         /// <summary>Whether a check is due at <paramref name="ut"/>, so the reader takes a snapshot only then.</summary>
         public bool Due(double ut)
         {
@@ -51,6 +62,15 @@ namespace ClaudiaKerman.Core.Tools
         public void Rearm()
         {
             _nextUt = double.NegativeInfinity;
+        }
+
+        /// <summary>The most two predictions of the one meeting may differ by (a quarter hour): a correction that moves it further is a new meeting and is answered (#878).</summary>
+        internal const double SameMeetingWithin = 900;
+
+        /// <summary>Whether a meeting at <paramref name="ut"/> is the one answered at <paramref name="answeredUt"/>: within a quarter hour, and never over the margin.</summary>
+        internal static bool SameMeeting(double ut, double answeredUt, double margin)
+        {
+            return Math.Abs(ut - answeredUt) < Math.Min(margin, SameMeetingWithin);
         }
 
         /// <summary>One loop, and at least <see cref="MinMargin"/>: how far ahead of a meeting warp drops.</summary>
@@ -99,7 +119,7 @@ namespace ClaudiaKerman.Core.Tools
             {
                 _nextUt = met.Ut.Value + MinGap;
                 // The player raised the warp again after this meeting's drop: it is theirs now.
-                if (met.Moon.Name == _answeredMoon && Math.Abs(met.Ut.Value - _answeredUt) < margin) return null;
+                if (met.Moon.Name == _answeredMoon && SameMeeting(met.Ut.Value, _answeredUt, margin)) return null;
                 _answeredMoon = met.Moon.Name;
                 _answeredUt = met.Ut.Value;
                 return met;
