@@ -71,7 +71,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (stage != MissionStage.AwaitingSequenceApproval || plan == null || !plan.DueTimeUt.HasValue) return;
             entry.DueUt = plan.DueTimeUt.Value;
-            entry.DueFor = string.IsNullOrEmpty(windowPlanet) ? "" : WindowWaits.WaitsFor(windowPlanet);
+            entry.DueFor = string.IsNullOrEmpty(windowPlanet) || MissionControl.FirstIsReturn(plan) ? "" : WindowWaits.WaitsFor(windowPlanet);
             // A coast checkpoint (#775): the check on return runs when the player is back on the craft; parked, they have left it.
             if (plan.CoastCheckpoint.Length == 0) return;
             entry.DueFor = CoastCheckpoints.WaitsFor;
