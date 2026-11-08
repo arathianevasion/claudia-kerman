@@ -59,7 +59,7 @@ namespace ClaudiaKerman.Core.Missions
             var dropped = ChuteGroups.ForEntryNow(snapshot, lastEntry, gone, chutes);
             var finish = new EntryFinish { Speed = dropped.TouchdownSpeed, _unknown = dropped.Unpredicted };
             if (!NeedsEngines(dropped)) return finish;
-            var fuelled = snapshot.Craft.Parts.Where(p => p.Tags.Contains("engine") && p.EngineFuelled).ToList();
+            var fuelled = snapshot.Craft.Parts.Where(p => p.Tags.Contains("engine") && p.EngineFuelled && WillLight(snapshot, p)).ToList();
             if (fuelled.Count == 0)
             {
                 finish._noEngine = true;
@@ -71,6 +71,19 @@ namespace ClaudiaKerman.Core.Missions
             finish.Spare.AddRange(fuelled.Where(p => p.Stage != chosen));
             finish.KeptSpeed = ChuteGroups.ForEntryNow(snapshot, lastEntry, null, chutes).TouchdownSpeed;
             return finish;
+        }
+
+        /// <summary>
+        /// Whether the block's <c>activate</c> will light <paramref name="engine"/> at the drop point (#879), from what the snapshot read at block start. The adapter's
+        /// <see cref="SnapshotPart.EngineFuelled"/> tries every engine module, a disabled mode's too; <see cref="SnapshotPart.EnginePropellants"/> holds only the running
+        /// module's. So with the parts' resources read, an engine with none running (disabled), or one whose running mode burns a propellant nothing aboard holds, won't
+        /// light. Resources not read (an older recording): <see cref="SnapshotPart.EngineFuelled"/> stands.
+        /// </summary>
+        private static bool WillLight(GameSnapshot snapshot, SnapshotPart engine)
+        {
+            if (!snapshot.Craft.Parts.Any(p => p.Resources.Count > 0)) return true;
+            return engine.EnginePropellants.Count > 0
+                && engine.EnginePropellants.All(name => snapshot.Craft.Parts.Sum(p => p.Resources.Where(r => r.Name == name).Sum(r => r.Amount)) > 0);
         }
 
         /// <summary>
