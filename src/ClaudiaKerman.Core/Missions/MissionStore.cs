@@ -33,6 +33,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool ScriptRewrite;
         /// <summary>The correction of a Mission Plan that named a Child Vessel which never left the craft, so a re-sent one is not corrected a second time (the Mission Pauses instead); false in older files.</summary>
         public bool ChildVesselRetry;
+        /// <summary>The correction of a Mission Script's refused manual stretch (#818), so a re-sent one is not corrected a second time (the Mission Pauses instead); false in older files.</summary>
+        public bool ManualRetry;
         /// <summary>A revision the mod asked for while the Mission Goal stands, so a re-sent one still refuses a plan with no sequences (#697); false in older files.</summary>
         public bool GoalStands;
         /// <summary>The Debrief asked again with the player's note after a Failed Debrief offered no reduced goal, so a quickload of a save made while it was out sends it again; false in older files.</summary>
@@ -167,6 +169,7 @@ namespace ClaudiaKerman.Core.Missions
                 .Field("player_text", turn.PlayerText)
                 .Field("script_rewrite", turn.ScriptRewrite)
                 .Field("child_vessel_retry", turn.ChildVesselRetry)
+                .Field("manual_retry", turn.ManualRetry)
                 .Field("goal_stands", turn.GoalStands)
                 .Field("reduced_goal_retry", turn.ReducedGoalRetry)
                 .Field("waits", turn.Waits)
@@ -190,6 +193,7 @@ namespace ClaudiaKerman.Core.Missions
                 PlayerText = JsonNode.Str(root["player_text"]),
                 ScriptRewrite = JsonNode.Bool(root["script_rewrite"]) ?? false,
                 ChildVesselRetry = JsonNode.Bool(root["child_vessel_retry"]) ?? false,
+                ManualRetry = JsonNode.Bool(root["manual_retry"]) ?? false,
                 GoalStands = JsonNode.Bool(root["goal_stands"]) ?? false,
                 ReducedGoalRetry = JsonNode.Bool(root["reduced_goal_retry"]) ?? false,
                 Waits = JsonNode.Bool(root["waits"]) ?? false,
