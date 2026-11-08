@@ -193,7 +193,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// One tick of a burst turn, through the block-internal <c>ADDONS:CLAUDIA:BURSTTURN</c>: <paramref name="turn"/> is
         /// <see cref="Call"/>'s plan the first time and this call's answer after; <paramref name="now"/> gives <c>ut</c>,
-        /// <c>error</c> (deg), <c>rate</c> (deg/s), <c>left_s</c> (-1: no deadline), <c>aligned</c>, <c>monoprop</c> (units),
+        /// <c>error</c> (deg), <c>rate</c> (deg/s), <c>left_s</c> (-1: no deadline; 0: passed), <c>aligned</c>, <c>monoprop</c> (units),
         /// and <c>energy</c> (J/kg) and <c>speed</c> (m/s) of the orbit. The spin-up ends at the coast rate (or twice its time),
         /// the coast at <c>stop_deg</c> (or at twice its time and <see cref="CoastSlackSeconds"/>, or once it has lost
         /// <see cref="CoastLosingDeg"/> on where it began), the stop burst after its time or
@@ -226,7 +226,7 @@ namespace ClaudiaKerman.Core.Tools
             if (phase == "spin" && (rate >= Number(t, "coast_rate", 0) || took >= 2 * Number(t, "spin_s", 0)))
             {
                 t["spin_total"] = Number(t, "spin_total", 0) + took;
-                t["coast_deg"] = error;
+                t["coast_began_deg"] = error;
                 return Enter(t, "coast", ut);
             }
             if (phase == "coast")
@@ -234,7 +234,7 @@ namespace ClaudiaKerman.Core.Tools
                 t["flown"] = Math.Max(Number(t, "flown", 0), rate);
                 // A coast that runs well past its plan (the target moved away, or warp stopped the turn) stops and is re-planned.
                 var over = took > 2 * Number(t, "coast_s", 0) + CoastSlackSeconds;
-                var losing = error > Number(t, "coast_deg", double.PositiveInfinity) + CoastLosingDeg;
+                var losing = error > Number(t, "coast_began_deg", double.PositiveInfinity) + CoastLosingDeg;
                 return error <= Number(t, "stop_deg", 0) || over || losing ? Enter(t, "stop", ut) : t;
             }
             if (phase == "stop" && (took >= Number(t, "stop_s", 0) || rate <= StoppedShare * Number(t, "coast_rate", 0)))

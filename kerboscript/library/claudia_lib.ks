@@ -1529,7 +1529,7 @@ function claudia_turn_to_burn {
   parameter ctx, nd, start_ut.
   local began is time:seconds.
   local reason is "".
-  // RCS Use: the turn has until start_ut, so RCS helps only if the wheels alone can't make it by then. Once it has passed, turn_by stays: no time left, not no deadline (#933).
+  // RCS Use: the turn has until start_ut, so RCS helps only if the wheels alone can't make it by then. Once it has passed, turn_by stays until the burn ends: no time left, not no deadline (#933).
   set ctx:turn_by to start_ut.
   set ctx:burn_within_ut to -1.
   local aligned is claudia_aligned_to(ctx, nd).
@@ -2007,8 +2007,7 @@ function claudia_begin {
     "drop_key", "",
     "drop_scan", 0,
     "drop_mode", "full",
-    // RCS Use (claudia_rcs_tick): turn_by is the UT a turn must be done by (0: no deadline), set around a
-    // turn to a burn; while rcs_translating is true RCS stays on and the rule decides nothing; rcs_turn is a burst turn.
+    // RCS Use (claudia_rcs_tick): turn_by is the UT a turn to a burn must be done by (0: no deadline; past: no time left); while rcs_translating is true RCS stays on and the rule decides nothing; rcs_turn is a burst turn.
     "turn_by", 0,
     "rcs_turn", 0,
     "rcs_translating", false,
