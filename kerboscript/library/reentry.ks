@@ -107,28 +107,25 @@ function reentry_unreadable {
 // already open; speed in m/s and agl (height above the ground) in m; pressure in atm.
 function reentry_chute_action {
   parameter mode, out, speed, agl, pressure.
-  if mode = "none" or out {
-    return "wait".
-  }
-  if agl <= reentry_chute_last_agl() {
-    return "deploy".
-  }
-  if speed <= reentry_chute_max_speed() and pressure >= reentry_chute_min_pressure() {
-    return "deploy".
-  }
-  return "wait".
+  return reentry_open_action(mode, out, speed, agl, pressure, reentry_chute_last_agl(), reentry_chute_max_speed(), reentry_chute_min_pressure()).
 }
 
 // What to do about the drogue chutes now: "deploy" or "wait". Same arguments as reentry_chute_action.
 function reentry_drogue_action {
   parameter mode, out, speed, agl, pressure.
+  return reentry_open_action(mode, out, speed, agl, pressure, reentry_drogue_last_agl(), reentry_drogue_max_speed(), reentry_drogue_min_pressure()).
+}
+
+// The chute rule, with its last height (m), most speed (m/s) and least pressure (atm).
+function reentry_open_action {
+  parameter mode, out, speed, agl, pressure, last_agl, max_speed, min_pressure.
   if mode = "none" or out {
     return "wait".
   }
-  if agl <= reentry_drogue_last_agl() {
+  if agl <= last_agl {
     return "deploy".
   }
-  if speed <= reentry_drogue_max_speed() and pressure >= reentry_drogue_min_pressure() {
+  if speed <= max_speed and pressure >= min_pressure {
     return "deploy".
   }
   return "wait".
@@ -702,6 +699,9 @@ function reentry {
   // An abort before the drop keeps the stack, and reads the Chute Group (ADR 0019) fresh: none is chosen yet.
   local ask is lexicon("none", opt:chutes = "none", "engine", false).
   if entry_in > below:lead {
+    // Core decides one late trim toward the Mission's landing target (#892); anything else flies nothing, the reason in the log, and the block goes on.
+    claudia_fly_correction(ctx, addons:claudia:entrytrim(lexicon("to_air", entry_in, "home", entry_ask:home, "has_node", hasnode, "dv_left", claudia_dv_remaining(), "isp", claudia_engine_isp()))).
+    set entry_in to reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
     local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).
     if waited <> "" {
       reentry_abort(opt:chute_mode, reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts)).

@@ -92,9 +92,11 @@ namespace ClaudiaKerman.Core.Tools
             var step = solved.Scale.VelocityScale * Sqp.VelocityStep;
             var lever = Lever(target, landing, predict, arrive, orbit, plain.Ut, burn, step);
             if (lever == null) return Kept(plain, plain, ask, "found no way to move the landing along the track");
-            if (lever.KmPerMs < LeastKmPerMs) return Kept(plain, plain, ask, "too late to move the landing (" + Ms(lever.KmPerMs * 1000) + " m per m/s)");
+            // A correction stops here. A late trim's corridor (#892) still moves the landing for a fraction of a m/s; only spending along the track and the fix across it are out.
+            var tooLate = lever.KmPerMs < LeastKmPerMs;
+            if (tooLate && !ask.CorridorPe.HasValue) return Kept(plain, plain, ask, "too late to move the landing (" + Ms(lever.KmPerMs * 1000) + " m per m/s)");
             var off = landing.OffKm(target, first);
-            var acrossKm = Math.Abs(off[0] * lever.Along[1] - off[1] * lever.Along[0]);
+            var acrossKm = tooLate ? 0 : Math.Abs(off[0] * lever.Along[1] - off[1] * lever.Along[0]);
             string acrossNote = "";
             double acrossDv = 0;
             if (ask.DvLeft < 0 && acrossKm > WorthFixingKm) acrossNote = "; stock can't say the delta-v left";
@@ -157,6 +159,7 @@ namespace ClaudiaKerman.Core.Tools
             var reach = lever.KmPerMs * Math.Max(0, most - aimed.DeltaV);
             var goal = Math.Max(-reach, Math.Min(reach, miss));
             if (Math.Abs(miss) <= LandingResidual) return reported(aimed, null);
+            if (tooLate) return reported(aimed, corridorWhy ?? "too late to move the landing (" + Ms(lever.KmPerMs * 1000) + " m per m/s)");
             if (Math.Abs(goal) <= LandingResidual) return reported(aimed, corridorWhy ?? "nothing above the reserve to move the landing with the periapsis held");
             var rest = miss - goal;
 
@@ -240,9 +243,10 @@ namespace ClaudiaKerman.Core.Tools
         internal static void CorridorOf(SnapshotBody target, CorrectionAsk ask, out double low, out double high)
         {
             low = high = ask.TargetPe;
-            if (!string.Equals(target.Name, CraftCheckFlow.HomeBody, StringComparison.OrdinalIgnoreCase) || !(target.AtmosphereHeight > 0) || ask.TargetPe < CorridorFloor) return;
-            low = Math.Max(CorridorFloor, ask.TargetPe - PeCorridor);
-            high = ask.TargetPe + PeCorridor;
+            var centre = ask.CorridorPe ?? ask.TargetPe;
+            if (!string.Equals(target.Name, CraftCheckFlow.HomeBody, StringComparison.OrdinalIgnoreCase) || !(target.AtmosphereHeight > 0) || centre < CorridorFloor) return;
+            low = Math.Max(CorridorFloor, centre - PeCorridor);
+            high = centre + PeCorridor;
         }
 
         /// <summary>#805: whether the landing may be left on a periapsis of <paramref name="pe"/> m: inside the corridor, or within <see cref="PlainSlack"/> pe_tolerances of target_pe.</summary>

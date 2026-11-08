@@ -53,6 +53,8 @@ namespace ClaudiaKerman.Core.Tools
         public double LaterLegsDv;
         /// <summary>For measuring (#880): the most the landing may spend along the track, m/s, in place of the rule; null for the rule.</summary>
         public double? MostLandingDv;
+        /// <summary>The periapsis the home planet's corridor is measured from, m above sea level (#892: a late trim's), in place of <see cref="TargetPe"/>; null for <see cref="TargetPe"/>. Set, the corridor is still tried when it is too late to move the landing along the track.</summary>
+        public double? CorridorPe;
     }
 
     /// <summary>The correction node found, or why there is none (<see cref="Error"/>; the rest is set when a best point exists).</summary>

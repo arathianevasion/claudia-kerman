@@ -245,6 +245,16 @@ namespace ClaudiaKerman.Adapter
             AimedPlane = record;
             if (Current != null) Current.Send(new ArrivalPlaneAimed(record));
         }
+
+        /// <summary>Where the last aiming block call aimed the landing (#892), for a block test, which has no Mission; a Mission keeps its own, in its save.</summary>
+        public static Core.Tools.LandingTarget AimedLanding;
+
+        /// <summary>Core records where <c>return</c> or <c>deorbit</c> aims the landing; null when it aims at none.</summary>
+        public static void RecordLandingTarget(Core.Tools.LandingTarget target)
+        {
+            AimedLanding = target;
+            if (Current != null) Current.Send(new LandingTargetAimed(target));
+        }
         public static int CurrentSequence = -1;
 
         /// <summary>

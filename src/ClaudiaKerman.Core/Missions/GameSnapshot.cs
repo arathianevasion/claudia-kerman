@@ -268,6 +268,8 @@ namespace ClaudiaKerman.Core.Missions
         public Tools.PickedSite PickedSite;
         /// <summary>The arrival plane <c>transfer_to</c> last aimed for, as Core recorded it for <c>capture</c> (#788); "" for none. Not in the JSON.</summary>
         public string RecordedPlane = "";
+        /// <summary>Where the Mission's last aiming block aimed the landing, for <c>reentry</c>'s late trim (#892); null for none. Not in the JSON.</summary>
+        public Tools.LandingTarget LandingTarget;
         private static readonly int DefaultMarginPercent = new Config.PlayerConfig().CraftCheckMarginPercent;
 
         /// <summary>

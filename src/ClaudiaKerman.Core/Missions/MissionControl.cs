@@ -118,6 +118,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is KerbalKilled) CrewDeathSeen(((KerbalKilled)input).Name);
             else if (input is KosRunBlocked) RunBlocked((KosRunBlocked)input);
             else if (input is ArrivalPlaneAimed) ArrivalPlaneRecorded((ArrivalPlaneAimed)input);
+            else if (input is LandingTargetAimed) LandingTargetRecorded((LandingTargetAimed)input);
             else if (input is KosBlockStarted) BlockStarted((KosBlockStarted)input);
             else if (input is KosBlockEnded) BlockEnded((KosBlockEnded)input);
             else if (input is KosWarpRequested) WarpRequestSeen((KosWarpRequested)input);
@@ -2488,6 +2489,7 @@ namespace ClaudiaKerman.Core.Missions
                 view.RunningChild = mission.RunningChild;
                 view.ArrivalPlane = mission.ArrivalPlane;
                 view.PickedSite = mission.PickedSite;
+                view.LandingTarget = mission.LandingTarget;
                 if (mission.Stage == MissionStage.Running && mission.PendingSequence != null)
                 {
                     view.RunStatus = "Running: " + mission.PendingSequence.Name + (mission.RunningChild.Length > 0 ? " on " + mission.RunningChild : "");
