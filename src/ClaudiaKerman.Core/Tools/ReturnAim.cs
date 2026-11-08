@@ -374,6 +374,18 @@ namespace ClaudiaKerman.Core.Tools
                 search._latest = search._earliest + (ask.MaxWait ?? (search.CostlyPlane ? alignment - search._earliest + PastAlignmentS : turn));
                 if (search.CostlyPlane)
                 {
+                    // #887: restarted late for the Mission's window, the alignment it was planned for, not the next one half a moon's orbit on.
+                    if (ask.PlannedUt.HasValue)
+                    {
+                        // Start an hour before the band's end, so a window at alignment + PastAlignmentS does not skip to the next alignment.
+                        var planned = NextAlignment(system, moon, orbit, ask.PlannedUt.Value - PastAlignmentS - 3600);
+                        // Already past that band: #816's normal rule, not the costly-plane burn at once.
+                        if (search._earliest <= planned + PastAlignmentS)
+                        {
+                            alignment = planned;
+                            search._latest = Math.Max(search._earliest, alignment + PastAlignmentS);
+                        }
+                    }
                     search._alignment = alignment;
                     search._turnEnd = search._earliest + turn;
                     search._bandStart = alignment - PastAlignmentS;

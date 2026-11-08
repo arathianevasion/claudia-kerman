@@ -324,6 +324,8 @@ namespace ClaudiaKerman.Core.Missions
             public string WindowPlanet = "";
             public double? WindowUt;
             public double? WindowDeltaV;
+            /// <summary>#887: the window a <c>return</c> run was planned for, kept past the start for the block's restart; null for none. Not saved: a load restarts for the next alignment.</summary>
+            public double? ReturnWindowUt;
             /// <summary>Persistence (MissionControl.Persistence.cs): a turn the loop owes Claudia once the craft is in Flight.</summary>
             public Owed Owed;
             public RunOutcome OwedOutcome;
@@ -728,6 +730,7 @@ namespace ClaudiaKerman.Core.Missions
             mission.CoastBlocked = CoastBlock(mission, plan);
             if (mission.CoastBlocked.Length > 0) Note(LogKind.Notice, CoastCheckpoints.BlockerLine(mission.CoastBlocked));
             if (plan.DueTimeUt.HasValue) _commands.Add(new ClearDueTimeAlarm(mission.Id));
+            mission.ReturnWindowUt = FirstIsReturn(plan) ? mission.WindowUt : null;
             ClearWindow(mission);
             mission.RunningProcessor = processor.Value;
             mission.RunId = ++_lastRunId;
@@ -2526,7 +2529,7 @@ namespace ClaudiaKerman.Core.Missions
                         SecondsLeft = Math.Max(0, due.Value - _ut),
                         Reached = _ut >= due.Value,
                         VesselName = mission.VesselName,
-                        WaitsFor = mission.WindowPlanet.Length > 0 ? WindowWaits.WaitsFor(mission.WindowPlanet) : CoastPlanToken(mission.PendingSequence) != null ? CoastCheckpoints.WaitsFor : "",
+                        WaitsFor = mission.WindowPlanet.Length > 0 && !FirstIsReturn(mission.PendingSequence) ? WindowWaits.WaitsFor(mission.WindowPlanet) : CoastPlanToken(mission.PendingSequence) != null ? CoastCheckpoints.WaitsFor : "",
                     };
                 }
                 view.Locks = LocksNow();
@@ -2538,6 +2541,7 @@ namespace ClaudiaKerman.Core.Missions
                 view.PlanStaleTarget = view.PlanStale.Length > 0 && mission.TargetChange.Length > 0;
                 view.PlanDeclined = mission.Declined;
                 view.WindowPick = mission.WindowPick;
+                view.ReturnWindowUt = mission.ReturnWindowUt;
                 view.WindowPickNeeded = WindowPickMissing(mission);
                 view.Windows = MissionOffer(mission);
                 view.TargetNeeded = TargetNeeded(mission);
