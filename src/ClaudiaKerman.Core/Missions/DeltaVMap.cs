@@ -28,6 +28,8 @@ namespace ClaudiaKerman.Core.Missions
         internal double ArrivalExcess;
         /// <summary>The bodies the leg joins, for <see cref="DeltaVMap.ToText(IList{SnapshotBody})"/>.</summary>
         internal string[] Bodies = new string[0];
+        /// <summary>#866: a trip in to a planet that stops in its high orbit for a moon: what that saves on the capture to the low circle, m/s; 0 otherwise.</summary>
+        internal double HighSaving;
     }
 
     /// <summary>
@@ -271,6 +273,56 @@ namespace ClaudiaKerman.Core.Missions
             };
         }
 
+        /// <summary>
+        /// #866: home to a moon of another planet by the planet's high orbit, as <c>capture</c> keeps it (<see cref="KeptRoute"/>): the trip in captures at the
+        /// low orbit's height into an ellipse reaching <see cref="KeptRoute.TopR"/>, and the trip on lowers its apoapsis to the
+        /// moon from there. The two legs, <c>transfer:Duna</c> and <c>transfer:Duna&gt;Ike</c>, priced as one route in place of the low circle's (about 600 m/s
+        /// less at Ike); null when the moon's planet isn't another of the star's, or its high orbit doesn't reach past the moon.
+        /// </summary>
+        internal DeltaVLeg[] HighRoute(string moonName)
+        {
+            var moon = _bodies.FirstOrDefault(b => string.Equals(b.Name, moonName, StringComparison.OrdinalIgnoreCase));
+            var center = _bodies.FirstOrDefault(b => b.Name == Home);
+            if (moon == null || center == null || moon.Sma <= 0 || string.IsNullOrEmpty(center.Parent)) return null;
+            var planet = _bodies.FirstOrDefault(b => b.Name == moon.Parent);
+            if (planet == null || planet == center || planet.Parent != center.Parent) return null;
+            var inbound = Trip(center, planet);
+            var hop = Trip(planet, moon);
+            var low = LowOrbit(planet);
+            var high = KeptRoute.TopR(Sphere(planet), moon);
+            if (inbound == null || hop == null || high <= moon.Sma * (1 + moon.Eccentricity)) return null;
+            var atHigh = KeptRoute.Speed(planet.Gm, low, high);
+            var saving = atHigh - Circular(planet.Gm, low);
+            inbound.Id = "transfer:" + planet.Name;
+            inbound.Description = "Low " + center.Name + " orbit to high " + planet.Name + " orbit (departure, plane change and capture)";
+            inbound.Bodies = new[] { center.Name, planet.Name };
+            inbound.Arrival -= saving;
+            inbound.DeltaV -= saving;
+            inbound.HighSaving = saving;
+            hop.Id = "transfer:" + planet.Name + ">" + moon.Name;
+            hop.Description = "High " + planet.Name + " orbit to low " + moon.Name + " orbit (departure, plane change and capture)";
+            hop.Departure = atHigh - KeptRoute.Speed(planet.Gm, low, moon.Sma);
+            hop.DeltaV = hop.Departure + hop.PlaneChange + hop.Arrival;
+            return new[] { inbound, hop };
+        }
+
+        /// <summary>The goal's legs with each named moon reached by its planet's high orbit (<see cref="HighRoute"/>) in place of the low circle's, unless the goal names the planet too.</summary>
+        private List<DeltaVLeg> WithHighRoutes(List<DeltaVLeg> legs, IList<SnapshotBody> named)
+        {
+            foreach (var moon in named)
+            {
+                if (named.Any(b => b.Name == moon.Parent)) continue;
+                var route = HighRoute(moon.Name);
+                if (route == null) continue;
+                foreach (var leg in route)
+                {
+                    var at = legs.FindIndex(l => l.Id == leg.Id);
+                    if (at >= 0) legs[at] = leg;
+                }
+            }
+            return legs;
+        }
+
         /// <summary>The speed relative to <c>chain[0]</c> of a trip with <paramref name="excess"/> relative to <c>chain[top - 1]</c>, its moons in between.</summary>
         private static double ExcessAt(IList<SnapshotBody> chain, int top, double excess)
         {
@@ -329,7 +381,7 @@ namespace ClaudiaKerman.Core.Missions
             var names = new HashSet<string>(named.Select(b => b.Name));
             var route = new HashSet<string> { Home };
             foreach (var at in named.SelectMany(Ancestry).Where(b => b.Sma > 0)) route.Add(at.Name);
-            return Legs.Where(l => l.Bodies.All(route.Contains) && (!OnOneBody(l) || names.Contains(l.Bodies[0]) || (l.Bodies[0] == Home && !IsPolar(l)))).ToList();
+            return WithHighRoutes(Legs.Where(l => l.Bodies.All(route.Contains) && (!OnOneBody(l) || names.Contains(l.Bodies[0]) || (l.Bodies[0] == Home && !IsPolar(l)))).ToList(), named);
         }
 
         private static bool OnOneBody(DeltaVLeg leg)
@@ -380,13 +432,14 @@ namespace ClaudiaKerman.Core.Missions
                 }
                 if (leg == windowLeg)
                 {
-                    figure = window.TotalDv;
+                    // A high-orbit route's capture stops short of the low circle the window's is costed to (#866).
+                    figure = window.TotalDv - leg.HighSaving;
                     note = " (the player's " + window.Kind + " window)";
                 }
                 text.Append("- ").Append(leg.Id).Append(": ").Append(leg.Description).Append(": ").Append(Whole(figure)).Append(" m/s").Append(note);
                 if (leg.PlaneChange > 0 && leg != windowLeg)
                     text.Append(" (carries a plane change of ").Append(Whole(leg.PlaneChange)).Append(" m/s)");
-                var arrival = leg == windowLeg ? window.CaptureDv : leg.Arrival;
+                var arrival = leg == windowLeg ? window.CaptureDv - leg.HighSaving : leg.Arrival;
                 if (leg.Id.StartsWith("transfer:", StringComparison.Ordinal) && arrival > 0)
                     text.Append(" (includes the capture, ").Append(Whole(arrival)).Append(" m/s)");
                 text.Append('\n');
