@@ -305,7 +305,7 @@ namespace ClaudiaKerman.Core.Missions
                 aboard.RemoveAll(entry.Chutes.Contains);
                 // The craft that enters is EntryCraft's: a decoupler that goes with the stack (EntryStack.Leaves, #925) is not on it, though Staging keeps it on the anchor's side.
                 var returnKg = podMassKg - stack.Leaves.Where(p => !leaving.Contains(p.Id)).Sum(p => p.MassT) * 1000;
-                entry.MassKg = entry.Return ? (returnKg > 0 ? returnKg : snapshot.Craft.MassTonnes * 1000)
+                entry.MassKg = entry.Return ? (podMassKg > 0 ? Math.Max(0, returnKg) : snapshot.Craft.MassTonnes * 1000)
                     : MassAfter(snapshot, sequences.Skip(first).Take(entry.Step - first).Sum(s => Math.Max(0, s.DeltaV)));
                 Judge(snapshot, entry);
                 // An entry that needs them keeps its stack, so it flies with that stack's chutes and engines, and so do the Entries after (ADR 0020).
