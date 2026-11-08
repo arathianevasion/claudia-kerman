@@ -74,11 +74,12 @@ namespace ClaudiaKerman.Core.Missions
             var walker = new Walker(byId, anchor, PartTree.TowardHome(parts, home));
             var seen = new HashSet<uint>();
             foreach (var part in parts)
-                if (part.Id != anchor) stack.Classify(part, walker.Up(part), seen, walker);
+                if (part.Id != anchor) stack.Classify(part, walker.Up(part), seen);
+            stack._goingDecouplers.AddRange(stack.Decouplers.Where(walker.LetsGoAbove));
             return stack;
         }
 
-        private void Classify(SnapshotPart part, Walk way, HashSet<uint> seen, Walker walker)
+        private void Classify(SnapshotPart part, Walk way, HashSet<uint> seen)
         {
             if (way.Under)
             {
@@ -93,7 +94,6 @@ namespace ClaudiaKerman.Core.Missions
                     Gone.Add(part);
                     if (seen.Add(way.Top.Id)) Decouplers.Add(way.Top);
                 }
-                else if (walker.LetsGoAbove(part)) _goingDecouplers.Add(part);
             }
         }
 

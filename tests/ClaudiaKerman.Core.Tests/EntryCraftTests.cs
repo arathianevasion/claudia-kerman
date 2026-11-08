@@ -242,6 +242,14 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void A_decoupler_with_nothing_below_it_is_not_fired_so_it_stays_on_the_shield()
+        {
+            var parts = Parts(Shape.Drops, stack: false);
+            parts.Single(p => p.Id == Dec).Releases.Add(Shield);
+            Assert.Empty(Uids(Read(AtMun(parts), "Kerbin")["leave_out"]));
+        }
+
+        [Fact]
         public void A_decoupler_with_nothing_read_stays_as_recordings_have_it()
         {
             Assert.Equal(Uids(Tank, Engine), Uids(Read(AtMun(Parts(Shape.Drops)), "Kerbin")["leave_out"]));
