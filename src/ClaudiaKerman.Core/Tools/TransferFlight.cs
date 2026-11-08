@@ -17,7 +17,7 @@ namespace ClaudiaKerman.Core.Tools
         public double TargetPe;
         /// <summary>The window's UT, or null for "next".</summary>
         public double? Window;
-        /// <summary>The ejection its watched wait led to (#867, <see cref="TransferFlight.EjectionToken"/>); "" for none.</summary>
+        /// <summary>The ejection its watched wait led to (#867, <see cref="EjectionToken"/>); "" for none.</summary>
         public string Ejection = "";
         public bool Correction = true;
         public double PeTolerance = 1000;
@@ -103,7 +103,7 @@ namespace ClaudiaKerman.Core.Tools
         public double MidUt = -1;
         /// <summary>For return's coast ask (#775): the UT its wait runs to.</summary>
         public double WaitUt;
-        /// <summary>The ejection a watched wait leads to (#867), carried so the step after it flies this node: <see cref="TransferFlight.EjectionToken"/>; "" for none.</summary>
+        /// <summary>The ejection a watched wait leads to (#867), carried so the step after it flies this node: <see cref="EjectionToken"/>; "" for none.</summary>
         public string Ejection = "";
         /// <summary>A wait's Encounter Watch (#770); null for a wait with nothing to watch.</summary>
         public EncounterWatchPlan Watch;
@@ -408,7 +408,7 @@ namespace ClaudiaKerman.Core.Tools
             var wait = new TransferFlightStep
             {
                 Do = TransferFlightStep.Wait, Ut = step.Ut - lead, Phase = Eject, ArrivalUt = arrival, PlaneUt = step.PlaneUt, MaxDuration = step.MaxDuration,
-                Watch = new EncounterWatchPlan { NextPatch = true, SinceUt = setup.Now }, Ejection = EjectionToken(step), Sibling = step.Sibling,
+                Watch = new EncounterWatchPlan { NextPatch = true, SinceUt = setup.Now }, Ejection = EjectionToken.Of(step).ToString(), Sibling = step.Sibling,
             };
             foreach (var entry in step.Report) wait.Report[entry.Key] = entry.Value;
             return wait;
@@ -463,28 +463,17 @@ namespace ClaudiaKerman.Core.Tools
             return NextPatchWatch.Margin(orbit) + turnTime + Lead;
         }
 
-        /// <summary>The ejection node a watched wait carries (#867): "ut;prograde;normal;radial;phase", invariant.</summary>
-        internal static string EjectionToken(TransferFlightStep step)
-        {
-            return string.Join(";", new[] { step.Ut, step.Prograde, step.Normal, step.Radial }.Select(x => x.ToString("R", CultureInfo.InvariantCulture)).ToArray()) + ";" + step.Phase;
-        }
-
         /// <summary>
         /// After the watched wait (#867): the ejection it carried, flown as planned (the orbit hasn't changed on rails), unless the path meets a moon
         /// before it in the last stretch, which exec_node warps unwatched. Null when nothing readable was carried: the ejection is solved again.
         /// </summary>
         private static TransferFlightStep Carried(PredictBurn.Setup setup, TransferFlightAsk ask)
         {
-            var parts = (ask.Ejection ?? "").Split(';');
-            double ut, prograde, normal, radial;
-            if (parts.Length != 5 || !double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out ut)
-                || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out prograde)
-                || !double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out normal)
-                || !double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out radial)
-                || (parts[4] != Escaping && parts[4] != Ejected) || ut < setup.Now + ask.TurnTime) return null;
-            var met = MoonCrossings.Follow(setup.System, setup.Body, setup.Start, setup.Now, ut);
+            var token = EjectionToken.Parse(ask.Ejection);
+            if (token == null || (token.Phase != Escaping && token.Phase != Ejected) || token.Ut < setup.Now + ask.TurnTime) return null;
+            var met = MoonCrossings.Follow(setup.System, setup.Body, setup.Start, setup.Now, token.Ut);
             if (met != null) return Fail(NextPatchWatch.WouldMeet(met));
-            var step = Node("ejection", ut, prograde, normal, radial, parts[4]);
+            var step = Node("ejection", token.Ut, token.Prograde, token.Normal, token.Radial, token.Phase);
             step.ArrivalUt = ask.ArrivalUt;
             step.PlaneUt = ask.PlaneUt;
             step.Sibling = ask.Sibling;
