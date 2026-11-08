@@ -72,14 +72,25 @@ namespace ClaudiaKerman.Core.Missions
             craft.LeftOut.AddRange(snapshot.Craft.Parts.Where(p => left.Contains(p.Id)));
             craft.KeptT = craft.WholeT - craft.LeftOut.Sum(p => p.MassT);
             var burning = snapshot.Craft.Parts.Where(Burns).ToList();
-            var burned = new HashSet<string>(burning.SelectMany(p => p.EnginePropellants));
-            craft.GonePropellantT = craft.LeftOut.Sum(p => p.Resources.Count > 0
+            // Nothing burns yet (a flamed-out last stage, the next one unstaged): the engines the next staging lights pay; none known, every resource, as before.
+            var payers = burning.Count > 0 ? burning : NextStaged(snapshot);
+            var burned = new HashSet<string>(payers.SelectMany(p => p.EnginePropellants));
+            craft.GonePropellantT = craft.LeftOut.Sum(p => p.Resources.Count > 0 && burned.Count > 0
                 ? p.Resources.Where(r => burned.Contains(r.Name)).Sum(r => r.Amount * r.Density)
-                : (p.DryMassT > 0 ? System.Math.Max(0, p.MassT - p.DryMassT) : 0)); // no resources read (an older recording): every resource, as before
+                : (p.DryMassT > 0 ? System.Math.Max(0, p.MassT - p.DryMassT) : 0)); // no resources or engines read (an older recording): every resource, as before
             craft.BurnersKept = burning.Count(p => !left.Contains(p.Id));
             craft.Key = string.Join(",", snapshot.Craft.Parts.Where(p => !left.Contains(p.Id)).Select(p => p.Id).OrderBy(id => id)
                 .Select(id => id.ToString(CultureInfo.InvariantCulture)).ToArray()) + (craft.ShieldDropped != null ? "|shield jettisoned" : "|shield kept");
             return craft;
+        }
+
+        /// <summary>The unlit engines in the highest stage still to fire (at or below the craft's current stage): what the next staging lights.</summary>
+        private static List<SnapshotPart> NextStaged(GameSnapshot snapshot)
+        {
+            var unlit = snapshot.Craft.Parts.Where(p => p.Tags.Contains("engine") && !p.EngineLit && p.EnginePropellants.Count > 0 && p.Stage <= snapshot.Craft.Stage).ToList();
+            if (unlit.Count == 0) return unlit;
+            var next = unlit.Max(p => p.Stage);
+            return unlit.Where(p => p.Stage == next).ToList();
         }
 
         /// <summary>An engine burning now: lit with available thrust above 0, as <c>drop_parts_kept</c> counts it.</summary>

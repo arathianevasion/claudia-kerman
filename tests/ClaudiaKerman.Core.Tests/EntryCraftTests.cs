@@ -420,6 +420,18 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(0.22, D(answer, "gone_prop"), 6);
         }
 
+        /// <summary>A flamed-out last stage, the transfer stage not yet staged: the engine the next staging lights pays, not nothing (#870 review).</summary>
+        [Fact]
+        public void With_no_engine_burning_the_engines_the_next_staging_lights_pay()
+        {
+            var parts = Parts(Shape.Drops, stackLit: false);
+            var tank = parts.First(p => p.Id == Tank);
+            tank.Resources.Add(new SnapshotPartResource { Name = "MonoPropellant", Amount = 100, Density = 0.004 });
+            var answer = Read(AtKerbin(parts), null, Tank, Engine);
+            Assert.Equal(1.1, D(answer, "gone_prop"), 6);
+            Assert.Equal(0.0, D(answer, "burners_kept"));
+        }
+
         [Fact]
         public void A_lit_engine_with_no_available_thrust_is_not_a_burner()
         {

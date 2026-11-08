@@ -439,8 +439,10 @@ namespace ClaudiaKerman.Adapter
                     if (engine != null)
                     {
                         if (engine.isOperational) info.EngineAvailableThrustKn += engine.maxThrust * engine.thrustPercentage / 100.0;
-                        foreach (var propellant in engine.propellants)
-                            if (!info.EnginePropellants.Contains(propellant.name)) info.EnginePropellants.Add(propellant.name);
+                        // a multi-mode engine's other mode doesn't burn: only the running module's propellants, as kOS consumedresources
+                        if (engine.isEnabled)
+                            foreach (var propellant in engine.propellants)
+                                if (!info.EnginePropellants.Contains(propellant.name)) info.EnginePropellants.Add(propellant.name);
                     }
                 }
                 snapshot.Craft.Parts.Add(info);
