@@ -342,7 +342,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             var body = Body();
             // reentry's ask carries what Core's refusal needs (EntryDropTests, EntryFinishTests); its error ends the block before any wait.
-            Assert.Contains("local entry_ask is lexicon(\"home\", reentry_home_uid(), \"separate\", opt:separate, \"chutes\", opt:chutes <> \"none\" and opt:chute_mode <> \"none\", \"core\", core:part:uid).", body);
+            Assert.Contains("local entry_ask is lexicon(\"home\", reentry_home_uid(), \"separate\", opt:separate, \"jettison_stage\", opt:jettison_stage, \"chutes\", opt:chutes <> \"none\" and opt:chute_mode <> \"none\", \"core\", core:part:uid).", body);
             var read = At(body, StartRead);
             Assert.True(read < At(body, "if below:error <> \"\" {\n    return claudia_finish(ctx, false, below:error, extra)."));
             Assert.True(read < At(body, "claudia_wait_until("));
@@ -431,7 +431,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void After_the_drop_ENTRYDROP_refuses_a_stack_still_on_above_the_air_and_the_shield_is_found_after()
         {
             var body = Body();
-            var after = At(body, "set below to addons:claudia:entrydrop(lexicon(\"home\", entry_ask:home, \"separate\", opt:separate, \"drop_error\", drop_error)).");
+            var after = At(body, "set below to addons:claudia:entrydrop(lexicon(\"home\", entry_ask:home, \"separate\", opt:separate, \"jettison_stage\", opt:jettison_stage, \"drop_error\", drop_error)).");
             Assert.True(At(body, Fire) < after);
             Assert.True(after < At(body, "reentry_shield_modules(shield_uid, ship:parts)"));
         }
