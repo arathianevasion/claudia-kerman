@@ -21,7 +21,7 @@ function test_km {
   return 2 * arcsin(min(1, sqrt(h))) * constant:pi / 180 * body:radius / 1000.
 }
 
-local aim is deorbit_ksc().
+local aim is claudia_ksc().
 local result is deorbit(lexicon("target", "ksc", "stage_limit", 2, "separate", 1)).
 print "deorbit test: success " + result:success + ", burn at " + result:burn_ut + ", dv " + result:dv_used + ", predicted " + result:predicted_geo + " (" + result:predicted_error_km + " km off), " + result:reason.
 // The checker compares a field with a literal only, so the test reports the comparisons it needs; a

@@ -19,7 +19,7 @@ function test_km {
   return 2 * arcsin(min(1, sqrt(h))) * constant:pi / 180 * body:radius / 1000.
 }
 
-local aim is deorbit_ksc().
+local aim is claudia_ksc().
 // Called as a value: a bare return(). would be kOS's return statement.
 local result is return(lexicon("target", "ksc", "stage_limit", 2)).
 print "return target test: success " + result:success + ", Kerbin pe " + result:planet_pe + " m, predicted " + result:predicted_geo + " (" + result:predicted_error_km + " km off KSC), " + result:reason.
