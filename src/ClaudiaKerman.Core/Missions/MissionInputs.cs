@@ -337,12 +337,14 @@ namespace ClaudiaKerman.Core.Missions
         public ArrivalPlaneAimed(string record) { Record = record; }
     }
 
-    /// <summary>A <c>return</c> or <c>deorbit</c> aimed its landing (#892): Core keeps the target for <c>reentry</c>'s late trim.</summary>
+    /// <summary>A <c>return</c> or <c>deorbit</c> aimed its landing (#892): Core keeps the target, for the vessel that made the call (#913), for <c>reentry</c>'s late trim.</summary>
     public sealed class LandingTargetAimed : MissionInput
     {
         /// <summary>The target; null when the block aims at no landing.</summary>
         public readonly Tools.LandingTarget Target;
-        public LandingTargetAimed(Tools.LandingTarget target) { Target = target; }
+        /// <summary>The calling vessel's id, as in <see cref="SnapshotCraft.VesselId"/>.</summary>
+        public readonly string VesselId;
+        public LandingTargetAimed(Tools.LandingTarget target, string vesselId) { Target = target; VesselId = vesselId; }
     }
 
     /// <summary>A Building Block began in the run (<c>ADDONS:CLAUDIA:BLOCKSTART</c>, from the Core Library's <c>claudia_begin</c>).</summary>

@@ -469,7 +469,7 @@ namespace ClaudiaKerman.KOS
                     ? BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(vessel.mainBody.referenceBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId()))
                     : BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody()); // #888: the body reads the planet's frame for the turn direction
                 // A return aimed at no landing clears the last one (#892): a later reentry mustn't trim toward it.
-                MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, vessel.mainBody.referenceBody.bodyName));
+                MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, vessel.mainBody.referenceBody.bodyName), vessel);
                 return KosValues.FromPlain(node);
             }, () => node.ContainsKey("dv")
                 ? string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); {5} Pe {6:0} m, inclination {7:0.00}, leaving the moon at UT {8:0}{9}{10}",
@@ -574,7 +574,7 @@ namespace ClaudiaKerman.KOS
                 // Core's record of the plane it aims for, for capture (#788). A timing ask aims for nothing.
                 if (step.ContainsKey("aimed_plane")) MissionDriver.RecordAimedPlane((string)step["aimed_plane"]);
                 // #880: a trip home from another planet aims at the default landing, for the Late Trim.
-                if (step.ContainsKey("lat")) MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(step, (string)step["landing_body"]));
+                if (step.ContainsKey("lat")) MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(step, (string)step["landing_body"]), vessel);
                 return KosValues.FromPlain(step);
             }, () => (string)step["error"] != "" ? (string)step["error"]
                 : string.Format(CultureInfo.InvariantCulture, "{0} {1} at UT {2:0.0}, prograde {3:0.00}, normal {4:0.00}, radial {5:0.00} m/s; next {6}; {7}",
@@ -646,7 +646,7 @@ namespace ClaudiaKerman.KOS
                 node = ask.ContainsKey("lat") && planet != null
                     ? BlockCalls.CorrectionBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(planet), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId()))
                     : BlockCalls.CorrectionBurn(ask, SnapshotReader.ReadForMission(vessel));
-                if (ask.ContainsKey("lat") && planet != null) MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, planet.bodyName));
+                if (ask.ContainsKey("lat") && planet != null) MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, planet.bodyName), vessel);
                 return KosValues.FromPlain(node);
             }, () => (!node.ContainsKey("dv") ? (string)node["error"]
                 : node.ContainsKey("distance_predicted")
@@ -801,7 +801,7 @@ namespace ClaudiaKerman.KOS
                 var ask = KosValues.ToDictionary(input);
                 craft = new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId());
                 found = BlockCalls.DeorbitBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(vessel.mainBody), craft);
-                MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, vessel.mainBody.bodyName));
+                MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, vessel.mainBody.bodyName), vessel);
                 return KosValues.FromPlain(found);
             }, () => Landing(found) + CraftLine(craft) + PlanLine(found));
         }
