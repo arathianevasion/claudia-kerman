@@ -647,19 +647,25 @@ namespace ClaudiaKerman.KOS
             System.Collections.Generic.IDictionary<string, object> fix = null;
             return (Lexicon)Guarded("ENTRYTRIM", () =>
             {
-                var vessel = shared.Vessel;
-                var ask = KosValues.ToDictionary(input);
-                var uids = new System.Collections.Generic.Dictionary<uint, string>();
-                foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
-                var snapshot = SnapshotReader.ReadForMission(vessel);
-                SnapshotReader.ReadEngineFuel(snapshot, vessel);
-                // The craft this Entry flies, read here and not through ENTRYCRAFT's call: that records the craft aimed with, which ENTRYFINISH compares this one against (#814).
-                var entryCraft = BlockCalls.EntryCraftCall(new System.Collections.Generic.Dictionary<string, object> { { "home", ask.ContainsKey("home") ? ask["home"] : "" }, { "body", vessel.mainBody.bodyName } }, snapshot,
-                    MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild, id => uids.ContainsKey(id) ? uids[id] : null, (key, why) => { });
-                ask["craft"] = entryCraft;
-                fix = BlockCalls.EntryTrim(ask, snapshot, new PlanningBody(), new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
-                BlockTestAim.Clear(); // the one reentry trim has read it (#892)
-                return KosValues.FromPlain(fix);
+                try
+                {
+                    var vessel = shared.Vessel;
+                    var ask = KosValues.ToDictionary(input);
+                    var uids = new System.Collections.Generic.Dictionary<uint, string>();
+                    foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
+                    var snapshot = SnapshotReader.ReadForMission(vessel);
+                    SnapshotReader.ReadEngineFuel(snapshot, vessel);
+                    // The craft this Entry flies, read here and not through ENTRYCRAFT's call: that records the craft aimed with, which ENTRYFINISH compares this one against (#814).
+                    var entryCraft = BlockCalls.EntryCraftCall(new System.Collections.Generic.Dictionary<string, object> { { "home", ask.ContainsKey("home") ? ask["home"] : "" }, { "body", vessel.mainBody.bodyName } }, snapshot,
+                        MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild, id => uids.ContainsKey(id) ? uids[id] : null, (key, why) => { });
+                    ask["craft"] = entryCraft;
+                    fix = BlockCalls.EntryTrim(ask, snapshot, new PlanningBody(), new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
+                    return KosValues.FromPlain(fix);
+                }
+                finally
+                {
+                    BlockTestAim.Clear(); // the one reentry trim has read it, or failed before it did (#892)
+                }
             }, () => string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); Pe {5:0} m{6}",
                 fix["ut"], fix["prograde"], fix["normal"], fix["radial"], fix["dv"], fix["pe_predicted"],
                 fix.ContainsKey("error_km") ? string.Format(CultureInfo.InvariantCulture, "; aimed {0:0.00} km from the target", fix["error_km"]) : "") + AimLine(fix) + PlanLine(fix));
