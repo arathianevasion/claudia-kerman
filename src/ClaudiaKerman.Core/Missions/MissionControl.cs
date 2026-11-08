@@ -2092,7 +2092,8 @@ namespace ClaudiaKerman.Core.Missions
             var noCorrection = mission.NoCorrection;
             mission.NoCorrection = false;
             var nominal = debrief.Outcome == "Nominal";
-            if (MissionPrompts.RulesOutNominal(crossings) && nominal)
+            var telemetryRated = MissionPrompts.RulesOutNominal(crossings) && nominal;
+            if (telemetryRated)
             {
                 debrief.Outcome = "Off-Nominal";
                 Note(LogKind.Notice, "Rated Off-Nominal, not Nominal: a Telemetry Check was crossed during the run.");
@@ -2102,6 +2103,7 @@ namespace ClaudiaKerman.Core.Missions
                 debrief.Outcome = "Off-Nominal";
                 Note(LogKind.Notice, LandingLine.NoCorrectionNotice);
             }
+            SaveRating(mission, telemetryRated, noCorrection && nominal);
             // Ticking twice is harmless: a Debrief already in a log rebuilt from the transcript has ticked them once.
             GoalSteps.Tick(mission.GoalSteps, debrief.GoalStepsDone);
             var rebuiltLog = mission.SuppressCards;

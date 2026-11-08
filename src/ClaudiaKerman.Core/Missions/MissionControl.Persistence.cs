@@ -252,6 +252,20 @@ namespace ClaudiaKerman.Core.Missions
             }
         }
 
+        /// <summary>Saves why the Debrief was rated Off-Nominal (#904), so a log rebuilt on load keeps the notices; nothing is saved when it was left as Claudia rated it.</summary>
+        private void SaveRating(Mission mission, bool telemetryCheck, bool noCorrection)
+        {
+            if (mission.Folder == null || !(telemetryCheck || noCorrection)) return;
+            try
+            {
+                MissionStore.AppendRating(mission.Folder, _ut, mission.Conversation.Count, telemetryCheck, noCorrection);
+            }
+            catch (Exception e) when (IsFileError(e))
+            {
+                // Best effort, like the rest of the event log.
+            }
+        }
+
         /// <summary>What the next turn says to Claudia about a load goes inside that turn's notice, after the user message.</summary>
         private static void ApplyLoadNotice(Mission mission, Turn turn)
         {
@@ -537,7 +551,7 @@ namespace ClaudiaKerman.Core.Missions
                 // The Mission log is the transcript's again: the player's words, Claudia's lines, the plan cards and the Debriefs.
                 // The Mission Goal's steps too: the transcript holds every plan and Debrief, so they tick as they did (#581).
                 List<GoalItem> steps;
-                mission.Log.AddRange(MissionLogRebuild.From(transcript, state.Goal, mission.VesselName, _config, MissionStore.ReadNotices(mission.Folder), out steps));
+                mission.Log.AddRange(MissionLogRebuild.From(transcript, state.Goal, mission.VesselName, _config, MissionStore.ReadNotices(mission.Folder), out steps, MissionStore.ReadRatings(mission.Folder)));
                 mission.GoalSteps = steps;
                 // A Mission saved before ManualAsk was kept reads the log it has: flagged words, or the prefix rule when none are (#873).
                 if (string.IsNullOrEmpty(state.ManualAsk)) mission.ManualAsk = ManualGrounds.Asked(state.Goal, mission.Log);

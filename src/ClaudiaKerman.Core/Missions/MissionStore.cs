@@ -68,6 +68,14 @@ namespace ClaudiaKerman.Core.Missions
         public string Text = "";
     }
 
+    /// <summary>Why a Debrief was rated Off-Nominal when Claudia rated it Nominal (#904), with how many messages the conversation held when it was committed; the rebuilt log shows what the live one did.</summary>
+    internal sealed class SavedRating
+    {
+        public int Messages;
+        public bool TelemetryCheck;
+        public bool NoCorrection;
+    }
+
     /// <summary>The transcript as read back from the Mission folder: the frozen system layers and every message.</summary>
     internal sealed class StoredTranscript
     {
@@ -94,6 +102,7 @@ namespace ClaudiaKerman.Core.Missions
         public const string UnansweredFile = "unanswered-turn.json";
         public const string EventsFile = "events.jsonl";
         public const string NoticeEvent = "notice";
+        public const string RatingEvent = "debrief_rating";
         public const string FinishedFile = "finished.json";
 
         private static readonly Encoding Utf8 = new UTF8Encoding(false);
@@ -232,6 +241,57 @@ namespace ClaudiaKerman.Core.Missions
                 .EndObject().ToString();
             Directory.CreateDirectory(folder);
             File.AppendAllText(Path.Combine(folder, EventsFile), line + "\n", Utf8);
+        }
+
+        /// <summary>Appends how the Debrief just committed was rated (#904): the reasons that made it Off-Nominal, which the transcript can't give a rebuilt log.</summary>
+        public static void AppendRating(string folder, double ut, int messages, bool telemetryCheck, bool noCorrection)
+        {
+            var line = new JsonWriter().BeginObject()
+                .Field("ut", ut)
+                .Field("event", RatingEvent)
+                .Field("messages", messages)
+                .Field("telemetry_check", telemetryCheck)
+                .Field("no_correction", noCorrection)
+                .EndObject().ToString();
+            Directory.CreateDirectory(folder);
+            File.AppendAllText(Path.Combine(folder, EventsFile), line + "\n", Utf8);
+        }
+
+        /// <summary>The ratings the event log holds, in the order written; empty without a log or in an older Mission, a torn line skipped.</summary>
+        public static List<SavedRating> ReadRatings(string folder)
+        {
+            var ratings = new List<SavedRating>();
+            var path = Path.Combine(folder, EventsFile);
+            if (!File.Exists(path)) return ratings;
+            string[] lines;
+            try
+            {
+                lines = File.ReadAllLines(path, Utf8);
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                return ratings;
+            }
+            foreach (var raw in lines)
+            {
+                JsonNode line;
+                try
+                {
+                    line = JsonReader.Parse(raw);
+                }
+                catch (JsonException)
+                {
+                    continue;
+                }
+                if (line.Kind != JsonKind.Object || JsonNode.Str(line["event"]) != RatingEvent) continue;
+                ratings.Add(new SavedRating
+                {
+                    Messages = (int)(JsonNode.Long(line["messages"]) ?? 0),
+                    TelemetryCheck = JsonNode.Bool(line["telemetry_check"]) ?? false,
+                    NoCorrection = JsonNode.Bool(line["no_correction"]) ?? false,
+                });
+            }
+            return ratings;
         }
 
         /// <summary>The notices the event log holds, in the order written; empty without a log, a torn or unreadable line skipped.</summary>

@@ -464,6 +464,92 @@ namespace ClaudiaKerman.Core.Tests
             }, Notices(mission));
         }
 
+        /// <summary>The Mission log as a load or the history rebuilds it from the Mission folder, as #904 saved it.</summary>
+        private List<LogEntry> RebuiltLog(MissionControl mission)
+        {
+            var folder = MissionFolderOf(mission);
+            return MissionLogRebuild.From(MissionStore.ReadTranscript(folder), "", "Kerbal X", new PlayerConfig(), MissionStore.ReadNotices(folder), out var _, MissionStore.ReadRatings(folder));
+        }
+
+        private static List<string> RatedNotices(IEnumerable<LogEntry> log)
+        {
+            return log.Where(e => e.Kind == LogKind.Notice && e.Text.StartsWith("Rated Off-Nominal")).Select(e => e.Text).ToList();
+        }
+
+        [Fact]
+        public void AReturnThenReentryRunKeepsTheNoCorrectionRatingInTheRebuiltLog()
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"),
+                ScriptedResponse.Fixture("mission-debrief.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission, 10m);
+            mission.Send(ReturnEnded("no correction flown: the solver gave up; 40 km from the target, 80 m/s left", start.RunId));
+            // The script's last block is reentry, so return's aim_note is not in the Debrief turn's text.
+            mission.Send(new KosBlockEnded("reentry", new Dictionary<string, object> { { "success", true } }, start.RunId));
+            mission.Send(new KosRunEnded(Finished(), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            var live = mission.View.Log.Last(e => e.Kind == LogKind.Debrief);
+            Assert.Equal("Off-Nominal", live.Outcome);
+            var rebuilt = RebuiltLog(mission);
+            var debrief = rebuilt.Last(e => e.Kind == LogKind.Debrief);
+            Assert.Equal(live.Title, debrief.Title);
+            Assert.Equal(live.Outcome, debrief.Outcome);
+            Assert.Equal(Notices(mission), RatedNotices(rebuilt));
+            Assert.Single(RatedNotices(rebuilt));
+        }
+
+        [Fact]
+        public void BothRatingNoticesSurviveTheRebuildWhenBothApply()
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                WithSequenceFields(ScriptedResponse.Fixture("mission-sequence-plan.sse"), DeltaVCheck(50)),
+                ScriptedResponse.Fixture("mission-alert-abort.sse"),
+                ScriptedResponse.Fixture("mission-debrief.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission, 10m);
+            mission.Send(Snapshot(s => s.Stages[0].DeltaVVac = 3100));
+            mission.Send(Snapshot(s => s.Stages[0].DeltaVVac = 3100));
+            DrainUntil(mission, v => v.AbortRecommended.Length > 0);
+            mission.Send(ReturnEnded("no correction flown: the solver gave up; 40 km from the target, 80 m/s left", start.RunId));
+            mission.Send(new KosBlockEnded("reentry", new Dictionary<string, object> { { "success", true } }, start.RunId));
+            mission.Send(new KosRunEnded(Finished(), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            var rebuilt = RebuiltLog(mission);
+            Assert.Equal("Off-Nominal", rebuilt.Last(e => e.Kind == LogKind.Debrief).Outcome);
+            Assert.Equal(2, RatedNotices(rebuilt).Count);
+            Assert.Equal(Notices(mission), RatedNotices(rebuilt));
+        }
+
+        [Fact]
+        public void ASaveWithNoStoredRatingRebuildsAsBefore()
+        {
+            var transport = new StreamingFakeTransport(
+                ScriptedResponse.Fixture("mission-plan.sse"),
+                ScriptedResponse.Fixture("mission-sequence-plan.sse"),
+                ScriptedResponse.Fixture("mission-debrief.sse"));
+            var mission = Control(transport);
+            var start = ToRunning(mission, 10m);
+            mission.Send(ReturnEnded("no correction flown: the solver gave up; 40 km from the target, 80 m/s left", start.RunId));
+            mission.Send(new KosRunEnded(Finished(), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.Succeeded);
+
+            // An older Mission's folder has no rating line: the rebuild reads only the Debrief turn's text, as it did before #904.
+            var folder = MissionFolderOf(mission);
+            var events = Path.Combine(folder, MissionStore.EventsFile);
+            File.WriteAllLines(events, File.ReadAllLines(events).Where(l => !l.Contains("\"" + MissionStore.RatingEvent + "\"")));
+            Assert.Empty(MissionStore.ReadRatings(folder));
+            var rebuilt = RebuiltLog(mission);
+            var turnText = string.Concat(MissionStore.ReadTranscript(folder).Messages.Where(m => m.Role == Role.User).SelectMany(m => m.Content.OfType<TextBlock>()).Select(t => t.Text));
+            var expected = LandingLine.NoCorrection(turnText);
+            Assert.Equal(expected ? "Off-Nominal" : "Nominal", rebuilt.Last(e => e.Kind == LogKind.Debrief).Outcome);
+            Assert.Equal(expected ? new[] { LandingLine.NoCorrectionNotice } : new string[0], RatedNotices(rebuilt));
+        }
+
         [Fact]
         public void ACarryOnLeavesALogLineAndItsFollowUpThresholdFiresOnceMore()
         {
