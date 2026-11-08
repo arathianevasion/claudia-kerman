@@ -89,7 +89,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("ENTRYFINISH", new OneArgsSuffix<Lexicon, Lexicon>(EntryFinishSet,
                 "Core Library only (reentry): whether this entry lands on its engines, from home, chutes and drop; lexicon error, powered, speed, kept_speed, engines, spare, why"));
             AddSuffix("ENTRYDROP", new OneArgsSuffix<Lexicon, Lexicon>(EntryDrop,
-                "Core Library only (reentry): what this Entry drops, from home; lexicon error, number, shield, decouplers, gone, names, stuck"));
+                "Core Library only (reentry): what this Entry drops, from home, separate, chutes, core and drop_error (error: a stack it refuses); lexicon error, number, shield, decouplers, gone, names, stuck, lead"));
             AddSuffix("ENTRYCRAFT", new OneArgsSuffix<Lexicon, Lexicon>(EntryCraft,
                 "Core Library only (return, deorbit): the craft the Entry ahead flies, from home, leave_out and body, to pass on as craft; lexicon error, leave_out, shield_drop, whole, kept, gone_prop, burners_kept, key, why"));
             AddSuffix("DROPCHECK", new OneArgsSuffix<Lexicon, Lexicon>(DropCheckCall,
@@ -418,7 +418,10 @@ namespace ClaudiaKerman.KOS
                 var vessel = shared.Vessel;
                 var uids = new System.Collections.Generic.Dictionary<uint, string>();
                 foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
-                drop = BlockCalls.EntryDropCall(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(vessel), MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
+                var snapshot = SnapshotReader.ReadForMission(vessel);
+                // Its refusal (#815) asks whether the Entry lands on its engines, as ENTRYFINISH does.
+                SnapshotReader.ReadEngineFuel(snapshot, vessel);
+                drop = BlockCalls.EntryDropCall(KosValues.ToDictionary(input), snapshot, MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
                     id => uids.ContainsKey(id) ? uids[id] : null);
                 return KosValues.FromPlain(drop);
             }, () => drop["error"] as string == ""
