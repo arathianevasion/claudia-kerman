@@ -244,13 +244,25 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void A_flamed_out_engine_is_refused_at_block_start()
+        public void A_flamed_out_engine_with_allowRestart_false_is_refused_at_block_start()
         {
             var snapshot = ReadEngine(100, "LiquidFuel");
-            snapshot.Craft.Parts.Single(p => p.Id == Engine).EngineFlameout = true;
+            var engine = snapshot.Craft.Parts.Single(p => p.Id == Engine);
+            engine.EngineFlameout = true;
+            engine.EngineAllowsRestart = false;
 
             Assert.Equal(false, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
             Assert.StartsWith("stack attached below the heat shield: Decoupler.1, ", RefusedAtStart(snapshot));
+        }
+
+        [Fact]
+        public void A_restartable_engine_with_flameout_and_fuel_aboard_is_accepted_at_block_start()
+        {
+            var snapshot = ReadEngine(100, "LiquidFuel");
+            snapshot.Craft.Parts.Single(p => p.Id == Engine).EngineFlameout = true; // sticky until it relights; allowRestart stays true
+
+            Assert.Equal(true, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
+            Assert.Equal("", RefusedAtStart(snapshot));
         }
 
         [Fact]
@@ -276,7 +288,7 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void A_solid_never_lit_with_allowRestart_false_is_not_taken_for_a_shut_down_engine()
+        public void A_never_shut_down_engine_with_allowRestart_false_is_not_taken_for_a_shut_down_engine()
         {
             var snapshot = ReadEngine(100, "LiquidFuel");
             snapshot.Craft.Parts.Single(p => p.Id == Engine).EngineAllowsRestart = false; // never lit
