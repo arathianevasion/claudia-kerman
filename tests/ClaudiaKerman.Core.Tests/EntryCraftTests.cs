@@ -334,12 +334,11 @@ namespace ClaudiaKerman.Core.Tests
             return LandingSiteSearch.ArcDegrees(a.Latitude, a.Longitude, b.Latitude, b.Longitude) * Math.PI / 180 * Kerbin.Radius / 1000;
         }
 
-        /// <summary><c>reentry</c>'s read, after its own drop: the stack and the decoupler have gone.</summary>
+        /// <summary><c>reentry</c>'s logged read, after its own drop: the stack and the decoupler gone and the capsule shield first, fixed here so a wrong rule can't move both sides together.</summary>
         private ReentryPrediction LandedAsReentryReads()
         {
             var snapshot = AtKerbin(Parts(Shape.Drops, stack: false).Where(p => p.Id != Dec).ToList());
-            var ask = new Dictionary<string, object> { { "craft", Read(snapshot) } };
-            return LandedAlong(snapshot, ask, EntryNose(snapshot, ask));
+            return LandedAlong(snapshot, new Dictionary<string, object> { { "craft", Read(snapshot) } }, PodUp);
         }
 
         [Fact]
