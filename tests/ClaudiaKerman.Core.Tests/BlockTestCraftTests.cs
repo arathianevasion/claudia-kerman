@@ -29,7 +29,6 @@ namespace ClaudiaKerman.Core.Tests
             public readonly List<string> StackNodes = new List<string>();
             public string SurfaceParent = "";
             public uint? Parent;
-            public string Key { get { return Id; } }
         }
 
         /// <summary>The craft's PART blocks: its part, persistentId, link, attN and srfN lines and its staging.</summary>
