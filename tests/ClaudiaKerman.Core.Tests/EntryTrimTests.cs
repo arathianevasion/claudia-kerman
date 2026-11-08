@@ -179,6 +179,15 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void A_reentry_clears_the_recorded_target_so_the_next_one_has_none()
+        {
+            BlockTestAim.Record(new LandingTarget { Body = "Kerbin", Latitude = 1, Longitude = 2 });
+            Assert.NotNull(BlockTestAim.Landing);
+            BlockTestAim.Clear();
+            Assert.Null(BlockTestAim.Landing);
+        }
+
+        [Fact]
         public void The_Mission_save_round_trips_the_target()
         {
             var saved = new MissionSaveState { Id = "m1", LandingTarget = new LandingTarget { Body = "Kerbin", Latitude = -0.1025, Longitude = -74.575, TargetPe = 30000 } };

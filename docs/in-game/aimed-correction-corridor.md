@@ -18,8 +18,8 @@ In-game check for #817 (with #805 and #832). The agent run that wrote this did n
 
 Fly `tests/blocks/return_target` (Mun to KSC). Install as in `phase-3-gate.md`. If you have it, use a Mun polar return as well, after #816's aimed departure.
 
-1. The block test passes its checks, and `return` succeeds.
-2. Run `grep "CORRECTIONBURN" KSP.log`. The correction's line ends with `Pe <m> m`, then `aimed <km> km from the target`. If the solve stopped short, a `; ` note follows with its reason, the km and the m/s left. `Pe` is between 24,000 and 36,000 m.
+1. The block test passes its checks, and `return` succeeds. If the test script sets `correction` to false, edit it back first: steps 2 to 4 read the correction.
+2. Run `grep "CORRECTIONBURN" KSP.log`. The correction's line ends with `Pe <m> m`, then `aimed <km> km from the target`. If the solve stopped short, a `; ` note follows with its reason, the km and the m/s left. `return_target` leaves `target_pe` at `return`'s default 35,000 m, so the corridor is 30,000 to 40,000 m and `Pe` is in it. (For the 25,000 to 35,000 m corridor of a 30 km aim, edit the test script to pass `target_pe` 30000.)
 3. Run `grep "BURNWORTH" KSP.log`. A correction under 2 m/s shows `fly it: throttle at most <x>, stopping within <y> m/s`. A skipped one shows why it was skipped.
 4. The `exec_node` result after the correction has a `residual` under 0.05 m/s for a correction under 1 m/s.
 5. Write down the final miss against each stage's prediction:

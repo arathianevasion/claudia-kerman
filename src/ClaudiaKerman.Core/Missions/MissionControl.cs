@@ -324,7 +324,7 @@ namespace ClaudiaKerman.Core.Missions
             public string WindowPlanet = "";
             public double? WindowUt;
             public double? WindowDeltaV;
-            /// <summary>#887: the window a <c>return</c> run was planned for, kept past the start for the block's restart; null for none. Not saved: a load restarts for the next alignment.</summary>
+            /// <summary>#887: the window a <c>return</c> run was planned for, kept past the start for the block's restart; null for none. Saved (#906); cleared when the run ends.</summary>
             public double? ReturnWindowUt;
             /// <summary>Persistence (MissionControl.Persistence.cs): a turn the loop owes Claudia once the craft is in Flight.</summary>
             public Owed Owed;
@@ -946,6 +946,7 @@ namespace ClaudiaKerman.Core.Missions
             var mission = _mission;
             if (mission == null || !IsRunning(mission) || mission.RunId != refused.RunId) return;
             mission.RunId = null;
+            mission.ReturnWindowUt = null;
             mission.RunDeadlineUt = null;
             EndLive(mission);
             // Paused from Running, the Mission stays Paused and Resume goes back to approval, not to Running.
@@ -962,6 +963,7 @@ namespace ClaudiaKerman.Core.Missions
                 || (mission.Stage == MissionStage.Paused && mission.StageBeforePause == MissionStage.Running);
             if (!running || mission.RunId != ended.RunId) return;
             mission.RunId = null;
+            mission.ReturnWindowUt = null;
             TimedOutMidWarp(mission, ended.Outcome);
             mission.RunDeadlineUt = null;
             mission.RcsUse.Close(_ut);
@@ -1013,6 +1015,7 @@ namespace ClaudiaKerman.Core.Missions
             if (IsRunning(mission) && mission.RunningProcessor.HasValue)
                 _commands.Add(new AbortScript(mission.RunningProcessor.Value, "Claudia was killed aboard"));
             mission.RunId = null;
+            mission.ReturnWindowUt = null;
             mission.RunningProcessor = null;
             mission.Queue.Clear();
             if (mission.PendingSequence != null && mission.PendingSequence.DueTimeUt.HasValue) _commands.Add(new ClearDueTimeAlarm(mission.Id));
@@ -1656,7 +1659,7 @@ namespace ClaudiaKerman.Core.Missions
                     OfferSequencePlan(mission, reply.SequencePlan);
                     break;
                 case Purpose.Debrief:
-                    Debriefed(mission, reply);
+                    Debriefed(mission, reply, mission.Conversation.Count);
                     LogDebrief(mission, turn, reply.Debrief);
                     break;
                 case Purpose.Reply:
@@ -2080,7 +2083,8 @@ namespace ClaudiaKerman.Core.Missions
             else mission.DueNotified = false;
         }
 
-        private void Debriefed(Mission mission, MissionReply reply)
+        /// <param name="messages">How many messages the conversation held up to and including this Debrief's reply, which places its saved rating (#904).</param>
+        private void Debriefed(Mission mission, MissionReply reply, int messages)
         {
             var debrief = reply.Debrief;
             // The Debrief of a manual stretch ends it: a revised Mission Plan follows, not the next Sequence Plan.
@@ -2096,7 +2100,8 @@ namespace ClaudiaKerman.Core.Missions
             var noCorrection = mission.NoCorrection;
             mission.NoCorrection = false;
             var nominal = debrief.Outcome == "Nominal";
-            if (MissionPrompts.RulesOutNominal(crossings) && nominal)
+            var telemetryRated = MissionPrompts.RulesOutNominal(crossings) && nominal;
+            if (telemetryRated)
             {
                 debrief.Outcome = "Off-Nominal";
                 Note(LogKind.Notice, "Rated Off-Nominal, not Nominal: a Telemetry Check was crossed during the run.");
@@ -2106,6 +2111,7 @@ namespace ClaudiaKerman.Core.Missions
                 debrief.Outcome = "Off-Nominal";
                 Note(LogKind.Notice, LandingLine.NoCorrectionNotice);
             }
+            SaveRating(mission, messages, telemetryRated, noCorrection && nominal);
             // Ticking twice is harmless: a Debrief already in a log rebuilt from the transcript has ticked them once.
             GoalSteps.Tick(mission.GoalSteps, debrief.GoalStepsDone);
             var rebuiltLog = mission.SuppressCards;

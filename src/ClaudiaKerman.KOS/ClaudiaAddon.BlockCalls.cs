@@ -467,7 +467,7 @@ namespace ClaudiaKerman.KOS
                 // Aimed at a landing (#792), the predictor flies the planet's air: the craft is still at the moon.
                 node = ask.ContainsKey("lat")
                     ? BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(vessel.mainBody.referenceBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)))
-                    : BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel));
+                    : BlockCalls.ReturnBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody()); // #888: the body reads the planet's frame for the turn direction
                 // A return aimed at no landing clears the last one (#892): a later reentry mustn't trim toward it.
                 MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, vessel.mainBody.referenceBody.bodyName));
                 return KosValues.FromPlain(node);
@@ -658,6 +658,7 @@ namespace ClaudiaKerman.KOS
                     MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild, id => uids.ContainsKey(id) ? uids[id] : null, (key, why) => { });
                 ask["craft"] = entryCraft;
                 fix = BlockCalls.EntryTrim(ask, snapshot, new PlanningBody(), new ReentryAir(vessel.mainBody), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
+                BlockTestAim.Clear(); // the one reentry trim has read it (#892)
                 return KosValues.FromPlain(fix);
             }, () => string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); Pe {5:0} m{6}",
                 fix["ut"], fix["prograde"], fix["normal"], fix["radial"], fix["dv"], fix["pe_predicted"],
