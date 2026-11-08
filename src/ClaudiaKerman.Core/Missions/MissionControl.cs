@@ -1713,25 +1713,23 @@ namespace ClaudiaKerman.Core.Missions
         private void ChildVesselRefused(Mission mission, Turn turn, IList<string> ids)
         {
             var named = string.Join(", ", ids.ToArray());
-            if (turn.ChildVesselRetry)
-            {
-                Failed(mission, turn, "Claudia's Mission Plan still names a Child Vessel that has not left the craft (" + named + ").");
-                return;
-            }
-            Note(LogKind.Notice, "The Mission Plan names a vessel that hasn't left the craft (" + named + "); Claudia is revising it.");
+            var reason = MissionPrompts.ChildVesselNotLeft(ids);
             // The correction is the refused turn asked again: its own Purpose (so the reply is read, and the plan offered, as it
             // would have been) and its own wait at the Spending Cap, through the same Begin as any other turn.
             var typed = turn.Purpose == Purpose.Reply || turn.Purpose == Purpose.Change;
-            Begin(new Turn
-            {
-                Purpose = turn.Purpose,
-                ChildVesselRetry = true,
-                Waits = turn.Waits,
-                GoalStands = turn.GoalStands,
-                // The refused turn was never committed to the conversation, so what it asked (the player's words, the new settings) goes again.
-                UserText = turn.UserText + "\n" + MissionPrompts.ChildVesselNotLeft(ids),
-                Notice = MissionPrompts.ChildVesselNotice +(typed ? MissionPrompts.ChildVesselTypedNotice : ""),
-            });
+            RefusedAtApply(mission, turn, turn.ChildVesselRetry, reason,
+                "Claudia's Mission Plan still names a Child Vessel that has not left the craft (" + named + ").",
+                "The Mission Plan names a vessel that hasn't left the craft (" + named + "); Claudia is revising it.",
+                () => new Turn
+                {
+                    Purpose = turn.Purpose,
+                    ChildVesselRetry = true,
+                    Waits = turn.Waits,
+                    GoalStands = turn.GoalStands,
+                    // The refused turn is committed with her reply (the player's words, the new settings are in the conversation): only the reason goes.
+                    UserText = reason,
+                    Notice = MissionPrompts.ChildVesselNotice + (typed ? MissionPrompts.ChildVesselTypedNotice : ""),
+                });
         }
 
         /// <summary>Claudia's line; when she declines the goal with a Mission Plan of no sequences, her <c>why</c> follows it (there is no card to carry it).</summary>

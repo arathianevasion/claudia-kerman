@@ -233,6 +233,55 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void ASecondManualRefusalPausesWithATurnInHandAndRetrySendsItWithoutTheCommittedTextAgain()
+        {
+            var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), Bare(), Bare(), Bare());
+            var mission = Control(transport);
+            ToSequenceTurn(mission, Goal);
+            DrainUntil(mission, v => v.Stage == MissionStage.Paused && !v.Busy);
+            Assert.Equal(3, transport.Requests.Count);
+            Assert.Contains(QuickReply.Retry, mission.View.QuickReplies);
+            Assert.Contains(QuickReply.RetryWithNote, mission.View.QuickReplies);
+
+            mission.Send(new Retry());
+            DrainUntil(mission, v => !v.Busy && transport.Requests.Count == 4);
+            Assert.Equal(4, transport.Requests.Count);
+            var asked = UserTexts(transport.Requests[1]).Last();
+            Assert.Equal(1, UserTexts(transport.Requests[2]).Count(t => t == asked));
+            Assert.Equal(1, UserTexts(transport.Requests[3]).Count(t => t == asked));
+            Assert.Equal(2, UserTexts(transport.Requests[3]).Count(t => t.Contains(ManualGrounds.Refusal("Hand docking"))));
+        }
+
+        [Fact]
+        public void RetryWithANoteAfterTheSecondManualRefusalSendsTheNoteOnceAndTheCommittedTextOnce()
+        {
+            var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), Bare(), Bare(), Bare());
+            var mission = Control(transport);
+            ToSequenceTurn(mission, Goal);
+            DrainUntil(mission, v => v.Stage == MissionStage.Paused && !v.Busy);
+
+            mission.Send(new RetryWithNote("Make it a script please."));
+            DrainUntil(mission, v => !v.Busy && transport.Requests.Count == 4);
+            var asked = UserTexts(transport.Requests[1]).Last();
+            Assert.Equal(1, UserTexts(transport.Requests[3]).Count(t => t == asked));
+            Assert.Equal(1, UserTexts(transport.Requests[3]).Count(t => t.Contains("Make it a script please.")));
+        }
+
+        private static List<string> UserTexts(HttpRequestSpec request)
+        {
+            var texts = new List<string>();
+            using (var doc = JsonDocument.Parse(request.Body))
+                foreach (var m in doc.RootElement.GetProperty("messages").EnumerateArray())
+                {
+                    if (m.GetProperty("role").GetString() != "user") continue;
+                    var content = m.GetProperty("content");
+                    if (content.ValueKind == JsonValueKind.String) texts.Add(content.GetString());
+                    else foreach (var b in content.EnumerateArray()) if (b.TryGetProperty("text", out var t)) texts.Add(t.GetString());
+                }
+            return texts;
+        }
+
+        [Fact]
         public void TheAnswerInARetryNoteSurvivesALoadAndALaterNoStillCancelsIt()
         {
             var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), Bare(), Bare(), Bare());

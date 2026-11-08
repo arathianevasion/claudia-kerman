@@ -21,29 +21,22 @@ namespace ClaudiaKerman.Core.Missions
         private void ManualRefused(Mission mission, Turn turn, SequencePlan plan)
         {
             var reason = ManualGrounds.Refusal(plan.Name);
-            if (turn.ManualRetry)
-            {
-                // Her reply was committed, so nothing is in hand: the turn goes back in hand for the Pause, or Retry and Retry with a note have nothing to resend.
-                mission.Pending = turn;
-                Failed(mission, turn, "Claudia still plans a manual stretch (" + MissionPrompts.Quoted(plan.Name) + ") that nothing asked for. Retry with a note saying you will fly it by hand, or asking for a script.");
-                // Retry with a note is how the player answers: it takes a Refusal pause.
-                if (mission.Stage == MissionStage.Paused) mission.PauseCause = PauseCause.Refusal;
-                return;
-            }
-            Note(LogKind.Notice, "The Sequence Plan " + MissionPrompts.Quoted(plan.Name) + " was a manual stretch nothing asked for; Claudia is revising it.");
-            Begin(new Turn
-            {
-                Purpose = turn.Purpose,
-                ManualRetry = true,
-                Waits = turn.Waits,
-                GoalStands = turn.GoalStands,
-                ScriptRewrite = turn.ScriptRewrite,
-                Stats = turn.Stats,
-                PlayerText = turn.PlayerText,
-                // The refused turn was never committed, so what it asked goes again with the reason.
-                UserText = turn.UserText + "\n" + reason,
-                Notice = turn.Notice,
-            });
+            RefusedAtApply(mission, turn, turn.ManualRetry, reason,
+                "Claudia still plans a manual stretch (" + MissionPrompts.Quoted(plan.Name) + ") that nothing asked for. Retry with a note saying you will fly it by hand, or asking for a script.",
+                "The Sequence Plan " + MissionPrompts.Quoted(plan.Name) + " was a manual stretch nothing asked for; Claudia is revising it.",
+                () => new Turn
+                {
+                    Purpose = turn.Purpose,
+                    ManualRetry = true,
+                    Waits = turn.Waits,
+                    GoalStands = turn.GoalStands,
+                    ScriptRewrite = turn.ScriptRewrite,
+                    Stats = turn.Stats,
+                    PlayerText = turn.PlayerText,
+                    // The refused turn is committed with her reply: only the reason goes, not what it asked again.
+                    UserText = reason,
+                    Notice = turn.Notice,
+                });
         }
 
         /// <summary>
