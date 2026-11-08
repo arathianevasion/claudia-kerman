@@ -389,9 +389,9 @@ namespace ClaudiaKerman.Core.Missions
         {
             var goal = (start.Goal ?? "").Trim();
             if (goal.Length == 0 || start.SpendingCap <= 0 || !_config.Models.Contains(start.Model) || _saveDirectory == null) return;
-            ForgetSavedOrbit();
             // Another Mission in play pauses at its next sequence boundary first, before the new craft is checked (MissionControl.Missions.cs).
             if (!MissionOver && !MakeRoom(new QueuedSwitch { Kind = SwitchKind.Start, Start = start })) return;
+            ForgetSavedOrbit();
 
             // A remote Mission needs a link (or the pad); a crewed one can't have Claudia while she is Missing. No request is spent on either.
             _startRefusal = StartRefusal(start);
