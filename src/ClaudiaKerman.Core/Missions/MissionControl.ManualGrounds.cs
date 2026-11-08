@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System.Linq;
+using ClaudiaKerman.Core.Tools;
 using ClaudiaKerman.Core.Claude;
 
 namespace ClaudiaKerman.Core.Missions
@@ -21,29 +22,56 @@ namespace ClaudiaKerman.Core.Missions
         private void ManualRefused(Mission mission, Turn turn, SequencePlan plan)
         {
             var reason = ManualGrounds.Refusal(plan.Name);
-            if (turn.ManualRetry)
+            RefusedAtApply(mission, turn, turn.ManualRetry, reason,
+                "Claudia still plans a manual stretch (" + MissionPrompts.Quoted(plan.Name) + ") that nothing asked for. Retry with a note saying you will fly it by hand, or asking for a script.",
+                "The Sequence Plan " + MissionPrompts.Quoted(plan.Name) + " was a manual stretch nothing asked for; Claudia is revising it.",
+                () => new Turn
+                {
+                    Purpose = turn.Purpose,
+                    ManualRetry = true,
+                    Waits = turn.Waits,
+                    GoalStands = turn.GoalStands,
+                    ScriptRewrite = turn.ScriptRewrite,
+                    Stats = turn.Stats,
+                    PlayerText = turn.PlayerText,
+                    // The refused turn is committed with her reply: only the reason goes, not what it asked again.
+                    UserText = reason,
+                    Notice = turn.Notice,
+                });
+        }
+
+        /// <summary>A Kerbal other than Claudia died (#874): kept with the UT, so #818's crew check reads deaths and not who is still aboard.</summary>
+        private void CrewDeathSeen(string name)
+        {
+            var mission = _mission;
+            if (mission == null || MissionOver || name.Length == 0) return;
+            mission.CrewDeaths[name] = _ut;
+        }
+
+        private static string CrewDeathsJson(Mission mission)
+        {
+            if (mission.CrewDeaths.Count == 0) return "";
+            var json = new JsonWriter().BeginArray();
+            foreach (var d in mission.CrewDeaths) json.BeginObject().Field("name", d.Key).Field("ut", d.Value).EndObject();
+            return json.EndArray().ToString();
+        }
+
+        private static void RestoreCrewDeaths(Mission mission, string text)
+        {
+            mission.CrewDeaths.Clear();
+            if (string.IsNullOrEmpty(text)) return;
+            try
             {
-                // Her reply was committed, so nothing is in hand: the turn goes back in hand for the Pause, or Retry and Retry with a note have nothing to resend.
-                mission.Pending = turn;
-                Failed(mission, turn, "Claudia still plans a manual stretch (" + MissionPrompts.Quoted(plan.Name) + ") that nothing asked for. Retry with a note saying you will fly it by hand, or asking for a script.");
-                // Retry with a note is how the player answers: it takes a Refusal pause.
-                if (mission.Stage == MissionStage.Paused) mission.PauseCause = PauseCause.Refusal;
-                return;
+                foreach (var node in JsonReader.Parse(text).Items.Where(n => n.Kind == JsonKind.Object))
+                {
+                    var name = JsonNode.Str(node["name"]);
+                    if (!string.IsNullOrEmpty(name)) mission.CrewDeaths[name] = JsonNode.Double(node["ut"]) ?? 0;
+                }
             }
-            Note(LogKind.Notice, "The Sequence Plan " + MissionPrompts.Quoted(plan.Name) + " was a manual stretch nothing asked for; Claudia is revising it.");
-            Begin(new Turn
+            catch (JsonException)
             {
-                Purpose = turn.Purpose,
-                ManualRetry = true,
-                Waits = turn.Waits,
-                GoalStands = turn.GoalStands,
-                ScriptRewrite = turn.ScriptRewrite,
-                Stats = turn.Stats,
-                PlayerText = turn.PlayerText,
-                // The refused turn was never committed, so what it asked goes again with the reason.
-                UserText = turn.UserText + "\n" + reason,
-                Notice = turn.Notice,
-            });
+                mission.CrewDeaths.Clear();
+            }
         }
 
         /// <summary>
@@ -55,7 +83,7 @@ namespace ClaudiaKerman.Core.Missions
             if (turn.Purpose != Purpose.Debrief || reply.Debrief == null || reply.Debrief.Outcome != "Failed" || turn.LandingMissSentBack || mission.DeferredRestore != null) return false;
             var plan = mission.PendingSequence;
             if (plan == null || !ManualGrounds.LandingStep(plan.Script) || mission.PrecisionGoal) return false;
-            if (!ManualGrounds.DownAlive(MissionVesselSnapshot(mission), mission.RunStartCrew)) return false;
+            if (!ManualGrounds.DownAlive(MissionVesselSnapshot(mission), mission.RunStartCrew, mission.CrewDeaths, mission.RunStartUt)) return false;
             turn.LandingMissSentBack = true;
             // Her Failed reply stays in front of her, so "reply Failed again" has something to answer; it and the send-back are committed with the turn.
             var before = turn.Messages.Count;

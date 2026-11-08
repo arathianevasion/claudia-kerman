@@ -128,14 +128,20 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void DownAliveNeedsALandedOrSplashedCraftAndEveryKerbalOfTheRunsStart()
+        public void DownAliveNeedsALandedOrSplashedCraftAndNoRecordedDeathOfTheRunsCrew()
         {
-            var crew = new[] { "Claudia Kerman" };
-            Assert.True(ManualGrounds.DownAlive(Down("LANDED", "Claudia Kerman"), crew));
-            Assert.True(ManualGrounds.DownAlive(Down("SPLASHED", "Claudia Kerman", "Bob Kerman"), crew));
-            Assert.False(ManualGrounds.DownAlive(Down("FLYING", "Claudia Kerman"), crew));
-            Assert.False(ManualGrounds.DownAlive(Down("LANDED"), crew));
-            Assert.False(ManualGrounds.DownAlive(null, crew));
+            var crew = new[] { "Claudia Kerman", "Bob Kerman" };
+            var none = new Dictionary<string, double>();
+            Assert.True(ManualGrounds.DownAlive(Down("LANDED", "Claudia Kerman"), crew, none, 100));
+            // Bob on EVA or moved to another vessel is not in the snapshot's crew, and is not dead.
+            Assert.True(ManualGrounds.DownAlive(Down("SPLASHED", "Claudia Kerman"), crew, none, 100));
+            Assert.False(ManualGrounds.DownAlive(Down("LANDED", "Claudia Kerman"), crew, new Dictionary<string, double> { { "Bob Kerman", 150 } }, 100));
+            // A death before the run started, or of a Kerbal not in the run, doesn't count.
+            Assert.True(ManualGrounds.DownAlive(Down("LANDED", "Claudia Kerman"), crew, new Dictionary<string, double> { { "Bob Kerman", 50 } }, 100));
+            Assert.True(ManualGrounds.DownAlive(Down("LANDED", "Claudia Kerman"), crew, new Dictionary<string, double> { { "Val Kerman", 150 } }, 100));
+            Assert.False(ManualGrounds.DownAlive(Down("FLYING", "Claudia Kerman"), crew, none, 100));
+            Assert.False(ManualGrounds.DownAlive(null, crew, none, 100));
+            Assert.False(ManualGrounds.DownAlive(Down("LANDED"), null, none, 100));
         }
 
         // ---- The refusal ----
@@ -230,6 +236,55 @@ namespace ClaudiaKerman.Core.Tests
             DrainUntil(mission, v => v.Stage != MissionStage.Paused && !v.Busy && v.Log.Any(e => e.Title == "Hand docking"));
             Assert.Equal(4, transport.Requests.Count);
             Assert.True(mission.ExportStates()[0].ManualAsk == "true");
+        }
+
+        [Fact]
+        public void ASecondManualRefusalPausesWithATurnInHandAndRetrySendsItWithoutTheCommittedTextAgain()
+        {
+            var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), Bare(), Bare(), Bare());
+            var mission = Control(transport);
+            ToSequenceTurn(mission, Goal);
+            DrainUntil(mission, v => v.Stage == MissionStage.Paused && !v.Busy);
+            Assert.Equal(3, transport.Requests.Count);
+            Assert.Contains(QuickReply.Retry, mission.View.QuickReplies);
+            Assert.Contains(QuickReply.RetryWithNote, mission.View.QuickReplies);
+
+            mission.Send(new Retry());
+            DrainUntil(mission, v => !v.Busy && transport.Requests.Count == 4);
+            Assert.Equal(4, transport.Requests.Count);
+            var asked = UserTexts(transport.Requests[1]).Last();
+            Assert.Equal(1, UserTexts(transport.Requests[2]).Count(t => t == asked));
+            Assert.Equal(1, UserTexts(transport.Requests[3]).Count(t => t == asked));
+            Assert.Equal(2, UserTexts(transport.Requests[3]).Count(t => t.Contains(ManualGrounds.Refusal("Hand docking"))));
+        }
+
+        [Fact]
+        public void RetryWithANoteAfterTheSecondManualRefusalSendsTheNoteOnceAndTheCommittedTextOnce()
+        {
+            var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), Bare(), Bare(), Bare());
+            var mission = Control(transport);
+            ToSequenceTurn(mission, Goal);
+            DrainUntil(mission, v => v.Stage == MissionStage.Paused && !v.Busy);
+
+            mission.Send(new RetryWithNote("Make it a script please."));
+            DrainUntil(mission, v => !v.Busy && transport.Requests.Count == 4);
+            var asked = UserTexts(transport.Requests[1]).Last();
+            Assert.Equal(1, UserTexts(transport.Requests[3]).Count(t => t == asked));
+            Assert.Equal(1, UserTexts(transport.Requests[3]).Count(t => t.Contains("Make it a script please.")));
+        }
+
+        private static List<string> UserTexts(HttpRequestSpec request)
+        {
+            var texts = new List<string>();
+            using (var doc = JsonDocument.Parse(request.Body))
+                foreach (var m in doc.RootElement.GetProperty("messages").EnumerateArray())
+                {
+                    if (m.GetProperty("role").GetString() != "user") continue;
+                    var content = m.GetProperty("content");
+                    if (content.ValueKind == JsonValueKind.String) texts.Add(content.GetString());
+                    else foreach (var b in content.EnumerateArray()) if (b.TryGetProperty("text", out var t)) texts.Add(t.GetString());
+                }
+            return texts;
         }
 
         [Fact]
@@ -386,11 +441,40 @@ namespace ClaudiaKerman.Core.Tests
             var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), LandingPlan(), Fixture("mission-debrief-failed.sse"));
             var mission = Control(transport);
             var run = ToRunning(mission, Goal, "Claudia Kerman", "Bob Kerman");
-            mission.Send(crewLost ? Snapshot(situation, "Claudia Kerman") : Snapshot(situation, "Claudia Kerman", "Bob Kerman"));
+            if (crewLost) mission.Send(new KerbalKilled("Bob Kerman"));
+            mission.Send(Snapshot(situation, "Claudia Kerman"));
             mission.Send(new KosRunEnded(Finished(), run.RunId));
 
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingReducedGoal && !v.Busy);
             Assert.Equal(3, transport.Requests.Count);
+        }
+
+        [Fact]
+        public void AKerbalOnEvaWithNoDeathRecordedDoesNotKeepFailed()
+        {
+            var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), LandingPlan(), Fixture("mission-debrief-failed.sse"), Fixture("mission-debrief-failed.sse"));
+            var mission = Control(transport);
+            var run = ToRunning(mission, Goal, "Claudia Kerman", "Bob Kerman");
+            mission.Send(Snapshot("LANDED", "Claudia Kerman"));
+            mission.Send(new KosRunEnded(Finished(), run.RunId));
+
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingReducedGoal && !v.Busy);
+            Assert.Equal(4, transport.Requests.Count);
+            Assert.Contains(ManualGrounds.SendBack, string.Join("\n", transport.Requests[3].Body));
+        }
+
+        [Fact]
+        public void ARecordedDeathSurvivesSaveAndLoad()
+        {
+            var mission = Control(new StreamingFakeTransport(Fixture("mission-plan.sse"), LandingPlan()));
+            ToRunning(mission, Goal, "Claudia Kerman", "Bob Kerman");
+            mission.Send(new KerbalKilled("Bob Kerman"));
+            var states = mission.ExportStates();
+            Assert.Contains("Bob Kerman", Assert.Single(states).CrewDeaths);
+
+            var loaded = Control(new StreamingFakeTransport());
+            loaded.Send(new MissionsRestored(_save.Path, states));
+            Assert.Equal(states[0].CrewDeaths, Assert.Single(loaded.ExportStates()).CrewDeaths);
         }
 
         [Fact]

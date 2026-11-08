@@ -287,6 +287,16 @@ namespace ClaudiaKerman.Core.Missions
         public ClaudiaKilled(string vesselId = "", ClaudiaKerman.Core.Kos.TracedBlock traced = null) { VesselId = vesselId ?? ""; Traced = traced; }
     }
 
+    /// <summary>
+    /// A Kerbal other than Claudia was killed (#874; KSP's onCrewKilled). The Mission records the name and the UT of its
+    /// death; Claudia's own death is <see cref="ClaudiaKilled"/>, and is not sent here.
+    /// </summary>
+    public sealed class KerbalKilled : MissionInput
+    {
+        public readonly string Name;
+        public KerbalKilled(string name) { Name = name ?? ""; }
+    }
+
     // ---- kOS run events ----
 
     /// <summary>The kOS bridge would not start the script (busy or missing processor, kOS incompatible...).</summary>
