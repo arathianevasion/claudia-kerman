@@ -478,6 +478,35 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void AfterASaveAndLoadAtTheSecondManualRefusalRetryThenAFurtherRefusalPausesWithoutAnotherCorrection()
+        {
+            var mission = Control(new StreamingFakeTransport(Fixture("mission-plan.sse"), Bare(), Bare()));
+            ToSequenceTurn(mission, Goal);
+            DrainUntil(mission, v => v.Stage == MissionStage.Paused && !v.Busy);
+
+            var transport = new StreamingFakeTransport(Bare());
+            var resumed = Control(transport);
+            resumed.Send(new MissionsRestored(_save.Path, mission.ExportStates()));
+            Assert.Equal(MissionStage.Paused, resumed.View.Stage);
+            resumed.Send(new Retry());
+            DrainUntil(resumed, v => v.Stage == MissionStage.Paused && !v.Busy && transport.Requests.Count == 1);
+            Assert.Single(transport.Requests);
+            Assert.Contains("manual stretch", resumed.View.PauseReason);
+        }
+
+        [Fact]
+        public void AnUnansweredTurnSavedWithoutTheManualRetryFieldLoadsAsNotARetry()
+        {
+            MissionStore.WriteUnanswered(_save.Path, new UnansweredTurn { Purpose = "SequencePlan", UserText = "x", ManualRetry = true });
+            var path = Path.Combine(_save.Path, MissionStore.UnansweredFile);
+            var json = File.ReadAllText(path);
+            Assert.True(MissionStore.ReadUnanswered(_save.Path).ManualRetry);
+            File.WriteAllText(path, json.Replace("\"manual_retry\":true,", "").Replace(",\"manual_retry\":true", ""));
+            Assert.DoesNotContain("manual_retry", File.ReadAllText(path));
+            Assert.False(MissionStore.ReadUnanswered(_save.Path).ManualRetry);
+        }
+
+        [Fact]
         public void AFailedDebriefOnAStepThatIsNotALandingIsNotSentBack()
         {
             var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), Fixture("mission-sequence-plan.sse"), Fixture("mission-debrief-failed.sse"));
