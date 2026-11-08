@@ -11,8 +11,8 @@ namespace ClaudiaKerman.Core.Missions
     /// <summary>
     /// The craft an Entry flies (#814): what is gone before the air and whether its Entry Shield jettisons, by <c>reentry</c>'s own rules from
     /// <see cref="EntryStack"/> and <see cref="EntryFinish"/>, so <c>return</c>, its aimed correction and <c>deorbit</c> predict the landing of the craft
-    /// that enters. A stack the Entry drops is left out and the shield jettisons, if a decoupler is on or beside it. No Entry Shield, a stuck stack, or a stack kept (on the engines, or
-    /// by <c>separate</c> "none") is the craft as it is; a kept craft's shield jettisons only with nothing below it, as <c>reentry_jettison_uid</c> has it.
+    /// that enters. A stack the Entry drops is left out and the shield jettisons, if a decoupler is on or beside it (a stuck stack stays, the shield goes with it). No Entry Shield or a stack kept (on the engines, or
+    /// by <c>separate</c> "none") is the craft as it is; a kept craft's shield jettisons only with nothing below it, as <see cref="Jettisons"/> has it, and none when <c>jettison_stage</c> is "none".
     /// A block reads it once, at its start; the predictor then flies the parts it names. It fires nothing.
     /// </summary>
     public sealed class EntryCraft
@@ -36,7 +36,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <c>deorbit</c>'s <c>separate</c>) has gone: shield number <paramref name="number"/> from <paramref name="home"/>, its Chute Group the Last
         /// Entry's for number 1, <paramref name="chutes"/> false when none will open, <paramref name="drop"/> false for <c>reentry</c>'s <c>separate</c> "none".
         /// </summary>
-        public static EntryCraft Of(GameSnapshot snapshot, ICollection<uint> blockDrop, uint? home, int number, bool chutes, bool drop)
+        public static EntryCraft Of(GameSnapshot snapshot, ICollection<uint> blockDrop, uint? home, int number, bool chutes, bool drop, string jettisonStage = "auto")
         {
             var left = new HashSet<uint>(blockDrop ?? new uint[0]);
             var after = snapshot.At(snapshot.Ut);
@@ -48,11 +48,11 @@ namespace ClaudiaKerman.Core.Missions
             };
             var stack = EntryStack.Of(after.Craft.Parts, home, number);
             var finish = stack.Shield == null ? null : EntryFinish.Decide(after, drop ? stack.Gone.Select(p => p.Id).ToList() : new List<uint>(), number == 1, chutes);
-            return From(snapshot, left, stack, finish, drop);
+            return From(snapshot, left, stack, finish, drop, jettisonStage);
         }
 
         /// <summary>The same from <paramref name="stack"/> and <paramref name="finish"/> already read (null with no shield), as <c>ENTRYFINISH</c> has them.</summary>
-        public static EntryCraft From(GameSnapshot snapshot, ICollection<uint> blockDrop, EntryStack stack, EntryFinish finish, bool drop)
+        public static EntryCraft From(GameSnapshot snapshot, ICollection<uint> blockDrop, EntryStack stack, EntryFinish finish, bool drop, string jettisonStage = "auto")
         {
             var left = new HashSet<uint>(blockDrop ?? new uint[0]);
             var craft = new EntryCraft { WholeT = snapshot.Craft.MassTonnes };
@@ -67,7 +67,7 @@ namespace ClaudiaKerman.Core.Missions
                     foreach (var part in stack.Gone) left.Add(part.Id);
                     craft._why = stack.Gone.Count > 0 ? "without its stack (" + string.Join(", ", EntryStack.Names(stack.Gone).ToArray()) + ")" : "nothing below the shield";
                 }
-                if (stack.Stuck.Count == 0 && (!kept || stack.Parts.Count == 0) && Droppable(snapshot, left, stack.Shield)) craft.ShieldDropped = stack.Shield;
+                if (Jettisons(jettisonStage, kept, stack.Parts.Count > 0) && Droppable(snapshot, left, stack.Shield)) craft.ShieldDropped = stack.Shield;
             }
             craft.LeftOut.AddRange(snapshot.Craft.Parts.Where(p => left.Contains(p.Id)));
             craft.KeptT = craft.WholeT - craft.LeftOut.Sum(p => p.MassT);
@@ -82,6 +82,16 @@ namespace ClaudiaKerman.Core.Missions
             craft.Key = string.Join(",", snapshot.Craft.Parts.Where(p => !left.Contains(p.Id)).Select(p => p.Id).OrderBy(id => id)
                 .Select(id => id.ToString(CultureInfo.InvariantCulture)).ToArray()) + (craft.ShieldDropped != null ? "|shield jettisoned" : "|shield kept");
             return craft;
+        }
+
+        /// <summary>
+        /// The one rule for whether <c>reentry</c> jettisons the Entry Shield (#869; it was <c>reentry_jettison_uid</c>): unless <paramref name="jettisonStage"/> is
+        /// "none", or the stack below it is kept on (<paramref name="stackKept"/>: <c>separate</c> "none", which a powered entry also sets) with a stack below
+        /// (<paramref name="stackBelow"/>). The shield's decoupler takes what is on both sides (#516), so a stuck stack goes with it. Nothing below: it goes.
+        /// </summary>
+        public static bool Jettisons(string jettisonStage, bool stackKept, bool stackBelow)
+        {
+            return jettisonStage != "none" && !(stackKept && stackBelow);
         }
 
         /// <summary>The unlit engines in the highest stage still to fire (at or below the craft's current stage): what the next staging lights.</summary>

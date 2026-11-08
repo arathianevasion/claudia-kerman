@@ -70,7 +70,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             }
 
             /// <summary><c>local below</c>: what ENTRYDROP answers for this tree at <paramref name="at"/>.</summary>
-            public string Below(string at, IList<PlannedSequence> legs)
+            public string Below(string at, IList<PlannedSequence> legs, string separate = "auto", string jettisonStage = "auto")
             {
                 var snapshot = new GameSnapshot
                 {
@@ -83,10 +83,10 @@ namespace ClaudiaKerman.Kerboscript.Tests
                         new SnapshotBody { Name = "Duna", AtmosphereHeight = 50000, SeaLevelAtm = 0.07 },
                     },
                 };
-                var answer = BlockCalls.EntryDropCall(new Dictionary<string, object> { { "home", "pod" } },
+                var answer = BlockCalls.EntryDropCall(new Dictionary<string, object> { { "home", "pod" }, { "separate", separate }, { "jettison_stage", jettisonStage } },
                     snapshot, legs, 0, "", id => Parts[(int)id - 1].Uid);
                 Func<string, string> list = key => "list(" + string.Join(", ", ((IEnumerable<object>)answer[key]).Select(u => "\"" + u + "\"")) + ")";
-                return "local below is lexicon(\"error\", \"\", \"shield\", \"" + answer["shield"] + "\", \"decouplers\", " + list("decouplers") + ", \"gone\", " + list("gone")
+                return "local below is lexicon(\"error\", \"\", \"shield\", \"" + answer["shield"] + "\", \"jettison\", \"" + answer["jettison"] + "\", \"decouplers\", " + list("decouplers") + ", \"gone\", " + list("gone")
                     + ", \"names\", " + list("names") + ", \"stuck\", " + list("stuck") + ").\n";
             }
 
@@ -166,7 +166,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             + "local plan is reentry_separation(\"auto\", below, parts).\n"
             + "local decs is list(). for d in plan:decouplers { decs:add(d:uid). }\n"
             + "print decs:join(\",\"). print plan:error.\n"
-            + "local jettison is reentry_jettison_uid(opt, below). print jettison. print reentry_shield_modules(jettison, parts):length.\n";
+            + "local jettison is below:jettison. print jettison. print reentry_shield_modules(jettison, parts):length.\n";
 
         [Fact]
         public void On_the_flights_layout_a_non_last_entry_fires_nothing_with_chutes()
@@ -226,9 +226,9 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void Separate_none_keeps_the_stack_with_no_refusal_and_keeps_the_shield_that_would_take_it()
         {
             var tree = MunShotV2();
-            var printed = Run(tree, tree.Below("Kerbin", Return) + "local opt is claudia_merge_options(lexicon(\"separate\", \"none\"), reentry_defaults()).\n"
+            var printed = Run(tree, tree.Below("Kerbin", Return, "none") + "local opt is claudia_merge_options(lexicon(\"separate\", \"none\"), reentry_defaults()).\n"
                 + "print reentry_separation(\"none\", below, parts):decouplers:length.\n"
-                + "print reentry_jettison_uid(opt, below).\n");
+                + "print below:jettison.\n");
             Assert.Equal(new[] { "0", "" }, printed);
             Assert.Equal("", tree.Refused("Kerbin", Return, "none"));
         }
@@ -237,8 +237,8 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void Jettison_none_keeps_the_shield_and_the_stack_still_drops()
         {
             var tree = MunShotV2();
-            var printed = Run(tree, tree.Below("Kerbin", Return) + "local opt is claudia_merge_options(lexicon(\"jettison_stage\", \"none\"), reentry_defaults()).\n"
-                + "print reentry_separation(\"auto\", below, parts):decouplers:length. print reentry_jettison_uid(opt, below).\n");
+            var printed = Run(tree, tree.Below("Kerbin", Return, "auto", "none") + "local opt is claudia_merge_options(lexicon(\"jettison_stage\", \"none\"), reentry_defaults()).\n"
+                + "print reentry_separation(\"auto\", below, parts):decouplers:length. print below:jettison.\n");
             Assert.Equal(new[] { "1", "" }, printed);
         }
 
@@ -247,7 +247,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         /// <summary>Prints what a powered entry fires and jettisons, and that it refuses nothing.</summary>
         private const string PrintPowered = "local opt is claudia_merge_options(lexicon(), reentry_defaults()).\n"
             + "set opt:separate to \"none\".\n"
-            + "print reentry_separation(opt:separate, below, parts):decouplers:length. print reentry_jettison_uid(opt, below).\n";
+            + "print reentry_separation(opt:separate, below, parts):decouplers:length. print below:jettison.\n";
 
         private static readonly IList<PlannedSequence> DunaLast = new[] { new PlannedSequence { Name = "Land on Duna", DeltaV = 100 } };
 
@@ -256,8 +256,8 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             // No Entry Shield at Duna before Kerbin; and the Last Entry, which would drop the stack and the radial tanks with their chutes.
             var tree = TheFlight();
-            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Duna", DunaThenKerbin) + PrintPowered + "\n"));
-            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Duna", DunaLast) + PrintPowered));
+            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Duna", DunaThenKerbin, "none") + PrintPowered + "\n"));
+            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Duna", DunaLast, "none") + PrintPowered));
             Assert.Contains("set opt:separate to \"none\".", CoreLibrary.Files.Single(f => f.Name == "reentry").Source);
         }
 
@@ -265,16 +265,16 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void A_powered_entry_on_two_shields_keeps_the_outer_shield_with_the_stage_below_it_and_the_inner_is_never_fired()
         {
             var tree = TwoShields();
-            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Duna", DunaThenKerbin) + PrintPowered));
-            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Kerbin", Return) + PrintPowered));
+            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Duna", DunaThenKerbin, "none") + PrintPowered));
+            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Kerbin", Return, "none") + PrintPowered));
         }
 
         [Fact]
         public void A_powered_entry_with_its_shield_above_the_engines_keeps_it_on_a_pod_shield_stage()
         {
             var tree = MunShotV2();
-            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Duna", DunaThenKerbin) + PrintPowered));
-            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Kerbin", Return) + PrintPowered));
+            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Duna", DunaThenKerbin, "none") + PrintPowered));
+            Assert.Equal(new[] { "0", "" }, Run(tree, tree.Below("Kerbin", Return, "none") + PrintPowered));
         }
 
         [Fact]
@@ -286,7 +286,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             t.Add("radialEngine", pod, new[] { "ModuleEnginesFX" }, "engine");
             t.Add("HeatShield1", pod, Shield, "shield");
             Assert.Equal(new[] { "0", "shield", "False", "True", "True" },
-                Run(t, t.Below("Duna", DunaLast) + PrintPowered
+                Run(t, t.Below("Duna", DunaLast, "none") + PrintPowered
                     + "print reentry_shield_due(false, 900, 20000).\n print reentry_shield_due(false, 400, 20000).\n print reentry_shield_due(false, 900, 20000, true).\n"));
         }
 
@@ -298,7 +298,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var dec = t.Add("Decoupler.1", tank, Decoupler);
             var shield = t.Add("HeatShield1", dec, Shield, "shield");
             t.Add("mk1pod.v2", shield, Command, "pod");
-            Assert.Equal(new[] { "0", "" }, Run(t, t.Below("Duna", DunaLast) + PrintPowered));
+            Assert.Equal(new[] { "0", "" }, Run(t, t.Below("Duna", DunaLast, "none") + PrintPowered));
         }
 
         // ---- When the stack drops (#815): read at block start, dropped at the drop point, its lead s before the air ----
@@ -363,7 +363,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             {
                 "reentry_light(ship:engines, finish:engines).", "local drop is reentry_separation(opt:separate, below, ship:parts).", Fire,
                 "local group is reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts).", "addons:claudia:shipsystems(\"entry\").",
-                "local shield_uid is reentry_jettison_uid(opt, below).", "addons:claudia:reentryimpact(",
+                "local shield_uid is below:jettison.", "addons:claudia:reentryimpact(",
             })
                 Assert.True(finish < At(body, after), after);
         }

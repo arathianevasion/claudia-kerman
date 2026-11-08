@@ -1388,9 +1388,10 @@ namespace ClaudiaKerman.Core.Tools
         /// <c>ADDONS:CLAUDIA:ENTRYDROP</c>, for <c>reentry</c> at block start and at the drop point (#823, ADR 0018, #815): what this Entry drops, read
         /// fresh from the Mission Plan's <paramref name="legs"/> (null with no plan: the first shield's rule) from <paramref name="step"/>
         /// (0 first) for the vessel flying (<paramref name="child"/>; "" for the craft). Takes <c>home</c> (the kOS UID of the crew's part) and, from the block,
-        /// <c>separate</c>, <c>chutes</c> (as <see cref="EntryFinishCall"/>), <c>core</c> (the kOS UID of the part running the script) and, after its own
+        /// <c>separate</c>, <c>jettison_stage</c> (#869), <c>chutes</c> (as <see cref="EntryFinishCall"/>), <c>core</c> (the kOS UID of the part running the script) and, after its own
         /// drop, <c>drop_error</c> (what that said): above the air, <c>error</c> is then <see cref="EntryStack.Refusal"/>'s refusal, unless at block start
         /// the Entry lands on its engines and keeps its stack. Gives <c>error</c> "", <c>number</c> (n), <c>shield</c> (the Entry Shield's kOS UID; "" for none),
+        /// <c>jettison</c> (the same when this Entry jettisons it, <see cref="EntryCraft.Jettisons"/>; else ""),
         /// <c>decouplers</c> and <c>gone</c> (kOS UIDs), <c>names</c> (the stack's part names, each once), <c>stuck</c> (those with no decoupler)
         /// and <c>lead</c> (s before the atmosphere the block drops it, <see cref="EntryStack.DropLeadS"/>).
         /// </summary>
@@ -1407,6 +1408,7 @@ namespace ClaudiaKerman.Core.Tools
                 { "error", "" },
                 { "number", (double)number },
                 { "shield", stack.Shield == null ? "" : uidOf(stack.Shield.Id) ?? "" },
+                { "jettison", stack.Shield == null || !EntryCraft.Jettisons(JettisonStage(ask), Equals(ask.ContainsKey("separate") ? ask["separate"] : null, "none"), stack.Parts.Count > 0) ? "" : uidOf(stack.Shield.Id) ?? "" },
                 { "decouplers", uids(stack.Decouplers) },
                 { "gone", uids(stack.Gone) },
                 { "names", EntryStack.Names(stack.Parts).Cast<object>().ToList() },
@@ -1430,6 +1432,12 @@ namespace ClaudiaKerman.Core.Tools
             bool chutes;
             if (refusal == "" || ChutesOf(ask, out chutes) != null) return refusal;
             return EntryFinish.Decide(snapshot, stack.Gone.Select(p => p.Id).ToList(), number == 1, chutes).Powered ? "" : refusal;
+        }
+
+        /// <summary>The block's <c>jettison_stage</c> in <paramref name="ask"/>; "auto" when not given.</summary>
+        private static string JettisonStage(IDictionary<string, object> ask)
+        {
+            return ask.ContainsKey("jettison_stage") ? ask["jettison_stage"] as string ?? "auto" : "auto";
         }
 
         /// <summary>The part whose kOS UID is <c>home</c> in <paramref name="ask"/>; null when none is.</summary>
@@ -1492,7 +1500,7 @@ namespace ClaudiaKerman.Core.Tools
             }
             var dropped = new HashSet<string>(Uids(input, "leave_out"));
             var own = snapshot.Craft.Parts.Where(p => dropped.Contains(uidOf(p.Id) ?? "")).Select(p => p.Id).ToList();
-            var craft = EntryCraft.Of(snapshot, own, Home(input, snapshot, uidOf), Entries.ShieldNumber(snapshot, legs, step, child), true, true);
+            var craft = EntryCraft.Of(snapshot, own, Home(input, snapshot, uidOf), Entries.ShieldNumber(snapshot, legs, step, child), true, true, JettisonStage(input));
             if (aimed != null) aimed(craft.Key, craft.Describe());
             return new Dictionary<string, object>
             {

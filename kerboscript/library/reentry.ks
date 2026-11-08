@@ -545,16 +545,6 @@ function reentry_shield_beside {
   return false.
 }
 
-// The Entry Shield's uid if this entry jettisons it, else "". below: ADDONS:CLAUDIA:ENTRYDROP's lexicon. Its decoupler takes
-// what's on both sides (#516), so a stack kept on (separate "none", which a powered entry also sets) keeps the shield too; with nothing below it, it goes.
-function reentry_jettison_uid {
-  parameter opt, below.
-  if opt:jettison_stage = "none" or (opt:separate = "none" and below:names:length > 0) {
-    return "".
-  }
-  return below:shield.
-}
-
 // ---- What this entry drops (#557, #823): ADDONS:CLAUDIA:ENTRYDROP decides, the block fires ----
 
 // What separate drops, of ENTRYDROP's lexicon below, as claudia_drop_plan's lexicon with the parts themselves: nothing for
@@ -700,7 +690,7 @@ function reentry {
   }
   // This entry's stack (#557, #823) is read at block start, where ENTRYDROP refuses one separate can't drop, still above the air, and again at the drop
   // point (#815), its lead s before the air or at once inside it: that read flies, the engines light, the stack drops (Pe and stack noted at the air) and ENTRYDROP refuses one still on.
-  local entry_ask is lexicon("home", reentry_home_uid(), "separate", opt:separate, "chutes", opt:chutes <> "none" and opt:chute_mode <> "none", "core", core:part:uid).
+  local entry_ask is lexicon("home", reentry_home_uid(), "separate", opt:separate, "jettison_stage", opt:jettison_stage, "chutes", opt:chutes <> "none" and opt:chute_mode <> "none", "core", core:part:uid).
   local below is addons:claudia:entrydrop(entry_ask).
   if below:error <> "" {
     return claudia_finish(ctx, false, below:error, extra).
@@ -751,7 +741,7 @@ function reentry {
       set drop_error to claudia_fire_drop(ctx, drop).
       if drop_error = "" { set dropped to list(pe_before, ship:periapsis, drop:gone[0]:ship). }
     }
-    set below to addons:claudia:entrydrop(lexicon("home", entry_ask:home, "separate", opt:separate, "drop_error", drop_error)).
+    set below to addons:claudia:entrydrop(lexicon("home", entry_ask:home, "separate", opt:separate, "jettison_stage", opt:jettison_stage, "drop_error", drop_error)).
     if below:error <> "" {
       return claudia_finish(ctx, false, below:error, extra).
     }
@@ -766,7 +756,7 @@ function reentry {
   }
   addons:claudia:shipsystems("entry").
   // The Entry Shield's decouplers, found on the craft that is left.
-  local shield_uid is reentry_jettison_uid(opt, below).
+  local shield_uid is below:jettison.
   local shield is reentry_shield_modules(shield_uid, ship:parts).
   local shield_gone is shield:length = 0.
   // Log-only (#478): where the predictor puts the landing, with the shield drop and chutes this entry flies.
