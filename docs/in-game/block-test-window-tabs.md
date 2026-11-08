@@ -18,3 +18,8 @@ Debug tools only. Set `debug_tools = true` in the player config first. Install a
 1. Outside Flight the tab says the bridge tests need Flight.
 2. In Flight with a kOS processor, open the window ("Block tests (debug)" button, or the window if shown) and pick the tab: processor line, test buttons (`report`, `runtime_error`, `no_report`, `long_run`), Abort, status and result work as the old kOS bridge window did. Hide closes the window.
 3. The old window "Claudia Kerman: kOS bridge test (debug_tools)" no longer opens in Flight.
+
+## Check 4: tab switching and window height
+
+1. Click through every tab, including from kOS Bridge Tests to Unvalidated and from Failed to Unvalidated, in Flight and out. Afterwards `KSP.log` shows no `GUILayout` exception ("Mismatched LayoutGroup.Used", "Getting control ... in a group with only ... controls").
+2. With many tests under Passed, the list scrolls inside the window and Hide, the stage line and the log pane stay on screen; switching to a shorter tab shrinks the window again.

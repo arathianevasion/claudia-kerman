@@ -23,7 +23,7 @@ namespace ClaudiaKerman.KOS
         private string _status = "Idle.";
         private string _result = "";
 
-        // Decided once per scene by each debug tool. Any failure reading the player config counts as off.
+        // Read once per session by the runner (BlockTestRunner.Awake). The status, result and part id below carry over between Flight scenes. Any failure reading the player config counts as off.
         internal static bool DebugToolsOn()
         {
             // Stood down beside the old copy (ADR 0015): its config folder is left where it is.

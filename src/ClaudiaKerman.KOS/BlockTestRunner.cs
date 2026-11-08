@@ -54,6 +54,9 @@ namespace ClaudiaKerman.KOS
         private const int BridgeTab = 3;
         /// <summary>The tab last picked, kept for the session (a static survives the scene changes a run goes through).</summary>
         private static int _tab;
+        /// <summary>The tab picked in this frame's input event; applied at the next Layout event so Layout and Repaint draw the same controls.</summary>
+        private static int _pendingTab = -1;
+        private readonly Vector2[] _listScroll = new Vector2[3];
         private Dictionary<string, BlockTestLogEntry> _results = new Dictionary<string, BlockTestLogEntry>();
 
         private Stage _stage = Stage.Idle;
@@ -142,12 +145,19 @@ namespace ClaudiaKerman.KOS
 
         private void Draw(int id)
         {
+            if (Event.current.type == EventType.Layout && _pendingTab >= 0)
+            {
+                if (_pendingTab != _tab) _rect.height = 0; // GUILayout.Window never shrinks after a tall tab
+                _tab = _pendingTab;
+                _pendingTab = -1;
+            }
             var tests = TestNames().ToList();
             var counts = new int[3];
             foreach (var test in tests) counts[TabOf(test)]++;
             var labels = new string[TabNames.Length];
             for (var i = 0; i < labels.Length; i++) labels[i] = i < 3 ? TabNames[i] + " (" + counts[i] + ")" : TabNames[i];
-            _tab = GUILayout.SelectionGrid(_tab, labels, 2);
+            var picked = GUILayout.SelectionGrid(_tab, labels, 2);
+            if (picked != _tab) _pendingTab = picked;
 
             if (_tab == BridgeTab)
             {
@@ -162,6 +172,7 @@ namespace ClaudiaKerman.KOS
             // show a date (and Failed its reason), so they take a row each.
             var shown = tests.Where(t => TabOf(t) == _tab).ToList();
             var perRow = _tab == 0 ? 5 : 1;
+            _listScroll[_tab] = GUILayout.BeginScrollView(_listScroll[_tab], GUILayout.Height(200));
             for (var row = 0; row < shown.Count; row += perRow)
             {
                 GUILayout.BeginHorizontal();
@@ -180,6 +191,7 @@ namespace ClaudiaKerman.KOS
                 GUI.enabled = true;
                 GUILayout.EndHorizontal();
             }
+            GUILayout.EndScrollView();
             GUILayout.BeginHorizontal();
             GUILayout.Label(tests.Count + " tests shipped");
             if (GUILayout.Button("Hide", GUILayout.Width(50))) _visible = false;
