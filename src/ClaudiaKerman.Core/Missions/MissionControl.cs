@@ -114,6 +114,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is WarpToDueTime) WarpRequested();
             else if (input is GoToVessel) GoToRequested();
             else if (input is ClaudiaKilled) Killed(((ClaudiaKilled)input).VesselId, ((ClaudiaKilled)input).Traced);
+            else if (input is KerbalKilled) CrewDeathSeen(((KerbalKilled)input).Name);
             else if (input is KosRunBlocked) RunBlocked((KosRunBlocked)input);
             else if (input is ArrivalPlaneAimed) ArrivalPlaneRecorded((ArrivalPlaneAimed)input);
             else if (input is KosBlockStarted) BlockStarted((KosBlockStarted)input);
@@ -742,7 +743,7 @@ namespace ClaudiaKerman.Core.Missions
             text = (text ?? "").Trim();
             if (text.Length == 0 || !CanAnswerPlan) return;
             _mission.ConfirmPrompt = null;
-            Note(LogKind.Player, text);
+            Note(LogKind.Player, text, typed: true);
             Begin(new Turn
             {
                 Purpose = Purpose.Reply,
@@ -757,7 +758,7 @@ namespace ClaudiaKerman.Core.Missions
             text = (text ?? "").Trim();
             if (text.Length == 0 || !CanAnswerPlan) return;
             _mission.ConfirmPrompt = null;
-            Note(LogKind.Player, "Change: " + text);
+            Note(LogKind.Player, "Change: " + text, typed: true);
             Begin(new Turn
             {
                 Purpose = Purpose.Change,
@@ -775,7 +776,7 @@ namespace ClaudiaKerman.Core.Missions
             // While Running a question queues behind the request in hand; otherwise one at a time.
             var running = mission.Stage == MissionStage.Running;
             if (mission.InFlight && !running) return;
-            Note(LogKind.Player, text);
+            Note(LogKind.Player, text, typed: true);
             Begin(new Turn
             {
                 Purpose = Purpose.Question,
@@ -1713,25 +1714,23 @@ namespace ClaudiaKerman.Core.Missions
         private void ChildVesselRefused(Mission mission, Turn turn, IList<string> ids)
         {
             var named = string.Join(", ", ids.ToArray());
-            if (turn.ChildVesselRetry)
-            {
-                Failed(mission, turn, "Claudia's Mission Plan still names a Child Vessel that has not left the craft (" + named + ").");
-                return;
-            }
-            Note(LogKind.Notice, "The Mission Plan names a vessel that hasn't left the craft (" + named + "); Claudia is revising it.");
+            var reason = MissionPrompts.ChildVesselNotLeft(ids);
             // The correction is the refused turn asked again: its own Purpose (so the reply is read, and the plan offered, as it
             // would have been) and its own wait at the Spending Cap, through the same Begin as any other turn.
             var typed = turn.Purpose == Purpose.Reply || turn.Purpose == Purpose.Change;
-            Begin(new Turn
-            {
-                Purpose = turn.Purpose,
-                ChildVesselRetry = true,
-                Waits = turn.Waits,
-                GoalStands = turn.GoalStands,
-                // The refused turn was never committed to the conversation, so what it asked (the player's words, the new settings) goes again.
-                UserText = turn.UserText + "\n" + MissionPrompts.ChildVesselNotLeft(ids),
-                Notice = MissionPrompts.ChildVesselNotice +(typed ? MissionPrompts.ChildVesselTypedNotice : ""),
-            });
+            RefusedAtApply(mission, turn, turn.ChildVesselRetry, reason,
+                "Claudia's Mission Plan still names a Child Vessel that has not left the craft (" + named + ").",
+                "The Mission Plan names a vessel that hasn't left the craft (" + named + "); Claudia is revising it.",
+                () => new Turn
+                {
+                    Purpose = turn.Purpose,
+                    ChildVesselRetry = true,
+                    Waits = turn.Waits,
+                    GoalStands = turn.GoalStands,
+                    // The refused turn is committed with her reply (the player's words, the new settings are in the conversation): only the reason goes.
+                    UserText = reason,
+                    Notice = MissionPrompts.ChildVesselNotice + (typed ? MissionPrompts.ChildVesselTypedNotice : ""),
+                });
         }
 
         /// <summary>Claudia's line; when she declines the goal with a Mission Plan of no sequences, her <c>why</c> follows it (there is no card to carry it).</summary>
@@ -1905,7 +1904,7 @@ namespace ClaudiaKerman.Core.Missions
             {
                 note = note.Trim();
                 if (note.Length == 0) return;
-                Note(LogKind.Player, "Retry with a note: " + note);
+                Note(LogKind.Player, "Retry with a note: " + note, typed: true);
             }
             mission.Stage = MissionStage.Sequencing;
             Begin(ScriptRetryTurn(mission, note, replan));
@@ -2372,12 +2371,13 @@ namespace ClaudiaKerman.Core.Missions
 
         // ---- View ----
 
-        private LogEntry Note(LogKind kind, string text)
+        /// <param name="typed">The text is the player's own typed words (#873); only a Player line can be.</param>
+        private LogEntry Note(LogKind kind, string text, bool typed = false)
         {
-            var entry = new LogEntry { Kind = kind, Text = text ?? "" };
+            var entry = new LogEntry { Kind = kind, Text = text ?? "", Typed = typed && kind == LogKind.Player };
             QueueIfBlackout(_mission, entry);
             if (_mission != null) _mission.Log.Add(entry);
-            if (kind == LogKind.Player && _mission != null && !ManualGrounds.NotTyped.Any(p => entry.Text.StartsWith(p, StringComparison.Ordinal)))
+            if (entry.Typed && _mission != null)
                 _mission.ManualAsk = ManualGrounds.Fold(_mission.ManualAsk, entry.Text);
             return entry;
         }

@@ -27,6 +27,8 @@ namespace ClaudiaKerman.Core.Missions
             public bool PrecisionGoal;
             /// <summary>The Kerbals aboard at the current run's start (#818), for judging a Failed Debrief's crew alive; null when unread. Not saved, as a run never survives a load.</summary>
             public List<string> RunStartCrew;
+            /// <summary>Kerbals killed while the Mission was live (#874), each with the UT of the death. Saved.</summary>
+            public readonly Dictionary<string, double> CrewDeaths = new Dictionary<string, double>();
             /// <summary>How Manual Control began, for Claudia's Debrief.</summary>
             public string ManualOrigin = "";
             /// <summary>Handed back: the Debrief of the manual stretch is under way, and a revised Mission Plan follows it.</summary>
@@ -226,7 +228,7 @@ namespace ClaudiaKerman.Core.Missions
             if (!linkLost && HandBackUnavailableBecause().Length > 0) return;
             mission.HandBack = true;
             mission.HandBackMessage = (message ?? "").Trim();
-            Note(LogKind.Player, mission.HandBackMessage.Length > 0 ? "Hand back to Claudia: " + mission.HandBackMessage : "Hand back to Claudia.");
+            Note(LogKind.Player, mission.HandBackMessage.Length > 0 ? "Hand back to Claudia: " + mission.HandBackMessage : "Hand back to Claudia.", typed: mission.HandBackMessage.Length > 0);
             Event(mission, "hand_back", mission.HandBackMessage);
             // A link-lost take-back has just made the craft safe (SAS on) and keeps it that way; only the player's hand back turns it off.
             if (!linkLost)
