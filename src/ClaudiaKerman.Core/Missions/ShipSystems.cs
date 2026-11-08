@@ -445,6 +445,17 @@ namespace ClaudiaKerman.Core.Missions
             return moves;
         }
 
+        /// <summary>
+        /// The ids of the parts an entry meets the air with stowed (#868), for the reentry predictor's drag: with the setting on
+        /// (<paramref name="managed"/>), every panel, antenna and radiator that can retract and isn't broken, out or on its way
+        /// now, since the entry's retract brings it in; with it off, none, the craft entering as it is.
+        /// </summary>
+        public static List<uint> StowedForEntry(IEnumerable<ShipSystemPart> parts, bool managed)
+        {
+            if (!managed) return new List<uint>();
+            return parts.Where(p => p.Kind != ShipSystemKind.Light && p.CanRetract && p.State != ShipSystemState.Broken).Select(p => p.Id).ToList();
+        }
+
         private string Line(ShipSystemsTransition transition, ShipSystemsHold hold)
         {
             var moved = new List<string>();
