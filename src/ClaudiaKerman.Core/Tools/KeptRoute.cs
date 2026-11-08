@@ -60,7 +60,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// The moon the Mission Plan's next trip for this craft goes to, when it is a moon of <paramref name="body"/> and <paramref name="body"/> is a planet
         /// reached by an interplanetary transfer; else null, with <paramref name="why"/> saying why ("" with no Mission Plan). <paramref name="deadline"/> is
-        /// the earliest Due Time of the legs after that trip, which the moon must be reached by; null for none.
+        /// the tightest Due Time of the legs after that trip, each less one low orbit of the moon per leg in between (<see cref="FixedDate"/>), which the moon must be reached by; null for none.
         /// </summary>
         public static SnapshotBody NextMoon(GameSnapshot snapshot, BodySystem system, SnapshotBody body, out double? deadline, out string why)
         {
@@ -82,9 +82,9 @@ namespace ClaudiaKerman.Core.Tools
                     if (target != null && target != body && string.Equals(target.Parent, body.Name, StringComparison.OrdinalIgnoreCase))
                     {
                         why = "";
-                        var dates = legs.Skip(i + 1).Where(l => l.DueTimeUt.HasValue).Select(l => l.DueTimeUt.Value).ToList();
-                        if (dates.Count > 0) deadline = dates.Min();
-                        return system.Find(target.Name);
+                        var moon = system.Find(target.Name);
+                        deadline = FixedDate(legs, i, moon);
+                        return moon;
                     }
                     // The leg in hand's trip is the one that came here; it may land too.
                     if (i != 0) return null;
@@ -94,6 +94,32 @@ namespace ClaudiaKerman.Core.Tools
                     || SequenceWords.Aero.IsMatch(words) || SequenceWords.ReturnHome.IsMatch(words))) return null;
             }
             return null;
+        }
+
+        /// <summary>
+        /// The UT the moon must be reached by (#881): the tightest Due Time of the legs after the trip at <paramref name="trip"/> (the outline carries no
+        /// return window: <see cref="PlannedSequence"/> has no such field), less one low orbit of <paramref name="moon"/> for each leg in between; null with no such leg.
+        /// </summary>
+        private static double? FixedDate(IList<PlannedSequence> legs, int trip, SnapshotBody moon)
+        {
+            if (moon == null) return null;
+            var orbit = DeltaVMap.LowOrbit(moon);
+            var lap = 2 * Math.PI * Math.Sqrt(orbit * orbit * orbit / moon.Gm);
+            // The tightest of them: each dated leg less the legs before it.
+            double? tightest = null;
+            var between = 0;
+            for (var j = trip + 1; j < legs.Count; j++)
+            {
+                // A leg of the player's or another vessel's is no leg of this craft's between.
+                if (legs[j].Manual || !(string.IsNullOrEmpty(legs[j].Vessel) || string.Equals(legs[j].Vessel, "craft", StringComparison.OrdinalIgnoreCase))) continue;
+                if (legs[j].DueTimeUt.HasValue && !double.IsNaN(legs[j].DueTimeUt.Value))
+                {
+                    var by = legs[j].DueTimeUt.Value - between * lap;
+                    if (!tightest.HasValue || by < tightest.Value) tightest = by;
+                }
+                between++;
+            }
+            return tightest;
         }
 
         /// <summary>
