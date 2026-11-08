@@ -102,11 +102,17 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The text before a body names where a trip starts, not where it goes: "from the", "depart", "leave", "eject from".</summary>
         private static readonly Regex Origin = new Regex(@"\b(?:from|depart(?:s|ing|ure)?|leav(?:e|es|ing)|eject(?:s|ion|ing)?)\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
 
-        /// <summary>The bodies <paramref name="words"/> name as a place to be at or go to (#871): every body with an occurrence that isn't an origin ("Return from Ike to Duna" names Duna, not Ike).</summary>
+        /// <summary>
+        /// The text before a body names a body to keep clear of (#894), not to go to: "clear of (the)", "avoid(ing)", "away from", "below/under/outside
+        /// (the) (SOI/orbit of)", "miss(ing)". The avoid word governs the body as "from" governs an origin: it comes right before the name.
+        /// </summary>
+        private static readonly Regex Avoids = new Regex(@"\b(?:clear\s+of|avoid(?:s|ing|ed)?|away\s+from|(?:below|under|outside)(?:\s+(?:the\s+)?(?:SOI|sphere\s+of\s+influence|orbit)\s+of)?|miss(?:es|ing)?)\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
+
+        /// <summary>The bodies <paramref name="words"/> name as a place to be at or go to (#871): every body with an occurrence that isn't an origin ("Return from Ike to Duna" names Duna, not Ike) or one named only to be avoided (#894: "raise Ap clear of Ike's SOI").</summary>
         public static System.Collections.Generic.IList<SnapshotBody> Destinations(GameSnapshot snapshot, string words)
         {
             return snapshot.Bodies.Where(b => b.Name.Length > 0 && Regex.Matches(words, @"\b" + Regex.Escape(b.Name) + @"\b", RegexOptions.IgnoreCase).Cast<Match>()
-                .Any(m => !Origin.IsMatch(words.Substring(0, m.Index)) && !ReturnsFrom.IsMatch(words.Substring(0, m.Index)))).ToList();
+                .Any(m => !Origin.IsMatch(words.Substring(0, m.Index)) && !ReturnsFrom.IsMatch(words.Substring(0, m.Index)) && !Avoids.IsMatch(words.Substring(0, m.Index)))).ToList();
         }
 
         /// <summary>The text before a body names a return's origin: "come home from", "return to Kerbin from", "return from" (same clause).</summary>
