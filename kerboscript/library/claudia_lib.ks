@@ -1529,7 +1529,7 @@ function claudia_turn_to_burn {
   parameter ctx, nd, start_ut.
   local began is time:seconds.
   local reason is "".
-  // RCS Use: the turn has until start_ut, so RCS helps only if the wheels alone can't make it by then.
+  // RCS Use: the turn has until start_ut, so RCS helps only if the wheels alone can't make it by then. Once it has passed, turn_by stays: no time left, not no deadline (#933).
   set ctx:turn_by to start_ut.
   set ctx:burn_within_ut to -1.
   local aligned is claudia_aligned_to(ctx, nd).
@@ -1541,7 +1541,7 @@ function claudia_turn_to_burn {
     wait 0.
     set aligned to claudia_aligned_to(ctx, nd).
   }
-  set ctx:turn_by to 0.
+  set ctx:turn_by to choose 0 if time:seconds < start_ut else start_ut.
   local timed_out is reason = "" and time:seconds >= began + 120 and not aligned.
   if timed_out {
     print ctx:block + ": not aligned after 120 s, " + round(vang(ship:facing:forevector, nd:deltav), 1) + " deg off".
@@ -1863,7 +1863,7 @@ function claudia_rcs_off {
 // fires RCS through holds), reads kOS state, steps a burst turn (#692, BURSTTURN: RCS on only in its two bursts,
 // kOS's steering tuned per phase) or applies claudia_rcs_decide, and reports each switch. TURNPLAN (the wheels'
 // time for this error, #408, and the burst turn) is asked only at the on-gate. Traces to KSP.log at most once a
-// second while RCS is on or the error is over on_deg.
+// second while RCS is on, the error is over on_deg or a burst turn flies (actuation per axis: KSP fires RCS only on an axis over 0.05).
 function claudia_rcs_tick {
   parameter ctx.
   if sas {
@@ -1889,6 +1889,13 @@ function claudia_rcs_tick {
   }
   set ctx:rcs_within_ut to claudia_within_ut(ctx:rcs_within_ut, steer_on and error < tol:aligned_deg, now).
   local left_s is choose max(0, ctx:turn_by - now) if ctx:turn_by > 0 else -1.
+  if (rcs or error > tol:on_deg or ctx:rcs_turn:istype("Lexicon")) and now >= ctx:rcs_trace_ut + 1 {
+    set ctx:rcs_trace_ut to now.
+    local act is steeringmanager:actuation.
+    local w is ship:angularvel * constant:radtodeg.
+    addons:claudia:blocknote(ctx:block, lexicon("phase", choose ctx:rcs_turn:phase if ctx:rcs_turn:istype("Lexicon") else "rcs", "error", round(error, 1), "rate", round(rate, 2), "rcs", rcs, "ec_pct", round(claudia_ec_pct(), 1),
+      "pitch_yaw_roll", round(vdot(w, ship:facing:starvector), 2) + "/" + round(vdot(w, ship:facing:topvector), 2) + "/" + round(vdot(w, ship:facing:forevector), 2), "actuation", round(act:x, 3) + "/" + round(act:y, 3) + "/" + round(act:z, 3))).
+  }
   if ctx:rcs_turn:istype("Lexicon") {
     if steer_on and not ctx:rcs_dry and not ctx:rcs_braking and not claudia_on_ground() {
       local t is addons:claudia:burstturn(ctx:rcs_turn, lexicon("ut", now, "error", error, "rate", rate, "monoprop", mono:amount,
@@ -1943,13 +1950,6 @@ function claudia_rcs_tick {
       set figures:coast_dps to round(plan:coast_rate, 2).
     }
     claudia_rcs_switch(decided["on"], decided:reason, figures).
-  }
-  if (rcs or error > tol:on_deg) and now >= ctx:rcs_trace_ut + 1 {
-    set ctx:rcs_trace_ut to now.
-    // Actuation per axis: KSP fires RCS only on an axis over 0.05.
-    local act is steeringmanager:actuation.
-    addons:claudia:blocknote(ctx:block, lexicon("phase", "rcs", "error", round(error, 1), "rate", round(rate, 2), "rcs", rcs,
-      "actuation", round(act:x, 3) + "/" + round(act:y, 3) + "/" + round(act:z, 3))).
   }
 }
 
