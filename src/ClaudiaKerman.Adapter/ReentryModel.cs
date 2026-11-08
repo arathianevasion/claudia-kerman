@@ -203,14 +203,14 @@ namespace ClaudiaKerman.Adapter
         }
 
         /// <summary>The part's areaDrag at <paramref name="mach"/> as this craft reads it: an open chute's PACKED cube, a stowed Ship System's RETRACTED one, the bared faces, or the part as stock has it.</summary>
-        private static double PartArea(Part part, Vector3 local, float mach, DragCube packed, DragCube retracted, float[] bared)
+        private static double PartArea(Part part, Vector3 local, float mach, DragCube packed, DragCube retracted, BaredCubeFaces bared)
         {
             return packed != null
                 ? DragCubeDrag.Area(part.DragCubes, packed.Area, packed.Drag, local, mach)
                 : retracted != null
                 ? DragCubeDrag.Area(part.DragCubes, StowedFaces(part, retracted, bared), retracted.Drag, local, mach)
                 : bared != null
-                    ? DragCubeDrag.Area(part.DragCubes, bared, local, mach)
+                    ? DragCubeDrag.Area(part.DragCubes, bared.Areas, bared.Drags, local, mach)
                     : DragCubeDrag.Area(part, local, mach);
         }
 
@@ -230,9 +230,9 @@ namespace ClaudiaKerman.Adapter
         }
 
         /// <summary>The stowed cube's face areas, each occluded by the share its live face is (bared faces as <paramref name="bared"/> has them).</summary>
-        private static float[] StowedFaces(Part part, DragCube retracted, float[] bared)
+        private static float[] StowedFaces(Part part, DragCube retracted, BaredCubeFaces bared)
         {
-            var live = bared ?? part.DragCubes.AreaOccluded;
+            var live = bared != null ? bared.Areas : part.DragCubes.AreaOccluded;
             var areas = (float[])retracted.Area.Clone();
             for (var f = 0; f < areas.Length; f++)
             {
@@ -319,23 +319,22 @@ namespace ClaudiaKerman.Adapter
 
         /// <summary>
         /// The part's face areas with every face toward an attached part that will be dropped bared (unoccluded), or null when
-        /// none is: stock occludes a face by what is attached at its node (DragCubeList.SetPartOcclusion), and that goes.
+        /// none is: stock occludes a face by what is attached at its node (DragCubeList.SetPartOcclusion), and that goes. A bared
+        /// face takes back its coefficient too (#924), which stock rewrote for the covered face.
         /// </summary>
-        private static float[] BaredFaces(Part part, HashSet<string> gone)
+        private static BaredCubeFaces BaredFaces(Part part, HashSet<string> gone)
         {
-            float[] areas = null;
+            var bared = new HashSet<int>();
             foreach (var node in part.attachNodes)
             {
                 if (node == null || node.attachedPart == null || !Gone(node.attachedPart, gone)) continue;
                 var direction = node.orientation.normalized;
                 for (var f = 0; f < Faces.Length; f++)
-                {
-                    if (Vector3.Dot(direction, Faces[f]) < 0.7f) continue;
-                    if (areas == null) areas = (float[])part.DragCubes.AreaOccluded.Clone();
-                    areas[f] = part.DragCubes.WeightedArea[f];
-                }
+                    if (Vector3.Dot(direction, Faces[f]) >= 0.7f) bared.Add(f);
             }
-            return areas;
+            var cubes = part.DragCubes;
+            var unoccluded = BaredCubeFaces.UnoccludedDrag(cubes.Cubes.ConvertAll(c => c.Drag), cubes.Cubes.ConvertAll(c => c.Weight));
+            return BaredCubeFaces.Bare(cubes.AreaOccluded, cubes.WeightedDrag, cubes.WeightedArea, unoccluded, bared);
         }
 
         public double MassKg

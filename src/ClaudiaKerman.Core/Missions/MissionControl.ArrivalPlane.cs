@@ -16,8 +16,8 @@ namespace ClaudiaKerman.Core.Missions
             public string ArrivalPlane = "";
             /// <summary>What the block that aimed the landing predicted (<see cref="LandingLine.Record"/>), for the reentry that may come in a later run (#790).</summary>
             public string LandingAim = "";
-            /// <summary>Where that block aimed the landing, for <c>reentry</c>'s late trim (#892); null for none. Cleared when a reentry ends.</summary>
-            public LandingTarget LandingTarget;
+            /// <summary>Where each vessel's calls aimed its landing, for <c>reentry</c>'s late trim (#892, #913). A vessel's entry is cleared when its reentry ends.</summary>
+            public AimedLandings LandingTargets = new AimedLandings();
             /// <summary>A <c>return</c> this run flew no Course Correction (its aim_note, #899); the Debrief rates the run Off-Nominal and clears it.</summary>
             public bool NoCorrection;
             /// <summary><c>find_landing_site</c>'s first site in its last answer; null for none.</summary>
@@ -31,7 +31,27 @@ namespace ClaudiaKerman.Core.Missions
 
         private void LandingTargetRecorded(LandingTargetAimed aimed)
         {
-            if (_mission != null) _mission.LandingTarget = aimed.Target;
+            if (_mission != null) _mission.LandingTargets.Aim(aimed.VesselId, aimed.Target);
+        }
+
+        /// <summary>The craft is this vessel now; staging or an undock can change its id, and its aimed landing goes with it.</summary>
+        private static void SetCraftVessel(Mission mission, string vesselId)
+        {
+            mission.LandingTargets.Move(mission.VesselId, vesselId);
+            mission.VesselId = vesselId;
+        }
+
+        /// <summary>The Child Vessel is this vessel now, and its aimed landing goes with it. An unknown id on either side moves nothing: the "" entry, if any, is the craft's.</summary>
+        private static void SetChildVessel(Mission mission, ChildVessel child, string vesselId)
+        {
+            if (child.VesselId.Length > 0 && vesselId.Length > 0) mission.LandingTargets.Move(child.VesselId, vesselId);
+            child.VesselId = vesselId;
+        }
+
+        /// <summary>The vessel the run flies, whose reentry this is: the running Child Vessel's id ("" if it has none yet), else the craft's.</summary>
+        private string FlownVesselId(Mission mission)
+        {
+            return mission.RunningChild.Length > 0 ? RunningChildVesselId(mission) : mission.VesselId;
         }
 
         /// <summary>Keeps the first site of a <c>find_landing_site</c> answer in this step, for a next leg's arrival plane. A later answer replaces it; one with no site leaves it.</summary>
