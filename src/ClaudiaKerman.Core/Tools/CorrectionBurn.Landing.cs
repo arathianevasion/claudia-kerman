@@ -410,7 +410,7 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// #921: the burn an aimed solve leaves to fly, judged as <see cref="PlainOnly"/>'s is: the aimed solve refuses its own answer over <see cref="MostEntryG"/>, and what it falls back on, the plain burn, had no such check.
+        /// #921: whatever burn <see cref="AimLanding"/> leaves to fly meets <see cref="MostEntryG"/>, as <see cref="PlainOnly"/>'s burn does: the solve refuses its own aimed answer over the limit, then falls back on the plain burn unjudged.
         /// Over the limit none flies, and <see cref="Unsolved"/> says whether the path as it is may stand.
         /// </summary>
         private static CorrectionPlan EntryChecked(CorrectionPlan plan, Func<double, Vec3, Patch> arrive, double startUt, SnapshotBody target, CorrectionAsk ask)

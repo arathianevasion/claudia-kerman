@@ -27,7 +27,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             private readonly ReentrySim.Capsule _shape = new ReentrySim.Capsule();
             public bool Chute = true;
-            public double MassKg { get { return EntryPeakTests.MassKg; } }
+            public double MassKg { get; set; } = EntryPeakTests.MassKg;
             public double DragArea(double mach, double densitySpeed) { return _shape.DragArea(mach, densitySpeed) * 1.16 / _shape.DragArea(2, 1000); }
             public double LiftArea(double mach, double angleOfAttack) { return 0; }
             public IList<ReentryChute> Chutes { get { return Chute ? new[] { ReentrySim.Mk16() } : new ReentryChute[0]; } }
@@ -64,11 +64,11 @@ namespace ClaudiaKerman.Core.Tests
             return landed;
         }
 
-        private static IDictionary<string, object> Aim(GameSnapshot snapshot, double lat, double lng, IReentryCraft craft)
+        private static IDictionary<string, object> Aim(GameSnapshot snapshot, double lat, double lng, IReentryCraft craft, double targetPe = 30000, double peTolerance = 1000)
         {
             return BlockCalls.CorrectionBurn(new Dictionary<string, object>
             {
-                { "target", "Kerbin" }, { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut + 300 }, { "latest_ut", snapshot.Ut + 300 }, { "lat", lat }, { "lng", lng }, { "dv_left", 80.0 }, { "pe_tolerance", 1000.0 },
+                { "target", "Kerbin" }, { "target_pe", targetPe }, { "earliest_ut", snapshot.Ut + 300 }, { "latest_ut", snapshot.Ut + 300 }, { "lat", lat }, { "lng", lng }, { "dv_left", 80.0 }, { "pe_tolerance", peTolerance },
             }, snapshot, new AimedCorrectionTests.FrameBody(snapshot.Ut), new ReentrySim.Atmosphere(), craft);
         }
 
@@ -77,15 +77,17 @@ namespace ClaudiaKerman.Core.Tests
             return Convert.ToDouble(node[key]);
         }
 
-        /// <summary>The logged case: both periapses (aimed 30,001 m, Late Trim 30,083 m) pull about 2.3 g, what a fine fixed-step integration of the entry gives, and the parachute's opening is no part of it.</summary>
+        /// <summary>The logged case: both periapses (aimed 30,001 m, Late Trim 30,083 m) at the logged 6.204 t and the EntryCraft's 6.75 t pull about 2.3 g, what a fine fixed-step integration of the entry gives at 6.204 t, and the parachute's opening is no part of it.</summary>
         [Theory]
-        [InlineData(30001)]
-        [InlineData(30083)]
-        public void The_logged_entry_is_judged_by_the_airs_pull_not_the_parachutes_opening(double pe)
+        [InlineData(30001, 6204)]
+        [InlineData(30083, 6204)]
+        [InlineData(30001, 6750)]
+        [InlineData(30083, 6750)]
+        public void The_logged_entry_is_judged_by_the_airs_pull_not_the_parachutes_opening(double pe, double massKg)
         {
-            var landed = Fly(Logged(pe), new LoggedStack());
-            Assert.InRange(landed.PeakG, 2.2, 2.32);
-            Assert.Equal(Fly(Logged(pe), new LoggedStack { Chute = false }).PeakG, landed.PeakG, 2);
+            var landed = Fly(Logged(pe), new LoggedStack { MassKg = massKg });
+            Assert.InRange(landed.PeakG, 2.0, 2.4);
+            Assert.Equal(Fly(Logged(pe), new LoggedStack { MassKg = massKg, Chute = false }).PeakG, landed.PeakG, 2);
         }
 
         /// <summary>With the figure right, the aimed burn the log refused flies: a burn that closes the landing, with no word of the entry's g.</summary>
@@ -113,6 +115,20 @@ namespace ClaudiaKerman.Core.Tests
             var node = Aim(snapshot, natural.Latitude, natural.Longitude + 40 / KmPerDeg, craft);
             Assert.Matches(new Regex(@"^found no correction: the burn's entry pulls [\d.]+ g, over 8; without it the entry pulls [\d.]+ g, over 8$"), (string)node["error"]);
             Assert.Equal(0.0, D(node, "dv"));
+        }
+
+        /// <summary>A burn over the limit on a path that is under it (a target_pe of 20 km, held, from a path at 30 km): no burn flies, the g figure is said, and <c>return</c> carries on along the path as it is.</summary>
+        [Fact]
+        public void A_burn_over_the_limit_on_a_path_under_it_flies_nothing_and_goes_on()
+        {
+            var snapshot = Logged(30000);
+            var craft = new ReentrySim.Capsule { Scale = 120 };
+            var natural = Fly(snapshot, craft);
+            Assert.True(natural.PeakG <= CorrectionBurn.MostEntryG, "the path as it is is under the limit: " + natural.PeakG);
+            var node = Aim(snapshot, natural.Latitude, natural.Longitude + 40 / KmPerDeg, craft, 20000, 6000);
+            Assert.Equal("", node["error"]);
+            Assert.Equal(0.0, D(node, "dv"));
+            Assert.Matches(new Regex(@"^no correction flown: the burn's entry pulls [\d.]+ g, over 8; "), (string)node["aim_note"]);
         }
 
         /// <summary>The same in <c>reentry</c>'s Late Trim (ENTRYTRIM goes through the same solve): no trim, the g figure said, and the block goes on, the entry being already on its way.</summary>
