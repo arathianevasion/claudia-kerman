@@ -85,6 +85,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is SaveLoaded) Loaded(((SaveLoaded)input).SaveDirectory);
             else if (input is MissionsRestored) Restored((MissionsRestored)input);
             else if (input is SceneChanged) SceneChanging(((SceneChanged)input).Scene);
+            else if (input is SavedOrbitRead) SavedOrbitSeen(((SavedOrbitRead)input).Snapshot);
             else if (input is UtAdvanced) { _ut = ((UtAdvanced)input).Ut; WarpSeen(((UtAdvanced)input).Warping); ContinueRunEnd(); }
             else if (input is StartMission) Start((StartMission)input);
             else if (input is RunCraftCheck) RunCraftCheck((RunCraftCheck)input);
@@ -390,6 +391,7 @@ namespace ClaudiaKerman.Core.Missions
             if (goal.Length == 0 || start.SpendingCap <= 0 || !_config.Models.Contains(start.Model) || _saveDirectory == null) return;
             // Another Mission in play pauses at its next sequence boundary first, before the new craft is checked (MissionControl.Missions.cs).
             if (!MissionOver && !MakeRoom(new QueuedSwitch { Kind = SwitchKind.Start, Start = start })) return;
+            ForgetSavedOrbit();
 
             // A remote Mission needs a link (or the pad); a crewed one can't have Claudia while she is Missing. No request is spent on either.
             _startRefusal = StartRefusal(start);
@@ -591,6 +593,7 @@ namespace ClaudiaKerman.Core.Missions
             _saveDirectory = saveDirectory;
             _craftCheck.SaveDirectory = saveDirectory;
             _snapshot = null;
+            ForgetSavedOrbit();
             _active = null;
             _craftLink = null;
             _seen = new List<SeenVessel>();
@@ -860,6 +863,7 @@ namespace ClaudiaKerman.Core.Missions
             var due = PendingDueTime;
             if (!due.HasValue || _ut >= due.Value || _mission.InFlight) return;
             // #867: never a warp through an orbit that crosses a moon.
+            if (CrossingAwaitsRead(_mission, _mission.PendingSequence)) return;
             var blocker = CrossingBlockerNow(_mission);
             if (blocker.Length > 0)
             {
@@ -1064,6 +1068,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             var mission = _mission;
             if (MissionOver) return;
+            ForgetSavedOrbit();
             if (mission.InFlight) mission.Pending.Cancel.Cancel();
             CancelCompaction(mission);
             var running = mission.Stage == MissionStage.Running
@@ -1834,7 +1839,7 @@ namespace ClaudiaKerman.Core.Missions
             findings.StartDeltaV = start ?? 0;
             findings.DeorbitNoTarget = DeorbitTargets.Missing(plan.Script, snapshot);
             // #867: the orbit the plan waits in for its Due Time, if it crosses a moon.
-            findings.MoonCrossing = WaitCrossing(mission, plan, snapshot);
+            findings.MoonCrossing = WaitCrossing(mission, plan, CrossingSnapshot(mission));
             findings.Crossings = PredictedCrossings.Find(plan.TelemetryChecks, plan.ExpectedDeltaV, start);
             // #830: a duration short of the first burn (#696) is raised by the mod itself, on every path (the landing target default's wait, #790, was the first):
             // no request back to Claudia, no prompt text about it; plans.jsonl logs the raise.

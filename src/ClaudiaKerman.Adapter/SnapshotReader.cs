@@ -208,6 +208,37 @@ namespace ClaudiaKerman.Adapter
             entry.ApoapsisM = ap;
         }
 
+        private static List<SnapshotBody> _savedBodies;
+        private static object _savedBodiesFor;
+
+        /// <summary>
+        /// #877: the Mission craft outside Flight, as the save holds it: situation, saved orbit and the body table, no parts. Null when the craft isn't in
+        /// the save; a landed or splashed craft carries no orbit.
+        /// </summary>
+        public static GameSnapshot ReadSavedCraft(string vesselId)
+        {
+            var game = HighLogic.CurrentGame;
+            if (game == null || game.flightState == null || FlightGlobals.Bodies == null || string.IsNullOrEmpty(vesselId)) return null;
+            var saved = game.flightState.protoVessels.FirstOrDefault(v => v != null && v.vesselID.ToString("N") == vesselId);
+            if (saved == null) return null;
+            var snapshot = new GameSnapshot { Ut = Planetarium.GetUniversalTime(), Situation = saved.situation.ToString(), Body = SavedBody(saved) };
+            snapshot.Craft.VesselId = vesselId;
+            snapshot.Craft.Name = saved.vesselName ?? "";
+            var orbit = saved.orbitSnapShot;
+            if (!GameSnapshot.IsGroundedSituation(snapshot.Situation) && orbit != null && orbit.ReferenceBodyIndex >= 0 && orbit.ReferenceBodyIndex < FlightGlobals.Bodies.Count && FlightGlobals.Bodies[orbit.ReferenceBodyIndex] != null)
+                snapshot.Orbit = OrbitOf(orbit.Load());
+            if (snapshot.Orbit == null) return snapshot;
+            if (_savedBodies == null || !ReferenceEquals(_savedBodiesFor, FlightGlobals.Bodies))
+            {
+                var table = new GameSnapshot();
+                ReadBodies(table);
+                _savedBodies = table.Bodies;
+                _savedBodiesFor = FlightGlobals.Bodies;
+            }
+            snapshot.Bodies.AddRange(_savedBodies);
+            return snapshot;
+        }
+
         private static string SavedBody(ProtoVessel saved)
         {
             var bodies = FlightGlobals.Bodies;
