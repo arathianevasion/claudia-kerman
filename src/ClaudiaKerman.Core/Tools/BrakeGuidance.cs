@@ -210,7 +210,7 @@ namespace ClaudiaKerman.Core.Tools
         {
             // land's lean cap and want:vv-bound lift (#865, #886), the one rule LandSteer.Tick flies.
             double wantAl = w.Along, cr = 0, wantUp = w.Up;
-            var capped = w.HRef <= 0 && (w.H < LandSteer.CapBelowM || Math.Abs(vAl) < LandSteer.CapSlowerMs);
+            var capped = LandSteer.LeanCapApplies(w.HRef <= 0, w.H, Math.Abs(vAl));
             LandSteer.Lean(ref wantAl, ref cr, ref wantUp, w.H, capped, aMax, g, vUp, w.Vv);
             var dir = LandSteer.Steer(new[] { wantAl, 0, wantUp }, new[] { lastAl, 0, lastUp }, new[] { vAl, 0, vUp }, aMax, out mag);
             if (capped) dir = LandSteer.LeanCapped(dir, LandSteer.MaxLean(w.H, true));
