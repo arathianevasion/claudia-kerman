@@ -30,6 +30,8 @@ namespace ClaudiaKerman.Core.Missions
         /// (<see cref="ReturnAim.DepartureUt(GameSnapshot, ReturnAsk, out double?)"/>); null to lead the departure.
         /// </summary>
         public double? DueByUt;
+        /// <summary>#906: a return that took the costly-plane window (<see cref="ReturnAim.CheapDepartureUt"/>), whose window may come before its alignment.</summary>
+        public bool CostlyWindow;
         /// <summary>
         /// For a return aimed at a landing (#792): the seconds its max_wait spans, from <see cref="ToEarliestSeconds"/> on. <see cref="DepartureUt"/> is an
         /// estimate (the block has the craft's drag, this has not), and a window just outside the block's near ones leaves it the next turn's, so a plan covers all of it.
@@ -227,13 +229,14 @@ namespace ClaudiaKerman.Core.Missions
             var span = 0.0;
             var defaultAim = false;
             double? dueBy = null;
+            var costly = false;
             if (call.Block == "return")
             {
                 var earliest = TransferFlight.Earliest(now, 0, window);
                 double? estimate;
                 var aimed = Aimed(call, snapshot, now, earliest, body, out estimate, out span, out dueBy);
                 // #816: with no target and no window given, from an inclined orbit the block may wait for the cheap window.
-                if (!aimed && !call.Options.ContainsKey("window")) estimate = Cheap(call, snapshot, now, earliest, body, out dueBy);
+                if (!aimed && !call.Options.ContainsKey("window")) { estimate = Cheap(call, snapshot, now, earliest, body, out dueBy); costly = estimate.HasValue; }
                 if (!aimed && !window.HasValue && !estimate.HasValue) return null;
                 ut = estimate ?? earliest;
                 departure = estimate ?? (window.HasValue ? earliest : (double?)null);
@@ -257,6 +260,7 @@ namespace ClaudiaKerman.Core.Missions
             {
                 wait.DepartureUt = departure;
                 wait.DueByUt = dueBy;
+                wait.CostlyWindow = costly;
                 wait.PickSpanSeconds = span;
                 wait.ToEarliestSeconds = toEarliest;
                 wait.DefaultAim = defaultAim;

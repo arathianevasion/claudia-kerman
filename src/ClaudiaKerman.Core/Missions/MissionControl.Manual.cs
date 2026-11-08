@@ -181,6 +181,7 @@ namespace ClaudiaKerman.Core.Missions
                 // The run is over for the loop: its late events carry a run id nothing waits for any more.
                 if (mission.RunningProcessor.HasValue) _commands.Add(new AbortScript(mission.RunningProcessor.Value, "the player took Manual Control"));
                 mission.RunId = null;
+                mission.ReturnWindowUt = null;
                 mission.RunningProcessor = null;
                 EndLive(mission);
             }

@@ -180,6 +180,7 @@ namespace ClaudiaKerman.Core.Missions
             mission.CheckPending = true;
             if (mission.RunningProcessor.HasValue) _commands.Add(new AbortScript(mission.RunningProcessor.Value, "left at a Coast Checkpoint", mission.RunId.Value));
             mission.RunId = null;
+            mission.ReturnWindowUt = null;
             mission.RunDeadlineUt = null;
             mission.RcsUse.Close(_ut);
             EndLive(mission);
