@@ -84,6 +84,57 @@ namespace ClaudiaKerman.Core.Tests
             return entry.Chutes.Select(c => c.Stage).OrderByDescending(s => s).ToArray();
         }
 
+        // ---- The return's mass is the craft EntryCraft says enters (#925) ----
+
+        private const uint PodPart = 1, Shield = 3, Decoupler = 4, StackTank = 5;
+
+        /// <summary>
+        /// A craft built from the stack end (its tank is the root): tank, a decoupler, a heat shield, the pod and its chute. The shield is not itself a staged
+        /// decoupler here, so the decoupler is the one that drops the stack, and it sits on the pod's side of the tree, where ChildVessels.Staging keeps it.
+        /// <paramref name="goesWithStack"/> says whether it lets go of the shield (#924: it leaves with the stack) or of the tank (it stays).
+        /// </summary>
+        private static GameSnapshot WithStack(bool goesWithStack)
+        {
+            var snapshot = Simple();
+            var parts = snapshot.Craft.Parts;
+            parts.Single(p => p.Id == PodPart).ParentId = Shield;
+            parts.Add(Chute(2, PodPart, 0));
+            parts.Add(new SnapshotPart { Id = StackTank, ParentId = null, Name = "fuelTank", MassT = 1.25, Stage = 1 });
+            var decoupler = new SnapshotPart { Id = Decoupler, ParentId = StackTank, Name = "Decoupler.1", MassT = 0.05, Stage = 1, Tags = new List<string> { "decoupler" } };
+            decoupler.Releases.Add(goesWithStack ? Shield : StackTank);
+            parts.Add(decoupler);
+            parts.Add(new SnapshotPart { Id = Shield, ParentId = Decoupler, Name = "HeatShield1", MassT = 0.4, Tags = new List<string> { "heat_shield" } });
+            snapshot.Craft.MassTonnes = parts.Sum(p => p.MassT);
+            return snapshot;
+        }
+
+        private static double EntersKg(GameSnapshot snapshot)
+        {
+            return EntryCraft.Of(snapshot, null, PodPart, 1, true, true).KeptT * 1000;
+        }
+
+        private static double ReturnKg(GameSnapshot snapshot)
+        {
+            return Group(snapshot, KerbinOnly()).Return.MassKg;
+        }
+
+        [Fact]
+        public void AReturnsMassLeavesOutADecouplerThatLeavesWithTheStack()
+        {
+            var snapshot = WithStack(goesWithStack: true);
+            Assert.Contains(Decoupler, EntryCraft.Of(snapshot, null, PodPart, 1, true, true).LeftOut.Select(p => p.Id));
+            Assert.Equal(EntersKg(snapshot), ReturnKg(snapshot), 6);
+        }
+
+        [Fact]
+        public void AReturnsMassStillCountsADecouplerThatStays()
+        {
+            var snapshot = WithStack(goesWithStack: false);
+            Assert.DoesNotContain(Decoupler, EntryCraft.Of(snapshot, null, PodPart, 1, true, true).LeftOut.Select(p => p.Id));
+            Assert.Equal(EntersKg(snapshot), ReturnKg(snapshot), 6);
+            Assert.Equal(ReturnKg(WithStack(goesWithStack: true)) + 50, ReturnKg(snapshot), 6);
+        }
+
         // ---- The worked examples ----
 
         [Fact]
