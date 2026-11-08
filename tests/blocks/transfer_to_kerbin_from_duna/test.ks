@@ -33,7 +33,7 @@ if result:success {
   set result["reentry_success"] to down:success.
   set result["reentry_reason"] to down:reason.
   set result["landed_or_splashed"] to status = "LANDED" or status = "SPLASHED".
-  if down:haskey("geo") {
+  if down:geo:haskey("lat") {
     set result["actual_geo"] to down:geo.
     set result["target_km"] to round(test_km(aim, down:geo), 2).
   }
