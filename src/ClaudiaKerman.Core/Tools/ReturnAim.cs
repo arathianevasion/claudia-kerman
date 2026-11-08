@@ -374,6 +374,12 @@ namespace ClaudiaKerman.Core.Tools
                 search._latest = search._earliest + (ask.MaxWait ?? (search.CostlyPlane ? alignment - search._earliest + PastAlignmentS : turn));
                 if (search.CostlyPlane)
                 {
+                    // #887: restarted late for the Mission's window, the alignment it was planned for, not the next one half a moon's orbit on.
+                    if (ask.PlannedUt.HasValue)
+                    {
+                        alignment = NextAlignment(system, moon, orbit, ask.PlannedUt.Value - PastAlignmentS);
+                        search._latest = Math.Max(search._earliest, alignment + PastAlignmentS);
+                    }
                     search._alignment = alignment;
                     search._turnEnd = search._earliest + turn;
                     search._bandStart = alignment - PastAlignmentS;

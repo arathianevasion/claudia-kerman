@@ -30,6 +30,8 @@ namespace ClaudiaKerman.Core.Tools
         public double? MaxWait;
         /// <summary>Without <see cref="Landing"/>: the block was given no window (#816), so from an inclined orbit a next pass over the cheapest within the auto wait plus <see cref="ReturnAim.CostCapMs"/> waits for the cheapest.</summary>
         public bool CheapWindow;
+        /// <summary>With the search over a costly plane (#887): the window the Mission planned, so a restart past the cheap alignment keeps that alignment's window; null for the next alignment.</summary>
+        public double? PlannedUt;
         /// <summary>Start from the coarse grid, as when the analytic seed is undefined: for tests of that worst case.</summary>
         internal bool FromGrid;
         /// <summary>The cap on the SQP's iterations, and whether a best point short of the answer gets its finish: for tests of a solve that stops short.</summary>

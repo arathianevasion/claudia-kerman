@@ -1172,6 +1172,7 @@ namespace ClaudiaKerman.Core.Tools
                 IncTolerance = Number(ask, "inc_tolerance", 0.5),
                 CheapWindow = ask.ContainsKey("cheap_window") && Equals(ask["cheap_window"], true),
             };
+            returnAsk.PlannedUt = snapshot.ReturnWindowUt;
             if (ask.ContainsKey("lat") || ask.ContainsKey("lng"))
             {
                 var problem = ReturnLandingOf(ask, snapshot, returnAsk, body, air, craft);
