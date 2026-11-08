@@ -687,6 +687,7 @@ namespace ClaudiaKerman.Core.Tools
             {
                 result["lat"] = landingHome.Latitude;
                 result["lng"] = landingHome.Longitude;
+                result["landing_body"] = landingHome.Body;
             }
             // A resumed flight's token is spent; its later coasts may checkpoint again.
             ((IDictionary<string, object>)result["carry"])[CoastCheckpoints.TokenKey] = mode == CoastCheckpoints.Off ? CoastCheckpoints.Off : CoastCheckpoints.On;
