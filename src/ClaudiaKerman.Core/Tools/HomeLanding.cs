@@ -105,6 +105,12 @@ namespace ClaudiaKerman.Core.Tools
             return new LandingTarget { Body = home.Name, Latitude = ReturnAim.KscLatitude, Longitude = ReturnAim.KscLongitude };
         }
 
+        /// <summary>#915: the landing a <c>transfer_to</c> home aims its Course Correction at: the Mission's landing target first (inside Kerbin's sphere of influence the only one left to read), else <see cref="ArrivalTarget"/>; null for none.</summary>
+        public static LandingTarget ArrivalLanding(GameSnapshot snapshot, string target, double targetPe)
+        {
+            return Recorded(snapshot, new LandingTargetAsk { Planet = target ?? "", TargetPe = targetPe }) ?? ArrivalTarget(snapshot, target, targetPe);
+        }
+
         /// <summary>Whether the Mission Goal, or a leg ahead or a site picked for it, names a place on <paramref name="home"/> to come down that isn't KSC.</summary>
         private static bool NamesAPlace(GameSnapshot snapshot, SnapshotBody home)
         {

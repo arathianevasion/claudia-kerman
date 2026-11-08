@@ -245,8 +245,15 @@ namespace ClaudiaKerman.Core.Tools
             low = high = ask.TargetPe;
             var centre = ask.CorridorPe ?? ask.TargetPe;
             if (!string.Equals(target.Name, CraftCheckFlow.HomeBody, StringComparison.OrdinalIgnoreCase) || !(target.AtmosphereHeight > 0) || centre < CorridorFloor) return;
-            low = Math.Max(CorridorFloor, centre - PeCorridor);
-            high = centre + PeCorridor;
+            var half = ask.CorridorHalf ?? PeCorridor;
+            low = Math.Max(CorridorFloor, centre - half);
+            high = centre + half;
+        }
+
+        /// <summary>#915: the corridor's reach either way of target_pe that sits inside <paramref name="tolerance"/> m: short of it by the two solves' periapsis residuals, so the solved periapsis can't land just outside it.</summary>
+        internal static double CorridorWithin(double tolerance)
+        {
+            return Math.Min(PeCorridor, Math.Max(0, tolerance - 2 * PeResidual));
         }
 
         /// <summary>#805: whether the landing may be left on a periapsis of <paramref name="pe"/> m: inside the corridor, or within <see cref="PlainSlack"/> pe_tolerances of target_pe.</summary>

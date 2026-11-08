@@ -55,6 +55,8 @@ namespace ClaudiaKerman.Core.Tools
         public double? MostLandingDv;
         /// <summary>The periapsis the home planet's corridor is measured from, m above sea level (#892: a late trim's), in place of <see cref="TargetPe"/>; null for <see cref="TargetPe"/>. Set, the corridor is still tried when it is too late to move the landing along the track.</summary>
         public double? CorridorPe;
+        /// <summary>m either way of its centre the home planet's corridor reaches (#915: <c>transfer_to</c>'s pe_tolerance), in place of <see cref="CorrectionBurn.PeCorridor"/>; null for that.</summary>
+        public double? CorridorHalf;
     }
 
     /// <summary>The correction node found, or why there is none (<see cref="Error"/>; the rest is set when a best point exists).</summary>
