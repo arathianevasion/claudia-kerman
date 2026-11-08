@@ -287,16 +287,16 @@ namespace ClaudiaKerman.Core.Missions
             if (target == null || target == "\"auto\"")
             {
                 string pe;
-                var defaulted = HomeLanding.DefaultTarget(at, new LandingTargetAsk
+                var targetAsk = new LandingTargetAsk
                 {
                     Planet = planet.Name,
                     TargetPe = call.Options.TryGetValue("target_pe", out pe) ? Literal(pe) : null,
                     TargetInc = Literal(call.Option("target_inc")),
                     Window = Literal(call.Option("window")),
-                });
+                };
                 // #880: the Mission's own landing target, once one is set, is the stated one.
-                var recorded = HomeLanding.Recorded(at, new LandingTargetAsk { Planet = planet.Name, TargetPe = call.Options.TryGetValue("target_pe", out pe) ? Literal(pe) : null, TargetInc = Literal(call.Option("target_inc")), Window = Literal(call.Option("window")) });
-                if (recorded == null && defaulted != HomeLanding.Ksc) return false;
+                var recorded = HomeLanding.Recorded(at, targetAsk);
+                if (recorded == null && HomeLanding.DefaultTarget(at, targetAsk) != HomeLanding.Ksc) return false;
                 target = recorded == null ? "\"ksc\"" : "lexicon(\"lat\", " + recorded.Latitude.ToString("R", CultureInfo.InvariantCulture) + ", \"lng\", " + recorded.Longitude.ToString("R", CultureInfo.InvariantCulture) + ")";
             }
             double latitude, longitude;
@@ -305,7 +305,8 @@ namespace ClaudiaKerman.Core.Missions
             string given;
             var targetPe = call.Options.TryGetValue("target_pe", out given) ? Literal(given) : ReturnAim.DefaultTargetPe;
             var maxWait = Literal(call.Option("max_wait"));
-            var pastAlignment = ReturnAim.Reaches(planet) ? ReturnAim.ReachPastAlignmentS : ReturnAim.PastAlignmentS;
+            var stockDv = HomeLanding.StockDv(at);
+            var pastAlignment = stockDv.HasValue && ReturnAim.IsHome(planet) ? ReturnAim.ReachPastAlignmentS : ReturnAim.PastAlignmentS;
             span = maxWait ?? ReturnAim.AutoWaitFor(at, planet, earliest, targetPe ?? ReturnAim.DefaultTargetPe, body, pastAlignment);
             var limit = Literal(call.Option("max_duration"));
             if (limit.HasValue) span = Math.Min(span, limit.Value);
@@ -318,9 +319,8 @@ namespace ClaudiaKerman.Core.Missions
             {
                 // #816: max_wait as the block reads it, "auto" left to the search, so from an inclined orbit both solve the same windows.
                 TargetPe = targetPe.Value, EarliestUt = earliest, Landing = landing, MaxWait = maxWait, LatestUt = limit.HasValue ? now + limit.Value - ReturnAim.AfterBurnS : (double?)null,
-                // #880: the block's own search, from what the stages say the craft has; with no figure the plan is #816's estimate.
-                DvLeft = at.DeltaVSimulator && at.Stages.Count > 0 && !at.DeltaVUnreliable ? at.Stages.Sum(s => s.DeltaVVac) : (double?)null, LaterLegsDv = at.LaterLegsDv ?? 0,
-            }, out dueBy);
+                // #880: the block's own search, from what the stages say the craft has; with no figure the plan is #816's estimate, as the block's is. The landing's need comes from the craft's own chutes: this craft is an estimate with none.
+                DvLeft = stockDv, LaterLegsDv = at.LaterLegsDv ?? 0, PoweredLandingDv = HomeLanding.PoweredLanding(at, planet),            }, out dueBy);
             return true;
         }
 

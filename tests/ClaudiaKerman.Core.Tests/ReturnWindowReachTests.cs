@@ -136,7 +136,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(D(ruleOf816, "dv"), D(node, "dv"), 3);
             Assert.True(D(node, "error_km") > ReturnAim.ReachKm, "a miss: " + D(node, "error_km"));
             var note = (string)node["aim_note"];
-            Assert.Contains("no window it can afford lands within 50 km", note);
+            Assert.Contains("no window it can afford lands within 50 km in the ", note);
             Assert.Contains(D(node, "error_km").ToString("0.0", CultureInfo.InvariantCulture) + " km from the target", note);
             Assert.Contains("wait", (string)node["plan_log"]);
         }
@@ -163,24 +163,83 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void The_missions_landing_target_counts_as_stated_for_an_auto_return_and_for_the_plan()
         {
-            var snapshot = Orbiting(66.43, 0, 3.0);
+            var toKsc = WithStockDv(Orbiting(66.43, 0, 3.0), 480);
+            var snapshot = WithStockDv(Orbiting(66.43, 0, 3.0), 480);
             snapshot.LandingTarget = new LandingTarget { Body = "Kerbin", Latitude = 3.1, Longitude = 24.6 };
 
-            var target = (IDictionary<string, object>)BlockCalls.LandingTarget(new Dictionary<string, object> { { "planet", "Kerbin" } }, snapshot)["target"];
+            var target = (IDictionary<string, object>)BlockCalls.LandingTarget(new Dictionary<string, object> { { "planet", "Kerbin" }, { "target_pe", 35000.0 } }, snapshot)["target"];
 
             Assert.Equal(3.1, Convert.ToDouble(target["lat"], CultureInfo.InvariantCulture));
             Assert.Equal(24.6, Convert.ToDouble(target["lng"], CultureInfo.InvariantCulture));
             var wait = BurnPoints.First("local res is return().", snapshot, 1000, 5, new FrameBody());
             Assert.NotNull(wait);
             Assert.True(wait.PickSpanSeconds > 60 * 3600, "the plan covers the search to the cap: " + wait.PickSpanSeconds);
+            Assert.NotEqual(BurnPoints.First("local res is return().", toKsc, 1000, 5, new FrameBody()).DepartureUt, wait.DepartureUt);
+        }
+
+        [Fact]
+        public void The_missions_landing_target_leaves_deorbit_as_it_was()
+        {
+            var snapshot = Orbiting(66.43, 0, 3.0);
+            snapshot.LandingTarget = new LandingTarget { Body = "Kerbin", Latitude = 3.1, Longitude = 24.6 };
+
+            Assert.Equal(HomeLanding.Ksc, BlockCalls.LandingTarget(new Dictionary<string, object> { { "planet", "Kerbin" } }, snapshot)["target"]);
+        }
+
+        /// <summary>
+        /// The plan reads the craft's delta-v from its stages, and its chutes for what the landing keeps, and runs the block's search: here a 3 t craft leads the 4.6 h window the block takes.
+        /// The plan's craft and air are estimates, so a window near 50 km can differ; the wait is covered either way.
+        /// </summary>
+        [Fact]
+        public void The_plan_runs_the_blocks_search_from_the_stages_and_the_chutes()
+        {
+            var snapshot = WithStockDv(Orbiting(66.43, 0, 3.0), 480);
+            snapshot.Craft = new SnapshotCraft { MassTonnes = 3 };
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 1, Name = "pod", MassT = 3, Chute = new ReentryChute() });
+            var block = ToKsc(snapshot, 480);
+
+            var wait = BurnPoints.First("local res is return().", snapshot, 1000, 5, new FrameBody());
+
+            Assert.True(wait.DepartureUt.HasValue, "the plan reads a departure");
+            Assert.True(Math.Abs(wait.DepartureUt.Value - D(block, "ut")) < 1200, "plan UT " + wait.DepartureUt + " against the block's " + D(block, "ut"));
+        }
+
+        [Fact]
+        public void When_stock_cannot_say_the_delta_v_it_keeps_816s_rule()
+        {
+            var snapshot = Orbiting(66.43, 0, 3.0);
+
+            var node = ToKsc(snapshot, -1);
+
+            Assert.Equal(D(ToKsc(snapshot, null), "ut"), D(node, "ut"), 3);
+            Assert.Equal("", node["aim_note"]);
+        }
+
+        [Fact]
+        public void A_return_from_the_moons_plane_states_its_wait_too()
+        {
+            var snapshot = Orbiting(0, 0, 1.7);
+
+            var node = ToKsc(snapshot, 800);
+
+            Assert.Equal("", node["error"]);
+            Assert.Contains("window waits ", (string)node["aim_note"]);
+            Assert.Contains(" km from the target", (string)node["aim_note"]);
+        }
+
+        private static GameSnapshot WithStockDv(GameSnapshot snapshot, double deltaV)
+        {
+            snapshot.DeltaVSimulator = true;
+            snapshot.Stages.Add(new SnapshotStage { Number = 0, DeltaVVac = deltaV, StartMassT = 2, EndMassT = 1 });
+            return snapshot;
         }
 
         [Fact]
         public void Another_planets_moon_with_a_landing_keeps_816s_rule()
         {
             var duna = new SnapshotBody { Name = "Duna", Parent = "Sun", Gm = 3.0136321e11, Radius = 320000, AtmosphereHeight = 50000, SeaLevelAtm = 0.0667, SoiRadius = 47921949, RotationPeriod = 65517.859, Sma = 20726155264 };
-            Assert.False(ReturnAim.Reaches(duna));
-            Assert.True(ReturnAim.Reaches(Kerbin));
+            Assert.False(ReturnAim.IsHome(duna));
+            Assert.True(ReturnAim.IsHome(Kerbin));
         }
     }
 }

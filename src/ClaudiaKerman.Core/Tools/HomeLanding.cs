@@ -79,9 +79,15 @@ namespace ClaudiaKerman.Core.Tools
         public static LandingTarget Recorded(GameSnapshot snapshot, LandingTargetAsk ask)
         {
             var target = snapshot == null ? null : snapshot.LandingTarget;
-            if (target == null || !string.Equals(target.Body, ask.Planet, StringComparison.OrdinalIgnoreCase) || ask.TargetInc.HasValue || ask.Window.HasValue) return null;
+            if (target == null || !string.Equals(target.Body, ask.Planet, StringComparison.OrdinalIgnoreCase) || !string.Equals(ask.Planet, CraftCheckFlow.HomeBody, StringComparison.OrdinalIgnoreCase) || ask.TargetInc.HasValue || ask.Window.HasValue) return null;
             var home = snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, ask.Planet, StringComparison.OrdinalIgnoreCase));
             return home == null || (ask.TargetPe.HasValue && ask.TargetPe.Value >= home.AtmosphereHeight) ? null : target;
+        }
+
+        /// <summary>The craft's delta-v by stock's simulator, m/s; null when stock can't say.</summary>
+        public static double? StockDv(GameSnapshot snapshot)
+        {
+            return snapshot.DeltaVSimulator && snapshot.Stages.Count > 0 && !snapshot.DeltaVUnreliable ? snapshot.Stages.Sum(s => s.DeltaVVac) : (double?)null;
         }
 
         /// <summary>
@@ -146,8 +152,8 @@ namespace ClaudiaKerman.Core.Tools
             if (trip == null) return null;
             var ascent = snapshot.IsGrounded ? map.Legs.Where(leg => leg.Id == "ascend:" + at.Name).Select(leg => leg.DeltaV).FirstOrDefault() : 0;
             var plan = new HomeArrivalPlan { CaptureDv = trip.Arrival, DeorbitDv = DeorbitBurn.FromLowOrbit(home), ArrivalPe = ArrivalRule.EntryPe(home) };
-            if (snapshot.DeltaVSimulator && snapshot.Stages.Count > 0 && !snapshot.DeltaVUnreliable)
-                plan.DvLeft = snapshot.Stages.Sum(s => s.DeltaVVac) - ascent - trip.Departure - trip.PlaneChange;
+            var stockDv = StockDv(snapshot);
+            if (stockDv.HasValue) plan.DvLeft = stockDv.Value - ascent - trip.Departure - trip.PlaneChange;
             var need = plan.Need;
             if (plan.DvLeft.HasValue)
             {
@@ -169,7 +175,7 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>The craft's speed at the ground with no chutes, m/s, which its engines must take out; 0 with chutes.</summary>
-        private static double PoweredLanding(GameSnapshot snapshot, SnapshotBody home)
+        public static double PoweredLanding(GameSnapshot snapshot, SnapshotBody home)
         {
             if (snapshot.Craft == null || snapshot.Craft.Parts.Any(p => p.Chute != null)) return 0;
             return ChuteGroups.TouchdownWithoutChutes(home, snapshot.Craft.MassTonnes * 1000);

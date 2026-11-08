@@ -455,7 +455,8 @@ namespace ClaudiaKerman.Core.Tools
             object planet;
             ask.TryGetValue("planet", out planet);
             var targetAsk = new LandingTargetAsk { Planet = planet as string ?? "", TargetPe = NumberOrNull(ask, "target_pe"), TargetInc = NumberOrNull(ask, "target_inc"), Window = NumberOrNull(ask, "window") };
-            var recorded = HomeLanding.Recorded(snapshot, targetAsk);
+            // #880: only return reads the Mission's target here; it alone asks with target_pe, and deorbit's aim is out of that ticket.
+            var recorded = ask.ContainsKey("target_pe") ? HomeLanding.Recorded(snapshot, targetAsk) : null;
             if (recorded != null) return new Dictionary<string, object> { { "target", new Dictionary<string, object> { { "lat", recorded.Latitude }, { "lng", recorded.Longitude } } } };
             return new Dictionary<string, object> { { "target", HomeLanding.DefaultTarget(snapshot, targetAsk) } };
         }
@@ -1247,9 +1248,11 @@ namespace ClaudiaKerman.Core.Tools
             string problem;
             into.Landing = ReturnAim.LandingOn(snapshot, lat.Value, lng.Value, Number(ask, "ground_alt", 0), Number(ask, "isp", 0), body, air, craft, out problem);
             if (into.Landing != null) into.Landing.Payer = payer;
-            if (ask.ContainsKey("dv_left"))
+            // #880: with no figure for the delta-v (stock can't say) nothing is known to be affordable: #816's rule, as the plan takes it.
+            var dvLeft = Number(ask, "dv_left", -1);
+            if (dvLeft >= 0)
             {
-                into.DvLeft = Number(ask, "dv_left", -1);
+                into.DvLeft = dvLeft;
                 into.LaterLegsDv = snapshot.LaterLegsDv ?? 0;
             }
             return problem;

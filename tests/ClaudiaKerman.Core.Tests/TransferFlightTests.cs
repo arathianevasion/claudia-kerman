@@ -464,11 +464,12 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(Convert.ToDouble(plain["ut"]), Convert.ToDouble(step["ut"]), 3);
 
             var coming = AimedCorrectionTests.Falling();
-            coming.LandingTarget = new LandingTarget { Body = "Kerbin", Latitude = ReturnAim.KscLatitude, Longitude = ReturnAim.KscLongitude };
+            // What the adapter records from the step is what the trim aims at.
+            coming.LandingTarget = BlockCalls.LandingTargetOf(step, "Kerbin");
             var trim = BlockCalls.EntryTrim(new Dictionary<string, object> { { "to_air", 15000.0 }, { "dv_left", 300.0 }, { "isp", 0.0 }, { "has_node", false } },
                 coming, new AimedCorrectionTests.FrameBody(coming.Ut), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
             Assert.Equal("", trim["error"]);
-            Assert.DoesNotContain("no landing target", trim.ContainsKey("aim_note") ? (string)trim["aim_note"] : "");
+            Assert.True(Convert.ToDouble(trim["dv"]) > 0, "it flies a trim toward KSC: " + trim["aim_note"]);
             Assert.InRange(Convert.ToDouble(trim["dv"]), 0, DeorbitBurn.SpareDv(300, 0, 0, null));
         }
 
