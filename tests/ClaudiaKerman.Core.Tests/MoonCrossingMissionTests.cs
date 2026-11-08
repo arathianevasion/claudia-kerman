@@ -455,6 +455,56 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(!planned, PlanCard(mission).Contains("Blocker"));
         }
 
+        /// <summary>The craft at <see cref="Now"/> on an orbit of 908b's shape whose path meets Ike on a later loop (4th or so) but not on the first.</summary>
+        private static GameSnapshot OnALateEncounterWithIke(out double period)
+        {
+            for (var argPe = 0; argPe < 360; argPe += 1)
+            {
+                var rig = MoonCrossingTests.DunaOrbit(argPe: argPe, ut: Now);
+                var p = rig.Orbit.Period;
+                if (MoonCrossings.Follow(rig.System, rig.Body, rig.Orbit, Now, Now + p) != null) continue;
+                if (MoonCrossings.Follow(rig.System, rig.Body, rig.Orbit, Now + 3 * p, Now + 4 * p) == null) continue;
+                period = p;
+                var snapshot = InDunaOrbit();
+                snapshot.Orbit = TransferRig.Elements(rig.Orbit, rig.Body);
+                return snapshot;
+            }
+            throw new InvalidOperationException("no orbit of 908b's shape meets Ike only on its 4th loop");
+        }
+
+        /// <summary>
+        /// Fix round (B1): an accidental encounter several loops out is judged once, at the Debrief; as it nears (a first-loop encounter) it does not
+        /// become planned: the Blocker and the watch's drop stay, as on main, until the encounter.
+        /// </summary>
+        [Fact]
+        public void AnAccidentalEncounterLoopsOutDoesNotBecomePlannedAsTimePasses()
+        {
+            var due = Now + MoonCrossingTests.Wait908b;
+            var transport = new StreamingFakeTransport(CapturePlan("Capture at Ike."), CoastPlan("Coast"), NominalDebrief(), Waiting(due), Waiting(due));
+            var mission = Control(transport);
+            ToSequencePlan(mission, InDunaOrbit(), "Orbit Duna.");
+            mission.Send(new Approve());
+            var start = mission.TakeCommands().OfType<StartScript>().Single();
+            var snapshot = OnALateEncounterWithIke(out var period);
+            mission.Send(snapshot);
+            mission.Send(new KosRunEnded(Ended(true), start.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval && transport.Requests.Count >= 4);
+
+            for (var loop = 0; loop <= 3; loop++)
+            {
+                var ut = Now + loop * period;
+                mission.Send(new UtAdvanced(ut, false));
+                var later = OnALateEncounterWithIke(out _);
+                later.Ut = ut;
+                mission.Send(later);
+                Assert.DoesNotContain("Ike", mission.View.NextPatchPlanned.Split(','));
+                mission.TakeCommands();
+                mission.Send(new WarpToDueTime());
+                Assert.Empty(mission.TakeCommands().OfType<WarpToUt>());
+                Assert.Contains("Blocker", PlanCard(mission));
+            }
+        }
+
         /// <summary>Fix round: a leg already begun (plan_step 2) that named the moon no longer plans it.</summary>
         [Fact]
         public void APastLegThatNamedTheMoonDoesNotPlanItsEncounter()
