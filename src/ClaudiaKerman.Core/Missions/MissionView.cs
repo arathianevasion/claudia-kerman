@@ -465,7 +465,7 @@ namespace ClaudiaKerman.Core.Missions
                 snapshot.LegsAhead = view.PlanLegs != null ? System.Linq.Enumerable.ToList(System.Linq.Enumerable.Skip(view.PlanLegs, System.Math.Max(0, view.CurrentSequence))) : null;
                 // What the legs after the one in hand need (#832), kept back by a block's reserve: CurrentSequence is the leg in hand, counted as begun.
                 // In a Child Vessel run the active ship is the child, whose dv_left is not the craft's: the craft's later legs are not taken from it.
-                snapshot.LaterLegsDv = view.PlanLegs == null ? (double?)null : !string.IsNullOrEmpty(view.RunningChild) ? 0 : MissionCards.LaterLegsDv(view.PlanLegs, System.Math.Max(0, view.CurrentSequence), view.CraftName);
+                snapshot.LaterLegsDv = view.PlanLegs == null ? (double?)null : MissionCards.LaterLegsDv(view.PlanLegs, view.CurrentSequence + 1, true, view.CraftName, view.RunningChild);
                 snapshot.PickedSite = view.PickedSite;
                 snapshot.RecordedPlane = view.ArrivalPlane;
                 snapshot.MissionGoal = view.Goal;
