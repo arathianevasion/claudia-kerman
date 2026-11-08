@@ -101,7 +101,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("KEEPCLEAR", new OneArgsSuffix<Lexicon, Lexicon>(KeepClearCall,
                 "Core Library only (land): the site lat, lng moved clear_m clear of keep_lat, keep_lng (straight away, else toward ahead_lat, ahead_lng) by up to max_divert on a body of radius; lexicon lat, lng, dist, moved"));
             AddSuffix("BURNWORTH", new OneArgsSuffix<Lexicon, Lexicon>(BurnWorthCall,
-                "Core Library only (circularize, tune_pe): whether a burn is worth its turn when the tolerance was defaulted, and tune_pe's default tolerance; lexicon safe_height, tolerance, skip, note"));
+                "Core Library only (circularize, tune_pe, a Course Correction): whether a burn is worth its turn when the tolerance was defaulted, and tune_pe's default tolerance; for a correction, its max_throttle and done_dv; lexicon safe_height, tolerance, skip, note, ..."));
             AddSuffix("SHIPSYSTEMS", new OneArgsSuffix<Lexicon, StringValue>(ShipSystemsCall,
                 "Core Library only (launch, ascend, land, deorbit, reentry): a Ship Systems cue (liftoff, final_descent, entry) or stowing to ask after the lift-off stow; lexicon done, capped, note"));
         }
@@ -174,7 +174,9 @@ namespace ClaudiaKerman.KOS
                 }
                 worth = BurnWorth.Call(ask);
                 return KosValues.FromPlain(worth);
-            }, () => (bool)worth["skip"] ? (string)worth["note"] : string.Format(CultureInfo.InvariantCulture, "no skip, tolerance {0:0.###}", worth["tolerance"]));
+            }, () => (bool)worth["skip"] ? (string)worth["note"] : worth.ContainsKey("max_throttle")
+                ? string.Format(CultureInfo.InvariantCulture, "fly it: throttle at most {0:0.###}, stopping within {1:0.###} m/s", worth["max_throttle"], worth["done_dv"])
+                : string.Format(CultureInfo.InvariantCulture, "no skip, tolerance {0:0.###}", worth["tolerance"]));
         }
 
         /// <summary><c>ADDONS:CLAUDIA:KEEPCLEAR</c> (#713, ADR 0014): land's keep-clear decision (<see cref="KeepClear.Call"/>), pure.</summary>
@@ -631,7 +633,14 @@ namespace ClaudiaKerman.KOS
                 : string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); Pe {5:0} m, inclination {6:0.00}{7}{8}",
                     node["ut"], node["prograde"], node["normal"], node["radial"], node["dv"], node["pe_predicted"], node["inc_predicted"],
                     node.ContainsKey("error_km") ? string.Format(CultureInfo.InvariantCulture, "; aimed {0:0.00} km from the target", node["error_km"]) : "",
-                    node["error"] as string == "" ? "" : "; " + node["error"])) + PlanLine(node));
+                    node["error"] as string == "" ? "" : "; " + node["error"])) + AimLine(node) + PlanLine(node));
+        }
+
+        /// <summary>#817: why an aimed correction stopped where it did (its aim_note, with the miss and the delta-v left), on the block call line; "" when it says nothing.</summary>
+        private static string AimLine(System.Collections.Generic.IDictionary<string, object> node)
+        {
+            object note;
+            return node.TryGetValue("aim_note", out note) && note as string != "" ? "; " + note : "";
         }
 
         private Lexicon LaunchWindow(Lexicon input)

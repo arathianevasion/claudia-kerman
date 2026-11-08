@@ -141,6 +141,24 @@ namespace ClaudiaKerman.Core.Tests
             return JsonDocument.Parse(outcome.Json).RootElement;
         }
 
+        /// <summary>#832 in flight: the Mission's view stamps the later legs' delta-v on a block call's snapshot, and the spare delta-v for a capture first keeps it back.</summary>
+        [Fact]
+        public void In_flight_the_later_legs_come_off_the_spare_delta_v_for_a_capture()
+        {
+            var free = HomeLanding.Arrival(Round(Duna, 60000, "Land on Duna and come home.", 5000), "Kerbin");
+            Assert.True(free.CaptureFirst);
+            var snapshot = Round(Duna, 60000, "Land on Duna and come home.", 5000);
+            MissionView.Stamp(snapshot, new MissionView
+            {
+                Stage = MissionStage.Running, CurrentSequence = 0, CraftName = "Ship", Goal = "Land on Duna and come home.",
+                PlanLegs = new List<PlannedSequence> { new PlannedSequence { Name = "Return", DeltaV = 1000 }, new PlannedSequence { Name = "Tour", DeltaV = 4000 } },
+            });
+            Assert.Equal(4000, snapshot.LaterLegsDv);
+            var held = HomeLanding.Arrival(snapshot, "Kerbin");
+            Assert.Equal(free.SpareDv - 4000, held.SpareDv, 6);
+            Assert.False(held.CaptureFirst);
+        }
+
         [Fact]
         public void A_duna_return_with_enough_delta_v_plans_capture_then_deorbit()
         {

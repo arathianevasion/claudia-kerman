@@ -602,6 +602,32 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("stock can't say the delta-v left: give max_dv", unknown["error"]);
         }
 
+        /// <summary>
+        /// #832 in flight: the block call's snapshot is stamped by the Mission's view (<see cref="Missions.MissionView.Stamp"/>), which sets the later legs' delta-v from the legs after the one in hand,
+        /// a Child Vessel's left out; the auto max_dv keeps it back. 5,000 m/s left clears the burn with the reserve and a powered landing, not with a 4,500 m/s leg after.
+        /// </summary>
+        [Fact]
+        public void In_flight_the_block_call_keeps_back_the_later_legs_from_the_Mission_s_view()
+        {
+            Func<Missions.GameSnapshot, System.Collections.Generic.IDictionary<string, object>> deorbit = snapshot => BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_dv", "auto", "dv_left", 5000.0),
+                snapshot, new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            Assert.Equal("", deorbit(Snapshot())["error"]);
+            var view = new Missions.MissionView
+            {
+                Stage = Missions.MissionStage.Running, CurrentSequence = 1, CraftName = "Ship",
+                PlanLegs = new System.Collections.Generic.List<Missions.PlannedSequence>
+                {
+                    new Missions.PlannedSequence { Name = "Launch", DeltaV = 3400 }, new Missions.PlannedSequence { Name = "Deorbit", DeltaV = 100 },
+                    new Missions.PlannedSequence { Name = "Hop", DeltaV = 4500, Vessel = "craft" }, new Missions.PlannedSequence { Name = "Probe", DeltaV = 900, Vessel = "Probe" },
+                },
+            };
+            var stamped = Missions.MissionView.Stamp(Snapshot(), view);
+            Assert.Equal(4500, stamped.LaterLegsDv);
+            var held = deorbit(stamped);
+            Assert.Contains("over max_dv", (string)held["error"]);
+            Assert.Contains("and 4500 m/s for the later legs", (string)held["error"]);
+        }
+
         /// <summary>The cost two burns must differ by not to be a tie, m/s.</summary>
         private const double DeorbitBurnTieDv = 1;
 
