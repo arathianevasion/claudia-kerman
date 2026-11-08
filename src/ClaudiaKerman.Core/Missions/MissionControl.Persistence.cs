@@ -113,6 +113,7 @@ namespace ClaudiaKerman.Core.Missions
                 RunEvents = RunEventsJson(mission),
                 RunStartUt = mission.RunStartUt,
                 RunTransfers = mission.RunTransfers,
+                RunWords = mission.RunWords,
                 RcsUse = mission.RcsUse.ToJson(),
                 RunStartMonopropellant = mission.RunStartMonopropellant,
                 RunStartDeltaVLeft = mission.RunStartDeltaVLeft,
@@ -505,6 +506,7 @@ namespace ClaudiaKerman.Core.Missions
             RestoreRunEvents(mission, state.RunEvents);
             mission.RunStartUt = state.RunStartUt;
             mission.RunTransfers = state.RunTransfers ?? "";
+            mission.RunWords = state.RunWords ?? "";
             mission.RcsUse.Restore(state.RcsUse);
             mission.RunStartMonopropellant = state.RunStartMonopropellant;
             mission.RunStartDeltaVLeft = state.RunStartDeltaVLeft;

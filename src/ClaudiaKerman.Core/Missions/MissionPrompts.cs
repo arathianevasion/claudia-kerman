@@ -936,8 +936,11 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>#867: the Debrief's fact of an orbit the run left that crosses a moon, for Claudia's next plan.</summary>
-        internal static string MoonCrossingFact(Tools.MoonCrossing crossing)
+        internal static string MoonCrossingFact(Tools.MoonCrossing crossing, bool onCourse = false)
         {
+            // #871: already on the encounter path and nothing shows it planned: the fix only if it isn't intended.
+            if (onCourse)
+                return "On course to meet " + crossing.Moon.Name + (crossing.Ut.HasValue ? " at UT " + Tools.MoonCrossing.Num(crossing.Ut.Value) : "") + " (nothing in the run or the Mission Plan names it); if this encounter isn't intended, fly " + crossing.Fix();
             return char.ToUpperInvariant(crossing.Line()[0]) + crossing.Line().Substring(1) + "; a plan that waits in it is blocked";
         }
 
