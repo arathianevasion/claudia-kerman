@@ -206,20 +206,119 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(D(node, "dv"), 0, 0.1);
         }
 
-        /// <summary>#805: a burn that can't hold target_pe (here to 1 mm) is no failure when aimed at a landing: none is flown, and the note says why, where it comes down and what is left.</summary>
+        /// <summary>
+        /// #805: a plain burn that converged but can't hold target_pe to pe_tolerance (here 1 mm) still flies when aimed at a landing: its periapsis is in the corridor. No aiming from it;
+        /// the note says why, where it comes down and what is left.
+        /// </summary>
         [Fact]
-        public void An_aimed_correction_that_cannot_be_solved_flies_none_and_says_why()
+        public void A_plain_burn_just_off_pe_tolerance_still_flies_and_says_why()
         {
             var snapshot = AimedCorrectionTests.Falling(33000);
             double lat, lng;
             AimedCorrectionTests.Natural(snapshot, out lat, out lng);
             var node = Aim(snapshot, lat, lng + 50 / KmPerDeg, 80, 300, Pe, 0.001);
             Assert.Equal("", node["error"]);
-            Assert.Equal(0.0, D(node, "dv"));
-            Assert.InRange(D(node, "pe_predicted"), 32000, 34000);
-            Assert.StartsWith("no correction flown: found no correction", (string)node["aim_note"]);
+            Assert.InRange(D(node, "dv"), 0.1, 10);
+            Assert.InRange(D(node, "pe_predicted"), Pe - 100, Pe + 100);
+            Assert.StartsWith("plain burn: found no correction", (string)node["aim_note"]);
             Assert.Contains("km from the target, 80 m/s left", (string)node["aim_note"]);
             Assert.InRange(D(node, "error_km"), 10, 200);
+        }
+
+        /// <summary>The corridor's rule (#817): 5 km either way of target_pe at Kerbin, never under 25 km, and held at a target_pe under that; elsewhere held.</summary>
+        [Theory]
+        [InlineData("Kerbin", 30000, 25000, 35000)]
+        [InlineData("Kerbin", 28000, 25000, 33000)]
+        [InlineData("Kerbin", 25000, 25000, 30000)]
+        [InlineData("Kerbin", 22000, 22000, 22000)]
+        [InlineData("Sun", 30000, 30000, 30000)]
+        public void The_corridor_has_an_absolute_floor_and_holds_a_target_pe_under_it(string body, double targetPe, double low, double high)
+        {
+            var snapshot = AimedCorrectionTests.Falling();
+            double l, h;
+            CorrectionBurn.CorridorOf(snapshot.Bodies.Find(b => b.Name == body), new CorrectionAsk { TargetPe = targetPe }, out l, out h);
+            Assert.Equal(low, l);
+            Assert.Equal(high, h);
+        }
+
+        /// <summary>The floor in flight: aimed with target_pe 28 km, a miss the deep end would close leaves the periapsis no lower than 25 km; with target_pe 22 km it is held.</summary>
+        [Theory]
+        [InlineData(28000, 100, 25000 - 10, 33000 + 10)]
+        [InlineData(28000, -100, 25000 - 10, 33000 + 10)]
+        [InlineData(22000, 100, 22000 - 1000, 22000 + 1000)]
+        public void An_aimed_burn_keeps_its_periapsis_inside_the_floored_corridor(double targetPe, double eastKm, double lowest, double highest)
+        {
+            var snapshot = AimedCorrectionTests.Falling(targetPe, 0, Halfway);
+            double lat, lng;
+            AimedCorrectionTests.Natural(snapshot, out lat, out lng);
+            var node = Aim(snapshot, lat, lng + eastKm / KmPerDeg, 80, 300, targetPe);
+            Assert.Equal("", node["error"]);
+            double pe;
+            var flown = Flown(snapshot, node, out pe);
+            _out.WriteLine("{0} m, {1} km: {2:0.00} m/s, Pe {3:0} m, peak {4:0.0} g; {5}", targetPe, eastKm, D(node, "dv"), pe, flown.PeakG, node["aim_note"]);
+            Assert.InRange(pe, lowest, highest);
+            Assert.InRange(flown.PeakG, 0, CorrectionBurn.MostEntryG);
+        }
+
+        /// <summary>#805's rule for a plain burn off pe_tolerance: it flies inside the corridor, or within twice pe_tolerance of target_pe.</summary>
+        [Theory]
+        [InlineData(30000, 1000, 31300, true)]
+        [InlineData(30000, 1000, 24900, false)]
+        [InlineData(30000, 1000, 35100, false)]
+        [InlineData(22000, 1000, 23900, true)]
+        [InlineData(22000, 1000, 24100, false)]
+        public void A_periapsis_the_landing_may_be_left_on(double targetPe, double tolerance, double pe, bool acceptable)
+        {
+            var kerbin = Kerbin(AimedCorrectionTests.Falling());
+            Assert.Equal(acceptable, CorrectionBurn.PeAcceptable(kerbin, new CorrectionAsk { TargetPe = targetPe, PeTolerance = tolerance }, pe));
+        }
+
+        /// <summary>The path as it is, to Kerbin from the snapshot's orbit, for <see cref="CorrectionBurn.Unsolved"/>.</summary>
+        private static CorrectionPlan Uncorrected(GameSnapshot snapshot, double targetPe, double lat, double lng)
+        {
+            var kerbin = Kerbin(snapshot);
+            var system = new BodySystem(snapshot.Bodies);
+            var orbit = OrbitOf(snapshot);
+            string problem;
+            var frame = BodyFrame.Read(kerbin, new AimedCorrectionTests.FrameBody(snapshot.Ut), snapshot.Ut, out problem);
+            var ask = new CorrectionAsk
+            {
+                Target = "Kerbin", TargetPe = targetPe, DvLeft = 80,
+                Landing = new ReturnLanding { Latitude = lat, Longitude = lng, Air = new ReentrySim.Atmosphere(), Craft = new ChutedCapsule(), Frame = frame },
+            };
+            return CorrectionBurn.Unsolved((when, dv) => SingleShooting.Arrive(system, kerbin, orbit, when, dv, kerbin, 1), snapshot.Ut + 300, kerbin, ask, "the solver gave up");
+        }
+
+        /// <summary>#805: with no plain burn to fly, none flies on a path whose periapsis is in the corridor; the return carries on, and the note says why, where it comes down and what is left.</summary>
+        [Fact]
+        public void With_no_burn_solved_none_flies_on_a_path_in_the_corridor_and_says_why()
+        {
+            var snapshot = AimedCorrectionTests.Falling(33000);
+            double lat, lng;
+            AimedCorrectionTests.Natural(snapshot, out lat, out lng);
+            var plan = Uncorrected(snapshot, Pe, lat, lng + 50 / KmPerDeg);
+            Assert.Null(plan.Error);
+            Assert.Equal(0.0, plan.DeltaV);
+            Assert.InRange(plan.PePredicted, 32000, 34000);
+            Assert.StartsWith("no correction flown: the solver gave up; ", plan.AimNote);
+            Assert.EndsWith("km from the target, 80 m/s left", plan.AimNote);
+            Assert.InRange(plan.ErrorKm, 10, 200);
+        }
+
+        /// <summary>
+        /// #805 is no licence to come home on no entry: with no burn solved, a path that skips the air (60 km) or dives too deep (15 km), or holds a target_pe under the floor too far off,
+        /// is the block's error, as before #805, with the periapsis and the corridor in it.
+        /// </summary>
+        [Theory]
+        [InlineData(60000, Pe, "without it the periapsis is 60 km, outside 25 to 35 km")]
+        [InlineData(15000, Pe, "without it the periapsis is 15 km, outside 25 to 35 km")]
+        [InlineData(23000, 20000, "without it the periapsis is 23 km, outside 20 km")]
+        public void With_no_burn_solved_a_path_outside_the_corridor_fails_the_block(double pe, double targetPe, string why)
+        {
+            var snapshot = AimedCorrectionTests.Falling(pe);
+            var plan = Uncorrected(snapshot, targetPe, 0, 0);
+            Assert.Equal("found no correction: the solver gave up; " + why, plan.Error);
+            Assert.Equal(0.0, plan.DeltaV);
         }
 
         /// <summary>Without a landing an unsolved correction is still the block's error, as before.</summary>
@@ -264,7 +363,7 @@ namespace ClaudiaKerman.Core.Tests
             var targetLng = lng + eastKm / (KmPerDeg * Math.Cos(lat * Math.PI / 180));
             var ask = new CorrectionAsk
             {
-                Target = "Kerbin", TargetPe = Pe, EarliestUt = snapshot.Ut + 300, LatestUt = snapshot.Ut + 300, DvLeft = 5000, MostLandingDv = 1500,
+                Target = "Kerbin", TargetPe = Pe, EarliestUt = snapshot.Ut + 300, LatestUt = snapshot.Ut + 300, DvLeft = 5000, MostLandingDv = 3000,
                 Landing = new ReturnLanding { Latitude = targetLat, Longitude = targetLng, Air = new ReentrySim.Atmosphere(), Craft = new ChutedCapsule(), Frame = frame },
             };
             var plan = CorrectionBurn.Find(system, kerbin, orbit, snapshot.Ut, ask);

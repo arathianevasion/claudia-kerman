@@ -164,7 +164,8 @@ namespace ClaudiaKerman.Core.Tests
             var flown = Flown(snapshot, node, out pe);
             var left = Km(flown.Latitude, flown.Longitude, lat, target);
             InCorridor(pe);
-            Assert.InRange(D(node, "dv"), 40, CorrectionBurn.MostLandingDv * 1.1);
+            // Never over its most by more than exec_node's residual (#817): an answer over it is brought back to it.
+            Assert.InRange(D(node, "dv"), 40, CorrectionBurn.MostLandingDv + 0.5);
             Assert.InRange(left, 100, Math.Abs(eastKm) - 100);
             Assert.InRange(D(node, "error_km"), left - 0.01, left + 0.01);
         }

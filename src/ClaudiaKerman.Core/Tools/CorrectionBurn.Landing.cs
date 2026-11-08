@@ -25,6 +25,12 @@ namespace ClaudiaKerman.Core.Tools
         /// own entries: 30 km from the Mun (about 3.2 km/s at the air) is what it has flown, and 25 km is short of deorbit's 21 km (<see cref="DeorbitBurn.EntryPeriapsisShare"/>), slower but as deep.
         /// </summary>
         public const double PeCorridor = 5000;
+        /// <summary>The corridor's deep end at the home planet whatever target_pe, m (#817): the 25 km checked against <see cref="MostEntryG"/>; a target_pe under it holds the periapsis.</summary>
+        public const double CorridorFloor = 25000;
+        /// <summary>#805: a plain burn that missed pe_tolerance still flies when its periapsis is within this many pe_tolerances of target_pe (or in the corridor).</summary>
+        private const double PlainSlack = 2;
+        /// <summary>How far over what it may spend the aimed burn may come before it is brought back to it, m/s: exec_node's own residual.</summary>
+        private const double SpendSlackMs = 0.5;
         /// <summary>The most g a corridor periapsis's entry may pull by the predictor (#817): the capsule model's Mun return pulls about 4.0 at 25 km, 3.4 at 30 and 2.7 at 35; past this the corridor narrows toward target_pe.</summary>
         public const double MostEntryG = 8;
         /// <summary>How far an end of the corridor moves back toward target_pe when its entry pulls too hard, m.</summary>
@@ -134,9 +140,11 @@ namespace ClaudiaKerman.Core.Tools
             var from = held;
             var aimed = plain;
             string corridorWhy = null;
-            if (Homeward(target) && Math.Abs(held.Along) > LandingResidual)
+            double low, high;
+            CorridorOf(target, ask, out low, out high);
+            if (high > low && Math.Abs(held.Along) > LandingResidual)
             {
-                var moved = Corridor(target, ask, arrive, fly, along, landing, plain.Ut, step, held);
+                var moved = Corridor(target, ask, low, high, arrive, fly, along, landing, plain.Ut, step, held);
                 if (moved != null && moved.Burn.Length > Math.Max(plain.DeltaV, most))
                     corridorWhy = "the periapsis corridor costs " + Ms(moved.Burn.Length) + " m/s, over the " + Ms(Math.Max(0, most)) + " m/s above the reserve";
                 else if (moved != null)
@@ -184,6 +192,10 @@ namespace ClaudiaKerman.Core.Tools
 
             var ut = free ? result.X[3] : fixedUt;
             var burnAimed = new Vec3(result.X[0], result.X[1], result.X[2]);
+            // Never more than it may spend (#817): the SQP spends by the lever's slope, so its answer can come a few percent over. Over by more than SpendSlackMs, it is brought back along
+            // its change from the burn it started from, which is about square to the periapsis's slope, to what it may spend; the checks below fly it again.
+            var spendable = Math.Max(most, plain.DeltaV);
+            if (burnAimed.Length > spendable + SpendSlackMs) burnAimed = Toward(from.Burn, burnAimed, spendable);
             var reached = arrive(ut, burnAimed);
             var down = fly(reached, burnAimed);
             if (down == null || down.Error != null) return reported(aimed, "the aimed burn has no landing to read");
@@ -192,8 +204,14 @@ namespace ClaudiaKerman.Core.Tools
             // The periapsis first, and never more than the craft has for the landing's sake.
             if (Math.Abs(pe - from.Pe) > ask.PeTolerance)
                 return reported(aimed, "the aimed burn's periapsis, " + DeorbitBurn.Km(pe / 1000) + " km, is off the " + DeorbitBurn.Km(from.Pe / 1000) + " km aimed for");
+            // The entry flown again (#817): no deeper than the corridor's end, nor harder than MostEntryG.
+            var deepest = high > low ? low - PeResidual : ask.TargetPe - ask.PeTolerance;
+            if (pe < deepest) return reported(aimed, "the aimed burn's periapsis, " + DeorbitBurn.Km(pe / 1000) + " km, is under the corridor's " + DeorbitBurn.Km(Math.Max(0, deepest) / 1000) + " km");
+            if (down.PeakG > MostEntryG) return reported(aimed, "the aimed burn's entry pulls " + Ms(down.PeakG) + " g, over " + Ms(MostEntryG));
             if (!(km < aimed.ErrorKm)) return reported(aimed, "the aimed burn lands no nearer (" + DeorbitBurn.Km(km) + " km from the target)");
             if (ask.DvLeft >= 0 && burnAimed.Length > ask.DvLeft) return reported(aimed, "the aimed burn needs " + Ms(burnAimed.Length) + " m/s, more than is left");
+            if (burnAimed.Length > spendable + SpendSlackMs)
+                return reported(aimed, "the aimed burn needs " + Ms(burnAimed.Length) + " m/s, over the " + Ms(Math.Max(0, spendable)) + " m/s it may spend");
 
             double prograde, normal, radial;
             SingleShooting.NodeFrame(orbit, ut, burnAimed, out prograde, out normal, out radial);
@@ -216,10 +234,24 @@ namespace ClaudiaKerman.Core.Tools
             return reported(plan, Math.Abs(rest) > LandingResidual ? corridorWhy ?? "spent the " + Ms(Math.Max(0, most)) + " m/s it may above the reserve" : null);
         }
 
-        /// <summary>The home planet, where the aimed solve may use the periapsis corridor; elsewhere the periapsis is held, as before #817.</summary>
-        private static bool Homeward(SnapshotBody target)
+        /// <summary>
+        /// The periapses (m above sea level) an aimed correction may leave the path on (#817): at the home planet the corridor, <see cref="PeCorridor"/> either way of target_pe but not under
+        /// <see cref="CorridorFloor"/>, and held at target_pe when that is under it; elsewhere target_pe alone, as before #817.
+        /// </summary>
+        internal static void CorridorOf(SnapshotBody target, CorrectionAsk ask, out double low, out double high)
         {
-            return string.Equals(target.Name, CraftCheckFlow.HomeBody, StringComparison.OrdinalIgnoreCase) && target.AtmosphereHeight > 0;
+            low = high = ask.TargetPe;
+            if (!string.Equals(target.Name, CraftCheckFlow.HomeBody, StringComparison.OrdinalIgnoreCase) || !(target.AtmosphereHeight > 0) || ask.TargetPe < CorridorFloor) return;
+            low = Math.Max(CorridorFloor, ask.TargetPe - PeCorridor);
+            high = ask.TargetPe + PeCorridor;
+        }
+
+        /// <summary>#805: whether the landing may be left on a periapsis of <paramref name="pe"/> m: inside the corridor, or within <see cref="PlainSlack"/> pe_tolerances of target_pe.</summary>
+        internal static bool PeAcceptable(SnapshotBody target, CorrectionAsk ask, double pe)
+        {
+            double low, high;
+            CorridorOf(target, ask, out low, out high);
+            return (pe >= low && pe <= high) || Math.Abs(pe - ask.TargetPe) <= PlainSlack * ask.PeTolerance;
         }
 
         /// <summary>
@@ -246,9 +278,10 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// The periapsis in the corridor whose landing comes nearest the target along the track (#817): each end of it, then regula falsi on the side that crosses, each
-        /// periapsis held by the burn's part along the periapsis's slope. An end whose entry pulls over <see cref="MostEntryG"/> moves back toward target_pe. Null with nothing better.
+        /// periapsis held by the burn's part along the periapsis's slope. The ends are <paramref name="low"/> and <paramref name="high"/> (<see cref="CorridorOf"/>); one whose entry pulls over
+        /// <see cref="MostEntryG"/> moves back toward target_pe. Null with nothing better.
         /// </summary>
-        private static CorridorPoint Corridor(SnapshotBody target, CorrectionAsk ask, Func<double, Vec3, Patch> arrive, Func<Patch, Vec3, ReentryPrediction> fly,
+        private static CorridorPoint Corridor(SnapshotBody target, CorrectionAsk ask, double low, double high, Func<double, Vec3, Patch> arrive, Func<Patch, Vec3, ReentryPrediction> fly,
             Func<ReentryPrediction, double> along, ReturnLanding landing, double ut, double step, CorridorPoint held)
         {
             var slope = PeSlope(arrive, ut, held.Burn, step);
@@ -273,9 +306,11 @@ namespace ClaudiaKerman.Core.Tools
             };
             foreach (var side in new[] { -1.0, 1.0 })
             {
-                var end = at(ask.TargetPe + side * PeCorridor);
+                var edge = side < 0 ? low : high;
+                if (!(side * (edge - ask.TargetPe) > 0)) continue;
+                var end = at(edge);
                 // Too hard an entry: the corridor narrows toward target_pe.
-                for (var pe = ask.TargetPe + side * (PeCorridor - CorridorStepM); end != null && end.Landed.PeakG > MostEntryG && side * (pe - ask.TargetPe) > 0; pe -= side * CorridorStepM)
+                for (var pe = edge - side * CorridorStepM; end != null && end.Landed.PeakG > MostEntryG && side * (pe - ask.TargetPe) > 0; pe -= side * CorridorStepM)
                     end = at(pe);
                 if (end == null || end.Landed.PeakG > MostEntryG) continue;
                 keep(end);
@@ -302,6 +337,16 @@ namespace ClaudiaKerman.Core.Tools
             return best != null && Math.Abs(best.Along) < Math.Abs(held.Along) ? best : null;
         }
 
+        /// <summary>The burn on the way from <paramref name="start"/> to <paramref name="end"/> whose size is <paramref name="most"/> m/s; <paramref name="start"/> when that is already over it.</summary>
+        private static Vec3 Toward(Vec3 start, Vec3 end, double most)
+        {
+            var change = end - start;
+            double cc = Vec3.Dot(change, change), sc = Vec3.Dot(start, change), ss = Vec3.Dot(start, start);
+            var discriminant = sc * sc - cc * (ss - most * most);
+            if (!(cc > 0) || !(ss <= most * most) || discriminant < 0) return start;
+            return start + change * Math.Min(1, (-sc + Math.Sqrt(discriminant)) / cc);
+        }
+
         /// <summary>The plan for a corridor point, its burn at <paramref name="plain"/>'s time.</summary>
         private static CorrectionPlan PlanAt(Conic orbit, SnapshotBody target, CorrectionPlan plain, CorridorPoint point)
         {
@@ -325,27 +370,54 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// #805: a correction aimed at a landing whose burn holding target_pe can't be solved flies none, and the return carries on to reentry: the path as it is, where it comes
-        /// down when the predictor can say, and why in <see cref="CorrectionPlan.AimNote"/>.
+        /// #805: the plain burn, solved but off pe_tolerance, flies when its periapsis is one the landing may be left on (<see cref="PeAcceptable"/>): no aiming from it, and why in
+        /// <see cref="CorrectionPlan.AimNote"/>, with where it comes down when the predictor can say.
         /// </summary>
-        private static CorrectionPlan Unsolved(Func<double, Vec3, Patch> arrive, double ut, SnapshotBody target, CorrectionAsk ask, string why)
+        private static CorrectionPlan PlainOnly(Func<double, Vec3, Patch> arrive, SnapshotBody target, CorrectionAsk ask, CorrectionPlan plain, Vec3 burn)
         {
-            var plan = new CorrectionPlan { HasBurn = true, Ut = ut };
-            var arrival = arrive(ut, default(Vec3));
-            if (arrival != null)
+            var why = plain.Error;
+            plain.Error = null;
+            var landing = ask.Landing;
+            var arrival = arrive(plain.Ut, burn);
+            var landed = arrival == null ? null
+                : ReentryPredictor.Predict(target, arrival.Orbit, arrival.StartUt, landing.GroundAltitude, landing.MassAfter(burn.Length), landing.Air, landing.Craft, landing.Frame);
+            if (landed != null && landed.Error == null)
             {
-                plan.PePredicted = arrival.Orbit.PeR - target.Radius;
-                plan.IncPredicted = arrival.Orbit.Inclination;
-                var landing = ask.Landing;
-                var landed = ReentryPredictor.Predict(target, arrival.Orbit, arrival.StartUt, landing.GroundAltitude, landing.MassAfter(0), landing.Air, landing.Craft, landing.Frame);
-                if (landed != null && landed.Error == null)
-                {
-                    plan.Landing = landed;
-                    plan.ErrorKm = landing.ErrorKm(target, landed);
-                }
+                plain.Landing = landed;
+                plain.ErrorKm = landing.ErrorKm(target, landed);
             }
-            plan.AimNote = "no correction flown: " + why + (plan.ErrorKm >= 0 ? "; " + DeorbitBurn.Km(plan.ErrorKm) + " km from the target" : "")
-                + (ask.DvLeft >= 0 ? ", " + Ms(ask.DvLeft) + " m/s left" : "");
+            return Kept(plain, plain, ask, why);
+        }
+
+        /// <summary>
+        /// #805: a correction aimed at a landing with no plain burn to fly flies none, and the return carries on to reentry: the path as it is, where it comes down, and why in
+        /// <see cref="CorrectionPlan.AimNote"/>. Unless that path is no landing: it doesn't reach the planet, its periapsis is outside <see cref="PeAcceptable"/>, or the predictor has no
+        /// landing on it. Then it is the block's error, as before #805.
+        /// </summary>
+        internal static CorrectionPlan Unsolved(Func<double, Vec3, Patch> arrive, double ut, SnapshotBody target, CorrectionAsk ask, string why)
+        {
+            var failed = why.StartsWith(Failure, StringComparison.Ordinal) ? why : Failure + ": " + why;
+            var arrival = arrive(ut, default(Vec3));
+            if (arrival == null) return new CorrectionPlan { Error = failed + "; without it the path does not reach " + target.Name };
+            var plan = new CorrectionPlan { HasBurn = true, Ut = ut, PePredicted = arrival.Orbit.PeR - target.Radius, IncPredicted = arrival.Orbit.Inclination };
+            if (!PeAcceptable(target, ask, plan.PePredicted))
+            {
+                double low, high;
+                CorridorOf(target, ask, out low, out high);
+                plan.Error = failed + "; without it the periapsis is " + DeorbitBurn.Km(plan.PePredicted / 1000) + " km, outside " + DeorbitBurn.Km(low / 1000)
+                    + (high > low ? " to " + DeorbitBurn.Km(high / 1000) : "") + " km";
+                return plan;
+            }
+            var landing = ask.Landing;
+            var landed = ReentryPredictor.Predict(target, arrival.Orbit, arrival.StartUt, landing.GroundAltitude, landing.MassAfter(0), landing.Air, landing.Craft, landing.Frame);
+            if (landed == null || landed.Error != null)
+            {
+                plan.Error = failed + "; without it the path has no landing to read" + (landed == null ? "" : " (" + landed.Error + ")");
+                return plan;
+            }
+            plan.Landing = landed;
+            plan.ErrorKm = landing.ErrorKm(target, landed);
+            plan.AimNote = "no correction flown: " + why + "; " + DeorbitBurn.Km(plan.ErrorKm) + " km from the target" + (ask.DvLeft >= 0 ? ", " + Ms(ask.DvLeft) + " m/s left" : "");
             return plan;
         }
 
