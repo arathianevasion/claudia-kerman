@@ -317,7 +317,7 @@ function return {
       }
       // The Course Correction is the mod's solver, a block-internal call (ADR 0007), so it sits in the block.
       if return_aims(opt) {
-        local aimed is addons:claudia:correctionburn(return_aimed_ask(claudia_correction_ask(planet:name, opt:target_pe, when:ut), burn_ask, claudia_engine_isp(), claudia_dv_remaining())).
+        local aimed is addons:claudia:correctionburn(return_aimed_ask(claudia_correction_ask(planet:name, opt:target_pe, when:ut), burn_ask, claudia_engine_isp(), claudia_dv_recounted())).
         if aimed:haskey("aim_note") { set extra:aim_note to aimed:aim_note. }
         set fixed to claudia_fly_correction(ctx, aimed).
       } else {

@@ -2142,6 +2142,13 @@ function claudia_dv_remaining {
   return round(ship:deltav:current, 1).
 }
 
+// The delta-v left after a forced recount (stock reads 0 right after a staging or a load), or -1 at a trickle throttle.
+function claudia_dv_recounted {
+  ship:deltav:forcecalc().
+  wait 0.5.
+  return claudia_dv_remaining().
+}
+
 // A maneuver node's identity for "was it there when the block started" (kOS gives no id): its time and burn, as text.
 function claudia_node_sig {
   parameter nd.

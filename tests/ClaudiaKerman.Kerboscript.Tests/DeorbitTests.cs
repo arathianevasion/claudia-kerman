@@ -248,5 +248,20 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.DoesNotContain("entrydrop", source);
             Assert.DoesNotContain("claudia_shield_drop", source);
         }
+
+        /// <summary>#911: deorbit, return and reentry read the delta-v left through the one recounting helper; none calls the bare read or forcecalc itself.</summary>
+        [Theory]
+        [InlineData("deorbit")]
+        [InlineData("return")]
+        [InlineData("reentry")]
+        public void Each_block_reads_delta_v_through_the_recounting_helper(string block)
+        {
+            var source = CoreLibrary.Files.Single(f => f.Name == block).Source;
+            Assert.Contains("claudia_dv_recounted()", source);
+            Assert.DoesNotContain("claudia_dv_remaining()", source);
+            Assert.DoesNotContain("forcecalc", source);
+            var lib = CoreLibrary.Files.Single(f => f.Name == "claudia_lib").Source;
+            Assert.Contains("ship:deltav:forcecalc().\n  wait 0.5.\n  return claudia_dv_remaining().", lib);
+        }
     }
 }
