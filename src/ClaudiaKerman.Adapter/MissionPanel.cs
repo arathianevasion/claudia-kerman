@@ -432,7 +432,7 @@ namespace ClaudiaKerman.Adapter
         private void DrawBusyLine()
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Space(ClaudiaSkin.Paddng);
+            GUILayout.Space(ClaudiaSkin.Padding);
             GUILayout.BeginVertical();
             var blackout = MissionWindowRules.BlackoutLine(_view);
             if (blackout.Length > 0) GUILayout.Label(blackout, ClaudiaSkin.Secondary);
@@ -440,7 +440,7 @@ namespace ClaudiaKerman.Adapter
             if (line.Length > 0)
                 GUILayout.Label(line, ClaudiaSkin.Muted);
             // A Sequence Plan's Due Time reads from now; the date it lands on is the hover.
-            else if (_view.Stage == MissionStage.AwaitingSequenceApproval && _view.DueaTime.HasDueTime)
+            else if (_view.Stage == MissionStage.AwaitingSequenceApproval && _view.DueTime.HasDueTime)
                 GUILayout.Label(new GUIContent(_view.DueTime.Reached ? "Due Time reached" : "Due Time " + _view.DueTime.Text, _view.DueTime.Date), ClaudiaSkin.Muted);
             GUILayout.EndVertical();
             GUILayout.Space(ClaudiaSkin.Padding);
