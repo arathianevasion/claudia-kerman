@@ -26,14 +26,14 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <param name="craftName">The Mission's craft, so the plan cards mark what flies a Child Vessel as the loop's did.</param>
         /// <param name="notices">The mod's own notices the Mission folder kept, each placed by the conversation's length when it was written.</param>
-        public static List<LogEntry> From(StoredTranscript transcript, string goal, string craftName, PlayerConfig config, IList<SavedNotice> notices = null)
+        public static List<LogEntry> From(StoredTranscript transcript, string goal, string craftName, PlayerConfig config, IList<SavedNotice> notices = null, IList<SavedRating> ratings = null)
         {
             List<GoalItem> steps;
-            return From(transcript, goal, craftName, config, notices, out steps);
+            return From(transcript, goal, craftName, config, notices, out steps, ratings);
         }
 
         /// <param name="steps">The Mission Goal's steps as the transcript leaves them (<see cref="GoalSteps"/>), as the loop kept them; empty when no plan gave any.</param>
-        public static List<LogEntry> From(StoredTranscript transcript, string goal, string craftName, PlayerConfig config, IList<SavedNotice> notices, out List<GoalItem> steps)
+        public static List<LogEntry> From(StoredTranscript transcript, string goal, string craftName, PlayerConfig config, IList<SavedNotice> notices, out List<GoalItem> steps, IList<SavedRating> ratings = null)
         {
             steps = new List<GoalItem>();
             var log = new List<LogEntry>();
@@ -60,7 +60,7 @@ namespace ClaudiaKerman.Core.Missions
                 {
                     var reply = MissionReply.Parse(Text(message));
                     if (reply == null) continue;
-                    steps = Add(log, reply.WithProposed(ProposedPlans.LastAccepted(sinceReply)), previousUser, craftName, config, steps);
+                    steps = Add(log, reply.WithProposed(ProposedPlans.LastAccepted(sinceReply)), previousUser, craftName, config, steps, ratings, count);
                     sinceReply.Clear();
                 }
             }
@@ -118,7 +118,7 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>Adds the reply's entries; returns the Mission Goal's steps after it.</summary>
-        private static List<GoalItem> Add(List<LogEntry> log, MissionReply reply, string userText, string craftName, PlayerConfig config, List<GoalItem> steps)
+        private static List<GoalItem> Add(List<LogEntry> log, MissionReply reply, string userText, string craftName, PlayerConfig config, List<GoalItem> steps, IList<SavedRating> ratings, int messages)
         {
             var plan = reply.MissionPlan;
             if (reply.Kind == MissionReply.AlertKind && reply.Alert != null)
@@ -151,22 +151,25 @@ namespace ClaudiaKerman.Core.Missions
             else if (reply.Kind == MissionReply.DebriefKind && reply.Debrief != null)
             {
                 GoalSteps.Tick(steps, reply.Debrief.GoalStepsDone);
-                AddDebrief(log, reply.Debrief, userText, GoalSteps.ForCard(steps, reply.Debrief));
+                AddDebrief(log, reply.Debrief, userText, GoalSteps.ForCard(steps, reply.Debrief), ratings == null ? null : ratings.LastOrDefault(r => r.Messages == messages));
             }
             return steps;
         }
 
-        private static void AddDebrief(List<LogEntry> log, Debrief debrief, string userText, IEnumerable<GoalItem> steps)
+        private static void AddDebrief(List<LogEntry> log, Debrief debrief, string userText, IEnumerable<GoalItem> steps, SavedRating rating)
         {
             // The turn that asked for it listed the Telemetry Checks crossed; a standing one rules out Nominal, as the loop rated it.
             var crossings = Crossings(userText);
             var nominal = debrief.Outcome == "Nominal";
-            if (MissionPrompts.RulesOutNominal(crossings) && nominal)
+            // A saved rating (#904) is what the live Debrief decided: return's own result may not be in this turn's text. Older Missions have none.
+            var telemetry = rating != null ? rating.TelemetryCheck : MissionPrompts.RulesOutNominal(crossings) && nominal;
+            var noCorrection = rating != null ? rating.NoCorrection : LandingLine.NoCorrection(userText) && nominal;
+            if (telemetry)
             {
                 debrief.Outcome = "Off-Nominal";
                 log.Add(new LogEntry { Kind = LogKind.Notice, Text = "Rated Off-Nominal, not Nominal: a Telemetry Check was crossed during the run." });
             }
-            if (LandingLine.NoCorrection(userText) && nominal)
+            if (noCorrection)
             {
                 debrief.Outcome = "Off-Nominal";
                 log.Add(new LogEntry { Kind = LogKind.Notice, Text = LandingLine.NoCorrectionNotice });
