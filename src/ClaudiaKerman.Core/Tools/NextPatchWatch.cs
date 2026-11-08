@@ -38,6 +38,17 @@ namespace ClaudiaKerman.Core.Tools
             _planned = (planned ?? "").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Select(p => p.Trim()).ToArray();
         }
 
+        /// <summary>
+        /// A watch for a changed planned set (a run started or ended during a coast, #878) that keeps <paramref name="previous"/>'s answered meeting,
+        /// so that meeting, still ahead, is not answered a second time. A different meeting (another moon, or a later pass) is still answered.
+        /// </summary>
+        public NextPatchWatch(string planned, NextPatchWatch previous) : this(planned)
+        {
+            if (previous == null) return;
+            _answeredMoon = previous._answeredMoon;
+            _answeredUt = previous._answeredUt;
+        }
+
         /// <summary>Whether a check is due at <paramref name="ut"/>, so the reader takes a snapshot only then.</summary>
         public bool Due(double ut)
         {

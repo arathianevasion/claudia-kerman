@@ -177,6 +177,48 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("", watch.Check(rig.Snapshot()));
         }
 
+        /// <summary>#878: a run starting or ending during a coast rebuilds the watch; the meeting it answered is carried over.</summary>
+        [Fact]
+        public void ARebuiltWatchDoesNotAnswerTheSameMeetingTwice()
+        {
+            var rig = DunaOrbit();
+            var at = MoonCrossings.Follow(rig.System, rig.Body, rig.Orbit, rig.Ut, rig.Ut + Wait908b).Ut.Value;
+            rig.MoveTo(at - 1000);
+            var watch = new NextPatchWatch("");
+            Assert.NotEqual("", watch.Check(rig.Snapshot()));
+
+            var rebuilt = new NextPatchWatch("Kerbin", watch);
+            rig.MoveTo(at - 500);
+            Assert.Equal("", rebuilt.Check(rig.Snapshot()));
+            // Without the carry, the same moment is answered again.
+            rig.MoveTo(at - 500);
+            Assert.NotEqual("", new NextPatchWatch("Kerbin").Check(rig.Snapshot()));
+        }
+
+        [Fact]
+        public void ARebuiltWatchStillAnswersALaterPassOfTheSameMoon()
+        {
+            var rig = DunaOrbit();
+            var at = MoonCrossings.Follow(rig.System, rig.Body, rig.Orbit, rig.Ut, rig.Ut + Wait908b).Ut.Value;
+            rig.MoveTo(at - 1000);
+            var watch = new NextPatchWatch("");
+            Assert.NotEqual("", watch.Check(rig.Snapshot()));
+
+            // The same orbit seen from after the answered meeting: its next meeting with Ike is a later pass.
+            MoonCrossing later = null;
+            TransferRig rig2 = null;
+            for (var step = 1; step <= 40 && later == null; step++)
+            {
+                rig2 = DunaOrbit(ut: at + step * rig.Orbit.Period);
+                later = MoonCrossings.Follow(rig2.System, rig2.Body, rig2.Orbit, rig2.Ut, rig2.Ut + Wait908b);
+            }
+            Assert.NotNull(later);
+            Assert.Equal("Ike", later.Moon.Name);
+            Assert.True(later.Ut.Value - at > NextPatchWatch.Margin(rig.Orbit));
+            rig2.MoveTo(later.Ut.Value - 500);
+            Assert.NotEqual("", new NextPatchWatch("", watch).Check(rig2.Snapshot()));
+        }
+
         [Fact]
         public void APathRoundTheStarMeetsNoMoon()
         {

@@ -22,6 +22,7 @@ namespace ClaudiaKerman.Adapter
         private readonly Action<MissionInput> _send;
         private NextPatchWatch _watch;
         private string _key = "";
+        private string _vesselId;
         private List<SnapshotBody> _bodies;
         private int _checks;
         private bool _failed;
@@ -37,6 +38,7 @@ namespace ClaudiaKerman.Adapter
         {
             _watch = null;
             _key = "";
+            _vesselId = null;
             _bodies = null;
             _checks = 0;
             _failed = false;
@@ -49,9 +51,12 @@ namespace ClaudiaKerman.Adapter
             var key = (vesselId ?? "") + "|" + (planned ?? "");
             if (key != _key)
             {
+                // The same craft with another planned set keeps the meeting it answered (#878); another craft or a loaded save starts clean.
+                var kept = vesselId == _vesselId ? _watch : null;
                 Reset();
                 _key = key;
-                if (!string.IsNullOrEmpty(vesselId)) _watch = new NextPatchWatch(planned);
+                _vesselId = vesselId;
+                if (!string.IsNullOrEmpty(vesselId)) _watch = new NextPatchWatch(planned, kept);
             }
             var warping = TimeWarp.fetch != null && TimeWarp.CurrentRateIndex > 0;
             // Each new warp reads the orbit at once: it may have changed at 1x.
