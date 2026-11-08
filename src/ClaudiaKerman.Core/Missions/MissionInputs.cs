@@ -264,6 +264,16 @@ namespace ClaudiaKerman.Core.Missions
         public SceneChanged(GameScene scene) { Scene = scene; }
     }
 
+    /// <summary>
+    /// #877: outside Flight, the Mission craft as the save holds it: its situation, body table and saved orbit (no parts), so a plan offered there is judged
+    /// for a moon crossing. Null when the craft isn't in the save. Ignored in Flight, where the Game Snapshot judges.
+    /// </summary>
+    public sealed class SavedOrbitRead : MissionInput
+    {
+        public readonly GameSnapshot Snapshot;
+        public SavedOrbitRead(GameSnapshot snapshot) { Snapshot = snapshot; }
+    }
+
     /// <summary>Game time, in seconds of UT, and whether time warp was running when it was read (#834: the runaway stop's warp hold ends once warp has).</summary>
     public sealed class UtAdvanced : MissionInput
     {

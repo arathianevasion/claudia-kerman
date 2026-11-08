@@ -85,6 +85,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is SaveLoaded) Loaded(((SaveLoaded)input).SaveDirectory);
             else if (input is MissionsRestored) Restored((MissionsRestored)input);
             else if (input is SceneChanged) SceneChanging(((SceneChanged)input).Scene);
+            else if (input is SavedOrbitRead) SavedOrbitSeen(((SavedOrbitRead)input).Snapshot);
             else if (input is UtAdvanced) { _ut = ((UtAdvanced)input).Ut; WarpSeen(((UtAdvanced)input).Warping); ContinueRunEnd(); }
             else if (input is StartMission) Start((StartMission)input);
             else if (input is RunCraftCheck) RunCraftCheck((RunCraftCheck)input);
@@ -590,6 +591,7 @@ namespace ClaudiaKerman.Core.Missions
             _saveDirectory = saveDirectory;
             _craftCheck.SaveDirectory = saveDirectory;
             _snapshot = null;
+            _savedOrbit = null;
             _active = null;
             _craftLink = null;
             _seen = new List<SeenVessel>();

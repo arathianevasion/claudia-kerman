@@ -278,6 +278,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             var leaving = _scene == GameScene.Flight && scene != GameScene.Flight;
             _scene = scene;
+            if (scene == GameScene.Flight) _savedOrbit = null;
             if (!leaving)
             {
                 // Entering Flight waits for its first snapshot, which says which vessel the player is in.

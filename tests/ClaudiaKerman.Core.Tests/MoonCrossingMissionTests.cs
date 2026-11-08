@@ -532,6 +532,58 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Empty(mission.TakeCommands().OfType<WarpToUt>());
         }
 
+        /// <summary>#877: the plan offered outside Flight, the craft known only by its saved orbit (what the adapter reads from the save).</summary>
+        private MissionControl OfferedOutsideFlight(GameSnapshot saved)
+        {
+            var due = Now + MoonCrossingTests.Wait908b;
+            var mission = Control(new StreamingFakeTransport(HomePlan(), Waiting(due)));
+            var snapshot = InDunaOrbit();
+            mission.Send(new SceneChanged(GameScene.Flight));
+            mission.Send(new UtAdvanced(Now, false));
+            CraftCheckRouter.StartChecked(mission, _background, snapshot, new StartMission(Goal, 10m, "claude-sonnet-5-5", window: WindowPicks.AsTheSetting(snapshot, Goal)));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new SceneChanged(GameScene.Other));
+            mission.Send(new SavedOrbitRead(saved));
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            return mission;
+        }
+
+        /// <summary>#877: with only the saved orbit (908b's 100 x 2,144 km Duna orbit) the plan gets #867's Blocker and Warp to Due Time is held.</summary>
+        [Fact]
+        public void APlanOfferedWithOnlyTheSavedOrbitGetsTheBlockerAndTheWarpIsHeld()
+        {
+            var mission = OfferedOutsideFlight(InDunaOrbit());
+            Assert.Contains("Blocker: the orbit round Duna crosses Ike's sphere of influence", PlanCard(mission));
+            mission.TakeCommands();
+            mission.Send(new WarpToDueTime());
+            Assert.Empty(mission.TakeCommands().OfType<WarpToUt>());
+        }
+
+        /// <summary>#877: the same with Auto Mode on: it stops.</summary>
+        [Fact]
+        public void AutoModeStopsOnTheBlockerJudgedFromTheSavedOrbit()
+        {
+            var mission = OfferedOutsideFlight(InDunaOrbit());
+            mission.TakeCommands();
+            mission.Send(new SetAutoMode(true));
+            Assert.Contains("Auto Mode is waiting for you: a Blocker: the orbit round Duna crosses Ike's", mission.View.AutoModeStop);
+        }
+
+        /// <summary>#877: a landed craft outside Flight has no orbit to cross from: no Blocker, the warp goes ahead.</summary>
+        [Fact]
+        public void ALandedCraftOutsideFlightGetsNoBlocker()
+        {
+            var landed = InDunaOrbit();
+            landed.Situation = "LANDED";
+            landed.Orbit = null;
+            var mission = OfferedOutsideFlight(landed);
+            Assert.DoesNotContain("Blocker", PlanCard(mission));
+            mission.TakeCommands();
+            mission.Send(new WarpToDueTime());
+            Assert.Single(mission.TakeCommands().OfType<WarpToUt>());
+        }
+
         [Fact]
         public void APlanFindingReadsInTheCorrectionAndItsWarning()
         {
