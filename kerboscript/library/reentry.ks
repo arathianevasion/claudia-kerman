@@ -16,7 +16,7 @@
 //|     mains once they are out (under 250 m/s, over 0.04 atm, or by 1500 m); "none" never opens them.
 //|   chutes ["auto"]: the highest stage aboard, all on the last entry, plus later stages while over 15 m/s is predicted with no engine to land on (even over "none"); or "none".
 //|   separate ["auto"]: this entry's heat shield is number n from the pod: the entries left in the Mission Plan,
-//|     plus 1 if burns follow the last. Drops what is below it before the atmosphere; no shield n, nothing drops. Or "none".
+//|     plus 1 if burns follow the last. Drops what is below it 600 s before the air; no shield n, nothing drops. Or "none".
 //|   jettison_stage ["auto"]: drops that shield, unless its stack is kept; or "none".
 //|   hold ["retrograde"]: points the craft's forward axis at surface retrograde; "none" leaves it.
 //|   max_duration ["auto"]: the wait for the atmosphere plus 1800 s.
@@ -579,19 +579,6 @@ function reentry_separation {
   return plan.
 }
 
-// "" or why reentry fails before the atmosphere: separate "auto" with its stack (names, a list) still on; drop_error: why the drop failed, or "".
-function reentry_stack_refusal {
-  parameter sep, names, drop_error.
-  if sep <> "auto" or names:length = 0 {
-    return "".
-  }
-  local reason is "stack attached below the heat shield: " + names:join(", ") + "; drop it first or use separate".
-  if drop_error <> "" {
-    set reason to reason + " (separate: " + drop_error + ")".
-  }
-  return reason.
-}
-
 // The uid of the part the crew rides in, else of the first command part, else of the part running the script.
 function reentry_home_uid {
   if ship:crew:length > 0 {
@@ -703,7 +690,7 @@ function reentry {
   }
   set extra:geo to reentry_geo().
   set extra:chutes_kept to reentry_stowed_titles(ship:parts).
-  // Wait (on rails) for the atmosphere if the craft is still above it.
+  // Wait (on rails) for the atmosphere if the craft is still above it, on the orbit the drop leaves.
   local entry_in is 0.
   if ship:altitude > body_:atm:height and not claudia_on_ground() {
     set entry_in to reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
@@ -711,15 +698,32 @@ function reentry {
       return claudia_finish(ctx, false, "the orbit never reaches the atmosphere (periapsis " + round(ship:periapsis) + " m)", extra).
     }
   }
-  // This entry's stack (#557, #823) goes once the orbit is known to come down, before the atmosphere and any
-  // hold. A stack "auto" can't drop fails here, still above the air; one already in the air flies on.
-  local entry_ask is lexicon("home", reentry_home_uid()).
+  // This entry's stack (#557, #823) is read at block start, where ENTRYDROP refuses one separate can't drop, still above the air, and again at the drop
+  // point (#815), its lead s before the air or at once inside it: that read flies, the engines light, the stack drops (Pe and stack noted at the air) and ENTRYDROP refuses one still on.
+  local entry_ask is lexicon("home", reentry_home_uid(), "separate", opt:separate, "chutes", opt:chutes <> "none" and opt:chute_mode <> "none", "core", core:part:uid).
   local below is addons:claudia:entrydrop(entry_ask).
   if below:error <> "" {
     return claudia_finish(ctx, false, below:error, extra).
   }
+  local auto_duration is opt:max_duration:istype("String").
+  if auto_duration {
+    set opt:max_duration to entry_in + 1800.
+  }
+  // An abort before the drop keeps the stack, and reads the Chute Group (ADR 0019) fresh: none is chosen yet.
+  local ask is lexicon("none", opt:chutes = "none", "engine", false).
+  if entry_in > below:lead {
+    local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).
+    if waited <> "" {
+      reentry_abort(opt:chute_mode, reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts)).
+      return claudia_finish(ctx, false, waited, extra).
+    }
+    set below to addons:claudia:entrydrop(entry_ask).
+    if below:error <> "" {
+      return claudia_finish(ctx, false, below:error, extra).
+    }
+  }
   // Its engines or its chutes (#824): Core decides, with this drop and these chutes; the block lights the engines. A powered entry drops nothing.
-  local finish is addons:claudia:entryfinish(lexicon("home", entry_ask:home, "chutes", opt:chutes <> "none" and opt:chute_mode <> "none", "drop", opt:separate <> "none")).
+  local finish is addons:claudia:entryfinish(lexicon("home", entry_ask:home, "chutes", entry_ask:chutes, "drop", opt:separate <> "none")).
   local powered is false.
   if finish:error <> "" { addons:claudia:blocknote(ctx:block, lexicon("phase", "finish", "error", finish:error)). }
   if finish:error = "" {
@@ -735,6 +739,7 @@ function reentry {
   if powered {
     set opt:separate to "none".
   }
+  local dropped is list().
   if below:names:length > 0 and not claudia_on_ground() {
     local drop is reentry_separation(opt:separate, below, ship:parts).
     local drop_error is drop:error.
@@ -742,21 +747,17 @@ function reentry {
       set drop_error to "it would drop the part running the script".
     }
     if drop_error = "" and drop:decouplers:length > 0 {
+      local pe_before is ship:periapsis.
       set drop_error to claudia_fire_drop(ctx, drop).
+      if drop_error = "" { set dropped to list(pe_before, ship:periapsis, drop:gone[0]:ship). }
     }
-    set below to addons:claudia:entrydrop(entry_ask).
+    set below to addons:claudia:entrydrop(lexicon("home", entry_ask:home, "separate", opt:separate, "drop_error", drop_error)).
     if below:error <> "" {
       return claudia_finish(ctx, false, below:error, extra).
     }
-    if ship:altitude > body_:atm:height {
-      local refused is reentry_stack_refusal(opt:separate, below:names, drop_error).
-      if refused <> "" {
-        return claudia_finish(ctx, false, refused, extra).
-      }
-    }
   }
   // This entry's Chute Group (ADR 0019), chosen after any drop; none outside it is ever armed.
-  local ask is lexicon("none", opt:chutes = "none", "engine", powered).
+  set ask:engine to powered.
   local group is reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts).
   if group:why <> "" { addons:claudia:blocknote(ctx:block, lexicon("phase", "chutes_widened", "why", group:why)). }
   local chute_mode is opt:chute_mode.
@@ -772,20 +773,19 @@ function reentry {
   local shield_uids is claudia_shield_drop(ship:parts, list(), shield).
   local predicted is addons:claudia:reentryimpact(lexicon("chutes", chute_mode <> "none", "shield_drop", shield_uids)).
   addons:claudia:blocknote(ctx:block, reentry_prediction_note(predicted)).
-  local auto_duration is opt:max_duration:istype("String").
-  if auto_duration {
-    set opt:max_duration to entry_in + 1800.
-  }
   local held is opt:hold = "retrograde".
   if held {
     lock steering to srfretrograde.
   }
   if entry_in > 0 {
-    local waited is claudia_wait_until(ctx, time:seconds + entry_in).
+    local waited is claudia_wait_until(ctx, time:seconds + reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly)).
     if waited <> "" {
       reentry_abort(chute_mode, reentry_fresh_group(group, ask, extra:chutes_used)).
       return claudia_finish(ctx, false, waited, extra).
     }
+  }
+  if dropped:length > 0 {
+    addons:claudia:blocknote(ctx:block, lexicon("phase", "stack_dropped", "pe_before", round(dropped[0]), "pe_after", round(dropped[1]), "stack_m", choose -1 if dropped[2]:isdead else round(dropped[2]:distance))).
   }
 
   local has_drogues is reentry_has_drogues(ship:parts, group).
