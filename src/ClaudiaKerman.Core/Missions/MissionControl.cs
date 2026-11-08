@@ -114,6 +114,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is WarpToDueTime) WarpRequested();
             else if (input is GoToVessel) GoToRequested();
             else if (input is ClaudiaKilled) Killed(((ClaudiaKilled)input).VesselId, ((ClaudiaKilled)input).Traced);
+            else if (input is KerbalKilled) CrewDeathSeen(((KerbalKilled)input).Name);
             else if (input is KosRunBlocked) RunBlocked((KosRunBlocked)input);
             else if (input is ArrivalPlaneAimed) ArrivalPlaneRecorded((ArrivalPlaneAimed)input);
             else if (input is KosBlockStarted) BlockStarted((KosBlockStarted)input);
