@@ -790,9 +790,9 @@ namespace ClaudiaKerman.Core.Tools
             var aimLog = "";
             if (enc != null && AimsLanding(ask) && setup.Body != setup.Target)
             {
-                var blocked = KnownNoAim(snapshot, ask);
-                if (blocked == null && FitsNear(enc, ask, setup.Now, lead)) return WaitNear(setup, enc, ask);
-                aimLog = NoAimLog(ask, blocked ?? "no time to wait for " + setup.Target.Name + "'s sphere of influence");
+                var whyNot = KnownNoAim(snapshot, ask);
+                if (whyNot == null && FitsNear(enc, ask, setup.Now, lead)) return WaitNear(setup, enc, ask);
+                aimLog = NoAimLog(ask, whyNot ?? "no time to wait for " + setup.Target.Name + "'s sphere of influence");
             }
             return WithLog(PeFineCorrection(snapshot, setup, ask, enc, lead), aimLog);
         }

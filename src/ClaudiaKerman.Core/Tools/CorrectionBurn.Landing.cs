@@ -197,8 +197,10 @@ namespace ClaudiaKerman.Core.Tools
             var burnAimed = new Vec3(result.X[0], result.X[1], result.X[2]);
             // Never more than it may spend (#817): the SQP spends by the lever's slope, so its answer can come a few percent over. Over by more than SpendSlackMs, it is brought back along
             // its change from the burn it started from, which is about square to the periapsis's slope, to what it may spend; the checks below fly it again.
-            var spendable = Math.Max(most, plain.DeltaV);
-            if (burnAimed.Length > spendable + SpendSlackMs) burnAimed = Toward(from.Burn, burnAimed, spendable);
+            // #915: a corridor set by the ask spends only the spare, with no slack but the rounding of Toward's answer.
+            var spendable = ask.CorridorHalf.HasValue ? most : Math.Max(most, plain.DeltaV);
+            var slack = ask.CorridorHalf.HasValue ? 0.001 : SpendSlackMs;
+            if (burnAimed.Length > spendable + slack) burnAimed = Toward(from.Burn, burnAimed, spendable);
             var reached = arrive(ut, burnAimed);
             var down = fly(reached, burnAimed);
             if (down == null || down.Error != null) return reported(aimed, "the aimed burn has no landing to read");
@@ -213,7 +215,7 @@ namespace ClaudiaKerman.Core.Tools
             if (down.PeakG > MostEntryG) return reported(aimed, "the aimed burn's entry pulls " + Ms(down.PeakG) + " g, over " + Ms(MostEntryG));
             if (!(km < aimed.ErrorKm)) return reported(aimed, "the aimed burn lands no nearer (" + DeorbitBurn.Km(km) + " km from the target)");
             if (ask.DvLeft >= 0 && burnAimed.Length > ask.DvLeft) return reported(aimed, "the aimed burn needs " + Ms(burnAimed.Length) + " m/s, more than is left");
-            if (burnAimed.Length > spendable + SpendSlackMs)
+            if (burnAimed.Length > spendable + slack)
                 return reported(aimed, "the aimed burn needs " + Ms(burnAimed.Length) + " m/s, over the " + Ms(Math.Max(0, spendable)) + " m/s it may spend");
 
             double prograde, normal, radial;

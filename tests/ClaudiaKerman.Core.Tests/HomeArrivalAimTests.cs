@@ -205,7 +205,7 @@ namespace ClaudiaKerman.Core.Tests
             var log = (string)step["plan_log"];
             Assert.True((string)step["do"] == "burn", log);
             var spent = Fly(rig, step);
-            Assert.True(spent <= withChutes + 0.5, spent + " m/s: " + log);
+            Assert.True(spent <= withChutes + 0.002, spent + " m/s: " + log);
             Assert.InRange(rig.Orbit.PeR - rig.Body.Radius, 29000, 31000);
             Assert.True(FromKsc(Predict(rig, rig.Orbit, rig.Ut, turned)) < natural, log);
         }
@@ -247,12 +247,10 @@ namespace ClaudiaKerman.Core.Tests
             var inbound = InboundFromTheSun();
             var turned = 0.0;
             var plainInput = InboundInput(inbound.Pe, 1000);
-            plainInput["phase"] = "fine";
             var plain = BlockCalls.TransferStep(plainInput, inbound.Rig.Snapshot());
             Assert.Equal("done", plain["do"]);
 
             var aimedInput = InboundInput(inbound.Pe, 1000);
-            aimedInput["phase"] = "fine";
             var step = Aimed(inbound.Rig, inbound.Rig.Snapshot(), aimedInput, turned);
 
             Assert.Equal("wait", step["do"]);
@@ -262,7 +260,6 @@ namespace ClaudiaKerman.Core.Tests
             var named = inbound.Rig.Snapshot();
             named.MissionGoal = "Land in the ocean.";
             aimedInput = InboundInput(inbound.Pe, 1000);
-            aimedInput["phase"] = "fine";
             Assert.Equal("done", Aimed(inbound.Rig, named, aimedInput, turned)["do"]);
         }
 
@@ -286,7 +283,7 @@ namespace ClaudiaKerman.Core.Tests
 
         /// <summary>
         /// The rest of the flow, through the block's own loop, with the first burn flown <paramref name="firstError"/> m/s off and the ones after it <paramref name="laterError"/> m/s off (exec_node's
-        /// execution error, #747). Gives the block's error, the periapsis it ended on and the first plan_log.
+        /// execution error, #747). Gives the block's error, the periapsis it ended on, the first plan_log and the burns flown.
         /// </summary>
         private static (string Error, double Pe, string Log, int Burns) Flow(TransferRig rig, Dictionary<string, object> input, bool aimed, double turned, double firstError, double laterError)
         {
@@ -347,6 +344,8 @@ namespace ClaudiaKerman.Core.Tests
             var aimed = Flow(Arriving(arrivalPe), NearInput(30000, 1000, tolerance), true, turned, burnError, trimError);
 
             Assert.Contains("km from the target", aimed.Log);
+            // The premise of the comparison: at these errors the plain flow passes, so the check below bites.
+            if (Math.Abs(burnError) <= 0.1) Assert.Equal("", plain.Error);
             if (plain.Error == "") Assert.True(aimed.Error == "", aimed.Error + " (plan_log: " + aimed.Log + ")");
             if (aimed.Error == "") Assert.InRange(aimed.Pe, 30000 - tolerance, 30000 + tolerance);
             // Past what the margin alone holds, the premise of the check: the finer trim really was flown after the aim.
@@ -373,12 +372,10 @@ namespace ClaudiaKerman.Core.Tests
         {
             var inbound = InboundFromTheSun();
             var plainInput = InboundInput(inbound.Pe, 10);
-            plainInput["phase"] = "fine";
             var plain = BlockCalls.TransferStep(plainInput, inbound.Rig.Snapshot());
             Assert.Equal("done", plain["do"]);
 
             var input = InboundInput(inbound.Pe, 10);
-            input["phase"] = "fine";
             var step = Aimed(inbound.Rig, inbound.Rig.Snapshot(), input, 0);
 
             SameStep(plain, step);
@@ -408,7 +405,6 @@ namespace ClaudiaKerman.Core.Tests
         {
             var inbound = InboundFromTheSun();
             var input = InboundInput(inbound.Pe, 1000);
-            input["phase"] = "fine";
             input["auto"] = false;
             input["max_duration"] = 1.0;
 
