@@ -39,6 +39,15 @@ The coasts are also checked by the Encounter Watch (#770): see `encounter-watch.
 3. If a correction loses the encounter, the next TRANSFERSTEP line is a `burn correction ... next made` and the Script Result carries `recovered` (why the encounter was lost) instead of failing with "no encounter with Duna after the correction". Note whether it happened.
 4. The Script Result's `target_pe_actual` is within `pe_tolerance` of `target_pe` and `body` is Duna; the capture (`circularize` at pe) follows.
 
+## Check 6: home from Duna, aimed at KSC (#918, carries #915 and #880)
+
+Run the block test `tests/blocks/transfer_to_kerbin_from_duna` (`debug_tools = true`; the scenario starts at UT 1,700,000, about 2 Kerbin days before the Duna-to-Kerbin window, the craft in a 100 km Duna orbit). It flies `transfer_to` Kerbin with `target_pe` 30,000 and the default landing at KSC, then `reentry`. The agent run that wrote it did not launch KSP, so its `timeout_s` (3,600) is an estimate: note the real time of the run.
+
+1. Pass: the runner prints `PASS transfer_to_kerbin_from_duna`. It judges `success`, `body` Kerbin, `landed_or_splashed`, and `target_pe_actual` within 1 km of 30,000 m.
+2. #915: in `KSP.log`, the `block call TRANSFERSTEP` line for the correction on entering Kerbin's sphere of influence has `landing aim: <km> km from the target, periapsis <km> km, <m/s> m/s`. The Sun-patch corrections and the finer trim carry no such line. A `landing aim: target_pe only: <reason>` line means the aim fell back: note the reason.
+3. #880: one `block call ENTRYTRIM` line during `reentry`, either a burn (`node at UT ...; aimed <km> km from the target`) or `no trim: <reason>`; the reason is not `no landing target`.
+4. The log line of the run, `came down at ..., <km> km from KSC`, is the final distance. It is logged, not judged.
+
 ## Report
 
-Post on #459 (Checks 1 to 4) and #747 (Checks 3 and 5): pass or fail for each check, the `TRANSFERSTEP` log lines of the ejection, the `correction_dv` and `target_pe_actual` figures, and the Mission ids of Check 4.
+Post on #459 (Checks 1 to 4), #747 (Checks 3 and 5) and #918 (Check 6, with the aim, trim and final distance figures): pass or fail for each check, the `TRANSFERSTEP` log lines of the ejection, the `correction_dv` and `target_pe_actual` figures, and the Mission ids of Check 4.
