@@ -37,13 +37,18 @@ namespace ClaudiaKerman.Core.Tests
 
             var ut = Regex.Escape(((long)System.Math.Round(window)).ToString());
             var line = mission.View.Log.Single(e => e.Text.StartsWith("Missed the return window")).Text;
-            Assert.Matches("^Missed the return window the Due Time waited for \\(UT " + ut + "\\)\\. (Next cheap window: UT \\d+ \\(in [\\d.]+ h\\)\\.|No return window found within the alignment plus 60 h\\.)$", line);
-            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("was missed") || e.Text.Contains("no next window"));
+            // The block's next pass is minutes ahead: the line names that UT, not "none found" (BurnPoints.First alone gives none here).
+            var found = Regex.Match(line, "^Missed the return window the Due Time waited for \\(UT " + ut + "\\)\\. Next cheap window: UT (\\d+) \\(in ([\\d.]+) h\\)\\.$");
+            Assert.True(found.Success, line);
+            var nextUt = long.Parse(found.Groups[1].Value);
+            Assert.InRange(nextUt, back, back + 3 * 3600);
+            Assert.Equal(System.Math.Round((nextUt - back) / 3600.0, 1), double.Parse(found.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture), 1);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("was missed") || e.Text.Contains("no next window") || e.Text.Contains("No return window found"));
 
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             var asked = Messages(transport.Requests.Last());
-            Assert.Contains("The return window this step waited for has passed. ", asked);
-            Assert.Matches("(`return` will take the next one at UT \\d+ unless you re-plan\\.|No return window found within the alignment plus 60 h\\.)", asked);
+            Assert.Contains("The return window this step waited for has passed, and the plan is dropped. The next cheap one is at UT " + nextUt + ": re-plan the return from here.", asked);
+            Assert.DoesNotContain("No return window found", asked);
             Assert.DoesNotContain("Transfer Window", asked);
             Assert.DoesNotContain("transfer rows", asked);
             Assert.Contains("Revise the Mission Plan for a later window", asked);
@@ -53,10 +58,19 @@ namespace ClaudiaKerman.Core.Tests
         public void TheReturnTextsAreExact()
         {
             Assert.Equal("Missed the return window the Due Time waited for (UT 5000). Next cheap window: UT 72000 (in 18.6 h).", MissionPrompts.ReturnWindowMissedLine(5000, 72000, 5000));
-            Assert.Equal("The return window this step waited for has passed. `return` will take the next one at UT 72000 unless you re-plan.", MissionPrompts.ReturnWindowMissed(72000));
-            Assert.Equal("Missed the return window the Due Time waited for (UT 5000). No return window found within the alignment plus 60 h.", MissionPrompts.ReturnWindowMissedLine(5000, null, 5000));
-            Assert.Equal("The return window this step waited for has passed. No return window found within the alignment plus 60 h.", MissionPrompts.ReturnWindowMissed(null));
+            Assert.Equal("The return window this step waited for has passed, and the plan is dropped. The next cheap one is at UT 72000: re-plan the return from here.", MissionPrompts.ReturnWindowMissed(72000));
+            Assert.Equal("Missed the return window the Due Time waited for (UT 5000). No return window found in the time searched.", MissionPrompts.ReturnWindowMissedLine(5000, null, 5000));
+            Assert.Equal("The return window this step waited for has passed, and the plan is dropped. No return window found in the time searched.", MissionPrompts.ReturnWindowMissed(null));
             Assert.DoesNotContain("transfer rows", MissionPrompts.ReturnWindowMissedNotice);
+        }
+
+        [Fact]
+        public void OnlyABlockWithNoWindowToReadGivesNoPass()
+        {
+            Assert.Null(BurnPoints.ReturnPassUt("circularize()", new GameSnapshot(), 0));
+            Assert.Null(BurnPoints.ReturnPassUt("return()", null, 0));
+            // A return call on a craft with no orbit has no pass for the block to take.
+            Assert.Null(BurnPoints.ReturnPassUt("return(target_pe: 35000)", new GameSnapshot(), 0));
         }
 
         [Fact]

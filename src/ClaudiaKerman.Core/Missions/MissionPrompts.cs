@@ -287,11 +287,11 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>#905: the Alert's line to Claudia for a missed return window, in place of <see cref="WindowMissed"/>'s.</summary>
         public static string ReturnWindowMissed(double? nextUt)
         {
-            return "The return window this step waited for has passed. "
-                + (nextUt.HasValue ? "`return` will take the next one at UT " + Ut(nextUt.Value) + " unless you re-plan." : ReturnWindowNone);
+            return "The return window this step waited for has passed, and the plan is dropped. "
+                + (nextUt.HasValue ? "The next cheap one is at UT " + Ut(nextUt.Value) + ": re-plan the return from here." : ReturnWindowNone);
         }
 
-        private const string ReturnWindowNone = "No return window found within the alignment plus 60 h.";
+        private const string ReturnWindowNone = "No return window found in the time searched.";
 
         private static string Ut(double ut)
         {

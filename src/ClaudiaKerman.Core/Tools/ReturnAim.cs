@@ -369,6 +369,16 @@ namespace ClaudiaKerman.Core.Tools
             return plan.Ut;
         }
 
+        /// <summary>#905: the UT the block's own first pass takes with no window given (<see cref="Search.First"/>, which <see cref="CheapDepartureUt"/> compares the cheap window with); null when the block's search finds none.</summary>
+        public static double? NextPassUt(GameSnapshot snapshot, ReturnAsk ask)
+        {
+            ToolOutcome error;
+            var setup = PredictBurn.Setup.Prepare(snapshot, null, out error);
+            if (setup == null) return null;
+            var search = Search.Start(setup.System, setup.Body, setup.Start, setup.Now, ask);
+            return search.First.Error == null ? search.First.Ut : (double?)null;
+        }
+
         /// <summary>One aim's facts, and what its tries share.</summary>
         internal sealed class Search
         {

@@ -216,14 +216,17 @@ namespace ClaudiaKerman.Core.Missions
             AskForRevisedPlan(mission, MissionPrompts.ReturnWindowMissed(next), MissionPrompts.ReturnWindowMissedNotice);
         }
 
-        /// <summary>The UT the return's block would take from now (<see cref="BurnPoints.First"/>, as the Due Time reads it); null when it finds none.</summary>
+        /// <summary>The UT the return's block would take from now (<see cref="BurnPoints.First"/>, as the Due Time reads it, else the block's next pass); null when the block's search finds none.</summary>
         private double? NextReturnWindowUt(Mission mission, SequencePlan plan)
         {
             var snapshot = MissionVesselSnapshot(mission);
             if (snapshot == null) return null;
             snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
             var wait = BurnPoints.First(plan.Script, snapshot, _ut, plan.ExpectedDeltaV, _body);
-            return wait != null && wait.DepartureUt.HasValue && wait.DepartureUt.Value > _ut ? wait.DepartureUt : null;
+            if (wait != null && wait.DepartureUt.HasValue && wait.DepartureUt.Value > _ut) return wait.DepartureUt;
+            // No fixed window (BurnPoints.First gives none for the block's next pass): the UT the block's own search would fly.
+            var pass = BurnPoints.ReturnPassUt(plan.Script, snapshot, _ut);
+            return pass.HasValue && pass.Value > _ut ? pass : null;
         }
 
         private void AskForRevisedPlan(Mission mission, string alert, string notice)
