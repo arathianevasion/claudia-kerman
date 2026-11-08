@@ -102,11 +102,46 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The text before a body names where a trip starts, not where it goes: "from the", "depart", "leave", "eject from".</summary>
         private static readonly Regex Origin = new Regex(@"\b(?:from|depart(?:s|ing|ure)?|leav(?:e|es|ing)|eject(?:s|ion|ing)?)\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
 
-        /// <summary>The bodies <paramref name="words"/> name as a place to be at or go to (#871): every body with an occurrence that isn't an origin ("Return from Ike to Duna" names Duna, not Ike).</summary>
+        /// <summary>
+        /// The text before a body names a body to keep clear of (#894), not to go to: "clear of (the)", "avoid(ing)", "away from", "below/under/outside
+        /// (the) (SOI/orbit of)", "miss(ing)". The avoid word governs the body as "from" governs an origin: it comes right before the name.
+        /// </summary>
+        private static readonly Regex Avoids = new Regex(@"\b(?:clear\s+of|away\s+from|out\s+of|outside|(?:avoid(?:s|ing|ed)?|miss(?:es|ing|ed)?|without|don['’]t|do\s+not|not)(?:\s+(?:enter(?:s|ing)?|encounter(?:s|ing)?|hit(?:s|ting)?))?)\b[\s:(""]*(?:(?:a|an|the)\s+)?$", RegexOptions.IgnoreCase);
+
+        /// <summary>"below/under/outside the SOI/orbit of" before a body: a place to keep out of only when the SOI or orbit is named.</summary>
+        private static readonly Regex BelowSoiOf = new Regex(@"\b(?:below|under|outside)\s+(?:the\s+)?(?:SOI|sphere\s+of\s+influence|orbit)\s+of\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
+
+        /// <summary>"below/under (the)" before a body that is followed by "'s SOI/orbit/sphere".</summary>
+        private static readonly Regex BelowBefore = new Regex(@"\b(?:below|under)\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
+
+        private static readonly Regex PossessiveSoi = new Regex(@"^['’]s?\s+(?:SOI|sphere|orbit)\b", RegexOptions.IgnoreCase);
+
+        /// <summary>Peels a moon and its joiner off the end of <paramref name="before"/> ("Ike and the ", "Ike, "), to find the avoid word governing a list; null if none.</summary>
+        private static string PeelListItem(GameSnapshot snapshot, string before)
+        {
+            var names = string.Join("|", snapshot.Bodies.Where(b => b.Name.Length > 0).Select(b => Regex.Escape(b.Name)));
+            if (names.Length == 0) return null;
+            var m = Regex.Match(before, @"\b(?:the\s+)?(?:" + names + @")(?:['’]s?\s+(?:SOI|sphere|orbit))?\s*(?:,\s*(?:and\s+|or\s+)?|\s+and\s+|\s+or\s+)(?:the\s+)?$", RegexOptions.IgnoreCase);
+            return m.Success ? before.Substring(0, m.Index) : null;
+        }
+
+        private static bool IsAvoided(GameSnapshot snapshot, string words, Match m)
+        {
+            var before = words.Substring(0, m.Index);
+            if (BelowSoiOf.IsMatch(before) || BelowBefore.IsMatch(before) && PossessiveSoi.IsMatch(words.Substring(m.Index + m.Length))) return true;
+            for (var guard = 0; before != null && guard < 20; guard++)
+            {
+                if (Avoids.IsMatch(before)) return true;
+                before = PeelListItem(snapshot, before);
+            }
+            return false;
+        }
+
+        /// <summary>The bodies <paramref name="words"/> name as a place to be at or go to (#871): every body with an occurrence that isn't an origin ("Return from Ike to Duna" names Duna, not Ike) or one named only to be avoided (#894: "raise Ap clear of Ike's SOI").</summary>
         public static System.Collections.Generic.IList<SnapshotBody> Destinations(GameSnapshot snapshot, string words)
         {
             return snapshot.Bodies.Where(b => b.Name.Length > 0 && Regex.Matches(words, @"\b" + Regex.Escape(b.Name) + @"\b", RegexOptions.IgnoreCase).Cast<Match>()
-                .Any(m => !Origin.IsMatch(words.Substring(0, m.Index)) && !ReturnsFrom.IsMatch(words.Substring(0, m.Index)))).ToList();
+                .Any(m => !Origin.IsMatch(words.Substring(0, m.Index)) && !ReturnsFrom.IsMatch(words.Substring(0, m.Index)) && !IsAvoided(snapshot, words, m))).ToList();
         }
 
         /// <summary>The text before a body names a return's origin: "come home from", "return to Kerbin from", "return from" (same clause).</summary>
