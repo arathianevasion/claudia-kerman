@@ -275,7 +275,7 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// #866: home to a moon of another planet by the planet's high orbit, as <c>capture</c> keeps it (<see cref="KeptRoute"/>): the trip in captures at the
-        /// low orbit's height into an ellipse reaching <see cref="KeptRoute.PriceShare"/> of the sphere of influence, and the trip on lowers its apoapsis to the
+        /// low orbit's height into an ellipse reaching <see cref="KeptRoute.TopR"/>, and the trip on lowers its apoapsis to the
         /// moon from there. The two legs, <c>transfer:Duna</c> and <c>transfer:Duna&gt;Ike</c>, priced as one route in place of the low circle's (about 600 m/s
         /// less at Ike); null when the moon's planet isn't another of the star's, or its high orbit doesn't reach past the moon.
         /// </summary>
@@ -289,7 +289,7 @@ namespace ClaudiaKerman.Core.Missions
             var inbound = Trip(center, planet);
             var hop = Trip(planet, moon);
             var low = LowOrbit(planet);
-            var high = KeptRoute.PriceShare * Sphere(planet);
+            var high = KeptRoute.TopR(Sphere(planet), moon);
             if (inbound == null || hop == null || high <= moon.Sma * (1 + moon.Eccentricity)) return null;
             var atHigh = KeptRoute.Speed(planet.Gm, low, high);
             var saving = atHigh - Circular(planet.Gm, low);

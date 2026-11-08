@@ -273,7 +273,12 @@ namespace ClaudiaKerman.Core.Missions
                     _high = HighRouteOn(target, index);
                     if (_high != null) trip = _high[0];
                 }
-                else if (_high != null && _at.Name == _high[0].Bodies[1] && target.Name == _high[1].Bodies[1]) trip = _high[1];
+                else
+                {
+                    if (_high != null && _at.Name == _high[0].Bodies[1] && target.Name == _high[1].Bodies[1]) trip = _high[1];
+                    // Used, or passed by: a later capture here or trip on is the low circle's.
+                    _high = null;
+                }
                 var id = _at.Name == _map.Home ? (_map.Leg("transfer:" + target.Name) != null ? "transfer:" + target.Name : "transfer:" + _at.Name + ">" + target.Name)
                     : target.Name == _map.Home ? "return:" + _at.Name : "transfer:" + _at.Name + ">" + target.Name;
                 var later = _rest.Skip(index + 1).ToList();

@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using ClaudiaKerman.Core.Missions;
+using ClaudiaKerman.Core.Tools;
 using Xunit;
 
 namespace ClaudiaKerman.Core.Tests
@@ -57,6 +58,26 @@ namespace ClaudiaKerman.Core.Tests
             Assert.NotNull(map.HighRoute("Vall"));
         }
 
+        /// <summary>Gilly's apoapsis (31,500 km × 1.55) is past half of Eve's sphere of influence: the kept ellipse reaches 10% past it, still well inside the sphere.</summary>
+        [Fact]
+        public void GillysEccentricOrbitIsKeptPastItsApoapsisInsideEvesSphere()
+        {
+            var gilly = DeltaVMapTests.StockSystem().Single(b => b.Name == "Gilly");
+            var eve = DeltaVMapTests.StockSystem().Single(b => b.Name == "Eve");
+            var sun = DeltaVMapTests.StockSystem().Single(b => b.Name == "Sun");
+            var soi = eve.Sma * System.Math.Pow(eve.Gm / sun.Gm, 0.4);
+            var apoapsis = gilly.Sma * (1 + gilly.Eccentricity);
+            Assert.True(apoapsis > KeptRoute.PriceShare * soi);
+            var top = KeptRoute.TopR(soi, gilly);
+            Assert.Equal(apoapsis * (1 + KeptRoute.MoonMargin), top, 3);
+            Assert.True(top < KeptRoute.MaxShare * soi);
+            var route = Map().HighRoute("Gilly");
+            Assert.True(route[0].Arrival < Map().Leg("transfer:Eve").Arrival);
+            // Ike's sits at half the sphere as before; a moon too near its sphere's edge has none.
+            Assert.Equal(KeptRoute.PriceShare * 1000e6, KeptRoute.TopR(1000e6, DeltaVMapTests.StockSystem().Single(b => b.Name == "Ike")));
+            Assert.Equal(0, KeptRoute.TopR(apoapsis * 1.4, gilly));
+        }
+
         [Fact]
         public void TheGoalsTextAndCompactLineCarryTheRouteWithNoNewLine()
         {
@@ -106,6 +127,16 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(route[1].Departure + route[1].PlaneChange, legs.Single(l => l.Sequence.Name == "Transfer to Ike").Figure, 6);
             // Budgets at the route's figures are not under the Map.
             Assert.DoesNotContain(legs, l => l.Under);
+
+            // Back at Duna from Ike, its capture is priced from Ike, and a second trip to Ike from the low circle: the high route is used once.
+            var back = PlanLegs.Judge(snapshot, new List<PlannedSequence>
+            {
+                Leg("Launch to 80 km orbit", 3400), Leg("Transfer to Duna", 1100), Leg("Capture at Duna", 260), Leg("Transfer to Ike", 100), Leg("Land on Ike", 600),
+                Leg("Transfer to Duna", 300), Leg("Capture at Duna", 300), Leg("Transfer to Ike", 300), Leg("Capture at Ike", 300),
+            }, "");
+            Assert.Equal(route[1].Departure + route[1].PlaneChange, back[3].Figure, 6);
+            Assert.Equal(map.Trip("Ike", "Duna").Arrival, back[6].Figure, 6);
+            Assert.Equal(map.Trip("Duna", "Ike").Departure + map.Trip("Duna", "Ike").PlaneChange, back[7].Figure, 6);
 
             // With Duna's surface next instead, its capture is the low circle's.
             var duna = PlanLegs.Judge(snapshot, new List<PlannedSequence> { Leg("Launch to 80 km orbit", 3400), Leg("Transfer to Duna", 1100), Leg("Capture at Duna", 200), Leg("Land on Duna", 100) }, "");

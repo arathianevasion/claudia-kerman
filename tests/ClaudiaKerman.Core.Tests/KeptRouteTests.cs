@@ -183,6 +183,19 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void ALandingInTheLegInHandsTripBeforeTheMoonIsTheCircle()
+        {
+            var rig = Arrival(180, "Transfer to Duna and land", "Transfer to Ike");
+            double? deadline;
+            string why;
+            Assert.Null(KeptRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why));
+            Assert.Equal("the next leg isn't to a moon of Duna", why);
+            // Without the landing, the same trip keeps it.
+            var on = Arrival(180, "Transfer to Duna", "Transfer to Ike");
+            Assert.Equal("Ike", KeptRoute.NextMoon(on.Snapshot(), on.System, on.Body, out deadline, out why).Name);
+        }
+
+        [Fact]
         public void AKerbinMoonFromKerbinAndNoMissionPlanAreTheCircleAsToday()
         {
             var home = TransferRig.Arriving("Kerbin", 100000, 900, 0, 0, 0, 3000);
@@ -197,6 +210,21 @@ namespace ClaudiaKerman.Core.Tests
             var plain = alone.RunCapture(Ask());
             Assert.Null(Kept(plain));
             Assert.InRange(alone.Orbit.E, 0, 0.011);
+        }
+
+        [Fact]
+        public void TransferToFromTheKeptEllipseWithNoWindowAtAPeriapsisSearchesOnlyThreeLoopsSayingWhy()
+        {
+            var rig = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Land on Ike");
+            var capture = rig.RunCapture(Ask());
+            Assert.StartsWith("kept", Kept(capture));
+            // A Due Time moved in since: no window at a periapsis arrives by it.
+            rig.Snapshot().LegsAhead[2].DueTimeUt = rig.Ut + 1;
+            var period = rig.Orbit.Period;
+            var first = TransferFlight.Next(rig.Snapshot(), new TransferFlightAsk { Target = "Ike", TargetPe = IkePe, StartUt = rig.Ut, TurnTime = 60, WatchEjection = false });
+            Assert.True(first.Error == "", first.Error);
+            Assert.Equal("no Ike window at a periapsis within 3 loops of the kept orbit before the next fixed date", Kept(first));
+            Assert.True(Convert.ToDouble(first.Report["departure_ut"]) <= rig.Ut + KeptRoute.MaxLoops * period + 600, first.Report["departure_ut"] + " past three loops of " + period.ToString("0") + " s");
         }
 
         [Fact]

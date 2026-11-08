@@ -165,14 +165,13 @@ namespace ClaudiaKerman.Core.Missions
             if (snapshot == null) return;
             // A transfer_to that never ejected (refused, failed) planned nothing: only a target the path now meets, or is round, stays planned.
             mission.RunTransfers = string.Join(",", RunTransfers(mission).Where(t => MoonCrossings.Meets(snapshot.At(_ut), t)).ToArray());
-            // The next plan's wait is not known yet: judged as a long one. A moon the run's own transfer_to aims at is planned, not crossed,
-            // and so is the one capture kept its ellipse for, the next leg's (#866): that wait is capture's, every loop of it followed.
-            var planned = RunTransfers(mission).ToList();
+            // The next plan's wait is not known yet: judged as a long one. A moon the run's own transfer_to aims at is planned, not crossed.
+            // An ellipse capture kept for the next leg's moon (#866) waits only to its window: that wait is followed, the moon met after the burn.
+            var planned = RunTransfers(mission);
             var at = snapshot.At(_ut);
             if (mission.Plan != null) at.LegsAhead = mission.Plan.Sequences.Skip(System.Math.Max(0, StepsBegun(mission) - 1)).ToList();
-            var kept = KeptRoute.KeptFor(at);
-            if (kept != null) planned.Add(kept);
-            var crossing = MoonCrossings.Judge(snapshot.At(_ut), planned);
+            var window = KeptRoute.KeptWindow(at);
+            var crossing = window.HasValue ? MoonCrossings.Judge(snapshot.At(_ut), window.Value, planned) : MoonCrossings.Judge(snapshot.At(_ut), planned);
             if (crossing != null) mission.RunEvents.Replace(_ut, RunEventKind.MoonCrossing, MissionPrompts.MoonCrossingFact(crossing));
         }
     }

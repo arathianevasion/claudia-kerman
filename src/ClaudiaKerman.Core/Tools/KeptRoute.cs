@@ -43,6 +43,19 @@ namespace ClaudiaKerman.Core.Tools
         private const int Tries = 8;
         /// <summary>The Delta-v Map's high orbit, as a share of the planet's sphere of influence: <c>capture</c>'s highest (<see cref="CaptureFlight"/>).</summary>
         internal const double PriceShare = 0.5;
+        /// <summary>A moon whose apoapsis reaches past <see cref="PriceShare"/> (Gilly's, at 0.57 of Eve's): the ellipse reaches this share past it, up to <see cref="MaxShare"/> of the sphere.</summary>
+        internal const double MoonMargin = 0.1;
+        internal const double MaxShare = 0.75;
+
+        /// <summary>
+        /// The kept ellipse's highest apoapsis round a planet whose sphere of influence is <paramref name="soi"/>, m from its centre: <see cref="PriceShare"/> of it,
+        /// or <see cref="MoonMargin"/> past <paramref name="moon"/>'s apoapsis when that is higher; 0 when that would pass <see cref="MaxShare"/>.
+        /// </summary>
+        internal static double TopR(double soi, SnapshotBody moon)
+        {
+            var past = moon.Sma * (1 + moon.Eccentricity) * (1 + MoonMargin);
+            return past > MaxShare * soi ? 0 : Math.Max(PriceShare * soi, past);
+        }
 
         /// <summary>
         /// The moon the Mission Plan's next trip for this craft goes to, when it is a moon of <paramref name="body"/> and <paramref name="body"/> is a planet
@@ -73,9 +86,8 @@ namespace ClaudiaKerman.Core.Tools
                         if (dates.Count > 0) deadline = dates.Min();
                         return system.Find(target.Name);
                     }
-                    // The leg in hand's trip is the one that came here.
-                    if (i == 0) continue;
-                    return null;
+                    // The leg in hand's trip is the one that came here; it may land too.
+                    if (i != 0) return null;
                 }
                 // A landing, ascent or entry first (the leg in hand's too: "Capture and land at Duna") starts from a low orbit.
                 if ((SequenceWords.Landing.IsMatch(words) || SequenceWords.Ascent.IsMatch(words) || SequenceWords.Reentry.IsMatch(words)
@@ -85,10 +97,11 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// The moon the craft in <paramref name="snapshot"/> keeps its ellipse for: the next leg's (<see cref="NextMoon"/>, from its <see cref="GameSnapshot.LegsAhead"/>),
-        /// when the orbit is shaped for it (<see cref="IsKept"/>); null otherwise. The Debrief's moon-crossing fact counts it as planned, not crossed.
+        /// The window UT of the ellipse the craft in <paramref name="snapshot"/> keeps for the next leg's moon (<see cref="NextMoon"/>, from its
+        /// <see cref="GameSnapshot.LegsAhead"/>): the orbit shaped for it (<see cref="IsKept"/>) with a <see cref="Departure"/> within <see cref="MaxLoops"/>
+        /// loops; null otherwise. The Debrief judges the wait up to it only: the moon is met after that burn, as planned.
         /// </summary>
-        public static string KeptFor(GameSnapshot snapshot)
+        public static double? KeptWindow(GameSnapshot snapshot)
         {
             if (snapshot == null || snapshot.LegsAhead == null) return null;
             ToolOutcome error;
@@ -97,7 +110,10 @@ namespace ClaudiaKerman.Core.Tools
             double? deadline;
             string why;
             var moon = NextMoon(snapshot, setup.System, setup.Body, out deadline, out why);
-            return moon != null && IsKept(setup.System, setup.Body, setup.Start, moon) ? moon.Name : null;
+            if (moon == null || !IsKept(setup.System, setup.Body, setup.Start, moon)) return null;
+            int loop;
+            var plan = Departure(snapshot, setup.System, setup.Body, setup.Start, moon, DeltaVMap.LowOrbit(moon) - moon.Radius, setup.Now, setup.Now + MaxLoops * setup.Start.Period, deadline, out loop);
+            return plan != null ? plan.Ut : (double?)null;
         }
 
         /// <summary>A planet round the star, not home: what an interplanetary transfer arrives at.</summary>

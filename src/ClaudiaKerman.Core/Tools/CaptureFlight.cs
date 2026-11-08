@@ -216,7 +216,7 @@ namespace ClaudiaKerman.Core.Tools
                 return null;
             }
             var orbit = setup.Start;
-            var plan = KeptRoute.Plan(snapshot, setup.System, body, moon, r, orbit.W, peUt, targetR, HighShares[0] * body.SoiRadius, MoonPe(moon), deadline, out circle);
+            var plan = KeptRoute.Plan(snapshot, setup.System, body, moon, r, orbit.W, peUt, targetR, KeptRoute.TopR(body.SoiRadius, moon), MoonPe(moon), deadline, out circle);
             if (plan == null)
             {
                 circle = "circle: " + circle;
