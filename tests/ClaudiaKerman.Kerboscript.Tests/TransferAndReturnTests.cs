@@ -92,7 +92,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Fact]
-        public void Return_s_aim_note_leads_with_the_correction_s_and_keeps_an_empty_window_note_out()
+        public void Return_s_aim_note_leads_with_the_correction_s()
         {
             var ret = CoreLibrary.Blocks.Single(b => b.Name == "return").Source;
             // LandingLine.NoCorrection (#899) reads the note's start.

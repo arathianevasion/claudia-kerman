@@ -613,7 +613,7 @@ namespace ClaudiaKerman.Core.Tools
 
             /// <summary>
             /// #880: the earliest window landing within <see cref="ReachKm"/> of the target whose burn fits <see cref="MostDv"/>, from the windows of every orbit of the craft up to
-            /// <see cref="_reachLatest"/>; null when none does, for #816's rule. A window's least burn close enough is aimed (<see cref="Aim(ReturnPlan)"/>) in time, as #816's are.
+            /// <see cref="_reachLatest"/>, unless the plan's window still serves (<see cref="PlannedWindow"/>); null when none does, for #816's rule. A window's least burn close enough is aimed (<see cref="Aim(ReturnPlan)"/>) in time, as #816's are.
             /// </summary>
             private ReturnPlan Reached(IEnumerable<ReturnPlan> ranked)
             {
@@ -631,7 +631,7 @@ namespace ClaudiaKerman.Core.Tools
                     var direct = DirectBurns(spans);
                     var floor = direct.Where(d => d > 0).DefaultIfEmpty(0).Min();
                     var skip = Math.Max(SkipOverDirectMs, DirectPerLeastBurn * (most - _cheapest));
-                    var predictions = 0;
+                    var predictions = _ask.PlannedUt.HasValue ? 1 + AimPredictions : 0;
                     for (var k = 0; k < spans.Count; k++)
                     {
                         if (predictions >= MostReachPredictions)
