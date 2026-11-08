@@ -21,18 +21,18 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>m/s in stages below <c>stage_limit</c>: held back, so the burn can't spend them; 0 for none.</summary>
         public double HeldDv;
 
-        public static LandingReserve Of(GameSnapshot snapshot, IEnumerable<SnapshotPart> gone, int stageLimit)
+        public static LandingReserve Of(GameSnapshot snapshot, IEnumerable<SnapshotPart> gone, int stageLimit, uint? home = null)
         {
             var reserve = new LandingReserve();
             var leaving = new HashSet<uint>((gone ?? new SnapshotPart[0]).Select(p => p.Id));
-            var all = snapshot.Craft.Parts;
+            var all = PartTree.OwnSide(snapshot.Craft.Parts, home);
             var kept = all.Where(p => !leaving.Contains(p.Id)).ToList();
             reserve.KeepsEngine = kept.Any(p => p.Tags.Contains("engine") && p.ThrustVacKn > 0 && p.Stage >= stageLimit);
-            var whole = StageDeltaV.PerStage(all, snapshot.Craft.Stage);
+            var whole = StageDeltaV.PerStage(all, snapshot.Craft.Stage, home);
             var wholeUsable = whole.Where(s => s.Key >= stageLimit).Sum(s => s.Value);
             reserve.HeldDv = whole.Where(s => s.Key < stageLimit).Sum(s => s.Value);
             if (wholeUsable <= 0) return reserve;
-            var keptUsable = StageDeltaV.PerStage(kept, snapshot.Craft.Stage).Where(s => s.Key >= stageLimit).Sum(s => s.Value);
+            var keptUsable = StageDeltaV.PerStage(kept, snapshot.Craft.Stage, home).Where(s => s.Key >= stageLimit).Sum(s => s.Value);
             reserve.KeptShare = Math.Max(0, Math.Min(1, keptUsable / wholeUsable));
             return reserve;
         }

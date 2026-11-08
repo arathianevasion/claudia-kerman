@@ -18,8 +18,8 @@ namespace ClaudiaKerman.Core.Missions
         private const double G0 = 9.80665;
         private const double Empty = 1e-9;
 
-        /// <summary>Delta-v (m/s) by stage number for <paramref name="parts"/> at stage <paramref name="current"/>; stages that burn nothing are 0.</summary>
-        public static Dictionary<int, double> PerStage(IList<SnapshotPart> parts, int current)
+        /// <summary>Delta-v (m/s) by stage number for <paramref name="parts"/> at stage <paramref name="current"/>, a decoupler dropping its side away from <paramref name="home"/> (#909; the root if null); stages that burn nothing are 0.</summary>
+        public static Dictionary<int, double> PerStage(IList<SnapshotPart> parts, int current, uint? home = null)
         {
             var result = new Dictionary<int, double>();
             for (var n = current; n >= 0; n--) result[n] = 0;
@@ -29,11 +29,12 @@ namespace ClaudiaKerman.Core.Missions
             var mass = parts.ToDictionary(p => p.Id, p => p.MassT);
             var present = new HashSet<uint>(all.Keys);
             var group = Groups(parts, all);
+            var toward = PartTree.TowardHome(parts, home);
 
             for (var n = current; n >= 0; n--)
             {
                 foreach (var decoupler in parts.Where(p => p.Stage == n && present.Contains(p.Id) && p.Tags.Contains("decoupler")).ToList())
-                    foreach (var id in Below(decoupler.Id, parts)) present.Remove(id);
+                    foreach (var id in PartTree.Below(decoupler.Id, parts, toward)) present.Remove(id);
                 var engines = parts.Where(p => present.Contains(p.Id) && p.ThrustVacKn > 0 && p.IspVac > 0 && p.Stage >= n).ToList();
                 for (var guard = 0; guard < 64; guard++)
                 {
@@ -63,20 +64,6 @@ namespace ClaudiaKerman.Core.Missions
                 }
             }
             return result;
-        }
-
-        /// <summary>The parts hanging below <paramref name="id"/> in the craft's tree, itself included.</summary>
-        private static IEnumerable<uint> Below(uint id, IList<SnapshotPart> parts)
-        {
-            var gone = new HashSet<uint> { id };
-            var grew = true;
-            while (grew)
-            {
-                grew = false;
-                foreach (var p in parts)
-                    if (p.ParentId.HasValue && gone.Contains(p.ParentId.Value) && gone.Add(p.Id)) grew = true;
-            }
-            return gone;
         }
 
         /// <summary>The parts whose fuel is shared: joined through the tree, but not across a decoupler.</summary>
