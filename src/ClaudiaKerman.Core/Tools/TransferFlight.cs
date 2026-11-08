@@ -383,9 +383,13 @@ namespace ClaudiaKerman.Core.Tools
             }
             else
             {
-                var plan = Transfer.Find(snapshot, new TransferAsk { Target = target.Name, TargetPe = ask.TargetPe, EarliestUt = earliest, WindowUt = ask.Window, Capture = ArrivalRule.Capture(snapshot, target.Name, null) });
-                if (plan.Error != null) return Fail(plan.Error);
+                string kept;
+                var plan = KeptDeparture(snapshot, setup, ask, earliest, out kept)
+                    ?? Transfer.Find(snapshot, new TransferAsk { Target = target.Name, TargetPe = ask.TargetPe, EarliestUt = earliest, WindowUt = ask.Window, Capture = ArrivalRule.Capture(snapshot, target.Name, null),
+                        LatestUt = kept != "" ? earliest + KeptRoute.MaxLoops * setup.Start.Period : (double?)null });
+                if (plan.Error != null) return Fail(kept != "" ? kept + ", nor anywhere in them: circularize at alt and try again (" + plan.Error + ")" : plan.Error);
                 step = Node("ejection", plan.Ut, plan.Prograde, plan.Normal, plan.Radial, Ejected);
+                if (kept != "") step.Report[CaptureFlight.KeptKey] = kept;
                 arrival = plan.ArrivalUt;
                 step.PlaneUt = plan.PlaneUt ?? -1;
             }
@@ -408,6 +412,26 @@ namespace ClaudiaKerman.Core.Tools
             };
             foreach (var entry in step.Report) wait.Report[entry.Key] = entry.Value;
             return wait;
+        }
+
+        /// <summary>
+        /// #866: from the high ellipse <c>capture</c> kept for this moon, the ejection at the periapsis that meets its window (<see cref="KeptRoute.Departure"/>),
+        /// within <see cref="KeptRoute.MaxLoops"/> loops; null for any other orbit or a window given (then <see cref="Transfer"/>'s search as before), or none
+        /// found, <paramref name="why"/> saying so (then <see cref="Transfer"/>'s search over the same loops, else the circle).
+        /// </summary>
+        private static TransferPlan KeptDeparture(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask, double earliest, out string why)
+        {
+            why = "";
+            var orbit = setup.Start;
+            if (ask.Window.HasValue || !KeptRoute.IsKept(setup.System, setup.Body, orbit, setup.Target)) return null;
+            double? deadline;
+            string notNext;
+            var next = KeptRoute.NextMoon(snapshot, setup.System, setup.Body, out deadline, out notNext);
+            if (next == null || !string.Equals(next.Name, setup.Target.Name, StringComparison.OrdinalIgnoreCase)) deadline = null;
+            int loop;
+            var plan = KeptRoute.Departure(snapshot, setup.System, setup.Body, orbit, setup.Target, ask.TargetPe, earliest, earliest + KeptRoute.MaxLoops * orbit.Period, deadline, out loop);
+            if (plan == null) why = "no " + setup.Target.Name + " window at a periapsis within " + KeptRoute.MaxLoops + " loops of the kept orbit" + (deadline.HasValue ? " before the next fixed date" : "");
+            return plan;
         }
 
         /// <summary>
