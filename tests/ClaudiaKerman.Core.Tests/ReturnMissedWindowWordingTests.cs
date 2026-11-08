@@ -55,6 +55,77 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void AMissedReturnWindowWithACheapWindowHoursAheadStatesThatUtNotTheNextPass()
+        {
+            double window, dueBy;
+            var snapshot = WindowPastItsAlignment(out window, out dueBy);
+            var clock = new FakeAlarmClock();
+            var transport = new StreamingFakeTransport(ReturnMissionPlan(), ReturnSequencePlan(), ReturnMissionPlan());
+            var mission = Control(transport);
+            mission.Send(new SceneChanged(GameScene.Flight));
+            mission.Send(snapshot);
+            CraftCheckRouter.StartChecked(mission, _background, snapshot, new StartMission("Return to Kerbin.", 10m, "claude-sonnet-5-5", window: WindowPicks.AsTheSetting(snapshot, "Return to Kerbin.")));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            clock.Take(mission);
+
+            // Four hours past the window, the block's search gives a fixed cheap window about 19 h on (BurnPoints.First), well past its next pass.
+            var back = window + 14400;
+            var late = OverTheMun(snapshot.Orbit.Lan, back);
+            var first = BurnPoints.First(CheapReturnScript, late, back, 320);
+            Assert.True(first != null && first.DepartureUt.HasValue && first.DepartureUt.Value > back + 6 * 3600, "precondition: a window hours ahead");
+            var pass = BurnPoints.ReturnPassUt(CheapReturnScript, late, back);
+            Assert.True(pass.HasValue && pass.Value < first.DepartureUt.Value - 3600, "precondition: the next pass is sooner");
+            mission.Send(new UtAdvanced(back));
+            mission.Send(late);
+            clock.Take(mission);
+            mission.Send(new Approve());
+            Assert.Empty(clock.Take(mission).OfType<StartScript>());
+
+            var cheap = ((long)System.Math.Round(first.DepartureUt.Value)).ToString();
+            var line = mission.View.Log.Single(e => e.Text.StartsWith("Missed the return window")).Text;
+            Assert.Contains("Next cheap window: UT " + cheap + " (in ", line);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            Assert.Contains("The next cheap one is at UT " + cheap + ": re-plan the return from here.", Messages(transport.Requests.Last()));
+        }
+
+        [Fact]
+        public void AMissedReturnWindowWithNothingToFindSaysSoToThePlayerAndClaudiaAndPromisesNoUt()
+        {
+            double window, dueBy;
+            var snapshot = WindowPastItsAlignment(out window, out dueBy);
+            var clock = new FakeAlarmClock();
+            var transport = new StreamingFakeTransport(ReturnMissionPlan(), ReturnSequencePlan(), ReturnMissionPlan());
+            var mission = Control(transport);
+            mission.Send(new SceneChanged(GameScene.Flight));
+            mission.Send(snapshot);
+            CraftCheckRouter.StartChecked(mission, _background, snapshot, new StartMission("Return to Kerbin.", 10m, "claude-sonnet-5-5", window: WindowPicks.AsTheSetting(snapshot, "Return to Kerbin.")));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            clock.Take(mission);
+
+            // The craft is back from the window with no orbit to search from: the block has no pass to take and no window to give.
+            var back = window + 600;
+            var late = OverTheMun(snapshot.Orbit.Lan, back);
+            late.Orbit = null;
+            Assert.Null(BurnPoints.ReturnPassUt(CheapReturnScript, late, back));
+            mission.Send(new UtAdvanced(back));
+            mission.Send(late);
+            clock.Take(mission);
+            mission.Send(new Approve());
+            Assert.Empty(clock.Take(mission).OfType<StartScript>());
+
+            var ut = ((long)System.Math.Round(window)).ToString();
+            Assert.Contains(mission.View.Log, e => e.Text == "Missed the return window the Due Time waited for (UT " + ut + "). No return window found in the time searched.");
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            var asked = Messages(transport.Requests.Last());
+            Assert.Contains("The return window this step waited for has passed, and the plan is dropped. No return window found in the time searched.", asked);
+            Assert.DoesNotContain("The next cheap one is at UT", asked);
+        }
+
+        [Fact]
         public void TheReturnTextsAreExact()
         {
             Assert.Equal("Missed the return window the Due Time waited for (UT 5000). Next cheap window: UT 72000 (in 18.6 h).", MissionPrompts.ReturnWindowMissedLine(5000, 72000, 5000));
