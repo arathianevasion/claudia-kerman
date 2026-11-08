@@ -2468,6 +2468,7 @@ namespace ClaudiaKerman.Core.Missions
                 }
                 view.CurrentSequence = Math.Min(StepsBegun(mission), view.PlanSequences.Count) - 1;
                 view.PlanLegs = mission.Plan != null ? mission.Plan.Sequences : null;
+                view.CraftName = mission.VesselName;
                 view.ProcessorPartId = mission.ProcessorPartId;
                 view.ChuteGroups = mission.Chutes;
                 view.RunningChild = mission.RunningChild;
