@@ -288,6 +288,74 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Single(mission.TakeCommands().OfType<WarpToUt>());
         }
 
+        /// <summary>A Mission Plan at Duna: the capture, then <paramref name="next"/>.</summary>
+        private static ScriptedResponse CapturePlan(string next)
+        {
+            return Reply("{\"kind\":\"mission_plan\",\"say\":\"Mission Plan.\",\"reply_intent\":\"none\",\"sequence_plan\":null,"
+                + "\"mission_plan\":{\"why\":\"Ike.\",\"sequences\":["
+                + "{\"name\":\"Capture\",\"intent\":\"Capture at Duna.\",\"delta_v\":300,\"timing\":\"now\",\"due_time_ut\":-1},"
+                + "{\"name\":\"Next\",\"intent\":\"" + next + "\",\"delta_v\":200,\"timing\":\"after\",\"due_time_ut\":-1}],"
+                + "\"total_delta_v\":500,\"expected_duration\":\"a day\",\"mission_time_s\":-1},\"debrief\":null}");
+        }
+
+        private static ScriptedResponse CaptureAtDuna()
+        {
+            return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: Capture.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
+                + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"Capture\",\"intent\":\"Capture at Duna.\",\"why\":\"Duna.\",\"target\":\"Duna orbit\","
+                + "\"tolerances\":\"Pe within 5 km\",\"expected_delta_v\":300,\"expected_duration_s\":600,\"abort_conditions\":[],\"risks\":[],"
+                + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"local res is capture().\\n\","
+                + "\"due_time_ut\":-1,\"window_closes_ut\":-1,\"late_window_dv\":-1},\"debrief\":null}");
+        }
+
+        /// <summary>A Duna ellipse from 60 km through Ike's band, its periapsis <paramref name="argPe"/> degrees round, at <see cref="Now"/>.</summary>
+        private static GameSnapshot KeptOrbit(double apAlt, double argPe)
+        {
+            var kept = InDunaOrbit();
+            kept.Orbit = TransferRig.Elements(MoonCrossingTests.DunaOrbit(peAlt: 60000, apAlt: apAlt, argPe: argPe, ut: Now).Orbit, kept.Bodies.First(b => b.Name == "Duna"));
+            return kept;
+        }
+
+        /// <summary>The first such ellipse with an Ike window within three loops, the wait to it meeting nothing (<see cref="KeptRoute.KeptWindow"/>).</summary>
+        private static GameSnapshot TimedForIke()
+        {
+            foreach (var apAlt in new[] { 3193000.0, 4000000, 5000000, 6000000 })
+                for (var argPe = 0; argPe < 360; argPe += 15)
+                {
+                    var kept = KeptOrbit(apAlt, argPe);
+                    var at = kept.At(Now);
+                    at.LegsAhead = new System.Collections.Generic.List<PlannedSequence>
+                    {
+                        new PlannedSequence { Name = "Capture", Intent = "Capture at Duna." }, new PlannedSequence { Name = "Next", Intent = "Transfer to Ike." },
+                    };
+                    if (KeptRoute.KeptWindow(at).HasValue) return kept;
+                }
+            throw new Exception("no ellipse through Ike's band has a window within three loops");
+        }
+
+        /// <summary>
+        /// #866: a capture that kept its ellipse for the next leg's moon, timed to it, left no stray crossing: the Debrief judges the wait to the window only.
+        /// The same ellipse with Kerbin next is a crossing, as #867 has it; so is one through Ike's band with no window in three loops, Ike next or not.
+        /// </summary>
+        [Theory]
+        [InlineData("Transfer to Ike.", true, false)]
+        [InlineData("Return to Kerbin.", true, true)]
+        [InlineData("Transfer to Ike.", false, true)]
+        public void TheDebriefJudgesAKeptEllipsesWaitToItsWindowOnly(string next, bool timed, bool crosses)
+        {
+            var transport = new StreamingFakeTransport(CapturePlan(next), CaptureAtDuna(), NominalDebrief(), Waiting(-1));
+            var mission = Control(transport);
+            ToSequencePlan(mission, InDunaOrbit(), "Orbit Ike.");
+            mission.Send(new Approve());
+            var start = mission.TakeCommands().OfType<StartScript>().Single();
+            var kept = timed ? TimedForIke() : KeptOrbit(3193000, 180);
+            mission.Send(kept);
+            mission.Send(new KosRunEnded(Ended(true), start.RunId));
+            DrainUntil(mission, v => transport.Requests.Count >= 3);
+
+            var debrief = transport.Requests[2].Body;
+            Assert.Equal(crosses, debrief.Contains("orbit crosses a moon"));
+        }
+
         private static RunOutcome Ended(bool success)
         {
             return new RunOutcome(RunOutcomeKind.Finished, new System.Collections.Generic.Dictionary<string, object> { { "success", success } }, "", "", false);

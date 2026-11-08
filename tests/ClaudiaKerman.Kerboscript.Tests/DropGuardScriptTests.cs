@@ -192,8 +192,8 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var body = Function("reentry", "function reentry {");
             var fire = body.IndexOf("set drop_error to claudia_fire_drop(ctx, drop)", StringComparison.Ordinal);
             Assert.True(fire > 0);
-            // The refusal is drop_error, which ends the block only above the atmosphere (reentry_stack_refusal); the fall otherwise goes on.
-            Assert.True(fire < body.IndexOf("local refused is reentry_stack_refusal(", StringComparison.Ordinal));
+            // The refusal is drop_error, which ends the block only above the atmosphere (ENTRYDROP's refusal after the drop, #815); the fall otherwise goes on.
+            Assert.True(fire < body.IndexOf("\"drop_error\", drop_error", StringComparison.Ordinal));
             Assert.DoesNotContain("claudia_drop_refusal(", body);
         }
     }

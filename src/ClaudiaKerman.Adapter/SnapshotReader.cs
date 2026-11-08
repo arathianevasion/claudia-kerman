@@ -29,6 +29,8 @@ namespace ClaudiaKerman.Adapter
             var snapshot = MissionView.Stamp(Read(vessel), MissionDriver.Current != null ? MissionDriver.Current.View : null);
             // The Mission's view gets the record a frame later; a block test has no Mission at all.
             if (snapshot.RecordedPlane.Length == 0) snapshot.RecordedPlane = MissionDriver.AimedPlane;
+            // A block test's plan stands in for the Mission Plan's legs (#866: capture keeps a high orbit for a moon next).
+            if (snapshot.LegsAhead == null && MissionDriver.BlockTestPlan != null) snapshot.LegsAhead = MissionDriver.BlockTestPlan;
             snapshot.BiomeLatitudesOf = BiomeLatitudesOf;
             return snapshot;
         }
@@ -436,11 +438,20 @@ namespace ClaudiaKerman.Adapter
                     if (ShipSystemsKeeper.CannotRetract(module)) info.CannotRetract = true;
                     var engine = module as ModuleEngines;
                     if (engine != null && engine.EngineIgnited) info.EngineLit = true;
+                    if (engine != null)
+                    {
+                        if (engine.isOperational) info.EngineAvailableThrustKn += engine.maxThrust * engine.thrustPercentage / 100.0;
+                        // a multi-mode engine's other mode doesn't burn: only the running module's propellants, as kOS consumedresources
+                        if (engine.isEnabled)
+                            foreach (var propellant in engine.propellants)
+                                if (!info.EnginePropellants.Contains(propellant.name)) info.EnginePropellants.Add(propellant.name);
+                    }
                 }
                 snapshot.Craft.Parts.Add(info);
 
                 foreach (var resource in part.Resources)
                 {
+                    info.Resources.Add(new SnapshotPartResource { Name = resource.resourceName, Amount = resource.amount, Density = resource.info != null ? resource.info.density : 0 });
                     SnapshotResource total;
                     if (!resources.TryGetValue(resource.resourceName, out total))
                     {
