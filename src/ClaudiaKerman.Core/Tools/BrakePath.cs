@@ -298,7 +298,7 @@ namespace ClaudiaKerman.Core.Tools
                     var w = BrakeGuidance.Guide(s, vx, vy, h, hStart, v0, shape, vTop, Math.Max(aMax, 1e-6), g, world.Radius + y, world.Touchdown, margin, craft.LagS);
                     toGo = w.ToGo;
                     double mag;
-                    BrakeGuidance.Steer(w.Along, w.Up, dirAl, dirUp, vx, vy, aMax, out dirAl, out dirUp, out mag);
+                    BrakeGuidance.Steer(w, dirAl, dirUp, vx, vy, aMax, g, out dirAl, out dirUp, out mag);
                     mag = Math.Min(aMax, mag);
                     wantAl = dirAl * mag;
                     wantUp = dirUp * mag;

@@ -71,18 +71,19 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// land's lean limit on a demand (al, cr, up m/s², <paramref name="h"/> m over the ground), for the flight (BRAKEPATH
-        /// still cuts by <see cref="BrakeGuidance.MaxTilt"/> alone and doesn't model the cap). Uncapped, and in the last few metres, the sideways part is cut to <see cref="BrakeGuidance.MaxTilt"/>
+        /// land's lean limit on a demand (al, cr, up m/s², <paramref name="h"/> m over the ground), for the flight (BRAKEPATH calls it too, #886). Uncapped, and in the last few metres, the sideways part is cut to <see cref="BrakeGuidance.MaxTilt"/>
         /// as before. Where the final descent is <paramref name="capped"/> and <see cref="TerminalLeanDeg"/> binds, the upward part is raised so the demand
         /// leans that far and still brakes across the ground, but never past what holds its height (gravity <paramref name="g"/>
         /// less half its vertical speed <paramref name="vUp"/>, m/s, as the settle holds it; nor 0.95 of <paramref name="aMax"/>):
         /// falling fast it brakes hard, and it never climbs. Cutting the sideways part alone left a craft falling with no upward
-        /// demand drifting 40-145 m past the site; raising it without a bound held one climbing over Minmus Flats for 900 s.
+        /// demand drifting 40-145 m past the site (#886: the bound is land_guide's, gravity plus half the gap from its wanted
+        /// vertical speed <paramref name="vvWant"/>, m/s, so lift stops a fall faster than that but never holds height: slow at
+        /// 260 m over Minmus Flats it hovered 40 s); raising it without a bound held one climbing over Minmus Flats for 900 s.
         /// </summary>
-        public static void Lean(ref double al, ref double cr, ref double up, double h, bool capped, double aMax, double g, double vUp)
+        public static void Lean(ref double al, ref double cr, ref double up, double h, bool capped, double aMax, double g, double vUp, double vvWant = 0)
         {
             if (capped && BrakeGuidance.MaxTilt(h) > TerminalLeanDeg)
-                up = Math.Max(up, Math.Min(Math.Min(0.95 * aMax, g - 0.5 * vUp), Math.Sqrt(al * al + cr * cr) / Math.Tan(TerminalLeanDeg * Deg)));
+                up = Math.Max(up, Math.Min(Math.Min(0.95 * aMax, g + 0.5 * (vvWant - vUp)), Math.Sqrt(al * al + cr * cr) / Math.Tan(TerminalLeanDeg * Deg)));
             LimitLean(ref al, ref cr, up, MaxLean(h, capped));
         }
 
@@ -151,7 +152,7 @@ namespace ClaudiaKerman.Core.Tools
             // The vertical need, before the lean limit adds lift to brake sideways: what the throttle gives while off target.
             var need = up;
             var tilt = MaxLean(h, capped);
-            Lean(ref al, ref cr, ref up, h, capped, aMax, Number(input, "g", 0), vUp);
+            Lean(ref al, ref cr, ref up, h, capped, aMax, Number(input, "g", 0), vUp, Number(want, "vv", 0));
             var lastDir = new[] { Number(last, "al", -1), Number(last, "cr", 0), Number(last, "up", 0) };
             var facingMap = Map(input, "facing");
             double mag;
@@ -218,7 +219,7 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>The direction <paramref name="dir"/> leaning no more than <paramref name="tilt"/> degrees from upright, on its own side.</summary>
-        private static double[] LeanCapped(double[] dir, double tilt)
+        internal static double[] LeanCapped(double[] dir, double tilt)
         {
             var side = Math.Sqrt(dir[0] * dir[0] + dir[1] * dir[1]);
             var norm = Math.Sqrt(side * side + dir[2] * dir[2]);
