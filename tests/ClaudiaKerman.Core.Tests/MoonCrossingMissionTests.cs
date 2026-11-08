@@ -533,19 +533,22 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         /// <summary>#877: the plan offered outside Flight, the craft known only by its saved orbit (what the adapter reads from the save).</summary>
-        private MissionControl OfferedOutsideFlight(GameSnapshot saved)
+        private MissionControl OfferedOutsideFlight(GameSnapshot saved, bool readFirst = true, double due = double.NaN, bool autoMode = false)
         {
-            var due = Now + MoonCrossingTests.Wait908b;
-            var mission = Control(new StreamingFakeTransport(HomePlan(), Waiting(due)));
+            if (double.IsNaN(due)) due = Now + MoonCrossingTests.Wait908b;
+            // Read first, the plan's figures see the crossing: #867's one automatic correction asks again (the third reply).
+            var mission = Control(new StreamingFakeTransport(HomePlan(), Waiting(due), Waiting(due)));
             var snapshot = InDunaOrbit();
             mission.Send(new SceneChanged(GameScene.Flight));
             mission.Send(new UtAdvanced(Now, false));
             CraftCheckRouter.StartChecked(mission, _background, snapshot, new StartMission(Goal, 10m, "claude-sonnet-5-5", window: WindowPicks.AsTheSetting(snapshot, Goal)));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
             mission.Send(new SceneChanged(GameScene.Other));
-            mission.Send(new SavedOrbitRead(saved));
+            if (readFirst) mission.Send(new SavedOrbitRead(saved));
+            if (autoMode) mission.Send(new SetAutoMode(true));
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            if (!readFirst) mission.TakeCommands();
             return mission;
         }
 
@@ -568,6 +571,70 @@ namespace ClaudiaKerman.Core.Tests
             mission.TakeCommands();
             mission.Send(new SetAutoMode(true));
             Assert.Contains("Auto Mode is waiting for you: a Blocker: the orbit round Duna crosses Ike's", mission.View.AutoModeStop);
+        }
+
+        /// <summary>#877, the adapter's order: the plan is offered first, the first read of the saved orbit comes after. It judges the plan: Notice, card, warp held.</summary>
+        [Fact]
+        public void TheSavedOrbitReadAfterTheOfferJudgesThePlanAndRewritesItsCard()
+        {
+            var mission = OfferedOutsideFlight(null, readFirst: false);
+            Assert.DoesNotContain("Blocker", PlanCard(mission));
+            mission.Send(new WarpToDueTime());
+            Assert.Empty(mission.TakeCommands().OfType<WarpToUt>());
+            Assert.DoesNotContain(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("won't warp"));
+
+            mission.Send(new SavedOrbitRead(InDunaOrbit()));
+            Assert.Contains("Blocker: the orbit round Duna crosses Ike's sphere of influence", PlanCard(mission));
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("crosses Ike's sphere of influence"));
+            mission.Send(new WarpToDueTime());
+            Assert.Empty(mission.TakeCommands().OfType<WarpToUt>());
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("The mod won't warp to the Due Time"));
+        }
+
+        /// <summary>#877: Auto Mode on when the plan is offered doesn't approve it before the first read; the read then stops it on the Blocker.</summary>
+        [Fact]
+        public void AutoModeWaitsForTheFirstSavedOrbitReadThenStopsOnTheBlocker()
+        {
+            var mission = OfferedOutsideFlight(null, readFirst: false, autoMode: true);
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            Assert.Empty(mission.View.AutoModeStop);
+            mission.Send(new SavedOrbitRead(InDunaOrbit()));
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            Assert.Contains("Auto Mode is waiting for you: a Blocker: the orbit round Duna crosses Ike's", mission.View.AutoModeStop);
+        }
+
+        /// <summary>#877: the read finds the craft isn't in the save: nothing to cross, the warp goes ahead.</summary>
+        [Fact]
+        public void ACraftNotInTheSaveIsJudgedByTheReadAndGetsNoBlocker()
+        {
+            var mission = OfferedOutsideFlight(null, readFirst: false);
+            mission.Send(new SavedOrbitRead(null));
+            Assert.DoesNotContain("Blocker", PlanCard(mission));
+            mission.Send(new WarpToDueTime());
+            Assert.Single(mission.TakeCommands().OfType<WarpToUt>());
+        }
+
+        /// <summary>#877: a saved read of another vessel judges nothing.</summary>
+        [Fact]
+        public void ASavedReadOfAnotherVesselIsNotUsed()
+        {
+            var other = InDunaOrbit();
+            other.Craft.VesselId = "ffff";
+            var mission = OfferedOutsideFlight(other);
+            Assert.DoesNotContain("Blocker", PlanCard(mission));
+        }
+
+        /// <summary>#877: a part-less read (as the adapter sends) for a plan with no Due Time of Claudia's own judges through the first burn point without throwing.</summary>
+        [Fact]
+        public void APartlessSavedReadJudgesAPlanWithNoDueTime()
+        {
+            var saved = InDunaOrbit();
+            saved.Craft.Parts.Clear();
+            saved.Stages.Clear();
+            var mission = OfferedOutsideFlight(null, readFirst: false, due: -1);
+            mission.Send(new SavedOrbitRead(saved));
+            Assert.DoesNotContain("Blocker", PlanCard(mission));
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
         }
 
         /// <summary>#877: a landed craft outside Flight has no orbit to cross from: no Blocker, the warp goes ahead.</summary>

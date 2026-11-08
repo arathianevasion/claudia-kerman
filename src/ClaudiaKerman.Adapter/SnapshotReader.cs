@@ -225,7 +225,7 @@ namespace ClaudiaKerman.Adapter
             snapshot.Craft.VesselId = vesselId;
             snapshot.Craft.Name = saved.vesselName ?? "";
             var orbit = saved.orbitSnapShot;
-            if (!GameSnapshot.IsGroundedSituation(snapshot.Situation) && orbit != null && orbit.ReferenceBodyIndex >= 0 && orbit.ReferenceBodyIndex < FlightGlobals.Bodies.Count)
+            if (!GameSnapshot.IsGroundedSituation(snapshot.Situation) && orbit != null && orbit.ReferenceBodyIndex >= 0 && orbit.ReferenceBodyIndex < FlightGlobals.Bodies.Count && FlightGlobals.Bodies[orbit.ReferenceBodyIndex] != null)
                 snapshot.Orbit = OrbitOf(orbit.Load());
             if (snapshot.Orbit == null) return snapshot;
             if (_savedBodies == null || !ReferenceEquals(_savedBodiesFor, FlightGlobals.Bodies))

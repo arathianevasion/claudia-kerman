@@ -34,6 +34,14 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>The saved orbit of the Mission craft outside Flight (#877); not saved, the adapter reads it again.</summary>
         private GameSnapshot _savedOrbit;
+        /// <summary>The adapter has answered since leaving Flight, with an orbit or with none (the craft isn't in the save, or is landed).</summary>
+        private bool _savedOrbitRead;
+
+        private void ForgetSavedOrbit()
+        {
+            _savedOrbit = null;
+            _savedOrbitRead = false;
+        }
 
         /// <summary>
         /// What the crossing check judges: the Flight snapshot of the craft or, outside Flight, its saved orbit (a landed craft's has none, so no Blocker).
@@ -43,13 +51,18 @@ namespace ClaudiaKerman.Core.Missions
         {
             var live = MissionVesselSnapshot(mission);
             if (live != null || _scene == GameScene.Flight || _savedOrbit == null) return live;
-            return mission.VesselId.Length > 0 && _savedOrbit.Craft.VesselId != mission.VesselId ? null : _savedOrbit;
+            return mission.VesselId.Length > 0 && _savedOrbit.Craft.VesselId == mission.VesselId ? _savedOrbit : null;
         }
 
         /// <summary>The adapter read the Mission craft's saved orbit outside Flight: a plan offered with no snapshot of the craft is judged now.</summary>
         private void SavedOrbitSeen(GameSnapshot saved)
         {
-            _savedOrbit = _scene == GameScene.Flight ? null : saved;
+            if (_scene == GameScene.Flight) ForgetSavedOrbit();
+            else
+            {
+                _savedOrbit = saved;
+                _savedOrbitRead = true;
+            }
             if (_mission != null && _savedOrbit != null) CrossingFirstSnapshot(_mission);
         }
 
@@ -146,6 +159,16 @@ namespace ClaudiaKerman.Core.Missions
             Note(LogKind.Notice, mission.CrossingBlocker);
             var card = mission.Log.LastOrDefault(e => e.Kind == LogKind.SequencePlan);
             if (card != null) card.Text = PlanCardText(mission, plan);
+        }
+
+        /// <summary>
+        /// A plan offered outside Flight that no read of the craft's saved orbit has judged yet: Auto Mode doesn't approve it and the warp to the Due Time
+        /// waits for the first read (a few seconds), which judges it; no stop, no new text.
+        /// </summary>
+        private bool CrossingAwaitsRead(Mission mission, SequencePlan plan)
+        {
+            return plan != null && mission.CrossingUnjudged && ReferenceEquals(mission.CrossingPlan, plan) && _scene != GameScene.Flight && !_savedOrbitRead
+                && mission.VesselId.Length > 0;
         }
 
         /// <summary>The plan in hand holds its Blocker: judged again only on a new snapshot of the craft, since Auto Mode asks on every input.</summary>
