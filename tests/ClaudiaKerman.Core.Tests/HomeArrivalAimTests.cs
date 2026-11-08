@@ -87,6 +87,14 @@ namespace ClaudiaKerman.Core.Tests
             };
         }
 
+        /// <summary>The finer-correction ask for <see cref="InboundFromTheSun"/>: a target_pe the corridor takes, and a pe_tolerance wide enough that the rig's arrival at <paramref name="arrivalPe"/> is within it.</summary>
+        private static Dictionary<string, object> InboundInput(double arrivalPe, double dvLeft)
+        {
+            var input = NearInput(30000, dvLeft, Math.Abs(arrivalPe - 30000) + 1000);
+            input["phase"] = "fine";
+            return input;
+        }
+
         private static IDictionary<string, object> Aimed(TransferRig rig, GameSnapshot snapshot, Dictionary<string, object> input, double turned)
         {
             return BlockCalls.TransferStep(input, snapshot, new TurnedBody(turned), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
@@ -122,7 +130,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True((string)step["do"] == "burn", log);
             Assert.Equal("correction", step["kind"]);
             var spent = Fly(rig, step);
-            Assert.InRange(rig.Orbit.PeR - rig.Body.Radius, 30000 - tolerance, 30000 + tolerance);
+            Assert.InRange(rig.Orbit.PeR - rig.Body.Radius, 30000 - tolerance / 2, 30000 + tolerance / 2);
             Assert.InRange(spent, 0, DeorbitBurn.SpareDv(dvLeft, 0, 0, null));
             var left = FromKsc(Predict(rig, rig.Orbit, rig.Ut, turned));
             Assert.True(left < natural / 4, left + " km of " + natural + ": " + log);
@@ -238,12 +246,12 @@ namespace ClaudiaKerman.Core.Tests
         {
             var inbound = InboundFromTheSun();
             var turned = 0.0;
-            var plainInput = NearInput(inbound.Pe, 1000);
+            var plainInput = InboundInput(inbound.Pe, 1000);
             plainInput["phase"] = "fine";
             var plain = BlockCalls.TransferStep(plainInput, inbound.Rig.Snapshot());
             Assert.Equal("done", plain["do"]);
 
-            var aimedInput = NearInput(inbound.Pe, 1000);
+            var aimedInput = InboundInput(inbound.Pe, 1000);
             aimedInput["phase"] = "fine";
             var step = Aimed(inbound.Rig, inbound.Rig.Snapshot(), aimedInput, turned);
 
@@ -253,7 +261,7 @@ namespace ClaudiaKerman.Core.Tests
             // Out here KSC is the default target, so a goal naming another place is what stops the aim.
             var named = inbound.Rig.Snapshot();
             named.MissionGoal = "Land in the ocean.";
-            aimedInput = NearInput(inbound.Pe, 1000);
+            aimedInput = InboundInput(inbound.Pe, 1000);
             aimedInput["phase"] = "fine";
             Assert.Equal("done", Aimed(inbound.Rig, named, aimedInput, turned)["do"]);
         }
@@ -274,6 +282,156 @@ namespace ClaudiaKerman.Core.Tests
 
             SameStep(plain, step);
             Assert.False(step.ContainsKey("plan_log"));
+        }
+
+        /// <summary>
+        /// The rest of the flow, through the block's own loop, with the first burn flown <paramref name="firstError"/> m/s off and the ones after it <paramref name="laterError"/> m/s off (exec_node's
+        /// execution error, #747). Gives the block's error, the periapsis it ended on and the first plan_log.
+        /// </summary>
+        private static (string Error, double Pe, string Log, int Burns) Flow(TransferRig rig, Dictionary<string, object> input, bool aimed, double turned, double firstError, double laterError)
+        {
+            var log = "";
+            var burns = 0;
+            for (var i = 0; i < 20; i++)
+            {
+                var step = aimed ? Aimed(rig, ForKsc(rig), input, turned) : BlockCalls.TransferStep(input, rig.Snapshot());
+                if (log == "" && step.ContainsKey("plan_log")) log = (string)step["plan_log"];
+                if ((string)step["error"] != "" || (string)step["do"] == "done") return ((string)step["error"], rig.Orbit.PeR - rig.Body.Radius, log, burns);
+                foreach (var carried in (IDictionary<string, object>)step["carry"]) input[carried.Key] = carried.Value;
+                if (D(step, "max_duration") >= 0) input["max_duration"] = D(step, "max_duration");
+                if ((string)step["do"] == "wait")
+                {
+                    rig.MoveTo(D(step, "ut"));
+                    continue;
+                }
+                // The node's radial part is the way the periapsis moves most, so the error goes there: along the aimed burn, mostly a change of arrival time, it would barely show.
+                var error = burns++ == 0 ? firstError : laterError;
+                input["last_dv"] = rig.Fly((string)step["kind"], D(step, "ut"), D(step, "prograde"), D(step, "normal"), D(step, "radial") + error);
+            }
+            throw new InvalidOperationException("the flow took over 20 steps");
+        }
+
+        /// <summary>
+        /// Triage's condition on #915: the aimed correction, solved at the half-tolerance edge of the corridor and flown off by a #747-sized error or by a few tenths of a m/s, leaves a flow that
+        /// passes Arrive wherever the plain target_pe-only flow passes with the same errors. The finer trim is flown within its own 0.1 m/s max_residual; past about 0.125 m/s radial on the trim
+        /// itself the aimed flow can miss where a plain flow, already in tolerance and so flying nothing, can't.
+        /// </summary>
+        [Theory]
+        [InlineData(30000, 40, 0.02, 0.02)]
+        [InlineData(30000, -40, 0.02, 0.02)]
+        [InlineData(30000, 40, 0.05, 0.05)]
+        [InlineData(30000, -40, -0.05, -0.05)]
+        [InlineData(30000, 40, 0.1, 0.1)]
+        [InlineData(30000, -40, -0.1, -0.1)]
+        [InlineData(30000, 40, 0.3, 0.1)]
+        [InlineData(30000, 40, -0.3, -0.1)]
+        [InlineData(30000, -40, 0.3, 0.1)]
+        [InlineData(30000, -40, -0.3, -0.1)]
+        [InlineData(30000, 40, 0.5, 0.1)]
+        [InlineData(30000, -40, -0.5, -0.1)]
+        [InlineData(31500, 40, 0.1, 0.1)]
+        [InlineData(31500, -40, -0.05, -0.05)]
+        [InlineData(31500, 40, 0.3, 0.1)]
+        public void A_flown_error_on_the_aimed_correction_passes_arrive_wherever_the_plain_flow_does(double arrivalPe, double eastKm, double burnError, double trimError)
+        {
+            const double tolerance = 1000;
+            var exact = Arriving(arrivalPe);
+            var turned = TurnedFor(exact, eastKm);
+            var solved = Aimed(exact, ForKsc(exact), NearInput(30000, 1000, tolerance), turned);
+            Assert.Equal("burn", solved["do"]);
+            Fly(exact, solved);
+            var aimedOff = Math.Abs(exact.Orbit.PeR - exact.Body.Radius - 30000);
+            Assert.True(aimedOff >= 0.8 * tolerance / 2 && aimedOff <= tolerance / 2, "the premise: the aim sits near the half-tolerance edge, " + aimedOff + " m off");
+
+            var plain = Flow(Arriving(arrivalPe), NearInput(30000, 1000, tolerance), false, turned, burnError, trimError);
+            var aimed = Flow(Arriving(arrivalPe), NearInput(30000, 1000, tolerance), true, turned, burnError, trimError);
+
+            Assert.Contains("km from the target", aimed.Log);
+            if (plain.Error == "") Assert.True(aimed.Error == "", aimed.Error + " (plan_log: " + aimed.Log + ")");
+            if (aimed.Error == "") Assert.InRange(aimed.Pe, 30000 - tolerance, 30000 + tolerance);
+            // Past what the margin alone holds, the premise of the check: the finer trim really was flown after the aim.
+            if (Math.Abs(burnError) >= 0.3) Assert.Equal(2, aimed.Burns);
+        }
+
+        /// <summary>The margin itself: half of pe_tolerance, and a corridor that ends the solve's residual inside it, so a burn solved at the corridor's end isn't turned away.</summary>
+        [Theory]
+        [InlineData(1000, 490)]
+        [InlineData(300, 140)]
+        [InlineData(15, 0)]
+        [InlineData(100000, 5000)]
+        public void The_corridor_ends_inside_the_flown_error_margin(double tolerance, double half)
+        {
+            Assert.Equal(half, CorrectionBurn.CorridorWithin(tolerance));
+            Assert.True(CorrectionBurn.LeavesFlownMargin(30000 + half, 30000, tolerance));
+            Assert.True(CorrectionBurn.LeavesFlownMargin(30000 - tolerance / 2, 30000, tolerance));
+            Assert.False(CorrectionBurn.LeavesFlownMargin(30000 + tolerance / 2 + 1, 30000, tolerance));
+        }
+
+        /// <summary>An arrival already within pe_tolerance with nothing above the reserve can't aim: the block ends where it used to, on the Sun's patch, and says why.</summary>
+        [Fact]
+        public void With_no_spare_an_arrival_within_pe_tolerance_ends_where_it_used_to_and_logs_why()
+        {
+            var inbound = InboundFromTheSun();
+            var plainInput = InboundInput(inbound.Pe, 10);
+            plainInput["phase"] = "fine";
+            var plain = BlockCalls.TransferStep(plainInput, inbound.Rig.Snapshot());
+            Assert.Equal("done", plain["do"]);
+
+            var input = InboundInput(inbound.Pe, 10);
+            input["phase"] = "fine";
+            var step = Aimed(inbound.Rig, inbound.Rig.Snapshot(), input, 0);
+
+            SameStep(plain, step);
+            Assert.Contains("target_pe only", (string)step["plan_log"]);
+            Assert.Contains("reserve", (string)step["plan_log"]);
+        }
+
+        /// <summary>A landing that couldn't be read can't aim either, and the block ends where it used to, with the problem logged.</summary>
+        [Fact]
+        public void With_a_landing_problem_an_arrival_within_pe_tolerance_ends_where_it_used_to_and_logs_why()
+        {
+            var inbound = InboundFromTheSun();
+
+            var step = TransferFlight.Next(inbound.Rig.Snapshot(), new TransferFlightAsk
+            {
+                Target = "Kerbin", TargetPe = inbound.Pe, Correction = true, PeTolerance = 1000, TurnTime = 60, Phase = "fine", DvLeft = 1000, LandingProblem = "the craft can't be read",
+            });
+
+            Assert.Equal(TransferFlightStep.Done, step.Do);
+            Assert.Equal("", step.Error);
+            Assert.Equal("landing aim: target_pe only: the craft can't be read", step.PlanLog);
+        }
+
+        /// <summary>No time to wait for the sphere of influence: no aim, and the log says so.</summary>
+        [Fact]
+        public void With_no_time_to_reach_the_sphere_the_log_says_why()
+        {
+            var inbound = InboundFromTheSun();
+            var input = InboundInput(inbound.Pe, 1000);
+            input["phase"] = "fine";
+            input["auto"] = false;
+            input["max_duration"] = 1.0;
+
+            var step = Aimed(inbound.Rig, inbound.Rig.Snapshot(), input, 0);
+
+            Assert.Equal("done", step["do"]);
+            Assert.Contains("target_pe only", (string)step["plan_log"]);
+            Assert.Contains("no time", (string)step["plan_log"]);
+        }
+
+        /// <summary>Inside the sphere with no time for the burn: target_pe only, and the log says why.</summary>
+        [Fact]
+        public void With_no_time_for_the_burn_inside_the_sphere_the_log_says_why()
+        {
+            var rig = Arriving(30000);
+            var input = NearInput(30000, 1000);
+            input["auto"] = false;
+            input["max_duration"] = 1.0;
+
+            var step = Aimed(rig, ForKsc(rig), input, TurnedFor(rig, 40));
+
+            Assert.Equal("", step["error"]);
+            Assert.Contains("target_pe only", (string)step["plan_log"]);
         }
 
         /// <summary>A craft round the star meeting Kerbin, with its periapsis there: the snapshot is outside Kerbin's sphere of influence, so the default landing (KSC) applies.</summary>

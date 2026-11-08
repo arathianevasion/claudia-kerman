@@ -204,8 +204,8 @@ namespace ClaudiaKerman.Core.Tools
             if (down == null || down.Error != null) return reported(aimed, "the aimed burn has no landing to read");
             var pe = reached.Orbit.PeR - target.Radius;
             var km = landing.ErrorKm(target, down);
-            // The periapsis first, and never more than the craft has for the landing's sake.
-            if (Math.Abs(pe - from.Pe) > ask.PeTolerance)
+            // The periapsis first, and never more than the craft has for the landing's sake. #915: a corridor set by the ask keeps the flown-error half of pe_tolerance free.
+            if (Math.Abs(pe - from.Pe) > ask.PeTolerance || (ask.CorridorHalf.HasValue && !LeavesFlownMargin(pe, ask.TargetPe, ask.PeTolerance)))
                 return reported(aimed, "the aimed burn's periapsis, " + DeorbitBurn.Km(pe / 1000) + " km, is off the " + DeorbitBurn.Km(from.Pe / 1000) + " km aimed for");
             // The entry flown again (#817): no deeper than the corridor's end, nor harder than MostEntryG.
             var deepest = high > low ? low - PeResidual : ask.TargetPe - ask.PeTolerance;
@@ -251,10 +251,16 @@ namespace ClaudiaKerman.Core.Tools
             high = centre + half;
         }
 
-        /// <summary>#915: the corridor's reach either way of target_pe that sits inside <paramref name="tolerance"/> m: half of it, leaving the other half for the burn's flown error, past which the block would fail its arrival.</summary>
+        /// <summary>#915: the corridor's reach either way of target_pe that sits inside <paramref name="tolerance"/> m: half of it less the solve's own <see cref="PeResidual"/>, so a burn solved at the corridor's end still passes <see cref="LeavesFlownMargin"/>.</summary>
         internal static double CorridorWithin(double tolerance)
         {
-            return Math.Min(PeCorridor, tolerance / 2);
+            return Math.Min(PeCorridor, Math.Max(0, tolerance / 2 - PeResidual));
+        }
+
+        /// <summary>#915: whether an aimed periapsis of <paramref name="pe"/> m is within half of <paramref name="tolerance"/> m of <paramref name="targetPe"/>, leaving the other half for the burn's flown error.</summary>
+        internal static bool LeavesFlownMargin(double pe, double targetPe, double tolerance)
+        {
+            return Math.Abs(pe - targetPe) <= tolerance / 2;
         }
 
         /// <summary>#805: whether the landing may be left on a periapsis of <paramref name="pe"/> m: inside the corridor, or within <see cref="PlainSlack"/> pe_tolerances of target_pe.</summary>

@@ -785,9 +785,23 @@ namespace ClaudiaKerman.Core.Tools
             if (!ask.Correction) return Arrive(snapshot, setup, ask);
             var enc = Encounter(setup);
             var lead = ask.TurnTime + Lead;
+            // A landing's aim is flown inside the sphere of influence (#915), even with the periapsis already within pe_tolerance. An aim already known not to fly
+            // doesn't wait for it: the flight goes on, and ends, as with no landing.
+            var aimLog = "";
+            if (enc != null && AimsLanding(ask) && setup.Body != setup.Target)
+            {
+                var blocked = KnownNoAim(snapshot, ask);
+                if (blocked == null && FitsNear(enc, ask, setup.Now, lead)) return WaitNear(setup, enc, ask);
+                aimLog = NoAimLog(ask, blocked ?? "no time to wait for " + setup.Target.Name + "'s sphere of influence");
+            }
+            return WithLog(PeFineCorrection(snapshot, setup, ask, enc, lead), aimLog);
+        }
+
+        /// <summary>The finer correction to target_pe (#672), by way of the target's sphere of influence where that is the place for it.</summary>
+        private static TransferFlightStep PeFineCorrection(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask, Arrival enc, double lead)
+        {
             // An arrival plane is set inside the sphere of influence, and the plane's own trim there follows (#788).
-            // So is a landing's aim (#915), even with the periapsis already within pe_tolerance.
-            if (enc != null && (ask.Plane != null || AimsLanding(ask)) && setup.Body != setup.Target && FitsNear(enc, ask, setup.Now, lead)) return WaitNear(setup, enc, ask);
+            if (enc != null && ask.Plane != null && setup.Body != setup.Target && FitsNear(enc, ask, setup.Now, lead)) return WaitNear(setup, enc, ask);
             if (enc != null && Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, FineCheck, "");
             if (enc == null) return Go(ask, FineCheck, "");
             // To a far target the coast is long, and a burn halfway flown 0.1 m/s off misses by far more than pe_tolerance
@@ -877,7 +891,7 @@ namespace ClaudiaKerman.Core.Tools
             var lead = ask.TurnTime + Lead;
             string late;
             var ut = CorrectionUt(setup.Now + lead, setup.Now, lead, ask.StartUt, ask.MaxDuration, out late);
-            if (late != "" || ut >= enc.PeUt) return Go(ask, Fine);
+            if (late != "" || ut >= enc.PeUt) return WithLog(Go(ask, Fine), NoAimLog(ask, late != "" ? late : "no time for a burn before periapsis"));
             var log = "";
             if (AimsLanding(ask))
             {
@@ -898,18 +912,16 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// #915: the correction inside the home planet's sphere of influence, aimed at the landing target by #817's aimed solve: the periapsis inside both its corridor and pe_tolerance, the time of
+        /// #915: the correction inside the home planet's sphere of influence, aimed at the landing target by #817's aimed solve: the periapsis inside its corridor and within half of pe_tolerance, the other half left for the burn's flown error, the time of
         /// arrival with the periapsis held, the spend limited by <see cref="DeorbitBurn.SpareDv"/>. Only here, not on the star's patch, where a burn flown 0.05 m/s off moves the periapsis by tens of km
         /// (#747) and the landing with it; and not in the finer trim after it, the last chance to come within pe_tolerance, which holds target_pe. Null when it can't aim: the flight goes on as with no
         /// landing, target_pe only, and <paramref name="log"/> says why (the block call's log line only, as #912).
         /// </summary>
         private static CorrectionPlan HomeAim(GameSnapshot snapshot, SnapshotBody target, TransferFlightAsk ask, double ut, out string log)
         {
-            string why = null;
+            var why = KnownNoAim(snapshot, ask);
             CorrectionPlan aimed = null;
-            if (ask.Landing == null) why = ask.LandingProblem;
-            else if (ask.TargetPe < CorrectionBurn.CorridorFloor) why = "target_pe " + Km(ask.TargetPe) + " km is under the periapsis corridor's " + Km(CorrectionBurn.CorridorFloor) + " km floor";
-            else
+            if (why == null)
             {
                 aimed = CorrectionBurn.Find(snapshot, new CorrectionAsk
                 {
@@ -919,7 +931,7 @@ namespace ClaudiaKerman.Core.Tools
                 });
                 if (!aimed.HasBurn || aimed.Error != null) why = aimed.Error ?? "no burn found";
                 else if (aimed.NotAimed) why = aimed.AimNote;
-                else if (!Within(aimed.PePredicted - ask.TargetPe, ask.PeTolerance)) why = "the aimed periapsis, " + Km(aimed.PePredicted) + " km, is outside pe_tolerance of target_pe " + Km(ask.TargetPe) + " km";
+                else if (!CorrectionBurn.LeavesFlownMargin(aimed.PePredicted, ask.TargetPe, ask.PeTolerance)) why = "the aimed periapsis, " + Km(aimed.PePredicted) + " km, is outside half of pe_tolerance of target_pe " + Km(ask.TargetPe) + " km";
             }
             if (why == null)
             {
@@ -927,8 +939,23 @@ namespace ClaudiaKerman.Core.Tools
                     + Math.Round(aimed.DeltaV, 1).ToString(CultureInfo.InvariantCulture) + " m/s" + (aimed.AimNote == "" ? "" : "; " + aimed.AimNote);
                 return aimed;
             }
-            log = "landing aim: target_pe only: " + why;
+            log = NoAimLog(ask, why);
             return null;
+        }
+
+        /// <summary>#915: why the aim can't apply, known without the arrival's own patch: no landing to read, target_pe under the corridor's floor, or nothing above the reserve; null when it may.</summary>
+        private static string KnownNoAim(GameSnapshot snapshot, TransferFlightAsk ask)
+        {
+            if (ask.Landing == null) return ask.LandingProblem;
+            if (ask.TargetPe < CorrectionBurn.CorridorFloor) return "target_pe " + Km(ask.TargetPe) + " km is under the periapsis corridor's " + Km(CorrectionBurn.CorridorFloor) + " km floor";
+            // Holding back no powered landing, the most it could be: none here is none once the landing is read. Stock's "can't say" (0 or less here) spends nothing on it.
+            return DeorbitBurn.SpareDv(Math.Max(0, ask.DvLeft), 0, snapshot.LaterLegsDv ?? 0, ask.Landing.Payer) > 0 ? null : "nothing above the reserve to aim the landing with";
+        }
+
+        /// <summary>#915: the log line for a trip home flying target_pe only; "" for a flight with no landing to aim at.</summary>
+        private static string NoAimLog(TransferFlightAsk ask, string why)
+        {
+            return AimsLanding(ask) ? "landing aim: target_pe only: " + why : "";
         }
 
         private static TransferFlightStep WithLog(TransferFlightStep step, string log)
