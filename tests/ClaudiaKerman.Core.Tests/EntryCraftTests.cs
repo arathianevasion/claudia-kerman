@@ -211,6 +211,157 @@ namespace ClaudiaKerman.Core.Tests
             _out.WriteLine(shape + ": " + atMun["why"]);
         }
 
+        // ---- Which side keeps the decoupler (#924): the part across its explosive node is what it lets go ----
+
+        /// <summary>The Drops craft with Decoupler.1 releasing <paramref name="releases"/> when fired: stock's TD-12 lets go of what is on its top node, here the shield.</summary>
+        private static List<SnapshotPart> Releasing(params uint[] releases)
+        {
+            var parts = Parts(Shape.Drops);
+            parts.Single(p => p.Id == Dec).Releases.AddRange(releases);
+            return parts;
+        }
+
+        [Fact]
+        public void A_decoupler_that_lets_go_of_the_shield_leaves_with_the_stack()
+        {
+            var answer = Read(AtMun(Releasing(Shield)), "Kerbin");
+            Assert.Equal(Uids(Dec, Tank, Engine), Uids(answer["leave_out"]));
+            Assert.Equal(Parts(Shape.Drops).Where(p => p.Id != Dec && p.Id != Tank && p.Id != Engine).Sum(p => p.MassT), D(answer, "kept"), 6);
+        }
+
+        [Fact]
+        public void A_decoupler_that_lets_go_of_the_stack_stays_with_the_shield()
+        {
+            Assert.Equal(Uids(Tank, Engine), Uids(Read(AtMun(Releasing(Tank)), "Kerbin")["leave_out"]));
+        }
+
+        [Fact]
+        public void An_omni_decoupler_lets_go_of_both_sides_and_leaves_the_craft()
+        {
+            Assert.Equal(Uids(Dec, Tank, Engine), Uids(Read(AtMun(Releasing(Shield, Tank)), "Kerbin")["leave_out"]));
+        }
+
+        [Fact]
+        public void A_decoupler_with_nothing_below_it_is_not_fired_so_it_stays_on_the_shield()
+        {
+            var parts = Parts(Shape.Drops, stack: false);
+            parts.Single(p => p.Id == Dec).Releases.Add(Shield);
+            Assert.Empty(Uids(Read(AtMun(parts), "Kerbin")["leave_out"]));
+        }
+
+        [Fact]
+        public void A_decoupler_with_nothing_read_stays_as_recordings_have_it()
+        {
+            Assert.Equal(Uids(Tank, Engine), Uids(Read(AtMun(Parts(Shape.Drops)), "Kerbin")["leave_out"]));
+        }
+
+        [Fact]
+        public void What_reentry_drops_and_names_is_unchanged_by_the_decoupler_leaving()
+        {
+            var ask = new Dictionary<string, object> { { "home", Uid(Pod) }, { "separate", "auto" } };
+            var answer = BlockCalls.EntryDropCall(ask, AtKerbin(Releasing(Shield)), null, 0, "", Uid);
+            Assert.Equal(Uids(Dec), Uids(answer["decouplers"]));
+            Assert.Equal(Uids(Tank, Engine), Uids(answer["gone"]));
+        }
+
+        [Fact]
+        public void The_craft_aimed_for_is_the_one_flown_once_the_decoupler_has_gone_with_the_stack()
+        {
+            var aimed = "";
+            var ask = new Dictionary<string, object> { { "home", Uid(Pod) }, { "body", "Kerbin" } };
+            BlockCalls.EntryCraftCall(ask, AtMun(Releasing(Shield)), null, 0, "", Uid, (key, why) => aimed = key);
+            var flown = AtKerbin(Parts(Shape.Drops, stack: false).Where(p => p.Id != Dec).ToList());
+            var after = EntryCraft.Of(flown, null, Pod, 1, true, true);
+            Assert.True(EntryCraft.Same(aimed, after.Key, flown), aimed + " against " + after.Key);
+        }
+
+        // ---- The axis the drag is read along (#924): the Entry's attitude, never the control point ----
+
+        private const uint StackProbe = 8;
+        private static readonly double[] PodUp = { 0, 1, 0 };
+        private static readonly double[] ReversedControlUp = { 0, -1, 0 };
+
+        /// <summary>The Drops craft with Decoupler.1 releasing the shield and a probe core on the stack, listed first and built upside down: the part a control point on the stack would be.</summary>
+        private static List<SnapshotPart> WithStackProbe()
+        {
+            var parts = Releasing(Shield);
+            parts.Insert(0, Part(StackProbe, Tank, "probeCore", 0.1, "command", "probe_core"));
+            return parts;
+        }
+
+        /// <summary>Each part's own up in the fixture: pod-up, but for the probe on the stack and the shield, built upside down, so a rule that takes either's up unturned reads the craft tail first.</summary>
+        private static double[] BuiltUp(uint id)
+        {
+            return id == StackProbe || id == Shield ? ReversedControlUp : PodUp;
+        }
+
+        /// <summary>Each part's place on the stack, pod highest.</summary>
+        private static double[] Place(uint id)
+        {
+            var heights = new Dictionary<uint, double> { { PodChute, 4 }, { Pod, 3 }, { Shield, 2 }, { Dec, 1.5 }, { Tank, 0 }, { Engine, -1 }, { StackProbe, -2 } };
+            return new[] { 0, heights[id], 0 };
+        }
+
+        /// <summary>The nose <see cref="EntryAttitude"/>'s rule gives for the craft that enters, from the parts' built axes and places as the adapter hands them over.</summary>
+        private static double[] EntryNose(GameSnapshot snapshot, IDictionary<string, object> ask)
+        {
+            var left = new HashSet<string>(BlockCalls.LeftOut(ask));
+            return EntryAttitude.Of(snapshot.Craft.Parts, snapshot.Craft.Parts.Where(p => left.Contains(Uid(p.Id))).Select(p => p.Id).ToList()).NoseOf(BuiltUp, Place);
+        }
+
+        /// <summary>
+        /// The capsule read along <paramref name="nose"/>: shield first it meets the 2.24 m² <c>reentry</c> logged; tail first, the 0.11 m² <c>return</c> logged. The figures are the ticket's and this mapping is
+        /// the fixture's: what these tests pin is the axis the rule hands the read. That the real cubes give those figures along it needs the game (docs/in-game/entry-craft.md, check 5).
+        /// </summary>
+        private static IReentryCraft ReadAlong(double[] nose)
+        {
+            return ReturnEntryDragTests.Capsule(nose[0] * PodUp[0] + nose[1] * PodUp[1] + nose[2] * PodUp[2] > 0 ? 2.24 : 0.11);
+        }
+
+        private static double MassOf(GameSnapshot snapshot, IDictionary<string, object> ask)
+        {
+            var left = new HashSet<string>(BlockCalls.LeftOut(ask));
+            return snapshot.Craft.Parts.Where(p => !left.Contains(Uid(p.Id))).Sum(p => p.MassT) * 1000;
+        }
+
+        private static ReentryPrediction LandedAlong(GameSnapshot snapshot, IDictionary<string, object> ask, double[] nose)
+        {
+            return ReturnEntryDragTests.Fly(ReadAlong(nose), MassOf(snapshot, ask), ReturnEntryDragTests.LoggedFrame(ReturnEntryDragTests.Offset()));
+        }
+
+        private static double KmApart(ReentryPrediction a, ReentryPrediction b)
+        {
+            return LandingSiteSearch.ArcDegrees(a.Latitude, a.Longitude, b.Latitude, b.Longitude) * Math.PI / 180 * Kerbin.Radius / 1000;
+        }
+
+        /// <summary><c>reentry</c>'s logged read, after its own drop: the stack and the decoupler gone and the capsule shield first, fixed here so a wrong rule can't move both sides together.</summary>
+        private ReentryPrediction LandedAsReentryReads()
+        {
+            var snapshot = AtKerbin(Parts(Shape.Drops, stack: false).Where(p => p.Id != Dec).ToList());
+            return LandedAlong(snapshot, new Dictionary<string, object> { { "craft", Read(snapshot) } }, PodUp);
+        }
+
+        [Fact]
+        public void Return_at_the_mun_and_reentry_above_the_air_land_within_10_km_read_along_the_entry_s_attitude()
+        {
+            var snapshot = AtMun(WithStackProbe());
+            var ask = new Dictionary<string, object> { { "craft", Read(snapshot, "Kerbin") } };
+            var ret = LandedAlong(snapshot, ask, EntryNose(snapshot, ask));
+            var ent = LandedAsReentryReads();
+            _out.WriteLine("return {0:0.000}, {1:0.000}; reentry {2:0.000}, {3:0.000}; {4:0.00} km", ret.Latitude, ret.Longitude, ent.Latitude, ent.Longitude, KmApart(ret, ent));
+            Assert.True(KmApart(ret, ent) <= 10, KmApart(ret, ent) + " km");
+        }
+
+        [Fact]
+        public void Read_along_the_control_point_at_the_mun_as_it_was_return_lands_far_from_reentry()
+        {
+            var snapshot = AtMun(Releasing(Shield));
+            var ask = new Dictionary<string, object> { { "craft", Read(snapshot, "Kerbin") } };
+            var km = KmApart(LandedAlong(snapshot, ask, ReversedControlUp), LandedAsReentryReads());
+            _out.WriteLine("{0:0} km", km);
+            Assert.True(km > 300, km + " km");
+        }
+
         // ---- The one shield rule (#869): parity with the flown reentry_jettison_uid, branch by branch ----
 
         /// <summary>What <c>ENTRYDROP</c> gives reentry as <c>jettison</c> for <paramref name="parts"/> with the block's <paramref name="separate"/> and <paramref name="stage"/>.</summary>

@@ -52,6 +52,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool SurfaceAttached;
         /// <summary>The part's resources as the adapter reads them (<see cref="EntryCraft"/>'s who-pays count); empty when not read. Not in the JSON: the prompt doesn't carry it.</summary>
         public List<SnapshotPartResource> Resources = new List<SnapshotPartResource>();
+        /// <summary>A decoupler's neighbours its firing lets go of, by <see cref="Id"/> (#924): what is across its explosive node, or every neighbour of an omni decoupler. Empty when not read or not a decoupler. Not in the JSON: the prompt doesn't carry it.</summary>
+        public List<uint> Releases = new List<uint>();
         /// <summary>An engine's available thrust now (kN; 0 for a flamed-out or shut engine) and the resource names it burns. Not in the JSON: the prompt doesn't carry them.</summary>
         public double EngineAvailableThrustKn;
         public List<string> EnginePropellants = new List<string>();

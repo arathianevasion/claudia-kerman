@@ -818,6 +818,7 @@ namespace ClaudiaKerman.KOS
                 object named;
                 ask.TryGetValue("orbit_body", out named);
                 craft = new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask));
+                UnityEngine.Debug.Log(ClaudiaKerman.Core.ModInfo.LogTag + " REENTRYIMPACT read: " + craft.Diagnosis());
                 landing = BlockCalls.ReentryImpact(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(),
                     new ReentryAir(BodyNamed(named as string) ?? vessel.mainBody), craft);
                 return KosValues.FromPlain(landing);
