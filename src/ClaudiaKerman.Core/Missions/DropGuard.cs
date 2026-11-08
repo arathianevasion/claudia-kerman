@@ -163,6 +163,10 @@ namespace ClaudiaKerman.Core.Missions
         public double GonePropellant;
         /// <summary>How many burning engines stay. Any at all and <see cref="DropGuard.AfterBurn"/> has the kept tanks pay.</summary>
         public double BurnersKept;
+        /// <summary>What the landing keeps of the delta-v (#893, <see cref="LandingReserve"/>): the share of it, whether an engine stays, and the m/s held below stage_limit.</summary>
+        public double KeptShare = 1;
+        public bool KeepsEngine = true;
+        public double HeldDv;
     }
 
     /// <summary>What <see cref="DropGuard.Check"/> found.</summary>

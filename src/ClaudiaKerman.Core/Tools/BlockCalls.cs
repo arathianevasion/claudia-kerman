@@ -813,7 +813,8 @@ namespace ClaudiaKerman.Core.Tools
             var error = craft.ContainsKey("error") ? craft["error"] as string : null;
             if (!string.IsNullOrEmpty(error)) return "the Entry's craft: " + error;
             if (!NumberOrNull(craft, "whole").HasValue) return "craft must be ENTRYCRAFT's answer";
-            payer = new DropBurn { Whole = Number(craft, "whole", 0), GonePropellant = Number(craft, "gone_prop", 0), BurnersKept = Number(craft, "burners_kept", 0) };
+            payer = new DropBurn { Whole = Number(craft, "whole", 0), GonePropellant = Number(craft, "gone_prop", 0), BurnersKept = Number(craft, "burners_kept", 0),
+                KeptShare = Number(craft, "kept_share", 1), KeepsEngine = !(craft.ContainsKey("keeps_engine") && craft["keeps_engine"] is bool && !(bool)craft["keeps_engine"]), HeldDv = Number(craft, "held_dv", 0) };
             return null;
         }
 
@@ -1530,6 +1531,8 @@ namespace ClaudiaKerman.Core.Tools
             var own = snapshot.Craft.Parts.Where(p => dropped.Contains(uidOf(p.Id) ?? "")).Select(p => p.Id).ToList();
             var craft = EntryCraft.Of(snapshot, own, Home(input, snapshot, uidOf), Entries.ShieldNumber(snapshot, legs, step, child), true, true, JettisonStage(input));
             if (aimed != null) aimed(craft.Key, craft.Describe());
+            var gone = craft.LeftOut.Concat(craft.ShieldDropped != null ? new[] { craft.ShieldDropped } : new SnapshotPart[0]);
+            var reserve = LandingReserve.Of(snapshot, gone, (int)Number(input, "stage_limit", 0));
             return new Dictionary<string, object>
             {
                 { "error", "" },
@@ -1537,6 +1540,7 @@ namespace ClaudiaKerman.Core.Tools
                 { "shield_drop", craft.ShieldDropped == null || uidOf(craft.ShieldDropped.Id) == null ? new List<object>() : new List<object> { uidOf(craft.ShieldDropped.Id) } },
                 { "whole", craft.WholeT }, { "kept", craft.KeptT }, { "gone_prop", craft.GonePropellantT }, { "burners_kept", (double)craft.BurnersKept },
                 { "key", craft.Key }, { "why", craft.Describe() },
+                { "kept_share", reserve.KeptShare }, { "keeps_engine", reserve.KeepsEngine }, { "held_dv", reserve.HeldDv },
             };
         }
 
