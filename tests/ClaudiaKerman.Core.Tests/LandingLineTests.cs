@@ -137,6 +137,13 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void A_return_that_flew_no_correction_survives_a_save()
+        {
+            Assert.True(MissionSaveState.FromValues(new MissionSaveState { Id = "m1", NoCorrection = true }.ToValues()).NoCorrection);
+            Assert.False(MissionSaveState.FromValues(new MissionSaveState { Id = "m1" }.ToValues()).NoCorrection);
+        }
+
+        [Fact]
         public void The_run_keeps_one_landing_line()
         {
             var log = new RunEventLog();
