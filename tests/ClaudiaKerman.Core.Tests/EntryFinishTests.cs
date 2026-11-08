@@ -204,6 +204,18 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void A_multi_mode_engine_left_in_its_air_breathing_mode_is_not_refused_for_the_air_it_has_no_part_to_hold()
+        {
+            var snapshot = ReadEngine(100, "LiquidFuel", "IntakeAir"); // RAPIER-like: no part holds IntakeAir above the air
+
+            var answer = Ask(snapshot, KerbinReturn, chutes: false);
+
+            Assert.Equal(true, answer["powered"]);
+            Assert.Equal(new object[] { Uid(Engine) }, (List<object>)answer["engines"]);
+            Assert.Equal("", RefusedAtStart(snapshot));
+        }
+
+        [Fact]
         public void A_second_engine_that_can_light_still_carries_the_Entry_when_the_first_cannot()
         {
             var snapshot = ReadEngine(100, "LqdHydrogen");

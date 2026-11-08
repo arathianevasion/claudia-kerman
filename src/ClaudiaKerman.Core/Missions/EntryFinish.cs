@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -77,13 +78,15 @@ namespace ClaudiaKerman.Core.Missions
         /// Whether the block's <c>activate</c> will light <paramref name="engine"/> at the drop point (#879), from what the snapshot read at block start. The adapter's
         /// <see cref="SnapshotPart.EngineFuelled"/> tries every engine module, a disabled mode's too; <see cref="SnapshotPart.EnginePropellants"/> holds only the running
         /// module's. So with the parts' resources read, an engine with none running (disabled), or one whose running mode burns a propellant nothing aboard holds, won't
-        /// light. Resources not read (an older recording): <see cref="SnapshotPart.EngineFuelled"/> stands.
+        /// light. Intake resources (a name starting "Intake": IntakeAir, IntakeAtm) are not counted: no part holds them, the air supplies them, and an air-breathing mode
+        /// stays as accepted as before #879. Resources not read (an older recording): <see cref="SnapshotPart.EngineFuelled"/> stands.
         /// </summary>
         private static bool WillLight(GameSnapshot snapshot, SnapshotPart engine)
         {
             if (!snapshot.Craft.Parts.Any(p => p.Resources.Count > 0)) return true;
             return engine.EnginePropellants.Count > 0
-                && engine.EnginePropellants.All(name => snapshot.Craft.Parts.Sum(p => p.Resources.Where(r => r.Name == name).Sum(r => r.Amount)) > 0);
+                && engine.EnginePropellants.All(name => name.StartsWith("Intake", StringComparison.Ordinal)
+                    || snapshot.Craft.Parts.Sum(p => p.Resources.Where(r => r.Name == name).Sum(r => r.Amount)) > 0);
         }
 
         /// <summary>
