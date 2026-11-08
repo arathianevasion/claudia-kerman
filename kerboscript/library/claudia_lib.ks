@@ -1541,7 +1541,7 @@ function claudia_turn_to_burn {
     wait 0.
     set aligned to claudia_aligned_to(ctx, nd).
   }
-  set ctx:turn_by to choose 0 if time:seconds < start_ut else start_ut.
+  set ctx:turn_by to choose 0 if aligned and time:seconds < start_ut else start_ut.
   local timed_out is reason = "" and time:seconds >= began + 120 and not aligned.
   if timed_out {
     print ctx:block + ": not aligned after 120 s, " + round(vang(ship:facing:forevector, nd:deltav), 1) + " deg off".

@@ -839,6 +839,17 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.DoesNotContain("day_out", bundle);
         }
 
+        [Fact]
+        public void A_turn_keeps_its_deadline_past_the_Burn_Start_unless_aligned_earlier_and_exec_node_clears_it_when_the_burn_ends()
+        {
+            var bundle = CoreLibrary.Bundle("@lazyglobal off.\nprint 1.").Replace("\r\n", "\n");
+            var start = bundle.IndexOf("function claudia_turn_to_burn", StringComparison.Ordinal);
+            var turn = bundle.Substring(start, bundle.IndexOf("return lexicon(\"error\", reason", start, StringComparison.Ordinal) - start);
+            // A turn that timed out before the Burn Start must not read as "no deadline" to a stop burst in flight (#933).
+            Assert.Contains("set ctx:turn_by to choose 0 if aligned and time:seconds < start_ut else start_ut.", turn);
+            Assert.Contains("set ctx:turn_by to 0. // The burn is over", bundle);
+        }
+
         [Theory]
         // No SOI change, one behind us, or one too close to the burn to turn between: straight to the start.
         [InlineData(0, -1, 1000, 20, "1000")]

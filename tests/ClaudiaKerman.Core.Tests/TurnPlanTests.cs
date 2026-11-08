@@ -142,6 +142,17 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(plan.TurnS <= Math.Min(plan.WheelsS, TurnPlan.MaxSeconds) * TurnPlan.QuickShare + 1e-6, plan.TurnS + " s");
         }
 
+        [Fact]
+        public void A_pre_point_planned_after_its_Burn_Start_flies_the_quick_plan_not_the_fastest()
+        {
+            // land's pre-point can be planned once burn_start_ut has gone (left_s 0): it flies the same plan as no deadline (#933).
+            var passed = TurnPlan.Plan(E17d(), 142, 0);
+            var none = TurnPlan.Plan(E17d(), 142, -1);
+            Assert.Equal(none.CoastRateDegS, passed.CoastRateDegS, 6);
+            Assert.Equal(none.TurnS, passed.TurnS, 6);
+            Assert.True(passed.CoastRateDegS < Math.Sqrt(passed.AlphaDegS2 * (142 - passed.WheelsDeg)));
+        }
+
         /// <summary>#754: a craft like the logged one (Mission m20261104-201248-6a57): wheels 8-10 s for 55-108 degrees.</summary>
         private static TurnCraft Logged()
         {
