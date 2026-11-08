@@ -84,13 +84,12 @@ namespace ClaudiaKerman.Core.Missions
             return !string.IsNullOrWhiteSpace(script) && BlockOptionCheck.Calls(script).Any(c => LandingBlocks.Contains(c.Block));
         }
 
-        /// <summary>The craft is landed or splashed down and every Kerbal aboard at the run's start still is.</summary>
-        public static bool DownAlive(GameSnapshot snapshot, IEnumerable<string> crewAtStart)
+        /// <summary>The craft is landed or splashed down and no Kerbal aboard at the run's start has a recorded death since (#874); one on EVA or on another vessel is alive.</summary>
+        public static bool DownAlive(GameSnapshot snapshot, IEnumerable<string> crewAtStart, IDictionary<string, double> deaths, double runStartUt)
         {
             // Null: the crew at the start was never read, so none can be called alive.
             if (snapshot == null || crewAtStart == null || (snapshot.Situation != "LANDED" && snapshot.Situation != "SPLASHED")) return false;
-            var now = snapshot.Crew.Select(c => c.Name).ToList();
-            return crewAtStart.All(now.Contains);
+            return !crewAtStart.Any(name => deaths.ContainsKey(name) && deaths[name] >= runStartUt);
         }
 
         public static string Refusal(string planName)

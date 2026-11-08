@@ -179,6 +179,7 @@ namespace ClaudiaKerman.Adapter
             MissionsList = new MissionsWindow(Send);
             Strip = new CapcomStrip(Panel) { TabClicked = () => PanelOpen = !PanelOpen };
             GameEvents.onKerbalStatusChange.Add(OnKerbalStatusChange);
+            GameEvents.onCrewKilled.Add(OnCrewKilled);
             GameEvents.onCrewOnEva.Add(OnCrewOnEva);
             _vessels = new VesselWatch(Send);
             _events = new RunEventWatcher(Send, () => _mission.View.Stage == MissionStage.Running,
@@ -529,6 +530,16 @@ namespace ClaudiaKerman.Adapter
         private void OnKerbalStatusChange(ProtoCrewMember kerbal, ProtoCrewMember.RosterStatus oldStatus, ProtoCrewMember.RosterStatus newStatus)
         {
             if (newStatus == ProtoCrewMember.RosterStatus.Dead && Roster.RosterGateway.IsClaudia(kerbal)) Send(new ClaudiaKilled(VesselAboard(kerbal), RunningTrace()));
+        }
+
+        /// <summary>Any other Kerbal's death is a game event for the core too (#874); Claudia's goes by <see cref="OnKerbalStatusChange"/> and isn't sent twice.</summary>
+        private void OnCrewKilled(EventReport report)
+        {
+            var kerbal = report == null ? null : report.sender;
+            if (string.IsNullOrEmpty(kerbal)) return;
+            var game = HighLogic.CurrentGame;
+            if (game != null && game.CrewRoster != null && Roster.RosterGateway.IsClaudia(Roster.RosterGateway.Find(game.CrewRoster, kerbal))) return;
+            Send(new KerbalKilled(kerbal));
         }
 
         /// <summary>The run's last traced state (#375); her death must reach the Mission even if reading it fails.</summary>
