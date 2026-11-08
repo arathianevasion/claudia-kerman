@@ -323,7 +323,7 @@ namespace ClaudiaKerman.Core.Missions
             public string WindowPlanet = "";
             public double? WindowUt;
             public double? WindowDeltaV;
-            /// <summary>#887: the window a <c>return</c> run was planned for, kept past the start for the block's restart; null for none. Not saved: a load restarts for the next alignment.</summary>
+            /// <summary>#887: the window a <c>return</c> run was planned for, kept past the start for the block's restart; null for none. Saved (#906); cleared when the run ends.</summary>
             public double? ReturnWindowUt;
             /// <summary>Persistence (MissionControl.Persistence.cs): a turn the loop owes Claudia once the craft is in Flight.</summary>
             public Owed Owed;
@@ -945,6 +945,7 @@ namespace ClaudiaKerman.Core.Missions
             var mission = _mission;
             if (mission == null || !IsRunning(mission) || mission.RunId != refused.RunId) return;
             mission.RunId = null;
+            mission.ReturnWindowUt = null;
             mission.RunDeadlineUt = null;
             EndLive(mission);
             // Paused from Running, the Mission stays Paused and Resume goes back to approval, not to Running.
@@ -961,6 +962,7 @@ namespace ClaudiaKerman.Core.Missions
                 || (mission.Stage == MissionStage.Paused && mission.StageBeforePause == MissionStage.Running);
             if (!running || mission.RunId != ended.RunId) return;
             mission.RunId = null;
+            mission.ReturnWindowUt = null;
             TimedOutMidWarp(mission, ended.Outcome);
             mission.RunDeadlineUt = null;
             mission.RcsUse.Close(_ut);
@@ -1012,6 +1014,7 @@ namespace ClaudiaKerman.Core.Missions
             if (IsRunning(mission) && mission.RunningProcessor.HasValue)
                 _commands.Add(new AbortScript(mission.RunningProcessor.Value, "Claudia was killed aboard"));
             mission.RunId = null;
+            mission.ReturnWindowUt = null;
             mission.RunningProcessor = null;
             mission.Queue.Clear();
             if (mission.PendingSequence != null && mission.PendingSequence.DueTimeUt.HasValue) _commands.Add(new ClearDueTimeAlarm(mission.Id));
