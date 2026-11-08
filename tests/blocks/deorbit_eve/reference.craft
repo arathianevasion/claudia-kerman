@@ -221,6 +221,10 @@ PART
 	modMass = 0
 	modSize = 0,0,0
 	link = batteryBank_4294592424
+	link = solarPanels5_4294500101
+	link = solarPanels5_4294500102
+	link = solarPanels5_4294500103
+	link = solarPanels5_4294500104
 	attN = bottom,batteryBank_4294592424_0|-0.172999993|0_0|-1|0_0|-0.172999993|0_0|-1|0
 	attN = top,probeCoreOcto2.v2_4294601898_0|0.172999993|0_0|1|0_0|0.172999993|0_0|1|0
 	EVENTS
@@ -417,9 +421,9 @@ PART
 	modCost = 0
 	modMass = 0
 	modSize = 0,0,0
-	link = Decoupler.1_4294512936
+	link = HeatShield1_4294512000
 	attN = top,batteryBank_4294592424_0|0.110855304|0_0|1|0_0|0.110855304|0_0|1|0
-	attN = bottom,Decoupler.1_4294512936_0|-0.110855304|0_0|-1|0_0|-0.110855304|0_0|-1|0
+	attN = bottom,HeatShield1_4294512000_0|-0.110855304|0_0|-1|0_0|-0.110855304|0_0|-1|0
 	EVENTS
 	{
 	}
@@ -722,10 +726,90 @@ PART
 }
 PART
 {
+	part = HeatShield1_4294512000
+	partName = Part
+	persistentId = 3681508100
+	pos = 0,14.12747,0
+	attPos = 0,0,0
+	attPos0 = 0,-0.133,0
+	rot = 0,0,0,1
+	attRot = 0,0,0,1
+	attRot0 = 0,0,0,1
+	mir = 1,1,1
+	symMethod = Radial
+	autostrutMode = Off
+	rigidAttachment = False
+	istg = 1
+	resPri = 0
+	dstg = 1
+	sidx = 0
+	sqor = 1
+	sepI = 1
+	attm = 0
+	sameVesselCollision = False
+	modCost = 0
+	modMass = 0
+	modSize = 0,0,0
+	link = Decoupler.1_4294512936
+	attN = top,batteryBank_4294592072_0|0.022|0_0|1|0_0|0.022|0_0|1|0
+	EVENTS
+	{
+	}
+	ACTIONS
+	{
+	}
+	PARTDATA
+	{
+	}
+	MODULE
+	{
+		name = ModuleDecouple
+		isEnabled = True
+		isDecoupled = False
+		stagingEnabled = True
+		EVENTS
+		{
+		}
+		ACTIONS
+		{
+		}
+		UPGRADESAPPLIED
+		{
+		}
+	}
+	MODULE
+	{
+		name = ModuleAblator
+		isEnabled = True
+		stagingEnabled = True
+		EVENTS
+		{
+		}
+		ACTIONS
+		{
+		}
+		UPGRADESAPPLIED
+		{
+		}
+	}
+	RESOURCE
+	{
+		name = Ablator
+		amount = 200
+		maxAmount = 200
+		flowState = True
+		isTweakable = True
+		hideFlow = False
+		isVisible = True
+		flowMode = Both
+	}
+}
+PART
+{
 	part = Decoupler.1_4294512936
 	partName = Part
 	persistentId = 493814871
-	pos = 0,14.0995169,0
+	pos = 0,14.05552,0
 	attPos = 0,0,0
 	attPos0 = 0,-0.160855293,0
 	rot = 0,0,0,1
@@ -747,7 +831,7 @@ PART
 	modMass = 0
 	modSize = 0,0,0
 	link = fuelTank.long_4294572040
-	attN = top,batteryBank_4294592072_0|0.0500000007|0_0|1|0_0|0.0500000007|0_0|1|0
+	attN = top,HeatShield1_4294512000_0|0.0500000007|0_0|1|0_0|0.0500000007|0_0|1|0
 	attN = bottom,fuelTank.long_4294572040_0|-0.0500000007|0_0|-1|0_0|-0.0500000007|0_0|-1|0
 	EVENTS
 	{
@@ -874,7 +958,7 @@ PART
 	part = fuelTank.long_4294572040
 	partName = Part
 	persistentId = 1832762365
-	pos = 0,12.1745167,0
+	pos = 0,12.13052,0
 	attPos = 0,0,0
 	attPos0 = 0,-1.92500019,0
 	rot = 0,0,0,1
@@ -966,7 +1050,7 @@ PART
 	part = liquidEngine2.v2_4294562740
 	partName = Part
 	persistentId = 2290342596
-	pos = 0,10.2870169,0
+	pos = 0,10.24302,0
 	attPos = 0,0,0
 	attPos0 = 0,-1.88749981,0
 	rot = 0,0,0,1
@@ -1260,7 +1344,7 @@ PART
 	part = R8winglet_4294624006
 	partName = Part
 	persistentId = 1707880994
-	pos = -1.14752221,10.6541395,3.61812731E-08
+	pos = -1.14752221,10.61014,3.61812731E-08
 	attPos = 0,0,0
 	attPos0 = -1.14752221,-1.52037716,3.61812731E-08
 	rot = 0,0,0,1
@@ -1435,7 +1519,7 @@ PART
 	part = R8winglet_4294623786
 	partName = Part
 	persistentId = 804177085
-	pos = 0.573761284,10.6541395,0.993783355
+	pos = 0.573761284,10.61014,0.993783355
 	attPos = 0,0,0
 	attPos0 = 0.573761284,-1.52037716,0.993783355
 	rot = 0,0.866025448,0,0.49999997
@@ -1602,7 +1686,7 @@ PART
 	part = R8winglet_4294623740
 	partName = Part
 	persistentId = 994571090
-	pos = 0.573761046,10.6541395,-0.993783534
+	pos = 0.573761046,10.61014,-0.993783534
 	attPos = 0,0,0
 	attPos0 = 0.573761046,-1.52037716,-0.993783534
 	rot = 0,0.866025388,0,-0.50000006
@@ -1762,5 +1846,153 @@ PART
 		UPGRADESAPPLIED
 		{
 		}
+	}
+}
+PART
+{
+	part = solarPanels5_4294500101
+	partName = Part
+	persistentId = 2290342701
+	pos = 0.625,14.7659378,0
+	attPos = 0,0,0
+	attPos0 = 0.625,0,0
+	rot = 0,-0.7071068,0,0.7071068
+	attRot = 0,0,0,1
+	attRot0 = 0,-0.7071068,0,0.7071068
+	mir = 1,1,1
+	symMethod = Radial
+	autostrutMode = Off
+	rigidAttachment = False
+	istg = -1
+	resPri = 0
+	dstg = 0
+	sidx = -1
+	sqor = -1
+	sepI = -1
+	attm = 1
+	sameVesselCollision = False
+	modCost = 0
+	modMass = 0
+	modSize = 0,0,0
+	srfN = srfAttach,kOSMachine1m_4294597990,COL4,0.625|0|0,1.0|0|0,0.625|0|0
+	EVENTS
+	{
+	}
+	ACTIONS
+	{
+	}
+	PARTDATA
+	{
+	}
+}
+PART
+{
+	part = solarPanels5_4294500102
+	partName = Part
+	persistentId = 2290342702
+	pos = 0,14.7659378,0.625
+	attPos = 0,0,0
+	attPos0 = 0,0,0.625
+	rot = 0,-1.0,0,0
+	attRot = 0,0,0,1
+	attRot0 = 0,-1.0,0,0
+	mir = 1,1,1
+	symMethod = Radial
+	autostrutMode = Off
+	rigidAttachment = False
+	istg = -1
+	resPri = 0
+	dstg = 0
+	sidx = -1
+	sqor = -1
+	sepI = -1
+	attm = 1
+	sameVesselCollision = False
+	modCost = 0
+	modMass = 0
+	modSize = 0,0,0
+	srfN = srfAttach,kOSMachine1m_4294597990,COL4,0|0|0.625,0|0|1.0,0|0|0.625
+	EVENTS
+	{
+	}
+	ACTIONS
+	{
+	}
+	PARTDATA
+	{
+	}
+}
+PART
+{
+	part = solarPanels5_4294500103
+	partName = Part
+	persistentId = 2290342703
+	pos = -0.625,14.7659378,0
+	attPos = 0,0,0
+	attPos0 = -0.625,0,0
+	rot = 0,0.7071068,0,0.7071068
+	attRot = 0,0,0,1
+	attRot0 = 0,0.7071068,0,0.7071068
+	mir = 1,1,1
+	symMethod = Radial
+	autostrutMode = Off
+	rigidAttachment = False
+	istg = -1
+	resPri = 0
+	dstg = 0
+	sidx = -1
+	sqor = -1
+	sepI = -1
+	attm = 1
+	sameVesselCollision = False
+	modCost = 0
+	modMass = 0
+	modSize = 0,0,0
+	srfN = srfAttach,kOSMachine1m_4294597990,COL4,-0.625|0|0,-1.0|0|0,-0.625|0|0
+	EVENTS
+	{
+	}
+	ACTIONS
+	{
+	}
+	PARTDATA
+	{
+	}
+}
+PART
+{
+	part = solarPanels5_4294500104
+	partName = Part
+	persistentId = 2290342704
+	pos = 0,14.7659378,-0.625
+	attPos = 0,0,0
+	attPos0 = 0,0,-0.625
+	rot = 0,0,0,1.0
+	attRot = 0,0,0,1
+	attRot0 = 0,0,0,1.0
+	mir = 1,1,1
+	symMethod = Radial
+	autostrutMode = Off
+	rigidAttachment = False
+	istg = -1
+	resPri = 0
+	dstg = 0
+	sidx = -1
+	sqor = -1
+	sepI = -1
+	attm = 1
+	sameVesselCollision = False
+	modCost = 0
+	modMass = 0
+	modSize = 0,0,0
+	srfN = srfAttach,kOSMachine1m_4294597990,COL4,0|0|-0.625,0|0|-1.0,0|0|-0.625
+	EVENTS
+	{
+	}
+	ACTIONS
+	{
+	}
+	PARTDATA
+	{
 	}
 }
