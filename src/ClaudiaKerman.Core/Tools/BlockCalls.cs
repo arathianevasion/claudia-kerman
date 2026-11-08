@@ -628,8 +628,10 @@ namespace ClaudiaKerman.Core.Tools
         /// <c>do</c> ("burn", "wait" or "done"), <c>kind</c>, <c>ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c>,
         /// <c>max_residual</c>, <c>fail_prefix</c>, <c>keep_going</c>, <c>report</c> (Script Result keys), <c>max_duration</c> (-1:
         /// unchanged), <c>watch</c> (a wait's Encounter Watch, for <see cref="EncounterWatch"/>; empty for none) and <c>carry</c> (the keys to ask with next).
+        /// #915: for a trip home with a landing target (<see cref="AimsHomeArrival"/>), the adapter gives <paramref name="body"/>, <paramref name="air"/> and <paramref name="craft"/> and adds <c>craft</c> (<see cref="EntryCraftCall"/>'s answer) to the ask, and <c>isp</c> comes
+        /// from the block; <c>plan_log</c> then says what the aim did.
         /// </summary>
-        public static IDictionary<string, object> TransferStep(IDictionary<string, object> input, GameSnapshot snapshot)
+        public static IDictionary<string, object> TransferStep(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body = null, IReentryAir air = null, IReentryCraft craft = null)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
             object target, window, correction, auto, phase, why, sibling, recovered, restored, watchDropped;
@@ -650,7 +652,7 @@ namespace ClaudiaKerman.Core.Tools
             object checkpoint;
             ask.TryGetValue(CoastCheckpoints.TokenKey, out checkpoint);
             var mode = checkpoint as string ?? CoastCheckpoints.Off;
-            var step = TransferFlight.Next(snapshot, new TransferFlightAsk
+            var flight = new TransferFlightAsk
             {
                 Target = (string)target,
                 TargetPe = Number(ask, "target_pe", 0),
@@ -678,7 +680,9 @@ namespace ClaudiaKerman.Core.Tools
                 Resume = CoastToken.Parse(mode),
                 PlaneOption = PlaneOption.Read(ask.ContainsKey("plane") ? ask["plane"] : null),
                 WatchEjection = true,
-            });
+            };
+            HomeArrivalLandingOf(ask, snapshot, flight, body, air, craft);
+            var step = TransferFlight.Next(snapshot, flight);
             var result = Step(step);
             result["aimed_plane"] = step.AimedPlane;
             // #880: a trip home from another planet comes in for the default landing, so the Late Trim has a target to aim at.
@@ -692,6 +696,27 @@ namespace ClaudiaKerman.Core.Tools
             // A resumed flight's token is spent; its later coasts may checkpoint again.
             ((IDictionary<string, object>)result["carry"])[CoastCheckpoints.TokenKey] = mode == CoastCheckpoints.Off ? CoastCheckpoints.Off : CoastCheckpoints.On;
             return result;
+        }
+
+        /// <summary>#915: whether a TRANSFERSTEP ask is a trip home with a landing to aim at, so the adapter reads the air and the craft only then.</summary>
+        public static bool AimsHomeArrival(IDictionary<string, object> input, GameSnapshot snapshot)
+        {
+            var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
+            object target;
+            return !ask.ContainsKey("timing") && ask.TryGetValue("target", out target) && target is string && HomeLanding.ArrivalLanding(snapshot, (string)target, Number(ask, "target_pe", 0)) != null;
+        }
+
+        /// <summary>Fills in the landing a trip home aims at (#915), with CORRECTIONBURN's own reading of it; with no air or craft to fly, or no landing target, nothing changes.</summary>
+        private static void HomeArrivalLandingOf(IDictionary<string, object> ask, GameSnapshot snapshot, TransferFlightAsk flight, IPlanningBody body, IReentryAir air, IReentryCraft craft)
+        {
+            if (body == null || air == null || craft == null) return;
+            var home = HomeLanding.ArrivalLanding(snapshot, flight.Target, flight.TargetPe);
+            if (home == null) return;
+            var landing = new Dictionary<string, object> { { "lat", home.Latitude }, { "lng", home.Longitude }, { "ground_alt", Math.Max(0, body.TerrainAltitude(home.Body, home.Latitude, home.Longitude)) }, { "isp", Number(ask, "isp", 0) } };
+            if (ask.ContainsKey("craft")) landing["craft"] = ask["craft"];
+            var into = new CorrectionAsk { Target = flight.Target };
+            flight.LandingProblem = CorrectionLandingOf(landing, snapshot, into, body, air, craft) ?? "";
+            flight.Landing = into.Landing;
         }
 
         /// <summary>
@@ -778,6 +803,7 @@ namespace ClaudiaKerman.Core.Tools
             };
             // Only the far ejection's watched wait carries one (#867); every other step clears it.
             ((IDictionary<string, object>)result["carry"])["ejection"] = step.Ejection ?? "";
+            if (step.PlanLog != "") result["plan_log"] = step.PlanLog;
             return result;
         }
 

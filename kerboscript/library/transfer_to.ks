@@ -168,7 +168,7 @@ function transfer_to {
   }
   local state is lexicon("target", dest:name, "target_pe", opt:target_pe, "window", opt:window, "correction", opt:correction,
     "plane", claudia_plane_ask(opt:plane), "pe_tolerance", opt:pe_tolerance, "start_ut", ctx:start_ut, "max_duration", opt:max_duration,
-    "auto", opt:max_duration:istype("String"), "turn_time", turn:turn_time, "phase", "start", "checkpoint", opt:checkpoint).
+    "auto", opt:max_duration:istype("String"), "turn_time", turn:turn_time, "phase", "start", "checkpoint", opt:checkpoint, "core", core:part:uid, "stage_limit", opt:stage_limit, "isp", claudia_engine_isp()).
   local reason is transfer_to_run(state, opt, extra, {
     parameter s.
     set s:dv_left to claudia_dv_remaining().

@@ -146,7 +146,8 @@ namespace ClaudiaKerman.Core.Tools
             if (high > low && Math.Abs(held.Along) > LandingResidual)
             {
                 var moved = Corridor(target, ask, low, high, arrive, fly, along, landing, plain.Ut, step, held);
-                if (moved != null && moved.Burn.Length > Math.Max(plain.DeltaV, most))
+                // #915: a corridor set by the ask (transfer_to's) spends only the spare, so with none the target_pe-only burn stands.
+                if (moved != null && moved.Burn.Length > (ask.CorridorHalf.HasValue ? most : Math.Max(plain.DeltaV, most)))
                     corridorWhy = "the periapsis corridor costs " + Ms(moved.Burn.Length) + " m/s, over the " + Ms(Math.Max(0, most)) + " m/s above the reserve";
                 else if (moved != null)
                 {
@@ -196,15 +197,17 @@ namespace ClaudiaKerman.Core.Tools
             var burnAimed = new Vec3(result.X[0], result.X[1], result.X[2]);
             // Never more than it may spend (#817): the SQP spends by the lever's slope, so its answer can come a few percent over. Over by more than SpendSlackMs, it is brought back along
             // its change from the burn it started from, which is about square to the periapsis's slope, to what it may spend; the checks below fly it again.
-            var spendable = Math.Max(most, plain.DeltaV);
-            if (burnAimed.Length > spendable + SpendSlackMs) burnAimed = Toward(from.Burn, burnAimed, spendable);
+            // #915: a corridor set by the ask spends only the spare, with no slack but the rounding of Toward's answer.
+            var spendable = ask.CorridorHalf.HasValue ? most : Math.Max(most, plain.DeltaV);
+            var slack = ask.CorridorHalf.HasValue ? 0.001 : SpendSlackMs;
+            if (burnAimed.Length > spendable + slack) burnAimed = Toward(from.Burn, burnAimed, spendable);
             var reached = arrive(ut, burnAimed);
             var down = fly(reached, burnAimed);
             if (down == null || down.Error != null) return reported(aimed, "the aimed burn has no landing to read");
             var pe = reached.Orbit.PeR - target.Radius;
             var km = landing.ErrorKm(target, down);
-            // The periapsis first, and never more than the craft has for the landing's sake.
-            if (Math.Abs(pe - from.Pe) > ask.PeTolerance)
+            // The periapsis first, and never more than the craft has for the landing's sake. #915: a corridor set by the ask keeps the flown-error half of pe_tolerance free.
+            if (Math.Abs(pe - from.Pe) > ask.PeTolerance || (ask.CorridorHalf.HasValue && !LeavesFlownMargin(pe, ask.TargetPe, ask.PeTolerance)))
                 return reported(aimed, "the aimed burn's periapsis, " + DeorbitBurn.Km(pe / 1000) + " km, is off the " + DeorbitBurn.Km(from.Pe / 1000) + " km aimed for");
             // The entry flown again (#817): no deeper than the corridor's end, nor harder than MostEntryG.
             var deepest = high > low ? low - PeResidual : ask.TargetPe - ask.PeTolerance;
@@ -212,7 +215,7 @@ namespace ClaudiaKerman.Core.Tools
             if (down.PeakG > MostEntryG) return reported(aimed, "the aimed burn's entry pulls " + Ms(down.PeakG) + " g, over " + Ms(MostEntryG));
             if (!(km < aimed.ErrorKm)) return reported(aimed, "the aimed burn lands no nearer (" + DeorbitBurn.Km(km) + " km from the target)");
             if (ask.DvLeft >= 0 && burnAimed.Length > ask.DvLeft) return reported(aimed, "the aimed burn needs " + Ms(burnAimed.Length) + " m/s, more than is left");
-            if (burnAimed.Length > spendable + SpendSlackMs)
+            if (burnAimed.Length > spendable + slack)
                 return reported(aimed, "the aimed burn needs " + Ms(burnAimed.Length) + " m/s, over the " + Ms(Math.Max(0, spendable)) + " m/s it may spend");
 
             double prograde, normal, radial;
@@ -245,8 +248,21 @@ namespace ClaudiaKerman.Core.Tools
             low = high = ask.TargetPe;
             var centre = ask.CorridorPe ?? ask.TargetPe;
             if (!string.Equals(target.Name, CraftCheckFlow.HomeBody, StringComparison.OrdinalIgnoreCase) || !(target.AtmosphereHeight > 0) || centre < CorridorFloor) return;
-            low = Math.Max(CorridorFloor, centre - PeCorridor);
-            high = centre + PeCorridor;
+            var half = ask.CorridorHalf ?? PeCorridor;
+            low = Math.Max(CorridorFloor, centre - half);
+            high = centre + half;
+        }
+
+        /// <summary>#915: the corridor's reach either way of target_pe that sits inside <paramref name="tolerance"/> m: half of it less the solve's own <see cref="PeResidual"/>, so a burn solved at the corridor's end still passes <see cref="LeavesFlownMargin"/>.</summary>
+        internal static double CorridorWithin(double tolerance)
+        {
+            return Math.Min(PeCorridor, Math.Max(0, tolerance / 2 - PeResidual));
+        }
+
+        /// <summary>#915: whether an aimed periapsis of <paramref name="pe"/> m is within half of <paramref name="tolerance"/> m of <paramref name="targetPe"/>, leaving the other half for the burn's flown error.</summary>
+        internal static bool LeavesFlownMargin(double pe, double targetPe, double tolerance)
+        {
+            return Math.Abs(pe - targetPe) <= tolerance / 2;
         }
 
         /// <summary>#805: whether the landing may be left on a periapsis of <paramref name="pe"/> m: inside the corridor, or within <see cref="PlainSlack"/> pe_tolerances of target_pe.</summary>
@@ -262,6 +278,7 @@ namespace ClaudiaKerman.Core.Tools
         /// </summary>
         private static CorrectionPlan Kept(CorrectionPlan kept, CorrectionPlan plain, CorrectionAsk ask, string why)
         {
+            kept.NotAimed = kept == plain;
             kept.AimNote = (kept == plain ? "plain burn: " : "periapsis " + DeorbitBurn.Km(kept.PePredicted / 1000) + " km: ") + why
                 + (kept.ErrorKm >= 0 ? "; " + DeorbitBurn.Km(kept.ErrorKm) + " km from the target" : "")
                 + (ask.DvLeft >= 0 ? ", " + Ms(ask.DvLeft) + " m/s left" : ", delta-v left unknown");
@@ -432,6 +449,7 @@ namespace ClaudiaKerman.Core.Tools
             }
             plan.Landing = landed;
             plan.ErrorKm = landing.ErrorKm(target, landed);
+            plan.NotAimed = true;
             plan.AimNote = "no correction flown: " + why + "; " + DeorbitBurn.Km(plan.ErrorKm) + " km from the target" + (ask.DvLeft >= 0 ? ", " + Ms(ask.DvLeft) + " m/s left" : "");
             return plan;
         }

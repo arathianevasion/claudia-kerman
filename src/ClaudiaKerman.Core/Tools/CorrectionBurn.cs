@@ -55,6 +55,8 @@ namespace ClaudiaKerman.Core.Tools
         public double? MostLandingDv;
         /// <summary>The periapsis the home planet's corridor is measured from, m above sea level (#892: a late trim's), in place of <see cref="TargetPe"/>; null for <see cref="TargetPe"/>. Set, the corridor is still tried when it is too late to move the landing along the track.</summary>
         public double? CorridorPe;
+        /// <summary>m either way of its centre the home planet's corridor reaches (#915: <c>transfer_to</c>'s pe_tolerance, <see cref="CorrectionBurn.CorridorWithin"/>), in place of <see cref="CorrectionBurn.PeCorridor"/>; null for that. Set, the corridor spends only the spare.</summary>
+        public double? CorridorHalf;
     }
 
     /// <summary>The correction node found, or why there is none (<see cref="Error"/>; the rest is set when a best point exists).</summary>
@@ -86,6 +88,8 @@ namespace ClaudiaKerman.Core.Tools
         public double CrossDv;
         /// <summary>The fix in words, for the Debrief's landing line; "" with nothing to fix.</summary>
         public string AimNote = "";
+        /// <summary>#915: an aimed ask that moved nothing for the landing: this is the target_pe-only burn, or none, and <see cref="AimNote"/> says why.</summary>
+        public bool NotAimed;
         public int Iterations;
         public int Evaluations;
     }

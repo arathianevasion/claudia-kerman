@@ -554,7 +554,23 @@ namespace ClaudiaKerman.KOS
             // The step's time (the ejection's window search is the long one) and what it asks the block to do.
             return (Lexicon)Guarded("TRANSFERSTEP", () =>
             {
-                step = BlockCalls.TransferStep(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(shared.Vessel));
+                var ask = KosValues.ToDictionary(input);
+                var vessel = shared.Vessel;
+                var snapshot = SnapshotReader.ReadForMission(vessel);
+                object target;
+                ask.TryGetValue("target", out target);
+                var planet = BodyNamed(target as string);
+                // #915: a trip home with a landing target aims its correction there: the air of the planet aimed at and the craft reentry flies, read as ENTRYTRIM reads them.
+                if (planet != null && BlockCalls.AimsHomeArrival(ask, snapshot))
+                {
+                    var uids = new System.Collections.Generic.Dictionary<uint, string>();
+                    foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
+                    SnapshotReader.ReadEngineFuel(snapshot, vessel);
+                    ask["craft"] = BlockCalls.EntryCraftCall(new System.Collections.Generic.Dictionary<string, object> { { "core", ask.ContainsKey("core") ? ask["core"] : "" }, { "body", planet.bodyName }, { "stage_limit", ask.ContainsKey("stage_limit") ? ask["stage_limit"] : 0.0 } }, snapshot,
+                        MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild, id => uids.ContainsKey(id) ? uids[id] : null, (key, why) => { });
+                    step = BlockCalls.TransferStep(ask, snapshot, new PlanningBody(), new ReentryAir(planet), new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask)));
+                }
+                else step = BlockCalls.TransferStep(ask, snapshot);
                 // Core's record of the plane it aims for, for capture (#788). A timing ask aims for nothing.
                 if (step.ContainsKey("aimed_plane")) MissionDriver.RecordAimedPlane((string)step["aimed_plane"]);
                 // #880: a trip home from another planet aims at the default landing, for the Late Trim.
@@ -563,7 +579,7 @@ namespace ClaudiaKerman.KOS
             }, () => (string)step["error"] != "" ? (string)step["error"]
                 : string.Format(CultureInfo.InvariantCulture, "{0} {1} at UT {2:0.0}, prograde {3:0.00}, normal {4:0.00}, radial {5:0.00} m/s; next {6}; {7}",
                     step["do"], step["kind"], step["ut"], step["prograde"], step["normal"], step["radial"],
-                    ((System.Collections.Generic.IDictionary<string, object>)step["carry"])["phase"], KosValues.Format(step["report"])));
+                    ((System.Collections.Generic.IDictionary<string, object>)step["carry"])["phase"], KosValues.Format(step["report"])) + PlanLine(step));
         }
 
         private Lexicon CaptureStep(Lexicon input)
