@@ -66,11 +66,11 @@ namespace ClaudiaKerman.Core.Tests
 
         // ---- Harness ----
 
-        private MissionControl Control(StreamingFakeTransport transport, Background background = null)
+        private MissionControl Control(StreamingFakeTransport transport, Background background = null, IScriptCheck check = null)
         {
             var client = new ClaudeClient(new CraftCheckRouter(transport), () => "sk-ant-test", l => { });
             client.Timing.Wait = (d, c) => { };
-            var mission = new MissionControl(client, background ?? _background, new PlayerConfig(), () => true, new PassingScriptCheck());
+            var mission = new MissionControl(client, background ?? _background, new PlayerConfig(), () => true, check ?? new PassingScriptCheck());
             mission.Send(new SaveLoaded(_save.Path));
             return mission;
         }
@@ -252,6 +252,80 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new VesselUnloaded("probe"));
             Assert.Equal(MissionStage.Debriefing, mission.View.Stage);
             Assert.Contains(mission.View.Log, e => e.Text.Contains("Probe unloaded: it went out of range of the player's vessel"));
+        }
+
+        // ---- The later legs the planning tools reserve (#898) ----
+
+        private sealed class SnapshotTool : ClaudiaKerman.Core.Tools.IPlanningTool
+        {
+            public string Name { get { return "probe_later_legs"; } }
+            public string Description { get { return "Records the later legs' delta-v."; } }
+            public string InputSchemaJson { get { return "{\"type\":\"object\",\"properties\":{},\"required\":[],\"additionalProperties\":false}"; } }
+            public bool OnCraftCheck { get { return false; } }
+            public string Activity { get { return "checking"; } }
+            public double? Seen;
+
+            public ClaudiaKerman.Core.Tools.ToolOutcome Run(JsonNode input, GameSnapshot snapshot, ClaudiaKerman.Core.Tools.IPlanningBody body)
+            {
+                Seen = snapshot.LaterLegsDv;
+                return new ClaudiaKerman.Core.Tools.ToolOutcome { Json = "{\"ok\":true}", Summary = "ok" };
+            }
+        }
+
+        private static ScriptedResponse FourLegPlan(string secondVessel = "Probe")
+        {
+            return Mothership.Reply("{\"kind\":\"mission_plan\",\"say\":\"Mission Plan.\",\"reply_intent\":\"none\","
+                + "\"mission_plan\":{\"why\":\"The probe flies on alone.\",\"sequences\":["
+                + "{\"name\":\"Release\",\"intent\":\"Release the probe.\",\"delta_v\":0,\"timing\":\"right away\",\"due_time_ut\":-1,\"manual\":false,\"vessel\":\"craft\"},"
+                + "{\"name\":\"Probe burn\",\"intent\":\"Raise the probe's orbit.\",\"delta_v\":100,\"timing\":\"after release\",\"due_time_ut\":-1,\"manual\":false,\"vessel\":\"" + secondVessel + "\"},"
+                + "{\"name\":\"Circularize\",\"intent\":\"Circularize.\",\"delta_v\":300,\"timing\":\"later\",\"due_time_ut\":-1,\"manual\":false,\"vessel\":\"craft\"},"
+                + "{\"name\":\"Land\",\"intent\":\"Land.\",\"delta_v\":400,\"timing\":\"last\",\"due_time_ut\":-1,\"manual\":false,\"vessel\":\"craft\"}],"
+                + "\"total_delta_v\":800,\"expected_duration\":\"an hour\",\"mission_time_s\":-1,\"child_vessels\":[{\"name\":\"Probe\",\"separation_stage\":2,\"vessel_id\":\"\"}]},"
+                + "\"sequence_plan\":null,\"debrief\":null}");
+        }
+
+        private static ScriptedResponse StepSequencePlan(string name, string vessel, int planStep, int windowClosesUt = -1, int lateWindowDv = -1)
+        {
+            return Mothership.Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: " + name + ".\",\"reply_intent\":\"none\",\"mission_plan\":null,"
+                + "\"sequence_plan\":{\"plan_step\":" + planStep + ",\"name\":\"" + name + "\",\"intent\":\"Fly it.\",\"why\":\"It is next.\",\"target\":\"done\",\"tolerances\":\"none\","
+                + "\"expected_delta_v\":10,\"expected_duration_s\":60,\"abort_conditions\":[],\"telemetry_checks\":[],\"risks\":[],"
+                + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"print \\\"go\\\".\\n\","
+                + "\"due_time_ut\":-1,\"window_closes_ut\":" + windowClosesUt + ",\"late_window_dv\":" + lateWindowDv + ",\"manual\":false,\"vessel\":\"" + vessel + "\"},\"debrief\":null}");
+        }
+
+        [Fact]
+        public void ARewriteOfTheLegInHandKeepsTheNextLegsInTheReserveTheToolPathStamps()
+        {
+            var tool = new SnapshotTool();
+            // Late Approval: the planned window closed long ago and the next costs far more, so Claudia re-plans the same leg (it stays counted).
+            var transport = new StreamingFakeTransport(FourLegPlan("craft"), StepSequencePlan("Release", "craft", 1, windowClosesUt: 1, lateWindowDv: 9999),
+                ToolUseStreams.ToolUse("rewrite", ("probe_later_legs", "{}")), StepSequencePlan("Release", "craft", 1));
+            var mission = Control(transport);
+            mission.Tools = new ClaudiaKerman.Core.Tools.PlanningTools(new ClaudiaKerman.Core.Tools.IPlanningTool[] { tool });
+            ToFirstSequencePlan(mission);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval && tool.Seen.HasValue);
+            // Leg 0 is in hand: the rewrite's later legs are the other three (100 + 300 + 400); without the leg in hand's index it would drop the next.
+            Assert.Equal(800, tool.Seen);
+        }
+
+        [Fact]
+        public void AfterAChildRunHasDebriefedTheCraftsOwnNextPlanKeepsItsLaterLegsReserve()
+        {
+            var tool = new SnapshotTool();
+            var transport = new StreamingFakeTransport(FourLegPlan(), StepSequencePlan("Release", "craft", 1), Debrief(false),
+                StepSequencePlan("Probe burn", "Probe", 2), Debrief(false),
+                ToolUseStreams.ToolUse("next", ("probe_later_legs", "{}")), StepSequencePlan("Circularize", "craft", 3));
+            var mission = Control(transport);
+            mission.Tools = new ClaudiaKerman.Core.Tools.PlanningTools(new ClaudiaKerman.Core.Tools.IPlanningTool[] { tool });
+            ToProbeSequence(mission);
+            mission.Send(new VesselsSeen(new List<SeenVessel> { CraftSeen(), ProbeSeen() }));
+            mission.Send(new Approve());
+            var script = mission.TakeCommands().OfType<StartScript>().Single();
+            mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, new Dictionary<string, object> { { "success", true } }, "", "", false), script.RunId));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            // The child's run is over; Circularize is leg 3, so Land's 400 is still reserved.
+            Assert.Equal(400, tool.Seen);
         }
 
         // ---- Only vessels that left the craft (#192) ----

@@ -44,7 +44,13 @@ namespace ClaudiaKerman.Core.Missions
         public static double LaterLegsDv(IList<PlannedSequence> legs, int stepsBegun, bool sequenceCounted, string craftName, string runningChild)
         {
             if (!string.IsNullOrEmpty(runningChild)) return 0;
-            return LaterLegsDv(legs, Math.Max(0, stepsBegun - (sequenceCounted ? 1 : 0)), craftName);
+            return LaterLegsDv(legs, LegInHand(stepsBegun, sequenceCounted), craftName);
+        }
+
+        /// <summary>The index of the leg in hand: the last begun, which a rewrite of it (<paramref name="sequenceCounted"/>, #828) still has to fly; legs from here on are not yet flown (#898).</summary>
+        public static int LegInHand(int stepsBegun, bool sequenceCounted)
+        {
+            return Math.Max(0, stepsBegun - (sequenceCounted ? 1 : 0));
         }
 
         /// <summary>The craft's delta-v, m/s, for the legs after the one at index <paramref name="current"/> of <paramref name="legs"/>, a Child Vessel's left out.</summary>

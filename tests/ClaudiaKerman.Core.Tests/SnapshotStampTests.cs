@@ -93,6 +93,17 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(MissionCards.LaterLegsDv(legs, stepsBegun, true, "Kerbal X", ""), MissionView.Stamp(new GameSnapshot(), view).LaterLegsDv);
         }
 
+        /// <summary>#898: the leg-note and last-entry paths use the same index, so a rewrite of the leg in hand judges that leg too.</summary>
+        [Theory]
+        [InlineData(0, false, 0)]
+        [InlineData(0, true, 0)]
+        [InlineData(2, false, 2)]
+        [InlineData(2, true, 1)]
+        public void The_leg_in_hand_is_the_last_begun_when_the_Sequence_Plan_was_counted(int stepsBegun, bool counted, int expected)
+        {
+            Assert.Equal(expected, MissionCards.LegInHand(stepsBegun, counted));
+        }
+
         [Fact]
         public void With_no_Mission_the_snapshot_keeps_the_defaults()
         {

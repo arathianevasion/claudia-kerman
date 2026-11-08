@@ -189,7 +189,7 @@ namespace ClaudiaKerman.Core.Missions
                 snapshot.StampMission(settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
                 snapshot.LaterLegsDv = LaterLegsDv(mission);
                 // A Sequence Plan in hand was counted as begun, so a rewrite of it plans the step before the count (#828).
-                snapshot.LastEntryPlanned = mission.Plan != null && Entries.IsLastEntry(snapshot, mission.Plan.Sequences, Math.Max(0, StepsBegun(mission) - (mission.SequenceCounted ? 1 : 0)));
+                snapshot.LastEntryPlanned = mission.Plan != null && Entries.IsLastEntry(snapshot, mission.Plan.Sequences, MissionCards.LegInHand(StepsBegun(mission), mission.SequenceCounted));
                 snapshot.MissionGoal = mission.Goal;
                 snapshot.PickedSite = mission.PickedSite;
             }
@@ -204,10 +204,10 @@ namespace ClaudiaKerman.Core.Missions
             var goalStands = turn.GoalStands;
             // One Mission Plan per reply (#697): with two or more calls none is accepted, so "the last one" never picks among them.
             var plans = message.Content.OfType<ToolUseBlock>().Count(u => u.Name == ProposedPlans.ToolName);
-            var stepsBegun = StepsBegun(mission);
+            var firstUnflown = MissionCards.LegInHand(StepsBegun(mission), mission.SequenceCounted);
             var plannedAscent = mission.PlannedAscent;
             var wantedPercent = _config.CraftCheckMarginPercent;
-            Func<MissionPlan, string> legNote = plan => snapshot == null ? "" : PlanLegs.Note(snapshot, PlanLegs.Judge(snapshot, plan.Sequences.Skip(stepsBegun).ToList(), plannedAscent), wantedPercent);
+            Func<MissionPlan, string> legNote = plan => snapshot == null ? "" : PlanLegs.Note(snapshot, PlanLegs.Judge(snapshot, plan.Sequences.Skip(firstUnflown).ToList(), plannedAscent), wantedPercent);
             Func<ToolUseBlock, ToolOutcome> answer = use => use.Name != ProposedPlans.ToolName ? null
                 : plans > 1 ? ProposedPlans.OnePerReply()
                 : ProposedPlans.Check(use, left, needsNewGoal, allowsNewGoal, goalStands, legNote);
@@ -217,10 +217,10 @@ namespace ClaudiaKerman.Core.Missions
                 error => ToolsAnswered(mission, turn, message, null, atLimit));
         }
 
-        /// <summary>The craft's delta-v for the Mission Plan's legs after the one being planned (#694): the rest of the plan less its first, a Child Vessel's legs left out; null with no Mission Plan.</summary>
+        /// <summary>The craft's delta-v for the Mission Plan's legs after the one being planned (#694): the rest of the plan less its first, a Child Vessel's legs left out, and 0 only while a child's run is in progress (RunningChild stays set after it); null with no Mission Plan.</summary>
         private static double? LaterLegsDv(Mission mission)
         {
-            return mission.Plan == null ? (double?)null : MissionCards.LaterLegsDv(mission.Plan.Sequences, StepsBegun(mission), mission.SequenceCounted, mission.VesselName, mission.RunningChild);
+            return mission.Plan == null ? (double?)null : MissionCards.LaterLegsDv(mission.Plan.Sequences, StepsBegun(mission), mission.SequenceCounted, mission.VesselName, IsRunning(mission) ? mission.RunningChild : "");
         }
 
         private void ToolsAnswered(Mission mission, Turn turn, AssistantMessage message, ToolStepResult step, bool atLimit)
