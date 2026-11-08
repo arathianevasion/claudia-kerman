@@ -409,6 +409,16 @@ namespace ClaudiaKerman.Core.Tools
             return Kept(plain, plain, ask, why);
         }
 
+        /// <summary>
+        /// #921: the burn an aimed solve leaves to fly, judged as <see cref="PlainOnly"/>'s is: the aimed solve refuses its own answer over <see cref="MostEntryG"/>, and what it falls back on, the plain burn, had no such check.
+        /// Over the limit none flies, and <see cref="Unsolved"/> says whether the path as it is may stand.
+        /// </summary>
+        private static CorrectionPlan EntryChecked(CorrectionPlan plan, Func<double, Vec3, Patch> arrive, double startUt, SnapshotBody target, CorrectionAsk ask)
+        {
+            if (plan.Error != null || plan.Landing == null || plan.Landing.Error != null || !(plan.Landing.PeakG > MostEntryG)) return plan;
+            return Unsolved(arrive, startUt, target, ask, "the burn's entry pulls " + Ms(plan.Landing.PeakG) + " g, over " + Ms(MostEntryG));
+        }
+
         /// <summary>Where <paramref name="arrival"/> comes down on <paramref name="target"/> for the craft after a burn of <paramref name="dv"/> m/s; null with no arrival.</summary>
         private static ReentryPrediction PredictOn(SnapshotBody target, ReturnLanding landing, Patch arrival, double dv)
         {
