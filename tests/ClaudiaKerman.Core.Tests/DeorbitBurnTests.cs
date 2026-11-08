@@ -641,11 +641,28 @@ namespace ClaudiaKerman.Core.Tests
             return Conic.FromState(ReentrySim.Mu, new Vec3(rp, 0, 0), new Vec3(0, v, 0), 0);
         }
 
-        private static DeorbitPlan Auto(double dvLeft, bool withChutes)
+        [Fact]
+        public void A_craft_with_no_chutes_that_keeps_no_engine_is_charged_no_powered_landing()
+        {
+            var left = Find(KscLat, KscLng, Eccentric()).DeltaV + 60;
+            Assert.Contains("a powered landing", Auto(left, withChutes: false).Error);
+            Assert.Null(Auto(left, withChutes: false, payer: new ClaudiaKerman.Core.Missions.DropBurn { KeepsEngine = false }).Error);
+        }
+
+        [Fact]
+        public void Stages_below_stage_limit_can_t_be_spent_by_the_burn()
+        {
+            var cheapest = Find(KscLat, KscLng, Eccentric()).DeltaV;
+            Assert.Null(Auto(cheapest + 100, withChutes: true).Error);
+            Assert.Contains("not enough delta-v", Auto(cheapest + 100, withChutes: true, payer: new ClaudiaKerman.Core.Missions.DropBurn { HeldDv = 2000 }).Error);
+        }
+
+        private static DeorbitPlan Auto(double dvLeft, bool withChutes, ClaudiaKerman.Core.Missions.DropBurn payer = null)
         {
             var ask = new DeorbitAsk { TargetLatitude = KscLat, TargetLongitude = KscLng, EarliestUt = 120, MaxWait = ReentrySim.RotationPeriod, AccuracyKm = 5, DeltaVLeft = dvLeft };
             var craft = new ReentrySim.Capsule();
             if (withChutes) craft.Chutes = new System.Collections.Generic.List<ReentryChute> { ReentrySim.Mk16() };
+            ask.Payer = payer;
             return DeorbitBurn.Find(ReentrySim.Kerbin(), Eccentric(), ask, new ReentrySim.Atmosphere(), craft, ReentrySim.Frame());
         }
     }

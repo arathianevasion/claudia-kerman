@@ -127,7 +127,13 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The auto <c>max_dv</c>: the delta-v left less the reserve (the larger of 50 m/s or 10% of it), less a powered landing's need, less what the Mission Plan's later legs need (#832).</summary>
         public static double AutoMaxDv(double dvLeft, double poweredLandingDv, double laterLegsDv = 0)
         {
-            return dvLeft - Math.Max(ReserveMin, ReserveShare * dvLeft) - Math.Max(0, poweredLandingDv) - Math.Max(0, laterLegsDv);
+            return AutoMaxDv(dvLeft, poweredLandingDv, laterLegsDv, 1);
+        }
+
+        /// <summary>The same where the landing keeps only <paramref name="keptShare"/> of the delta-v left (#893): the 10% is of that share, a stage dropped before the landing carries none.</summary>
+        public static double AutoMaxDv(double dvLeft, double poweredLandingDv, double laterLegsDv, double keptShare)
+        {
+            return dvLeft - Math.Max(ReserveMin, ReserveShare * dvLeft * keptShare) - Math.Max(0, poweredLandingDv) - Math.Max(0, laterLegsDv);
         }
 
         /// <summary>The least burn from <paramref name="body"/>'s low circular orbit to the entry periapsis, m/s: <c>deorbit</c>'s from there, for planning (#790).</summary>
@@ -256,10 +262,14 @@ namespace ClaudiaKerman.Core.Tools
             /// <summary>Null, or why the burn must not fly: more than the delta-v left, or than max_dv (the auto one when none was given).</summary>
             private string OverBudget(DeorbitPlan plan)
             {
-                var lacking = ShortOfDv(plan.DeltaV, _ask.DeltaVLeft);
+                // What the landing keeps (#893): stages below stage_limit can't be spent, a craft keeping no engine has no powered landing, and a dropped stage carries no reserve.
+                var held = _ask.Payer != null && _ask.DeltaVLeft > 0 ? Math.Min(_ask.Payer.HeldDv, _ask.DeltaVLeft) : 0;
+                var left = _ask.DeltaVLeft > 0 ? Math.Max(0.001, _ask.DeltaVLeft - held) : _ask.DeltaVLeft;
+                var lacking = ShortOfDv(plan.DeltaV, left);
                 if (lacking != "") return lacking;
-                var powered = PoweredLandingDv(_craft, _ask.Chutes, plan.Landing.LandingSpeed);
-                var limit = _ask.MaxDv > 0 ? _ask.MaxDv : AutoMaxDv(_ask.DeltaVLeft, powered, _ask.LaterLegsDv);
+                var keeps = _ask.Payer == null || _ask.Payer.KeepsEngine;
+                var powered = keeps ? PoweredLandingDv(_craft, _ask.Chutes, plan.Landing.LandingSpeed) : 0;
+                var limit = _ask.MaxDv > 0 ? _ask.MaxDv : AutoMaxDv(left, powered, _ask.LaterLegsDv, _ask.Payer == null ? 1 : _ask.Payer.KeptShare);
                 if (plan.DeltaV <= limit) return null;
                 return "the cheapest burn within accuracy_km needs " + Dv(plan.DeltaV) + " m/s (at UT " + Whole(plan.BurnUt) + "), over max_dv "
                     + Dv(Math.Max(0, limit)) + (_ask.MaxDv > 0 ? "" : " (auto: " + Dv(_ask.DeltaVLeft) + " m/s left, less the reserve and a powered landing"
