@@ -48,6 +48,11 @@ namespace ClaudiaKerman.Core.Missions
         public bool EngineFuelled;
         /// <summary>The part hangs on its parent's surface (<c>Part.attachMode</c> SRF_ATTACH), not on a stack node: a radial part. <see cref="EntryStack"/> counts shields on the stack only. Not in the JSON: the prompt doesn't carry it.</summary>
         public bool SurfaceAttached;
+        /// <summary>The part's resources as the adapter reads them (<see cref="EntryCraft"/>'s who-pays count); empty when not read. Not in the JSON: the prompt doesn't carry it.</summary>
+        public List<SnapshotPartResource> Resources = new List<SnapshotPartResource>();
+        /// <summary>An engine's available thrust now (kN; 0 for a flamed-out or shut engine) and the resource names it burns. Not in the JSON: the prompt doesn't carry them.</summary>
+        public double EngineAvailableThrustKn;
+        public List<string> EnginePropellants = new List<string>();
 
         // ---- Child Vessel facts (#100): enough to work out a separated vessel's own figures ----
 
@@ -69,6 +74,14 @@ namespace ClaudiaKerman.Core.Missions
         /// Only the recording JSON carries it.
         /// </summary>
         public Tools.ReentryChute Chute;
+    }
+
+    /// <summary>One resource in one part: its name, amount (units) and density (t per unit).</summary>
+    public sealed class SnapshotPartResource
+    {
+        public string Name = "";
+        public double Amount;
+        public double Density;
     }
 
     public sealed class SnapshotCraft

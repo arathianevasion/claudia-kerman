@@ -71,11 +71,21 @@ namespace ClaudiaKerman.Core.Missions
             }
             craft.LeftOut.AddRange(snapshot.Craft.Parts.Where(p => left.Contains(p.Id)));
             craft.KeptT = craft.WholeT - craft.LeftOut.Sum(p => p.MassT);
-            craft.GonePropellantT = craft.LeftOut.Where(p => p.DryMassT > 0).Sum(p => System.Math.Max(0, p.MassT - p.DryMassT));
-            craft.BurnersKept = snapshot.Craft.Parts.Count(p => p.EngineLit && p.Tags.Contains("engine") && !left.Contains(p.Id));
+            var burning = snapshot.Craft.Parts.Where(Burns).ToList();
+            var burned = new HashSet<string>(burning.SelectMany(p => p.EnginePropellants));
+            craft.GonePropellantT = craft.LeftOut.Sum(p => p.Resources.Count > 0
+                ? p.Resources.Where(r => burned.Contains(r.Name)).Sum(r => r.Amount * r.Density)
+                : (p.DryMassT > 0 ? System.Math.Max(0, p.MassT - p.DryMassT) : 0)); // no resources read (an older recording): every resource, as before
+            craft.BurnersKept = burning.Count(p => !left.Contains(p.Id));
             craft.Key = string.Join(",", snapshot.Craft.Parts.Where(p => !left.Contains(p.Id)).Select(p => p.Id).OrderBy(id => id)
                 .Select(id => id.ToString(CultureInfo.InvariantCulture)).ToArray()) + (craft.ShieldDropped != null ? "|shield jettisoned" : "|shield kept");
             return craft;
+        }
+
+        /// <summary>An engine burning now: lit with available thrust above 0, as <c>drop_parts_kept</c> counts it.</summary>
+        private static bool Burns(SnapshotPart part)
+        {
+            return part.EngineLit && part.Tags.Contains("engine") && part.EngineAvailableThrustKn > 0;
         }
 
         /// <summary>

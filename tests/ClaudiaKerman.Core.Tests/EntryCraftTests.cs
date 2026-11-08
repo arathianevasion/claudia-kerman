@@ -84,15 +84,26 @@ namespace ClaudiaKerman.Core.Tests
                 parts.Add(Part(PodEngine, Pod, "microEngine", 0.1, "engine"));
                 parts.Last().DryMassT = 0.1;
                 parts.Last().EngineLit = parts.Last().EngineFuelled = true;
+                Burner(parts.Last());
             }
             if (!stack) return parts;
             parts.Add(Part(Tank, shape == Shape.Stuck ? Shield : Dec, "fuelTank", 1.25));
             parts.Last().DryMassT = 0.15;
+            parts.Last().Resources.Add(new SnapshotPartResource { Name = "LiquidFuel", Amount = 110, Density = 0.005 });
+            parts.Last().Resources.Add(new SnapshotPartResource { Name = "Oxidizer", Amount = 110, Density = 0.005 });
             parts.Add(Part(Engine, Tank, "liquidEngine3.v2", 0.5, "engine"));
             parts.Last().DryMassT = 0.5;
             parts.Last().EngineLit = stackLit;
+            Burner(parts.Last());
             parts.Last().EngineFuelled = true;
             return parts;
+        }
+
+        /// <summary>An engine that burns LiquidFuel and Oxidizer with 10 kN available.</summary>
+        private static void Burner(SnapshotPart engine)
+        {
+            engine.EngineAvailableThrustKn = 10;
+            engine.EnginePropellants.AddRange(new[] { "LiquidFuel", "Oxidizer" });
         }
 
         private static GameSnapshot With(GameSnapshot snapshot, List<SnapshotPart> parts)
@@ -392,6 +403,30 @@ namespace ClaudiaKerman.Core.Tests
             var again = ReentryPredictor.Predict(ReentrySim.Kerbin(), plan.After, plan.BurnUt, 0, after, new ReentrySim.Atmosphere(), craft, ReentrySim.Frame());
             Assert.Equal(again.Latitude, plan.Landing.Latitude, 9);
             Assert.Equal(again.Longitude, plan.Landing.Longitude, 9);
+        }
+
+        /// <summary>Monopropellant and ore in the dropped parts, and a nearly dry tank, aren't the burner's to pay: only LiquidFuel and Oxidizer count (#870).</summary>
+        [Fact]
+        public void A_dropped_stack_pays_only_the_propellants_the_burning_engine_uses()
+        {
+            var parts = Parts(Shape.Drops);
+            var tank = parts.First(p => p.Id == Tank);
+            tank.Resources.Clear();
+            tank.Resources.Add(new SnapshotPartResource { Name = "LiquidFuel", Amount = 20, Density = 0.005 });
+            tank.Resources.Add(new SnapshotPartResource { Name = "Oxidizer", Amount = 24, Density = 0.005 });
+            tank.Resources.Add(new SnapshotPartResource { Name = "MonoPropellant", Amount = 100, Density = 0.004 });
+            tank.Resources.Add(new SnapshotPartResource { Name = "Ore", Amount = 200, Density = 0.01 });
+            var answer = Read(AtKerbin(parts), null, Tank, Engine);
+            Assert.Equal(0.22, D(answer, "gone_prop"), 6);
+        }
+
+        [Fact]
+        public void A_lit_engine_with_no_available_thrust_is_not_a_burner()
+        {
+            var parts = Parts(Shape.Drops, stackLit: false, podEngine: true);
+            parts.First(p => p.Id == PodEngine).EngineAvailableThrustKn = 0;
+            var answer = Read(AtKerbin(parts), null, Tank, Engine);
+            Assert.Equal(0.0, D(answer, "burners_kept"));
         }
 
         [Fact]

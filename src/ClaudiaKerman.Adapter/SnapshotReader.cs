@@ -436,11 +436,18 @@ namespace ClaudiaKerman.Adapter
                     if (ShipSystemsKeeper.CannotRetract(module)) info.CannotRetract = true;
                     var engine = module as ModuleEngines;
                     if (engine != null && engine.EngineIgnited) info.EngineLit = true;
+                    if (engine != null)
+                    {
+                        if (engine.isOperational) info.EngineAvailableThrustKn += engine.maxThrust * engine.thrustPercentage / 100.0;
+                        foreach (var propellant in engine.propellants)
+                            if (!info.EnginePropellants.Contains(propellant.name)) info.EnginePropellants.Add(propellant.name);
+                    }
                 }
                 snapshot.Craft.Parts.Add(info);
 
                 foreach (var resource in part.Resources)
                 {
+                    info.Resources.Add(new SnapshotPartResource { Name = resource.resourceName, Amount = resource.amount, Density = resource.info != null ? resource.info.density : 0 });
                     SnapshotResource total;
                     if (!resources.TryGetValue(resource.resourceName, out total))
                     {
