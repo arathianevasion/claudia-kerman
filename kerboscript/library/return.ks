@@ -22,7 +22,7 @@
 //|     ejection picks the window and times its burn to land there; the correction
 //|     trims the rest, without target_inc. Read predicted_error_km; when too far for the Mission Goal,
 //|     capture and call deorbit. Aim a splashdown offshore.
-//|   max_wait ["auto"]: with a target, s the ejection may wait; "auto" is one turn of the landing (7 h), or inclined the cheap plane +3.5 h.
+//|   max_wait ["auto"]: s the ejection may wait; "auto" is one turn of the landing (7 h), or inclined the cheap plane +3.5 h.
 //|   correction [true]: false leaves out the mid-course correction.
 //|   checkpoint ["off"]: the mod's own, for a coast it resumes.
 //|   max_duration ["auto"]: the time to the predicted reentry plus 900 s; a shorter one moves the correction sooner.
@@ -210,7 +210,7 @@ function return {
   set opt:target to claudia_landing_target(opt:target, lexicon("planet", planet:name, "target_pe", opt:target_pe, "target_inc", opt:target_inc, "window", opt:window)).
   // With a target, the mod's reentry prediction says where a path comes down, for a path the craft may not be on yet (ADR 0007).
   local predict is 0.
-  local burn_ask is lexicon("cheap_window", not options:haskey("window")).
+  local burn_ask is lexicon("cheap_window", not options:haskey("window"), "max_wait", opt:max_wait, "max_duration", opt:max_duration, "start_ut", ctx:start_ut).
   if return_aims(opt) {
     if not options:haskey("target_pe") {
       set opt:target_pe to 30000.

@@ -271,19 +271,26 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// The UT of the window the aim takes (#749's wait, before the run: the pick alone, one solve and one prediction); null when it would
-        /// not aim. Before the run the craft and air are estimates, so the block may take another window.
+        /// The UT of the window the aim takes (#749's wait, before the run: the pick alone, one solve and one prediction; from an inclined
+        /// orbit, #816, the block's own answer, so both take the same window); null when it would not aim. Before the run the craft and
+        /// air are estimates, so the block may take another window. <paramref name="dueBy"/>: the UT a Due Time (#749) is to lead rather
+        /// than the window's. Over a costly plane it is the window's or its cheap alignment's, whichever is sooner: the block, asked again
+        /// then, searches to that alignment plus <see cref="PastAlignmentS"/> as the plan did, where asked after it it would search on to
+        /// the next one, half the moon's orbit later, and might wait for it.
         /// </summary>
-        public static double? DepartureUt(GameSnapshot snapshot, ReturnAsk ask)
+        public static double? DepartureUt(GameSnapshot snapshot, ReturnAsk ask, out double? dueBy)
         {
+            dueBy = null;
             ToolOutcome error;
             var setup = PredictBurn.Setup.Prepare(snapshot, null, out error);
             if (setup == null) return null;
             var search = Search.Start(setup.System, setup.Body, setup.Start, setup.Now, ask);
             if (search.Inclined)
             {
-                var picked = search.Picked();
-                return picked == null ? (double?)null : picked.Ut;
+                var plan = search.FromWindows();
+                if (plan.Error != null) return null;
+                dueBy = search.DueBy(plan.Ut);
+                return plan.Ut;
             }
             if (search.First.Error != null || search.FirstLanding == null) return null;
             return search.Windows().First();
@@ -312,15 +319,18 @@ namespace ClaudiaKerman.Core.Tools
         /// (<see cref="AlignmentCosts"/>), the next pass unless it costs over the cheapest within the auto wait plus
         /// <see cref="CostCapMs"/>, else the cheapest; null when the next pass is taken, or there is none.
         /// </summary>
-        public static double? CheapDepartureUt(GameSnapshot snapshot, ReturnAsk ask)
+        public static double? CheapDepartureUt(GameSnapshot snapshot, ReturnAsk ask, out double? dueBy)
         {
+            dueBy = null;
             ToolOutcome error;
             var setup = PredictBurn.Setup.Prepare(snapshot, null, out error);
             if (setup == null) return null;
             var search = Search.Start(setup.System, setup.Body, setup.Start, setup.Now, ask);
             if (!search.Inclined || !search.CostlyPlane) return null;
             var plan = search.FromWindows();
-            return plan.Error != null || plan.Ut <= search.First.Ut ? (double?)null : plan.Ut;
+            if (plan.Error != null || plan.Ut <= search.First.Ut) return null;
+            dueBy = search.DueBy(plan.Ut);
+            return plan.Ut;
         }
 
         /// <summary>One aim's facts, and what its tries share.</summary>
@@ -364,6 +374,7 @@ namespace ClaudiaKerman.Core.Tools
                 search._latest = search._earliest + (ask.MaxWait ?? (search.CostlyPlane ? alignment - search._earliest + PastAlignmentS : turn));
                 if (search.CostlyPlane)
                 {
+                    search._alignment = alignment;
                     search._turnEnd = search._earliest + turn;
                     search._bandStart = alignment - PastAlignmentS;
                 }
@@ -411,6 +422,14 @@ namespace ClaudiaKerman.Core.Tools
             /// </summary>
             private double _turnEnd = double.PositiveInfinity;
             private double _bandStart = double.NegativeInfinity;
+            /// <summary>Over a costly plane, the cheap alignment the search runs to <see cref="PastAlignmentS"/> past; NaN otherwise.</summary>
+            private double _alignment = double.NaN;
+
+            /// <summary>What a Due Time for the window at <paramref name="ut"/> leads (<see cref="ReturnAim.DepartureUt(GameSnapshot, ReturnAsk, out double?)"/>).</summary>
+            public double DueBy(double ut)
+            {
+                return ut > _alignment ? _alignment : ut;
+            }
 
             /// <summary>The most a burn may cost while it is aimed: the cap, from an inclined orbit.</summary>
             private double _dvLimit = double.PositiveInfinity;
@@ -436,17 +455,6 @@ namespace ClaudiaKerman.Core.Tools
                 }
                 _cheapest = _windows.Count == 0 ? double.NaN : _windows.Min(w => w.DeltaV);
                 return _windows;
-            }
-
-            /// <summary>
-            /// The window an inclined orbit leaves in (#816), before its burn is timed: among those costing no more than the cheapest
-            /// plus <see cref="CostCapMs"/>, the nearest landing (by <see cref="Predict"/>, each), a tie within <see cref="TieKm"/> to the
-            /// sooner. With no target, or no landing to be had, the next window within the cap, else the cheapest. Null when none solves.
-            /// </summary>
-            public ReturnPlan Picked()
-            {
-                var ranked = Ranked();
-                return ranked == null ? null : ranked.Count == 0 ? Cheap() : Tied(ranked);
             }
 
             /// <summary>The windows within the cap whose least burn has a landing, nearest first; null when no window solves, empty without a target or a landing.</summary>
@@ -476,7 +484,11 @@ namespace ClaudiaKerman.Core.Tools
                 return _ask.Landing == null && soonest.DeltaV <= _cheapest + CostCapMs ? soonest : _windows.OrderBy(w => w.DeltaV).First();
             }
 
-            /// <summary>The inclined orbit's answer (#816): <see cref="Picked"/>'s rule, each of the nearest few windows aimed, the rule again on where they come down.</summary>
+            /// <summary>
+            /// The inclined orbit's answer (#816): among the windows costing no more than the cheapest plus <see cref="CostCapMs"/>, the
+            /// nearest landing (by <see cref="Predict"/>, each), a tie within <see cref="TieKm"/> to the sooner; each of the nearest few
+            /// aimed, and the rule again on where they come down. With no target, or no landing to be had, <see cref="Cheap"/>.
+            /// </summary>
             public ReturnPlan FromWindows()
             {
                 var ranked = Ranked();

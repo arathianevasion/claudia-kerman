@@ -26,6 +26,11 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>For transfer_to and return (#749): the UT of the ejection the block waits for, from Core's solver; null for any other burn point.</summary>
         public double? DepartureUt;
         /// <summary>
+        /// For a return from an orbit inclined to its moon's (#816): what its Due Time leads, when sooner than <see cref="DepartureUt"/>
+        /// (<see cref="ReturnAim.DepartureUt(GameSnapshot, ReturnAsk, out double?)"/>); null to lead the departure.
+        /// </summary>
+        public double? DueByUt;
+        /// <summary>
         /// For a return aimed at a landing (#792): the seconds its max_wait spans, from <see cref="ToEarliestSeconds"/> on. <see cref="DepartureUt"/> is an
         /// estimate (the block has the craft's drag, this has not), and a window just outside the block's near ones leaves it the next turn's, so a plan covers all of it.
         /// </summary>
@@ -86,7 +91,7 @@ namespace ClaudiaKerman.Core.Missions
             // A departure over WindowWaits.LongWaitS off is a Due Time (DueTime): the run starts one launch lead before it.
             if (wait != null && DueTime(wait, now).HasValue)
             {
-                wait.WaitSeconds = WindowWaits.LaunchLeadS;
+                wait.WaitSeconds = WindowWaits.LaunchLeadS + (wait.DueByUt.HasValue ? wait.DepartureUt.Value - wait.DueByUt.Value : 0);
                 wait.ToEarliestSeconds = 0;
             }
             return wait != null && plan.ExpectedDurationSeconds < wait.MinimumDurationSeconds ? wait : null;
@@ -98,7 +103,7 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         public static double? DueTime(BurnWait wait, double now)
         {
-            return wait != null && wait.DepartureUt.HasValue ? WindowWaits.DueTime(wait.DepartureUt.Value, now) : null;
+            return wait != null && wait.DepartureUt.HasValue ? WindowWaits.DueTime(wait.DueByUt ?? wait.DepartureUt.Value, now) : null;
         }
 
         /// <summary>
@@ -215,13 +220,14 @@ namespace ClaudiaKerman.Core.Missions
             var toEarliest = 0.0;
             var span = 0.0;
             var defaultAim = false;
+            double? dueBy = null;
             if (call.Block == "return")
             {
                 var earliest = TransferFlight.Earliest(now, 0, window);
                 double? estimate;
-                var aimed = Aimed(call, snapshot, now, earliest, body, out estimate, out span);
+                var aimed = Aimed(call, snapshot, now, earliest, body, out estimate, out span, out dueBy);
                 // #816: with no target and no window given, from an inclined orbit the block may wait for the cheap window.
-                if (!aimed && !call.Options.ContainsKey("window")) estimate = Cheap(call, snapshot, now, earliest);
+                if (!aimed && !call.Options.ContainsKey("window")) estimate = Cheap(call, snapshot, now, earliest, out dueBy);
                 if (!aimed && !window.HasValue && !estimate.HasValue) return null;
                 ut = estimate ?? earliest;
                 departure = estimate ?? (window.HasValue ? earliest : (double?)null);
@@ -244,6 +250,7 @@ namespace ClaudiaKerman.Core.Missions
             if (wait != null)
             {
                 wait.DepartureUt = departure;
+                wait.DueByUt = dueBy;
                 wait.PickSpanSeconds = span;
                 wait.ToEarliestSeconds = toEarliest;
                 wait.DefaultAim = defaultAim;
@@ -256,9 +263,10 @@ namespace ClaudiaKerman.Core.Missions
         /// <paramref name="earliest"/> (<see cref="ReturnAim"/>), with the snapshot's air and an estimate of the craft, when the target and its figures are written out; null
         /// otherwise, when only the span says anything. "ksc" from a moon of another planet is no wait: the block refuses it at once.
         /// </summary>
-        private static bool Aimed(BlockCall call, GameSnapshot snapshot, double now, double earliest, IPlanningBody body, out double? estimate, out double span)
+        private static bool Aimed(BlockCall call, GameSnapshot snapshot, double now, double earliest, IPlanningBody body, out double? estimate, out double span, out double? dueBy)
         {
             estimate = null;
+            dueBy = null;
             span = 0;
             var target = call.Option("target");
             if (target == "\"none\"") return false;
@@ -295,8 +303,9 @@ namespace ClaudiaKerman.Core.Missions
             if (landing == null) return true;
             estimate = ReturnAim.DepartureUt(at, new ReturnAsk
             {
-                TargetPe = targetPe.Value, EarliestUt = earliest, Landing = landing, MaxWait = span, LatestUt = limit.HasValue ? now + limit.Value : (double?)null,
-            });
+                // #816: max_wait as the block reads it, "auto" left to the search, so from an inclined orbit both solve the same windows.
+                TargetPe = targetPe.Value, EarliestUt = earliest, Landing = landing, MaxWait = maxWait, LatestUt = limit.HasValue ? now + limit.Value : (double?)null,
+            }, out dueBy);
             return true;
         }
 
@@ -304,12 +313,20 @@ namespace ClaudiaKerman.Core.Missions
         private const double NoTargetPe = 35000;
 
         /// <summary>The UT a return with no target and no window given waits for (<see cref="ReturnAim.CheapDepartureUt"/>), or null for its next pass.</summary>
-        private static double? Cheap(BlockCall call, GameSnapshot snapshot, double now, double earliest)
+        private static double? Cheap(BlockCall call, GameSnapshot snapshot, double now, double earliest, out double? dueBy)
         {
+            dueBy = null;
             string given;
             var targetPe = call.Options.TryGetValue("target_pe", out given) ? Literal(given) : NoTargetPe;
             if (!targetPe.HasValue) return null;
-            return ReturnAim.CheapDepartureUt(snapshot.At(now), new ReturnAsk { TargetPe = targetPe.Value, EarliestUt = earliest, CheapWindow = true });
+            // Within max_wait and max_duration, as the block reads them.
+            var maxWait = Literal(call.Option("max_wait"));
+            var limit = Literal(call.Option("max_duration"));
+            var latest = Math.Min(maxWait.HasValue ? earliest + maxWait.Value : double.PositiveInfinity, limit.HasValue ? now + limit.Value - ReturnAim.AfterBurnS : double.PositiveInfinity);
+            return ReturnAim.CheapDepartureUt(snapshot.At(now), new ReturnAsk
+            {
+                TargetPe = targetPe.Value, EarliestUt = earliest, CheapWindow = true, LatestUt = double.IsPositiveInfinity(latest) ? (double?)null : latest,
+            }, out dueBy);
         }
 
         private static bool IsKsc(string target)

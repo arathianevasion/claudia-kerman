@@ -80,9 +80,9 @@ namespace ClaudiaKerman.Core.Tests
             }
         }
 
-        private static IDictionary<string, object> Aimed(GameSnapshot snapshot, object maxWait = null)
+        private static IDictionary<string, object> Aimed(GameSnapshot snapshot, object maxWait = null, double? earliest = null)
         {
-            var input = new Dictionary<string, object> { { "target_pe", 30000.0 }, { "earliest_ut", snapshot.Ut }, { "lat", KscLat }, { "lng", KscLng } };
+            var input = new Dictionary<string, object> { { "target_pe", 30000.0 }, { "earliest_ut", earliest ?? snapshot.Ut }, { "lat", KscLat }, { "lng", KscLng } };
             if (maxWait != null) input["max_wait"] = maxWait;
             return BlockCalls.ReturnBurn(input, snapshot, new FrameBody(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
         }
@@ -198,6 +198,66 @@ namespace ClaudiaKerman.Core.Tests
             }
         }
 
+        /// <summary>The plan's view of the block's pick (<see cref="ReturnAim.DepartureUt(GameSnapshot, ReturnAsk, out double?)"/>), with the block's own craft and air.</summary>
+        private static double PlanPick(GameSnapshot snapshot, out double? dueBy)
+        {
+            string problem;
+            var landing = ReturnAim.LandingOn(snapshot, KscLat, KscLng, 0, 0, new FrameBody(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule(), out problem);
+            Assert.Null(problem);
+            var ut = ReturnAim.DepartureUt(snapshot, new ReturnAsk { TargetPe = 30000, EarliestUt = snapshot.Ut, Landing = landing }, out dueBy);
+            Assert.NotNull(ut);
+            return ut.Value;
+        }
+
+        /// <summary>Two burn times in the same window: within half the craft's orbit of each other.</summary>
+        private static void SameWindow(GameSnapshot snapshot, double expected, double actual, string what)
+        {
+            BodySystem system;
+            SnapshotBody moon;
+            Conic orbit;
+            Setup(snapshot, out system, out moon, out orbit);
+            Assert.True(Math.Abs(actual - expected) < orbit.Period / 2, what + ": UT " + actual + " against " + expected + ", " + (actual - expected) / 3600 + " h");
+        }
+
+        /// <summary>
+        /// The plan's pick and the block's are the same window (#816 review): the plan searches the windows the block does, "auto"
+        /// max_wait left to the search rather than read as a span, so it no longer solves the dear gap between the landing's turn and the cheap band.
+        /// </summary>
+        [Theory]
+        [InlineData(66.43, 90, 1.7)]
+        [InlineData(66.43, 120, 1.7)]
+        [InlineData(66.43, 300, 5.5)]
+        [InlineData(90, 120, 3.0)]
+        [InlineData(90, 240, 4.5)]
+        public void The_plan_and_the_block_pick_the_same_window(double inc, double lan, double phase)
+        {
+            var snapshot = Orbiting(Mun(phase), inc, lan);
+            double? dueBy;
+            SameWindow(snapshot, D(Aimed(snapshot), "ut"), PlanPick(snapshot, out dueBy), "the plan's pick");
+        }
+
+        /// <summary>
+        /// A wait over 6 h is a Due Time (#749), and the run starts again a launch lead before it. For a window more than a lead past its
+        /// cheap alignment, a Due Time on the window itself restarted the block past the alignment, where it searched on to the next one,
+        /// half the Mun's orbit later, and could wait for that (here 14 h more, from 66.43° at node 90). The Due Time now leads the
+        /// alignment, and the block asked again there picks the plan's window.
+        /// </summary>
+        [Theory]
+        [InlineData(66.43, 90, 1.7)]
+        [InlineData(66.43, 300, 5.5)]
+        [InlineData(90, 240, 4.5)]
+        public void Asked_again_at_its_due_time_the_block_picks_the_plans_window(double inc, double lan, double phase)
+        {
+            var snapshot = Orbiting(Mun(phase), inc, lan);
+            var block = D(Aimed(snapshot), "ut");
+            double? dueBy;
+            var plan = PlanPick(snapshot, out dueBy);
+            Assert.True(dueBy.HasValue && dueBy.Value < plan - WindowWaits.LaunchLeadS, "the window is over a lead past its alignment, so the Due Time leads the alignment");
+            var due = WindowWaits.DueTime(dueBy.Value, snapshot.Ut);
+            Assert.NotNull(due);
+            SameWindow(snapshot, block, D(Aimed(snapshot, null, due.Value), "ut"), "asked again at the Due Time");
+        }
+
         /// <summary>The rule's tie: landings within 5 km of the nearest count as one, and the sooner window goes.</summary>
         [Fact]
         public void A_tie_within_5_km_goes_to_the_sooner_window()
@@ -231,6 +291,27 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(D(cheap, "dv"), 264, 264 + ReturnAim.CostCapMs);
             Assert.True(D(cheap, "ut") > plain.Ut + 3600, "it waits for the cheap window");
             Assert.Contains("; windows ", (string)cheap["plan_log"]);
+        }
+
+        /// <summary>
+        /// The wait for the cheap window keeps within max_duration and max_wait (#816 review): here the cheap window is 7 h off, so with an
+        /// hour the next pass inside it goes, where the block used to warp on and stop at "abort max_duration".
+        /// </summary>
+        [Theory]
+        [InlineData("max_duration")]
+        [InlineData("max_wait")]
+        public void With_no_target_the_cheap_window_wait_keeps_within_max_duration_and_max_wait(string option)
+        {
+            var snapshot = Orbiting(Mun(0.9), 66.43, 30);
+            var plain = ReturnBurn.Find(snapshot, new ReturnAsk { TargetPe = 35000, EarliestUt = snapshot.Ut });
+            var input = new Dictionary<string, object> { { "target_pe", 35000.0 }, { "earliest_ut", snapshot.Ut }, { "cheap_window", true }, { "start_ut", snapshot.Ut }, { option, 3600.0 } };
+            var node = BlockCalls.ReturnBurn(input, snapshot);
+            Assert.Equal("", node["error"]);
+            Assert.Equal(plain.Ut, D(node, "ut"));
+            input[option] = "auto";
+            if (option == "max_wait") Assert.True(D(BlockCalls.ReturnBurn(input, snapshot), "ut") > plain.Ut + 3600, "\"auto\" waits for the cheap window");
+            input[option] = 30 * 3600.0;
+            Assert.InRange(D(BlockCalls.ReturnBurn(input, snapshot), "dv"), 264, 264 + ReturnAim.CostCapMs);
         }
 
         /// <summary>When the next pass is already within the cap, the block leaves on it, with no target or window as with one.</summary>

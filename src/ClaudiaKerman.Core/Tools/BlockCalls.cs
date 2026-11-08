@@ -1175,6 +1175,14 @@ namespace ClaudiaKerman.Core.Tools
                 var problem = ReturnLandingOf(ask, snapshot, returnAsk, body, air, craft);
                 if (problem != null) return Error(Tools.ReturnBurn.Fail(problem).Error);
             }
+            else if (returnAsk.CheapWindow)
+            {
+                // #816: the wait for the cheap window ends within max_wait and max_duration, else the next pass inside them goes.
+                var problem = WaitOf(ask, snapshot, returnAsk);
+                if (problem != null) return Error(Tools.ReturnBurn.Fail(problem).Error);
+                if (returnAsk.MaxWait.HasValue) returnAsk.LatestUt = Math.Min(returnAsk.LatestUt ?? double.PositiveInfinity, returnAsk.EarliestUt + returnAsk.MaxWait.Value);
+                returnAsk.MaxWait = null;
+            }
             var plan = Tools.ReturnBurn.Find(snapshot, returnAsk);
             if (!plan.HasBurn) return Error(plan.Error);
             var result = new Dictionary<string, object>
@@ -1207,14 +1215,8 @@ namespace ClaudiaKerman.Core.Tools
             var lat = NumberOrNull(ask, "lat");
             var lng = NumberOrNull(ask, "lng");
             if (!lat.HasValue || !lng.HasValue) return "lat and lng must both be numbers";
-            object wait;
-            ask.TryGetValue("max_wait", out wait);
-            if (wait is double && (double)wait > 0) into.MaxWait = (double)wait;
-            else if (wait != null && !string.Equals(wait as string, "auto", StringComparison.OrdinalIgnoreCase))
-                return "max_wait must be \"auto\" or seconds above 0, not " + Convert.ToString(wait, CultureInfo.InvariantCulture);
-            object limit;
-            if (ask.TryGetValue("max_duration", out limit) && limit is double)
-                into.LatestUt = Number(ask, "start_ut", snapshot.Ut) + (double)limit - ReturnAim.AfterBurnS;
+            var waitProblem = WaitOf(ask, snapshot, into);
+            if (waitProblem != null) return waitProblem;
             DropBurn payer;
             var craftProblem = EntryCraftOf(ask, out payer);
             if (craftProblem != null) return craftProblem;
@@ -1223,6 +1225,20 @@ namespace ClaudiaKerman.Core.Tools
             into.Landing = ReturnAim.LandingOn(snapshot, lat.Value, lng.Value, Number(ask, "ground_alt", 0), Number(ask, "isp", 0), body, air, craft, out problem);
             if (into.Landing != null) into.Landing.Payer = payer;
             return problem;
+        }
+
+        /// <summary><c>max_wait</c> into <see cref="ReturnAsk.MaxWait"/> and a numeric <c>max_duration</c> into <see cref="ReturnAsk.LatestUt"/>: why max_wait can't be read, or null.</summary>
+        private static string WaitOf(IDictionary<string, object> ask, GameSnapshot snapshot, ReturnAsk into)
+        {
+            object wait;
+            ask.TryGetValue("max_wait", out wait);
+            if (wait is double && (double)wait > 0) into.MaxWait = (double)wait;
+            else if (wait != null && !string.Equals(wait as string, "auto", StringComparison.OrdinalIgnoreCase))
+                return "max_wait must be \"auto\" or seconds above 0, not " + Convert.ToString(wait, CultureInfo.InvariantCulture);
+            object limit;
+            if (ask.TryGetValue("max_duration", out limit) && limit is double)
+                into.LatestUt = Number(ask, "start_ut", snapshot.Ut) + (double)limit - ReturnAim.AfterBurnS;
+            return null;
         }
 
         /// <summary>
