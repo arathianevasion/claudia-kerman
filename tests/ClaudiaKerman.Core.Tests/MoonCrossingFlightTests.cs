@@ -58,7 +58,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             var rig = MoonCrossingTests.DunaOrbit();
             var at = MoonCrossings.Follow(rig.System, rig.Body, rig.Orbit, rig.Ut, rig.Ut + MoonCrossingTests.Wait908b).Ut.Value;
-            var watch = new EncounterWatch(new EncounterWatchPlan { NextPatch = true, SinceUt = rig.Ut }.ToLexicon());
+            var watch = EncounterWatch.From(new EncounterWatchPlan { NextPatch = true, SinceUt = rig.Ut }.ToLexicon());
             Assert.True(watch.Due(rig.Ut));
             Assert.Equal("", watch.Check(rig.Snapshot()));
             rig.MoveTo(at - 1000);

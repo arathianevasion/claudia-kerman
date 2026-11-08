@@ -24,7 +24,7 @@ namespace ClaudiaKerman.Adapter
         public static EncounterWatcher Current { get; private set; }
 
         private readonly Action<MissionInput> _send;
-        private EncounterWatch _watch;
+        private IEncounterWatch _watch;
         private Vessel _vessel;
         private List<SnapshotBody> _bodies;
         private string _line = "";
@@ -53,7 +53,7 @@ namespace ClaudiaKerman.Adapter
         public void Arm(IDictionary<string, object> plan, Vessel vessel)
         {
             Reset();
-            _watch = new EncounterWatch(plan);
+            _watch = EncounterWatch.From(plan);
             _vessel = vessel;
             // The coast a far switch could make a checkpoint of (#775): Core decides when the player asks.
             object token;
