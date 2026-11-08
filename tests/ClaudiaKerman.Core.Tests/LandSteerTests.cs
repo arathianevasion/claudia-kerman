@@ -256,8 +256,6 @@ namespace ClaudiaKerman.Core.Tests
             public double MostLean, MostTurnRate, Error, Rate, Lean, Down, Sideways, Settle;
             /// <summary>Seconds from first coming below 50 m (always in the cap's zone) to the command first within the cap; -1 never.</summary>
             public double IntoCapS = -1;
-            /// <summary>The most the command leaned above 50 m, slow across the ground (the zone's other half) and not slow or high.</summary>
-            public double MostLeanSlowHigh, MostLeanFastHigh;
         }
 
         /// <summary>
@@ -284,10 +282,9 @@ namespace ClaudiaKerman.Core.Tests
                     "a_max", IkeAMax, "g", IkeG, "facing", Nose(theta), "rate", Math.Abs(omega), "top_rate", TopRate, "dv_left", dv, "ut", ut));
                 var cmd = Math.Atan2(D(last, "al"), D(last, "up")) * 180 / Math.PI;
                 // The lean is checked below 50 m, once the command has turned onto the cap (it turns no faster than the craft). Above
-                // it the craft can speed past 2 m/s across and leave the zone, as the player asked, so it is only recorded there.
+                // it the craft can speed past 2 m/s across and leave the zone, as the player asked (there it leaned to 87 degrees from
+                // 368 m and 48 from 165 m, as before #865).
                 if (zoneUt < 0 && y < LandSteer.CapBelowM) zoneUt = ut;
-                if (zoneUt < 0 && Math.Abs(vx) < LandSteer.CapSlowerMs) flight.MostLeanSlowHigh = Math.Max(flight.MostLeanSlowHigh, Math.Abs(cmd));
-                if (zoneUt < 0 && Math.Abs(vx) >= LandSteer.CapSlowerMs) flight.MostLeanFastHigh = Math.Max(flight.MostLeanFastHigh, Math.Abs(cmd));
                 if (zoneUt >= 0 && flight.IntoCapS < 0 && Math.Abs(cmd) <= LandSteer.TerminalLeanDeg + 1e-6) flight.IntoCapS = ut - zoneUt;
                 if (flight.IntoCapS >= 0) flight.MostLean = Math.Max(flight.MostLean, Math.Abs(cmd));
                 if (!double.IsNaN(lastCmd)) flight.MostTurnRate = Math.Max(flight.MostTurnRate, Math.Abs(cmd - lastCmd) / dt);
