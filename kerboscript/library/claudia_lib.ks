@@ -220,18 +220,6 @@ function claudia_stage_action {
   return "stage".
 }
 
-// True if a stage fires straight on into the next one. fired_engines: the stage just fired held
-// engines; next_engines: the next stage holds engines; had_thrust: some engine gave thrust before
-// firing; next_unsafe: as for claudia_stage_action. A decoupler-only stage with no thrust left
-// would otherwise leave the craft coasting for a tick or more before its engines light.
-function claudia_stage_on {
-  parameter stage_number, stage_limit, fired_engines, next_engines, had_thrust, next_unsafe.
-  if fired_engines or had_thrust or next_unsafe or not next_engines {
-    return false.
-  }
-  return stage_number > stage_limit and stage_number > 0.
-}
-
 // True if a stage fires straight on through a run of decoupler-only stages into engines.
 // stage_number: the number of the stage just fired; engines_below / unsafe_below: lists from the
 // next stage to fire downwards, each entry true if that stage holds engines / parachutes or a heat
