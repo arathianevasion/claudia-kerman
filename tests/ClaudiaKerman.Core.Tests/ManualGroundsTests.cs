@@ -282,6 +282,57 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("false", mission.ExportStates()[0].ManualAsk);
         }
 
+        // ---- #873: the typed flag ----
+
+        [Fact]
+        public void AModWrittenPlayerLineWithManualInItIsNotTheirWordsOnceALineIsFlagged()
+        {
+            var log = new List<LogEntry>
+            {
+                new LogEntry { Kind = LogKind.Player, Text = "Mission Goal: " + Goal },
+                new LogEntry { Kind = LogKind.Player, Text = "Something new the mod writes: manual stretch ahead" },
+                new LogEntry { Kind = LogKind.Player, Text = "Why that orbit?", Typed = true },
+            };
+            Assert.Equal(new[] { "Why that orbit?" }, ManualGrounds.TypedWords(log));
+            Assert.False(ManualGrounds.Asked(Goal, log));
+        }
+
+        [Fact]
+        public void ALogWithNoFlagsFallsBackToThePrefixRule()
+        {
+            var log = new List<LogEntry>
+            {
+                new LogEntry { Kind = LogKind.Player, Text = "Mission Goal: " + Goal },
+                new LogEntry { Kind = LogKind.Player, Text = "EVA science done by hand: surface samples" },
+                new LogEntry { Kind = LogKind.Player, Text = "I'll fly the landing" },
+                new LogEntry { Kind = LogKind.Claudia, Text = "manual" },
+            };
+            Assert.Equal(new[] { "I'll fly the landing" }, ManualGrounds.TypedWords(log));
+            Assert.True(ManualGrounds.Asked(Goal, log));
+        }
+
+        [Fact]
+        public void ATypedReplyIsFlaggedAndSurvivesASaveALoadAndTheLogRebuild()
+        {
+            var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), Fixture("mission-sequence-plan.sse"), Bare());
+            var mission = Control(transport);
+            ToSequenceTurn(mission, Goal);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            mission.Send(new Reply("I'll fly the landing"));
+            DrainUntil(mission, v => !v.Busy);
+
+            Assert.True(mission.View.Log.Single(e => e.Text == "I'll fly the landing").Typed);
+            Assert.False(mission.View.Log.Single(e => e.Text.StartsWith("Mission Goal: ", StringComparison.Ordinal)).Typed);
+            Assert.Equal("true", mission.ExportStates()[0].ManualAsk);
+
+            var saved = new List<MissionSaveState> { MissionSaveState.FromValues(mission.ExportStates()[0].ToValues()) };
+            var resumed = Control(new StreamingFakeTransport());
+            resumed.Send(new MissionsRestored(_save.Path, saved));
+            Assert.True(resumed.View.Log.Single(e => e.Text == "I'll fly the landing").Typed);
+            Assert.False(resumed.View.Log.Single(e => e.Text.StartsWith("Mission Goal: ", StringComparison.Ordinal)).Typed);
+            Assert.Equal("true", resumed.ExportStates()[0].ManualAsk);
+        }
+
         // ---- The Debrief ----
 
         [Fact]

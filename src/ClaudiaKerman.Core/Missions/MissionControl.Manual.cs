@@ -226,7 +226,7 @@ namespace ClaudiaKerman.Core.Missions
             if (!linkLost && HandBackUnavailableBecause().Length > 0) return;
             mission.HandBack = true;
             mission.HandBackMessage = (message ?? "").Trim();
-            Note(LogKind.Player, mission.HandBackMessage.Length > 0 ? "Hand back to Claudia: " + mission.HandBackMessage : "Hand back to Claudia.");
+            Note(LogKind.Player, mission.HandBackMessage.Length > 0 ? "Hand back to Claudia: " + mission.HandBackMessage : "Hand back to Claudia.", typed: mission.HandBackMessage.Length > 0);
             Event(mission, "hand_back", mission.HandBackMessage);
             // A link-lost take-back has just made the craft safe (SAS on) and keeps it that way; only the player's hand back turns it off.
             if (!linkLost)

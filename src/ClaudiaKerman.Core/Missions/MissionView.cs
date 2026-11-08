@@ -133,6 +133,8 @@ namespace ClaudiaKerman.Core.Missions
         public string AnsweredBy = "";
         /// <summary>The universal time the entry was made; stamped when the entry first reaches a view (so an entry from before a load reads as the load time); 0 until a UT has been reported.</summary>
         public double Ut;
+        /// <summary>#873: a Player line that is the player's own typed text (chat input, replies, notes); never set on a line the mod writes. <see cref="ManualGrounds"/> reads only these.</summary>
+        public bool Typed;
         /// <summary>Claudia's, made in a Blackout: it waits for the link before any view shows it.</summary>
         internal bool Queued;
     }
