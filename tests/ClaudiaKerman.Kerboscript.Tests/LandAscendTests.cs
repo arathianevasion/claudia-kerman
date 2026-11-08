@@ -1473,16 +1473,16 @@ function tsim {
                 Core.Tools.BrakePath.TurnLag(59.9, 9.8));
             // The same approach: soft, and the same altitudes every 5 km. #865: the final descent's 20 degree cap holds only below 50 m
             // or under 2 m/s across (the player's call), but here it slows under 2 m/s about 260 m up while land_guide still asks
-            // to brake sideways with nothing up, and the cap's lift holds its height there for about 40 s. So kOS lands 22 m past the
-            // site, 48 m beyond BRAKEPATH's stop (which doesn't model the cap), in 300 s rather than under 250.
+            // to brake sideways with nothing up, and the cap's lift held its height there for about 40 s (#886: now bounded by land_guide's wanted descent rate, so it
+            // doesn't). kOS lands 10 m past the site, 36 m beyond BRAKEPATH's stop (which doesn't model the cap), in 227 s.
             Assert.Null(flown.Failure);
             Assert.Equal("False", kos[0]);
             var kosAlts = kos.Skip(5).Select(a => double.Parse(a, CultureInfo.InvariantCulture)).ToList();
             Assert.Equal(kosAlts.Count, alts.Count);
             for (var i = 0; i < alts.Count; i++) Assert.InRange(alts[i] - kosAlts[i], -10, 10);
-            Assert.InRange(double.Parse(kos[2], CultureInfo.InvariantCulture) + flown.StopS, 0, 60);
-            Assert.InRange(double.Parse(kos[2], CultureInfo.InvariantCulture), -300, 300);
-            Assert.InRange(double.Parse(kos[3], CultureInfo.InvariantCulture), 0, 310);
+            Assert.InRange(double.Parse(kos[2], CultureInfo.InvariantCulture) + flown.StopS, 0, 40);
+            Assert.InRange(double.Parse(kos[2], CultureInfo.InvariantCulture), -25, 25);
+            Assert.InRange(double.Parse(kos[3], CultureInfo.InvariantCulture), 0, 250);
             Assert.InRange(flown.DvUsed, 150, 300);
             // Never back over its starting height plus the arrest of its fall above circular speed (BrakePathTests), let alone 2.4 km.
             Assert.True(alts.Max() < 2097 + 300, string.Join(", ", alts));
