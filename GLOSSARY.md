@@ -81,7 +81,7 @@ A burn between departure and arrival that trims the predicted arrival at a body 
 _Avoid_: mid-course correction, MCC
 
 **Late Trim**:
-At most one Course Correction `reentry` flies at its start, before it drops its stack, toward the Mission's aimed landing target (#892). Core's `ENTRYTRIM` decides: over 1,200 s to the air and a predicted miss over 5 km.
+At most one Course Correction `reentry` flies at its start, before it drops its stack, toward the vessel's aimed landing target (#892). Core's `ENTRYTRIM` decides: over 1,200 s to the air and a predicted miss over 5 km.
 
 **Broken-plane transfer**:
 A transfer to a body out of the craft's plane whose departure stays in that plane, with a plane change partway out, where the arc is slow, that makes the encounter; its delta-v is reported as `plane_dv`, apart from the Course Corrections' `correction_dv`. `transfer_to` flies it in place of the halfway Course Correction (#619).
@@ -108,7 +108,7 @@ The arrival burn of a transfer: circular at the target periapsis round a body, o
 _Avoid_: insertion, orbit insertion
 
 **Landing target default**:
-What a `return` or `deorbit` at Kerbin aims for when Claudia gives no `target`: KSC, set by the mod (`HomeLanding`, #790), with no prompt text, as it sets `transfer_to`'s plane. A target she gives wins, as does a Mission Goal that names another place at home: a biome, a Point of Interest, water, a splashdown, or a latitude and longitude. A leg ahead that names a Point of Interest or a latitude and longitude there counts too, and so does a site picked there. A `return` with a periapsis over the air, a `window` or a `target_inc` isn't aimed: the first is no landing, and the others are timed or shaped for something else. From another planet the same default chooses the way in at `plan_transfer`: capture then `deorbit` when the delta-v left less the **reserve** covers both, else straight in. For a `return`, the Mission's recorded landing target comes ahead of the default (#880).
+What a `return` or `deorbit` at Kerbin aims for when Claudia gives no `target`: KSC, set by the mod (`HomeLanding`, #790), with no prompt text, as it sets `transfer_to`'s plane. A target she gives wins, as does a Mission Goal that names another place at home: a biome, a Point of Interest, water, a splashdown, or a latitude and longitude. A leg ahead that names a Point of Interest or a latitude and longitude there counts too, and so does a site picked there. A `return` with a periapsis over the air, a `window` or a `target_inc` isn't aimed: the first is no landing, and the others are timed or shaped for something else. From another planet the same default chooses the way in at `plan_transfer`: capture then `deorbit` when the delta-v left less the **reserve** covers both, else straight in. For a `return`, the vessel's recorded landing target comes ahead of the default (#880).
 
 **Reserve**:
 What aiming a landing never spends: the larger of 50 m/s and 10% of the delta-v left, plus what a craft with no parachutes needs for its powered landing. One rule, `DeorbitBurn.AutoMaxDv`, for `deorbit`'s auto `max_dv`, `return`'s aimed correction and the choice of capture on a trip home.
@@ -141,7 +141,7 @@ _Avoid_: slingshot, gravity assist (the planet's gravity does no turning for fre
 From a moon's orbit to another planet of its star: a return to the planet's low orbit, a capture there, and the ejection from that orbit at the Transfer Window.
 
 **High Route** (#866):
-The route on which `capture`, arriving at a planet with a moon of it next in the Mission Plan, keeps a high ellipse timed to meet that moon instead of circling; `transfer_to` then leaves from the ellipse's periapsis at the moon's window. The Delta-v Map prices a Mission Goal at such a moon by it. Falls back to the circle when no window fits before the next fixed date (plain wording, not a term).
+The route on which `capture`, arriving at a planet with a moon of it next in the Mission Plan, keeps a high ellipse timed to meet that moon instead of circling; `transfer_to` then leaves from the ellipse's periapsis at the moon's window. The Delta-v Map prices a Mission Goal at such a moon by it. Falls back to the circle when no window fits before the next fixed date: the tightest Due Time of the legs after the moon, or the next transfer window of a later leg that leaves the planet for another planet (#881, #895), less a low orbit of the moon per leg between (plain wording, not a term).
 _Avoid_: kept orbit, high orbit, kept ellipse
 
 **Daylight**:

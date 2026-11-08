@@ -17,6 +17,6 @@ Known gap: `AutoMaxDv` counts delta-v that `separate` or `stage_limit` forbids (
 
 **Amended by #880, grilled with the player on 2026-11-07.** A return from an inclined orbit round the Mun or Minmus may now wait up to the cheap alignment plus 60 h, not about 7 h, for the earliest window it can afford landing within 50 km; with no window to fit, #816's rule. The Mission's recorded landing target is a stated one for an `auto` return, ahead of the default. From another planet the window is unchanged, and the step records KSC so the Late Trim aims there; `transfer_to`'s own corrections still hold only the periapsis.
 
-**Added in #880's code review, not grilled, open for the player to change.** A window the approved plan recorded is kept when it still lands within about 2 x ReachKm (about 100 km) and is affordable, before the search, so the plan and the block agree: the plan's craft and air are estimates, and a restart for a late window re-anchors on its alignment (#887), which could wait past the cap.
+**Added in #880's code review, confirmed by the player on 2026-11-08.** A window the approved plan recorded is kept when it still lands within about 2 x ReachKm (about 100 km) and is affordable, before the search, so the plan and the block agree: the plan's craft and air are estimates, and a restart for a late window re-anchors on its alignment (#887), which could wait past the cap.
 
 Decided on #790 and its amendment (#797), by the player on 2026-11-05. The logic is in Core under ADR 0014; `return.ks` and `deorbit.ks` are wiring.
