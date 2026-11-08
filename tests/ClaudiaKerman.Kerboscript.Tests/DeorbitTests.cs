@@ -248,5 +248,30 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.DoesNotContain("entrydrop", source);
             Assert.DoesNotContain("claudia_shield_drop", source);
         }
+
+        /// <summary>#911: deorbit, return and reentry read the delta-v left through the one recounting helper; none calls the bare read or forcecalc itself.</summary>
+        [Theory]
+        [InlineData("deorbit")]
+        [InlineData("return")]
+        [InlineData("reentry")]
+        public void Each_block_reads_delta_v_through_the_recounting_helper(string block)
+        {
+            var source = CoreLibrary.Files.Single(f => f.Name == block).Source;
+            Assert.Contains("claudia_dv_recounted()", source);
+            Assert.DoesNotContain("claudia_dv_remaining()", source);
+            Assert.DoesNotContain("forcecalc", source);
+            Assert.DoesNotContain("ship:deltav:current", source);
+            var lib = CoreLibrary.Files.Single(f => f.Name == "claudia_lib").Source;
+            Assert.Contains("ship:deltav:forcecalc().\n  wait 0.5.\n  return claudia_dv_remaining().", lib);
+        }
+
+        /// <summary>#911: drop_parts recounts through the helper for its after read; its before read stays the plain one.</summary>
+        [Fact]
+        public void Drop_parts_reads_the_after_delta_v_through_the_recounting_helper()
+        {
+            var source = CoreLibrary.Files.Single(f => f.Name == "drop_parts").Source;
+            Assert.Contains("drop_parts_dv_taken(dv_before, claudia_dv_recounted(),", source);
+            Assert.DoesNotContain("forcecalc", source);
+        }
     }
 }

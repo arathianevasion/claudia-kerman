@@ -329,7 +329,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         private const string StartRead = "local below is addons:claudia:entrydrop(entry_ask).";
         private const string DropPoint = "if entry_in > below:lead {\n";
         private const string DropWait = "    local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).";
-        private const string Trim = "  claudia_fly_correction(ctx, addons:claudia:entrytrim(lexicon(\"to_air\", entry_in, \"home\", entry_ask:home, \"has_node\", hasnode, \"stage_limit\", opt:stage_limit, \"dv_left\", claudia_dv_remaining(), \"isp\", claudia_engine_isp()))).\n";
+        private const string Trim = "  claudia_fly_correction(ctx, addons:claudia:entrytrim(lexicon(\"to_air\", entry_in, \"home\", entry_ask:home, \"has_node\", hasnode, \"stage_limit\", opt:stage_limit, \"dv_left\", claudia_dv_recounted(), \"isp\", claudia_engine_isp()))).\n";
         private const string AirAgain = "    set entry_in to reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).\n";
         private const string Fire = "set drop_error to claudia_fire_drop(ctx, drop).";
 

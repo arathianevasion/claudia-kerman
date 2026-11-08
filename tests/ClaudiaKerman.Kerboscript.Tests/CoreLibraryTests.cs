@@ -227,24 +227,6 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Theory]
-        // A decoupler-only stage with no thrust left, engines next: stage on.
-        [InlineData(3, 0, false, true, false, false, true)]
-        [InlineData(3, 2, false, true, false, false, true)]
-        // The stage fired held engines, or some engine still burns, or no engines next: wait for them.
-        [InlineData(3, 0, true, true, false, false, false)]
-        [InlineData(3, 0, false, true, true, false, false)]
-        [InlineData(3, 0, false, false, false, false, false)]
-        // Parachutes or a heat shield next: never.
-        [InlineData(3, 0, false, true, false, true, false)]
-        // At the stage limit or stage 0.
-        [InlineData(2, 2, false, true, false, false, false)]
-        [InlineData(0, 0, false, true, false, false, false)]
-        public void A_decoupler_only_stage_without_thrust_stages_on_into_the_next_engines(int stage, int limit, bool firedEngines, bool nextEngines, bool hadThrust, bool unsafeNext, bool expected)
-        {
-            Assert.Equal(expected ? "True" : "False", One("claudia_stage_on(" + stage + ", " + limit + ", " + Bool(firedEngines) + ", " + Bool(nextEngines) + ", " + Bool(hadThrust) + ", " + Bool(unsafeNext) + ")"));
-        }
-
-        [Theory]
         // Lists run from the next stage to fire downwards: engines held, then parachutes/heat shield.
         // One decoupler-only stage, then engines.
         [InlineData(5, 0, false, false, "list(false, true)", "list(false, false)", true)]

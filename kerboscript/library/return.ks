@@ -222,7 +222,7 @@ function return {
     local ground_alt is planet:geopositionlatlng(site:lat, site:lng):terrainheight.
     // The craft reentry will fly (#814), read once: every prediction below flies it, assuming reentry's separate stays "auto". Read before the ejection, its whole and gone_prop are that craft's, so the correction pairs them with the kept mass now.
     local craft is addons:claudia:entrycraft(lexicon("core", core:part:uid, "stage_limit", opt:stage_limit, "body", planet:name)).
-    set burn_ask to lexicon("lat", site:lat, "lng", site:lng, "ground_alt", max(0, ground_alt), "max_wait", opt:max_wait, "max_duration", opt:max_duration, "start_ut", ctx:start_ut, "isp", claudia_engine_isp(), "craft", craft, "dv_left", claudia_dv_remaining()).
+    set burn_ask to lexicon("lat", site:lat, "lng", site:lng, "ground_alt", max(0, ground_alt), "max_wait", opt:max_wait, "max_duration", opt:max_duration, "start_ut", ctx:start_ut, "isp", claudia_engine_isp(), "craft", craft, "dv_left", claudia_dv_recounted()).
     set predict to {
       parameter orb, from_ut.
       return addons:claudia:reentryimpact(return_impact_query(orb, from_ut, site, ground_alt, craft)).
@@ -317,7 +317,7 @@ function return {
       }
       // The Course Correction is the mod's solver, a block-internal call (ADR 0007), so it sits in the block.
       if return_aims(opt) {
-        local aimed is addons:claudia:correctionburn(return_aimed_ask(claudia_correction_ask(planet:name, opt:target_pe, when:ut), burn_ask, claudia_engine_isp(), claudia_dv_remaining())).
+        local aimed is addons:claudia:correctionburn(return_aimed_ask(claudia_correction_ask(planet:name, opt:target_pe, when:ut), burn_ask, claudia_engine_isp(), claudia_dv_recounted())).
         if aimed:haskey("aim_note") { set extra:aim_note to (extra:aim_note + " " + aimed:aim_note):trim. }
         set fixed to claudia_fly_correction(ctx, aimed).
       } else {

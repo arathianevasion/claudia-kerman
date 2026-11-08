@@ -170,8 +170,6 @@ function drop_parts {
   local not_fired is claudia_fire_drop(ctx, plan).
   set extra:parts_dropped to before - ship:parts:length.
   // Stock delta-v is recounted after the parts left; what it lost is what the drop took.
-  ship:deltav:forcecalc().
-  wait 0.5.
-  set extra:dropped_dv to drop_parts_dv_taken(dv_before, claudia_dv_remaining(), dv_now, dv_left).
+  set extra:dropped_dv to drop_parts_dv_taken(dv_before, claudia_dv_recounted(), dv_now, dv_left).
   return claudia_finish(ctx, not_fired = "", not_fired, extra).
 }
