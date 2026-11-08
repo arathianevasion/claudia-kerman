@@ -204,15 +204,51 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void The_Mission_save_round_trips_the_target()
         {
-            var saved = new MissionSaveState { Id = "m1", LandingTarget = new LandingTarget { Body = "Kerbin", Latitude = -0.1025, Longitude = -74.575, TargetPe = 30000 } };
-            var read = MissionSaveState.FromValues(saved.ToValues()).LandingTarget;
-            Assert.Equal("Kerbin", read.Body);
-            Assert.Equal(-0.1025, read.Latitude);
-            Assert.Equal(-74.575, read.Longitude);
-            Assert.Equal(30000.0, read.TargetPe);
-            var noPe = MissionSaveState.FromValues(new MissionSaveState { Id = "m2", LandingTarget = new LandingTarget { Body = "Kerbin", Latitude = 1, Longitude = 2 } }.ToValues()).LandingTarget;
-            Assert.Null(noPe.TargetPe);
-            Assert.Null(MissionSaveState.FromValues(new MissionSaveState { Id = "m3" }.ToValues()).LandingTarget);
+            var targets = new AimedLandings();
+            targets.Aim("craft", new LandingTarget { Body = "Kerbin", Latitude = -0.1025, Longitude = -74.575, TargetPe = 30000 });
+            targets.Aim("probe", new LandingTarget { Body = "Kerbin", Latitude = 1, Longitude = 2 });
+            var saved = new MissionSaveState { Id = "m1", LandingTargets = targets.ToJson() };
+            var read = AimedLandings.FromJson(MissionSaveState.FromValues(saved.ToValues()).LandingTargets);
+            Assert.Equal("Kerbin", read.Of("craft").Body);
+            Assert.Equal(-0.1025, read.Of("craft").Latitude);
+            Assert.Equal(-74.575, read.Of("craft").Longitude);
+            Assert.Equal(30000.0, read.Of("craft").TargetPe);
+            Assert.Null(read.Of("probe").TargetPe);
+            Assert.Null(AimedLandings.FromJson(MissionSaveState.FromValues(new MissionSaveState { Id = "m3" }.ToValues()).LandingTargets).Of("craft"));
+        }
+
+        [Fact]
+        public void A_garbled_saved_target_list_reads_as_none()
+        {
+            Assert.Null(AimedLandings.FromJson("not json").Of("craft"));
+            Assert.Null(AimedLandings.FromJson("{\"vessel_id\":\"craft\"}").Of("craft"));
+        }
+
+        [Fact]
+        public void An_old_saves_single_target_reads_as_the_Missions_own_craft()
+        {
+            var values = new MissionSaveState { Id = "m4", VesselId = "craft" }.ToValues();
+            values["landingTargetBody"] = "Kerbin";
+            values["landingTargetLatitude"] = "1";
+            values["landingTargetLongitude"] = "2";
+            var read = AimedLandings.FromJson(MissionSaveState.FromValues(values).LandingTargets);
+            Assert.Equal(2, read.Of("craft").Longitude);
+            Assert.Null(read.Of("craft").TargetPe);
+        }
+
+        [Fact]
+        public void A_target_moves_with_its_vessel_id_without_replacing_a_newer_aim()
+        {
+            var targets = new AimedLandings();
+            targets.Aim("old", new LandingTarget { Body = "Kerbin", Latitude = 1, Longitude = 2 });
+            targets.Move("old", "new");
+            Assert.Null(targets.Of("old"));
+            Assert.Equal(2, targets.Of("new").Longitude);
+
+            targets.Aim("old", new LandingTarget { Body = "Kerbin", Latitude = 1, Longitude = 3 });
+            targets.Move("old", "new");
+            Assert.Null(targets.Of("old"));
+            Assert.Equal(2, targets.Of("new").Longitude);
         }
     }
 }

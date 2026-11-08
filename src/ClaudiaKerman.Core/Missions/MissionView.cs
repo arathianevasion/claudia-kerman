@@ -352,8 +352,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The arrival plane <c>transfer_to</c> recorded for <c>capture</c>, and the last site <c>find_landing_site</c> gave (#788).</summary>
         public string ArrivalPlane = "";
         public Tools.PickedSite PickedSite;
-        /// <summary>Where the last aiming block aimed the landing (#892); null for none.</summary>
-        public Tools.LandingTarget LandingTarget;
+        /// <summary>Where each vessel's calls aimed its landing (#892, #913).</summary>
+        public Tools.AimedLandings LandingTargets = new Tools.AimedLandings();
         /// <summary>The kOS processor the Mission flies on; null for the default.</summary>
         public uint? ProcessorPartId;
 
@@ -473,8 +473,8 @@ namespace ClaudiaKerman.Core.Missions
                 snapshot.PickedSite = view.PickedSite;
                 snapshot.ReturnWindowUt = view.ReturnWindowUt;
                 snapshot.RecordedPlane = view.ArrivalPlane;
-                // The aimed landing is the craft's (#892): a Child Vessel's run flies no trim toward it.
-                snapshot.LandingTarget = view.RunningChild.Length == 0 ? view.LandingTarget : null;
+                // Each vessel reads only the landing it aimed (#913).
+                snapshot.LandingTarget = view.LandingTargets.Of(snapshot.Craft.VesselId);
                 snapshot.MissionGoal = view.Goal;
             }
             return snapshot;
