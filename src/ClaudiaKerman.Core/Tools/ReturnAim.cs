@@ -296,6 +296,14 @@ namespace ClaudiaKerman.Core.Tools
             return search.Windows().First();
         }
 
+        /// <summary>#888: which way the landing's longitude turns (<see cref="BodyFrame.Handed"/>) read from <paramref name="planet"/>'s frame, rotation and orbit, with no landing; 1 when it can't be read.</summary>
+        public static double HandedOn(SnapshotBody planet, double now, IPlanningBody body)
+        {
+            string problem;
+            var frame = body == null ? null : BodyFrame.Read(planet, body, now, out problem);
+            return frame == null ? 1 : frame.Handed;
+        }
+
         /// <summary>
         /// "auto" max_wait (<see cref="AutoWait"/>) for the Game Snapshot's craft round a moon of <paramref name="planet"/>, from
         /// <paramref name="earliest"/>. #802: the landing's turn depends on which way the planet's frame turns, read from
@@ -305,9 +313,7 @@ namespace ClaudiaKerman.Core.Tools
         {
             var system = new BodySystem(snapshot.Bodies);
             var moon = system.Find(snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body);
-            string problem;
-            var frame = body == null ? null : BodyFrame.Read(planet, body, snapshot.Ut, out problem);
-            var handed = frame == null ? 1 : frame.Handed;
+            var handed = HandedOn(planet, snapshot.Ut, body);
             ToolOutcome error;
             var setup = PredictBurn.Setup.Prepare(snapshot, null, out error);
             if (setup == null || setup.Body != moon || !setup.Start.Closed) return LongitudeTurn(system, planet, moon, handed);
@@ -334,7 +340,7 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>One aim's facts, and what its tries share.</summary>
-        private sealed class Search
+        internal sealed class Search
         {
             private BodySystem _system;
             private SnapshotBody _moon;
@@ -353,6 +359,8 @@ namespace ClaudiaKerman.Core.Tools
             public bool Inclined;
             /// <summary>Waiting for the cheap alignment can save over the cap (<see cref="AlignmentCosts"/>); read only when max_wait is "auto".</summary>
             public bool CostlyPlane;
+            /// <summary>The landing's longitude turn the windows span (<see cref="LongitudeTurn"/>), s; for tests of #888.</summary>
+            internal double Turn;
 
             public static Search Start(BodySystem system, SnapshotBody moon, Conic orbit, double now, ReturnAsk ask)
             {
@@ -370,7 +378,7 @@ namespace ClaudiaKerman.Core.Tools
                 if (search.First.Error != null && !search.Inclined) return search;
                 double alignment = 0;
                 search.CostlyPlane = search.Inclined && !ask.MaxWait.HasValue && AlignmentCosts(system, moon, orbit, now, search._earliest, ask.TargetPe, out alignment);
-                var turn = LongitudeTurn(system, search._planet, moon, ask.Landing == null ? 1 : ask.Landing.Frame.Handed);
+                var turn = search.Turn = LongitudeTurn(system, search._planet, moon, ask.Landing == null ? ask.Handed : ask.Landing.Frame.Handed);
                 search._latest = search._earliest + (ask.MaxWait ?? (search.CostlyPlane ? alignment - search._earliest + PastAlignmentS : turn));
                 if (search.CostlyPlane)
                 {
