@@ -1543,7 +1543,7 @@ namespace ClaudiaKerman.Core.Tools
             var craft = EntryCraft.Of(snapshot, own, Home(input, snapshot, uidOf), Entries.ShieldNumber(snapshot, legs, step, child), true, true, JettisonStage(input));
             if (aimed != null) aimed(craft.Key, craft.Describe());
             var gone = craft.LeftOut.Concat(craft.ShieldDropped != null ? new[] { craft.ShieldDropped } : new SnapshotPart[0]);
-            var reserve = LandingReserve.Of(snapshot, gone, (int)Number(input, "stage_limit", 0));
+            var reserve = LandingReserve.Of(snapshot, gone, (int)Number(input, "stage_limit", 0), Home(input, snapshot, uidOf));
             return new Dictionary<string, object>
             {
                 { "error", "" },

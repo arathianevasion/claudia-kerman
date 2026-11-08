@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using ClaudiaKerman.Core.Missions;
@@ -73,6 +74,124 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(reserve.KeepsEngine);
             Assert.Equal(0, reserve.HeldDv);
             Assert.Equal(DeorbitBurn.AutoMaxDv(500, 120, 30), DeorbitBurn.AutoMaxDv(500, 120, 30, reserve.KeptShare), 12);
+        }
+
+        [Fact]
+        public void A_craft_re_rooted_at_its_last_engine_has_the_same_reserve_as_the_pod_rooted_one()
+        {
+            var rooted = Stack();
+            var flipped = Stack();
+            var chain = new[] { Pod, TankU, EngU, D1, TankM, EngM, D2, TankL, EngL };
+            for (var i = 0; i < chain.Length; i++) flipped.Single(p => p.Id == chain[i]).ParentId = i + 1 < chain.Length ? chain[i + 1] : (uint?)null;
+            Func<List<SnapshotPart>, uint?, LandingReserve> reserve = (parts, home) =>
+                LandingReserve.Of(Snapshot(parts), parts.Where(p => p.Id == D2 || p.Id == TankL || p.Id == EngL), 0, home);
+            var expected = reserve(rooted, Pod);
+            var actual = reserve(flipped, Pod);
+            Assert.Equal(expected.KeptShare, actual.KeptShare, 9);
+            Assert.True(actual.KeepsEngine);
+            Assert.Equal(expected.HeldDv, actual.HeldDv, 9);
+            Assert.Equal(expected.KeptShare, reserve(rooted, null).KeptShare, 9);
+        }
+
+        [Fact]
+        public void A_docked_pair_counts_only_the_Mission_craft_s_side()
+        {
+            // The Mission's pod has no engine of its own; the vessel docked to its port has one. Only the Mission's side counts, whichever pod is the root.
+            const uint Port = 20, PartnerPort = 21, PartnerPod = 22;
+            Func<uint?, LandingReserve> reserve = root =>
+            {
+                var parts = new List<SnapshotPart>
+                {
+                    Part(Pod, null, -1, 1.0, tags: "command"),
+                    Part(Port, Pod, -1, 0.05, tags: "docking_port"),
+                    Part(PartnerPort, Port, -1, 0.05, tags: "docking_port"),
+                    Part(PartnerPod, PartnerPort, -1, 1.0, tags: "command"),
+                    Tank(TankU, PartnerPod, 0, 3.0, 0.5),
+                    Engine(EngU, TankU, 0),
+                };
+                return LandingReserve.Of(Snapshot(parts, 0), new SnapshotPart[0], 0, root);
+            };
+            Assert.False(reserve(Pod).KeepsEngine);
+            Assert.True(reserve(null).KeepsEngine);
+            Assert.True(reserve(PartnerPod).KeepsEngine);
+            Assert.True(reserve(PartnerPod).KeptShare > 0.99);
+        }
+
+        [Fact]
+        public void A_port_used_as_a_structural_joint_in_the_craft_s_own_stack_keeps_the_engine_and_reserve()
+        {
+            // Pod, a docking port as a VAB joint, tank, engine: the same craft with or without the port (a lone port is not a docking).
+            const uint Port = 20;
+            Func<bool, LandingReserve> reserve = withPort =>
+            {
+                var parts = new List<SnapshotPart> { Part(Pod, null, -1, 1.0, tags: "command") };
+                if (withPort) parts.Add(Part(Port, Pod, -1, 0.05, tags: "docking_port"));
+                parts.Add(Tank(TankU, withPort ? Port : Pod, 0, 3.0, 0.5));
+                parts.Add(Engine(EngU, TankU, 0));
+                return LandingReserve.Of(Snapshot(parts, 0), new SnapshotPart[0], 0, Pod);
+            };
+            Assert.True(reserve(true).KeepsEngine);
+            Assert.Equal(reserve(false).KeptShare, reserve(true).KeptShare, 3);
+            Assert.True(reserve(true).KeptShare > 0.9);
+        }
+
+        // A pod, a pair of ports, then a tank and engine beyond them; each port's state is as the adapter read it ("" = none read).
+        private static LandingReserve ThroughPair(string stateA, string stateB)
+        {
+            const uint PortA = 20, PortB = 21;
+            var a = Part(PortA, Pod, -1, 0.05, tags: "docking_port");
+            var b = Part(PortB, PortA, -1, 0.05, tags: "docking_port");
+            a.PortState = stateA;
+            b.PortState = stateB;
+            var parts = new List<SnapshotPart> { Part(Pod, null, -1, 1.0, tags: "command"), a, b, Tank(TankU, PortB, 0, 3.0, 0.5), Engine(EngU, TankU, 0) };
+            return LandingReserve.Of(Snapshot(parts, 0), new SnapshotPart[0], 0, Pod);
+        }
+
+        [Fact]
+        public void A_PreAttached_port_pair_used_as_a_decoupler_keeps_the_engine_and_reserve_beyond_it()
+        {
+            var reserve = ThroughPair("PreAttached", "PreAttached");
+            Assert.True(reserve.KeepsEngine);
+            Assert.True(reserve.KeptShare > 0.9);
+        }
+
+        [Fact]
+        public void A_docked_port_pair_ends_the_own_side_through_the_state_tag()
+        {
+            Assert.False(ThroughPair("Docked (docker)", "Docked (dockee)").KeepsEngine);
+            Assert.False(ThroughPair("Docked (docker)", "").KeepsEngine);
+        }
+
+        [Fact]
+        public void A_port_docked_to_its_own_vessel_does_not_end_the_own_side()
+        {
+            Assert.True(ThroughPair("Docked (same vessel)", "Docked (same vessel)").KeepsEngine);
+        }
+
+        [Fact]
+        public void An_old_snapshot_with_no_port_state_still_counts_a_joined_port_pair_as_a_docking()
+        {
+            Assert.False(ThroughPair("", "").KeepsEngine);
+        }
+
+        [Fact]
+        public void A_docked_inline_port_keeps_its_own_structural_neighbours()
+        {
+            // Pod, inline port (docked), tank, engine below it; the partner port hangs off the side. Only the edge to the partner is cut.
+            const uint Inline = 20, Partner = 21, PartnerTank = 23;
+            var inline = Part(Inline, Pod, -1, 0.05, tags: "docking_port");
+            inline.PortState = "Docked (docker)";
+            var partner = Part(Partner, Inline, -1, 0.05, tags: "docking_port");
+            partner.PortState = "Docked (dockee)";
+            var parts = new List<SnapshotPart>
+            {
+                Part(Pod, null, -1, 1.0, tags: "command"), inline, Tank(TankU, Inline, 0, 3.0, 0.5), Engine(EngU, TankU, 0),
+                partner, Tank(PartnerTank, Partner, 0, 3.0, 0.5),
+            };
+            var reserve = LandingReserve.Of(Snapshot(parts, 0), new SnapshotPart[0], 0, Pod);
+            Assert.True(reserve.KeepsEngine);
+            Assert.True(PartTree.OwnSide(parts, Pod).All(x => x.Id != Partner && x.Id != PartnerTank));
+            Assert.Contains(PartTree.OwnSide(parts, Pod), x => x.Id == EngU);
         }
 
         private static GameSnapshot Snapshot(List<SnapshotPart> parts, int stage = 4)

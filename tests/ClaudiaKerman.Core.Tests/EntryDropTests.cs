@@ -614,7 +614,7 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void A_craft_built_from_the_far_side_has_its_stack_stuck_rather_than_dropping_the_pod()
+        public void A_craft_built_from_the_far_side_drops_its_stack_by_the_decoupler_not_the_pod()
         {
             var c = new Craft();
             var tank = c.Add("fuelTank", null);
@@ -624,8 +624,9 @@ namespace ClaudiaKerman.Core.Tests
             var ask = new Dictionary<string, object> { { "home", Uid(pod) } };
             var answer = BlockCalls.EntryDropCall(ask, Snapshot(c, "Kerbin"), null, 0, "", Uid);
             Assert.Equal(Uid(shield), answer["shield"]);
-            Assert.Equal(new[] { "fuelTank", "Decoupler.1" }, Strings(answer, "stuck"));
-            Assert.Empty(Strings(answer, "decouplers"));
+            // #909: the stack is the far side of the shield from home whichever part is the root, so this is the pod-rooted craft's answer.
+            Assert.Empty(Strings(answer, "stuck"));
+            Assert.Equal(new[] { Uid(dec) }, Strings(answer, "decouplers"));
         }
 
         [Fact]

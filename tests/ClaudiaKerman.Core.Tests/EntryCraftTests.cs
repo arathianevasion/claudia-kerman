@@ -290,6 +290,34 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void A_craft_rooted_at_its_stack_s_tank_keeps_the_pod_side_and_its_engine_and_drops_the_stack()
+        {
+            var parts = Parts(Shape.Drops, podEngine: true);
+            parts.Single(p => p.Id == Pod).Resources.Add(new SnapshotPartResource { Name = "LiquidFuel", Amount = 50, Density = 0.005 });
+            parts.Single(p => p.Id == PodEngine).ThrustVacKn = 10;
+            parts.Single(p => p.Id == PodEngine).IspVac = 300;
+            var pod = Answer(parts);
+            // The same craft with the tree hung from the tank: the chain Tank - Dec - Shield - Pod, the engine still on the tank.
+            parts.Single(p => p.Id == Tank).ParentId = null;
+            parts.Single(p => p.Id == Dec).ParentId = Tank;
+            parts.Single(p => p.Id == Shield).ParentId = Dec;
+            parts.Single(p => p.Id == Pod).ParentId = Shield;
+            var rooted = Answer(parts);
+            Assert.Equal(Uids(Tank, Engine), Uids(rooted["leave_out"]));
+            Assert.Equal(Uids(pod["leave_out"]), Uids(rooted["leave_out"]));
+            Assert.Equal(Uids(pod["shield_drop"]), Uids(rooted["shield_drop"]));
+            Assert.Equal(D(pod, "kept"), D(rooted, "kept"), 9);
+            Assert.True((bool)rooted["keeps_engine"]);
+            Assert.Equal(D(pod, "kept_share"), D(rooted, "kept_share"), 9);
+        }
+
+        private static IDictionary<string, object> Answer(List<SnapshotPart> parts)
+        {
+            var ask = new Dictionary<string, object> { { "home", Uid(Pod) } };
+            return BlockCalls.EntryCraftCall(ask, AtKerbin(parts.Select(p => p).ToList()), null, 0, "", Uid);
+        }
+
+        [Fact]
         public void A_return_read_at_the_moon_counts_the_planets_Entry_not_the_moons_lack_of_air()
         {
             // At the Mun the Entry ahead is Kerbin's: its chutes are judged in Kerbin's air, so the capsule's chute lands it and the stack drops.
