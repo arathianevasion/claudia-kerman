@@ -41,7 +41,7 @@
 //| hop's coast, between stages) only fins and reaction wheels hold it: a craft with neither tumbles in
 //| thick air. Engines are staged into from the pad, and launch clamps released.
 //| Extra results: ap_error (m, apoapsis minus target_ap when the block ended; a hop's shows drag
-//| loss), max_q (Pa, highest dynamic pressure), coast_ap (m, apoapsis at first engine cutoff), lan_actual (degrees, the orbit's LAN at the end).
+//| loss), max_q (Pa, highest dynamic pressure), coast_ap (m, apoapsis at the first coast), lan_actual (degrees, the orbit's LAN at the end).
 //| Fails with "launch starts on the ground", "no atmosphere on <body>: use ascend", "no thrust", a
 //| launch_at it can't use, "lost control: ..." (saying whether it was burning or
 //| coasting, the throttle, q and the nose's angle off the airflow), "fell back into the
@@ -484,7 +484,7 @@ function launch {
       if tset = 0 {
         // The first cutoff only: Core says whether this stage can coast to apoapsis and circularize there (#932; its figures go to KSP.log).
         if extra:coast_ap = 0 {
-          set burn_through to addons:claudia:burnthrough(lexicon("ap", ap, "sma", ship:orbit:semimajoraxis, "gm", ship:body:mu, "radius", ship:body:radius, "eta_ap", eta:apoapsis, "target_ap", target_ap, "atm_height", body_values:atm_height,
+          set burn_through to addons:claudia:burnthrough(lexicon("ap", ap, "sma", ship:orbit:semimajoraxis, "gm", ship:body:mu, "radius", ship:body:radius, "eta_ap", eta:apoapsis, "target_ap", target_ap, "atm_height", body_values:atm_height, "angle", vang(ship:facing:vector, velocityat(ship, time:seconds + eta:apoapsis):orbit),
             "stages", claudia_burn_stages(opt:stage_limit), "turn", addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime)))):burn_through.
         }
         set tset to choose 1 if burn_through else 0.

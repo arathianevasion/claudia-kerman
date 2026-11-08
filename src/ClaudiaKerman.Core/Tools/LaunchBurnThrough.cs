@@ -18,24 +18,26 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// Takes <c>ap</c> (m above sea level), <c>sma</c> (m), <c>gm</c>, <c>radius</c> (m), <c>eta_ap</c> (s), <c>target_ap</c>
-        /// and <c>atm_height</c> (m), <c>stages</c> (<c>claudia_burn_stages</c>'s list: <c>dv</c>, <c>duration</c>, <c>isp</c>, from
-        /// the stage burning now down to stage_limit) and <c>turn</c> (TURNTIME's answer; one with an error counts as no turn time).
+        /// and <c>atm_height</c> (m), <c>angle</c> (degrees from the nose now to orbital prograde at apoapsis), <c>stages</c>
+        /// (<c>claudia_burn_stages</c>'s list: <c>dv</c>, <c>duration</c>, <c>isp</c>, from the stage burning now down to stage_limit)
+        /// and <c>turn</c> (TURNTIME's answer; one with an error counts as no turn time).
         /// Gives <c>error</c> ("" or the input it lacks, which coasts), <c>burn_through</c>, and the figures it decided on:
-        /// <c>dv</c> (m/s to circularize at apoapsis), <c>half_burn</c> (s; -1 with no stage to burn), <c>turn_time</c> and
-        /// <c>eta_ap</c> (s). A hop (<c>target_ap</c> no higher than the atmosphere) never burns through, nor does an orbit with no apoapsis.
+        /// <c>dv</c> (m/s to circularize at apoapsis), <c>half_burn</c> (s; -1 with no stage to burn), <c>turn_time</c> (s, the turn
+        /// through <c>angle</c> and its settle time), <c>angle</c> and <c>eta_ap</c> (s). A hop (<c>target_ap</c> no higher than the
+        /// atmosphere) never burns through, nor does an orbit with no apoapsis.
         /// </summary>
         public static IDictionary<string, object> Call(IDictionary<string, object> input)
         {
             var answer = new Dictionary<string, object>
             {
-                { "error", "" }, { "burn_through", false }, { "dv", 0.0 }, { "half_burn", -1.0 }, { "turn_time", 0.0 }, { "eta_ap", 0.0 },
+                { "error", "" }, { "burn_through", false }, { "dv", 0.0 }, { "half_burn", -1.0 }, { "turn_time", 0.0 }, { "angle", 0.0 }, { "eta_ap", 0.0 },
             };
             if (input == null)
             {
                 answer["error"] = "nothing to decide on";
                 return answer;
             }
-            foreach (var key in new[] { "ap", "sma", "gm", "radius", "eta_ap", "target_ap", "atm_height" })
+            foreach (var key in new[] { "ap", "sma", "gm", "radius", "eta_ap", "target_ap", "atm_height", "angle" })
             {
                 if (!(Value(input, key) is double))
                 {
@@ -44,9 +46,10 @@ namespace ClaudiaKerman.Core.Tools
                 }
             }
             var eta = (double)input["eta_ap"];
-            var turn = Value(input, "turn") as IDictionary<string, object>;
-            var turnTime = turn != null && Value(turn, "turn_time") is double ? (double)turn["turn_time"] : 0.0;
+            var angle = (double)input["angle"];
+            var turnTime = SecondsToTurn(angle, Value(input, "turn") as IDictionary<string, object>);
             answer["eta_ap"] = eta;
+            answer["angle"] = angle;
             answer["turn_time"] = turnTime;
 
             var sma = (double)input["sma"];
@@ -60,6 +63,25 @@ namespace ClaudiaKerman.Core.Tools
             var hop = (double)input["target_ap"] <= (double)input["atm_height"];
             answer["burn_through"] = !hop && halfBurn >= 0 && halfBurn + turnTime > eta;
             return answer;
+        }
+
+        /// <summary>
+        /// Seconds to turn <paramref name="angle"/> degrees and settle, from TURNTIME's 190 degree figures: the craft is already near
+        /// prograde at the cutoff, so its whole turn_time would call a healthy craft too slow (#932). The torque is worked back from
+        /// top_rate and turn_s, as <c>land_turn_seconds</c> does. Not TURNTIME's 30 s floor, which is a block's margin before a burn:
+        /// a coast that works is what flies today. 0 with no turn to make or no figures to make it from.
+        /// </summary>
+        private static double SecondsToTurn(double angle, IDictionary<string, object> turn)
+        {
+            if (turn == null || !(Value(turn, "turn_s") is double) || !(Value(turn, "top_rate") is double)) return 0;
+            var turnS = (double)turn["turn_s"];
+            var topRate = (double)turn["top_rate"];
+            if (angle <= 0 || turnS <= 0 || topRate <= 0) return 0;
+            // The seconds to reach top_rate: turn_s less the 190 degrees at top_rate, whether that turn reaches the cap or peaks at it.
+            var ramp = Math.Max(0.001, turnS - TurnTime.TurnDegrees / topRate);
+            var alpha = topRate / ramp;
+            var seconds = Math.Sqrt(alpha * angle) <= topRate ? 2 * Math.Sqrt(angle / alpha) : angle / topRate + ramp;
+            return seconds + TurnTime.SettleSeconds;
         }
 
         /// <summary>

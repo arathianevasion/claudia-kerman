@@ -304,7 +304,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             var answer = ClaudiaKerman.Core.Tools.LaunchBurnThrough.Call(new System.Collections.Generic.Dictionary<string, object>
             {
-                { "ap", 79832.0 }, { "sma", 457707.0 }, { "gm", 3.5316e12 }, { "radius", 600000.0 }, { "eta_ap", 145.1 }, { "target_ap", 80000.0 }, { "atm_height", 70000.0 },
+                { "ap", 79832.0 }, { "sma", 457707.0 }, { "gm", 3.5316e12 }, { "radius", 600000.0 }, { "eta_ap", 145.1 }, { "target_ap", 80000.0 }, { "atm_height", 70000.0 }, { "angle", 0.0 },
                 { "stages", new System.Collections.Generic.List<object>
                     {
                         new System.Collections.Generic.Dictionary<string, object> { { "dv", dv1 }, { "duration", seconds1 }, { "isp", isp1 } },
