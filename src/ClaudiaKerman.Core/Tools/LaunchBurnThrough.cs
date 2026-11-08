@@ -77,11 +77,11 @@ namespace ClaudiaKerman.Core.Tools
             var turnS = (double)turn["turn_s"];
             var topRate = (double)turn["top_rate"];
             if (angle <= 0 || turnS <= 0 || topRate <= 0) return 0;
-            // The seconds to reach top_rate: turn_s less the 190 degrees at top_rate, whether that turn reaches the cap or peaks at it.
+            // The seconds to reach top_rate: turn_s less the 190 degrees at top_rate, whether that turn reaches the cap or peaks at it
+            // (a burst turn's turn_s also holds the wheels' settle, so its figure runs a few seconds long).
             var ramp = Math.Max(0.001, turnS - TurnTime.TurnDegrees / topRate);
-            var alpha = topRate / ramp;
-            var seconds = Math.Sqrt(alpha * angle) <= topRate ? 2 * Math.Sqrt(angle / alpha) : angle / topRate + ramp;
-            return seconds + TurnTime.SettleSeconds;
+            double peak;
+            return TurnTime.CappedTurn(angle, topRate / ramp, ramp, out peak) + TurnTime.SettleSeconds;
         }
 
         /// <summary>
