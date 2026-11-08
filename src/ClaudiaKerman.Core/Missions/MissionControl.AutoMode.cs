@@ -255,7 +255,7 @@ namespace ClaudiaKerman.Core.Missions
                 case AdvanceWait.ScriptFailedAgain: mission.AutoModeStop = AutoModeWaitsFor("the script failed again after a re-plan"); break;
                 case AdvanceWait.NoRoom: mission.AutoModeStop = mission.AutoModeRoomStop; break;
                 case AdvanceWait.WindowPick: mission.AutoModeStop = AutoModeWaitsFor("a Transfer Window to pick"); break;
-                case AdvanceWait.MoonCrossing: mission.AutoModeStop = AutoModeWaitsFor("a Blocker: " + mission.CrossingBlocker.Replace("Blocker: ", "").TrimEnd('.')); break;
+                case AdvanceWait.MoonCrossing: mission.AutoModeStop = AutoModeWaitsFor("a Blocker: " + mission.Crossing.Reason); break;
             }
         }
 
