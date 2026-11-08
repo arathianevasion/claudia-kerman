@@ -375,6 +375,57 @@ namespace ClaudiaKerman.Core.Tests
             throw new InvalidOperationException("no orbit of 908b's shape meets Ike on its first loop");
         }
 
+        /// <summary>A Sequence Plan with a hand-written script (no transfer_to) whose name and intent are <paramref name="words"/>.</summary>
+        private static ScriptedResponse CoastPlan(string words)
+        {
+            return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
+                + "\"sequence_plan\":{\"plan_step\":1,\"name\":\"" + words + "\",\"intent\":\"" + words + "\",\"why\":\"x.\",\"target\":\"orbit\","
+                + "\"tolerances\":\"Pe within 5 km\",\"expected_delta_v\":0,\"expected_duration_s\":600,\"abort_conditions\":[],\"risks\":[],"
+                + "\"custom_script\":true,\"custom_script_reason\":\"a coast\",\"script\":\"wait 10.\\n\","
+                + "\"due_time_ut\":-1,\"window_closes_ut\":-1,\"late_window_dv\":-1},\"debrief\":null}");
+        }
+
+        private string DebriefOnTheCoastToIke(ScriptedResponse plan, ScriptedResponse sequence)
+        {
+            var transport = new StreamingFakeTransport(plan, sequence, NominalDebrief(), Waiting(-1));
+            var mission = Control(transport);
+            ToSequencePlan(mission, InDunaOrbit(), "Orbit Ike.");
+            mission.Send(new Approve());
+            var start = mission.TakeCommands().OfType<StartScript>().Single();
+            mission.Send(OnTheCoastToIke(Now));
+            mission.Send(new KosRunEnded(Ended(true), start.RunId));
+            DrainUntil(mission, v => transport.Requests.Count >= 3);
+            return transport.Requests[2].Body;
+        }
+
+        /// <summary>#871: a hand-written coast to a moon its Sequence Plan names is planned: no fact.</summary>
+        [Fact]
+        public void ACoastWhoseSequencePlanNamesTheMoonIsPlanned()
+        {
+            var debrief = DebriefOnTheCoastToIke(CapturePlan("Return to Kerbin."), CoastPlan("Coast to Ike"));
+            Assert.DoesNotContain("orbit crosses a moon", debrief);
+            Assert.DoesNotContain("On course to meet", debrief);
+        }
+
+        /// <summary>#871: a later Mission Plan leg that names the moon (a capture, no transfer_to) plans the encounter: no fact.</summary>
+        [Fact]
+        public void ALaterLegThatNamesTheMoonPlansItsEncounter()
+        {
+            var debrief = DebriefOnTheCoastToIke(CapturePlan("Capture at Ike."), CaptureAtDuna());
+            Assert.DoesNotContain("orbit crosses a moon", debrief);
+            Assert.DoesNotContain("On course to meet", debrief);
+        }
+
+        /// <summary>#871: an encounter path nothing names says so, and offers the fix only if it isn't intended.</summary>
+        [Fact]
+        public void AnUnnamedEncounterPathIsOnCourseAndTheFixOnlyIfNotIntended()
+        {
+            var debrief = DebriefOnTheCoastToIke(CapturePlan("Return to Kerbin."), CaptureAtDuna());
+            Assert.Contains("On course to meet Ike at UT ", debrief);
+            Assert.Contains("if this encounter isn't intended, fly change_orbit set_ap", debrief);
+            Assert.DoesNotContain("before waiting", debrief);
+        }
+
         /// <summary>
         /// Review of the fix round: a transfer_to Ike that never ejected (refused, failed) planned nothing, so the parking orbit still crossing Ike
         /// is a crossing between runs and for the next plan's wait.

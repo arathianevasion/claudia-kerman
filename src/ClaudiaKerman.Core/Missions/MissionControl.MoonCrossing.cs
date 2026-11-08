@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using ClaudiaKerman.Core.Kos;
 using ClaudiaKerman.Core.Tools;
 
@@ -27,6 +28,8 @@ namespace ClaudiaKerman.Core.Missions
             public bool CrossingUnjudged;
             /// <summary>The bodies the current or last run's <c>transfer_to</c> aimed at, comma-separated: planned, not crossed, until the next run. Saved.</summary>
             public string RunTransfers = "";
+            /// <summary>#871: the current or last run's Sequence Plan name and intent: a moon it names is planned. Not saved: after a restart the encounter reads as not shown planned.</summary>
+            public string RunWords = "";
         }
 
         /// <summary>
@@ -167,12 +170,17 @@ namespace ClaudiaKerman.Core.Missions
             mission.RunTransfers = string.Join(",", RunTransfers(mission).Where(t => MoonCrossings.Meets(snapshot.At(_ut), t)).ToArray());
             // The next plan's wait is not known yet: judged as a long one. A moon the run's own transfer_to aims at is planned, not crossed.
             // An ellipse capture kept for the next leg's moon (#866) waits only to its window: that wait is followed, the moon met after the burn.
-            var planned = RunTransfers(mission);
+            var planned = RunTransfers(mission).ToList();
             var at = snapshot.At(_ut);
             if (mission.Plan != null) at.LegsAhead = mission.Plan.Sequences.Skip(System.Math.Max(0, StepsBegun(mission) - 1)).ToList();
+            // #871: a moon the Sequence Plan or the Mission Plan's current or later legs name is planned too (a capture met without transfer_to, a gravity assist),
+            // when the craft is on its way to meet it; a parking orbit that merely reaches it is still a crossing.
+            var words = mission.RunWords + (at.LegsAhead == null ? "" : " " + string.Join(" ", at.LegsAhead.Select(SequenceWords.Of).ToArray()));
+            planned.AddRange(snapshot.Bodies.Where(b => b.Name.Length > 0 && Regex.IsMatch(words, @"\b" + Regex.Escape(b.Name) + @"\b", RegexOptions.IgnoreCase)
+                && MoonCrossings.Meets(at, b.Name)).Select(b => b.Name));
             var window = KeptRoute.KeptWindow(at);
             var crossing = window.HasValue ? MoonCrossings.Judge(snapshot.At(_ut), window.Value, planned) : MoonCrossings.Judge(snapshot.At(_ut), planned);
-            if (crossing != null) mission.RunEvents.Replace(_ut, RunEventKind.MoonCrossing, MissionPrompts.MoonCrossingFact(crossing));
+            if (crossing != null) mission.RunEvents.Replace(_ut, RunEventKind.MoonCrossing, MissionPrompts.MoonCrossingFact(crossing, MoonCrossings.Meets(at, crossing.Moon.Name)));
         }
     }
 }
