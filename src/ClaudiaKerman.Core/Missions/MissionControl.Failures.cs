@@ -76,7 +76,7 @@ namespace ClaudiaKerman.Core.Missions
             if (mission == null || mission.Stage != MissionStage.Paused || (mission.PauseCause != PauseCause.Refusal && mission.PauseCause != PauseCause.CutOff)) return false;
             note = (note ?? "").Trim();
             if (note.Length == 0 || mission.InFlight || mission.Pending == null) return true;
-            Note(LogKind.Player, "Retry with a note: " + note);
+            Note(LogKind.Player, "Retry with a note: " + note, typed: true);
             var noteText = "The player adds a note for this retry (quoted data): " + MissionPrompts.Quoted(note);
             // A turn re-read from the Mission folder after a load has not been built into messages yet: the note goes with its words.
             if (mission.Pending.Messages == null) mission.Pending.UserText += "\n" + noteText;

@@ -35,7 +35,25 @@ namespace ClaudiaKerman.Core.Missions
 
         private static readonly string[] LandingBlocks = { "return", "reentry", "deorbit", "land" };
 
-        /// <summary>The log lines of the player that are not their typed words.</summary>
+        /// <summary>
+        /// The player's typed words in a Mission log (#873): the lines flagged <see cref="LogEntry.Typed"/>. A log with no flagged line
+        /// (a Mission saved before the flag) falls back to its Player lines that don't start with a <see cref="NotTyped"/> prefix.
+        /// </summary>
+        public static IEnumerable<string> TypedWords(IEnumerable<LogEntry> log)
+        {
+            var lines = log.Where(e => e.Kind == LogKind.Player).ToList();
+            return lines.Any(e => e.Typed)
+                ? lines.Where(e => e.Typed).Select(e => e.Text)
+                : lines.Where(e => !NotTyped.Any(p => e.Text.StartsWith(p, StringComparison.Ordinal))).Select(e => e.Text);
+        }
+
+        /// <summary>The answer after reading a Mission log's typed words in order, from the Mission Goal's.</summary>
+        public static bool Asked(string goal, IEnumerable<LogEntry> log)
+        {
+            return TypedWords(log).Aggregate(Asked(goal), Fold);
+        }
+
+        /// <summary>The log lines of the player that are not their typed words; read only for a log saved before the Typed flag.</summary>
         public static readonly string[] NotTyped = { "Mission Goal: ", "Reduced Mission Goal approved: ", "Mission Settings: ", "Choose model: ", "Transfer Window to ", "EVA science done by hand", "Re-plan: ", "Abort." };
 
         /// <summary>The words say yes (true) or no (false) to flying a manual stretch; null when they say neither. A question is no answer.</summary>
@@ -84,13 +102,12 @@ namespace ClaudiaKerman.Core.Missions
             return !string.IsNullOrWhiteSpace(script) && BlockOptionCheck.Calls(script).Any(c => LandingBlocks.Contains(c.Block));
         }
 
-        /// <summary>The craft is landed or splashed down and every Kerbal aboard at the run's start still is.</summary>
-        public static bool DownAlive(GameSnapshot snapshot, IEnumerable<string> crewAtStart)
+        /// <summary>The craft is landed or splashed down and no Kerbal aboard at the run's start has a recorded death since (#874); one on EVA or on another vessel is alive.</summary>
+        public static bool DownAlive(GameSnapshot snapshot, IEnumerable<string> crewAtStart, IDictionary<string, double> deaths, double runStartUt)
         {
             // Null: the crew at the start was never read, so none can be called alive.
             if (snapshot == null || crewAtStart == null || (snapshot.Situation != "LANDED" && snapshot.Situation != "SPLASHED")) return false;
-            var now = snapshot.Crew.Select(c => c.Name).ToList();
-            return crewAtStart.All(now.Contains);
+            return !crewAtStart.Any(name => deaths.ContainsKey(name) && deaths[name] >= runStartUt);
         }
 
         public static string Refusal(string planName)
