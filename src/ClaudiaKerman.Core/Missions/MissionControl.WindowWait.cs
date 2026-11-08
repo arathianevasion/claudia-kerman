@@ -112,7 +112,7 @@ namespace ClaudiaKerman.Core.Missions
             if (plan.DueTimeUt.HasValue && plan.DueTimeUt.Value >= due.Value) return;
             plan.DueTimeUt = due.Value;
             Note(LogKind.Notice, "Waiting for the ejection: " + wait.Block + " leaves " + KerbinTime.Date(wait.DepartureUt.Value) + ", so the sequence is due "
-                + KerbinTime.Date(due.Value) + ", an hour before. Fly other Missions meanwhile; a KSP alarm calls you back.");
+                + KerbinTime.Date(due.Value) + ", " + KerbinTime.Span(wait.DepartureUt.Value - due.Value).Trim() + " before. Fly other Missions meanwhile; a KSP alarm calls you back.");
         }
 
         private TransferWindow WindowFor(Mission mission, SnapshotBody planet)
