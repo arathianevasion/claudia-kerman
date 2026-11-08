@@ -38,9 +38,11 @@ namespace ClaudiaKerman.Core.Tests
             public IReentryCraft AfterShield { get { return null; } }
         }
 
-        private static IDictionary<string, object> Trim(GameSnapshot snapshot, double toAir, double dvLeft = 80, bool hasNode = false)
+        private static IDictionary<string, object> Trim(GameSnapshot snapshot, double toAir, double dvLeft = 80, bool hasNode = false, IDictionary<string, object> craft = null)
         {
-            return BlockCalls.EntryTrim(new Dictionary<string, object> { { "to_air", toAir }, { "dv_left", dvLeft }, { "isp", 0.0 }, { "has_node", hasNode } },
+            var ask = new Dictionary<string, object> { { "to_air", toAir }, { "dv_left", dvLeft }, { "isp", 0.0 }, { "has_node", hasNode } };
+            if (craft != null) ask["craft"] = craft;
+            return BlockCalls.EntryTrim(ask,
                 snapshot, new AimedCorrectionTests.FrameBody(snapshot.Ut), new ReentrySim.Atmosphere(), new ChutedCapsule());
         }
 
@@ -93,6 +95,18 @@ namespace ClaudiaKerman.Core.Tests
             var fix = Trim(snapshot, ToPeriapsis - 500, 100);
             _out.WriteLine("{0:0.00} m/s; {1}", D(fix, "dv"), fix["aim_note"]);
             Assert.InRange(D(fix, "dv"), 0, 10.5);
+        }
+
+        /// <summary>#907: a stage dropped (or held below stage_limit) before the landing isn't spent: the trim spends by the kept delta-v, as the aimed correction does.</summary>
+        [Fact]
+        public void The_trim_spends_only_the_kept_delta_v()
+        {
+            var whole = Trim(Aimed(400), ToPeriapsis - 500, 100);
+            var kept = Trim(Aimed(400), ToPeriapsis - 500, 100, craft: new Dictionary<string, object> { { "whole", 10.0 }, { "held_dv", 30.0 } });
+            _out.WriteLine("whole {0:0.00} m/s, kept {1:0.00} m/s; {2}", D(whole, "dv"), D(kept, "dv"), kept["aim_note"]);
+            Assert.InRange(D(whole, "dv"), 1, Math.Min(CorrectionBurn.MostFixDv, 50.5));
+            Assert.InRange(D(kept, "dv"), 0, 20.5);
+            Assert.True(D(kept, "dv") < D(whole, "dv") - 1);
         }
 
         /// <summary>The corridor is the aim's own (#817): a correction left the path at 34 km of an aimed 30, and the trim still ends inside 25 to 35 km.</summary>

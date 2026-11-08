@@ -699,7 +699,7 @@ function reentry {
   // An abort before the drop keeps the stack, and reads the Chute Group (ADR 0019) fresh: none is chosen yet.
   local ask is lexicon("none", opt:chutes = "none", "engine", false).
   // Core decides one late trim toward the Mission's landing target (#892); anything else flies nothing, the reason in the log, and the block goes on.
-  claudia_fly_correction(ctx, addons:claudia:entrytrim(lexicon("to_air", entry_in, "home", entry_ask:home, "has_node", hasnode, "dv_left", claudia_dv_remaining(), "isp", claudia_engine_isp()))).
+  claudia_fly_correction(ctx, addons:claudia:entrytrim(lexicon("to_air", entry_in, "home", entry_ask:home, "has_node", hasnode, "stage_limit", opt:stage_limit, "dv_left", claudia_dv_remaining(), "isp", claudia_engine_isp()))).
   if entry_in > below:lead {
     set entry_in to reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
     local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).

@@ -215,7 +215,7 @@ function deorbit {
     return claudia_finish(ctx, false, "separate: " + refused, extra).
   }
   // The craft reentry will fly (#814): what separate and this entry drop, and whether its shield goes. Its error is the search's.
-  local craft is addons:claudia:entrycraft(lexicon("home", reentry_home_uid(), "leave_out", claudia_drop_uids(separation))).
+  local craft is addons:claudia:entrycraft(lexicon("home", reentry_home_uid(), "stage_limit", opt:stage_limit, "leave_out", claudia_drop_uids(separation))).
   local ground_alt is body:geopositionlatlng(site:lat, site:lng):terrainheight.
   local max_wait is deorbit_max_wait(opt:max_wait, body:rotationperiod).
   ship:deltav:forcecalc(). wait 0.5. // Stock recounts first: after a staging or a load it reads 0. The search is a block-internal call (ADR 0007): inline here.
