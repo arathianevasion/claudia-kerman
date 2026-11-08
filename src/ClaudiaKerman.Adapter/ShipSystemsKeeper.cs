@@ -128,6 +128,17 @@ namespace ClaudiaKerman.Adapter
             }
         }
 
+        /// <summary>
+        /// The persistentIds of <paramref name="vessel"/>'s parts its entry meets the air with stowed (#868, <see cref="ShipSystemsMoves.StowedForEntry"/>):
+        /// none unless this keeper would act on the block's entry cue for it.
+        /// </summary>
+        public static ICollection<uint> StowedForEntry(Vessel vessel)
+        {
+            var keeper = Current;
+            var managed = keeper != null && keeper._rule != null && ReferenceEquals(vessel, keeper._flown) && keeper._managed();
+            return managed ? ShipSystemsMoves.StowedForEntry(ReadParts(vessel, null), true) : new List<uint>();
+        }
+
         private static ShipSystemsReading Read(Vessel vessel)
         {
             var body = vessel.mainBody;
