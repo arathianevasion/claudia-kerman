@@ -127,7 +127,7 @@ namespace ClaudiaKerman.Core.Tools
             var need = plan.Need;
             if (plan.DvLeft.HasValue)
             {
-                plan.SpareDv = DeorbitBurn.AutoMaxDv(plan.DvLeft.Value, PoweredLanding(snapshot, home));
+                plan.SpareDv = DeorbitBurn.AutoMaxDv(plan.DvLeft.Value, PoweredLanding(snapshot, home), snapshot.LaterLegsDv ?? 0);
                 plan.CaptureFirst = need <= plan.SpareDv;
             }
             if (plan.CaptureFirst) plan.ArrivalPe = DeltaVMap.LowOrbit(home) - home.Radius;

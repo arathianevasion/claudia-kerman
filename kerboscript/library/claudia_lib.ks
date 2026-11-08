@@ -2403,13 +2403,13 @@ function claudia_burn_options {
   return burn.
 }
 
-// Flies nd with exec_node (max_residual as claudia_burn_options), counting its delta-v as the block's. Returns exec_node's result.
+// Flies nd with exec_node (max_residual as claudia_burn_options; fine's max_throttle and done_dv, BURNWORTH's for a correction), counting its delta-v as the block's. Returns exec_node's result.
 function claudia_burn {
-  parameter ctx, nd, max_residual is -1, stop_at_round is false.
+  parameter ctx, nd, max_residual is -1, stop_at_round is false, fine is lexicon("max_throttle", 1, "done_dv", 0.1).
   local flight is claudia_burn_options(ctx, nd, max_residual).
-  if stop_at_round {
-    set flight:stop_at_min to "ecc".
-  }
+  set flight:max_throttle to fine:max_throttle.
+  set flight:done_dv to fine:done_dv.
+  set flight:stop_at_min to choose "ecc" if stop_at_round else "".
   local burned is exec_node(flight).
   set ctx:dv_used to ctx:dv_used + burned:dv_used.
   claudia_note_dropped(ctx, burned).
@@ -2449,20 +2449,18 @@ function claudia_correction_ask {
 }
 
 // Flies the Course Correction ADDONS:CLAUDIA:CORRECTIONBURN gave (fix) with exec_node. Its error (a solve that found no
-// burn within the tolerance, or a call that threw, #439) is the block's reason, with nothing burned; a burn under 0.1 m/s
-// isn't flown; max_residual as claudia_burn_options. Returns lexicon("reason", "" or why the block fails, "dv", m/s burned).
+// burn within the tolerance, or a call that threw, #439) is the block's reason, with nothing burned. Core's BURNWORTH (#817)
+// skips a burn too small to matter, and caps a small one's throttle and how near it stops; max_residual as claudia_burn_options.
+// Returns lexicon("reason", "" or why the block fails, "dv", m/s burned).
 function claudia_fly_correction {
   parameter ctx, fix, max_residual is -1.
-  local done is lexicon("reason", "", "dv", 0).
-  if fix:error <> "" {
-    set done:reason to fix:error.
-    return done.
-  }
-  if fix:dv < 0.1 {
+  local done is lexicon("reason", fix:error, "dv", 0).
+  local worth is addons:claudia:burnworth(lexicon("block", "correction", "fix", fix, "accel", ship:availablethrust / max(0.001, ship:mass), "max_residual", max_residual)).
+  if worth:skip {
     return done.
   }
   add node(fix:ut, fix:radial, fix:normal, fix:prograde).
-  local burned is claudia_burn(ctx, nextnode, max_residual).
+  local burned is claudia_burn(ctx, nextnode, worth:max_residual, false, worth).
   set done:dv to burned:dv_used.
   if not burned:success {
     set done:reason to burned:reason.
