@@ -1510,7 +1510,7 @@ namespace ClaudiaKerman.Core.Tools
             var refusal = stack.Refusal(null, stack.Gone.Any(p => p.ParentId == null || (core != null && uidOf(p.Id) == core)));
             bool chutes;
             if (refusal == "" || ChutesOf(ask, out chutes) != null) return refusal;
-            return EntryFinish.Decide(snapshot, stack.Gone.Select(p => p.Id).ToList(), number == 1, chutes).Powered ? "" : refusal;
+            return EntryFinish.Decide(snapshot, stack.Leaves.Select(p => p.Id).ToList(), number == 1, chutes).Powered ? "" : refusal;
         }
 
         /// <summary>Whether <paramref name="key"/> in <paramref name="ask"/> is the string <paramref name="word"/>, whatever its case (kOS compares strings so).</summary>
@@ -1560,7 +1560,7 @@ namespace ClaudiaKerman.Core.Tools
             var number = Entries.ShieldNumber(snapshot, legs, step, child);
             var drop = !ask.ContainsKey("drop") || Equals(ask["drop"], true);
             var stack = EntryStack.Of(snapshot.Craft.Parts, Home(ask, snapshot, uidOf), number);
-            var finish = EntryFinish.Decide(snapshot, drop ? stack.Gone.Select(p => p.Id).ToList() : new List<uint>(), number == 1, chutes);
+            var finish = EntryFinish.Decide(snapshot, drop ? stack.Leaves.Select(p => p.Id).ToList() : new List<uint>(), number == 1, chutes);
             // The craft it flies, against the one a return or deorbit aimed with (#814): a changed plan or fuel can make them differ.
             var flown = EntryCraft.From(snapshot, null, stack, finish, drop, JettisonStage(ask));
             var why = finish.Why() + (string.IsNullOrEmpty(aimedKey) || EntryCraft.Same(aimedKey, flown.Key, snapshot) ? "" : "; the landing was aimed for the craft " + aimed + ", it flies " + flown.Describe());

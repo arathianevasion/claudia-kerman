@@ -47,7 +47,7 @@ namespace ClaudiaKerman.Core.Missions
                 MassTonnes = snapshot.Craft.MassTonnes - snapshot.Craft.Parts.Where(p => left.Contains(p.Id)).Sum(p => p.MassT),
             };
             var stack = EntryStack.Of(after.Craft.Parts, home, number);
-            var finish = stack.Shield == null ? null : EntryFinish.Decide(after, drop ? stack.Gone.Select(p => p.Id).ToList() : new List<uint>(), number == 1, chutes);
+            var finish = stack.Shield == null ? null : EntryFinish.Decide(after, drop ? stack.Leaves.Select(p => p.Id).ToList() : new List<uint>(), number == 1, chutes);
             return From(snapshot, left, stack, finish, drop, jettisonStage);
         }
 
@@ -64,7 +64,7 @@ namespace ClaudiaKerman.Core.Missions
                 else if (stack.Stuck.Count > 0) craft._why = "as it is, " + string.Join(", ", EntryStack.Names(stack.Stuck).ToArray()) + " stuck";
                 else
                 {
-                    foreach (var part in stack.Gone) left.Add(part.Id);
+                    foreach (var part in stack.Leaves) left.Add(part.Id);
                     craft._why = stack.Gone.Count > 0 ? "without its stack (" + string.Join(", ", EntryStack.Names(stack.Gone).ToArray()) + ")" : "nothing below the shield";
                 }
                 if (Jettisons(jettisonStage, kept, stack.Parts.Count > 0) && Droppable(snapshot, left, stack.Shield)) craft.ShieldDropped = stack.Shield;

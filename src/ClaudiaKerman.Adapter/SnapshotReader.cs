@@ -468,6 +468,7 @@ namespace ClaudiaKerman.Adapter
                 {
                     Classify(snapshot, part, info, module);
                     if (ShipSystemsKeeper.CannotRetract(module)) info.CannotRetract = true;
+                    ReadReleases(info, part, module as ModuleDecouplerBase);
                     var engine = module as ModuleEngines;
                     if (engine != null && engine.EngineIgnited) info.EngineLit = true;
                     if (engine != null)
@@ -626,6 +627,29 @@ namespace ClaudiaKerman.Adapter
                 rows.Add(new[] { altitude, atm, density, sound });
             }
             return rows;
+        }
+
+        /// <summary>
+        /// What firing <paramref name="decoupler"/> lets go of (#924), which decides the side it stays on: the part across its explosive node, or for an omni decoupler
+        /// every neighbour. Stock's TD-12 fires its top node, so built with that toward the capsule it leaves with the stack and bares the shield.
+        /// </summary>
+        private static void ReadReleases(SnapshotPart info, Part part, ModuleDecouplerBase decoupler)
+        {
+            if (decoupler == null) return;
+            if (decoupler.isOmniDecoupler)
+            {
+                foreach (var node in part.attachNodes)
+                    if (node != null && node.attachedPart != null) AddRelease(info, node.attachedPart);
+                if (part.parent != null) AddRelease(info, part.parent);
+                return;
+            }
+            var explosive = decoupler.explosiveNodeID == "srf" ? part.srfAttachNode : part.FindAttachNode(decoupler.explosiveNodeID);
+            if (explosive != null && explosive.attachedPart != null) AddRelease(info, explosive.attachedPart);
+        }
+
+        private static void AddRelease(SnapshotPart info, Part released)
+        {
+            if (!info.Releases.Contains(released.persistentId)) info.Releases.Add(released.persistentId);
         }
 
         /// <summary>Tags what a part module makes the part able to do; the names are the stock (and kOS) module classes.</summary>

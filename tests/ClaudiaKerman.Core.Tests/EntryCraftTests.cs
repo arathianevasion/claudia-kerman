@@ -211,6 +211,113 @@ namespace ClaudiaKerman.Core.Tests
             _out.WriteLine(shape + ": " + atMun["why"]);
         }
 
+        // ---- Which side keeps the decoupler (#924): the part across its explosive node is what it lets go ----
+
+        /// <summary>The Drops craft with Decoupler.1 releasing <paramref name="releases"/> when fired: stock's TD-12 lets go of what is on its top node, here the shield.</summary>
+        private static List<SnapshotPart> Releasing(params uint[] releases)
+        {
+            var parts = Parts(Shape.Drops);
+            parts.Single(p => p.Id == Dec).Releases.AddRange(releases);
+            return parts;
+        }
+
+        [Fact]
+        public void A_decoupler_that_lets_go_of_the_shield_leaves_with_the_stack()
+        {
+            var answer = Read(AtMun(Releasing(Shield)), "Kerbin");
+            Assert.Equal(Uids(Dec, Tank, Engine), Uids(answer["leave_out"]));
+            Assert.Equal(Parts(Shape.Drops).Where(p => p.Id != Dec && p.Id != Tank && p.Id != Engine).Sum(p => p.MassT), D(answer, "kept"), 6);
+        }
+
+        [Fact]
+        public void A_decoupler_that_lets_go_of_the_stack_stays_with_the_shield()
+        {
+            Assert.Equal(Uids(Tank, Engine), Uids(Read(AtMun(Releasing(Tank)), "Kerbin")["leave_out"]));
+        }
+
+        [Fact]
+        public void An_omni_decoupler_lets_go_of_both_sides_and_leaves_the_craft()
+        {
+            Assert.Equal(Uids(Dec, Tank, Engine), Uids(Read(AtMun(Releasing(Shield, Tank)), "Kerbin")["leave_out"]));
+        }
+
+        [Fact]
+        public void A_decoupler_with_nothing_read_stays_as_recordings_have_it()
+        {
+            Assert.Equal(Uids(Tank, Engine), Uids(Read(AtMun(Parts(Shape.Drops)), "Kerbin")["leave_out"]));
+        }
+
+        [Fact]
+        public void What_reentry_drops_and_names_is_unchanged_by_the_decoupler_leaving()
+        {
+            var ask = new Dictionary<string, object> { { "home", Uid(Pod) }, { "separate", "auto" } };
+            var answer = BlockCalls.EntryDropCall(ask, AtKerbin(Releasing(Shield)), null, 0, "", Uid);
+            Assert.Equal(Uids(Dec), Uids(answer["decouplers"]));
+            Assert.Equal(Uids(Tank, Engine), Uids(answer["gone"]));
+        }
+
+        [Fact]
+        public void The_craft_aimed_for_is_the_one_flown_once_the_decoupler_has_gone_with_the_stack()
+        {
+            var aimed = "";
+            var ask = new Dictionary<string, object> { { "home", Uid(Pod) }, { "body", "Kerbin" } };
+            BlockCalls.EntryCraftCall(ask, AtMun(Releasing(Shield)), null, 0, "", Uid, (key, why) => aimed = key);
+            var flown = AtKerbin(Parts(Shape.Drops, stack: false).Where(p => p.Id != Dec).ToList());
+            var after = EntryCraft.Of(flown, null, Pod, 1, true, true);
+            Assert.True(EntryCraft.Same(aimed, after.Key, flown), aimed + " against " + after.Key);
+        }
+
+        /// <summary>
+        /// The predictor's craft for the capsule of #924: the shield's face is bare only with the decoupler off it, 2.24 m² as <c>reentry</c> read it, and the 0.11 m²
+        /// <c>return</c> read while the decoupler was counted as staying on it.
+        /// </summary>
+        private static IReentryCraft CapsuleOf(GameSnapshot snapshot, IDictionary<string, object> ask)
+        {
+            var left = new HashSet<string>(BlockCalls.LeftOut(ask));
+            var bare = left.Contains(Uid(Dec)) || snapshot.Craft.Parts.All(p => p.Id != Dec);
+            return ReturnEntryDragTests.Capsule(bare ? 2.24 : 0.11);
+        }
+
+        private static double MassOf(GameSnapshot snapshot, IDictionary<string, object> ask)
+        {
+            var left = new HashSet<string>(BlockCalls.LeftOut(ask));
+            return snapshot.Craft.Parts.Where(p => !left.Contains(Uid(p.Id))).Sum(p => p.MassT) * 1000;
+        }
+
+        private static ReentryPrediction LandedAsReturnReads(List<SnapshotPart> parts)
+        {
+            var snapshot = AtMun(parts);
+            var ask = new Dictionary<string, object> { { "craft", Read(snapshot, "Kerbin") } };
+            return ReturnEntryDragTests.Fly(CapsuleOf(snapshot, ask), MassOf(snapshot, ask), ReturnEntryDragTests.LoggedFrame(ReturnEntryDragTests.Offset()));
+        }
+
+        private static ReentryPrediction LandedAsReentryReads()
+        {
+            // Reentry reads the craft after its own drop: the stack and the decoupler have gone.
+            var snapshot = AtKerbin(Parts(Shape.Drops, stack: false).Where(p => p.Id != Dec).ToList());
+            var ask = new Dictionary<string, object> { { "craft", Read(snapshot) } };
+            return ReturnEntryDragTests.Fly(CapsuleOf(snapshot, ask), MassOf(snapshot, ask), ReturnEntryDragTests.LoggedFrame(ReturnEntryDragTests.Offset()));
+        }
+
+        [Fact]
+        public void Return_and_reentry_land_within_10_km_once_the_decoupler_goes_with_the_stack()
+        {
+            var ret = LandedAsReturnReads(Releasing(Shield));
+            var ent = LandedAsReentryReads();
+            var km = LandingSiteSearch.ArcDegrees(ret.Latitude, ret.Longitude, ent.Latitude, ent.Longitude) * Math.PI / 180 * Kerbin.Radius / 1000;
+            _out.WriteLine("return {0:0.000}, {1:0.000}; reentry {2:0.000}, {3:0.000}; {4:0.00} km", ret.Latitude, ret.Longitude, ent.Latitude, ent.Longitude, km);
+            Assert.True(km <= 10, km + " km");
+        }
+
+        [Fact]
+        public void Read_as_staying_the_decoupler_covers_the_shield_and_return_lands_far_from_reentry()
+        {
+            var ret = LandedAsReturnReads(Parts(Shape.Drops));
+            var ent = LandedAsReentryReads();
+            var km = LandingSiteSearch.ArcDegrees(ret.Latitude, ret.Longitude, ent.Latitude, ent.Longitude) * Math.PI / 180 * Kerbin.Radius / 1000;
+            Assert.True(km > 300, km + " km");
+        }
+
         // ---- The one shield rule (#869): parity with the flown reentry_jettison_uid, branch by branch ----
 
         /// <summary>What <c>ENTRYDROP</c> gives reentry as <c>jettison</c> for <paramref name="parts"/> with the block's <paramref name="separate"/> and <paramref name="stage"/>.</summary>

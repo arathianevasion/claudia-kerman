@@ -14,6 +14,12 @@ namespace ClaudiaKerman.Core.Tests
     /// 10,762,541 m, Pe at UT 147485117.3, inclination 3.2°. <c>return</c> read 0.11 m² on 1.455 t and landed it at -73.8417 (8 km from KSC); <c>reentry</c> read 2.24 m²
     /// on 1.415 t and landed it at 170.9142; the capsule splashed down at 169.9957. A frame or rotation error is ruled out, and the Mun's place is not an input: same
     /// orbit, same frame, only the drag differs.
+    /// <para>
+    /// This skim is steep in the drag: round 0.11 m² the landing sweeps about 13° per 0.001 m². The game's own air and the occluded craft's own Mach curve aren't in the log, so
+    /// the research's capsule at exactly 0.11 m² lands at 131° east, not -73.8. What pins the cause is that the logged landing lies between the two ends of the curve's shape:
+    /// a drag flat with Mach reaches it at 0.0896 m² and the capsule's curve at 0.1366 m². The cause (<see cref="EntryCraftTests"/>): stock's TD-12 lets go of its top node, so it
+    /// left with the stack, but the Entry's craft kept it on the shield, whose face it then covered.
+    /// </para>
     /// </summary>
     public sealed class ReturnEntryDragTests
     {

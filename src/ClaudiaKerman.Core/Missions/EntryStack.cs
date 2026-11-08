@@ -8,7 +8,7 @@ namespace ClaudiaKerman.Core.Missions
 {
     /// <summary>
     /// What an Entry drops, from its Entry Shield (ADR 0018): the parts on the far side of it from home. It fires nothing (ADR 0014): the
-    /// <c>reentry</c> block fires the decouplers. A decoupler stays with the part above it, so the one next to the shield is not the stack;
+    /// <c>reentry</c> block fires the decouplers. A decoupler is not the stack, but it may go with it: <see cref="Leaves"/> has it when its firing lets go of the part above it (#924);
     /// a heat shield is never the decoupler that drops one (#516).
     /// </summary>
     public sealed class EntryStack
@@ -48,6 +48,14 @@ namespace ClaudiaKerman.Core.Missions
         public readonly List<SnapshotPart> Gone = new List<SnapshotPart>();
         /// <summary>Stack parts with no decoupler between them and the shield: the Entry can't drop them.</summary>
         public readonly List<SnapshotPart> Stuck = new List<SnapshotPart>();
+        /// <summary>Those of <see cref="Decouplers"/> whose firing lets go of the part above them (<see cref="SnapshotPart.Releases"/>, #924): they go with the stack. A TD-12 lets go of what is on its top node.</summary>
+        private readonly List<SnapshotPart> _goingDecouplers = new List<SnapshotPart>();
+
+        /// <summary>Everything that leaves the craft when the Entry drops its stack: <see cref="Gone"/> and the decouplers that go with it (#924). The one rule for the craft that enters.</summary>
+        public IEnumerable<SnapshotPart> Leaves
+        {
+            get { return Gone.Concat(_goingDecouplers); }
+        }
 
         /// <summary>
         /// The stack of <paramref name="parts"/> for shield number <paramref name="number"/> counted from <paramref name="home"/> (the part the
@@ -66,11 +74,11 @@ namespace ClaudiaKerman.Core.Missions
             var walker = new Walker(byId, anchor, PartTree.TowardHome(parts, home));
             var seen = new HashSet<uint>();
             foreach (var part in parts)
-                if (part.Id != anchor) stack.Classify(part, walker.Up(part), seen);
+                if (part.Id != anchor) stack.Classify(part, walker.Up(part), seen, walker);
             return stack;
         }
 
-        private void Classify(SnapshotPart part, Walk way, HashSet<uint> seen)
+        private void Classify(SnapshotPart part, Walk way, HashSet<uint> seen, Walker walker)
         {
             if (way.Under)
             {
@@ -85,6 +93,7 @@ namespace ClaudiaKerman.Core.Missions
                     Gone.Add(part);
                     if (seen.Add(way.Top.Id)) Decouplers.Add(way.Top);
                 }
+                else if (walker.LetsGoAbove(part)) _goingDecouplers.Add(part);
             }
         }
 
@@ -174,6 +183,13 @@ namespace ClaudiaKerman.Core.Missions
                     if (cur.Tags.Contains("decoupler") && !cur.Tags.Contains("heat_shield")) top = cur;
                 }
                 return new Walk();
+            }
+
+            /// <summary>Whether firing <paramref name="decoupler"/> lets go of its neighbour toward home.</summary>
+            public bool LetsGoAbove(SnapshotPart decoupler)
+            {
+                uint? next;
+                return _toward.TryGetValue(decoupler.Id, out next) && next.HasValue && decoupler.Releases.Contains(next.Value);
             }
 
             private SnapshotPart Parent(SnapshotPart part)

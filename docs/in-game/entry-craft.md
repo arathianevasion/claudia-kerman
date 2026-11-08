@@ -32,3 +32,12 @@ Known limit (check 1): `return` reads `ENTRYCRAFT` once, before the ejection, so
 ## Check 4: who pays, read from the real stack (#870)
 
 The adapter's per-part resources and engine propellants have no unit test. On a staged `return` (a Mun return with a dropped stage), compare the `block call ENTRYCRAFT` line's `gone_prop` with the propellant actually in the dropped tanks (LiquidFuel and Oxidizer in t, not monopropellant or ore). With a flamed-out stage and the next one unstaged it should still be that stage's propellant, not 0. A RAPIER in air-breathing mode must not count Oxidizer.
+
+## Check 5: the decoupler leaves with the stack (#924)
+
+`EntryStack` now reads which way each decoupler lets go (the adapter's `SnapshotPart.Releases`: the part across its explosive node). The TD-12 lets go of its top node, so it leaves with the stack and bares the shield. Core pins the rule; only the game can confirm the adapter's read.
+
+1. Repeat the Mun return to KSC that drops its stack, then `reentry`. In `KSP.log`, the `block call ENTRYCRAFT` line at the start of `return` gives the capsule's mass without the decoupler (1.415 t on the #924 craft, not 1.455 t).
+2. The `block call REENTRYIMPACT` lines give `craft <t> t, drag area <a> m² at Mach 2`. Pass: `return`'s line and `reentry`'s line agree on the mass and on the drag area (about 2.24 m² on the #924 craft, not 0.11).
+3. Pass: `return`'s `predicted_geo` is within about 10 km of `reentry`'s, and the capsule comes down near KSC.
+4. Fly `tests/blocks/return_target` on #920's craft and apply steps 1 to 3. A decoupler built with its top node toward the stack stays on the shield, as before.
