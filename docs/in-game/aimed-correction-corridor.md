@@ -34,6 +34,14 @@ Fly `tests/blocks/return_target` (Mun to KSC). Install as in `phase-3-gate.md`. 
 7. On a Mission with a leg after the landing, `grep "DEORBITBURN\|CORRECTIONBURN" KSP.log`: a burn the reserve refuses says `and <m/s> m/s for the later legs`, and the correction's note gives the m/s it may spend above the reserve less those legs.
 8. Note how long the frame hitches at the correction. The corridor adds up to 14 predictions to the solve's 60, about 150 ms more at 10.5 ms each.
 
+## The entry's g figure (#921)
+
+**Block migration:** Core only (`ReentryPredictor`, `CorrectionBurn.EntryChecked`). No Kerboscript or `//|` line changed.
+
+The predictor's figure is now the air's pull on the craft, without its open parachutes: a chute's opening, which no burn can change, had read as over 100 g and made the aimed burn fall back. And every burn an aimed solve leaves to fly is judged against the 8 g limit, the plain one too.
+
+Fly `tests/blocks/return_target` on #920's rebuilt craft: `grep "CORRECTIONBURN\|ENTRYTRIM" KSP.log` shows no `pulls <g> g, over 8` for a sane Mun return (the Core model of the logged craft pulls about 2.3 g at 30 km), the aimed burn flies, and the craft lands. An entry that truly pulls over 8 g fails `return` with `found no correction: the burn's entry pulls <g> g, over 8; ...`, or says so in `no trim: ...` at the Late Trim.
+
 ## The late trim at `reentry`'s start (#892, carries #317)
 
 **Block migration:** the judgment is in Core: `BlockCalls.EntryTrim` (`ENTRYTRIM`), which solves through `CorrectionBurn`. `reentry` only makes the call and flies it with `claudia_fly_correction`, before its wait to #815's drop. No `//|` line changed; the library stays at its limit (its chute and drogue rules now share `reentry_open_action`). Parity test: none, no Kerboscript logic moved.
