@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json;
+using ClaudiaKerman.Core.Kos;
 using ClaudiaKerman.Core.Missions;
 using ClaudiaKerman.Core.Tools;
 using ClaudiaKerman.Core.Ui;
@@ -60,14 +61,14 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         /// <summary>A node whose cheap window the Due Time leads, with the plan's window and what the Due Time leads.</summary>
-        private static GameSnapshot WindowPastItsAlignment(out double window, out double dueBy)
+        private static GameSnapshot WindowPastItsAlignment(out double window, out double dueBy, double gapS = 1)
         {
             foreach (var lan in new[] { 90.0, 30, 150, 210, 270, 330, 0, 60, 120, 180, 240, 300 })
             {
                 var snapshot = OverTheMun(lan);
                 double? by;
                 var plan = ReturnAim.CheapDepartureUt(snapshot, new ReturnAsk { TargetPe = 35000, EarliestUt = snapshot.Ut, CheapWindow = true }, out by);
-                if (!plan.HasValue || !by.HasValue || by.Value >= plan.Value + 1) continue;
+                if (!plan.HasValue || !by.HasValue || by.Value + gapS > plan.Value) continue;
                 window = plan.Value;
                 dueBy = by.Value;
                 return snapshot;
@@ -163,6 +164,132 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new Approve());
             Assert.Single(clock.Take(mission).OfType<StartScript>());
             Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("was missed"));
+        }
+
+        // ---- #906: the kept window survives a save and load ----
+
+        private MissionControl Reloaded(MissionControl mission, GameSnapshot at)
+        {
+            var reread = MissionSaveState.FromValues(Assert.Single(mission.ExportStates()).ToValues());
+            var reload = Control(new StreamingFakeTransport());
+            reload.Send(new SceneChanged(GameScene.Flight));
+            reload.Send(new MissionsRestored(_save.Path, new List<MissionSaveState> { reread }));
+            reload.Send(at);
+            return reload;
+        }
+
+        private MissionControl RunningFromTheDueTime(GameSnapshot snapshot, double dueBy)
+        {
+            int runId;
+            return RunningFromTheDueTime(snapshot, dueBy, out runId);
+        }
+
+        private MissionControl RunningFromTheDueTime(GameSnapshot snapshot, double dueBy, out int runId)
+        {
+            var clock = new FakeAlarmClock();
+            var mission = ToReturnPlan(snapshot);
+            clock.Take(mission);
+            var due = dueBy - WindowWaits.LaunchLeadS;
+            mission.Send(new UtAdvanced(due + 60));
+            mission.Send(OverTheMun(snapshot.Orbit.Lan, due + 60));
+            clock.Take(mission);
+            mission.Send(new Approve());
+            runId = Assert.Single(clock.Take(mission).OfType<StartScript>()).RunId;
+            return mission;
+        }
+
+        [Fact]
+        public void TheKeptWindowRoundTripsInTheSaveAndALateRestartAfterTheLoadFliesIt()
+        {
+            double window, dueBy;
+            var snapshot = WindowPastItsAlignment(out window, out dueBy);
+            var mission = RunningFromTheDueTime(snapshot, dueBy);
+            var state = Assert.Single(mission.ExportStates());
+            Assert.Equal(window, state.ReturnWindowUt.Value, 3);
+            Assert.Equal(window, MissionSaveState.FromValues(state.ToValues()).ReturnWindowUt.Value, 3);
+
+            var reload = Reloaded(mission, OverTheMun(snapshot.Orbit.Lan, dueBy));
+            Assert.Equal(window, reload.View.ReturnWindowUt.Value, 3);
+
+            var late = dueBy + (window - dueBy) / 2;
+            Assert.True(late < window && late > dueBy, "late is past the alignment, before the window");
+            var inSession = OverTheMun(snapshot.Orbit.Lan, late);
+            inSession.ReturnWindowUt = window;
+            var reloaded = MissionView.Stamp(OverTheMun(snapshot.Orbit.Lan, late), reload.View);
+            Assert.Equal(window, reloaded.ReturnWindowUt.Value, 3);
+            Assert.Equal(Convert.ToDouble(CheapReturn(inSession, late)["ut"], CultureInfo.InvariantCulture), Convert.ToDouble(CheapReturn(reloaded, late)["ut"], CultureInfo.InvariantCulture), 3);
+        }
+
+        [Fact]
+        public void ALateRestartAfterTheLoadPastTheWindowIsTheNormalRuleAsInSession()
+        {
+            double window, dueBy;
+            var snapshot = WindowPastItsAlignment(out window, out dueBy);
+            var mission = RunningFromTheDueTime(snapshot, dueBy);
+            var reload = Reloaded(mission, OverTheMun(snapshot.Orbit.Lan, dueBy));
+            var late = window + 600;
+            var stamped = MissionView.Stamp(OverTheMun(snapshot.Orbit.Lan, late), reload.View);
+            var plain = OverTheMun(snapshot.Orbit.Lan, late);
+            Assert.Equal(Convert.ToDouble(CheapReturn(plain, late)["ut"], CultureInfo.InvariantCulture), Convert.ToDouble(CheapReturn(stamped, late)["ut"], CultureInfo.InvariantCulture), 3);
+        }
+
+        [Fact]
+        public void AnOldSaveWithoutTheWindowLoadsWithNoneAndRestartsAsBefore()
+        {
+            double window, dueBy;
+            var snapshot = WindowPastItsAlignment(out window, out dueBy);
+            var mission = RunningFromTheDueTime(snapshot, dueBy);
+            var values = Assert.Single(mission.ExportStates()).ToValues();
+            Assert.True(values.Remove("returnWindowUt"));
+            var old = MissionSaveState.FromValues(values);
+            Assert.Null(old.ReturnWindowUt);
+            var reload = Control(new StreamingFakeTransport());
+            reload.Send(new SceneChanged(GameScene.Flight));
+            reload.Send(new MissionsRestored(_save.Path, new List<MissionSaveState> { old }));
+            reload.Send(OverTheMun(snapshot.Orbit.Lan, dueBy));
+            Assert.Null(reload.View.ReturnWindowUt);
+            Assert.DoesNotContain("returnWindowUt", new MissionSaveState().ToValues().Keys);
+        }
+
+        [Fact]
+        public void TheKeptWindowIsClearedWhenTheRunEnds()
+        {
+            double window, dueBy;
+            var snapshot = WindowPastItsAlignment(out window, out dueBy);
+            int runId;
+            var mission = RunningFromTheDueTime(snapshot, dueBy, out runId);
+            Assert.NotNull(mission.View.ReturnWindowUt);
+            mission.Send(new KosRunEnded(new RunOutcome(RunOutcomeKind.Finished, new Dictionary<string, object> { { "success", true } }, "", "", false), runId));
+            Assert.Null(mission.View.ReturnWindowUt);
+        }
+
+        [Fact]
+        public void ANonInclinedReturnRecordsNoWindow()
+        {
+            var ut = CheapReturnStart + 3 * 21600;
+            var snapshot = OverTheMun(90);
+            snapshot.Orbit.Inclination = 0;
+            var mission = ToReturnPlan(snapshot, "local res is return(lexicon(\"target\", \"none\", \"window\", " + ut.ToString(CultureInfo.InvariantCulture) + ")).\n");
+            var state = Assert.Single(mission.ExportStates());
+            Assert.Equal("", state.WindowPlanet);
+            Assert.Null(state.WindowUt);
+        }
+
+        [Fact]
+        public void ACostlyPlaneWindowBeforeItsAlignmentIsRecorded()
+        {
+            foreach (var lan in new[] { 90.0, 30, 150, 210, 270, 330, 0, 60, 120, 180, 240, 300 })
+            {
+                var snapshot = OverTheMun(lan);
+                double? by;
+                var plan = ReturnAim.CheapDepartureUt(snapshot, new ReturnAsk { TargetPe = 35000, EarliestUt = snapshot.Ut, CheapWindow = true }, out by);
+                if (!plan.HasValue || !by.HasValue || Math.Abs(by.Value - plan.Value) >= 1) continue;
+                var mission = ToReturnPlan(snapshot);
+                if (!mission.View.DueTime.HasDueTime) continue;
+                Assert.Equal(plan.Value, Assert.Single(mission.ExportStates()).WindowUt.Value, 3);
+                return;
+            }
+            throw new Exception("no node with a Due Time and a window before its alignment");
         }
     }
 }

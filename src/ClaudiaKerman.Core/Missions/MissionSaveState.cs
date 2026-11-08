@@ -59,6 +59,8 @@ namespace ClaudiaKerman.Core.Missions
         public string WindowPlanet = "";
         public double? WindowUt;
         public double? WindowDeltaV;
+        /// <summary>#906: the window a <c>return</c> run was planned for (#887), kept for the block's late restart.</summary>
+        public double? ReturnWindowUt;
         /// <summary>The player's Transfer Window pick (#686), whether the plan in hand waits for a fresh one, and whether Claudia has yet to hear it; none, false and false in older saves.</summary>
         public WindowPick WindowPick = WindowPick.None;
         public bool WindowPickNeeded;
@@ -262,6 +264,7 @@ namespace ClaudiaKerman.Core.Missions
             if (WindowPickNeeded) values["windowPickNeeded"] = "true";
             if (WindowPickUnsaid) values["windowPickUnsaid"] = "true";
             if (WindowOwnDue.HasValue) values["windowOwnDue"] = WindowOwnDue.Value.ToString("R", CultureInfo.InvariantCulture);
+            if (ReturnWindowUt.HasValue) values["returnWindowUt"] = ReturnWindowUt.Value.ToString("R", CultureInfo.InvariantCulture);
             foreach (var setting in Settings) values[SettingPrefix + setting.Key] = setting.Value;
             for (var i = 0; i < UnsafeProblems.Count; i++) values[UnsafeProblemPrefix + i.ToString(CultureInfo.InvariantCulture)] = UnsafeProblems[i];
             if (QueuedEntries > 0) values["queuedEntries"] = QueuedEntries.ToString(CultureInfo.InvariantCulture);
@@ -355,6 +358,7 @@ namespace ClaudiaKerman.Core.Missions
                 state.WindowDeltaV = windowDv;
             }
             if (double.TryParse(Get(values, "windowOwnDue"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.WindowOwnDue = reading;
+            if (double.TryParse(Get(values, "returnWindowUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.ReturnWindowUt = reading;
             decimal cap;
             if (decimal.TryParse(Get(values, "spendingCap"), NumberStyles.Number, CultureInfo.InvariantCulture, out cap)) state.SpendingCap = cap;
             int number;
