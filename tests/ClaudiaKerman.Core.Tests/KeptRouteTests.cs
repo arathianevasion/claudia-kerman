@@ -213,18 +213,73 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void TransferToFromTheKeptEllipseWithNoWindowAtAPeriapsisSearchesOnlyThreeLoopsSayingWhy()
+        public void TransferToFromTheKeptEllipseWithNoWindowAtAPeriapsisDropsFallbackArrivalsPastTheDueTimeAndCircularizes()
         {
             var rig = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Land on Ike");
             var capture = rig.RunCapture(Ask());
             Assert.StartsWith("kept", Kept(capture));
             // A Due Time moved in since: no window at a periapsis arrives by it.
             rig.Snapshot().LegsAhead[2].DueTimeUt = rig.Ut + 1;
-            var period = rig.Orbit.Period;
             var first = TransferFlight.Next(rig.Snapshot(), new TransferFlightAsk { Target = "Ike", TargetPe = IkePe, StartUt = rig.Ut, TurnTime = 60, WatchEjection = false });
-            Assert.True(first.Error == "", first.Error);
-            Assert.Equal("no Ike window at a periapsis within 3 loops of the kept orbit before the next fixed date", Kept(first));
-            Assert.True(Convert.ToDouble(first.Report["departure_ut"]) <= rig.Ut + KeptRoute.MaxLoops * period + 600, first.Report["departure_ut"] + " past three loops of " + period.ToString("0") + " s");
+            // #881: the bounded fallback's arrivals are all past that Due Time, so none is planned: as when the search finds nothing, the circle.
+            Assert.Equal("no Ike window at a periapsis within 3 loops of the kept orbit before the next fixed date, nor anywhere in them: circularize at alt and try again", first.Error);
+        }
+
+        /// <summary>The UT the kept route's Ike arrival is, with no fixed date in the plan.</summary>
+        private static double KeptArrival()
+        {
+            var rig = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Land on Ike", "Return to Kerbin");
+            Assert.StartsWith("kept", Kept(rig.RunCapture(Ask())));
+            var flight = TransferFlight.Next(rig.Snapshot(), new TransferFlightAsk { Target = "Ike", TargetPe = IkePe, StartUt = rig.Ut, TurnTime = 60, WatchEjection = false });
+            Assert.True(flight.Error == "", flight.Error);
+            return flight.ArrivalUt;
+        }
+
+        [Fact]
+        public void ADueTimeBeforeTheKeptArrivalRefusesTheKeptOrbitAndCaptureCircularizes()
+        {
+            var arrival = KeptArrival();
+            var rig = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Return to Kerbin");
+            rig.Snapshot().LegsAhead[2].DueTimeUt = arrival - 1;
+            var step = rig.RunCapture(Ask());
+            Assert.True(step.Error == "", step.Error);
+            Assert.StartsWith("circle: ", Kept(step));
+            Assert.InRange(rig.Orbit.E, 0, 0.011);
+
+            // The same plan with the Due Time after the arrival keeps the orbit.
+            var open = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Return to Kerbin");
+            open.Snapshot().LegsAhead[2].DueTimeUt = arrival + 100;
+            Assert.StartsWith("kept", Kept(open.RunCapture(Ask())));
+        }
+
+        [Fact]
+        public void TheLegsInBetweenAreCountedAgainstTheDueTime()
+        {
+            var arrival = KeptArrival();
+            // The Due Time is just after the arrival, but a landing comes first: a low orbit of Ike comes off it.
+            var rig = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Land on Ike", "Return to Kerbin");
+            rig.Snapshot().LegsAhead[3].DueTimeUt = arrival + 100;
+            var step = rig.RunCapture(Ask());
+            Assert.True(step.Error == "", step.Error);
+            Assert.StartsWith("circle: ", Kept(step));
+
+            double? deadline;
+            string why;
+            var ike = rig.System.Find("Ike");
+            KeptRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
+            var lap = 2 * Math.PI * Math.Sqrt(Math.Pow(DeltaVMap.LowOrbit(ike), 3) / ike.Gm);
+            Assert.Equal(arrival + 100 - lap, deadline.Value, 3);
+        }
+
+        [Fact]
+        public void ADueTimeOnlyPlanKeepsItsDateAsToday()
+        {
+            var rig = Arrival(180, "Transfer to Duna", "Transfer to Ike", "Return to Kerbin");
+            rig.Snapshot().LegsAhead[2].DueTimeUt = 50000;
+            double? deadline;
+            string why;
+            KeptRoute.NextMoon(rig.Snapshot(), rig.System, rig.Body, out deadline, out why);
+            Assert.Equal(50000, deadline.Value, 3);
         }
 
         [Fact]

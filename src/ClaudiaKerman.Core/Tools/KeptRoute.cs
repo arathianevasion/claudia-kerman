@@ -82,9 +82,9 @@ namespace ClaudiaKerman.Core.Tools
                     if (target != null && target != body && string.Equals(target.Parent, body.Name, StringComparison.OrdinalIgnoreCase))
                     {
                         why = "";
-                        var dates = legs.Skip(i + 1).Where(l => l.DueTimeUt.HasValue).Select(l => l.DueTimeUt.Value).ToList();
-                        if (dates.Count > 0) deadline = dates.Min();
-                        return system.Find(target.Name);
+                        var moon = system.Find(target.Name);
+                        deadline = FixedDate(legs, i, moon);
+                        return moon;
                     }
                     // The leg in hand's trip is the one that came here; it may land too.
                     if (i != 0) return null;
@@ -92,6 +92,21 @@ namespace ClaudiaKerman.Core.Tools
                 // A landing, ascent or entry first (the leg in hand's too: "Capture and land at Duna") starts from a low orbit.
                 if ((SequenceWords.Landing.IsMatch(words) || SequenceWords.Ascent.IsMatch(words) || SequenceWords.Reentry.IsMatch(words)
                     || SequenceWords.Aero.IsMatch(words) || SequenceWords.ReturnHome.IsMatch(words))) return null;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// The UT the moon must be reached by (#881): the first leg after the trip at <paramref name="trip"/> with a fixed date, a Due Time (the outline carries no
+        /// return window: <see cref="PlannedSequence"/> has no such field), less one low orbit of <paramref name="moon"/> for each leg in between; null with no such leg.
+        /// </summary>
+        private static double? FixedDate(IList<PlannedSequence> legs, int trip, SnapshotBody moon)
+        {
+            var orbit = DeltaVMap.LowOrbit(moon);
+            var lap = 2 * Math.PI * Math.Sqrt(orbit * orbit * orbit / moon.Gm);
+            for (var j = trip + 1; j < legs.Count; j++)
+            {
+                if (legs[j].DueTimeUt.HasValue) return legs[j].DueTimeUt.Value - (j - trip - 1) * lap;
             }
             return null;
         }

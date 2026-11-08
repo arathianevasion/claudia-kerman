@@ -384,10 +384,13 @@ namespace ClaudiaKerman.Core.Tools
             else
             {
                 string kept;
-                var plan = KeptDeparture(snapshot, setup, ask, earliest, out kept)
+                double? due;
+                var plan = KeptDeparture(snapshot, setup, ask, earliest, out kept, out due)
                     ?? Transfer.Find(snapshot, new TransferAsk { Target = target.Name, TargetPe = ask.TargetPe, EarliestUt = earliest, WindowUt = ask.Window, Capture = ArrivalRule.Capture(snapshot, target.Name, null),
                         LatestUt = kept != "" ? earliest + KeptRoute.MaxLoops * setup.Start.Period : (double?)null });
                 if (plan.Error != null) return Fail(kept != "" ? kept + ", nor anywhere in them: circularize at alt and try again (" + plan.Error + ")" : plan.Error);
+                // #881: the bounded fallback obeys the next fixed date too; every arrival past it dropped is as the search finding nothing.
+                if (kept != "" && due.HasValue && plan.ArrivalUt > due.Value) return Fail(kept + ", nor anywhere in them: circularize at alt and try again");
                 step = Node("ejection", plan.Ut, plan.Prograde, plan.Normal, plan.Radial, Ejected);
                 if (kept != "") step.Report[CaptureFlight.KeptKey] = kept;
                 arrival = plan.ArrivalUt;
@@ -419,12 +422,12 @@ namespace ClaudiaKerman.Core.Tools
         /// within <see cref="KeptRoute.MaxLoops"/> loops; null for any other orbit or a window given (then <see cref="Transfer"/>'s search as before), or none
         /// found, <paramref name="why"/> saying so (then <see cref="Transfer"/>'s search over the same loops, else the circle).
         /// </summary>
-        private static TransferPlan KeptDeparture(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask, double earliest, out string why)
+        private static TransferPlan KeptDeparture(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask, double earliest, out string why, out double? deadline)
         {
             why = "";
+            deadline = null;
             var orbit = setup.Start;
             if (ask.Window.HasValue || !KeptRoute.IsKept(setup.System, setup.Body, orbit, setup.Target)) return null;
-            double? deadline;
             string notNext;
             var next = KeptRoute.NextMoon(snapshot, setup.System, setup.Body, out deadline, out notNext);
             if (next == null || !string.Equals(next.Name, setup.Target.Name, StringComparison.OrdinalIgnoreCase)) deadline = null;
