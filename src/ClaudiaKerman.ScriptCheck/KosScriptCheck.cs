@@ -59,19 +59,10 @@ namespace ClaudiaKerman.ScriptCheck
             // Inside KSP kOS has set its logger; outside it (CI, tests) the compiler needs one.
             if (SafeHouse.Logger == null) SafeHouse.Logger = new QuietLogger();
 
-            var options = new CompilerOptions
-            {
-                // The options the kOS bridge (ClaudiaKerman.KOS) compiles with, so the check sees what runs.
-                LoadProgramsInSameAddressSpace = true,
-                IsCalledFromRun = false,
-                AllowClobberBuiltins = false,
-                FuncManager = new BuiltInNames(),
-                BindManager = new NoBindings(),
-            };
             List<CodePart> parts;
             try
             {
-                parts = new KSScript().Compile(GlobalPath.FromString("0:/mission-script.ks"), 1, script, "scriptcheck", options);
+                parts = Compile(script);
             }
             catch (Exception e)
             {
@@ -97,6 +88,41 @@ namespace ClaudiaKerman.ScriptCheck
                 Warnings = warnings,
                 BlockOptions = blockOptions,
             };
+        }
+
+        private static List<CodePart> Compile(string script)
+        {
+            var options = new CompilerOptions
+            {
+                // The options the kOS bridge (ClaudiaKerman.KOS) compiles with, so the check sees what runs.
+                LoadProgramsInSameAddressSpace = true,
+                IsCalledFromRun = false,
+                AllowClobberBuiltins = false,
+                FuncManager = new BuiltInNames(),
+                BindManager = new NoBindings(),
+            };
+            return new KSScript().Compile(GlobalPath.FromString("0:/mission-script.ks"), 1, script, "scriptcheck", options);
+        }
+
+        /// <summary>
+        /// Calls in the Mission Script part of <paramref name="bundle"/> (a <see cref="CoreLibrary.Bundle"/>) to a function that
+        /// nothing defines, as "line N: NAME" (#928): kOS only fails on one when the line runs. A call through a variable the
+        /// script stores, a built-in and a library function don't count. Throws if the bundle doesn't compile.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        public static List<string> UndefinedCalls(string bundle)
+        {
+            if (SafeHouse.Logger == null) SafeHouse.Logger = new QuietLogger();
+            var sections = new List<List<Opcode>>();
+            foreach (var part in Compile(bundle))
+            {
+                sections.Add(part.FunctionsCode);
+                sections.Add(part.InitializationCode);
+                sections.Add(part.MainCode);
+            }
+            var undefinedCalls = new List<string>();
+            OpcodeReader.Read(sections, true, CoreLibrary.LibraryStartLine(bundle), undefinedCalls);
+            return undefinedCalls;
         }
 
         /// <summary>

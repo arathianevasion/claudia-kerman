@@ -21,7 +21,7 @@ failed_tests() { awk '/^ *Failed [^!]/ { p = 1; s = 0 } p && s && ++n > 3 { p = 
 
 # start NAME CMD...: runs CMD in the background, its output in $dir/NAME.out. GATES_SERIAL=1 waits for it and prints it now.
 start() { local name=$1; shift; "$@" > "$dir/$name.out" 2>&1 & echo $! > "$dir/$name.pid"; pids+=($!)
-  if [ "${GATES_SERIAL:-}" = 1 ]; then if [ "$name" = fixtures ]; then collect "$name"; else report "$name"; fi; fi; }
+  if [ "${GATES_SERIAL:-}" = 1 ]; then if [ "$name" = fixtures ] || [ "$name" = undefined-fixture ]; then collect "$name"; else report "$name"; fi; fi; }
 # collect NAME: waits for the job once; leaves its status in $rc and its output in $out.
 collect() { [ -e "$dir/$1.rc" ] || { wait "$(cat "$dir/$1.pid")"; echo $? > "$dir/$1.rc"; }; rc=$(cat "$dir/$1.rc"); out=$(cat "$dir/$1.out"); }
 # report NAME: prints the PASS or FAIL lines for a job (once), in the format the callers grep.
@@ -42,6 +42,8 @@ KS=$(ls -t tools/ClaudiaKerman.KsCompile/bin/*/*/ClaudiaKerman.KsCompile.dll 2>/
 if [ -z "$KS" ]; then report core; report kerboscript; report kerboscript-loc; report scriptcheck; echo "FAIL ksc-binary not found under tools/ClaudiaKerman.KsCompile/bin"; exit 1; fi
 start blocks dotnet "$KS" kerboscript tests/blocks
 [ -d tests/tools ] && start tools dotnet "$KS" kerboscript tests/tools
+start undefined-calls dotnet "$KS" --undefined-calls tests/blocks tests/tools   # a test script calling a function nothing defines (#928)
+start undefined-fixture dotnet "$KS" --undefined-calls tools/ClaudiaKerman.KsCompile/fixtures/undefined-call.ks
 
 # Every forbidden-call or syntax-error fixture must be rejected: one call, which names each failing file.
 fixtures=$(find tools tests \( -name forbidden-call.ks -o -name syntax-error.ks \) | grep -v /bin/ | grep -v /obj/)
@@ -49,6 +51,10 @@ if [ -n "$fixtures" ]; then start fixtures dotnet "$KS" $fixtures; fi
 
 report core; report kerboscript; report kerboscript-loc; report scriptcheck; report blocks
 [ -d tests/tools ] && report tools
+report undefined-calls
+# The fixture must fail, naming the function and its line, or the gate above could be passing for nothing.
+collect undefined-fixture
+if [ "$rc" -eq 1 ] && echo "$out" | grep -qF "undefined-call.ks line 4: deorbit_ksc"; then echo "PASS fixture undefined-call.ks rejected"; else echo "FAIL fixture undefined-call.ks passed or didn't name line 4: deorbit_ksc"; fail=1; fi
 if [ -n "$fixtures" ]; then
   collect fixtures
   for f in $fixtures; do

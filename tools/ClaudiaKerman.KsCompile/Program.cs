@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using ClaudiaKerman.Core.Kos;
 using ClaudiaKerman.ScriptCheck;
 
 namespace ClaudiaKerman.KsCompile
@@ -24,6 +25,8 @@ namespace ClaudiaKerman.KsCompile
                 return 2;
             }
 
+            var undefinedCalls = args[0] == "--undefined-calls";
+            if (undefinedCalls) args = args.Skip(1).ToArray();
             var files = new List<string>();
             foreach (var arg in args)
             {
@@ -43,6 +46,8 @@ namespace ClaudiaKerman.KsCompile
                 Console.Error.WriteLine("no .ks files found in: " + string.Join(" ", args));
                 return 2;
             }
+
+            if (undefinedCalls) return UndefinedCalls(files);
 
             var check = new KosScriptCheck();
             var toolTestCheck = new KosScriptCheck(forToolTests: true);
@@ -65,6 +70,34 @@ namespace ClaudiaKerman.KsCompile
             Console.WriteLine(failures == 0
                 ? "Script Check passed " + files.Count + " file(s)"
                 : failures + " of " + files.Count + " file(s) failed the Script Check");
+            return failures == 0 ? 0 : 1;
+        }
+
+        /// <summary>
+        /// --undefined-calls (#928): each file is bundled with the Core Library, as the block test runner does, and fails for each
+        /// call to a function nothing defines (kOS only fails on it when the line runs), naming the file, line and function.
+        /// </summary>
+        private static int UndefinedCalls(List<string> files)
+        {
+            var failures = 0;
+            foreach (var file in files)
+            {
+                List<string> found;
+                try
+                {
+                    found = KosScriptCheck.UndefinedCalls(CoreLibrary.Bundle(File.ReadAllText(file)));
+                }
+                catch (Exception e)
+                {
+                    found = new List<string> { "doesn't compile: " + e.Message.Trim().Split('\n')[0] };
+                }
+                if (found.Count == 0) continue;
+                failures++;
+                foreach (var call in found) Console.WriteLine("FAIL " + file + " " + call + " (undefined function)");
+            }
+            Console.WriteLine(failures == 0
+                ? "no undefined calls in " + files.Count + " file(s)"
+                : failures + " of " + files.Count + " file(s) call a function that doesn't exist");
             return failures == 0 ? 0 : 1;
         }
 

@@ -101,6 +101,8 @@ namespace ClaudiaKerman.Core.Tools.Numerics
         public double Atol = 1e-9;
         /// <summary>The first step; 0 picks one from the function.</summary>
         public double Hstart = 0;
+        /// <summary>Called with the state and time at the end of each accepted step (never a trial state), or at the event that ends the step; null for none. It must not change the state.</summary>
+        public Action<double[], double> OnStep;
 
         private int _n;
         private int _evaluations;
@@ -190,9 +192,11 @@ namespace ClaudiaKerman.Core.Tools.Numerics
                     Interpolate(firedAt, y);
                     _t = firedAt;
                     _y = y;
+                    if (OnStep != null) OnStep(y, firedAt);
                     return End(OdeStatus.EventTerminated, null, fired, steps);
                 }
                 for (var i = 0; i < count; i++) last[i] = now[i];
+                if (OnStep != null) OnStep(_ynew, _tnew);
 
                 Array.Copy(_ynew, _y, _n);
                 Array.Copy(_dynew, _dy, _n);
