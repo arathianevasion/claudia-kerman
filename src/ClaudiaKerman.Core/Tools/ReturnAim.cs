@@ -99,6 +99,18 @@ namespace ClaudiaKerman.Core.Tools
         public const double TieKm = 5;
         /// <summary>From an inclined orbit, "auto" max_wait runs this past the next cheap alignment, s: a window aligned with the target lies within it (about +35 m/s at 66°).</summary>
         public const double PastAlignmentS = 3.5 * 3600;
+        /// <summary>#880: the search for a landing near the target runs this far past the next cheap alignment, s (several alignments, so a band landing near KSC comes round).</summary>
+        public const double ReachPastAlignmentS = 60 * 3600;
+        /// <summary>#880: a landing this close counts as reaching the target, km.</summary>
+        public const double ReachKm = 50;
+        /// <summary>#880: a window's least burn landing this close is worth aiming, for the time shift (<see cref="Search.Aim(double)"/>) can bring it within <see cref="ReachKm"/>, km.</summary>
+        private const double WorthAimingKm = 300;
+        /// <summary>#880: the most predictions one search spends before it stops looking further on (an aim counts as <see cref="AimPredictions"/>): about 1.3 s in the game at 10.5 ms each, in one call on the main thread until #463.</summary>
+        private const int MostReachPredictions = 120;
+        /// <summary>#880: what one aimed window costs in predictions (<see cref="SecantSteps"/> and its probe, at most).</summary>
+        private const int AimPredictions = SecantSteps + 2;
+        /// <summary>#880: a costlier window's burn straight onto the asymptote may cost this many times what the craft can spend over the cheapest and still be solved (+400 of it is about +100 of the least burn).</summary>
+        private const double DirectPerLeastBurn = 4;
         /// <summary>A window whose burn straight onto the asymptote (<see cref="ReturnBurn.Direct"/>) costs this much over the least such is left unsolved, m/s.</summary>
         private const double SkipOverDirectMs = 400;
         /// <summary>The windows the inclined search aims at, nearest landing first.</summary>
@@ -160,12 +172,18 @@ namespace ClaudiaKerman.Core.Tools
         /// "auto" max_wait from <paramref name="earliest"/>, s: to the next cheap alignment plus <see cref="PastAlignmentS"/> (up to about
         /// 23 h at the Mun) when the plane costs something (<see cref="AlignmentCosts"/>), otherwise one turn of the landing's longitude.
         /// </summary>
-        public static double AutoWait(BodySystem system, SnapshotBody planet, SnapshotBody moon, Conic orbit, double now, double earliest, double targetPe, double handed)
+        public static double AutoWait(BodySystem system, SnapshotBody planet, SnapshotBody moon, Conic orbit, double now, double earliest, double targetPe, double handed, double pastAlignment = PastAlignmentS)
         {
             double alignment;
             return AlignmentCosts(system, moon, orbit, now, earliest, targetPe, out alignment)
-                ? alignment - earliest + PastAlignmentS
+                ? alignment - earliest + pastAlignment
                 : LongitudeTurn(system, planet, moon, handed);
+        }
+
+        /// <summary>#880: whether a return aimed at a landing on <paramref name="planet"/> may wait for one near the target: at Kerbin only. Elsewhere #816's rule stands.</summary>
+        public static bool Reaches(SnapshotBody planet)
+        {
+            return string.Equals(planet.Name, CraftCheckFlow.HomeBody, StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -318,7 +336,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <paramref name="earliest"/>. #802: the landing's turn depends on which way the planet's frame turns, read from
         /// <paramref name="body"/> as the block reads it; without one it is taken to turn with the frame's angle.
         /// </summary>
-        public static double AutoWaitFor(GameSnapshot snapshot, SnapshotBody planet, double earliest, double targetPe, IPlanningBody body)
+        public static double AutoWaitFor(GameSnapshot snapshot, SnapshotBody planet, double earliest, double targetPe, IPlanningBody body, double pastAlignment = PastAlignmentS)
         {
             var system = new BodySystem(snapshot.Bodies);
             var moon = system.Find(snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body);
@@ -326,7 +344,7 @@ namespace ClaudiaKerman.Core.Tools
             ToolOutcome error;
             var setup = PredictBurn.Setup.Prepare(snapshot, null, out error);
             if (setup == null || setup.Body != moon || !setup.Start.Closed) return LongitudeTurn(system, planet, moon, handed);
-            return AutoWait(system, planet, moon, setup.Start, setup.Now, Math.Max(setup.Now, earliest), targetPe, handed);
+            return AutoWait(system, planet, moon, setup.Start, setup.Now, Math.Max(setup.Now, earliest), targetPe, handed, pastAlignment);
         }
 
         /// <summary>
@@ -407,7 +425,14 @@ namespace ClaudiaKerman.Core.Tools
                     search._turnEnd = search._earliest + turn;
                     search._bandStart = alignment - PastAlignmentS;
                 }
-                if (ask.LatestUt.HasValue) search._latest = Math.Min(search._latest, ask.LatestUt.Value);
+                // #880: the search for a landing near the target looks further than #816's rule, unless max_wait is the caller's.
+                search._reach = ask.Landing != null && ask.DvLeft.HasValue && search.Inclined && Reaches(search._planet);
+                search._reachLatest = search._reach && search.CostlyPlane && !ask.MaxWait.HasValue ? search._alignment + ReachPastAlignmentS : search._latest;
+                if (ask.LatestUt.HasValue)
+                {
+                    search._latest = Math.Min(search._latest, ask.LatestUt.Value);
+                    search._reachLatest = Math.Min(search._reachLatest, ask.LatestUt.Value);
+                }
                 if (search.Inclined || ask.Landing == null) return search;
                 search._step = WindowStep(system, moon, orbit, search.First.Ut);
                 var landed = search.Predict(search.First);
@@ -462,6 +487,11 @@ namespace ClaudiaKerman.Core.Tools
 
             /// <summary>The most a burn may cost while it is aimed: the cap, from an inclined orbit.</summary>
             private double _dvLimit = double.PositiveInfinity;
+            /// <summary>#880: this ask searches for the earliest window landing within <see cref="ReachKm"/>, up to <see cref="_reachLatest"/>.</summary>
+            private bool _reach;
+            private double _reachLatest;
+            /// <summary><see cref="_windows"/> by their orbit from the earliest, for <see cref="Reached"/> to reuse.</summary>
+            private readonly Dictionary<int, ReturnPlan> _solvedAt = new Dictionary<int, ReturnPlan>();
 
             private List<ReturnPlan> Solved()
             {
@@ -480,7 +510,7 @@ namespace ClaudiaKerman.Core.Tools
                     if (k > 0 && floor > 0 && direct[k] > floor + SkipOverDirectMs) continue;
                     if (k > 0 && spans[k][0] >= _turnEnd && spans[k][1] <= _bandStart) continue;
                     var plan = k == 0 ? First : ReturnBurn.Find(_system, _moon, _orbit, _now, Plain(spans[k][0], spans[k][1]));
-                    if (plan.Error == null) _windows.Add(plan);
+                    if (plan.Error == null) { _windows.Add(plan); _solvedAt[k] = plan; }
                 }
                 _cheapest = _windows.Count == 0 ? double.NaN : _windows.Min(w => w.DeltaV);
                 return _windows;
@@ -522,6 +552,11 @@ namespace ClaudiaKerman.Core.Tools
             {
                 var ranked = Ranked();
                 if (ranked == null) return First;
+                if (_reach)
+                {
+                    var reached = Reached(ranked);
+                    if (reached != null) return reached;
+                }
                 ReturnPlan best;
                 _dvLimit = _cheapest + CostCapMs;
                 if (ranked.Count == 0) best = Cheap();
@@ -534,7 +569,88 @@ namespace ClaudiaKerman.Core.Tools
                 best.WindowNote = string.Format(CultureInfo.InvariantCulture,
                     "; windows {0} over {1:0.0} h, {2:0.0}° off the moon's plane: cheapest {3:0.0} m/s, cap {4:0.0} m/s, chosen UT {5:0} ({6:0.0} m/s, wait {7:0.0} h)",
                     _windows.Count, (_latest - _earliest) / 3600, PlaneAngle(_system, _moon, _orbit, _earliest), _cheapest, _cheapest + CostCapMs, best.Ut, best.DeltaV, (best.Ut - _now) / 3600);
+                if (_reach) Report(best, "no window it can afford lands within " + ReachKm.ToString("0", CultureInfo.InvariantCulture) + " km by the cheap alignment + 60 h");
                 return best;
+            }
+
+            /// <summary>
+            /// #880: the most <paramref name="ranked"/>'s windows may cost: <see cref="DeorbitBurn.SpareDv"/> (one spend rule, #907) less a buffer of the larger of 50 m/s or 10% of the delta-v left, so the Course
+            /// Correction and the late trim keep their room, and the ejection itself is paid from the rest; stock unable to say, the cheapest plus <see cref="CostCapMs"/>, as #817 limits its burn to one figure then. NaN when no prediction says the landing speed.
+            /// </summary>
+            private double MostDv(IEnumerable<ReturnPlan> ranked)
+            {
+                if (_ask.DvLeft.Value < 0) return _cheapest + CostCapMs;
+                var landing = _ask.Landing;
+                var kept = DeorbitBurn.KeptDv(_ask.DvLeft.Value, landing.Payer);
+                var buffer = Math.Max(DeorbitBurn.ReserveMin, DeorbitBurn.ReserveShare * kept);
+                var landed = ranked.Select(w => w.Landing).FirstOrDefault() ?? Predict(First);
+                if (landed == null || landed.Error != null) return double.NaN;
+                return DeorbitBurn.SpareDv(_ask.DvLeft.Value, DeorbitBurn.PoweredLandingDv(landing.Craft, true, landed.LandingSpeed), _ask.LaterLegsDv, landing.Payer) - buffer;
+            }
+
+            /// <summary>
+            /// #880: the earliest window landing within <see cref="ReachKm"/> of the target whose burn fits <see cref="MostDv"/>, from the windows of every orbit of the craft up to
+            /// <see cref="_reachLatest"/>; null when none does, for #816's rule. A window's least burn close enough is aimed (<see cref="Aim(ReturnPlan)"/>) in time, as #816's are.
+            /// </summary>
+            private ReturnPlan Reached(IEnumerable<ReturnPlan> ranked)
+            {
+                var most = MostDv(ranked);
+                if (double.IsNaN(most) || most < _cheapest) return null;
+                _dvLimit = most;
+                var latest = _latest;
+                _latest = _reachLatest;
+                try
+                {
+                    var period = _orbit.Period;
+                    var spans = new List<double[]>();
+                    for (var k = 0; k == 0 || _earliest + k * period < _reachLatest; k++)
+                        spans.Add(new[] { _earliest + k * period, Math.Min(_reachLatest, _earliest + (k + 1) * period) });
+                    var peR = _planet.Radius + _ask.TargetPe;
+                    var direct = spans.Select(w => { double ut; return ReturnBurn.Direct(_system, _moon, _planet, _orbit, w[0], w[1], peR, out ut).Length; }).ToList();
+                    var floor = direct.Where(d => d > 0).DefaultIfEmpty(0).Min();
+                    var skip = Math.Max(SkipOverDirectMs, DirectPerLeastBurn * (most - _cheapest));
+                    var predictions = 0;
+                    for (var k = 0; k < spans.Count && predictions < MostReachPredictions; k++)
+                    {
+                        if (floor > 0 && direct[k] > floor + skip) continue;
+                        ReturnPlan window;
+                        if (!_solvedAt.TryGetValue(k, out window))
+                        {
+                            window = ReturnBurn.Find(_system, _moon, _orbit, _now, Plain(spans[k][0], spans[k][1]));
+                            if (window.Error != null) continue;
+                        }
+                        if (window.DeltaV > most) continue;
+                        if (window.Landing == null)
+                        {
+                            predictions++;
+                            var landed = Predict(window);
+                            if (landed.Error != null) continue;
+                            Stamp(window, landed);
+                        }
+                        if (window.ErrorKm > WorthAimingKm) continue;
+                        predictions += AimPredictions;
+                        var aimed = window.ErrorKm <= CloseKm ? window : Aim(window);
+                        if (aimed.ErrorKm > ReachKm || aimed.DeltaV > most) continue;
+                        aimed.SpreadKm = Spread(aimed);
+                        aimed.AimDv = Math.Max(0, aimed.DeltaV - _cheapest);
+                        aimed.WindowNote = string.Format(CultureInfo.InvariantCulture, "; windows to {0:0.0} h, cheapest {1:0.0} m/s, up to {2:0.0} m/s, chosen UT {3:0} ({4:0.0} m/s, wait {5:0.0} h)",
+                            (_reachLatest - _earliest) / 3600, _cheapest, most, aimed.Ut, aimed.DeltaV, (aimed.Ut - _now) / 3600);
+                        Report(aimed, null);
+                        return aimed;
+                    }
+                    return null;
+                }
+                finally
+                {
+                    _latest = latest;
+                }
+            }
+
+            /// <summary>#880: the wait, the delta-v and the expected landing distance, in words, with what went wrong first.</summary>
+            private void Report(ReturnPlan plan, string miss)
+            {
+                plan.AimNote = (miss == null ? "" : miss + ": ") + string.Format(CultureInfo.InvariantCulture, "window waits {0:0.0} h, {1:0.0} m/s, expected {2:0.0} km from the target", (plan.Ut - _now) / 3600, plan.DeltaV, plan.ErrorKm);
+                if (miss != null) plan.WindowNote += "; " + miss;
             }
 
             /// <summary>The burn near <paramref name="window"/> that comes down nearest the target; null when none is found there.</summary>

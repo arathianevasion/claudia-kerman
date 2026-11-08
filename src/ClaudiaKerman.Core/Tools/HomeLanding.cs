@@ -75,6 +75,30 @@ namespace ClaudiaKerman.Core.Tools
             return NamesAPlace(snapshot, home) ? None : Ksc;
         }
 
+        /// <summary>#880: the Mission's landing target (#892) that an "auto" stands for, when it was set on this planet and the ask is one that lands; null otherwise. A return aimed at "none" has cleared it by then.</summary>
+        public static LandingTarget Recorded(GameSnapshot snapshot, LandingTargetAsk ask)
+        {
+            var target = snapshot == null ? null : snapshot.LandingTarget;
+            if (target == null || !string.Equals(target.Body, ask.Planet, StringComparison.OrdinalIgnoreCase) || ask.TargetInc.HasValue || ask.Window.HasValue) return null;
+            var home = snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, ask.Planet, StringComparison.OrdinalIgnoreCase));
+            return home == null || (ask.TargetPe.HasValue && ask.TargetPe.Value >= home.AtmosphereHeight) ? null : target;
+        }
+
+        /// <summary>
+        /// #880: the landing a <c>transfer_to</c> home from another planet comes in for: KSC by the default rule, or null for any other trip or a Mission that names another place. The Transfer Window
+        /// is unchanged by it; the Late Trim (#892) aims at it within the spare delta-v.
+        /// </summary>
+        public static LandingTarget ArrivalTarget(GameSnapshot snapshot, string target, double targetPe)
+        {
+            if (snapshot == null || !string.Equals(target, CraftCheckFlow.HomeBody, StringComparison.OrdinalIgnoreCase)) return null;
+            var system = new BodySystem(snapshot.Bodies);
+            var at = system.Find(snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body);
+            var home = system.Find(target);
+            if (at == null || home == null || InSystemOf(system, at, home)) return null;
+            if (DefaultTarget(snapshot, new LandingTargetAsk { Planet = home.Name, TargetPe = targetPe }) != Ksc) return null;
+            return new LandingTarget { Body = home.Name, Latitude = ReturnAim.KscLatitude, Longitude = ReturnAim.KscLongitude };
+        }
+
         /// <summary>Whether the Mission Goal, or a leg ahead or a site picked for it, names a place on <paramref name="home"/> to come down that isn't KSC.</summary>
         private static bool NamesAPlace(GameSnapshot snapshot, SnapshotBody home)
         {
