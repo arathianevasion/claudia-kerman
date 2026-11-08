@@ -376,7 +376,7 @@ namespace ClaudiaKerman.KOS
             try
             {
                 Directory.CreateDirectory(SaveDirectory);
-                var stamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + "Z ";
+                var stamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + "Z ";
                 File.AppendAllText(Path.Combine(SaveDirectory, "block-tests.log"),
                     stamp + result.Headline + "\n" + string.Concat(result.Lines.Select(l => "    " + l + "\n").ToArray()));
             }
