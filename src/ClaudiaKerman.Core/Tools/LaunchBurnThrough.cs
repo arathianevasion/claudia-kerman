@@ -9,35 +9,36 @@ namespace ClaudiaKerman.Core.Tools
     /// <summary>
     /// Whether <c>launch</c> burns through past <c>target_ap</c> at its first cutoff (#932, ADR 0014), through the block-internal
     /// <c>ADDONS:CLAUDIA:BURNTHROUGH</c> (<see cref="Call"/>). A stage too weak to circularize in the time left can't coast to
-    /// apoapsis and burn there: its half burn plus the craft's turn is longer than the time left to apoapsis. Pure; kOS still
-    /// reads the orbit, and keeps the steering, the throttle and the staging.
+    /// apoapsis and burn there: its half burn plus the craft's turn is longer than the time left when <c>launch</c> ends at the atmosphere
+    /// top, since <c>circularize</c> can't begin turning before that. Pure; kOS still reads the orbit, and keeps the steering, the throttle and the staging.
     /// </summary>
     public static class LaunchBurnThrough
     {
         private const double G0 = 9.80665;
 
         /// <summary>
-        /// Takes <c>ap</c> (m above sea level), <c>sma</c> (m), <c>gm</c>, <c>radius</c> (m), <c>eta_ap</c> (s), <c>target_ap</c>
+        /// Takes <c>ap</c> (m above sea level), <c>sma</c> (m), <c>gm</c>, <c>radius</c> (m), <c>eta_ap</c> (s), <c>altitude</c>, <c>target_ap</c>
         /// and <c>atm_height</c> (m), <c>angle</c> (degrees from the nose now to orbital prograde at apoapsis), <c>stages</c>
         /// (<c>claudia_burn_stages</c>'s list: <c>dv</c>, <c>duration</c>, <c>isp</c>, from the stage burning now down to stage_limit)
         /// and <c>turn</c> (TURNTIME's answer; one with an error counts as no turn time).
         /// Gives <c>error</c> ("" or the input it lacks, which coasts), <c>burn_through</c>, and the figures it decided on:
         /// <c>dv</c> (m/s to circularize at apoapsis), <c>half_burn</c> (s; -1 with no stage to burn), <c>turn_time</c> (s, the turn
-        /// through <c>angle</c> and its settle time), <c>angle</c> and <c>eta_ap</c> (s). A hop (<c>target_ap</c> no higher than the
+        /// through <c>angle</c> and its settle time), <c>angle</c>, <c>eta_ap</c>, <c>climb</c> (s to the atmosphere top, 0 if already above it) and
+        /// <c>time_left</c> (s, <c>eta_ap</c> less <c>climb</c>: what the half burn and turn are held against). A hop (<c>target_ap</c> no higher than the
         /// atmosphere) never burns through, nor does an orbit with no apoapsis.
         /// </summary>
         public static IDictionary<string, object> Call(IDictionary<string, object> input)
         {
             var answer = new Dictionary<string, object>
             {
-                { "error", "" }, { "burn_through", false }, { "dv", 0.0 }, { "half_burn", -1.0 }, { "turn_time", 0.0 }, { "angle", 0.0 }, { "eta_ap", 0.0 },
+                { "error", "" }, { "burn_through", false }, { "dv", 0.0 }, { "half_burn", -1.0 }, { "turn_time", 0.0 }, { "angle", 0.0 }, { "eta_ap", 0.0 }, { "climb", 0.0 }, { "time_left", 0.0 },
             };
             if (input == null)
             {
                 answer["error"] = "nothing to decide on";
                 return answer;
             }
-            foreach (var key in new[] { "ap", "sma", "gm", "radius", "eta_ap", "target_ap", "atm_height", "angle" })
+            foreach (var key in new[] { "ap", "sma", "gm", "radius", "eta_ap", "altitude", "target_ap", "atm_height", "angle" })
             {
                 if (!(Value(input, key) is double))
                 {
@@ -49,6 +50,7 @@ namespace ClaudiaKerman.Core.Tools
             var angle = (double)input["angle"];
             var turnTime = SecondsToTurn(angle, Value(input, "turn") as IDictionary<string, object>);
             answer["eta_ap"] = eta;
+            answer["time_left"] = eta;
             answer["angle"] = angle;
             answer["turn_time"] = turnTime;
 
@@ -60,9 +62,32 @@ namespace ClaudiaKerman.Core.Tools
             var halfBurn = StagedBurnTime(dv / 2, Value(input, "stages") as IList<object>);
             answer["dv"] = dv;
             answer["half_burn"] = halfBurn;
+            var radius = (double)input["radius"];
+            var climb = SecondsToAtmosphereTop(radius + (double)input["altitude"], radius + (double)input["atm_height"], apR, sma, gm);
+            var timeLeft = Math.Max(0, eta - climb);
+            answer["climb"] = climb;
+            answer["time_left"] = timeLeft;
             var hop = (double)input["target_ap"] <= (double)input["atm_height"];
-            answer["burn_through"] = !hop && halfBurn >= 0 && halfBurn + turnTime > eta;
+            answer["burn_through"] = !hop && halfBurn >= 0 && halfBurn + turnTime > timeLeft;
             return answer;
+        }
+
+        /// <summary>
+        /// Seconds to climb from <paramref name="r"/> to <paramref name="rTop"/> on the orbit at the cutoff, unpowered (Kepler: an estimate, as drag and
+        /// <c>launch</c>'s top-ups change the orbit a little on the way). 0 if the craft is already above the top, or the orbit never reaches it.
+        /// </summary>
+        private static double SecondsToAtmosphereTop(double r, double rTop, double apR, double sma, double gm)
+        {
+            var e = apR / sma - 1;
+            if (r >= rTop || apR <= rTop || e <= 0) return 0;
+            return Math.Max(0, SecondsToApoapsis(r, sma, e, gm) - SecondsToApoapsis(rTop, sma, e, gm));
+        }
+
+        /// <summary>Seconds from radius <paramref name="r"/>, climbing, to apoapsis on an ellipse.</summary>
+        private static double SecondsToApoapsis(double r, double sma, double e, double gm)
+        {
+            var eccentricAnomaly = Math.Acos(Math.Max(-1, Math.Min(1, (1 - r / sma) / e)));
+            return (Math.PI - (eccentricAnomaly - e * Math.Sin(eccentricAnomaly))) * Math.Sqrt(sma * sma * sma / gm);
         }
 
         /// <summary>

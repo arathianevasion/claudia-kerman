@@ -54,11 +54,15 @@ namespace ClaudiaKerman.Core.Tests
         private const double MunAngle = 39.7;
         private const double DunaAngle = 38.5;
 
-        private static IDictionary<string, object> Decide(double ap, double sma, double eta, Dictionary<string, object> turn, double angle, List<object> stages, double targetAp = 80000, double atmHeight = 70000)
+        /// <summary>The altitude at each cutoff: where each orbit is its eta_ap from apoapsis (the Duna ship's "40 km" and the Mun craft's are both about that).</summary>
+        private const double DunaCutoffAltitude = 40444;
+        private const double MunCutoffAltitude = 39760;
+
+        private static IDictionary<string, object> Decide(double ap, double sma, double eta, Dictionary<string, object> turn, double angle, List<object> stages, double targetAp = 80000, double atmHeight = 70000, double altitude = 40000)
         {
             return LaunchBurnThrough.Call(new Dictionary<string, object>
             {
-                { "ap", ap }, { "sma", sma }, { "gm", KerbinGm }, { "radius", KerbinRadius }, { "eta_ap", eta },
+                { "ap", ap }, { "sma", sma }, { "gm", KerbinGm }, { "radius", KerbinRadius }, { "eta_ap", eta }, { "altitude", altitude },
                 { "target_ap", targetAp }, { "atm_height", atmHeight }, { "stages", stages }, { "turn", turn }, { "angle", angle },
             });
         }
@@ -66,21 +70,26 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void TheDunaShipBurnsThrough()
         {
-            var answer = Decide(79832, 457707, 145.1, DunaTurn, DunaAngle, DunaStages);
+            var answer = Decide(79832, 457707, 145.1, DunaTurn, DunaAngle, DunaStages, altitude: DunaCutoffAltitude);
             Assert.Equal(true, answer["burn_through"]);
-            // The figures it decided on, for the log: 644 m/s to circularize (the trace's orbit), half of it taking about 150 s, already over the 145.1 s left.
+            // The figures it decided on, for the log: 644 m/s to circularize (the trace's orbit), half of it taking about 150 s, against the 72 s left at 70 km.
             Assert.InRange((double)answer["dv"], 640, 650);
             Assert.InRange((double)answer["half_burn"], 147, 154);
             Assert.Equal(145.1, (double)answer["eta_ap"]);
+            Assert.InRange((double)answer["time_left"], 72, 73.5);
+            Assert.InRange((double)answer["climb"], 71.6, 73.1);
             Assert.Equal(DunaAngle, (double)answer["angle"]);
         }
 
         [Fact]
         public void TheMunCraftCoasts()
         {
-            var answer = Decide(79819, 483505, 160.3, MunTurn, MunAngle, MunStages);
+            var answer = Decide(79819, 483505, 160.3, MunTurn, MunAngle, MunStages, altitude: MunCutoffAltitude);
             Assert.Equal(false, answer["burn_through"]);
             Assert.InRange((double)answer["dv"], 518, 528);
+            // 49.6 s of half burn and turn, against about 79 s left when launch ends at 70 km.
+            Assert.InRange((double)answer["half_burn"] + (double)answer["turn_time"], 49.1, 50.1);
+            Assert.InRange((double)answer["time_left"], 79, 80);
         }
 
         [Fact]
@@ -88,10 +97,14 @@ namespace ClaudiaKerman.Core.Tests
         {
             // TURNTIME's wheels-alone figures for this craft (KSP.log 14:33): 190 degrees in 187.1 s at up to 1.026 deg/s, turn_time 197.1 s.
             // A half burn of about 22 s plus that 190 degrees is over the 160.3 s left, but the craft is only 39.7 degrees off the burn at cutoff.
-            var answer = Decide(79819, 483505, 160.3, Turn(187.1, 1.026), MunAngle, MunStages);
+            var answer = Decide(79819, 483505, 160.3, Turn(187.1, 1.026), MunAngle, MunStages, altitude: MunCutoffAltitude);
             Assert.Equal(false, answer["burn_through"]);
             // 39.7 degrees at 1.026 deg/s, 2 s to reach and leave that rate, and 10 s to settle.
             Assert.InRange((double)answer["turn_time"], 50, 52);
+            // The close case: 72.9 s against 79.5 s left at 70 km, a margin of about 6.6 s.
+            var needed = (double)answer["half_burn"] + (double)answer["turn_time"];
+            Assert.InRange(needed, 72.4, 73.4);
+            Assert.InRange((double)answer["time_left"] - needed, 6, 7.2);
         }
 
         [Fact]
@@ -117,11 +130,66 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void TheScaledTurnStillCountsWhenItTipsTheDecision()
         {
-            // About 140 s of half burn against 160.3 s left: under it alone, over it with the turn at the real angle (about 27 s).
-            var answer = Decide(79819, 483505, 160.3, MunTurn, MunAngle, Stages(Stage(2000, 815, 300)));
-            Assert.InRange((double)answer["half_burn"], 135, 145);
+            // About 60 s of half burn against 79.5 s left at 70 km: under it alone, over it with the turn at the real angle (about 27 s).
+            var answer = Decide(79819, 483505, 160.3, MunTurn, MunAngle, Stages(Stage(2000, 348, 300)), altitude: MunCutoffAltitude);
+            Assert.InRange((double)answer["half_burn"], 58, 62);
             Assert.InRange((double)answer["turn_time"], 26, 29);
             Assert.Equal(true, answer["burn_through"]);
+        }
+
+        [Fact]
+        public void AHalfBurnOf80SecondsNoLongerFitsThoughItFitsTheTimeToApoapsisAtCutoff()
+        {
+            // The former middle band: 80 s and a 27 s turn are well under the 160.3 s to apoapsis at the cutoff, but launch ends at 70 km with 79.5 s left.
+            var answer = Decide(79819, 483505, 160.3, MunTurn, MunAngle, Stages(Stage(2000, 464, 300)), altitude: MunCutoffAltitude);
+            Assert.InRange((double)answer["half_burn"], 78, 82);
+            Assert.True((double)answer["half_burn"] + (double)answer["turn_time"] < 160.3);
+            Assert.Equal(true, answer["burn_through"]);
+        }
+
+        [Fact]
+        public void TheClimbIsTakenOffTheTimeToApoapsis()
+        {
+            var answer = Decide(79819, 483505, 160.3, MunTurn, MunAngle, MunStages, altitude: MunCutoffAltitude);
+            Assert.Equal(160.3 - (double)answer["climb"], (double)answer["time_left"], 6);
+        }
+
+        [Fact]
+        public void ACutoffAboveTheAtmosphereCountsTheWholeTimeToApoapsis()
+        {
+            // The same 80 s half burn that can't fit at 70 km: from a cutoff already above the air, launch ends at once and the 160.3 s are all there.
+            var answer = Decide(79819, 483505, 160.3, MunTurn, MunAngle, Stages(Stage(2000, 464, 300)), altitude: 75000);
+            Assert.Equal(160.3, (double)answer["time_left"]);
+            Assert.Equal(0.0, (double)answer["climb"]);
+            Assert.Equal(false, answer["burn_through"]);
+        }
+
+        [Fact]
+        public void ACutoffOnABodyWithNoAtmosphereCountsTheWholeTimeToApoapsis()
+        {
+            var answer = Decide(40000, 233000, 160.3, MunTurn, MunAngle, MunStages, targetAp: 40000, atmHeight: 0, altitude: 5000);
+            Assert.Equal(160.3, (double)answer["time_left"]);
+        }
+
+        [Fact]
+        public void AnOrbitThatDoesNotReachTheAtmosphereTopCountsTheWholeTimeToApoapsis()
+        {
+            // Cut within launch's tolerance of a target just over the air: this orbit never reaches 70 km, so there's no climb to take off.
+            var answer = Decide(69900, 483505, 160.3, MunTurn, MunAngle, MunStages, targetAp: 70100, altitude: 40000);
+            Assert.Equal(160.3, (double)answer["time_left"]);
+            Assert.Equal(false, answer["burn_through"]);
+        }
+
+        [Fact]
+        public void WithoutTheAltitudeItCoasts()
+        {
+            var answer = LaunchBurnThrough.Call(new Dictionary<string, object>
+            {
+                { "ap", 79832.0 }, { "sma", 457707.0 }, { "gm", KerbinGm }, { "radius", KerbinRadius }, { "eta_ap", 145.1 },
+                { "target_ap", 80000.0 }, { "atm_height", 70000.0 }, { "stages", DunaStages }, { "angle", DunaAngle },
+            });
+            Assert.Equal("altitude is required", answer["error"]);
+            Assert.Equal(false, answer["burn_through"]);
         }
 
         [Fact]
@@ -177,7 +245,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             var answer = LaunchBurnThrough.Call(new Dictionary<string, object>
             {
-                { "ap", 79832.0 }, { "sma", 457707.0 }, { "gm", KerbinGm }, { "radius", KerbinRadius }, { "eta_ap", 145.1 },
+                { "ap", 79832.0 }, { "sma", 457707.0 }, { "gm", KerbinGm }, { "radius", KerbinRadius }, { "eta_ap", 145.1 }, { "altitude", DunaCutoffAltitude },
                 { "target_ap", 80000.0 }, { "atm_height", 70000.0 }, { "stages", DunaStages }, { "angle", DunaAngle },
                 { "turn", new Dictionary<string, object> { { "error", "no usable torque" } } },
             });

@@ -484,7 +484,7 @@ function launch {
       if tset = 0 {
         // The first cutoff only: Core says whether this stage can coast to apoapsis and circularize there (#932; its figures go to KSP.log).
         if extra:coast_ap = 0 {
-          set burn_through to addons:claudia:burnthrough(lexicon("ap", ap, "sma", ship:orbit:semimajoraxis, "gm", ship:body:mu, "radius", ship:body:radius, "eta_ap", eta:apoapsis, "target_ap", target_ap, "atm_height", body_values:atm_height, "angle", vang(ship:facing:vector, velocityat(ship, time:seconds + eta:apoapsis):orbit),
+          set burn_through to addons:claudia:burnthrough(lexicon("ap", ap, "sma", ship:orbit:semimajoraxis, "gm", ship:body:mu, "radius", ship:body:radius, "eta_ap", eta:apoapsis, "altitude", altitude, "target_ap", target_ap, "atm_height", body_values:atm_height, "angle", vang(ship:facing:vector, velocityat(ship, time:seconds + eta:apoapsis):orbit),
             "stages", claudia_burn_stages(opt:stage_limit), "turn", addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime)))):burn_through.
         }
         set tset to choose 1 if burn_through else 0.

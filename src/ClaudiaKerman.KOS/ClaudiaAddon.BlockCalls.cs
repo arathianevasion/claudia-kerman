@@ -35,7 +35,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("LAUNCHHEADING", new OneArgsSuffix<Lexicon, Lexicon>(LaunchHeading,
                 "Core Library only (launch): the heading into the plane of inc (negative southbound) from lat, with gm, radius and rotation of the body and target_ap (m); lexicon error, heading"));
             AddSuffix("BURNTHROUGH", new OneArgsSuffix<Lexicon, Lexicon>(BurnThrough,
-                "Core Library only (launch, at its first cutoff): whether the stage is too weak to coast to apoapsis and circularize there, from ap, sma, gm, radius, eta_ap, target_ap, atm_height, angle, stages and turn; lexicon error, burn_through, dv, half_burn, turn_time, angle, eta_ap"));
+                "Core Library only (launch, at its first cutoff): whether the stage is too weak to coast to apoapsis and circularize there, from ap, sma, gm, radius, eta_ap, altitude, target_ap, atm_height, angle, stages and turn; lexicon error, burn_through, dv, half_burn, turn_time, angle, eta_ap, climb, time_left"));
             AddSuffix("LANDINGSITE", new OneArgsSuffix<Lexicon, Lexicon>(LandingSite,
                 "Core Library only (land): find_landing_site's search on the body orbited; gives the first site as lexicon error, lat, lng, biome, ..."));
             AddSuffix("LANDINGPASS", new OneArgsSuffix<Lexicon, Lexicon>(LandingPass,
@@ -735,9 +735,9 @@ namespace ClaudiaKerman.KOS
             {
                 decision = LaunchBurnThrough.Call(KosValues.ToDictionary(input));
                 return KosValues.FromPlain(decision);
-            }, () => string.Format(CultureInfo.InvariantCulture, "burn_through {0}: half burn {1:0.0} s for {2:0.0} m/s + turn {3:0.0} s for {6:0.0} deg against {4:0.0} s to apoapsis{5}",
+            }, () => string.Format(CultureInfo.InvariantCulture, "burn_through {0}: half burn {1:0.0} s for {2:0.0} m/s + turn {3:0.0} s for {6:0.0} deg against {7:0.0} s left as launch ends ({4:0.0} s to apoapsis less {8:0.0} s climb){5}",
                 decision["burn_through"], decision["half_burn"], decision["dv"], decision["turn_time"], decision["eta_ap"],
-                decision["error"] as string == "" ? "" : " (" + decision["error"] + ")", decision["angle"]));
+                decision["error"] as string == "" ? "" : " (" + decision["error"] + ")", decision["angle"], decision["time_left"], decision["climb"]));
             return decision != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(LaunchBurnThrough.Call(null));
         }
 
