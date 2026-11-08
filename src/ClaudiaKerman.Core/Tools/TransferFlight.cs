@@ -384,10 +384,10 @@ namespace ClaudiaKerman.Core.Tools
             else
             {
                 string kept;
-                var plan = KeptDeparture(snapshot, setup, ask, earliest, out kept)
-                    ?? Transfer.Find(snapshot, new TransferAsk { Target = target.Name, TargetPe = ask.TargetPe, EarliestUt = earliest, WindowUt = ask.Window, Capture = ArrivalRule.Capture(snapshot, target.Name, null),
-                        LatestUt = kept != "" ? earliest + KeptRoute.MaxLoops * setup.Start.Period : (double?)null });
-                if (plan.Error != null) return Fail(kept != "" ? kept + ", nor anywhere in them: circularize at alt and try again (" + plan.Error + ")" : plan.Error);
+                double? due;
+                var plan = KeptDeparture(snapshot, setup, ask, earliest, out kept, out due)
+                    ?? Fallback(snapshot, target, ask, earliest, kept != "" ? earliest + KeptRoute.MaxLoops * setup.Start.Period : (double?)null, kept != "" ? due : null);
+                if (plan.Error != null) return Fail(kept != "" ? kept + ", nor anywhere in them: circularize at alt and try again" + (plan.Error != "" ? " (" + plan.Error + ")" : "") : plan.Error);
                 step = Node("ejection", plan.Ut, plan.Prograde, plan.Normal, plan.Radial, Ejected);
                 if (kept != "") step.Report[CaptureFlight.KeptKey] = kept;
                 arrival = plan.ArrivalUt;
@@ -415,16 +415,36 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
+        /// The ejection search; with a <paramref name="due"/> (#881) the cheapest whose arrival is by it: a late cheapest is cut away (the search re-run
+        /// from before its departure) until one is on time, or none is left (the search's own "found nothing" error).
+        /// </summary>
+        internal static TransferPlan Fallback(GameSnapshot snapshot, SnapshotBody target, TransferFlightAsk ask, double earliest, double? latest, double? due)
+        {
+            if (due.HasValue && double.IsNaN(due.Value)) due = null;
+            // A departure is no later than its arrival.
+            if (due.HasValue) latest = Math.Min(latest ?? double.PositiveInfinity, due.Value);
+            TransferPlan plan = null;
+            for (var tries = 0; tries < 16; tries++)
+            {
+                plan = Transfer.Find(snapshot, new TransferAsk { Target = target.Name, TargetPe = ask.TargetPe, EarliestUt = earliest, WindowUt = ask.Window, Capture = ArrivalRule.Capture(snapshot, target.Name, null), LatestUt = latest });
+                if (plan.Error != null || !due.HasValue || plan.ArrivalUt <= due.Value) return plan;
+                latest = plan.Ut - 1;
+                if (latest.Value < earliest) break;
+            }
+            return new TransferPlan { Error = "" };
+        }
+
+        /// <summary>
         /// #866: from the high ellipse <c>capture</c> kept for this moon, the ejection at the periapsis that meets its window (<see cref="KeptRoute.Departure"/>),
         /// within <see cref="KeptRoute.MaxLoops"/> loops; null for any other orbit or a window given (then <see cref="Transfer"/>'s search as before), or none
         /// found, <paramref name="why"/> saying so (then <see cref="Transfer"/>'s search over the same loops, else the circle).
         /// </summary>
-        private static TransferPlan KeptDeparture(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask, double earliest, out string why)
+        private static TransferPlan KeptDeparture(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask, double earliest, out string why, out double? deadline)
         {
             why = "";
+            deadline = null;
             var orbit = setup.Start;
             if (ask.Window.HasValue || !KeptRoute.IsKept(setup.System, setup.Body, orbit, setup.Target)) return null;
-            double? deadline;
             string notNext;
             var next = KeptRoute.NextMoon(snapshot, setup.System, setup.Body, out deadline, out notNext);
             if (next == null || !string.Equals(next.Name, setup.Target.Name, StringComparison.OrdinalIgnoreCase)) deadline = null;
