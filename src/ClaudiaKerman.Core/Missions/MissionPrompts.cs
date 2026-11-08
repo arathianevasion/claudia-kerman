@@ -932,7 +932,13 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         internal static string MoonCrossingBlocker(Tools.MoonCrossing crossing)
         {
-            return "Blocker: " + crossing.Line() + ".";
+            return MoonCrossingBlocker(crossing.Line());
+        }
+
+        /// <summary>The Blocker line round a crossing's <see cref="Tools.MoonCrossing.Line"/>.</summary>
+        internal static string MoonCrossingBlocker(string reason)
+        {
+            return "Blocker: " + reason + ".";
         }
 
         /// <summary>#867: the Debrief's fact of an orbit the run left that crosses a moon, for Claudia's next plan.</summary>

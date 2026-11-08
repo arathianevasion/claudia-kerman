@@ -106,7 +106,7 @@ namespace ClaudiaKerman.Core.Missions
         /// The text before a body names a body to keep clear of (#894), not to go to: "clear of (the)", "avoid(ing)", "away from", "below/under/outside
         /// (the) (SOI/orbit of)", "miss(ing)". The avoid word governs the body as "from" governs an origin: it comes right before the name.
         /// </summary>
-        private static readonly Regex Avoids = new Regex(@"\b(?:clear\s+of|away\s+from|out\s+of|outside|(?:avoid(?:s|ing|ed)?|miss(?:es|ing|ed)?|without|don['’]t|do\s+not|not)(?:\s+(?:enter(?:s|ing)?|encounter(?:s|ing)?|hit(?:s|ting)?))?)\b[\s:(""]*(?:(?:a|an|the)\s+)?$", RegexOptions.IgnoreCase);
+        private static readonly Regex Avoids = new Regex(@"\b(?:clear\s+of|away\s+from|out\s+of|outside|avoid(?:s|ing|ed)?|miss(?:es|ing|ed)?|without|don['’]t|do\s+not|not)\b[\s:(""]*(?:(?:a|an|the|any)\s+)?(?:(?:enter(?:s|ing)?|encounter(?:s|ing)?(?:\s+with)?|hit(?:s|ting)?)\s+)?(?:(?:a|an|the)\s+)?(?:(?:SOI|sphere\s+of\s+influence|orbit)\s+of\s+(?:the\s+)?)?$", RegexOptions.IgnoreCase);
 
         /// <summary>"below/under/outside the SOI/orbit of" before a body: a place to keep out of only when the SOI or orbit is named.</summary>
         private static readonly Regex BelowSoiOf = new Regex(@"\b(?:below|under|outside)\s+(?:the\s+)?(?:SOI|sphere\s+of\s+influence|orbit)\s+of\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
@@ -114,14 +114,19 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>"below/under (the)" before a body that is followed by "'s SOI/orbit/sphere".</summary>
         private static readonly Regex BelowBefore = new Regex(@"\b(?:below|under)\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
 
-        private static readonly Regex PossessiveSoi = new Regex(@"^['’]s?\s+(?:SOI|sphere|orbit)\b", RegexOptions.IgnoreCase);
+        private static readonly Regex PossessiveSoi = new Regex(@"^(?:['’]s?\s+(?:SOI|sphere|orbit)|\s+(?:SOI|sphere\s+of\s+influence))\b", RegexOptions.IgnoreCase);
+
+        /// <summary>"no (the)" before a body followed by "encounter": "no Ike encounter" (#903).</summary>
+        private static readonly Regex NoBefore = new Regex(@"\bno\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
+
+        private static readonly Regex EncounterAfter = new Regex(@"^\s+encounter\b", RegexOptions.IgnoreCase);
 
         /// <summary>Peels a moon and its joiner off the end of <paramref name="before"/> ("Ike and the ", "Ike, "), to find the avoid word governing a list; null if none.</summary>
         private static string PeelListItem(GameSnapshot snapshot, string before)
         {
             var names = string.Join("|", snapshot.Bodies.Where(b => b.Name.Length > 0).Select(b => Regex.Escape(b.Name)));
             if (names.Length == 0) return null;
-            var m = Regex.Match(before, @"\b(?:the\s+)?(?:" + names + @")(?:['’]s?\s+(?:SOI|sphere|orbit))?\s*(?:,\s*(?:and\s+|or\s+)?|\s+and\s+|\s+or\s+)(?:the\s+)?$", RegexOptions.IgnoreCase);
+            var m = Regex.Match(before, @"\b(?:the\s+)?(?:" + names + @")(?:['’]s?(?:\s+(?:SOI|sphere|orbit))?)?\s*(?:,\s*(?:and\s+|or\s+)?|\s+and\s+|\s+or\s+)(?:the\s+)?$", RegexOptions.IgnoreCase);
             return m.Success ? before.Substring(0, m.Index) : null;
         }
 
@@ -129,6 +134,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             var before = words.Substring(0, m.Index);
             if (BelowSoiOf.IsMatch(before) || BelowBefore.IsMatch(before) && PossessiveSoi.IsMatch(words.Substring(m.Index + m.Length))) return true;
+            if (NoBefore.IsMatch(before) && EncounterAfter.IsMatch(words.Substring(m.Index + m.Length))) return true;
             for (var guard = 0; before != null && guard < 20; guard++)
             {
                 if (Avoids.IsMatch(before)) return true;

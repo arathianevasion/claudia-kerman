@@ -37,6 +37,36 @@ namespace ClaudiaKerman.Core.Tools
         }
     }
 
+    /// <summary>What the adapter asks of a wait's watch (#872): whether a check is due, and one check. Two watches: <see cref="EncounterWatch"/> (the transfer coast) and <see cref="NextPatchEncounterWatch"/>.</summary>
+    public interface IEncounterWatch
+    {
+        /// <summary>Whether a check is due at <paramref name="ut"/>, so the adapter reads a snapshot only then.</summary>
+        bool Due(double ut);
+
+        /// <summary>One check: "" while nothing is wrong, else the line for the trace and the events, and the warp should drop.</summary>
+        string Check(GameSnapshot snapshot);
+    }
+
+    /// <summary>
+    /// The watch of a wait with no planned encounter (#867, the wait for a far ejection): the next-patch watch (<see cref="NextPatchWatch"/>), which
+    /// drops the warp before a moon nobody planned.
+    /// </summary>
+    public sealed class NextPatchEncounterWatch : IEncounterWatch
+    {
+        private readonly NextPatchWatch _watch = new NextPatchWatch("");
+
+        public bool Due(double ut)
+        {
+            return _watch.Due(ut);
+        }
+
+        public string Check(GameSnapshot snapshot)
+        {
+            var met = _watch.Meeting(snapshot);
+            return met == null ? "" : "Next-patch watch: " + NextPatchWatch.WouldMeet(met) + "; warp dropped before it";
+        }
+    }
+
     /// <summary>
     /// The Encounter Watch (#770, GLOSSARY): during a long coast of <c>transfer_to</c>, whether the encounter it was planned on still
     /// holds, read from KSP's own orbit through the Game Snapshot, so with no physics, at any warp. It only reads and answers: the
@@ -44,7 +74,7 @@ namespace ClaudiaKerman.Core.Tools
     /// change, "Orbit event imminent" capping at 50x) only change how much game time passes between checks. One drop ends it:
     /// what comes next is the block's next step, and that step's wait has its own watch.
     /// </summary>
-    public sealed class EncounterWatch
+    public sealed class EncounterWatch : IEncounterWatch
     {
         /// <summary>
         /// A periapsis this share of the target's sphere of influence off the plan wakes the block: 10 %, 4.8 Mm at Duna, under 1 m/s
@@ -64,19 +94,24 @@ namespace ClaudiaKerman.Core.Tools
         private readonly string[] _bodies;
         private double _nextUt;
         private bool _suspect;
-        /// <summary>The next-patch watch a wait with no planned encounter asks instead (#867); null for an encounter's.</summary>
-        private readonly NextPatchWatch _nextPatch;
 
         /// <summary>
-        /// A watch from TRANSFERSTEP's <c>watch</c> lexicon; with no target (the empty lexicon of a wait with nothing to watch) it is never due.
-        /// With <c>next_patch</c> (#867) it is the next-patch watch, which drops the warp before a moon nobody planned.
+        /// The watch of TRANSFERSTEP's <c>watch</c> lexicon: with <c>next_patch</c> (#867) the next-patch watch, else the transfer coast's
+        /// (never due with no target: the empty lexicon of a wait with nothing to watch).
         /// </summary>
+        public static IEncounterWatch From(IDictionary<string, object> plan)
+        {
+            object nextPatch;
+            if (plan.TryGetValue("next_patch", out nextPatch) && nextPatch as bool? == true) return new NextPatchEncounterWatch();
+            return new EncounterWatch(plan);
+        }
+
+        /// <summary>A transfer coast's watch from TRANSFERSTEP's <c>watch</c> lexicon; with no target it is never due.</summary>
         public EncounterWatch(IDictionary<string, object> plan)
         {
-            object target, bodies, nextPatch;
+            object target, bodies;
             plan.TryGetValue("target", out target);
             plan.TryGetValue("bodies", out bodies);
-            if (plan.TryGetValue("next_patch", out nextPatch) && nextPatch as bool? == true) _nextPatch = new NextPatchWatch("");
             _target = target as string ?? "";
             _pe = Number(plan, "pe");
             _peLimit = Number(plan, "pe_limit");
@@ -89,7 +124,6 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>Whether a check is due at <paramref name="ut"/>, so the adapter reads a snapshot only then.</summary>
         public bool Due(double ut)
         {
-            if (_nextPatch != null) return _nextPatch.Due(ut);
             return _target != "" && ut >= _nextUt;
         }
 
@@ -105,11 +139,6 @@ namespace ClaudiaKerman.Core.Tools
         /// </summary>
         public string Check(GameSnapshot snapshot)
         {
-            if (_nextPatch != null)
-            {
-                var met = _nextPatch.Meeting(snapshot);
-                return met == null ? "" : "Next-patch watch: " + NextPatchWatch.WouldMeet(met) + "; warp dropped before it";
-            }
             var ut = snapshot.Ut;
             var trouble = Trouble(snapshot);
             if (trouble == "")
