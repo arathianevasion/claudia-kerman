@@ -28,3 +28,7 @@ A Mission whose Duna Entry lands on its engines (`reentry`'s `phase finish` note
 When it happens on a planned flight (a plan revised between `return` and `reentry`, or fuel enough at `return` but not at `reentry` to land on the engines), `reentry`'s `phase finish` blocknote and the `block call ENTRYFINISH` line end with `; the landing was aimed for the craft <aimed>, it flies <flown>`. The record is in the session only: after a quickload between the two blocks there is nothing to compare, and no line. It is kept for the vessel that aimed, and dropped when `return` or `deorbit` starts again or ends without success, so another vessel's `reentry`, or one after an aiming block gave up, prints no such line.
 
 Known limit (check 1): `return` reads `ENTRYCRAFT` once, before the ejection, so its correction's who-pays figures (`whole`, `gone_prop`) are the craft's before the ejection burn, paired with the kept mass now. The landing it aims is the kept craft's either way; only the correction's mass-after-burn estimate with a kept burner leans on them.
+
+## Check 4: who pays, read from the real stack (#870)
+
+The adapter's per-part resources and engine propellants have no unit test. On a staged `return` (a Mun return with a dropped stage), compare the `block call ENTRYCRAFT` line's `gone_prop` with the propellant actually in the dropped tanks (LiquidFuel and Oxidizer in t, not monopropellant or ore). With a flamed-out stage and the next one unstaged it should still be that stage's propellant, not 0. A RAPIER in air-breathing mode must not count Oxidizer.
