@@ -103,8 +103,8 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Contains("test_worth(lexicon(\"block\", \"correction\", \"fix\", fix,", fly);
             var printed = KosHarness.Run(CoreLibrary.Bundle(
                 "function test_worth { parameter ask. return lexicon(\"skip\", " + (skip ? "true" : "false") + ", \"max_throttle\", 1, \"max_residual\", -1, \"done_dv\", 0.1). }\n"
-                + fly.Replace("function claudia_fly_correction", "function test_fly") + "\n"
-                + "local done is test_fly(lexicon(), lexicon(\"error\", \"" + error + "\", \"dv\", " + N(dv) + ", \"error_km\", 300)).\n"
+                + fly.Replace("function claudia_fly_correction", "function test_fly_correction") + "\n"
+                + "local done is test_fly_correction(lexicon(), lexicon(\"error\", \"" + error + "\", \"dv\", " + N(dv) + ", \"error_km\", 300)).\n"
                 + "print \"[\" + done:reason + \"]\". print done:dv.")).ToArray();
             Assert.Equal(new[] { "[" + reason + "]", "0" }, printed);
         }
