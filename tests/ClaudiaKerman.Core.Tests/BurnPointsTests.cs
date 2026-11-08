@@ -263,8 +263,26 @@ namespace ClaudiaKerman.Core.Tests
             Assert.NotNull(wait);
             Assert.True(wait.DueByUt.HasValue && wait.DueByUt.Value < wait.DepartureUt.Value - WindowWaits.LaunchLeadS, "due by " + wait.DueByUt + " for " + wait.DepartureUt);
             Assert.Equal(wait.DueByUt.Value - WindowWaits.LaunchLeadS, BurnPoints.DueTime(wait, 1000).Value, 3);
-            var short_ = BurnPoints.ShortOf(new SequencePlan { Script = "local res is return(lexicon(\"target\", \"ksc\")).", ExpectedDurationSeconds = 100, ExpectedDeltaV = 300 }, snapshot, 1000, new AimFrame());
-            Assert.True(short_.WaitSeconds >= wait.DepartureUt.Value - wait.DueByUt.Value + WindowWaits.LaunchLeadS, "the run covers the wait from the Due Time to the window");
+            var shortOf = BurnPoints.ShortOf(new SequencePlan { Script = "local res is return(lexicon(\"target\", \"ksc\")).", ExpectedDurationSeconds = 100, ExpectedDeltaV = 300 }, snapshot, 1000, new AimFrame());
+            Assert.True(shortOf.WaitSeconds >= wait.DepartureUt.Value - wait.DueByUt.Value + WindowWaits.LaunchLeadS, "the run covers the wait from the Due Time to the window");
+        }
+
+        /// <summary>
+        /// #816 review: the window's own distance says whether there is a Due Time; the alignment only moves it sooner. A window 8 h off
+        /// whose alignment is 5 h off is due at 4 h, though 5 h less a lead is under the 6 h a Due Time needs; an alignment already within
+        /// a lead leaves the Due Time on the window.
+        /// </summary>
+        [Fact]
+        public void TheWindowSaysWhetherThereIsADueTimeAndTheAlignmentOnlyMovesItSooner()
+        {
+            const double now = 1000;
+            var wait = new BurnWait { DepartureUt = now + 8 * 3600, DueByUt = now + 5 * 3600 };
+            Assert.Equal(now + 4 * 3600, BurnPoints.DueTime(wait, now).Value, 3);
+            wait.DueByUt = now + 0.5 * 3600;
+            Assert.Equal(now + 7 * 3600, BurnPoints.DueTime(wait, now).Value, 3);
+            wait.DepartureUt = now + 6.5 * 3600;
+            wait.DueByUt = now + 3 * 3600;
+            Assert.Null(BurnPoints.DueTime(wait, now));
         }
 
         [Theory]

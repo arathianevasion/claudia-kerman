@@ -89,9 +89,10 @@ namespace ClaudiaKerman.Core.Missions
             // #852: a plan not yet due runs later, when the patch's end may be behind it, and this raise isn't asked again then: a next-patch time in a variable stays unread on it.
             var wait = First(plan.Script, snapshot, now, plan.ExpectedDeltaV, body, !(plan.DueTimeUt > now));
             // A departure over WindowWaits.LongWaitS off is a Due Time (DueTime): the run starts one launch lead before it.
-            if (wait != null && DueTime(wait, now).HasValue)
+            var due = DueTime(wait, now);
+            if (due.HasValue)
             {
-                wait.WaitSeconds = WindowWaits.LaunchLeadS + (wait.DueByUt.HasValue ? wait.DepartureUt.Value - wait.DueByUt.Value : 0);
+                wait.WaitSeconds = wait.DepartureUt.Value - due.Value;
                 wait.ToEarliestSeconds = 0;
             }
             return wait != null && plan.ExpectedDurationSeconds < wait.MinimumDurationSeconds ? wait : null;
@@ -99,11 +100,16 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// #749: the Due Time for a transfer_to or return whose ejection is more than <see cref="WindowWaits.LongWaitS"/> away,
-        /// as a window wait on the pad has (#616); null for a shorter wait or another burn point.
+        /// as a window wait on the pad has (#616); null for a shorter wait or another burn point. With a <see cref="BurnWait.DueByUt"/>
+        /// (#816) the ejection's own distance says whether there is one, and it leads that sooner point while that is still ahead.
         /// </summary>
         public static double? DueTime(BurnWait wait, double now)
         {
-            return wait != null && wait.DepartureUt.HasValue ? WindowWaits.DueTime(wait.DueByUt ?? wait.DepartureUt.Value, now) : null;
+            if (wait == null || !wait.DepartureUt.HasValue) return null;
+            var due = WindowWaits.DueTime(wait.DepartureUt.Value, now);
+            if (!due.HasValue || !wait.DueByUt.HasValue) return due;
+            var sooner = wait.DueByUt.Value - WindowWaits.LaunchLeadS;
+            return sooner > now ? Math.Min(due.Value, sooner) : due;
         }
 
         /// <summary>
@@ -304,7 +310,7 @@ namespace ClaudiaKerman.Core.Missions
             estimate = ReturnAim.DepartureUt(at, new ReturnAsk
             {
                 // #816: max_wait as the block reads it, "auto" left to the search, so from an inclined orbit both solve the same windows.
-                TargetPe = targetPe.Value, EarliestUt = earliest, Landing = landing, MaxWait = maxWait, LatestUt = limit.HasValue ? now + limit.Value : (double?)null,
+                TargetPe = targetPe.Value, EarliestUt = earliest, Landing = landing, MaxWait = maxWait, LatestUt = limit.HasValue ? now + limit.Value - ReturnAim.AfterBurnS : (double?)null,
             }, out dueBy);
             return true;
         }
