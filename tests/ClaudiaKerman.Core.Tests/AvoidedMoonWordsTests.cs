@@ -46,6 +46,14 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("Land on Ike", "Ike")]
         [InlineData("Orbit under 30 km at Ike", "Ike")]
         [InlineData("Ike orbit below 50 km", "Ike")]
+        [InlineData("Raise Ap clear of the SOI of Ike", "")]
+        [InlineData("Avoid the SOI of Ike", "")]
+        [InlineData("Avoid an encounter with Ike", "")]
+        [InlineData("Avoid any Ike encounter", "")]
+        [InlineData("Coast with no Ike encounter", "")]
+        [InlineData("Avoid Ike's and the Mun's SOI", "")]
+        [InlineData("Stay below the Mun SOI", "")]
+        [InlineData("Transfer to Ike, no Mun landing", "Ike,Mun")]
         public void WhichMoonsAreNamedAsPlaces(string words, string expected) => Assert.Equal(expected, Planned(words));
     }
 }
