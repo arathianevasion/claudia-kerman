@@ -440,6 +440,7 @@ namespace ClaudiaKerman.Adapter
                     if (engine != null && engine.EngineIgnited) info.EngineLit = true;
                     if (engine != null)
                     {
+                        ReadRelight(info, part, engine);
                         if (engine.isOperational) info.EngineAvailableThrustKn += engine.maxThrust * engine.thrustPercentage / 100.0;
                         // a multi-mode engine's other mode doesn't burn: only the running module's propellants, as kOS consumedresources
                         if (engine.isEnabled)
@@ -467,6 +468,23 @@ namespace ClaudiaKerman.Adapter
 
             if (snapshot.DeltaVSimulator && deltaV != null) ReadStages(snapshot, deltaV);
             ReadBodies(snapshot);
+        }
+
+        /// <summary>Whether an engine will light again (#889, #891): stock's engineShutdown (set by Shutdown(), which Flameout() calls when allowRestart is false), allowRestart and flameout, and an ignition count (EngineIgnitor keeps ignitionsRemained on its separate ModuleEngineIgnitor, read by name from the part's other modules; no mod is referenced): absent is unknown, so unlimited.</summary>
+        private static void ReadRelight(SnapshotPart info, Part part, ModuleEngines engine)
+        {
+            if (!engine.isEnabled) return;
+            if (engine.engineShutdown) info.EngineWasLit = true;
+            if (!engine.allowRestart) info.EngineAllowsRestart = false;
+            if (engine.flameout) info.EngineFlameout = true;
+            foreach (var module in part.Modules)
+            {
+                if (module == engine || module.GetType().Name != "ModuleEngineIgnitor") continue;
+                var field = module.GetType().GetField("ignitionsRemained", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                if (field == null || field.FieldType != typeof(int)) continue;
+                var left = (int)field.GetValue(module);
+                if (left >= 0 && (info.EngineIgnitionsLeft < 0 || left < info.EngineIgnitionsLeft)) info.EngineIgnitionsLeft = left;
+            }
         }
 
         /// <summary>The stock simulator's figures per stage. Vacuum delta-v does not depend on the delta-v app's chosen body; nothing is written back.</summary>

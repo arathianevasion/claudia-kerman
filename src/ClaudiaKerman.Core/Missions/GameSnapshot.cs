@@ -53,6 +53,11 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>An engine's available thrust now (kN; 0 for a flamed-out or shut engine) and the resource names it burns. Not in the JSON: the prompt doesn't carry them.</summary>
         public double EngineAvailableThrustKn;
         public List<string> EnginePropellants = new List<string>();
+        /// <summary>What the adapter read of whether an engine will light again (#889): it is shut down (stock engineShutdown), stock allowRestart, flameout, and the ignitions left where a module exposes them (-1: unknown, unlimited). The defaults are an engine that can light, so a recording without them is as before. Not in the JSON: the prompt doesn't carry them.</summary>
+        public bool EngineWasLit;
+        public bool EngineAllowsRestart = true;
+        public bool EngineFlameout;
+        public int EngineIgnitionsLeft = -1;
 
         // ---- Child Vessel facts (#100): enough to work out a separated vessel's own figures ----
 

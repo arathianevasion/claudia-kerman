@@ -230,6 +230,72 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(new object[] { Uid(60) }, (List<object>)answer["engines"]);
         }
 
+        // #889: an engine that can't light again is unavailable at block start; the fields are Core-internal.
+        [Fact]
+        public void An_engine_shut_down_with_allowRestart_false_is_refused_at_block_start()
+        {
+            var snapshot = ReadEngine(100, "LiquidFuel");
+            var engine = snapshot.Craft.Parts.Single(p => p.Id == Engine);
+            engine.EngineWasLit = true;
+            engine.EngineAllowsRestart = false;
+
+            Assert.Equal(false, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
+            Assert.StartsWith("stack attached below the heat shield: Decoupler.1, ", RefusedAtStart(snapshot));
+        }
+
+        [Fact]
+        public void A_flamed_out_engine_with_allowRestart_false_is_refused_at_block_start()
+        {
+            var snapshot = ReadEngine(100, "LiquidFuel");
+            var engine = snapshot.Craft.Parts.Single(p => p.Id == Engine);
+            engine.EngineFlameout = true;
+            engine.EngineAllowsRestart = false;
+
+            Assert.Equal(false, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
+            Assert.StartsWith("stack attached below the heat shield: Decoupler.1, ", RefusedAtStart(snapshot));
+        }
+
+        [Fact]
+        public void A_restartable_engine_with_flameout_and_fuel_aboard_is_accepted_at_block_start()
+        {
+            var snapshot = ReadEngine(100, "LiquidFuel");
+            snapshot.Craft.Parts.Single(p => p.Id == Engine).EngineFlameout = true; // sticky until it relights; allowRestart stays true
+
+            Assert.Equal(true, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
+            Assert.Equal("", RefusedAtStart(snapshot));
+        }
+
+        [Fact]
+        public void An_engine_with_no_ignitions_left_is_refused_at_block_start()
+        {
+            var snapshot = ReadEngine(100, "LiquidFuel");
+            snapshot.Craft.Parts.Single(p => p.Id == Engine).EngineIgnitionsLeft = 0;
+
+            Assert.Equal(false, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
+            Assert.StartsWith("stack attached below the heat shield: Decoupler.1, ", RefusedAtStart(snapshot));
+        }
+
+        [Fact]
+        public void A_restartable_engine_shut_down_or_with_ignitions_left_is_accepted_at_block_start()
+        {
+            var snapshot = ReadEngine(100, "LiquidFuel");
+            var engine = snapshot.Craft.Parts.Single(p => p.Id == Engine);
+            engine.EngineWasLit = true; // allowRestart stays true
+            engine.EngineIgnitionsLeft = 2;
+
+            Assert.Equal(true, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
+            Assert.Equal("", RefusedAtStart(snapshot));
+        }
+
+        [Fact]
+        public void A_never_shut_down_engine_with_allowRestart_false_is_not_taken_for_a_shut_down_engine()
+        {
+            var snapshot = ReadEngine(100, "LiquidFuel");
+            snapshot.Craft.Parts.Single(p => p.Id == Engine).EngineAllowsRestart = false; // never lit
+
+            Assert.Equal(true, Ask(snapshot, KerbinReturn, chutes: false)["powered"]);
+        }
+
         [Fact]
         public void A_capsule_on_its_pod_chute_home_from_Kerbin_orbit_is_on_chutes_and_the_stack_drops()
         {
