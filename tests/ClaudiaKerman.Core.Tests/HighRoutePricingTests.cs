@@ -14,7 +14,7 @@ namespace ClaudiaKerman.Core.Tests
     /// the Delta-v Map's <c>transfer:Duna</c> and <c>transfer:Duna&gt;Ike</c> are one route, about 600 m/s under the low circle's, and the Craft Check and
     /// the per-leg rule judge by it.
     /// </summary>
-    public sealed class KeptRoutePricingTests
+    public sealed class HighRoutePricingTests
     {
         private static DeltaVMap Map()
         {
@@ -36,7 +36,7 @@ namespace ClaudiaKerman.Core.Tests
         public void TheMapsIkeRouteFromKerbinIsOneFigureAbout600UnderTheLowCircle()
         {
             var map = Map();
-            var route = map.HighRoute("Ike");
+            var route = map.HighRouteLegs("Ike");
             Assert.NotNull(route);
             Assert.Equal(new[] { "transfer:Duna", "transfer:Duna>Ike" }, route.Select(l => l.Id));
             var high = route.Sum(l => l.DeltaV);
@@ -52,10 +52,10 @@ namespace ClaudiaKerman.Core.Tests
         public void OnlyAMoonOfAnotherPlanetHasAHighRoute()
         {
             var map = Map();
-            Assert.Null(map.HighRoute("Mun"));
-            Assert.Null(map.HighRoute("Duna"));
-            Assert.NotNull(map.HighRoute("Gilly"));
-            Assert.NotNull(map.HighRoute("Vall"));
+            Assert.Null(map.HighRouteLegs("Mun"));
+            Assert.Null(map.HighRouteLegs("Duna"));
+            Assert.NotNull(map.HighRouteLegs("Gilly"));
+            Assert.NotNull(map.HighRouteLegs("Vall"));
         }
 
         /// <summary>Gilly's apoapsis (31,500 km × 1.55) is past half of Eve's sphere of influence: the kept ellipse reaches 10% past it, still well inside the sphere.</summary>
@@ -67,22 +67,22 @@ namespace ClaudiaKerman.Core.Tests
             var sun = DeltaVMapTests.StockSystem().Single(b => b.Name == "Sun");
             var soi = eve.Sma * System.Math.Pow(eve.Gm / sun.Gm, 0.4);
             var apoapsis = gilly.Sma * (1 + gilly.Eccentricity);
-            Assert.True(apoapsis > KeptRoute.PriceShare * soi);
-            var top = KeptRoute.TopR(soi, gilly);
-            Assert.Equal(apoapsis * (1 + KeptRoute.MoonMargin), top, 3);
-            Assert.True(top < KeptRoute.MaxShare * soi);
-            var route = Map().HighRoute("Gilly");
+            Assert.True(apoapsis > HighRoute.PriceShare * soi);
+            var top = HighRoute.TopR(soi, gilly);
+            Assert.Equal(apoapsis * (1 + HighRoute.MoonMargin), top, 3);
+            Assert.True(top < HighRoute.MaxShare * soi);
+            var route = Map().HighRouteLegs("Gilly");
             Assert.True(route[0].Arrival < Map().Leg("transfer:Eve").Arrival);
             // Ike's sits at half the sphere as before; a moon too near its sphere's edge has none.
-            Assert.Equal(KeptRoute.PriceShare * 1000e6, KeptRoute.TopR(1000e6, DeltaVMapTests.StockSystem().Single(b => b.Name == "Ike")));
-            Assert.Equal(0, KeptRoute.TopR(apoapsis * 1.4, gilly));
+            Assert.Equal(HighRoute.PriceShare * 1000e6, HighRoute.TopR(1000e6, DeltaVMapTests.StockSystem().Single(b => b.Name == "Ike")));
+            Assert.Equal(0, HighRoute.TopR(apoapsis * 1.4, gilly));
         }
 
         [Fact]
         public void TheGoalsTextAndCompactLineCarryTheRouteWithNoNewLine()
         {
             var map = Map();
-            var route = map.HighRoute("Ike");
+            var route = map.HighRouteLegs("Ike");
             var text = map.ToText(Named("Ike"));
             Assert.Contains("- transfer:Duna: Low Kerbin orbit to high Duna orbit (departure, plane change and capture): " + route[0].DeltaV.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture) + " m/s", text);
             Assert.Contains("- transfer:Duna>Ike: High Duna orbit to low Ike orbit (departure, plane change and capture): " + route[1].DeltaV.ToString("#,0", System.Globalization.CultureInfo.InvariantCulture) + " m/s", text);
@@ -117,7 +117,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             var snapshot = new GameSnapshot { Body = "Kerbin", Situation = "PRELAUNCH", Bodies = DeltaVMapTests.StockSystem() };
             var map = Map();
-            var route = map.HighRoute("Ike");
+            var route = map.HighRouteLegs("Ike");
             var plan = new List<PlannedSequence>
             {
                 Leg("Launch to 80 km orbit", 3400), Leg("Transfer to Duna", 1100), Leg("Capture at Duna", 260), Leg("Transfer to Ike", 100), Leg("Capture at Ike and land", 600),
