@@ -44,11 +44,11 @@ namespace ClaudiaKerman.Core.Tests
             };
         }
 
-        private AscentFlight Fly(double targetAp, List<AscentStage> stages, int stageLimit = 0)
+        private AscentFlight Fly(double targetAp, List<AscentStage> stages, int stageLimit = 0, bool eccStop = true)
         {
             var options = new AscentOptions
             {
-                Gm = 3.5316e12, Radius = 600000, AtmosphereHeight = 70000, SeaLevelAtm = 1, Spin = 174.94, StartAltitude = 70, TargetAp = targetAp, StageLimit = stageLimit,
+                Gm = 3.5316e12, Radius = 600000, AtmosphereHeight = 70000, SeaLevelAtm = 1, Spin = 174.94, StartAltitude = 70, TargetAp = targetAp, StageLimit = stageLimit, EccStop = eccStop,
             };
             var flight = AscentSim.Fly(options, new ExpAir(), AscentSim.Table(new List<double[]> { new[] { 0.0, 1.0 }, new[] { 1.1, 2.0 }, new[] { 3.0, 1.0 } }), stages);
             _out.WriteLine((flight.ReachesOrbit ? "orbit" : flight.Failure) + ", coast_ap " + Math.Round(flight.CoastAp) + ", end stage " + flight.LaunchEndStage
@@ -129,18 +129,26 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void A_burn_that_outruns_the_auto_budget_still_fails_with_the_budget_in_the_reason()
         {
-            // No fixture craft outruns 2 * burn_time + 300 (the sim's burn follows its own estimate), so the formula and the reason are pinned directly.
+            // A 5 kN, 800 s stage burns a 1,000 km circularize slower than its own estimate (the lead and the steering lose time), so the budget runs out.
+            var stages = new List<AscentStage> { Stage(3, 2000, 1800, 310, 100, 30), Stage(2, 5, 5, 800, 24, 10) };
+            var flight = Fly(1000000, stages, 0, false);
+            Assert.False(flight.ReachesOrbit);
+            Assert.Matches(@"^still circularizing after \d+ s$", flight.Failure);
             Assert.Equal(300 + 2 * 120 + 5000, AscentSim.CircularizeBudget(5000, 120));
             Assert.Equal(300 + 2 * 120, AscentSim.CircularizeBudget(-4, 120));
-            Assert.Equal("still coasting after 5540 s", AscentSim.OutranBudget("coasting", 5540));
-            Assert.Equal("still circularizing after 5540 s", AscentSim.OutranBudget("circularizing", 5540));
-            var dir = new DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null && !File.Exists(Path.Combine(dir.FullName, "src", "ClaudiaKerman.Core", "Tools", "AscentSim.cs"))) dir = dir.Parent;
-            Assert.NotNull(dir);
-            var sim = File.ReadAllText(Path.Combine(dir.FullName, "src", "ClaudiaKerman.Core", "Tools", "AscentSim.cs"));
-            Assert.Contains("if (_t > end) return Fail(OutranBudget(\"coasting\", budget))", sim);
-            Assert.Contains("if (_t > end) return Fail(OutranBudget(\"circularizing\", budget))", sim);
-            Assert.DoesNotContain("MaxOrbitSeconds", sim);
+        }
+
+        [Fact]
+        public void A_coast_above_the_air_costs_a_bounded_number_of_steps_however_far_the_target()
+        {
+            // Today's worst case was 36,000 steps (3600 s at dt 0.1). A coast of hours or days must stay under that.
+            var stages = new List<AscentStage> { Stage(2, 4000, 4000, 310, 160, 80), Stage(1, 400, 400, 310, 70, 8) };
+            foreach (var target in new[] { 3000000.0, 84000000.0, 2e9 })
+            {
+                var flight = Fly(target, stages);
+                _out.WriteLine("target " + target + ": coast steps " + flight.CoastSteps);
+                Assert.InRange(flight.CoastSteps, 0, 2000);
+            }
         }
 
         [Fact]

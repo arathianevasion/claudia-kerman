@@ -188,6 +188,8 @@ namespace ClaudiaKerman.Core.Tools
         public List<StageLighting> Lit = new List<StageLighting>();
         /// <summary>Apoapsis at the first engine cutoff (launch's coast_ap), m; 0 when it never cut off.</summary>
         public double CoastAp;
+        /// <summary>Steps of the coast to the circularize burn (#943: bounded however long the coast).</summary>
+        public int CoastSteps;
         /// <summary>The highest dynamic pressure, Pa.</summary>
         public double MaxQ;
         /// <summary>The highest apoapsis reached, m: ranks the shapes that fail.</summary>
@@ -772,7 +774,22 @@ namespace ClaudiaKerman.Core.Tools
             {
                 if (_t > end) return Fail(OutranBudget("coasting", budget));
                 if (InAirAgain()) return Fail("fell back into the atmosphere before circularizing");
-                StepInAir(Math.Max(dt, Math.Min(1, (startUt - _t) / 2)), 0, 0, 0);
+                var half = (startUt - _t) / 2;
+                if (half > 1 && Altitude >= _o.AtmosphereHeight)
+                {
+                    // Above the air a coast is the orbit it is on: jump half the time left along the conic, so a long coast costs ~log2(time) steps (#943).
+                    Vec3 r, v;
+                    Conic.FromState(_o.Gm, Position, Velocity, _t).State(_t + half, out r, out v);
+                    _px = r.X;
+                    _py = r.Y;
+                    _vx = v.X;
+                    _vy = v.Y;
+                    _t += half;
+                    _flight.CoastSteps++;
+                    continue;
+                }
+                _flight.CoastSteps++;
+                StepInAir(Math.Max(dt, Math.Min(1, half)), 0, 0, 0);
             }
             // exec_node_due_ut: the node at start + lead, or now + lead once a second late.
             var nodeUt = _t - startUt < 1 ? startUt + lead : _t + lead;
