@@ -26,6 +26,21 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(25, snapshot.MarginPercent);
         }
 
+        /// <summary>#957: a block call's snapshot carries the Mission's Daylight landing setting, on or off (it defaults on, so only an off Mission would show a missing stamp).</summary>
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public void A_Mission_stamps_its_Daylight_landing_setting(bool on)
+        {
+            var view = new MissionView { Stage = MissionStage.Running };
+            view.Settings.DaylightLanding = on;
+            var snapshot = new GameSnapshot { DaylightLandingDefault = !on };
+
+            MissionView.Stamp(snapshot, view);
+
+            Assert.Equal(on, snapshot.DaylightLandingDefault);
+        }
+
         /// <summary>
         /// #832: a block call's snapshot gets the later legs' delta-v as the planning tools' does: the legs after the one in hand (CurrentSequence, the leg counted as begun), the craft's only.
         /// Neither the leg in hand nor one before it counts, nor a Child Vessel's.
