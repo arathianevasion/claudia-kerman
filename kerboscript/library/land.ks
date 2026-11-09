@@ -306,13 +306,6 @@ function land_reach_dv {
   return min(30, 0.05 * lander_dv).
 }
 
-// True if two biome names are the same one, ignoring case and spaces ("northern basin" is stock's
-// NorthernBasin), as the site search matches them. Pure.
-function land_same_biome {
-  parameter a, b.
-  return a:replace(" ", "") = b:replace(" ", "").
-}
-
 // True if x is a number from low to high.
 function land_number_in {
   parameter x, low, high.
@@ -1895,7 +1888,8 @@ function land {
     return claudia_finish(ctx, false, "tipped over on landing", extra).
   }
   if by_biome and kind = "biome" {
-    if not land_same_biome(extra:biome, aim_name) {
+    // Biome names match ignoring case and spaces ("northern basin" is stock's NorthernBasin), as the site search does.
+    if extra:biome:replace(" ", "") <> aim_name:replace(" ", "") {
       return claudia_finish(ctx, false, "landed in the " + extra:biome + ", outside the " + aim_name + " biome (" + extra:distance_to_target + " m from the site chosen in it)", extra).
     }
   }
