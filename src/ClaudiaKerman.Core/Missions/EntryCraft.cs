@@ -11,7 +11,7 @@ namespace ClaudiaKerman.Core.Missions
     /// <summary>
     /// The craft an Entry flies (#814): what is gone before the air and whether its Entry Shield jettisons, by <c>reentry</c>'s own rules from
     /// <see cref="EntryStack"/> and <see cref="EntryFinish"/>, so <c>return</c>, its aimed correction and <c>deorbit</c> predict the landing of the craft
-    /// that enters. A stack the Entry drops is left out and the shield jettisons, if a decoupler is on or beside it (a stuck stack stays, the shield goes with it). No Entry Shield or a stack kept (on the engines, or
+    /// that enters. A stack the Entry drops is left out and the shield jettisons, if a decoupler is on or beside it (a stuck stack stays, the shield goes with it); with landing legs above the shield it drops on a powered finish too (#940). No Entry Shield or a stack kept (on the engines, or
     /// by <c>separate</c> "none") is the craft as it is; a kept craft's shield jettisons only with nothing below it, as <see cref="Jettisons"/> has it, and none when <c>jettison_stage</c> is "none".
     /// A block reads it once, at its start; the predictor then flies the parts it names. It fires nothing.
     /// </summary>
@@ -36,19 +36,26 @@ namespace ClaudiaKerman.Core.Missions
         /// <c>deorbit</c>'s <c>separate</c>) has gone: shield number <paramref name="number"/> from <paramref name="home"/>, its Chute Group the Last
         /// Entry's for number 1, <paramref name="chutes"/> false when none will open, <paramref name="drop"/> false for <c>reentry</c>'s <c>separate</c> "none".
         /// </summary>
-        public static EntryCraft Of(GameSnapshot snapshot, ICollection<uint> blockDrop, uint? home, int number, bool chutes, bool drop, string jettisonStage = "auto")
+        public static EntryCraft Of(GameSnapshot snapshot, ICollection<uint> blockDrop, uint? home, int number, bool chutes, bool drop, string jettisonStage = "auto", uint? core = null)
         {
             var left = new HashSet<uint>(blockDrop ?? new uint[0]);
+            var after = Without(snapshot, left);
+            var stack = EntryStack.Of(after.Craft.Parts, home, number);
+            var finish = stack.Shield == null ? null : EntryFinish.For(after, stack, drop, number == 1, chutes, core);
+            return From(snapshot, left, stack, finish, drop, jettisonStage);
+        }
+
+        /// <summary><paramref name="snapshot"/> as it reads once the parts <paramref name="gone"/> have left the craft.</summary>
+        internal static GameSnapshot Without(GameSnapshot snapshot, ICollection<uint> gone)
+        {
             var after = snapshot.At(snapshot.Ut);
             after.Craft = new SnapshotCraft
             {
                 Name = snapshot.Craft.Name, Stage = snapshot.Craft.Stage, Seats = snapshot.Craft.Seats, VesselId = snapshot.Craft.VesselId,
-                Parts = snapshot.Craft.Parts.Where(p => !left.Contains(p.Id)).ToList(),
-                MassTonnes = snapshot.Craft.MassTonnes - snapshot.Craft.Parts.Where(p => left.Contains(p.Id)).Sum(p => p.MassT),
+                Parts = snapshot.Craft.Parts.Where(p => !gone.Contains(p.Id)).ToList(),
+                MassTonnes = snapshot.Craft.MassTonnes - snapshot.Craft.Parts.Where(p => gone.Contains(p.Id)).Sum(p => p.MassT),
             };
-            var stack = EntryStack.Of(after.Craft.Parts, home, number);
-            var finish = stack.Shield == null ? null : EntryFinish.Decide(after, drop ? stack.Leaves.Select(p => p.Id).ToList() : new List<uint>(), number == 1, chutes);
-            return From(snapshot, left, stack, finish, drop, jettisonStage);
+            return after;
         }
 
         /// <summary>The same from <paramref name="stack"/> and <paramref name="finish"/> already read (null with no shield), as <c>ENTRYFINISH</c> has them.</summary>
@@ -59,7 +66,7 @@ namespace ClaudiaKerman.Core.Missions
             if (stack.Shield == null) craft._why = "as it is, no Entry Shield";
             else
             {
-                var kept = finish.Powered || !drop;
+                var kept = finish.KeepsStack || !drop;
                 if (kept) craft._why = "as it is, " + (stack.Parts.Count > 0 ? "its stack kept" : "nothing below the shield") + (finish.Powered ? ", on its engines" : "");
                 else if (stack.Stuck.Count > 0) craft._why = "as it is, " + string.Join(", ", EntryStack.Names(stack.Stuck).ToArray()) + " stuck";
                 else

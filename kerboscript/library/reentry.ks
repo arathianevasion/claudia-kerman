@@ -700,8 +700,8 @@ function reentry {
       return claudia_finish(ctx, false, below:error, extra).
     }
   }
-  // Its engines or its chutes (#824): Core decides, with this drop and these chutes; the block lights the engines. A powered entry drops nothing.
-  local finish is addons:claudia:entryfinish(lexicon("home", entry_ask:home, "chutes", entry_ask:chutes, "drop", opt:separate <> "none", "jettison_stage", opt:jettison_stage)).
+  // Its engines or its chutes (#824): Core decides, with this drop and these chutes, and whether a powered entry keeps its stack (#940); the block lights the engines.
+  local finish is addons:claudia:entryfinish(lexicon("home", entry_ask:home, "chutes", entry_ask:chutes, "drop", opt:separate <> "none", "jettison_stage", opt:jettison_stage, "core", entry_ask:core)).
   local powered is false.
   if finish:error <> "" { addons:claudia:blocknote(ctx:block, lexicon("phase", "finish", "error", finish:error)). }
   if finish:error = "" {
@@ -712,10 +712,8 @@ function reentry {
       wait 0.1.
       if ship:availablethrust <= 0 { reentry_light(ship:engines, finish:spare). wait 0.1. }
       set powered to ship:availablethrust > 0.
+      if powered and finish:keeps_stack { set opt:separate to "none". }
     }
-  }
-  if powered {
-    set opt:separate to "none".
   }
   local dropped is list().
   if below:names:length > 0 and not claudia_on_ground() {

@@ -404,7 +404,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void An_engine_landing_and_a_craft_with_no_Entry_Shield_fire_nothing()
         {
             var body = Body();
-            Assert.Contains("if powered {\n    set opt:separate to \"none\".\n  }\n  local dropped is list().\n  if below:names:length > 0 and not claudia_on_ground() {", body);
+            Assert.Contains("if powered and finish:keeps_stack { set opt:separate to \"none\". }\n    }\n  }\n  local dropped is list().\n  if below:names:length > 0 and not claudia_on_ground() {", body);
             // No Entry Shield: ENTRYDROP names nothing, so "auto" fires nothing.
             var t = new Tree();
             t.Add("fuelTank", t.Add("Decoupler.1", t.Add("mk1pod.v2", -1, Command, "pod"), Decoupler), None);

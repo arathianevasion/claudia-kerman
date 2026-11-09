@@ -91,7 +91,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("CHUTEGROUP", new OneArgsSuffix<Lexicon, Lexicon>(ChuteGroupSet,
                 "Core Library only (reentry): this entry's Chute Group, read fresh, from none and engine; lexicon error, last (true: every chute aboard), stage, stages, uids, titles, touchdown_speed, why, warning"));
             AddSuffix("ENTRYFINISH", new OneArgsSuffix<Lexicon, Lexicon>(EntryFinishSet,
-                "Core Library only (reentry): whether this entry lands on its engines, from home, chutes and drop; lexicon error, powered, speed, kept_speed, engines, spare, why"));
+                "Core Library only (reentry): whether this entry lands on its engines, from home, chutes, drop and core; lexicon error, powered, keeps_stack, speed, kept_speed, engines, spare, why"));
             AddSuffix("ENTRYDROP", new OneArgsSuffix<Lexicon, Lexicon>(EntryDrop,
                 "Core Library only (reentry): what this Entry drops, from home, separate, chutes, core and drop_error (error: a stack it refuses); lexicon error, number, shield, decouplers, gone, names, stuck, lead"));
             AddSuffix("ENTRYTRIM", new OneArgsSuffix<Lexicon, Lexicon>(EntryTrimCall,
