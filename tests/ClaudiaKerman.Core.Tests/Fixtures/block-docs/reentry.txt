@@ -7,8 +7,8 @@ Options:
 chute_mode ["safe"]: drogues first (under 500 m/s, over 0.02 atm, or by 3000 m above the ground), then
 mains once they are out (under 250 m/s, over 0.04 atm, or by 1500 m); "none" never opens them.
 chutes ["auto"]: the highest stage aboard, all on the last entry, plus later stages while over 15 m/s is predicted with no engine to land on (even over "none"); or "none".
-separate ["auto"]: this entry's heat shield is number n from the pod: the entries left in the Mission Plan,
-plus 1 if burns follow the last. Drops what is below it 600 s before the air; no shield n, nothing drops. Or "none".
+separate ["auto"]: this entry's shield is number n from the pod: entries left in the Mission Plan,
+plus 1 if burns follow the last. Drops the stack below it (lander's engine is above) 600 s before air, nothing if no shield n; "none" only if nothing is below.
 jettison_stage ["auto"]: drops that shield, unless its stack is kept; or "none".
 hold ["retrograde"]: points the craft's forward axis at surface retrograde; "none" leaves it.
 max_duration ["auto"]: the wait for the atmosphere plus 1800 s.
