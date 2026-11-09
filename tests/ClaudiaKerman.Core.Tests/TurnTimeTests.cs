@@ -202,6 +202,35 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(-1.0, result["wheels_turn_s"]);
         }
 
+        // ---- #941: reentry holds attitude only once the air is a turn time plus a margin away ----
+
+        [Fact]
+        public void Reentry_starts_holding_a_turn_time_plus_the_margin_before_the_air()
+        {
+            var slow = new TurnCraft { WheelPitch = 5, WheelYaw = 5, MoiPitch = 500, MoiYaw = 500 }; // turn_time 177.81 s
+            var result = BlockCalls.TurnTime(new Dictionary<string, object> { { "to_air", 1000.0 } }, slow);
+            Assert.Equal(1000 - 177.81 - TurnTime.HoldMarginSeconds, (double)result["hold_in"], 2);
+        }
+
+        [Theory]
+        [InlineData(0.0)]    // already in the air
+        [InlineData(100.0)]  // too close to be turned in time
+        [InlineData(177.81 + 30.0)] // exactly the turn time plus the margin: now
+        public void A_craft_in_the_air_or_too_close_holds_at_once(double toAir)
+        {
+            var slow = new TurnCraft { WheelPitch = 5, WheelYaw = 5, MoiPitch = 500, MoiYaw = 500 };
+            var result = BlockCalls.TurnTime(new Dictionary<string, object> { { "to_air", toAir } }, slow);
+            Assert.Equal(0.0, (double)result["hold_in"], 2);
+        }
+
+        [Fact]
+        public void A_craft_with_no_turn_time_holds_at_once()
+        {
+            var result = BlockCalls.TurnTime(new Dictionary<string, object> { { "to_air", 5000.0 } }, new TurnCraft());
+            Assert.Equal("no usable torque", result["error"]);
+            Assert.Equal(0.0, (double)result["hold_in"], 2);
+        }
+
         [Fact]
         public void The_block_call_gives_the_time_to_leave_and_the_turn_alone()
         {

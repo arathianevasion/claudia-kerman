@@ -504,18 +504,20 @@ namespace ClaudiaKerman.Core.Tools
         /// <c>turn_s</c> (the 190° turn alone), <c>top_rate</c> (deg/s) and <c>alpha</c> (deg/s², the weaker axis's angular
         /// acceleration), on the wheels and RCS (if the craft has MonoPropellant, whatever the switch; where RCS adds torque the
         /// figures follow the burst turn, #692 and #730, and ignore <c>max_stopping_time</c>), and <c>wheels_turn_time</c> and <c>wheels_turn_s</c>, the same on the wheels alone (-1 when the
-        /// wheels have no torque about pitch or yaw); or only <c>error</c>, "no usable torque".
+        /// wheels have no torque about pitch or yaw); or only <c>error</c>, "no usable torque". With <c>to_air</c> (s to the air, #941) either way also gives <c>hold_in</c>: the s to wait before holding attitude, so the craft is turned by the air (turn time plus <see cref="Tools.TurnTime.HoldMarginSeconds"/> before it); 0 holds at once (in the air, too close, no turn time).
         /// </summary>
         public static IDictionary<string, object> TurnTime(IDictionary<string, object> input, TurnCraft craft)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
             var stopping = Number(ask, "max_stopping_time", Tools.TurnTime.KosMaxStoppingTime);
             var turn = Tools.TurnTime.Predict(craft, stopping);
-            if (turn.Error != null) return Error(turn.Error);
+            var toAir = Number(ask, "to_air", 0);
+            if (turn.Error != null) return new Dictionary<string, object> { { "error", turn.Error }, { "hold_in", 0.0 } };
             var wheels = Tools.TurnTime.PredictWheels(craft, stopping);
             return new Dictionary<string, object>
             {
                 { "error", "" },
+                { "hold_in", Math.Max(0, toAir - turn.Seconds - Tools.TurnTime.HoldMarginSeconds) },
                 { "turn_time", turn.Seconds },
                 { "turn_s", turn.TurnSeconds },
                 { "top_rate", turn.TopRateDegS },
