@@ -460,6 +460,7 @@ function launch {
     set last_pass_ut to time:seconds.
     set q_max to max(q_max, q_pa).
     if burn_through and auto_limit { set opt:max_duration to opt:max_duration + pass_gap. } // A burn-through's own time doesn't count against "auto" (#932).
+    if gear and alt:radar > 100 and ship:verticalspeed > 0 { gear off. } // Launch starts on the ground: legs in once clear (#946).
     local spd is ship:velocity:surface:mag.
     local ap is ship:apoapsis.
     local ratio is 0.

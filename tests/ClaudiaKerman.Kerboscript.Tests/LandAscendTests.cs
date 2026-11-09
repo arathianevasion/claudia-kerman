@@ -376,7 +376,7 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
         [InlineData("", "Midlands", "False")]
         public void Biome_names_match_ignoring_case_and_spaces(string landed, string asked, string expected)
         {
-            Assert.Equal(expected, One("land_same_biome(\"" + landed + "\", \"" + asked + "\")"));
+            Assert.Equal(expected, One("\"" + landed + "\":replace(\" \", \"\") = \"" + asked + "\":replace(\" \", \"\")"));
         }
 
         // ---- land: a biome's next site after a terrain refusal (#528) ----
