@@ -545,14 +545,14 @@ namespace ClaudiaKerman.Core.Tests
         public void With_daylight_on_a_dark_pass_is_skipped_for_a_lit_one()
         {
             var orbit = Circular(inclinationDeg: 2);
-            // The pass the search would fly with the sun ignored: make it, and only it, dark.
+            // The pass the search would fly with the sun ignored is dark; only the pass after it (about 2,000 s on) is lit.
             var first = Find(KscLat, KscLng, orbit);
             Assert.Null(first.Error);
             var land = first.Landing.LandingUt;
-            Func<double, double> sun = ut => Math.Abs(ut - land) < 300 ? -30 : 40;
+            Func<double, double> sun = ut => ut > land + 1000 && ut < land + 3200 ? 40 : -30;
             var plan = Find(KscLat, KscLng, orbit, daylight: true, sunAt: sun);
             Assert.Null(plan.Error);
-            Assert.True(Math.Abs(plan.Landing.LandingUt - land) >= 300, "landing at " + plan.Landing.LandingUt + " is in the dark pass at " + land);
+            Assert.InRange(plan.Landing.LandingUt, land + 1000, land + 3200);
             Assert.InRange(plan.ErrorKm, 0, 5);
         }
 
