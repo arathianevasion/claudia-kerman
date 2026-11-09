@@ -662,6 +662,7 @@ function reentry {
   if not body_:atm:exists {
     return claudia_finish(ctx, false, "body has no atmosphere", extra).
   }
+  addons:claudia:blocknote(ctx:block, lexicon("phase", "charge", "at", "start", "units", round(ship:electriccharge), "pct", round(claudia_ec_pct(), 1))).
   set extra:geo to reentry_geo().
   set extra:chutes_kept to reentry_stowed_titles(ship:parts).
   // Wait (on rails) for the atmosphere if the craft is still above it, on the orbit the drop leaves.
@@ -750,16 +751,15 @@ function reentry {
   local predicted is addons:claudia:reentryimpact(lexicon("chutes", chute_mode <> "none", "shield_drop", shield_uids)).
   addons:claudia:blocknote(ctx:block, reentry_prediction_note(predicted)).
   local held is opt:hold = "retrograde".
-  if held {
-    lock steering to srfretrograde.
+  local air_ut is time:seconds + (choose reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly) if entry_in > 0 else 0).
+  local hold_ut is choose time:seconds + addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime, "to_air", air_ut - time:seconds)):hold_in if held else air_ut. // #941: hold from a turn time plus margin before the air (Core's hold_in)
+  local waited is choose claudia_wait_until(ctx, hold_ut) if hold_ut > time:seconds else "".
+  if held and waited = "" { lock steering to srfretrograde. set waited to choose claudia_warp_to(ctx, air_ut, air_ut - time:seconds) if air_ut > time:seconds else "". }
+  if waited <> "" {
+    reentry_abort(chute_mode, reentry_fresh_group(group, ask, extra:chutes_used)).
+    return claudia_finish(ctx, false, waited, extra).
   }
-  if entry_in > 0 {
-    local waited is claudia_wait_until(ctx, time:seconds + reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly)).
-    if waited <> "" {
-      reentry_abort(chute_mode, reentry_fresh_group(group, ask, extra:chutes_used)).
-      return claudia_finish(ctx, false, waited, extra).
-    }
-  }
+  addons:claudia:blocknote(ctx:block, lexicon("phase", "charge", "at", "air_top", "units", round(ship:electriccharge), "pct", round(claudia_ec_pct(), 1))).
   if dropped:length > 0 {
     addons:claudia:blocknote(ctx:block, lexicon("phase", "stack_dropped", "pe_before", round(dropped[0]), "pe_after", round(dropped[1]), "stack_m", choose -1 if dropped[2]:isdead else round(dropped[2]:distance))).
   }

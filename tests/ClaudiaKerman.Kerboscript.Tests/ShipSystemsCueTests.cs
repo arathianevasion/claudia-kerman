@@ -61,11 +61,17 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             var deorbit = Source("deorbit");
             Before(deorbit, "return claudia_finish(ctx, false, found:error, extra).", "addons:claudia:shipsystems(\"entry\")");
-            Before(deorbit, "addons:claudia:shipsystems(\"entry\")", "local flown is");
+            // #941: stowed once the burn has succeeded, before the impact read that follows; a failed burn returns first and leaves the panels out.
+            Before(deorbit, "local flown is claudia_burn(ctx, nd).", "if not flown:success {");
+            Before(deorbit, "return claudia_finish(ctx, false, flown:reason, extra).", "addons:claudia:shipsystems(\"entry\")");
+            Before(deorbit, "addons:claudia:shipsystems(\"entry\")", "addons:claudia:reentryimpact(");
             var reentry = Source("reentry");
             // #815: after the drop point's reads, the last of which refuses a stack still on.
             Before(reentry, "\"drop_error\", drop_error", "addons:claudia:shipsystems(\"entry\")");
             Before(reentry, "addons:claudia:shipsystems(\"entry\")", "lock steering to srfretrograde.");
+            // #941: charge is noted at the block's start and at the air top, in a blocknote and not the report.
+            Before(reentry, "\"at\", \"start\"", "set extra:geo");
+            Before(reentry, "set waited to choose claudia_warp_to(ctx, air_ut, air_ut - time:seconds)", "\"at\", \"air_top\"");
         }
     }
 }
