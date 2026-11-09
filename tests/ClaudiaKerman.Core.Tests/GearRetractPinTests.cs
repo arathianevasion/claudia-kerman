@@ -31,6 +31,14 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void Reentry_lowers_the_gear_under_1000_m_in_fall_tick_and_still_in_the_braking_branch()
+        {
+            var reentry = Library("reentry.ks").Replace("\r\n", "\n");
+            Assert.Contains("chute_tick(last_speed, agl, pressure).\n    if agl < 1000 and not gear { gear on. }\n    if powered and reentry_brake_due", reentry);
+            Assert.Contains("lock throttle to tset.\n    gear on.\n", reentry);
+        }
+
+        [Fact]
         public void Launch_retracts_the_legs_above_100_m_and_starts_only_on_the_ground()
         {
             var launch = Library("launch.ks");

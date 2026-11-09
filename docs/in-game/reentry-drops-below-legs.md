@@ -12,7 +12,7 @@ Fly the Duna ship (the lander with its aerospike and legs above heat shield 2, a
 2. The launch stack separates about 600 s before the air: it shows on the map as a separate vessel while the craft is still above the air. (The `phase stack_dropped` note is only written once the craft reaches the air, so its place in the log doesn't show this.)
 3. Heat shield 2 stays on through the heating, then jettisons at its usual timing (400 m/s or 3,000 m), or as braking starts if that comes first.
 4. The chutes open and, over 10 m/s, the aerospike brakes the last of the fall. When braking starts, nothing is attached under the aerospike: the TD-12 between it and heat shield 2 has gone with the shield. `reentry`'s result has `shield_dropped` true. On the chute path (`chutes, <x> m/s` in step 1) the same holds on the ground: heat shield 2 and that TD-12 have gone, so nothing is under the aerospike for liftoff.
-5. Pass: the `phase landed` note reads under 15 m/s, and the lander stands on its legs.
+5. Pass: the `phase landed` note reads under 15 m/s, and the lander stands on its legs. On the chute path too (#947), the legs are down by 1,000 m above the ground: watch the Gear group switch on in flight, not only after braking starts.
 
 ## Check: with no legs nothing changes
 
