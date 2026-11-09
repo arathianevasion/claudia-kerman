@@ -53,26 +53,17 @@ function reentry_touchdown_limit { return 15. }
 
 // Powered touchdown (#628, #824). The braking burn comes down to soft m/s by end m of radar altitude (the craft's
 // centre of mass stands a few metres up on its legs), then holds soft to the ground.
-// Braking starts with the thrust over margin, lag s of the fall early (the throttle and the last of the turn).
+// Braking starts with the thrust over 1.2, 1 s of the fall early (the throttle and the last of the turn).
 function reentry_powered_soft { return 2. }
 function reentry_powered_end { return 10. }
-function reentry_powered_margin { return 1.2. }
-function reentry_powered_lag { return 1. }
-// The height steps the stopping distance is worked over, and the share of the drag measured now it counts:
+// reentry_drag_steps works the stopping distance over 20 height steps and counts half the drag measured now:
 // drag falls with the Mach number as the craft slows, and air pressure stands in for density.
-function reentry_powered_steps { return 20. }
-function reentry_powered_drag_share { return 0.5. }
 
-// Physics warp (the cap reentry gives claudia_warp_to, under the q rule): at most hot_cap times while the
-// hottest part is over hot_pct percent of its heat limit; drogue_cap under drogues; main_cap under mains.
-// Always 1x below low_agl metres above the ground, so the touchdown speed is measured fairly, and in the
-// last event_s seconds before a parachute opens or the heat shield drops.
-function reentry_warp_hot_pct { return 50. }
-function reentry_warp_hot_cap { return 2. }
-function reentry_warp_drogue_cap { return 3. }
-function reentry_warp_main_cap { return 4. }
+// Physics warp (the cap reentry gives claudia_warp_to, under the q rule): at most 2x while the hottest
+// part is over 50 percent of its heat limit; 3x under drogues; 4x under mains. Always 1x below this many
+// metres above the ground, so the touchdown speed is measured fairly, and in the last 10 seconds before a
+// parachute opens or the heat shield drops.
 function reentry_warp_low_agl { return 100. }
-function reentry_warp_event_s { return 10. }
 
 // The block's own options and defaults (max_duration "auto" is resolved once the entry is known).
 function reentry_defaults {
@@ -199,17 +190,17 @@ function reentry_warp_cap {
   if agl < reentry_warp_low_agl() {
     return 1.
   }
-  if event_eta >= 0 and event_eta <= reentry_warp_event_s() {
+  if event_eta >= 0 and event_eta <= 10 {
     return 1.
   }
   if mains_out {
-    return reentry_warp_main_cap().
+    return 4.
   }
   if drogues_out {
-    return reentry_warp_drogue_cap().
+    return 3.
   }
-  if hot_pct > reentry_warp_hot_pct() {
-    return reentry_warp_hot_cap().
+  if hot_pct > 50 {
+    return 2.
   }
   return 4.
 }
@@ -349,16 +340,16 @@ function reentry_stop_distance {
 }
 
 // The drag coefficients (1/m) for reentry_stop_distance over radar m below the craft in steps of radar /
-// reentry_powered_steps(): reentry_powered_drag_share of the drag now (m/s^2, at speed m/s and pressure
+// 20: half of the drag now (m/s^2, at speed m/s and pressure
 // p_now atm) as k v^2, scaled at each step's middle by pressure_at (a delegate: metres below the craft ->
 // atm) over p_now. All 0 with no drag measured. Pure.
 function reentry_drag_steps {
   parameter drag, speed, p_now, radar, pressure_at.
-  local n is reentry_powered_steps().
+  local n is 20.
   local step is radar / n.
   local k0 is 0.
   if drag > 0 and speed > 1 and p_now > 0 {
-    set k0 to reentry_powered_drag_share() * drag / speed ^ 2.
+    set k0 to 0.5 * drag / speed ^ 2.
   }
   local ks is list().
   for i in range(n) {
@@ -372,21 +363,21 @@ function reentry_drag_steps {
 }
 
 // The radar altitude (m) at which a powered touchdown's braking must start, falling at v_down m/s with
-// a_up m/s^2 of upward thrust at full throttle (reentry_powered_margin held back) against gravity g and
+// a_up m/s^2 of upward thrust at full throttle (a sixth held back) against gravity g and
 // the drag in ks (reentry_drag_steps' over radar m): the stopping distance to reentry_powered_soft plus
-// reentry_powered_end and reentry_powered_lag s of the fall. A craft that only stops in time on all its thrust
+// reentry_powered_end and 1 s of the fall. A craft that only stops in time on all its thrust
 // gets the figure for all of it; -1 if not even that stops it before the ground: brake now. Pure.
 function reentry_brake_height {
   parameter v_down, a_up, g, ks, radar.
   local step is radar / max(1, ks:length).
-  local s is reentry_stop_distance(v_down, a_up / reentry_powered_margin() - g, ks, step, reentry_powered_soft()).
+  local s is reentry_stop_distance(v_down, a_up / 1.2 - g, ks, step, reentry_powered_soft()).
   if s < 0 {
     set s to reentry_stop_distance(v_down, a_up - g, ks, step, reentry_powered_soft()).
   }
   if s < 0 {
     return -1.
   }
-  return s + reentry_powered_end() + max(0, v_down) * reentry_powered_lag().
+  return s + reentry_powered_end() + max(0, v_down).
 }
 
 // True if the braking must start now at radar m (reentry_brake_height's figure brake_h), at speed m/s. A fall the engines can't stop waits for the
@@ -430,16 +421,6 @@ function reentry_proper_g {
   return sqrt(ax * ax + ay * ay + az * az) / 9.80665.
 }
 
-// reentry_proper_g from two velocity vectors and the craft's position from the body's centre.
-function reentry_g_felt {
-  parameter v_prev, v_now, dt, pos, mu.
-  local dv is v_now - v_prev.
-  return reentry_proper_g(dv:x, dv:y, dv:z, dt, pos:x, pos:y, pos:z, mu).
-}
-
-// Passes through the atmosphere reentry flies before it fails a craft that keeps skipping out (#592).
-function reentry_max_passes { return 3. }
-
 // True if the craft has left the atmosphere on a pass: it was in it (in_air), is above it (height, atm_h in
 // m) and is climbing (vspeed, m/s).
 function reentry_skipped_out {
@@ -448,13 +429,13 @@ function reentry_skipped_out {
 }
 
 // "" or why a skip-out is the end: pe (m) is above the atmosphere, so there is no next pass, or the
-// craft has flown passes (counting this one) of the most it flies.
+// craft has flown passes (counting this one) of the 3 it flies before failing one that keeps skipping out (#592).
 function reentry_skip_refusal {
   parameter passes, pe, atm_h.
   if pe >= atm_h {
     return "skipped out: periapsis " + round(pe) + " m is above the atmosphere".
   }
-  if passes >= reentry_max_passes() {
+  if passes >= 3 {
     return "skipped out of the atmosphere " + passes + " times (periapsis " + round(pe) + " m)".
   }
   return "".
@@ -666,13 +647,11 @@ function reentry {
   }
   // An abort before the drop keeps the stack, and reads the Chute Group (ADR 0019) fresh: none is chosen yet.
   local ask is lexicon("none", opt:chutes = "none", "engine", false).
-  // Core decides one late trim toward the Mission's landing target (#892); anything else flies nothing, the reason in the log, and the block goes on.
-  claudia_fly_correction(ctx, addons:claudia:entrytrim(lexicon("to_air", entry_in, "home", entry_ask:home, "core", entry_ask:core, "has_node", hasnode, "stage_limit", opt:stage_limit, "dv_left", claudia_dv_recounted(), "isp", claudia_engine_isp()))).
   local held is opt:hold = "retrograde".
   local chute_mode is opt:chute_mode.
   local braking is false.
   local group is lexicon("last", false, "stages", list(), "uids", list(), "why", ""). // Chosen at the drop; empty, the first read below is fresh.
-  // Falling into the air (#942), low charge doesn't end the block: Core's LOWCHARGE says when it lets go of the steering (the braking burn keeps its own: it alone points the engine) and when it arms the group's chutes once, which need no charge. Asked by claudia_tick, after the trim.
+  // Falling into the air (#942), low charge doesn't end the block: Core's LOWCHARGE says when it lets go of the steering (the braking burn keeps its own: it alone points the engine) and when it arms the group's chutes once, which need no charge. Asked by claudia_tick, so the long waits are watched too (#952). The trim burn is exec_node's, on its own ctx without this watch: it keeps its steering and low charge fails that burn alone and the block goes on, unless the burn lifted the periapsis above the air: then the abort stands at the block's next tick, which may come after the drop.
   local ec_step is 0.
   set ctx:ec_tick to {
     local low is addons:claudia:lowcharge(lexicon("ec_pct", claudia_ec_pct(), "min_ec_pct", opt:min_ec_pct, "pe", ship:periapsis, "air_top", body_:atm:height)).
@@ -687,6 +666,22 @@ function reentry {
     }
     return low:abort_pct.
   }.
+  // Core decides one late trim toward the Mission's landing target (#892); from far out it first says how long to wait, here under the watch above, then is asked again (#952). Anything else flies nothing, the reason in the log, and the block goes on.
+  local trim_ask is {
+    return addons:claudia:entrytrim(lexicon("to_air", entry_in, "home", entry_ask:home, "core", entry_ask:core, "has_node", hasnode, "stage_limit", opt:stage_limit, "dv_left", claudia_dv_recounted(), "isp", claudia_engine_isp())).
+  }.
+  local trim is trim_ask().
+  if trim:error = "" and trim:wait > 0 {
+    local waited is claudia_wait_until(ctx, time:seconds + trim:wait).
+    if waited <> "" {
+      reentry_abort(opt:chute_mode, reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts)).
+      return claudia_finish(ctx, false, waited, extra).
+    }
+    set entry_in to claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
+    set trim to trim_ask().
+  }
+  local flown is claudia_fly_correction(ctx, trim).
+  if trim:error = "" and trim:dv > 0 { addons:claudia:blocknote(ctx:block, lexicon("phase", "late_trim", "miss_before_km", round(trim:miss_before_km, 1), "dv", round(flown:dv, 2), "miss_after_km", round(trim:miss_after_km, 1), "reason", flown:reason)). }
   if entry_in > below:lead {
     set entry_in to claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
     local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).
@@ -827,7 +822,9 @@ function reentry {
 
     // Heat and g, sampled a quarter second apart so frame noise doesn't read as g.
     if now - sample_ut >= 0.25 {
-      local felt is reentry_g_felt(sample_v, ship:velocity:orbit, now - sample_ut, ship:position - body_:position, body_:mu).
+      local dv_now is ship:velocity:orbit - sample_v.
+      local pos_now is ship:position - body_:position.
+      local felt is reentry_proper_g(dv_now:x, dv_now:y, dv_now:z, now - sample_ut, pos_now:x, pos_now:y, pos_now:z, body_:mu).
       set extra:max_g to max(extra:max_g, felt).
       // Engines off, the g felt is the drag (chutes included).
       if powered {

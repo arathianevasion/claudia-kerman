@@ -20,6 +20,8 @@ namespace ClaudiaKerman.Core.Tests
         private const double KmPerDeg = 600 * Math.PI / 180;
         /// <summary>Halfway home from the Mun: <c>reentry</c> starts right after <c>return</c>'s correction.</summary>
         private const double ToPeriapsis = 15000;
+        /// <summary>The time to the air asked with where the rule under test isn't the timing: inside #952's window, so the call solves at once.</summary>
+        private const double InsideWindowS = 2000;
         private readonly ITestOutputHelper _out;
 
         public EntryTrimTests(ITestOutputHelper output)
@@ -76,7 +78,7 @@ namespace ClaudiaKerman.Core.Tests
         public void More_than_1200_s_out_with_a_20_km_miss_flies_one_trim_inside_the_corridor_and_the_spend_limit(double eastKm)
         {
             var snapshot = Aimed(eastKm);
-            var fix = Trim(snapshot, ToPeriapsis - 500);
+            var fix = Trim(snapshot, InsideWindowS);
             _out.WriteLine("{0} km: {1:0.00} m/s, Pe {2:0} m, {3:0.00} km left; {4}", eastKm, D(fix, "dv"), D(fix, "pe_predicted"), D(fix, "error_km"), fix["aim_note"]);
             Assert.Equal("", fix["error"]);
             Assert.True(D(fix, "dv") > 0);
@@ -92,7 +94,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             var snapshot = Aimed(400);
             snapshot.LaterLegsDv = 40;
-            var fix = Trim(snapshot, ToPeriapsis - 500, 100);
+            var fix = Trim(snapshot, InsideWindowS, 100);
             _out.WriteLine("{0:0.00} m/s; {1}", D(fix, "dv"), fix["aim_note"]);
             Assert.InRange(D(fix, "dv"), 0, 10.5);
         }
@@ -101,8 +103,8 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void The_trim_spends_only_the_kept_delta_v()
         {
-            var whole = Trim(Aimed(400), ToPeriapsis - 500, 100);
-            var kept = Trim(Aimed(400), ToPeriapsis - 500, 100, craft: new Dictionary<string, object> { { "whole", 10.0 }, { "held_dv", 30.0 } });
+            var whole = Trim(Aimed(400), InsideWindowS, 100);
+            var kept = Trim(Aimed(400), InsideWindowS, 100, craft: new Dictionary<string, object> { { "whole", 10.0 }, { "held_dv", 30.0 } });
             _out.WriteLine("whole {0:0.00} m/s, kept {1:0.00} m/s; {2}", D(whole, "dv"), D(kept, "dv"), kept["aim_note"]);
             Assert.InRange(D(whole, "dv"), 1, Math.Min(CorrectionBurn.MostFixDv, 50.5));
             Assert.InRange(D(kept, "dv"), 0, 20.5);
@@ -116,7 +118,7 @@ namespace ClaudiaKerman.Core.Tests
         public void The_corridor_is_the_aims_own_not_the_paths(double eastKm)
         {
             var snapshot = Aimed(eastKm, 34000);
-            var fix = Trim(snapshot, ToPeriapsis - 500);
+            var fix = Trim(snapshot, InsideWindowS);
             _out.WriteLine("{0} km: {1:0.00} m/s, Pe {2:0} m; {3}", eastKm, D(fix, "dv"), D(fix, "pe_predicted"), fix["aim_note"]);
             Assert.Equal("", fix["error"]);
             Assert.InRange(D(fix, "pe_predicted"), 25000 - 100, 35000 + 100);
@@ -130,11 +132,66 @@ namespace ClaudiaKerman.Core.Tests
             NoTrim(Trim(Aimed(20), 0), "s to the air");
         }
 
+        /// <summary>#952: a trim from a day out is badly conditioned, so far out Core says how long to wait; with no planet, air or craft given, a solve could not even start.</summary>
+        [Fact]
+        public void At_95000_s_to_the_air_it_says_wait_and_solves_nothing()
+        {
+            var snapshot = Aimed(20);
+            var fix = BlockCalls.EntryTrim(new Dictionary<string, object> { { "to_air", 95000.0 }, { "dv_left", 80.0 }, { "isp", 0.0 }, { "has_node", false } }, snapshot, null, null, null);
+            Assert.Equal(95000 - BlockCalls.TrimMostToAirS, D(fix, "wait"));
+            Assert.Equal(0.0, D(fix, "dv"));
+            Assert.Contains("no trim yet", (string)fix["aim_note"]);
+        }
+
+        [Theory]
+        [InlineData(2400)]
+        [InlineData(1500)]
+        public void Inside_2400_s_it_solves_at_once(double toAir)
+        {
+            var fix = Trim(Aimed(20, Pe, Pe, toAir + 500), toAir);
+            _out.WriteLine("{0} s: {1:0.00} m/s, {2:0.00} km before, {3:0.00} km after; {4}", toAir, D(fix, "dv"), D(fix, "miss_before_km"), D(fix, "miss_after_km"), fix["aim_note"]);
+            Assert.Equal(0.0, D(fix, "wait"));
+            Assert.True(D(fix, "dv") > 0);
+            Assert.InRange(D(fix, "miss_before_km"), 15, 25);
+            Assert.InRange(D(fix, "miss_after_km"), 0, D(fix, "miss_before_km") - 0.01);
+        }
+
+        [Fact]
+        public void At_1000_s_there_is_no_trim_and_no_wait()
+        {
+            var fix = Trim(Aimed(20, Pe, Pe, 1500), 1000);
+            NoTrim(fix, "s to the air");
+            Assert.Equal(0.0, D(fix, "wait"));
+        }
+
+        /// <summary>The time to the air read again after the wait can come back a hair over the mark; that is not a second wait, or the one trim would never fly.</summary>
+        [Fact]
+        public void A_hair_over_2400_s_after_the_wait_still_solves()
+        {
+            var fix = Trim(Aimed(20, Pe, Pe, 2900), BlockCalls.TrimMostToAirS + BlockCalls.TrimWaitSlackS);
+            Assert.Equal(0.0, D(fix, "wait"));
+            Assert.True(D(fix, "dv") > 0);
+        }
+
+        /// <summary>A trim that could never fly costs no wait: the block goes straight on to its drop.</summary>
+        [Fact]
+        public void With_no_target_or_a_node_planned_far_out_there_is_no_wait()
+        {
+            var noTarget = Aimed(20);
+            noTarget.LandingTarget = null;
+            var none = Trim(noTarget, 95000);
+            NoTrim(none, "no landing target");
+            Assert.Equal(0.0, D(none, "wait"));
+            var node = Trim(Aimed(20), 95000, 80, true);
+            NoTrim(node, "a maneuver node is already planned");
+            Assert.Equal(0.0, D(node, "wait"));
+        }
+
         [Fact]
         public void A_miss_of_5_km_or_less_gives_no_trim()
         {
-            NoTrim(Trim(Aimed(4.9), ToPeriapsis - 500), "km from the target");
-            NoTrim(Trim(Aimed(0), ToPeriapsis - 500), "km from the target");
+            NoTrim(Trim(Aimed(4.9), InsideWindowS), "km from the target");
+            NoTrim(Trim(Aimed(0), InsideWindowS), "km from the target");
         }
 
         /// <summary>About 3,000 s before periapsis the along-track lever vanishes, which stops a correction; the trim still has the corridor.</summary>
@@ -143,7 +200,7 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData(3000)]
         public void A_late_trim_still_has_the_corridor_when_the_along_track_lever_is_gone(double toPeriapsis)
         {
-            var fix = Trim(Aimed(20, Pe, Pe, toPeriapsis), toPeriapsis - 500);
+            var fix = Trim(Aimed(20, Pe, Pe, toPeriapsis), Math.Min(toPeriapsis - 500, BlockCalls.TrimMostToAirS));
             Assert.Equal("", fix["error"]);
             Assert.InRange(D(fix, "dv"), 0.01, 5);
             Assert.InRange(D(fix, "pe_predicted"), Pe - CorrectionBurn.PeCorridor - 100, Pe + CorrectionBurn.PeCorridor + 100);
@@ -155,7 +212,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             var snapshot = Aimed(20);
             snapshot.LandingTarget = null;
-            NoTrim(Trim(snapshot, ToPeriapsis - 500), "no landing target");
+            NoTrim(Trim(snapshot, InsideWindowS), "no landing target");
         }
 
         [Fact]
@@ -163,20 +220,20 @@ namespace ClaudiaKerman.Core.Tests
         {
             var snapshot = Aimed(20);
             snapshot.LandingTarget.Body = "Duna";
-            NoTrim(Trim(snapshot, ToPeriapsis - 500), "the landing target is on Duna");
+            NoTrim(Trim(snapshot, InsideWindowS), "the landing target is on Duna");
         }
 
         [Fact]
         public void A_maneuver_node_already_planned_gives_no_trim()
         {
-            NoTrim(Trim(Aimed(20), ToPeriapsis - 500, 80, true), "a maneuver node is already planned");
+            NoTrim(Trim(Aimed(20), InsideWindowS, 80, true), "a maneuver node is already planned");
         }
 
         /// <summary>Unsolved (#805): a periapsis under the ground can't be held, so the solve refuses it; the trim flies nothing, says why and the block goes on.</summary>
         [Fact]
         public void Unsolved_flies_nothing_logs_a_reason_and_is_no_failure()
         {
-            NoTrim(Trim(Aimed(50, -10000, null), ToPeriapsis - 500), "found no correction");
+            NoTrim(Trim(Aimed(50, -10000, null), InsideWindowS), "found no correction");
         }
 
         [Fact]
