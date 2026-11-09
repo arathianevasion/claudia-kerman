@@ -68,6 +68,9 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The least time left for a turn (s), however quick the craft.</summary>
         public const double FloorSeconds = 30;
 
+        /// <summary>The margin (s) on top of the turn time that <c>reentry</c> starts holding attitude before the air (#941).</summary>
+        public const double HoldMarginSeconds = 30;
+
         /// <summary>kOS's default <c>steeringmanager:maxstoppingtime</c> (s).</summary>
         public const double KosMaxStoppingTime = 2;
 

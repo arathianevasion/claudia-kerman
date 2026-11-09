@@ -229,7 +229,6 @@ function deorbit {
   }
   local late is claudia_drop_refusal(separation, found:dv). // #835: again with the burn counted, before any node
   if late <> "" { return claudia_finish(ctx, false, "separate: " + late, extra). }
-  addons:claudia:shipsystems("entry").
   if opt:max_duration:istype("String") {
     set opt:max_duration to max(0, found:burn_ut - time:seconds) + 900.
   }
@@ -246,6 +245,7 @@ function deorbit {
     return claudia_finish(ctx, false, flown:reason, extra).
   }
 
+  addons:claudia:shipsystems("entry"). // #941: stowed once the burn has succeeded, not before the wait for it
   // The craft that re-enters: drop what separate names, now the burn no longer needs it.
   local separate_failed is choose claudia_fire_drop(ctx, separation) if separation:decouplers:length > 0 else "".
 
