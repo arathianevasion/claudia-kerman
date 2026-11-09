@@ -460,8 +460,8 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.True(At(body, Fire) < hold);
             Assert.DoesNotContain("lock steering", body.Substring(0, hold));
             // #941: the hold starts a turn time plus a margin before the air, after a first wait; the wait for the air comes after it.
-            Assert.True(At(body, "local waited is claudia_wait_until(ctx, hold_ut).") < hold);
-            Assert.True(hold < At(body, "set waited to claudia_wait_until(ctx, air_ut)."));
+            Assert.True(At(body, "local waited is choose claudia_wait_until(ctx, hold_ut)") < hold);
+            Assert.True(hold < At(body, "set waited to choose claudia_wait_until(ctx, air_ut)"));
         }
 
         [Fact]
@@ -483,7 +483,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.True(before < At(body, Fire));
             Assert.Contains("if drop_error = \"\" { set dropped to list(pe_before, ship:periapsis, drop:gone[0]:ship). }", body);
             var note = At(body, "lexicon(\"phase\", \"stack_dropped\", \"pe_before\", round(dropped[0]), \"pe_after\", round(dropped[1]), \"stack_m\", choose -1 if dropped[2]:isdead else round(dropped[2]:distance))");
-            Assert.True(At(body, "set waited to claudia_wait_until(ctx, air_ut).") < note);
+            Assert.True(At(body, "set waited to choose claudia_wait_until(ctx, air_ut)") < note);
             Assert.True(note < At(body, "local has_drogues is"));
         }
 

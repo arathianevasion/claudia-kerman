@@ -71,7 +71,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Before(reentry, "addons:claudia:shipsystems(\"entry\")", "lock steering to srfretrograde.");
             // #941: charge is noted at the block's start and at the air top, in a blocknote and not the report.
             Before(reentry, "\"at\", \"start\"", "set extra:geo");
-            Before(reentry, "set waited to claudia_wait_until(ctx, air_ut).", "\"at\", \"air_top\"");
+            Before(reentry, "set waited to choose claudia_wait_until(ctx, air_ut)", "\"at\", \"air_top\"");
         }
     }
 }

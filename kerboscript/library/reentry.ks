@@ -753,8 +753,8 @@ function reentry {
   local held is opt:hold = "retrograde".
   local air_ut is time:seconds + (choose reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly) if entry_in > 0 else 0).
   local hold_ut is choose time:seconds + addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime, "to_air", air_ut - time:seconds)):hold_in if held else air_ut. // #941: hold from a turn time plus margin before the air (Core's hold_in)
-  local waited is claudia_wait_until(ctx, hold_ut).
-  if held and waited = "" { lock steering to srfretrograde. set waited to claudia_wait_until(ctx, air_ut). }
+  local waited is choose claudia_wait_until(ctx, hold_ut) if hold_ut > time:seconds else "".
+  if held and waited = "" { lock steering to srfretrograde. set waited to choose claudia_wait_until(ctx, air_ut) if air_ut > time:seconds else "". }
   if waited <> "" {
     reentry_abort(chute_mode, reentry_fresh_group(group, ask, extra:chutes_used)).
     return claudia_finish(ctx, false, waited, extra).
