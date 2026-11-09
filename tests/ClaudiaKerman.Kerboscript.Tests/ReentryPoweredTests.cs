@@ -264,7 +264,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.True(body.IndexOf("local ask is lexicon(\"none\", opt:chutes = \"none\", \"engine\", false).", StringComparison.Ordinal) > 0);
             var ask = body.IndexOf("set ask:engine to powered.", StringComparison.Ordinal);
             Assert.True(ask > body.IndexOf("set powered to ship:availablethrust > 0.", StringComparison.Ordinal));
-            Assert.True(body.IndexOf("local group is reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts).", StringComparison.Ordinal) > ask);
+            Assert.True(body.IndexOf("set group to reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts).", StringComparison.Ordinal) > ask);
             Assert.Contains("if group:why <> \"\" { addons:claudia:blocknote(ctx:block, lexicon(\"phase\", \"chutes_widened\", \"why\", group:why)). }", body);
             // Every later read of the group asks the same way, and chute_mode is untouched: today's timing.
             Assert.DoesNotContain("opt:chutes, extra:chutes_used", body);

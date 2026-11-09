@@ -52,6 +52,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (reentry): the great-circle km on a body of radius (m) between lat, lng and actual_lat, actual_lng; lexicon km"));
             AddSuffix("TURNTIME", new OneArgsSuffix<Lexicon, Lexicon>(TurnTime,
                 "Core Library only (a block that turns to a burn): the time to leave for a 190 degree turn on the wheels and RCS (if the craft has monoprop, on or off), given max_stopping_time; lexicon error, turn_time, turn_s, top_rate, and wheels_turn_time, wheels_turn_s on the wheels alone (-1: no wheel torque)"));
+            AddSuffix("LOWCHARGE", new OneArgsSuffix<Lexicon, Lexicon>(LowChargeCall,
+                "Core Library only (reentry, each tick): what low charge does with the periapsis in the air, from ec_pct, min_ec_pct, pe, air_top; lexicon error, carry_on, step (0 nothing, 1 steering released, 2 chutes armed), abort_pct (the charge min_ec_pct is to judge)"));
             AddSuffix("TURNPLAN", new OneArgsSuffix<Lexicon, Lexicon>(TurnPlanCall,
                 "Core Library only (RCS Use, once per turn): the burst turn through angle (deg) with left_s to the deadline (-1: none), or after a stop burst with corrections taken; lexicon error, rcs, wheels_s, coast_rate, spin_s, coast_s, stop_s, stop_deg, wheels_deg, turn_s, alpha, and spin, coast, stop (kOS's t, kp, ki)"));
             AddSuffix("BURSTTURN", new TwoArgsSuffix<Lexicon, Lexicon, Lexicon>(BurstTurnCall,
@@ -807,6 +809,21 @@ namespace ClaudiaKerman.KOS
                             : string.Format(CultureInfo.InvariantCulture, "turn_time {0:0.0} s, turn {1:0.0} s", turn["wheels_turn_time"], turn["wheels_turn_s"]))
                     : turn["error"],
                 craft.WheelPitch, craft.WheelYaw, craft.RcsPitch, craft.RcsYaw, craft.RcsUsable ? "" : " (no monoprop)", craft.MoiPitch, craft.MoiYaw));
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:LOWCHARGE</c> (#942, ADR 0014): what low charge does to a <c>reentry</c> with the periapsis in the air (<see cref="BlockCalls.LowCharge"/>),
+        /// pure. Called every physics tick, so its time is logged at most once a second (guardrail 6). The block reads every key: a failure (logged by Guarded) answers as full charge, so it neither acts nor aborts.
+        /// </summary>
+        private Lexicon LowChargeCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> low = null;
+            var answer = Guarded("LOWCHARGE", () =>
+            {
+                low = BlockCalls.LowCharge(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(low);
+            }, () => string.Format(CultureInfo.InvariantCulture, "carry on {0}, step {1}", low["carry_on"], low["step"]), 1);
+            return low != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.LowCharge(null));
         }
 
         /// <summary>

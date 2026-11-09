@@ -2026,7 +2026,7 @@ function claudia_dv_step {
 // means tset > 0. Delta-v credits the interval since the last tick at ctx:last_tset, the throttle then. Callers
 // passing tset 0 and no signal (return, transfer_to, science, the warp and wait loops) coast and never stage (#379).
 // Adds up delta-v used, auto-stages while burning, switches RCS by the RCS Use rule (claudia_rcs_tick) and
-// checks the common aborts. Returns "" or the reason the block must fail.
+// checks the common aborts (ctx:ec_tick, reentry's #942, acts on low charge and gives the charge min_ec_pct is to judge). Returns "" or the reason the block must fail.
 function claudia_tick {
   parameter ctx, tset, burning is "unsaid".
   claudia_rcs_tick(ctx).
@@ -2041,7 +2041,7 @@ function claudia_tick {
   }
   // Auto-staging may already have moved last_ut past now.
   set ctx:last_ut to max(now, ctx:last_ut).
-  return claudia_abort_reason(ctx:opt, claudia_ec_pct(), now - ctx:start_ut, max(0, ctx:parts - ship:parts:length)).
+  return claudia_abort_reason(ctx:opt, choose ctx:ec_tick:call() if ctx:haskey("ec_tick") else claudia_ec_pct(), now - ctx:start_ut, max(0, ctx:parts - ship:parts:length)).
 }
 
 // Ship Systems (#756): the lift-off cue, then until the mod reports them retracted, at most 10 s (Core's ShipSystemsStowWait).
