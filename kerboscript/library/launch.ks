@@ -423,7 +423,7 @@ function launch {
   }
   // Light the engines.
   sas off.
-  local tset is 0.
+  local tset is choose 1 if ship:modulesnamed("LaunchClamp"):length > 0 else 0.
   lock throttle to tset.
   local aim is ship:up:vector.
   lock steering to aim.

@@ -190,5 +190,45 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(new[] { dec }, clear.Decouplers.Select(p => p.Id));
             Assert.Equal(new[] { "Decoupler.1", "fuelTank" }, Names(clear.Gone));
         }
+
+        [Fact]
+        public void A_lit_booster_radially_under_the_decoupler_leaves_it_alone()
+        {
+            var c = new Craft();
+            var pod = c.Add("mk1pod.v2", null, "command");
+            var engine = c.Lit("upper", pod);
+            var dec = c.Add("Decoupler.1", engine, "decoupler");
+            var tank = c.Add("fuelTank", dec);
+            var booster = c.Lit("solidBooster", tank);
+            c.Parts[(int)booster - 1].SurfaceAttached = true;
+
+            Assert.Empty(LiftoffClear.Of(c.Parts, null, null).Decouplers);
+        }
+
+        [Fact]
+        public void A_core_radially_under_the_decoupler_leaves_it_alone_and_radial_parts_that_go_are_in_gone()
+        {
+            var c = new Craft();
+            var pod = c.Add("mk1pod.v2", null, "command");
+            var engine = c.Lit("upper", pod);
+            var dec = c.Add("Decoupler.1", engine, "decoupler");
+            var tank = c.Add("fuelTank", dec);
+            var probe = c.Add("probeCoreOcto", tank);
+            c.Parts[(int)probe - 1].SurfaceAttached = true;
+
+            Assert.Empty(LiftoffClear.Of(c.Parts, null, probe).Decouplers);
+            var clear = LiftoffClear.Of(c.Parts, null, null);
+            Assert.Equal(new[] { "Decoupler.1", "fuelTank", "probeCoreOcto" }, Names(clear.Gone));
+        }
+
+        [Fact]
+        public void Launch_keeps_full_throttle_for_a_craft_on_clamps_and_stages_at_zero_otherwise()
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null && !File.Exists(Path.Combine(dir.FullName, "kerboscript", "library", "launch.ks"))) dir = dir.Parent;
+            Assert.NotNull(dir);
+            var launch = File.ReadAllText(Path.Combine(dir.FullName, "kerboscript", "library", "launch.ks"));
+            Assert.Contains("local tset is choose 1 if ship:modulesnamed(\"LaunchClamp\"):length > 0 else 0.", launch);
+        }
     }
 }

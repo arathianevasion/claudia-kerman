@@ -26,11 +26,12 @@ namespace ClaudiaKerman.Core.Missions
             var clear = new LiftoffClear();
             var toward = PartTree.TowardHome(parts, home);
             var below = parts.Where(p => toward[p.Id].HasValue && !p.SurfaceAttached).ToLookup(p => toward[p.Id].Value);
+            var every = parts.Where(p => toward[p.Id].HasValue).ToLookup(p => toward[p.Id].Value);
             foreach (var engine in parts.Where(Thrusts))
             {
                 var decoupler = Nearest(engine, below);
                 if (decoupler == null || clear.Decouplers.Contains(decoupler)) continue;
-                var gone = Subtree(decoupler, below);
+                var gone = Subtree(decoupler, every);
                 if (gone.Any(p => !toward[p.Id].HasValue || p.Id == core || Thrusts(p))) continue;
                 clear.Decouplers.Add(decoupler);
                 clear.Gone.AddRange(gone.Where(p => !clear.Gone.Contains(p)));
@@ -56,7 +57,7 @@ namespace ClaudiaKerman.Core.Missions
             return null;
         }
 
-        /// <summary>Everything on the far side of <paramref name="top"/> from home, the part itself too.</summary>
+        /// <summary>Everything on the far side of <paramref name="top"/> from home, radially attached parts too, the part itself too.</summary>
         private static List<SnapshotPart> Subtree(SnapshotPart top, ILookup<uint, SnapshotPart> below)
         {
             var all = new List<SnapshotPart> { top };

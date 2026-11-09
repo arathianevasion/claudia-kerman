@@ -204,11 +204,17 @@ function claudia_make_safe {
 // still burn keep the block going.
 function claudia_stage_action {
   parameter stage_number, stage_limit, needs_stage, has_thrust, next_unsafe.
-  if not needs_stage { return "none". }
+  if not needs_stage {
+    return "none".
+  }
   local at_limit is stage_number <= stage_limit or stage_number <= 0.
   if at_limit or next_unsafe {
-    if has_thrust { return "none". }
-    if at_limit { return "out_of_fuel". }
+    if has_thrust {
+      return "none".
+    }
+    if at_limit {
+      return "out_of_fuel".
+    }
     return "blocked".
   }
   return "stage".
@@ -445,6 +451,16 @@ function claudia_drop_holds_core {
   return false.
 }
 
+function claudia_drop_of {
+  parameter under, parts.
+  local plan is claudia_drop_plan(list()).
+  for p in parts {
+    if under:decouplers:contains(p:uid) { plan:decouplers:add(p). }
+    if under:gone:contains(p:uid) { plan:gone:add(p). }
+  }
+  return plan.
+}
+
 // What dropping the parts named in names (part names or tags) takes: lexicon("error", "" or why it
 // can't, "decouplers", the decouplers to fire, "gone", every part leaving with them). Fires nothing;
 // a name that can't be dropped makes the whole drop fail, so nothing goes.
@@ -627,7 +643,9 @@ function claudia_decoupler_event {
 function claudia_aboard {
   parameter p, parts.
   for other in parts {
-    if other:uid = p:uid { return true. }
+    if other:uid = p:uid {
+      return true.
+    }
   }
   return false.
 }
@@ -1744,11 +1762,6 @@ function claudia_rcs_decide {
   return lexicon("on", want, "reason", reason).
 }
 
-// Whether the craft is on the ground: LANDED, SPLASHED or PRELAUNCH.
-function claudia_on_ground {
-  return status = "LANDED" or status = "SPLASHED" or status = "PRELAUNCH".
-}
-
 // Whether the on-gate is checked this tick: the error (degrees) is over on_deg and either just crossed
 // it (was_above false) or it was last checked (checked_ut) a second or more ago. Pure.
 function claudia_rcs_gate_due {
@@ -2199,18 +2212,17 @@ function claudia_stage_into_engines {
   parameter ctx, clear is false.
   if ship:availablethrust <= 0 {
     local staged is claudia_autostage(ctx).
-    if staged <> "" { return staged. }
+    if staged <> "" {
+      return staged.
+    }
   }
-  if ship:availablethrust <= 0 { return "no thrust". }
-  local under is choose addons:claudia:liftoffclear(lexicon("core", core:part:uid)) if clear else lexicon("decouplers", list(), "gone", list()).
-  local plan is claudia_drop_plan(list()).
-  for p in ship:parts {
-    if under:decouplers:contains(p:uid) { plan:decouplers:add(p). }
-    if under:gone:contains(p:uid) { plan:gone:add(p). }
+  if ship:availablethrust <= 0 {
+    return "no thrust".
   }
+  local plan is choose claudia_drop_of(addons:claudia:liftoffclear(lexicon("core", core:part:uid)), ship:parts) if clear else claudia_drop_plan(list()).
   if plan:decouplers:length > 0 {
     local why is claudia_fire_drop(ctx, plan, false).
-    addons:claudia:blocknote(ctx:block, lexicon("phase", "liftoff_clear", "note", choose "fired under the engines: " + under:names:join(", ") if why = "" else why)).
+    addons:claudia:blocknote(ctx:block, lexicon("phase", "liftoff_clear", "note", choose "fired under the engines" if why = "" else why)).
   }
   return "".
 }
