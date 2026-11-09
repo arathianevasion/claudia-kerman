@@ -238,6 +238,8 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(new[] { "abort abort_on_part_loss: 2 part(s) lost" }, Abort(string.Format(Ctx, 2, ", \"ec_tick\", { return 100. }")));
         }
 
+        private const double AirTop = 50000;
+
         public static TheoryData<string, double, double, double, bool, double, double> Answers()
         {
             return new TheoryData<string, double, double, double, bool, double, double>
@@ -258,7 +260,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [MemberData(nameof(Answers))]
         public void The_real_answer_reaches_kOS_as_the_types_the_block_reads(string why, double pct, double floor, double pe, bool carryOn, double step, double abortPct)
         {
-            var low = KosValues.FromPlain(BlockCalls.LowCharge(new Dictionary<string, object> { { "ec_pct", pct }, { "min_ec_pct", floor }, { "pe", pe }, { "air_top", 50000.0 } }));
+            var low = KosValues.FromPlain(BlockCalls.LowCharge(new Dictionary<string, object> { { "ec_pct", pct }, { "min_ec_pct", floor }, { "pe", pe }, { "air_top", AirTop } }));
             AssertKosAnswer(why, low, carryOn, step, abortPct);
         }
 
@@ -274,10 +276,15 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(4, low.Count); // A new field has to be pinned here too.
             Assert.Equal("", Assert.IsType<StringValue>(low[new StringValue("error")]).ToString());
             Assert.Equal(carryOn, Assert.IsType<BooleanValue>(low[new StringValue("carry_on")]).Value);
-            Assert.True(low[new StringValue("step")] is ScalarValue, why + ": step is " + low[new StringValue("step")].GetType().Name);
-            Assert.Equal(step, ((ScalarValue)low[new StringValue("step")]).GetDoubleValue());
-            Assert.True(low[new StringValue("abort_pct")] is ScalarValue, why + ": abort_pct is " + low[new StringValue("abort_pct")].GetType().Name);
-            Assert.Equal(abortPct, ((ScalarValue)low[new StringValue("abort_pct")]).GetDoubleValue());
+            AssertScalar(why, low, "step", step);
+            AssertScalar(why, low, "abort_pct", abortPct);
+        }
+
+        private static void AssertScalar(string why, Lexicon low, string key, double expected)
+        {
+            var value = low[new StringValue(key)];
+            Assert.True(value is ScalarValue, why + ": " + key + " is " + value.GetType().Name);
+            Assert.Equal(expected, ((ScalarValue)value).GetDoubleValue());
         }
     }
 }
