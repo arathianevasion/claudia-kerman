@@ -17,7 +17,7 @@ namespace ClaudiaKerman.Core.Tests
     /// <summary>
     /// #887: a <c>return</c> from an inclined orbit has a Due Time that leads the cheap alignment (#816). Approved after the alignment but before the window,
     /// the block used to restart past the alignment and search on to the next one, about 19 h later, unflagged. The Mission now keeps the planned window:
-    /// the block flies it while it is reachable, and a window gone by is a missed one (<see cref="WindowWaits.Missed"/>) with its usual wording.
+    /// the block flies it while it is reachable, and a window gone by is a missed one (<see cref="WindowWaits.Missed"/>), worded as a return (#905).
     /// </summary>
     public sealed partial class WindowWaitTests
     {
@@ -106,7 +106,7 @@ namespace ClaudiaKerman.Core.Tests
             var commands = clock.Take(mission);
 
             Assert.Empty(commands.OfType<StartScript>());
-            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("window of " + KerbinTime.Date(window)) && e.Text.Contains("was missed"));
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.StartsWith("Missed the return window the Due Time waited for (UT "));
         }
 
         [Fact]

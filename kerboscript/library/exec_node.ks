@@ -190,6 +190,7 @@ function exec_node {
     wait 0.
   }
   set tset to 0.
+  set ctx:turn_by to 0. // The burn is over: a trim's turn has no deadline (#933).
   set extra:burn_time to exec_node_burned(burn_start).
 
   if opt:rcs_trim and nd:deltav:mag > opt:max_residual {

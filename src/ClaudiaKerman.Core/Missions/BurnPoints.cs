@@ -327,6 +327,19 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>return's target_pe without a target, m (return.ks's default).</summary>
         private const double NoTargetPe = 35000;
 
+        /// <summary>#905: the UT the script's first <c>return</c> takes from <paramref name="now"/> as the block's own search finds it (its next pass when no window waits); null when there is none to read.</summary>
+        public static double? ReturnPassUt(string script, GameSnapshot snapshot, double now)
+        {
+            if (string.IsNullOrWhiteSpace(script) || snapshot == null || snapshot.Orbit == null) return null;
+            var call = BlockOptionCheck.Calls(script).FirstOrDefault(c => c.Block == "return");
+            if (call == null) return null;
+            string given;
+            var targetPe = call.Options.TryGetValue("target_pe", out given) ? Literal(given) : NoTargetPe;
+            if (!targetPe.HasValue) return null;
+            var at = snapshot.At(now);
+            return ReturnAim.NextPassUt(at, new ReturnAsk { TargetPe = targetPe.Value, EarliestUt = TransferFlight.Earliest(now, 0, null) });
+        }
+
         /// <summary>The UT a return with no target and no window given waits for (<see cref="ReturnAim.CheapDepartureUt"/>), or null for its next pass.</summary>
         private static double? Cheap(BlockCall call, GameSnapshot snapshot, double now, double earliest, IPlanningBody body, out double? dueBy)
         {
