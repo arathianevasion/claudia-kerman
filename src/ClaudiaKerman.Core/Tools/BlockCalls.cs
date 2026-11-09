@@ -1512,19 +1512,19 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// <c>ADDONS:CLAUDIA:LIFTOFFCLEAR</c>, for <c>launch</c> and <c>ascend</c> from the ground (#945, ADR 0014): <see cref="LiftoffClear"/>'s decouplers under the engines that give thrust, read fresh.
-        /// Takes <c>home</c> (as <see cref="EntryDropCall"/>) and <c>core</c> (the kOS UID of the part running the script). Gives <c>error</c> "", <c>decouplers</c> and <c>gone</c> (kOS UIDs) and <c>names</c> (the parts that go, each once).
+        /// Takes <c>ground</c> (true to look; else it gives nothing), <c>home</c> (as <see cref="EntryDropCall"/>) and <c>core</c> (the kOS UID of the part running the script). Gives <c>error</c> "", <c>decouplers</c> and <c>gone</c> (kOS UIDs) and <c>stuck</c> (names of parts still under a thrusting engine that nothing fires for, launch clamps excepted).
         /// </summary>
         public static IDictionary<string, object> LiftoffClearCall(IDictionary<string, object> ask, GameSnapshot snapshot, Func<uint, string> uidOf)
         {
             if (snapshot == null) return Error("there is no Game Snapshot of the craft");
-            var clear = LiftoffClear.Of(snapshot.Craft.Parts, Home(ask, snapshot, uidOf), CoreId(ask, snapshot, uidOf));
+            var clear = ask.ContainsKey("ground") && true.Equals(ask["ground"]) ? LiftoffClear.Of(snapshot.Craft.Parts, Home(ask, snapshot, uidOf), CoreId(ask, snapshot, uidOf)) : new LiftoffClear();
             Func<IEnumerable<SnapshotPart>, List<object>> uids = parts => parts.Select(p => uidOf(p.Id)).Where(u => u != null).Cast<object>().ToList();
             return new Dictionary<string, object>
             {
                 { "error", "" },
                 { "decouplers", uids(clear.Decouplers) },
                 { "gone", uids(clear.Gone) },
-                { "names", EntryStack.Names(clear.Gone).Cast<object>().ToList() },
+                { "stuck", EntryStack.Names(clear.Stuck).Cast<object>().ToList() },
             };
         }
 

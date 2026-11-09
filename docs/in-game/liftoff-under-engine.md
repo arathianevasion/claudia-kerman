@@ -10,12 +10,12 @@ The craft is the `launch_hop` craft with a TD-12 and a heat shield hung under it
 
 1. Pick `liftoff_under_engine` and press **Run** (up to 300 s).
 2. It passes (`PASS liftoff_under_engine`, every `ok` line), including `test_cleared_before_climb` true: the shield was gone by the time the throttle first rose.
-3. In `KSP.log`, the block's `liftoff_clear` note reads `fired under the engines: Decoupler.1, HeatShield1`. The craft climbs clear of both and hops to 8 km as in `launch_hop`.
+3. In `KSP.log`, the block's `liftoff_clear` note reads `fired 1  stuck: ` (one decoupler fired, nothing stuck). The craft climbs clear of both and hops to 8 km as in `launch_hop`.
 
 ## Check 2: a normal launch shows no such note
 
-Run `launch_orbit` and `launch_hop`. Neither writes a `liftoff_clear` note in `KSP.log`, and both pass as before (the throttle now starts at 0 for the staging step and is set to 1 once the engines give thrust).
+Run `launch_orbit` and `launch_hop`. Neither writes a `liftoff_clear` note in `KSP.log`, and both pass as before (without clamps the throttle starts at 0 for the staging step and is set to 1 once the engines give thrust; on clamps it stays at 1).
 
 ## Check 3: the Duna ship
 
-Fly the Duna ship to a powered landing, then to liftoff with `launch` (Duna has air) with the TD-12 and heat shield 2 still under the aerospike. They separate before the throttle comes up and the `liftoff_clear` note names them. If the note says `nothing separated`, bring its `drop` and `liftoff_clear` lines to the player.
+Fly the Duna ship to a powered landing, then to liftoff with `launch` (Duna has air) with the TD-12 and heat shield 2 still under the aerospike. They separate before the throttle comes up and the `liftoff_clear` note reads `fired 2` (two decouplers). If it lists parts after `stuck:`, bring its `drop` and `liftoff_clear` lines to the player.

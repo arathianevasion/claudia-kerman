@@ -222,6 +222,51 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void A_part_under_the_engine_with_no_decoupler_is_reported_stuck()
+        {
+            var c = new Craft();
+            var pod = c.Add("mk1pod.v2", null, "command");
+            var engine = c.Lit("liquidEngine", pod);
+            var shield = c.Shield(engine);
+            c.Add("fuelTank", shield);
+
+            var clear = LiftoffClear.Of(c.Parts, null, null);
+
+            Assert.Empty(clear.Decouplers);
+            Assert.Equal(new[] { "HeatShield1", "fuelTank" }, Names(clear.Stuck));
+        }
+
+        [Fact]
+        public void A_decoupler_left_alone_leaves_what_is_under_it_stuck_and_clamps_never_are()
+        {
+            var c = new Craft();
+            var pod = c.Add("mk1pod.v2", null, "command");
+            var engine = c.Lit("liquidEngine", pod);
+            var core = c.Add("kOSMachine1m", c.Add("Decoupler.1", engine, "decoupler"), "kos_processor");
+            c.Add("launchClamp1", engine);
+
+            var clear = LiftoffClear.Of(c.Parts, null, core);
+
+            Assert.Equal(new[] { "Decoupler.1", "kOSMachine1m" }, Names(clear.Stuck));
+        }
+
+        [Fact]
+        public void A_normal_launch_craft_reports_nothing_stuck()
+        {
+            var c = new Craft();
+            var pod = c.Add("mk1pod.v2", null, "command");
+            var tank = c.Add("fuelTank", pod);
+            var engine = c.Lit("liquidEngine", tank);
+            c.Add("launchClamp1", tank);
+            c.Add("launchClamp1", engine);
+            var snapshot = GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "mun-shot-v2-kerbin-orbit.json")));
+            snapshot.Craft.Parts.Single(p => p.Name == "liquidEngine2.v2").EngineAvailableThrustKn = 120;
+
+            Assert.Empty(LiftoffClear.Of(c.Parts, null, null).Stuck);
+            Assert.Empty(LiftoffClear.Of(snapshot.Craft.Parts, null, null).Stuck);
+        }
+
+        [Fact]
         public void Launch_keeps_full_throttle_for_a_craft_on_clamps_and_stages_at_zero_otherwise()
         {
             var dir = new DirectoryInfo(AppContext.BaseDirectory);

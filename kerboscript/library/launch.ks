@@ -344,16 +344,13 @@ function launch_apply_window {
 // Releases launch clamps still holding the craft, staging once (within stage_limit).
 function launch_release_clamps {
   parameter ctx.
-  for p in ship:parts {
-    if p:hasmodule("LaunchClamp") {
-      wait until stage:ready.
-      if stage:number > ctx:opt:stage_limit {
-        stage.
-        wait 0.5.
-        set ctx:parts to ship:parts:length.
-        claudia_restart_clock(ctx).
-      }
-      return.
+  if ship:modulesnamed("LaunchClamp"):length > 0 {
+    wait until stage:ready.
+    if stage:number > ctx:opt:stage_limit {
+      stage.
+      wait 0.5.
+      set ctx:parts to ship:parts:length.
+      claudia_restart_clock(ctx).
     }
   }
 }

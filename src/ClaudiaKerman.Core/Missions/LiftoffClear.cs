@@ -19,6 +19,8 @@ namespace ClaudiaKerman.Core.Missions
         public readonly List<SnapshotPart> Decouplers = new List<SnapshotPart>();
         /// <summary>The parts those decouplers take.</summary>
         public readonly List<SnapshotPart> Gone = new List<SnapshotPart>();
+        /// <summary>The parts still under a thrusting engine once those go: no decoupler to fire, or one left alone. Launch clamps and thrusting engines are not among them.</summary>
+        public readonly List<SnapshotPart> Stuck = new List<SnapshotPart>();
 
         /// <summary>The decouplers under the thrusting engines of <paramref name="parts"/>, from <paramref name="home"/> (null: the root) and the part running the script (<paramref name="core"/>, null when not known).</summary>
         public static LiftoffClear Of(IList<SnapshotPart> parts, uint? home, uint? core)
@@ -35,6 +37,13 @@ namespace ClaudiaKerman.Core.Missions
                 if (gone.Any(p => !toward[p.Id].HasValue || p.Id == core || Thrusts(p))) continue;
                 clear.Decouplers.Add(decoupler);
                 clear.Gone.AddRange(gone.Where(p => !clear.Gone.Contains(p)));
+            }
+            foreach (var engine in parts.Where(Thrusts))
+            {
+                foreach (var part in Subtree(engine, every).Skip(1))
+                {
+                    if (!clear.Gone.Contains(part) && !clear.Stuck.Contains(part) && !Thrusts(part) && !part.Name.StartsWith("launchClamp")) clear.Stuck.Add(part);
+                }
             }
             return clear;
         }

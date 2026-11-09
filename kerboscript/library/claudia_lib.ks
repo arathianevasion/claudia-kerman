@@ -2207,7 +2207,7 @@ function claudia_wrap_angle {
 
 // A craft whose engines aren't lit yet stages into them (within stage_limit). Returns "" once some
 // engine gives thrust, else why not: the staging reason, or "no thrust". clear (a start from the ground,
-// #945): fires what is still under an engine giving thrust, Core's LIFTOFFCLEAR, unguarded, and notes it.
+// #945): fires what is still under an engine giving thrust, Core's LIFTOFFCLEAR, unguarded; notes it and what stays stuck.
 function claudia_stage_into_engines {
   parameter ctx, clear is false.
   if ship:availablethrust <= 0 {
@@ -2219,10 +2219,11 @@ function claudia_stage_into_engines {
   if ship:availablethrust <= 0 {
     return "no thrust".
   }
-  local plan is choose claudia_drop_of(addons:claudia:liftoffclear(lexicon("core", core:part:uid)), ship:parts) if clear else claudia_drop_plan(list()).
-  if plan:decouplers:length > 0 {
-    local why is claudia_fire_drop(ctx, plan, false).
-    addons:claudia:blocknote(ctx:block, lexicon("phase", "liftoff_clear", "note", choose "fired under the engines" if why = "" else why)).
+  local under is addons:claudia:liftoffclear(lexicon("core", core:part:uid, "ground", clear)).
+  local plan is claudia_drop_of(under, ship:parts).
+  local why is choose claudia_fire_drop(ctx, plan, false) if plan:decouplers:length > 0 else "".
+  if plan:decouplers:length > 0 or under:stuck:length > 0 {
+    addons:claudia:blocknote(ctx:block, lexicon("phase", "liftoff_clear", "note", "fired " + plan:decouplers:length + " " + why + " stuck: " + under:stuck:join(", "))).
   }
   return "".
 }

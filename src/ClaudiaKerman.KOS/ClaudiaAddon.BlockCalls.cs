@@ -99,7 +99,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("ENTRYCRAFT", new OneArgsSuffix<Lexicon, Lexicon>(EntryCraft,
                 "Core Library only (return, deorbit): the craft the Entry ahead flies, from home, core, leave_out and body, to pass on as craft; lexicon error, leave_out, shield_drop, whole, kept, gone_prop, burners_kept, key, why"));
             AddSuffix("LIFTOFFCLEAR", new OneArgsSuffix<Lexicon, Lexicon>(LiftoffClearCall,
-                "Core Library only (launch, ascend): the decouplers under the engines that give thrust, from core and home; lexicon error, decouplers, gone, names"));
+                "Core Library only (launch, ascend): the decouplers under the engines that give thrust, from core and home; lexicon error, decouplers, gone, stuck"));
             AddSuffix("DROPCHECK", new OneArgsSuffix<Lexicon, Lexicon>(DropCheckCall,
                 "Core Library only (drop_parts, deorbit, reentry): whether a drop taking the craft from before to left m/s of delta-v takes what the Mission Plan still needs; lexicon error, refused, reason, taken, need"));
             AddSuffix("LANDGUARD", new OneArgsSuffix<Lexicon, Lexicon>(LandGuardTick,
