@@ -432,6 +432,8 @@ namespace ClaudiaKerman.Core.Tools
                 MaxDv = Number(ask, "max_dv", 0),
                 DeltaVLeft = Number(ask, "dv_left", 0),
                 LaterLegsDv = snapshot.LaterLegsDv ?? 0,
+                Daylight = snapshot.DaylightLandingDefault,
+                SunAt = ut => body.SunElevation(at.Name, Number(ask, "lat", 0), Number(ask, "lng", 0), ut),
             }, air, craft, frame);
             if (plan.Landing == null || plan.Landing.Error != null) return Error(plan.Error ?? plan.Landing.Error);
             var result = Landing(plan.Landing, plan.ErrorKm);
