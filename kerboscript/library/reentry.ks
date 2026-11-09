@@ -651,7 +651,7 @@ function reentry {
   local chute_mode is opt:chute_mode.
   local braking is false.
   local group is lexicon("last", false, "stages", list(), "uids", list(), "why", ""). // Chosen at the drop; empty, the first read below is fresh.
-  // Falling into the air (#942), low charge doesn't end the block: Core's LOWCHARGE says when it lets go of the steering (the braking burn keeps its own: it alone points the engine) and when it arms the group's chutes once, which need no charge. Asked by claudia_tick, so the long waits are watched too (#952). The trim burn is exec_node's, on its own ctx without this watch: it keeps its steering and low charge fails that burn alone; falling, the block goes on, and above the air the block's next tick here ends it.
+  // Falling into the air (#942), low charge doesn't end the block: Core's LOWCHARGE says when it lets go of the steering (the braking burn keeps its own: it alone points the engine) and when it arms the group's chutes once, which need no charge. Asked by claudia_tick, so the long waits are watched too (#952). The trim burn is exec_node's, on its own ctx without this watch: it keeps its steering and low charge fails that burn alone and the block goes on, unless the burn lifted the periapsis above the air: then the abort stands at the block's next tick, which may come after the drop.
   local ec_step is 0.
   set ctx:ec_tick to {
     local low is addons:claudia:lowcharge(lexicon("ec_pct", claudia_ec_pct(), "min_ec_pct", opt:min_ec_pct, "pe", ship:periapsis, "air_top", body_:atm:height)).
