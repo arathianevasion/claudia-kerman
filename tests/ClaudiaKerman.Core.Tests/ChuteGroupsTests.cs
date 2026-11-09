@@ -110,7 +110,8 @@ namespace ClaudiaKerman.Core.Tests
 
         private static double EntersKg(GameSnapshot snapshot)
         {
-            return EntryCraft.Of(snapshot, null, PodPart, 1, true, true).KeptT * 1000;
+            var craft = EntryCraft.Of(snapshot, null, PodPart, 1, true, true);
+            return (craft.KeptT - (craft.ShieldDropped != null ? craft.ShieldDropped.MassT : 0)) * 1000;
         }
 
         private static double ReturnKg(GameSnapshot snapshot)
@@ -132,7 +133,60 @@ namespace ClaudiaKerman.Core.Tests
             var snapshot = WithStack(goesWithStack: false);
             Assert.DoesNotContain(Decoupler, EntryCraft.Of(snapshot, null, PodPart, 1, true, true).LeftOut.Select(p => p.Id));
             Assert.Equal(EntersKg(snapshot), ReturnKg(snapshot), 6);
-            Assert.Equal(ReturnKg(WithStack(goesWithStack: true)) + 50, ReturnKg(snapshot), 6);
+            // Only the stack that stays keeps its decoupler, and its shield then jettisons (EntryCraft.ShieldDropped): 0.4 t off, 0.05 t on.
+            Assert.Equal(ReturnKg(WithStack(goesWithStack: true)) + 50 - 400, ReturnKg(snapshot), 6);
+        }
+
+        // ---- A Return's mass is EntryCraft's, whichever part is the root (#930) ----
+
+        /// <summary>The craft rebuilt with <paramref name="root"/> as its root: the parent links along the way from the old root run the other way.</summary>
+        private static void RootAt(GameSnapshot snapshot, uint root)
+        {
+            var byId = snapshot.Craft.Parts.ToDictionary(p => p.Id);
+            var path = new List<SnapshotPart>();
+            for (var part = byId[root]; part != null; part = part.ParentId.HasValue && byId.ContainsKey(part.ParentId.Value) ? byId[part.ParentId.Value] : null) path.Add(part);
+            for (var i = path.Count - 1; i > 0; i--) path[i].ParentId = path[i - 1].Id;
+            path[0].ParentId = null;
+            snapshot.Craft.Parts.Remove(path[0]);
+            snapshot.Craft.Parts.Insert(0, path[0]);
+        }
+
+        /// <summary>The fixture as a current recording has it: the TD-12 lets go of the heat shield on its top node (<see cref="SnapshotPart.Releases"/>, #924).</summary>
+        private static GameSnapshot MunShot()
+        {
+            var snapshot = Craft();
+            snapshot.Craft.Parts.Single(p => p.Id == 1607102063).Releases.Add(558691162);
+            return snapshot;
+        }
+
+        [Fact]
+        public void TheMunShotReturnReadsTheSameMassRootedAtThePodAndAtTheLanderTank()
+        {
+            var pod = ReturnKg(MunShot());
+            var tank = MunShot();
+            RootAt(tank, LanderTank);
+            Assert.Equal(1115, pod, 0);
+            Assert.Equal(pod, ReturnKg(tank), 6);
+        }
+
+        [Fact]
+        public void AKeptShieldReadsWithItsMass()
+        {
+            // The decoupler goes with the stack, so nothing is left beside the shield to jettison it: it stays, and its 0.4 t is in the figure.
+            var snapshot = WithStack(goesWithStack: true);
+            var craft = EntryCraft.Of(snapshot, null, PodPart, 1, true, true);
+            Assert.Null(craft.ShieldDropped);
+            Assert.Equal(craft.KeptT * 1000, ReturnKg(snapshot), 6);
+            Assert.Equal(1000 + 100 + 0.4 * 1000, ReturnKg(snapshot), 6);
+        }
+
+        [Fact]
+        public void AStuckStackReadsAsEntryCraftKeepsIt()
+        {
+            var snapshot = WithStack(goesWithStack: true);
+            snapshot.Craft.Parts.Single(p => p.Id == Decoupler).Releases.Clear();
+            var craft = EntryCraft.Of(snapshot, null, PodPart, 1, true, true);
+            Assert.Equal((craft.KeptT - (craft.ShieldDropped != null ? craft.ShieldDropped.MassT : 0)) * 1000, ReturnKg(snapshot), 6);
         }
 
         // ---- The worked examples ----
