@@ -56,6 +56,12 @@ namespace ClaudiaKerman.Core.Missions
         public SnapshotPart DecouplerAbove;
         /// <summary><see cref="DecouplerAbove"/> lets go of the part above it, so it leaves with the shield.</summary>
         public bool DecouplerAboveGoes;
+        /// <summary>The decouplers from the shield toward home, through decouplers only, when that walk reaches an engine (#948); empty otherwise. A tank in between ends the walk: it isn't this case.</summary>
+        public readonly List<SnapshotPart> DecouplersToEngine = new List<SnapshotPart>();
+        /// <summary>The engine <see cref="DecouplersToEngine"/> reach; null for none.</summary>
+        public SnapshotPart EngineAbove;
+        /// <summary>Those of <see cref="DecouplersToEngine"/> that don't let go of the part above them (#948): they stay under the engine when the shield goes.</summary>
+        public readonly List<SnapshotPart> StayingToEngine = new List<SnapshotPart>();
 
         /// <summary>Whether the stack takes the root or the part running the script (<paramref name="core"/>, null when not known): <c>reentry</c> won't drop those.</summary>
         public bool TakesCore(uint? core)
@@ -107,6 +113,19 @@ namespace ClaudiaKerman.Core.Missions
             {
                 stack.DecouplerAbove = above;
                 stack.DecouplerAboveGoes = walker.LetsGoAbove(above);
+                var chain = new List<SnapshotPart>();
+                var cur = above;
+                while (cur != null && cur.Tags.Contains("decoupler") && !cur.Tags.Contains("heat_shield"))
+                {
+                    chain.Add(cur);
+                    cur = walker.Parent(cur);
+                }
+                if (cur != null && cur.Tags.Contains("engine"))
+                {
+                    stack.EngineAbove = cur;
+                    stack.DecouplersToEngine.AddRange(chain);
+                    stack.StayingToEngine.AddRange(chain.Where(d => d.Releases.Count > 0 && !walker.LetsGoAbove(d)));
+                }
             }
             return stack;
         }
