@@ -21,7 +21,13 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void Ascend_retracts_the_legs_above_100_m_when_it_started_on_the_ground()
         {
-            Assert.Contains("if start = \"ground\" and gear and alt:radar > 100 and ship:verticalspeed > 0 { gear off. }", Library("ascend.ks"));
+            Assert.Contains("if start = \"ground\" and gear and alt:radar > 100 and ship:verticalspeed > 0 {\n      gear off.", Library("ascend.ks").Replace("\r\n", "\n"));
+        }
+
+        [Fact]
+        public void Land_compares_biome_names_ignoring_spaces_on_both_sides()
+        {
+            Assert.Contains("extra:biome:replace(\" \", \"\") <> aim_name:replace(\" \", \"\")", Library("land.ks"));
         }
 
         [Fact]

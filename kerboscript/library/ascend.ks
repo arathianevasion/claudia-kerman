@@ -273,7 +273,9 @@ function ascend {
     if ship:verticalspeed < 0 {
       set aim to ascend_climb_to(start, goal, altitude).
     }
-    if start = "ground" and gear and alt:radar > 100 and ship:verticalspeed > 0 { gear off. } // Legs in once clear of the ground (#946).
+    if start = "ground" and gear and alt:radar > 100 and ship:verticalspeed > 0 {
+      gear off. // Legs in once clear of the ground (#946).
+    }
     local v_h is vxcl(ship:up:vector, ship:velocity:orbit):mag.
     local accel is ship:availablethrust / max(0.001, ship:mass).
     if alt:radar < 100 {

@@ -19,3 +19,7 @@ Put the legs out by right-click with the Gear group off, then `launch`. They sta
 ## Check 4: ascend from flight
 
 From flight (a craft in the air with legs out, e.g. the abort to orbit), run `ascend`. The legs stay out.
+
+## Check 5: the next land lowers them again
+
+After Check 1 or 2, run `land` on the same craft. The legs go down for the landing as before; the retract did not stop them.
