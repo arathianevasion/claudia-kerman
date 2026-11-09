@@ -44,11 +44,11 @@ namespace ClaudiaKerman.Core.Tests
             };
         }
 
-        private AscentFlight Fly(double targetAp, List<AscentStage> stages, int stageLimit = 0)
+        private AscentFlight Fly(double targetAp, List<AscentStage> stages, int stageLimit = 0, bool eccStop = true)
         {
             var options = new AscentOptions
             {
-                Gm = 3.5316e12, Radius = 600000, AtmosphereHeight = 70000, SeaLevelAtm = 1, Spin = 174.94, StartAltitude = 70, TargetAp = targetAp, StageLimit = stageLimit,
+                Gm = 3.5316e12, Radius = 600000, AtmosphereHeight = 70000, SeaLevelAtm = 1, Spin = 174.94, StartAltitude = 70, TargetAp = targetAp, StageLimit = stageLimit, EccStop = eccStop,
             };
             var flight = AscentSim.Fly(options, new ExpAir(), AscentSim.Table(new List<double[]> { new[] { 0.0, 1.0 }, new[] { 1.1, 2.0 }, new[] { 3.0, 1.0 } }), stages);
             _out.WriteLine((flight.ReachesOrbit ? "orbit" : flight.Failure) + ", coast_ap " + Math.Round(flight.CoastAp) + ", end stage " + flight.LaunchEndStage
@@ -105,17 +105,50 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void A_burn_through_descending_under_the_air_top_with_q_at_or_under_the_fall_pressure_keeps_burning()
+        public void A_burn_through_descending_under_the_air_top_with_q_at_or_under_the_fall_pressure_keeps_burning_and_reaches_orbit()
         {
-            // 54 kN sinks (it falls at up to 250 m/s) in air thinner than the fall pressure. The sim's own "vertical speed below 0" check used to fail it
-            // at once; now the q guard alone decides, so it burns on. launch adds a burn-through's own time back onto an "auto" max_duration (launch.ks, #932), so the sim no longer counts it against 900 s either:
-            // the flight carries on until the 3600 s coast cap, which the sim keeps (#939 notes).
+            // 54 kN sinks (it falls at up to 250 m/s) in air thinner than the fall pressure. The q guard alone decides, so it burns on.
+            // launch adds a burn-through's own time back onto an "auto" max_duration (launch.ks, #932), and circularize's "auto" budget
+            // (start_in + 2 * burn_time + 300, exec_node.ks) grows with the coast, so the sim holds it to that, not 3600 s (#943).
             var flight = Fly(80000, SinkingUpper(54));
             Assert.True(flight.MinVerticalSpeed < -100, "min vertical speed " + flight.MinVerticalSpeed);
-            Assert.DoesNotContain("fell back", flight.Failure);
-            Assert.DoesNotContain("vertical speed", flight.Failure);
-            Assert.DoesNotContain("still climbing", flight.Failure);
-            Assert.StartsWith("still coasting after 3600 s", flight.Failure);
+            Assert.True(flight.ReachesOrbit, flight.Failure);
+            Assert.InRange(flight.OrbitAp, 2300000, 2370000);
+            Assert.InRange(flight.OrbitPe, 2290000, 2360000);
+            Assert.InRange(flight.DeltaVLeft, 340, 410);
+        }
+
+        [Fact]
+        public void A_healthy_craft_with_a_3000_km_target_no_longer_fails_on_a_coast_cap()
+        {
+            var flight = Fly(3000000, WeakUpper(33));
+            Assert.True(flight.ReachesOrbit, flight.Failure);
+            Assert.InRange(flight.CoastAp, 2900000, 3050000);
+        }
+
+        [Fact]
+        public void A_burn_that_outruns_the_auto_budget_still_fails_with_the_budget_in_the_reason()
+        {
+            // A 5 kN, 800 s stage burns a 1,000 km circularize slower than its own estimate (the lead and the steering lose time), so the budget runs out.
+            var stages = new List<AscentStage> { Stage(3, 2000, 1800, 310, 100, 30), Stage(2, 5, 5, 800, 24, 10) };
+            var flight = Fly(1000000, stages, 0, false);
+            Assert.False(flight.ReachesOrbit);
+            Assert.Matches(@"^still circularizing after \d+ s$", flight.Failure);
+            Assert.Equal(300 + 2 * 120 + 5000, AscentSim.CircularizeBudget(5000, 120));
+            Assert.Equal(300 + 2 * 120, AscentSim.CircularizeBudget(-4, 120));
+        }
+
+        [Fact]
+        public void A_coast_above_the_air_costs_a_bounded_number_of_steps_however_far_the_target()
+        {
+            // Today's worst case was 36,000 steps (3600 s at dt 0.1). A coast of hours or days must stay under that.
+            var stages = new List<AscentStage> { Stage(2, 4000, 4000, 310, 160, 80), Stage(1, 400, 400, 310, 70, 8) };
+            foreach (var target in new[] { 3000000.0, 84000000.0, 2e9 })
+            {
+                var flight = Fly(target, stages);
+                _out.WriteLine("target " + target + ": coast steps " + flight.CoastSteps);
+                Assert.InRange(flight.CoastSteps, 0, 2000);
+            }
         }
 
         [Fact]
