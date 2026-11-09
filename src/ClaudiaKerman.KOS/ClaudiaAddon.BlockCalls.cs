@@ -813,7 +813,7 @@ namespace ClaudiaKerman.KOS
 
         /// <summary>
         /// <c>ADDONS:CLAUDIA:LOWCHARGE</c> (#942, ADR 0014): what low charge does to a <c>reentry</c> with the periapsis in the air (<see cref="BlockCalls.LowCharge"/>),
-        /// pure. Called every physics tick, so its time is logged at most once a second (guardrail 6). The block reads every key: a failure (logged by Guarded) answers as no low charge, so the abort stands.
+        /// pure. Called every physics tick, so its time is logged at most once a second (guardrail 6). The block reads every key: a failure (logged by Guarded) answers as full charge, so it neither acts nor aborts.
         /// </summary>
         private Lexicon LowChargeCall(Lexicon input)
         {

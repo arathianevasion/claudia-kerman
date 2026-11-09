@@ -536,12 +536,13 @@ namespace ClaudiaKerman.Core.Tools
         /// steering; under <see cref="LowChargeArmPct"/> it arms the chutes, whatever <c>min_ec_pct</c> is. <c>ec_pct</c> is the charge left, percent of
         /// capacity. Gives <c>error</c> "", <c>carry_on</c>, <c>step</c> (0 nothing, 1 steering released, 2 chutes armed) and <c>abort_pct</c>, the charge the block's
         /// <c>min_ec_pct</c> check is to judge: 100 while it carries on, else this same reading, so a tick can't read the charge twice and abort between the reads.
-        /// With the periapsis above the air, or nothing asked, <c>carry_on</c> is false and <c>step</c> 0, so the abort stands. Pure.
+        /// With the periapsis above the air <c>carry_on</c> is false and <c>step</c> 0, so the abort stands. With no <c>ec_pct</c> (the addon's answer to a failed call) the
+        /// charge counts as full: nothing is done and nothing aborts, as a failed call says nothing about the charge. Pure.
         /// </summary>
         public static IDictionary<string, object> LowCharge(IDictionary<string, object> input)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
-            var pct = Number(ask, "ec_pct", 0);
+            var pct = Number(ask, "ec_pct", 100);
             var falling = Number(ask, "pe", 0) <= Number(ask, "air_top", -1);
             var carryOn = falling && pct < Number(ask, "min_ec_pct", 0);
             var arm = falling && pct < LowChargeArmPct;

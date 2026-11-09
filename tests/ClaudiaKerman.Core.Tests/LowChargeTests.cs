@@ -93,8 +93,17 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("", low["error"]);
             Assert.Equal(false, low["carry_on"]);
             Assert.Equal(0, low["step"]);
-            // Asked nothing (the addon's answer to a failed call), the abort stands.
-            Assert.Equal(0.0, Convert.ToDouble(low["abort_pct"]));
+            // Asked nothing (the addon's answer to a failed call), it reads as full charge: 0 here would be a false abort at any charge.
+            Assert.Equal(100.0, Convert.ToDouble(low["abort_pct"]));
+        }
+
+        [Fact]
+        public void No_reading_acts_on_nothing_and_aborts_nothing()
+        {
+            var low = BlockCalls.LowCharge(new Dictionary<string, object> { { "min_ec_pct", 10.0 }, { "pe", 15000.0 }, { "air_top", AirTop } });
+            Assert.Equal(false, low["carry_on"]);
+            Assert.Equal(0, low["step"]);
+            Assert.Equal(100.0, Convert.ToDouble(low["abort_pct"]));
         }
 
         /// <summary>ADR 0014 guardrail 6: every <c>reentry</c> tick asks; 1,000 ticks (20 s at 50 Hz) in 2 ms.</summary>
