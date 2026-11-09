@@ -71,6 +71,26 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("Debrief: Off-Nominal", Rebuild(turn, DebriefReply("Nominal")).Single(e => e.Kind == LogKind.Debrief).Title);
         }
 
+        [Fact]
+        public void ADebriefSentBackAfterALandingMissKeepsItsStopReasonAndCrossings()
+        {
+            var transcript = new StoredTranscript();
+            transcript.Messages.Add(Message.UserText("Facts.\n" + MissionPrompts.RunEndedPrefix + "Aborted (" + MissionControl.AbortedByThePlayer + ").\n"
+                + MissionPrompts.CrossedChecks("delta-v used 100 m/s over 50 m/s: Abort recommended (Overrun.)")));
+            foreach (var json in new[] { DebriefReply("Failed"), null, DebriefReply("Nominal") })
+            {
+                if (json == null) { transcript.Messages.Add(Message.UserText(ManualGrounds.SendBack)); continue; }
+                var reply = new Message { Role = Role.Assistant };
+                reply.Content.Add(new TextBlock { Text = json });
+                transcript.Messages.Add(reply);
+            }
+            var log = MissionLogRebuild.From(transcript, "", "Kerbal X", new PlayerConfig());
+            var last = log.Last(e => e.Kind == LogKind.Debrief);
+            Assert.Equal("Debrief: Off-Nominal (aborted by the player)", last.Title);
+            Assert.Contains("Telemetry Checks crossed: delta-v used 100 m/s over 50 m/s", last.Text);
+            Assert.DoesNotContain(log, e => e.Kind == LogKind.Player);
+        }
+
         private const string NoCorrectionReport = "Report (JSON data): {\"success\":true,\"aim_note\":\"no correction flown: the solver gave up; 40 km from the target, 80 m/s left\"}";
 
         [Fact]
