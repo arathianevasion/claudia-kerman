@@ -56,7 +56,7 @@ function reentry_touchdown_limit { return 15. }
 // Braking starts with the thrust over 1.2, 1 s of the fall early (the throttle and the last of the turn).
 function reentry_powered_soft { return 2. }
 function reentry_powered_end { return 10. }
-// reentry_drag_steps works the stopping distance over 20 height steps and counts half the drag measured now:
+// Core works the stopping distance over reentry_drag_steps' 20 height steps, half the drag measured now counted:
 // drag falls with the Mach number as the craft slows, and air pressure stands in for density.
 
 // Physics warp (the cap reentry gives claudia_warp_to, under the q rule): at most 2x while the hottest
@@ -310,36 +310,7 @@ function reentry_light {
   }
 }
 
-// Metres of fall a braking burn takes to bring the downward speed v_down (m/s) to soft, with net m/s^2
-// of thrust over gravity (it may be negative) and drag k v^2 (k in 1/m) for each step m of height below
-// the craft, ks listing k from the top step down. -1 if it doesn't get there within the steps, so not
-// before the ground. Each step is solved exactly for its k. Pure.
-function reentry_stop_distance {
-  parameter v_down, net, ks, step, soft.
-  local v2 is v_down ^ 2.
-  local goal is soft ^ 2.
-  if v2 <= goal {
-    return 0.
-  }
-  local x is 0.
-  for k in ks {
-    local next is v2 - 2 * net * step.
-    if k > 1e-9 {
-      local c is net / k.
-      set next to (v2 + c) * 2.718281828459045 ^ (-2 * k * step) - c.
-      if next <= goal and goal + c > 0 {
-        return x + ln((v2 + c) / (goal + c)) / (2 * k).
-      }
-    } else if next <= goal {
-      return x + (v2 - goal) / (2 * net).
-    }
-    set v2 to next.
-    set x to x + step.
-  }
-  return -1.
-}
-
-// The drag coefficients (1/m) for reentry_stop_distance over radar m below the craft in steps of radar /
+// The drag coefficients (1/m) for Core's stopping distance (BRAKEHEIGHTS) over radar m below the craft in steps of radar /
 // 20: half of the drag now (m/s^2, at speed m/s and pressure
 // p_now atm) as k v^2, scaled at each step's middle by pressure_at (a delegate: metres below the craft ->
 // atm) over p_now. All 0 with no drag measured. Pure.
@@ -360,31 +331,6 @@ function reentry_drag_steps {
     }
   }
   return ks.
-}
-
-// The radar altitude (m) at which a powered touchdown's braking must start, falling at v_down m/s with
-// a_up m/s^2 of upward thrust at full throttle (a sixth held back) against gravity g and
-// the drag in ks (reentry_drag_steps' over radar m): the stopping distance to reentry_powered_soft plus
-// reentry_powered_end and 1 s of the fall. A craft that only stops in time on all its thrust
-// gets the figure for all of it; -1 if not even that stops it before the ground: brake now. Pure.
-function reentry_brake_height {
-  parameter v_down, a_up, g, ks, radar.
-  local step is radar / max(1, ks:length).
-  local s is reentry_stop_distance(v_down, a_up / 1.2 - g, ks, step, reentry_powered_soft()).
-  if s < 0 {
-    set s to reentry_stop_distance(v_down, a_up - g, ks, step, reentry_powered_soft()).
-  }
-  if s < 0 {
-    return -1.
-  }
-  return s + reentry_powered_end() + max(0, v_down).
-}
-
-// True if the braking must start now at radar m (reentry_brake_height's figure brake_h), at speed m/s. A fall the engines can't stop waits for the
-// air to do its work, as for the shield: on a shallow path high up, thrust barely points up, and the fuel would go at orbital speed. Pure.
-function reentry_brake_due {
-  parameter radar, brake_h, speed.
-  return radar <= brake_h or (brake_h < 0 and reentry_shield_due(false, speed, radar)).
 }
 
 // The throttle (0 to 1) braking a powered touchdown, a_up m/s^2 of upward thrust at full throttle against
@@ -594,6 +540,18 @@ function reentry_stowed_titles {
   return found.
 }
 
+// Where to point under open chutes (#954): surface retrograde (retro: the velocity reversed); under 3 m/s, where retrograde is noise, or climbing, straight up (up_v) with no drift term. Pure.
+function reentry_chute_aim { parameter retro, up_v. return choose retro if retro:mag > 3 and vdot(retro, up_v) > 0 else up_v. }
+
+// Locks every gimbal among engs not locked already, adding its uid to locked; or frees those in locked. Read fresh each time: a part may have gone.
+function reentry_gimbals {
+  parameter engs, lock_, locked.
+  for e in engs {
+    if lock_ and e:hasgimbal and not e:gimbal:lock { set e:gimbal:lock to true. locked:add(e:uid). }
+    if not lock_ and locked:contains(e:uid) { set e:gimbal:lock to false. }
+  }
+}
+
 // Upward acceleration (m/s^2) at full throttle with the thrust along the vector along, at least a tenth of
 // it so a craft lying flat still reads some.
 function reentry_up_accel {
@@ -769,8 +727,13 @@ function reentry {
   local passes is 0.
   local in_air is false.
   local skipped is false.
-  // Powered touchdown: the radar altitude braking starts at (reentry_brake_height; 0 until the first sample).
+  // Powered touchdown: the radar altitudes braking starts at (Core's BRAKEHEIGHTS; 0 until the first sample), why it began, and the chute notes and gimbals (#954).
   local brake_h is 0.
+  local last_h is 0.
+  local brake_why is "".
+  local chute_states is "".
+  local gimbals is list().
+  local gimbals_held is false.
 
   // Opens the parachutes due now (speed m/s, agl m, pressure atm). Open parachutes steer the craft
   // themselves, except while braking.
@@ -792,11 +755,23 @@ function reentry {
       } else {
         set mains_out to true.
       }
-      if not braking {
+      // A powered finish keeps its retrograde hold under them (#954): wheels only, no site correction.
+      if powered and held {
+        if mains_out { lock steering to reentry_chute_aim(-ship:velocity:surface, ship:up:vector). set ctx:rcs_braking to true. }
+      } else if not braking {
         unlock steering.
         claudia_rcs_off("steering released").
       }
     }
+  }.
+
+  // Core's word this tick (#954): whether braking may start and the guarded throttle. tset: the throttle wanted; off_deg: degrees off the aim. Notes each change of the group's chutes, and locks the gimbals (just once) when they're fully open.
+  local brake_ask is {
+    parameter tset is 0, off_deg is 0.
+    local b is addons:claudia:braketick(lexicon("radar", reentry_agl(), "speed", ship:velocity:surface:mag, "brake_h", brake_h, "last_h", last_h, "shield_speed", reentry_shield_speed(), "shield_agl", reentry_shield_last_agl(), "chute_last_agl", reentry_chute_last_agl(), "uids", choose group:uids if chute_mode <> "none" else list(), "throttle", tset, "off_deg", off_deg)).
+    if b:chutes <> chute_states { set chute_states to b:chutes. addons:claudia:blocknote(ctx:block, lexicon("phase", "chutes", "states", chute_states)). }
+    if b:open and not gimbals_held { set gimbals_held to true. reentry_gimbals(ship:engines, true, gimbals). }
+    return b.
   }.
 
   // One tick of the fall; true once the craft is on the ground. The wait loop (claudia_warp_to) calls it
@@ -830,7 +805,9 @@ function reentry {
       if powered {
         local alt_now is ship:altitude.
         local ks is reentry_drag_steps(felt * 9.80665, last_speed, pressure, agl, { parameter down_m. return body_:atm:altitudepressure(alt_now - down_m). }).
-        set brake_h to reentry_brake_height(-ship:verticalspeed, reentry_up_accel(-ship:velocity:surface), body_:mu / (body_:radius + alt_now) ^ 2, ks, agl).
+        local heights is addons:claudia:brakeheights(lexicon("v_down", -ship:verticalspeed, "a_up", reentry_up_accel(-ship:velocity:surface), "g", body_:mu / (body_:radius + alt_now) ^ 2, "ks", ks, "radar", agl, "soft", reentry_powered_soft(), "end", reentry_powered_end())).
+        set brake_h to heights:brake_h.
+        set last_h to heights:last_h.
       }
       set hot to reentry_hottest().
       set extra:max_temp_pct to max(extra:max_temp_pct, hot).
@@ -840,7 +817,8 @@ function reentry {
       set sample_speed to last_speed.
     }
 
-    if reentry_shield_due(shield_gone, last_speed, agl, powered and reentry_brake_due(agl, brake_h, last_speed)) {
+    local brake is choose brake_ask() if powered else lexicon("start", false).
+    if reentry_shield_due(shield_gone, last_speed, agl, brake:start) {
       local count_before is ship:parts:length.
       reentry_shield_drop(shield_uid, { return ship:parts. }, below:jettison_first).
       set shield_gone to true.
@@ -851,8 +829,10 @@ function reentry {
     }
     chute_tick(last_speed, agl, pressure).
     if agl < 1000 and not gear { gear on. }
-    if powered and reentry_brake_due(agl, brake_h, last_speed) {
+    if brake:start {
       set braking to true.
+      set brake_why to brake:why.
+      addons:claudia:blocknote(ctx:block, lexicon("phase", "braking", "why", brake_why, "agl", round(agl), "speed", round(last_speed, 1))).
       return true.
     }
 
@@ -917,19 +897,25 @@ function reentry {
     gear on.
     // RCS stays off while braking unless the craft has no wheel torque, as for land's (#506).
     set ctx:rcs_braking to true.
+    local trace_ut is 0.
     until claudia_on_ground() {
       local up_v is ship:up:vector.
       local vel is ship:velocity:surface.
       set last_speed to vel:mag.
       local agl is reentry_agl().
       if ship:availablethrust <= 0 { reentry_light(ship:engines, finish:spare). }
-      if vel:mag > 5 and ship:verticalspeed < 0 {
+      if mains_out {
+        set steer to reentry_chute_aim(-vel, up_v).
+      } else if vel:mag > 5 and ship:verticalspeed < 0 {
         set steer to -vel.
       } else {
         set steer to up_v - vxcl(up_v, vel) * 0.1.
       }
-      set tset to reentry_brake_throttle(agl, -ship:verticalspeed, reentry_up_accel(ship:facing:forevector), body_:mu / (body_:radius + ship:altitude) ^ 2).
-      chute_tick(last_speed, agl, body_:atm:altitudepressure(ship:altitude)).
+      local off_deg is vang(ship:facing:forevector, steer).
+      set tset to brake_ask(reentry_brake_throttle(agl, -ship:verticalspeed, reentry_up_accel(ship:facing:forevector), body_:mu / (body_:radius + ship:altitude) ^ 2), off_deg):throttle.
+      if time:seconds >= trace_ut { set trace_ut to time:seconds + 1. addons:claudia:blocktrace(ctx:block, lexicon("phase", "braking", "throttle", round(tset, 2), "off_deg", round(off_deg, 1))). }
+      // No chute opens under this burn once they are all out (#954); a last resort still tries one.
+      if brake_why <> "chutes open" { chute_tick(last_speed, agl, body_:atm:altitudepressure(ship:altitude)). }
       local reason is claudia_tick(ctx, tset, false).
       if reason <> "" {
         set fell to reason.
@@ -940,6 +926,8 @@ function reentry {
     set tset to 0.
     set extra:powered_dv to round(ctx:dv_used - dv_before, 1).
   }
+  // Every exit from here passes this line: landing, a hard touchdown, an abort, a timeout or a skip-out (#954).
+  reentry_gimbals(ship:engines, false, gimbals).
   if fell <> "" {
     for t in reentry_abort(chute_mode, reentry_fresh_group(group, ask, extra:chutes_used)) {
       extra:chutes_used:add(t).
