@@ -1511,6 +1511,24 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
+        /// <c>ADDONS:CLAUDIA:LIFTOFFCLEAR</c>, for <c>launch</c> and <c>ascend</c> from the ground (#945, ADR 0014): <see cref="LiftoffClear"/>'s decouplers under the engines that give thrust, read fresh.
+        /// Takes <c>ground</c> (true to look; else it gives nothing), <c>home</c> (as <see cref="EntryDropCall"/>) and <c>core</c> (the kOS UID of the part running the script). Gives <c>error</c> "", <c>decouplers</c> and <c>gone</c> (kOS UIDs) and <c>stuck</c> (names of parts still under a thrusting engine that nothing fires for, launch clamps excepted).
+        /// </summary>
+        public static IDictionary<string, object> LiftoffClearCall(IDictionary<string, object> ask, GameSnapshot snapshot, Func<uint, string> uidOf)
+        {
+            if (snapshot == null) return Error("there is no Game Snapshot of the craft");
+            var clear = ask.ContainsKey("ground") && true.Equals(ask["ground"]) ? LiftoffClear.Of(snapshot.Craft.Parts, Home(ask, snapshot, uidOf), CoreId(ask, snapshot, uidOf)) : new LiftoffClear();
+            Func<IEnumerable<SnapshotPart>, List<object>> uids = parts => parts.Select(p => uidOf(p.Id)).Where(u => u != null).Cast<object>().ToList();
+            return new Dictionary<string, object>
+            {
+                { "error", "" },
+                { "decouplers", uids(clear.Decouplers) },
+                { "gone", uids(clear.Gone) },
+                { "stuck", EntryStack.Names(clear.Stuck).Cast<object>().ToList() },
+            };
+        }
+
+        /// <summary>
         /// <see cref="EntryDropCall"/>'s refusal for <c>reentry</c> (#815): "" unless <c>separate</c> is "auto" and the craft is above its body's air. At block
         /// start a stack it can't drop, unless the Entry lands on its engines (<see cref="EntryFinish.For"/>, as <c>ENTRYFINISH</c> reads it); after
         /// its drop (<c>drop_error</c> given) any stack still on.
