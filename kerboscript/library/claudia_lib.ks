@@ -204,17 +204,11 @@ function claudia_make_safe {
 // still burn keep the block going.
 function claudia_stage_action {
   parameter stage_number, stage_limit, needs_stage, has_thrust, next_unsafe.
-  if not needs_stage {
-    return "none".
-  }
+  if not needs_stage { return "none". }
   local at_limit is stage_number <= stage_limit or stage_number <= 0.
   if at_limit or next_unsafe {
-    if has_thrust {
-      return "none".
-    }
-    if at_limit {
-      return "out_of_fuel".
-    }
+    if has_thrust { return "none". }
+    if at_limit { return "out_of_fuel". }
     return "blocked".
   }
   return "stage".
@@ -633,9 +627,7 @@ function claudia_decoupler_event {
 function claudia_aboard {
   parameter p, parts.
   for other in parts {
-    if other:uid = p:uid {
-      return true.
-    }
+    if other:uid = p:uid { return true. }
   }
   return false.
 }
@@ -2201,17 +2193,24 @@ function claudia_wrap_angle {
 }
 
 // A craft whose engines aren't lit yet stages into them (within stage_limit). Returns "" once some
-// engine gives thrust, else why not: the staging reason, or "no thrust".
+// engine gives thrust, else why not: the staging reason, or "no thrust". clear (a start from the ground,
+// #945): fires what is still under an engine giving thrust, Core's LIFTOFFCLEAR, unguarded, and notes it.
 function claudia_stage_into_engines {
-  parameter ctx.
+  parameter ctx, clear is false.
   if ship:availablethrust <= 0 {
     local staged is claudia_autostage(ctx).
-    if staged <> "" {
-      return staged.
-    }
+    if staged <> "" { return staged. }
   }
-  if ship:availablethrust <= 0 {
-    return "no thrust".
+  if ship:availablethrust <= 0 { return "no thrust". }
+  local under is choose addons:claudia:liftoffclear(lexicon("core", core:part:uid)) if clear else lexicon("decouplers", list(), "gone", list()).
+  local plan is claudia_drop_plan(list()).
+  for p in ship:parts {
+    if under:decouplers:contains(p:uid) { plan:decouplers:add(p). }
+    if under:gone:contains(p:uid) { plan:gone:add(p). }
+  }
+  if plan:decouplers:length > 0 {
+    local why is claudia_fire_drop(ctx, plan, false).
+    addons:claudia:blocknote(ctx:block, lexicon("phase", "liftoff_clear", "note", choose "fired under the engines: " + under:names:join(", ") if why = "" else why)).
   }
   return "".
 }

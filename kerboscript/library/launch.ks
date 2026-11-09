@@ -423,15 +423,16 @@ function launch {
   }
   // Light the engines.
   sas off.
-  local tset is 1.
+  local tset is 0.
   lock throttle to tset.
   local aim is ship:up:vector.
   lock steering to aim.
-  local lit is claudia_stage_into_engines(ctx).
+  local lit is claudia_stage_into_engines(ctx, true).
   if lit <> "" {
     claudia_make_safe().
     return claudia_finish(ctx, false, lit, extra).
   }
+  set tset to 1.
   launch_release_clamps(ctx).
   local liftoff_ut is time:seconds.
 

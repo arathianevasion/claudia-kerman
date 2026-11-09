@@ -611,6 +611,7 @@ namespace ClaudiaKerman.ScriptCheck.Tests
         [InlineData("print addons:claudia:shipsystems(\"liftoff\"):done.")]
         [InlineData("addons:claudia:encounterwatch(lexicon()).")]
         [InlineData("print addons:claudia:encounterwatchdropped.")]
+        [InlineData("print addons:claudia:liftoffclear(lexicon(\"core\", \"1\")):decouplers.")]
         public void ABlockInternalCallInAMissionScriptFails(string script)
         {
             AssertForbidden("call block-internal calculations", script);
