@@ -42,7 +42,7 @@ The predictor's figure is now the air's pull on the craft, without its open para
 
 Fly `tests/blocks/return_target` on #920's rebuilt craft: `grep "CORRECTIONBURN\|ENTRYTRIM" KSP.log` shows no `pulls <g> g, over 8` for a sane Mun return (the Core model of the logged craft pulls about 2.3 g at 30 km), the aimed burn flies, and the craft lands. An entry that truly pulls over 8 g fails `return` with `found no correction: the burn's entry pulls <g> g, over 8; ...`, or says so in `no trim: ...` at the Late Trim.
 
-## The late trim at `reentry`'s start (#892, carries #317)
+## The late trim in `reentry` (#892, carries #317; #952 below moves when it flies)
 
 **Block migration:** the judgment is in Core: `BlockCalls.EntryTrim` (`ENTRYTRIM`), which solves through `CorrectionBurn`. `reentry` only makes the call and flies it with `claudia_fly_correction`, before its wait to #815's drop. No `//|` line changed; the library stays at its limit (its chute and drogue rules now share `reentry_open_action`). Parity test: none, no Kerboscript logic moved.
 
@@ -52,7 +52,7 @@ Fly `tests/blocks/return_target` on #920's rebuilt craft: `grep "CORRECTIONBURN\
 
 Fly `tests/blocks/return_target` (Mun to KSC), or a Mun return Mission:
 
-1. In `KSP.log`, one `block call ENTRYTRIM` line appears during `reentry`, after `ENTRYDROP`'s first line and before the warp to the drop point. It comes with either a burn (`node at UT ...; Pe <m> m; aimed <km> km from the target`) or `no trim: ...` with a reason.
+1. In `KSP.log`, a `block call ENTRYTRIM` line that decides appears during `reentry`, after `ENTRYDROP`'s first line and before the warp to the drop point (from over 2,400 s out, a `no trim yet` line comes first: see #952 below). It comes with either a burn (`node at UT ...; Pe <m> m; aimed <km> km from the target`) or `no trim: ...` with a reason.
 2. If the correction left the landing within 5 km, expect `no trim: <km> km from the target, within 5 km`. To see a trim fly, start `reentry` with `return`'s `correction` set to false, which leaves the ejection's miss.
 3. A trim that flies: an `exec_node` burn before the warp, its `Pe` between 24,000 and 36,000 m on a return aimed at 30 km, and `dv` no more than 150 m/s or the delta-v left less the reserve and later legs.
 4. The stack still drops about 600 s before the air: a `phase stack_dropped` blocknote follows, with the `ENTRYDROP` read at the drop point after the trim's burn. The wait re-reads the time to the air after the trim, so the drop isn't late by the burn's own time.
@@ -61,7 +61,7 @@ Fly `tests/blocks/return_target` (Mun to KSC), or a Mun return Mission:
 
 ## The late trim waits for the last 40 minutes (#952)
 
-**Block migration:** the timing is new logic in Core: `BlockCalls.EntryTrim` (`TrimMostToAirS`, 2,400 s), whose answer carries `wait`. `reentry` waits, reads the time to the air again and asks once more; the wait and burn stay in Kerboscript (guardrail 2). No `//|` line changed; the library stays at its limit (one-use constant wrappers and `reentry_g_felt` went inline). Parity test: none, no Kerboscript logic moved.
+**Block migration:** the timing is new logic in Core: `BlockCalls.EntryTrim` (`TrimMostToAirS`, 2,400 s), whose answer carries `wait`. `reentry` waits, reads the time to the air again and asks once more; the wait and burn stay in Kerboscript (guardrail 2). No `//|` line changed; the library stays at its limit (one-use constant wrappers and `reentry_g_felt` went inline). If the `ENTRYTRIM` call itself fails, the block flies no trim and goes on. Parity test: none, no Kerboscript logic moved.
 
 Over 2,400 s from the air the block waits until 2,400 s before it, then asks `ENTRYTRIM` again and flies what that says (#952; a trim from a day out missed KSC by 520 km). From 1,200 to 2,400 s it trims at once, and at or under 1,200 s not at all. A trim that could never fly (no target, a node planned) doesn't wait.
 

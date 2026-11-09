@@ -56,9 +56,8 @@ function reentry_touchdown_limit { return 15. }
 // Braking starts with the thrust over 1.2, 1 s of the fall early (the throttle and the last of the turn).
 function reentry_powered_soft { return 2. }
 function reentry_powered_end { return 10. }
-// The height steps the stopping distance is worked over; reentry_drag_steps counts half the drag measured now:
+// reentry_drag_steps works the stopping distance over 20 height steps and counts half the drag measured now:
 // drag falls with the Mach number as the craft slows, and air pressure stands in for density.
-function reentry_powered_steps { return 20. }
 
 // Physics warp (the cap reentry gives claudia_warp_to, under the q rule): at most 2x while the hottest
 // part is over 50 percent of its heat limit; 3x under drogues; 4x under mains. Always 1x below this many
@@ -341,12 +340,12 @@ function reentry_stop_distance {
 }
 
 // The drag coefficients (1/m) for reentry_stop_distance over radar m below the craft in steps of radar /
-// reentry_powered_steps(): half of the drag now (m/s^2, at speed m/s and pressure
+// 20: half of the drag now (m/s^2, at speed m/s and pressure
 // p_now atm) as k v^2, scaled at each step's middle by pressure_at (a delegate: metres below the craft ->
 // atm) over p_now. All 0 with no drag measured. Pure.
 function reentry_drag_steps {
   parameter drag, speed, p_now, radar, pressure_at.
-  local n is reentry_powered_steps().
+  local n is 20.
   local step is radar / n.
   local k0 is 0.
   if drag > 0 and speed > 1 and p_now > 0 {
@@ -652,7 +651,7 @@ function reentry {
   local chute_mode is opt:chute_mode.
   local braking is false.
   local group is lexicon("last", false, "stages", list(), "uids", list(), "why", ""). // Chosen at the drop; empty, the first read below is fresh.
-  // Falling into the air (#942), low charge doesn't end the block: Core's LOWCHARGE says when it lets go of the steering (the braking burn keeps its own: it alone points the engine) and when it arms the group's chutes once, which need no charge. Asked by claudia_tick, so the long waits are watched too (#952).
+  // Falling into the air (#942), low charge doesn't end the block: Core's LOWCHARGE says when it lets go of the steering (the braking burn keeps its own: it alone points the engine) and when it arms the group's chutes once, which need no charge. Asked by claudia_tick, so the long waits are watched too (#952); the trim burn is out of it, keeping its steering, and low charge fails the burn alone.
   local ec_step is 0.
   set ctx:ec_tick to {
     local low is addons:claudia:lowcharge(lexicon("ec_pct", claudia_ec_pct(), "min_ec_pct", opt:min_ec_pct, "pe", ship:periapsis, "air_top", body_:atm:height)).
@@ -668,9 +667,11 @@ function reentry {
     return low:abort_pct.
   }.
   // Core decides one late trim toward the Mission's landing target (#892); from far out it first says how long to wait, here under the watch above, then is asked again (#952). Anything else flies nothing, the reason in the log, and the block goes on.
-  local trim_ask is { return addons:claudia:entrytrim(lexicon("to_air", entry_in, "home", entry_ask:home, "core", entry_ask:core, "has_node", hasnode, "stage_limit", opt:stage_limit, "dv_left", claudia_dv_recounted(), "isp", claudia_engine_isp())). }.
+  local trim_ask is {
+    return addons:claudia:entrytrim(lexicon("to_air", entry_in, "home", entry_ask:home, "core", entry_ask:core, "has_node", hasnode, "stage_limit", opt:stage_limit, "dv_left", claudia_dv_recounted(), "isp", claudia_engine_isp())).
+  }.
   local trim is trim_ask().
-  if trim:wait > 0 {
+  if trim:error = "" and trim:wait > 0 {
     local waited is claudia_wait_until(ctx, time:seconds + trim:wait).
     if waited <> "" {
       reentry_abort(opt:chute_mode, reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts)).
@@ -679,12 +680,11 @@ function reentry {
     set entry_in to claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
     set trim to trim_ask().
   }
-  // The burn is out of the watch (#942): it keeps its steering, and low charge fails the burn alone.
   local ec_watch is ctx:ec_tick.
   ctx:remove("ec_tick").
   local flown is claudia_fly_correction(ctx, trim).
   set ctx:ec_tick to ec_watch.
-  if trim:dv > 0 { addons:claudia:blocknote(ctx:block, lexicon("phase", "late_trim", "miss_before_km", round(trim:miss_before_km, 1), "dv", round(flown:dv, 2), "miss_after_km", round(trim:miss_after_km, 1), "reason", flown:reason)). }
+  if trim:error = "" and trim:dv > 0 { addons:claudia:blocknote(ctx:block, lexicon("phase", "late_trim", "miss_before_km", round(trim:miss_before_km, 1), "dv", round(flown:dv, 2), "miss_after_km", round(trim:miss_after_km, 1), "reason", flown:reason)). }
   if entry_in > below:lead {
     set entry_in to claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
     local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).

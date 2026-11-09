@@ -356,7 +356,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         private const string StartRead = "local below is addons:claudia:entrydrop(entry_ask).";
         private const string DropPoint = "if entry_in > below:lead {\n";
         private const string DropWait = "    local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).";
-        private const string Trim = "  local trim_ask is { return addons:claudia:entrytrim(lexicon(\"to_air\", entry_in, \"home\", entry_ask:home, \"core\", entry_ask:core, \"has_node\", hasnode, \"stage_limit\", opt:stage_limit, \"dv_left\", claudia_dv_recounted(), \"isp\", claudia_engine_isp())). }.\n";
+        private const string Trim = "  local trim_ask is {\n    return addons:claudia:entrytrim(lexicon(\"to_air\", entry_in, \"home\", entry_ask:home, \"core\", entry_ask:core, \"has_node\", hasnode, \"stage_limit\", opt:stage_limit, \"dv_left\", claudia_dv_recounted(), \"isp\", claudia_engine_isp())).\n  }.\n";
         private const string TrimFly = "  local flown is claudia_fly_correction(ctx, trim).\n";
         private const string AirAgain = "    set entry_in to claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).\n";
         private const string Fire = "set drop_error to claudia_fire_drop(ctx, drop, false).";
@@ -420,23 +420,25 @@ namespace ClaudiaKerman.Kerboscript.Tests
             + "global wait_result is \"\".\n"
             + "function claudia_wait_until { parameter c, ut. waits:add(ut - time:seconds). watched:add(ctx:haskey(\"ec_tick\")). set time:seconds to ut. return wait_result. }\n"
             + "function claudia_fall_eta { parameter a, b, c, d, e. return 2400. }\n"
-            + "function claudia_fly_correction { parameter c, fix. set burns to burns + 1. watched:add(ctx:haskey(\"ec_tick\")). return lexicon(\"dv\", fix:dv, \"reason\", \"\"). }\n"
+            + "function claudia_fly_correction { parameter c, fix. set burns to burns + 1. watched:add(ctx:haskey(\"ec_tick\")). return lexicon(\"dv\", choose fix:dv if fix:haskey(\"dv\") else 0, \"reason\", fix:error). }\n"
             + "function claudia_dv_recounted { return 100. }\n"
             + "function claudia_engine_isp { return 300. }\n"
             + "function reentry_abort { parameter m, g. set aborts to aborts + 1. }\n"
             + "function reentry_group_of { parameter a, b, c. return 0. }\n"
             + "function claudia_finish { parameter c, ok, reason, ex. return \"finished: \" + reason. }\n";
 
-        private const string WaitAnswer = "lexicon(\"wait\", 92600, \"dv\", 0)";
-        private const string NoFix = "lexicon(\"wait\", 0, \"dv\", 0)";
-        private const string Fix = "lexicon(\"wait\", 0, \"dv\", 12.5, \"miss_before_km\", 41.26, \"miss_after_km\", 3.14)";
+        private const string WaitAnswer = "lexicon(\"error\", \"\", \"wait\", 92600, \"dv\", 0)";
+        private const string NoFix = "lexicon(\"error\", \"\", \"wait\", 0, \"dv\", 0)";
+        /// <summary>What Guarded answers when the call throws: the error and nothing else.</summary>
+        private const string Failed = "lexicon(\"error\", \"ENTRYTRIM failed: boom\")";
+        private const string Fix = "lexicon(\"error\", \"\", \"wait\", 0, \"dv\", 12.5, \"miss_before_km\", 41.26, \"miss_after_km\", 3.14)";
 
         /// <summary>Runs the block's lines on the answers given; prints the to_air figures asked with, the waits, the burns, the aborts, whether the watch was on in each wait and burn, the notes, the outcome, and whether the watch is on at the end.</summary>
         private static string[] TrimRun(string answers, string extraRig = "")
         {
             var body = Body();
             var start = At(body, Trim);
-            var note = At(body, "  if trim:dv > 0 {");
+            var note = At(body, "  if trim:error = \"\" and trim:dv > 0 {");
             var slice = body.Substring(start, body.IndexOf('\n', note) + 1 - start);
             var script = TrimRig + extraRig
                 + "global answers is list(" + answers + ").\n"
@@ -469,6 +471,14 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             Assert.Equal(new[] { "1500", "", "1", "0", "False", "late_trim 41.3 12.5 3.1", "went on", "True" },
                 TrimRun(Fix, "set entry_in to 1500.\n"));
+        }
+
+        /// <summary>A call that threw answers only its error: the block goes on, as #892 says, at either ask.</summary>
+        [Fact]
+        public void A_failed_call_writes_no_note_and_goes_on()
+        {
+            Assert.Equal(new[] { "95000", "", "1", "0", "False", "", "went on", "True" }, TrimRun(Failed));
+            Assert.Equal(new[] { "95000,2400", "92600", "1", "0", "True,False", "", "went on", "True" }, TrimRun(WaitAnswer + ", " + Failed));
         }
 
         [Fact]
