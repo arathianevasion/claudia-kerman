@@ -14,8 +14,6 @@ namespace ClaudiaKerman.Core.Tools
     /// </summary>
     public static class LaunchBurnThrough
     {
-        private const double G0 = 9.80665;
-
         /// <summary>
         /// Takes <c>ap</c> (m above sea level), <c>sma</c> (m), <c>gm</c>, <c>radius</c> (m), <c>eta_ap</c> (s), <c>altitude</c>, <c>target_ap</c>
         /// and <c>atm_height</c> (m), <c>angle</c> (degrees from the nose now to orbital prograde at apoapsis), <c>stages</c>
@@ -62,7 +60,7 @@ namespace ClaudiaKerman.Core.Tools
             var apR = radius + (double)input["ap"];
             if (sma <= 0 || apR <= 0 || gm <= 0) return answer;
             var dv = Math.Max(0, Math.Sqrt(gm / apR) - Math.Sqrt(Math.Max(0, gm * (2 / apR - 1 / sma))));
-            var halfBurn = StagedBurnTime(dv / 2, Value(input, "stages") as IList<object>);
+            var halfBurn = StagedBurnTime.Of(dv / 2, Value(input, "stages") as IList<object>);
             answer["dv"] = dv;
             answer["half_burn"] = halfBurn;
             var climb = SecondsToAtmosphereTop(radius + (double)input["altitude"], radius + atmHeight, apR, sma, gm);
@@ -106,42 +104,6 @@ namespace ClaudiaKerman.Core.Tools
             var ramp = Math.Max(0.001, turnS - TurnTime.TurnDegrees / topRate);
             double peak;
             return TurnTime.CappedTurn(angle, topRate / ramp, ramp, out peak) + TurnTime.SettleSeconds;
-        }
-
-        /// <summary>
-        /// Seconds to burn <paramref name="dv"/> over the stages in burn order, as <c>claudia_staged_burn_time</c>: each is burned out
-        /// before the next, the last by the rocket equation from its full mass (a straight share with no isp), and a burn past the
-        /// last stage runs on at that stage's rate. -1 if no stage has delta-v.
-        /// </summary>
-        private static double StagedBurnTime(double dv, IList<object> stages)
-        {
-            var left = dv;
-            var total = 0.0;
-            var lastDv = 0.0;
-            var lastDuration = 0.0;
-            if (stages != null)
-            {
-                foreach (var item in stages)
-                {
-                    var stage = item as IDictionary<string, object>;
-                    if (stage == null) continue;
-                    var stageDv = Value(stage, "dv") is double ? (double)stage["dv"] : 0;
-                    var duration = Value(stage, "duration") is double ? (double)stage["duration"] : 0;
-                    var isp = Value(stage, "isp") is double ? (double)stage["isp"] : 0;
-                    if (stageDv <= 0 || duration <= 0) continue;
-                    lastDv = stageDv;
-                    lastDuration = duration;
-                    if (left <= stageDv)
-                    {
-                        if (isp <= 0) return total + duration * left / stageDv;
-                        var exhaust = isp * G0;
-                        return total + duration * (1 - Math.Exp(-left / exhaust)) / (1 - Math.Exp(-stageDv / exhaust));
-                    }
-                    total += duration;
-                    left -= stageDv;
-                }
-            }
-            return lastDv <= 0 ? -1 : total + lastDuration * left / lastDv;
         }
 
         private static object Value(IDictionary<string, object> input, string key)
