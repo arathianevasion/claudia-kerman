@@ -179,7 +179,9 @@ namespace ClaudiaKerman.Core.Tests
         {
             // A heavy return: the pod's mass grown past what one Mk16 lands.
             var snapshot = Craft();
-            snapshot.Craft.Parts.Single(p => p.Id == PodChute).MassT = 40;
+            var chute = snapshot.Craft.Parts.Single(p => p.Id == PodChute);
+            snapshot.Craft.MassTonnes += 40 - chute.MassT; // EntryCraft reads the craft's own total, as a snapshot has it (#930)
+            chute.MassT = 40;
 
             var blocked = Check(snapshot, Plan(1000), Home);
             var repacked = Check(snapshot, Plan(1000), Repack);
