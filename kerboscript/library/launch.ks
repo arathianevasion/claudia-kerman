@@ -612,12 +612,7 @@ function launch {
       if not done {
         // Burning while climbing, not in the coast out of the air (#379).
         local ticked is claudia_tick(ctx, tset, not coasting).
-        if burn_through and ticked:startswith("out of fuel") {
-          // Fuel or stage_limit ended the burn-through (#932): the craft coasts on from here, as it would have from the cutoff.
-          set burn_through to false.
-          set coasting to true.
-          set extra:coast_ap to round(ship:apoapsis).
-        } else if ticked <> "" {
+        if ticked <> "" {
           set reason to ticked.
           set done to true.
         }

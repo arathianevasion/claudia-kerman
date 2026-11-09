@@ -311,6 +311,15 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Contains("if burn_through and auto_limit { set opt:max_duration to opt:max_duration + pass_gap. }", src);
         }
 
+        // #937: a burn-through that runs out of fuel ends launch with claudia_tick's reason, through the one `ticked <> ""` path: no coast on.
+        [Fact]
+        public void A_burn_through_out_of_fuel_ends_launch_as_a_failure_not_a_coast()
+        {
+            var src = System.Text.RegularExpressions.Regex.Replace(CoreLibrary.Files.Single(f => f.Name == "launch").Source, "\\s+", " ");
+            Assert.DoesNotContain("ticked:startswith(\"out of fuel\")", src);
+            Assert.Contains("local ticked is claudia_tick(ctx, tset, not coasting). if ticked <> \"\" { set reason to ticked. set done to true. }", src);
+        }
+
         // ---- launch: losing control ----
 
         [Theory]
