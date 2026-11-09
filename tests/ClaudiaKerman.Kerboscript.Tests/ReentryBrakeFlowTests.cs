@@ -97,10 +97,10 @@ namespace ClaudiaKerman.Kerboscript.Tests
             + "global ask is lexicon().\n"
             + "global extra is lexicon(\"chutes_used\", list(), \"max_temp_pct\", 0, \"max_g\", 0).\n"
             + "global ctx is lexicon(\"block\", \"reentry\").\n"
+            + "global addons is lexicon(\"claudia\", lexicon(\"hottestpart\", 0)).\n"
             + "function reentry_fresh_group { parameter g, a_, u. return g. }\n"
             + "function reentry_abort { parameter m, g. notes:add(\"abort,locked=\" + a:gimbal:lock). return list(). }\n"
             + "function reentry_stowed_titles { parameter p. return list(). }\n"
-            + "function reentry_hottest { return 0. }\n"
             + "function reentry_geo { return lexicon(). }\n"
             + "function claudia_finish { parameter c, ok, reason, ex. notes:add(\"finish,locked=\" + a:gimbal:lock + \",\" + reason). return reason. }\n";
 
@@ -192,7 +192,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void A_powered_finish_keeps_its_hold_under_chutes_on_the_wheels_and_a_chute_only_finish_still_lets_go()
         {
             var body = Body();
-            Assert.Contains("if powered and held {\n        if mains_out { lock steering to reentry_chute_aim(-ship:velocity:surface, ship:up:vector). set ctx:rcs_braking to true. }\n      } else if not braking {\n        unlock steering.", body);
+            Assert.Contains("if powered and held {\n        set ctx:rcs_braking to true.\n        if mains_out { lock steering to reentry_chute_aim(-ship:velocity:surface, ship:up:vector). }\n      } else if not braking {\n        unlock steering.", body);
             // #942's release still wins: it clears held, so no later mains-out takes the steering back.
             Assert.Contains("low:carry_on and not braking { set held to false. unlock steering.", body);
         }
@@ -218,7 +218,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
 
             var tick = (Lexicon)KosValues.FromPlain(BlockCalls.BrakeTick(new Dictionary<string, object>
             {
-                { "radar", 30.0 }, { "speed", 12.0 }, { "brake_h", 32.0 }, { "last_h", 8.0 }, { "shield_speed", 400.0 }, { "shield_agl", 3000.0 }, { "chute_last_agl", 1500.0 }, { "throttle", 1.0 }, { "off_deg", 45.0 },
+                { "radar", 30.0 }, { "speed", 12.0 }, { "brake_h", 32.0 }, { "last_h", 8.0 }, { "shield_speed", 400.0 }, { "shield_agl", 3000.0 }, { "throttle", 1.0 }, { "off_deg", 45.0 },
                 { "chutes", new List<object> { new Dictionary<string, object> { { "title", "Mk16 Parachute" }, { "state", ReentryBrake.Deployed } } } },
             }));
             Assert.Equal(BooleanValue.True, tick[new StringValue("start")]);

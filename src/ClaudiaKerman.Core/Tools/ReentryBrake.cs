@@ -24,9 +24,10 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// Metres of fall a braking burn takes to bring the downward speed <paramref name="vDown"/> (m/s) to <paramref name="soft"/>, with <paramref name="net"/> m/s²
         /// of thrust over gravity (it may be negative) and drag k v² (k in 1/m) for each <paramref name="step"/> m of height below the craft, <paramref name="ks"/>
-        /// listing k from the top step down. -1 if it doesn't get there within the steps, so not before the ground. Each step is solved exactly for its k.
+        /// listing k from the top step down. -1 if it doesn't get there within the steps, so not before the ground; with <paramref name="pastGround"/>, it goes on at the last k
+        /// instead, giving the distance it would take however far that is (-1 only if it would never stop). Each step is solved exactly for its k.
         /// </summary>
-        public static double StopDistance(double vDown, double net, IList<double> ks, double step, double soft)
+        public static double StopDistance(double vDown, double net, IList<double> ks, double step, double soft, bool pastGround = false)
         {
             var v2 = vDown * vDown;
             var goal = soft * soft;
@@ -48,7 +49,11 @@ namespace ClaudiaKerman.Core.Tools
                 v2 = next;
                 x += step;
             }
-            return -1;
+            if (!pastGround) return -1;
+            var last = ks.Count > 0 ? ks[ks.Count - 1] : 0;
+            if (last <= 1e-9) return net > 0 ? x + (v2 - goal) / (2 * net) : -1;
+            var drag = net / last;
+            return goal + drag > 0 && v2 + drag > 0 ? x + Math.Log((v2 + drag) / (goal + drag)) / (2 * last) : -1;
         }
 
         /// <summary>
@@ -64,10 +69,10 @@ namespace ClaudiaKerman.Core.Tools
             return s < 0 ? -1 : s + end + Math.Max(0, vDown);
         }
 
-        /// <summary>The last-resort height (m): where full thrust, with no margin, can only just stop the fall. -1 if not even that stops it before the ground.</summary>
+        /// <summary>The last-resort height (m): where full thrust, with no margin, can only just stop the fall. It may be above the craft: a fall already past it. -1 if full thrust would never stop it.</summary>
         public static double LastResortHeight(double vDown, double aUp, double g, IList<double> ks, double radar, double soft)
         {
-            return StopDistance(vDown, aUp - g, ks, radar / Math.Max(1, ks.Count), soft);
+            return StopDistance(vDown, aUp - g, ks, radar / Math.Max(1, ks.Count), soft, true);
         }
 
         /// <summary>
@@ -80,12 +85,12 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// True if chutes not yet fully open must give way: at the last-resort height, or for a fall the engines can't stop, by the height the mains open by at the latest
-        /// (<paramref name="chuteLastAgl"/>). Sooner, the chutes are still the craft's best hope, and a burn under chutes opening is what tumbled flight m20261109-140705-ae3a.
+        /// True if chutes not yet fully open must give way: at or past the last-resort height, or for a fall full thrust would never stop, once the air has done its work, on the shield's own
+        /// speed and height, as <see cref="DueByRadar"/> waits: high on a shallow path the fuel would go at orbital speed.
         /// </summary>
-        public static bool LastResortDue(double radar, double lastH, double chuteLastAgl)
+        public static bool LastResortDue(double radar, double lastH, double speed, double shieldSpeed, double shieldAgl)
         {
-            return lastH >= 0 ? radar <= lastH : radar <= chuteLastAgl;
+            return (lastH < 0 || radar <= lastH) && (speed <= shieldSpeed || radar <= shieldAgl);
         }
 
         /// <summary>The throttle to fly: 0 while the craft is more than <see cref="MaxOffAimDeg"/> off the aim, else <paramref name="throttle"/>.</summary>
@@ -106,12 +111,12 @@ namespace ClaudiaKerman.Core.Tools
         {
             if (ask == null) return Heights(-1, -1);
             var ks = BrakeNumbers(ask, "ks");
-            var vDown = BrakeNumber(ask, "v_down", 0);
-            var aUp = BrakeNumber(ask, "a_up", 0);
-            var g = BrakeNumber(ask, "g", 0);
-            var radar = BrakeNumber(ask, "radar", 0);
-            var soft = BrakeNumber(ask, "soft", 0);
-            return Heights(ReentryBrake.BrakeHeight(vDown, aUp, g, ks, radar, soft, BrakeNumber(ask, "end", 0)), ReentryBrake.LastResortHeight(vDown, aUp, g, ks, radar, soft));
+            var vDown = Number(ask, "v_down", 0);
+            var aUp = Number(ask, "a_up", 0);
+            var g = Number(ask, "g", 0);
+            var radar = Number(ask, "radar", 0);
+            var soft = Number(ask, "soft", 0);
+            return Heights(ReentryBrake.BrakeHeight(vDown, aUp, g, ks, radar, soft, Number(ask, "end", 0)), ReentryBrake.LastResortHeight(vDown, aUp, g, ks, radar, soft));
         }
 
         private static IDictionary<string, object> Heights(double brakeH, double lastH)
@@ -123,7 +128,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <c>ADDONS:CLAUDIA:BRAKETICK</c>, for <c>reentry</c> (#954), every tick of a powered finish. <c>chutes</c>, the addon's reading of the Chute Group aboard (each <c>title</c> and
         /// <c>state</c>: stowed, armed, semi, deployed or cut), decides the rule: none aboard is <c>why</c> "radar" (<see cref="ReentryBrake.DueByRadar"/>, as before #954); all deployed
         /// is "chutes open", the same rule; any other is "last resort" (<see cref="ReentryBrake.LastResortDue"/>). Takes <c>radar</c>, <c>speed</c>, <c>brake_h</c>, <c>last_h</c>,
-        /// <c>shield_speed</c>, <c>shield_agl</c>, <c>chute_last_agl</c>, and <c>throttle</c>, <c>off_deg</c> (the angle off the steering aim). Gives <c>error</c> "", <c>start</c>, <c>why</c>,
+        /// <c>shield_speed</c>, <c>shield_agl</c>, and <c>throttle</c>, <c>off_deg</c> (the angle off the steering aim). Gives <c>error</c> "", <c>start</c>, <c>why</c>,
         /// <c>open</c> (fully open with chutes in the group), <c>chutes</c> (each title and state, for the note) and <c>throttle</c>, guarded (<see cref="ReentryBrake.GuardThrottle"/>).
         /// With no reading (the addon's answer to a failed call) nothing starts and the throttle is 0. Pure.
         /// </summary>
@@ -147,9 +152,13 @@ namespace ClaudiaKerman.Core.Tools
                 }
             }
             var open = total > 0 && deployed == total;
-            var radar = BrakeNumber(ask, "radar", double.PositiveInfinity);
-            var byRadar = ReentryBrake.DueByRadar(radar, BrakeNumber(ask, "brake_h", -1), BrakeNumber(ask, "speed", double.PositiveInfinity), BrakeNumber(ask, "shield_speed", 0), BrakeNumber(ask, "shield_agl", 0));
-            var start = total == 0 || open ? byRadar : ReentryBrake.LastResortDue(radar, BrakeNumber(ask, "last_h", -1), BrakeNumber(ask, "chute_last_agl", 0));
+            var radar = Number(ask, "radar", double.PositiveInfinity);
+            var speed = Number(ask, "speed", double.PositiveInfinity);
+            var shieldSpeed = Number(ask, "shield_speed", 0);
+            var shieldAgl = Number(ask, "shield_agl", 0);
+            var start = total == 0 || open
+                ? ReentryBrake.DueByRadar(radar, Number(ask, "brake_h", -1), speed, shieldSpeed, shieldAgl)
+                : ReentryBrake.LastResortDue(radar, Number(ask, "last_h", -1), speed, shieldSpeed, shieldAgl);
             return new Dictionary<string, object>
             {
                 { "error", "" },
@@ -157,15 +166,8 @@ namespace ClaudiaKerman.Core.Tools
                 { "why", total == 0 ? "radar" : open ? "chutes open" : "last resort" },
                 { "open", open },
                 { "chutes", string.Join(", ", read.ToArray()) },
-                { "throttle", ReentryBrake.GuardThrottle(BrakeNumber(ask, "throttle", 0), BrakeNumber(ask, "off_deg", 0)) },
+                { "throttle", ReentryBrake.GuardThrottle(Number(ask, "throttle", 0), Number(ask, "off_deg", 0)) },
             };
-        }
-
-        private static double BrakeNumber(IDictionary<string, object> ask, string key, double fallback)
-        {
-            object value;
-            if (!ask.TryGetValue(key, out value) || value == null || value is string || value is bool || !(value is IConvertible)) return fallback;
-            return Convert.ToDouble(value, CultureInfo.InvariantCulture);
         }
 
         private static IList<double> BrakeNumbers(IDictionary<string, object> ask, string key)

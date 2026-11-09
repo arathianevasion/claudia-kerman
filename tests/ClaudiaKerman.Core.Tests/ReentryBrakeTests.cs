@@ -40,7 +40,7 @@ namespace ClaudiaKerman.Core.Tests
             return BlockCalls.BrakeTick(new Dictionary<string, object>
             {
                 { "radar", radar }, { "speed", speed }, { "brake_h", brakeH }, { "last_h", lastH },
-                { "shield_speed", 400.0 }, { "shield_agl", 3000.0 }, { "chute_last_agl", 1500.0 }, { "chutes", chutes },
+                { "shield_speed", 400.0 }, { "shield_agl", 3000.0 }, { "chutes", chutes },
                 { "throttle", throttle }, { "off_deg", off },
             });
         }
@@ -71,7 +71,6 @@ namespace ClaudiaKerman.Core.Tests
         {
             Assert.Equal(-1, ReentryBrake.StopDistance(100, -1, new double[4], 50, 2));
             Assert.Equal(-1, D(Heights(300, 1000), "brake_h"));
-            Assert.Equal(-1, D(Heights(300, 1000), "last_h"));
         }
 
         // ---- The two heights ----
@@ -164,14 +163,41 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void A_fall_the_engines_cant_stop_waits_for_the_chutes_until_the_height_the_mains_open_by()
+        public void The_last_resort_height_is_real_even_above_the_craft_so_a_fall_past_it_starts_at_once()
         {
-            // At 3,000 m today's rule would fire on a fall it can't stop; with chutes still to come it waits until 1,500 m.
-            Assert.Equal(false, Tick(3000, 300, -1, -1, Chutes("stowed"))["start"]);
-            Assert.Equal(false, Tick(1501, 300, -1, -1, Chutes("semi"))["start"]);
-            var at = Tick(1500, 300, -1, -1, Chutes("semi"));
-            Assert.Equal(true, at["start"]);
-            Assert.Equal("last resort", at["why"]);
+            // 250 m/s: (250^2 - 2^2) / (2 x 9.06) = 3449 m, worked past the ground from 1,000 m of radar, as a sample of a fall already past the height reads.
+            var heights = Heights(250, 1000);
+            Assert.Equal((250.0 * 250 - 4) / (2 * (AUp - G)), D(heights, "last_h"), 6);
+            var late = Tick(1000, 250, -1, D(heights, "last_h"), Chutes("semi"));
+            Assert.Equal(true, late["start"]);
+            Assert.Equal("last resort", late["why"]);
+        }
+
+        [Fact]
+        public void The_last_resort_height_counts_the_drag_past_the_ground_at_the_last_step()
+        {
+            // Twenty steps of 50 m at k 1e-3, then on at the same k: the closed form over the whole fall.
+            var ks = Enumerable.Repeat((object)1e-3, 20).ToList();
+            var net = AUp - G;
+            var whole = Math.Log((250.0 * 250 + net / 1e-3) / (4 + net / 1e-3)) / (2 * 1e-3);
+            Assert.True(whole > 1000, "the fall must need more than the radar");
+            Assert.Equal(whole, D(Heights(250, 1000, AUp, ks), "last_h"), 3);
+        }
+
+        [Fact]
+        public void A_fall_full_thrust_would_never_stop_is_minus_one_and_waits_for_the_air()
+        {
+            Assert.Equal(-1, D(Heights(300, 1000, 2), "last_h"));
+            Assert.Equal(false, Tick(40000, 1200, -1, -1, Chutes("stowed"))["start"]);
+            Assert.Equal(true, Tick(40000, 390, -1, -1, Chutes("stowed"))["start"]);
+            Assert.Equal(true, Tick(2900, 1200, -1, -1, Chutes("semi"))["start"]);
+        }
+
+        [Fact]
+        public void High_on_a_shallow_path_a_height_above_the_craft_still_waits_for_the_air()
+        {
+            // 1,200 m/s at 40 km: past any height, but the air hasn't done its work.
+            Assert.Equal(false, Tick(40000, 1200, -1, 79000, Chutes("stowed"))["start"]);
         }
 
         [Fact]
@@ -237,7 +263,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             var ask = new Dictionary<string, object>
             {
-                { "radar", 1700.0 }, { "speed", 150.0 }, { "brake_h", 1750.0 }, { "last_h", 1240.0 }, { "shield_speed", 400.0 }, { "shield_agl", 3000.0 }, { "chute_last_agl", 1500.0 },
+                { "radar", 1700.0 }, { "speed", 150.0 }, { "brake_h", 1750.0 }, { "last_h", 1240.0 }, { "shield_speed", 400.0 }, { "shield_agl", 3000.0 },
                 { "chutes", Chutes("deployed", "semi") }, { "throttle", 0.7 }, { "off_deg", 12.0 },
             };
             Timing.Within(2, () =>

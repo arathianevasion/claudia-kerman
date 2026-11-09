@@ -57,7 +57,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("BRAKEHEIGHTS", new OneArgsSuffix<Lexicon, Lexicon>(BrakeHeightsCall,
                 "Core Library only (reentry, every 0.25 s of a powered fall): the heights it brakes by, from v_down, a_up, g, ks, radar, soft, end; lexicon error, brake_h, last_h (-1 for a fall the engines can't stop)"));
             AddSuffix("BRAKETICK", new OneArgsSuffix<Lexicon, Lexicon>(BrakeTickCall,
-                "Core Library only (reentry, each tick of a powered finish): whether braking may start and the guarded throttle, from radar, speed, brake_h, last_h, uids, the shield and chute limits, throttle, off_deg; lexicon error, start, why, open, chutes, throttle"));
+                "Core Library only (reentry, each tick of a powered finish): whether braking may start and the guarded throttle, from radar, speed, brake_h, last_h, uids, the shield limits, throttle, off_deg; lexicon error, start, why, open, chutes, throttle"));
             AddSuffix("TURNPLAN", new OneArgsSuffix<Lexicon, Lexicon>(TurnPlanCall,
                 "Core Library only (RCS Use, once per turn): the burst turn through angle (deg) with left_s to the deadline (-1: none), or after a stop burst with corrections taken; lexicon error, rcs, wheels_s, coast_rate, spin_s, coast_s, stop_s, stop_deg, wheels_deg, turn_s, alpha, and spin, coast, stop (kOS's t, kp, ki)"));
             AddSuffix("BURSTTURN", new TwoArgsSuffix<Lexicon, Lexicon, Lexicon>(BurstTurnCall,

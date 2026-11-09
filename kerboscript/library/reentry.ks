@@ -476,11 +476,6 @@ function reentry_agl {
   return ship:altitude - max(0, ship:geoposition:terrainheight).
 }
 
-// The hottest part in percent of its limit. kOS parts have no temperature suffixes, so the addon reads them.
-function reentry_hottest {
-  return addons:claudia:hottestpart.
-}
-
 function reentry_geo {
   return lexicon("lat", round(ship:geoposition:lat, 4), "lng", round(ship:geoposition:lng, 4), "alt", round(ship:altitude)).
 }
@@ -541,13 +536,19 @@ function reentry_stowed_titles {
 }
 
 // Where to point under open chutes (#954): surface retrograde (retro: the velocity reversed); under 3 m/s, where retrograde is noise, or climbing, straight up (up_v) with no drift term. Pure.
-function reentry_chute_aim { parameter retro, up_v. return choose retro if retro:mag > 3 and vdot(retro, up_v) > 0 else up_v. }
+function reentry_chute_aim {
+  parameter retro, up_v.
+  return choose retro if retro:mag > 3 and vdot(retro, up_v) > 0 else up_v.
+}
 
 // Locks every gimbal among engs not locked already, adding its uid to locked; or frees those in locked. Read fresh each time: a part may have gone.
 function reentry_gimbals {
   parameter engs, lock_, locked.
   for e in engs {
-    if lock_ and e:hasgimbal and not e:gimbal:lock { set e:gimbal:lock to true. locked:add(e:uid). }
+    if lock_ and e:hasgimbal and not e:gimbal:lock {
+      set e:gimbal:lock to true.
+      locked:add(e:uid).
+    }
     if not lock_ and locked:contains(e:uid) { set e:gimbal:lock to false. }
   }
 }
@@ -733,7 +734,6 @@ function reentry {
   local brake_why is "".
   local chute_states is "".
   local gimbals is list().
-  local gimbals_held is false.
 
   // Opens the parachutes due now (speed m/s, agl m, pressure atm). Open parachutes steer the craft
   // themselves, except while braking.
@@ -757,7 +757,8 @@ function reentry {
       }
       // A powered finish keeps its retrograde hold under them (#954): wheels only, no site correction.
       if powered and held {
-        if mains_out { lock steering to reentry_chute_aim(-ship:velocity:surface, ship:up:vector). set ctx:rcs_braking to true. }
+        set ctx:rcs_braking to true.
+        if mains_out { lock steering to reentry_chute_aim(-ship:velocity:surface, ship:up:vector). }
       } else if not braking {
         unlock steering.
         claudia_rcs_off("steering released").
@@ -765,12 +766,15 @@ function reentry {
     }
   }.
 
-  // Core's word this tick (#954): whether braking may start and the guarded throttle. tset: the throttle wanted; off_deg: degrees off the aim. Notes each change of the group's chutes, and locks the gimbals (just once) when they're fully open.
+  // Core's word this tick (#954): whether braking may start and the guarded throttle. tset: the throttle wanted; off_deg: degrees off the aim. Notes each change of the group's chutes, and locks the gimbals while they're fully open.
   local brake_ask is {
     parameter tset is 0, off_deg is 0.
-    local b is addons:claudia:braketick(lexicon("radar", reentry_agl(), "speed", ship:velocity:surface:mag, "brake_h", brake_h, "last_h", last_h, "shield_speed", reentry_shield_speed(), "shield_agl", reentry_shield_last_agl(), "chute_last_agl", reentry_chute_last_agl(), "uids", choose group:uids if chute_mode <> "none" else list(), "throttle", tset, "off_deg", off_deg)).
-    if b:chutes <> chute_states { set chute_states to b:chutes. addons:claudia:blocknote(ctx:block, lexicon("phase", "chutes", "states", chute_states)). }
-    if b:open and not gimbals_held { set gimbals_held to true. reentry_gimbals(ship:engines, true, gimbals). }
+    local b is addons:claudia:braketick(lexicon("radar", reentry_agl(), "speed", ship:velocity:surface:mag, "brake_h", brake_h, "last_h", last_h, "shield_speed", reentry_shield_speed(), "shield_agl", reentry_shield_last_agl(), "uids", choose group:uids if chute_mode <> "none" else list(), "throttle", tset, "off_deg", off_deg)).
+    if b:chutes <> chute_states {
+      set chute_states to b:chutes.
+      addons:claudia:blocknote(ctx:block, lexicon("phase", "chutes", "states", chute_states)).
+    }
+    if b:open { reentry_gimbals(ship:engines, true, gimbals). }
     return b.
   }.
 
@@ -809,7 +813,7 @@ function reentry {
         set brake_h to heights:brake_h.
         set last_h to heights:last_h.
       }
-      set hot to reentry_hottest().
+      set hot to addons:claudia:hottestpart.
       set extra:max_temp_pct to max(extra:max_temp_pct, hot).
       set decel to (sample_speed - last_speed) / (now - sample_ut).
       set sample_ut to now.
@@ -913,7 +917,10 @@ function reentry {
       }
       local off_deg is vang(ship:facing:forevector, steer).
       set tset to brake_ask(reentry_brake_throttle(agl, -ship:verticalspeed, reentry_up_accel(ship:facing:forevector), body_:mu / (body_:radius + ship:altitude) ^ 2), off_deg):throttle.
-      if time:seconds >= trace_ut { set trace_ut to time:seconds + 1. addons:claudia:blocktrace(ctx:block, lexicon("phase", "braking", "throttle", round(tset, 2), "off_deg", round(off_deg, 1))). }
+      if time:seconds >= trace_ut {
+        set trace_ut to time:seconds + 1.
+        addons:claudia:blocktrace(ctx:block, lexicon("phase", "braking", "throttle", round(tset, 2), "off_deg", round(off_deg, 1))).
+      }
       // No chute opens under this burn once they are all out (#954); a last resort still tries one.
       if brake_why <> "chutes open" { chute_tick(last_speed, agl, body_:atm:altitudepressure(ship:altitude)). }
       local reason is claudia_tick(ctx, tset, false).
@@ -933,7 +940,7 @@ function reentry {
       extra:chutes_used:add(t).
     }
     set extra:chutes_kept to reentry_stowed_titles(ship:parts).
-    set extra:max_temp_pct to round(max(extra:max_temp_pct, reentry_hottest()), 1).
+    set extra:max_temp_pct to round(max(extra:max_temp_pct, addons:claudia:hottestpart), 1).
     set extra:max_g to round(extra:max_g, 2).
     set extra:geo to reentry_geo().
     return claudia_finish(ctx, false, fell, extra).
@@ -949,7 +956,7 @@ function reentry {
   set extra:chutes_kept to reentry_stowed_titles(ship:parts).
   set extra:touchdown_speed to round(last_speed, 1).
   set extra:max_g to round(extra:max_g, 2).
-  set extra:max_temp_pct to round(max(extra:max_temp_pct, reentry_hottest()), 1).
+  set extra:max_temp_pct to round(max(extra:max_temp_pct, addons:claudia:hottestpart), 1).
   set extra:geo to reentry_geo().
   set extra:splashed to status = "SPLASHED".
   set extra:sun_elevation_deg to round(90 - vang(ship:up:vector, body("Sun"):position), 1).
