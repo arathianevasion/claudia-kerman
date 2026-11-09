@@ -78,11 +78,13 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void A_burn_through_that_runs_out_of_the_stages_launch_may_burn_coasts_on_from_there()
+        public void A_burn_through_that_runs_out_of_the_stages_launch_may_burn_fails_as_out_of_fuel_rather_than_coasting_on()
         {
+            // #937: launch ends the block with claudia_tick's reason, as anywhere else in the ascent.
             var flight = Fly(80000, WeakUpper(46), 2);
-            Assert.True(flight.CoastAp > 80000, "coast_ap " + flight.CoastAp);
-            Assert.Equal(2, flight.LaunchEndStage);
+            Assert.False(flight.ReachesOrbit);
+            Assert.Equal("out of fuel at stage limit 2", flight.Failure);
+            Assert.Equal(0, flight.CoastAp);
         }
 
         [Fact]

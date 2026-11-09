@@ -4,6 +4,8 @@ In-game checks for #475 (ADR 0014 block migration). `launch`'s default heading i
 
 Install as in `phase-3-gate.md` (build, copy `dist/GameData/ClaudiaKerman/`, `debug_tools = true`). Results are in `block-tests.log` and `KSP.log`.
 
+8. Out of fuel (#937): a burn-through that runs out of fuel, or of stages above `stage_limit`, fails `launch` with the usual `out of fuel ...` reason (no coast on; `plan_ascent` fails the same way). Not required to be flown; a healthy burn-through in step 4 still finishes.
+
 ## Check 1: Run launch_orbit
 
 1. Pick `launch_orbit` and press **Run** (up to 900 s).

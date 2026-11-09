@@ -614,14 +614,6 @@ namespace ClaudiaKerman.Core.Tools
                 if (!coasting && Current.EndMass >= _mass && !StageOn())
                 {
                     _mass = Current.EndMass;
-                    if (_burnThrough)
-                    {
-                        // Fuel or stage_limit ended the burn-through: the craft coasts on from here, as launch does.
-                        _burnThrough = false;
-                        coasting = true;
-                        _flight.CoastAp = ap;
-                        continue;
-                    }
                     return Fail("out of fuel" + (_o.StageLimit > 0 ? " at stage limit " + _o.StageLimit : ""));
                 }
             }
