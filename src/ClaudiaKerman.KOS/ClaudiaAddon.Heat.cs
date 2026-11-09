@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Copyright (C) 2026 Andrew Watson
+// Copyright (C) 2026 Andrew Watson and mostly claude
 
 using System;
 using ClaudiaKerman.Core.Kos;
