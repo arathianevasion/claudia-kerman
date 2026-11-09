@@ -10,7 +10,7 @@ namespace ClaudiaKerman.Core.Missions
     /// What <c>launch</c> and <c>ascend</c> clear from the ground before the throttle comes up (#945): for each engine that gives thrust, the decoupler
     /// nearest it on its far side from home, when one sits under it, with the parts that go with it. It fires nothing (ADR 0014): the blocks do, with
     /// <c>claudia_fire_drop</c>. Engines in later stages give no thrust yet, so a launch craft's upper stages with stages under them name nothing. A launch
-    /// clamp is no decoupler (the adapter doesn't tag it), a heat shield is never the one named (as in <see cref="EntryStack"/>), and a decoupler is left
+    /// clamp is no decoupler (the adapter doesn't tag it), a heat shield is named like any decoupler when it is the nearest (#950; its own omni decoupler releases both neighbours), and a decoupler is left
     /// alone when what it would take holds a thrusting engine, the root or the part running the script.
     /// </summary>
     public sealed class LiftoffClear
@@ -59,7 +59,7 @@ namespace ClaudiaKerman.Core.Missions
             var level = below[engine.Id].ToList();
             while (level.Count > 0)
             {
-                var found = level.FirstOrDefault(p => p.Tags.Contains("decoupler") && !p.Tags.Contains("heat_shield"));
+                var found = level.FirstOrDefault(p => p.Tags.Contains("decoupler"));
                 if (found != null) return found;
                 level = level.SelectMany(p => below[p.Id]).ToList();
             }

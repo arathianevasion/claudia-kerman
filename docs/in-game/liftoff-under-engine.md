@@ -19,3 +19,7 @@ Run `launch_orbit` and `launch_hop`. Neither writes a `liftoff_clear` note in `K
 ## Check 3: the Duna ship
 
 Fly the Duna ship to a powered landing, then to liftoff with `launch` (Duna has air) with the TD-12 and heat shield 2 still under the aerospike. They separate before the throttle comes up and the `liftoff_clear` note reads `fired 1` (one decoupler: the TD-12, which takes heat shield 2 with it). If it lists parts after `stuck:`, bring its `drop` and `liftoff_clear` lines to the player.
+
+## Check 4: a shield directly under the engine (#950)
+
+On a copy of the `liftoff_under_engine` craft with the TD-12 removed, so the heat shield sits directly under the LV-T45, run the test as in Check 1. The shield separates before the throttle comes up and the `liftoff_clear` note reads `fired 1  stuck: ` (the shield fired, nothing stuck). If the shield stays, bring the `liftoff_clear` line to the player.

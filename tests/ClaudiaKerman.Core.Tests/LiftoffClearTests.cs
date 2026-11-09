@@ -38,6 +38,11 @@ namespace ClaudiaKerman.Core.Tests
             {
                 return Add("HeatShield1", parent, "heat_shield", "decoupler");
             }
+
+            public uint BareShield(uint parent)
+            {
+                return Add("HeatShield1", parent, "heat_shield");
+            }
         }
 
         private static List<string> Names(IEnumerable<SnapshotPart> parts)
@@ -77,7 +82,7 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void Parts_under_the_engine_with_no_decoupler_name_nothing()
+        public void An_engine_on_a_shield_names_the_shield()
         {
             var c = new Craft();
             var pod = c.Add("mk1pod.v2", null, "command");
@@ -85,7 +90,44 @@ namespace ClaudiaKerman.Core.Tests
             var shield = c.Shield(engine);
             c.Add("fuelTank", shield);
 
-            Assert.Empty(LiftoffClear.Of(c.Parts, null, null).Decouplers);
+            var clear = LiftoffClear.Of(c.Parts, null, null);
+
+            Assert.Equal(new[] { shield }, clear.Decouplers.Select(p => p.Id));
+            Assert.Equal(new[] { "HeatShield1", "fuelTank" }, Names(clear.Gone));
+            Assert.Empty(clear.Stuck);
+        }
+
+        [Fact]
+        public void An_engine_over_a_shield_over_a_decoupler_names_the_shield()
+        {
+            var c = new Craft();
+            var pod = c.Add("mk1pod.v2", null, "command");
+            var engine = c.Lit("liquidEngine", pod);
+            var shield = c.Shield(engine);
+            var dec = c.Add("Decoupler.1", shield, "decoupler");
+            c.Add("fuelTank", dec);
+
+            var clear = LiftoffClear.Of(c.Parts, null, null);
+
+            Assert.Equal(new[] { shield }, clear.Decouplers.Select(p => p.Id));
+            Assert.Equal(new[] { "HeatShield1", "Decoupler.1", "fuelTank" }, Names(clear.Gone));
+            Assert.Empty(clear.Stuck);
+        }
+
+        [Fact]
+        public void A_shield_with_no_decoupler_of_its_own_stays_stuck()
+        {
+            var c = new Craft();
+            var pod = c.Add("mk1pod.v2", null, "command");
+            var engine = c.Lit("liquidEngine", pod);
+            var shield = c.BareShield(engine);
+            c.Add("fuelTank", shield);
+
+            var clear = LiftoffClear.Of(c.Parts, null, null);
+
+            Assert.Empty(clear.Decouplers);
+            Assert.Empty(clear.Gone);
+            Assert.Equal(new[] { "HeatShield1", "fuelTank" }, Names(clear.Stuck));
         }
 
         [Fact]
@@ -227,13 +269,12 @@ namespace ClaudiaKerman.Core.Tests
             var c = new Craft();
             var pod = c.Add("mk1pod.v2", null, "command");
             var engine = c.Lit("liquidEngine", pod);
-            var shield = c.Shield(engine);
-            c.Add("fuelTank", shield);
+            c.Add("fuelTank", engine);
 
             var clear = LiftoffClear.Of(c.Parts, null, null);
 
             Assert.Empty(clear.Decouplers);
-            Assert.Equal(new[] { "HeatShield1", "fuelTank" }, Names(clear.Stuck));
+            Assert.Equal(new[] { "fuelTank" }, Names(clear.Stuck));
         }
 
         [Fact]
