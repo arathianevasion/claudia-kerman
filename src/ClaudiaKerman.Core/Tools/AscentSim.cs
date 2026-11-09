@@ -530,12 +530,6 @@ namespace ClaudiaKerman.Core.Tools
                 var stage = Current;
                 var thrust = stage != null ? stage.Thrust(atm, _o.SeaLevelAtm) : 0;
 
-                // launch.ks: a burn-through ends the launch once the periapsis clears the air.
-                if (_burnThrough && pe > top)
-                {
-                    _flight.LaunchEndStage = stage != null ? stage.Number : -1;
-                    return Circularize();
-                }
                 if (coasting)
                 {
                     if (h > top)
@@ -559,7 +553,19 @@ namespace ClaudiaKerman.Core.Tools
                     if (throttle == 0 || _burnThrough)
                     {
                         // The first cutoff, and each step of a burn-through until the coast works again (CoastAp set latches it): Core decides, as launch does.
-                        if (_flight.CoastAp == 0) _burnThrough = BurnsThrough(ap, toAp, h);
+                        if (_flight.CoastAp == 0)
+                        {
+                            var decision = BurnsThrough(ap, toAp, h, vertical, pe, q);
+                            if ((bool)decision["done"])
+                            {
+                                // launch.ks: Core ends a burn-through whose periapsis clears the air (no reason) or that fell back into it (#936, #939).
+                                var fail = (string)decision["fail"];
+                                if (fail != "") return Fail(fail);
+                                _flight.LaunchEndStage = stage != null ? stage.Number : -1;
+                                return Circularize();
+                            }
+                            _burnThrough = (bool)decision["burn_through"];
+                        }
                         if (_burnThrough && throttle == 0) throttle = 1;
                         coasting = !_burnThrough;
                         if (coasting && _flight.CoastAp == 0) _flight.CoastAp = ap;
@@ -594,7 +600,7 @@ namespace ClaudiaKerman.Core.Tools
 
                 if (!coasting)
                 {
-                    if (vertical < 0 && h < top) return Fail("vertical speed fell below 0 while burning, under the atmosphere top");
+                    if (vertical < 0 && h < top && !_burnThrough) return Fail("vertical speed fell below 0 while burning, under the atmosphere top");
                     if (turnStartAlt >= 0 && h < top && _flight.Lit[_flight.Lit.Count - 1].Suborbital) _flight.MinVerticalSpeed = Math.Min(_flight.MinVerticalSpeed, vertical);
                     if (_o.Track && h >= nextTrack)
                     {
@@ -613,6 +619,13 @@ namespace ClaudiaKerman.Core.Tools
                 // claudia_tick's autostage: on flameout, the next stage, never below stage_limit.
                 if (!coasting && Current.EndMass >= _mass && !StageOn())
                 {
+                    // The same step can empty the last stage and clear the periapsis: launch's periapsis end comes first, so the next tick ends it.
+                    if (_burnThrough && _flight.CoastAp == 0)
+                    {
+                        double apAfter, peAfter, toApAfter;
+                        Orbit(out apAfter, out peAfter, out toApAfter);
+                        if (peAfter > top) continue;
+                    }
                     _mass = Current.EndMass;
                     return Fail("out of fuel" + (_o.StageLimit > 0 ? " at stage limit " + _o.StageLimit : ""));
                 }
@@ -620,11 +633,11 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// Whether launch burns through at this step, from <see cref="LaunchBurnThrough"/>: the one decision, given launch's inputs from the sim's own orbit
+        /// Whether launch burns through at this step, and whether that burn-through is over (<c>done</c>, with a <c>fail</c> reason or none), from <see cref="LaunchBurnThrough"/>: the one decision, given launch's inputs from the sim's own orbit
         /// (the stage table as <c>claudia_burn_stages</c> gives it, vacuum figures from the stage burning now down to stage_limit). The sim has no torque or
         /// inertia data, so it gives no turn figures: the decision counts no turn time.
         /// </summary>
-        private bool BurnsThrough(double ap, double toAp, double altitude)
+        private IDictionary<string, object> BurnsThrough(double ap, double toAp, double altitude, double vspeed, double pe, double q)
         {
             var energy = (_vx * _vx + _vy * _vy) / 2 - _o.Gm / R;
             var stages = new List<object>();
@@ -642,8 +655,9 @@ namespace ClaudiaKerman.Core.Tools
                 { "burning", _burnThrough }, { "ap", ap }, { "sma", energy < 0 ? -_o.Gm / (2 * energy) : -1.0 }, { "gm", _o.Gm }, { "radius", _o.Radius },
                 { "eta_ap", double.IsNaN(toAp) ? 0.0 : toAp }, { "altitude", altitude }, { "target_ap", _o.TargetAp }, { "atm_height", _o.AtmosphereHeight },
                 { "angle", 0.0 }, { "stages", stages },
+                { "vspeed", vspeed }, { "pe", pe }, { "q", q },
             });
-            return (bool)answer["burn_through"];
+            return answer;
         }
 
         private static Dictionary<string, object> Row(double dv, double duration, double isp)

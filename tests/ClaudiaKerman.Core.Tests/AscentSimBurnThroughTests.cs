@@ -87,6 +87,35 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(0, flight.CoastAp);
         }
 
+        /// <summary>The 2000 kN first stage and two LV-N-like stages of <paramref name="kn"/> kN (800 s): weaker than 0.19 g's 60 kN, so the climb sinks.</summary>
+        private static List<AscentStage> SinkingUpper(double kn)
+        {
+            return new List<AscentStage> { Stage(3, 2000, 1800, 310, 100, 46), Stage(2, kn, kn, 800, 32.2, 28.2), Stage(1, kn, kn, 800, 26.2, 22) };
+        }
+
+        [Fact]
+        public void A_burn_through_descending_past_the_fall_pressure_with_its_periapsis_in_the_air_fails_with_launchs_reason()
+        {
+            // #939: the one decision's guard (#936), not the sim's own check: the reason is launch's, naming the periapsis and q.
+            var flight = Fly(80000, SinkingUpper(20));
+            Assert.False(flight.ReachesOrbit);
+            Assert.StartsWith("fell back into the atmosphere: periapsis ", flight.Failure);
+            Assert.Contains("at or below 70000 m, q ", flight.Failure);
+            Assert.DoesNotContain("vertical speed", flight.Failure);
+        }
+
+        [Fact]
+        public void A_burn_through_descending_under_the_air_top_with_q_at_or_under_the_fall_pressure_keeps_burning()
+        {
+            // 54 kN sinks (it falls at up to 250 m/s) in air thinner than the fall pressure. The sim's own "vertical speed below 0" check used to fail it
+            // at once; now the q guard alone decides, so it burns on (and runs into the launch time limit, as a stage this weak would).
+            var flight = Fly(80000, SinkingUpper(54));
+            Assert.True(flight.MinVerticalSpeed < -100, "min vertical speed " + flight.MinVerticalSpeed);
+            Assert.DoesNotContain("fell back", flight.Failure);
+            Assert.DoesNotContain("vertical speed", flight.Failure);
+            Assert.StartsWith("still climbing", flight.Failure);
+        }
+
         [Fact]
         public void A_craft_that_coasts_is_flown_as_before()
         {
