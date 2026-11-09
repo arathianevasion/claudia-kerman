@@ -291,8 +291,8 @@ namespace ClaudiaKerman.Adapter
         {
             switch (state)
             {
-                case ModuleParachute.deploymentStates.STOWED: return "stowed";
-                case ModuleParachute.deploymentStates.ACTIVE: return "armed";
+                case ModuleParachute.deploymentStates.STOWED: return ReentryBrake.Stowed;
+                case ModuleParachute.deploymentStates.ACTIVE: return ReentryBrake.Armed;
                 case ModuleParachute.deploymentStates.SEMIDEPLOYED: return "semi";
                 case ModuleParachute.deploymentStates.DEPLOYED: return ReentryBrake.Deployed;
                 default: return ReentryBrake.Cut;

@@ -19,5 +19,7 @@ It has the Mk16 and an LV-T45 (with a gimbal) from `reentry_duna_powered`, flown
 
 - With chutes that never open (chute_mode "safe" but the chute gone, or still packed by 1,500 m), the burn starts anyway at the last-resort height: the note reads `last resort`.
 - The 30° guard has no hysteresis: thrust may chatter when `off_deg` sits near 30, or drop to 0 for a moment at the 3 and 5 m/s aim flips. Note it if the trace shows the throttle going in and out.
+- A chute first called at its last-call height reads packed on that tick, so on a fall over about 160 m/s (a_up 12) the last resort can fire as it opens. A chute under 250 m/s in enough air has been called well before then, so this should only be a chute that truly failed. Note any `last resort` within a second of the chute's `armed` note.
+- At 80% of the deploy height the canopy may still be filling on a fast fall (200 m is under 2 s at 140 m/s), so a last resort can fire under it. If it does on a healthy chute, say so on #954: the 80% is unflown.
 - How long a real canopy takes to fill is not measured: the 8 s comes from the part's `deploymentSpeed` of 0.12. Compare the `deployed` note with the speed in the log.
 - A `chutes: "none"` flight (`reentry_duna_powered`) brakes as before and opens nothing.

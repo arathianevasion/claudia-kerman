@@ -233,10 +233,10 @@ namespace ClaudiaKerman.Core.Tests
 
         [Theory]
         [InlineData(0, 0, false)] // the first tick fully open
-        [InlineData(1, 0.5, false)] // not long enough to call it settled, however steady
-        [InlineData(3, 20, false)] // still slowing hard
-        [InlineData(3, 0.5, true)] // settled
-        [InlineData(3, -0.5, true)] // settled, the noise either way
+        [InlineData(3, 0.5, false)] // not long enough to call it settled, however steady
+        [InlineData(5, 20, false)] // still slowing hard
+        [InlineData(5, 0.5, true)] // settled
+        [InlineData(5, -0.5, true)] // settled, the noise either way
         [InlineData(7.9, 20, false)]
         [InlineData(8.5, 20, true)] // out of time to wait
         public void Fully_open_the_radar_rule_waits_until_the_speed_settles_or_about_8_seconds(double openS, double decel, bool expected)
@@ -244,6 +244,13 @@ namespace ClaudiaKerman.Core.Tests
             var tick = Tick(30, 12, 32, 13, Chutes("deployed"), openS: openS, decel: decel);
             Assert.Equal(expected, tick["start"]);
             if (expected) Assert.Equal("chutes open", tick["why"]);
+        }
+
+        [Fact]
+        public void A_fast_fall_balanced_on_a_canopy_just_begun_to_fill_doesnt_read_as_settled()
+        {
+            // Terminal on the half-open canopy: the slowing reads near nothing while the full canopy has barely started.
+            Assert.Equal(false, Tick(1000, 140, -1, 1151, ChutesAt(1000, false, "deployed"), openS: 3, decel: 0.2)["start"]);
         }
 
         [Fact]
