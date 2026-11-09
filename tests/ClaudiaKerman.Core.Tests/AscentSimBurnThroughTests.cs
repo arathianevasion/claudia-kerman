@@ -108,12 +108,14 @@ namespace ClaudiaKerman.Core.Tests
         public void A_burn_through_descending_under_the_air_top_with_q_at_or_under_the_fall_pressure_keeps_burning()
         {
             // 54 kN sinks (it falls at up to 250 m/s) in air thinner than the fall pressure. The sim's own "vertical speed below 0" check used to fail it
-            // at once; now the q guard alone decides, so it burns on (and runs into the launch time limit, as a stage this weak would).
+            // at once; now the q guard alone decides, so it burns on. launch adds a burn-through's own time back onto an "auto" max_duration (launch.ks, #932), so the sim no longer counts it against 900 s either:
+            // the flight carries on until the 3600 s coast cap, which the sim keeps (#939 notes).
             var flight = Fly(80000, SinkingUpper(54));
             Assert.True(flight.MinVerticalSpeed < -100, "min vertical speed " + flight.MinVerticalSpeed);
             Assert.DoesNotContain("fell back", flight.Failure);
             Assert.DoesNotContain("vertical speed", flight.Failure);
-            Assert.StartsWith("still climbing", flight.Failure);
+            Assert.DoesNotContain("still climbing", flight.Failure);
+            Assert.StartsWith("still coasting after 3600 s", flight.Failure);
         }
 
         [Fact]

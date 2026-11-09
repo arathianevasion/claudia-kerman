@@ -513,10 +513,12 @@ namespace ClaudiaKerman.Core.Tools
             var coasting = false;
             var nextTrack = 1000.0;
             var dt = _o.Step;
+            var burnThroughSeconds = 0.0; // launch adds a burn-through's own time back onto an "auto" max_duration (#932).
 
             while (true)
             {
-                if (_t > MaxLaunchSeconds) return Fail("still climbing after " + MaxLaunchSeconds + " s");
+                if (_burnThrough) burnThroughSeconds += dt;
+                if (_t - burnThroughSeconds > MaxLaunchSeconds) return Fail("still climbing after " + MaxLaunchSeconds + " s");
                 double atm, density, sound, ap, pe, toAp, horizontal, vertical;
                 var h = Altitude;
                 _air.Air(h, out atm, out density, out sound);
