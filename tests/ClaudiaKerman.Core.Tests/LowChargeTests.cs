@@ -87,7 +87,7 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void An_empty_ask_changes_nothing()
+        public void A_failed_call_reads_as_full_charge()
         {
             var low = BlockCalls.LowCharge(null);
             Assert.Equal("", low["error"]);
