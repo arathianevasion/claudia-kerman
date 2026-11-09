@@ -151,7 +151,7 @@ namespace ClaudiaKerman.Core.Tests
             snapshot.Craft.Parts.Insert(0, path[0]);
         }
 
-        /// <summary>The fixture as a current recording has it: the TD-12 lets go of the heat shield on its top node (<see cref="SnapshotPart.Releases"/>, #924).</summary>
+        /// <summary>The fixture with the TD-12 letting go of the heat shield on its top node, as the adapter reads <see cref="SnapshotPart.Releases"/> live (#924); the recording's JSON doesn't carry it.</summary>
         private static GameSnapshot MunShot()
         {
             var snapshot = Craft();
@@ -167,6 +167,17 @@ namespace ClaudiaKerman.Core.Tests
             RootAt(tank, LanderTank);
             Assert.Equal(1115, pod, 0);
             Assert.Equal(pod, ReturnKg(tank), 6);
+        }
+
+        [Fact]
+        public void AShieldlessReturnReadsWhatStagingKeeps_NotTheLaunchStack()
+        {
+            var snapshot = Craft();
+            snapshot.Craft.Parts.Single(p => p.Id == 558691162).Tags.Clear(); // the shield's tags: heat_shield, decoupler, aero_stabiliser
+            var home = Assert.Single(Group(snapshot, KerbinOnly()).Entries);
+            Assert.Equal(1415, home.MassKg, 0);
+            Assert.Equal(8.5, home.TouchdownSpeed, 1);
+            Assert.False(Group(snapshot, KerbinOnly()).ReturnUncovered);
         }
 
         [Fact]

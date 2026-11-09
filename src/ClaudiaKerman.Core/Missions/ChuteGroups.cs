@@ -302,7 +302,7 @@ namespace ClaudiaKerman.Core.Missions
                 entry.Chutes.AddRange(Choose(aboard, entry.Last));
                 aboard.RemoveAll(entry.Chutes.Contains);
                 // A Return comes down as EntryCraft says (#930): what it keeps, less the Entry Shield when that jettisons, whichever part is the root.
-                entry.MassKg = entry.Return ? ReturnMassKg(snapshot, keeper, found.Count - i + tail)
+                entry.MassKg = entry.Return ? ReturnMassKg(snapshot, keeper, found.Count - i + tail, stack, remote, processorPartId)
                     : MassAfter(snapshot, sequences.Skip(first).Take(entry.Step - first).Sum(s => Math.Max(0, s.DeltaV)));
                 Judge(snapshot, entry);
                 // An entry that needs them keeps its stack, so it flies with that stack's chutes and engines, and so do the Entries after (ADR 0020).
@@ -323,9 +323,18 @@ namespace ClaudiaKerman.Core.Missions
             return groups;
         }
 
-        /// <summary>The mass a Return touches down at: <see cref="EntryCraft"/>'s kept craft less its jettisoned shield; the whole craft's when that can't be read.</summary>
-        private static double ReturnMassKg(GameSnapshot snapshot, uint? keeper, int number)
+        /// <summary>
+        /// The mass a Return touches down at: <see cref="EntryCraft"/>'s kept craft less its jettisoned shield; the whole craft's when that can't be read.
+        /// With no Entry Shield EntryCraft keeps the whole craft, launch stack included, so the craft that stays after Staging separates is the figure.
+        /// </summary>
+        private static double ReturnMassKg(GameSnapshot snapshot, uint? keeper, int number, EntryStack stack, bool remote, uint? processorPartId)
         {
+            if (stack.Shield == null)
+            {
+                var leaving = new HashSet<uint>(ChildVessels.Staging(snapshot, remote, processorPartId).Separations.SelectMany(s => s.PartIds));
+                var stayingKg = snapshot.Craft.Parts.Where(p => !leaving.Contains(p.Id)).Sum(p => p.MassT) * 1000;
+                return stayingKg > 0 ? stayingKg : snapshot.Craft.MassTonnes * 1000;
+            }
             var craft = EntryCraft.Of(snapshot, null, keeper, number, true, true);
             var kg = (craft.KeptT - (craft.ShieldDropped != null ? craft.ShieldDropped.MassT : 0)) * 1000;
             return kg > 0 ? kg : snapshot.Craft.MassTonnes * 1000;
