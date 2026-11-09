@@ -28,14 +28,14 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void An_empty_first_pod_gives_way_to_a_crewed_hitchhiker()
+        public void A_crewed_stock_hitchhiker_is_not_home_because_it_is_not_a_command_part()
         {
             var parts = new List<SnapshotPart>
             {
                 Part(1, null, 1, 0, "command", "crew_seat"),
-                Part(2, 1, 4, 2, "command", "crew_seat"),
+                Part(2, 1, 4, 2, "crew_seat"),
             };
-            Assert.Equal(2u, PartTree.CommandPart(parts, null));
+            Assert.Equal(1u, PartTree.CommandPart(parts, null));
         }
 
         [Fact]
