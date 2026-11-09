@@ -1510,7 +1510,7 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// <see cref="EntryDropCall"/>'s refusal for <c>reentry</c> (#815): "" unless <c>separate</c> is "auto" and the craft is above its body's air. At block
-        /// start a stack it can't drop, unless the Entry lands on its engines (<see cref="EntryFinish.Decide"/>, as <c>ENTRYFINISH</c> reads it); after
+        /// start a stack it can't drop, unless the Entry lands on its engines (<see cref="EntryFinish.For"/>, as <c>ENTRYFINISH</c> reads it); after
         /// its drop (<c>drop_error</c> given) any stack still on.
         /// </summary>
         private static string StackRefusal(IDictionary<string, object> ask, GameSnapshot snapshot, EntryStack stack, int number, Func<uint, string> uidOf)
@@ -1562,7 +1562,7 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// <c>ADDONS:CLAUDIA:ENTRYFINISH</c> (#824), for <c>reentry</c> at the drop point (#815): <see cref="EntryFinish.Decide"/> for the Entry in hand, its drop
+        /// <c>ADDONS:CLAUDIA:ENTRYFINISH</c> (#824), for <c>reentry</c> at the drop point (#815): <see cref="EntryFinish.For"/> for the Entry in hand, its drop
         /// and Last Entry as <see cref="EntryDropCall"/> and <see cref="ChuteGroupCall"/> have them. Takes <c>home</c>, <c>chutes</c> (false: none will open) and
         /// <c>drop</c> (false: the block keeps its stack), <c>jettison_stage</c> (for the craft it compares) and <c>core</c> (the kOS UID of the part running the script). Gives <c>error</c> "", <c>powered</c>, <c>keeps_stack</c> (a powered finish that keeps the stack; with legs above the shield it drops, #940), <c>speed</c> (m/s with that drop and those chutes; -1 unknown),
         /// <c>kept_speed</c> (m/s for the craft that stays; -1 on chutes), <c>engines</c> and <c>spare</c> (kOS UIDs) and <c>why</c> for the log.
