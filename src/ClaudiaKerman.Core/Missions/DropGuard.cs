@@ -17,6 +17,7 @@ namespace ClaudiaKerman.Core.Missions
     /// after the one in hand, the Margin Check's per-leg figure with no margin. No Mission Plan, no check. Only the sequences of the
     /// vessel the drop is on count: a Child Vessel's own sequences are not the main craft's, and the main craft's are not the child's.
     /// The player's own staging is never gated, and no option passes it; Claudia revises the Mission Plan first, which lowers the need.
+    /// <b>Reentry is not gated (#944).</b> Its drop is the landing: the craft is already falling and can't revise the plan, so landing safely comes first. It notes the guard's reason as a blocknote and fires.
     /// </para>
     /// </summary>
     public static class DropGuard

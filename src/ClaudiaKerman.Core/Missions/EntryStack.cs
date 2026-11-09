@@ -50,6 +50,27 @@ namespace ClaudiaKerman.Core.Missions
         public readonly List<SnapshotPart> Stuck = new List<SnapshotPart>();
         /// <summary>Those of <see cref="Decouplers"/> whose firing lets go of the part above them (<see cref="SnapshotPart.Releases"/>, #924): they go with the stack. A TD-12 lets go of what is on its top node.</summary>
         private readonly List<SnapshotPart> _goingDecouplers = new List<SnapshotPart>();
+        /// <summary>Parts tagged landing_leg stand on the home side of the shield (#940).</summary>
+        public bool LegsAbove;
+        /// <summary>The decoupler between the shield and the part above it (#940), never another shield; null for none. <c>reentry</c> fires it first (<c>ENTRYDROP</c>'s <c>jettison_first</c>): the shield's own omni module would leave it on the engine.</summary>
+        public SnapshotPart DecouplerAbove;
+        /// <summary><see cref="DecouplerAbove"/> lets go of the part above it, so it leaves with the shield.</summary>
+        public bool DecouplerAboveGoes;
+
+        /// <summary>Whether the stack takes the root or the part running the script (<paramref name="core"/>, null when not known): <c>reentry</c> won't drop those.</summary>
+        public bool TakesCore(uint? core)
+        {
+            return Gone.Any(p => p.ParentId == null || p.Id == core);
+        }
+
+        /// <summary>
+        /// Whether this stack drops even on a powered finish (#940, ADR 0020): a landing drops everything below its legs, as <c>land</c> does its Underhang. It needs
+        /// legs above the shield and a stack the Entry can drop: one it can't (<see cref="Stuck"/>, or <see cref="TakesCore"/>) is kept, as with no legs.
+        /// </summary>
+        public bool DropsBelowLegs(uint? core)
+        {
+            return LegsAbove && Parts.Count > 0 && Stuck.Count == 0 && !TakesCore(core);
+        }
 
         /// <summary>Everything that leaves the craft when the Entry drops its stack: <see cref="Gone"/> and the decouplers that go with it (#924). The one rule for the craft that enters.</summary>
         public IEnumerable<SnapshotPart> Leaves
@@ -74,8 +95,19 @@ namespace ClaudiaKerman.Core.Missions
             var walker = new Walker(byId, anchor, PartTree.TowardHome(parts, home));
             var seen = new HashSet<uint>();
             foreach (var part in parts)
-                if (part.Id != anchor) stack.Classify(part, walker.Up(part), seen);
+            {
+                if (part.Id == anchor) continue;
+                var way = walker.Up(part);
+                stack.Classify(part, way, seen);
+                if (!way.Under && part.Tags.Contains("landing_leg")) stack.LegsAbove = true;
+            }
             stack._goingDecouplers.AddRange(stack.Decouplers.Where(walker.LetsGoAbove));
+            var above = walker.Parent(stack.Shield);
+            if (above != null && above.Tags.Contains("decoupler") && !above.Tags.Contains("heat_shield"))
+            {
+                stack.DecouplerAbove = above;
+                stack.DecouplerAboveGoes = walker.LetsGoAbove(above);
+            }
             return stack;
         }
 
@@ -192,7 +224,8 @@ namespace ClaudiaKerman.Core.Missions
                 return _toward.TryGetValue(decoupler.Id, out next) && next.HasValue && decoupler.Releases.Contains(next.Value);
             }
 
-            private SnapshotPart Parent(SnapshotPart part)
+            /// <summary>The neighbour of <paramref name="part"/> toward home; null at home.</summary>
+            public SnapshotPart Parent(SnapshotPart part)
             {
                 SnapshotPart parent;
                 uint? next;

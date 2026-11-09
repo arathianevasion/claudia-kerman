@@ -55,6 +55,37 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 Run("set ship_parts to list(pod, service).\n print reentry_shield_drop(\"shield\", parts_of). print fired:join(\",\").\n"));
         }
 
+        /// <summary>
+        /// The Duna ship (#940): aerospike, TD-12, HeatShield1. The TD-12 fired takes the shield with it off the engine; the shield's own omni module would leave the TD-12 on the engine.
+        /// ship:parts here lists the shield before the TD-12, the order that could fire it first.
+        /// </summary>
+        private const string EngineDecouplerShield =
+            "local aero is mk(\"aero\", \"toroidalAerospike\", list(\"ModuleEnginesFX\"), \"\", list()).\n"
+            + "local ring is mk(\"ring\", \"Decoupler.1\", list(\"ModuleDecouple\"), aero, list(\"ring\", \"s2\")).\n"
+            + "local s2 is mk(\"s2\", \"HeatShield1\", list(\"ModuleAblator\", \"ModuleDecouple\"), ring, list(\"s2\")).\n"
+            + "set ship_parts to list(aero, s2, ring).\n";
+
+        [Fact]
+        public void The_decoupler_above_the_shield_is_fired_first_and_the_shields_own_module_isnt_needed()
+        {
+            Assert.Equal(new[] { "1", "ring" },
+                Run(EngineDecouplerShield + "print reentry_shield_drop(\"s2\", parts_of, \"ring\"). print fired:join(\",\").\n"));
+        }
+
+        [Fact]
+        public void With_no_decoupler_above_it_the_shields_own_module_fires_as_today()
+        {
+            Assert.Equal(new[] { "1", "shield" },
+                Run("print reentry_shield_drop(\"shield\", parts_of, \"\"). print fired:join(\",\").\n"));
+        }
+
+        [Fact]
+        public void A_decoupler_named_first_that_has_already_left_doesnt_stop_the_shields_own_module()
+        {
+            Assert.Equal(new[] { "1", "shield" },
+                Run("print reentry_shield_drop(\"shield\", parts_of, \"left already\"). print fired:join(\",\").\n"));
+        }
+
         [Fact]
         public void A_decoupler_off_the_ship_is_not_fired_by_claudia_fire_decoupler_and_one_aboard_is()
         {

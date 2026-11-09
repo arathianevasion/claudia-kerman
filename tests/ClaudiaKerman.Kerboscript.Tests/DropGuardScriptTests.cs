@@ -135,7 +135,19 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var refusal = body.IndexOf("claudia_drop_refusal(plan)", StringComparison.Ordinal);
             Assert.True(refusal > 0);
             Assert.True(refusal < body.IndexOf("claudia_fire_decoupler(", StringComparison.Ordinal));
-            Assert.Contains("return refused.", body);
+            Assert.Contains("if guarded { return refused. }", body);
+            Assert.Contains("parameter ctx, plan, guarded is true.", body);
+            // The reason is noted before the guard decides whether it stops the drop (#944).
+            Assert.True(body.IndexOf("blocknote(", StringComparison.Ordinal) < body.IndexOf("if guarded", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void Deorbit_and_drop_parts_stay_guarded_and_only_reentry_fires_past_the_guard()
+        {
+            Assert.Contains("claudia_fire_drop(ctx, separation)", Source("deorbit"));
+            Assert.Contains("claudia_fire_drop(ctx, plan)", Source("drop_parts"));
+            Assert.DoesNotContain("claudia_fire_drop(ctx, separation, false)", Source("deorbit"));
+            Assert.DoesNotContain("claudia_fire_drop(ctx, plan, false)", Source("drop_parts"));
         }
 
         [Fact]
@@ -187,12 +199,12 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Fact]
-        public void Reentry_takes_a_refusal_as_a_failed_drop_and_flies_on()
+        public void Reentry_fires_its_drop_past_the_guard_and_the_reason_is_only_noted()
         {
             var body = Function("reentry", "function reentry {");
-            var fire = body.IndexOf("set drop_error to claudia_fire_drop(ctx, drop)", StringComparison.Ordinal);
+            var fire = body.IndexOf("set drop_error to claudia_fire_drop(ctx, drop, false)", StringComparison.Ordinal);
             Assert.True(fire > 0);
-            // The refusal is drop_error, which ends the block only above the atmosphere (ENTRYDROP's refusal after the drop, #815); the fall otherwise goes on.
+            // #944: landing first; the guard's reason is a blocknote and the drop fires. drop_error is left for a drop that really didn't separate.
             Assert.True(fire < body.IndexOf("\"drop_error\", drop_error", StringComparison.Ordinal));
             Assert.DoesNotContain("claudia_drop_refusal(", body);
         }

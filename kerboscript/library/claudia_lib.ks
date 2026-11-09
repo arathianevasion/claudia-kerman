@@ -570,13 +570,13 @@ function claudia_drop_refusal {
 
 // Fires a drop plan's decouplers, lets the parts leave, notes the names of those that really left in
 // ctx:dropped and takes the craft as it now is (a drop the block chose is not part loss). Returns ""
-// or why nothing fired: "nothing separated: the decouplers did not fire", or a refused drop (fires nothing).
+// or why nothing fired: "nothing separated: the decouplers did not fire", or a refused drop (fires nothing). guarded false (reentry, #944): the guard's reason is noted and the drop fires anyway.
 function claudia_fire_drop {
-  parameter ctx, plan.
+  parameter ctx, plan, guarded is true.
   local refused is claudia_drop_refusal(plan).
   if refused <> "" {
     addons:claudia:blocknote(ctx:block, lexicon("phase", "drop", "note", refused)).
-    return refused.
+    if guarded { return refused. }
   }
   local before is ship:parts:length.
   local gone_uids is claudia_drop_uids(plan).

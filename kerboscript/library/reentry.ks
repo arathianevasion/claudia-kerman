@@ -507,16 +507,16 @@ function reentry_shield_modules {
   return found.
 }
 
-// Fires the shield's decouplers one at a time; returns how many events it fired. The list is rebuilt from
+// Fires the shield's decouplers one at a time, the part first (ENTRYDROP's jettison_first, #940) before any other; returns how many events it fired. The list is rebuilt from
 // parts_of() (a delegate to the craft's parts) before each event, so a module on a part that has left, by
 // an earlier event splitting the craft, is not there to fire (#558).
 function reentry_shield_drop {
-  parameter shield_uid, parts_of.
+  parameter shield_uid, parts_of, first is "".
   local fired is list().
   until false {
     local next is "".
     for drop in reentry_shield_modules(shield_uid, parts_of()) {
-      if next:istype("String") and not fired:contains(drop:module:part:uid + drop:event) {
+      if not fired:contains(drop:module:part:uid + drop:event) and (next:istype("String") or drop:module:part:uid = first) {
         set next to drop.
       }
     }
@@ -687,7 +687,7 @@ function reentry {
   // An abort before the drop keeps the stack, and reads the Chute Group (ADR 0019) fresh: none is chosen yet.
   local ask is lexicon("none", opt:chutes = "none", "engine", false).
   // Core decides one late trim toward the Mission's landing target (#892); anything else flies nothing, the reason in the log, and the block goes on.
-  claudia_fly_correction(ctx, addons:claudia:entrytrim(lexicon("to_air", entry_in, "home", entry_ask:home, "has_node", hasnode, "stage_limit", opt:stage_limit, "dv_left", claudia_dv_recounted(), "isp", claudia_engine_isp()))).
+  claudia_fly_correction(ctx, addons:claudia:entrytrim(lexicon("to_air", entry_in, "home", entry_ask:home, "core", entry_ask:core, "has_node", hasnode, "stage_limit", opt:stage_limit, "dv_left", claudia_dv_recounted(), "isp", claudia_engine_isp()))).
   if entry_in > below:lead {
     set entry_in to reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
     local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).
@@ -700,8 +700,8 @@ function reentry {
       return claudia_finish(ctx, false, below:error, extra).
     }
   }
-  // Its engines or its chutes (#824): Core decides, with this drop and these chutes; the block lights the engines. A powered entry drops nothing.
-  local finish is addons:claudia:entryfinish(lexicon("home", entry_ask:home, "chutes", entry_ask:chutes, "drop", opt:separate <> "none", "jettison_stage", opt:jettison_stage)).
+  // Its engines or its chutes (#824): Core decides, with this drop and these chutes, and whether a powered entry keeps its stack (#940); the block lights the engines.
+  local finish is addons:claudia:entryfinish(lexicon("home", entry_ask:home, "chutes", entry_ask:chutes, "drop", opt:separate <> "none", "jettison_stage", opt:jettison_stage, "core", entry_ask:core)).
   local powered is false.
   if finish:error <> "" { addons:claudia:blocknote(ctx:block, lexicon("phase", "finish", "error", finish:error)). }
   if finish:error = "" {
@@ -712,10 +712,8 @@ function reentry {
       wait 0.1.
       if ship:availablethrust <= 0 { reentry_light(ship:engines, finish:spare). wait 0.1. }
       set powered to ship:availablethrust > 0.
+      if powered and finish:keeps_stack { set opt:separate to "none". }
     }
-  }
-  if powered {
-    set opt:separate to "none".
   }
   local dropped is list().
   if below:names:length > 0 and not claudia_on_ground() {
@@ -726,7 +724,7 @@ function reentry {
     }
     if drop_error = "" and drop:decouplers:length > 0 {
       local pe_before is ship:periapsis.
-      set drop_error to claudia_fire_drop(ctx, drop).
+      set drop_error to claudia_fire_drop(ctx, drop, false). // landing first (#944): DropGuard's reason is noted, not obeyed
       if drop_error = "" { set dropped to list(pe_before, ship:periapsis, drop:gone[0]:ship). }
     }
     set below to addons:claudia:entrydrop(lexicon("home", entry_ask:home, "separate", opt:separate, "jettison_stage", opt:jettison_stage, "drop_error", drop_error)).
@@ -851,7 +849,7 @@ function reentry {
 
     if reentry_shield_due(shield_gone, last_speed, agl, powered and reentry_brake_due(agl, brake_h, last_speed)) {
       local count_before is ship:parts:length.
-      reentry_shield_drop(shield_uid, { return ship:parts. }).
+      reentry_shield_drop(shield_uid, { return ship:parts. }, below:jettison_first).
       set shield_gone to true.
       // The shield leaving is not a part lost: count what is left once it has gone.
       wait 0.5.

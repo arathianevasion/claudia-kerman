@@ -9,7 +9,7 @@ using System.Linq;
 namespace ClaudiaKerman.Core.Missions
 {
     /// <summary>
-    /// How an Entry finishes (#824, ADR 0020): on its chutes, or on its engines with everything kept. <c>reentry</c> asks at block start, through
+    /// How an Entry finishes (#824, ADR 0020): on its chutes, or on its engines, with everything kept unless landing legs stand above the shield (#940, <see cref="For"/>). <c>reentry</c> asks at block start, through
     /// <c>ADDONS:CLAUDIA:ENTRYFINISH</c>, before it drops anything. <see cref="Decide"/> predicts the touchdown with what the Entry would drop (<see cref="EntryStack"/>)
     /// and the Chute Group left (<see cref="ChuteGroups"/>). Over <see cref="ThresholdFor"/> its body (<see cref="EngineThreshold"/>, or 15 on Kerbin, Eve and Laythe) with an engine that can brake, it keeps everything and predicts again.
     /// Braking, throttle and lighting the engines are the block's.
@@ -28,11 +28,13 @@ namespace ClaudiaKerman.Core.Missions
             return Entries.KeepsStackDangerous(body) ? DangerousStackThreshold : EngineThreshold;
         }
 
-        /// <summary>It keeps everything and lands on its engines.</summary>
+        /// <summary>It lands on its engines.</summary>
         public bool Powered;
+        /// <summary>A powered finish that keeps the stack below the shield. False on chutes, and with landing legs above the shield (#940), where the stack drops and the engines that stay land it.</summary>
+        public bool KeepsStack;
         /// <summary>The touchdown predicted with the Entry's drop and chutes, m/s; -1 unknown.</summary>
         public double Speed = -1;
-        /// <summary>The touchdown predicted for the craft as kept, m/s, before any burn; -1 on chutes or unknown.</summary>
+        /// <summary>The touchdown predicted for the craft that stays, m/s, before any burn; -1 on chutes or unknown.</summary>
         public double KeptSpeed = -1;
         /// <summary>The engines to light: those that can brake in the highest stage that can stop the fall, or with none that can the one with the most thrust (#842, <see cref="Choose"/>). All of a stage's, as one of a cluster would turn the craft.</summary>
         public readonly List<SnapshotPart> Engines = new List<SnapshotPart>();
@@ -52,6 +54,20 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
+        /// The decision for an Entry with <paramref name="stack"/> below its shield, <paramref name="drop"/> false for a script's <c>separate</c> "none". With legs above the shield and a stack
+        /// that can go (<see cref="EntryStack.DropsBelowLegs"/>, #940) it is <see cref="Decide"/> for the craft without the stack, whose engines, fuel and weight are the only ones that count;
+        /// otherwise <see cref="Decide"/> as ADR 0020 has it. <paramref name="core"/> is the part running the script, when known.
+        /// </summary>
+        public static EntryFinish For(GameSnapshot snapshot, EntryStack stack, bool drop, bool lastEntry, bool chutes, uint? core = null)
+        {
+            var gone = drop ? stack.Leaves.Select(p => p.Id).ToList() : new List<uint>();
+            if (!drop || !stack.DropsBelowLegs(core)) return Decide(snapshot, gone, lastEntry, chutes);
+            var finish = Decide(EntryCraft.Without(snapshot, gone), new uint[0], lastEntry, chutes);
+            finish.KeepsStack = false;
+            return finish;
+        }
+
+        /// <summary>
         /// The decision for the craft in <paramref name="snapshot"/>: <paramref name="gone"/> the parts the Entry would drop, <paramref name="lastEntry"/> as for its
         /// Chute Group, <paramref name="chutes"/> false when none will open. A craft with no engine that can brake stays on the chutes path: what else opens is #827's.
         /// </summary>
@@ -68,6 +84,7 @@ namespace ClaudiaKerman.Core.Missions
             }
             var chosen = Choose(snapshot, dropped.Body, fuelled, out finish._stageNote);
             finish.Powered = true;
+            finish.KeepsStack = true;
             finish.Engines.AddRange(fuelled.Where(p => p.Stage == chosen));
             finish.Spare.AddRange(fuelled.Where(p => p.Stage != chosen));
             finish.KeptSpeed = ChuteGroups.ForEntryNow(snapshot, lastEntry, null, chutes).TouchdownSpeed;
@@ -132,8 +149,9 @@ namespace ClaudiaKerman.Core.Missions
         {
             var speed = Speed >= 0 ? Speed.ToString("0.0", CultureInfo.InvariantCulture) + " m/s" : "speed unknown" + (_unknown.Length > 0 ? " (" + _unknown + ")" : "");
             if (!Powered) return "chutes, " + speed + (_noEngine ? ", no engine with fuel" : "");
-            return "engines, keeping everything: " + speed + " with its drop and chutes, "
-                + (KeptSpeed >= 0 ? KeptSpeed.ToString("0.0", CultureInfo.InvariantCulture) + " m/s" : "speed unknown") + " as kept, on "
+            return (KeepsStack
+                    ? "engines, keeping everything: " + speed + " with its drop and chutes, " + (KeptSpeed >= 0 ? KeptSpeed.ToString("0.0", CultureInfo.InvariantCulture) + " m/s" : "speed unknown") + " as kept, on "
+                    : "engines, dropping the stack: " + speed + " with its chutes, on ")
                 + string.Join(", ", Engines.Select(p => p.Title.Length > 0 ? p.Title : p.Name).ToArray())
                 + (_stageNote.Length > 0 ? " (" + _stageNote + ")" : "");
         }
