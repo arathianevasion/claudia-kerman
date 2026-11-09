@@ -18,4 +18,4 @@ Run `launch_orbit` and `launch_hop`. Neither writes a `liftoff_clear` note in `K
 
 ## Check 3: the Duna ship
 
-Fly the Duna ship to a powered landing, then to liftoff with `launch` (Duna has air) with the TD-12 and heat shield 2 still under the aerospike. They separate before the throttle comes up and the `liftoff_clear` note reads `fired 2` (two decouplers). If it lists parts after `stuck:`, bring its `drop` and `liftoff_clear` lines to the player.
+Fly the Duna ship to a powered landing, then to liftoff with `launch` (Duna has air) with the TD-12 and heat shield 2 still under the aerospike. They separate before the throttle comes up and the `liftoff_clear` note reads `fired 1` (one decoupler: the TD-12, which takes heat shield 2 with it). If it lists parts after `stuck:`, bring its `drop` and `liftoff_clear` lines to the player.

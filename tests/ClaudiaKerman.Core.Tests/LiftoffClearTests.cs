@@ -275,5 +275,31 @@ namespace ClaudiaKerman.Core.Tests
             var launch = File.ReadAllText(Path.Combine(dir.FullName, "kerboscript", "library", "launch.ks"));
             Assert.Contains("local tset is choose 1 if ship:modulesnamed(\"LaunchClamp\"):length > 0 else 0.", launch);
         }
+
+        [Fact]
+        public void Ground_false_gives_empty_lists_and_no_error()
+        {
+            var snapshot = GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "mun-shot-v2-kerbin-orbit.json")));
+            var got = ClaudiaKerman.Core.Tools.BlockCalls.LiftoffClearCall(new Dictionary<string, object> { { "ground", false } }, snapshot, id => id.ToString());
+
+            Assert.Equal("", got["error"]);
+            Assert.Empty((List<object>)got["decouplers"]);
+            Assert.Empty((List<object>)got["gone"]);
+            Assert.Empty((List<object>)got["stuck"]);
+        }
+
+        [Fact]
+        public void A_failed_liftoffclear_read_does_nothing_and_carries_on()
+        {
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null && !File.Exists(Path.Combine(dir.FullName, "kerboscript", "library", "claudia_lib.ks"))) dir = dir.Parent;
+            Assert.NotNull(dir);
+            var lib = File.ReadAllText(Path.Combine(dir.FullName, "kerboscript", "library", "claudia_lib.ks"));
+            var call = lib.IndexOf("addons:claudia:liftoffclear(", StringComparison.Ordinal);
+            Assert.True(call > 0);
+            var guard = lib.IndexOf("if under:error <> \"\" { return \"\". }", call, StringComparison.Ordinal);
+            var use = lib.IndexOf("claudia_drop_of(under", call, StringComparison.Ordinal);
+            Assert.True(guard > call && guard < use, "a failed read must return before its result is used");
+        }
     }
 }

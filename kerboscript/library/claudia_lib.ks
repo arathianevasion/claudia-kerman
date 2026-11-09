@@ -2205,9 +2205,8 @@ function claudia_wrap_angle {
   return deg - 360 * floor(deg / 360).
 }
 
-// A craft whose engines aren't lit yet stages into them (within stage_limit). Returns "" once some
-// engine gives thrust, else why not: the staging reason, or "no thrust". clear (a start from the ground,
-// #945): fires what is still under an engine giving thrust, Core's LIFTOFFCLEAR, unguarded; notes it and what stays stuck.
+// A craft whose engines aren't lit yet stages into them (within stage_limit). Returns "" once some engine gives thrust, else why not: the staging reason, or "no thrust".
+// clear (a start from the ground, #945): fires what is under an engine giving thrust (Core's LIFTOFFCLEAR), notes it and what stays stuck; a failed read does nothing.
 function claudia_stage_into_engines {
   parameter ctx, clear is false.
   if ship:availablethrust <= 0 {
@@ -2220,6 +2219,7 @@ function claudia_stage_into_engines {
     return "no thrust".
   }
   local under is addons:claudia:liftoffclear(lexicon("core", core:part:uid, "ground", clear)).
+  if under:error <> "" { return "". }
   local plan is claudia_drop_of(under, ship:parts).
   local why is choose claudia_fire_drop(ctx, plan, false) if plan:decouplers:length > 0 else "".
   if plan:decouplers:length > 0 or under:stuck:length > 0 {
