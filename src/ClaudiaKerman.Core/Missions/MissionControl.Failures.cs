@@ -80,7 +80,15 @@ namespace ClaudiaKerman.Core.Missions
             var noteText = "The player adds a note for this retry (quoted data): " + MissionPrompts.Quoted(note);
             // A turn re-read from the Mission folder after a load has not been built into messages yet: the note goes with its words.
             if (mission.Pending.Messages == null) mission.Pending.UserText += "\n" + noteText;
-            else mission.Pending.Messages.Add(Message.UserText(noteText));
+            else
+            {
+                // #955: a mod notice (text system message) must be last or followed by an assistant turn, so the note cannot come
+                // after one. It joins the turn's last user message, in front of the notices, which stay as they were.
+                var messages = mission.Pending.Messages;
+                var last = messages.FindLastIndex(m => m.Role != Role.System);
+                if (last >= 0 && messages[last].Role == Role.User) messages[last].Content.Add(new TextBlock { Text = noteText });
+                else messages.Add(Message.UserText(noteText));
+            }
             Retried();
             return true;
         }
