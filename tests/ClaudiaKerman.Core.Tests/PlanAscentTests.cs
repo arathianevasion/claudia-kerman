@@ -212,14 +212,16 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         // Apoapsis at target_ap is not orbit: a climb so steep that the launch cuts off slow leaves a circularization the
-        // stages can't finish before the craft is back where the air matters.
+        // stages can't finish before the craft is back where the air matters. Since #932 launch burns through such a cutoff
+        // (a coast and circularize can't work), and the sim flies that (#934): no coast_ap, and the burn ends in the last stage.
+        // (A craft whose decision says coast and whose circularize still fails is in AscentSimBurnThroughTests.)
         [Fact]
-        public void Reaching_target_ap_is_not_orbit_when_the_stages_left_cant_circularize_before_the_air()
+        public void A_steep_cutoff_that_cant_circularize_before_the_air_is_burnt_through_not_coasted()
         {
             var result = Run(Craft(S(500, 450, 300, 27, 16), S(50, 44, 320, 12, 10.2), S(240, 60, 345, 9, 3)), "{\"target_ap\":80000,\"turn_shape\":0.75}");
-            Assert.False(result.GetProperty("reaches_orbit").GetBoolean());
-            Assert.InRange(result.GetProperty("coast_ap").GetDouble(), 79000, 81000);
-            Assert.Contains("circulariz", result.GetProperty("failure").GetString());
+            Assert.True(result.GetProperty("reaches_orbit").GetBoolean());
+            Assert.False(result.TryGetProperty("coast_ap", out _));
+            Assert.Equal(0, result.GetProperty("launch_ends_in_stage").GetInt32());
         }
 
         // ---- roles ----

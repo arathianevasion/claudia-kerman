@@ -253,6 +253,8 @@ namespace ClaudiaKerman.Core.Tools
         private double _mass;
         private double _t;
         private int _stage = -1;
+        /// <summary>launch's burn_through (#932, #934): <see cref="LaunchBurnThrough"/> said the first cutoff can't coast to a circularize, and no end has come yet.</summary>
+        private bool _burnThrough;
 
         private AscentSim(AscentOptions options, IAscentAir air, Func<double, double> dragArea, List<AscentStage> stages)
         {
@@ -528,6 +530,12 @@ namespace ClaudiaKerman.Core.Tools
                 var stage = Current;
                 var thrust = stage != null ? stage.Thrust(atm, _o.SeaLevelAtm) : 0;
 
+                // launch.ks: a burn-through ends the launch once the periapsis clears the air.
+                if (_burnThrough && pe > top)
+                {
+                    _flight.LaunchEndStage = stage != null ? stage.Number : -1;
+                    return Circularize();
+                }
                 if (coasting)
                 {
                     if (h > top)
@@ -546,11 +554,15 @@ namespace ClaudiaKerman.Core.Tools
                 double throttle = 0;
                 if (!coasting)
                 {
-                    throttle = Throttle(ap, target, ramp, q, _o.MaxQ, ThrottleFloor(ratio, _mass, g, thrust));
-                    if (throttle == 0)
+                    // Burning through, as if target_ap were far off (launch.ks, #932): the max-Q and thick-air floor still hold.
+                    throttle = Throttle(ap, _burnThrough ? ap + 1e7 : target, ramp, q, _o.MaxQ, ThrottleFloor(ratio, _mass, g, thrust));
+                    if (throttle == 0 || _burnThrough)
                     {
-                        coasting = true;
-                        if (_flight.CoastAp == 0) _flight.CoastAp = ap;
+                        // The first cutoff, and each step of a burn-through until the coast works again (CoastAp set latches it): Core decides, as launch does.
+                        if (_flight.CoastAp == 0) _burnThrough = BurnsThrough(ap, toAp, h);
+                        if (_burnThrough && throttle == 0) throttle = 1;
+                        coasting = !_burnThrough;
+                        if (coasting && _flight.CoastAp == 0) _flight.CoastAp = ap;
                     }
                 }
 
@@ -560,7 +572,7 @@ namespace ClaudiaKerman.Core.Tools
                 if (held) turnStartAlt = h;
                 var thin = false;
                 var pitch = 90.0;
-                if (!coasting)
+                if (!coasting && !_burnThrough)
                 {
                     if (turnStartAlt >= 0) pitch = LaunchPitch(h, turnStartAlt, turnEnd, _o.TurnShape);
                     if (spd > 30 && q <= AeroQ)
@@ -601,9 +613,49 @@ namespace ClaudiaKerman.Core.Tools
                 if (!coasting && Current.EndMass >= _mass && !StageOn())
                 {
                     _mass = Current.EndMass;
+                    if (_burnThrough)
+                    {
+                        // Fuel or stage_limit ended the burn-through: the craft coasts on from here, as launch does.
+                        _burnThrough = false;
+                        coasting = true;
+                        _flight.CoastAp = ap;
+                        continue;
+                    }
                     return Fail("out of fuel" + (_o.StageLimit > 0 ? " at stage limit " + _o.StageLimit : ""));
                 }
             }
+        }
+
+        /// <summary>
+        /// Whether launch burns through at this step, from <see cref="LaunchBurnThrough"/>: the one decision, given launch's inputs from the sim's own orbit
+        /// (the stage table as <c>claudia_burn_stages</c> gives it, vacuum figures from the stage burning now down to stage_limit). The sim has no steering,
+        /// so it gives no turn figures: the decision counts no turn time.
+        /// </summary>
+        private bool BurnsThrough(double ap, double toAp, double altitude)
+        {
+            var energy = (_vx * _vx + _vy * _vy) / 2 - _o.Gm / R;
+            var stages = new List<object>();
+            var current = Current;
+            if (current != null)
+                stages.Add(Row(_mass > current.EndMass ? current.IspVac * G0 * Math.Log(_mass / current.EndMass) : 0, (_mass - current.EndMass) / current.Flow, current.IspVac));
+            for (var i = _stage + 1; i < _stages.Count; i++)
+            {
+                var stage = _stages[i];
+                if (stage.Number < _o.StageLimit) break;
+                if (stage.Burns) stages.Add(Row(stage.DeltaVVac, (stage.StartMass - stage.EndMass) / stage.Flow, stage.IspVac));
+            }
+            var answer = LaunchBurnThrough.Call(new Dictionary<string, object>
+            {
+                { "burning", _burnThrough }, { "ap", ap }, { "sma", energy < 0 ? -_o.Gm / (2 * energy) : -1.0 }, { "gm", _o.Gm }, { "radius", _o.Radius },
+                { "eta_ap", double.IsNaN(toAp) ? 0.0 : toAp }, { "altitude", altitude }, { "target_ap", _o.TargetAp }, { "atm_height", _o.AtmosphereHeight },
+                { "angle", 0.0 }, { "stages", stages },
+            });
+            return (bool)answer["burn_through"];
+        }
+
+        private static Dictionary<string, object> Row(double dv, double duration, double isp)
+        {
+            return new Dictionary<string, object> { { "dv", dv }, { "duration", duration }, { "isp", isp } };
         }
 
         /// <summary>Vacuum delta-v left in the stages the launch may burn, from the one burning now.</summary>
