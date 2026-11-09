@@ -390,6 +390,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(OuterShield, EntryCraft.Of(snapshot, null, Pod, 2, true, true).ShieldDropped.Id);
 
             snapshot.Craft.Parts.RemoveAll(p => Below(p.Id));
+            snapshot.Craft.MassTonnes = snapshot.Craft.Parts.Sum(p => p.MassT);
             var after = Drop(snapshot);
 
             Assert.Equal("", after["error"]);
