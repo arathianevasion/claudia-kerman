@@ -540,14 +540,7 @@ function reentry_separation {
       set plan:error to below:stuck:join(", ") + ": no decoupler between it and the heat shield".
       return plan.
     }
-    for p in parts {
-      if below:decouplers:contains(p:uid) {
-        plan:decouplers:add(p).
-      }
-      if below:gone:contains(p:uid) {
-        plan:gone:add(p).
-      }
-    }
+    return claudia_drop_of(below, parts).
   }
   return plan.
 }

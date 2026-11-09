@@ -100,6 +100,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (reentry): at most one late trim toward the Mission's landing target, from to_air, home, dv_left, isp and has_node; lexicon as CORRECTIONBURN's, dv 0 and aim_note when none flies"));
             AddSuffix("ENTRYCRAFT", new OneArgsSuffix<Lexicon, Lexicon>(EntryCraft,
                 "Core Library only (return, deorbit): the craft the Entry ahead flies, from home, core, leave_out and body, to pass on as craft; lexicon error, leave_out, shield_drop, whole, kept, gone_prop, burners_kept, key, why"));
+            AddSuffix("LIFTOFFCLEAR", new OneArgsSuffix<Lexicon, Lexicon>(LiftoffClearCall,
+                "Core Library only (launch, ascend): the decouplers under the engines that give thrust, from core and home; lexicon error, decouplers, gone, stuck"));
             AddSuffix("DROPCHECK", new OneArgsSuffix<Lexicon, Lexicon>(DropCheckCall,
                 "Core Library only (drop_parts, deorbit, reentry): whether a drop taking the craft from before to left m/s of delta-v takes what the Mission Plan still needs; lexicon error, refused, reason, taken, need"));
             AddSuffix("LANDGUARD", new OneArgsSuffix<Lexicon, Lexicon>(LandGuardTick,
@@ -437,6 +439,20 @@ namespace ClaudiaKerman.KOS
             }, () => drop["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "shield number {0}: {1}", drop["number"], drop["shield"] as string == "" ? "none, nothing drops" : "part " + drop["shield"])
                 : (string)drop["error"]);
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:LIFTOFFCLEAR</c> (#945, ADR 0014): what is still under an engine giving thrust (<see cref="BlockCalls.LiftoffClearCall"/>), read fresh.</summary>
+        private Lexicon LiftoffClearCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> found = null;
+            return (Lexicon)Guarded("LIFTOFFCLEAR", () =>
+            {
+                var vessel = shared.Vessel;
+                var uids = new System.Collections.Generic.Dictionary<uint, string>();
+                foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
+                found = BlockCalls.LiftoffClearCall(KosValues.ToDictionary(input), SnapshotReader.ReadForMission(vessel), id => uids.ContainsKey(id) ? uids[id] : null);
+                return KosValues.FromPlain(found);
+            }, () => found["error"] as string == "" ? ((System.Collections.IList)found["decouplers"]).Count + " decoupler(s) under the engines" : (string)found["error"]);
         }
 
         /// <summary><c>ADDONS:CLAUDIA:DROPCHECK</c> (#825, ADR 0014): the Mission Plan's need against a drop (<see cref="BlockCalls.DropCheck"/>).</summary>

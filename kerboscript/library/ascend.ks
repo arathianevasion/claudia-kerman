@@ -229,7 +229,7 @@ function ascend {
       return claudia_finish(ctx, false, staged, extra).
     }
   }
-  local lit is claudia_stage_into_engines(ctx).
+  local lit is claudia_stage_into_engines(ctx, start = "ground").
   if lit <> "" {
     return claudia_finish(ctx, false, lit, extra).
   }
