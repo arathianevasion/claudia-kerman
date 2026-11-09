@@ -265,6 +265,40 @@ namespace ClaudiaKerman.Adapter
             return ChuteOf(part, chute, part.partTransform.InverseTransformDirection(-nose));
         }
 
+        /// <summary>
+        /// For <c>BRAKETICK</c> (#954), each tick of a powered finish: the title and state (stowed, armed, semi, deployed, cut) of each parachute of <paramref name="uids"/> (kOS part UIDs) still aboard.
+        /// One gone (burned off, or dropped) isn't waited for.
+        /// </summary>
+        public static List<object> ChuteStates(Vessel vessel, IEnumerable<string> uids)
+        {
+            var wanted = new HashSet<uint>();
+            foreach (var uid in uids)
+            {
+                uint id;
+                if (uint.TryParse(uid, NumberStyles.Integer, CultureInfo.InvariantCulture, out id)) wanted.Add(id);
+            }
+            var found = new List<object>();
+            foreach (var part in vessel.parts)
+            {
+                if (!wanted.Contains(part.flightID)) continue;
+                var chute = part.FindModuleImplementing<ModuleParachute>();
+                if (chute != null) found.Add(new Dictionary<string, object> { { "title", part.partInfo != null ? part.partInfo.title : part.name }, { "state", StateName(chute.deploymentState) } });
+            }
+            return found;
+        }
+
+        private static string StateName(ModuleParachute.deploymentStates state)
+        {
+            switch (state)
+            {
+                case ModuleParachute.deploymentStates.STOWED: return "stowed";
+                case ModuleParachute.deploymentStates.ACTIVE: return "armed";
+                case ModuleParachute.deploymentStates.SEMIDEPLOYED: return "semi";
+                case ModuleParachute.deploymentStates.DEPLOYED: return ReentryBrake.Deployed;
+                default: return "cut";
+            }
+        }
+
         private static ReentryChute ChuteOf(Part part, ModuleParachute chute, Vector3 local)
         {
             ReentryChuteState state;
