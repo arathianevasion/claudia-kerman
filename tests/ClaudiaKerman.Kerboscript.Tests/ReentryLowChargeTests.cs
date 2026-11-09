@@ -2,8 +2,12 @@
 // Copyright (C) 2026 Andrew Watson
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using ClaudiaKerman.Core.Kos;
+using ClaudiaKerman.Core.Tools;
+using ClaudiaKerman.KOS;
+using kOS.Safe.Encapsulation;
 using Xunit;
 
 namespace ClaudiaKerman.Kerboscript.Tests
@@ -72,6 +76,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             + "local group is lexicon(\"last\", false, \"stages\", list(), \"uids\", list(), \"why\", \"\").\n"
             + "local ec_step is 0.\n";
 
+        // The block's view of LOWCHARGE. That these types are what kOS really receives is pinned by The_real_answer_reaches_kOS_as_the_types_the_block_reads.
         private const string Nothing = "lexicon(\"carry_on\", false, \"step\", 0, \"abort_pct\", 55)";
         private const string Release = "lexicon(\"carry_on\", true, \"step\", 1, \"abort_pct\", 100)";
         private const string Arm = "lexicon(\"carry_on\", true, \"step\", 2, \"abort_pct\", 100)";
@@ -231,6 +236,48 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             Assert.Equal(new[] { "" }, Abort(string.Format(Ctx, 0, ", \"ec_tick\", { return 100. }")));
             Assert.Equal(new[] { "abort abort_on_part_loss: 2 part(s) lost" }, Abort(string.Format(Ctx, 2, ", \"ec_tick\", { return 100. }")));
+        }
+
+        public static TheoryData<string, double, double, double, bool, double, double> Answers()
+        {
+            return new TheoryData<string, double, double, double, bool, double, double>
+            {
+                { "periapsis above the air", 5, 10, 80000, false, 0, 5 },
+                { "over the floor in the air", 55, 10, 15000, false, 0, 55 },
+                { "under the floor in the air", 9.9, 10, 15000, true, 1, 100 },
+                { "under 2% in the air", 1.9, 10, 15000, true, 2, 100 },
+                { "under 2% with the floor off", 1.9, 0, 15000, false, 2, 1.9 },
+            };
+        }
+
+        /// <summary>
+        /// A scalar has to cross as a double: <see cref="KosValues.FromPlain"/> turns any other number into a string, and the block's
+        /// <c>min(ec_step, 1)</c> then throws. So this takes Core's real answer through the addon's real conversion, which the block's faked LOWCHARGE skips.
+        /// </summary>
+        [Theory]
+        [MemberData(nameof(Answers))]
+        public void The_real_answer_reaches_kOS_as_the_types_the_block_reads(string why, double pct, double floor, double pe, bool carryOn, double step, double abortPct)
+        {
+            var low = KosValues.FromPlain(BlockCalls.LowCharge(new Dictionary<string, object> { { "ec_pct", pct }, { "min_ec_pct", floor }, { "pe", pe }, { "air_top", 50000.0 } }));
+            AssertKosAnswer(why, low, carryOn, step, abortPct);
+        }
+
+        [Fact]
+        public void The_answer_to_a_failed_call_reaches_kOS_as_the_same_types()
+        {
+            AssertKosAnswer("failed call", KosValues.FromPlain(BlockCalls.LowCharge(null)), false, 0, 100);
+        }
+
+        private static void AssertKosAnswer(string why, Structure answer, bool carryOn, double step, double abortPct)
+        {
+            var low = Assert.IsType<Lexicon>(answer);
+            Assert.Equal(4, low.Count); // A new field has to be pinned here too.
+            Assert.Equal("", Assert.IsType<StringValue>(low[new StringValue("error")]).ToString());
+            Assert.Equal(carryOn, Assert.IsType<BooleanValue>(low[new StringValue("carry_on")]).Value);
+            Assert.True(low[new StringValue("step")] is ScalarValue, why + ": step is " + low[new StringValue("step")].GetType().Name);
+            Assert.Equal(step, ((ScalarValue)low[new StringValue("step")]).GetDoubleValue());
+            Assert.True(low[new StringValue("abort_pct")] is ScalarValue, why + ": abort_pct is " + low[new StringValue("abort_pct")].GetType().Name);
+            Assert.Equal(abortPct, ((ScalarValue)low[new StringValue("abort_pct")]).GetDoubleValue());
         }
     }
 }

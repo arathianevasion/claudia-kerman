@@ -29,7 +29,7 @@ namespace ClaudiaKerman.Core.Tests
             var low = Ask(5, 10, pe);
             Assert.Equal("", low["error"]);
             Assert.Equal(false, low["carry_on"]);
-            Assert.Equal(0, low["step"]);
+            Assert.Equal(0.0, low["step"]);
             Assert.Equal(5.0, low["abort_pct"]);
         }
 
@@ -46,7 +46,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             var low = Ask(1, 10, 80000);
             Assert.Equal(false, low["carry_on"]);
-            Assert.Equal(0, low["step"]);
+            Assert.Equal(0.0, low["step"]);
         }
 
         [Theory]
@@ -56,7 +56,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             var low = Ask(pct, 10, 15000);
             Assert.Equal(false, low["carry_on"]);
-            Assert.Equal(0, low["step"]);
+            Assert.Equal(0.0, low["step"]);
         }
 
         [Theory]
@@ -67,7 +67,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             var low = Ask(9.9, 10, pe);
             Assert.Equal(true, low["carry_on"]);
-            Assert.Equal(1, low["step"]);
+            Assert.Equal(1.0, low["step"]);
         }
 
         [Theory]
@@ -76,14 +76,14 @@ namespace ClaudiaKerman.Core.Tests
         public void Under_2_percent_in_the_air_the_chutes_are_armed(double pct, double floor, bool carryOn)
         {
             var low = Ask(pct, floor, 15000);
-            Assert.Equal(2, low["step"]);
+            Assert.Equal(2.0, low["step"]);
             Assert.Equal(carryOn, low["carry_on"]);
         }
 
         [Fact]
         public void At_2_percent_exactly_the_chutes_wait()
         {
-            Assert.Equal(1, Ask(2, 10, 15000)["step"]);
+            Assert.Equal(1.0, Ask(2, 10, 15000)["step"]);
         }
 
         [Fact]
@@ -92,7 +92,7 @@ namespace ClaudiaKerman.Core.Tests
             var low = BlockCalls.LowCharge(null);
             Assert.Equal("", low["error"]);
             Assert.Equal(false, low["carry_on"]);
-            Assert.Equal(0, low["step"]);
+            Assert.Equal(0.0, low["step"]);
             // Asked nothing (the addon's answer to a failed call), it reads as full charge: 0 here would be a false abort at any charge.
             Assert.Equal(100.0, Convert.ToDouble(low["abort_pct"]));
         }
@@ -102,7 +102,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             var low = BlockCalls.LowCharge(new Dictionary<string, object> { { "min_ec_pct", 10.0 }, { "pe", 15000.0 }, { "air_top", AirTop } });
             Assert.Equal(false, low["carry_on"]);
-            Assert.Equal(0, low["step"]);
+            Assert.Equal(0.0, low["step"]);
             Assert.Equal(100.0, Convert.ToDouble(low["abort_pct"]));
         }
 

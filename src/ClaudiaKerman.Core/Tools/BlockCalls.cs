@@ -550,7 +550,7 @@ namespace ClaudiaKerman.Core.Tools
             {
                 { "error", "" },
                 { "carry_on", carryOn },
-                { "step", arm ? 2 : carryOn ? 1 : 0 },
+                { "step", arm ? 2.0 : carryOn ? 1.0 : 0.0 }, // A double, as kOS gets any other number as a string.
                 { "abort_pct", carryOn ? 100 : pct },
             };
         }
