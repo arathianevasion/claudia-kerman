@@ -440,6 +440,12 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Null(RequestOrder.Violation(body(user + "," + asst + "," + effort + "," + user)));
             Assert.Null(RequestOrder.Violation(body(effort + "," + user + "," + note)));
             Assert.Null(RequestOrder.Violation(body(user + "," + server + "," + note)));
+            // #955: a text system message is last or followed by an assistant message.
+            Assert.NotNull(RequestOrder.Violation(body(user + "," + note + "," + user)));
+            Assert.NotNull(RequestOrder.Violation(body(user + "," + note + "," + effort + "," + user)));
+            Assert.Null(RequestOrder.Violation(body(user + "," + note + "," + note)));
+            Assert.Null(RequestOrder.Violation(body(user + "," + note + "," + asst)));
+            Assert.Null(RequestOrder.Violation(body(user + "," + effort + "," + user)));
         }
 
         [Fact]

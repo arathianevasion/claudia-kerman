@@ -175,6 +175,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(2, MessageRequests(transport).Length);
             Assert.Contains("It is a harmless test craft.", MessageRequests(transport)[1].Body);
             Assert.DoesNotContain("harmless", MessageRequests(transport)[0].Body);
+            Assert.Empty(transport.OrderViolations);
         }
 
         [Fact]
