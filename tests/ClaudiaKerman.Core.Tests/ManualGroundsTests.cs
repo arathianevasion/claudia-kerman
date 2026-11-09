@@ -406,6 +406,43 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void TheSendBackIsAUserMessageAfterHerFailedReplyAndTheRequestOrderIsValid()
+        {
+            var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), LandingPlan(), Fixture("mission-debrief-failed.sse"), Fixture("mission-debrief-failed.sse"));
+            var mission = Control(transport);
+            var run = ToRunning(mission, Goal);
+            mission.Send(Snapshot("LANDED", "Claudia Kerman"));
+            mission.Send(new KosRunEnded(Finished(), run.RunId));
+
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingReducedGoal && !v.Busy);
+            Assert.Empty(transport.OrderViolations);
+            using (var doc = JsonDocument.Parse(transport.Requests[3].Body))
+            {
+                var messages = doc.RootElement.GetProperty("messages").EnumerateArray().ToList();
+                var sendBack = messages.FindIndex(m => m.GetProperty("role").GetString() == "user" && m.ToString().Contains(ManualGrounds.SendBack.Substring(0, 20)));
+                Assert.True(sendBack > 0);
+                Assert.Equal("assistant", messages[sendBack - 1].GetProperty("role").GetString());
+                Assert.Contains("Failed", messages[sendBack - 1].ToString());
+            }
+        }
+
+        [Fact]
+        public void TheRequestOrderGuardRefusesATextSystemMessageAfterAnAssistantMessage()
+        {
+            const string asst = "{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"x\"}]}";
+            const string user = "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"y\"}]}";
+            const string note = "{\"role\":\"system\",\"content\":\"n\"}";
+            const string effort = "{\"role\":\"system\",\"content\":[],\"output_config\":{\"effort\":\"low\"}}";
+            const string server = "{\"role\":\"assistant\",\"content\":[{\"type\":\"web_search_tool_result\",\"content\":[]}]}";
+            Func<string, string> body = m => "{\"messages\":[" + m + "]}";
+            Assert.NotNull(RequestOrder.Violation(body(user + "," + asst + "," + note)));
+            Assert.NotNull(RequestOrder.Violation(body(user + "," + asst + "," + effort + "," + note)));
+            Assert.Null(RequestOrder.Violation(body(user + "," + asst + "," + effort + "," + user)));
+            Assert.Null(RequestOrder.Violation(body(effort + "," + user + "," + note)));
+            Assert.Null(RequestOrder.Violation(body(user + "," + server + "," + note)));
+        }
+
+        [Fact]
         public void ASentBackDebriefRatedOffNominalIsKeptWithNoReducedGoal()
         {
             var transport = new StreamingFakeTransport(Fixture("mission-plan.sse"), LandingPlan(), Fixture("mission-debrief-failed.sse"), OffNominal());
