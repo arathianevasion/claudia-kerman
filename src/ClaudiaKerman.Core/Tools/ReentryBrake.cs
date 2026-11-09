@@ -19,6 +19,21 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>Thrust goes to zero while the craft points more than this many degrees off the steering aim (#954): a tipped craft must not be driven by its engine.</summary>
         public const double MaxOffAimDeg = 30;
 
+        /// <summary>Thrust goes to zero while the craft turns faster than this, deg/s (#954): the wheels give only about 7 deg/s², so a spin has to be prevented, not corrected, and thrust mustn't pulse each time a spinning craft swings past its aim. To tune from the log.</summary>
+        public const double MaxSpinDeg = 20;
+
+        /// <summary>A packed chute counts as failed this long after it was first called, s (#954): measured from the call, not from a height, as a block starting low is already under the last-call heights.</summary>
+        public const double PackedFailSeconds = 1;
+
+        /// <summary>Why the thrust is zero (<c>zero_why</c>, for the log): a chute called and not yet fully open and settled.</summary>
+        public const string WhyChuteOpening = "chute opening";
+
+        /// <summary>Why the thrust is zero: over <see cref="MaxSpinDeg"/>.</summary>
+        public const string WhySpinning = "spinning";
+
+        /// <summary>Why the thrust is zero: over <see cref="MaxOffAimDeg"/>.</summary>
+        public const string WhyOffAim = "off aim";
+
         /// <summary>A full-state chute reads this, the adapter's name for stock's fully deployed.</summary>
         public const string Deployed = "deployed";
 
@@ -39,9 +54,6 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>The speed has settled once it changes by no more than this, m/s².</summary>
         public const double SettledDecel = 1;
-
-        /// <summary>The share of a chute's deploy height at which it should be fully open: the last resort waits for it (#954) unless a chute has failed, as the canopy fills while the craft falls below that height.</summary>
-        public const double OpenByFraction = 0.8;
 
         /// <summary>Seconds of the fall added to the last-resort height, for the 0.25 s between the samples it is read from.</summary>
         public const double SampleLagSeconds = 0.5;
@@ -125,16 +137,15 @@ namespace ClaudiaKerman.Core.Tools
             return (lastH < 0 || radar <= lastH) && (speed <= shieldSpeed || radar <= shieldAgl);
         }
 
-        /// <summary>True if the last resort may fire at <paramref name="radar"/> m: a chute has <paramref name="failed"/> (cut, missing, or still packed by its last call), or the craft is down where the chutes should be fully open, <see cref="OpenByFraction"/> of <paramref name="lowestDeploy"/>.</summary>
-        public static bool LastResortAllowed(bool failed, double radar, double lowestDeploy)
+        /// <summary>
+        /// Why the thrust must be zero now, "" if it needn't: a chute opening, the craft spinning (over <see cref="MaxSpinDeg"/>) or off the aim (over <see cref="MaxOffAimDeg"/>), the first that holds.
+        /// A rate of <paramref name="rateDeg"/> that couldn't be read (negative or not finite) doesn't hold the engine: no reading must not stop the landing, and the off-aim guard still catches a tipped craft.
+        /// </summary>
+        public static string ZeroThrustWhy(bool chuteOpening, double rateDeg, double offDeg)
         {
-            return failed || radar <= OpenByFraction * lowestDeploy;
-        }
-
-        /// <summary>The throttle to fly: 0 while the craft is more than <see cref="MaxOffAimDeg"/> off the aim, else <paramref name="throttle"/>.</summary>
-        public static double GuardThrottle(double throttle, double offDeg)
-        {
-            return offDeg > MaxOffAimDeg ? 0 : throttle;
+            if (chuteOpening) return WhyChuteOpening;
+            if (!double.IsInfinity(rateDeg) && rateDeg > MaxSpinDeg) return WhySpinning;
+            return offDeg > MaxOffAimDeg ? WhyOffAim : "";
         }
     }
 
@@ -164,27 +175,24 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// <c>ADDONS:CLAUDIA:BRAKETICK</c>, for <c>reentry</c> (#954), every tick of a powered finish. <c>chutes</c>, the addon's reading of the Chute Group aboard (each <c>title</c>,
-        /// <c>state</c>: stowed, armed, semi, deployed or cut, <c>deploy_m</c> and <c>drogue</c>), decides the rule. A cut chute, or one of <c>uids</c> no longer aboard, isn't waited for.
-        /// None to wait for is <c>why</c> "radar" (<see cref="ReentryBrake.DueByRadar"/>, as before #954). All fully open and settled (<see cref="ReentryBrake.ChutesSettled"/>, from
-        /// <c>open_ut</c>, <c>now</c> and <c>decel</c>) is "chutes open", the same rule. Any other is "last resort" (<see cref="ReentryBrake.LastResortDue"/>), and that can't fire above
-        /// <see cref="ReentryBrake.OpenByFraction"/> of the lowest <c>deploy_m</c> unless a chute is cut, missing, or still packed by its last-call height (<c>chute_last_agl</c>, or
-        /// <c>drogue_last_agl</c> for a drogue). Takes also <c>radar</c>, <c>speed</c>, <c>brake_h</c>, <c>last_h</c>, <c>shield_speed</c>, <c>shield_agl</c>,
-        /// and <c>throttle</c>, <c>off_deg</c> (the angle off the steering aim). Gives <c>error</c> "", <c>start</c>, <c>why</c>, <c>open</c> (fully open with chutes to wait for),
-        /// <c>open_ut</c> (when they all first read so, -1 if they don't: the caller hands it back next tick), <c>chutes</c> (each title and state, for the note) and <c>throttle</c>,
-        /// guarded (<see cref="ReentryBrake.GuardThrottle"/>). With no reading (the addon's answer to a failed call) nothing starts and the throttle is 0. Pure.
+        /// <c>state</c>: stowed, armed, semi, deployed or cut, and <c>drogue</c>), decides the rule. A set (drogues or mains) is called once the block has called it (<c>drogues_called</c>,
+        /// <c>mains_called</c>) or one of it reads past stowed; its time is <c>drogue_call_ut</c> or <c>main_call_ut</c>, handed back as <c>open_ut</c> is. A called chute is opening until all
+        /// called chutes read fully open and settled (<see cref="ReentryBrake.ChutesSettled"/>, from <c>open_ut</c>, <c>now</c> and <c>decel</c>): no burn starts and the thrust is zero.
+        /// A cut chute, one of <c>uids</c> no longer aboard, or one still packed <see cref="ReentryBrake.PackedFailSeconds"/> after its call has failed and holds nothing back.
+        /// None to wait for is <c>why</c> "radar" (<see cref="ReentryBrake.DueByRadar"/>, as before #954). All fully open and settled is "chutes open", the same rule. With nothing opening and a chute
+        /// failed it is "last resort" (<see cref="ReentryBrake.LastResortDue"/>); with only chutes not called yet, it waits for their call. Takes also <c>radar</c>, <c>speed</c>, <c>brake_h</c>, <c>last_h</c>,
+        /// <c>shield_speed</c>, <c>shield_agl</c>, and <c>throttle</c>, <c>off_deg</c> (the angle off the steering aim) and <c>rate_deg</c> (deg/s). Gives <c>error</c> "", <c>start</c>, <c>why</c>,
+        /// <c>open</c> (all fully open with chutes to wait for), <c>open_ut</c> (when the called chutes all first read so, -1 if they don't), <c>drogue_call_ut</c>, <c>main_call_ut</c>,
+        /// <c>chutes</c> (each title and state, for the note), <c>throttle</c> (0 for any <see cref="ReentryBrake.ZeroThrustWhy"/>), <c>zero_why</c> and <c>rate_deg</c> (-1 if unread, for the log).
+        /// With no reading (the addon's answer to a failed call) nothing starts and the throttle is 0. Pure.
         /// </summary>
         public static IDictionary<string, object> BrakeTick(IDictionary<string, object> ask)
         {
             ask = ask ?? new Dictionary<string, object>();
             var radar = Number(ask, "radar", double.PositiveInfinity);
-            var chuteLast = Number(ask, "chute_last_agl", -1);
-            var drogueLast = Number(ask, "drogue_last_agl", -1);
-            var aboard = 0;
-            var waitedFor = 0;
-            var deployed = 0;
-            var failed = false;
-            var lowestDeploy = double.PositiveInfinity;
+            var now = Number(ask, "now", 0);
             var read = new List<string>();
+            var aboard = new List<KeyValuePair<string, bool>>();
             object chutes;
             if (ask.TryGetValue("chutes", out chutes) && chutes is IEnumerable)
             {
@@ -192,45 +200,77 @@ namespace ClaudiaKerman.Core.Tools
                 {
                     var chute = entry as IDictionary<string, object>;
                     if (chute == null) continue;
-                    aboard++;
                     var state = chute.ContainsKey("state") ? chute["state"] as string : null;
                     read.Add(chute.ContainsKey("title") ? chute["title"] + " " + state : "" + state);
-                    if (state == ReentryBrake.Cut)
-                    {
-                        failed = true;
-                        continue;
-                    }
-                    waitedFor++;
-                    if (state == ReentryBrake.Deployed) deployed++;
-                    var drogue = chute.ContainsKey("drogue") && chute["drogue"] is bool && (bool)chute["drogue"];
-                    if ((state == ReentryBrake.Stowed || state == ReentryBrake.Armed) && radar <= (drogue ? drogueLast : chuteLast)) failed = true;
-                    var deployM = Number(chute, "deploy_m", 0);
-                    if (deployM > 0) lowestDeploy = Math.Min(lowestDeploy, deployM);
+                    aboard.Add(new KeyValuePair<string, bool>(state, chute.ContainsKey("drogue") && chute["drogue"] is bool && (bool)chute["drogue"]));
                 }
             }
+            var drogueCallUt = CallTime(ask, "drogues_called", "drogue_call_ut", aboard, true, now);
+            var mainCallUt = CallTime(ask, "mains_called", "main_call_ut", aboard, false, now);
+            var waitedFor = 0;
+            var deployed = 0;
+            var healthy = 0;
+            var filling = 0;
+            var failed = false;
+            foreach (var chute in aboard)
+            {
+                if (chute.Key == ReentryBrake.Cut)
+                {
+                    failed = true;
+                    continue;
+                }
+                waitedFor++;
+                if (chute.Key == ReentryBrake.Deployed) deployed++;
+                var callUt = chute.Value ? drogueCallUt : mainCallUt;
+                if (callUt < 0) continue;
+                if ((chute.Key == ReentryBrake.Stowed || chute.Key == ReentryBrake.Armed) && now - callUt >= ReentryBrake.PackedFailSeconds)
+                {
+                    failed = true;
+                    continue;
+                }
+                healthy++;
+                if (chute.Key != ReentryBrake.Deployed) filling++;
+            }
             object uids;
-            if (ask.TryGetValue("uids", out uids) && uids is IEnumerable && !(uids is string) && ((IEnumerable)uids).Cast<object>().Count() > aboard) failed = true;
+            if (ask.TryGetValue("uids", out uids) && uids is IEnumerable && !(uids is string) && ((IEnumerable)uids).Cast<object>().Count() > aboard.Count) failed = true;
             var open = waitedFor > 0 && deployed == waitedFor;
-            var now = Number(ask, "now", 0);
             var heldUt = Number(ask, "open_ut", -1);
-            var openUt = !open ? -1 : heldUt >= 0 ? heldUt : now;
-            var settled = open && ReentryBrake.ChutesSettled(now - openUt, Number(ask, "decel", 0));
+            var openUt = healthy == 0 || filling > 0 ? -1 : heldUt >= 0 ? heldUt : now;
+            var settled = openUt >= 0 && ReentryBrake.ChutesSettled(now - openUt, Number(ask, "decel", 0));
+            var opening = healthy > 0 && !settled;
             var speed = Number(ask, "speed", double.PositiveInfinity);
             var shieldSpeed = Number(ask, "shield_speed", 0);
             var shieldAgl = Number(ask, "shield_agl", 0);
-            var start = waitedFor == 0 || settled
+            var byRadar = waitedFor == 0 || (open && settled);
+            var start = byRadar
                 ? ReentryBrake.DueByRadar(radar, Number(ask, "brake_h", -1), speed, shieldSpeed, shieldAgl)
-                : ReentryBrake.LastResortAllowed(failed, radar, lowestDeploy) && ReentryBrake.LastResortDue(radar, Number(ask, "last_h", -1), speed, shieldSpeed, shieldAgl);
+                : !opening && failed && ReentryBrake.LastResortDue(radar, Number(ask, "last_h", -1), speed, shieldSpeed, shieldAgl);
+            var rateRead = Number(ask, "rate_deg", -1);
+            var rate = double.IsNaN(rateRead) || double.IsInfinity(rateRead) ? -1 : rateRead;
+            var zeroWhy = ReentryBrake.ZeroThrustWhy(opening, rate, Number(ask, "off_deg", 0));
             return new Dictionary<string, object>
             {
                 { "error", "" },
                 { "start", start },
-                { "why", waitedFor == 0 ? "radar" : settled ? "chutes open" : "last resort" },
+                { "why", waitedFor == 0 ? "radar" : byRadar ? "chutes open" : "last resort" },
                 { "open", open },
                 { "open_ut", openUt },
+                { "drogue_call_ut", drogueCallUt },
+                { "main_call_ut", mainCallUt },
                 { "chutes", string.Join(", ", read.ToArray()) },
-                { "throttle", ReentryBrake.GuardThrottle(Number(ask, "throttle", 0), Number(ask, "off_deg", 0)) },
+                { "throttle", zeroWhy == "" ? Number(ask, "throttle", 0) : 0.0 },
+                { "zero_why", zeroWhy },
+                { "rate_deg", rate },
             };
+        }
+
+        /// <summary>When the set was first called, UT: the time held in <paramref name="heldKey"/>, or now on the first tick it is called; -1 while it isn't, so no flight inherits it from the last.</summary>
+        private static double CallTime(IDictionary<string, object> ask, string calledKey, string heldKey, IEnumerable<KeyValuePair<string, bool>> aboard, bool drogues, double now)
+        {
+            var flagged = ask.ContainsKey(calledKey) && ask[calledKey] is bool && (bool)ask[calledKey];
+            if (!flagged && !aboard.Any(c => c.Value == drogues && c.Key != ReentryBrake.Stowed && c.Key != ReentryBrake.Cut)) return -1;
+            var held = Number(ask, heldKey, -1);
+            return held >= 0 ? held : now;
         }
 
         private static IList<double> BrakeNumbers(IDictionary<string, object> ask, string key)

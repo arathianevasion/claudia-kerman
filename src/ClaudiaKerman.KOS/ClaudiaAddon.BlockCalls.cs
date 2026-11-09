@@ -57,7 +57,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("BRAKEHEIGHTS", new OneArgsSuffix<Lexicon, Lexicon>(BrakeHeightsCall,
                 "Core Library only (reentry, every 0.25 s of a powered fall): the heights it brakes by, from v_down, a_up, g, ks, radar, soft, end; lexicon error, brake_h, last_h (-1 for a fall the engines can't stop)"));
             AddSuffix("BRAKETICK", new OneArgsSuffix<Lexicon, Lexicon>(BrakeTickCall,
-                "Core Library only (reentry, each tick of a powered finish): whether braking may start and the guarded throttle, from radar, speed, brake_h, last_h, uids, the shield limits, throttle, off_deg; lexicon error, start, why, open, chutes, throttle"));
+                "Core Library only (reentry, each tick of a powered finish): whether braking may start and the guarded throttle, from radar, speed, brake_h, last_h, uids, the shield limits, throttle, off_deg, rate_deg, drogues_called, mains_called; lexicon error, start, why, open, chutes, throttle, zero_why, rate_deg"));
             AddSuffix("TURNPLAN", new OneArgsSuffix<Lexicon, Lexicon>(TurnPlanCall,
                 "Core Library only (RCS Use, once per turn): the burst turn through angle (deg) with left_s to the deadline (-1: none), or after a stop burst with corrections taken; lexicon error, rcs, wheels_s, coast_rate, spin_s, coast_s, stop_s, stop_deg, wheels_deg, turn_s, alpha, and spin, coast, stop (kOS's t, kp, ki)"));
             AddSuffix("BURSTTURN", new TwoArgsSuffix<Lexicon, Lexicon, Lexicon>(BurstTurnCall,
@@ -842,13 +842,16 @@ namespace ClaudiaKerman.KOS
             return heights != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.BrakeHeights(null));
         }
 
-        /// <summary>The time (UT, s) this processor's powered finish first read its chutes all fully open, for <see cref="BrakeTickCall"/>; -1 while they aren't.</summary>
+        /// <summary>The time (UT, s) this processor's powered finish first read its called chutes all fully open, for <see cref="BrakeTickCall"/>; -1 while they aren't.</summary>
         private double brakeOpenUt = -1;
+
+        /// <summary>The time (UT, s) each set of this processor's powered finish was first called, for <see cref="BrakeTickCall"/>; -1 while it isn't.</summary>
+        private double brakeDrogueCallUt = -1, brakeMainCallUt = -1;
 
         /// <summary>
         /// <c>ADDONS:CLAUDIA:BRAKETICK</c> (#954, ADR 0014): <see cref="BlockCalls.BrakeTick"/> with the live state of the Chute Group's parachutes (<c>uids</c>), read here as Core has no game.
         /// Called every physics tick, so its time is logged at most once a second (guardrail 6). A failure answers from the ask without the chutes: the block brakes by radar, as with none, rather than never at all.
-        /// The time the chutes first read fully open is held here between ticks (<see cref="brakeOpenUt"/>); it goes back to -1 on any tick they don't, so no flight inherits it from the last.
+        /// The times the chutes first read fully open and each set was first called are held here between ticks; each goes back to -1 on any tick it no longer holds, so no flight inherits it from the last.
         /// </summary>
         private Lexicon BrakeTickCall(Lexicon input)
         {
@@ -860,10 +863,14 @@ namespace ClaudiaKerman.KOS
                 ask["chutes"] = ReentryCraft.ChuteStates(shared.Vessel, uids);
                 ask["now"] = Planetarium.GetUniversalTime();
                 ask["open_ut"] = brakeOpenUt;
+                ask["drogue_call_ut"] = brakeDrogueCallUt;
+                ask["main_call_ut"] = brakeMainCallUt;
                 tick = BlockCalls.BrakeTick(ask);
                 brakeOpenUt = (double)tick["open_ut"];
+                brakeDrogueCallUt = (double)tick["drogue_call_ut"];
+                brakeMainCallUt = (double)tick["main_call_ut"];
                 return KosValues.FromPlain(tick);
-            }, () => string.Format(CultureInfo.InvariantCulture, "start {0} ({1}), chutes {2}, throttle {3:0.00}", tick["start"], tick["why"], tick["chutes"], tick["throttle"]), 1);
+            }, () => string.Format(CultureInfo.InvariantCulture, "start {0} ({1}), chutes {2}, throttle {3:0.00} (zero: {4}), rate {5:0.0} deg/s", tick["start"], tick["why"], tick["chutes"], tick["throttle"], tick["zero_why"], tick["rate_deg"]), 1);
             return tick != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.BrakeTick(KosValues.ToDictionary(input)));
         }
 

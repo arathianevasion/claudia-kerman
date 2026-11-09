@@ -35,23 +35,29 @@ namespace ClaudiaKerman.Core.Tests
             return states.Select((s, i) => (object)new Dictionary<string, object> { { "title", "Chute " + i }, { "state", s } }).ToList();
         }
 
-        /// <summary>Chutes as the adapter reads them, with their deploy height (m) and whether each is a drogue.</summary>
-        private static List<object> ChutesAt(double deployM, bool drogue, params string[] states)
+        /// <summary>Chutes as the adapter reads them, all drogues or all mains.</summary>
+        private static List<object> Set(bool drogue, params string[] states)
         {
-            return states.Select((s, i) => (object)new Dictionary<string, object> { { "title", "Chute " + i }, { "state", s }, { "deploy_m", deployM }, { "drogue", drogue } }).ToList();
+            return states.Select((s, i) => (object)new Dictionary<string, object> { { "title", "Chute " + i }, { "state", s }, { "drogue", drogue } }).ToList();
         }
 
-        /// <summary>One tick. <paramref name="openS"/>: seconds since the chutes all read deployed (the addon carries it from tick to tick); <paramref name="decel"/>: the sampled slowing, m/s².</summary>
-        private static IDictionary<string, object> Tick(double radar, double speed, double brakeH, double lastH, List<object> chutes, double throttle = 0, double off = 0, double openS = 20, double decel = 0, List<object> uids = null)
+        /// <summary>One tick. <paramref name="openS"/>: seconds since the chutes all read deployed; <paramref name="decel"/>: the sampled slowing, m/s²; <paramref name="calledS"/>: seconds since both sets were called, -1 for not called (the addon carries both from tick to tick); <paramref name="rate"/>: deg/s.</summary>
+        private static IDictionary<string, object> Tick(double radar, double speed, double brakeH, double lastH, List<object> chutes, double throttle = 0, double off = 0, double openS = 20, double decel = 0, List<object> uids = null, double calledS = -1, double rate = 0)
         {
             var ask = new Dictionary<string, object>
             {
                 { "radar", radar }, { "speed", speed }, { "brake_h", brakeH }, { "last_h", lastH },
                 { "shield_speed", 400.0 }, { "shield_agl", 3000.0 }, { "chutes", chutes },
-                { "throttle", throttle }, { "off_deg", off },
+                { "throttle", throttle }, { "off_deg", off }, { "rate_deg", rate },
                 { "now", 100.0 }, { "open_ut", 100.0 - openS }, { "decel", decel },
-                { "chute_last_agl", 1500.0 }, { "drogue_last_agl", 3000.0 },
             };
+            if (calledS >= 0)
+            {
+                ask["drogues_called"] = true;
+                ask["mains_called"] = true;
+                ask["drogue_call_ut"] = 100.0 - calledS;
+                ask["main_call_ut"] = 100.0 - calledS;
+            }
             if (uids != null) ask["uids"] = uids;
             return BlockCalls.BrakeTick(ask);
         }
@@ -139,6 +145,15 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void A_chute_only_filling_never_fires_the_last_resort_at_any_height()
+        {
+            var heights = Heights(150, 5000);
+            var lastH = D(heights, "last_h");
+            Assert.Equal(false, Tick(lastH, 150, D(heights, "brake_h"), lastH, Chutes("semi"), calledS: 5)["start"]);
+            Assert.Equal(false, Tick(100, 150, D(heights, "brake_h"), lastH, Chutes("semi"), calledS: 5)["start"]);
+        }
+
+        [Fact]
         public void Fully_open_at_12_m_s_and_30_m_braking_starts()
         {
             var heights = Heights(12, 500);
@@ -160,16 +175,15 @@ namespace ClaudiaKerman.Core.Tests
         [Theory]
         [InlineData("stowed")]
         [InlineData("armed")]
-        [InlineData("semi")]
-        public void Never_open_at_the_last_resort_height_braking_starts_anyway(string state)
+        public void A_chute_still_packed_past_its_second_fires_the_last_resort_at_its_usual_height(string state)
         {
             var heights = Heights(150, 5000);
             var lastH = D(heights, "last_h");
-            var tick = Tick(lastH, 150, D(heights, "brake_h"), lastH, Chutes("deployed", state));
+            var tick = Tick(lastH, 150, D(heights, "brake_h"), lastH, Chutes("deployed", state), calledS: 1.5);
             Assert.Equal(true, tick["start"]);
             Assert.Equal(false, tick["open"]);
             Assert.Equal("last resort", tick["why"]);
-            Assert.Equal(false, Tick(lastH + 1, 150, D(heights, "brake_h"), lastH, Chutes("deployed", state))["start"]);
+            Assert.Equal(false, Tick(lastH + 1, 150, D(heights, "brake_h"), lastH, Chutes("deployed", state), calledS: 1.5)["start"]);
         }
 
         [Fact]
@@ -178,7 +192,7 @@ namespace ClaudiaKerman.Core.Tests
             // 250 m/s: (250^2 - 2^2) / (2 x 9.06) = 3449 m, worked past the ground from 1,000 m of radar, as a sample of a fall already past the height reads.
             var heights = Heights(250, 1000);
             Assert.Equal((250.0 * 250 - 4) / (2 * (AUp - G)) + 125, D(heights, "last_h"), 6);
-            var late = Tick(1000, 250, -1, D(heights, "last_h"), Chutes("semi"));
+            var late = Tick(1000, 250, -1, D(heights, "last_h"), Chutes("armed"), calledS: 2);
             Assert.Equal(true, late["start"]);
             Assert.Equal("last resort", late["why"]);
         }
@@ -198,16 +212,16 @@ namespace ClaudiaKerman.Core.Tests
         public void A_fall_full_thrust_would_never_stop_is_minus_one_and_waits_for_the_air()
         {
             Assert.Equal(-1, D(Heights(300, 1000, 2), "last_h"));
-            Assert.Equal(false, Tick(40000, 1200, -1, -1, Chutes("stowed"))["start"]);
-            Assert.Equal(true, Tick(40000, 390, -1, -1, Chutes("stowed"))["start"]);
-            Assert.Equal(true, Tick(2900, 1200, -1, -1, Chutes("semi"))["start"]);
+            Assert.Equal(false, Tick(40000, 1200, -1, -1, Chutes("stowed"), calledS: 5)["start"]);
+            Assert.Equal(true, Tick(40000, 390, -1, -1, Chutes("stowed"), calledS: 5)["start"]);
+            Assert.Equal(true, Tick(2900, 1200, -1, -1, Chutes("armed"), calledS: 5)["start"]);
         }
 
         [Fact]
         public void High_on_a_shallow_path_a_height_above_the_craft_still_waits_for_the_air()
         {
             // 1,200 m/s at 40 km: past any height, but the air hasn't done its work.
-            Assert.Equal(false, Tick(40000, 1200, -1, 79000, Chutes("stowed"))["start"]);
+            Assert.Equal(false, Tick(40000, 1200, -1, 79000, Chutes("stowed"), calledS: 5)["start"]);
         }
 
         [Fact]
@@ -226,7 +240,7 @@ namespace ClaudiaKerman.Core.Tests
             var heights = Heights(140, 1000);
             Assert.Equal(-1, D(heights, "brake_h"));
             Assert.True(D(heights, "last_h") > 1000, "the last-resort height is above the craft");
-            var tick = Tick(1000, 140, D(heights, "brake_h"), D(heights, "last_h"), ChutesAt(1000, false, "deployed"), openS: 0, decel: 40);
+            var tick = Tick(1000, 140, D(heights, "brake_h"), D(heights, "last_h"), Set(false, "deployed"), openS: 0, decel: 40);
             Assert.Equal(false, tick["start"]);
             Assert.Equal(true, tick["open"]);
         }
@@ -250,15 +264,17 @@ namespace ClaudiaKerman.Core.Tests
         public void A_fast_fall_balanced_on_a_canopy_just_begun_to_fill_doesnt_read_as_settled()
         {
             // Terminal on the half-open canopy: the slowing reads near nothing while the full canopy has barely started.
-            Assert.Equal(false, Tick(1000, 140, -1, 1151, ChutesAt(1000, false, "deployed"), openS: 3, decel: 0.2)["start"]);
+            Assert.Equal(false, Tick(1000, 140, -1, 1151, Set(false, "deployed"), openS: 3, decel: 0.2)["start"]);
         }
 
-        [Fact]
-        public void While_the_canopies_fill_the_last_resort_height_still_overrides()
+        [Theory]
+        [InlineData(1, 40)]
+        [InlineData(3, 0.2)]
+        public void While_the_canopies_fill_not_even_the_last_resort_height_starts_the_burn(double openS, double decel)
         {
-            var tick = Tick(700, 140, -1, 1151, ChutesAt(1000, false, "deployed"), openS: 1, decel: 40);
-            Assert.Equal(true, tick["start"]);
-            Assert.Equal("last resort", tick["why"]);
+            var tick = Tick(700, 140, -1, 1151, Set(false, "deployed"), throttle: 1, openS: openS, decel: decel);
+            Assert.Equal(false, tick["start"]);
+            Assert.Equal(0.0, D(tick, "throttle"));
         }
 
         [Fact]
@@ -293,75 +309,197 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("radar", tick["why"]);
         }
 
-        // ---- The player's option (b): the last resort can't fire above the height the chutes should be fully open, unless one has failed or is missing ----
+        // ---- Rule 1: no thrust from a chute's call until it is fully open and settled ----
+
+        private const double FullThrottle = 1;
+
+        private static void AssertNoThrust(IDictionary<string, object> tick, string why)
+        {
+            Assert.Equal(0.0, D(tick, "throttle"));
+            Assert.Equal(why, tick["zero_why"]);
+        }
 
         [Theory]
-        [InlineData("semi", 1500)] // half-open counts as healthy
-        [InlineData("deployed", 1500)]
-        [InlineData("semi", 801)] // just above the height with its margin
-        public void A_fast_fall_with_healthy_chutes_above_the_deploy_height_doesnt_fire(string state, double radar)
+        [InlineData("armed", 0.1)]
+        [InlineData("stowed", 0.1)] // called this tick: the state hasn't moved yet
+        [InlineData("semi", 2)]
+        public void An_engine_already_burning_stops_the_tick_a_chute_is_called(string state, double calledS)
         {
-            var tick = Tick(radar, 140, -1, 1600, ChutesAt(1000, false, state), openS: 1, decel: 40);
+            AssertNoThrust(Tick(300, 90, 400, 200, Chutes(state), FullThrottle, calledS: calledS), ReentryBrake.WhyChuteOpening);
+        }
+
+        [Theory]
+        [InlineData(0, 40, 0)] // the first tick fully open
+        [InlineData(3, 0.2, 0)] // not long enough to call it settled
+        [InlineData(5, 20, 0)] // still slowing hard
+        [InlineData(5, 0.5, 1)] // settled: thrust returns
+        [InlineData(7.9, 20, 0)]
+        [InlineData(8.5, 20, 1)] // out of time to wait: thrust returns
+        public void The_throttle_stays_zero_until_the_canopies_settle_or_8_seconds_then_it_returns(double openS, double decel, double expected)
+        {
+            var tick = Tick(300, 90, 400, 200, Chutes("deployed"), FullThrottle, openS: openS, decel: decel);
+            Assert.Equal(expected, D(tick, "throttle"));
+            Assert.Equal(expected > 0 ? "" : ReentryBrake.WhyChuteOpening, tick["zero_why"]);
+        }
+
+        [Fact]
+        public void Drogues_settled_and_then_the_mains_called_zeroes_the_thrust_again()
+        {
+            var drogues = Set(true, "deployed");
+            var settled = Tick(300, 90, 400, 200, drogues.Concat(Set(false, "stowed")).ToList(), FullThrottle, openS: 9);
+            Assert.Equal(FullThrottle, D(settled, "throttle"));
+            AssertNoThrust(Tick(300, 90, 400, 200, drogues.Concat(Set(false, "armed")).ToList(), FullThrottle, openS: 9), ReentryBrake.WhyChuteOpening);
+            AssertNoThrust(Tick(300, 90, 400, 200, drogues.Concat(Set(false, "semi")).ToList(), FullThrottle, openS: 9), ReentryBrake.WhyChuteOpening);
+        }
+
+        [Fact]
+        public void A_set_called_starts_the_fully_open_time_again_when_it_is_not_all_open()
+        {
+            var called = Tick(300, 90, 400, 200, Set(true, "deployed").Concat(Set(false, "armed")).ToList(), openS: 9);
+            Assert.Equal(-1.0, D(called, "open_ut"));
+        }
+
+        [Fact]
+        public void Healthy_chutes_at_1000_m_and_140_m_s_give_no_thrust_while_filling_below_the_old_floor_too()
+        {
+            // The old 80% floor of a 1,000 m deploy height was 800 m; a stop from 140 m/s takes about 1,080 m on Duna's gravity.
+            foreach (var radar in new[] { 1000.0, 800.0, 500.0, 100.0 })
+            {
+                foreach (var state in new[] { "semi", "deployed" })
+                {
+                    var tick = Tick(radar, 140, -1, 1151, Set(false, state), FullThrottle, openS: 1, decel: 40, calledS: 3);
+                    Assert.Equal(false, tick["start"]);
+                    AssertNoThrust(tick, ReentryBrake.WhyChuteOpening);
+                }
+            }
+        }
+
+        // ---- Rule 2: a packed chute is failed only a second after its call ----
+
+        [Theory]
+        [InlineData("stowed", 0.9, false)]
+        [InlineData("armed", 0.9, false)]
+        [InlineData("stowed", 1.1, true)]
+        [InlineData("armed", 1.1, true)]
+        public void A_packed_chute_counts_as_failed_only_a_second_after_it_was_called(string state, double calledS, bool exempt)
+        {
+            // With the others settled, a chute packed past its second no longer holds the thrust back.
+            var tick = Tick(300, 90, 400, 1000, Chutes("deployed", state), FullThrottle, calledS: calledS);
+            Assert.Equal(exempt ? FullThrottle : 0.0, D(tick, "throttle"));
+            Assert.Equal(exempt ? "" : ReentryBrake.WhyChuteOpening, tick["zero_why"]);
+            Assert.Equal(exempt, tick["start"]);
+        }
+
+        [Fact]
+        public void A_cut_chute_is_exempt_so_the_others_settled_give_thrust()
+        {
+            Assert.Equal(FullThrottle, D(Tick(300, 90, 400, 200, Chutes("deployed", "cut"), FullThrottle, calledS: 0.2), "throttle"));
+        }
+
+        [Fact]
+        public void A_chute_missing_from_the_group_is_exempt_but_the_rest_are_still_waited_for()
+        {
+            var uids = new List<object> { "a", "b" };
+            Assert.Equal(FullThrottle, D(Tick(300, 90, 400, 200, Chutes("deployed"), FullThrottle, uids: uids), "throttle"));
+            AssertNoThrust(Tick(300, 90, 400, 200, Chutes("semi"), FullThrottle, uids: uids), ReentryBrake.WhyChuteOpening);
+        }
+
+        [Fact]
+        public void A_cut_chute_gives_a_last_resort_for_the_rest_only_once_nothing_is_filling()
+        {
+            Assert.Equal(false, Tick(1200, 140, -1, 1300, Set(false, "semi", "cut"))["start"]);
+            var tick = Tick(1200, 140, -1, 1300, Set(false, "stowed", "cut"));
+            Assert.Equal(true, tick["start"]);
+            Assert.Equal("last resort", tick["why"]);
+            Assert.Equal(false, Tick(1200, 140, -1, 1100, Set(false, "stowed", "cut"))["start"]);
+        }
+
+        [Fact]
+        public void Drogues_not_yet_called_on_a_block_starting_at_1500_m_arent_failed_on_the_first_tick()
+        {
+            // The block starts at 1.5 km, under the drogues' 3,000 m last call: the tick before chute_tick's call reads them stowed and not called.
+            var first = BlockCalls.BrakeTick(new Dictionary<string, object> { { "radar", 1500.0 }, { "speed", 140.0 }, { "brake_h", -1.0 }, { "last_h", 1151.0 }, { "shield_speed", 400.0 }, { "shield_agl", 3000.0 }, { "throttle", FullThrottle }, { "now", 50.0 }, { "chutes", Set(true, "stowed") } });
+            Assert.Equal(false, first["start"]);
+            Assert.Equal(-1.0, D(first, "drogue_call_ut"));
+            Assert.Equal("", first["zero_why"]);
+        }
+
+        [Fact]
+        public void The_call_time_is_held_per_set_and_resets_when_the_set_is_not_called()
+        {
+            var ask = new Dictionary<string, object> { { "now", 50.0 }, { "drogues_called", true }, { "chutes", Set(true, "stowed").Concat(Set(false, "stowed")).ToList() } };
+            var first = BlockCalls.BrakeTick(ask);
+            Assert.Equal(50.0, D(first, "drogue_call_ut"));
+            Assert.Equal(-1.0, D(first, "main_call_ut"));
+            ask["now"] = 60.0;
+            ask["drogue_call_ut"] = 50.0;
+            ask["mains_called"] = true;
+            var later = BlockCalls.BrakeTick(ask);
+            Assert.Equal(50.0, D(later, "drogue_call_ut"));
+            Assert.Equal(60.0, D(later, "main_call_ut"));
+            ask["drogues_called"] = false;
+            ask["mains_called"] = false;
+            Assert.Equal(-1.0, D(BlockCalls.BrakeTick(ask), "drogue_call_ut"));
+        }
+
+        [Fact]
+        public void A_chute_armed_some_other_way_is_called_by_its_state()
+        {
+            // #942's low charge arms the group without chute_tick's flags.
+            Assert.Equal(50.0, D(BlockCalls.BrakeTick(new Dictionary<string, object> { { "now", 50.0 }, { "chutes", Set(true, "armed") } }), "drogue_call_ut"));
+        }
+
+        [Fact]
+        public void A_chute_not_called_is_neither_waited_on_for_thrust_nor_failed()
+        {
+            var tick = Tick(5000, 300, 400, 1000, Chutes("stowed"), FullThrottle);
+            Assert.Equal(FullThrottle, D(tick, "throttle"));
             Assert.Equal(false, tick["start"]);
         }
 
-        [Fact]
-        public void At_or_below_the_height_with_its_margin_the_last_resort_may_fire()
-        {
-            var tick = Tick(800, 140, -1, 1600, ChutesAt(1000, false, "semi"));
-            Assert.Equal(true, tick["start"]);
-            Assert.Equal("last resort", tick["why"]);
-        }
-
-        [Fact]
-        public void The_lowest_deploy_height_of_the_group_sets_the_floor()
-        {
-            var chutes = ChutesAt(2500, true, "deployed").Concat(ChutesAt(1000, false, "semi")).ToList();
-            Assert.Equal(false, Tick(900, 140, -1, 1600, chutes)["start"]);
-            Assert.Equal(true, Tick(800, 140, -1, 1600, chutes)["start"]);
-        }
+        // ---- Rule 3: no thrust while spinning ----
 
         [Theory]
-        [InlineData("stowed")]
-        [InlineData("armed")]
-        public void A_chute_still_packed_at_its_last_call_height_allows_the_usual_last_resort(string state)
+        [InlineData(19, 0.8, "")]
+        [InlineData(20, 0.8, "")]
+        [InlineData(21, 0, "spinning")]
+        public void Over_20_degrees_a_second_the_engines_stop(double rate, double expected, string why)
         {
-            var tick = Tick(1500, 140, -1, 1600, ChutesAt(1000, false, state));
-            Assert.Equal(true, tick["start"]);
-            Assert.Equal("last resort", tick["why"]);
-            Assert.Equal(false, Tick(1501, 140, -1, 1600, ChutesAt(1000, false, state))["start"]);
+            var tick = Tick(1000, 100, 0, 0, Chutes(), 0.8, 10, rate: rate);
+            Assert.Equal(expected, D(tick, "throttle"));
+            Assert.Equal(why, tick["zero_why"]);
         }
 
         [Fact]
-        public void A_drogue_counts_as_failed_at_the_drogues_own_last_call_height()
+        public void The_reason_is_the_first_that_holds_the_engine()
         {
-            var tick = Tick(3000, 240, -1, 3200, ChutesAt(2500, true, "stowed"));
-            Assert.Equal(true, tick["start"]);
-            Assert.Equal(false, Tick(3001, 240, -1, 3200, ChutesAt(2500, true, "stowed"))["start"]);
+            Assert.Equal(ReentryBrake.WhyChuteOpening, Tick(300, 90, 400, 200, Chutes("semi"), 1, 45, calledS: 3, rate: 40)["zero_why"]);
+            Assert.Equal(ReentryBrake.WhySpinning, Tick(1000, 100, 0, 0, Chutes(), 1, 45, rate: 40)["zero_why"]);
+            Assert.Equal(ReentryBrake.WhyOffAim, Tick(1000, 100, 0, 0, Chutes(), 1, 45)["zero_why"]);
+            Assert.Equal("", Tick(1000, 100, 0, 0, Chutes(), 1, 10)["zero_why"]);
+        }
+
+        /// <summary>
+        /// An unreadable rate (a non-number, absent, NaN or infinity) doesn't hold the engine: a reading that never comes must not stop the landing, and the 30 degree guard still catches a tipped craft.
+        /// The answer carries -1 so the log says the rate was unread rather than a number kOS can't round.
+        /// </summary>
+        [Theory]
+        [InlineData(double.NaN)]
+        [InlineData(double.PositiveInfinity)]
+        public void An_unreadable_rate_flies_on_the_off_aim_guard_alone(double rate)
+        {
+            var tick = Tick(1000, 100, 0, 0, Chutes(), 0.8, 10, rate: rate);
+            Assert.Equal(0.8, D(tick, "throttle"));
+            Assert.Equal("", tick["zero_why"]);
+            Assert.Equal(-1.0, D(tick, "rate_deg"));
+            Assert.Equal(0.0, D(Tick(1000, 100, 0, 0, Chutes(), 0.8, 45, rate: rate), "throttle"));
         }
 
         [Fact]
-        public void A_cut_chute_lifts_the_floor_for_the_others()
+        public void A_rate_read_is_handed_back_for_the_log()
         {
-            var tick = Tick(1200, 140, -1, 1300, ChutesAt(1000, false, "semi", "cut"));
-            Assert.Equal(true, tick["start"]);
-            Assert.Equal("last resort", tick["why"]);
-        }
-
-        [Fact]
-        public void A_chute_missing_from_the_group_lifts_the_floor_for_the_others()
-        {
-            var uids = new List<object> { "a", "b" };
-            var tick = Tick(1200, 140, -1, 1300, ChutesAt(1000, false, "semi"), uids: uids);
-            Assert.Equal(true, tick["start"]);
-            Assert.Equal("last resort", tick["why"]);
-            Assert.Equal(false, Tick(1200, 140, -1, 1300, ChutesAt(1000, false, "semi", "semi"), uids: uids)["start"]);
-        }
-
-        [Fact]
-        public void With_the_floor_lifted_the_last_resort_height_still_decides()
-        {
-            Assert.Equal(false, Tick(1200, 140, -1, 1100, ChutesAt(1000, false, "semi", "cut"))["start"]);
+            Assert.Equal(12.5, D(Tick(1000, 100, 0, 0, Chutes(), 0.8, 10, rate: 12.5), "rate_deg"));
+            Assert.Equal(-1.0, D(BlockCalls.BrakeTick(new Dictionary<string, object> { { "throttle", 1.0 } }), "rate_deg"));
         }
 
         // Today's rule (reentry_brake_due) with no chutes in the group, or chute_mode none (uids empty).
@@ -421,8 +559,8 @@ namespace ClaudiaKerman.Core.Tests
             var ask = new Dictionary<string, object>
             {
                 { "radar", 1700.0 }, { "speed", 150.0 }, { "brake_h", 1750.0 }, { "last_h", 1240.0 }, { "shield_speed", 400.0 }, { "shield_agl", 3000.0 },
-                { "chutes", ChutesAt(1000, false, "deployed", "semi") }, { "uids", new List<object> { "a", "b" } }, { "throttle", 0.7 }, { "off_deg", 12.0 },
-                { "now", 100.0 }, { "open_ut", -1.0 }, { "decel", 12.0 }, { "chute_last_agl", 1500.0 }, { "drogue_last_agl", 3000.0 },
+                { "chutes", Set(false, "deployed", "semi") }, { "uids", new List<object> { "a", "b" } }, { "throttle", 0.7 }, { "off_deg", 12.0 }, { "rate_deg", 8.0 },
+                { "now", 100.0 }, { "open_ut", -1.0 }, { "decel", 12.0 }, { "drogues_called", true }, { "mains_called", true }, { "drogue_call_ut", 90.0 }, { "main_call_ut", 99.5 },
             };
             Timing.Within(2, () =>
             {

@@ -734,6 +734,7 @@ function reentry {
   local brake_why is "".
   local chute_states is "".
   local gimbals is list().
+  local trace_ut is 0.
 
   // Opens the parachutes due now (speed m/s, agl m, pressure atm). Open parachutes steer the craft
   // themselves, except while braking.
@@ -769,7 +770,11 @@ function reentry {
   // Core's word this tick (#954): whether braking may start and the guarded throttle. tset: the throttle wanted; off_deg: degrees off the aim. Notes each change of the group's chutes, and locks the gimbals while they're fully open.
   local brake_ask is {
     parameter tset is 0, off_deg is 0.
-    local b is addons:claudia:braketick(lexicon("radar", reentry_agl(), "speed", ship:velocity:surface:mag, "brake_h", brake_h, "last_h", last_h, "shield_speed", reentry_shield_speed(), "shield_agl", reentry_shield_last_agl(), "uids", choose group:uids if chute_mode <> "none" else list(), "throttle", tset, "off_deg", off_deg, "decel", decel, "chute_last_agl", reentry_chute_last_agl(), "drogue_last_agl", reentry_drogue_last_agl())).
+    local b is addons:claudia:braketick(lexicon("radar", reentry_agl(), "speed", ship:velocity:surface:mag, "brake_h", brake_h, "last_h", last_h, "shield_speed", reentry_shield_speed(), "shield_agl", reentry_shield_last_agl(), "uids", choose group:uids if chute_mode <> "none" else list(), "throttle", tset, "off_deg", off_deg, "rate_deg", ship:angularvel:mag * constant:radtodeg, "decel", decel, "drogues_called", drogues_out, "mains_called", mains_out)).
+    if braking and time:seconds >= trace_ut {
+      set trace_ut to time:seconds + 1.
+      addons:claudia:blocktrace(ctx:block, lexicon("phase", "braking", "throttle", round(b:throttle, 2), "off_deg", round(off_deg, 1), "rate_deg", round(b:rate_deg, 1), "zero_why", b:zero_why)).
+    }
     if b:chutes <> chute_states {
       set chute_states to b:chutes.
       addons:claudia:blocknote(ctx:block, lexicon("phase", "chutes", "states", chute_states)).
@@ -901,7 +906,6 @@ function reentry {
     gear on.
     // RCS stays off while braking unless the craft has no wheel torque, as for land's (#506).
     set ctx:rcs_braking to true.
-    local trace_ut is 0.
     until claudia_on_ground() {
       local up_v is ship:up:vector.
       local vel is ship:velocity:surface.
@@ -915,14 +919,10 @@ function reentry {
       } else {
         set steer to up_v - vxcl(up_v, vel) * 0.1.
       }
+      // No chute opens under this burn once they are all out (#954); a last resort still tries one, before Core's word, so the thrust is zero the tick it is called.
+      if brake_why <> "chutes open" { chute_tick(last_speed, agl, body_:atm:altitudepressure(ship:altitude)). }
       local off_deg is vang(ship:facing:forevector, steer).
       set tset to brake_ask(reentry_brake_throttle(agl, -ship:verticalspeed, reentry_up_accel(ship:facing:forevector), body_:mu / (body_:radius + ship:altitude) ^ 2), off_deg):throttle.
-      if time:seconds >= trace_ut {
-        set trace_ut to time:seconds + 1.
-        addons:claudia:blocktrace(ctx:block, lexicon("phase", "braking", "throttle", round(tset, 2), "off_deg", round(off_deg, 1))).
-      }
-      // No chute opens under this burn once they are all out (#954); a last resort still tries one.
-      if brake_why <> "chutes open" { chute_tick(last_speed, agl, body_:atm:altitudepressure(ship:altitude)). }
       local reason is claudia_tick(ctx, tset, false).
       if reason <> "" {
         set fell to reason.

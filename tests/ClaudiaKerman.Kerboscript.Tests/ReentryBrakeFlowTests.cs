@@ -208,14 +208,33 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Fact]
-        public void The_block_hands_Core_the_slowing_and_both_last_call_heights_or_its_rules_go_blind()
+        public void The_block_hands_Core_the_slowing_the_calls_and_the_rate_or_its_rules_go_blind()
         {
             var body = Body();
             var ask = body.Substring(body.IndexOf("addons:claudia:braketick(", StringComparison.Ordinal));
             ask = ask.Substring(0, ask.IndexOf('\n'));
             Assert.Contains("\"decel\", decel", ask);
-            Assert.Contains("\"chute_last_agl\", reentry_chute_last_agl()", ask);
-            Assert.Contains("\"drogue_last_agl\", reentry_drogue_last_agl()", ask);
+            Assert.Contains("\"drogues_called\", drogues_out", ask);
+            Assert.Contains("\"mains_called\", mains_out", ask);
+            Assert.Contains("\"rate_deg\", ship:angularvel:mag * constant:radtodeg", ask);
+        }
+
+        [Fact]
+        public void A_chute_called_in_the_braking_loop_is_called_before_Cores_word_so_the_thrust_is_zero_that_tick()
+        {
+            var body = Body();
+            var loop = body.IndexOf("until claudia_on_ground() {", StringComparison.Ordinal);
+            var call = body.IndexOf("if brake_why <> \"chutes open\" { chute_tick(", loop, StringComparison.Ordinal);
+            var word = body.IndexOf("set tset to brake_ask(", loop, StringComparison.Ordinal);
+            Assert.True(call > 0 && word > call, "chute_tick before brake_ask");
+        }
+
+        [Fact]
+        public void The_trace_logs_the_rate_and_why_the_thrust_is_zero_once_a_second_while_braking()
+        {
+            var body = Body();
+            Assert.Contains("if braking and time:seconds >= trace_ut {", body);
+            Assert.Contains("\"rate_deg\", round(b:rate_deg, 1), \"zero_why\", b:zero_why", body);
         }
 
         // ---- The real answers, through the addon's real conversion ----
@@ -237,6 +256,10 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(new StringValue("chutes open"), tick[new StringValue("why")]);
             Assert.Equal(new StringValue("Mk16 Parachute deployed"), tick[new StringValue("chutes")]);
             Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("open_ut")]);
+            Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("drogue_call_ut")]);
+            Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("main_call_ut")]);
+            Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("rate_deg")]);
+            Assert.Equal(new StringValue("off aim"), tick[new StringValue("zero_why")]);
             Assert.Equal(ScalarValue.Create(0), tick[new StringValue("throttle")]);
 
             var failed = (Lexicon)KosValues.FromPlain(BlockCalls.BrakeTick(null));
