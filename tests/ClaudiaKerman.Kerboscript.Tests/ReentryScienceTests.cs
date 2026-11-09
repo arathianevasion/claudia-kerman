@@ -293,7 +293,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var sma = (rPe + rAp) / 2;
             var ecc = (rAp - rPe) / (rAp + rPe);
             var entry = KerbinRadius + 70000;
-            var eta = Number(string.Format(CultureInfo.InvariantCulture, "reentry_entry_eta({0}, {1}, {2}, {3}, {4})", D(ecc), D(sma), D(KerbinMu), D(entry), D(trueAnomaly)));
+            var eta = Number(string.Format(CultureInfo.InvariantCulture, "claudia_fall_eta({0}, {1}, {2}, {3}, {4})", D(ecc), D(sma), D(KerbinMu), D(entry), D(trueAnomaly)));
             Assert.True(eta > 0, "eta " + eta);
             Assert.Equal(entry, TimeToRadius(ecc, sma, trueAnomaly, entry, eta), 0);
         }
@@ -305,13 +305,13 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var rAp = KerbinRadius + 200000;
             var sma = (rPe + rAp) / 2;
             var ecc = (rAp - rPe) / (rAp + rPe);
-            Assert.Equal(0, Number(string.Format(CultureInfo.InvariantCulture, "reentry_entry_eta({0}, {1}, {2}, {3}, 0)", D(ecc), D(sma), D(KerbinMu), D(KerbinRadius + 70000))));
+            Assert.Equal(0, Number(string.Format(CultureInfo.InvariantCulture, "claudia_fall_eta({0}, {1}, {2}, {3}, 0)", D(ecc), D(sma), D(KerbinMu), D(KerbinRadius + 70000))));
 
             var outPe = KerbinRadius + 100000;
             var outSma = (outPe + rAp) / 2;
             var outEcc = (rAp - outPe) / (rAp + outPe);
-            Assert.Equal(-1, Number(string.Format(CultureInfo.InvariantCulture, "reentry_entry_eta({0}, {1}, {2}, {3}, 180)", D(outEcc), D(outSma), D(KerbinMu), D(KerbinRadius + 70000))));
-            Assert.Equal(-1, Number(string.Format(CultureInfo.InvariantCulture, "reentry_entry_eta(1.2, {0}, {1}, {2}, 180)", D(outSma), D(KerbinMu), D(KerbinRadius + 70000))));
+            Assert.Equal(-1, Number(string.Format(CultureInfo.InvariantCulture, "claudia_fall_eta({0}, {1}, {2}, {3}, 180)", D(outEcc), D(outSma), D(KerbinMu), D(KerbinRadius + 70000))));
+            Assert.Equal(-1, Number(string.Format(CultureInfo.InvariantCulture, "claudia_fall_eta(1.2, {0}, {1}, {2}, 180)", D(outSma), D(KerbinMu), D(KerbinRadius + 70000))));
         }
 
         // ---- reentry: a skip-out (#592) ----

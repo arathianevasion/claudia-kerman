@@ -493,7 +493,6 @@ print land_missed_reason(true, """", planned + 1.5 * period + 1800, missed, 0).
             Assert.Equal("-1", One("claudia_fall_eta(" + Descent + ", 201000, 180)"));
             var eta = double.Parse(One("claudia_fall_eta(" + Descent + ", 210000, 180)"), System.Globalization.CultureInfo.InvariantCulture);
             Assert.InRange(eta, 800, 1239);
-            Assert.Equal(One("reentry_entry_eta(" + Descent + ", 210000, 180)"), One("claudia_fall_eta(" + Descent + ", 210000, 180)"));
         }
 
         [Fact]
