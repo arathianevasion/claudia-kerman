@@ -9,7 +9,7 @@ Install and the block test runner are as in `phase-3-gate.md` ("Install", "Where
 1. In the block test runner window pick `exec_node_rcs_turn` and press **Run**. It spawns dock's craft (one Small Inline Reaction Wheel, four RV-105 blocks, 20 units of monopropellant) in a 100 km Kerbin orbit, and exec_node flies a 10 m/s node 120 s ahead pointing straight behind the craft.
 2. `KSP.log` reads `PASS exec_node_rcs_turn`; `test_turn_deg` is over 150 and `test_monoprop_used` under 1.
 3. Watch the turn: the RCS plumes fire in one short burst, stop while the craft coasts round, fire again in one short burst as it nears the node, then stay dark while the wheel settles. They never fire through the coast.
-4. In `KSP.log`: a `block call TURNPLAN took ...` line with `rcs ..., coast ... deg/s, bursts ... s`; `block call BURSTTURN ...` lines reading `spin, RCS on`, `coast, RCS off`, `stop, RCS on`, `settle, RCS off` in that order; the RCS Use trace (`phase rcs`) shows `rcs False` through the coast; and the mission line `RCS off: turned (coast ...°/s planned, ...°/s flown, bursts ... s up, ... s down, monoprop ... used, ...° left after the stop, 0 corrections, orbital velocity changed ... m/s)`.
+4. In `KSP.log`: a `block call TURNPLAN took ...` line with `rcs ..., coast ... deg/s, bursts ... s`; `block call BURSTTURN ...` lines reading `spin, RCS on`, `coast, RCS off`, `stop, RCS on`, `settle, RCS off` in that order; the RCS Use trace (`phase coast`, at most once a second through the turn) shows `rcs False` through the coast; and the mission line `RCS off: turned (coast ...°/s planned, ...°/s flown, bursts ... s up, ... s down, monoprop ... used, ...° left after the stop, 0 corrections, orbital velocity changed ... m/s)`.
 5. Note the measured monopropellant in the report so the bound in `tests/blocks/exec_node_rcs_turn/test.cfg` can be tightened.
 
 ## Check 2: the Mun validation flight
@@ -30,6 +30,15 @@ Fly the Mun validation flight on Mun Shot v2. At the first large RCS-assisted tu
 3. The `turned` line shows `coast ...°/s planned` well above the old 0.5-0.7°/s, and `monoprop` under about 1 unit. Note the planned and flown rates: #754 saw 1.12°/s flown against 0.69°/s planned, a gap not reproduced offline (kOS's own rate cap and RCS spin-up overshoot are the suspects); a gap that stays under 30% is harmless.
 4. A craft whose wheels are strong against its RCS flies no burst: no `RCS on: turning` burst line and the wheels turn alone.
 
+## Check 4: a late turn corrects, and the turn is traced (#933)
+
+On the next heavy-craft launch, at a burst turn that runs past the burn's start time:
+
+1. `KSP.log` has a `trace` line about once a second through the turn, with `phase` (`spin`, `coast`, `stop` or `settle`; blank on a turn's first line at most), `error`, `rate`, `pitch_yaw_roll` (deg/s, signed), `actuation` and `ec_pct`.
+2. A leftover over 10° after the burn's start time takes a correction: the `turned` line shows 1 or 2 corrections, never more.
+3. If a coast's error grows more than 10° over where the coast began, the coast ends there and `BURSTTURN` reads `stop, RCS on`, not a coast running on to its time limit.
+4. If the turn goes the wrong way, keep the trace: it is the evidence for the root cause.
+
 ## Report
 
-Post on #692: pass or fail for each check, the `turned` line(s), and the monopropellant figures.
+Post on #692: pass or fail for each check, the `turned` line(s), and the monopropellant figures. For check 4 post on #933, with the trace lines.

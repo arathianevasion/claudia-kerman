@@ -125,7 +125,7 @@ namespace ClaudiaKerman.Core.Missions
                     continue;
                 }
                 child.Separated = true;
-                child.VesselId = seen.Id;
+                SetChildVessel(mission, child, seen.Id);
                 mission.LeftTheCraft.Add(seen.Id);
                 child.VesselName = seen.Name;
                 if (seen.ProcessorPartIds.Count > 0) child.ProcessorPartIds = seen.ProcessorPartIds.ToList();
@@ -150,7 +150,7 @@ namespace ClaudiaKerman.Core.Missions
             if (child != null)
             {
                 child.Separated = true;
-                child.VesselId = left.Id;
+                SetChildVessel(mission, child, left.Id);
                 child.VesselName = left.Name;
             }
             var name = child != null ? child.Name : null;

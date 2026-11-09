@@ -1125,6 +1125,38 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             Assert.Contains("line 2: :QUICKSAVE (quicksave)", result.Forbidden);
         }
 
+        // ---- Undefined calls (#928) ----
+
+        [Fact]
+        public void ACallToAFunctionNothingDefinesIsNamedWithItsLine()
+        {
+            var calls = KosScriptCheck.UndefinedCalls(CoreLibrary.Bundle("print 1.\ndeorbit_ksc(lexicon()).\n"));
+            Assert.Equal(new[] { "line 2: deorbit_ksc" }, calls);
+        }
+
+        [Fact]
+        public void BuiltInsDelegatesLibraryAndScriptFunctionsAreNotUndefined()
+        {
+            var calls = KosScriptCheck.UndefinedCalls(CoreLibrary.Bundle(
+                "function helper { parameter a. return a. }\n"
+                + "local d is helper@.\nd(1).\nd:call(1).\nlocal e is { parameter x. return x. }.\ne(2).\n"
+                + "set later to helper@.\nlater(3).\nhelper(4).\nlocal plan is lexicon(\"a\", 1).\nprint abs(-1).\ncircularize().\n"));
+            Assert.Empty(calls);
+        }
+
+        [Fact]
+        public void AParameterHoldingADelegateIsNotUndefined()
+        {
+            Assert.Empty(KosScriptCheck.UndefinedCalls(CoreLibrary.Bundle("function run_it { parameter act. act(). }\nrun_it({ print 1. }).\n")));
+        }
+
+        [Fact]
+        public void TheFixtureFailsNamingDeorbitKscAtLine4()
+        {
+            var fixture = Path.Combine(RepoRoot(), "tools", "ClaudiaKerman.KsCompile", "fixtures", "undefined-call.ks");
+            Assert.Equal(new[] { "line 4: deorbit_ksc" }, KosScriptCheck.UndefinedCalls(CoreLibrary.Bundle(File.ReadAllText(fixture))));
+        }
+
         private static string RepoRoot()
         {
             var dir = new DirectoryInfo(System.AppContext.BaseDirectory);
