@@ -583,7 +583,8 @@ namespace ClaudiaKerman.Core.Tools
                 }
                 else if (spd > 30)
                 {
-                    pitch = prograde;
+                    // A burn-through steers on orbital prograde, as launch.ks does (ship:prograde); the coast keeps surface prograde.
+                    pitch = _burnThrough ? Math.Atan2(vertical, horizontal + _o.Spin * R / _o.Radius) * 180 / Math.PI : prograde;
                 }
                 if (q > AeroQ && spd > 30)
                 {
@@ -628,8 +629,8 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// Whether launch burns through at this step, from <see cref="LaunchBurnThrough"/>: the one decision, given launch's inputs from the sim's own orbit
-        /// (the stage table as <c>claudia_burn_stages</c> gives it, vacuum figures from the stage burning now down to stage_limit). The sim has no steering,
-        /// so it gives no turn figures: the decision counts no turn time.
+        /// (the stage table as <c>claudia_burn_stages</c> gives it, vacuum figures from the stage burning now down to stage_limit). The sim has no torque or
+        /// inertia data, so it gives no turn figures: the decision counts no turn time.
         /// </summary>
         private bool BurnsThrough(double ap, double toAp, double altitude)
         {

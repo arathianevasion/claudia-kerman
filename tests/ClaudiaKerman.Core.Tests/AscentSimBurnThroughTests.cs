@@ -73,6 +73,8 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(0, flight.CoastAp);
             Assert.Equal(1, flight.LaunchEndStage);
             Assert.All(flight.Lit.Skip(1), l => Assert.True(l.Stage < 3));
+            // Steered on orbital prograde, as launch.ks does: 277 km. On surface prograde it came out 293 km.
+            Assert.InRange(flight.OrbitAp, 270000, 285000);
         }
 
         [Fact]
