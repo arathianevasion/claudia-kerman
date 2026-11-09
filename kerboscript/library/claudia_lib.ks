@@ -1329,39 +1329,8 @@ function claudia_mean_anomaly {
 
 // ---- Burns ----
 
-// Seconds to burn dv (m/s) over the stages a burn uses, in burn order: each a lexicon dv (m/s it
-// has), duration (s to burn it all) and isp (s), as stock's delta-v gives them (claudia_burn_stages).
-// Each stage is burned out before the next; within the last one, the rocket equation from its full
-// mass (its duration over 1 - e^(-dv/ve)), or a straight share of its duration with no isp. A burn
-// past the last stage runs on at that stage's rate. -1 if no stage has delta-v. Pure: literals
-// rather than CONSTANT:G0 and CONSTANT:E (KSP's g0 is 9.80665).
-function claudia_staged_burn_time {
-  parameter dv, stages.
-  local left is dv.
-  local total is 0.
-  local last is 0.
-  for st in stages {
-    if st:dv > 0 and st:duration > 0 {
-      set last to st.
-      if left <= st:dv {
-        if st:isp <= 0 {
-          return total + st:duration * left / st:dv.
-        }
-        local ve is st:isp * 9.80665.
-        return total + st:duration * (1 - 2.718281828459045 ^ (-left / ve)) / (1 - 2.718281828459045 ^ (-st:dv / ve)).
-      }
-      set total to total + st:duration.
-      set left to left - st:dv.
-    }
-  }
-  if last:istype("Scalar") {
-    return -1.
-  }
-  return total + last:duration * left / last:dv.
-}
-
 // The stages a burn starting now can use, from the current one down to stage_limit, for
-// claudia_staged_burn_time: stock's vacuum delta-v and burn time for each, and the vacuum isp of the
+// claudia_burn_timing (Core's BURNTIME): stock's vacuum delta-v and burn time for each, and the vacuum isp of the
 // engines burning in it (lit by then and not yet dropped).
 function claudia_burn_stages {
   parameter stage_limit.
@@ -1385,15 +1354,17 @@ function claudia_burn_stages {
 
 // Burn timing for a node dv (m/s) node_eta s from now over stages (claudia_burn_stages):
 // lexicon("burn_time", s, "lead", s, "start_in", s from now). lead_opt: "half_burn" (start early by
-// the time to burn half the node's delta-v) or seconds before the node. burn_time -1: no thrust. Pure.
+// the time to burn half the node's delta-v) or seconds before the node. burn_time -1: no thrust. The
+// rule is Core's (BURNTIME): each stage burned out before the next, the last by the rocket equation,
+// a burn past the last at its rate.
 function claudia_burn_timing {
   parameter dv, stages, node_eta, lead_opt.
-  local burn is claudia_staged_burn_time(dv, stages).
+  local burn is addons:claudia:burntime(lexicon("dv", dv, "stages", stages)).
   local lead is lead_opt.
   if lead_opt:istype("String") {
-    set lead to max(0, claudia_staged_burn_time(dv / 2, stages)).
+    set lead to max(0, burn:half_burn).
   }
-  return lexicon("burn_time", burn, "lead", lead, "start_in", node_eta - lead).
+  return lexicon("burn_time", burn:burn_time, "lead", lead, "start_in", node_eta - lead).
 }
 
 // Aligned (GLOSSARY), the one test: within tol:aligned_deg of the steering target and turning under

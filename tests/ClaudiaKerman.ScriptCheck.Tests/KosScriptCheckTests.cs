@@ -604,6 +604,7 @@ namespace ClaudiaKerman.ScriptCheck.Tests
         [InlineData("local c is addons:claudia.\nprint c:DockFuel(lexicon(\"distance\", 150)):error.")]
         [InlineData("print addons:claudia:burnworth(lexicon(\"block\", \"circularize\")):skip.")]
         [InlineData("print addons:claudia:burnthrough(lexicon()):burn_through.")]
+        [InlineData("print addons:claudia:burntime(lexicon()):burn_time.")]
         [InlineData("print addons:claudia:returnmiss(lexicon(\"target_pe\", 35000, \"pe\", 36000)):error.")]
         [InlineData("print addons:claudia:turnplan(lexicon(\"angle\", 140, \"left_s\", 60)):coast_rate.")]
         [InlineData("print addons:claudia:burstturn(lexicon(), lexicon(\"error\", 40)):rcs_on.")]

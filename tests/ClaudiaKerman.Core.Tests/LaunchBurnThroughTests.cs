@@ -226,7 +226,7 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void ABurnPastTheLastStageRunsOnAtThatStagesRate()
         {
-            // As claudia_staged_burn_time: 322 m/s asked of a 100 m/s stage that takes 50 s runs on at 0.5 s per m/s.
+            // As StagedBurnTime: 322 m/s asked of a 100 m/s stage that takes 50 s runs on at 0.5 s per m/s.
             var answer = Decide(79832, 457707, 145.1, DunaTurn, 0, Stages(Stage(100, 50, 300)));
             Assert.InRange((double)answer["half_burn"], 155, 167);
             Assert.Equal(true, answer["burn_through"]);
