@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System;
 using System.Collections.Generic;
 using ClaudiaKerman.Core.Tools;
 using Xunit;
@@ -29,6 +30,15 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("", low["error"]);
             Assert.Equal(false, low["carry_on"]);
             Assert.Equal(0, low["step"]);
+            Assert.Equal(5.0, low["abort_pct"]);
+        }
+
+        [Fact]
+        public void While_it_carries_on_the_abort_reads_a_full_battery_and_otherwise_this_one_reading()
+        {
+            Assert.Equal(100.0, Convert.ToDouble(Ask(9.9, 10, 15000)["abort_pct"]));
+            Assert.Equal(1.9, Convert.ToDouble(Ask(1.9, 0, 15000)["abort_pct"]));
+            Assert.Equal(55.0, Convert.ToDouble(Ask(55, 10, 15000)["abort_pct"]));
         }
 
         [Fact]
@@ -83,6 +93,8 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("", low["error"]);
             Assert.Equal(false, low["carry_on"]);
             Assert.Equal(0, low["step"]);
+            // Asked nothing (the addon's answer to a failed call), the abort stands.
+            Assert.Equal(0.0, Convert.ToDouble(low["abort_pct"]));
         }
 
         /// <summary>ADR 0014 guardrail 6: every <c>reentry</c> tick asks; 1,000 ticks (20 s at 50 Hz) in 2 ms.</summary>

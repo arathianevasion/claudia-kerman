@@ -20,7 +20,7 @@
 //|   jettison_stage ["auto"]: drops that shield, unless its stack is kept; or "none".
 //|   hold ["retrograde"]: points the craft's forward axis at surface retrograde; "none" leaves it.
 //|   max_duration ["auto"]: the wait for the atmosphere plus 1800 s.
-//|   plus min_ec_pct (not in air), abort_on_part_loss, stage_limit, as usual.
+//|   plus min_ec_pct (not with Pe in air), abort_on_part_loss, stage_limit.
 //| Extra results: max_g (peak g), max_temp_pct (hottest part, % of limit), geo (lat, lng, alt),
 //| splashed, touchdown_speed (m/s at contact; over 15 fails), passes (max 3; a skip-out waits for the
 //| next, else "skipped out ..."), shield_dropped, chutes_used, chutes_kept (titles), powered_dv (m/s), sun_elevation_deg.
@@ -681,19 +681,18 @@ function reentry {
   local group is lexicon("last", false, "stages", list(), "uids", list(), "why", ""). // Chosen at the drop; empty, the first read below is fresh.
   // Falling into the air (#942), low charge doesn't end the block: Core's LOWCHARGE says when it lets go of the steering (the braking burn keeps its own: it alone points the engine) and when it arms the group's chutes once, which need no charge. Asked by claudia_tick, after the trim.
   local ec_step is 0.
-  set ctx:ec_watch to {
+  set ctx:ec_tick to {
     local low is addons:claudia:lowcharge(lexicon("ec_pct", claudia_ec_pct(), "min_ec_pct", opt:min_ec_pct, "pe", ship:periapsis, "air_top", body_:atm:height)).
     if low:carry_on and not braking { set held to false. unlock steering. sas off. claudia_rcs_off("low charge"). }
     if low:step > ec_step {
       set ec_step to low:step.
       set group to reentry_fresh_group(group, ask, extra:chutes_used).
       if ec_step = 2 and chute_mode <> "none" and group:uids:length > 0 {
-        for t in reentry_open_chutes(ship:parts, true, group) { extra:chutes_used:add(t). }
-        for t in reentry_open_chutes(ship:parts, false, group) { extra:chutes_used:add(t). }
+        for drogues in list(true, false) { for t in reentry_open_chutes(ship:parts, drogues, group) { extra:chutes_used:add(t). } }
       }
       addons:claudia:blocknote(ctx:block, lexicon("phase", "low_charge", "pct", round(claudia_ec_pct(), 1), "steering_released", low:carry_on and not braking, "chutes_used", extra:chutes_used:join(", "))).
     }
-    return low:carry_on.
+    return low:abort_pct.
   }.
   if entry_in > below:lead {
     set entry_in to claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
@@ -742,6 +741,7 @@ function reentry {
   // This entry's Chute Group (ADR 0019), chosen after any drop; none outside it is ever armed.
   set ask:engine to powered.
   set group to reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts).
+  set ec_step to min(ec_step, 1). // Armed before the drop, the group chosen now is armed too (stowed chutes only).
   if group:why <> "" { addons:claudia:blocknote(ctx:block, lexicon("phase", "chutes_widened", "why", group:why)). }
   if group:uids:length = 0 {
     set chute_mode to "none".
@@ -758,7 +758,7 @@ function reentry {
   local air_ut is time:seconds + (choose claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly) if entry_in > 0 else 0).
   local hold_ut is choose time:seconds + addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime, "to_air", air_ut - time:seconds)):hold_in if held else air_ut. // #941: hold from a turn time plus margin before the air (Core's hold_in)
   local waited is choose claudia_wait_until(ctx, hold_ut) if hold_ut > time:seconds else "".
-  if held and waited = "" { lock steering to srfretrograde. set waited to choose claudia_warp_to(ctx, air_ut, air_ut - time:seconds) if air_ut > time:seconds else "". }
+  if waited = "" { if held { lock steering to srfretrograde. } set waited to choose claudia_warp_to(ctx, air_ut, air_ut - time:seconds) if air_ut > time:seconds else "". }
   if waited <> "" {
     reentry_abort(chute_mode, reentry_fresh_group(group, ask, extra:chutes_used)).
     return claudia_finish(ctx, false, waited, extra).

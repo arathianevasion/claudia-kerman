@@ -36,7 +36,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         private static string Watch()
         {
             var body = Body();
-            var start = At(body, "  set ctx:ec_watch to {\n");
+            var start = At(body, "  set ctx:ec_tick to {\n");
             const string End = "\n  }.\n";
             return body.Substring(start, body.IndexOf(End, start, StringComparison.Ordinal) + End.Length - start);
         }
@@ -72,9 +72,9 @@ namespace ClaudiaKerman.Kerboscript.Tests
             + "local group is lexicon(\"last\", false, \"stages\", list(), \"uids\", list(), \"why\", \"\").\n"
             + "local ec_step is 0.\n";
 
-        private const string Nothing = "lexicon(\"carry_on\", false, \"step\", 0)";
-        private const string Release = "lexicon(\"carry_on\", true, \"step\", 1)";
-        private const string Arm = "lexicon(\"carry_on\", true, \"step\", 2)";
+        private const string Nothing = "lexicon(\"carry_on\", false, \"step\", 0, \"abort_pct\", 55)";
+        private const string Release = "lexicon(\"carry_on\", true, \"step\", 1, \"abort_pct\", 100)";
+        private const string Arm = "lexicon(\"carry_on\", true, \"step\", 2, \"abort_pct\", 100)";
 
         private static string[] Ticks(string extraRig, string script, params string[] answers)
         {
@@ -84,27 +84,27 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [Fact]
         public void Under_the_floor_it_carries_on_lets_go_of_the_steering_and_notes_it_once()
         {
-            Assert.Equal(new[] { "True", "True", "False", "/True", "" },
+            Assert.Equal(new[] { "100", "100", "False", "/True", "" },
                 Ticks("",
-                    "print ctx:ec_watch:call(). print ctx:ec_watch:call().\n"
+                    "print ctx:ec_tick:call(). print ctx:ec_tick:call().\n"
                     + "print held. print notes:join(\";\"). print armed:join(\",\").\n", Release, Release));
         }
 
         [Fact]
         public void Over_the_floor_nothing_changes_and_nothing_is_noted()
         {
-            Assert.Equal(new[] { "False", "True", "0" },
-                Ticks("", "print ctx:ec_watch:call(). print held. print notes:length.\n", Nothing));
+            Assert.Equal(new[] { "55", "True", "0" },
+                Ticks("", "print ctx:ec_tick:call(). print held. print notes:length.\n", Nothing));
         }
 
         [Fact]
         public void Under_2_percent_each_stowed_chute_in_the_group_gets_the_event_once()
         {
-            Assert.Equal(new[] { "True", "d,m", "Chute d,Chute m", "1", "d,m" },
+            Assert.Equal(new[] { "100", "d,m", "Chute d,Chute m", "1", "d,m" },
                 Ticks("",
-                    "print ctx:ec_watch:call().\n"
+                    "print ctx:ec_tick:call().\n"
                     + "print armed:join(\",\"). print extra:chutes_used:join(\",\"). print notes:length.\n"
-                    + "ctx:ec_watch:call(). print armed:join(\",\").\n", Arm, Arm));
+                    + "ctx:ec_tick:call(). print armed:join(\",\").\n", Arm, Arm));
         }
 
         [Fact]
@@ -112,21 +112,21 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             // The drogue was already out: only the main gets the event, once.
             Assert.Equal(new[] { "d,m", "Chute m" },
-                Ticks("armed:add(\"d\").\n", "ctx:ec_watch:call(). print armed:join(\",\"). print extra:chutes_used:join(\",\").\n", Arm));
+                Ticks("armed:add(\"d\").\n", "ctx:ec_tick:call(). print armed:join(\",\"). print extra:chutes_used:join(\",\").\n", Arm));
         }
 
         [Fact]
         public void Before_the_group_is_chosen_the_arming_reads_it_fresh_and_keeps_to_it()
         {
             Assert.Equal(new[] { "1", "d,m" },
-                Ticks("", "ctx:ec_watch:call(). print fresh. print armed:join(\",\").\n", Arm));
+                Ticks("", "ctx:ec_tick:call(). print fresh. print armed:join(\",\").\n", Arm));
         }
 
         [Fact]
         public void Chute_mode_none_arms_nothing()
         {
-            Assert.Equal(new[] { "True", "", "" },
-                Ticks("set chute_mode to \"none\".\n", "print ctx:ec_watch:call(). print armed:join(\",\"). print extra:chutes_used:join(\",\").\n", Arm));
+            Assert.Equal(new[] { "100", "", "" },
+                Ticks("set chute_mode to \"none\".\n", "print ctx:ec_tick:call(). print armed:join(\",\"). print extra:chutes_used:join(\",\").\n", Arm));
         }
 
         [Fact]
@@ -134,21 +134,36 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             // reentry_group_of's fallback for chutes "none" is last true with no uids.
             Assert.Equal(new[] { "" },
-                Ticks("set chosen to lexicon(\"error\", \"\", \"last\", true, \"stages\", list(), \"uids\", list(), \"why\", \"\").\n", "ctx:ec_watch:call(). print armed:join(\",\").\n", Arm));
+                Ticks("set chosen to lexicon(\"error\", \"\", \"last\", true, \"stages\", list(), \"uids\", list(), \"why\", \"\").\n", "ctx:ec_tick:call(). print armed:join(\",\").\n", Arm));
         }
 
         [Fact]
         public void The_braking_burn_keeps_its_steering_and_the_chutes_are_still_armed()
         {
-            Assert.Equal(new[] { "True", "True", "d,m", "Chute d, Chute m/False" },
-                Ticks("set braking to true.\n", "print ctx:ec_watch:call(). print held. print armed:join(\",\"). print notes:join(\";\").\n", Arm));
+            Assert.Equal(new[] { "100", "True", "d,m", "Chute d, Chute m/False" },
+                Ticks("set braking to true.\n", "print ctx:ec_tick:call(). print held. print armed:join(\",\"). print notes:join(\";\").\n", Arm));
         }
 
         [Fact]
         public void Charge_coming_back_neither_notes_again_nor_arms_again()
         {
             Assert.Equal(new[] { "d,m", "1" },
-                Ticks("", "ctx:ec_watch:call(). ctx:ec_watch:call(). ctx:ec_watch:call(). print armed:join(\",\"). print notes:length.\n", Arm, Release, Arm));
+                Ticks("", "ctx:ec_tick:call(). ctx:ec_tick:call(). ctx:ec_tick:call(). print armed:join(\",\"). print notes:length.\n", Arm, Release, Arm));
+        }
+
+        [Fact]
+        public void Armed_before_the_drop_the_group_chosen_after_it_is_armed_too_and_nothing_twice()
+        {
+            // The drop took d and m's group; the block's choice after the drop (the reset below) is the pod's p.
+            Assert.Equal(new[] { "d,m", "d,m,p" },
+                Ticks("",
+                    "ctx:ec_tick:call(). print armed:join(\",\").\n"
+                    + "set group to lexicon(\"error\", \"\", \"last\", false, \"stages\", list(0), \"uids\", list(\"p\"), \"why\", \"\").\n"
+                    + "set ec_step to min(ec_step, 1).\n"
+                    + "ctx:ec_tick:call(). print armed:join(\",\").\n", Arm, Arm));
+            var body = Body();
+            Assert.Equal(At(body, "  set group to reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts).\n") + "  set group to reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts).\n".Length,
+                At(body, "  set ec_step to min(ec_step, 1)."));
         }
 
         // ---- Where it is asked ----
@@ -156,10 +171,10 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [Fact]
         public void Only_reentry_sets_the_watch_and_after_its_trim_so_a_trim_burn_keeps_its_steering()
         {
-            var setters = CoreLibrary.Files.Where(f => f.Source.Contains("set ctx:ec_watch")).Select(f => f.Name).ToArray();
+            var setters = CoreLibrary.Files.Where(f => f.Source.Contains("set ctx:ec_tick")).Select(f => f.Name).ToArray();
             Assert.Equal(new[] { "reentry" }, setters);
             var body = Body();
-            var watch = At(body, "set ctx:ec_watch to {");
+            var watch = At(body, "set ctx:ec_tick to {");
             Assert.True(At(body, "claudia_fly_correction(ctx, addons:claudia:entrytrim(") < watch);
             Assert.True(watch < At(body, "claudia_wait_until(ctx, time:seconds + entry_in - below:lead)"), "set before the first wait");
         }
@@ -168,7 +183,8 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void The_hold_is_not_taken_up_again_after_the_steering_is_released()
         {
             var body = Body();
-            Assert.Contains("if held and waited = \"\" { lock steering to srfretrograde.", body);
+            // The lock is only for a craft still held; the wait for the air stands either way, so a release during the first wait doesn't start the fall early.
+            Assert.Contains("if waited = \"\" { if held { lock steering to srfretrograde. } set waited to choose claudia_warp_to(ctx, air_ut, air_ut - time:seconds)", body);
             Assert.Contains("low:carry_on and not braking { set held to false. unlock steering. sas off. claudia_rcs_off(\"low charge\"). }", body);
             Assert.Equal(2, body.Split("lock steering to").Length - 1);
             // The only other lock is the braking burn's own, which keeps pointing the engine.
@@ -205,16 +221,16 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Fact]
-        public void A_watch_that_answers_false_leaves_the_abort_to_stand()
+        public void The_abort_judges_the_reading_the_hook_gives_so_a_real_one_still_ends_the_block()
         {
-            Assert.Equal(new[] { "abort min_ec_pct: electric charge 5% is below 10%" }, Abort(string.Format(Ctx, 0, ", \"ec_watch\", { return false. }")));
+            Assert.Equal(new[] { "abort min_ec_pct: electric charge 7% is below 10%" }, Abort(string.Format(Ctx, 0, ", \"ec_tick\", { return 7. }")));
         }
 
         [Fact]
-        public void A_watch_that_deals_with_it_stops_only_the_min_ec_pct_abort()
+        public void A_hook_that_carries_on_stops_only_the_min_ec_pct_abort()
         {
-            Assert.Equal(new[] { "" }, Abort(string.Format(Ctx, 0, ", \"ec_watch\", { return true. }")));
-            Assert.Equal(new[] { "abort abort_on_part_loss: 2 part(s) lost" }, Abort(string.Format(Ctx, 2, ", \"ec_watch\", { return true. }")));
+            Assert.Equal(new[] { "" }, Abort(string.Format(Ctx, 0, ", \"ec_tick\", { return 100. }")));
+            Assert.Equal(new[] { "abort abort_on_part_loss: 2 part(s) lost" }, Abort(string.Format(Ctx, 2, ", \"ec_tick\", { return 100. }")));
         }
     }
 }

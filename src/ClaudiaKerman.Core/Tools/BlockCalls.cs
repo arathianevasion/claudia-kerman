@@ -534,13 +534,14 @@ namespace ClaudiaKerman.Core.Tools
         /// <c>ADDONS:CLAUDIA:LOWCHARGE</c>, for <c>reentry</c> (#942): what low charge does once the craft is falling into the air, that is once
         /// <c>pe</c> (m) is at or under <c>air_top</c> (m). Under <c>min_ec_pct</c> the block carries on with no <c>min_ec_pct</c> abort and lets go of the
         /// steering; under <see cref="LowChargeArmPct"/> it arms the chutes, whatever <c>min_ec_pct</c> is. <c>ec_pct</c> is the charge left, percent of
-        /// capacity. Gives <c>error</c> "", <c>carry_on</c> and <c>step</c>: 0 nothing, 1 steering released, 2 chutes armed.
+        /// capacity. Gives <c>error</c> "", <c>carry_on</c>, <c>step</c> (0 nothing, 1 steering released, 2 chutes armed) and <c>abort_pct</c>, the charge the block's
+        /// <c>min_ec_pct</c> check is to judge: 100 while it carries on, else this same reading, so a tick can't read the charge twice and abort between the reads.
         /// With the periapsis above the air, or nothing asked, <c>carry_on</c> is false and <c>step</c> 0, so the abort stands. Pure.
         /// </summary>
         public static IDictionary<string, object> LowCharge(IDictionary<string, object> input)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
-            var pct = Number(ask, "ec_pct", 100);
+            var pct = Number(ask, "ec_pct", 0);
             var falling = Number(ask, "pe", 0) <= Number(ask, "air_top", -1);
             var carryOn = falling && pct < Number(ask, "min_ec_pct", 0);
             var arm = falling && pct < LowChargeArmPct;
@@ -549,6 +550,7 @@ namespace ClaudiaKerman.Core.Tools
                 { "error", "" },
                 { "carry_on", carryOn },
                 { "step", arm ? 2 : carryOn ? 1 : 0 },
+                { "abort_pct", carryOn ? 100 : pct },
             };
         }
 
