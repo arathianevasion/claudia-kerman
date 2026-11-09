@@ -12,6 +12,7 @@ namespace ClaudiaKerman.ScriptCheck
     /// a <c>reentry(...)</c> whose separate is not <c>"none"</c>. On the Mission's Last Entry, reentry then drops what deorbit aimed with;
     /// on an earlier Entry it may drop nothing, and a script can't tell which it is, so the warning says so. #557's rule, a reentry with no
     /// drop named, is gone: <c>"auto"</c> decides from the heat shields, so naming a drop is no longer wanted.
+    /// #959 adds a second rule: a <c>reentry</c> with <c>separate "none"</c> keeps whatever stack <c>"auto"</c> would drop. Script Check never sees the craft, so it warns on any "none".
     /// It reads the Mission Script only, never the Core Library bundled after it, ignoring comments; it never refuses a script.
     /// </summary>
     public static class StackDropLint
@@ -26,6 +27,7 @@ namespace ClaudiaKerman.ScriptCheck
             var warnings = new List<string>();
             var code = CoreLibrary.MissionScript(script);
             DeorbitThenDrop(code, warnings);
+            KeptStack(code, warnings);
             return warnings;
         }
 
@@ -41,6 +43,20 @@ namespace ClaudiaKerman.ScriptCheck
                 warnings.Add("line " + LineOf(code, deorbit.Index) + ": deorbit aims for the whole stack. If this is the Mission's Last Entry, reentry drops what is below its heat shield, so the craft that re-enters is not the one aimed: "
                     + "there, give deorbit a separate for the same parts. With burns still to come, leave deorbit's separate off: the stack is needed.");
                 return;
+            }
+        }
+
+        // The #959 rule: reentry with separate "none". Script Check sees only the script, not the craft, so it can't tell whether "auto"
+        // would drop a stack here; it warns on any "none" and says what to look for. A question to Claudia, never a refusal.
+        private static void KeptStack(string code, List<string> warnings)
+        {
+            foreach (Match reentry in Reentry.Matches(code))
+            {
+                var args = Args(code, reentry.Index + reentry.Length);
+                if (!Separate.IsMatch(args) || !SeparateIsNone(args, absentIsNone: false)) continue;
+                warnings.Add("line " + LineOf(code, reentry.Index) + ": reentry with separate \"none\" keeps the whole stack. If the craft has a stack below its heat shield, "
+                    + "check its mass and the engine that would land on it: the stage that lands and lifts off is the one above the shield, and \"auto\" drops the rest. "
+                    + "Keep \"none\" only for a craft with nothing to drop.");
             }
         }
 
