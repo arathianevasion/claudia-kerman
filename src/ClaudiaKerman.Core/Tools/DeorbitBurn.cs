@@ -268,6 +268,7 @@ namespace ClaudiaKerman.Core.Tools
                     if (refined != null) burns.Add(refined);
                 }
                 var darkest = double.NegativeInfinity;
+                var refinedAny = burns.Count > 0;
                 if (_ask.Daylight)
                 {
                     darkest = Math.Max(BestSun(burns), burns.Count == 0 ? Sun(first) : double.NegativeInfinity);
@@ -277,9 +278,9 @@ namespace ClaudiaKerman.Core.Tools
                 {
                     if (_tries >= MaxTries) break;
                     var walked = Walk(plan);
-                    if (walked != plan) burns.Add(walked);
+                    if (walked != plan && (!_ask.Daylight || Lit(walked))) burns.Add(walked);
                 }
-                if (burns.Count == 0 && (!_ask.Daylight || Lit(first))) burns.Add(first);
+                if (burns.Count == 0 && (!_ask.Daylight || (!refinedAny && Lit(first)))) burns.Add(first);
                 if (burns.Count == 0)
                     return Fail("no pass in the next " + Hours(scan[scan.Count - 1].BurnUt - _ask.EarliestUt) + " h lands in daylight: the best sun at the target is "
                         + darkest.ToString("0.#", CultureInfo.InvariantCulture) + " degrees up, under " + Whole(LandingSiteSearch.MinSunElevationDeg)

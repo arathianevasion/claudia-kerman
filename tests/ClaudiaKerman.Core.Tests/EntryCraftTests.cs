@@ -124,7 +124,7 @@ namespace ClaudiaKerman.Core.Tests
         /// <summary>In an 80 km circular equatorial orbit of Kerbin, crossing longitude 0 at UT 0, as <c>deorbit</c> starts.</summary>
         private static GameSnapshot AtKerbin(List<SnapshotPart> parts)
         {
-            var snapshot = new GameSnapshot { Ut = 0, Situation = "ORBITING", Body = "Kerbin" };
+            var snapshot = new GameSnapshot { Ut = 0, Situation = "ORBITING", Body = "Kerbin", DaylightLandingDefault = false };
             snapshot.Orbit = new SnapshotOrbit { SemiMajorAxis = Kerbin.Radius + 80000, Eccentricity = 0, Body = "Kerbin", Periapsis = 80000, Apoapsis = 80000, Epoch = 0 };
             snapshot.Bodies.AddRange(new[] { Sun, Kerbin });
             return With(snapshot, parts);
