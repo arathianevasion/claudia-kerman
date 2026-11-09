@@ -37,7 +37,7 @@ Any `deorbit` (Kerbin or Duna) on a craft with panels or dishes out, flown with 
 2. The `block call REENTRYIMPACT` line after the burn reads `0 Ship Systems read stowed` (they are in by then), with a drag area within a few % of step 1's.
 3. Pass: the two lines' landings are within a few km of each other, as the periapsis difference predicts (about 3 km for 169 m on a Duna stack). A gap like 145 km with equal drag areas means the cause is elsewhere: bring both lines to the player.
 
-## The parent's face beside a stowed part (#884): no change needed
+## The parent's face beside a stowed part (#884): no change made
 
 `StowedFaces` scales the stowed part's own RETRACTED face areas by its live occlusion share. The parent's face under the part keeps its live occlusion, which is taken with the part extended. This is a bound from `PartDatabase.cfg`, `Physics.cfg` and the part `.cfg`, not a game measurement.
 
