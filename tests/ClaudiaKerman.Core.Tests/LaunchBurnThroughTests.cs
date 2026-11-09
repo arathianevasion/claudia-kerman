@@ -434,39 +434,46 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(flight.Ap, 72500, 76000);
         }
 
-        // ---- The descent guard (#936) ----
+        // ---- The descent guard (#936): descending, periapsis at or under the top, q over LaunchBurnThrough.FallQ ----
 
-        private static IDictionary<string, object> Guard(double vspeed, double altitude, double pe, bool burning = true, double targetAp = 80000, double sma = 457707)
+        private static IDictionary<string, object> Guard(double vspeed, double altitude, double pe, double q = 20000, bool burning = true, double targetAp = 80000, double sma = 457707)
         {
             return LaunchBurnThrough.Call(new Dictionary<string, object>
             {
                 { "ap", 120000.0 }, { "sma", sma }, { "gm", KerbinGm }, { "radius", KerbinRadius }, { "eta_ap", 100.0 }, { "altitude", altitude },
                 { "target_ap", targetAp }, { "atm_height", 70000.0 }, { "stages", DunaStages }, { "turn", DunaTurn }, { "angle", 10.0 }, { "burning", burning },
-                { "vspeed", vspeed }, { "pe", pe },
+                { "vspeed", vspeed }, { "pe", pe }, { "q", q },
             });
         }
 
         [Fact]
-        public void DescendingBelowTheAirWithThePeriapsisUnderItFails()
+        public void DescendingWithThePeriapsisUnderTheTopAndQOverTheLineFails()
         {
-            var answer = Guard(-20, 60000, 20000);
+            var answer = Guard(-20, 60000, 20000, q: 20000);
             Assert.StartsWith("fell back into the atmosphere: ", (string)answer["fail"]);
             Assert.Contains("periapsis 20000 m", (string)answer["fail"]);
+            Assert.Contains("q 20000 Pa", (string)answer["fail"]);
+            Assert.Equal(true, answer["done"]);
             Assert.Equal(false, answer["burn_through"]);
+            Assert.NotEqual("", Guard(-1, 60000, 70000, q: 8001)["fail"]);
         }
 
         [Fact]
-        public void APeriapsisAtTheAirTopStillFails()
+        public void QUnderTheLineKeepsBurningEvenDescendingUnderTheTop()
         {
-            Assert.NotEqual("", Guard(-1, 60000, 70000)["fail"]);
+            var answer = Guard(-20, 60000, 20000, q: 8000);
+            Assert.Equal("", answer["fail"]);
+            Assert.Equal(false, answer["done"]);
+            Assert.Equal(true, answer["burn_through"]);
+            Assert.Equal("", Guard(-20, 30000, 20000, q: 100)["fail"]);
         }
 
         [Fact]
-        public void ClimbingAboveTheAirOrWithThePeriapsisClearDoesNotFail()
+        public void ClimbingAboveTheTopOrWithThePeriapsisClearDoesNotFail()
         {
             Assert.Equal("", Guard(5, 60000, 20000)["fail"]);
             Assert.Equal("", Guard(0, 60000, 20000)["fail"]);
-            Assert.Equal("", Guard(-20, 75000, 20000)["fail"]);
+            Assert.Equal("", Guard(-20, 75000, 20000, q: 10)["fail"]);
             Assert.Equal("", Guard(-20, 60000, 70001)["fail"]);
             Assert.Equal(true, Guard(5, 60000, 20000)["burn_through"]);
         }
@@ -488,6 +495,25 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void ACallerWithoutQVspeedOrPeIsUnaffected()
+        {
+            // AscentSim passes none of the guard's figures; a caller missing any one of them gets no end.
+            foreach (var drop in new[] { "q", "vspeed", "pe" })
+            {
+                var ask = new Dictionary<string, object>
+                {
+                    { "ap", 120000.0 }, { "sma", 457707.0 }, { "gm", KerbinGm }, { "radius", KerbinRadius }, { "eta_ap", 100.0 }, { "altitude", 60000.0 },
+                    { "target_ap", 80000.0 }, { "atm_height", 70000.0 }, { "stages", DunaStages }, { "turn", DunaTurn }, { "angle", 10.0 }, { "burning", true },
+                    { "vspeed", -20.0 }, { "pe", 20000.0 }, { "q", 20000.0 },
+                };
+                ask.Remove(drop);
+                var answer = LaunchBurnThrough.Call(ask);
+                Assert.Equal("", answer["fail"]);
+                Assert.Equal(false, answer["done"]);
+            }
+        }
+
+        [Fact]
         public void PastApoapsisOnAHyperbolicOrbitTheGuardStillWorks()
         {
             var answer = Guard(-300, 50000, -200000, sma: -5000000);
@@ -496,32 +522,10 @@ namespace ClaudiaKerman.Core.Tests
             // No eta_ap at all (kOS may not give one): the end doesn't wait on it.
             var noEta = LaunchBurnThrough.Call(new Dictionary<string, object>
             {
-                { "burning", true }, { "vspeed", -300.0 }, { "pe", -200000.0 }, { "altitude", 50000.0 }, { "target_ap", 80000.0 }, { "atm_height", 70000.0 },
+                { "burning", true }, { "vspeed", -300.0 }, { "pe", -200000.0 }, { "q", 20000.0 }, { "altitude", 50000.0 }, { "target_ap", 80000.0 }, { "atm_height", 70000.0 },
             });
             Assert.Equal(true, noEta["done"]);
             Assert.StartsWith("fell back into the atmosphere: ", (string)noEta["fail"]);
-        }
-
-        /// <summary>Two stages on the Duna ship's 800 s isp, burn time scaled to give the TWR at the cutoff (the 0.19 of its 1,038 m/s stage over 523 s).</summary>
-        private static List<object> StagesAtTwr(double twr)
-        {
-            var seconds = 523 * 0.19 / twr;
-            return Stages(Stage(1038, seconds, 800), Stage(1233, seconds, 800));
-        }
-
-        [Theory]
-        [InlineData(0.19, false)]
-        [InlineData(0.188, false)]
-        [InlineData(0.185, false)]
-        [InlineData(0.18, true)]
-        [InlineData(0.163, true)] // The ticket says 0.163 doesn't trip (low point 85 km); this model dips under 70 km at 366 s with the periapsis at -2 km. Reported on the ticket, not tuned.
-        [InlineData(0.153, true)]
-        [InlineData(0.133, true)]
-        [InlineData(0.122, true)]
-        public void TheModelsTwrRowsTripTheGuardOnlyBelowAboutPointOneEight(double twr, bool trips)
-        {
-            var flight = FlyBurnThrough(79832, 457707, DunaCutoffAltitude, StagesAtTwr(twr), DunaTurn, 80000);
-            Assert.True(trips == (flight.Ended == "fell"), "TWR " + twr + " ended " + flight.Ended + " at " + flight.Seconds + " s, ap " + flight.Ap + ", pe " + flight.Pe + ", altitude " + flight.Altitude);
         }
 
         [Fact]

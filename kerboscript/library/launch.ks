@@ -502,7 +502,7 @@ function launch {
           if time:seconds >= burn_figures:due {
             set burn_figures to lexicon("due", time:seconds + 1, "stages", claudia_burn_stages(opt:stage_limit), "turn", addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime))).
           }
-          local bt is addons:claudia:burnthrough(lexicon("burning", burn_through, "vspeed", ship:verticalspeed, "pe", ship:periapsis, "ap", ap, "sma", ship:orbit:semimajoraxis, "gm", ship:body:mu, "radius", ship:body:radius, "eta_ap", eta:apoapsis, "altitude", altitude, "target_ap", target_ap, "atm_height", body_values:atm_height, "angle", vang(ship:facing:vector, velocityat(ship, time:seconds + eta:apoapsis):orbit), "stages", burn_figures:stages, "turn", burn_figures:turn)).
+          local bt is addons:claudia:burnthrough(lexicon("burning", burn_through, "vspeed", ship:verticalspeed, "q", q_pa, "pe", ship:periapsis, "ap", ap, "sma", ship:orbit:semimajoraxis, "gm", ship:body:mu, "radius", ship:body:radius, "eta_ap", eta:apoapsis, "altitude", altitude, "target_ap", target_ap, "atm_height", body_values:atm_height, "angle", vang(ship:facing:vector, velocityat(ship, time:seconds + eta:apoapsis):orbit), "stages", burn_figures:stages, "turn", burn_figures:turn)).
           set burn_through to bt:burn_through.
           set reason to bt:fail. // Core ends a burn-through whose periapsis clears the air (no reason) or that fell back into it (#936).
           set done to bt:done.

@@ -744,7 +744,15 @@ namespace ClaudiaKerman.KOS
                 return KosValues.FromPlain(decision);
             }, describe, rechecking ? 30 : 0);
             // The re-check that ends the burn-through is always logged, however Guarded's 30 s falls.
-            if (rechecking && decision != null && !(bool)decision["burn_through"]) Debug.Log(ModInfo.LogTag + " block call BURNTHROUGH ended it: " + describe());
+            if (rechecking && decision != null && !(bool)decision["burn_through"])
+            {
+                // The periapsis and fell-back ends are not a coast: no half burn or time left to show (half burn is -1 there).
+                var fail = decision["fail"] as string;
+                var ended = !(bool)decision["done"] ? "the coast works again: " + describe()
+                    : fail != "" ? "fell back, launch fails: " + fail
+                    : "periapsis clear of the air, launch ends";
+                Debug.Log(ModInfo.LogTag + " block call BURNTHROUGH ended it: " + ended);
+            }
             return decision != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(LaunchBurnThrough.Call(null));
         }
 
