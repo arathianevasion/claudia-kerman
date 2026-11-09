@@ -317,6 +317,19 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(System.Math.Round((double)answer["half_burn"], 3, System.MidpointRounding.AwayFromZero).ToString(inv), library);
         }
 
+        // #932: while burning through, Core is asked again each tick (its stage figures at most a second old) until it says the coast works: coast_ap latches
+        // that end. The default max_duration grows with the burn-through's own time; one given by the caller doesn't.
+        [Fact]
+        public void A_burn_through_is_re_checked_each_tick_and_its_time_is_added_to_the_default_limit()
+        {
+            var src = System.Text.RegularExpressions.Regex.Replace(CoreLibrary.Files.Single(f => f.Name == "launch").Source, "\\s+", " ");
+            Assert.Contains("if tset = 0 or burn_through { //", src);
+            Assert.Contains("if extra:coast_ap = 0 { if time:seconds >= burn_figures:due {", src);
+            Assert.Contains("lexicon(\"burning\", burn_through, \"ap\", ap,", src);
+            Assert.Contains("local auto_limit is opt:max_duration:istype(\"String\"). if auto_limit { set opt:max_duration to go:wait + 900. }", src);
+            Assert.Contains("if burn_through and auto_limit { set opt:max_duration to opt:max_duration + pass_gap. }", src);
+        }
+
         // ---- launch: losing control ----
 
         [Theory]

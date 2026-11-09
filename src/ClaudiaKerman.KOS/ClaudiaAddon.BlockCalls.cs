@@ -35,7 +35,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("LAUNCHHEADING", new OneArgsSuffix<Lexicon, Lexicon>(LaunchHeading,
                 "Core Library only (launch): the heading into the plane of inc (negative southbound) from lat, with gm, radius and rotation of the body and target_ap (m); lexicon error, heading"));
             AddSuffix("BURNTHROUGH", new OneArgsSuffix<Lexicon, Lexicon>(BurnThrough,
-                "Core Library only (launch, at its first cutoff): whether the stage is too weak to coast to apoapsis and circularize there, from ap, sma, gm, radius, eta_ap, altitude, target_ap, atm_height, angle, stages and turn; lexicon error, burn_through, dv, half_burn, turn_time, angle, eta_ap, climb, time_left"));
+                "Core Library only (launch, at its first cutoff and each tick of a burn-through): whether the stage is too weak to coast to apoapsis and circularize there, from ap, sma, gm, radius, eta_ap, altitude, target_ap, atm_height, angle, stages, turn and burning; lexicon error, burn_through, dv, half_burn, turn_time, angle, eta_ap, climb, time_left"));
             AddSuffix("LANDINGSITE", new OneArgsSuffix<Lexicon, Lexicon>(LandingSite,
                 "Core Library only (land): find_landing_site's search on the body orbited; gives the first site as lexicon error, lat, lng, biome, ..."));
             AddSuffix("LANDINGPASS", new OneArgsSuffix<Lexicon, Lexicon>(LandingPass,
@@ -527,7 +527,8 @@ namespace ClaudiaKerman.KOS
             if (everySeconds > 0 && !Due(name, watch.Elapsed.TotalMilliseconds, everySeconds, ref took, ref note)) return result;
             try
             {
-                Debug.Log(ModInfo.LogTag + " block call " + name + " took " + took + " ms" + note + ": " + (describe == null ? "done" : describe()));
+                var line = describe == null ? "done" : describe();
+                if (line != null) Debug.Log(ModInfo.LogTag + " block call " + name + " took " + took + " ms" + note + ": " + line);
             }
             catch (Exception e)
             {
@@ -726,16 +727,20 @@ namespace ClaudiaKerman.KOS
 
         /// <summary>
         /// <c>ADDONS:CLAUDIA:BURNTHROUGH</c> (#932, ADR 0014): launch's burn-through decision (<see cref="LaunchBurnThrough.Call"/>), pure, called
-        /// once at the first cutoff. Its line in KSP.log gives the figures. A failure (logged by Guarded) coasts, as a launch always did.
+        /// at the first cutoff and on every tick of a burn-through. KSP.log has a line for the first call and one for the re-check that ends the burn-through, not one per tick. A failure (logged by Guarded) coasts, as a launch always did.
         /// </summary>
         private Lexicon BurnThrough(Lexicon input)
         {
             System.Collections.Generic.IDictionary<string, object> decision = null;
+            var rechecking = false;
             var answer = Guarded("BURNTHROUGH", () =>
             {
-                decision = LaunchBurnThrough.Call(KosValues.ToDictionary(input));
+                var plain = KosValues.ToDictionary(input);
+                decision = LaunchBurnThrough.Call(plain);
+                object burning;
+                rechecking = plain.TryGetValue("burning", out burning) && burning is bool && (bool)burning;
                 return KosValues.FromPlain(decision);
-            }, () => string.Format(CultureInfo.InvariantCulture, "burn_through {0}: half burn {1:0.0} s for {2:0.0} m/s + turn {3:0.0} s for {6:0.0} deg against {7:0.0} s left as launch ends ({4:0.0} s to apoapsis less {8:0.0} s climb){5}",
+            }, () => rechecking && (bool)decision["burn_through"] ? null : string.Format(CultureInfo.InvariantCulture, "burn_through {0}: half burn {1:0.0} s for {2:0.0} m/s + turn {3:0.0} s for {6:0.0} deg against {7:0.0} s left as launch ends ({4:0.0} s to apoapsis less {8:0.0} s climb){5}",
                 decision["burn_through"], decision["half_burn"], decision["dv"], decision["turn_time"], decision["eta_ap"],
                 decision["error"] as string == "" ? "" : " (" + decision["error"] + ")", decision["angle"], decision["time_left"], decision["climb"]));
             return decision != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(LaunchBurnThrough.Call(null));

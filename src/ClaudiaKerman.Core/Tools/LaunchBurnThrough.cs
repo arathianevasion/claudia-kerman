@@ -7,8 +7,8 @@ using System.Collections.Generic;
 namespace ClaudiaKerman.Core.Tools
 {
     /// <summary>
-    /// Whether <c>launch</c> burns through past <c>target_ap</c> at its first cutoff (#932, ADR 0014), through the block-internal
-    /// <c>ADDONS:CLAUDIA:BURNTHROUGH</c> (<see cref="Call"/>). A stage too weak to circularize in the time left can't coast to
+    /// Whether <c>launch</c> burns through past <c>target_ap</c> at its first cutoff and on every tick of the burn-through after it (#932, ADR 0014), through the
+    /// block-internal <c>ADDONS:CLAUDIA:BURNTHROUGH</c> (<see cref="Call"/>): the same decision each time, so the burn-through ends as soon as a coast would work. A stage too weak to circularize in the time left can't coast to
     /// apoapsis and burn there: its half burn plus the craft's turn is longer than the time left when <c>launch</c> ends at the atmosphere
     /// top, since <c>circularize</c> can't begin turning before that. Pure; kOS still reads the orbit, and keeps the steering, the throttle and the staging.
     /// </summary>
@@ -20,12 +20,13 @@ namespace ClaudiaKerman.Core.Tools
         /// Takes <c>ap</c> (m above sea level), <c>sma</c> (m), <c>gm</c>, <c>radius</c> (m), <c>eta_ap</c> (s), <c>altitude</c>, <c>target_ap</c>
         /// and <c>atm_height</c> (m), <c>angle</c> (degrees from the nose now to orbital prograde at apoapsis), <c>stages</c>
         /// (<c>claudia_burn_stages</c>'s list: <c>dv</c>, <c>duration</c>, <c>isp</c>, from the stage burning now down to stage_limit)
-        /// and <c>turn</c> (TURNTIME's answer; one with an error counts as no turn time).
+        /// and <c>turn</c> (TURNTIME's answer; one with an error counts as no turn time). <c>burning</c> (optional, default false) says a burn-through is already under way.
         /// Gives <c>error</c> ("" or the input it lacks, which coasts), <c>burn_through</c>, and the figures it decided on:
         /// <c>dv</c> (m/s to circularize at apoapsis), <c>half_burn</c> (s; -1 with no stage to burn), <c>turn_time</c> (s, the turn
         /// through <c>angle</c> and its settle time), <c>angle</c>, <c>eta_ap</c>, <c>climb</c> (s to the atmosphere top, 0 if already above it) and
         /// <c>time_left</c> (s, <c>eta_ap</c> less <c>climb</c>: what the half burn and turn are held against). A hop (<c>target_ap</c> no higher than the
-        /// atmosphere) never burns through, nor does an orbit with no apoapsis.
+        /// atmosphere) never burns through, nor does an orbit with no apoapsis. Past apoapsis (<c>eta_ap</c> over half the orbit) no time is left, as the next apoapsis is across the air.
+        /// A stage table with no figures coasts, unless <c>burning</c>: stock's can read empty for a moment around a stage change, and an end isn't undone.
         /// </summary>
         public static IDictionary<string, object> Call(IDictionary<string, object> input)
         {
@@ -65,11 +66,13 @@ namespace ClaudiaKerman.Core.Tools
             answer["dv"] = dv;
             answer["half_burn"] = halfBurn;
             var climb = SecondsToAtmosphereTop(radius + (double)input["altitude"], radius + atmHeight, apR, sma, gm);
-            var timeLeft = Math.Max(0, eta - climb);
+            var pastApoapsis = eta > Math.PI * Math.Sqrt(sma * sma * sma / gm);
+            var timeLeft = pastApoapsis ? 0 : Math.Max(0, eta - climb);
             answer["climb"] = climb;
             answer["time_left"] = timeLeft;
             var hop = (double)input["target_ap"] <= atmHeight;
-            answer["burn_through"] = !hop && halfBurn >= 0 && halfBurn + turnTime > timeLeft;
+            var burning = Value(input, "burning") is bool && (bool)input["burning"];
+            answer["burn_through"] = !hop && (halfBurn >= 0 ? halfBurn + turnTime > timeLeft : burning);
             return answer;
         }
 

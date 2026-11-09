@@ -2,13 +2,12 @@
 // Copyright (C) 2026 Andrew Watson
 //
 // Building Block launch: flies from the ground of a body with an atmosphere to a coast out of it.
-// Built on claudia_lib.ks; its heading is Core's (ADDONS:CLAUDIA:LAUNCHHEADING, the one plan_ascent reports, #475); block-only
-// helpers are prefixed launch_. The "//|" lines are Claudia's docs for it; the first is its summary.
+// Built on claudia_lib.ks; its heading is Core's (ADDONS:CLAUDIA:LAUNCHHEADING, the one plan_ascent reports, #475); block-only helpers are prefixed launch_. The "//|" lines are Claudia's docs for it; the first is its summary.
 
 @lazyglobal off.
 
 //| launch(options): flies from the ground of a body with an atmosphere to a coast out of it; then circularize.
-//| It ends once the craft is coasting out of the atmosphere with its apoapsis at target_ap (a stage too weak to coast and circularize burns on past it until the periapsis clears the air); follow it
+//| It ends once the craft is coasting out of the atmosphere with its apoapsis at target_ap (a stage too weak to coast and circularize burns on past it until it can, or the periapsis clears the air); follow it
 //| with circularize in the same Mission Script (one Maneuver Sequence, one Approval). A target_ap
 //| below the atmosphere top makes it a hop that ends at the top of the climb.
 //| Options:
@@ -49,8 +48,7 @@
 //| Example: `local res is launch(lexicon("target_ap", 80000)). if res:success { set res to circularize(lexicon("at", "ap")). }
 //| addons:claudia:report(res).`
 
-// The block's own options and defaults ("auto", "into_inc", "none" and "body" are resolved once
-// the block knows the body and the wait).
+// The block's own options and defaults ("auto", "into_inc", "none" and "body" are resolved once the block knows the body and the wait).
 function launch_defaults {
   return lexicon(
     "launch_at", "now",
@@ -134,8 +132,7 @@ function launch_throttle {
   return min(1, max(t_floor, max(0, t))).
 }
 
-// The phase of the climb, for its trace (#531), named as plan_ascent's sim names it: "coast" with the throttle off; "vertical" before the turn starts; "turn_held"
-// while throttle_max_q holds the turn (see launch_turn_held); "thin_air" when the thin-air rule raised the pitch (launch_thin_pitch); otherwise "turn". Pure.
+// The phase of the climb, for its trace (#531), named as plan_ascent's sim names it: "coast" with the throttle off; "vertical" before the turn starts; "turn_held" while throttle_max_q holds the turn (see launch_turn_held); "thin_air" when the thin-air rule raised the pitch (launch_thin_pitch); otherwise "turn". Pure.
 function launch_phase {
   parameter coasting, turn_started, held, thin.
   if coasting {
@@ -153,8 +150,7 @@ function launch_phase {
   return "turn".
 }
 
-// Whether the climb traces a line now (#531), and why: "phase" or "stage" when either changed (no more often than every
-// 0.25 s, so a q that wavers about 500 Pa can't flood the log), "tick" 2 s after the last line, "" if not due. Pure.
+// Whether the climb traces a line now (#531), and why: "phase" or "stage" when either changed (no more often than every 0.25 s, so a q that wavers about 500 Pa can't flood the log), "tick" 2 s after the last line, "" if not due. Pure.
 function launch_trace_due {
   parameter phase, last_phase, stage_now, last_stage, ut, last_ut.
   if ut >= last_ut + 2 {
@@ -210,8 +206,7 @@ function launch_thin_lead {
   return 3.
 }
 
-// pitch (degrees above the horizon) raised, in thin air (q_pa under launch_aero_q, where max_aoa does not apply), to no lower than
-// lead degrees below prograde_pitch, so the upper turn follows the trajectory; otherwise pitch as it was (#236).
+// pitch (degrees above the horizon) raised, in thin air (q_pa under launch_aero_q, where max_aoa does not apply), to no lower than lead degrees below prograde_pitch, so the upper turn follows the trajectory; otherwise pitch as it was (#236).
 function launch_thin_pitch {
   parameter pitch, prograde_pitch, q_pa, lead.
   if q_pa > launch_aero_q() {
@@ -373,7 +368,8 @@ function launch {
   if go:error <> "" {
     return claudia_finish(ctx, false, go:error, extra).
   }
-  if opt:max_duration:istype("String") {
+  local auto_limit is opt:max_duration:istype("String").
+  if auto_limit {
     set opt:max_duration to go:wait + 900.
   }
   if go:wait > 0 {
@@ -427,6 +423,7 @@ function launch {
   local topup_tol is launch_topup_tol(target_ap).
   local coasting is false.
   local burn_through is false.
+  local burn_figures is lexicon("due", 0).
   local off_since is -1.
   local q_max is 0.
   local reason is "".
@@ -443,6 +440,7 @@ function launch {
     set pass_gap to time:seconds - last_pass_ut.
     set last_pass_ut to time:seconds.
     set q_max to max(q_max, q_pa).
+    if burn_through and auto_limit { set opt:max_duration to opt:max_duration + pass_gap. } // A burn-through's own time doesn't count against "auto" (#932).
     local spd is ship:velocity:surface:mag.
     local ap is ship:apoapsis.
     local ratio is 0.
@@ -481,13 +479,15 @@ function launch {
       local t_floor is launch_throttle_floor(ratio, ship:mass, body_values:g, ship:availablethrust).
       // Burning through (#932), as if target_ap were far off: throttle_max_q and the thick-air floor still hold.
       set tset to launch_throttle(ap, choose ap + 1e7 if burn_through else target_ap, ramp, q_pa, max_q_pa, t_floor).
-      if tset = 0 {
-        // The first cutoff only: Core says whether this stage can coast to apoapsis and circularize there (#932; its figures go to KSP.log).
+      if tset = 0 or burn_through {
+        // The first cutoff, and each tick of a burn-through until the coast works again (coast_ap set latches it): Core says whether this stage can coast to apoapsis and circularize there (#932; figures in KSP.log). Stages and turn only each second: stock's table is the costly part.
         if extra:coast_ap = 0 {
-          set burn_through to addons:claudia:burnthrough(lexicon("ap", ap, "sma", ship:orbit:semimajoraxis, "gm", ship:body:mu, "radius", ship:body:radius, "eta_ap", eta:apoapsis, "altitude", altitude, "target_ap", target_ap, "atm_height", body_values:atm_height, "angle", vang(ship:facing:vector, velocityat(ship, time:seconds + eta:apoapsis):orbit),
-            "stages", claudia_burn_stages(opt:stage_limit), "turn", addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime)))):burn_through.
+          if time:seconds >= burn_figures:due {
+            set burn_figures to lexicon("due", time:seconds + 1, "stages", claudia_burn_stages(opt:stage_limit), "turn", addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime))).
+          }
+          set burn_through to addons:claudia:burnthrough(lexicon("burning", burn_through, "ap", ap, "sma", ship:orbit:semimajoraxis, "gm", ship:body:mu, "radius", ship:body:radius, "eta_ap", eta:apoapsis, "altitude", altitude, "target_ap", target_ap, "atm_height", body_values:atm_height, "angle", vang(ship:facing:vector, velocityat(ship, time:seconds + eta:apoapsis):orbit), "stages", burn_figures:stages, "turn", burn_figures:turn)):burn_through.
         }
-        set tset to choose 1 if burn_through else 0.
+        set tset to choose (choose tset if tset > 0 else 1) if burn_through else 0.
         set coasting to not burn_through.
         if extra:coast_ap = 0 and coasting {
           set extra:coast_ap to round(ap).

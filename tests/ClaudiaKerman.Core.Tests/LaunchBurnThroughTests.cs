@@ -268,5 +268,197 @@ namespace ClaudiaKerman.Core.Tests
         {
             Assert.Equal(false, Decide(79832, sma, 145.1, DunaTurn, DunaAngle, DunaStages)["burn_through"]);
         }
+
+        // ---- The re-check on every tick of a burn-through ----
+
+        /// <summary>A stage of the flight model: its delta-v, seconds and isp when full, flown from a mass of 1 as only the ratio matters.</summary>
+        private sealed class FlownStage
+        {
+            public double Dv, Duration, Isp, Burned;
+            public double Exhaust { get { return Isp * 9.80665; } }
+            public double EmptyMass { get { return System.Math.Exp(-Dv / Exhaust); } }
+            public double Flow { get { return (1 - EmptyMass) / Duration; } }
+            public double Mass { get { return 1 - Flow * Burned; } }
+            public double DurationLeft { get { return Duration - Burned; } }
+            public double DvLeft { get { return Exhaust * System.Math.Log(Mass / EmptyMass); } }
+        }
+
+        private sealed class Flight
+        {
+            public string Ended;
+            public double Seconds, Ap, Pe, Altitude, Burned, HalfBurn, TurnTime, TimeLeft;
+        }
+
+        /// <summary>
+        /// Flies a burn-through from a cutoff, drag-free and in the orbit's plane, holding orbital prograde at full throttle: every 0.1 s tick asks Core again with the
+        /// orbit as it is (the first call not yet burning, the rest burning), with the stage figures at most 1 s old as launch.ks passes them. Ends as launch does: the
+        /// answer turns to coast ("coast"), the periapsis clears the air ("periapsis"), or the fuel runs out ("fuel"). A rough model, for where a burn ends and not to the metre.
+        /// </summary>
+        private static Flight FlyBurnThrough(double ap, double sma, double altitude, List<object> stages, Dictionary<string, object> turn, double targetAp, bool recheck = true)
+        {
+            const double Step = 0.1;
+            const double AtmHeight = 70000;
+            var flown = new List<FlownStage>();
+            foreach (IDictionary<string, object> stage in stages) flown.Add(new FlownStage { Dv = (double)stage["dv"], Duration = (double)stage["duration"], Isp = (double)stage["isp"] });
+            // The state at the cutoff: on the orbit given, climbing.
+            var r0 = KerbinRadius + altitude;
+            var apR = KerbinRadius + ap;
+            var ecc = apR / sma - 1;
+            var angular = System.Math.Sqrt(KerbinGm * sma * (1 - ecc * ecc));
+            var tangential = angular / r0;
+            var radial = System.Math.Sqrt(System.Math.Max(0, KerbinGm * (2 / r0 - 1 / sma) - tangential * tangential));
+            double x = r0, y = 0, vx = radial, vy = tangential;
+            var current = 0;
+            var result = new Flight();
+            var table = new List<object>();
+            var deciding = false;
+            for (var tick = 0; tick < 20000; tick++)
+            {
+                var radius = System.Math.Sqrt(x * x + y * y);
+                var speed = System.Math.Sqrt(vx * vx + vy * vy);
+                var energy = speed * speed / 2 - KerbinGm / radius;
+                var nowSma = -KerbinGm / (2 * energy);
+                var h = x * vy - y * vx;
+                var nowEcc = System.Math.Sqrt(System.Math.Max(0, 1 + 2 * energy * h * h / (KerbinGm * KerbinGm)));
+                var nowAp = nowSma * (1 + nowEcc) - KerbinRadius;
+                var nowPe = nowSma * (1 - nowEcc) - KerbinRadius;
+                var height = radius - KerbinRadius;
+                result.Seconds = tick * Step;
+                result.Ap = nowAp;
+                result.Pe = nowPe;
+                result.Altitude = height;
+                if (deciding && nowPe > AtmHeight)
+                {
+                    result.Ended = "periapsis";
+                    return result;
+                }
+                if (height < 0)
+                {
+                    result.Ended = "crashed";
+                    return result;
+                }
+                if (tick % 10 == 0)
+                {
+                    table = new List<object>();
+                    for (var s = current; s < flown.Count; s++)
+                    {
+                        table.Add(Stage(flown[s].DvLeft, flown[s].DurationLeft, flown[s].Isp));
+                    }
+                }
+                if (!deciding || recheck)
+                {
+                    // The eccentric anomaly gives the time to apoapsis, and the direction of travel there is the apoapsis's own tangent.
+                    var eccVectorX = ((speed * speed - KerbinGm / radius) * x - (x * vx + y * vy) * vx) / KerbinGm;
+                    var eccVectorY = ((speed * speed - KerbinGm / radius) * y - (x * vx + y * vy) * vy) / KerbinGm;
+                    var anomalyCos = (nowSma - radius) / (nowSma * nowEcc);
+                    var eccentric = System.Math.Acos(System.Math.Max(-1, System.Math.Min(1, anomalyCos)));
+                    if (x * vx + y * vy < 0) eccentric = 2 * System.Math.PI - eccentric;
+                    var mean = eccentric - nowEcc * System.Math.Sin(eccentric);
+                    var motion = System.Math.Sqrt(KerbinGm / (nowSma * nowSma * nowSma));
+                    var eta = (System.Math.PI - mean) / motion;
+                    if (eta < 0) eta += 2 * System.Math.PI / motion;
+                    var apX = -eccVectorX / nowEcc;
+                    var apY = -eccVectorY / nowEcc;
+                    var cosine = ((vx / speed) * -apY + (vy / speed) * apX);
+                    var angle = System.Math.Acos(System.Math.Max(-1, System.Math.Min(1, cosine))) * 180 / System.Math.PI;
+                    var answer = LaunchBurnThrough.Call(new Dictionary<string, object>
+                    {
+                        { "ap", nowAp }, { "sma", nowSma }, { "gm", KerbinGm }, { "radius", KerbinRadius }, { "eta_ap", eta }, { "altitude", height },
+                        { "target_ap", targetAp }, { "atm_height", AtmHeight }, { "stages", table }, { "turn", turn }, { "angle", angle }, { "burning", deciding },
+                    });
+                    result.HalfBurn = (double)answer["half_burn"];
+                    result.TurnTime = (double)answer["turn_time"];
+                    result.TimeLeft = (double)answer["time_left"];
+                    if (!(bool)answer["burn_through"])
+                    {
+                        result.Ended = "coast";
+                        return result;
+                    }
+                    deciding = true;
+                }
+                while (current < flown.Count && flown[current].DurationLeft <= 0) current++;
+                if (current == flown.Count)
+                {
+                    result.Ended = "fuel";
+                    return result;
+                }
+                var burning = flown[current];
+                var thrust = burning.Exhaust * burning.Flow / burning.Mass;
+                burning.Burned += Step;
+                result.Burned += thrust * Step;
+                var gravity = KerbinGm / (radius * radius * radius);
+                vx += (thrust * vx / speed - gravity * x) * Step;
+                vy += (thrust * vy / speed - gravity * y) * Step;
+                x += vx * Step;
+                y += vy * Step;
+            }
+            result.Ended = "timeout";
+            return result;
+        }
+
+        [Fact]
+        public void ABurnThroughEndsWhenTheCoastWorksAgain()
+        {
+            // The 80 s half burn a Mun orbit's cutoff can't fit: a little more apoapsis gives it the time, long before the periapsis clears.
+            var flight = FlyBurnThrough(79819, 483505, MunCutoffAltitude, Stages(Stage(2000, 464, 300)), MunTurn, 80000);
+            Assert.Equal("coast", flight.Ended);
+            Assert.True(flight.HalfBurn + flight.TurnTime <= flight.TimeLeft, flight.HalfBurn + " + " + flight.TurnTime + " against " + flight.TimeLeft);
+            Assert.True(flight.Pe < 70000, "the periapsis is " + flight.Pe);
+        }
+
+        [Fact]
+        public void AWeakStageStillRunsUntilThePeriapsisClears()
+        {
+            // The Duna ship: no coast ever has the time for its half burn, so nothing but the periapsis ends it.
+            var flight = FlyBurnThrough(79832, 457707, DunaCutoffAltitude, DunaStages, DunaTurn, 80000);
+            Assert.Equal("periapsis", flight.Ended);
+            Assert.InRange(flight.Seconds, 300, 340);
+            Assert.InRange(flight.Ap, 100000, 110000);
+        }
+
+        [Fact]
+        public void TheMunCraftAtALowTargetEndsItsBurnThroughSoon()
+        {
+            // The player chose no minimum height: 72 km, just over the air, has about 36 s left at the top, under this healthy craft's 49.6 s. The re-check has to bound that.
+            var flight = FlyBurnThrough(72000, 479596, 36000, MunStages, MunTurn, 72000);
+            Assert.Equal("coast", flight.Ended);
+            // About 1.1 s and 17 m/s after it starts, with the apoapsis at about 73.7 km.
+            Assert.InRange(flight.Seconds, 0.5, 3);
+            Assert.InRange(flight.Ap, 72500, 76000);
+        }
+
+        [Fact]
+        public void PastApoapsisACoastCanNeverWork()
+        {
+            // A burn-through still under way past apoapsis: the next apoapsis is a whole orbit off, across the air, so a coast is no answer. KSP gives eta_ap as the time to the next one.
+            var period = 2 * System.Math.PI * System.Math.Sqrt(System.Math.Pow(457707, 3) / KerbinGm);
+            var answer = Decide(79832, 457707, period - 5, DunaTurn, DunaAngle, DunaStages, altitude: 75000);
+            Assert.Equal(0.0, (double)answer["time_left"]);
+            Assert.Equal(true, answer["burn_through"]);
+        }
+
+        [Fact]
+        public void WhileBurningAStageTableWithNoFiguresKeepsBurning()
+        {
+            // Stock's table can read empty for a moment around a stage change: that is no reason to end a burn-through, and the end doesn't undo.
+            var answer = LaunchBurnThrough.Call(new Dictionary<string, object>
+            {
+                { "ap", 100000.0 }, { "sma", 470000.0 }, { "gm", KerbinGm }, { "radius", KerbinRadius }, { "eta_ap", 145.1 }, { "altitude", 60000.0 },
+                { "target_ap", 80000.0 }, { "atm_height", 70000.0 }, { "stages", Stages(Stage(0, 0, 0)) }, { "turn", DunaTurn }, { "angle", 10.0 }, { "burning", true },
+            });
+            Assert.Equal(-1.0, (double)answer["half_burn"]);
+            Assert.Equal(true, answer["burn_through"]);
+        }
+
+        [Fact]
+        public void WhileBurningAnEscapeOrbitEndsTheBurn()
+        {
+            var answer = LaunchBurnThrough.Call(new Dictionary<string, object>
+            {
+                { "ap", 100000.0 }, { "sma", -5000000.0 }, { "gm", KerbinGm }, { "radius", KerbinRadius }, { "eta_ap", 145.1 }, { "altitude", 60000.0 },
+                { "target_ap", 80000.0 }, { "atm_height", 70000.0 }, { "stages", DunaStages }, { "turn", DunaTurn }, { "angle", 10.0 }, { "burning", true },
+            });
+            Assert.Equal(false, answer["burn_through"]);
+        }
     }
 }
