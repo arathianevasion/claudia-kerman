@@ -58,11 +58,11 @@ namespace ClaudiaKerman.Core.Missions
             return parts.Where(p => seen.Contains(p.Id)).ToList();
         }
 
-        /// <summary>The command part the craft flies from, among those on <paramref name="from"/>'s own side (all of <paramref name="parts"/> with none): the first with seats, else the first, else <paramref name="from"/>.</summary>
+        /// <summary>The command part the craft flies from, among those on <paramref name="from"/>'s own side (all of <paramref name="parts"/> with none): the first with crew aboard (#927; none counted in an older snapshot), else the first with seats, else the first, else <paramref name="from"/>.</summary>
         public static uint? CommandPart(IList<SnapshotPart> parts, uint? from)
         {
             var own = OwnSide(parts, from).Where(p => p.Tags.Contains("command")).ToList();
-            var command = own.FirstOrDefault(p => p.CrewCapacity > 0) ?? own.FirstOrDefault();
+            var command = own.FirstOrDefault(p => p.Crew > 0) ?? own.FirstOrDefault(p => p.CrewCapacity > 0) ?? own.FirstOrDefault();
             return command == null ? from : command.Id;
         }
 

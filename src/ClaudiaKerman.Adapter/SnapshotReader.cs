@@ -465,6 +465,7 @@ namespace ClaudiaKerman.Adapter
                     Title = part.partInfo != null ? part.partInfo.title : "",
                     Stage = part.inverseStage,
                     CrewCapacity = part.CrewCapacity,
+                    Crew = part.protoModuleCrew.Count,
                     // Part.mass is the dry mass; its resources' mass comes on top.
                     DryMassT = part.mass,
                     MassT = part.mass + part.GetResourceMass(),
