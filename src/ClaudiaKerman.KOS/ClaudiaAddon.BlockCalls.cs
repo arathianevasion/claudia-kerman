@@ -845,6 +845,9 @@ namespace ClaudiaKerman.KOS
         /// <summary>The time (UT, s) this processor's powered finish first read its called chutes all fully open, for <see cref="BrakeTickCall"/>; -1 while they aren't.</summary>
         private double brakeOpenUt = -1;
 
+        /// <summary>This processor's powered finish has read its open chutes settled, for <see cref="BrakeTickCall"/>; held until a chute is really opening again.</summary>
+        private bool brakeSettled;
+
         /// <summary>The time (UT, s) each set of this processor's powered finish was first called, for <see cref="BrakeTickCall"/>; -1 while it isn't.</summary>
         private double brakeDrogueCallUt = -1, brakeMainCallUt = -1;
 
@@ -866,6 +869,7 @@ namespace ClaudiaKerman.KOS
                 ask["chutes"] = ReentryCraft.ChuteStates(shared.Vessel, uids);
                 ask["now"] = Planetarium.GetUniversalTime();
                 ask["open_ut"] = brakeOpenUt;
+                ask["settled"] = brakeSettled;
                 ask["drogue_call_ut"] = brakeDrogueCallUt;
                 ask["main_call_ut"] = brakeMainCallUt;
                 ask["sample_ut"] = brakeSampleUt;
@@ -873,6 +877,7 @@ namespace ClaudiaKerman.KOS
                 ask["decel"] = brakeDecel;
                 tick = BlockCalls.BrakeTick(ask);
                 brakeOpenUt = (double)tick["open_ut"];
+                brakeSettled = (bool)tick["settled"];
                 brakeDrogueCallUt = (double)tick["drogue_call_ut"];
                 brakeMainCallUt = (double)tick["main_call_ut"];
                 brakeSampleUt = (double)tick["sample_ut"];

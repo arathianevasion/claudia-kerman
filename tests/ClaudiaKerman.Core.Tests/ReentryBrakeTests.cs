@@ -395,10 +395,112 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void A_set_called_starts_the_fully_open_time_again_when_it_is_not_all_open()
+        public void A_set_called_starts_the_fully_open_time_again_only_once_it_is_really_opening()
         {
             var called = Tick(300, 90, 400, 200, Set(true, "deployed").Concat(Set(false, "armed")).ToList(), openS: 9);
-            Assert.Equal(-1.0, D(called, "open_ut"));
+            Assert.Equal(91.0, D(called, "open_ut"));
+            var opening = Tick(300, 90, 400, 200, Set(true, "deployed").Concat(Set(false, "semi")).ToList(), openS: 9);
+            Assert.Equal(-1.0, D(opening, "open_ut"));
+        }
+
+        /// <summary>Flies a tick on from the last, handing back what the addon holds between ticks.</summary>
+        private static void CarryOn(Dictionary<string, object> ask, IDictionary<string, object> answer)
+        {
+            foreach (var key in new[] { "open_ut", "settled", "drogue_call_ut", "main_call_ut", "sample_ut", "sample_speed", "decel" }) ask[key] = answer[key];
+        }
+
+        [Theory]
+        [InlineData(0)]
+        [InlineData(3)] // still slowing, over the 1 m/s^2 of a settled speed
+        public void Mains_called_at_1500_m_that_stay_stowed_leave_the_last_resort_at_its_usual_height(double slowing)
+        {
+            // Drogues settled, 140 m/s: stopping takes about 1,080 m, so a settle timer restarted when the mains fail would start the burn too low.
+            const double Dt = 0.02, LastH = 1080;
+            double radar = 1500, speed = 140, now = 100;
+            var ask = new Dictionary<string, object>
+            {
+                { "brake_h", -1.0 }, { "last_h", LastH }, { "shield_speed", 400.0 }, { "shield_agl", 300.0 }, { "throttle", FullThrottle }, { "open_ut", 80.0 },
+                { "drogues_called", true }, { "drogue_call_ut", 70.0 }, { "mains_called", true }, { "chutes", Set(true, "deployed").Concat(Set(false, "stowed")).ToList() },
+            };
+            while (true)
+            {
+                ask["now"] = now;
+                ask["radar"] = radar;
+                ask["speed"] = speed;
+                var tick = BlockCalls.BrakeTick(ask);
+                Assert.Equal(80.0, D(tick, "open_ut"));
+                if ((bool)tick["start"])
+                {
+                    Assert.Equal("last resort", tick["why"]);
+                    Assert.InRange(radar, LastH - 140 * Dt - 1, LastH);
+                    return;
+                }
+                Assert.True(radar > LastH, "no start at the last-resort height, radar " + radar);
+                CarryOn(ask, tick);
+                now += Dt;
+                radar -= speed * Dt;
+                speed -= slowing * Dt;
+            }
+        }
+
+        [Fact]
+        public void Once_settled_the_burns_own_slowing_doesnt_take_the_throttle_away()
+        {
+            // Terminal under a full canopy at 40 m/s; the engine then slows the craft at 8 m/s^2, which reads as a canopy still slowing it.
+            const double Dt = 0.02;
+            double speed = 40, now = 0, onAt = -1;
+            var ask = new Dictionary<string, object>
+            {
+                { "radar", 300.0 }, { "brake_h", 400.0 }, { "last_h", 200.0 }, { "shield_speed", 400.0 }, { "shield_agl", 300.0 }, { "throttle", FullThrottle },
+                { "open_ut", -1.0 }, { "chutes", Chutes("deployed") },
+            };
+            for (var i = 0; i <= 500; i++, now = i * Dt)
+            {
+                ask["now"] = now;
+                ask["speed"] = speed;
+                var tick = BlockCalls.BrakeTick(ask);
+                var throttle = D(tick, "throttle");
+                if (onAt < 0 && throttle > 0) onAt = now;
+                if (onAt >= 0)
+                {
+                    Assert.Equal(FullThrottle, throttle);
+                    Assert.Equal("", tick["zero_why"]);
+                }
+                CarryOn(ask, tick);
+                speed = Math.Max(5, speed - (throttle > 0 ? 8 : 0.2) * Dt);
+            }
+            Assert.InRange(onAt, ReentryBrake.SettleMinSeconds, ReentryBrake.SettleMinSeconds + 0.3);
+        }
+
+        [Fact]
+        public void Settled_drogues_still_give_way_to_the_mains_in_their_turn()
+        {
+            var drogues = Set(true, "deployed");
+            var ask = new Dictionary<string, object>
+            {
+                { "now", 100.0 }, { "speed", 40.0 }, { "throttle", FullThrottle }, { "open_ut", 80.0 }, { "settled", true }, { "decel", 0.2 },
+                { "chutes", drogues.Concat(Set(false, "stowed")).ToList() },
+            };
+            Assert.Equal(FullThrottle, D(BlockCalls.BrakeTick(ask), "throttle"));
+
+            ask["mains_called"] = true;
+            ask["chutes"] = drogues.Concat(Set(false, "armed")).ToList();
+            var called = BlockCalls.BrakeTick(ask);
+            AssertNoThrust(called, ReentryBrake.WhyChuteOpening);
+            Assert.Equal(true, called["settled"]);
+
+            ask["chutes"] = drogues.Concat(Set(false, "semi")).ToList();
+            var opening = BlockCalls.BrakeTick(ask);
+            AssertNoThrust(opening, ReentryBrake.WhyChuteOpening);
+            Assert.Equal(false, opening["settled"]);
+            Assert.Equal(-1.0, D(opening, "open_ut"));
+
+            CarryOn(ask, opening);
+            ask["chutes"] = drogues.Concat(Set(false, "deployed")).ToList();
+            ask["now"] = 110.0;
+            var open = BlockCalls.BrakeTick(ask);
+            AssertNoThrust(open, ReentryBrake.WhyChuteOpening);
+            Assert.Equal(110.0, D(open, "open_ut"));
         }
 
         [Fact]
@@ -457,10 +559,10 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void Drogues_not_yet_called_on_a_block_starting_at_1500_m_arent_failed_on_the_first_tick()
+        public void Drogues_not_yet_called_on_a_block_starting_under_the_last_resort_height_arent_failed_on_the_first_tick()
         {
-            // The block starts at 1.5 km, under the drogues' 3,000 m last call: the tick before chute_tick's call reads them stowed and not called.
-            var first = BlockCalls.BrakeTick(new Dictionary<string, object> { { "radar", 1500.0 }, { "speed", 140.0 }, { "brake_h", -1.0 }, { "last_h", 1151.0 }, { "shield_speed", 400.0 }, { "shield_agl", 3000.0 }, { "throttle", FullThrottle }, { "now", 50.0 }, { "chutes", Set(true, "stowed") } });
+            // The block starts at 1.1 km, under the drogues' 3,000 m last call and the last-resort height: the tick before chute_tick's call reads them stowed and not called, and only being failed could start the burn.
+            var first = BlockCalls.BrakeTick(new Dictionary<string, object> { { "radar", 1100.0 }, { "speed", 140.0 }, { "brake_h", -1.0 }, { "last_h", 1151.0 }, { "shield_speed", 400.0 }, { "shield_agl", 3000.0 }, { "throttle", FullThrottle }, { "now", 50.0 }, { "chutes", Set(true, "stowed") } });
             Assert.Equal(false, first["start"]);
             Assert.Equal(-1.0, D(first, "drogue_call_ut"));
             Assert.Equal("", first["zero_why"]);
