@@ -303,7 +303,10 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var src = System.Text.RegularExpressions.Regex.Replace(CoreLibrary.Files.Single(f => f.Name == "launch").Source, "\\s+", " ");
             Assert.Contains("if tset = 0 or burn_through { //", src);
             Assert.Contains("if extra:coast_ap = 0 { if time:seconds >= burn_figures:due {", src);
-            Assert.Contains("lexicon(\"burning\", burn_through, \"ap\", ap,", src);
+            Assert.Contains("lexicon(\"burning\", burn_through, \"vspeed\", ship:verticalspeed, \"pe\", ship:periapsis, \"ap\", ap,", src);
+            // #936: Core ends the burn-through (the periapsis clears the air, or it fell back into it, with a reason).
+            Assert.Contains("set reason to bt:fail.", src);
+            Assert.Contains("set done to bt:done. if done { return. }", src);
             Assert.Contains("local auto_limit is opt:max_duration:istype(\"String\"). if auto_limit { set opt:max_duration to go:wait + 900. }", src);
             Assert.Contains("if burn_through and auto_limit { set opt:max_duration to opt:max_duration + pass_gap. }", src);
         }
