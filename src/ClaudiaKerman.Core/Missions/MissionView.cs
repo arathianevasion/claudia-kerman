@@ -465,6 +465,8 @@ namespace ClaudiaKerman.Core.Missions
             if (view != null && view.Stage != MissionStage.None)
             {
                 snapshot.StampMission(view.Settings.TimeVersusDeltaV, view.MarginPercent, view.WindowPick);
+                // The Daylight landing setting (#957): a block's deorbit and find_landing_site read it, as the planning snapshot does.
+                snapshot.DaylightLandingDefault = view.Settings.DaylightLanding;
                 // What the arrival plane reads (#788): the legs from the one in hand on, the site picked, and what transfer_to recorded for capture.
                 snapshot.LegsAhead = view.PlanLegs != null ? System.Linq.Enumerable.ToList(System.Linq.Enumerable.Skip(view.PlanLegs, System.Math.Max(0, view.CurrentSequence))) : null;
                 // What the legs after the one in hand need (#832), kept back by a block's reserve: CurrentSequence is the leg in hand, counted as begun.

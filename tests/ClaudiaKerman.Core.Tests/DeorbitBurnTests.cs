@@ -165,7 +165,16 @@ namespace ClaudiaKerman.Core.Tests
         {
             public override double TerrainAltitude(string body, double latitude, double longitude) { return 0; }
             public override string Biome(string body, double latitude, double longitude) { return ""; }
-            public override double SunElevation(string body, double latitude, double longitude, double ut) { return 0; }
+            /// <summary>What the sun reader was asked, and what it answers (0 unless set).</summary>
+            public readonly System.Collections.Generic.List<double[]> SunAsks = new System.Collections.Generic.List<double[]>();
+            public readonly System.Collections.Generic.List<string> SunBodies = new System.Collections.Generic.List<string>();
+            public double Sun;
+            public override double SunElevation(string body, double latitude, double longitude, double ut)
+            {
+                SunBodies.Add(body);
+                SunAsks.Add(new[] { latitude, longitude, ut });
+                return Sun;
+            }
 
             public override bool SurfaceUnder(string body, double x, double y, double z, out double latitude, out double longitude)
             {
@@ -211,6 +220,22 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("daylight", (string)dark["error"]);
             snapshot.DaylightLandingDefault = false;
             Assert.Equal("", BlockCalls.DeorbitBurn(ask, snapshot, new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule())["error"]);
+        }
+
+        [Fact]
+        public void The_block_call_asks_the_planning_body_for_the_sun_at_the_target_when_the_burn_lands()
+        {
+            var ask = Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "dv_left", 5000.0);
+            var snapshot = Snapshot();
+            snapshot.DaylightLandingDefault = true;
+            var sphere = new Sphere { Sun = 40 };
+            var result = BlockCalls.DeorbitBurn(ask, snapshot, sphere, new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            Assert.Equal("", result["error"]);
+            Assert.NotEmpty(sphere.SunAsks);
+            Assert.All(sphere.SunBodies, body => Assert.Equal("Kerbin", body));
+            Assert.All(sphere.SunAsks, a => { Assert.Equal(KscLat, a[0]); Assert.Equal(KscLng, a[1]); });
+            Assert.Contains(sphere.SunAsks, a => a[2] == (double)result["landing_ut"]);
+            Assert.All(sphere.SunAsks, a => Assert.True(a[2] > (double)result["burn_ut"] || a[2] > 120, "asked at " + a[2]));
         }
 
         [Fact]
@@ -517,18 +542,43 @@ namespace ClaudiaKerman.Core.Tests
 
         // #957: the Daylight landing setting. A near-circular, near-equatorial orbit passes the site every turn at about the same cost.
         [Fact]
-        public void With_daylight_on_a_dark_first_pass_is_skipped_for_a_later_lit_one()
+        public void With_daylight_on_a_dark_pass_is_skipped_for_a_lit_one()
+        {
+            var orbit = Circular(inclinationDeg: 2);
+            // The pass the search would fly with the sun ignored: make it, and only it, dark.
+            var first = Find(KscLat, KscLng, orbit);
+            Assert.Null(first.Error);
+            var land = first.Landing.LandingUt;
+            Func<double, double> sun = ut => Math.Abs(ut - land) < 300 ? -30 : 40;
+            var plan = Find(KscLat, KscLng, orbit, daylight: true, sunAt: sun);
+            Assert.Null(plan.Error);
+            Assert.True(Math.Abs(plan.Landing.LandingUt - land) >= 300, "landing at " + plan.Landing.LandingUt + " is in the dark pass at " + land);
+            Assert.InRange(plan.ErrorKm, 0, 5);
+        }
+
+        [Fact]
+        public void With_daylight_on_the_sun_is_read_when_the_burn_lands_not_when_it_burns()
         {
             var orbit = Circular(inclinationDeg: 2);
             var first = Find(KscLat, KscLng, orbit);
-            Assert.Null(first.Error);
-            var lit = first.Landing.LandingUt + 1000;
-            Func<double, double> sun = ut => ut < lit ? -30 : 40;
-            var plan = Find(KscLat, KscLng, orbit, daylight: true, sunAt: sun);
+            var land = first.Landing.LandingUt;
+            Assert.True(land - first.BurnUt > 400, "the burn must be well before the landing for this to tell them apart");
+            // Lit only about the first landing, not about its burn nor about any other pass.
+            var plan = Find(KscLat, KscLng, orbit, daylight: true, sunAt: ut => Math.Abs(ut - land) < 300 ? 40 : -30);
             Assert.Null(plan.Error);
-            Assert.True(plan.Landing.LandingUt >= lit, "landing at " + plan.Landing.LandingUt + " is before the sun is up (" + lit + ")");
-            Assert.True(plan.BurnUt > first.BurnUt);
-            Assert.InRange(plan.ErrorKm, 0, 5);
+            Assert.Equal(first.BurnUt, plan.BurnUt, 0);
+        }
+
+        [Fact]
+        public void With_daylight_on_a_walked_burn_that_lands_in_the_dark_is_not_flown()
+        {
+            var orbit = Circular(inclinationDeg: 2);
+            var best = Find(KscLat, KscLng, orbit);
+            var landed = best.Landing.LandingUt;
+            // Everything is lit but the very landing the sun-blind search ends on, which is a walked burn (a refined one lands a hair off it).
+            var plan = Find(KscLat, KscLng, orbit, daylight: true, sunAt: ut => ut == landed ? -30 : 40);
+            Assert.Null(plan.Error);
+            Assert.NotEqual(landed, plan.Landing.LandingUt);
         }
 
         [Fact]
@@ -703,6 +753,7 @@ namespace ClaudiaKerman.Core.Tests
                     new Missions.PlannedSequence { Name = "Hop", DeltaV = 4500, Vessel = "craft" }, new Missions.PlannedSequence { Name = "Probe", DeltaV = 900, Vessel = "Probe" },
                 },
             };
+            view.Settings.DaylightLanding = false;
             var stamped = Missions.MissionView.Stamp(Snapshot(), view);
             Assert.Equal(4500, stamped.LaterLegsDv);
             var held = deorbit(stamped);
