@@ -357,7 +357,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         private const string DropPoint = "if entry_in > below:lead {\n";
         private const string DropWait = "    local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).";
         private const string Trim = "  claudia_fly_correction(ctx, addons:claudia:entrytrim(lexicon(\"to_air\", entry_in, \"home\", entry_ask:home, \"core\", entry_ask:core, \"has_node\", hasnode, \"stage_limit\", opt:stage_limit, \"dv_left\", claudia_dv_recounted(), \"isp\", claudia_engine_isp()))).\n";
-        private const string AirAgain = "    set entry_in to reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).\n";
+        private const string AirAgain = "    set entry_in to claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).\n";
         private const string Fire = "set drop_error to claudia_fire_drop(ctx, drop, false).";
 
         /// <summary>The wait to the drop point: from its if to the closing brace at the block's own indent.</summary>
@@ -421,7 +421,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             foreach (var after in new[]
             {
                 "reentry_light(ship:engines, finish:engines).", "local drop is reentry_separation(opt:separate, below, ship:parts).", Fire,
-                "local group is reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts).", "addons:claudia:shipsystems(\"entry\").",
+                "set group to reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts).", "addons:claudia:shipsystems(\"entry\").",
                 "local shield_uid is below:jettison.", "addons:claudia:reentryimpact(",
             })
                 Assert.True(finish < At(body, after), after);
@@ -458,7 +458,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var body = Body();
             var hold = At(body, "lock steering to srfretrograde.");
             Assert.True(At(body, Fire) < hold);
-            Assert.DoesNotContain("lock steering", body.Substring(0, hold));
+            Assert.DoesNotContain("lock steering to", body.Substring(0, hold)); // #942's release, an unlock, is not a hold
             // #941: the hold starts a turn time plus a margin before the air, after a first wait; the wait for the air comes after it.
             Assert.True(At(body, "local waited is choose claudia_wait_until(ctx, hold_ut)") < hold);
             Assert.True(hold < At(body, "set waited to choose claudia_warp_to(ctx, air_ut, air_ut - time:seconds)"));
