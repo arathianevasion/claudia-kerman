@@ -21,6 +21,7 @@ It has the Mk16 and an LV-T45 (with a gimbal) from `reentry_duna_powered`, flown
 - With healthy chutes the engine can't help a fast fall: a stop from 140 m/s takes about 1,080 m with Duna's gravity, and there is no burn while a canopy fills. The player accepts this.
 - The 30° guard has no hysteresis: thrust may chatter when `off_deg` sits near 30, or drop to 0 for a moment at the 3 and 5 m/s aim flips. Note it if the trace shows the throttle going in and out.
 - The 20 deg/s limit is unflown (`ReentryBrake.MaxSpinDeg`, one constant to tune from the log): note the `rate_deg` the trace shows if thrust stays off when the craft could have used it, or if it pulses.
+- A chute that reads `armed` for over a second counts as failed, though it may only be waiting for thicker air: the last resort can then fire, and if the canopy opens after all the throttle goes back to 0 until it settles. Note any `last resort` with an `armed` chute that opens later.
 - A chute that sits `semi` for a long time holds the engine off: it is healthy, opening fully at its deploy altitude. Note any flight where one reads `semi` close to the ground.
 - How long a real canopy takes to fill is not measured: the 8 s comes from the part's `deploymentSpeed` of 0.12. Compare the `deployed` note with the speed in the log.
 - A `chutes: "none"` flight (`reentry_duna_powered`) brakes as before and opens nothing.

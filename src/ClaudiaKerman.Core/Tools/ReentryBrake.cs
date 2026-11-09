@@ -55,6 +55,9 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The speed has settled once it changes by no more than this, m/s².</summary>
         public const double SettledDecel = 1;
 
+        /// <summary>The slowing is worked out over at least this long, s, so frame noise doesn't read as slowing.</summary>
+        public const double DecelSampleSeconds = 0.25;
+
         /// <summary>Seconds of the fall added to the last-resort height, for the 0.25 s between the samples it is read from.</summary>
         public const double SampleLagSeconds = 0.5;
 
@@ -139,12 +142,12 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// Why the thrust must be zero now, "" if it needn't: a chute opening, the craft spinning (over <see cref="MaxSpinDeg"/>) or off the aim (over <see cref="MaxOffAimDeg"/>), the first that holds.
-        /// A rate of <paramref name="rateDeg"/> that couldn't be read (negative or not finite) doesn't hold the engine: no reading must not stop the landing, and the off-aim guard still catches a tipped craft.
+        /// A rate that couldn't be read reaches here as -1 and doesn't hold the engine: no reading must not stop the landing, and the off-aim guard still catches a tipped craft.
         /// </summary>
         public static string ZeroThrustWhy(bool chuteOpening, double rateDeg, double offDeg)
         {
             if (chuteOpening) return WhyChuteOpening;
-            if (!double.IsInfinity(rateDeg) && rateDeg > MaxSpinDeg) return WhySpinning;
+            if (rateDeg > MaxSpinDeg) return WhySpinning;
             return offDeg > MaxOffAimDeg ? WhyOffAim : "";
         }
     }
@@ -177,7 +180,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <c>ADDONS:CLAUDIA:BRAKETICK</c>, for <c>reentry</c> (#954), every tick of a powered finish. <c>chutes</c>, the addon's reading of the Chute Group aboard (each <c>title</c>,
         /// <c>state</c>: stowed, armed, semi, deployed or cut, and <c>drogue</c>), decides the rule. A set (drogues or mains) is called once the block has called it (<c>drogues_called</c>,
         /// <c>mains_called</c>) or one of it reads past stowed; its time is <c>drogue_call_ut</c> or <c>main_call_ut</c>, handed back as <c>open_ut</c> is. A called chute is opening until all
-        /// called chutes read fully open and settled (<see cref="ReentryBrake.ChutesSettled"/>, from <c>open_ut</c>, <c>now</c> and <c>decel</c>): no burn starts and the thrust is zero.
+        /// called chutes read fully open and settled (<see cref="ReentryBrake.ChutesSettled"/>, from <c>open_ut</c>, <c>now</c> and the slowing, sampled here from <c>speed</c> so it stays live during a burn, through <c>sample_ut</c>, <c>sample_speed</c> and <c>decel</c>, handed back the same way): no burn starts and the thrust is zero.
         /// A cut chute, one of <c>uids</c> no longer aboard, or one still packed <see cref="ReentryBrake.PackedFailSeconds"/> after its call has failed and holds nothing back.
         /// None to wait for is <c>why</c> "radar" (<see cref="ReentryBrake.DueByRadar"/>, as before #954). All fully open and settled is "chutes open", the same rule. With nothing opening and a chute
         /// failed it is "last resort" (<see cref="ReentryBrake.LastResortDue"/>); with only chutes not called yet, it waits for their call. Takes also <c>radar</c>, <c>speed</c>, <c>brake_h</c>, <c>last_h</c>,
@@ -236,9 +239,23 @@ namespace ClaudiaKerman.Core.Tools
             var open = waitedFor > 0 && deployed == waitedFor;
             var heldUt = Number(ask, "open_ut", -1);
             var openUt = healthy == 0 || filling > 0 ? -1 : heldUt >= 0 ? heldUt : now;
-            var settled = openUt >= 0 && ReentryBrake.ChutesSettled(now - openUt, Number(ask, "decel", 0));
-            var opening = healthy > 0 && !settled;
             var speed = Number(ask, "speed", double.PositiveInfinity);
+            var sampleUt = Number(ask, "sample_ut", -1);
+            var sampleSpeed = Number(ask, "sample_speed", speed);
+            var decel = Number(ask, "decel", 0);
+            if (sampleUt < 0)
+            {
+                sampleUt = now;
+                sampleSpeed = speed;
+            }
+            else if (now - sampleUt >= ReentryBrake.DecelSampleSeconds)
+            {
+                decel = (sampleSpeed - speed) / (now - sampleUt);
+                sampleUt = now;
+                sampleSpeed = speed;
+            }
+            var settled = openUt >= 0 && ReentryBrake.ChutesSettled(now - openUt, decel);
+            var opening = healthy > 0 && !settled;
             var shieldSpeed = Number(ask, "shield_speed", 0);
             var shieldAgl = Number(ask, "shield_agl", 0);
             var byRadar = waitedFor == 0 || (open && settled);
@@ -257,6 +274,9 @@ namespace ClaudiaKerman.Core.Tools
                 { "open_ut", openUt },
                 { "drogue_call_ut", drogueCallUt },
                 { "main_call_ut", mainCallUt },
+                { "sample_ut", sampleUt },
+                { "sample_speed", sampleSpeed },
+                { "decel", decel },
                 { "chutes", string.Join(", ", read.ToArray()) },
                 { "throttle", zeroWhy == "" ? Number(ask, "throttle", 0) : 0.0 },
                 { "zero_why", zeroWhy },

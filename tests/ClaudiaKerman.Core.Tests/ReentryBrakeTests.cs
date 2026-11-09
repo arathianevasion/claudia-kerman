@@ -288,6 +288,48 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(-1.0, D(shut, "open_ut"));
         }
 
+        // ---- The slowing is sampled here, so it is live during a burn too ----
+
+        private static IDictionary<string, object> Sample(double now, double speed, double sampleUt, double sampleSpeed, double decel)
+        {
+            return BlockCalls.BrakeTick(new Dictionary<string, object> { { "now", now }, { "speed", speed }, { "sample_ut", sampleUt }, { "sample_speed", sampleSpeed }, { "decel", decel }, { "chutes", Chutes("deployed") } });
+        }
+
+        [Fact]
+        public void The_slowing_is_worked_out_a_quarter_second_apart()
+        {
+            var tick = Sample(10.25, 40, 10, 50, 0);
+            Assert.Equal(40.0, D(tick, "decel"));
+            Assert.Equal(10.25, D(tick, "sample_ut"));
+            Assert.Equal(40.0, D(tick, "sample_speed"));
+        }
+
+        [Fact]
+        public void Between_samples_the_slowing_is_held()
+        {
+            var tick = Sample(10.1, 40, 10, 50, 7);
+            Assert.Equal(7.0, D(tick, "decel"));
+            Assert.Equal(10.0, D(tick, "sample_ut"));
+            Assert.Equal(50.0, D(tick, "sample_speed"));
+        }
+
+        [Fact]
+        public void The_first_tick_starts_the_sample()
+        {
+            var tick = BlockCalls.BrakeTick(new Dictionary<string, object> { { "now", 10.0 }, { "speed", 40.0 } });
+            Assert.Equal(10.0, D(tick, "sample_ut"));
+            Assert.Equal(40.0, D(tick, "sample_speed"));
+            Assert.Equal(0.0, D(tick, "decel"));
+        }
+
+        [Fact]
+        public void A_canopy_still_slowing_the_craft_is_not_settled_on_a_frozen_small_reading()
+        {
+            // Slowing at 20 m/s^2 from this tick's sample, though the held figure was small: 5 s fully open and not settled.
+            var ask = new Dictionary<string, object> { { "now", 100.0 }, { "open_ut", 95.0 }, { "speed", 40.0 }, { "sample_ut", 99.75 }, { "sample_speed", 45.0 }, { "decel", 0.2 }, { "throttle", 1.0 }, { "chutes", Chutes("deployed") } };
+            Assert.Equal(0.0, D(BlockCalls.BrakeTick(ask), "throttle"));
+        }
+
         // ---- A cut or missing chute isn't waited for ----
 
         [Fact]

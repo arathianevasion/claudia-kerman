@@ -208,12 +208,14 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Fact]
-        public void The_block_hands_Core_the_slowing_the_calls_and_the_rate_or_its_rules_go_blind()
+        public void The_block_hands_Core_the_speed_the_calls_and_the_rate_or_its_rules_go_blind()
         {
             var body = Body();
             var ask = body.Substring(body.IndexOf("addons:claudia:braketick(", StringComparison.Ordinal));
             ask = ask.Substring(0, ask.IndexOf('\n'));
-            Assert.Contains("\"decel\", decel", ask);
+            Assert.Contains("\"speed\", ship:velocity:surface:mag", ask);
+            // Core samples the slowing from the speed: the block's own figure stops at the burn.
+            Assert.DoesNotContain("\"decel\"", ask);
             Assert.Contains("\"drogues_called\", drogues_out", ask);
             Assert.Contains("\"mains_called\", mains_out", ask);
             Assert.Contains("\"rate_deg\", ship:angularvel:mag * constant:radtodeg", ask);

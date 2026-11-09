@@ -848,6 +848,9 @@ namespace ClaudiaKerman.KOS
         /// <summary>The time (UT, s) each set of this processor's powered finish was first called, for <see cref="BrakeTickCall"/>; -1 while it isn't.</summary>
         private double brakeDrogueCallUt = -1, brakeMainCallUt = -1;
 
+        /// <summary>The last sample of the fall's speed for <see cref="BrakeTickCall"/> (UT, s; -1 for none, and m/s) and the slowing worked out from it, m/s².</summary>
+        private double brakeSampleUt = -1, brakeSampleSpeed, brakeDecel;
+
         /// <summary>
         /// <c>ADDONS:CLAUDIA:BRAKETICK</c> (#954, ADR 0014): <see cref="BlockCalls.BrakeTick"/> with the live state of the Chute Group's parachutes (<c>uids</c>), read here as Core has no game.
         /// Called every physics tick, so its time is logged at most once a second (guardrail 6). A failure answers from the ask without the chutes: the block brakes by radar, as with none, rather than never at all.
@@ -865,10 +868,16 @@ namespace ClaudiaKerman.KOS
                 ask["open_ut"] = brakeOpenUt;
                 ask["drogue_call_ut"] = brakeDrogueCallUt;
                 ask["main_call_ut"] = brakeMainCallUt;
+                ask["sample_ut"] = brakeSampleUt;
+                ask["sample_speed"] = brakeSampleSpeed;
+                ask["decel"] = brakeDecel;
                 tick = BlockCalls.BrakeTick(ask);
                 brakeOpenUt = (double)tick["open_ut"];
                 brakeDrogueCallUt = (double)tick["drogue_call_ut"];
                 brakeMainCallUt = (double)tick["main_call_ut"];
+                brakeSampleUt = (double)tick["sample_ut"];
+                brakeSampleSpeed = (double)tick["sample_speed"];
+                brakeDecel = (double)tick["decel"];
                 return KosValues.FromPlain(tick);
             }, () => string.Format(CultureInfo.InvariantCulture, "start {0} ({1}), chutes {2}, throttle {3:0.00} (zero: {4}), rate {5:0.0} deg/s", tick["start"], tick["why"], tick["chutes"], tick["throttle"], tick["zero_why"], tick["rate_deg"]), 1);
             return tick != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.BrakeTick(KosValues.ToDictionary(input)));
