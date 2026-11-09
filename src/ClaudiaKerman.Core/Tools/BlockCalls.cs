@@ -1536,8 +1536,8 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// The part whose kOS UID is <c>home</c> in <paramref name="ask"/>, which wins; null when none is. With no <c>home</c>, the Mission's command part (#914):
-        /// from the part running the script (<c>core</c>), the first command part with seats on its own side (<see cref="PartTree.OwnSide"/>, #909), else the first
-        /// command part there, else <c>core</c> itself. Null with neither, the root as before.
+        /// from the part running the script (<c>core</c>), the first command part with crew aboard on its own side (<see cref="PartTree.OwnSide"/>, #909, #927), else the first
+        /// with seats, else the first command part there, else <c>core</c> itself. Null with neither, the root as before.
         /// </summary>
         private static uint? Home(IDictionary<string, object> ask, GameSnapshot snapshot, Func<uint, string> uidOf)
         {
