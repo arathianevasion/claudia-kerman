@@ -8,18 +8,19 @@ In-game check for #954 (flight m20261109-140705-ae3a braked at 1.7 km under chut
 
 It has the Mk16 and an LV-T45 (with a gimbal) from `reentry_duna_powered`, flown on `reentry`'s defaults. Results are in `KSP.log`.
 
-1. Blocknotes `phase chutes` appear as the chute goes through `armed`, `semi` and `deployed`, one for each change. The engine stays off until the note reads `deployed`, and then until the speed settles or about 8 s have passed.
-2. A blocknote `phase braking` says why: `chutes open`. Its height should be a few tens of metres at about 12 m/s. **If it says `last resort` above 80% of the chute's deploy altitude (`deployAltitude` in its part `.cfg`; 800 m for a Mk16) with a healthy chute, say so on #954**: the player's option (b) should have held it.
+1. Blocknotes `phase chutes` appear as the chute goes through `armed`, `semi` and `deployed`, one for each change. The engine stays at zero throttle from the first `armed` note until the note reads `deployed` and the speed settles or about 8 s have passed.
+2. A blocknote `phase braking` says why: `chutes open`. Its height should be a few tens of metres at about 12 m/s. **If it says `last resort` with a healthy chute, say so on #954**: only a cut, missing or still-packed chute may fire it.
 3. It burns only the last stretch: `powered_dv` in the tens of m/s, not hundreds, and `touchdown_speed` under 5 m/s, standing on its legs.
 4. The rate stays low: no tumbling, the craft holding surface retrograde on the wheels with RCS off. Below about 3 m/s it holds straight up. No site correction.
-5. Trace lines (`phase braking`) once a second give `throttle` and `off_deg`. Throttle reads 0 while `off_deg` is over 30.
+5. Trace lines (`phase braking`) once a second give `throttle`, `off_deg`, `rate_deg` and `zero_why`. Throttle reads 0 while `zero_why` is set: `chute opening`, `spinning` (over 20 deg/s) or `off aim` (over 30).
 6. The result's `gimbal_locked` is false, and the LV-T45 gimbals for the next flight (a craft relaunched after this lands has its gimbal back).
 
 ## Watch
 
-- With chutes that never open (chute_mode "safe" but the chute gone, or still packed by 1,500 m), the burn starts anyway at the last-resort height: the note reads `last resort`.
+- With a chute that never opens (cut, gone, or still packed 1 s after its call), the burn starts at the last-resort height with nothing filling: the note reads `last resort`, and if another chute of the group then opens the throttle goes to 0 until it settles.
+- With healthy chutes the engine can't help a fast fall: a stop from 140 m/s takes about 1,080 m with Duna's gravity, and there is no burn while a canopy fills. The player accepts this.
 - The 30° guard has no hysteresis: thrust may chatter when `off_deg` sits near 30, or drop to 0 for a moment at the 3 and 5 m/s aim flips. Note it if the trace shows the throttle going in and out.
-- A chute first called at its last-call height reads packed on that tick, so on a fall over about 160 m/s (a_up 12) the last resort can fire as it opens. A chute under 250 m/s in enough air has been called well before then, so this should only be a chute that truly failed. Note any `last resort` within a second of the chute's `armed` note.
-- At 80% of the deploy height the canopy may still be filling on a fast fall (200 m is under 2 s at 140 m/s), so a last resort can fire under it. If it does on a healthy chute, say so on #954: the 80% is unflown.
+- The 20 deg/s limit is unflown (`ReentryBrake.MaxSpinDeg`, one constant to tune from the log): note the `rate_deg` the trace shows if thrust stays off when the craft could have used it, or if it pulses.
+- A chute that sits `semi` for a long time holds the engine off: it is healthy, opening fully at its deploy altitude. Note any flight where one reads `semi` close to the ground.
 - How long a real canopy takes to fill is not measured: the 8 s comes from the part's `deploymentSpeed` of 0.12. Compare the `deployed` note with the speed in the log.
 - A `chutes: "none"` flight (`reentry_duna_powered`) brakes as before and opens nothing.
