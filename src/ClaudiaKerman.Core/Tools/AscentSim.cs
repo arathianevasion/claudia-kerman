@@ -239,8 +239,6 @@ namespace ClaudiaKerman.Core.Tools
         public const double G0 = 9.80665;
         /// <summary>launch's max_duration on the pad: a launch still climbing after this has failed.</summary>
         private const double MaxLaunchSeconds = 900;
-        /// <summary>The coast and circularization after launch ends.</summary>
-        private const double MaxOrbitSeconds = 3600;
 
         private readonly AscentOptions _o;
         private readonly IAscentAir _air;
@@ -742,6 +740,17 @@ namespace ClaudiaKerman.Core.Tools
         /// 0.1 m/s, once it overshoots, or once the eccentricity stops falling (circularize's stop, #532). Fails if the stages
         /// can't give it, run dry, or the craft sinks back where the air matters.
         /// </summary>
+        internal static double CircularizeBudget(double startIn, double burnTime)
+        {
+            // circularize's max_duration "auto" (exec_node.ks): start_in + 2 * burn_time + 300, so the budget grows with the coast (#943).
+            return Math.Round(Math.Max(0, startIn) + 2 * Math.Max(0, burnTime) + 300);
+        }
+
+        internal static string OutranBudget(string phase, double budget)
+        {
+            return "still " + phase + " after " + budget + " s";
+        }
+
         private AscentFlight Circularize()
         {
             double ap, pe, toAp;
@@ -757,10 +766,11 @@ namespace ClaudiaKerman.Core.Tools
             var startUt = _t + toAp - lead;
 
             var dt = 0.1;
-            var end = _t + MaxOrbitSeconds;
+            var budget = CircularizeBudget(startUt - _t, BurnTime(prograde));
+            var end = _t + budget;
             while (_t < startUt)
             {
-                if (_t > end) return Fail("still coasting after " + MaxOrbitSeconds + " s");
+                if (_t > end) return Fail(OutranBudget("coasting", budget));
                 if (InAirAgain()) return Fail("fell back into the atmosphere before circularizing");
                 StepInAir(Math.Max(dt, Math.Min(1, (startUt - _t) / 2)), 0, 0, 0);
             }
@@ -773,7 +783,7 @@ namespace ClaudiaKerman.Core.Tools
             var roundest = new PastMin();
             while (true)
             {
-                if (_t > end) return Fail("still circularizing after " + MaxOrbitSeconds + " s");
+                if (_t > end) return Fail(OutranBudget("circularizing", budget));
                 var left = target - VelocityAt(nodeUt);
                 if (Vec3.Dot(initial, left) < 0 || left.Length < 0.1)
                 {

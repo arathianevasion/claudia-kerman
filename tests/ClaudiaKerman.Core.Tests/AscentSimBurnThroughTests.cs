@@ -105,17 +105,42 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void A_burn_through_descending_under_the_air_top_with_q_at_or_under_the_fall_pressure_keeps_burning()
+        public void A_burn_through_descending_under_the_air_top_with_q_at_or_under_the_fall_pressure_keeps_burning_and_reaches_orbit()
         {
-            // 54 kN sinks (it falls at up to 250 m/s) in air thinner than the fall pressure. The sim's own "vertical speed below 0" check used to fail it
-            // at once; now the q guard alone decides, so it burns on. launch adds a burn-through's own time back onto an "auto" max_duration (launch.ks, #932), so the sim no longer counts it against 900 s either:
-            // the flight carries on until the 3600 s coast cap, which the sim keeps (#939 notes).
+            // 54 kN sinks (it falls at up to 250 m/s) in air thinner than the fall pressure. The q guard alone decides, so it burns on.
+            // launch adds a burn-through's own time back onto an "auto" max_duration (launch.ks, #932), and circularize's "auto" budget
+            // (start_in + 2 * burn_time + 300, exec_node.ks) grows with the coast, so the sim holds it to that, not 3600 s (#943).
             var flight = Fly(80000, SinkingUpper(54));
             Assert.True(flight.MinVerticalSpeed < -100, "min vertical speed " + flight.MinVerticalSpeed);
-            Assert.DoesNotContain("fell back", flight.Failure);
-            Assert.DoesNotContain("vertical speed", flight.Failure);
-            Assert.DoesNotContain("still climbing", flight.Failure);
-            Assert.StartsWith("still coasting after 3600 s", flight.Failure);
+            Assert.True(flight.ReachesOrbit, flight.Failure);
+            Assert.InRange(flight.OrbitAp, 2300000, 2370000);
+            Assert.InRange(flight.OrbitPe, 2290000, 2360000);
+            Assert.InRange(flight.DeltaVLeft, 340, 410);
+        }
+
+        [Fact]
+        public void A_healthy_craft_with_a_3000_km_target_no_longer_fails_on_a_coast_cap()
+        {
+            var flight = Fly(3000000, WeakUpper(33));
+            Assert.True(flight.ReachesOrbit, flight.Failure);
+            Assert.InRange(flight.CoastAp, 2900000, 3050000);
+        }
+
+        [Fact]
+        public void A_burn_that_outruns_the_auto_budget_still_fails_with_the_budget_in_the_reason()
+        {
+            // No fixture craft outruns 2 * burn_time + 300 (the sim's burn follows its own estimate), so the formula and the reason are pinned directly.
+            Assert.Equal(300 + 2 * 120 + 5000, AscentSim.CircularizeBudget(5000, 120));
+            Assert.Equal(300 + 2 * 120, AscentSim.CircularizeBudget(-4, 120));
+            Assert.Equal("still coasting after 5540 s", AscentSim.OutranBudget("coasting", 5540));
+            Assert.Equal("still circularizing after 5540 s", AscentSim.OutranBudget("circularizing", 5540));
+            var dir = new DirectoryInfo(AppContext.BaseDirectory);
+            while (dir != null && !File.Exists(Path.Combine(dir.FullName, "src", "ClaudiaKerman.Core", "Tools", "AscentSim.cs"))) dir = dir.Parent;
+            Assert.NotNull(dir);
+            var sim = File.ReadAllText(Path.Combine(dir.FullName, "src", "ClaudiaKerman.Core", "Tools", "AscentSim.cs"));
+            Assert.Contains("if (_t > end) return Fail(OutranBudget(\"coasting\", budget))", sim);
+            Assert.Contains("if (_t > end) return Fail(OutranBudget(\"circularizing\", budget))", sim);
+            Assert.DoesNotContain("MaxOrbitSeconds", sim);
         }
 
         [Fact]
