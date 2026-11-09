@@ -33,7 +33,7 @@ namespace ClaudiaKerman.KOS
             return value == null ? null : value.ToString();
         }
 
-        /// <summary>The reverse of <see cref="ToPlain"/>: dictionary → lexicon, list → list, double → scalar, bool → boolean, anything else → its string.</summary>
+        /// <summary>The reverse of <see cref="ToPlain"/>: dictionary → lexicon, list → list, any number → scalar, bool → boolean, anything else → its string.</summary>
         public static Structure FromPlain(object value)
         {
             var dictionary = value as IDictionary<string, object>;
@@ -52,6 +52,8 @@ namespace ClaudiaKerman.KOS
             }
             if (value is double) return ScalarValue.Create((double)value);
             if (value is bool) return new BooleanValue((bool)value);
+            if (value is int || value is long || value is uint || value is ulong || value is short || value is byte || value is float || value is decimal)
+                return ScalarValue.Create(System.Convert.ToDouble(value, CultureInfo.InvariantCulture));
             return new StringValue(value == null ? "" : value.ToString());
         }
 
