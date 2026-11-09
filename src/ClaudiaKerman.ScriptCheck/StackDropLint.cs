@@ -53,10 +53,10 @@ namespace ClaudiaKerman.ScriptCheck
             foreach (Match reentry in Reentry.Matches(code))
             {
                 var args = Args(code, reentry.Index + reentry.Length);
-                if (!Separate.IsMatch(args) || !SeparateIsNone(args, absentIsNone: false)) continue;
+                if (!SeparateIsNone(args, absentIsNone: false)) continue;
                 warnings.Add("line " + LineOf(code, reentry.Index) + ": reentry with separate \"none\" keeps the whole stack. If the craft has a stack below its heat shield, "
                     + "check its mass and the engine that would land on it: the stage that lands and lifts off is the one above the shield, and \"auto\" drops the rest. "
-                    + "Keep \"none\" only for a craft with nothing to drop.");
+                    + "\"none\" is right only if nothing is below the shield, or the stack has no decoupler.");
             }
         }
 
