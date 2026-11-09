@@ -56,18 +56,19 @@ namespace ClaudiaKerman.Core.Tools
 
             var sma = (double)input["sma"];
             var gm = (double)input["gm"];
-            var apR = (double)input["radius"] + (double)input["ap"];
+            var radius = (double)input["radius"];
+            var atmHeight = (double)input["atm_height"];
+            var apR = radius + (double)input["ap"];
             if (sma <= 0 || apR <= 0 || gm <= 0) return answer;
             var dv = Math.Max(0, Math.Sqrt(gm / apR) - Math.Sqrt(Math.Max(0, gm * (2 / apR - 1 / sma))));
             var halfBurn = StagedBurnTime(dv / 2, Value(input, "stages") as IList<object>);
             answer["dv"] = dv;
             answer["half_burn"] = halfBurn;
-            var radius = (double)input["radius"];
-            var climb = SecondsToAtmosphereTop(radius + (double)input["altitude"], radius + (double)input["atm_height"], apR, sma, gm);
+            var climb = SecondsToAtmosphereTop(radius + (double)input["altitude"], radius + atmHeight, apR, sma, gm);
             var timeLeft = Math.Max(0, eta - climb);
             answer["climb"] = climb;
             answer["time_left"] = timeLeft;
-            var hop = (double)input["target_ap"] <= (double)input["atm_height"];
+            var hop = (double)input["target_ap"] <= atmHeight;
             answer["burn_through"] = !hop && halfBurn >= 0 && halfBurn + turnTime > timeLeft;
             return answer;
         }
@@ -78,16 +79,11 @@ namespace ClaudiaKerman.Core.Tools
         /// </summary>
         private static double SecondsToAtmosphereTop(double r, double rTop, double apR, double sma, double gm)
         {
-            var e = apR / sma - 1;
-            if (r >= rTop || apR <= rTop || e <= 0) return 0;
-            return Math.Max(0, SecondsToApoapsis(r, sma, e, gm) - SecondsToApoapsis(rTop, sma, e, gm));
-        }
-
-        /// <summary>Seconds from radius <paramref name="r"/>, climbing, to apoapsis on an ellipse.</summary>
-        private static double SecondsToApoapsis(double r, double sma, double e, double gm)
-        {
-            var eccentricAnomaly = Math.Acos(Math.Max(-1, Math.Min(1, (1 - r / sma) / e)));
-            return (Math.PI - (eccentricAnomaly - e * Math.Sin(eccentricAnomaly))) * Math.Sqrt(sma * sma * sma / gm);
+            if (r >= rTop || apR <= rTop) return 0;
+            var orbit = Conic.FromElements(gm, sma, apR / sma - 1, 0, 0, 0, 0, 0);
+            var atCutoff = orbit.TimeAtRadius(r, 0, true);
+            var atTop = orbit.TimeAtRadius(rTop, 0, true);
+            return atCutoff.HasValue && atTop.HasValue ? Math.Max(0, atTop.Value - atCutoff.Value) : 0;
         }
 
         /// <summary>

@@ -167,7 +167,7 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void ACutoffOnABodyWithNoAtmosphereCountsTheWholeTimeToApoapsis()
         {
-            var answer = Decide(40000, 233000, 160.3, MunTurn, MunAngle, MunStages, targetAp: 40000, atmHeight: 0, altitude: 5000);
+            var answer = Decide(40000, 400000, 160.3, MunTurn, MunAngle, MunStages, targetAp: 40000, atmHeight: 0, altitude: 5000);
             Assert.Equal(160.3, (double)answer["time_left"]);
         }
 
@@ -175,7 +175,7 @@ namespace ClaudiaKerman.Core.Tests
         public void AnOrbitThatDoesNotReachTheAtmosphereTopCountsTheWholeTimeToApoapsis()
         {
             // Cut within launch's tolerance of a target just over the air: this orbit never reaches 70 km, so there's no climb to take off.
-            var answer = Decide(69900, 483505, 160.3, MunTurn, MunAngle, MunStages, targetAp: 70100, altitude: 40000);
+            var answer = Decide(69950, 483505, 160.3, MunTurn, MunAngle, MunStages, targetAp: 70100, altitude: 40000);
             Assert.Equal(160.3, (double)answer["time_left"]);
             Assert.Equal(false, answer["burn_through"]);
         }
