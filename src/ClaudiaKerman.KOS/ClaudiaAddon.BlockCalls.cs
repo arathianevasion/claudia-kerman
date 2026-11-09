@@ -34,6 +34,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (launch): when the pad next passes under the plane of inc and lan (degrees); lexicon error, wait (s), ut, north, inc (negative southbound), heading"));
             AddSuffix("LAUNCHHEADING", new OneArgsSuffix<Lexicon, Lexicon>(LaunchHeading,
                 "Core Library only (launch): the heading into the plane of inc (negative southbound) from lat, with gm, radius and rotation of the body and target_ap (m); lexicon error, heading"));
+            AddSuffix("BURNTHROUGH", new OneArgsSuffix<Lexicon, Lexicon>(BurnThrough,
+                "Core Library only (launch, at its first cutoff and each tick of a burn-through): whether the stage is too weak to coast to apoapsis and circularize there, from ap, sma, gm, radius, eta_ap, altitude, target_ap, atm_height, angle, stages, turn and burning; lexicon error, burn_through, dv, half_burn, turn_time, angle, eta_ap, climb, time_left"));
             AddSuffix("LANDINGSITE", new OneArgsSuffix<Lexicon, Lexicon>(LandingSite,
                 "Core Library only (land): find_landing_site's search on the body orbited; gives the first site as lexicon error, lat, lng, biome, ..."));
             AddSuffix("LANDINGPASS", new OneArgsSuffix<Lexicon, Lexicon>(LandingPass,
@@ -720,6 +722,28 @@ namespace ClaudiaKerman.KOS
             }, () => heading["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "heading {0:0.00}", heading["heading"])
                 : (string)heading["error"], 2);
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:BURNTHROUGH</c> (#932, ADR 0014): launch's burn-through decision (<see cref="LaunchBurnThrough.Call"/>), pure, called
+        /// at the first cutoff and on every tick of a burn-through. KSP.log has a line for the first call, one every 30 s of re-checks with the slowest call's time (ADR 0014 guardrail 6), and one for the re-check that ends it. A failure (logged by Guarded) coasts, as a launch always did.
+        /// </summary>
+        private Lexicon BurnThrough(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> decision = null;
+            var burning = new StringValue("burning");
+            var rechecking = input != null && input.ContainsKey(burning) && input[burning] is BooleanValue && ((BooleanValue)input[burning]).Value;
+            Func<string> describe = () => string.Format(CultureInfo.InvariantCulture, "burn_through {0}: half burn {1:0.0} s for {2:0.0} m/s + turn {3:0.0} s for {6:0.0} deg against {7:0.0} s left as launch ends ({4:0.0} s to apoapsis less {8:0.0} s climb){5}",
+                decision["burn_through"], decision["half_burn"], decision["dv"], decision["turn_time"], decision["eta_ap"],
+                decision["error"] as string == "" ? "" : " (" + decision["error"] + ")", decision["angle"], decision["time_left"], decision["climb"]);
+            var answer = Guarded("BURNTHROUGH", () =>
+            {
+                decision = LaunchBurnThrough.Call(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(decision);
+            }, describe, rechecking ? 30 : 0);
+            // The re-check that ends the burn-through is always logged, however Guarded's 30 s falls.
+            if (rechecking && decision != null && !(bool)decision["burn_through"]) Debug.Log(ModInfo.LogTag + " block call BURNTHROUGH ended it: " + describe());
+            return decision != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(LaunchBurnThrough.Call(null));
         }
 
         private Lexicon TurnTime(Lexicon input)

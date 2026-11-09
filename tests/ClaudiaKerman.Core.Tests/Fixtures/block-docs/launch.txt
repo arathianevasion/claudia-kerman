@@ -1,5 +1,5 @@
 launch(options): flies from the ground of a body with an atmosphere to a coast out of it; then circularize.
-It ends once the craft is coasting out of the atmosphere with its apoapsis at target_ap; follow it
+It ends once the craft is coasting out of the atmosphere with its apoapsis at target_ap (a stage too weak to coast and circularize burns on past it until it can, or the periapsis clears the air); follow it
 with circularize in the same Mission Script (one Maneuver Sequence, one Approval). A target_ap
 below the atmosphere top makes it a hop that ends at the top of the climb.
 Options:
@@ -25,15 +25,14 @@ air never below the craft's weight). While it holds the throttle back in thick a
 waits: too slow to turn over without falling, the craft climbs as steeply as max_aoa lets it.
 g, atm_height, surface_pressure ["body"]: the body's surface gravity (m/s^2), atmosphere top (m)
 and surface pressure (Pa), to override what the game says.
-max_duration ["auto"]: the wait on the pad plus 900 s.
+max_duration ["auto"]: the pad wait + 900 s + burn-through.
 plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
 In thick air (over a tenth of surface pressure) the throttle never drops below the weight of the
 craft until cutoff, and the craft never steers more than max_aoa off the airflow. With no thrust (a
 hop's coast, between stages) only fins and reaction wheels hold it: a craft with neither tumbles in
 thick air. Engines are staged into from the pad, and launch clamps released.
-It traces the climb to the log (ADDONS:CLAUDIA:BLOCKTRACE) every 2 s and at each change of phase or stage.
 Extra results: ap_error (m, apoapsis minus target_ap when the block ended; a hop's shows drag
-loss), max_q (Pa, highest dynamic pressure), coast_ap (m, apoapsis at first engine cutoff), lan_actual (degrees, the orbit's LAN at the end).
+loss), max_q (Pa, highest dynamic pressure), coast_ap (m, apoapsis at the first coast), lan_actual (degrees, the orbit's LAN at the end).
 Fails with "launch starts on the ground", "no atmosphere on <body>: use ascend", "no thrust", a
 launch_at it can't use, "lost control: ..." (saying whether it was burning or
 coasting, the throttle, q and the nose's angle off the airflow), "fell back into the
