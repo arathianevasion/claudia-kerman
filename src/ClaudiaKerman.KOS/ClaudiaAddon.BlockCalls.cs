@@ -36,6 +36,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (launch): the heading into the plane of inc (negative southbound) from lat, with gm, radius and rotation of the body and target_ap (m); lexicon error, heading"));
             AddSuffix("BURNTHROUGH", new OneArgsSuffix<Lexicon, Lexicon>(BurnThrough,
                 "Core Library only (launch, at its first cutoff and each tick of a burn-through): whether the stage is too weak to coast to apoapsis and circularize there, from ap, sma, gm, radius, eta_ap, altitude, target_ap, atm_height, angle, stages, turn and burning; lexicon error, burn_through, dv, half_burn, turn_time, angle, eta_ap, climb, time_left"));
+            AddSuffix("BURNTIME", new OneArgsSuffix<Lexicon, Lexicon>(BurnTimeCall,
+                "Core Library only (claudia_burn_timing): the seconds to burn dv (m/s) over stages (claudia_burn_stages' list) and to burn half of it; lexicon error, burn_time, half_burn (each -1 with no thrust)"));
             AddSuffix("LANDINGSITE", new OneArgsSuffix<Lexicon, Lexicon>(LandingSite,
                 "Core Library only (land): find_landing_site's search on the body orbited; gives the first site as lexicon error, lat, lng, biome, ..."));
             AddSuffix("LANDINGPASS", new OneArgsSuffix<Lexicon, Lexicon>(LandingPass,
@@ -744,6 +746,23 @@ namespace ClaudiaKerman.KOS
             // The re-check that ends the burn-through is always logged, however Guarded's 30 s falls.
             if (rechecking && decision != null && !(bool)decision["burn_through"]) Debug.Log(ModInfo.LogTag + " block call BURNTHROUGH ended it: " + describe());
             return decision != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(LaunchBurnThrough.Call(null));
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:BURNTIME</c> (#935, ADR 0014): the one burn-timing rule (<see cref="StagedBurnTime.Call"/>), pure, asked a few times a burn
+        /// by <c>claudia_burn_timing</c>, never per tick; the line's a diagnostic of the figures and the call's time (Guarded).
+        /// </summary>
+        private Lexicon BurnTimeCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> timing = null;
+            var answer = Guarded("BURNTIME", () =>
+            {
+                timing = StagedBurnTime.Call(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(timing);
+            }, () => string.Format(CultureInfo.InvariantCulture, "burn_time {0:0.0} s, half burn {1:0.0} s{2}",
+                timing["burn_time"], timing["half_burn"], timing["error"] as string == "" ? "" : " (" + timing["error"] + ")"));
+            // A failure (logged by Guarded) has no figures: no thrust, as burn_time -1 says.
+            return timing != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(StagedBurnTime.Call(null));
         }
 
         private Lexicon TurnTime(Lexicon input)

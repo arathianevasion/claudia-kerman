@@ -465,56 +465,11 @@ namespace ClaudiaKerman.Kerboscript.Tests
 
         // ---- Burns ----
 
-        private static double BurnTime(double dv, double mass, double thrust, double isp)
-        {
-            var ve = isp * 9.80665;
-            return mass * ve / thrust * (1 - Math.Exp(-dv / ve));
-        }
-
         [Fact]
         public void Engines_burning_together_combine_their_isp_by_flow()
         {
             Assert.Equal(Rounded(150 / (100.0 / 300 + 50.0 / 200)), One("round(claudia_mean_isp(list(100, 50), list(300, 200)), 3)"));
             Assert.Equal("0", One("claudia_mean_isp(list(), list())"));
-        }
-
-        // A stage a burn uses, as stock's delta-v gives it: the delta-v it has, the time to burn it all, and its isp.
-        private static string Stage(double mass, double dry, double thrust, double isp)
-        {
-            var ve = isp * 9.80665;
-            var dv = ve * Math.Log(mass / dry);
-            var duration = (mass - dry) * ve / thrust;
-            return string.Format(CultureInfo.InvariantCulture, "lexicon(\"dv\", {0}, \"duration\", {1}, \"isp\", {2})", dv, duration, isp);
-        }
-
-        // A weak first stage (20 t to 14 t at 60 kN, isp 250), then a strong second with the first's tanks dropped (6 t to
-        // 3 t at 200 kN, isp 320).
-        private static readonly string TwoStages = "list(" + Stage(20, 14, 60, 250) + ", " + Stage(6, 3, 200, 320) + ")";
-
-        [Fact]
-        public void A_burn_within_one_stage_takes_the_rocket_equation_time()
-        {
-            Assert.Equal(Rounded(BurnTime(500, 10, 100, 300)), One("round(claudia_staged_burn_time(500, list(" + Stage(10, 5, 100, 300) + ")), 3)"));
-        }
-
-        [Fact]
-        public void A_burn_past_a_stage_burns_it_all_then_the_next_stage_from_its_own_mass()
-        {
-            var firstDv = 250 * 9.80665 * Math.Log(20.0 / 14);
-            var expected = (20.0 - 14) * 250 * 9.80665 / 60 + BurnTime(1200 - firstDv, 6, 200, 320);
-            Assert.Equal(Rounded(expected), One("round(claudia_staged_burn_time(1200, " + TwoStages + "), 3)"));
-        }
-
-        [Fact]
-        public void Stages_with_no_delta_v_are_skipped_and_a_burn_past_the_last_stage_runs_on_at_its_rate()
-        {
-            var empty = "lexicon(\"dv\", 0, \"duration\", 0, \"isp\", 0)";
-            var dv = 300 * 9.80665 * Math.Log(2);
-            var duration = 5.0 * 300 * 9.80665 / 100;
-            Assert.Equal(Rounded(duration + 100 * duration / dv),
-                One(string.Format(CultureInfo.InvariantCulture, "round(claudia_staged_burn_time({0}, list({1}, {2})), 3)", dv + 100, empty, Stage(10, 5, 100, 300))));
-            Assert.Equal("-1", One("claudia_staged_burn_time(100, list(" + empty + "))"));
-            Assert.Equal("-1", One("claudia_staged_burn_time(100, list())"));
         }
 
         [Theory]
@@ -902,28 +857,14 @@ namespace ClaudiaKerman.Kerboscript.Tests
 
         // ---- exec_node ----
 
+        // #935: the burn-timing rule is Core's (StagedBurnTimeTests holds its figures); kOS.Safe has no block calls, so claudia_burn_timing's wiring is pinned by source.
         [Fact]
-        public void A_half_burn_lead_starts_early_by_the_time_to_burn_half_the_node()
+        public void Burn_timing_asks_core_once_and_leads_by_the_half_burn_for_a_string_lead()
         {
-            var printed = Run("local t is claudia_burn_timing(500, list(" + Stage(10, 5, 100, 300) + "), 600, \"half_burn\"). print round(t:burn_time, 3). print round(t:lead, 3). print round(t:start_in, 3).");
-            var lead = BurnTime(250, 10, 100, 300);
-            Assert.Equal(new[] { Rounded(BurnTime(500, 10, 100, 300)), Rounded(lead), Rounded(600 - lead) }, printed);
-        }
-
-        [Fact]
-        public void A_long_multi_stage_burn_starts_by_half_its_delta_v_not_half_its_time()
-        {
-            // The weak first stage burns most of the time for little delta-v, so half the delta-v takes well over half the
-            // burn: "node minus half the burn" would start late.
-            var printed = Run("local t is claudia_burn_timing(1200, " + TwoStages + ", 3600, \"half_burn\"). print t:lead > t:burn_time / 2 + 10. print round(t:lead, 3). print round(t:start_in, 3).");
-            var lead = double.Parse(One("round(claudia_staged_burn_time(600, " + TwoStages + "), 3)"), CultureInfo.InvariantCulture);
-            Assert.Equal(new[] { "True", Rounded(lead), Rounded(3600 - lead) }, printed);
-        }
-
-        [Fact]
-        public void With_no_stage_to_burn_there_is_no_burn_time()
-        {
-            Assert.Equal("-1", One("claudia_burn_timing(500, list(), 600, \"half_burn\"):burn_time"));
+            var lib = System.Text.RegularExpressions.Regex.Replace(CoreLibrary.Files.Single(f => f.Name == "claudia_lib").Source, "\\s+", " ");
+            Assert.DoesNotContain("claudia_staged_burn_time", lib);
+            Assert.Single(System.Text.RegularExpressions.Regex.Matches(lib, "addons:claudia:burntime\\("));
+            Assert.Contains("local burn is addons:claudia:burntime(lexicon(\"dv\", dv, \"stages\", stages)). local lead is lead_opt. if lead_opt:istype(\"String\") { set lead to max(0, burn:half_burn). } return lexicon(\"burn_time\", burn:burn_time, \"lead\", lead, \"start_in\", node_eta - lead).", lib);
         }
 
         [Fact]
@@ -934,12 +875,6 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 One("exec_node_unreadable(claudia_options(lexicon(\"lead\", \"halfburn\"), exec_node_defaults(), \"auto\"):opt)"));
             Assert.Equal("node must be 'next' or a maneuver node, not 'first'",
                 One("exec_node_unreadable(claudia_options(lexicon(\"node\", \"first\"), exec_node_defaults(), \"auto\"):opt)"));
-        }
-
-        [Fact]
-        public void A_lead_in_seconds_is_used_as_given()
-        {
-            Assert.Equal("580", One("claudia_burn_timing(500, list(" + Stage(10, 5, 100, 300) + "), 600, 20):start_in"));
         }
     }
 }

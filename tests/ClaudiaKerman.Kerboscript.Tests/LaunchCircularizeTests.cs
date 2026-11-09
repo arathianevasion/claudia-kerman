@@ -295,28 +295,6 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Contains("set want to launch_limit_aoa(vxcl(normal, flow), flow, allowed).", src);
         }
 
-        // #932: Core's half burn is claudia_staged_burn_time's, which the blocks still lead their burns with, so the two can't drift apart unnoticed.
-        [Theory]
-        [InlineData(39.3, 1.51, 315, 1038, 523, 800)]
-        [InlineData(100, 50, 300, 100, 60, 320)]
-        [InlineData(5, 3.5, 800, 2000, 100, 0)]
-        public void Cores_half_burn_is_the_library_burn_time(double dv1, double seconds1, double isp1, double dv2, double seconds2, double isp2)
-        {
-            var answer = ClaudiaKerman.Core.Tools.LaunchBurnThrough.Call(new System.Collections.Generic.Dictionary<string, object>
-            {
-                { "ap", 79832.0 }, { "sma", 457707.0 }, { "gm", 3.5316e12 }, { "radius", 600000.0 }, { "eta_ap", 145.1 }, { "altitude", 40444.0 }, { "target_ap", 80000.0 }, { "atm_height", 70000.0 }, { "angle", 0.0 },
-                { "stages", new System.Collections.Generic.List<object>
-                    {
-                        new System.Collections.Generic.Dictionary<string, object> { { "dv", dv1 }, { "duration", seconds1 }, { "isp", isp1 } },
-                        new System.Collections.Generic.Dictionary<string, object> { { "dv", dv2 }, { "duration", seconds2 }, { "isp", isp2 } },
-                    } },
-            });
-            var inv = System.Globalization.CultureInfo.InvariantCulture;
-            var library = One(string.Format(inv, "round(claudia_staged_burn_time({0:R}, list(lexicon(\"dv\", {1:R}, \"duration\", {2:R}, \"isp\", {3:R}), lexicon(\"dv\", {4:R}, \"duration\", {5:R}, \"isp\", {6:R}))), 3)",
-                (double)answer["dv"] / 2, dv1, seconds1, isp1, dv2, seconds2, isp2));
-            Assert.Equal(System.Math.Round((double)answer["half_burn"], 3, System.MidpointRounding.AwayFromZero).ToString(inv), library);
-        }
-
         // #932: while burning through, Core is asked again each tick (its stage figures at most a second old) until it says the coast works: coast_ap latches
         // that end. The default max_duration grows with the burn-through's own time; one given by the caller doesn't.
         [Fact]
