@@ -151,6 +151,35 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             Assert.Equal(fires, _check.Check(script).Warnings.Any(w => w.Contains(DeorbitLint)));
         }
 
+        // ---- The kept-stack rule of the stack-drop lint (#959): reentry with separate "none" ----
+
+        private const string KeptStackLint = "keeps the whole stack";
+
+        [Fact]
+        public void The_stack_drop_lint_warns_on_a_reentry_with_separate_none_and_the_script_still_passes()
+        {
+            var result = _check.Check(CoreLibrary.Bundle("local res is reentry(lexicon(\"separate\", \"none\", \"jettison_stage\", \"none\")).\naddons:claudia:report(res)."));
+            Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
+            var lint = Assert.Single(result.Warnings, w => w.Contains(KeptStackLint));
+            Assert.StartsWith("line 1: ", lint);
+            Assert.Contains("mass", lint);
+            Assert.Contains("engine", lint);
+            Assert.Contains("above the shield", lint);
+        }
+
+        [Theory]
+        [InlineData("local res is reentry().\n", false)]
+        [InlineData("local res is reentry(lexicon(\"separate\", \"auto\")).\n", false)]
+        [InlineData("local res is reentry(lexicon(\"separate\", 2)).\n", false)]
+        [InlineData("local res is reentry(lexicon(\"chutes\", \"none\")).\n", false)]
+        [InlineData("// reentry(lexicon(\"separate\", \"none\"))\nlocal res is reentry().\n", false)]
+        [InlineData("local res is reentry(lexicon(\"separate\", \"none\")).\n", true)]
+        [InlineData("local res is reentry(lexicon(\"hold\", \"none\", \"separate\", \"NONE\")).\n", true)]
+        public void The_stack_drop_lint_warns_only_on_a_reentry_whose_separate_is_none(string script, bool fires)
+        {
+            Assert.Equal(fires, _check.Check(script).Warnings.Any(w => w.Contains(KeptStackLint)));
+        }
+
         // ---- The drop-before-reentry lint (#608): drop_parts as the block call just before reentry ----
 
         private const string DropLint = "drop_parts just before reentry";
