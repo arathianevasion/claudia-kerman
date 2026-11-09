@@ -22,7 +22,7 @@ namespace ClaudiaKerman.Core.Tools
         /// Gives <c>error</c> ("" or the input it lacks, which coasts), <c>burn_through</c>, and the figures it decided on:
         /// <c>dv</c> (m/s to circularize at apoapsis), <c>half_burn</c> (s; -1 with no stage to burn), <c>turn_time</c> (s, the turn
         /// through <c>angle</c> and its settle time), <c>angle</c>, <c>eta_ap</c>, <c>climb</c> (s to the atmosphere top, 0 if already above it) and
-        /// <c>time_left</c> (s, <c>eta_ap</c> less <c>climb</c>: what the half burn and turn are held against),, <c>done</c> (the burn-through is over and <c>launch</c> ends: <c>pe</c> above <c>atm_height</c>, or it fell back) and <c>fail</c> ("" or the reason <c>launch</c> fails with: a burn-through descending below <c>atm_height</c> with <c>pe</c> at or under it has fallen back into the air). A hop (<c>target_ap</c> no higher than the
+        /// <c>time_left</c> (s, <c>eta_ap</c> less <c>climb</c>: what the half burn and turn are held against), <c>done</c> (the burn-through is over and <c>launch</c> ends: <c>pe</c> above <c>atm_height</c>, or it fell back) and <c>fail</c> ("" or the reason <c>launch</c> fails with: a burn-through descending below <c>atm_height</c> with <c>pe</c> at or under it has fallen back into the air). A hop (<c>target_ap</c> no higher than the
         /// atmosphere) never burns through, nor does an orbit with no apoapsis. Past apoapsis (<c>eta_ap</c> over half the orbit) no time is left, as the next apoapsis is across the air.
         /// A stage table with no figures coasts, unless <c>burning</c>: stock's can read empty for a moment around a stage change, and an end isn't undone.
         /// </summary>
@@ -37,6 +37,8 @@ namespace ClaudiaKerman.Core.Tools
                 answer["error"] = "nothing to decide on";
                 return answer;
             }
+            // Before the other figures are checked: a burn-through's end doesn't wait on eta_ap, which a hyperbolic orbit may not give (#936).
+            if (EndsBurnThrough(input, answer)) return answer;
             foreach (var key in new[] { "ap", "sma", "gm", "radius", "eta_ap", "altitude", "target_ap", "atm_height", "angle" })
             {
                 if (!(Value(input, key) is double))
@@ -52,25 +54,6 @@ namespace ClaudiaKerman.Core.Tools
             answer["time_left"] = eta;
             answer["angle"] = angle;
             answer["turn_time"] = turnTime;
-
-            // Falling back into the air while burning through (#936): descending below the atmosphere top with the periapsis still at or under it. Not eta_ap, which a hyperbolic orbit may not give.
-            var burningNow = Value(input, "burning") is bool && (bool)input["burning"];
-            if (burningNow && Value(input, "pe") is double && (double)input["pe"] > (double)input["atm_height"])
-            {
-                // The periapsis clears the air: the burn-through is over, launch done (launch.ks used to test this itself each tick).
-                answer["burn_through"] = false;
-                answer["done"] = true;
-                return answer;
-            }
-            if (burningNow && Value(input, "vspeed") is double && Value(input, "pe") is double
-                && (double)input["vspeed"] < 0 && (double)input["altitude"] < (double)input["atm_height"] && (double)input["pe"] <= (double)input["atm_height"]
-                && (double)input["target_ap"] > (double)input["atm_height"])
-            {
-                answer["burn_through"] = false;
-                answer["done"] = true;
-                answer["fail"] = "fell back into the atmosphere: periapsis " + Math.Round((double)input["pe"]) + " m, at or below " + Math.Round((double)input["atm_height"]) + " m";
-                return answer;
-            }
 
             var sma = (double)input["sma"];
             var gm = (double)input["gm"];
@@ -91,6 +74,27 @@ namespace ClaudiaKerman.Core.Tools
             var burning = Value(input, "burning") is bool && (bool)input["burning"];
             answer["burn_through"] = !hop && (halfBurn >= 0 ? halfBurn + turnTime > timeLeft : burning);
             return answer;
+        }
+
+        /// <summary>
+        /// A burn-through under way ends when the periapsis clears the air (<c>done</c>, no reason), or when it is descending below the atmosphere top with the periapsis
+        /// still at or under it (<c>done</c> and a <c>fail</c>, #936). Needs <c>pe</c>, <c>altitude</c>, <c>atm_height</c> and (for the fall) <c>vspeed</c> and a <c>target_ap</c> above the air; without them it is no end.
+        /// </summary>
+        private static bool EndsBurnThrough(IDictionary<string, object> input, Dictionary<string, object> answer)
+        {
+            if (!(Value(input, "burning") is bool && (bool)input["burning"]) || !(Value(input, "pe") is double) || !(Value(input, "atm_height") is double)) return false;
+            var pe = (double)input["pe"];
+            var atmHeight = (double)input["atm_height"];
+            if (pe > atmHeight)
+            {
+                answer["done"] = true;
+                return true;
+            }
+            if (!(Value(input, "vspeed") is double) || !(Value(input, "altitude") is double) || !(Value(input, "target_ap") is double)) return false;
+            if ((double)input["vspeed"] >= 0 || (double)input["altitude"] >= atmHeight || (double)input["target_ap"] <= atmHeight) return false;
+            answer["done"] = true;
+            answer["fail"] = "fell back into the atmosphere: periapsis " + Math.Round(pe) + " m, at or below " + Math.Round(atmHeight) + " m";
+            return true;
         }
 
         /// <summary>

@@ -493,6 +493,13 @@ namespace ClaudiaKerman.Core.Tests
             var answer = Guard(-300, 50000, -200000, sma: -5000000);
             Assert.StartsWith("fell back into the atmosphere: ", (string)answer["fail"]);
             Assert.Equal("", Guard(-300, 50000, 80000, sma: -5000000)["fail"]);
+            // No eta_ap at all (kOS may not give one): the end doesn't wait on it.
+            var noEta = LaunchBurnThrough.Call(new Dictionary<string, object>
+            {
+                { "burning", true }, { "vspeed", -300.0 }, { "pe", -200000.0 }, { "altitude", 50000.0 }, { "target_ap", 80000.0 }, { "atm_height", 70000.0 },
+            });
+            Assert.Equal(true, noEta["done"]);
+            Assert.StartsWith("fell back into the atmosphere: ", (string)noEta["fail"]);
         }
 
         /// <summary>Two stages on the Duna ship's 800 s isp, burn time scaled to give the TWR at the cutoff (the 0.19 of its 1,038 m/s stage over 523 s).</summary>
