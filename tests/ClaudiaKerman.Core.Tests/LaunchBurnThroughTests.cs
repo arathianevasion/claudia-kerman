@@ -285,7 +285,7 @@ namespace ClaudiaKerman.Core.Tests
 
         private sealed class Flight
         {
-            public string Ended;
+            public string Ended, Fail;
             public double Seconds, Ap, Pe, Altitude, Burned, HalfBurn, TurnTime, TimeLeft;
         }
 
@@ -365,7 +365,14 @@ namespace ClaudiaKerman.Core.Tests
                     {
                         { "ap", nowAp }, { "sma", nowSma }, { "gm", KerbinGm }, { "radius", KerbinRadius }, { "eta_ap", eta }, { "altitude", height },
                         { "target_ap", targetAp }, { "atm_height", AtmHeight }, { "stages", table }, { "turn", turn }, { "angle", angle }, { "burning", deciding },
+                        { "vspeed", (x * vx + y * vy) / radius }, { "pe", nowPe },
                     });
+                    if ((string)answer["fail"] != "")
+                    {
+                        result.Ended = "fell";
+                        result.Fail = (string)answer["fail"];
+                        return result;
+                    }
                     result.HalfBurn = (double)answer["half_burn"];
                     result.TurnTime = (double)answer["turn_time"];
                     result.TimeLeft = (double)answer["time_left"];
@@ -425,6 +432,100 @@ namespace ClaudiaKerman.Core.Tests
             // About 1.1 s and 17 m/s after it starts, with the apoapsis at about 73.7 km.
             Assert.InRange(flight.Seconds, 0.5, 3);
             Assert.InRange(flight.Ap, 72500, 76000);
+        }
+
+        // ---- The descent guard (#936): descending, periapsis at or under the top, q over LaunchBurnThrough.FallQ ----
+
+        private static IDictionary<string, object> Guard(double vspeed, double altitude, double pe, double q = 20000, bool burning = true, double targetAp = 80000, double sma = 457707)
+        {
+            return LaunchBurnThrough.Call(new Dictionary<string, object>
+            {
+                { "ap", 120000.0 }, { "sma", sma }, { "gm", KerbinGm }, { "radius", KerbinRadius }, { "eta_ap", 100.0 }, { "altitude", altitude },
+                { "target_ap", targetAp }, { "atm_height", 70000.0 }, { "stages", DunaStages }, { "turn", DunaTurn }, { "angle", 10.0 }, { "burning", burning },
+                { "vspeed", vspeed }, { "pe", pe }, { "q", q },
+            });
+        }
+
+        [Fact]
+        public void DescendingWithThePeriapsisUnderTheTopAndQOverTheLineFails()
+        {
+            var answer = Guard(-20, 60000, 20000, q: 20000);
+            Assert.StartsWith("fell back into the atmosphere: ", (string)answer["fail"]);
+            Assert.Contains("periapsis 20000 m", (string)answer["fail"]);
+            Assert.Contains("q 20000 Pa", (string)answer["fail"]);
+            Assert.Equal(true, answer["done"]);
+            Assert.Equal(false, answer["burn_through"]);
+            Assert.NotEqual("", Guard(-1, 60000, 70000, q: 8001)["fail"]);
+        }
+
+        [Fact]
+        public void QUnderTheLineKeepsBurningEvenDescendingUnderTheTop()
+        {
+            var answer = Guard(-20, 60000, 20000, q: 8000);
+            Assert.Equal("", answer["fail"]);
+            Assert.Equal(false, answer["done"]);
+            Assert.Equal(true, answer["burn_through"]);
+            Assert.Equal("", Guard(-20, 30000, 20000, q: 100)["fail"]);
+        }
+
+        [Fact]
+        public void ClimbingAboveTheTopOrWithThePeriapsisClearDoesNotFail()
+        {
+            Assert.Equal("", Guard(5, 60000, 20000)["fail"]);
+            Assert.Equal("", Guard(0, 60000, 20000)["fail"]);
+            Assert.Equal("", Guard(-20, 75000, 20000, q: 10)["fail"]);
+            Assert.Equal("", Guard(-20, 60000, 70001)["fail"]);
+            Assert.Equal(true, Guard(5, 60000, 20000)["burn_through"]);
+        }
+
+        [Fact]
+        public void AClearPeriapsisEndsTheBurnThroughWithoutAFailure()
+        {
+            var answer = Guard(5, 60000, 70001);
+            Assert.Equal(true, answer["done"]);
+            Assert.Equal("", answer["fail"]);
+            Assert.Equal(false, Guard(5, 60000, 70001, burning: false)["done"]);
+        }
+
+        [Fact]
+        public void AHopAndAFirstCutoffAreUnaffected()
+        {
+            Assert.Equal("", Guard(-20, 60000, 20000, targetAp: 70000)["fail"]);
+            Assert.Equal("", Guard(-20, 60000, 20000, burning: false)["fail"]);
+        }
+
+        [Fact]
+        public void ACallerWithoutQVspeedOrPeIsUnaffected()
+        {
+            // AscentSim passes none of the guard's figures; a caller missing any one of them gets no end.
+            foreach (var drop in new[] { "q", "vspeed", "pe" })
+            {
+                var ask = new Dictionary<string, object>
+                {
+                    { "ap", 120000.0 }, { "sma", 457707.0 }, { "gm", KerbinGm }, { "radius", KerbinRadius }, { "eta_ap", 100.0 }, { "altitude", 60000.0 },
+                    { "target_ap", 80000.0 }, { "atm_height", 70000.0 }, { "stages", DunaStages }, { "turn", DunaTurn }, { "angle", 10.0 }, { "burning", true },
+                    { "vspeed", -20.0 }, { "pe", 20000.0 }, { "q", 20000.0 },
+                };
+                ask.Remove(drop);
+                var answer = LaunchBurnThrough.Call(ask);
+                Assert.Equal("", answer["fail"]);
+                Assert.Equal(false, answer["done"]);
+            }
+        }
+
+        [Fact]
+        public void PastApoapsisOnAHyperbolicOrbitTheGuardStillWorks()
+        {
+            var answer = Guard(-300, 50000, -200000, sma: -5000000);
+            Assert.StartsWith("fell back into the atmosphere: ", (string)answer["fail"]);
+            Assert.Equal("", Guard(-300, 50000, 80000, sma: -5000000)["fail"]);
+            // No eta_ap at all (kOS may not give one): the end doesn't wait on it.
+            var noEta = LaunchBurnThrough.Call(new Dictionary<string, object>
+            {
+                { "burning", true }, { "vspeed", -300.0 }, { "pe", -200000.0 }, { "q", 20000.0 }, { "altitude", 50000.0 }, { "target_ap", 80000.0 }, { "atm_height", 70000.0 },
+            });
+            Assert.Equal(true, noEta["done"]);
+            Assert.StartsWith("fell back into the atmosphere: ", (string)noEta["fail"]);
         }
 
         [Fact]

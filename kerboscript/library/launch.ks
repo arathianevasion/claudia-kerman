@@ -469,10 +469,6 @@ function launch {
       set ratio to ship:body:atm:altitudepressure(altitude) * constant:atmtokpa * 1000 / body_values:surface_pressure.
     }
 
-    if burn_through and ship:periapsis > body_values:atm_height {
-      set done to true.
-      return.
-    }
     if coasting {
       if hop and ship:verticalspeed <= 0 {
         set done to true.
@@ -506,7 +502,11 @@ function launch {
           if time:seconds >= burn_figures:due {
             set burn_figures to lexicon("due", time:seconds + 1, "stages", claudia_burn_stages(opt:stage_limit), "turn", addons:claudia:turntime(lexicon("max_stopping_time", steeringmanager:maxstoppingtime))).
           }
-          set burn_through to addons:claudia:burnthrough(lexicon("burning", burn_through, "ap", ap, "sma", ship:orbit:semimajoraxis, "gm", ship:body:mu, "radius", ship:body:radius, "eta_ap", eta:apoapsis, "altitude", altitude, "target_ap", target_ap, "atm_height", body_values:atm_height, "angle", vang(ship:facing:vector, velocityat(ship, time:seconds + eta:apoapsis):orbit), "stages", burn_figures:stages, "turn", burn_figures:turn)):burn_through.
+          local bt is addons:claudia:burnthrough(lexicon("burning", burn_through, "vspeed", ship:verticalspeed, "q", q_pa, "pe", ship:periapsis, "ap", ap, "sma", ship:orbit:semimajoraxis, "gm", ship:body:mu, "radius", ship:body:radius, "eta_ap", eta:apoapsis, "altitude", altitude, "target_ap", target_ap, "atm_height", body_values:atm_height, "angle", vang(ship:facing:vector, velocityat(ship, time:seconds + eta:apoapsis):orbit), "stages", burn_figures:stages, "turn", burn_figures:turn)).
+          set burn_through to bt:burn_through.
+          set reason to bt:fail. // Core ends a burn-through whose periapsis clears the air (no reason) or that fell back into it (#936).
+          set done to bt:done.
+          if done { return. }
         }
         set tset to choose (choose tset if tset > 0 else 1) if burn_through else 0.
         set coasting to not burn_through.
