@@ -410,17 +410,16 @@ namespace ClaudiaKerman.Kerboscript.Tests
             + "global opt is lexicon(\"chute_mode\", \"safe\", \"stage_limit\", 0).\n"
             + "global ask is lexicon().\n"
             + "global extra is lexicon().\n"
-            + "global ctx is lexicon(\"block\", \"reentry\", \"ec_tick\", { return 100. }).\n"
+            + "global ctx is lexicon(\"block\", \"reentry\").\n"
             + "global asked is list().\n"
             + "global waits is list().\n"
             + "global burns is 0.\n"
             + "global aborts is 0.\n"
             + "global notes is list().\n"
-            + "global watched is list().\n"
             + "global wait_result is \"\".\n"
-            + "function claudia_wait_until { parameter c, ut. waits:add(ut - time:seconds). watched:add(ctx:haskey(\"ec_tick\")). set time:seconds to ut. return wait_result. }\n"
+            + "function claudia_wait_until { parameter c, ut. waits:add(ut - time:seconds). set time:seconds to ut. return wait_result. }\n"
             + "function claudia_fall_eta { parameter a, b, c, d, e. return 2400. }\n"
-            + "function claudia_fly_correction { parameter c, fix. set burns to burns + 1. watched:add(ctx:haskey(\"ec_tick\")). return lexicon(\"dv\", choose fix:dv if fix:haskey(\"dv\") else 0, \"reason\", fix:error). }\n"
+            + "function claudia_fly_correction { parameter c, fix. set burns to burns + 1. return lexicon(\"dv\", choose fix:dv if fix:haskey(\"dv\") else 0, \"reason\", fix:error). }\n"
             + "function claudia_dv_recounted { return 100. }\n"
             + "function claudia_engine_isp { return 300. }\n"
             + "function reentry_abort { parameter m, g. set aborts to aborts + 1. }\n"
@@ -433,7 +432,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         private const string Failed = "lexicon(\"error\", \"ENTRYTRIM failed: boom\")";
         private const string Fix = "lexicon(\"error\", \"\", \"wait\", 0, \"dv\", 12.5, \"miss_before_km\", 41.26, \"miss_after_km\", 3.14)";
 
-        /// <summary>Runs the block's lines on the answers given; prints the to_air figures asked with, the waits, the burns, the aborts, whether the watch was on in each wait and burn, the notes, the outcome, and whether the watch is on at the end.</summary>
+        /// <summary>Runs the block's lines on the answers given; prints the to_air figures asked with, the waits, the burns, the aborts, the notes and the outcome.</summary>
         private static string[] TrimRun(string answers, string extraRig = "")
         {
             var body = Body();
@@ -448,28 +447,28 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 + "  \"blocknote\", { parameter b, n. notes:add(n:phase + \" \" + n:miss_before_km + \" \" + n:dv + \" \" + n:miss_after_km). })).\n"
                 + "function flies {\n" + slice + "  return \"went on\".\n}\n"
                 + "local out is flies().\n"
-                + "print asked:join(\",\"). print waits:join(\",\"). print burns. print aborts. print watched:join(\",\"). print notes:join(\";\"). print out. print ctx:haskey(\"ec_tick\").\n";
+                + "print asked:join(\",\"). print waits:join(\",\"). print burns. print aborts. print notes:join(\";\"). print out.\n";
             return KosHarness.Run(script).ToArray();
         }
 
         [Fact]
         public void From_far_out_it_waits_then_asks_again_with_the_eta_read_again_and_flies_one_trim_and_notes_it()
         {
-            Assert.Equal(new[] { "95000,2400", "92600", "1", "0", "True,False", "late_trim 41.3 12.5 3.1", "went on", "True" },
+            Assert.Equal(new[] { "95000,2400", "92600", "1", "0", "late_trim 41.3 12.5 3.1", "went on" },
                 TrimRun(WaitAnswer + ", " + Fix));
         }
 
         [Fact]
         public void A_second_wait_answer_is_not_a_third_ask_and_flies_nothing()
         {
-            Assert.Equal(new[] { "95000,2400", "92600", "1", "0", "True,False", "", "went on", "True" },
+            Assert.Equal(new[] { "95000,2400", "92600", "1", "0", "", "went on" },
                 TrimRun(WaitAnswer + ", " + WaitAnswer));
         }
 
         [Fact]
         public void Inside_the_window_it_flies_at_once_with_no_wait()
         {
-            Assert.Equal(new[] { "1500", "", "1", "0", "False", "late_trim 41.3 12.5 3.1", "went on", "True" },
+            Assert.Equal(new[] { "1500", "", "1", "0", "late_trim 41.3 12.5 3.1", "went on" },
                 TrimRun(Fix, "set entry_in to 1500.\n"));
         }
 
@@ -477,21 +476,21 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [Fact]
         public void A_failed_call_writes_no_note_and_goes_on()
         {
-            Assert.Equal(new[] { "95000", "", "1", "0", "False", "", "went on", "True" }, TrimRun(Failed));
-            Assert.Equal(new[] { "95000,2400", "92600", "1", "0", "True,False", "", "went on", "True" }, TrimRun(WaitAnswer + ", " + Failed));
+            Assert.Equal(new[] { "95000", "", "1", "0", "", "went on" }, TrimRun(Failed));
+            Assert.Equal(new[] { "95000,2400", "92600", "1", "0", "", "went on" }, TrimRun(WaitAnswer + ", " + Failed));
         }
 
         [Fact]
         public void No_trim_at_once_writes_no_note_and_goes_on()
         {
-            Assert.Equal(new[] { "1000", "", "1", "0", "False", "", "went on", "True" },
+            Assert.Equal(new[] { "1000", "", "1", "0", "", "went on" },
                 TrimRun(NoFix, "set entry_in to 1000.\n"));
         }
 
         [Fact]
         public void A_wait_cut_short_by_a_ticks_abort_ends_the_block_as_the_drop_wait_does_with_no_second_ask_and_no_burn()
         {
-            Assert.Equal(new[] { "95000", "92600", "0", "1", "True", "", "finished: abort min_ec_pct", "True" },
+            Assert.Equal(new[] { "95000", "92600", "0", "1", "", "finished: abort min_ec_pct" },
                 TrimRun(WaitAnswer, "set wait_result to \"abort min_ec_pct\".\n"));
         }
 

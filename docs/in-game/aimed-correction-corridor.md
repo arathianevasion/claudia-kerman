@@ -61,7 +61,7 @@ Fly `tests/blocks/return_target` (Mun to KSC), or a Mun return Mission:
 
 ## The late trim waits for the last 40 minutes (#952)
 
-**Block migration:** the timing is new logic in Core: `BlockCalls.EntryTrim` (`TrimMostToAirS`, 2,400 s), whose answer carries `wait`. `reentry` waits, reads the time to the air again and asks once more; the wait and burn stay in Kerboscript (guardrail 2). No `//|` line changed; the library stays at its limit (one-use constant wrappers and `reentry_g_felt` went inline). If the `ENTRYTRIM` call itself fails, the block flies no trim and goes on. Parity test: none, no Kerboscript logic moved.
+**Block migration:** the timing is new logic in Core: `BlockCalls.EntryTrim` (`TrimMostToAirS`, 2,400 s), whose answer carries `wait`. `reentry` waits, reads the time to the air again and asks once more; the wait and burn stay in Kerboscript (guardrail 2). No `//|` line changed; the library doesn't grow (one-use constant wrappers and `reentry_g_felt` went inline), and its limit fell by 3 lines. If the `ENTRYTRIM` call itself fails, the block flies no trim and goes on. Parity test: none, no Kerboscript logic moved.
 
 Over 2,400 s from the air the block waits until 2,400 s before it, then asks `ENTRYTRIM` again and flies what that says (#952; a trim from a day out missed KSC by 520 km). From 1,200 to 2,400 s it trims at once, and at or under 1,200 s not at all. A trim that could never fly (no target, a node planned) doesn't wait.
 
@@ -73,4 +73,4 @@ Fly a Minmus or Mun return to KSC (`tests/blocks/return_target`, or a Mission):
 4. With a burn, a `phase late_trim` blocknote gives `miss_before_km`, `dv` and `miss_after_km`.
 5. The stack still drops about 600 s before the air and the hold still starts after that, as before.
 6. The landing is close to `miss_after_km` from the target (compare the Debrief's distance from KSC).
-7. Low charge during the wait (optional, hard to stage): under `min_ec_pct` with the periapsis in the air, the block carries on and the steering is released (a `phase low_charge` note), as in the wait to the drop. The trim's burn is outside that rule: its own `min_ec_pct` abort fails the burn alone, and the block goes on.
+7. Low charge during the wait (optional, hard to stage): under `min_ec_pct` with the periapsis in the air, the block carries on and the steering is released (a `phase low_charge` note), as in the wait to the drop. The trim's burn is outside that rule: it is `exec_node`'s, whose own `min_ec_pct` abort fails that burn alone, and with the periapsis in the air the block goes on. With the periapsis above the air the abort stands, so the block ends with `abort min_ec_pct` at its next tick.

@@ -174,7 +174,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         // ---- Where it is asked ----
 
         [Fact]
-        public void Only_reentry_sets_the_watch_on_for_the_waits_and_off_for_the_trim_burn_so_the_burn_keeps_its_steering()
+        public void Only_reentry_sets_the_watch_for_its_waits_and_the_trim_burn_runs_on_exec_nodes_own_ctx_without_it()
         {
             var setters = CoreLibrary.Files.Where(f => f.Source.Contains("set ctx:ec_tick")).Select(f => f.Name).ToArray();
             Assert.Equal(new[] { "reentry" }, setters);
@@ -182,11 +182,13 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var watch = At(body, "set ctx:ec_tick to {");
             // Set before the trim's wait (#952), so a day from the air low charge is judged as in the drop's wait.
             Assert.True(watch < At(body, "claudia_wait_until(ctx, time:seconds + trim:wait)"), "set before the first wait");
-            var off = At(body, "ctx:remove(\"ec_tick\").");
-            var fly = At(body, "local flown is claudia_fly_correction(ctx, trim).");
-            var on = At(body, "set ctx:ec_tick to ec_watch.");
-            Assert.True(off < fly && fly < on);
-            Assert.True(on < At(body, "claudia_wait_until(ctx, time:seconds + entry_in - below:lead)"), "back on before the drop's wait");
+            // The trim burn is exec_node's: it ticks a ctx of its own, which never has the watch, so it keeps its steering and its own min_ec_pct abort fails that burn alone.
+            var execNode = CoreLibrary.Files.Single(f => f.Name == "exec_node").Source;
+            Assert.Contains("local ctx is claudia_begin(\"exec_node\", options, exec_node_defaults(), \"auto\").", execNode);
+            Assert.DoesNotContain("ec_tick", execNode);
+            var lib = Lib();
+            var begin = At(lib, "function claudia_begin {");
+            Assert.DoesNotContain("ec_tick", lib.Substring(begin, lib.IndexOf("\n}\n", begin, StringComparison.Ordinal) - begin));
         }
 
         [Fact]
