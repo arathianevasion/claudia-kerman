@@ -428,6 +428,22 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        [Trait("Category", "Timing")]
+        public void A_thousand_re_checks_take_under_5_ms()
+        {
+            // ADR 0014 guardrail 6: BURNTHROUGH is asked every tick of a burn-through; 1,000 ticks (20 s at 50 Hz) in 5 ms.
+            var ask = new Dictionary<string, object>
+            {
+                { "ap", 100000.0 }, { "sma", 470000.0 }, { "gm", KerbinGm }, { "radius", KerbinRadius }, { "eta_ap", 145.1 }, { "altitude", 60000.0 },
+                { "target_ap", 80000.0 }, { "atm_height", 70000.0 }, { "stages", DunaStages }, { "turn", DunaTurn }, { "angle", 10.0 }, { "burning", true },
+            };
+            Timing.Within(5, () =>
+            {
+                for (var i = 0; i < 1000; i++) LaunchBurnThrough.Call(ask);
+            });
+        }
+
+        [Fact]
         public void PastApoapsisACoastCanNeverWork()
         {
             // A burn-through still under way past apoapsis: the next apoapsis is a whole orbit off, across the air, so a coast is no answer. KSP gives eta_ap as the time to the next one.

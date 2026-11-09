@@ -25,7 +25,7 @@ air never below the craft's weight). While it holds the throttle back in thick a
 waits: too slow to turn over without falling, the craft climbs as steeply as max_aoa lets it.
 g, atm_height, surface_pressure ["body"]: the body's surface gravity (m/s^2), atmosphere top (m)
 and surface pressure (Pa), to override what the game says.
-max_duration ["auto"]: the wait on the pad plus 900 s.
+max_duration ["auto"]: the pad wait + 900 s + burn-through.
 plus min_ec_pct, abort_on_part_loss and stage_limit as for every block.
 In thick air (over a tenth of surface pressure) the throttle never drops below the weight of the
 craft until cutoff, and the craft never steers more than max_aoa off the airflow. With no thrust (a

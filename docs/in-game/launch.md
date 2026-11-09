@@ -27,7 +27,7 @@ Fly `launch_low_twr` (`tests/blocks/launch_low_twr`), the block test for this, o
 
 1. Pick `launch_low_twr` and press **Run** (up to 1500 s).
 2. The engines stay on past `target_ap`: no coast. The weak stage takes over, and the `launch trace` lines in `KSP.log` read `phase burn_through`.
-3. `KSP.log` has a `block call BURNTHROUGH` line with `burn_through True` (and one more, `burn_through False`, if a re-check found the coast works again and ended it early), its half burn, its turn (the angle at cutoff, not 190 degrees), the time left as `launch` ends at the atmosphere top, and the time to apoapsis less the climb that comes from.
+3. `KSP.log` has a `block call BURNTHROUGH` line with `burn_through True`, then one every 30 s with the slowest re-check's time, and a `BURNTHROUGH ended it` line if a re-check found the coast works again, its half burn, its turn (the angle at cutoff, not 190 degrees), the time left as `launch` ends at the atmosphere top, and the time to apoapsis less the climb that comes from.
 4. The periapsis rises above 70 km without a coast (or the burn ends early on that second line and the craft coasts), `launch` ends with a positive `ap_error` (the overshoot), and `circularize` finishes with a small trim (by the Core flight model, the Duna ship ends at about 104 x 70 km).
 5. It passes (`PASS launch_low_twr`, every `ok` line).
 6. Fly `launch_orbit` too (Check 1): its `block call BURNTHROUGH` line reads `burn_through False` and it flies as before.
