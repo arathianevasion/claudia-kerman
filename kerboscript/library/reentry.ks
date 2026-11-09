@@ -853,6 +853,7 @@ function reentry {
       set ctx:parts to ship:parts:length.
     }
     chute_tick(last_speed, agl, pressure).
+    if agl < 1000 and not gear { gear on. }
     if powered and reentry_brake_due(agl, brake_h, last_speed) {
       set braking to true.
       return true.
