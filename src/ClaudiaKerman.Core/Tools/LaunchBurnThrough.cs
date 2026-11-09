@@ -18,11 +18,11 @@ namespace ClaudiaKerman.Core.Tools
         /// Takes <c>ap</c> (m above sea level), <c>sma</c> (m), <c>gm</c>, <c>radius</c> (m), <c>eta_ap</c> (s), <c>altitude</c>, <c>target_ap</c>
         /// and <c>atm_height</c> (m), <c>angle</c> (degrees from the nose now to orbital prograde at apoapsis), <c>stages</c>
         /// (<c>claudia_burn_stages</c>'s list: <c>dv</c>, <c>duration</c>, <c>isp</c>, from the stage burning now down to stage_limit)
-        /// and <c>turn</c> (TURNTIME's answer; one with an error counts as no turn time). <c>burning</c> (optional, default false) says a burn-through is already under way.
+        /// and <c>turn</c> (TURNTIME's answer; one with an error counts as no turn time). <c>burning</c> (optional, default false) says a burn-through is already under way; with it, <c>vspeed</c> (vertical speed) and <c>pe</c> (periapsis, m; both optional) give the descent guard (#936).
         /// Gives <c>error</c> ("" or the input it lacks, which coasts), <c>burn_through</c>, and the figures it decided on:
         /// <c>dv</c> (m/s to circularize at apoapsis), <c>half_burn</c> (s; -1 with no stage to burn), <c>turn_time</c> (s, the turn
         /// through <c>angle</c> and its settle time), <c>angle</c>, <c>eta_ap</c>, <c>climb</c> (s to the atmosphere top, 0 if already above it) and
-        /// <c>time_left</c> (s, <c>eta_ap</c> less <c>climb</c>: what the half burn and turn are held against). A hop (<c>target_ap</c> no higher than the
+        /// <c>time_left</c> (s, <c>eta_ap</c> less <c>climb</c>: what the half burn and turn are held against),, <c>done</c> (the burn-through is over and <c>launch</c> ends: <c>pe</c> above <c>atm_height</c>, or it fell back) and <c>fail</c> ("" or the reason <c>launch</c> fails with: a burn-through descending below <c>atm_height</c> with <c>pe</c> at or under it has fallen back into the air). A hop (<c>target_ap</c> no higher than the
         /// atmosphere) never burns through, nor does an orbit with no apoapsis. Past apoapsis (<c>eta_ap</c> over half the orbit) no time is left, as the next apoapsis is across the air.
         /// A stage table with no figures coasts, unless <c>burning</c>: stock's can read empty for a moment around a stage change, and an end isn't undone.
         /// </summary>
@@ -30,7 +30,7 @@ namespace ClaudiaKerman.Core.Tools
         {
             var answer = new Dictionary<string, object>
             {
-                { "error", "" }, { "burn_through", false }, { "dv", 0.0 }, { "half_burn", -1.0 }, { "turn_time", 0.0 }, { "angle", 0.0 }, { "eta_ap", 0.0 }, { "climb", 0.0 }, { "time_left", 0.0 },
+                { "error", "" }, { "burn_through", false }, { "dv", 0.0 }, { "half_burn", -1.0 }, { "turn_time", 0.0 }, { "angle", 0.0 }, { "eta_ap", 0.0 }, { "climb", 0.0 }, { "time_left", 0.0 }, { "fail", "" }, { "done", false },
             };
             if (input == null)
             {
@@ -52,6 +52,25 @@ namespace ClaudiaKerman.Core.Tools
             answer["time_left"] = eta;
             answer["angle"] = angle;
             answer["turn_time"] = turnTime;
+
+            // Falling back into the air while burning through (#936): descending below the atmosphere top with the periapsis still at or under it. Not eta_ap, which a hyperbolic orbit may not give.
+            var burningNow = Value(input, "burning") is bool && (bool)input["burning"];
+            if (burningNow && Value(input, "pe") is double && (double)input["pe"] > (double)input["atm_height"])
+            {
+                // The periapsis clears the air: the burn-through is over, launch done (launch.ks used to test this itself each tick).
+                answer["burn_through"] = false;
+                answer["done"] = true;
+                return answer;
+            }
+            if (burningNow && Value(input, "vspeed") is double && Value(input, "pe") is double
+                && (double)input["vspeed"] < 0 && (double)input["altitude"] < (double)input["atm_height"] && (double)input["pe"] <= (double)input["atm_height"]
+                && (double)input["target_ap"] > (double)input["atm_height"])
+            {
+                answer["burn_through"] = false;
+                answer["done"] = true;
+                answer["fail"] = "fell back into the atmosphere: periapsis " + Math.Round((double)input["pe"]) + " m, at or below " + Math.Round((double)input["atm_height"]) + " m";
+                return answer;
+            }
 
             var sma = (double)input["sma"];
             var gm = (double)input["gm"];

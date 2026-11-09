@@ -285,7 +285,7 @@ namespace ClaudiaKerman.Core.Tests
 
         private sealed class Flight
         {
-            public string Ended;
+            public string Ended, Fail;
             public double Seconds, Ap, Pe, Altitude, Burned, HalfBurn, TurnTime, TimeLeft;
         }
 
@@ -365,7 +365,14 @@ namespace ClaudiaKerman.Core.Tests
                     {
                         { "ap", nowAp }, { "sma", nowSma }, { "gm", KerbinGm }, { "radius", KerbinRadius }, { "eta_ap", eta }, { "altitude", height },
                         { "target_ap", targetAp }, { "atm_height", AtmHeight }, { "stages", table }, { "turn", turn }, { "angle", angle }, { "burning", deciding },
+                        { "vspeed", (x * vx + y * vy) / radius }, { "pe", nowPe },
                     });
+                    if ((string)answer["fail"] != "")
+                    {
+                        result.Ended = "fell";
+                        result.Fail = (string)answer["fail"];
+                        return result;
+                    }
                     result.HalfBurn = (double)answer["half_burn"];
                     result.TurnTime = (double)answer["turn_time"];
                     result.TimeLeft = (double)answer["time_left"];
@@ -425,6 +432,89 @@ namespace ClaudiaKerman.Core.Tests
             // About 1.1 s and 17 m/s after it starts, with the apoapsis at about 73.7 km.
             Assert.InRange(flight.Seconds, 0.5, 3);
             Assert.InRange(flight.Ap, 72500, 76000);
+        }
+
+        // ---- The descent guard (#936) ----
+
+        private static IDictionary<string, object> Guard(double vspeed, double altitude, double pe, bool burning = true, double targetAp = 80000, double sma = 457707)
+        {
+            return LaunchBurnThrough.Call(new Dictionary<string, object>
+            {
+                { "ap", 120000.0 }, { "sma", sma }, { "gm", KerbinGm }, { "radius", KerbinRadius }, { "eta_ap", 100.0 }, { "altitude", altitude },
+                { "target_ap", targetAp }, { "atm_height", 70000.0 }, { "stages", DunaStages }, { "turn", DunaTurn }, { "angle", 10.0 }, { "burning", burning },
+                { "vspeed", vspeed }, { "pe", pe },
+            });
+        }
+
+        [Fact]
+        public void DescendingBelowTheAirWithThePeriapsisUnderItFails()
+        {
+            var answer = Guard(-20, 60000, 20000);
+            Assert.StartsWith("fell back into the atmosphere: ", (string)answer["fail"]);
+            Assert.Contains("periapsis 20000 m", (string)answer["fail"]);
+            Assert.Equal(false, answer["burn_through"]);
+        }
+
+        [Fact]
+        public void APeriapsisAtTheAirTopStillFails()
+        {
+            Assert.NotEqual("", Guard(-1, 60000, 70000)["fail"]);
+        }
+
+        [Fact]
+        public void ClimbingAboveTheAirOrWithThePeriapsisClearDoesNotFail()
+        {
+            Assert.Equal("", Guard(5, 60000, 20000)["fail"]);
+            Assert.Equal("", Guard(0, 60000, 20000)["fail"]);
+            Assert.Equal("", Guard(-20, 75000, 20000)["fail"]);
+            Assert.Equal("", Guard(-20, 60000, 70001)["fail"]);
+            Assert.Equal(true, Guard(5, 60000, 20000)["burn_through"]);
+        }
+
+        [Fact]
+        public void AClearPeriapsisEndsTheBurnThroughWithoutAFailure()
+        {
+            var answer = Guard(5, 60000, 70001);
+            Assert.Equal(true, answer["done"]);
+            Assert.Equal("", answer["fail"]);
+            Assert.Equal(false, Guard(5, 60000, 70001, burning: false)["done"]);
+        }
+
+        [Fact]
+        public void AHopAndAFirstCutoffAreUnaffected()
+        {
+            Assert.Equal("", Guard(-20, 60000, 20000, targetAp: 70000)["fail"]);
+            Assert.Equal("", Guard(-20, 60000, 20000, burning: false)["fail"]);
+        }
+
+        [Fact]
+        public void PastApoapsisOnAHyperbolicOrbitTheGuardStillWorks()
+        {
+            var answer = Guard(-300, 50000, -200000, sma: -5000000);
+            Assert.StartsWith("fell back into the atmosphere: ", (string)answer["fail"]);
+            Assert.Equal("", Guard(-300, 50000, 80000, sma: -5000000)["fail"]);
+        }
+
+        /// <summary>Two stages on the Duna ship's 800 s isp, burn time scaled to give the TWR at the cutoff (the 0.19 of its 1,038 m/s stage over 523 s).</summary>
+        private static List<object> StagesAtTwr(double twr)
+        {
+            var seconds = 523 * 0.19 / twr;
+            return Stages(Stage(1038, seconds, 800), Stage(1233, seconds, 800));
+        }
+
+        [Theory]
+        [InlineData(0.19, false)]
+        [InlineData(0.188, false)]
+        [InlineData(0.185, false)]
+        [InlineData(0.18, true)]
+        [InlineData(0.163, true)] // The ticket says 0.163 doesn't trip (low point 85 km); this model dips under 70 km at 366 s with the periapsis at -2 km. Reported on the ticket, not tuned.
+        [InlineData(0.153, true)]
+        [InlineData(0.133, true)]
+        [InlineData(0.122, true)]
+        public void TheModelsTwrRowsTripTheGuardOnlyBelowAboutPointOneEight(double twr, bool trips)
+        {
+            var flight = FlyBurnThrough(79832, 457707, DunaCutoffAltitude, StagesAtTwr(twr), DunaTurn, 80000);
+            Assert.True(trips == (flight.Ended == "fell"), "TWR " + twr + " ended " + flight.Ended + " at " + flight.Seconds + " s, ap " + flight.Ap + ", pe " + flight.Pe + ", altitude " + flight.Altitude);
         }
 
         [Fact]
