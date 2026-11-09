@@ -34,6 +34,10 @@ namespace ClaudiaKerman.Core.Tools
         public double DeltaVLeft;
         /// <summary>m/s the Mission Plan's later legs need (#832), kept back from the auto max_dv; 0 for none.</summary>
         public double LaterLegsDv;
+        /// <summary>#957: the Daylight landing Mission Setting. True: a burn counts only if the sun at the target when it lands is at least <see cref="LandingSiteSearch.MinSunElevationDeg"/>.</summary>
+        public bool Daylight;
+        /// <summary>The sun's elevation at the target at a UT, degrees; NaN when it can't be read (then the burn counts). Null reads as NaN.</summary>
+        public Func<double, double> SunAt;
     }
 
     /// <summary>The burn <see cref="DeorbitBurn.Find"/> chose, in maneuver-node components, and where it lands.</summary>
@@ -263,13 +267,23 @@ namespace ClaudiaKerman.Core.Tools
                     var refined = Refine(ut);
                     if (refined != null) burns.Add(refined);
                 }
+                var darkest = double.NegativeInfinity;
+                if (_ask.Daylight)
+                {
+                    darkest = Math.Max(BestSun(burns), burns.Count == 0 ? Sun(first) : double.NegativeInfinity);
+                    burns = burns.Where(Lit).ToList();
+                }
                 foreach (var plan in burns.Where(burn => burn.ErrorKm <= _ask.AccuracyKm).OrderBy(burn => burn.DeltaV).ThenBy(burn => burn.BurnUt).ToList())
                 {
                     if (_tries >= MaxTries) break;
                     var walked = Walk(plan);
                     if (walked != plan) burns.Add(walked);
                 }
-                if (burns.Count == 0) burns.Add(first);
+                if (burns.Count == 0 && (!_ask.Daylight || Lit(first))) burns.Add(first);
+                if (burns.Count == 0)
+                    return Fail("no pass in the next " + Hours(scan[scan.Count - 1].BurnUt - _ask.EarliestUt) + " h lands in daylight: the best sun at the target is "
+                        + darkest.ToString("0.#", CultureInfo.InvariantCulture) + " degrees up, under " + Whole(LandingSiteSearch.MinSunElevationDeg)
+                        + "; allow a longer max_wait or pick a different site");
 
                 var best = Choose(burns, _ask.AccuracyKm, OverBudget);
                 if (best.ErrorKm > _ask.AccuracyKm)
@@ -279,6 +293,24 @@ namespace ClaudiaKerman.Core.Tools
                             ? " (the target is too far off the ground track; change the orbit's plane, or allow a longer max_wait)"
                             : "; allow a longer max_wait or a wider accuracy_km");
                 return best;
+            }
+
+            /// <summary>The sun at the target when the burn lands, degrees; NaN when it can't be read.</summary>
+            private double Sun(DeorbitPlan burn)
+            {
+                return _ask.SunAt == null || burn.Landing == null || burn.Landing.Error != null ? double.NaN : _ask.SunAt(burn.Landing.LandingUt);
+            }
+
+            /// <summary>Whether the burn lands in daylight (#957); a sun that can't be read counts.</summary>
+            private bool Lit(DeorbitPlan burn)
+            {
+                var sun = Sun(burn);
+                return double.IsNaN(sun) || sun >= LandingSiteSearch.MinSunElevationDeg;
+            }
+
+            private double BestSun(List<DeorbitPlan> burns)
+            {
+                return burns.Select(Sun).Where(sun => !double.IsNaN(sun)).DefaultIfEmpty(double.NegativeInfinity).Max();
             }
 
             /// <summary>Null, or why the burn must not fly: more than the delta-v left, or than max_dv (the auto one when none was given).</summary>
