@@ -71,6 +71,14 @@ namespace ClaudiaKerman.Core.Tests
             return id == StackDecoupler || id == StackTank || id == Mainsail;
         }
 
+        /// <summary><paramref name="snapshot"/> as it reads once the stack below shield 2 has dropped, its mass included.</summary>
+        private static GameSnapshot WithoutTheStack(GameSnapshot snapshot)
+        {
+            snapshot.Craft.Parts.RemoveAll(p => Below(p.Id));
+            snapshot.Craft.MassTonnes = snapshot.Craft.Parts.Sum(p => p.MassT);
+            return snapshot;
+        }
+
         private static string Uid(uint id)
         {
             return "uid" + id;
@@ -369,50 +377,10 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(true, Ask(snapshot)["powered"]);
             Assert.Equal(false, Ask(snapshot)["keeps_stack"]);
 
-            snapshot.Craft.Parts.RemoveAll(p => Below(p.Id));
-            var after = Drop(snapshot);
+            var after = Drop(WithoutTheStack(snapshot));
 
             Assert.Equal("", after["error"]);
             Assert.Empty((List<object>)after["names"]);
-            Assert.Equal(Uid(OuterShield), after["jettison"]);
-            Assert.Equal(Uid(Ring), after["jettison_first"]);
-        }
-
-        // ---- On every descent, chutes only included, so the shield is gone for liftoff (the player, 2026-11-08) ----
-
-        [Theory]
-        [InlineData(1.5, true)] // under the threshold, an engine aboard
-        [InlineData(3.9, false)] // over it, no engine staying
-        public void On_a_chute_only_descent_with_legs_the_shield_comes_back_as_the_jettison_once_the_stack_has_gone(double landerT, bool landerEngine)
-        {
-            var snapshot = Ship(landerT: landerT, landerEngine: landerEngine);
-            Assert.Equal(false, Ask(snapshot)["powered"]);
-            Assert.Equal(OuterShield, EntryCraft.Of(snapshot, null, Pod, 2, true, true).ShieldDropped.Id);
-
-            snapshot.Craft.Parts.RemoveAll(p => Below(p.Id));
-            snapshot.Craft.MassTonnes = snapshot.Craft.Parts.Sum(p => p.MassT);
-            var after = Drop(snapshot);
-
-            Assert.Equal("", after["error"]);
-            Assert.Empty((List<object>)after["names"]);
-            Assert.Equal(Uid(OuterShield), after["jettison"]);
-        }
-
-        [Theory]
-        [InlineData(1.5, true, true, false)] // chutes, legs
-        [InlineData(3.9, true, false, false)] // chutes, legs, no engine staying
-        [InlineData(1.5, false, true, false)] // chutes, no legs
-        [InlineData(3.9, true, true, true)] // engines, legs
-        [InlineData(3.9, false, true, true)] // engines, no legs, nothing below the shield
-        public void The_decoupler_above_the_shield_is_named_first_on_every_descent_that_jettisons(double landerT, bool legs, bool landerEngine, bool powered)
-        {
-            var snapshot = Ship(landerT: landerT, legs: legs, landerEngine: landerEngine);
-            snapshot.Craft.Parts.RemoveAll(p => Below(p.Id));
-            snapshot.Craft.MassTonnes = snapshot.Craft.Parts.Sum(p => p.MassT);
-            Assert.Equal(powered, Ask(snapshot)["powered"]);
-
-            var after = Drop(snapshot);
-
             Assert.Equal(Uid(OuterShield), after["jettison"]);
             Assert.Equal(Uid(Ring), after["jettison_first"]);
         }
@@ -446,6 +414,41 @@ namespace ClaudiaKerman.Core.Tests
         public void A_shield_that_stays_takes_nothing_with_it()
         {
             Assert.Empty(EntryCraft.Of(Ship(legs: false), null, Pod, 2, true, true).ShieldLeaves);
+        }
+
+        // ---- On every Entry, the chute path included, so the shield is gone for liftoff (the player, 2026-11-08) ----
+
+        [Theory]
+        [InlineData(1.5, true)] // under the threshold, an engine aboard
+        [InlineData(3.9, false)] // over it, no engine staying
+        public void On_the_chute_path_with_legs_the_shield_comes_back_as_the_jettison_once_the_stack_has_gone(double landerT, bool landerEngine)
+        {
+            var snapshot = Ship(landerT: landerT, landerEngine: landerEngine);
+            Assert.Equal(false, Ask(snapshot)["powered"]);
+            Assert.Equal(OuterShield, EntryCraft.Of(snapshot, null, Pod, 2, true, true).ShieldDropped.Id);
+
+            var after = Drop(WithoutTheStack(snapshot));
+
+            Assert.Equal("", after["error"]);
+            Assert.Empty((List<object>)after["names"]);
+            Assert.Equal(Uid(OuterShield), after["jettison"]);
+        }
+
+        [Theory]
+        [InlineData(1.5, true, true, false)] // chutes, legs
+        [InlineData(3.9, true, false, false)] // chutes, legs, no engine staying
+        [InlineData(1.5, false, true, false)] // chutes, no legs
+        [InlineData(3.9, true, true, true)] // engines, legs
+        [InlineData(3.9, false, true, true)] // engines, no legs, nothing below the shield
+        public void The_decoupler_above_the_shield_is_named_first_on_every_Entry_that_jettisons(double landerT, bool legs, bool landerEngine, bool powered)
+        {
+            var snapshot = WithoutTheStack(Ship(landerT: landerT, legs: legs, landerEngine: landerEngine));
+            Assert.Equal(powered, Ask(snapshot)["powered"]);
+
+            var after = Drop(snapshot);
+
+            Assert.Equal(Uid(OuterShield), after["jettison"]);
+            Assert.Equal(Uid(Ring), after["jettison_first"]);
         }
     }
 }
