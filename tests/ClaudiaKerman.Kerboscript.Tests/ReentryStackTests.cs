@@ -86,7 +86,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 var answer = BlockCalls.EntryDropCall(new Dictionary<string, object> { { "home", "pod" }, { "separate", separate }, { "jettison_stage", jettisonStage } },
                     snapshot, legs, 0, "", id => Parts[(int)id - 1].Uid);
                 Func<string, string> list = key => "list(" + string.Join(", ", ((IEnumerable<object>)answer[key]).Select(u => "\"" + u + "\"")) + ")";
-                return "local below is lexicon(\"error\", \"\", \"shield\", \"" + answer["shield"] + "\", \"jettison\", \"" + answer["jettison"] + "\", \"decouplers\", " + list("decouplers") + ", \"gone\", " + list("gone")
+                return "local below is lexicon(\"error\", \"\", \"shield\", \"" + answer["shield"] + "\", \"jettison\", \"" + answer["jettison"] + "\", \"jettison_first\", \"" + answer["jettison_first"] + "\", \"decouplers\", " + list("decouplers") + ", \"gone\", " + list("gone")
                     + ", \"names\", " + list("names") + ", \"stuck\", " + list("stuck") + ").\n";
             }
 
@@ -202,7 +202,34 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Contains("local shield is reentry_shield_modules(shield_uid, ship:parts).\n  local shield_gone is shield:length = 0.", body);
             var due = body.IndexOf("if reentry_shield_due(shield_gone, last_speed, agl, powered and reentry_brake_due(agl, brake_h, last_speed)) {", StringComparison.Ordinal);
             Assert.True(due > 0);
-            Assert.True(due < body.IndexOf("reentry_shield_drop(shield_uid, { return ship:parts. })", StringComparison.Ordinal));
+            Assert.True(due < body.IndexOf("reentry_shield_drop(shield_uid, { return ship:parts. }, below:jettison_first).", StringComparison.Ordinal));
+        }
+
+        /// <summary>The Duna ship (#940): the lander's aerospike, a TD-12, its shield, a second TD-12 and the stack.</summary>
+        private static Tree DunaShip()
+        {
+            var t = new Tree();
+            var pod = t.Add("mk1pod.v2", -1, Command, "pod");
+            var inner = t.Add("HeatShield1", pod, Shield, "s1");
+            var d1 = t.Add("Decoupler.1", inner, Decoupler, "d1");
+            var tank = t.Add("fuelTank", d1, None);
+            var aero = t.Add("toroidalAerospike", tank, new[] { "ModuleEnginesFX" }, "aero");
+            var ring = t.Add("Decoupler.1", aero, Decoupler, "ring");
+            var outer = t.Add("HeatShield1", ring, Shield, "s2");
+            var d2 = t.Add("Decoupler.1", outer, Decoupler, "d2");
+            t.Add("fuelTank.long", d2, None);
+            return t;
+        }
+
+        [Fact]
+        public void Entrydrops_answer_fires_the_decoupler_under_the_engine_before_the_shields_own_whatever_ship_parts_order()
+        {
+            var tree = DunaShip();
+            var printed = Run(tree, tree.Below("Duna", DunaThenKerbin)
+                + "print below:jettison. print below:jettison_first.\n"
+                + "reentry_shield_drop(below:jettison, { return list(p_6, p_7, p_5). }, below:jettison_first). print fired:join(\",\").\n");
+
+            Assert.Equal(new[] { "s2", "ring", "ring,s2,d2" }, printed);
         }
 
         [Fact]

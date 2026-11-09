@@ -341,7 +341,7 @@ namespace ClaudiaKerman.Core.Missions
                 return stayingKg > 0 ? stayingKg : snapshot.Craft.MassTonnes * 1000;
             }
             var craft = EntryCraft.Of(snapshot, null, keeper, number, true, true, "auto", processorPartId);
-            var kg = (craft.KeptT - (craft.ShieldDropped != null ? craft.ShieldDropped.MassT : 0)) * 1000;
+            var kg = (craft.KeptT - craft.ShieldLeaves.Sum(p => p.MassT)) * 1000;
             return kg > 0 ? kg : snapshot.Craft.MassTonnes * 1000;
         }
 

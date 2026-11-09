@@ -21,6 +21,12 @@ namespace ClaudiaKerman.Core.Missions
         public readonly List<SnapshotPart> LeftOut = new List<SnapshotPart>();
         /// <summary>The Entry Shield when it jettisons; null when it stays (none, or a stack kept on it).</summary>
         public SnapshotPart ShieldDropped;
+        private SnapshotPart _goesWithShield;
+        /// <summary>What the shield's jettison takes off the craft: <see cref="ShieldDropped"/> and the decoupler above it when that lets go of the part above (#940). Empty when the shield stays.</summary>
+        public IEnumerable<SnapshotPart> ShieldLeaves
+        {
+            get { return new[] { ShieldDropped, _goesWithShield }.Where(p => p != null); }
+        }
         /// <summary>The whole craft now, the craft left once <see cref="LeftOut"/> has gone, and the propellant in the parts that go, tonnes.</summary>
         public double WholeT;
         public double KeptT;
@@ -74,7 +80,11 @@ namespace ClaudiaKerman.Core.Missions
                     foreach (var part in stack.Leaves) left.Add(part.Id);
                     craft._why = stack.Gone.Count > 0 ? "without its stack (" + string.Join(", ", EntryStack.Names(stack.Gone).ToArray()) + ")" : "nothing below the shield";
                 }
-                if (Jettisons(jettisonStage, kept, stack.Parts.Count > 0) && Droppable(snapshot, left, stack.Shield)) craft.ShieldDropped = stack.Shield;
+                if (Jettisons(jettisonStage, kept, stack.Parts.Count > 0) && Droppable(snapshot, left, stack.Shield))
+                {
+                    craft.ShieldDropped = stack.Shield;
+                    if (stack.DecouplerAboveGoes) craft._goesWithShield = stack.DecouplerAbove;
+                }
             }
             craft.LeftOut.AddRange(snapshot.Craft.Parts.Where(p => left.Contains(p.Id)));
             craft.KeptT = craft.WholeT - craft.LeftOut.Sum(p => p.MassT);

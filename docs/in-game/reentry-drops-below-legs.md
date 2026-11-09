@@ -10,8 +10,8 @@ Fly the Duna ship (the lander with its aerospike and legs above heat shield 2, a
 
 1. In `KSP.log`, the `phase finish` blocknote's `why` at the drop point. It reads `engines, dropping the stack: <x> m/s with its chutes, on <the aerospike>`, or `chutes, <x> m/s` at or under 10 m/s. It no longer says `keeping everything`, and it never names the launch stack's engine.
 2. The `phase stack_dropped` note appears before the craft reaches the air, and the launch stack is gone from the map as a separate vessel.
-3. Heat shield 2 jettisons at its usual timing.
-4. The chutes open and, over 10 m/s, the aerospike brakes the last of the fall.
+3. Heat shield 2 stays on through the heating, then jettisons at its usual timing (400 m/s or 3,000 m), or as braking starts if that comes first.
+4. The chutes open and, over 10 m/s, the aerospike brakes the last of the fall. When braking starts, nothing is attached under the aerospike: the TD-12 between it and heat shield 2 has gone with the shield. `reentry`'s result has `shield_dropped` true.
 5. Pass: the `phase landed` note reads under 15 m/s, and the lander stands on its legs.
 
 If the line still says `keeping everything`, bring the log's `phase finish` and `block call ENTRYDROP` lines to the player.

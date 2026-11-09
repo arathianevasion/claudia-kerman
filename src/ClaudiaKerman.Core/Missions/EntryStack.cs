@@ -52,6 +52,10 @@ namespace ClaudiaKerman.Core.Missions
         private readonly List<SnapshotPart> _goingDecouplers = new List<SnapshotPart>();
         /// <summary>Parts tagged landing_leg stand on the home side of the shield (#940).</summary>
         public bool LegsAbove;
+        /// <summary>The decoupler between the shield and the part above it (#940), never another shield; null for none. <c>reentry</c> fires it first (<c>ENTRYDROP</c>'s <c>jettison_first</c>): the shield's own omni module would leave it on the engine.</summary>
+        public SnapshotPart DecouplerAbove;
+        /// <summary><see cref="DecouplerAbove"/> lets go of the part above it, so it leaves with the shield.</summary>
+        public bool DecouplerAboveGoes;
 
         /// <summary>Whether the stack takes the root or the part running the script (<paramref name="core"/>, null when not known): <c>reentry</c> won't drop those.</summary>
         public bool TakesCore(uint? core)
@@ -98,6 +102,12 @@ namespace ClaudiaKerman.Core.Missions
                 if (!way.Under && part.Tags.Contains("landing_leg")) stack.LegsAbove = true;
             }
             stack._goingDecouplers.AddRange(stack.Decouplers.Where(walker.LetsGoAbove));
+            var above = walker.Parent(stack.Shield);
+            if (above != null && above.Tags.Contains("decoupler") && !above.Tags.Contains("heat_shield"))
+            {
+                stack.DecouplerAbove = above;
+                stack.DecouplerAboveGoes = walker.LetsGoAbove(above);
+            }
             return stack;
         }
 
@@ -214,7 +224,8 @@ namespace ClaudiaKerman.Core.Missions
                 return _toward.TryGetValue(decoupler.Id, out next) && next.HasValue && decoupler.Releases.Contains(next.Value);
             }
 
-            private SnapshotPart Parent(SnapshotPart part)
+            /// <summary>The neighbour of <paramref name="part"/> toward home; null at home.</summary>
+            public SnapshotPart Parent(SnapshotPart part)
             {
                 SnapshotPart parent;
                 uint? next;

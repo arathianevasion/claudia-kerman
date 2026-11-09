@@ -319,5 +319,94 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains(entry.Chutes, c => c.PartId == 200);
             Assert.Equal(snapshot.Craft.MassTonnes * 1000, entry.MassKg, 0);
         }
+
+        // ---- The Entry Shield goes before the terminal phase (the addendum to #940) ----
+
+        private static IDictionary<string, object> Drop(GameSnapshot snapshot, string separate = "auto")
+        {
+            var ask = new Dictionary<string, object> { { "home", Uid(Pod) }, { "separate", separate }, { "jettison_stage", "auto" } };
+            return BlockCalls.EntryDropCall(ask, snapshot, DunaThenKerbin, 0, "", Uid);
+        }
+
+        [Fact]
+        public void The_decoupler_between_the_engine_and_the_shield_is_the_one_fired_first()
+        {
+            Assert.Equal(Ring, Stack(Ship()).DecouplerAbove.Id);
+            Assert.Equal(Uid(Ring), Drop(Ship())["jettison_first"]);
+        }
+
+        [Fact]
+        public void A_shield_with_no_decoupler_above_it_names_none_and_goes_as_today()
+        {
+            var snapshot = Ship();
+            snapshot.Craft.Parts.RemoveAll(p => p.Id == Ring);
+            snapshot.Craft.Parts.Single(p => p.Id == OuterShield).ParentId = Aerospike;
+
+            Assert.Null(Stack(snapshot).DecouplerAbove);
+            Assert.Equal("", Drop(snapshot)["jettison_first"]);
+            Assert.Equal(Uid(OuterShield), Drop(snapshot)["jettison"]);
+        }
+
+        [Fact]
+        public void Another_heat_shield_above_the_Entry_Shield_is_never_the_one_fired_first()
+        {
+            var snapshot = Ship();
+            snapshot.Craft.Parts.Single(p => p.Id == Ring).Tags.Add("heat_shield");
+
+            Assert.Null(Stack(snapshot).DecouplerAbove);
+        }
+
+        [Fact]
+        public void A_shield_the_script_keeps_names_nothing_to_fire()
+        {
+            Assert.Equal("", Drop(Ship(), "none")["jettison_first"]);
+        }
+
+        [Fact]
+        public void On_a_powered_finish_with_legs_the_shield_comes_back_as_the_jettison_once_the_stack_has_gone()
+        {
+            var snapshot = Ship();
+            Assert.Equal(true, Ask(snapshot)["powered"]);
+            Assert.Equal(false, Ask(snapshot)["keeps_stack"]);
+
+            snapshot.Craft.Parts.RemoveAll(p => Below(p.Id));
+            var after = Drop(snapshot);
+
+            Assert.Equal("", after["error"]);
+            Assert.Empty((List<object>)after["names"]);
+            Assert.Equal(Uid(OuterShield), after["jettison"]);
+            Assert.Equal(Uid(Ring), after["jettison_first"]);
+        }
+
+        [Fact]
+        public void The_decoupler_that_lets_go_of_the_engine_leaves_with_the_shield_and_is_not_in_the_touchdown_mass()
+        {
+            var snapshot = Ship();
+            snapshot.Craft.Parts.Single(p => p.Id == Ring).Releases.Add(Aerospike);
+
+            var entry = ChuteGroups.Of(snapshot, DunaThenKerbin, 0, false, null).Entries[0];
+            var craft = EntryCraft.Of(snapshot, null, Pod, 2, true, true);
+
+            Assert.Equal(new[] { OuterShield, Ring }, craft.ShieldLeaves.Select(p => p.Id).OrderByDescending(id => id));
+            Assert.Equal(3590, entry.MassKg, 0);
+        }
+
+        [Fact]
+        public void A_decoupler_above_that_lets_go_of_the_shield_stays_on_the_engine_and_in_the_touchdown_mass()
+        {
+            var snapshot = Ship();
+            snapshot.Craft.Parts.Single(p => p.Id == Ring).Releases.Add(OuterShield);
+
+            var craft = EntryCraft.Of(snapshot, null, Pod, 2, true, true);
+
+            Assert.Equal(new[] { OuterShield }, craft.ShieldLeaves.Select(p => p.Id));
+            Assert.Equal(3640, ChuteGroups.Of(snapshot, DunaThenKerbin, 0, false, null).Entries[0].MassKg, 0);
+        }
+
+        [Fact]
+        public void A_shield_that_stays_takes_nothing_with_it()
+        {
+            Assert.Empty(EntryCraft.Of(Ship(legs: false), null, Pod, 2, true, true).ShieldLeaves);
+        }
     }
 }

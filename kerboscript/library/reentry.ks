@@ -507,16 +507,16 @@ function reentry_shield_modules {
   return found.
 }
 
-// Fires the shield's decouplers one at a time; returns how many events it fired. The list is rebuilt from
+// Fires the shield's decouplers one at a time, the part first (ENTRYDROP's jettison_first, #940) before any other; returns how many events it fired. The list is rebuilt from
 // parts_of() (a delegate to the craft's parts) before each event, so a module on a part that has left, by
 // an earlier event splitting the craft, is not there to fire (#558).
 function reentry_shield_drop {
-  parameter shield_uid, parts_of.
+  parameter shield_uid, parts_of, first is "".
   local fired is list().
   until false {
     local next is "".
     for drop in reentry_shield_modules(shield_uid, parts_of()) {
-      if next:istype("String") and not fired:contains(drop:module:part:uid + drop:event) {
+      if not fired:contains(drop:module:part:uid + drop:event) and (next:istype("String") or drop:module:part:uid = first) {
         set next to drop.
       }
     }
@@ -849,7 +849,7 @@ function reentry {
 
     if reentry_shield_due(shield_gone, last_speed, agl, powered and reentry_brake_due(agl, brake_h, last_speed)) {
       local count_before is ship:parts:length.
-      reentry_shield_drop(shield_uid, { return ship:parts. }).
+      reentry_shield_drop(shield_uid, { return ship:parts. }, below:jettison_first).
       set shield_gone to true.
       // The shield leaving is not a part lost: count what is left once it has gone.
       wait 0.5.

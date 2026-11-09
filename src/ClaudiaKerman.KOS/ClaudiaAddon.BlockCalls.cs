@@ -93,7 +93,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("ENTRYFINISH", new OneArgsSuffix<Lexicon, Lexicon>(EntryFinishSet,
                 "Core Library only (reentry): whether this entry lands on its engines, from home, chutes, drop and core; lexicon error, powered, keeps_stack, speed, kept_speed, engines, spare, why"));
             AddSuffix("ENTRYDROP", new OneArgsSuffix<Lexicon, Lexicon>(EntryDrop,
-                "Core Library only (reentry): what this Entry drops, from home, separate, chutes, core and drop_error (error: a stack it refuses); lexicon error, number, shield, decouplers, gone, names, stuck, lead"));
+                "Core Library only (reentry): what this Entry drops, from home, separate, chutes, core and drop_error (error: a stack it refuses); lexicon error, number, shield, jettison, jettison_first, decouplers, gone, names, stuck, lead"));
             AddSuffix("ENTRYTRIM", new OneArgsSuffix<Lexicon, Lexicon>(EntryTrimCall,
                 "Core Library only (reentry): at most one late trim toward the Mission's landing target, from to_air, home, dv_left, isp and has_node; lexicon as CORRECTIONBURN's, dv 0 and aim_note when none flies"));
             AddSuffix("ENTRYCRAFT", new OneArgsSuffix<Lexicon, Lexicon>(EntryCraft,
