@@ -724,7 +724,7 @@ function reentry {
     }
     if drop_error = "" and drop:decouplers:length > 0 {
       local pe_before is ship:periapsis.
-      set drop_error to claudia_fire_drop(ctx, drop).
+      set drop_error to claudia_fire_drop(ctx, drop, false). // landing first (#944): DropGuard's reason is noted, not obeyed
       if drop_error = "" { set dropped to list(pe_before, ship:periapsis, drop:gone[0]:ship). }
     }
     set below to addons:claudia:entrydrop(lexicon("home", entry_ask:home, "separate", opt:separate, "jettison_stage", opt:jettison_stage, "drop_error", drop_error)).

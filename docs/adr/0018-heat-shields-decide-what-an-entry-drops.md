@@ -26,4 +26,6 @@ A craft's heat shields are spent from the outside in. Counting from the pod outw
 
 We rejected the "is this the last entry" flag alone, as it can't say which shield a two-shield craft uses, and shield choice by stage number, which stock shields don't have. A wrong count keeps a stage, or drops one; #825's drop guard is the backstop, and this rule doesn't depend on it.
 
+**Amended (#944): `reentry`'s drop isn't gated by #825's drop guard.** It still asks, and a refusal's reason goes in a `blocknote`, but the drop fires anyway: the craft is falling and can't revise the plan, and landing safely comes first, so a shortfall for the rest of the plan is on record for Claudia and the Debrief instead of a stack kept on. `deorbit` and `drop_parts` are still gated (they are in orbit and can revise), and the Refusal above, for a stack with no decoupler, is unchanged.
+
 Decided on #823 (2026-11-06).
