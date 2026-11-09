@@ -769,7 +769,7 @@ function reentry {
   // Core's word this tick (#954): whether braking may start and the guarded throttle. tset: the throttle wanted; off_deg: degrees off the aim. Notes each change of the group's chutes, and locks the gimbals while they're fully open.
   local brake_ask is {
     parameter tset is 0, off_deg is 0.
-    local b is addons:claudia:braketick(lexicon("radar", reentry_agl(), "speed", ship:velocity:surface:mag, "brake_h", brake_h, "last_h", last_h, "shield_speed", reentry_shield_speed(), "shield_agl", reentry_shield_last_agl(), "uids", choose group:uids if chute_mode <> "none" else list(), "throttle", tset, "off_deg", off_deg)).
+    local b is addons:claudia:braketick(lexicon("radar", reentry_agl(), "speed", ship:velocity:surface:mag, "brake_h", brake_h, "last_h", last_h, "shield_speed", reentry_shield_speed(), "shield_agl", reentry_shield_last_agl(), "uids", choose group:uids if chute_mode <> "none" else list(), "throttle", tset, "off_deg", off_deg, "decel", decel, "chute_last_agl", reentry_chute_last_agl(), "drogue_last_agl", reentry_drogue_last_agl())).
     if b:chutes <> chute_states {
       set chute_states to b:chutes.
       addons:claudia:blocknote(ctx:block, lexicon("phase", "chutes", "states", chute_states)).

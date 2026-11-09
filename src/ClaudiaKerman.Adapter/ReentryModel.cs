@@ -266,8 +266,8 @@ namespace ClaudiaKerman.Adapter
         }
 
         /// <summary>
-        /// For <c>BRAKETICK</c> (#954), each tick of a powered finish: the title and state (stowed, armed, semi, deployed, cut) of each parachute of <paramref name="uids"/> (kOS part UIDs) still aboard.
-        /// One gone (burned off, or dropped) isn't waited for.
+        /// For <c>BRAKETICK</c> (#954), each tick of a powered finish: the title, state (stowed, armed, semi, deployed, cut), deploy height (m, the part's <c>deployAltitude</c>) and whether it is a drogue
+        /// (by its part name, as the block's own rule) of each parachute of <paramref name="uids"/> (kOS part UIDs) still aboard. One gone (burned off, or dropped) isn't waited for.
         /// </summary>
         public static List<object> ChuteStates(Vessel vessel, IEnumerable<string> uids)
         {
@@ -282,7 +282,7 @@ namespace ClaudiaKerman.Adapter
             {
                 if (!wanted.Contains(part.flightID)) continue;
                 var chute = part.FindModuleImplementing<ModuleParachute>();
-                if (chute != null) found.Add(new Dictionary<string, object> { { "title", part.partInfo != null ? part.partInfo.title : part.name }, { "state", StateName(chute.deploymentState) } });
+                if (chute != null) found.Add(new Dictionary<string, object> { { "title", part.partInfo != null ? part.partInfo.title : part.name }, { "state", StateName(chute.deploymentState) }, { "deploy_m", (double)chute.deployAltitude }, { "drogue", part.name.IndexOf("drogue", StringComparison.OrdinalIgnoreCase) >= 0 } });
             }
             return found;
         }
@@ -295,7 +295,7 @@ namespace ClaudiaKerman.Adapter
                 case ModuleParachute.deploymentStates.ACTIVE: return "armed";
                 case ModuleParachute.deploymentStates.SEMIDEPLOYED: return "semi";
                 case ModuleParachute.deploymentStates.DEPLOYED: return ReentryBrake.Deployed;
-                default: return "cut";
+                default: return ReentryBrake.Cut;
             }
         }
 

@@ -207,6 +207,17 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(2, body.Split("set tset to").Length - 1);
         }
 
+        [Fact]
+        public void The_block_hands_Core_the_slowing_and_both_last_call_heights_or_its_rules_go_blind()
+        {
+            var body = Body();
+            var ask = body.Substring(body.IndexOf("addons:claudia:braketick(", StringComparison.Ordinal));
+            ask = ask.Substring(0, ask.IndexOf('\n'));
+            Assert.Contains("\"decel\", decel", ask);
+            Assert.Contains("\"chute_last_agl\", reentry_chute_last_agl()", ask);
+            Assert.Contains("\"drogue_last_agl\", reentry_drogue_last_agl()", ask);
+        }
+
         // ---- The real answers, through the addon's real conversion ----
 
         [Fact]
@@ -218,13 +229,14 @@ namespace ClaudiaKerman.Kerboscript.Tests
 
             var tick = (Lexicon)KosValues.FromPlain(BlockCalls.BrakeTick(new Dictionary<string, object>
             {
-                { "radar", 30.0 }, { "speed", 12.0 }, { "brake_h", 32.0 }, { "last_h", 8.0 }, { "shield_speed", 400.0 }, { "shield_agl", 3000.0 }, { "throttle", 1.0 }, { "off_deg", 45.0 },
+                { "radar", 30.0 }, { "speed", 12.0 }, { "brake_h", 32.0 }, { "last_h", 8.0 }, { "shield_speed", 400.0 }, { "shield_agl", 3000.0 }, { "throttle", 1.0 }, { "off_deg", 45.0 }, { "now", 20.0 }, { "open_ut", 10.0 },
                 { "chutes", new List<object> { new Dictionary<string, object> { { "title", "Mk16 Parachute" }, { "state", ReentryBrake.Deployed } } } },
             }));
             Assert.Equal(BooleanValue.True, tick[new StringValue("start")]);
             Assert.Equal(BooleanValue.True, tick[new StringValue("open")]);
             Assert.Equal(new StringValue("chutes open"), tick[new StringValue("why")]);
             Assert.Equal(new StringValue("Mk16 Parachute deployed"), tick[new StringValue("chutes")]);
+            Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("open_ut")]);
             Assert.Equal(ScalarValue.Create(0), tick[new StringValue("throttle")]);
 
             var failed = (Lexicon)KosValues.FromPlain(BlockCalls.BrakeTick(null));

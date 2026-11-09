@@ -842,9 +842,13 @@ namespace ClaudiaKerman.KOS
             return heights != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.BrakeHeights(null));
         }
 
+        /// <summary>The time (UT, s) this processor's powered finish first read its chutes all fully open, for <see cref="BrakeTickCall"/>; -1 while they aren't.</summary>
+        private double brakeOpenUt = -1;
+
         /// <summary>
         /// <c>ADDONS:CLAUDIA:BRAKETICK</c> (#954, ADR 0014): <see cref="BlockCalls.BrakeTick"/> with the live state of the Chute Group's parachutes (<c>uids</c>), read here as Core has no game.
         /// Called every physics tick, so its time is logged at most once a second (guardrail 6). A failure answers from the ask without the chutes: the block brakes by radar, as with none, rather than never at all.
+        /// The time the chutes first read fully open is held here between ticks (<see cref="brakeOpenUt"/>); it goes back to -1 on any tick they don't, so no flight inherits it from the last.
         /// </summary>
         private Lexicon BrakeTickCall(Lexicon input)
         {
@@ -854,7 +858,10 @@ namespace ClaudiaKerman.KOS
                 var ask = KosValues.ToDictionary(input);
                 var uids = ask.ContainsKey("uids") ? ((System.Collections.Generic.IEnumerable<object>)ask["uids"]).Select(u => Convert.ToString(u, CultureInfo.InvariantCulture)).ToList() : new System.Collections.Generic.List<string>();
                 ask["chutes"] = ReentryCraft.ChuteStates(shared.Vessel, uids);
+                ask["now"] = Planetarium.GetUniversalTime();
+                ask["open_ut"] = brakeOpenUt;
                 tick = BlockCalls.BrakeTick(ask);
+                brakeOpenUt = (double)tick["open_ut"];
                 return KosValues.FromPlain(tick);
             }, () => string.Format(CultureInfo.InvariantCulture, "start {0} ({1}), chutes {2}, throttle {3:0.00}", tick["start"], tick["why"], tick["chutes"], tick["throttle"]), 1);
             return tick != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.BrakeTick(KosValues.ToDictionary(input)));
