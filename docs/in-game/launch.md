@@ -4,8 +4,6 @@ In-game checks for #475 (ADR 0014 block migration). `launch`'s default heading i
 
 Install as in `phase-3-gate.md` (build, copy `dist/GameData/ClaudiaKerman/`, `debug_tools = true`). Results are in `block-tests.log` and `KSP.log`.
 
-8. Out of fuel (#937): a burn-through that runs out of fuel, or of stages above `stage_limit`, fails `launch` with the usual `out of fuel ...` reason (no coast on; `plan_ascent` fails the same way). Not required to be flown; a healthy burn-through in step 4 still finishes.
-
 ## Check 1: Run launch_orbit
 
 1. Pick `launch_orbit` and press **Run** (up to 900 s).
@@ -34,3 +32,4 @@ Fly `launch_low_twr` (`tests/blocks/launch_low_twr`), the block test for this, o
 5. It passes (`PASS launch_low_twr`, every `ok` line).
 6. Fly `launch_orbit` too (Check 1): its `block call BURNTHROUGH` line reads `burn_through False` and it flies as before.
 7. The descent guard (#936): in step 4's flight, `launch` never returns a `fell back into the atmosphere: periapsis ...` reason: a healthy burn-through doesn't trip it. The failure case needs a stage too weak to hold its climb, and isn't required to be flown. If you do fly one (a stage that sinks back into thick air: descending, periapsis under 70 km, q over 8,000 Pa; not flown), `launch` returns with fuel left, the reason starting `fell back into the atmosphere: periapsis` and naming q, and the craft made safe.
+8. Out of fuel (#937): a burn-through that runs out of fuel, or of stages above `stage_limit`, fails `launch` with the usual `out of fuel ...` reason (no coast on; `plan_ascent` fails the same way). Not required to be flown; a healthy burn-through in step 4 still finishes.
