@@ -139,7 +139,7 @@ namespace ClaudiaKerman.Core.Tests
             var craft = new ReentrySim.Capsule { Scale = 400 };
             var natural = Fly(snapshot, craft);
             snapshot.LandingTarget = new LandingTarget { Body = "Kerbin", Latitude = natural.Latitude, Longitude = natural.Longitude + 40 / KmPerDeg, TargetPe = 30000 };
-            var fix = BlockCalls.EntryTrim(new Dictionary<string, object> { { "to_air", 5000.0 }, { "dv_left", 80.0 }, { "isp", 0.0 }, { "has_node", false } },
+            var fix = BlockCalls.EntryTrim(new Dictionary<string, object> { { "to_air", 2000.0 }, { "dv_left", 80.0 }, { "isp", 0.0 }, { "has_node", false } },
                 snapshot, new AimedCorrectionTests.FrameBody(snapshot.Ut), new ReentrySim.Atmosphere(), craft);
             Assert.Equal("", fix["error"]);
             Assert.Equal(0.0, D(fix, "dv"));

@@ -58,3 +58,19 @@ Fly `tests/blocks/return_target` (Mun to KSC), or a Mun return Mission:
 4. The stack still drops about 600 s before the air: a `phase stack_dropped` blocknote follows, with the `ENTRYDROP` read at the drop point after the trim's burn. The wait re-reads the time to the air after the trim, so the drop isn't late by the burn's own time.
 5. Start `reentry` less than 1,200 s from the air (quicksave near the end of the coast and reload, or warp most of the way before starting it): the log says `no trim: <s> s to the air, not over 1200`, and nothing burns.
 6. Save and reload between `return` and `reentry`: the trim still fires, or names a reason other than `no landing target`.
+
+## The late trim waits for the last 40 minutes (#952)
+
+**Block migration:** the timing is new logic in Core: `BlockCalls.EntryTrim` (`TrimMostToAirS`, 2,400 s), whose answer carries `wait`. `reentry` waits, reads the time to the air again and asks once more; the wait and burn stay in Kerboscript (guardrail 2). No `//|` line changed; the library stays at its limit (one-use constant wrappers and `reentry_g_felt` went inline). Parity test: none, no Kerboscript logic moved.
+
+Over 2,400 s from the air the block waits until 2,400 s before it, then asks `ENTRYTRIM` again and flies what that says (#952; a trim from a day out missed KSC by 520 km). From 1,200 to 2,400 s it trims at once, and at or under 1,200 s not at all. A trim that could never fly (no target, a node planned) doesn't wait.
+
+Fly a Minmus or Mun return to KSC (`tests/blocks/return_target`, or a Mission):
+
+1. `grep "ENTRYTRIM" KSP.log` shows two `block call ENTRYTRIM` lines. The first ends `no trim yet: <s> s to the air, waiting until 2400`, right after `return`.
+2. No burn shows during the block's first hours; the craft warps to about 40 minutes before the air.
+3. The second line is about 2,400 s before the air: a burn (`node at UT ...; aimed <km> km from the target`), or `no trim: <reason>`. The `exec_node` burn comes right after it (its node is 300 s ahead), and the time to the air is about 2,100 s when it starts.
+4. With a burn, a `phase late_trim` blocknote gives `miss_before_km`, `dv` and `miss_after_km`.
+5. The stack still drops about 600 s before the air and the hold still starts after that, as before.
+6. The landing is close to `miss_after_km` from the target (compare the Debrief's distance from KSC).
+7. Low charge during the wait (optional, hard to stage): under `min_ec_pct` with the periapsis in the air, the block carries on and the steering is released (a `phase low_charge` note), as in the wait to the drop. The trim's burn is outside that rule: its own `min_ec_pct` abort fails the burn alone, and the block goes on.

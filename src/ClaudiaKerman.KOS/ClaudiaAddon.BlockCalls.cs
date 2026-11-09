@@ -704,7 +704,7 @@ namespace ClaudiaKerman.KOS
                 }
                 finally
                 {
-                    BlockTestAim.Clear(); // the one reentry trim has read it, or failed before it did (#892)
+                    if (fix == null || !(Convert.ToDouble(fix["wait"], CultureInfo.InvariantCulture) > 0)) BlockTestAim.Clear(); // the one reentry trim has read it, or failed before it did (#892); a "wait" asks again (#952)
                 }
             }, () => string.Format(CultureInfo.InvariantCulture, "node at UT {0:0.0}, prograde {1:0.00}, normal {2:0.00}, radial {3:0.00} m/s ({4:0.00} m/s); Pe {5:0} m{6}",
                 fix["ut"], fix["prograde"], fix["normal"], fix["radial"], fix["dv"], fix["pe_predicted"],

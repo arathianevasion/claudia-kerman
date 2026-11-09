@@ -356,7 +356,8 @@ namespace ClaudiaKerman.Kerboscript.Tests
         private const string StartRead = "local below is addons:claudia:entrydrop(entry_ask).";
         private const string DropPoint = "if entry_in > below:lead {\n";
         private const string DropWait = "    local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).";
-        private const string Trim = "  claudia_fly_correction(ctx, addons:claudia:entrytrim(lexicon(\"to_air\", entry_in, \"home\", entry_ask:home, \"core\", entry_ask:core, \"has_node\", hasnode, \"stage_limit\", opt:stage_limit, \"dv_left\", claudia_dv_recounted(), \"isp\", claudia_engine_isp()))).\n";
+        private const string Trim = "  local trim_ask is { return addons:claudia:entrytrim(lexicon(\"to_air\", entry_in, \"home\", entry_ask:home, \"core\", entry_ask:core, \"has_node\", hasnode, \"stage_limit\", opt:stage_limit, \"dv_left\", claudia_dv_recounted(), \"isp\", claudia_engine_isp())). }.\n";
+        private const string TrimFly = "  local flown is claudia_fly_correction(ctx, trim).\n";
         private const string AirAgain = "    set entry_in to claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).\n";
         private const string Fire = "set drop_error to claudia_fire_drop(ctx, drop, false).";
 
@@ -377,7 +378,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.DoesNotContain("claudia_fire_drop", body.Substring(0, At(body, DropPoint)));
         }
 
-        /// <summary>#892: Core's ENTRYTRIM, flown through the Course Correction's own path, once, ahead of #815's drop and outside its wait, so the log has the decision however late the block starts; the eta is read again after it, and neither can fail the block.</summary>
+        /// <summary>#892, #952: Core's ENTRYTRIM, flown through the Course Correction's own path, once, ahead of #815's drop and outside its wait, so the log has the decision however late the block starts; the eta is read again after it, and the burn can't fail the block.</summary>
         [Fact]
         public void The_late_trim_is_asked_and_flown_once_before_the_wait_to_the_drop_and_never_ends_the_block()
         {
@@ -385,15 +386,111 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(1, body.Split("addons:claudia:entrytrim(").Length - 1);
             Assert.Equal(1, body.Split("claudia_fly_correction(").Length - 1);
             var trim = At(body, Trim);
+            var fly = At(body, TrimFly);
             var from = At(body, DropPoint);
-            var again = body.IndexOf(AirAgain, trim, StringComparison.Ordinal);
+            var again = body.IndexOf(AirAgain, from, StringComparison.Ordinal);
             var wait = At(body, DropWait);
             Assert.Equal(from + DropPoint.Length, again);
-            Assert.True(trim < from && again < wait, "trim, then the eta read again, then the wait");
+            Assert.True(trim < fly && fly < from && again < wait, "trim, then the eta read again, then the wait");
             Assert.True(wait < At(body, Fire));
-            Assert.DoesNotContain("claudia_finish", body.Substring(trim, wait - trim));
+            Assert.DoesNotContain("claudia_finish", body.Substring(fly, wait - fly));
             // The trim's craft is read in the addon: a second ENTRYCRAFT from the block would overwrite the craft aimed with, which ENTRYFINISH compares (#814).
             Assert.DoesNotContain("addons:claudia:entrycraft(", body);
+        }
+
+        // ---- #952: when the trim flies. The block's own lines, from the first ask to the note, run on kOS.Safe with the game faked ----
+
+        private const string TrimRig =
+            "global time is lexicon(\"seconds\", 1000).\n"
+            + "global hasnode is false.\n"
+            + "global ship is lexicon(\"orbit\", lexicon(\"eccentricity\", 0.9, \"semimajoraxis\", 1, \"trueanomaly\", 0), \"parts\", list()).\n"
+            + "global body_ is lexicon(\"mu\", 1, \"radius\", 1, \"atm\", lexicon(\"height\", 1)).\n"
+            + "global entry_in is 95000.\n"
+            + "global entry_ask is lexicon(\"home\", \"h\", \"core\", \"c\").\n"
+            + "global opt is lexicon(\"chute_mode\", \"safe\", \"stage_limit\", 0).\n"
+            + "global ask is lexicon().\n"
+            + "global extra is lexicon().\n"
+            + "global ctx is lexicon(\"block\", \"reentry\", \"ec_tick\", { return 100. }).\n"
+            + "global asked is list().\n"
+            + "global waits is list().\n"
+            + "global burns is 0.\n"
+            + "global aborts is 0.\n"
+            + "global notes is list().\n"
+            + "global watched is list().\n"
+            + "global wait_result is \"\".\n"
+            + "function claudia_wait_until { parameter c, ut. waits:add(ut - time:seconds). watched:add(ctx:haskey(\"ec_tick\")). set time:seconds to ut. return wait_result. }\n"
+            + "function claudia_fall_eta { parameter a, b, c, d, e. return 2400. }\n"
+            + "function claudia_fly_correction { parameter c, fix. set burns to burns + 1. watched:add(ctx:haskey(\"ec_tick\")). return lexicon(\"dv\", fix:dv, \"reason\", \"\"). }\n"
+            + "function claudia_dv_recounted { return 100. }\n"
+            + "function claudia_engine_isp { return 300. }\n"
+            + "function reentry_abort { parameter m, g. set aborts to aborts + 1. }\n"
+            + "function reentry_group_of { parameter a, b, c. return 0. }\n"
+            + "function claudia_finish { parameter c, ok, reason, ex. return \"finished: \" + reason. }\n";
+
+        private const string WaitAnswer = "lexicon(\"wait\", 92600, \"dv\", 0)";
+        private const string NoFix = "lexicon(\"wait\", 0, \"dv\", 0)";
+        private const string Fix = "lexicon(\"wait\", 0, \"dv\", 12.5, \"miss_before_km\", 41.26, \"miss_after_km\", 3.14)";
+
+        /// <summary>Runs the block's lines on the answers given; prints the to_air figures asked with, the waits, the burns, the aborts, whether the watch was on in each wait and burn, the notes, the outcome, and whether the watch is on at the end.</summary>
+        private static string[] TrimRun(string answers, string extraRig = "")
+        {
+            var body = Body();
+            var start = At(body, Trim);
+            var note = At(body, "  if trim:dv > 0 {");
+            var slice = body.Substring(start, body.IndexOf('\n', note) + 1 - start);
+            var script = TrimRig + extraRig
+                + "global answers is list(" + answers + ").\n"
+                + "global addons is lexicon(\"claudia\", lexicon(\n"
+                + "  \"entrytrim\", { parameter q. asked:add(q:to_air). return answers[asked:length - 1]. },\n"
+                + "  \"chutegroup\", { parameter q. return lexicon(). },\n"
+                + "  \"blocknote\", { parameter b, n. notes:add(n:phase + \" \" + n:miss_before_km + \" \" + n:dv + \" \" + n:miss_after_km). })).\n"
+                + "function flies {\n" + slice + "  return \"went on\".\n}\n"
+                + "local out is flies().\n"
+                + "print asked:join(\",\"). print waits:join(\",\"). print burns. print aborts. print watched:join(\",\"). print notes:join(\";\"). print out. print ctx:haskey(\"ec_tick\").\n";
+            return KosHarness.Run(script).ToArray();
+        }
+
+        [Fact]
+        public void From_far_out_it_waits_then_asks_again_with_the_eta_read_again_and_flies_one_trim_and_notes_it()
+        {
+            Assert.Equal(new[] { "95000,2400", "92600", "1", "0", "True,False", "late_trim 41.3 12.5 3.1", "went on", "True" },
+                TrimRun(WaitAnswer + ", " + Fix));
+        }
+
+        [Fact]
+        public void A_second_wait_answer_is_not_a_third_ask_and_flies_nothing()
+        {
+            Assert.Equal(new[] { "95000,2400", "92600", "1", "0", "True,False", "", "went on", "True" },
+                TrimRun(WaitAnswer + ", " + WaitAnswer));
+        }
+
+        [Fact]
+        public void Inside_the_window_it_flies_at_once_with_no_wait()
+        {
+            Assert.Equal(new[] { "1500", "", "1", "0", "False", "late_trim 41.3 12.5 3.1", "went on", "True" },
+                TrimRun(Fix, "set entry_in to 1500.\n"));
+        }
+
+        [Fact]
+        public void No_trim_at_once_writes_no_note_and_goes_on()
+        {
+            Assert.Equal(new[] { "1000", "", "1", "0", "False", "", "went on", "True" },
+                TrimRun(NoFix, "set entry_in to 1000.\n"));
+        }
+
+        [Fact]
+        public void A_wait_cut_short_by_a_ticks_abort_ends_the_block_as_the_drop_wait_does_with_no_second_ask_and_no_burn()
+        {
+            Assert.Equal(new[] { "95000", "92600", "0", "1", "True", "", "finished: abort min_ec_pct", "True" },
+                TrimRun(WaitAnswer, "set wait_result to \"abort min_ec_pct\".\n"));
+        }
+
+        [Fact]
+        public void The_trim_wait_ends_before_the_drop_points_wait_and_the_hold()
+        {
+            var body = Body();
+            Assert.True(At(body, "claudia_wait_until(ctx, time:seconds + trim:wait)") < At(body, DropWait));
+            Assert.True(At(body, DropWait) < At(body, "local waited is choose claudia_wait_until(ctx, hold_ut)"));
         }
 
         [Fact]

@@ -81,7 +81,7 @@ A burn between departure and arrival that trims the predicted arrival at a body 
 _Avoid_: mid-course correction, MCC
 
 **Late Trim**:
-At most one Course Correction `reentry` flies at its start, before it drops its stack, toward the vessel's aimed landing target (#892). Core's `ENTRYTRIM` decides: over 1,200 s to the air and a predicted miss over 5 km.
+At most one Course Correction `reentry` flies before it drops its stack, toward the vessel's aimed landing target (#892). Core's `ENTRYTRIM` decides: over 1,200 s to the air and a predicted miss over 5 km; from further out than 2,400 s it waits until 2,400 s before the air (#952).
 
 **Broken-plane transfer**:
 A transfer to a body out of the craft's plane whose departure stays in that plane, with a plane change partway out, where the arc is slow, that makes the encounter; its delta-v is reported as `plane_dv`, apart from the Course Corrections' `correction_dv`. `transfer_to` flies it in place of the halfway Course Correction (#619).

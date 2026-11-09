@@ -174,14 +174,19 @@ namespace ClaudiaKerman.Kerboscript.Tests
         // ---- Where it is asked ----
 
         [Fact]
-        public void Only_reentry_sets_the_watch_and_after_its_trim_so_a_trim_burn_keeps_its_steering()
+        public void Only_reentry_sets_the_watch_on_for_the_waits_and_off_for_the_trim_burn_so_the_burn_keeps_its_steering()
         {
             var setters = CoreLibrary.Files.Where(f => f.Source.Contains("set ctx:ec_tick")).Select(f => f.Name).ToArray();
             Assert.Equal(new[] { "reentry" }, setters);
             var body = Body();
             var watch = At(body, "set ctx:ec_tick to {");
-            Assert.True(At(body, "claudia_fly_correction(ctx, addons:claudia:entrytrim(") < watch);
-            Assert.True(watch < At(body, "claudia_wait_until(ctx, time:seconds + entry_in - below:lead)"), "set before the first wait");
+            // Set before the trim's wait (#952), so a day from the air low charge is judged as in the drop's wait.
+            Assert.True(watch < At(body, "claudia_wait_until(ctx, time:seconds + trim:wait)"), "set before the first wait");
+            var off = At(body, "ctx:remove(\"ec_tick\").");
+            var fly = At(body, "local flown is claudia_fly_correction(ctx, trim).");
+            var on = At(body, "set ctx:ec_tick to ec_watch.");
+            Assert.True(off < fly && fly < on);
+            Assert.True(on < At(body, "claudia_wait_until(ctx, time:seconds + entry_in - below:lead)"), "back on before the drop's wait");
         }
 
         [Fact]
