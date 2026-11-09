@@ -124,7 +124,7 @@ namespace ClaudiaKerman.Core.Missions
                 {
                     stack.EngineAbove = cur;
                     stack.DecouplersToEngine.AddRange(chain);
-                    stack.StayingToEngine.AddRange(chain.Where(d => !walker.LetsGoAbove(d)));
+                    stack.StayingToEngine.AddRange(chain.Where(d => d.Releases.Count > 0 && !walker.LetsGoAbove(d)));
                 }
             }
             return stack;

@@ -96,12 +96,44 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Empty(Run(Stack(1, 0), new PlannedSequence { Name = "Circularize in orbit" }));
         }
 
-        [Fact]
-        public void The_flown_ships_layout_with_its_TD12_clear_says_nothing()
+        private static GameSnapshot DunaShip(bool ringReleasesAerospike, bool ringReadable = true)
         {
-            var snapshot = GameSnapshot.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "snapshots", "mun-shot-v2-kerbin-orbit.json")));
-            snapshot.Craft.Parts.Single(p => p.Id == 1607102063).Releases.Add(558691162);
-            Assert.Empty(Entries.DecouplerUnderEngine(snapshot, Landing));
+            var parts = new List<SnapshotPart>();
+            var pod = Part(parts, "mk1pod.v2", null, "command");
+            var tank = Part(parts, "fuelTank", pod.Id);
+            var aerospike = Part(parts, "toroidalAerospike", tank.Id, "engine");
+            var ring = Part(parts, "Decoupler.1", aerospike.Id, "decoupler");
+            if (ringReadable) ring.Releases.Add(ringReleasesAerospike ? aerospike.Id : 0u);
+            Part(parts, "HeatShield1", ring.Id, "heat_shield", "decoupler");
+            return Snapshot(parts);
+        }
+
+        [Fact]
+        public void The_Duna_ships_layout_with_its_ring_letting_go_of_the_aerospike_says_nothing()
+        {
+            Assert.Empty(Entries.DecouplerUnderEngine(DunaShip(true), Landing));
+        }
+
+        [Fact]
+        public void The_Duna_ships_layout_with_its_ring_flipped_names_the_ring_and_the_aerospike()
+        {
+            var finding = Assert.Single(Entries.DecouplerUnderEngine(DunaShip(false), Landing));
+            Assert.Contains("Decoupler.1", finding.Explanation);
+            Assert.Contains("toroidalAerospike", finding.Explanation);
+        }
+
+        [Fact]
+        public void A_decoupler_whose_Releases_cannot_be_read_is_not_called_wrong_way()
+        {
+            Assert.Empty(Entries.DecouplerUnderEngine(DunaShip(true, ringReadable: false), Landing));
+        }
+
+        [Fact]
+        public void Two_stacked_decouplers_still_warn_when_neither_Releases_can_be_read()
+        {
+            var parts = Stack(2);
+            foreach (var p in parts) p.Releases.Clear();
+            Assert.Single(Run(parts));
         }
 
         [Fact]
