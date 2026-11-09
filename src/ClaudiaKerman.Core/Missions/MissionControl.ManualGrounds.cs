@@ -86,9 +86,10 @@ namespace ClaudiaKerman.Core.Missions
             if (!ManualGrounds.DownAlive(MissionVesselSnapshot(mission), mission.RunStartCrew, mission.CrewDeaths, mission.RunStartUt)) return false;
             turn.LandingMissSentBack = true;
             // Her Failed reply stays in front of her, so "reply Failed again" has something to answer; it and the send-back are committed with the turn.
+            // The send-back is a user message (#953): the API refuses a system message straight after an assistant one.
             var before = turn.Messages.Count;
             turn.Messages.Add(message.ToMessage());
-            turn.Messages.Add(Message.SystemText(ManualGrounds.SendBack));
+            turn.Messages.Add(Message.UserText(ManualGrounds.SendBack));
             if (!HasCapRoom(mission, turn))
             {
                 turn.Messages.RemoveRange(before, turn.Messages.Count - before);

@@ -51,7 +51,10 @@ namespace ClaudiaKerman.Core.Missions
                 sinceReply.Add(message);
                 if (message.Role == Role.User)
                 {
-                    previousUser = Text(message);
+                    var userText = Text(message);
+                    // The Debrief send-back (#953) is the mod's, not a new turn: the Debrief it sends back keeps its stop reason and crossings.
+                    if (userText == ManualGrounds.SendBack) continue;
+                    previousUser = userText;
                     var said = PlayerLine(previousUser);
                     if (said != null) log.Add(new LogEntry { Kind = LogKind.Player, Text = said, Typed = true });
                     AddModDebrief(log, previousUser, steps);
