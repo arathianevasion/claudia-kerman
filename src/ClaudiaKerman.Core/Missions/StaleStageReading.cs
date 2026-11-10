@@ -36,6 +36,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             var stale = StaleStages(snapshot);
             if (stale.Count == 0) return;
+            snapshot.StageReadingFreshened = true;
             var craft = snapshot.Craft.MassTonnes;
             var left = PropellantT(snapshot);
             if (left.HasValue)

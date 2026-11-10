@@ -301,6 +301,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool DeltaVSimulator;
         /// <summary>Per-stage figures from the stock simulator.</summary>
         public List<SnapshotStage> Stages = new List<SnapshotStage>();
+        /// <summary>A stale stage reading in <see cref="Stages"/> was worked out again by the mod (#980), so its figure is an estimate. Not in the JSON.</summary>
+        public bool StageReadingFreshened;
         /// <summary>The main throttle, 0 to 1; 0 when it isn't read.</summary>
         public double Throttle;
         /// <summary>Some stage's delta-v is unknown: stock reads 0 at a trickle throttle with an engine lit (#234).</summary>

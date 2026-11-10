@@ -71,6 +71,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(stage.DeltaVVac, 598, 608);
             Assert.InRange(stage.DeltaVAsl, 589, 600);
             Assert.InRange(Left(snapshot), 2436, 2446);
+            Assert.True(snapshot.StageReadingFreshened);
             // The end mass and the stages stock had right are left alone.
             Assert.Equal(8.4898147583007813, stage.EndMassT);
             Assert.Equal(1837.8304443359375, snapshot.Stages.Single(s => s.Number == 3).DeltaVVac);
@@ -89,6 +90,7 @@ namespace ClaudiaKerman.Core.Tests
 
             Assert.Equal(603.09295654296875, four.DeltaVVac);
             Assert.Equal(10.173076629638672, four.StartMassT);
+            Assert.False(snapshot.StageReadingFreshened);
         }
 
         [Fact]
