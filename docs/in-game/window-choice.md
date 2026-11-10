@@ -19,7 +19,7 @@ For a transfer between bodies with the same parent, the player picks Soonest or 
 
 ## Check 3: a revised Mission Plan offers the choice again
 
-1. At the Mission Plan or the launch's Sequence Plan, change Time versus delta-v in Settings, so Claudia revises the Mission Plan.
+1. Wait (warp) past the picked window's departure, then at the Mission Plan or the launch's Sequence Plan change Time versus delta-v in Settings, so Claudia revises the Mission Plan. Before the window leaves, a revision carries the pick instead (#966: `window-pick-holds.md`).
 2. The revised plan's card is followed by the Transfer Window card, with the rows worked out again and neither button on. Approve is greyed out, and the status reads "Pick a Transfer Window, then Approve".
 3. Turn Auto Mode on. The Mission does not approve, and it says "Auto Mode is waiting for you: a Transfer Window to pick."
 4. Press Soonest. The log has "Transfer Window to Duna: Soonest." With Auto Mode on, the plan is approved at once; with it off, Approve is on again. The next request says "The player picked the Soonest Transfer Window to Duna."
