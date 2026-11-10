@@ -98,11 +98,19 @@ namespace ClaudiaKerman.Core.Tools
         /// </summary>
         public const double MaxTurnStopSeconds = 6;
 
+        /// <summary>
+        /// The most metres the turn may add to the final height (#969): the fall while it stops and the brake height's growth at the speed reached, worked with no ground under it.
+        /// The 41 t Duna stack's worst turn (5.7 s to 6 s from a 10 to 12 m/s canopy) adds about 135 to 155 m; on Kerbin's gravity the same seconds add far more (TWR 1.5, 3.5 s: about 460 m).
+        /// A turn that would add more gets this much, and the cut is held there as over <see cref="MaxTurnStopSeconds"/>, so no cut is ever made more than this over the height with no turn.
+        /// </summary>
+        public const double MaxTurnStopMetres = 200;
+
         private static readonly double[] NoDrag = { 0 };
 
         /// <summary>
         /// The final brake height (m, #969): <see cref="BrakeHeight"/> with no drag at all, as the chutes will be cut. With <paramref name="turnS"/> (<see cref="TurnStopSeconds"/>, no more than <see cref="MaxTurnStopSeconds"/>),
-        /// the craft may fall that long with no drag and no thrust while its wheels stop the turn: the fall in that time, plus the brake height at the speed it then has.
+        /// the craft may fall that long with no drag and no thrust while its wheels stop the turn: the fall in that time, plus the brake height at the speed it then has,
+        /// for no longer than adds <see cref="MaxTurnStopMetres"/> to the height with no turn.
         /// -1 (burn with the chutes kept) if the thrust can't hold the craft up against <paramref name="g"/>, whatever the speed, or if not even all of it stops the fall before the ground
         /// (for a turn, in the height left under <paramref name="radar"/> once that fall is done).
         /// </summary>
@@ -110,6 +118,36 @@ namespace ClaudiaKerman.Core.Tools
         {
             if (aUp <= g) return -1;
             var t = Math.Min(Math.Max(0, turnS), MaxTurnStopSeconds);
+            if (TurnMetres(vDown, aUp, g, soft, end, t) > MaxTurnStopMetres)
+            {
+                // The longest fall within the metres cap: the height only grows with the time.
+                double lo = 0, hi = t;
+                for (var i = 0; i < 60; i++)
+                {
+                    var mid = (lo + hi) / 2;
+                    if (TurnMetres(vDown, aUp, g, soft, end, mid) <= MaxTurnStopMetres) lo = mid;
+                    else hi = mid;
+                }
+                t = lo;
+            }
+            return Turned(vDown, aUp, g, radar, soft, end, t);
+        }
+
+        /// <summary>True if a turn taking <paramref name="turnS"/> to stop fits both caps (#969): <see cref="MaxTurnStopSeconds"/>, and <see cref="MaxTurnStopMetres"/> over the final height with no turn. Over either, the cut is held.</summary>
+        public static bool TurnFits(double vDown, double aUp, double g, double soft, double end, double turnS)
+        {
+            return turnS <= MaxTurnStopSeconds && (aUp <= g || TurnMetres(vDown, aUp, g, soft, end, turnS) <= MaxTurnStopMetres);
+        }
+
+        /// <summary>The metres <paramref name="t"/> s of the turn add to the final height, worked with no ground under it, so it depends on the craft and its speed alone.</summary>
+        private static double TurnMetres(double vDown, double aUp, double g, double soft, double end, double t)
+        {
+            return Turned(vDown, aUp, g, double.PositiveInfinity, soft, end, t) - Turned(vDown, aUp, g, double.PositiveInfinity, soft, end, 0);
+        }
+
+        /// <summary><see cref="FinalHeight"/> leaving <paramref name="t"/> s of free fall, uncapped.</summary>
+        private static double Turned(double vDown, double aUp, double g, double radar, double soft, double end, double t)
+        {
             var fall = Math.Max(0, vDown) * t + g * t * t / 2;
             var h = BrakeHeight(vDown + g * t, aUp, g, NoDrag, radar - fall, soft, end);
             return h < 0 ? h : h + fall;
@@ -137,15 +175,15 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// What braking under chutes all fully open and settled does at <paramref name="radar"/> m (#969): <see cref="WhyFinalWait"/> above <paramref name="finalH"/>;
         /// at or under it, <see cref="StepCut"/> within <see cref="MaxCutTiltDeg"/> of upright (<paramref name="upDeg"/>) and tipping no faster than <see cref="MaxSpinDeg"/> (<paramref name="rateDeg"/>, -1 unread: no hold),
-        /// and stopping its turn within <see cref="MaxTurnStopSeconds"/> (<paramref name="turnS"/>), else <see cref="WhyCutHeld"/>: a craft swinging through upright would lose its canopy just as the spin rule zeroes the thrust; and
+        /// and with its turn inside both caps (<paramref name="turnFits"/>, <see cref="TurnFits"/>), else <see cref="WhyCutHeld"/>: a craft swinging through upright would lose its canopy just as the spin rule zeroes the thrust; and
         /// <see cref="StepBurn"/>, the chutes kept, wherever the engine alone couldn't stop the fall (under <paramref name="lastH"/>, or either height -1): waiting longer or cutting would leave it falling.
         /// </summary>
-        public static string FinalStep(double radar, double finalH, double lastH, double upDeg, double rateDeg, double turnS = 0)
+        public static string FinalStep(double radar, double finalH, double lastH, double upDeg, double rateDeg, bool turnFits = true)
         {
             if (finalH < 0) return StepBurn;
             if (radar > finalH) return WhyFinalWait;
             if (lastH < 0 || radar <= lastH) return StepBurn;
-            return upDeg <= MaxCutTiltDeg && rateDeg <= MaxSpinDeg && turnS <= MaxTurnStopSeconds ? StepCut : WhyCutHeld;
+            return upDeg <= MaxCutTiltDeg && rateDeg <= MaxSpinDeg && turnFits ? StepCut : WhyCutHeld;
         }
 
         /// <summary>
@@ -284,8 +322,9 @@ namespace ClaudiaKerman.Core.Tools
         /// gives <c>cut</c> (<c>cut_why</c> <see cref="ReentryBrake.CutForFinalBurn"/>, <c>open</c> false so the gimbals are freed) and the guarded throttle, or holds the cut (<see cref="ReentryBrake.WhyCutHeld"/>), or burns with the chutes on.
         /// The first tick of the wait gives <c>note</c> (empty otherwise), which the addon writes to the log for the block. Falling, chutes fully open and settled also start the braking at the final height if it is the higher.
         /// A chute-only landing never asks, and with no thrust there is no final height: neither ever cuts this way.</para>
-        /// <para>The turn to stop (#969's follow-up): tipping (<c>rate_deg</c> over 0) and within <see cref="ReentryBrake.MaxTurnStopSeconds"/> of the fall above the final height, <paramref name="craft"/> is read (null, or none: no extra)
-        /// and the final height leaves the time its wheels need to stop the turn, falling freely (<see cref="ReentryBrake.TurnStopSeconds"/> on <see cref="Tools.TurnTime.Alpha"/> without RCS, which is off under the chutes; capped).
+        /// <para>The turn to stop (#969's follow-up): in the final stage or under settled chutes, tipping (<c>rate_deg</c> over 0) and within the capped fall above the final height, <paramref name="craft"/> is read (null, or none: no extra)
+        /// and the final height leaves the time its wheels need to stop the turn, falling freely (<see cref="ReentryBrake.TurnStopSeconds"/> on <see cref="Tools.TurnTime.Alpha"/> without RCS, which is off under the chutes;
+        /// capped at <see cref="ReentryBrake.MaxTurnStopSeconds"/> and <see cref="ReentryBrake.MaxTurnStopMetres"/>, the cut held over either).
         /// The tick that cuts gives <c>note</c> <c>final_cut</c> with the height, <c>final_h</c>, <c>rate_deg</c>, <c>up_deg</c> and <c>turn_s</c>, the seconds it added.</para>
         /// <para><c>trace</c>: while braking (<c>brake_why</c> not ""), true once every <see cref="ReentryBrake.TraceSeconds"/>, through <c>trace_ut</c>, handed back. Pure but for <paramref name="craft"/>.</para>
         /// </summary>
@@ -450,22 +489,24 @@ namespace ClaudiaKerman.Core.Tools
             var end = Number(ask, "end", 0);
             var upDeg = Number(ask, "up_deg", 0);
             var turnS = 0.0;
+            var turnFits = true;
+            var heldAllOpenUt = Number(ask, "all_open_ut", -1);
+            var allOpenUt = !open ? -1 : heldAllOpenUt >= 0 ? heldAllOpenUt : now;
+            var heldFinal = Flag(ask, "final");
+            var final = brakeWhy != "" && waitedFor > 0 && (heldFinal || (open && ReentryBrake.ChutesSettled(now - allOpenUt, decel)));
             var finalH = ReentryBrake.FinalHeight(vDown, aUp, g, radar, soft, end);
-            // The craft is read only where the capped height could reach (worked with no ground under it).
-            if (craft != null && waitedFor > 0 && rate > 0 && finalH >= 0 && radar <= ReentryBrake.FinalHeight(vDown, aUp, g, double.PositiveInfinity, soft, end, ReentryBrake.MaxTurnStopSeconds))
+            // The craft is read only where the final height counts (the final stage, or a radar start under settled chutes) and the capped height could reach (worked with no ground under it).
+            if (craft != null && (final || (open && settled)) && rate > 0 && finalH >= 0 && radar <= ReentryBrake.FinalHeight(vDown, aUp, g, double.PositiveInfinity, soft, end, ReentryBrake.MaxTurnStopSeconds))
             {
                 var turning = craft();
                 if (turning != null)
                 {
                     turnS = ReentryBrake.TurnStopSeconds(rate, upDeg, Tools.TurnTime.Alpha(turning, false) * 180 / Math.PI);
+                    turnFits = ReentryBrake.TurnFits(vDown, aUp, g, soft, end, turnS);
                     finalH = ReentryBrake.FinalHeight(vDown, aUp, g, radar, soft, end, turnS);
                 }
             }
-            var heldAllOpenUt = Number(ask, "all_open_ut", -1);
-            var allOpenUt = !open ? -1 : heldAllOpenUt >= 0 ? heldAllOpenUt : now;
-            var heldFinal = Flag(ask, "final");
-            var final = brakeWhy != "" && waitedFor > 0 && (heldFinal || (open && ReentryBrake.ChutesSettled(now - allOpenUt, decel)));
-            var step = final ? ReentryBrake.FinalStep(radar, finalH, ReentryBrake.FinalLastHeight(vDown, aUp, g, radar, soft), upDeg, rate, turnS) : "";
+            var step = final ? ReentryBrake.FinalStep(radar, finalH, ReentryBrake.FinalLastHeight(vDown, aUp, g, radar, soft), upDeg, rate, turnFits) : "";
             var waiting = step == ReentryBrake.WhyFinalWait || step == ReentryBrake.WhyCutHeld;
             var note = new Dictionary<string, object>();
             if (waiting && !heldFinal)

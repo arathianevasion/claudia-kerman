@@ -1226,6 +1226,61 @@ namespace ClaudiaKerman.Core.Tests
             }
         }
 
+        /// <summary>Kerbin under a Mk16 (7 m/s), an engine of TWR 1.5, tipping 10 deg/s at 5° off.</summary>
+        private static Dictionary<string, object> KerbinSwinging(double radar)
+        {
+            var ask = Swinging(radar, 10);
+            ask["g"] = 9.81;
+            ask["a_up"] = 9.81 * 1.5;
+            ask["v_down"] = 7.0;
+            return ask;
+        }
+
+        [Fact]
+        public void A_turn_that_would_raise_the_final_height_over_the_metres_cap_gets_the_cap_and_the_cut_is_held()
+        {
+            // 5 kN m on 100 t m²: 2.86 deg/s², 3.5 s to stop 10 deg/s, inside the 6 s cap. But 3.5 s of free fall on Kerbin, then
+            // the brake on a sixth less than TWR 1.5 at the 41 m/s it reaches, would cut about 480 m up: about 460 m over the 26 m with no turn.
+            var noTurn = ReentryBrake.FinalHeight(7, 9.81 * 1.5, 9.81, double.PositiveInfinity, Soft, End);
+            var uncapped = ReentryBrake.FinalHeight(7, 9.81 * 1.5, 9.81, double.PositiveInfinity, Soft, End, 10 / (0.05 * 180 / Math.PI));
+            Assert.InRange(noTurn, 25, 27);
+            Assert.InRange(uncapped, 226, 227); // the metres cap, not the ~480 m the turn would ask
+            var capped = noTurn + ReentryBrake.MaxTurnStopMetres;
+            Assert.Equal(capped, uncapped, 6);
+            // Above the capped height it waits; at it, the cut is held, the thrust zero, though the turn is inside the 6 s cap.
+            AssertNoThrust(BlockCalls.BrakeTick(KerbinSwinging(300), () => Wheels(5)), ReentryBrake.WhyFinalWait);
+            var held = BlockCalls.BrakeTick(KerbinSwinging(capped - 0.5), () => Wheels(5));
+            Assert.Equal(capped, D(held, "final_h"), 6);
+            Assert.Equal(false, held["cut"]);
+            AssertNoThrust(held, ReentryBrake.WhyCutHeld);
+            // Where the fall and the brake no longer fit, it burns with the chutes on, on the guards, as over the time cap.
+            var low = BlockCalls.BrakeTick(KerbinSwinging(60), () => Wheels(5));
+            Assert.Equal(false, low["cut"]);
+            Assert.Equal(0.8, D(low, "throttle"));
+            // Stronger wheels (0.35 s), a turn that fits the metres: the cut goes at its raised height.
+            var strong = ReentryBrake.FinalHeight(7, 9.81 * 1.5, 9.81, double.PositiveInfinity, Soft, End, 10 / (0.5 * 180 / Math.PI));
+            Assert.InRange(strong, noTurn + 1, capped - 100);
+            Assert.Equal(true, BlockCalls.BrakeTick(KerbinSwinging(strong - 0.5), () => Wheels(50))["cut"]);
+        }
+
+        [Fact]
+        public void A_craft_with_no_wheel_torque_never_cuts_it_waits_down_to_where_the_turn_no_longer_fits_then_burns_under_its_chutes()
+        {
+            // No wheels, or wheels with no electric charge (the reader gives them no torque): any turn takes forever, so the capped height, the cut held, then the burn with the chutes on.
+            // Pinned as it is; whether such a craft should cut anyway is the player's call.
+            var capped = Raised(ReentryBrake.MaxTurnStopSeconds);
+            AssertNoThrust(BlockCalls.BrakeTick(Swinging(capped + 0.5, 10), () => Wheels(0)), ReentryBrake.WhyFinalWait);
+            foreach (var rate in new[] { 10.0, 0.1 })
+            {
+                var held = BlockCalls.BrakeTick(Swinging(capped - 0.5, rate), () => Wheels(0));
+                Assert.Equal(false, held["cut"]);
+                AssertNoThrust(held, ReentryBrake.WhyCutHeld);
+                var low = BlockCalls.BrakeTick(Swinging(60, rate), () => Wheels(0));
+                Assert.Equal(false, low["cut"]);
+                Assert.Equal(0.8, D(low, "throttle"));
+            }
+        }
+
         [Fact]
         public void The_cut_is_noted_with_the_rate_the_angle_and_the_extra_seconds()
         {
