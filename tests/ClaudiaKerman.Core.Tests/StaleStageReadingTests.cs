@@ -105,6 +105,17 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void PropellantThatDoesNotCoverTheGoodStagesFallsBackToTheCraftsMass()
+        {
+            var snapshot = AfterAscent();
+            snapshot.Craft.Parts.RemoveAt(1);
+
+            StaleStageReading.Freshen(snapshot);
+
+            Assert.Equal(snapshot.Craft.MassTonnes, snapshot.Stages.Single(s => s.Number == 4).StartMassT, 6);
+        }
+
+        [Fact]
         public void TheRunsDeltaVUsedIsTheAscentsRealCost()
         {
             // Landed before the ascent, stock's three stages: 803.88 + 1286.97 + 1837.26 m/s.

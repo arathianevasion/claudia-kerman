@@ -17,7 +17,7 @@ namespace ClaudiaKerman.Core.Missions
     {
         private static readonly string[] Stable = { "ORBITING", "ESCAPING", "DOCKED" };
 
-        /// <summary>Masses this close, t, are the same craft: its delta-v can't have changed.</summary>
+        /// <summary>Masses this close, t, are the same craft: its delta-v can't have changed. Finer than <see cref="StaleStageReading.MarginT"/>, which compares stock's stage masses with the craft's.</summary>
         private const double SameMassT = 0.001;
 
         /// <summary>The first way <paramref name="now"/> differs from <paramref name="baseline"/> beyond <paramref name="tolerancePercent"/>, in words; "" when it doesn't.</summary>

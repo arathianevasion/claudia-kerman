@@ -40,6 +40,8 @@ namespace ClaudiaKerman.Core.Missions
             var left = PropellantT(snapshot);
             if (left.HasValue)
                 left = left.Value - snapshot.Stages.Where(s => !stale.Contains(s) && s.DeltaVVac > 0).Sum(s => Math.Max(0, s.StartMassT - s.EndMassT));
+            // Less than the stages stock read right burn: the parts don't add up, so only the craft's mass bounds the stale stages.
+            if (left < 0) left = null;
             // Stages burn from the highest number down: the lower stale ones are still full, the highest takes what is left.
             foreach (var stage in stale.OrderBy(s => s.Number))
             {
