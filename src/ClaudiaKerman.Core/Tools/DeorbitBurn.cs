@@ -38,6 +38,8 @@ namespace ClaudiaKerman.Core.Tools
         public bool Daylight;
         /// <summary>The sun's elevation at the target at a UT, degrees; NaN when it can't be read (then the burn counts). Null reads as NaN.</summary>
         public Func<double, double> SunAt;
+        /// <summary>#974: find_landing_site's pass for this target, to fly rather than deorbit's own choice; null for none (its own rule stands).</summary>
+        public SitePass Site;
     }
 
     /// <summary>The burn <see cref="DeorbitBurn.Find"/> chose, in maneuver-node components, and where it lands.</summary>
@@ -56,6 +58,8 @@ namespace ClaudiaKerman.Core.Tools
         public Conic After;
         /// <summary>km from the target to <see cref="Landing"/>; -1 without one.</summary>
         public double ErrorKm = -1;
+        /// <summary>#974: why another pass than find_landing_site's is flown; null when its pass is flown or none was given.</summary>
+        public string Note;
     }
 
     /// <summary>
@@ -64,7 +68,8 @@ namespace ClaudiaKerman.Core.Tools
     /// burn and drag errors, the research found), plus a normal part for a target beside the ground track. A scan of the window
     /// with the predictor picks the passes worth a look (on an eccentric orbit one prediction says little about the next); Newton's
     /// method on the burn time (along the track) and the normal part (across it) lands each on the target; each that lands within
-    /// accuracy_km then walks toward less delta-v inside the band. The cheapest is kept, an earlier one on a near tie (#794).
+    /// accuracy_km then walks toward less delta-v inside the band. The cheapest is kept, an earlier one on a near tie (#794); given find_landing_site's
+    /// pass for the target (#974), the cheapest on that pass.
     /// </summary>
     internal static class DeorbitBurn
     {
@@ -286,7 +291,11 @@ namespace ClaudiaKerman.Core.Tools
                         + darkest.ToString("0.#", CultureInfo.InvariantCulture) + " degrees up, under " + Whole(LandingSiteSearch.MinSunElevationDeg)
                         + "; allow a longer max_wait or pick a different site");
 
-                var best = Choose(burns, _ask.AccuracyKm, OverBudget);
+                string unfollowed = null;
+                var best = _ask.Site != null ? FollowSite(burns, out unfollowed) : null;
+                if (best != null) return best;
+                best = Choose(burns, _ask.AccuracyKm, OverBudget);
+                if (unfollowed != null && best.Error == null && best.ErrorKm <= _ask.AccuracyKm) best.Note = unfollowed + ": flew deorbit's own choice, the cheapest pass, the earliest of a tie";
                 if (best.ErrorKm > _ask.AccuracyKm)
                     best.Error = "the best burn in the next " + Hours(scan[scan.Count - 1].BurnUt - _ask.EarliestUt) + " h lands " + Km(best.ErrorKm)
                         + " km from the target, over accuracy_km " + Km(_ask.AccuracyKm)
@@ -294,6 +303,50 @@ namespace ClaudiaKerman.Core.Tools
                             ? " (the target is too far off the ground track; change the orbit's plane, or allow a longer max_wait)"
                             : "; allow a longer max_wait or a wider accuracy_km");
                 return best;
+            }
+
+            /// <summary>
+            /// #974: the burn on find_landing_site's pass (one landing within a quarter orbit of its landing), the cheapest there within accuracy and budget.
+            /// If none, of the passes within budget landing with the sun at <see cref="LandingSiteSearch.MinSunElevationDeg"/> or more, the one whose sun is nearest the
+            /// site's, with a note saying so. Null when no such pass is within accuracy and budget either: then deorbit's own rule decides.
+            /// </summary>
+            private DeorbitPlan FollowSite(List<DeorbitPlan> burns, out string unfollowed)
+            {
+                var site = _ask.Site;
+                var within = burns.Where(burn => burn.ErrorKm <= _ask.AccuracyKm).ToList();
+                var onSite = within.Where(burn => SamePass(burn, site.LandingUt)).ToList();
+                string why;
+                if (onSite.Count > 0)
+                {
+                    var flown = Choose(onSite, _ask.AccuracyKm, OverBudget);
+                    unfollowed = null;
+                    if (flown.Error == null) return flown;
+                    why = "is over budget: " + flown.Error;
+                }
+                else why = burns.Any(burn => SamePass(burn, site.LandingUt))
+                    ? "lands over accuracy_km " + Km(_ask.AccuracyKm)
+                    : "has no burn in max_wait that lands on the target" + (_ask.Daylight ? " in daylight" : "");
+                var passNamed = "find_landing_site's pass (landing UT " + Whole(site.LandingUt) + ", sun " + Tenth(site.SunDeg) + " degrees) " + why;
+                // Only a pass that can be flown is a fallback: one over budget would refuse while another lit pass fits.
+                var lit = within.Where(burn => !onSite.Contains(burn) && !(Sun(burn) < LandingSiteSearch.MinSunElevationDeg) && OverBudget(burn) == null).ToList();
+                if (lit.Count == 0)
+                {
+                    unfollowed = passNamed + ", and no other pass lands within accuracy_km and budget with the sun at " + Whole(LandingSiteSearch.MinSunElevationDeg) + " degrees or more";
+                    return null;
+                }
+                // A sun unread (here or in the site's report) is furthest, so the earliest such pass when none is read.
+                var nearest = lit.OrderBy(burn => double.IsNaN(Sun(burn)) || double.IsNaN(site.SunDeg) ? double.PositiveInfinity : Math.Abs(Sun(burn) - site.SunDeg)).ThenBy(burn => burn.BurnUt).First();
+                var best = Choose(lit.Where(burn => SamePass(burn, nearest.Landing.LandingUt)).ToList(), _ask.AccuracyKm, OverBudget);
+                var sun = Sun(best);
+                best.Note = passNamed + ": flew the lit pass with the sun nearest it, " + (double.IsNaN(sun) ? "unread" : Tenth(sun) + " degrees") + " at landing UT " + Whole(best.Landing.LandingUt);
+                unfollowed = null;
+                return best;
+            }
+
+            /// <summary>Whether a burn lands on the pass landing at <paramref name="landingUt"/>: within a quarter orbit of it.</summary>
+            private bool SamePass(DeorbitPlan burn, double landingUt)
+            {
+                return burn.Landing != null && burn.Landing.Error == null && Math.Abs(burn.Landing.LandingUt - landingUt) <= _orbit.Period / 4;
             }
 
             /// <summary>The sun at the target when the burn lands, degrees; NaN when it can't be read.</summary>
@@ -517,6 +570,11 @@ namespace ClaudiaKerman.Core.Tools
         public static string Km(double km)
         {
             return km.ToString(km < 10 ? "0.0" : "0", CultureInfo.InvariantCulture);
+        }
+
+        private static string Tenth(double value)
+        {
+            return value.ToString("0.#", CultureInfo.InvariantCulture);
         }
 
         private static string Hours(double seconds)

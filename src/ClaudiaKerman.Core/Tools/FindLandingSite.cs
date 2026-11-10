@@ -32,6 +32,8 @@ namespace ClaudiaKerman.Core.Tools
         internal BrakeCraft Craft;
         /// <summary>Sites land has tried already (#528), skipped as <see cref="LandingSiteQuery.Exclude"/>; none for the tool.</summary>
         internal List<double[]> Exclude;
+        /// <summary>Where an answer on a body with air is recorded for <c>deorbit</c> (#974).</summary>
+        internal SitePasses Passes = SitePasses.Shared;
 
         public string Name
         {
@@ -154,7 +156,12 @@ namespace ClaudiaKerman.Core.Tools
             var found = query.HasPoi ? LandingSiteSearch.Ring(body, conic, snapshot.Ut, query, api) : LandingSiteSearch.Find(body, conic, snapshot.Ut, query, api);
             if (found.Error != null) return PlanningJson.Error(found.Error);
             if (query.HasPoi) return RingAnswer(body, poiName, query, found, snapshot.Ut);
-            if (air) return AirAnswer(body, query, found, snapshot.Ut);
+            if (air)
+            {
+                // #974: deorbit given one of these sites and its max_wait_s flies the pass worked out here.
+                Passes.Record(snapshot.Craft.VesselId, body.Name, snapshot.Ut, found.Sites);
+                return AirAnswer(body, query, found, snapshot.Ut);
+            }
             // #545: a biome no pass reaches gets the plane changes for its best site off the track.
             var lookOffTrack = WithPlaneChanges && !query.HasNear && found.Sites.Count == 0 && !found.OutOfTime && !string.IsNullOrEmpty(query.Biome)
                 && query.Craft != null && !deadline.Passed;
@@ -340,7 +347,7 @@ namespace ClaudiaKerman.Core.Tools
             if (found.Sites.Count > 0)
                 notes.Add("give deorbit the site as target and its max_wait_s as max_wait, so it flies the pass whose sun is given");
             if (found.Sites.Any(s => !double.IsNaN(s.WaitUntilUt)))
-                notes.Add("the pass deorbit would take first is dark at every site, so these are for a later pass: say so in the plan, hold the craft to wait_until_ut, then call deorbit; called sooner it flies the dark pass");
+                notes.Add("the pass deorbit would take first is dark at every site, so these are for a later pass: say so in the plan, hold the craft to wait_until_ut, then call deorbit; called sooner its max_wait ends before that pass, so it flies another");
             if (found.Sites.Count > 0 && found.Sites[0].AtEdge)
                 notes.Add("no site more than " + query.EdgeMarginM.ToString("0.##", CultureInfo.InvariantCulture) + " m inside the " + found.Sites[0].Biome + " biome was reachable; a landing may come down outside it");
             if (found.Sites.Count == 0)

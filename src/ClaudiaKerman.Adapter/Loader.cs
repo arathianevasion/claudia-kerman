@@ -96,6 +96,7 @@ namespace ClaudiaKerman.Adapter
             GameEvents.onHideUI.Add(HideUI);
             GameEvents.onShowUI.Add(ShowUI);
             GameEvents.onGameSceneLoadRequested.Add(SceneChanging);
+            GameEvents.onFlightReady.Add(FlightReady);
         }
 
         // KSP refuses ClaudiaKerman.KOS.dll without kOS 1.6+ and only logs its own warning, and this assembly
@@ -132,6 +133,7 @@ namespace ClaudiaKerman.Adapter
             GameEvents.onHideUI.Remove(HideUI);
             GameEvents.onShowUI.Remove(ShowUI);
             GameEvents.onGameSceneLoadRequested.Remove(SceneChanging);
+            GameEvents.onFlightReady.Remove(FlightReady);
             RemoveButtons();
             if (_missions != null) _missions.Detach();
             UnlockAll();
@@ -269,6 +271,13 @@ namespace ClaudiaKerman.Adapter
             _missions.MissionsList.UiHidden = false;
             // Each time Flight loads (including a revert), the Craft Check starts collapsed.
             if (scene == GameScenes.FLIGHT) _missions.Panel.FlightLoading();
+        }
+
+        // #974: a flight resuming before find_landing_site gave an answer (a quickload or revert) discarded that answer's timeline, so deorbit forgets it.
+        // Every load of the save fires onGameStateLoad, a trip to the Space Center or a switch of vessel too, so the UT says what went back, not the load.
+        private static void FlightReady()
+        {
+            Core.Tools.BlockCalls.ForgetSitePassesAfter(Planetarium.GetUniversalTime());
         }
 
         private static bool SettingsSceneLoaded()

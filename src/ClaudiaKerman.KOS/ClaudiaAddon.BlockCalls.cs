@@ -1107,6 +1107,10 @@ namespace ClaudiaKerman.KOS
                 craft = new ReentryCraft(vessel, BlockCalls.LeftOut(ask), BlockCalls.ShieldDrop(ask), CoreId());
                 found = BlockCalls.DeorbitBurn(ask, SnapshotReader.ReadForMission(vessel), new PlanningBody(), new ReentryAir(vessel.mainBody), craft);
                 MissionDriver.RecordLandingTarget(BlockCalls.LandingTargetOf(ask, vessel.mainBody.bodyName), vessel);
+                // #974: another pass flown than find_landing_site's is the block's note too, as the block itself would write it.
+                object passNote;
+                if (found.TryGetValue("pass_note", out passNote) && shared.KSPPart != null && KosBridge.Instance != null)
+                    KosBridge.Instance.OnBlockTrace(shared.KSPPart.persistentId, "deorbit", new System.Collections.Generic.Dictionary<string, object> { { "phase", "pass" }, { "note", passNote } }, false);
                 return KosValues.FromPlain(found);
             }, () => Landing(found) + CraftLine(craft) + PlanLine(found));
         }
