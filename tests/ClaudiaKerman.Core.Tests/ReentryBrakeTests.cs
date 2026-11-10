@@ -1242,11 +1242,12 @@ namespace ClaudiaKerman.Core.Tests
             // 5 kN m on 100 t m²: 2.86 deg/s², 3.5 s to stop 10 deg/s, inside the 6 s cap. But 3.5 s of free fall on Kerbin, then
             // the brake on a sixth less than TWR 1.5 at the 41 m/s it reaches, would cut about 480 m up: about 460 m over the 26 m with no turn.
             var noTurn = ReentryBrake.FinalHeight(7, 9.81 * 1.5, 9.81, double.PositiveInfinity, Soft, End);
-            var uncapped = ReentryBrake.FinalHeight(7, 9.81 * 1.5, 9.81, double.PositiveInfinity, Soft, End, 10 / (0.05 * 180 / Math.PI));
+            var withTurn = ReentryBrake.FinalHeight(7, 9.81 * 1.5, 9.81, double.PositiveInfinity, Soft, End, 10 / (0.05 * 180 / Math.PI));
             Assert.InRange(noTurn, 25, 27);
-            Assert.InRange(uncapped, 226, 227); // the metres cap, not the ~480 m the turn would ask
+            Assert.InRange(withTurn, 226, 227); // the metres cap, not the ~480 m the turn would ask
             var capped = noTurn + ReentryBrake.MaxTurnStopMetres;
-            Assert.Equal(capped, uncapped, 6);
+            Assert.Equal(capped, withTurn, 6);
+            Assert.False(ReentryBrake.TurnFits(7, 9.81 * 1.5, 9.81, Soft, End, 10 / (0.05 * 180 / Math.PI)));
             // Above the capped height it waits; at it, the cut is held, the thrust zero, though the turn is inside the 6 s cap.
             AssertNoThrust(BlockCalls.BrakeTick(KerbinSwinging(300), () => Wheels(5)), ReentryBrake.WhyFinalWait);
             var held = BlockCalls.BrakeTick(KerbinSwinging(capped - 0.5), () => Wheels(5));

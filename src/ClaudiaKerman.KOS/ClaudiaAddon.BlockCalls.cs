@@ -954,22 +954,28 @@ namespace ClaudiaKerman.KOS
             return (Lexicon)KosValues.FromPlain(tick);
         }
 
-        /// <summary>The craft's reading for <see cref="BrakeTurnCraft"/>, held while the final height counts (null if the read failed), and whether it has been read.</summary>
+        /// <summary>The craft's reading for <see cref="BrakeTurnCraft"/>, held while the final height counts (null if the read failed), whether it has been read, and the vessel and part count it was read on.</summary>
         private TurnCraft brakeTurnCraft;
         private bool brakeTurnRead;
+        private Vessel brakeTurnVessel;
+        private int brakeTurnParts;
 
         /// <summary>
         /// The craft's torque and moment of inertia, read as TURNTIME reads them (<see cref="TurnCraftReader"/>), for <see cref="BrakeTickCall"/>'s final height (#969): Core asks only when the craft is tipping near the cut.
-        /// Read once and held until the final height no longer counts (<see cref="HoldBrake"/>): with the thrust at zero under the chutes, neither the mass nor the wheels change.
+        /// Read once and held until the final height no longer counts (<see cref="HoldBrake"/>) or the vessel or its part count changes: with the thrust at zero under the chutes, the mass doesn't change.
+        /// Wheels that run out of charge during the wait keep the first reading's torque (#969's fix round: a read every tick walked every part twice).
         /// A read that fails is logged once and answers null, so the final height stays as it was and the chute states, read apart, are not thought unreadable.
         /// </summary>
         private TurnCraft BrakeTurnCraft()
         {
-            if (brakeTurnRead) return brakeTurnCraft;
-            brakeTurnRead = true;
             try
             {
-                brakeTurnCraft = TurnCraftReader.Read(shared.Vessel);
+                var vessel = shared.Vessel;
+                if (brakeTurnRead && vessel == brakeTurnVessel && vessel.parts.Count == brakeTurnParts) return brakeTurnCraft;
+                brakeTurnRead = true;
+                brakeTurnVessel = vessel;
+                brakeTurnParts = vessel.parts.Count;
+                brakeTurnCraft = TurnCraftReader.Read(vessel);
             }
             catch (Exception e)
             {
@@ -1029,6 +1035,7 @@ namespace ClaudiaKerman.KOS
             {
                 brakeTurnRead = false;
                 brakeTurnCraft = null;
+                brakeTurnVessel = null;
             }
         }
 

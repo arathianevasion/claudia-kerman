@@ -116,33 +116,33 @@ namespace ClaudiaKerman.Core.Tools
         /// </summary>
         public static double FinalHeight(double vDown, double aUp, double g, double radar, double soft, double end, double turnS = 0)
         {
-            if (aUp <= g) return -1;
-            var t = Math.Min(Math.Max(0, turnS), MaxTurnStopSeconds);
-            if (TurnMetres(vDown, aUp, g, soft, end, t) > MaxTurnStopMetres)
-            {
-                // The longest fall within the metres cap: the height only grows with the time.
-                double lo = 0, hi = t;
-                for (var i = 0; i < 60; i++)
-                {
-                    var mid = (lo + hi) / 2;
-                    if (TurnMetres(vDown, aUp, g, soft, end, mid) <= MaxTurnStopMetres) lo = mid;
-                    else hi = mid;
-                }
-                t = lo;
-            }
-            return Turned(vDown, aUp, g, radar, soft, end, t);
+            return aUp <= g ? -1 : Turned(vDown, aUp, g, radar, soft, end, CappedTurnSeconds(vDown, aUp, g, soft, end, turnS));
         }
 
         /// <summary>True if a turn taking <paramref name="turnS"/> to stop fits both caps (#969): <see cref="MaxTurnStopSeconds"/>, and <see cref="MaxTurnStopMetres"/> over the final height with no turn. Over either, the cut is held.</summary>
         public static bool TurnFits(double vDown, double aUp, double g, double soft, double end, double turnS)
         {
-            return turnS <= MaxTurnStopSeconds && (aUp <= g || TurnMetres(vDown, aUp, g, soft, end, turnS) <= MaxTurnStopMetres);
+            return aUp <= g || CappedTurnSeconds(vDown, aUp, g, soft, end, turnS) == Math.Max(0, turnS);
         }
 
-        /// <summary>The metres <paramref name="t"/> s of the turn add to the final height, worked with no ground under it, so it depends on the craft and its speed alone.</summary>
-        private static double TurnMetres(double vDown, double aUp, double g, double soft, double end, double t)
+        /// <summary>
+        /// The seconds of free fall the final height leaves for a turn taking <paramref name="turnS"/> to stop: no more than <see cref="MaxTurnStopSeconds"/>, nor than adds <see cref="MaxTurnStopMetres"/>
+        /// to the height with no turn (worked with no ground under it, so it depends on the craft and its speed alone). <paramref name="turnS"/> itself when it fits both. Needs <paramref name="aUp"/> over <paramref name="g"/>.
+        /// </summary>
+        private static double CappedTurnSeconds(double vDown, double aUp, double g, double soft, double end, double turnS)
         {
-            return Turned(vDown, aUp, g, double.PositiveInfinity, soft, end, t) - Turned(vDown, aUp, g, double.PositiveInfinity, soft, end, 0);
+            var t = Math.Min(Math.Max(0, turnS), MaxTurnStopSeconds);
+            var most = Turned(vDown, aUp, g, double.PositiveInfinity, soft, end, 0) + MaxTurnStopMetres;
+            if (Turned(vDown, aUp, g, double.PositiveInfinity, soft, end, t) <= most) return t;
+            // The longest fall within the metres: the fall and the speed it reaches, so the height, only grow with the time.
+            double lo = 0, hi = t;
+            for (var i = 0; i < 40; i++)
+            {
+                var mid = (lo + hi) / 2;
+                if (Turned(vDown, aUp, g, double.PositiveInfinity, soft, end, mid) <= most) lo = mid;
+                else hi = mid;
+            }
+            return lo;
         }
 
         /// <summary><see cref="FinalHeight"/> leaving <paramref name="t"/> s of free fall, uncapped.</summary>
