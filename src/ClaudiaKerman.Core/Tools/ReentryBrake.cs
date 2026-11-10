@@ -193,7 +193,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <c>state</c>: stowed, armed, semi, deployed or cut, and <c>drogue</c>), decides the rule. A set (drogues or mains) is called once the block has called it (<c>drogues_called</c>,
         /// <c>mains_called</c>) or one of it reads past stowed; its time is <c>drogue_call_ut</c> or <c>main_call_ut</c>, handed back as <c>open_ut</c> is. A called chute is opening until all
         /// called chutes read fully open and settled (<see cref="ReentryBrake.ChutesSettled"/>, from <c>open_ut</c>, <c>now</c> and the slowing, sampled here from <c>speed</c> so it stays live during a burn, through <c>sample_ut</c>, <c>sample_speed</c> and <c>decel</c>, handed back the same way): no burn starts and the thrust is zero.
-        /// Once settled, <c>settled</c> is handed back and holds until a chute reads semi, so a burn's own slowing can't unsettle them. A chute called and still packed zeroes the thrust for its second, but only one really opening clears <c>open_ut</c>: a packed chute that fails doesn't restart the others' time. One more chute reading deployed than <c>open_count</c> held starts that time again, as a set can go from packed to deployed between two ticks.
+        /// Once settled, <c>settled</c> is handed back and holds until a chute reads semi, so a burn's own slowing can't unsettle them. A chute reading semi sets the settled time aside (<c>kept_ut</c>, <c>kept_settled</c>, handed back) and one then cut or gone, with no more chutes reading deployed, takes it back, so a chute that fails while opening doesn't restart the others' time. A chute called and still packed zeroes the thrust for its second, but only one really opening clears <c>open_ut</c>: a packed chute that fails doesn't restart the others' time. One more chute reading deployed than <c>open_count</c> held starts that time again, as a set can go from packed to deployed between two ticks.
         /// A cut chute, one of <c>uids</c> no longer aboard, or one still packed <see cref="ReentryBrake.PackedFailSeconds"/> after its call has failed and holds nothing back.
         /// None to wait for is <c>why</c> "radar" (<see cref="ReentryBrake.DueByRadar"/>, as before #954). All fully open and settled is "chutes open", the same rule. With nothing opening and a chute
         /// failed it is "last resort" (<see cref="ReentryBrake.LastResortDue"/>); with only chutes not called yet, it waits for their call. Takes also <c>radar</c>, <c>speed</c>, <c>brake_h</c>, <c>last_h</c>,
@@ -264,6 +264,8 @@ namespace ClaudiaKerman.Core.Tools
                     { "open_ut", Number(ask, "open_ut", -1) },
                     { "open_count", Number(ask, "open_count", 0) },
                     { "settled", Flag(ask, "settled") },
+                    { "kept_ut", Number(ask, "kept_ut", -1) },
+                    { "kept_settled", Flag(ask, "kept_settled") },
                     { "drogue_call_ut", Number(ask, "drogue_call_ut", -1) },
                     { "main_call_ut", Number(ask, "main_call_ut", -1) },
                     { "sample_ut", sampleUt },
@@ -314,9 +316,26 @@ namespace ClaudiaKerman.Core.Tools
             if (group > aboard.Count) failed = true;
             var open = waitedFor > 0 && deployed == waitedFor;
             var heldUt = Number(ask, "open_ut", -1);
-            var held = heldUt >= 0 && counted <= Number(ask, "open_count", counted);
+            var heldSettled = Flag(ask, "settled");
+            var keptUt = Number(ask, "kept_ut", -1);
+            var keptSettled = Flag(ask, "kept_settled");
+            var openCount = Number(ask, "open_count", counted);
+            if (heldUt < 0 && keptUt >= 0 && filling == 0 && healthy != packing && counted <= openCount)
+            {
+                heldUt = keptUt;
+                heldSettled = keptSettled;
+            }
+            var held = heldUt >= 0 && counted <= openCount;
             var openUt = healthy == packing || filling > 0 ? -1 : held ? heldUt : now;
-            var settled = openUt >= 0 && ((held && Flag(ask, "settled")) || ReentryBrake.ChutesSettled(now - openUt, decel));
+            var settled = openUt >= 0 && ((held && heldSettled) || ReentryBrake.ChutesSettled(now - openUt, decel));
+            var nextKeptUt = -1.0;
+            var nextKeptSettled = false;
+            if (filling > 0 || healthy == packing)
+            {
+                var fromHeld = Number(ask, "open_ut", -1) >= 0;
+                nextKeptUt = fromHeld ? Number(ask, "open_ut", -1) : keptUt;
+                nextKeptSettled = fromHeld ? Flag(ask, "settled") : keptSettled;
+            }
             var opening = packing > 0 || (healthy > 0 && !settled);
             var shieldSpeed = Number(ask, "shield_speed", 0);
             var shieldAgl = Number(ask, "shield_agl", 0);
@@ -334,6 +353,8 @@ namespace ClaudiaKerman.Core.Tools
                 { "open_ut", openUt },
                 { "open_count", (double)counted },
                 { "settled", settled },
+                { "kept_ut", nextKeptUt },
+                { "kept_settled", nextKeptSettled },
                 { "drogue_call_ut", drogueCallUt },
                 { "main_call_ut", mainCallUt },
                 { "sample_ut", sampleUt },
