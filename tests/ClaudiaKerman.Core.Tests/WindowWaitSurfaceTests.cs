@@ -356,6 +356,7 @@ namespace ClaudiaKerman.Core.Tests
             var mission = Control(new StreamingFakeTransport(HomePlan("Ascend from " + body, "Return to Kerbin"), AscentPlan()));
             const double now = 1203.48;
             ToAscent(mission, body, now);
+            mission = Unheld(mission, Landed(body, now, 20000));
             clock.Take(mission);
 
             var back = Solved(body, now).Window.DepartureUt + 120 * Day;
@@ -404,6 +405,7 @@ namespace ClaudiaKerman.Core.Tests
             var deltaV = (1000 - mission0.Window.TotalDv + next.Window.TotalDv) * 1.2;
             var mission = Control(new StreamingFakeTransport(HomePlan("Launch from Kerbin", "Land on Duna", "Ascend from Duna", "Return to Kerbin"), AscentPlan(step: 3)));
             ToAscent(mission, "Duna", now, deltaV: deltaV);
+            mission = Unheld(mission, Landed("Duna", now, deltaV));
             clock.Take(mission);
 
             mission.Send(new UtAdvanced(back));

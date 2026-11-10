@@ -91,7 +91,7 @@ namespace ClaudiaKerman.Core.Missions
             if (!due.HasValue)
             {
                 var stamped = snapshot.At(_ut);
-                stamped.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
+                stamped.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, HeldPick(mission));
                 due = BurnPoints.DueTime(BurnPoints.First(plan.Script, stamped, _ut, plan.ExpectedDeltaV, _body), _ut);
             }
             if (!due.HasValue || due.Value <= _ut) return null;

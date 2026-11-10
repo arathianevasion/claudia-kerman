@@ -20,6 +20,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool TwoStep;
         /// <summary>The window, leaving at the burn out of the craft's own body's orbit; null when the search found none.</summary>
         public TransferWindow Window;
+        /// <summary>#966: <see cref="Window"/> is null because the held window has gone (<see cref="Tools.WindowSearch.HeldMissed"/>).</summary>
+        public bool HeldMissed;
         /// <summary>From a moon, the route <see cref="Window"/> is read from; null from a planet.</summary>
         public RouteRow Route;
         /// <summary>The ascent lead, s (<see cref="WindowWaits.AscentLeadS"/>).</summary>
@@ -200,7 +202,9 @@ namespace ClaudiaKerman.Core.Missions
                 var problem = TransferWindows.Problem.Of(view, planet.Name, MissionPrompts.ArrivalPe(planet), capture, out error);
                 if (problem == null) return;
                 var found = TransferWindows.Search(problem, marginPercent);
-                if (found.Error != null) return;
+                // #966: a held window that has gone is waited for no more, nor traded for a later one.
+                departure.HeldMissed = found.Error == null && found.HeldMissed;
+                if (found.Error != null || departure.HeldMissed) return;
                 departure.Window = TransferWindows.Pick(found, setting, chosen);
                 due = departure.Window.DepartureUt - departure.LeadS;
                 var launch = LaunchFor(snapshot, home, problem, departure.Window, due, now);
@@ -224,12 +228,27 @@ namespace ClaudiaKerman.Core.Missions
             return DeparturePlane.ForAsymptote(home, now, snapshot.Latitude, snapshot.CelestialLongitude + turned, leaving.Value, byUt, problem.ParkingPe);
         }
 
-        /// <summary>The window to <paramref name="planet"/> (a planet or a moon) from <paramref name="snapshot"/>'s UT, the player's pick for it (#686) or else the Mission Setting's; null when the search found none.</summary>
+        /// <summary>The window to <paramref name="planet"/> (a planet or a moon) from <paramref name="snapshot"/>'s UT, the player's pick for it (#686) or else the Mission Setting's; null when the search found none, or (#966) the held window has gone.</summary>
         public static TransferWindow Window(GameSnapshot snapshot, SnapshotBody planet, TimeVersusDeltaV setting, int marginPercent, WindowPick chosen = null)
         {
+            bool heldMissed;
+            return Window(snapshot, planet, setting, marginPercent, chosen, out heldMissed);
+        }
+
+        /// <summary><see cref="Window(GameSnapshot, SnapshotBody, TimeVersusDeltaV, int, WindowPick)"/>, saying when it is null because the held window has gone.</summary>
+        public static TransferWindow Window(GameSnapshot snapshot, SnapshotBody planet, TimeVersusDeltaV setting, int marginPercent, WindowPick chosen, out bool heldMissed)
+        {
+            heldMissed = false;
             if (snapshot == null || planet == null) return null;
+            // #966: a held pick's search keeps to its window.
+            if (chosen != null && chosen.DepartureUt.HasValue)
+            {
+                snapshot = snapshot.At(snapshot.Ut);
+                snapshot.WindowPick = chosen;
+            }
             var found = TransferWindows.Find(snapshot, planet.Name, MissionPrompts.ArrivalPe(planet), true, marginPercent);
-            return found.Error != null ? null : TransferWindows.Pick(found, setting, chosen);
+            heldMissed = found.Error == null && found.HeldMissed;
+            return found.Error != null || heldMissed ? null : TransferWindows.Pick(found, setting, chosen);
         }
 
         /// <summary>The Due Time for a window leaving at <paramref name="departureUt"/>: the window less the launch lead, when that is more than <see cref="LongWaitS"/> from <paramref name="now"/>; otherwise null (the script warps there).</summary>
