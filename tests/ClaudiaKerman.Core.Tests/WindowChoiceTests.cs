@@ -12,8 +12,8 @@ using Xunit;
 namespace ClaudiaKerman.Core.Tests
 {
     /// <summary>
-    /// The player picks the Transfer Window for a transfer between bodies with the same parent (#686): before Start, and again for each
-    /// revised Mission Plan. Driven through the Mission seam with hand-written replies, on <see cref="WindowWaitTests"/>' harness.
+    /// The player picks the Transfer Window for a transfer between bodies with the same parent (#686): before Start, and again for a
+    /// revised Mission Plan whose transfer the pick no longer holds for (#966). Driven through the Mission seam with hand-written replies, on <see cref="WindowWaitTests"/>' harness.
     /// </summary>
     public sealed partial class WindowWaitTests
     {
@@ -39,6 +39,21 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(OnPad(ut, 9000));
             CraftCheckRouter.StartChecked(mission, _background, OnPad(ut, 9000), new StartMission(goal, 10m, "claude-sonnet-5-5", window: pick));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+        }
+
+        /// <summary>#966: a day after the picked window of <paramref name="kind"/> from the pad left, so a revised plan asks again (a missed window).</summary>
+        private static double PastThe(WindowKind kind)
+        {
+            var windows = DunaWindows(NewGame);
+            return (kind == WindowKind.Optimal ? windows.Optimal : windows.Soonest).DepartureUt + Day;
+        }
+
+        /// <summary>The craft seen at <paramref name="ut"/>, after its picked window left, and a revised plan asked for.</summary>
+        private void ToRevisedPlanAfterTheWindow(MissionControl mission, double ut, string vesselId = "")
+        {
+            mission.Send(new UtAdvanced(ut));
+            mission.Send(OnPad(ut, 9000, vesselId));
+            ToRevisedPlan(mission);
         }
 
         /// <summary>A setting edited asks Claudia for a revised Mission Plan, whose request has the stage table.</summary>
@@ -243,8 +258,8 @@ namespace ClaudiaKerman.Core.Tests
             var mission = Control(transport);
             ToMissionPlan(mission, Duna(WindowKind.Soonest));
 
-            // Time has passed and the craft has changed: the rows are the craft's as it is.
-            const double later = NewGame + 40 * Day;
+            // Time has passed, past the picked window (#966: a missed window asks again): the rows are the craft's as it is.
+            var later = PastThe(WindowKind.Soonest);
             mission.Send(new UtAdvanced(later));
             mission.Send(OnPad(later, 9000));
             ToRevisedPlan(mission);
@@ -316,7 +331,8 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(OnPad(NewGame, 9000, "ours"));
             CraftCheckRouter.StartChecked(mission, _background, OnPad(NewGame, 9000, "ours"), new StartMission(Goal, 10m, "claude-sonnet-5-5", window: Duna(WindowKind.Soonest)));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
-            ToRevisedPlan(mission);
+            var later = PastThe(WindowKind.Soonest);
+            ToRevisedPlanAfterTheWindow(mission, later, "ours");
             Assert.True(mission.View.WindowPickNeeded);
 
             // Out of Flight: nothing to show, nothing picked, and Approve is still held.
@@ -329,7 +345,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
 
             mission.Send(new SceneChanged(GameScene.Flight));
-            mission.Send(OnPad(NewGame, 9000, "ours"));
+            mission.Send(OnPad(later, 9000, "ours"));
             Assert.True(mission.View.Windows.Needed);
             mission.Send(new ChooseWindow(WindowKind.Optimal));
             mission.Send(new Approve());
@@ -343,7 +359,7 @@ namespace ClaudiaKerman.Core.Tests
             var mission = Control(new StreamingFakeTransport(DunaPlan(), DunaPlan()));
             ToMissionPlan(mission, Duna(WindowKind.Soonest));
             attention.Observe(mission.View);
-            ToRevisedPlan(mission);
+            ToRevisedPlanAfterTheWindow(mission, PastThe(WindowKind.Soonest));
             Assert.True(mission.View.WindowPickNeeded);
             Assert.NotNull(attention.Observe(mission.View));
             mission.Send(new ChooseWindow(WindowKind.Optimal));
@@ -381,9 +397,10 @@ namespace ClaudiaKerman.Core.Tests
             ToMissionPlan(mission, Duna(WindowKind.Soonest));
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
-            ToRevisedPlan(mission);
+            var later = PastThe(WindowKind.Soonest);
+            ToRevisedPlanAfterTheWindow(mission, later);
 
-            var dark = OnPad(NewGame, 9000);
+            var dark = OnPad(later, 9000);
             dark.HasLink = false;
             mission.Send(dark);
             Assert.True(mission.View.Blackout);
@@ -408,8 +425,9 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
             mission.Send(new SetAutoMode(true));
-            ToRevisedPlan(mission);
-            mission.Send(new UtAdvanced(NewGame + 60));
+            var later = PastThe(WindowKind.Soonest);
+            ToRevisedPlanAfterTheWindow(mission, later);
+            mission.Send(new UtAdvanced(later + 60));
             _background.Drain();
 
             Assert.Equal(MissionStage.AwaitingPlanApproval, mission.View.Stage);
@@ -430,7 +448,8 @@ namespace ClaudiaKerman.Core.Tests
         {
             var mission = Control(new StreamingFakeTransport(DunaPlan(), DunaPlan()));
             ToMissionPlan(mission, Duna(WindowKind.Optimal));
-            ToRevisedPlan(mission);
+            var later = PastThe(WindowKind.Optimal);
+            ToRevisedPlanAfterTheWindow(mission, later);
             Assert.True(mission.View.WindowPickNeeded);
 
             var reread = MissionSaveState.FromValues(Assert.Single(mission.ExportStates()).ToValues());
@@ -440,8 +459,8 @@ namespace ClaudiaKerman.Core.Tests
             var reload = Control(new StreamingFakeTransport(LaunchPlan()));
             reload.Send(new SceneChanged(GameScene.Flight));
             reload.Send(new MissionsRestored(_save.Path, new List<MissionSaveState> { reread }));
-            reload.Send(new UtAdvanced(NewGame));
-            reload.Send(OnPad(NewGame, 9000));
+            reload.Send(new UtAdvanced(later));
+            reload.Send(OnPad(later, 9000));
             Assert.Equal(MissionStage.AwaitingPlanApproval, reload.View.Stage);
             Assert.True(reload.View.WindowPickNeeded);
             Assert.True(reload.View.Windows.Needed);
@@ -455,8 +474,8 @@ namespace ClaudiaKerman.Core.Tests
             var third = Control(new StreamingFakeTransport());
             third.Send(new SceneChanged(GameScene.Flight));
             third.Send(new MissionsRestored(_save.Path, new List<MissionSaveState> { again }));
-            third.Send(new UtAdvanced(NewGame));
-            third.Send(OnPad(NewGame, 9000));
+            third.Send(new UtAdvanced(later));
+            third.Send(OnPad(later, 9000));
             Assert.False(third.View.WindowPickNeeded);
             Assert.Contains(QuickReply.Approve, third.View.QuickReplies);
         }
@@ -516,7 +535,7 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void ARevisedPlanStillHoldingTheDunaTransferAsksForThePick()
+        public void ARevisedPlanStillHoldingTheDunaTransferOffersTheChoiceWithTheHeldPick()
         {
             var mission = Control(new StreamingFakeTransport(DunaPlan(), DunaPlan()));
             ToMissionPlan(mission, Duna(WindowKind.Soonest));
@@ -524,8 +543,10 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new UtAdvanced(later));
             mission.Send(InOrbit("Kerbin", later, 9000));
             ToRevisedPlan(mission);
-            Assert.True(mission.View.WindowPickNeeded);
+            // #966: the pick holds for its transfer, so nothing waits for one.
+            Assert.False(mission.View.WindowPickNeeded);
             Assert.True(mission.View.Windows.Needed);
+            Assert.Equal("Duna:Soonest", mission.View.WindowPick.Key);
         }
     }
 }

@@ -128,6 +128,25 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
+        /// #966: the craft has left on the transfer <paramref name="pick"/> is for, so its ejection has flown: it is in orbit of the
+        /// target's parent, or within the target's own sphere of influence. Read from where the craft is, not from the plan's legs.
+        /// </summary>
+        internal static bool Departed(GameSnapshot snapshot, WindowPick pick)
+        {
+            if (snapshot == null || pick == null || pick.IsNone || snapshot.Bodies == null) return false;
+            var system = new BodySystem(snapshot.Bodies);
+            var target = system.Find(pick.Body);
+            var parent = target == null ? null : system.Parent(target);
+            var orbit = snapshot.Orbit;
+            var at = system.Find(orbit != null && !string.IsNullOrEmpty(orbit.Body) ? orbit.Body : snapshot.Body);
+            if (parent == null || at == null) return false;
+            if (string.Equals(at.Name, parent.Name, StringComparison.OrdinalIgnoreCase)) return true;
+            for (var body = at; system.Parent(body) != null; body = system.Parent(body))
+                if (string.Equals(system.Parent(body).Name, parent.Name, StringComparison.OrdinalIgnoreCase)) return string.Equals(body.Name, target.Name, StringComparison.OrdinalIgnoreCase);
+            return false;
+        }
+
+        /// <summary>
         /// The body of the first transfer the Mission Goal needs that the player picks a window for; null for none. A craft already
         /// leaving its body (on an escape path) has made its choice, so none is asked.
         /// </summary>

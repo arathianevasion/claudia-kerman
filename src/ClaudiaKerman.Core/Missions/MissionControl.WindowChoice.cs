@@ -8,8 +8,8 @@ namespace ClaudiaKerman.Core.Missions
 {
     /// <summary>
     /// The player picks the Transfer Window for a transfer between bodies with the same parent (#686, <see cref="WindowChoice"/>): on the
-    /// start form before Start, which carries into the first Mission Plan, and again for each revised Mission Plan, whose Approval needs
-    /// a pick. The pick stands in for the setting's wherever a window is taken (<see cref="Tools.TransferWindows.Pick(Tools.WindowSearch, GameSnapshot)"/>).
+    /// start form before Start, which carries into the first Mission Plan. #966: it holds for its transfer until the ejection flies, so a
+    /// revised Mission Plan carries it; one waits for a pick only for another transfer or a missed window. The pick stands in for the setting's wherever a window is taken (<see cref="Tools.TransferWindows.Pick(Tools.WindowSearch, GameSnapshot)"/>).
     /// #782: a departure no pick covers asks at its first Sequence Plan, whose Due Time and window wait for the answer.
     /// </summary>
     public sealed partial class MissionControl
@@ -24,6 +24,10 @@ namespace ClaudiaKerman.Core.Missions
             public bool WindowPickUnsaid;
             /// <summary>#782: the Due Time the Sequence Plan in hand came with, which each pick's window is worked against. Saved.</summary>
             public double? WindowOwnDue;
+            /// <summary>#966: the picked window's departure, past which the pick is missed; null when not known. Saved.</summary>
+            public double? WindowPickUt;
+            /// <summary>#966: the revised Mission Plan in hand carries the held pick: the card offers the choice, and nothing waits for it. Saved.</summary>
+            public bool WindowPickHeld;
         }
 
         /// <summary>The offer last worked out, what it was worked for, and the snapshot, goal and rework period it last answered.</summary>
@@ -64,13 +68,15 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// A Mission Plan is offered: the windows are worked out again for the craft as it is. The first one carries the start form's
-        /// pick; any other waits for a fresh one. With the player away from the craft it can't be worked out yet, so a Mission that has
-        /// had a pick waits for them to come back; one that never had one has no such transfer.
+        /// pick. #966: a revised one carries the pick too while it holds (<see cref="PickHolds"/>), even if the ejection now costs more;
+        /// it waits for a fresh one only for another transfer, a missed window, or a pick its ejection has spent. With the player away
+        /// from the craft it can't be worked out yet, so a Mission that has a pick waits for them to come back; one with none has no such transfer.
         /// </summary>
         private void AskForWindow(Mission mission, bool first)
         {
             _offer = null;
             mission.WindowPickUnsaid = false;
+            mission.WindowPickHeld = false;
             var snapshot = MissionVesselSnapshot(mission);
             if (snapshot == null)
             {
@@ -78,9 +84,33 @@ namespace ClaudiaKerman.Core.Missions
                 return;
             }
             var offer = OfferFor(PlanGoal(mission), snapshot);
-            mission.WindowPickNeeded = offer.Needed && !(first && !WindowChoice.Held(mission.WindowPick, offer).IsNone)
-                // #784: a revised plan asks only for a transfer its remaining legs still fly.
-                && (first || WindowChoice.LegsAsk(snapshot, RestOfPlan(mission), mission.PlannedAscent));
+            // #784: a revised plan asks only for a transfer its remaining legs still fly.
+            var asks = offer.Needed && (first || WindowChoice.LegsAsk(snapshot, RestOfPlan(mission), mission.PlannedAscent));
+            var holds = asks && (first ? !WindowChoice.Held(mission.WindowPick, offer).IsNone : PickHolds(mission, offer));
+            mission.WindowPickNeeded = asks && !holds;
+            mission.WindowPickHeld = holds && !first;
+            // The held window's departure as worked out now, from where the craft is.
+            if (holds) mission.WindowPickUt = offer.RowFor(mission.WindowPick).DepartureUt;
+        }
+
+        /// <summary>
+        /// #966: the Mission's pick holds for <paramref name="offer"/>'s transfer. The same transfer is the one to the pick's body, worked
+        /// out from where the craft is now, not a leg's place or name in the plan; it holds until its window is missed (its departure
+        /// passed, as NextWindow reads it) or its ejection flies (<see cref="SpendPick"/>, which drops it).
+        /// </summary>
+        private bool PickHolds(Mission mission, WindowOffer offer)
+        {
+            return !WindowChoice.Held(mission.WindowPick, offer).IsNone && !(mission.WindowPickUt.HasValue && WindowWaits.Missed(mission.WindowPickUt.Value, _ut));
+        }
+
+        /// <summary>#966: the craft is seen gone on the pick's transfer (<see cref="WindowChoice.Departed"/>): the ejection has flown, so the pick holds no more, for a return or a later trip alike.</summary>
+        private void SpendPick(Mission mission, GameSnapshot snapshot)
+        {
+            if (mission.WindowPick.IsNone || !FollowsCraft(mission) || MissionVesselSnapshot(mission) != snapshot || !WindowChoice.Departed(snapshot, mission.WindowPick)) return;
+            Event(mission, "window_spent", mission.WindowPick.Key);
+            mission.WindowPick = WindowPick.None;
+            mission.WindowPickUt = null;
+            mission.WindowPickHeld = false;
         }
 
         /// <summary>The Mission Plan in hand can't be approved yet: it waits for the player's pick, under Auto Mode too.</summary>
@@ -89,14 +119,17 @@ namespace ClaudiaKerman.Core.Missions
             if (mission.Stage == MissionStage.AwaitingSequenceApproval) return !mission.Declined && DeparturePickMissing(mission, mission.PendingSequence);
             if (!mission.WindowPickNeeded || mission.Stage != MissionStage.AwaitingPlanApproval || mission.Declined) return false;
             var snapshot = MissionVesselSnapshot(mission);
-            return snapshot == null || OfferFor(PlanGoal(mission), snapshot).Needed;
+            if (snapshot == null) return true;
+            // #966: a plan offered out of Flight is judged when the craft is seen: a pick that holds for it is no pick missing.
+            var offer = OfferFor(PlanGoal(mission), snapshot);
+            return offer.Needed && !PickHolds(mission, offer);
         }
 
         /// <summary>The Mission Plan in hand offers the choice: a revised one waiting for a pick, or picked and not yet approved. The first carries its pick from the form: after Start only a revision changes it. A Sequence Plan whose departure asks offers it the same way (#782).</summary>
         private bool WindowChoiceOpen(Mission mission)
         {
             if (mission.Stage == MissionStage.AwaitingSequenceApproval) return !mission.Declined && (mission.WindowPickUnsaid || WindowPickMissing(mission));
-            return (mission.WindowPickNeeded || mission.WindowPickUnsaid) && mission.Stage == MissionStage.AwaitingPlanApproval && !mission.Declined;
+            return (mission.WindowPickNeeded || mission.WindowPickUnsaid || mission.WindowPickHeld) && mission.Stage == MissionStage.AwaitingPlanApproval && !mission.Declined;
         }
 
         /// <summary>The windows the Mission's view shows; none unless the plan in hand offers the choice.</summary>
@@ -148,6 +181,7 @@ namespace ClaudiaKerman.Core.Missions
             var offer = MissionOffer(mission);
             if (!offer.Needed) return;
             mission.WindowPick = new WindowPick(offer.Body, kind);
+            mission.WindowPickUt = offer.RowFor(mission.WindowPick).DepartureUt;
             mission.WindowPickNeeded = false;
             mission.WindowPickUnsaid = true;
             mission.ConfirmPrompt = null;

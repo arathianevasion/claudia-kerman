@@ -442,6 +442,7 @@ namespace ClaudiaKerman.Core.Missions
                 Remote = start.Remote,
                 AutoMode = _config.DefaultAutoMode,
                 WindowPick = window,
+                WindowPickUt = window.IsNone ? (double?)null : windows.RowFor(window).DepartureUt,
             };
             // Frozen for the whole Mission, so the cached prefix never changes.
             mission.System.Add(MissionPrompts.BaseLayer);
@@ -633,6 +634,7 @@ namespace ClaudiaKerman.Core.Missions
             if (mission.Chutes == null && mission.Plan != null && mission.Stage != MissionStage.AwaitingPlanApproval && _scene == GameScene.Flight) GroupChutes(mission);
             // #867: a plan offered with no snapshot of the craft is judged on the first.
             CrossingFirstSnapshot(mission);
+            SpendPick(mission, snapshot);
             CarryOnWhenSceneAllows();
         }
 
