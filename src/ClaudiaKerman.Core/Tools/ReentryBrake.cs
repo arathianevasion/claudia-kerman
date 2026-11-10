@@ -76,7 +76,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>Why the thrust is zero (#969): braking under chutes all fully open and settled, the engine waits for the final height, where they are cut.</summary>
         public const string WhyFinalWait = "final burn wait";
 
-        /// <summary>Why the thrust is zero (#969): at the final height but over <see cref="MaxCutTiltDeg"/> off upright, so the chutes are held and the engine waits.</summary>
+        /// <summary>Why the thrust is zero (#969): at the final height but over <see cref="MaxCutTiltDeg"/> off upright or tipping over <see cref="MaxSpinDeg"/>, so the chutes are held and the engine waits.</summary>
         public const string WhyCutHeld = "tipped, cut held";
 
         /// <summary>The chutes are cut for the final burn only within this many degrees of upright (#969): cut tipped, the burn would start sideways.</summary>
@@ -107,15 +107,16 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// What braking under chutes all fully open and settled does at <paramref name="radar"/> m (#969): <see cref="WhyFinalWait"/> above <paramref name="finalH"/>;
-        /// at or under it, <see cref="StepCut"/> within <see cref="MaxCutTiltDeg"/> of upright (<paramref name="upDeg"/>), else <see cref="WhyCutHeld"/>; and
+        /// at or under it, <see cref="StepCut"/> within <see cref="MaxCutTiltDeg"/> of upright (<paramref name="upDeg"/>) and tipping no faster than <see cref="MaxSpinDeg"/> (<paramref name="rateDeg"/>, -1 unread: no hold),
+        /// else <see cref="WhyCutHeld"/>: a craft swinging through upright would lose its canopy just as the spin rule zeroes the thrust; and
         /// <see cref="StepBurn"/>, the chutes kept, wherever the engine alone couldn't stop the fall (under <paramref name="lastH"/>, or either height -1): waiting longer or cutting would leave it falling.
         /// </summary>
-        public static string FinalStep(double radar, double finalH, double lastH, double upDeg)
+        public static string FinalStep(double radar, double finalH, double lastH, double upDeg, double rateDeg)
         {
             if (finalH < 0) return StepBurn;
             if (radar > finalH) return WhyFinalWait;
             if (lastH < 0 || radar <= lastH) return StepBurn;
-            return upDeg <= MaxCutTiltDeg ? StepCut : WhyCutHeld;
+            return upDeg <= MaxCutTiltDeg && rateDeg <= MaxSpinDeg ? StepCut : WhyCutHeld;
         }
 
         /// <summary>
@@ -419,7 +420,7 @@ namespace ClaudiaKerman.Core.Tools
             var allOpenUt = !open ? -1 : heldAllOpenUt >= 0 ? heldAllOpenUt : now;
             var heldFinal = Flag(ask, "final");
             var final = brakeWhy != "" && waitedFor > 0 && (heldFinal || (open && ReentryBrake.ChutesSettled(now - allOpenUt, decel)));
-            var step = final ? ReentryBrake.FinalStep(radar, finalH, ReentryBrake.FinalLastHeight(vDown, aUp, g, radar, soft), Number(ask, "up_deg", 0)) : "";
+            var step = final ? ReentryBrake.FinalStep(radar, finalH, ReentryBrake.FinalLastHeight(vDown, aUp, g, radar, soft), Number(ask, "up_deg", 0), rate) : "";
             var waiting = step == ReentryBrake.WhyFinalWait || step == ReentryBrake.WhyCutHeld;
             var note = new Dictionary<string, object>();
             if (waiting && !heldFinal)

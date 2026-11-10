@@ -1042,6 +1042,18 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void Swinging_through_upright_faster_than_20_degrees_a_second_the_cut_is_held()
+        {
+            var ask = UnderCanopy(20);
+            ask["rate_deg"] = 25.0;
+            var tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(false, tick["cut"]);
+            AssertNoThrust(tick, ReentryBrake.WhyCutHeld);
+            ask["rate_deg"] = -1.0; // unread: no hold, as the spin rule
+            Assert.Equal(true, BlockCalls.BrakeTick(ask)["cut"]);
+        }
+
+        [Fact]
         public void Tipped_where_waiting_longer_would_leave_the_engine_unable_to_stop_it_burns_with_the_chutes_on()
         {
             // Full thrust with no drag stops 8 m/s in 3.31 m, plus half a second: 7.3 m.
@@ -1256,6 +1268,7 @@ namespace ClaudiaKerman.Core.Tests
                 { "radar", 1700.0 }, { "speed", 150.0 }, { "brake_h", 1750.0 }, { "last_h", 1240.0 }, { "shield_speed", 400.0 }, { "shield_agl", 3000.0 },
                 { "chutes", Set(false, "deployed", "semi") }, { "uids", new List<object> { "a", "b" } }, { "throttle", 0.7 }, { "off_deg", 12.0 }, { "rate_deg", 8.0 },
                 { "now", 100.0 }, { "open_ut", -1.0 }, { "decel", 12.0 }, { "drogues_called", true }, { "mains_called", true }, { "drogue_call_ut", 90.0 }, { "main_call_ut", 99.5 }, { "brake_why", "last resort" }, { "last_resort_ut", 95.0 }, { "trace_ut", 99.0 },
+                { "v_down", 150.0 }, { "a_up", AUp }, { "g", G }, { "soft", Soft }, { "end", End }, { "up_deg", 12.0 }, // #969: the final height, every tick
             };
             Timing.Within(2, () =>
             {

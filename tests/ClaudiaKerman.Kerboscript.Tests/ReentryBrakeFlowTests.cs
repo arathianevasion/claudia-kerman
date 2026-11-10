@@ -457,7 +457,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(new StringValue("thrust_stopped"), stop[new StringValue("phase")]);
             Assert.IsAssignableFrom<ScalarValue>(stop[new StringValue("final_h")]);
 
-            var unread =(Lexicon)KosValues.FromPlain(BlockCalls.BrakeTick(new Dictionary<string, object>
+            var unread = (Lexicon)KosValues.FromPlain(BlockCalls.BrakeTick(new Dictionary<string, object>
             {
                 { "now", 20.0 }, { "chutes_unread", true }, { "uids", new List<object> { "a" } }, { "unread_ut", 19.0 }, { "sample_ut", 19.8 }, { "sample_speed", 30.0 }, { "speed", 30.0 }, { "throttle", 1.0 }, { "open_ut", 10.0 }, { "open_count", 1.0 }, { "settled", true }, { "drogue_call_ut", 5.0 }, { "main_call_ut", 8.0 },
             }));
