@@ -17,6 +17,9 @@ namespace ClaudiaKerman.Core.Missions
     {
         private static readonly string[] Stable = { "ORBITING", "ESCAPING", "DOCKED" };
 
+        /// <summary>Masses this close, t, are the same craft: its delta-v can't have changed.</summary>
+        private const double SameMassT = 0.001;
+
         /// <summary>The first way <paramref name="now"/> differs from <paramref name="baseline"/> beyond <paramref name="tolerancePercent"/>, in words; "" when it doesn't.</summary>
         public static string Exceeded(GameSnapshot baseline, GameSnapshot now, double tolerancePercent)
         {
@@ -28,7 +31,9 @@ namespace ClaudiaKerman.Core.Missions
                 return "the craft is now " + now.Situation + ", not " + baseline.Situation;
 
             var tolerance = tolerancePercent / 100.0;
-            if (baseline.DeltaVSimulator && now.DeltaVSimulator && !baseline.DeltaVUnreliable && !now.DeltaVUnreliable)
+            // #980: a reading that changed with no change of mass is stock catching up, not the craft changing.
+            if (baseline.DeltaVSimulator && now.DeltaVSimulator && !baseline.DeltaVUnreliable && !now.DeltaVUnreliable
+                && Math.Abs(baseline.Craft.MassTonnes - now.Craft.MassTonnes) > SameMassT)
             {
                 var before = baseline.Stages.Sum(s => s.DeltaVVac);
                 var after = now.Stages.Sum(s => s.DeltaVVac);

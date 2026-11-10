@@ -78,6 +78,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             var now = Orbit();
             now.Stages[1].DeltaVVac = 2000;
+            now.Craft.MassTonnes = 9;
             Assert.Contains("delta-v", Drift(Orbit(), now));
             Assert.Equal("", PlanDrift.Exceeded(Orbit(), now, 40));
 
@@ -85,6 +86,25 @@ namespace ClaudiaKerman.Core.Tests
             var before = Orbit();
             before.DeltaVSimulator = false;
             Assert.Equal("", Drift(before, now));
+        }
+
+        [Fact]
+        public void ADeltaVReadingThatChangedAtTheSameMassIsStockCatchingUpNotDrift()
+        {
+            // #980: in Duna orbit, 11.583 t both sides, stock's figure went from 3,125 to 2,441 m/s over a warp with no burn.
+            var before = Orbit();
+            before.Craft.MassTonnes = 11.5830717086792;
+            before.Stages[0].DeltaVVac = 1837.83;
+            before.Stages[1].DeltaVVac = 1287.18;
+            var after = Orbit();
+            after.Craft.MassTonnes = 11.5830717086792;
+            after.Stages[0].DeltaVVac = 1837.83;
+            after.Stages[1].DeltaVVac = 603.09;
+            Assert.Equal("", Drift(before, after));
+
+            // The same change with propellant gone is a real loss, and still forces a Re-plan.
+            after.Craft.MassTonnes = 9.9;
+            Assert.Equal("delta-v changed from 3125 to 2441 m/s", Drift(before, after));
         }
 
         [Fact]
