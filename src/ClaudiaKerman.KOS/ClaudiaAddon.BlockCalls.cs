@@ -954,21 +954,29 @@ namespace ClaudiaKerman.KOS
             return (Lexicon)KosValues.FromPlain(tick);
         }
 
+        /// <summary>The craft's reading for <see cref="BrakeTurnCraft"/>, held while the final height counts (null if the read failed), and whether it has been read.</summary>
+        private TurnCraft brakeTurnCraft;
+        private bool brakeTurnRead;
+
         /// <summary>
         /// The craft's torque and moment of inertia, read as TURNTIME reads them (<see cref="TurnCraftReader"/>), for <see cref="BrakeTickCall"/>'s final height (#969): Core asks only when the craft is tipping near the cut.
-        /// A read that fails is logged and answers null, so the final height stays as it was and the chute states, read apart, are not thought unreadable.
+        /// Read once and held until the final height no longer counts (<see cref="HoldBrake"/>): with the thrust at zero under the chutes, neither the mass nor the wheels change.
+        /// A read that fails is logged once and answers null, so the final height stays as it was and the chute states, read apart, are not thought unreadable.
         /// </summary>
         private TurnCraft BrakeTurnCraft()
         {
+            if (brakeTurnRead) return brakeTurnCraft;
+            brakeTurnRead = true;
             try
             {
-                return TurnCraftReader.Read(shared.Vessel);
+                brakeTurnCraft = TurnCraftReader.Read(shared.Vessel);
             }
             catch (Exception e)
             {
                 Debug.LogWarning(ModInfo.LogTag + " block call BRAKETICK couldn't read the craft's torque, so the final height leaves no time to stop its turn: " + e);
-                return null;
+                brakeTurnCraft = null;
             }
+            return brakeTurnCraft;
         }
 
         /// <summary>The block's ask with the time and what this processor holds between ticks, for <see cref="BrakeTickCall"/>.</summary>
@@ -1016,6 +1024,12 @@ namespace ClaudiaKerman.KOS
             brakeTraceUt = (double)tick["trace_ut"];
             brakeAllOpenUt = (double)tick["all_open_ut"];
             brakeFinal = (bool)tick["final"];
+            // The craft's reading is held through the final stage and the settled chutes before it (where Core reads it; all_open_ut is -1 unless all are open), and read afresh after.
+            if (!brakeFinal && !(brakeAllOpenUt >= 0 && brakeSettled))
+            {
+                brakeTurnRead = false;
+                brakeTurnCraft = null;
+            }
         }
 
         /// <summary>Notes for <c>reentry</c> what Core says changed this tick (#969: the thrust stopped for the final burn), as <c>BLOCKNOTE</c> would: KSP.log only. Written here, so the block spends no line on it.</summary>
