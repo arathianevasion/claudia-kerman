@@ -30,10 +30,10 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source.Replace("\r\n", "\n");
             var start = source.IndexOf("  local settle is lexicon(", StringComparison.Ordinal);
             Assert.True(start >= 0, "the wait is not in the block");
-            const string End = "wait 0. }\n";
+            const string End = "    wait 0.\n  }\n";
             var end = source.IndexOf(End, start, StringComparison.Ordinal);
             Assert.True(end >= 0, "the wait has no end");
-            return source.Substring(start, end + End.Length - start).Replace("time:seconds", "tnow").Replace("wait 0. }", "advance(). }");
+            return source.Substring(start, end + End.Length - start).Replace("time:seconds", "tnow").Replace("wait 0.", "advance().");
         }
 
         /// <summary>The status each tick (L landed, F flying), from UT 100 in 0.5 s ticks; the last letter holds after the script ends. Prints the UT the wait ends at, and the status then.</summary>

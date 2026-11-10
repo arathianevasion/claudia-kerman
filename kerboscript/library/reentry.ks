@@ -929,13 +929,13 @@ function reentry {
   }
   // Every exit from here passes this line: landing, a hard touchdown, an abort, a timeout or a skip-out (#954).
   reentry_gimbals(ship:engines, false, gimbals).
+  set extra:max_g to round(extra:max_g, 2).
+  set extra:max_temp_pct to round(max(extra:max_temp_pct, addons:claudia:hottestpart), 1).
   if fell <> "" {
     for t in reentry_abort(chute_mode, reentry_fresh_group(group, ask, extra:chutes_used)) {
       extra:chutes_used:add(t).
     }
     set extra:chutes_kept to reentry_stowed_titles(ship:parts).
-    set extra:max_temp_pct to round(max(extra:max_temp_pct, addons:claudia:hottestpart), 1).
-    set extra:max_g to round(extra:max_g, 2).
     set extra:geo to reentry_geo().
     return claudia_finish(ctx, false, fell, extra).
   }
@@ -949,11 +949,12 @@ function reentry {
   addons:claudia:blocknote(ctx:block, lexicon("phase", "chutes_cut", "titles", reentry_cut_chutes(ship:parts, group:last):join(", "))).
   set extra:chutes_kept to reentry_stowed_titles(ship:parts).
   set extra:touchdown_speed to round(last_speed, 1).
-  set extra:max_g to round(extra:max_g, 2).
-  set extra:max_temp_pct to round(max(extra:max_temp_pct, addons:claudia:hottestpart), 1).
   // Chutes are cut at first touch; the report waits until the craft has stayed down 2 s so a bounce isn't read as FLYING (#968, Core's GROUNDSETTLE, 30 s at most). Controls are released: no engine lights or throttles here.
   local settle is lexicon("since", -1, "first", time:seconds, "done", false).
-  until settle:done { set settle to addons:claudia:groundsettle(lexicon("on_ground", claudia_on_ground(), "now", time:seconds, "since", settle:since, "first", settle:first)). wait 0. }
+  until settle:done {
+    set settle to addons:claudia:groundsettle(lexicon("on_ground", claudia_on_ground(), "now", time:seconds, "since", settle:since, "first", settle:first)).
+    wait 0.
+  }
   set extra:geo to reentry_geo().
   set extra:splashed to status = "SPLASHED".
   set extra:sun_elevation_deg to round(90 - vang(ship:up:vector, body("Sun"):position), 1).

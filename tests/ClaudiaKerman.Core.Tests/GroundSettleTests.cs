@@ -71,5 +71,15 @@ namespace ClaudiaKerman.Core.Tests
         {
             Assert.Equal(130, DoneAt(Run(false, 40), 1.0));
         }
+
+        [Fact]
+        public void A_missing_first_is_taken_as_now_and_echoed_so_the_cap_still_fires()
+        {
+            var state = GroundSettle.Call(new Dictionary<string, object> { { "on_ground", false }, { "now", 100.0 } });
+            Assert.Equal(100.0, state["first"]);
+            Assert.Equal(false, state["done"]);
+            var later = GroundSettle.Call(new Dictionary<string, object> { { "on_ground", false }, { "now", 130.0 }, { "since", state["since"] }, { "first", state["first"] } });
+            Assert.Equal(true, later["done"]);
+        }
     }
 }
