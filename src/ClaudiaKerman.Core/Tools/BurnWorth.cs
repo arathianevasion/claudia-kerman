@@ -174,7 +174,7 @@ namespace ClaudiaKerman.Core.Tools
             }
             if (!(dv < SmallCorrectionDv)) return answer;
             var accel = Number(input, "accel", 0);
-            if (accel > 0) answer["max_throttle"] = Math.Min(1, TickShare * dv / (accel * PhysicsTick));
+            answer["max_throttle"] = SmallThrottle(dv, accel);
             answer["done_dv"] = Math.Max(LeastDone, Math.Min(MostDone, DoneShare * dv));
             return answer;
         }
@@ -191,11 +191,17 @@ namespace ClaudiaKerman.Core.Tools
             var dv = Math.Abs(Number(input, "dv", 0));
             var accel = Math.Max(0, Number(input, "accel", 0));
             var off = Math.Abs(Number(input, "off", 0));
-            var throttle = dv < SmallCorrectionDv && accel > 0 ? Math.Min(1, TickShare * dv / (accel * PhysicsTick)) : 1.0;
+            var throttle = dv < SmallCorrectionDv ? SmallThrottle(dv, accel) : 1.0;
             var done = off > 0 ? Math.Min(ExecNodeDone, dv * Number(input, "tolerance", 0) / (2 * off)) : ExecNodeDone;
             answer["max_throttle"] = throttle;
             answer["done_dv"] = Math.Max(accel * Math.Min(throttle, LeastThrottle) * PhysicsTick, done);
             return answer;
+        }
+
+        /// <summary>A small burn's throttle cap: one tick at it is <see cref="TickShare"/> of <paramref name="dv"/> m/s at <paramref name="accel"/> m/s² full; 1 with no thrust known.</summary>
+        private static double SmallThrottle(double dv, double accel)
+        {
+            return accel > 0 ? Math.Min(1, TickShare * dv / (accel * PhysicsTick)) : 1.0;
         }
 
         private static string Hundredths(double x)
