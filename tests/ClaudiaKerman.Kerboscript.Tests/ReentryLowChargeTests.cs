@@ -198,8 +198,8 @@ namespace ClaudiaKerman.Kerboscript.Tests
             // The lock is only for a craft still held; the wait for the air stands either way, so a release during the first wait doesn't start the fall early.
             Assert.Contains("if waited = \"\" { if held { lock steering to srfretrograde. } set waited to choose claudia_warp_to(ctx, air_ut, air_ut - time:seconds)", body);
             Assert.Contains("low:carry_on and not braking { set held to false. unlock steering. sas off. claudia_rcs_off(\"low charge\"). }", body);
-            Assert.Equal(2, body.Split("lock steering to").Length - 1);
-            // The only other lock is the braking burn's own, which keeps pointing the engine.
+            Assert.Equal(3, body.Split("lock steering to").Length - 1);
+            // The other locks are the braking burn's own, which keeps pointing the engine, and #954's hold under the chutes of a powered finish; the release above lets go of that too.
             Assert.True(At(body, "if fell = \"\" and braking and not claudia_on_ground() {") < At(body, "lock steering to steer."));
         }
 
