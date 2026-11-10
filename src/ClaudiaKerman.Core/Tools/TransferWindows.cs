@@ -48,7 +48,7 @@ namespace ClaudiaKerman.Core.Tools
         public string Target;
         /// <summary>The earliest window within the Craft Check margin of <see cref="Optimal"/>'s total; Optimal itself when none is earlier.</summary>
         public TransferWindow Soonest;
-        /// <summary>The cheapest window departing within the horizon.</summary>
+        /// <summary>The cheapest window departing within the horizon; #966: with a held window not missed, that window's cheapest.</summary>
         public TransferWindow Optimal;
         /// <summary>The horizon searched: from <see cref="From"/> (UT s) for <see cref="Synodic"/>, one synodic period (s) of the two planets, or a moon's period.</summary>
         public double From;
@@ -248,14 +248,14 @@ namespace ClaudiaKerman.Core.Tools
 
             // Optimal: BrentMin over the departure a grid step either side of the cheapest, each at its own cheapest flight time.
             Func<double, double, TransferWindow> atTime = (t, seedTof) => CheapestFlight(problem, t, seedTof, tofStep, tofLo);
-            Func<int, double, TransferWindow> refined = (at, end) =>
+            Func<int, double, TransferWindow> refined = (row, end) =>
             {
-                var bestT = from + at * step;
+                var bestT = from + row * step;
                 var lo = Math.Max(from, bestT - step);
                 var hi = Math.Min(end, bestT + step);
-                var x = Minimise(u => atTime(bestT + u * step, rowTof[at]).TotalDv, (lo - bestT) / step, (hi - bestT) / step);
-                var found = atTime(bestT + x * step, rowTof[at]);
-                var gridBest = atTime(bestT, rowTof[at]);
+                var x = Minimise(u => atTime(bestT + u * step, rowTof[row]).TotalDv, (lo - bestT) / step, (hi - bestT) / step);
+                var found = atTime(bestT + x * step, rowTof[row]);
+                var gridBest = atTime(bestT, rowTof[row]);
                 return found.TotalDv <= gridBest.TotalDv ? found : gridBest;
             };
             var optimal = refined(best, from + synodic);
@@ -291,6 +291,7 @@ namespace ClaudiaKerman.Core.Tools
             var heldMissed = false;
             if (problem.Held.HasValue)
             {
+                // The windows' true recurrence, not the horizon searched (a span, or a moon's shortened horizon).
                 var limit = problem.Held.Value + (problem.Moon ? problem.Target.Period : Transfer.Synodic(problem.Home.Period, problem.Target.Period)) / 2;
                 heldMissed = soonest.DepartureUt >= limit;
                 if (!heldMissed && optimal.DepartureUt >= limit)
