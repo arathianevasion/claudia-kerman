@@ -242,14 +242,19 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(done < dv / 50, "stops within 2% of the burn: the periapsis lands within about 3.6 km, not 182 km off");
         }
 
-        /// <summary>The trim after it: the periapsis about 3.6 km off asks a 0.002 m/s burn, whose throttle cap lets it stop where what is left moves the periapsis under half the tolerance.</summary>
+        /// <summary>
+        /// The trim after it: the periapsis about 3.6 km off asks a 0.002 m/s burn. Its cap by the tick share would be about 0.00026, far under the least throttle
+        /// exec_node flies, which no engine is shown to give usable thrust at (the burn would run to max_duration), so the cap is floored at
+        /// <see cref="BurnWorth.LeastThrottle"/> and the stop is one tick at it.
+        /// </summary>
         [Fact]
-        public void The_trim_after_it_stops_where_what_is_left_moves_the_periapsis_less_than_the_tolerance()
+        public void The_trim_after_it_never_caps_its_throttle_under_the_least_throttle()
         {
             const double dv = 0.002, accel = 180 / 9.18629, off = 3600, tolerance = 1000;
             var answer = TunePeBurn(dv, accel, off, tolerance);
-            Assert.Equal(dv * tolerance / (2 * off), (double)answer["done_dv"], 9);
-            Assert.True((double)answer["max_throttle"] * accel * BurnWorth.PhysicsTick < dv * tolerance / (2 * off), "a tick at the cap is under the stop");
+            Assert.True((double)answer["max_throttle"] >= BurnWorth.LeastThrottle, "cap " + answer["max_throttle"] + " is under the least throttle");
+            Assert.Equal(BurnWorth.LeastThrottle * accel * BurnWorth.PhysicsTick, (double)answer["done_dv"], 9);
+            Assert.True((double)answer["done_dv"] < dv, "the trim still lights: what is left starts above the stop");
         }
 
         /// <summary>A burn of 2 m/s or more keeps full throttle, and any burn keeps exec_node's 0.1 m/s stop unless the tolerance asks for a nearer one.</summary>

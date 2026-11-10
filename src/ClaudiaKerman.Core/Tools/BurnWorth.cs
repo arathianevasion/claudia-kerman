@@ -181,20 +181,20 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>
         /// <c>tune_pe</c>'s burn (#982): <c>dv</c> m/s, <c>accel</c> as for a correction, <c>off</c> m the periapsis is from its value and the block's <c>tolerance</c> m. Under
-        /// <see cref="SmallCorrectionDv"/> its throttle is capped as a correction's. It stops once what is left would move the periapsis less than half the tolerance
-        /// (moving it in proportion to the burn), at most exec_node's <see cref="ExecNodeDone"/>, but not under one tick at the least throttle it flies
-        /// (<see cref="LeastThrottle"/> or the cap). On patch "next" far out a tenth of a m/s moves an encounter's periapsis 180 km, and exec_node's own stop
-        /// ended such a burn before the engine lit.
+        /// <see cref="SmallCorrectionDv"/> its throttle is capped as a correction's, but never under <see cref="LeastThrottle"/> (no engine is shown to give usable thrust
+        /// lower, and the burn would run to max_duration). It stops once what is left would move the periapsis less than half the tolerance
+        /// (moving it in proportion to the burn), at most exec_node's <see cref="ExecNodeDone"/>, but not under one tick at <see cref="LeastThrottle"/>.
+        /// On patch "next" far out a tenth of a m/s moves an encounter's periapsis 180 km, and exec_node's own stop ended such a burn before the engine lit.
         /// </summary>
         private static IDictionary<string, object> TunePeBurn(IDictionary<string, object> input, Dictionary<string, object> answer)
         {
             var dv = Math.Abs(Number(input, "dv", 0));
             var accel = Math.Max(0, Number(input, "accel", 0));
             var off = Math.Abs(Number(input, "off", 0));
-            var throttle = dv < SmallCorrectionDv ? SmallThrottle(dv, accel) : 1.0;
+            var throttle = dv < SmallCorrectionDv ? Math.Max(LeastThrottle, SmallThrottle(dv, accel)) : 1.0;
             var done = off > 0 ? Math.Min(ExecNodeDone, dv * Number(input, "tolerance", 0) / (2 * off)) : ExecNodeDone;
             answer["max_throttle"] = throttle;
-            answer["done_dv"] = Math.Max(accel * Math.Min(throttle, LeastThrottle) * PhysicsTick, done);
+            answer["done_dv"] = Math.Max(accel * LeastThrottle * PhysicsTick, done);
             return answer;
         }
 
