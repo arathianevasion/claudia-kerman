@@ -153,16 +153,7 @@ function deorbit_body_problem {
   return "".
 }
 
-// max_wait in seconds: opt_value, or one turn of the body (rotation_period s) for "auto".
-function deorbit_max_wait {
-  parameter opt_value, rotation_period.
-  if opt_value:istype("String") {
-    return rotation_period.
-  }
-  return opt_value.
-}
-
-// What deorbit asks ADDONS:CLAUDIA:DEORBITBURN: the site, the window (earliest_ut, then max_wait s),
+// What deorbit asks ADDONS:CLAUDIA:DEORBITBURN: the site, the window (earliest_ut, then max_wait s or "auto": Core's one turn of the body),
 // the ground's height at the site (m, sea level for water), accuracy_km, the engines' isp (s, for
 // the mass after the burn; 0 if unknown), craft (ENTRYCRAFT's: what enters, and who pays the burn), max_dv (a
 // number, or "auto") and dv_left (stock's, 0 if it can't say). Pure.
@@ -217,9 +208,9 @@ function deorbit {
   // The craft reentry will fly (#814): what separate and this entry drop, and whether its shield goes. Its error is the search's.
   local craft is addons:claudia:entrycraft(lexicon("core", core:part:uid, "stage_limit", opt:stage_limit, "leave_out", claudia_drop_uids(separation))).
   local ground_alt is body:geopositionlatlng(site:lat, site:lng):terrainheight.
-  local max_wait is deorbit_max_wait(opt:max_wait, body:rotationperiod).
   local dv_kept is claudia_dv_recounted(). // The search is a block-internal call (ADR 0007): inline here.
-  local found is addons:claudia:deorbitburn(deorbit_query(site, time:seconds + deorbit_lead_s(), max_wait, ground_alt, opt:accuracy_km, claudia_engine_isp(), craft, opt:max_dv, dv_kept)).
+  local found is addons:claudia:deorbitburn(deorbit_query(site, time:seconds + deorbit_lead_s(), opt:max_wait, ground_alt, opt:accuracy_km, claudia_engine_isp(), craft, opt:max_dv, dv_kept)).
+  if found:haskey("pass_note") { set extra:pass_note to found:pass_note. } // #974: another pass than find_landing_site's
   if found:haskey("lat") {
     set extra:predicted_geo to claudia_geo(found).
     set extra:predicted_error_km to round(found:error_km, 2).
