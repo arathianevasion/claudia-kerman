@@ -112,6 +112,12 @@ namespace ClaudiaKerman.Core.Tools
         private const double StepTolerance = 1e-4;
         private const int Iterations = 60;
         private const int Bisections = 40;
+        /// <summary>#966: why a held window's transfer flies no later window (<see cref="WindowSearch.HeldMissed"/>).</summary>
+        internal static string HeldMissedWhy(string target)
+        {
+            return "the window the player picked for " + target + " was missed: no later one is flown, the player picks again";
+        }
+
         /// <summary>#966: bisections of a held window's close between two grid departures (a 180-row period's step to under a 1/4000th of it).</summary>
         private const int CloseBisections = 12;
         /// <summary>The cost of a cell with no Lambert path: finite, so BrentMin steps away from it.</summary>
@@ -336,12 +342,28 @@ namespace ClaudiaKerman.Core.Tools
                 var kBest = 0;
                 var down = costAt(1) < costAt(0) ? 1 : costAt(-1) < costAt(0) ? -1 : 0;
                 while (down != 0 && Math.Abs(kBest + down) <= reach && costAt(kBest + down) < costAt(kBest)) kBest += down;
-                // Within the margin of its cheapest, or the anchor's own cost if more: a departure the player picked is in its window.
-                var heldBudget = Math.Max(costAt(kBest) * withinMargin, double.IsInfinity(costAt(0)) ? 0 : costAt(0));
-                var kEnd = kBest + 1;
-                while (kEnd - kBest < reach && costAt(kEnd) <= heldBudget) kEnd++;
-                var kOpen = kBest - 1;
-                while (kBest - kOpen < reach && costAt(kOpen) <= heldBudget) kOpen--;
+                // A row's cost, its cheapest of the coarse flight times, rises a little where that flight time switches, so the walk can
+                // stop short (#966 round 5). The cheapest is the run's lowest row: the run is found again round it until it is the same
+                // row. Each pass takes a strictly cheaper row of finitely many, so it settles, and on the grid's own rows it is exact.
+                double heldBudget;
+                int kEnd, kOpen;
+                while (true)
+                {
+                    // Within the margin of its cheapest, or more to take in the anchor and the rows on the way down: a departure the
+                    // player picked is in its window.
+                    heldBudget = costAt(kBest) * withinMargin;
+                    for (var k = Math.Min(0, kBest); k <= Math.Max(0, kBest); k++)
+                        if (!double.IsInfinity(costAt(k))) heldBudget = Math.Max(heldBudget, costAt(k));
+                    kEnd = kBest + 1;
+                    while (kEnd - kBest < reach && costAt(kEnd) <= heldBudget) kEnd++;
+                    kOpen = kBest - 1;
+                    while (kBest - kOpen < reach && costAt(kOpen) <= heldBudget) kOpen--;
+                    var lowest = kBest;
+                    for (var k = Math.Max(kOpen + 1, -reach); k < Math.Min(kEnd, reach + 1); k++)
+                        if (costAt(k) < costAt(lowest)) lowest = k;
+                    if (lowest == kBest) break;
+                    kBest = lowest;
+                }
                 // It closes where the cost crosses the budget, bisected between the last grid departure within it and the first past.
                 var closes = anchor + kEnd * heldStep;
                 var inside = closes - heldStep;

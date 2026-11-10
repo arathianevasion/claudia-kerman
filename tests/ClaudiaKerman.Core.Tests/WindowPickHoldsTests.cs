@@ -33,6 +33,22 @@ namespace ClaudiaKerman.Core.Tests
             return mission;
         }
 
+        /// <summary>
+        /// <paramref name="mission"/> as saved before #966 and loaded with <paramref name="craft"/> in view: its pick has no window on
+        /// record, so holds none, and a missed window moves on to the next one as #616 and #774 do. A held pick asks instead
+        /// (<see cref="ALateApprovalAfterAHeldWindowClosedAsksThePlayerRatherThanMoveToTheNext"/>).
+        /// </summary>
+        private MissionControl Unheld(MissionControl mission, GameSnapshot craft, StreamingFakeTransport transport = null)
+        {
+            var state = MissionSaveState.FromValues(Assert.Single(mission.ExportStates()).ToValues());
+            state.WindowPickDepartureUt = null;
+            var reload = Control(transport ?? new StreamingFakeTransport());
+            reload.Send(new SceneChanged(GameScene.Flight));
+            reload.Send(new MissionsRestored(_save.Path, new List<MissionSaveState> { state }));
+            reload.Send(craft);
+            return reload;
+        }
+
         /// <summary>The craft between the planets, after its ejection from Kerbin.</summary>
         private static GameSnapshot Heliocentric(double ut)
         {
@@ -321,6 +337,75 @@ namespace ClaudiaKerman.Core.Tests
             Assert.False(open.HeldMissed, "window B closed by 25 days after its best departure");
             Assert.InRange(open.Optimal.DepartureUt, now, now + 1);
             Assert.InRange(open.Soonest.DepartureUt, now, now + 1);
+        }
+
+        [Fact]
+        public void AHeldWindowsCheapestIsFoundPastAFalseDipInItsRows()
+        {
+            // Soonest picked about 45 days before B: a row or two on from the anchor the coarse costs rise a little, then fall to B.
+            double b;
+            MohoB(out b);
+            var open = MohoWindows(b - 55 * Day, new WindowPick("Moho", WindowKind.Soonest, b - 45.1 * Day));
+            Assert.False(open.HeldMissed);
+            Assert.True(System.Math.Abs(open.Optimal.DepartureUt - b) < Day, "Optimal leaves " + (open.Optimal.DepartureUt - b) / Day + " days from B");
+        }
+
+        [Fact]
+        [Trait("Category", "Timing")]
+        public void AHeldSearchIsWellInsideTheToolCap()
+        {
+            double b;
+            MohoB(out b);
+            var snapshot = InOrbit("Kerbin", b - 55 * Day, 9000);
+            snapshot.StampMission(TimeVersusDeltaV.MostEfficient, new PlayerConfig().CraftCheckMarginPercent, new WindowPick("Moho", WindowKind.Soonest, b - 45.1 * Day));
+            var moho = snapshot.Bodies.Single(x => x.Name == "Moho");
+            Timing.Within(TransferWindows.BudgetMs, () => Assert.Null(TransferWindows.Find(snapshot, "Moho", MissionPrompts.ArrivalPe(moho), true, 15).Error));
+        }
+
+        /// <summary>Duna's held Optimal window from a new game, and a low Kerbin orbit at day 290, after it has closed, stamped with that pick.</summary>
+        private static GameSnapshot PastAHeldDunaWindow()
+        {
+            var snapshot = InOrbit("Kerbin", NewGame + 290 * Day, 9000);
+            snapshot.StampMission(TimeVersusDeltaV.MostEfficient, new PlayerConfig().CraftCheckMarginPercent, new WindowPick("Duna", WindowKind.Optimal, DunaWindows(NewGame).Optimal.DepartureUt));
+            return snapshot;
+        }
+
+        [Fact]
+        public void TheBlockFailsForAMissedHeldWindowRatherThanFlyTheNext()
+        {
+            // transfer_to's default window, from a snapshot stamped with the held pick and no revision since its window closed.
+            var snapshot = PastAHeldDunaWindow();
+            var ask = new TransferFlightAsk { Target = "Duna", TargetPe = 60000, StartUt = snapshot.Ut, TurnTime = 60, DvLeft = 9000, Auto = true };
+            var step = TransferFlight.Next(snapshot, ask);
+            Assert.Contains("window the player picked", step.Error);
+            Assert.Contains("missed", step.Error);
+        }
+
+        [Fact]
+        public void AWaitForAMissedHeldWindowTakesNoLaterWindow()
+        {
+            var snapshot = PastAHeldDunaWindow();
+            var duna = snapshot.Bodies.Single(x => x.Name == "Duna");
+            Assert.Null(WindowWaits.Window(snapshot, duna, TimeVersusDeltaV.MostEfficient, new PlayerConfig().CraftCheckMarginPercent, snapshot.WindowPick));
+        }
+
+        [Fact]
+        public void ALateApprovalAfterAHeldWindowClosedAsksThePlayerRatherThanMoveToTheNext()
+        {
+            var clock = new FakeAlarmClock();
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), LaunchPlan(), DunaPlan()));
+            ToLaunchPlan(mission, 1203.48, 20000);
+            clock.Take(mission);
+            // Back long after the held window has closed.
+            var back = Window(1203.48).DepartureUt + 120 * Day;
+            mission.Send(new UtAdvanced(back));
+            clock.Take(mission);
+            mission.Send(new Approve());
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("the Due Time moves to") || e.Text.Contains("so the script warps there"));
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("was missed") && e.Text.Contains("picks again"));
+            // Claudia's revision waits for the player's fresh pick.
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            Assert.True(mission.View.WindowPickNeeded);
         }
 
         /// <summary>The Moho windows from a low Kerbin orbit at <paramref name="ut"/>, keeping to <paramref name="pick"/>'s window when it holds one.</summary>

@@ -46,7 +46,8 @@ namespace ClaudiaKerman.Core.Missions
             // Only before the first run: the craft waits on the pad, and the launch carries the Due Time.
             if (plan.Manual || mission.RunStartUt != 0 || _snapshot == null) return;
             var planet = WindowWaits.Planet(_snapshot, mission.Goal);
-            var window = WindowFor(mission, planet);
+            bool heldMissed;
+            var window = WindowFor(mission, planet, out heldMissed);
             if (window == null) return;
             var due = WindowWaits.DueTime(window.DepartureUt, _ut);
             if (!due.HasValue) return;
@@ -132,12 +133,13 @@ namespace ClaudiaKerman.Core.Missions
             return first != null && first.Block == "return";
         }
 
-        private TransferWindow WindowFor(Mission mission, SnapshotBody planet)
+        private TransferWindow WindowFor(Mission mission, SnapshotBody planet, out bool heldMissed)
         {
+            heldMissed = false;
             if (planet == null || _snapshot == null) return null;
             var settings = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config));
             // The search starts now, not at the snapshot's time, which may be older (the player is back from another Mission).
-            return WindowWaits.Window(_snapshot.At(_ut), planet, settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, HeldPick(mission));
+            return WindowWaits.Window(_snapshot.At(_ut), planet, settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, HeldPick(mission), out heldMissed);
         }
 
         private static void ClearWindow(Mission mission)
@@ -170,10 +172,17 @@ namespace ClaudiaKerman.Core.Missions
                 ReturnWindowAlert(mission, plan, missed);
                 return false;
             }
-            var next = surface != null ? surface.Window : WindowFor(mission, planet);
+            var heldMissed = surface != null && surface.HeldMissed;
+            var next = surface != null ? surface.Window : WindowFor(mission, planet, out heldMissed);
             // On the pad that is the whole plan; from a surface in mid-Mission, the legs still to fly (this one too), which the craft's delta-v is for.
             var budget = mission.Plan == null ? 0 : mission.Plan.Sequences.Skip(surface != null ? Math.Max(0, StepOf(mission, plan) - 1) : 0).Sum(s => Math.Max(0, s.DeltaV));
             var head = "The " + mission.WindowPlanet + " window of " + KerbinTime.Date(missed) + " was missed";
+            // #966: the window the player picked has gone, and is never traded for a later one: Claudia's revised plan asks for a pick.
+            if (heldMissed)
+            {
+                MissedWindowAlert(mission, head + " and it was the window the player picked, so the player picks again");
+                return false;
+            }
             if (next == null || !WindowWaits.Fits(budget, planned, next.TotalDv, CraftDeltaV(_snapshot), _config.CraftCheckMarginPercent))
             {
                 WindowAlert(mission, head, next, planned);
@@ -204,8 +213,14 @@ namespace ClaudiaKerman.Core.Missions
         {
             var why = next == null ? "no next window was found" : "the next one, leaving " + KerbinTime.Date(next.DepartureUt) + ", costs "
                 + MetresPerSecond(next.TotalDv) + " against " + MetresPerSecond(planned) + " planned, outside the Craft Check budget";
-            Note(LogKind.Notice, head + " and " + why + ", so Claudia is revising the Mission Plan.");
-            AskForRevisedPlan(mission, MissionPrompts.WindowMissed(head + " and " + why + "."), MissionPrompts.WindowMissedNotice);
+            MissedWindowAlert(mission, head + " and " + why);
+        }
+
+        /// <summary>A missed window, <paramref name="what"/> saying why the plan can't move on: the plan is dropped and Claudia is asked for a revised one.</summary>
+        private void MissedWindowAlert(Mission mission, string what)
+        {
+            Note(LogKind.Notice, what + ", so Claudia is revising the Mission Plan.");
+            AskForRevisedPlan(mission, MissionPrompts.WindowMissed(what + "."), MissionPrompts.WindowMissedNotice);
         }
 
         /// <summary>#905: a return's planned window was missed: the plan is dropped and Claudia is asked, with the next cheap window if the block's own search finds one.</summary>
