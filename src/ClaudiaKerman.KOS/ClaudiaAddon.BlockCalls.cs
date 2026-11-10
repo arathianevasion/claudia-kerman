@@ -59,7 +59,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("BRAKEHEIGHTS", new OneArgsSuffix<Lexicon, Lexicon>(BrakeHeightsCall,
                 "Core Library only (reentry, every 0.25 s of a powered fall): the heights it brakes by, from v_down, a_up, g, ks, radar, soft, end; lexicon error, brake_h, last_h (-1 for a fall the engines can't stop)"));
             AddSuffix("BRAKETICK", new OneArgsSuffix<Lexicon, Lexicon>(BrakeTickCall,
-                "Core Library only (reentry, each tick of a powered finish): whether braking may start and the guarded throttle, from radar, speed, brake_h, last_h, uids, the shield limits, throttle, off_deg, rate_deg, drogues_called, mains_called, brake_why; lexicon error, start, why, open, chutes, throttle, zero_why, rate_deg, cut, trace"));
+                "Core Library only (reentry, each tick of a powered finish): whether braking may start, the guarded throttle and the cut for the final burn, from radar, speed, brake_h, last_h, uids, the shield limits, throttle, off_deg, rate_deg, up_deg, v_down, a_up, g, soft, end, drogues_called, mains_called, brake_why; lexicon error, start, why, open, chutes, throttle, zero_why, rate_deg, cut, cut_why, trace"));
             AddSuffix("ENTRYLOSS", new OneArgsSuffix<Lexicon, Lexicon>(EntryLossCall,
                 "Core Library only (reentry, a part count that fell): whether it carries on through a part loss in the air, from lost, altitude, air_top, on_ground, powered, thrust, uids, chute_mode, mode, entry, group; lexicon error, carry_on, powered, to_engines, regroup, light, chute_mode, finish, group, why"));
             AddSuffix("ENTRYSKIP", new OneArgsSuffix<Lexicon, Lexicon>(EntrySkipCall,
@@ -924,6 +924,10 @@ namespace ClaudiaKerman.KOS
         /// <summary>When this processor's last resort first burned, when its chute states first failed to read and when the burn's next trace line is due (UT, s; -1 for none), for <see cref="BrakeTickCall"/>.</summary>
         private double brakeLastResortUt = -1, brakeUnreadUt = -1, brakeTraceUt = -1;
 
+        /// <summary>When this processor's chutes all first read fully open (UT, s; -1 while one isn't), and whether its braking has begun the final wait under them, for <see cref="BrakeTickCall"/> (#969).</summary>
+        private double brakeAllOpenUt = -1;
+        private bool brakeFinal;
+
         /// <summary>
         /// <c>ADDONS:CLAUDIA:BRAKETICK</c> (#954, ADR 0014): <see cref="BlockCalls.BrakeTick"/> with the live state of the Chute Group's parachutes (<c>uids</c>), read here as Core has no game.
         /// Called every physics tick, so its time is logged at most once a second (guardrail 6). A failure asks Core with <c>chutes_unread</c>: no burn and no thrust until it has failed for a second, then the chutes that are out are cut and the landing goes on the engine (#954; there is no braking by radar under a canopy).
@@ -939,6 +943,7 @@ namespace ClaudiaKerman.KOS
                 ask["chutes"] = ReentryCraft.ChuteStates(shared.Vessel, uids);
                 tick = BlockCalls.BrakeTick(ask);
                 HoldBrake(tick);
+                NoteBrake(tick);
                 return KosValues.FromPlain(tick);
             }, () => string.Format(CultureInfo.InvariantCulture, "start {0} ({1}), chutes {2}, throttle {3:0.00} (zero: {4}), rate {5:0.0} deg/s", tick["start"], tick["why"], tick["chutes"], tick["throttle"], tick["zero_why"], tick["rate_deg"]), 1);
             if (tick != null) return (Lexicon)answer;
@@ -969,6 +974,8 @@ namespace ClaudiaKerman.KOS
             ask["last_resort_ut"] = brakeLastResortUt;
             ask["unread_ut"] = brakeUnreadUt;
             ask["trace_ut"] = brakeTraceUt;
+            ask["all_open_ut"] = brakeAllOpenUt;
+            ask["final"] = brakeFinal;
             return ask;
         }
 
@@ -990,6 +997,16 @@ namespace ClaudiaKerman.KOS
             brakeLastResortUt = (double)tick["last_resort_ut"];
             brakeUnreadUt = (double)tick["unread_ut"];
             brakeTraceUt = (double)tick["trace_ut"];
+            brakeAllOpenUt = (double)tick["all_open_ut"];
+            brakeFinal = (bool)tick["final"];
+        }
+
+        /// <summary>Notes for <c>reentry</c> what Core says changed this tick (#969: the thrust stopped for the final burn), as <c>BLOCKNOTE</c> would: KSP.log only. Written here, so the block spends no line on it.</summary>
+        private void NoteBrake(System.Collections.Generic.IDictionary<string, object> tick)
+        {
+            var note = tick["note"] as System.Collections.Generic.IDictionary<string, object>;
+            var bridge = KosBridge.Instance;
+            if (note != null && note.Count > 0 && shared.KSPPart != null && bridge != null) bridge.OnBlockTrace(shared.KSPPart.persistentId, "reentry", note, false);
         }
 
         /// <summary>

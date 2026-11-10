@@ -226,6 +226,12 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Contains("\"mains_called\", mains_out", ask);
             Assert.Contains("\"rate_deg\", vxcl(ship:facing:forevector, ship:angularvel):mag * constant:radtodeg", ask);
             Assert.Contains("\"brake_why\", brake_why", ask);
+            // #969: the final height, worked out in Core every tick with no drag, and how far off upright the craft is for the cut.
+            Assert.Contains("\"up_deg\", vang(ship:facing:forevector, ship:up:vector)", ask);
+            Assert.Contains("\"v_down\", -ship:verticalspeed", ask);
+            Assert.Contains("\"a_up\", reentry_up_accel(ship:facing:forevector)", ask);
+            Assert.Contains("\"soft\", reentry_powered_soft(), \"end\", reentry_powered_end()", ask);
+            Assert.Contains("\"why\", b:cut_why", CutLines());
         }
 
         [Fact]
@@ -320,6 +326,24 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(new[] { "1", "chutes_cut:unreadable", "none", "wait", "True,0.8" }, KosHarness.Run(script).ToArray());
         }
 
+        /// <summary>#969: the same lines on Core's real answer at the final height after a last resort, upright under chutes fully open and settled: one cut, noted as the final burn, and no chute called after it.</summary>
+        [Fact]
+        public void At_the_final_height_the_block_cuts_the_chutes_for_the_final_burn_and_calls_none_after()
+        {
+            var script = "global cuts is 0.\nglobal notes is list().\nlocal chute_mode is \"safe\".\n"
+                + "global ship is lexicon(\"parts\", list()).\nglobal ctx is lexicon(\"block\", \"reentry\").\n"
+                + "global addons is lexicon(\"claudia\", lexicon(\"blocknote\", { parameter a_, n. notes:add(n:phase + \":\" + n:why). })).\n"
+                + "function reentry_cut_chutes { parameter parts, last. set cuts to cuts + 1. return list(\"Mk16 last=\" + last). }\n"
+                + Function("reentry_chute_stage")
+                + "local b is test_brake_tick(lexicon(\"now\", 100, \"radar\", 20, \"speed\", 8, \"v_down\", 8, \"a_up\", 12, \"g\", 2.94, \"soft\", 2, \"end\", 10, \"up_deg\", 5, \"throttle\", 0.8, \"off_deg\", 1, \"rate_deg\", 1,"
+                + " \"brake_why\", \"last resort\", \"last_resort_ut\", 90, \"open_ut\", 85, \"open_count\", 1, \"settled\", true, \"all_open_ut\", 80, \"uids\", list(\"a\"), \"drogues_called\", true, \"drogue_call_ut\", 80,"
+                + " \"chutes\", list(lexicon(\"title\", \"Mk16\", \"state\", \"deployed\", \"drogue\", true)))).\n"
+                + CutLines()
+                + "print cuts. print notes:join(\";\"). print chute_mode. print b:throttle.\n"
+                + "print reentry_chute_stage(chute_mode, true, false, false, 100, 100, 0.5).\n";
+            Assert.Equal(new[] { "1", "chutes_cut:final burn", "none", "0.8", "wait" }, KosHarness.Run(script).ToArray());
+        }
+
         [Fact]
         public void Failing_for_under_a_second_the_block_cuts_nothing_and_still_calls_chutes()
         {
@@ -410,12 +434,36 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(BooleanValue.False, tick[new StringValue("trace")]);
             Assert.Equal(new StringValue("off aim"), tick[new StringValue("zero_why")]);
             Assert.Equal(ScalarValue.Create(0), tick[new StringValue("throttle")]);
+            // #969: the final wait's values; the block reads cut_why in its cut note.
+            Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("all_open_ut")]);
+            Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("final_h")]);
+            Assert.Equal(BooleanValue.False, tick[new StringValue("final")]);
+            Assert.Equal(new StringValue(""), tick[new StringValue("cut_why")]);
+            Assert.IsAssignableFrom<Lexicon>(tick[new StringValue("note")]);
+            var cut = (Lexicon)KosValues.FromPlain(BlockCalls.BrakeTick(new Dictionary<string, object>
+            {
+                { "radar", 20.0 }, { "speed", 8.0 }, { "v_down", 8.0 }, { "a_up", 12.0 }, { "g", 2.94 }, { "soft", 2.0 }, { "end", 10.0 }, { "up_deg", 5.0 }, { "throttle", 0.8 }, { "now", 100.0 },
+                { "brake_why", "last resort" }, { "last_resort_ut", 90.0 }, { "open_ut", 85.0 }, { "open_count", 1.0 }, { "settled", true }, { "all_open_ut", 80.0 }, { "drogues_called", true }, { "drogue_call_ut", 80.0 },
+                { "chutes", new List<object> { new Dictionary<string, object> { { "title", "Mk25 Drogue" }, { "state", ReentryBrake.Deployed }, { "drogue", true } } } },
+            }));
+            Assert.Equal(BooleanValue.True, cut[new StringValue("cut")]);
+            Assert.Equal(new StringValue("final burn"), cut[new StringValue("cut_why")]);
+            Assert.Equal(BooleanValue.True, cut[new StringValue("final")]);
+            var stop = (Lexicon)((Lexicon)KosValues.FromPlain(BlockCalls.BrakeTick(new Dictionary<string, object>
+            {
+                { "radar", 300.0 }, { "speed", 8.0 }, { "v_down", 8.0 }, { "a_up", 12.0 }, { "g", 2.94 }, { "soft", 2.0 }, { "end", 10.0 }, { "now", 100.0 }, { "brake_why", "last resort" }, { "all_open_ut", 80.0 },
+                { "chutes", new List<object> { new Dictionary<string, object> { { "title", "Mk25 Drogue" }, { "state", ReentryBrake.Deployed }, { "drogue", true } } } },
+            })))[new StringValue("note")];
+            Assert.Equal(new StringValue("thrust_stopped"), stop[new StringValue("phase")]);
+            Assert.IsAssignableFrom<ScalarValue>(stop[new StringValue("final_h")]);
 
             var unread = (Lexicon)KosValues.FromPlain(BlockCalls.BrakeTick(new Dictionary<string, object>
             {
                 { "now", 20.0 }, { "chutes_unread", true }, { "uids", new List<object> { "a" } }, { "unread_ut", 19.0 }, { "sample_ut", 19.8 }, { "sample_speed", 30.0 }, { "speed", 30.0 }, { "throttle", 1.0 }, { "open_ut", 10.0 }, { "open_count", 1.0 }, { "settled", true }, { "drogue_call_ut", 5.0 }, { "main_call_ut", 8.0 },
             }));
             Assert.Equal(BooleanValue.True, unread[new StringValue("cut")]);
+            Assert.Equal(new StringValue("unreadable"), unread[new StringValue("cut_why")]);
+            Assert.IsAssignableFrom<Lexicon>(unread[new StringValue("note")]);
             Assert.Equal(BooleanValue.False, unread[new StringValue("start")]);
             Assert.Equal(new StringValue("chutes unreadable"), unread[new StringValue("zero_why")]);
             Assert.Equal(new StringValue("unreadable"), unread[new StringValue("chutes")]);

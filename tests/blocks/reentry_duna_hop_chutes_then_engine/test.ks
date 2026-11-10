@@ -10,8 +10,8 @@ wait until ship:unpacked.
 
 // Over high ground the chute has no height to open in, and this would become a second last-resort test: say so with the height, then fail on ground_ok.
 local ground_m is ship:geoposition:terrainheight.
-local ground_ok is ground_m < 2000.
-print "reentry hop test: ground under the hop " + round(ground_m) + " m above sea level" + (choose "" if ground_ok else ", ABOVE 2000 m: this spawn cannot test chutes first (#954); the result fails on ground_ok").
+local ground_ok is ground_m < 1000.
+print "reentry hop test: ground under the hop " + round(ground_m) + " m above sea level" + (choose "" if ground_ok else ", ABOVE 1000 m: this spawn cannot test chutes first (#954); the result fails on ground_ok").
 local result is reentry().
 set result["ground_m"] to round(ground_m).
 set result["ground_ok"] to ground_ok.

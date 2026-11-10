@@ -12,6 +12,12 @@ The same craft (Mk16 at its default deploy altitude, an LV-T45 with a gimbal) in
 2. Thrust is zero while the chute opens (`zero_why` `chute opening`), and a spin over 20 deg/s makes `zero_why` read `spinning` with the throttle at 0 (the spin rule). Note the `rate_deg` before and after the cut.
 3. It lands under 3 m/s.
 
+**Since #969, the pause, the cut and the late burn.** After the last resort has slowed it and the chute is fully open and settled:
+
+4. A blocknote `phase thrust_stopped` (`why` `last resort`, `wait` `final burn wait`, with `agl`, `speed` and `final_h`), and the trace's throttle reads 0 with `zero_why` `final burn wait` from then on. No low-throttle burn under the canopy: note it if the trace shows thrust between that note and the cut.
+5. A blocknote `phase chutes_cut`, `why` `final burn`, naming the Mk16, at about the note's `final_h` (tens of metres at the canopy's speed), then the burn to the ground on surface retrograde with the gimbal free. If the craft is more than 30° off upright there, the trace reads `tipped, cut held` until it rights itself; say so on #969 with the angle, and whether it then burned with the chute still on. Note the trace's `rate_deg` at the cut, and whether the 30° guard (`zero_why` `off aim`) zeroed the thrust after it.
+6. `powered_dv` should be lower than before #969 (the last resort plus a short final burn). The pass lines don't change.
+
 ## Fly: `tests/blocks/reentry_duna_hop_chutes_then_engine` (chutes first)
 
 It has the Mk16 (its deploy altitude set to 3,000 m) and an LV-T45 (with a gimbal) from `reentry_duna_powered`, flown on `reentry`'s defaults. It starts as a near-vertical hop from 8 km over Duna (see the evidence below for why not an orbit; `test.cfg` has the numbers). Results are in `KSP.log`.
@@ -19,13 +25,13 @@ It has the Mk16 (its deploy altitude set to 3,000 m) and an LV-T45 (with a gimba
 0. Before anything else: the speed at 1,500 m AGL. It should read under 250 m/s (free fall alone bounds it at 209 m/s, with the ground at sea level or above). If the craft spawned under the ground, or a different part of Duna is high, say so.
 
 1. Blocknotes `phase chutes` appear as the chute goes through `armed`, `semi` and `deployed`, one for each change. The engine stays at zero throttle from the first `armed` note until the note reads `deployed` and the speed settles or about 8 s have passed.
-2. A blocknote `phase braking` says why: `chutes open`. Its height should be a few tens of metres at about 12 m/s. **If it says `last resort` with a healthy chute, say so on #954**: only a cut, missing or still-packed chute may fire it.
+2. A blocknote `phase braking` says why: `chutes open`. Its height should be a few tens of metres at about 12 m/s. Since #969 the chute is cut there (`phase chutes_cut`, `why` `final burn`) and the burn flies without it. **If it says `last resort` with a healthy chute, say so on #954**: only a cut, missing or still-packed chute may fire it.
 3. It burns only the last stretch: `powered_dv` in the tens of m/s, not hundreds, and `touchdown_speed` under 5 m/s, standing on its legs.
 4. The rate stays low: no tumbling, the craft holding surface retrograde on the wheels with RCS off. Below about 3 m/s it holds straight up. No site correction.
 5. Trace lines (`phase braking`) once a second give `throttle`, `off_deg`, `rate_deg` and `zero_why`. `rate_deg` is the tipping rate only, measured as `land` does: a craft rolling about its thrust axis reads low and keeps its thrust. Throttle reads 0 while `zero_why` is set: `chute opening`, `chutes unreadable`, `spinning` (tipping over 20 deg/s) or `off aim` (over 30).
 6. The result's `gimbal_locked` is false, and the LV-T45 gimbals for the next flight (a craft relaunched after this lands has its gimbal back).
 
-**Terrain caveat:** the block-test harness has no longitude key, so where the hop lands is not fixed. The test reads the ground height under the craft at the start (log line `reentry hop test: ground under the hop ... m above sea level`, and the result's `ground_m`) and fails on `ground_ok` if it is above about 2,000 m, so it cannot quietly become a second last-resort test. If it fails that way, the run says nothing about chutes first: note the height on #954 and fly again from another spawn. The 209 m/s bound and the chute heights assume ground near sea level.
+**Terrain caveat:** the block-test harness has no longitude key, so where the hop lands is not fixed. The test reads the ground height under the craft at the start (log line `reentry hop test: ground under the hop ... m above sea level`, and the result's `ground_m`) and fails on `ground_ok` if it is above about 1,000 m, so it cannot quietly become a second last-resort test. If it fails that way, the run says nothing about chutes first: note the height on #954 and fly again from another spawn. The 209 m/s bound and the chute heights assume ground near sea level.
 
 ## Evidence: the orbital scenario (2026-11-09, install 211d22f5): the last resort and the spin rule worked
 

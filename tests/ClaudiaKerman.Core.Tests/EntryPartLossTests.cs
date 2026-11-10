@@ -264,10 +264,11 @@ namespace ClaudiaKerman.Core.Tests
         public void Fresh_brake_times_hold_nothing()
         {
             var fresh = BlockCalls.EmptyBrakeHold();
-            foreach (var key in new[] { "open_ut", "kept_ut", "drogue_call_ut", "main_call_ut", "sample_ut", "last_resort_ut", "unread_ut", "trace_ut" }) Assert.Equal(-1.0, fresh[key]);
+            foreach (var key in new[] { "open_ut", "kept_ut", "drogue_call_ut", "main_call_ut", "sample_ut", "last_resort_ut", "unread_ut", "trace_ut", "all_open_ut" }) Assert.Equal(-1.0, fresh[key]);
             foreach (var key in new[] { "open_count", "kept_drogues", "kept_mains", "sample_speed", "decel" }) Assert.Equal(0.0, fresh[key]);
             Assert.Equal(false, fresh["settled"]);
             Assert.Equal(false, fresh["kept_settled"]);
+            Assert.Equal(false, fresh["final"]);
         }
 
         private static Dictionary<string, object> WithUids(Dictionary<string, object> ask, params object[] uids)
