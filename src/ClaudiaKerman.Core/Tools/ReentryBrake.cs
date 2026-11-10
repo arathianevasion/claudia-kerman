@@ -181,12 +181,12 @@ namespace ClaudiaKerman.Core.Tools
         /// <c>state</c>: stowed, armed, semi, deployed or cut, and <c>drogue</c>), decides the rule. A set (drogues or mains) is called once the block has called it (<c>drogues_called</c>,
         /// <c>mains_called</c>) or one of it reads past stowed; its time is <c>drogue_call_ut</c> or <c>main_call_ut</c>, handed back as <c>open_ut</c> is. A called chute is opening until all
         /// called chutes read fully open and settled (<see cref="ReentryBrake.ChutesSettled"/>, from <c>open_ut</c>, <c>now</c> and the slowing, sampled here from <c>speed</c> so it stays live during a burn, through <c>sample_ut</c>, <c>sample_speed</c> and <c>decel</c>, handed back the same way): no burn starts and the thrust is zero.
-        /// Once settled, <c>settled</c> is handed back and holds until a chute reads semi, so a burn's own slowing can't unsettle them. A chute called and still packed zeroes the thrust for its second, but only one really opening clears <c>open_ut</c>: a packed chute that fails doesn't restart the others' time.
+        /// Once settled, <c>settled</c> is handed back and holds until a chute reads semi, so a burn's own slowing can't unsettle them. A chute called and still packed zeroes the thrust for its second, but only one really opening clears <c>open_ut</c>: a packed chute that fails doesn't restart the others' time. One more chute reading deployed than <c>open_count</c> held starts that time again, as a set can go from packed to deployed between two ticks.
         /// A cut chute, one of <c>uids</c> no longer aboard, or one still packed <see cref="ReentryBrake.PackedFailSeconds"/> after its call has failed and holds nothing back.
         /// None to wait for is <c>why</c> "radar" (<see cref="ReentryBrake.DueByRadar"/>, as before #954). All fully open and settled is "chutes open", the same rule. With nothing opening and a chute
         /// failed it is "last resort" (<see cref="ReentryBrake.LastResortDue"/>); with only chutes not called yet, it waits for their call. Takes also <c>radar</c>, <c>speed</c>, <c>brake_h</c>, <c>last_h</c>,
         /// <c>shield_speed</c>, <c>shield_agl</c>, and <c>throttle</c>, <c>off_deg</c> (the angle off the steering aim) and <c>rate_deg</c> (deg/s). Gives <c>error</c> "", <c>start</c>, <c>why</c>,
-        /// <c>open</c> (all fully open with chutes to wait for), <c>open_ut</c> (when the called chutes all first read so, -1 if one is really opening or none is open), <c>settled</c>, <c>drogue_call_ut</c>, <c>main_call_ut</c>,
+        /// <c>open</c> (all fully open with chutes to wait for), <c>open_ut</c> (when the called chutes all first read so, -1 if one is really opening or none is open), <c>open_count</c>, <c>settled</c>, <c>drogue_call_ut</c>, <c>main_call_ut</c>,
         /// <c>chutes</c> (each title and state, for the note), <c>throttle</c> (0 for any <see cref="ReentryBrake.ZeroThrustWhy"/>), <c>zero_why</c> and <c>rate_deg</c> (-1 if unread, for the log).
         /// With no reading (the addon's answer to a failed call) nothing starts and the throttle is 0. Pure.
         /// </summary>
@@ -206,7 +206,7 @@ namespace ClaudiaKerman.Core.Tools
                     if (chute == null) continue;
                     var state = chute.ContainsKey("state") ? chute["state"] as string : null;
                     read.Add(chute.ContainsKey("title") ? chute["title"] + " " + state : "" + state);
-                    aboard.Add(new KeyValuePair<string, bool>(state, chute.ContainsKey("drogue") && chute["drogue"] is bool && (bool)chute["drogue"]));
+                    aboard.Add(new KeyValuePair<string, bool>(state, Flag(chute, "drogue")));
                 }
             }
             var drogueCallUt = CallTime(ask, "drogues_called", "drogue_call_ut", aboard, true, now);
@@ -228,20 +228,22 @@ namespace ClaudiaKerman.Core.Tools
                 if (chute.Key == ReentryBrake.Deployed) deployed++;
                 var callUt = chute.Value ? drogueCallUt : mainCallUt;
                 if (callUt < 0) continue;
-                if ((chute.Key == ReentryBrake.Stowed || chute.Key == ReentryBrake.Armed) && now - callUt >= ReentryBrake.PackedFailSeconds)
+                var packed = chute.Key == ReentryBrake.Stowed || chute.Key == ReentryBrake.Armed;
+                if (packed && now - callUt >= ReentryBrake.PackedFailSeconds)
                 {
                     failed = true;
                     continue;
                 }
                 healthy++;
-                if (chute.Key == ReentryBrake.Stowed || chute.Key == ReentryBrake.Armed) packing++;
+                if (packed) packing++;
                 else if (chute.Key != ReentryBrake.Deployed) filling++;
             }
             object uids;
             if (ask.TryGetValue("uids", out uids) && uids is IEnumerable && !(uids is string) && ((IEnumerable)uids).Cast<object>().Count() > aboard.Count) failed = true;
             var open = waitedFor > 0 && deployed == waitedFor;
             var heldUt = Number(ask, "open_ut", -1);
-            var openUt = healthy == packing || filling > 0 ? -1 : heldUt >= 0 ? heldUt : now;
+            var held = heldUt >= 0 && deployed <= Number(ask, "open_count", deployed);
+            var openUt = healthy == packing || filling > 0 ? -1 : held ? heldUt : now;
             var speed = Number(ask, "speed", double.PositiveInfinity);
             var sampleUt = Number(ask, "sample_ut", -1);
             var sampleSpeed = Number(ask, "sample_speed", speed);
@@ -257,7 +259,7 @@ namespace ClaudiaKerman.Core.Tools
                 sampleUt = now;
                 sampleSpeed = speed;
             }
-            var settled = openUt >= 0 && ((ask.ContainsKey("settled") && ask["settled"] is bool && (bool)ask["settled"]) || ReentryBrake.ChutesSettled(now - openUt, decel));
+            var settled = openUt >= 0 && ((held && Flag(ask, "settled")) || ReentryBrake.ChutesSettled(now - openUt, decel));
             var opening = packing > 0 || (healthy > 0 && !settled);
             var shieldSpeed = Number(ask, "shield_speed", 0);
             var shieldAgl = Number(ask, "shield_agl", 0);
@@ -275,6 +277,7 @@ namespace ClaudiaKerman.Core.Tools
                 { "why", waitedFor == 0 ? "radar" : byRadar ? "chutes open" : "last resort" },
                 { "open", open },
                 { "open_ut", openUt },
+                { "open_count", (double)deployed },
                 { "settled", settled },
                 { "drogue_call_ut", drogueCallUt },
                 { "main_call_ut", mainCallUt },
@@ -291,10 +294,15 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>When the set was first called, UT: the time held in <paramref name="heldKey"/>, or now on the first tick it is called; -1 while it isn't, so no flight inherits it from the last.</summary>
         private static double CallTime(IDictionary<string, object> ask, string calledKey, string heldKey, IEnumerable<KeyValuePair<string, bool>> aboard, bool drogues, double now)
         {
-            var flagged = ask.ContainsKey(calledKey) && ask[calledKey] is bool && (bool)ask[calledKey];
-            if (!flagged && !aboard.Any(c => c.Value == drogues && c.Key != ReentryBrake.Stowed && c.Key != ReentryBrake.Cut)) return -1;
+            if (!Flag(ask, calledKey) && !aboard.Any(c => c.Value == drogues && c.Key != ReentryBrake.Stowed && c.Key != ReentryBrake.Cut)) return -1;
             var held = Number(ask, heldKey, -1);
             return held >= 0 ? held : now;
+        }
+
+        private static bool Flag(IDictionary<string, object> ask, string key)
+        {
+            object value;
+            return ask.TryGetValue(key, out value) && value is bool && (bool)value;
         }
 
         private static IList<double> BrakeNumbers(IDictionary<string, object> ask, string key)

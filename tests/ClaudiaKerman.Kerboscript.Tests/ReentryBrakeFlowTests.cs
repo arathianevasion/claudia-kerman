@@ -259,6 +259,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(new StringValue("Mk16 Parachute deployed"), tick[new StringValue("chutes")]);
             Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("open_ut")]);
             Assert.Equal(BooleanValue.True, tick[new StringValue("settled")]);
+            Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("open_count")]);
             Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("drogue_call_ut")]);
             Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("main_call_ut")]);
             Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("rate_deg")]);

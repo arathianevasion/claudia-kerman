@@ -406,7 +406,7 @@ namespace ClaudiaKerman.Core.Tests
         /// <summary>Flies a tick on from the last, handing back what the addon holds between ticks.</summary>
         private static void CarryOn(Dictionary<string, object> ask, IDictionary<string, object> answer)
         {
-            foreach (var key in new[] { "open_ut", "settled", "drogue_call_ut", "main_call_ut", "sample_ut", "sample_speed", "decel" }) ask[key] = answer[key];
+            foreach (var key in new[] { "open_ut", "open_count", "settled", "drogue_call_ut", "main_call_ut", "sample_ut", "sample_speed", "decel" }) ask[key] = answer[key];
         }
 
         [Theory]
@@ -470,6 +470,33 @@ namespace ClaudiaKerman.Core.Tests
                 speed = Math.Max(5, speed - (throttle > 0 ? 8 : 0.2) * Dt);
             }
             Assert.InRange(onAt, ReentryBrake.SettleMinSeconds, ReentryBrake.SettleMinSeconds + 0.3);
+        }
+
+        [Fact]
+        public void Mains_going_from_packed_to_deployed_between_ticks_still_have_their_settle_time()
+        {
+            // Called under their deploy height, with a block tick spanning several physics frames, no tick need read them semi.
+            var drogues = Set(true, "deployed");
+            var ask = new Dictionary<string, object>
+            {
+                { "now", 100.0 }, { "speed", 40.0 }, { "throttle", FullThrottle }, { "open_ut", 80.0 }, { "settled", true }, { "decel", 0.2 }, { "mains_called", true },
+                { "chutes", drogues.Concat(Set(false, "armed")).ToList() },
+            };
+            var called = BlockCalls.BrakeTick(ask);
+            AssertNoThrust(called, ReentryBrake.WhyChuteOpening);
+            Assert.Equal(80.0, D(called, "open_ut"));
+
+            CarryOn(ask, called);
+            ask["now"] = 100.1;
+            ask["chutes"] = drogues.Concat(Set(false, "deployed")).ToList();
+            var open = BlockCalls.BrakeTick(ask);
+            AssertNoThrust(open, ReentryBrake.WhyChuteOpening);
+            Assert.Equal(100.1, D(open, "open_ut"));
+            Assert.Equal(false, open["settled"]);
+
+            CarryOn(ask, open);
+            ask["now"] = 104.2;
+            Assert.Equal(FullThrottle, D(BlockCalls.BrakeTick(ask), "throttle"));
         }
 
         [Fact]

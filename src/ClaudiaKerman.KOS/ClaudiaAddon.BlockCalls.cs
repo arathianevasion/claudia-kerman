@@ -842,8 +842,11 @@ namespace ClaudiaKerman.KOS
             return heights != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.BrakeHeights(null));
         }
 
-        /// <summary>The time (UT, s) this processor's powered finish first read its called chutes all fully open, for <see cref="BrakeTickCall"/>; -1 while they aren't.</summary>
+        /// <summary>The time (UT, s) this processor's powered finish first read its called chutes all fully open, for <see cref="BrakeTickCall"/>; -1 while one is really opening or none is open, and kept through a called chute still packed.</summary>
         private double brakeOpenUt = -1;
+
+        /// <summary>How many of this processor's chutes read fully open last tick, for <see cref="BrakeTickCall"/>: one more starts <see cref="brakeOpenUt"/> again.</summary>
+        private double brakeOpenCount;
 
         /// <summary>This processor's powered finish has read its open chutes settled, for <see cref="BrakeTickCall"/>; held until a chute is really opening again.</summary>
         private bool brakeSettled;
@@ -869,6 +872,7 @@ namespace ClaudiaKerman.KOS
                 ask["chutes"] = ReentryCraft.ChuteStates(shared.Vessel, uids);
                 ask["now"] = Planetarium.GetUniversalTime();
                 ask["open_ut"] = brakeOpenUt;
+                ask["open_count"] = brakeOpenCount;
                 ask["settled"] = brakeSettled;
                 ask["drogue_call_ut"] = brakeDrogueCallUt;
                 ask["main_call_ut"] = brakeMainCallUt;
@@ -877,6 +881,7 @@ namespace ClaudiaKerman.KOS
                 ask["decel"] = brakeDecel;
                 tick = BlockCalls.BrakeTick(ask);
                 brakeOpenUt = (double)tick["open_ut"];
+                brakeOpenCount = (double)tick["open_count"];
                 brakeSettled = (bool)tick["settled"];
                 brakeDrogueCallUt = (double)tick["drogue_call_ut"];
                 brakeMainCallUt = (double)tick["main_call_ut"];
