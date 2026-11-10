@@ -57,6 +57,33 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("auto", reentry.JettisonStage);
         }
 
+        /// <summary>
+        /// Review of #970: a script that sheds the stack itself after deorbit then asks reentry for separate "none" (nothing left to drop)
+        /// flies light, so deorbit must aim as reentry's "auto" does, not for the whole craft.
+        /// </summary>
+        [Theory]
+        [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\")). stage. set res to reentry(lexicon(\"separate\", \"none\")).")]
+        [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\")).\nSTAGE.\nset res to reentry(lexicon(\"separate\", \"none\")).")]
+        [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\")). drop_parts(lexicon(\"parts\", list(\"tank\"))). set res to reentry(lexicon(\"separate\", \"none\")).")]
+        [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\")). exec_node(lexicon(\"drop_empty\", list(\"tank\"))). set res to reentry(lexicon(\"separate\", \"none\")).")]
+        [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\")). tune_pe(lexicon(\"pe\", 30000)). set res to reentry(lexicon(\"separate\", \"none\")).")]
+        [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\")). ship:partstagged(\"dec\")[0]:getmodule(\"ModuleDecouple\"):doevent(\"decouple\"). set res to reentry(lexicon(\"separate\", \"none\")).")]
+        [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\")). toggle ag1. set res to reentry(lexicon(\"separate\", \"none\")).")]
+        [InlineData("local res is return(lexicon(\"body\", \"kerbin\")). stage. set res to reentry(lexicon(\"separate\", \"none\")).")]
+        public void A_separation_between_deorbit_and_reentry_reads_auto(string script)
+        {
+            Assert.False(ScriptReentry.Of(script).KeepsStack);
+        }
+
+        [Theory]
+        [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\")). print stage:number. set res to reentry(lexicon(\"separate\", \"none\")).")]
+        [InlineData("stage. local res is deorbit(lexicon(\"target\", \"ksc\")). coast(lexicon(\"ut\", time:seconds + 60)). set res to reentry(lexicon(\"separate\", \"none\")).")]
+        [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\", \"stage_limit\", 2)). set res to reentry(lexicon(\"separate\", \"none\", \"jettison_stage\", \"none\")).")]
+        public void Nothing_separating_between_deorbit_and_reentry_still_keeps_the_stack(string script)
+        {
+            Assert.True(ScriptReentry.Of(script).KeepsStack);
+        }
+
         [Fact]
         public void The_words_are_read_whatever_their_case_as_kOS_compares_them()
         {
