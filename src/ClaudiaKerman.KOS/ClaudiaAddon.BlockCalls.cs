@@ -59,7 +59,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("BRAKETICK", new OneArgsSuffix<Lexicon, Lexicon>(BrakeTickCall,
                 "Core Library only (reentry, each tick of a powered finish): whether braking may start and the guarded throttle, from radar, speed, brake_h, last_h, uids, the shield limits, throttle, off_deg, rate_deg, drogues_called, mains_called, brake_why; lexicon error, start, why, open, chutes, throttle, zero_why, rate_deg, cut, trace"));
             AddSuffix("ENTRYLOSS", new OneArgsSuffix<Lexicon, Lexicon>(EntryLossCall,
-                "Core Library only (reentry, a part count that fell): whether it carries on through a part loss in the air, from lost, altitude, air_top, on_ground, powered, thrust, chute_mode, mode, entry, group; lexicon error, carry_on, powered, to_engines, light, chute_mode, finish, group, why"));
+                "Core Library only (reentry, a part count that fell): whether it carries on through a part loss in the air, from lost, altitude, air_top, on_ground, powered, thrust, uids, chute_mode, mode, entry, group; lexicon error, carry_on, powered, to_engines, regroup, light, chute_mode, finish, group, why"));
             AddSuffix("ENTRYSKIP", new OneArgsSuffix<Lexicon, Lexicon>(EntrySkipCall,
                 "Core Library only (reentry, after a skip-out): whether it flies another pass, from passes, pe, air_top, entry_in, auto, max_duration, elapsed; lexicon error, refusal, max_duration"));
             AddSuffix("TURNPLAN", new OneArgsSuffix<Lexicon, Lexicon>(TurnPlanCall,
@@ -430,7 +430,10 @@ namespace ClaudiaKerman.KOS
             System.Collections.Generic.IDictionary<string, object> loss = null;
             var answer = Guarded("ENTRYLOSS", () =>
             {
-                loss = BlockCalls.EntryPartLoss(KosValues.ToDictionary(input), ReadEntryFinish, ReadChuteGroup);
+                var ask = KosValues.ToDictionary(input);
+                var uids = ask.ContainsKey("uids") && ask["uids"] is System.Collections.IEnumerable ? ((System.Collections.IEnumerable)ask["uids"]).Cast<object>().Select(u => Convert.ToString(u, CultureInfo.InvariantCulture)).ToList() : new System.Collections.Generic.List<string>();
+                ask["chutes"] = ReentryCraft.ChuteStates(shared.Vessel, uids);
+                loss = BlockCalls.EntryPartLoss(ask, ReadEntryFinish, ReadChuteGroup);
                 return KosValues.FromPlain(loss);
             }, () => string.Format(CultureInfo.InvariantCulture, "carry on {0}, {1}", loss["carry_on"], loss.ContainsKey("why") ? loss["why"] : ""));
             return loss != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.EntryPartLoss(KosValues.ToDictionary(input), null, null));

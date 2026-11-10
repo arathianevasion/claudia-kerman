@@ -22,7 +22,8 @@ The craft is a probe, a Mk16, a TD-12, an FL-T800 and an LV-T45, so it is a powe
 ### Watch
 
 6. **Watch, on any flight that really loses parts in the air** (overheating, a crash into the air): one `parts_lost` note per tick that saw a loss, and the Debrief's events name each part that went (`… was destroyed` or `… broke off`).
-7. **Watch:** a loss inside the half second after the block drops its own shield is taken as part of that drop, with no note. That costs nothing but the note: the chutes are read again before each opening, and thrust before every tick.
+7. **Watch, after the Mk16 is out:** decouple the TD-12 under the open canopy (fly it again). The note shows `chutes` 1 and the chute keeps the craft. The block mustn't light anything, and no other chute is armed.
+8. **Watch:** a loss inside the half second after the block drops its own shield is taken as part of that drop, with no note. That costs nothing but the note: the chutes are read again before each opening, and thrust before every tick.
 
 ## Check: a chute-only craft that loses its chutes but keeps an engine
 

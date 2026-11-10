@@ -65,7 +65,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         /// The craft: the pod, the engine e1, a drogue d and a main m in stage 1, all stowed; the block's state as a powered finish (<paramref name="powered"/>) or on chutes, both sets called, mid-burn under open chutes.
         /// <paramref name="finish"/> and <paramref name="group"/> are what ENTRYFINISH and CHUTEGROUP read once the parts have gone. <c>tick</c> runs the block's abort line, through the hook.
         /// </summary>
-        private static string Rig(bool powered, string finish, string group, double altitude = 16000, string mode = "safe")
+        private static string Rig(bool powered, string finish, string group, double altitude = 16000, string mode = "safe", string states = "list()")
         {
             var on = powered.ToString().ToLowerInvariant();
             return "global status is \"FLYING\".\n"
@@ -79,7 +79,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 + "global ship is lexicon(\"parts\", list(part_(\"pod\"), e1, chute(\"d\", \"parachuteDrogue\"), chute(\"m\", \"parachuteSingle\")), \"engines\", list(e1),\n"
                 + "  \"altitude\", " + altitude + ", \"availablethrust\", 0, \"geoposition\", lexicon(\"terrainheight\", 1000)).\n"
                 + "global addons is lexicon(\"claudia\", lexicon(\n"
-                + "  \"entryloss\", { parameter q. return test_entry_loss(q, " + finish + ", " + group + "). },\n"
+                + "  \"entryloss\", { parameter q. set q:chutes to " + states + ". return test_entry_loss(q, " + finish + ", " + group + "). },\n"
                 + "  \"blocknote\", { parameter b, n. notes:add(n:phase + \":\" + n:lost + \":\" + n:powered + \":\" + n:chutes). })).\n"
                 + "local opt is lexicon(\"min_ec_pct\", 10, \"max_duration\", 100000, \"abort_on_part_loss\", true, \"chute_mode\", \"" + mode + "\").\n"
                 + "local ctx is lexicon(\"block\", \"reentry\", \"opt\", opt, \"start_ut\", 0, \"parts\", 4, \"ec_tick\", { return 55. }).\n"
@@ -123,7 +123,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             {
                 "[]",
                 "lost=1 parts=3 powered=False engine=False mode=safe",
-                "drogues=True/False mains_out=False why= uids=d,m",
+                "drogues=False/False mains_out=False why= uids=d,m",
                 "lit= held=False shield_gone=True notes=parts_lost:1:False:2",
             }, Run(Rig(true, ChutesOnly, StageOne) + "lose(\"e1\").\n" + Show));
         }
@@ -150,6 +150,19 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 "drogues=False/True mains_out=True why= uids=",
                 "lit= held=False shield_gone=True notes=parts_lost:3:False:0",
             }, Run(Rig(true, ChutesOnly, NoChutes) + "lose(\"e1\"). lose(\"d\"). lose(\"m\").\n" + Show));
+        }
+
+        /// <summary>The addon reads the group's main as deployed: the finish and a fresh group would count only stowed chutes, so the group stays and the chute path doesn't go over to the engine under it.</summary>
+        [Fact]
+        public void A_loss_under_an_open_canopy_keeps_the_group_and_the_chutes()
+        {
+            Assert.Equal(new[]
+            {
+                "[]",
+                "lost=1 parts=3 powered=False engine=False mode=safe",
+                "drogues=False/True mains_out=True why= uids=d,m",
+                "lit= held=False shield_gone=True notes=parts_lost:1:False:2",
+            }, Run(Rig(false, OnEngine, NoChutes, states: "list(lexicon(\"title\", \"Chute m\", \"state\", \"deployed\"))") + "lose(\"d\").\n" + Show));
         }
 
         [Fact]

@@ -81,6 +81,46 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("none", loss["chute_mode"]); // no chutes left
         }
 
+        private static Dictionary<string, object> Out(Dictionary<string, object> ask, string state)
+        {
+            ask["chutes"] = new List<object> { new Dictionary<string, object> { { "title", "Mk16" }, { "state", state } } };
+            return ask;
+        }
+
+        [Theory]
+        [InlineData("deployed")]
+        [InlineData("semi")]
+        public void Under_a_canopy_already_out_a_chute_path_keeps_its_group_and_does_not_go_to_the_engine(string state)
+        {
+            var groupRead = false;
+            var loss = BlockCalls.EntryPartLoss(Out(Ask(powered: false), state), _ => Finish(true, "e1"), _ => { groupRead = true; return Group(); });
+            Assert.Equal(true, loss["carry_on"]);
+            Assert.Equal(false, loss["powered"]);
+            Assert.Equal(false, loss["regroup"]);
+            Assert.False(groupRead); // a fresh read counts only stowed chutes: the open one would drop out of the group
+            Assert.Equal(new List<object>(), loss["light"]);
+            Assert.Equal("safe", loss["chute_mode"]);
+        }
+
+        [Theory]
+        [InlineData("stowed", true)]
+        [InlineData("armed", true)] // called, still packed: not out yet
+        [InlineData("cut", true)]
+        [InlineData("deployed", false)]
+        public void Only_a_canopy_out_keeps_the_group(string state, bool regroup)
+        {
+            Assert.Equal(regroup, BlockCalls.EntryPartLoss(Out(Ask(powered: true, thrust: 50), state), _ => Finish(true, "e1"), _ => Group("m"))["regroup"]);
+        }
+
+        [Fact]
+        public void A_powered_finish_losing_its_engines_under_open_chutes_keeps_them_and_their_mode()
+        {
+            var loss = Loss(Out(Ask(powered: true, thrust: 0, chuteMode: "safe"), "deployed"), Finish(false), Group());
+            Assert.Equal(false, loss["powered"]);
+            Assert.Equal(false, loss["regroup"]);
+            Assert.Equal("safe", loss["chute_mode"]);
+        }
+
         [Fact]
         public void A_powered_finish_that_keeps_an_engine_giving_thrust_stays_on_its_engine_even_if_the_chutes_now_suffice()
         {

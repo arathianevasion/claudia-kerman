@@ -715,7 +715,7 @@ function reentry {
   local ec_watch is ctx:ec_tick.
   set ctx:ec_tick to {
     local lost is ctx:parts - ship:parts:length.
-    local loss is choose addons:claudia:entryloss(lexicon("lost", lost, "altitude", ship:altitude, "air_top", body_:atm:height, "on_ground", claudia_on_ground(), "powered", powered, "thrust", ship:availablethrust, "chute_mode", chute_mode, "mode", opt:chute_mode, "entry", entry_ask, "group", ask)) if lost > 0 else lexicon("carry_on", false).
+    local loss is choose addons:claudia:entryloss(lexicon("lost", lost, "altitude", ship:altitude, "air_top", body_:atm:height, "on_ground", claudia_on_ground(), "powered", powered, "thrust", ship:availablethrust, "uids", group:uids, "chute_mode", chute_mode, "mode", opt:chute_mode, "entry", entry_ask, "group", ask)) if lost > 0 else lexicon("carry_on", false).
     if loss:carry_on {
       set ctx:parts to ship:parts:length.
       set extra:parts_lost to extra:parts_lost + lost.
@@ -725,11 +725,12 @@ function reentry {
       reentry_light(ship:engines, loss:light).
       if loss:to_engines and held { lock steering to srfretrograde. }
       if not powered { set brake_why to "". } // engines gone: a chute may open under what is left of the burn
-      set group to reentry_group_of(ask, loss:group, ship:parts).
+      if loss:regroup {
+        set group to reentry_group_of(ask, loss:group, ship:parts).
+        if reentry_has_drogues(ship:parts, group) { set drogues_out to false. } // has_drogues is read again before an opening
+        if reentry_has_drogues(ship:parts, group, false) { set mains_out to false. }
+      }
       set chute_mode to loss:chute_mode.
-      set has_drogues to reentry_has_drogues(ship:parts, group).
-      if has_drogues { set drogues_out to false. }
-      if reentry_has_drogues(ship:parts, group, false) { set mains_out to false. }
       if reentry_shield_modules(shield_uid, ship:parts):length = 0 { set shield_gone to true. }
       addons:claudia:blocknote(ctx:block, lexicon("phase", "parts_lost", "lost", lost, "agl", round(reentry_agl()), "powered", powered, "chutes", group:uids:length, "why", loss:why)).
     }
