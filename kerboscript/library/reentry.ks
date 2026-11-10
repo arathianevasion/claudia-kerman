@@ -20,7 +20,7 @@
 //|   jettison_stage ["auto"]: drops that shield, unless its stack is kept; or "none".
 //|   hold ["retrograde"]: points the craft's forward axis at surface retrograde; "none" leaves it.
 //|   max_duration ["auto"]: the wait for the atmosphere plus 1800 s.
-//|   plus min_ec_pct (not with Pe in air), abort_on_part_loss (not in air: flies on), stage_limit.
+//|   plus min_ec_pct (not with Pe in air), abort_on_part_loss (in air: flies on), stage_limit.
 //| Extra results: max_g, max_temp_pct (hottest part, % of limit), geo,
 //| splashed, touchdown_speed (m/s; over 15 fails), passes (max 3; a skip-out waits for the
 //| next, else "skipped out ..."), shield_dropped, chutes_used, chutes_kept (titles), powered_dv (m/s), sun_elevation_deg, parts_lost.
@@ -711,11 +711,11 @@ function reentry {
   local brake_why is "".
   local chute_states is "".
   local gimbals is list().
-  // A part lost in the air (#958) doesn't end the block: each tick from here, before claudia_tick counts parts, Core's ENTRYLOSS says it carries on and re-reads the finish and the group, and the block flies what is left. Its own drops moved ctx:parts once the parts had left, so none counts. Above the air the abort stands.
+  // A part lost in the air (#958) doesn't end the block: each tick from here, before claudia_tick counts parts, Core's ENTRYLOSS says it carries on and re-reads the finish and the group, and the block flies what is left. Its own drops moved ctx:parts once the parts had left, so none counts. Above the air the abort stands, and Core is not asked.
   local ec_watch is ctx:ec_tick.
   set ctx:ec_tick to {
     local lost is ctx:parts - ship:parts:length.
-    local loss is choose addons:claudia:entryloss(lexicon("lost", lost, "altitude", ship:altitude, "air_top", body_:atm:height, "on_ground", claudia_on_ground(), "powered", powered, "thrust", ship:availablethrust, "uids", group:uids, "chute_mode", chute_mode, "mode", opt:chute_mode, "entry", entry_ask, "group", ask)) if lost > 0 else lexicon("carry_on", false).
+    local loss is choose addons:claudia:entryloss(lexicon("lost", lost, "altitude", ship:altitude, "air_top", body_:atm:height, "on_ground", claudia_on_ground(), "powered", powered, "thrust", ship:availablethrust, "uids", group:uids, "chute_mode", chute_mode, "mode", opt:chute_mode, "entry", entry_ask, "group", ask)) if lost > 0 and ship:altitude <= body_:atm:height else lexicon("carry_on", false).
     if loss:carry_on {
       set ctx:parts to ship:parts:length.
       set extra:parts_lost to extra:parts_lost + lost.

@@ -65,11 +65,11 @@ namespace ClaudiaKerman.Kerboscript.Tests
         /// The craft: the pod, the engine e1, a drogue d and a main m in stage 1, all stowed; the block's state as a powered finish (<paramref name="powered"/>) or on chutes, both sets called, mid-burn under open chutes.
         /// <paramref name="finish"/> and <paramref name="group"/> are what ENTRYFINISH and CHUTEGROUP read once the parts have gone. <c>tick</c> runs the block's abort line, through the hook.
         /// </summary>
-        private static string Rig(bool powered, string finish, string group, double altitude = 16000, string mode = "safe", string states = "list()")
+        private static string Rig(bool powered, string finish, string group, double altitude = 16000, string mode = "safe", string states = "list()", bool abortOnLoss = true)
         {
             var on = powered.ToString().ToLowerInvariant();
             return "global status is \"FLYING\".\n"
-                + "global notes is list().\nglobal lit is list().\nglobal steer_locked is false.\n"
+                + "global notes is list().\nglobal lit is list().\nglobal steer_locked is false.\nglobal asked is 0.\n"
                 + "function chute {\n parameter uid, name.\n"
                 + "  local m is lexicon(\"hasevent\", { parameter e. return e = \"deploy chute\". }).\n"
                 + "  return lexicon(\"uid\", uid, \"name\", name, \"stage\", 1, \"title\", \"Chute \" + uid, \"hasmodule\", { parameter n. return n = \"ModuleParachute\". }, \"getmodule\", { parameter n. return m. }).\n}\n"
@@ -79,9 +79,9 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 + "global ship is lexicon(\"parts\", list(part_(\"pod\"), e1, chute(\"d\", \"parachuteDrogue\"), chute(\"m\", \"parachuteSingle\")), \"engines\", list(e1),\n"
                 + "  \"altitude\", " + altitude + ", \"availablethrust\", 0, \"geoposition\", lexicon(\"terrainheight\", 1000)).\n"
                 + "global addons is lexicon(\"claudia\", lexicon(\n"
-                + "  \"entryloss\", { parameter q. set q:chutes to " + states + ". return test_entry_loss(q, " + finish + ", " + group + "). },\n"
+                + "  \"entryloss\", { parameter q. set asked to asked + 1. set q:chutes to " + states + ". return test_entry_loss(q, " + finish + ", " + group + "). },\n"
                 + "  \"blocknote\", { parameter b, n. notes:add(n:phase + \":\" + n:lost + \":\" + n:powered + \":\" + n:chutes). })).\n"
-                + "local opt is lexicon(\"min_ec_pct\", 10, \"max_duration\", 100000, \"abort_on_part_loss\", true, \"chute_mode\", \"" + mode + "\").\n"
+                + "local opt is lexicon(\"min_ec_pct\", 10, \"max_duration\", 100000, \"abort_on_part_loss\", " + abortOnLoss.ToString().ToLowerInvariant() + ", \"chute_mode\", \"" + mode + "\").\n"
                 + "local ctx is lexicon(\"block\", \"reentry\", \"opt\", opt, \"start_ut\", 0, \"parts\", 4, \"ec_tick\", { return 55. }).\n"
                 + "local body_ is lexicon(\"atm\", lexicon(\"height\", 50000)).\n"
                 + "local extra is lexicon(\"parts_lost\", 0).\n"
@@ -191,6 +191,17 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 "drogues=False/True mains_out=True why=chutes open uids=d,m",
                 "lit= held=False shield_gone=False notes=",
             }, Run(Rig(true, ChutesOnly, StageOne, altitude: 60000) + "lose(\"e1\").\n" + Show));
+        }
+
+        /// <summary>With <c>abort_on_part_loss</c> false a loss above the air ends nothing and the count stays fallen: Core isn't asked (nor the chutes read, nor KSP.log written) on each tick of the coast, only once the craft is in the air.</summary>
+        [Fact]
+        public void Above_the_air_without_the_abort_Core_is_not_asked_each_tick_until_the_craft_is_in_the_air()
+        {
+            Assert.Equal(new[] { "[]", "[]", "[]", "asked=0 lost=0", "[]", "asked=1 lost=1" },
+                Run(Rig(true, ChutesOnly, StageOne, altitude: 60000, abortOnLoss: false) + "lose(\"e1\").\n"
+                    + "print \"[\" + tick(ctx, 1) + \"]\". print \"[\" + tick(ctx, 2) + \"]\". print \"[\" + tick(ctx, 3) + \"]\".\n"
+                    + "print \"asked=\" + asked + \" lost=\" + extra:parts_lost.\n"
+                    + "set ship:altitude to 16000. print \"[\" + tick(ctx, 4) + \"]\". tick(ctx, 5). print \"asked=\" + asked + \" lost=\" + extra:parts_lost.\n"));
         }
 
         [Fact]

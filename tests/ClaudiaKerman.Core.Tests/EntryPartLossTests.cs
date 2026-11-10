@@ -104,12 +104,33 @@ namespace ClaudiaKerman.Core.Tests
 
         [Theory]
         [InlineData("stowed", true)]
-        [InlineData("armed", true)] // called, still packed: not out yet
+        [InlineData("armed", false)] // called, still packed: a fresh read counts only stowed chutes, so it would drop out
         [InlineData("cut", true)]
         [InlineData("deployed", false)]
-        public void Only_a_canopy_out_keeps_the_group(string state, bool regroup)
+        public void Only_a_chute_called_or_out_keeps_the_group(string state, bool regroup)
         {
             Assert.Equal(regroup, BlockCalls.EntryPartLoss(Out(Ask(powered: true, thrust: 50), state), _ => Finish(true, "e1"), _ => Group("m"))["regroup"]);
+        }
+
+        [Fact]
+        public void A_powered_finish_losing_its_engine_with_its_mains_called_but_packed_keeps_them_and_does_not_widen_the_group()
+        {
+            // Case A: a fresh group with the engine gone has no stowed chute in this Entry and would widen to a later stage's (#827).
+            var groupRead = false;
+            var loss = BlockCalls.EntryPartLoss(Out(Ask(powered: true, thrust: 0, chuteMode: "safe"), "armed"), _ => Finish(false), _ => { groupRead = true; return Group("later"); });
+            Assert.Equal(false, loss["regroup"]);
+            Assert.False(groupRead);
+            Assert.Equal("safe", loss["chute_mode"]);
+        }
+
+        [Fact]
+        public void A_powered_finish_losing_a_tank_with_its_mains_called_but_packed_keeps_them_so_braking_still_waits_for_the_canopy()
+        {
+            // Case B: a fresh group with only the armed chute aboard comes back empty: chute_mode "none" would send BRAKETICK no uids, and it would burn as the canopy fills.
+            var loss = Loss(Out(Ask(powered: true, thrust: 120, chuteMode: "safe"), "armed"), Finish(true, "e1"), Group());
+            Assert.Equal(true, loss["powered"]);
+            Assert.Equal(false, loss["regroup"]);
+            Assert.Equal("safe", loss["chute_mode"]);
         }
 
         [Fact]

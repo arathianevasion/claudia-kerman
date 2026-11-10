@@ -18,7 +18,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <para>Carrying on, it re-reads the craft as it now is: <c>ENTRYFINISH</c> (<paramref name="finishOf"/>, on <c>entry</c>, nothing more to drop) and <c>CHUTEGROUP</c> (<paramref name="groupOf"/>, on <c>group</c>, with <c>engine</c> as this decides it).
         /// <c>powered</c> is the finish's answer, or stays true while the craft still has thrust (<c>powered</c>, <c>thrust</c> kN), so a burn under way isn't dropped because the chutes would now do; unread, what the block had. <c>to_engines</c>: it has just gone over to its engines, so the
         /// block takes up its hold. <c>light</c> (kOS UIDs) are the engines the finish chose, none unless it chose them. <c>chute_mode</c>: "none" with no chute in the group; on a craft with no engine left the script's own (<c>mode</c>), as the chutes are now all it has; otherwise as it was (<c>chute_mode</c>), so a #954 cut stands.
-        /// <c>chutes</c>: the addon's reading of the group's chutes aboard (<c>uids</c>), as for <c>BRAKETICK</c>; one reading semi or deployed is out. Both readings count only stowed chutes, so with one out (<c>regroup</c> false) the group stays as it is, unread, and a chute path doesn't go over to its engine under an open canopy.
+        /// <c>chutes</c>: the addon's reading of the group's chutes aboard (<c>uids</c>), as for <c>BRAKETICK</c>; one reading armed (called, still packed), semi or deployed is out. Both readings count only stowed chutes, so with one out (<c>regroup</c> false) the group stays as it is, unread: a called chute stays in it for <c>BRAKETICK</c>'s wait, the group doesn't widen past it, and a chute path doesn't go over to its engine under a canopy.
         /// Gives <c>error</c> "", <c>carry_on</c>, <c>powered</c>, <c>to_engines</c>, <c>regroup</c>, <c>light</c>, <c>chute_mode</c>, <c>finish</c> and <c>group</c> (as those calls answered) and <c>why</c> for the note. With either delegate null (the addon's answer to a failed call) nothing is read and it still carries on. Pure.</para>
         /// </summary>
         public static IDictionary<string, object> EntryPartLoss(IDictionary<string, object> ask, Func<IDictionary<string, object>, IDictionary<string, object>> finishOf, Func<IDictionary<string, object>, IDictionary<string, object>> groupOf)
@@ -31,7 +31,7 @@ namespace ClaudiaKerman.Core.Tools
             finishAsk["drop"] = false;
             var finish = finishOf != null ? finishOf(finishAsk) : Error("the finish could not be read");
             var read = finish["error"] as string == "";
-            // A canopy of the group still out: the finish and a fresh group count only stowed chutes, so they'd miss it. It keeps the group, and a chute path stays on its chutes.
+            // A chute of the group called or out: the finish and a fresh group count only stowed chutes, so they'd miss it. It keeps the group, and a chute path stays on its chutes.
             var chutesOut = Opened(ask) > 0;
             var chosen = read && Flag(finish, "powered") && (wasPowered || !chutesOut);
             var powered = read ? chosen || (wasPowered && Number(ask, "thrust", 0) > 0) : wasPowered;
@@ -58,12 +58,12 @@ namespace ClaudiaKerman.Core.Tools
             };
         }
 
-        /// <summary>How many chutes in <c>chutes</c> (each with a <c>state</c>, as <c>BRAKETICK</c> reads them) are out: reading semi or deployed.</summary>
+        /// <summary>How many chutes in <c>chutes</c> (each with a <c>state</c>, as <c>BRAKETICK</c> reads them) are called or out: reading armed, semi or deployed.</summary>
         private static int Opened(IDictionary<string, object> ask)
         {
             object chutes;
             if (!ask.TryGetValue("chutes", out chutes) || !(chutes is IEnumerable)) return 0;
-            return ((IEnumerable)chutes).OfType<IDictionary<string, object>>().Count(c => c.ContainsKey("state") && (c["state"] as string == ReentryBrake.Deployed || c["state"] as string == "semi"));
+            return ((IEnumerable)chutes).OfType<IDictionary<string, object>>().Count(c => c.ContainsKey("state") && (c["state"] as string == ReentryBrake.Deployed || c["state"] as string == "semi" || c["state"] as string == ReentryBrake.Armed));
         }
 
         private static Dictionary<string, object> Copied(IDictionary<string, object> ask, string key)

@@ -12,7 +12,7 @@ plus 1 if burns follow the last. Drops the stack below it (lander's engine is ab
 jettison_stage ["auto"]: drops that shield, unless its stack is kept; or "none".
 hold ["retrograde"]: points the craft's forward axis at surface retrograde; "none" leaves it.
 max_duration ["auto"]: the wait for the atmosphere plus 1800 s.
-plus min_ec_pct (not with Pe in air), abort_on_part_loss (not in air: flies on), stage_limit.
+plus min_ec_pct (not with Pe in air), abort_on_part_loss (in air: flies on), stage_limit.
 Extra results: max_g, max_temp_pct (hottest part, % of limit), geo,
 splashed, touchdown_speed (m/s; over 15 fails), passes (max 3; a skip-out waits for the
 next, else "skipped out ..."), shield_dropped, chutes_used, chutes_kept (titles), powered_dv (m/s), sun_elevation_deg, parts_lost.
