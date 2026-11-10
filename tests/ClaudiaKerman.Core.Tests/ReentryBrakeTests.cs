@@ -406,7 +406,7 @@ namespace ClaudiaKerman.Core.Tests
         /// <summary>Flies a tick on from the last, handing back what the addon holds between ticks.</summary>
         private static void CarryOn(Dictionary<string, object> ask, IDictionary<string, object> answer)
         {
-            foreach (var key in new[] { "open_ut", "open_count", "settled", "kept_ut", "kept_settled", "kept_drogues", "kept_mains", "drogue_call_ut", "main_call_ut", "sample_ut", "sample_speed", "decel", "last_resort_ut", "unread_ut", "trace_ut" }) ask[key] = answer[key];
+            foreach (var key in new[] { "open_ut", "open_count", "settled", "kept_ut", "kept_settled", "kept_drogues", "kept_mains", "drogue_call_ut", "main_call_ut", "sample_ut", "sample_speed", "decel", "last_resort_ut", "unread_ut", "trace_ut", "all_open_ut", "final" }) ask[key] = answer[key];
         }
 
         [Theory]
@@ -908,6 +908,202 @@ namespace ClaudiaKerman.Core.Tests
             var ask = LastResortBurning("armed", "armed", mainCallUt: -1);
             ask["last_resort_ut"] = -1.0;
             Assert.Equal(0.8, D(BlockCalls.BrakeTick(ask), "throttle"));
+        }
+
+        // ---- Once the chutes have settled, the engine waits for the final burn and the chutes are cut for it (#969) ----
+        // Duna, m20261109-200745-96f6: after the last resort the craft burned ~110 s at ~0.1 throttle under a swinging canopy and lost its Mainsail.
+
+        /// <summary>8 m/s down under all chutes fully open since UT 80 (drogues called before the last resort, mains after), upright within <paramref name="up"/> degrees. Now is 100.</summary>
+        private static Dictionary<string, object> UnderCanopy(double radar, double up = 5, string why = "last resort", double aUp = AUp)
+        {
+            var ask = LastResortBurning("deployed", "deployed", why: why);
+            ask["radar"] = radar;
+            ask["speed"] = 8.0;
+            ask["brake_h"] = 12.0; // the sampled height, with the chutes' drag counted
+            ask["open_ut"] = 85.0;
+            ask["open_count"] = 1.0;
+            ask["settled"] = true;
+            ask["all_open_ut"] = 80.0;
+            foreach (var p in new Dictionary<string, object> { { "v_down", 8.0 }, { "a_up", aUp }, { "g", G }, { "soft", Soft }, { "end", End }, { "up_deg", up } }) ask[p.Key] = p.Value;
+            return ask;
+        }
+
+        /// <summary>The final height for <see cref="UnderCanopy"/>: 8 m/s to 2 on 12 / 1.2 - 2.94 m/s², 4.25 m, plus the 10 m end and a second of the fall, with no drag.</summary>
+        private const double FinalH = 22.25;
+
+        [Fact]
+        public void Last_resort_then_chutes_settled_the_thrust_goes_to_zero_and_waits_for_the_final_height()
+        {
+            var tick = BlockCalls.BrakeTick(UnderCanopy(300));
+            AssertNoThrust(tick, ReentryBrake.WhyFinalWait);
+            Assert.Equal(true, tick["final"]);
+            Assert.Equal(false, tick["cut"]);
+            Assert.Equal(true, tick["open"]);
+        }
+
+        [Fact]
+        public void Last_resort_with_the_chutes_not_yet_settled_burns_on()
+        {
+            var ask = UnderCanopy(300);
+            ask["all_open_ut"] = 99.0;
+            ask["decel"] = 3.0;
+            var tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(0.8, D(tick, "throttle"));
+            Assert.Equal(false, tick["final"]);
+            Assert.Equal(99.0, D(tick, "all_open_ut"));
+        }
+
+        [Fact]
+        public void The_time_all_read_fully_open_starts_on_the_first_tick_and_resets_when_one_isnt()
+        {
+            var ask = UnderCanopy(300);
+            ask["all_open_ut"] = -1.0;
+            Assert.Equal(100.0, D(BlockCalls.BrakeTick(ask), "all_open_ut"));
+            ask["chutes"] = Set(true, "deployed").Concat(Set(false, "semi")).ToList();
+            ask["all_open_ut"] = 90.0;
+            Assert.Equal(-1.0, D(BlockCalls.BrakeTick(ask), "all_open_ut"));
+        }
+
+        [Fact]
+        public void The_stop_is_noted_once()
+        {
+            var ask = UnderCanopy(300);
+            var note = (IDictionary<string, object>)BlockCalls.BrakeTick(ask)["note"];
+            Assert.Equal("thrust_stopped", note["phase"]);
+            Assert.Equal("last resort", note["why"]);
+            Assert.Equal(ReentryBrake.WhyFinalWait, note["wait"]);
+            Assert.Equal(300.0, Convert.ToDouble(note["agl"]));
+            Assert.Equal(22.0, Convert.ToDouble(note["final_h"]));
+            ask["final"] = true;
+            Assert.Empty((IDictionary<string, object>)BlockCalls.BrakeTick(ask)["note"]);
+            Assert.Empty((IDictionary<string, object>)Tick(300, 90, 400, 200, Chutes("deployed"), 1)["note"]);
+        }
+
+        [Fact]
+        public void Once_waiting_the_wait_holds_whatever_the_slowing_or_a_chute_then_reads()
+        {
+            var ask = UnderCanopy(300);
+            ask["final"] = true;
+            ask["all_open_ut"] = 99.0;
+            ask["decel"] = 3.0;
+            AssertNoThrust(BlockCalls.BrakeTick(ask), ReentryBrake.WhyFinalWait);
+            ask["chutes"] = Set(true, "cut").Concat(Set(false, "semi")).ToList();
+            AssertNoThrust(BlockCalls.BrakeTick(ask), ReentryBrake.WhyFinalWait);
+            // Every chute gone: nothing left to cut, so the radar rule's throttle.
+            ask["chutes"] = Set(true, "cut").Concat(Set(false, "cut")).ToList();
+            var tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(0.8, D(tick, "throttle"));
+            Assert.Equal(false, tick["final"]);
+        }
+
+        [Fact]
+        public void At_the_final_height_upright_the_chutes_are_cut_and_the_final_burn_flies()
+        {
+            var tick = BlockCalls.BrakeTick(UnderCanopy(20));
+            Assert.Equal(true, tick["cut"]);
+            Assert.Equal(ReentryBrake.CutForFinalBurn, tick["cut_why"]);
+            Assert.Equal(0.8, D(tick, "throttle"));
+            Assert.Equal("", tick["zero_why"]);
+            Assert.Equal(false, tick["open"]); // the gimbals are freed with the cut
+            // The block has cut them and sends no uids: the burn flies on the guards alone.
+            var ask = UnderCanopy(15);
+            ask["chutes"] = new List<object>();
+            tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(false, tick["cut"]);
+            Assert.Equal(0.8, D(tick, "throttle"));
+            ask["off_deg"] = 45.0;
+            AssertNoThrust(BlockCalls.BrakeTick(ask), ReentryBrake.WhyOffAim);
+            ask["off_deg"] = 5.0;
+            ask["rate_deg"] = 25.0;
+            AssertNoThrust(BlockCalls.BrakeTick(ask), ReentryBrake.WhySpinning);
+        }
+
+        [Fact]
+        public void The_final_height_counts_no_chute_drag()
+        {
+            var tick = BlockCalls.BrakeTick(UnderCanopy(300));
+            Assert.Equal(FinalH, D(tick, "final_h"), 2);
+            Assert.Equal(ReentryBrake.BrakeHeight(8, AUp, G, new double[] { 0 }, 300, Soft, End), D(tick, "final_h"), 6);
+            // With the canopy's drag counted it would be lower, too late once the chutes are cut.
+            // Half a canopy's drag at its 8 m/s terminal speed: k = 0.5 x 2.94 / 8^2.
+            Assert.True(ReentryBrake.BrakeHeight(8, AUp, G, Enumerable.Repeat(0.023, 20).ToList(), 300, Soft, End) < FinalH - 0.3);
+            // Under the sampled brake_h (12 m, drag counted) but over the final height: cut and burn, not wait.
+            Assert.Equal(true, BlockCalls.BrakeTick(UnderCanopy(FinalH - 0.5))["cut"]);
+            Assert.Equal(false, BlockCalls.BrakeTick(UnderCanopy(FinalH + 0.5))["cut"]);
+        }
+
+        [Fact]
+        public void More_than_30_degrees_off_upright_at_the_final_height_the_cut_is_held()
+        {
+            var tick = BlockCalls.BrakeTick(UnderCanopy(20, up: 40));
+            Assert.Equal(false, tick["cut"]);
+            AssertNoThrust(tick, ReentryBrake.WhyCutHeld);
+            Assert.Equal(true, BlockCalls.BrakeTick(UnderCanopy(20, up: 30))["cut"]);
+        }
+
+        [Fact]
+        public void Tipped_where_waiting_longer_would_leave_the_engine_unable_to_stop_it_burns_with_the_chutes_on()
+        {
+            // Full thrust with no drag stops 8 m/s in 3.31 m, plus half a second: 7.3 m.
+            var tick = BlockCalls.BrakeTick(UnderCanopy(7, up: 40));
+            Assert.Equal(false, tick["cut"]);
+            Assert.Equal(0.8, D(tick, "throttle"));
+            Assert.Equal("", tick["zero_why"]);
+            // Upright again down there, the chutes stay on: without them the engine can't stop it.
+            Assert.Equal(false, BlockCalls.BrakeTick(UnderCanopy(7))["cut"]);
+            // The guards still hold.
+            var ask = UnderCanopy(7, up: 40);
+            ask["off_deg"] = 45.0;
+            AssertNoThrust(BlockCalls.BrakeTick(ask), ReentryBrake.WhyOffAim);
+        }
+
+        [Fact]
+        public void A_chute_only_landing_never_cuts()
+        {
+            // Not braking: the fall's own ticks never cut, however low.
+            foreach (var radar in new[] { 300.0, 20, 5 })
+            {
+                var tick = BlockCalls.BrakeTick(UnderCanopy(radar, why: ""));
+                Assert.Equal(false, tick["cut"]);
+                Assert.Equal(false, tick["final"]);
+            }
+            // No engine to stop it: the chutes stay, at any height.
+            foreach (var radar in new[] { 300.0, 20, 5 }) Assert.Equal(false, BlockCalls.BrakeTick(UnderCanopy(radar, aUp: 0))["cut"]);
+            // With no thrust figure at all, as before #969.
+            Assert.Equal(false, Tick(5, 8, 32, 8, Chutes("deployed"), 1)["cut"]);
+        }
+
+        [Fact]
+        public void The_radar_brake_under_settled_chutes_starts_at_the_final_height_and_cuts_the_chutes()
+        {
+            // Not yet braking: the sampled brake_h (12 m, drag counted) is under the final height, which starts it.
+            var fall = UnderCanopy(20, why: "");
+            fall["main_call_ut"] = 85.0;
+            fall["open_ut"] = 85.0;
+            fall["open_count"] = 2.0;
+            var tick = BlockCalls.BrakeTick(fall);
+            Assert.Equal(true, tick["start"]);
+            Assert.Equal("chutes open", tick["why"]);
+            fall["radar"] = 30.0;
+            Assert.Equal(false, BlockCalls.BrakeTick(fall)["start"]);
+            // Braking by radar under them: the same wait, then the cut.
+            var braking = UnderCanopy(300, why: "chutes open");
+            braking["main_call_ut"] = 85.0;
+            AssertNoThrust(BlockCalls.BrakeTick(braking), ReentryBrake.WhyFinalWait);
+            braking["radar"] = 20.0;
+            Assert.Equal(true, BlockCalls.BrakeTick(braking)["cut"]);
+        }
+
+        [Fact]
+        public void The_final_wait_is_held_through_an_unreadable_tick()
+        {
+            var ask = UnreadTick(100);
+            ask["all_open_ut"] = 80.0;
+            ask["final"] = true;
+            var tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(80.0, D(tick, "all_open_ut"));
+            Assert.Equal(true, tick["final"]);
+            Assert.Equal("unreadable", BlockCalls.BrakeTick(UnreadTick(100, 99))["cut_why"]);
         }
 
         // ---- States the addon can't read (player, 2026-11-09): cut what is out and land on the engine ----

@@ -73,6 +73,51 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>Seconds of the fall added to the last-resort height, for the 0.25 s between the samples it is read from.</summary>
         public const double SampleLagSeconds = 0.5;
 
+        /// <summary>Why the thrust is zero (#969): braking under chutes all fully open and settled, the engine waits for the final height, where they are cut.</summary>
+        public const string WhyFinalWait = "final burn wait";
+
+        /// <summary>Why the thrust is zero (#969): at the final height but over <see cref="MaxCutTiltDeg"/> off upright, so the chutes are held and the engine waits.</summary>
+        public const string WhyCutHeld = "tipped, cut held";
+
+        /// <summary>The chutes are cut for the final burn only within this many degrees of upright (#969): cut tipped, the burn would start sideways.</summary>
+        public const double MaxCutTiltDeg = 30;
+
+        /// <summary><c>cut_why</c> when the chutes are cut for the final burn (#969); "unreadable" when their states can't be read.</summary>
+        public const string CutForFinalBurn = "final burn";
+
+        /// <summary><see cref="FinalStep"/>: cut the chutes and burn.</summary>
+        public const string StepCut = "cut";
+
+        /// <summary><see cref="FinalStep"/>: burn with the chutes on, on the guards alone.</summary>
+        public const string StepBurn = "burn";
+
+        private static readonly double[] NoDrag = { 0 };
+
+        /// <summary>The final brake height (m, #969): <see cref="BrakeHeight"/> with no drag at all, as the chutes will be cut. -1 with no thrust, or if not even all of it stops the fall before the ground.</summary>
+        public static double FinalHeight(double vDown, double aUp, double g, double radar, double soft, double end)
+        {
+            return aUp <= 0 ? -1 : BrakeHeight(vDown, aUp, g, NoDrag, radar, soft, end);
+        }
+
+        /// <summary>The height (m, #969) under which full thrust with no drag can't stop the fall: <see cref="LastResortHeight"/> with none. -1 if full thrust never would.</summary>
+        public static double FinalLastHeight(double vDown, double aUp, double g, double radar, double soft)
+        {
+            return aUp <= 0 ? -1 : LastResortHeight(vDown, aUp, g, NoDrag, radar, soft);
+        }
+
+        /// <summary>
+        /// What braking under chutes all fully open and settled does at <paramref name="radar"/> m (#969): <see cref="WhyFinalWait"/> above <paramref name="finalH"/>;
+        /// at or under it, <see cref="StepCut"/> within <see cref="MaxCutTiltDeg"/> of upright (<paramref name="upDeg"/>), else <see cref="WhyCutHeld"/>; and
+        /// <see cref="StepBurn"/>, the chutes kept, wherever the engine alone couldn't stop the fall (under <paramref name="lastH"/>, or either height -1): waiting longer or cutting would leave it falling.
+        /// </summary>
+        public static string FinalStep(double radar, double finalH, double lastH, double upDeg)
+        {
+            if (finalH < 0) return StepBurn;
+            if (radar > finalH) return WhyFinalWait;
+            if (lastH < 0 || radar <= lastH) return StepBurn;
+            return upDeg <= MaxCutTiltDeg ? StepCut : WhyCutHeld;
+        }
+
         /// <summary>
         /// Metres of fall a braking burn takes to bring the downward speed <paramref name="vDown"/> (m/s) to <paramref name="soft"/>, with <paramref name="net"/> m/s²
         /// of thrust over gravity (it may be negative) and drag k v² (k in 1/m) for each <paramref name="step"/> m of height below the craft, <paramref name="ks"/>
@@ -202,7 +247,13 @@ namespace ClaudiaKerman.Core.Tools
         /// <c>chutes</c> (each title and state, for the note), <c>throttle</c> (0 for any <see cref="ReentryBrake.ZeroThrustWhy"/>), <c>zero_why</c> and <c>rate_deg</c> (-1 if unread, for the log).
         /// With no reading (the addon's answer to a failed call) nothing starts and the throttle is 0.
         /// <para>A last resort under way (<c>brake_why</c> "last resort", the block's own record of the burn; its first tick is <c>last_resort_ut</c>, handed back): a set called at or after that time is passed over, so a later set can't interrupt the burn. A chute that counted as failed is not: if it opens after all, the thrust is zero until it settles. The spin and off-aim rules hold throughout.</para>
-        /// <para>The chute states unreadable (<c>chutes_unread</c>, the addon's flag when its read fails) with a group to read (<c>uids</c>): nothing starts, the thrust is zero and what was held is handed back untouched, so one bad tick costs no settling time. After <see cref="ReentryBrake.UnreadSeconds"/> of failing without a break (<c>unread_ut</c>, handed back; a read from an earlier flight doesn't count, judged by the <c>sample_ut</c> that came in), <c>cut</c> asks the block to cut what is out. The block then sends no <c>uids</c>, so <c>cut</c> is asked for once and the fall goes on the radar rule, as with no chutes.</para>
+        /// <para>The chute states unreadable (<c>chutes_unread</c>, the addon's flag when its read fails) with a group to read (<c>uids</c>): nothing starts, the thrust is zero and what was held is handed back untouched, so one bad tick costs no settling time. After <see cref="ReentryBrake.UnreadSeconds"/> of failing without a break (<c>unread_ut</c>, handed back; a read from an earlier flight doesn't count, judged by the <c>sample_ut</c> that came in), <c>cut</c> asks the block to cut what is out (<c>cut_why</c> "unreadable"). The block then sends no <c>uids</c>, so <c>cut</c> is asked for once and the fall goes on the radar rule, as with no chutes.</para>
+        /// <para>The final burn (#969): braking (a last resort or "chutes open") under chutes all reading fully open and settled (from <c>all_open_ut</c>, handed back, every chute aboard counted, a set passed over too), the engine waits:
+        /// <c>final</c>, handed back, holds that until no chute is left, whatever a chute or the slowing then reads. It waits with zero thrust (<see cref="ReentryBrake.WhyFinalWait"/>) for the final height, <c>final_h</c>
+        /// (<see cref="ReentryBrake.FinalHeight"/> from <c>v_down</c>, <c>a_up</c>, <c>g</c>, <c>soft</c>, <c>end</c>: no drag, as the chutes will be cut), and there, as <see cref="ReentryBrake.FinalStep"/> says from <c>up_deg</c>,
+        /// gives <c>cut</c> (<c>cut_why</c> <see cref="ReentryBrake.CutForFinalBurn"/>, <c>open</c> false so the gimbals are freed) and the guarded throttle, or holds the cut (<see cref="ReentryBrake.WhyCutHeld"/>), or burns with the chutes on.
+        /// The first tick of the wait gives <c>note</c> (empty otherwise), which the addon writes to the log for the block. Falling, chutes fully open and settled also start the braking at the final height if it is the higher.
+        /// A chute-only landing never asks, and with no thrust there is no final height: neither ever cuts this way.</para>
         /// <para><c>trace</c>: while braking (<c>brake_why</c> not ""), true once every <see cref="ReentryBrake.TraceSeconds"/>, through <c>trace_ut</c>, handed back. Pure.</para>
         /// </summary>
         public static IDictionary<string, object> BrakeTick(IDictionary<string, object> ask)
@@ -275,7 +326,12 @@ namespace ClaudiaKerman.Core.Tools
                     { "decel", decel },
                     { "last_resort_ut", lastResortUt },
                     { "unread_ut", unreadUt },
+                    { "all_open_ut", Number(ask, "all_open_ut", -1) },
+                    { "final", Flag(ask, "final") },
+                    { "final_h", -1.0 },
+                    { "note", new Dictionary<string, object>() },
                     { "cut", now - unreadUt >= ReentryBrake.UnreadSeconds },
+                    { "cut_why", "unreadable" },
                     { "trace", trace },
                     { "trace_ut", traceUt },
                     { "chutes", "unreadable" },
@@ -354,17 +410,39 @@ namespace ClaudiaKerman.Core.Tools
             var opening = packing > 0 || (healthy > 0 && !settled);
             var shieldSpeed = Number(ask, "shield_speed", 0);
             var shieldAgl = Number(ask, "shield_agl", 0);
+            var vDown = Number(ask, "v_down", 0);
+            var aUp = Number(ask, "a_up", 0);
+            var g = Number(ask, "g", 0);
+            var soft = Number(ask, "soft", 0);
+            var finalH = ReentryBrake.FinalHeight(vDown, aUp, g, radar, soft, Number(ask, "end", 0));
+            var heldAllOpenUt = Number(ask, "all_open_ut", -1);
+            var allOpenUt = !open ? -1 : heldAllOpenUt >= 0 ? heldAllOpenUt : now;
+            var heldFinal = Flag(ask, "final");
+            var final = brakeWhy != "" && waitedFor > 0 && (heldFinal || (open && ReentryBrake.ChutesSettled(now - allOpenUt, decel)));
+            var step = final ? ReentryBrake.FinalStep(radar, finalH, ReentryBrake.FinalLastHeight(vDown, aUp, g, radar, soft), Number(ask, "up_deg", 0)) : "";
+            var waiting = step == ReentryBrake.WhyFinalWait || step == ReentryBrake.WhyCutHeld;
+            var note = new Dictionary<string, object>();
+            if (waiting && !heldFinal)
+            {
+                note["phase"] = "thrust_stopped";
+                note["why"] = brakeWhy;
+                note["wait"] = step;
+                note["agl"] = Math.Round(radar);
+                note["speed"] = Math.Round(speed, 1);
+                note["final_h"] = Math.Round(finalH);
+            }
             var byRadar = waitedFor == 0 || (open && settled);
             var start = byRadar
-                ? ReentryBrake.DueByRadar(radar, Number(ask, "brake_h", -1), speed, shieldSpeed, shieldAgl)
+                ? ReentryBrake.DueByRadar(radar, Number(ask, "brake_h", -1), speed, shieldSpeed, shieldAgl) || (waitedFor > 0 && finalH >= 0 && radar <= finalH)
                 : !opening && failed && ReentryBrake.LastResortDue(radar, Number(ask, "last_h", -1), speed, shieldSpeed, shieldAgl);
-            var zeroWhy = ReentryBrake.ZeroThrustWhy(opening, rate, Number(ask, "off_deg", 0));
+            var zeroWhy = waiting ? step : ReentryBrake.ZeroThrustWhy(opening && !final, rate, Number(ask, "off_deg", 0));
+            var cut = step == ReentryBrake.StepCut;
             return new Dictionary<string, object>
             {
                 { "error", "" },
                 { "start", start },
                 { "why", waitedFor == 0 ? "radar" : byRadar ? "chutes open" : ReentryBrake.WhyLastResort },
-                { "open", open },
+                { "open", open && !cut },
                 { "open_ut", openUt },
                 { "open_count", (double)counted },
                 { "settled", settled },
@@ -379,7 +457,12 @@ namespace ClaudiaKerman.Core.Tools
                 { "decel", decel },
                 { "last_resort_ut", lastResortUt },
                 { "unread_ut", -1.0 },
-                { "cut", false },
+                { "all_open_ut", allOpenUt },
+                { "final", final },
+                { "final_h", finalH },
+                { "note", note },
+                { "cut", cut },
+                { "cut_why", cut ? ReentryBrake.CutForFinalBurn : "" },
                 { "trace", trace },
                 { "trace_ut", traceUt },
                 { "chutes", string.Join(", ", read.ToArray()) },
@@ -399,7 +482,7 @@ namespace ClaudiaKerman.Core.Tools
             {
                 { "open_ut", -1.0 }, { "open_count", 0.0 }, { "settled", false }, { "kept_ut", -1.0 }, { "kept_settled", false }, { "kept_drogues", 0.0 }, { "kept_mains", 0.0 },
                 { "drogue_call_ut", -1.0 }, { "main_call_ut", -1.0 }, { "sample_ut", -1.0 }, { "sample_speed", 0.0 }, { "decel", 0.0 },
-                { "last_resort_ut", -1.0 }, { "unread_ut", -1.0 }, { "trace_ut", -1.0 },
+                { "last_resort_ut", -1.0 }, { "unread_ut", -1.0 }, { "trace_ut", -1.0 }, { "all_open_ut", -1.0 }, { "final", false },
             };
         }
 
