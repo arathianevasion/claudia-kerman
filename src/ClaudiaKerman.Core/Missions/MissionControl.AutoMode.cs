@@ -45,9 +45,10 @@ namespace ClaudiaKerman.Core.Missions
             /// <summary>
             /// #967: the Sequence Plan the player pressed Warp to Due Time for with Auto Mode on, and that Due Time. Tied to the plan
             /// object and its Due Time, so a revised plan (a new object) or a moved Due Time doesn't inherit it. Saved as the Due Time
-            /// of the plan in hand (<see cref="DueWarpOf"/>).
+            /// of the plan in hand (<see cref="DueWarpOf"/>); null for none.
             /// </summary>
             public object DueWarpFor;
+            /// <summary>The Due Time <see cref="DueWarpFor"/> was warped to; read only while that is set.</summary>
             public double DueWarpUt;
         }
 
@@ -245,7 +246,8 @@ namespace ClaudiaKerman.Core.Missions
             if (!mission.AutoMode || plan.Manual) return;
             mission.DueWarpFor = plan;
             mission.DueWarpUt = plan.DueTimeUt.Value;
-            Note(LogKind.Notice, "Warping to the Due Time: Auto Mode approves it when the Due Time is reached, while you stay in the craft.");
+            // In a Blackout the Due Time waits for the player (ADR 0004): no promise for Auto Mode then.
+            if (!mission.Blackout) Note(LogKind.Notice, DueWarpNote);
         }
 
         /// <summary>
@@ -391,6 +393,8 @@ namespace ClaudiaKerman.Core.Missions
         private const string AutoModeApprovedNote = "Approved by Auto Mode.";
         /// <summary>Logged instead when Auto Mode approves at a Due Time the player warped to (#967).</summary>
         private const string AutoModeApprovedAtDueNote = "Approved by Auto Mode at the Due Time.";
+        /// <summary>Logged when the player presses Warp to Due Time with Auto Mode on (#967).</summary>
+        private const string DueWarpNote = "Warping to the Due Time: Auto Mode approves it when the Due Time is reached, while you stay in the craft.";
         /// <summary>Logged after the "Couldn't produce a safe script" card when Auto Mode re-plans it.</summary>
         private const string AutoModeReplannedNote = "Re-planned by Auto Mode.";
     }

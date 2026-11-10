@@ -21,7 +21,7 @@ namespace ClaudiaKerman.Core.Tests
     /// <summary>
     /// Auto Mode (spec #327, ticket #328, ADR 0009), driven through the Mission seam with hand-written streams: plans after
     /// the first Mission Plan are approved as they arrive, with "Approved by Auto Mode." after the card; the first Mission
-    /// Plan, a manual stretch and a Due Time still wait (but for one the player warped to with Auto Mode on, #967); ticking it approves a waiting plan and unticking leaves a run alone;
+    /// Plan, a manual stretch and a Due Time still wait (not one warped to with Auto Mode on, #967); ticking it approves a waiting plan and unticking leaves a run alone;
     /// the room check approves only while the Spending Cap has room for the Debrief and next plan request that follow; and
     /// the switch is saved with the Mission and new Missions take <c>default_auto_mode</c>.
     /// </summary>
@@ -346,6 +346,7 @@ namespace ClaudiaKerman.Core.Tests
         // ---- A Due Time the player warped to (#967) ----
 
         private const string ApprovedAtDue = "Approved by Auto Mode at the Due Time.";
+        private const string AutoModeWaitsForDueTime = "Auto Mode is waiting for you: a Due Time.";
 
         /// <summary>A Sequence Plan with a Due Time at UT 1250, after the on-pad snapshot's 1203.</summary>
         private static ScriptedResponse DuePlan()
@@ -372,7 +373,7 @@ namespace ClaudiaKerman.Core.Tests
             var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()));
             // On the way there nothing waits for the player: the log says Auto Mode approves at the Due Time.
             Assert.Equal("", mission.View.AutoModeStop);
-            Assert.Contains(mission.View.Log, e => e.Text.Contains("Auto Mode approves it when the Due Time is reached"));
+            Assert.Single(mission.View.Log, e => e.Text == "Warping to the Due Time: Auto Mode approves it when the Due Time is reached, while you stay in the craft.");
             mission.Send(new UtAdvanced(1250));
             Assert.Equal(MissionStage.Running, mission.View.Stage);
             var commands = mission.TakeCommands();
@@ -418,8 +419,6 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(MissionStage.Running, mission.View.Stage);
             Assert.Single(mission.View.Log, e => e.Text == ApprovedAtDue);
         }
-
-        private const string AutoModeWaitsForDueTime = "Auto Mode is waiting for you: a Due Time.";
 
         [Fact]
         public void AutoModeTurnedOffBeforeArrivalLeavesTheReachedDueTimeToThePlayerEvenWhenTurnedBackOn()
