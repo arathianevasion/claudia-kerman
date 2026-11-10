@@ -11,6 +11,12 @@ namespace ClaudiaKerman.Core.Tools
 {
     public static partial class BlockCalls
     {
+        /// <summary>How <see cref="EntryPartLoss"/>'s <c>why</c> begins when a chute path's loss took its mains and the finish chose its engines (#963).</summary>
+        public const string WhyMainsLostToEngines = "mains lost, on to the engines: ";
+
+        /// <summary>The same when the finish found no engine that can land it, so the craft stays on its drogues (#963).</summary>
+        public const string WhyMainsLostOnDrogues = "mains lost, staying on the drogues: ";
+
         /// <summary>
         /// <c>ADDONS:CLAUDIA:ENTRYLOSS</c>, for <c>reentry</c> (#958, ADR 0014), when its part count has fallen below what it last took as the craft. <c>carry_on</c> is whether the block goes on
         /// rather than abort: parts lost (<c>lost</c>) while off the ground (<c>on_ground</c>) at or under the air top (<c>altitude</c>, <c>air_top</c>, m), whatever <c>abort_on_part_loss</c> says. Above the air it is false and the
@@ -19,6 +25,8 @@ namespace ClaudiaKerman.Core.Tools
         /// <c>powered</c> is the finish's answer, or stays true while the craft still has thrust (<c>powered</c>, <c>thrust</c> kN), so a burn under way isn't dropped because the chutes would now do; unread, what the block had. <c>to_engines</c>: it has just gone over to its engines, so the
         /// block takes up its hold. <c>light</c> (kOS UIDs) are the engines the finish chose, none unless it chose them. <c>chute_mode</c>: "none" with no chute in the group; on a craft with no engine left the script's own (<c>mode</c>), as the chutes are now all it has; otherwise as it was (<c>chute_mode</c>), so a #954 cut stands.
         /// <c>chutes</c>: the addon's reading of the group's chutes aboard (<c>uids</c>), as for <c>BRAKETICK</c>; one reading armed (called, still packed), semi or deployed is out. Both readings count only stowed chutes, so with one out (<c>regroup</c> false) the group stays as it is, unread: a called chute stays in it for <c>BRAKETICK</c>'s wait, the group doesn't widen past it, and a chute path doesn't go over to its engine under a canopy.
+        /// The one exception is a chute path whose loss took its mains (#963: a chute of <c>uids</c> gone and no main left aboard uncut, each reading's <c>drogue</c> telling them apart): the drogues alone would land it too fast, so the finish's answer decides, and
+        /// <c>why</c> begins "mains lost, on to the engines: " or "mains lost, staying on the drogues: ". The group is still kept, so the powered finish's <c>BRAKETICK</c> waits for the drogues that are out or armed, and the lost main counts there as failed.
         /// Gives <c>error</c> "", <c>carry_on</c>, <c>powered</c>, <c>to_engines</c>, <c>regroup</c>, <c>light</c>, <c>chute_mode</c>, <c>finish</c> and <c>group</c> (as those calls answered) and <c>why</c> for the note. With either delegate null (the addon's answer to a failed call) nothing is read and it still carries on. Pure.</para>
         /// </summary>
         public static IDictionary<string, object> EntryPartLoss(IDictionary<string, object> ask, Func<IDictionary<string, object>, IDictionary<string, object>> finishOf, Func<IDictionary<string, object>, IDictionary<string, object>> groupOf)
@@ -31,9 +39,11 @@ namespace ClaudiaKerman.Core.Tools
             finishAsk["drop"] = false;
             var finish = finishOf != null ? finishOf(finishAsk) : Error("the finish could not be read");
             var read = finish["error"] as string == "";
-            // A chute of the group called or out: the finish and a fresh group count only stowed chutes, so they'd miss it. It keeps the group, and a chute path stays on its chutes.
+            // A chute of the group called or out: the finish and a fresh group count only stowed chutes, so they'd miss it. It keeps the group, and a chute path stays on its chutes,
+            // unless the loss took its mains (#963): then the finish's answer decides, and BRAKETICK, on the kept group, waits for the drogues that are out.
             var chutesOut = Opened(ask) > 0;
-            var chosen = read && Flag(finish, "powered") && (wasPowered || !chutesOut);
+            var mainsLost = chutesOut && !wasPowered && MainsLost(ask);
+            var chosen = read && Flag(finish, "powered") && (wasPowered || !chutesOut || mainsLost);
             var powered = read ? chosen || (wasPowered && Number(ask, "thrust", 0) > 0) : wasPowered;
             IDictionary<string, object> group = Error("kept: a chute of the group is out");
             if (!chutesOut)
@@ -54,8 +64,20 @@ namespace ClaudiaKerman.Core.Tools
                 { "chute_mode", uids == 0 ? "none" : powered ? Word(ask, "chute_mode") : Word(ask, "mode") },
                 { "finish", finish },
                 { "group", group },
-                { "why", read ? finish.ContainsKey("why") ? finish["why"] : "" : finish["error"] },
+                { "why", (!mainsLost ? "" : chosen ? WhyMainsLostToEngines : WhyMainsLostOnDrogues) + (read ? finish.ContainsKey("why") ? finish["why"] : "" : finish["error"]) },
             };
+        }
+
+        /// <summary>
+        /// Whether the parts lost took the group's mains (#963): a chute of <c>uids</c> is no longer aboard (<c>chutes</c> lists only those that are) and no main aboard is left uncut.
+        /// A chute with no <c>drogue</c> reading counts as a main, so it keeps the chutes.
+        /// </summary>
+        private static bool MainsLost(IDictionary<string, object> ask)
+        {
+            object uids, chutes;
+            var group = ask.TryGetValue("uids", out uids) && uids is IEnumerable && !(uids is string) ? ((IEnumerable)uids).Cast<object>().Count() : 0;
+            var aboard = ask.TryGetValue("chutes", out chutes) && chutes is IEnumerable ? ((IEnumerable)chutes).OfType<IDictionary<string, object>>().ToList() : new List<IDictionary<string, object>>();
+            return group > aboard.Count && !aboard.Any(c => !Flag(c, "drogue") && !(c.ContainsKey("state") && c["state"] as string == ReentryBrake.Cut));
         }
 
         /// <summary>How many chutes in <c>chutes</c> (each with a <c>state</c>, as <c>BRAKETICK</c> reads them) are called or out: reading armed, semi or deployed.</summary>

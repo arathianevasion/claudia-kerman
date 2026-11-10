@@ -70,14 +70,16 @@ namespace ClaudiaKerman.Kerboscript.Tests
         /// <summary>Fake engines, uid and whether lit: lit logs each one activated, and a stage firing would need the stage command, which the block's source never has.</summary>
         private const string Engines =
             "local activated is list().\n"
+            + "global ship is lexicon(\"control\", lexicon(\"pilotmainthrottle\", 1)).\n"
             + "function eng {\n parameter uid, ignition.\n"
-            + "  return lexicon(\"uid\", uid, \"ignition\", ignition, \"activate\", { activated:add(uid). }).\n}\n"
+            + "  return lexicon(\"uid\", uid, \"ignition\", ignition, \"activate\", { activated:add(uid + \"@\" + ship:control:pilotmainthrottle). }).\n}\n"
             + "local engs is list(eng(\"low\", false), eng(\"high\", false), eng(\"high2\", false), eng(\"lit\", true)).\n";
 
         [Fact]
         public void Only_the_engines_Core_chose_are_lit_part_by_part_and_a_lit_one_is_left()
         {
-            Assert.Equal(new[] { "high,high2", "high,high2" },
+            // Each at zero throttle (#963): lit in the air, none burns before BRAKETICK's word.
+            Assert.Equal(new[] { "high@0,high2@0", "high@0,high2@0" },
                 Run(Engines + "reentry_light(engs, list(\"high\", \"high2\", \"lit\")). print activated:join(\",\").\n"
                     + "for e in engs { if e:uid:startswith(\"high\") { set e:ignition to true. } }\n"
                     + "reentry_light(engs, list(\"high\", \"high2\")). print activated:join(\",\").\n"));
