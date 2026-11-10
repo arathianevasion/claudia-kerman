@@ -20,10 +20,10 @@
 //|   jettison_stage ["auto"]: drops that shield, unless its stack is kept; or "none".
 //|   hold ["retrograde"]: points the craft's forward axis at surface retrograde; "none" leaves it.
 //|   max_duration ["auto"]: the wait for the atmosphere plus 1800 s.
-//|   plus min_ec_pct (not with Pe in air), abort_on_part_loss, stage_limit.
-//| Extra results: max_g (peak g), max_temp_pct (hottest part, % of limit), geo (lat, lng, alt),
-//| splashed, touchdown_speed (m/s at contact; over 15 fails), passes (max 3; a skip-out waits for the
-//| next, else "skipped out ..."), shield_dropped, chutes_used, chutes_kept (titles), powered_dv (m/s), sun_elevation_deg.
+//|   plus min_ec_pct (not with Pe in air), abort_on_part_loss (in air: flies on), stage_limit.
+//| Extra results: max_g, max_temp_pct (hottest part, % of limit), geo,
+//| splashed, touchdown_speed (m/s; over 15 fails), passes (max 3; a skip-out waits for the
+//| next, else "skipped out ..."), shield_dropped, chutes_used, chutes_kept (titles), powered_dv (m/s), sun_elevation_deg, parts_lost.
 //| Fails with "body has no atmosphere", an orbit that never reaches the atmosphere, an option it can't read,
 //| "stack attached below the heat shield: <names>", a hard touchdown, or an abort (a mid-air abort still
 //| opens the parachutes if safe). Fly it after a return or a de-orbit burn, periapsis inside the atmosphere;
@@ -262,11 +262,11 @@ function reentry_fresh_group {
   return group.
 }
 
-// True if a stowed chute of group is a drogue.
+// True if a stowed chute of group is a drogue (drogues false: a main).
 function reentry_has_drogues {
-  parameter parts, group.
+  parameter parts, group, drogues is true.
   for p in reentry_chutes_in(parts) {
-    if reentry_in_group(p, group) and reentry_is_drogue(p:name) and reentry_stowed(p) {
+    if reentry_in_group(p, group) and reentry_is_drogue(p:name) = drogues and reentry_stowed(p) {
       return true.
     }
   }
@@ -372,29 +372,6 @@ function reentry_proper_g {
 function reentry_skipped_out {
   parameter in_air, height, atm_h, vspeed.
   return in_air and height > atm_h and vspeed > 0.
-}
-
-// "" or why a skip-out is the end: pe (m) is above the atmosphere, so there is no next pass, or the
-// craft has flown passes (counting this one) of the 3 it flies before failing one that keeps skipping out (#592).
-function reentry_skip_refusal {
-  parameter passes, pe, atm_h.
-  if pe >= atm_h {
-    return "skipped out: periapsis " + round(pe) + " m is above the atmosphere".
-  }
-  if passes >= 3 {
-    return "skipped out of the atmosphere " + passes + " times (periapsis " + round(pe) + " m)".
-  }
-  return "".
-}
-
-// max_duration "auto" after a skip-out: the time already run (elapsed, s), the wait for the next entry
-// (entry_in, s) and 1800 s. An explicit max_duration (a number the caller gave) stays: auto is whether it was "auto".
-function reentry_next_deadline {
-  parameter auto, current, elapsed, entry_in.
-  if auto {
-    return elapsed + entry_in + 1800.
-  }
-  return current.
 }
 
 // The decoupler modules on or beside the Entry Shield (shield_uid; "" for none): no other shield's (#823).
@@ -567,7 +544,7 @@ function reentry_up_accel {
 function reentry {
   parameter options is lexicon().
   local extra is lexicon("max_g", 0, "max_temp_pct", 0, "geo", lexicon(), "splashed", false, "touchdown_speed", -1, "passes", 0, "shield_dropped", false,
-    "chutes_used", list(), "chutes_kept", list(), "powered_dv", 0).
+    "chutes_used", list(), "chutes_kept", list(), "powered_dv", 0, "parts_lost", 0).
   local ctx is claudia_begin("reentry", options, reentry_defaults(), "auto").
   if ctx:error <> "" {
     return claudia_finish(ctx, false, reentry_option_error(options, ctx:error), extra).
@@ -734,6 +711,31 @@ function reentry {
   local brake_why is "".
   local chute_states is "".
   local gimbals is list().
+  // A part lost in the air (#958) doesn't end the block: each tick from here, before claudia_tick counts parts, Core's ENTRYLOSS says it carries on and re-reads the finish and the group, and the block flies what is left. Its own drops moved ctx:parts once the parts had left, so none counts. Above the air the abort stands, and Core is not asked.
+  local ec_watch is ctx:ec_tick.
+  set ctx:ec_tick to {
+    local lost is ctx:parts - ship:parts:length.
+    local loss is choose addons:claudia:entryloss(lexicon("lost", lost, "altitude", ship:altitude, "air_top", body_:atm:height, "on_ground", claudia_on_ground(), "powered", powered, "thrust", ship:availablethrust, "uids", group:uids, "chute_mode", chute_mode, "mode", opt:chute_mode, "entry", entry_ask, "group", ask)) if lost > 0 and ship:altitude <= body_:atm:height else lexicon("carry_on", false).
+    if loss:carry_on {
+      set ctx:parts to ship:parts:length.
+      set extra:parts_lost to extra:parts_lost + lost.
+      if loss:finish:error = "" { set finish to loss:finish. }
+      set powered to loss:powered.
+      set ask:engine to powered.
+      reentry_light(ship:engines, loss:light).
+      if loss:to_engines and held { lock steering to srfretrograde. }
+      if not powered { set brake_why to "". } // engines gone: a chute may open under what is left of the burn
+      if loss:regroup {
+        set group to reentry_group_of(ask, loss:group, ship:parts).
+        if reentry_has_drogues(ship:parts, group) { set drogues_out to false. } // has_drogues is read again before an opening
+        if reentry_has_drogues(ship:parts, group, false) { set mains_out to false. }
+      }
+      set chute_mode to loss:chute_mode.
+      if reentry_shield_modules(shield_uid, ship:parts):length = 0 { set shield_gone to true. }
+      addons:claudia:blocknote(ctx:block, lexicon("phase", "parts_lost", "lost", lost, "agl", round(reentry_agl()), "powered", powered, "chutes", group:uids:length, "why", loss:why)).
+    }
+    return ec_watch:call().
+  }.
 
   // Opens the parachutes due now (speed m/s, agl m, pressure atm). Open parachutes steer the craft
   // themselves, except while braking.
@@ -878,19 +880,14 @@ function reentry {
   until fell <> "" or not skipped {
     set skipped to false.
     set in_air to false.
-    local refusal is reentry_skip_refusal(passes, ship:periapsis, body_:atm:height).
-    if refusal <> "" {
-      set fell to refusal.
-    } else {
-      set entry_in to claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
-      if entry_in < 0 {
-        set fell to "skipped out onto an orbit that never reaches the atmosphere again (periapsis " + round(ship:periapsis) + " m)".
-      } else {
-        set opt:max_duration to reentry_next_deadline(auto_duration, opt:max_duration, time:seconds - ctx:start_ut, entry_in).
-        set fell to claudia_wait_until(ctx, time:seconds + entry_in).
-        if fell = "" {
-          set fell to claudia_warp_to(ctx, time:seconds + opt:max_duration + 3600, 0, fall_tick, cap).
-        }
+    set entry_in to claudia_fall_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
+    local skip is addons:claudia:entryskip(lexicon("passes", passes, "pe", ship:periapsis, "air_top", body_:atm:height, "entry_in", entry_in, "auto", auto_duration, "max_duration", opt:max_duration, "elapsed", time:seconds - ctx:start_ut)).
+    set fell to skip:refusal.
+    if fell = "" {
+      set opt:max_duration to skip:max_duration.
+      set fell to claudia_wait_until(ctx, time:seconds + entry_in).
+      if fell = "" {
+        set fell to claudia_warp_to(ctx, time:seconds + opt:max_duration + 3600, 0, fall_tick, cap).
       }
     }
   }
@@ -946,7 +943,7 @@ function reentry {
     return claudia_finish(ctx, false, fell, extra).
   }
 
-  if powered {
+  if powered or braking {
     claudia_release_controls().
   } else {
     unlock steering.

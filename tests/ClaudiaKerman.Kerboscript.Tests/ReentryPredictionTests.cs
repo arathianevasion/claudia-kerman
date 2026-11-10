@@ -47,7 +47,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var report = source.IndexOf("set extra:sun_elevation_deg to round(90 - vang(ship:up:vector, body(\"Sun\"):position), 1).", System.StringComparison.Ordinal);
             Assert.True(report > source.IndexOf("if fell <> \"\" {", System.StringComparison.Ordinal), "the field is set once the craft is down, past the abort");
             Assert.True(report < source.IndexOf("return claudia_finish(ctx, true, \"\", extra).", System.StringComparison.Ordinal), "and before the block ends");
-            Assert.Contains("//| next, else \"skipped out ...\"), shield_dropped, chutes_used, chutes_kept (titles), powered_dv (m/s), sun_elevation_deg.", source);
+            Assert.Contains("//| next, else \"skipped out ...\"), shield_dropped, chutes_used, chutes_kept (titles), powered_dv (m/s), sun_elevation_deg, parts_lost.", source);
         }
 
         [Fact]

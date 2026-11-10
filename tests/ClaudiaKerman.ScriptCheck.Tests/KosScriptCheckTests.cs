@@ -613,6 +613,8 @@ namespace ClaudiaKerman.ScriptCheck.Tests
         [InlineData("print addons:claudia:lowcharge(lexicon()):carry_on.")]
         [InlineData("print addons:claudia:brakeheights(lexicon()):brake_h.")]
         [InlineData("local t is addons:claudia:braketick(lexicon()).\nprint t:start.")]
+        [InlineData("print addons:claudia:entryloss(lexicon()):carry_on.")]
+        [InlineData("print addons:claudia:entryskip(lexicon()):refusal.")]
         [InlineData("local t is addons:claudia:TurnTime@.\nprint t(lexicon(\"max_stopping_time\", 2)).")]
         [InlineData("local e is addons:claudia:ejectionburn(lexicon(\"target\", \"Mun\", \"target_pe\", 30000)).\nadd node(e:ut, e:radial, e:normal, e:prograde).")]
         [InlineData("local c is addons:claudia.\nprint c:EjectionBurn(lexicon(\"target\", \"Minmus\", \"target_pe\", 20000, \"window\", \"next\")):dv.")]
