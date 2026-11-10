@@ -402,13 +402,19 @@ namespace ClaudiaKerman.Core.Tools
         /// anything else is an error); <c>leave_out</c> (<see cref="LeftOut"/>) is for the adapter's <paramref name="craft"/>. Gives <c>error</c> "", <c>burn_ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver
         /// node components), <c>dv</c>, and the landing: <c>lat</c>, <c>lng</c>, <c>error_km</c>, <c>landing_ut</c>. A best burn
         /// outside the accuracy gives its <c>error</c> with the landing; a search that could not run, only <c>error</c>.
-        /// #974: with <c>max_wait</c> a number and the target one of find_landing_site's last sites (<see cref="SitePasses.Shared"/>),
-        /// the search flies that site's pass; <c>pass_note</c> says why when it flew another.
+        /// #974: with <c>max_wait</c> a number and the target within accuracy_km of one of find_landing_site's recent sites (<see cref="SitePasses.Shared"/>),
+        /// the search flies that site's pass; <c>pass_note</c> says why when it flew another, or, with Daylight landing on, that the target matched no site.
         /// </summary>
         public static IDictionary<string, object> DeorbitBurn(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body,
             IReentryAir air, IReentryCraft craft)
         {
             return DeorbitBurn(input, snapshot, body, air, craft, SitePasses.Shared);
+        }
+
+        /// <summary>#974: forgets find_landing_site's recorded passes, for the adapter on a game load (quickload, revert): their timeline is gone.</summary>
+        public static void ForgetSitePasses()
+        {
+            SitePasses.Shared.Clear();
         }
 
         /// <summary>The same, following the sites recorded in <paramref name="sites"/>.</summary>
@@ -427,6 +433,8 @@ namespace ClaudiaKerman.Core.Tools
             BodyFrame frame;
             var problem = Reentry(snapshot, body, null, out at, out orbit, out frame);
             if (problem != null) return Error(problem);
+            var waitGiven = ask.ContainsKey("max_wait") && ask["max_wait"] is double;
+            var site = waitGiven ? sites.Of(snapshot.Craft.VesselId, at.Name, at.Radius, Number(ask, "lat", 0), Number(ask, "lng", 0), Number(ask, "accuracy_km", 5)) : null;
             var plan = Tools.DeorbitBurn.Find(at, orbit, new DeorbitAsk
             {
                 TargetLatitude = Number(ask, "lat", 0),
@@ -443,12 +451,14 @@ namespace ClaudiaKerman.Core.Tools
                 LaterLegsDv = snapshot.LaterLegsDv ?? 0,
                 Daylight = snapshot.DaylightLandingDefault,
                 SunAt = ut => body.SunElevation(at.Name, Number(ask, "lat", 0), Number(ask, "lng", 0), ut),
-                Site = ask.ContainsKey("max_wait") && ask["max_wait"] is double
-                    ? sites.Of(snapshot.Craft.VesselId, at.Name, Number(ask, "lat", 0), Number(ask, "lng", 0)) : null,
+                Site = site,
             }, air, craft, frame);
             if (plan.Landing == null || plan.Landing.Error != null) return Error(plan.Error ?? plan.Landing.Error);
             var result = Landing(plan.Landing, plan.ErrorKm);
             result["error"] = plan.Error ?? "";
+            // A max_wait given as a number is find_landing_site's max_wait_s as a rule: a target none of its sites matched says so, not silently.
+            if (plan.Note == null && site == null && waitGiven && snapshot.DaylightLandingDefault && plan.Error == null)
+                plan.Note = "the target is not one of find_landing_site's sites: flew deorbit's own choice, the cheapest lit pass, the earliest of a tie";
             if (plan.Note != null) result["pass_note"] = plan.Note;
             result["burn_ut"] = plan.BurnUt;
             result["prograde"] = plan.Prograde;

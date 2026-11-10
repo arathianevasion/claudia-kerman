@@ -26,9 +26,9 @@ namespace ClaudiaKerman.Core.Tests
             return Conic.FromState(ReentrySim.Mu, new Vec3(r, 0, 0), new Vec3(0, v * Math.Cos(i), v * Math.Sin(i)), 0);
         }
 
-        private static DeorbitPlan Find(double lat, double lng, Conic orbit = null, double maxWait = ReentrySim.RotationPeriod, double atmosphere = ReentrySim.AtmTop, double accuracyKm = 5, double earliest = 120, bool daylight = false, Func<double, double> sunAt = null, SitePass site = null)
+        private static DeorbitPlan Find(double lat, double lng, Conic orbit = null, double maxWait = ReentrySim.RotationPeriod, double atmosphere = ReentrySim.AtmTop, double accuracyKm = 5, double earliest = 120, bool daylight = false, Func<double, double> sunAt = null, SitePass site = null, double maxDv = 0)
         {
-            var ask = new DeorbitAsk { TargetLatitude = lat, TargetLongitude = lng, EarliestUt = earliest, MaxWait = maxWait, AccuracyKm = accuracyKm, DeltaVLeft = 5000, Daylight = daylight, SunAt = sunAt, Site = site };
+            var ask = new DeorbitAsk { TargetLatitude = lat, TargetLongitude = lng, EarliestUt = earliest, MaxWait = maxWait, AccuracyKm = accuracyKm, DeltaVLeft = 5000, Daylight = daylight, SunAt = sunAt, Site = site, MaxDv = maxDv };
             return DeorbitBurn.Find(ReentrySim.Kerbin(atmosphere), orbit ?? Circular(), ask, new ReentrySim.Atmosphere(), new ReentrySim.Capsule(), ReentrySim.Frame());
         }
 
@@ -657,6 +657,30 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         /// <summary>
+        /// #974's fix round: the site's pass can't be flown, and the lit pass whose sun is nearest its sun is over max_dv, while another lit pass fits.
+        /// The fallback flies the one that fits, with the note, rather than refusing with the dearer one's error.
+        /// </summary>
+        [Fact]
+        public void The_nearest_sun_fallback_skips_a_pass_over_budget_for_a_lit_one_that_fits()
+        {
+            // Half a degree north of the equator, off the 2 degree orbit's track at some passes: the second pass costs about 0.2 m/s more than the first.
+            const double lat = 0.5;
+            var orbit = Circular(inclinationDeg: 2);
+            var first = Find(lat, KscLng, orbit);
+            var second = Find(lat, KscLng, orbit, earliest: first.Landing.LandingUt);
+            var third = Find(lat, KscLng, orbit, earliest: second.Landing.LandingUt);
+            var lands = new[] { first.Landing.LandingUt, second.Landing.LandingUt, third.Landing.LandingUt };
+            Assert.True(second.DeltaV > first.DeltaV + 0.1 && lands[1] > lands[0] + 1000 && lands[2] > 120 + ReentrySim.RotationPeriod, first.DeltaV + " " + second.DeltaV + " " + string.Join(" ", lands));
+            // The site's pass lands past max_wait. The second pass's sun (70) is nearest the site's 73, the first's (40) is lit too; max_dv lets only the first fly.
+            var site = new SitePass { LandingUt = lands[2], SunDeg = 73 };
+            var plan = Find(lat, KscLng, orbit, daylight: true, sunAt: SunAtPasses(lands, new[] { 40.0, 70, 73 }, -30), site: site, maxDv: (first.DeltaV + second.DeltaV) / 2);
+            Assert.True(plan.Error == null, plan.Error);
+            Assert.InRange(plan.Landing.LandingUt, lands[0] - 300, lands[0] + 300);
+            Assert.NotNull(plan.Note);
+            Assert.Contains("40 degrees", plan.Note);
+        }
+
+        /// <summary>
         /// #974: with no site pass to follow, the earliest lit pass is flown as before. Through the block call: find_landing_site's last sites are
         /// followed only for a target that is one of them and a max_wait given as a number (its max_wait_s); "auto" or another target is today's rule.
         /// </summary>
@@ -679,17 +703,32 @@ namespace ClaudiaKerman.Core.Tests
             var later = call(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", (double)first["landing_ut"], "max_wait", 21549.425, "dv_left", 5000.0));
             var siteLanding = (double)later["landing_ut"];
             var sites = new SitePasses();
-            sites.Record("", "Kerbin", new[] { new LandingSite { Latitude = KscLat + 0.0004, Longitude = KscLng - 0.0004, PassUt = (double)later["burn_ut"], LandingUt = siteLanding, SunElevationDeg = 40 } });
+            // Recorded for another vessel: the craft flying deorbit is a lander decoupled from the one the tool ran for (#974's fix round).
+            sites.Record("mothership", "Kerbin", new[] { new LandingSite { Latitude = KscLat + 0.0004, Longitude = KscLng - 0.0004, PassUt = (double)later["burn_ut"], LandingUt = siteLanding, SunElevationDeg = 40 } });
+            Assert.NotEqual("mothership", snapshot.Craft.VesselId);
             Recorded = sites;
 
             var followed = call(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "dv_left", 5000.0));
             Assert.Equal("", followed["error"]);
             Assert.InRange((double)followed["landing_ut"], siteLanding - 300, siteLanding + 300);
             Assert.False(followed.ContainsKey("pass_note"));
+            // The site typed to 2 places (about 50 m off on Kerbin) is still that site.
+            var twoPlaces = call(Ask("lat", Math.Round(KscLat, 2), "lng", Math.Round(KscLng, 2), "earliest_ut", 120.0, "max_wait", 21549.425, "dv_left", 5000.0));
+            Assert.InRange((double)twoPlaces["landing_ut"], siteLanding - 300, siteLanding + 300);
+            Assert.False(twoPlaces.ContainsKey("pass_note"));
             var auto = call(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", "auto", "dv_left", 5000.0));
             Assert.Equal((double)first["burn_ut"], (double)auto["burn_ut"], 3);
-            var elsewhere = call(Ask("lat", KscLat, "lng", KscLng + 0.01, "earliest_ut", 120.0, "max_wait", 21549.425, "dv_left", 5000.0));
+            Assert.False(auto.ContainsKey("pass_note"));
+
+            // No site within accuracy_km of the target: today's earliest pass, and with Daylight landing on and max_wait a number, a note saying so.
+            var far = new SitePasses();
+            far.Record("", "Kerbin", new[] { new LandingSite { Latitude = KscLat + 1, Longitude = KscLng, PassUt = (double)later["burn_ut"], LandingUt = siteLanding, SunElevationDeg = 40 } });
+            Recorded = far;
+            var elsewhere = call(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "dv_left", 5000.0));
             Assert.True((double)elsewhere["landing_ut"] < siteLanding - 1000, "another target: today's earliest pass");
+            Assert.Contains("not one of find_landing_site's sites", (string)elsewhere["pass_note"]);
+            snapshot.DaylightLandingDefault = false;
+            Assert.False(call(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "dv_left", 5000.0)).ContainsKey("pass_note"));
         }
 
         private SitePasses Recorded = new SitePasses();

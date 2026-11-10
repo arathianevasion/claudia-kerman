@@ -49,7 +49,8 @@ namespace ClaudiaKerman.Core.Tests
             }
         }
 
-        private readonly PlanningTools _tools = PlanningTools.Default();
+        // #974: a record of its own, so these runs never write the game's (SitePasses.Shared).
+        private readonly PlanningTools _tools = PlanningTools.Default(null, new SitePasses());
 
         private static SnapshotBody Duna()
         {
@@ -179,7 +180,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("max_wait_s", result.GetProperty("note").GetString());
         }
 
-        /// <summary>#974: the answer is recorded for deorbit, each site with its pass's landing and sun, found by the site as printed (3 places) for this vessel and body.</summary>
+        /// <summary>#974: the answer is recorded for deorbit, each site with its pass's landing and sun, found by the site as printed (3 places) round this body.</summary>
         [Fact]
         public void Its_sites_are_recorded_for_deorbit_to_fly_their_passes()
         {
@@ -191,16 +192,16 @@ namespace ClaudiaKerman.Core.Tests
             using (var doc = JsonDocument.Parse(outcome.Json)) result = doc.RootElement.Clone();
             var sites = Sites(result);
             Assert.NotEmpty(sites);
+            var radius = Duna().Radius;
             foreach (var s in sites)
             {
-                var pass = passes.Of("v1", "Duna", Num(s, "latitude"), Num(s, "longitude"));
+                // Within 10 m: the site as printed is that site.
+                var pass = passes.Of("v1", "Duna", radius, Num(s, "latitude"), Num(s, "longitude"), 0.01);
                 Assert.NotNull(pass);
                 Assert.InRange(pass.LandingUt, Num(s, "landing_ut") - 1, Num(s, "landing_ut") + 1);
                 Assert.InRange(pass.SunDeg, Num(s, "sun_elevation_deg") - 0.06, Num(s, "sun_elevation_deg") + 0.06);
             }
-            Assert.Null(passes.Of("v2", "Duna", Num(sites[0], "latitude"), Num(sites[0], "longitude")));
-            Assert.Null(passes.Of("v1", "Kerbin", Num(sites[0], "latitude"), Num(sites[0], "longitude")));
-            Assert.Null(passes.Of("v1", "Duna", Num(sites[0], "latitude") + 0.01, Num(sites[0], "longitude")));
+            Assert.Null(passes.Of("v1", "Kerbin", radius, Num(sites[0], "latitude"), Num(sites[0], "longitude"), 5));
         }
 
         [Fact]

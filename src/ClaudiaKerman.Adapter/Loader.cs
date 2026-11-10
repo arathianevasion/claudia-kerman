@@ -96,6 +96,7 @@ namespace ClaudiaKerman.Adapter
             GameEvents.onHideUI.Add(HideUI);
             GameEvents.onShowUI.Add(ShowUI);
             GameEvents.onGameSceneLoadRequested.Add(SceneChanging);
+            GameEvents.onGameStateLoad.Add(GameLoaded);
         }
 
         // KSP refuses ClaudiaKerman.KOS.dll without kOS 1.6+ and only logs its own warning, and this assembly
@@ -132,6 +133,7 @@ namespace ClaudiaKerman.Adapter
             GameEvents.onHideUI.Remove(HideUI);
             GameEvents.onShowUI.Remove(ShowUI);
             GameEvents.onGameSceneLoadRequested.Remove(SceneChanging);
+            GameEvents.onGameStateLoad.Remove(GameLoaded);
             RemoveButtons();
             if (_missions != null) _missions.Detach();
             UnlockAll();
@@ -269,6 +271,12 @@ namespace ClaudiaKerman.Adapter
             _missions.MissionsList.UiHidden = false;
             // Each time Flight loads (including a revert), the Craft Check starts collapsed.
             if (scene == GameScenes.FLIGHT) _missions.Panel.FlightLoading();
+        }
+
+        // #974: a game load (quickload, revert, a save) discards the timeline find_landing_site's passes were worked out in, so deorbit forgets them.
+        private static void GameLoaded(ConfigNode game)
+        {
+            Core.Tools.BlockCalls.ForgetSitePasses();
         }
 
         private static bool SettingsSceneLoaded()

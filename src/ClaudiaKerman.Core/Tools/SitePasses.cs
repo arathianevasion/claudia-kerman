@@ -20,10 +20,12 @@ namespace ClaudiaKerman.Core.Tools
     }
 
     /// <summary>
-    /// #974: <c>find_landing_site</c>'s last answer on a body with air, so <c>deorbit</c> given one of its sites and a max_wait can fly the pass the
-    /// tool worked out, not the earliest lit one. Kept in memory for the game session: the tool and the block run in the same game, and the record
-    /// is matched by vessel, body and the site to the tool's 3 decimal places. Whether the pass is still in deorbit's window is the search's to find
-    /// (<see cref="DeorbitBurn"/>: a pass out of it is one it can't fly, so the nearest-sun fallback with a note). After a restart there is none,
+    /// #974: <c>find_landing_site</c>'s recent answers on bodies with air, so <c>deorbit</c> given one of their sites and a max_wait can fly the pass the
+    /// tool worked out, not the earliest lit one. Kept in memory for the game session (the tool and the block run in the same game) and forgotten on a
+    /// game load (<see cref="Clear"/>), so a pass from a discarded timeline is never followed. A target within deorbit's accuracy_km of a site on the same
+    /// body is that site: a site typed to fewer places, or flown by a lander decoupled from the vessel the tool ran for (a new vessel id), still matches.
+    /// Of several, the vessel's own answer wins, then the latest, then the nearest site. Whether the pass is still in deorbit's window is the search's to
+    /// find (<see cref="DeorbitBurn"/>: a pass out of it is one it can't fly, so the nearest-sun fallback with a note). After a restart there is none,
     /// and deorbit keeps its own rule (the earliest pass with the sun at 20 degrees or more).
     /// </summary>
     internal sealed class SitePasses
@@ -31,33 +33,58 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The game's one record, written by the tool and read by <c>DEORBITBURN</c>.</summary>
         public static readonly SitePasses Shared = new SitePasses();
 
-        /// <summary>A target this close to a site in latitude and longitude is that site, degrees: the tool prints 3 decimal places.</summary>
-        public const double MatchDeg = 0.001;
+        /// <summary>How many of the tool's answers are kept, the oldest dropped first.</summary>
+        public const int MaxCalls = 8;
+
+        private sealed class Call
+        {
+            public string VesselId;
+            public string Body;
+            public List<SitePass> Sites;
+        }
 
         private readonly object _lock = new object();
-        private string _vesselId = "";
-        private string _body = "";
-        private List<SitePass> _sites = new List<SitePass>();
+        /// <summary>The latest answer first.</summary>
+        private readonly List<Call> _calls = new List<Call>();
 
-        /// <summary>Replaces the record with the tool's answer for <paramref name="vesselId"/> round <paramref name="body"/>.</summary>
+        /// <summary>Keeps the tool's answer for <paramref name="vesselId"/> round <paramref name="body"/>, the latest of the record.</summary>
         public void Record(string vesselId, string body, IEnumerable<LandingSite> sites)
         {
             var passes = sites.Select(s => new SitePass { Latitude = s.Latitude, Longitude = s.Longitude, BurnUt = s.PassUt, LandingUt = s.LandingUt, SunDeg = s.SunElevationDeg }).ToList();
             lock (_lock)
             {
-                _vesselId = vesselId ?? "";
-                _body = body ?? "";
-                _sites = passes;
+                _calls.Insert(0, new Call { VesselId = vesselId ?? "", Body = body ?? "", Sites = passes });
+                if (_calls.Count > MaxCalls) _calls.RemoveRange(MaxCalls, _calls.Count - MaxCalls);
             }
         }
 
-        /// <summary>The recorded pass for a target at (<paramref name="lat"/>, <paramref name="lng"/>) of this vessel round this body; null for none.</summary>
-        public SitePass Of(string vesselId, string body, double lat, double lng)
+        /// <summary>Forgets every answer: a game load (quickload, revert) discards the timeline their passes were worked out in.</summary>
+        public void Clear()
         {
+            lock (_lock) _calls.Clear();
+        }
+
+        /// <summary>
+        /// The recorded pass for a target at (<paramref name="lat"/>, <paramref name="lng"/>) round <paramref name="body"/> (radius <paramref name="radiusM"/>):
+        /// a site within <paramref name="withinKm"/> of it, this vessel's answer first, then the latest, then the nearest; null for none.
+        /// </summary>
+        public SitePass Of(string vesselId, string body, double radiusM, double lat, double lng, double withinKm)
+        {
+            var kmPerDeg = radiusM * Math.PI / 180 / 1000;
             lock (_lock)
             {
-                if (!string.Equals(_vesselId, vesselId ?? "", StringComparison.Ordinal) || !string.Equals(_body, body ?? "", StringComparison.OrdinalIgnoreCase)) return null;
-                return _sites.FirstOrDefault(s => Math.Abs(s.Latitude - lat) <= MatchDeg && Math.Abs(LandingSiteSearch.Wrap180(s.Longitude - lng)) <= MatchDeg);
+                return _calls.Select((call, age) => new { call, age })
+                    .Where(c => string.Equals(c.call.Body, body ?? "", StringComparison.OrdinalIgnoreCase))
+                    .SelectMany(c => c.call.Sites.Select(site => new
+                    {
+                        site,
+                        own = string.Equals(c.call.VesselId, vesselId ?? "", StringComparison.Ordinal),
+                        c.age,
+                        km = LandingSiteSearch.ArcDegrees(site.Latitude, site.Longitude, lat, lng) * kmPerDeg,
+                    }))
+                    .Where(m => m.km <= withinKm)
+                    .OrderBy(m => m.own ? 0 : 1).ThenBy(m => m.age).ThenBy(m => m.km)
+                    .Select(m => m.site).FirstOrDefault();
             }
         }
     }

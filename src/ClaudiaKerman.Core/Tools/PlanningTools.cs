@@ -170,7 +170,13 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>Every tool the mod ships, in the fixed order the tools list is sent in (so the cached prefix never changes).</summary>
         public static PlanningTools Default(IScriptCheck scriptCheck = null)
         {
-            var tools = new List<IPlanningTool> { new PredictBurn(), new SolveBurn(), new StagePerformance(), new PlanAscent(), new FindLandingSite(), new FindPoi(), new PlanTransfer() };
+            return Default(scriptCheck, SitePasses.Shared);
+        }
+
+        /// <summary>The same, with find_landing_site recording its passes in <paramref name="passes"/> (#974), so a test keeps its own.</summary>
+        internal static PlanningTools Default(IScriptCheck scriptCheck, SitePasses passes)
+        {
+            var tools = new List<IPlanningTool> { new PredictBurn(), new SolveBurn(), new StagePerformance(), new PlanAscent(), new FindLandingSite { Passes = passes }, new FindPoi(), new PlanTransfer() };
             if (scriptCheck != null) tools.Add(new CheckScript(scriptCheck));
             return new PlanningTools(tools);
         }

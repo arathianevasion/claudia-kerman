@@ -307,7 +307,7 @@ namespace ClaudiaKerman.Core.Tools
 
             /// <summary>
             /// #974: the burn on find_landing_site's pass (one landing within a quarter orbit of its landing), the cheapest there within accuracy and budget.
-            /// If none, of the passes landing with the sun at <see cref="LandingSiteSearch.MinSunElevationDeg"/> or more, the one whose sun is nearest the
+            /// If none, of the passes within budget landing with the sun at <see cref="LandingSiteSearch.MinSunElevationDeg"/> or more, the one whose sun is nearest the
             /// site's, with a note saying so. Null when no such pass is within accuracy either: then the earliest rule decides.
             /// </summary>
             private DeorbitPlan FollowSite(List<DeorbitPlan> burns, out string unfollowed)
@@ -327,10 +327,11 @@ namespace ClaudiaKerman.Core.Tools
                     ? "lands over accuracy_km " + Km(_ask.AccuracyKm)
                     : "has no burn in max_wait that lands on the target" + (_ask.Daylight ? " in daylight" : "");
                 var passNamed = "find_landing_site's pass (landing UT " + Whole(site.LandingUt) + ", sun " + Tenth(site.SunDeg) + " degrees) " + why;
-                var lit = within.Where(burn => !onSite.Contains(burn) && !(Sun(burn) < LandingSiteSearch.MinSunElevationDeg)).ToList();
+                // Only a pass that can be flown is a fallback: one over budget would refuse while another lit pass fits.
+                var lit = within.Where(burn => !onSite.Contains(burn) && !(Sun(burn) < LandingSiteSearch.MinSunElevationDeg) && OverBudget(burn) == null).ToList();
                 if (lit.Count == 0)
                 {
-                    unfollowed = passNamed + ", and no other pass lands within accuracy_km with the sun at " + Whole(LandingSiteSearch.MinSunElevationDeg) + " degrees or more";
+                    unfollowed = passNamed + ", and no other pass lands within accuracy_km and budget with the sun at " + Whole(LandingSiteSearch.MinSunElevationDeg) + " degrees or more";
                     return null;
                 }
                 // A sun unread (here or in the site's report) is furthest, so the earliest such pass when none is read.
