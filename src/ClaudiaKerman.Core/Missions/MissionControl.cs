@@ -854,10 +854,12 @@ namespace ClaudiaKerman.Core.Missions
             var due = PendingDueTime;
             if (mission == null || mission.DueNotified || !due.HasValue || _ut < due.Value) return;
             mission.DueNotified = true;
+            _commands.Add(new DropWarp());
+            // #967: a Due Time the player warped to under Auto Mode is not theirs to approve: Auto Mode's log line follows, or its stop line.
+            if (AutoModeTakesDue(mission, mission.PendingSequence)) return;
             var text = _ut - due.Value > 60
                 ? "Due Time missed by " + KerbinTime.Span(_ut - due.Value) + ": " + mission.PendingSequence.Name + " waits for your Approval."
                 : "Due Time reached: " + mission.PendingSequence.Name + " is ready for your Approval.";
-            _commands.Add(new DropWarp());
             Note(LogKind.Notice, text);
             NeedsPlayer(text);
         }
@@ -875,6 +877,7 @@ namespace ClaudiaKerman.Core.Missions
                 return;
             }
             _commands.Add(new WarpToUt(due.Value));
+            DueWarpPressed(_mission, _mission.PendingSequence);
         }
 
         /// <summary>Go to <i>vessel</i> is on offer: the Due Time has been reached and the player is not in the Mission's vessel.</summary>

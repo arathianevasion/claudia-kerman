@@ -42,6 +42,13 @@ namespace ClaudiaKerman.Core.Missions
             public string AutoModeRoomStop = "";
             /// <summary>The stop line last written to the log, so a wait that lasts through many inputs is logged once (not saved).</summary>
             public string AutoModeStopLogged = "";
+            /// <summary>
+            /// #967: the Sequence Plan the player pressed Warp to Due Time for with Auto Mode on, and that Due Time. Tied to the plan
+            /// object and its Due Time, so a revised plan (a new object) or a moved Due Time doesn't inherit it. Saved as the Due Time
+            /// of the plan in hand (<see cref="DueWarpOf"/>).
+            /// </summary>
+            public object DueWarpFor;
+            public double DueWarpUt;
         }
 
         /// <summary>What a plan in hand waits for, though the player's Approval was given in advance.</summary>
@@ -51,7 +58,10 @@ namespace ClaudiaKerman.Core.Missions
             FirstMissionPlan,
             /// <summary>Only the player flies a manual stretch.</summary>
             ManualStretch,
-            /// <summary>A Due Time is a wait that needs the player (ADR 0004), even once it is reached; a coast checkpoint's only once they have left (#775).</summary>
+            /// <summary>
+            /// A Due Time is a wait that needs the player (ADR 0004), even once it is reached; a coast checkpoint's only once they have left (#775),
+            /// and one they warped to with Auto Mode on only while they are away from the craft (#967).
+            /// </summary>
             DueTime,
             /// <summary>Auto Mode only: the Spending Cap has no room for the Debrief and next plan request that follow.</summary>
             NoRoom,
@@ -72,6 +82,8 @@ namespace ClaudiaKerman.Core.Missions
             mission.AutoModeHeldFor = null;
             mission.AutoModeApprovedFor = null;
             mission.AutoModeReplanned = false;
+            // #967: a warp to the Due Time is Auto Mode's to finish only if Auto Mode was on when it was pressed and stayed on.
+            mission.DueWarpFor = null;
             Event(mission, "auto_mode", on ? "on" : "off");
         }
 
@@ -125,6 +137,7 @@ namespace ClaudiaKerman.Core.Missions
             if (mission.Blackout) mission.ConfirmPrompt = null;
             var missionPlan = mission.Stage == MissionStage.AwaitingPlanApproval;
             var plan = mission.PendingSequence;
+            var atDue = false;
             if (missionPlan)
             {
                 if (mission.SequencesProposed == 0 && !mission.MissionPlanApproved)
@@ -160,8 +173,14 @@ namespace ClaudiaKerman.Core.Missions
                 // The one exception (#775): Auto Mode may stand in at a coast checkpoint's Due Time, with the player still in the craft, and at no other kind.
                 if (plan.DueTimeUt.HasValue && !(mission.AutoMode && !mission.Blackout && SoftDueTime(mission, plan)))
                 {
-                    WaitsForPlayer(mission, AdvanceWait.DueTime, plan.Name);
-                    return;
+                    // #967: the Due Time the player warped to with Auto Mode on, in the craft: Auto Mode approves once it is reached.
+                    if (!AutoModeTakesDue(mission, plan))
+                    {
+                        WaitsForPlayer(mission, AdvanceWait.DueTime, plan.Name);
+                        return;
+                    }
+                    if (_ut < plan.DueTimeUt.Value) return;
+                    atDue = true;
                 }
             }
             object inHand = missionPlan ? (object)mission.Plan : plan;
@@ -186,9 +205,47 @@ namespace ClaudiaKerman.Core.Missions
             {
                 mission.AutoModeApprovedFor = inHand;
                 RetractPlanNews();
-                Note(LogKind.Notice, AutoModeApprovedNote);
+                Note(LogKind.Notice, atDue ? AutoModeApprovedAtDueNote : AutoModeApprovedNote);
             }
             Approval();
+        }
+
+        /// <summary>
+        /// #967: Auto Mode stands in at this Due Time: the player pressed Warp to Due Time for this plan and this Due Time with Auto
+        /// Mode on, it is still on, there is no Blackout, and they are in the craft (away from it, Go to the vessel comes first).
+        /// A manual stretch has waited already, before this is asked.
+        /// </summary>
+        private bool AutoModeTakesDue(Mission mission, SequencePlan plan)
+        {
+            return mission.AutoMode && !mission.Blackout && DueWarpOf(mission) == plan.DueTimeUt && CraftActive;
+        }
+
+        /// <summary>The Due Time the player warped to with Auto Mode on, if it is still the plan in hand's; else null. What a save keeps.</summary>
+        private static double? DueWarpOf(Mission mission)
+        {
+            var plan = mission.PendingSequence;
+            return plan != null && mission.DueWarpFor == plan && plan.DueTimeUt == mission.DueWarpUt ? mission.DueWarpUt : (double?)null;
+        }
+
+        /// <summary>A load: the saved warp holds again for the restored plan, if its Due Time is the one warped to.</summary>
+        private static void DueWarpRestored(Mission mission, double? saved)
+        {
+            var plan = mission.PendingSequence;
+            if (!saved.HasValue || plan == null || plan.DueTimeUt != saved) return;
+            mission.DueWarpFor = plan;
+            mission.DueWarpUt = saved.Value;
+        }
+
+        /// <summary>
+        /// #967: Warp to Due Time pressed. With Auto Mode on it is the player's word that the plan may start there: Auto Mode
+        /// approves it on arrival (<see cref="ApproveOrWait"/>), and the log says so now.
+        /// </summary>
+        private void DueWarpPressed(Mission mission, SequencePlan plan)
+        {
+            if (!mission.AutoMode || plan.Manual) return;
+            mission.DueWarpFor = plan;
+            mission.DueWarpUt = plan.DueTimeUt.Value;
+            Note(LogKind.Notice, "Warping to the Due Time: Auto Mode approves it when the Due Time is reached, while you stay in the craft.");
         }
 
         /// <summary>
@@ -332,6 +389,8 @@ namespace ClaudiaKerman.Core.Missions
         }
         /// <summary>Logged after a plan's card when Auto Mode approves it.</summary>
         private const string AutoModeApprovedNote = "Approved by Auto Mode.";
+        /// <summary>Logged instead when Auto Mode approves at a Due Time the player warped to (#967).</summary>
+        private const string AutoModeApprovedAtDueNote = "Approved by Auto Mode at the Due Time.";
         /// <summary>Logged after the "Couldn't produce a safe script" card when Auto Mode re-plans it.</summary>
         private const string AutoModeReplannedNote = "Re-planned by Auto Mode.";
     }

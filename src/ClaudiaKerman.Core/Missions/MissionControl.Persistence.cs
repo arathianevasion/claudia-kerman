@@ -97,6 +97,7 @@ namespace ClaudiaKerman.Core.Missions
                 Remote = mission.Remote,
                 AutoMode = mission.AutoMode,
                 MissionPlanApproved = mission.MissionPlanApproved,
+                DueWarp = DueWarpOf(mission),
                 EvaScience = mission.EvaScience,
                 ManualPlanned = mission.ManualPlanned,
                 ManualAsk = mission.ManualAsk ? "true" : "false",
@@ -921,6 +922,7 @@ namespace ClaudiaKerman.Core.Missions
                 var rebuilt = mission.LogRebuilt ? mission.Log.LastOrDefault(e => e.Kind == LogKind.SequencePlan) : null;
                 if (rebuilt != null) rebuilt.Text = PlanCardText(mission, mission.PendingSequence);
                 mission.DueNotified = state.DueNotified;
+                DueWarpRestored(mission, state.DueWarp);
             }
             else if (stage == MissionStage.UnsafeScript) UnsafeScriptCard(mission, null);
             else if (stage == MissionStage.Lost) LostDebrief(mission, "");
