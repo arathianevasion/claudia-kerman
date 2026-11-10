@@ -15,12 +15,12 @@ Once the player picks Soonest or Optimal, the pick holds for that transfer until
 
 1. As Check 1 to Kerbin orbit with Soonest, then warp past the Soonest row's departure date, a few days into the window, without approving the transfer.
 2. Revise the plan (change Time versus delta-v). The window is still open: the Soonest row says "(now)", its button is on, and Approve is on.
-3. Warp on until the Soonest row is about two years away (the window has closed), then revise again. The card shows fresh rows with neither button on, Approve is greyed out, and the status reads "Pick a Transfer Window, then Approve".
+3. Warp on until the Soonest row is about two years away (the window has closed), then revise again. Revise once more a few weeks later: it still asks (a closed window never reopens). The card shows fresh rows with neither button on, Approve is greyed out, and the status reads "Pick a Transfer Window, then Approve".
 
 ## Check 2b: a held Optimal stays in its window
 
 1. Pick Optimal on the pad, warp on the pad to that Optimal window, launch to Kerbin orbit.
-2. A day or more past the Optimal row's date, revise the plan. The Optimal row leaves "(now)" or within days, not about two years on, and nothing asks for a pick. Approve, and the transfer's `plan_transfer` row in the request (the Mission folder's request log) has `"pick":"optimal"` with a departure within days.
+2. A day or more past the Optimal row's date, revise the plan. The Optimal row leaves "(now)" or within days, not about two years on, and nothing asks for a pick. Approve, and the transfer's `plan_transfer` row in the request (the Mission folder's request log) has a departure within days (once the window's cheapest has passed, Optimal leaves now, so the row reads `"pick":"soonest"`).
 3. Approve the transfer's Sequence Plan (its script `transfer_to(lexicon("target","Duna","target_pe",60000))`, no window). The ejection flies within days, not after a warp of about two years; KSP.log's transfer_to step shows the ejection's UT within days of now.
 
 ## Check 3: after the ejection the pick is spent, and the return asks

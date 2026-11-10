@@ -209,8 +209,9 @@ namespace ClaudiaKerman.Core.Tests
             // The held departure stays in the open window: it leaves now, not two years on.
             var optimal = mission.View.Windows.Rows[1];
             Assert.True(optimal.DepartureUt < window.DepartureUt + synodic / 2, "Optimal jumped to the next window");
+            // The window's anchor is the departure picked, not moved by the revision.
             var reread = MissionSaveState.FromValues(Assert.Single(mission.ExportStates()).ToValues());
-            Assert.Equal(optimal.DepartureUt, reread.WindowPickDepartureUt.Value, 0);
+            Assert.Equal(window.DepartureUt, reread.WindowPickDepartureUt.Value, 0);
         }
 
         [Fact]
@@ -229,8 +230,8 @@ namespace ClaudiaKerman.Core.Tests
             stamped.StampMission(TimeVersusDeltaV.MostEfficient, new PlayerConfig().CraftCheckMarginPercent, new WindowPick("Duna", WindowKind.Optimal, held));
             var row = PlanningTools.Default().Run("plan_transfer", input, stamped, null);
             Assert.False(row.IsError, row.Json);
-            Assert.InRange(LeavesAt(row), revised - 1, limit);
-            Assert.Contains("\"pick\":\"optimal\"", row.Json);
+            // Past the held window's best departure, Optimal leaves now (one row with Soonest, so the row reads as Soonest's).
+            Assert.InRange(LeavesAt(row), revised - 1, revised + 1);
         }
 
         [Fact]
@@ -276,6 +277,48 @@ namespace ClaudiaKerman.Core.Tests
 
             // Past its close, still short of half a period on, it has gone.
             Assert.True(MohoWindows(NewGame + 870 * Day, pick).HeldMissed);
+        }
+
+        /// <summary>Kerbin to Moho: the departure of the held window B, near day 835 from a new game, and its search from day 760.</summary>
+        private static WindowSearch MohoB(out double b)
+        {
+            var held = MohoWindows(NewGame + 760 * Day, null);
+            b = held.Optimal.DepartureUt;
+            return held;
+        }
+
+        [Fact]
+        public void AHeldMohoWindowMovedLaterInItNeverMovesToTheNextWindow()
+        {
+            // The pick changed ten days into window B (its anchor moved there), then a revision ten days on: still B, or missed.
+            double b;
+            var halfWay = MohoB(out b).Synodic / 2;
+            var later = MohoWindows(b + 20 * Day, new WindowPick("Moho", WindowKind.Optimal, b + 10 * Day));
+            Assert.True(later.HeldMissed || later.Soonest.DepartureUt < b + halfWay && later.Optimal.DepartureUt < b + halfWay,
+                "the held rows moved to the next window: Soonest day " + (later.Soonest.DepartureUt - b) / Day + ", Optimal day " + (later.Optimal.DepartureUt - b) / Day + " after B");
+        }
+
+        [Fact]
+        public void AMissedHeldWindowNeverReopens()
+        {
+            double b;
+            MohoB(out b);
+            var pick = new WindowPick("Moho", WindowKind.Optimal, b);
+            Assert.True(MohoWindows(b + 30 * Day, pick).HeldMissed, "not missed 30 days after B");
+            // Cost falls toward the next window, but B has closed.
+            Assert.True(MohoWindows(b + 65 * Day, pick).HeldMissed, "reopened 65 days after B");
+        }
+
+        [Fact]
+        public void AHeldOptimalPastItsBestDepartureLeavesNow()
+        {
+            double b;
+            MohoB(out b);
+            var now = b + 25 * Day;
+            var open = MohoWindows(now, new WindowPick("Moho", WindowKind.Optimal, b));
+            Assert.False(open.HeldMissed, "window B closed by 25 days after its best departure");
+            Assert.InRange(open.Optimal.DepartureUt, now, now + 1);
+            Assert.InRange(open.Soonest.DepartureUt, now, now + 1);
         }
 
         /// <summary>The Moho windows from a low Kerbin orbit at <paramref name="ut"/>, keeping to <paramref name="pick"/>'s window when it holds one.</summary>
@@ -391,16 +434,23 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void SaveAndLoadKeepTheHeldPick()
         {
-            var mission = RevisedInOrbit(new StreamingFakeTransport(DunaPlan(), LaunchPlan(), DunaPlan()), Duna(WindowKind.Optimal), NewGame + Day);
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), LaunchPlan(), DunaPlan()));
+            ToMissionPlan(mission, Duna(WindowKind.Optimal));
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            var picked = MissionSaveState.FromValues(Assert.Single(mission.ExportStates()).ToValues()).WindowPickDepartureUt;
+            Assert.True(picked.HasValue);
+            mission.Send(new UtAdvanced(NewGame + Day));
+            mission.Send(InOrbit("Kerbin", NewGame + Day, 9000));
+            ToRevisedPlan(mission);
             Assert.False(mission.View.WindowPickNeeded);
 
             var reread = MissionSaveState.FromValues(Assert.Single(mission.ExportStates()).ToValues());
             Assert.Equal("Duna:Optimal", reread.WindowPick.Key);
             Assert.False(reread.WindowPickNeeded);
             Assert.True(reread.WindowPickCarried);
-            // The held window's departure as worked out from orbit at the revision.
-            var fromOrbit = WindowChoice.Work(InOrbit("Kerbin", NewGame + Day, 9000), Goal, new PlayerConfig().CraftCheckMarginPercent, NewGame + Day).RowFor(Duna(WindowKind.Optimal));
-            Assert.Equal(fromOrbit.DepartureUt, reread.WindowPickDepartureUt.Value, 0);
+            // The held window's anchor: the departure picked on the form, kept through the revision.
+            Assert.Equal(picked.Value, reread.WindowPickDepartureUt.Value);
 
             var reload = Control(new StreamingFakeTransport());
             reload.Send(new SceneChanged(GameScene.Flight));

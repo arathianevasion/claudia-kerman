@@ -66,7 +66,7 @@ namespace ClaudiaKerman.Core.Missions
         public bool WindowPickNeeded;
         public bool WindowPickUnsaid;
         public double? WindowOwnDue;
-        /// <summary>#966: the picked window's departure, past which the pick is missed; the revised plan in hand carries the held pick; a pick was spent by its ejection. Null, false and false in older saves.</summary>
+        /// <summary>#966: the held window's anchor (the departure picked, never moved while it holds); the revised plan in hand carries the held pick; a pick was spent by its ejection. Null, false and false in older saves.</summary>
         public double? WindowPickDepartureUt;
         public bool WindowPickCarried;
         public bool WindowPickSpent;

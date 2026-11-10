@@ -6,6 +6,7 @@
 // single-impulse hyperbolic burn of MechJebLib/Maneuvers/SingleImpulseHyperbolicBurn.cs (MIT) at the parking orbit's periapsis.
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using ClaudiaKerman.Core.Missions;
@@ -73,7 +74,7 @@ namespace ClaudiaKerman.Core.Tools
         }
         /// <summary>The Mission Plan's later legs' delta-v, m/s (#694); null with no Mission Plan. <see cref="Fits"/> is judged against <see cref="CraftDv"/> less this.</summary>
         public double? LaterLegsDv;
-        /// <summary>#966: the held window (<see cref="Problem.Held"/>) has gone: half a period has passed, or leaving now costs more than the margin over its own cheapest. Soonest and Optimal are then the whole horizon's.</summary>
+        /// <summary>#966: the held window (<see cref="Problem.Held"/>) has gone: its close (the first departure past the margin over its own cheapest) has passed, or nothing left in it has a path. Soonest and Optimal are then the whole horizon's.</summary>
         public bool HeldMissed;
     }
 
@@ -291,40 +292,74 @@ namespace ClaudiaKerman.Core.Tools
             };
             var soonestRow = firstWithin(optimal.TotalDv * withinMargin, double.PositiveInfinity);
             var soonest = soonestRow < 0 || from + soonestRow * step >= optimal.DepartureUt ? optimal : edge(soonestRow, optimal.TotalDv * withinMargin);
-            // #966: a held window. Windows recur once a period, so the held one is every departure within half a period of its own.
-            // It is judged against its own cheapest, not the horizon's (a next window much cheaper, Moho's, would read it as gone):
-            // once its departure has passed it is open while leaving now costs within the margin of the cheapest it had, its past
-            // costed too, and gone once that is no longer so, half a period has passed, or no departure in it has a path.
-            // While open, Soonest and Optimal keep to it.
+            // #966: a held window, found from its anchor (the departure picked, never moved) on a grid of its own, so where it starts
+            // and ends depends on the anchor alone, never on now: from the anchor downhill to the window's cheapest, then the unbroken
+            // run of departures within the margin of that cheapest. It ends at the first grid departure past the margin after its
+            // cheapest; from then on it is missed, and stays so. While open Soonest and Optimal keep to it, and once its cheapest has
+            // passed both leave now. A search round a literal UT (span) flies that UT, so keeps to no held window.
             var heldMissed = false;
-            if (problem.Held.HasValue)
+            if (problem.Held.HasValue && span == null)
             {
-                // The windows' true recurrence, not the horizon searched (a span, or a moon's shortened horizon).
+                // The windows' true recurrence, not the horizon searched (a moon's shortened horizon).
                 var period = problem.Moon ? problem.Target.Period : Transfer.Synodic(problem.Home.Period, problem.Target.Period);
-                var limit = problem.Held.Value + period / 2;
-                var inHeld = -1;
-                for (var i = 0; i < Departures && from + i * step < limit; i++)
-                    if (!double.IsInfinity(rowCost[i]) && (inHeld < 0 || rowCost[i] < rowCost[inHeld])) inHeld = i;
-                var heldCheapest = double.PositiveInfinity;
-                heldMissed = inHeld < 0;
-                if (!heldMissed && problem.Held.Value <= from)
+                var heldStep = period / (Departures - 1);
+                var anchor = problem.Held.Value;
+                var reach = (Departures - 1) / 2;
+                var heldCost = new Dictionary<int, double>();
+                var heldTof = new Dictionary<int, double>();
+                Func<int, double> costAt = k =>
                 {
-                    // Its cheapest: the departures from half a period before it to now, at the period's own grid step.
-                    var pastStep = period / (Departures - 1);
-                    heldCheapest = rowCost[0];
-                    for (var t = from - pastStep; t >= problem.Held.Value - period / 2; t -= pastStep)
-                        for (var j = 0; j < Flights; j++) heldCheapest = Math.Min(heldCheapest, problem.Cost(t, tofLo + j * tofStep).TotalDv);
-                    heldMissed = double.IsInfinity(rowCost[0]) || rowCost[0] > heldCheapest * withinMargin;
-                }
-                if (!heldMissed)
-                {
-                    if (optimal.DepartureUt >= limit) optimal = refined(inHeld, Math.Min(from + synodic, limit));
-                    if (soonest.DepartureUt >= limit)
+                    double c;
+                    if (heldCost.TryGetValue(k, out c)) return c;
+                    c = double.PositiveInfinity;
+                    var tofAt = tofLo;
+                    for (var j = 0; j < Flights; j++)
                     {
-                        var budget = Math.Min(heldCheapest, optimal.TotalDv) * withinMargin;
-                        var heldRow = firstWithin(budget, limit);
-                        soonest = heldRow < 0 ? optimal : edge(heldRow, budget);
+                        var got = problem.Cost(anchor + k * heldStep, tofLo + j * tofStep).TotalDv;
+                        if (got < c)
+                        {
+                            c = got;
+                            tofAt = tofLo + j * tofStep;
+                        }
                     }
+                    heldCost[k] = c;
+                    heldTof[k] = tofAt;
+                    return c;
+                };
+                var kBest = 0;
+                var down = costAt(1) < costAt(0) ? 1 : costAt(-1) < costAt(0) ? -1 : 0;
+                while (down != 0 && Math.Abs(kBest + down) <= reach && costAt(kBest + down) < costAt(kBest)) kBest += down;
+                var heldBudget = costAt(kBest) * withinMargin;
+                var kEnd = kBest + 1;
+                while (kEnd - kBest < reach && costAt(kEnd) <= heldBudget) kEnd++;
+                var kOpen = kBest - 1;
+                while (kBest - kOpen < reach && costAt(kOpen) <= heldBudget) kOpen--;
+                var closes = anchor + kEnd * heldStep;
+                var opens = anchor + kOpen * heldStep;
+                var bestT = anchor + kBest * heldStep;
+                // The first horizon departure before the close with a path, for leaving now; -1 for none.
+                var firstPath = -1;
+                for (var i = 0; i < Departures && from + i * step < closes && firstPath < 0; i++)
+                    if (!double.IsInfinity(rowCost[i])) firstPath = i;
+                heldMissed = double.IsInfinity(heldBudget) || from >= closes || firstPath < 0;
+                // The horizon's rows stand when both are in the held window already.
+                Func<TransferWindow, bool> inWindow = w => w.DepartureUt > opens && w.DepartureUt < closes;
+                var keepsRows = heldMissed || inWindow(optimal) && inWindow(soonest);
+                if (!keepsRows && from >= bestT + heldStep) soonest = optimal = atTime(from + firstPath * step, rowTof[firstPath]);
+                else if (!keepsRows)
+                {
+                    var lo = Math.Max(from, bestT - heldStep);
+                    var hi = Math.Min(closes, bestT + heldStep);
+                    var x = Minimise(u => atTime(bestT + u * heldStep, heldTof[kBest]).TotalDv, (lo - bestT) / heldStep, (hi - bestT) / heldStep);
+                    optimal = atTime(bestT + x * heldStep, heldTof[kBest]);
+                    var gridAt = atTime(Math.Max(lo, bestT), heldTof[kBest]);
+                    if (!(optimal.TotalDv <= gridAt.TotalDv)) optimal = gridAt;
+                    // Soonest: the first horizon departure in the window within the margin of its Optimal.
+                    var budget = optimal.TotalDv * withinMargin;
+                    var heldRow = -1;
+                    for (var i = 0; i < Departures && from + i * step < optimal.DepartureUt && heldRow < 0; i++)
+                        if (from + i * step > opens && rowCost[i] <= budget) heldRow = i;
+                    soonest = heldRow < 0 ? optimal : edge(heldRow, budget);
                     if (optimal.DepartureUt < soonest.DepartureUt) soonest = optimal;
                 }
             }
@@ -434,7 +469,7 @@ namespace ClaudiaKerman.Core.Tools
             public double? CraftDv;
             /// <summary>The Mission Plan's later legs' delta-v, m/s; null with none (#694).</summary>
             public double? LaterLegsDv;
-            /// <summary>#966: the departure of the window the player's pick holds, UT s; null for none (<see cref="TransferWindows.Search"/>).</summary>
+            /// <summary>#966: the held window's anchor, the departure picked (UT s), which never moves while the pick holds; null for none (<see cref="TransferWindows.Search"/>).</summary>
             public double? Held;
             /// <summary>Why the last Lambert solve that failed had no path.</summary>
             public string LambertError;

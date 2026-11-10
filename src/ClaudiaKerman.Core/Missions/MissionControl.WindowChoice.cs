@@ -24,7 +24,7 @@ namespace ClaudiaKerman.Core.Missions
             public bool WindowPickUnsaid;
             /// <summary>#782: the Due Time the Sequence Plan in hand came with, which each pick's window is worked against. Saved.</summary>
             public double? WindowOwnDue;
-            /// <summary>#966: the picked window's departure, past which the pick is missed; null when not known. Saved.</summary>
+            /// <summary>#966: the held window's anchor: the departure picked, never moved while the pick holds (the rows' departures move within its window); null when not known. Saved.</summary>
             public double? WindowPickDepartureUt;
             /// <summary>#966: the revised Mission Plan in hand carries the held pick: the card offers the choice, and nothing waits for it. Saved.</summary>
             public bool WindowPickCarried;
@@ -102,14 +102,12 @@ namespace ClaudiaKerman.Core.Missions
             var holds = asks && (first ? !WindowChoice.Held(mission.WindowPick, offer).IsNone : PickHolds(mission, offer));
             mission.WindowPickNeeded = asks && !holds;
             mission.WindowPickCarried = holds && !first;
-            // The held window's departure as worked out now, from where the craft is: it moves within that window, never to a later one.
-            if (holds) mission.WindowPickDepartureUt = offer.RowFor(mission.WindowPick).DepartureUt;
         }
 
         /// <summary>
         /// #966: the Mission's pick holds for <paramref name="offer"/>'s transfer. The same transfer is the one to the pick's body, worked
-        /// out from where the craft is now, not a leg's place or name in the plan; it holds until its window has gone (the offer, worked
-        /// for the held window, finds leaving now past the margin over its own cheapest, or half a period gone: <see cref="Tools.WindowSearch.HeldMissed"/>) or its ejection flies
+        /// out from where the craft is now, not a leg's place or name in the plan; it holds until its window has closed (the first departure
+        /// past the margin over that window's own cheapest, found from the fixed anchor: <see cref="Tools.WindowSearch.HeldMissed"/>) or its ejection flies
         /// (<see cref="SpendPick"/>, which drops it). Its departure passing is no miss: an open window departs "now" until it closes.
         /// A pick saved before #966 has no departure on record, so no window to hold: a revision asks, as it did then.
         /// </summary>
