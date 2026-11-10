@@ -44,6 +44,9 @@ namespace ClaudiaKerman.Core.Missions
         private GameSnapshot _snapshot;
         private Mission _mission;
         private int _lastRunId;
+        /// <summary>The running script <see cref="_scriptReentry"/> was read from (#970), so the view reads each script once.</summary>
+        private string _reentryScript;
+        private ScriptReentry _scriptReentry = ScriptReentry.Auto;
         private MissionView _view = new MissionView();
         private readonly CraftCheckFlow _craftCheck;
         /// <summary>Start Mission was pressed and the Craft Check it triggered is running; a Pass lets the Mission start.</summary>
@@ -2506,6 +2509,13 @@ namespace ClaudiaKerman.Core.Missions
                 {
                     view.RunStatus = "Running: " + mission.PendingSequence.Name + (mission.RunningChild.Length > 0 ? " on " + mission.RunningChild : "");
                     view.RunProgress = Progress(mission);
+                    // What the script's reentry flies (#970), so a deorbit or return before it aims for that craft.
+                    if (!ReferenceEquals(mission.PendingSequence.Script, _reentryScript))
+                    {
+                        _reentryScript = mission.PendingSequence.Script;
+                        _scriptReentry = ScriptReentry.Of(_reentryScript);
+                    }
+                    view.ScriptReentry = _scriptReentry;
                 }
                 // Under Auto Mode a recommendation is Auto Mode's to take, never the player's to answer: no Abort attention.
                 view.AbortRecommended = mission.AutoMode ? "" : mission.AbortRecommendation;
