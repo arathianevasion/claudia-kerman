@@ -88,7 +88,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.True(fell > 0 && loop > fell && restore > loop && abort > restore && failure > abort && hard > failure && landing > hard, "order of the exits");
             Assert.DoesNotContain("return ", body.Substring(fell, restore - fell));
             // Locking is only in the two loops' tick: the closure, set up before the fall.
-            Assert.True(body.IndexOf("reentry_gimbals(ship:engines, true, gimbals)", StringComparison.Ordinal) < fell);
+            Assert.True(body.IndexOf("reentry_gimbals(ship:engines, b:open, gimbals)", StringComparison.Ordinal) < fell);
         }
 
         /// <summary>The block's own lines from the restore to the end of the abort branch, run: <c>out</c> says which branch; the gimbals are free when the abort (and <c>claudia_finish</c>) run.</summary>
@@ -117,11 +117,6 @@ namespace ClaudiaKerman.Kerboscript.Tests
             return source.Substring(start, source.IndexOf("\n}\n", start, StringComparison.Ordinal) + 3 - start);
         }
 
-        private static string GimbalsFunction()
-        {
-            return Function("reentry_gimbals");
-        }
-
         private static string ExitSlice()
         {
             var body = Body();
@@ -137,7 +132,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [InlineData("skipped out of the atmosphere 3 times")]
         public void A_failure_or_an_abort_gives_the_gimbals_back_before_the_block_ends(string fell)
         {
-            var script = ExitRig + GimbalsFunction() + "function exit_ {\n parameter fell.\n" + ExitSlice() + " return \"went on\".\n}\n"
+            var script = ExitRig + Function("reentry_gimbals") + "function exit_ {\n parameter fell.\n" + ExitSlice() + " return \"went on\".\n}\n"
                 + "local out is exit_(\"" + fell + "\").\nprint notes:join(\";\"). print out.\n";
             Assert.Equal(new[] { "abort,locked=False;finish,locked=False," + fell, fell }, KosHarness.Run(script).ToArray());
         }
@@ -145,7 +140,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         [Fact]
         public void A_landing_gives_the_gimbals_back_before_it_goes_on_to_the_end()
         {
-            var script = ExitRig + GimbalsFunction() + "function exit_ {\n parameter fell.\n" + ExitSlice() + " return \"landed,locked=\" + a:gimbal:lock.\n}\n"
+            var script = ExitRig + Function("reentry_gimbals") + "function exit_ {\n parameter fell.\n" + ExitSlice() + " return \"landed,locked=\" + a:gimbal:lock.\n}\n"
                 + "print exit_(\"\").\n";
             Assert.Equal(new[] { "landed,locked=False" }, KosHarness.Run(script).ToArray());
         }
@@ -353,6 +348,24 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.True(body.IndexOf("brake_ask(reentry_brake_throttle(", StringComparison.Ordinal) > loop && loop > fell);
             var script = "global asked is 0.\nlocal brake_ask is { set asked to asked + 1. return lexicon(\"start\", false, \"cut\", true). }.\nlocal powered is false.\n" + Line + "print asked. print brake:haskey(\"cut\").\n";
             Assert.Equal(new[] { "0", "False" }, KosHarness.Run(script).ToArray());
+        }
+
+        /// <summary>The block's own line, run: gimbals lock under open chutes and are freed at a cut, as the canopies they were locked for are gone.</summary>
+        [Theory]
+        [InlineData(true, false, "True,True,a")]
+        [InlineData(false, true, "False,True,a")] // locked earlier under open chutes, then cut
+        [InlineData(false, false, "True,True,a")] // a bad tick: left as they are
+        public void The_gimbals_lock_while_fully_open_and_are_freed_at_a_cut(bool open, bool cut, string expected)
+        {
+            var body = Body();
+            const string Start = "if b:open or b:cut { reentry_gimbals(";
+            var at = body.IndexOf(Start, StringComparison.Ordinal);
+            Assert.True(at > 0, "the block's gimbal line");
+            var script = Engines + Function("reentry_gimbals") + "global ship is lexicon(\"engines\", engs).\n"
+                + "local gimbals is locked.\nreentry_gimbals(engs, true, gimbals).\n"
+                + "local b is lexicon(\"open\", " + open.ToString().ToLowerInvariant() + ", \"cut\", " + cut.ToString().ToLowerInvariant() + ").\n"
+                + body.Substring(at, body.IndexOf('\n', at) - at) + "\nshow().\n";
+            Assert.Equal(new[] { expected }, KosHarness.Run(script).ToArray());
         }
 
         [Fact]

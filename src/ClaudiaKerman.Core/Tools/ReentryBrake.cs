@@ -251,7 +251,8 @@ namespace ClaudiaKerman.Core.Tools
             var heldUnreadUt = Number(ask, "unread_ut", -1);
             var unbroken = heldUnreadUt >= 0 && heldSampleUt >= 0 && now - heldSampleUt <= ReentryBrake.UnreadSeconds;
             var unreadUt = !Flag(ask, "chutes_unread") || group == 0 ? -1 : unbroken ? heldUnreadUt : now;
-            var lastResortUt = brakeWhy != ReentryBrake.WhyLastResort ? -1 : Number(ask, "last_resort_ut", -1) >= 0 ? Number(ask, "last_resort_ut", -1) : now;
+            var heldLastResortUt = Number(ask, "last_resort_ut", -1);
+            var lastResortUt = brakeWhy != ReentryBrake.WhyLastResort ? -1 : heldLastResortUt >= 0 ? heldLastResortUt : now;
             if (unreadUt >= 0)
             {
                 return new Dictionary<string, object>

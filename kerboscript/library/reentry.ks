@@ -766,7 +766,7 @@ function reentry {
     }
   }.
 
-  // Core's word this tick (#954): whether braking may start and the guarded throttle. tset: the throttle wanted; off_deg: degrees off the aim. Traces the burn when Core says, cuts the chutes if Core can't read them (and calls no more), notes each change of the group's chutes, and locks the gimbals while they're fully open.
+  // Core's word this tick (#954): whether braking may start and the guarded throttle. tset: the throttle wanted; off_deg: degrees off the aim. Traces the burn when Core says, cuts the chutes if Core can't read them (and calls no more), notes each change of the group's chutes, and locks the gimbals while they're fully open, freeing them at a cut.
   local brake_ask is {
     parameter tset is 0, off_deg is 0.
     local b is addons:claudia:braketick(lexicon("radar", reentry_agl(), "speed", ship:velocity:surface:mag, "brake_h", brake_h, "last_h", last_h, "shield_speed", reentry_shield_speed(), "shield_agl", reentry_shield_last_agl(), "uids", choose group:uids if chute_mode <> "none" else list(), "throttle", tset, "off_deg", off_deg, "rate_deg", vxcl(ship:facing:forevector, ship:angularvel):mag * constant:radtodeg, "drogues_called", drogues_out, "mains_called", mains_out, "brake_why", brake_why)).
@@ -779,7 +779,7 @@ function reentry {
       set chute_states to b:chutes.
       addons:claudia:blocknote(ctx:block, lexicon("phase", "chutes", "states", chute_states)).
     }
-    if b:open { reentry_gimbals(ship:engines, true, gimbals). }
+    if b:open or b:cut { reentry_gimbals(ship:engines, b:open, gimbals). }
     return b.
   }.
 

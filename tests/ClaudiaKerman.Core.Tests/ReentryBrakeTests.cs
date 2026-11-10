@@ -949,7 +949,7 @@ namespace ClaudiaKerman.Core.Tests
             {
                 { "radar", 1700.0 }, { "speed", 150.0 }, { "brake_h", 1750.0 }, { "last_h", 1240.0 }, { "shield_speed", 400.0 }, { "shield_agl", 3000.0 },
                 { "chutes", Set(false, "deployed", "semi") }, { "uids", new List<object> { "a", "b" } }, { "throttle", 0.7 }, { "off_deg", 12.0 }, { "rate_deg", 8.0 },
-                { "now", 100.0 }, { "open_ut", -1.0 }, { "decel", 12.0 }, { "drogues_called", true }, { "mains_called", true }, { "drogue_call_ut", 90.0 }, { "main_call_ut", 99.5 },
+                { "now", 100.0 }, { "open_ut", -1.0 }, { "decel", 12.0 }, { "drogues_called", true }, { "mains_called", true }, { "drogue_call_ut", 90.0 }, { "main_call_ut", 99.5 }, { "brake_why", "last resort" }, { "last_resort_ut", 95.0 }, { "trace_ut", 99.0 },
             };
             Timing.Within(2, () =>
             {
