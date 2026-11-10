@@ -76,6 +76,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool AutoMode;
         /// <summary>The player has approved a Mission Plan (#661), so a revision is never the first one. A save from before this existed reads as not.</summary>
         public bool MissionPlanApproved;
+        /// <summary>#967: the Due Time of the Sequence Plan in hand that the player pressed Warp to Due Time for with Auto Mode on; null for none, and in older saves.</summary>
+        public double? DueWarp;
         /// <summary>While Paused for EVA science: what the player is to do by hand; "" otherwise.</summary>
         public string EvaScience = "";
         /// <summary>In Manual Control (or its Hand back Debrief): the stretch was planned, so its Debrief is judged against the target.</summary>
@@ -242,6 +244,7 @@ namespace ClaudiaKerman.Core.Missions
             if (RecheckSince != 0) values["recheckSince"] = RecheckSince.ToString(CultureInfo.InvariantCulture);
             if (TargetChange.Length > 0) values["targetChange"] = TargetChange;
             if (MissionPlanApproved) values["missionPlanApproved"] = "true";
+            if (DueWarp.HasValue) values["dueWarp"] = DueWarp.Value.ToString("R", CultureInfo.InvariantCulture);
             if (PendingNotice.Length > 0) values["pendingNotice"] = PendingNotice;
             if (PausedCannotFly) values["pausedCannotFly"] = "true";
             if (PausedForCap) values["pausedForCap"] = "true";
@@ -373,6 +376,7 @@ namespace ClaudiaKerman.Core.Missions
             if (double.TryParse(Get(values, "windowOwnDue"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.WindowOwnDue = reading;
             if (double.TryParse(Get(values, "windowPickDepartureUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.WindowPickDepartureUt = reading;
             if (double.TryParse(Get(values, "returnWindowUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.ReturnWindowUt = reading;
+            if (double.TryParse(Get(values, "dueWarp"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.DueWarp = reading;
             decimal cap;
             if (decimal.TryParse(Get(values, "spendingCap"), NumberStyles.Number, CultureInfo.InvariantCulture, out cap)) state.SpendingCap = cap;
             int number;

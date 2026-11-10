@@ -13,7 +13,7 @@ namespace ClaudiaKerman.Core.Missions
     /// A window wait over 6 h is a Due Time (#616, ADR 0004's amendment; <see cref="WindowWaits"/>): the first Maneuver Sequence
     /// of a Mission to another planet gets a Due Time at the Transfer Window less the launch lead, and a player who comes back
     /// after the window has the Due Time moved to the next one when it fits the Craft Check budget, or an Alert to Claudia, who
-    /// revises the Mission Plan. Auto Mode never approves at a Due Time (MissionControl.AutoMode.cs), so only the player does.
+    /// revises the Mission Plan. Auto Mode approves at a Due Time only one the player warped to with it on (#967, MissionControl.AutoMode.cs).
     /// #774: a craft on another body's surface waits there the same way, the ascent carrying the Due Time.
     /// </summary>
     public sealed partial class MissionControl
@@ -99,7 +99,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>
         /// #749: a transfer_to or return that waits more than a Kerbin day inside its block for its ejection makes the plan a Due Time
         /// at the ejection less the launch lead, as a window wait on the pad does; a shorter wait is <c>expected_duration_s</c>'s
-        /// (<see cref="BurnPoints.ShortOf"/>). The craft coasts on rails meanwhile; Auto Mode never approves at a Due Time.
+        /// (<see cref="BurnPoints.ShortOf"/>). The craft coasts on rails meanwhile; Auto Mode approves at the Due Time only if the player warped there with it on (#967).
         /// </summary>
         private void TransferWait(Mission mission, SequencePlan plan)
         {
