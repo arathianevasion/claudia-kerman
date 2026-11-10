@@ -505,6 +505,19 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void What_was_set_aside_for_a_semi_chute_is_dropped_once_no_chute_is_left()
+        {
+            var ask = new Dictionary<string, object>
+            {
+                { "now", 100.0 }, { "speed", 40.0 }, { "open_ut", -1.0 }, { "kept_ut", 80.0 }, { "kept_settled", true }, { "mains_called", true },
+                { "chutes", Set(false, "cut") },
+            };
+            var tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(-1.0, D(tick, "kept_ut"));
+            Assert.Equal(false, tick["kept_settled"]);
+        }
+
+        [Fact]
         public void A_semi_chute_that_reads_deployed_after_a_flicker_is_not_treated_as_cut()
         {
             var drogues = Set(true, "deployed");

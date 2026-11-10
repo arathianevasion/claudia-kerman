@@ -330,7 +330,7 @@ namespace ClaudiaKerman.Core.Tools
             var settled = openUt >= 0 && ((held && heldSettled) || ReentryBrake.ChutesSettled(now - openUt, decel));
             var nextKeptUt = -1.0;
             var nextKeptSettled = false;
-            if (filling > 0 || healthy == packing)
+            if (healthy > 0 && (filling > 0 || healthy == packing))
             {
                 var fromHeld = Number(ask, "open_ut", -1) >= 0;
                 nextKeptUt = fromHeld ? Number(ask, "open_ut", -1) : keptUt;
