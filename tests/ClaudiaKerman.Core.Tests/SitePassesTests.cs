@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Andrew Watson
 
+using System.Linq;
+using ClaudiaKerman.Core.Missions;
 using ClaudiaKerman.Core.Tools;
 using Xunit;
 
@@ -97,6 +99,89 @@ namespace ClaudiaKerman.Core.Tests
             passes.ForgetAfter(200);
             Assert.Null(passes.Of("v1", "Duna", DunaRadiusM, -30, 100, 5));
             Assert.NotNull(passes.Of("v1", "Duna", DunaRadiusM, 10, 20, 5));
+        }
+
+        // ---- #975: saved with the game ----
+
+        private static SitePasses Saved(SitePasses passes, double loadUt, double savedUt = double.MaxValue)
+        {
+            var read = new SitePasses();
+            read.Load(passes.ToJson(savedUt == double.MaxValue ? loadUt : savedUt), loadUt);
+            return read;
+        }
+
+        [Fact]
+        public void The_record_round_trips_through_the_save()
+        {
+            var passes = new SitePasses();
+            passes.Record("v1", "Duna", 100, new[] { Site(10, 20, 5000, 33.5), Site(-30, 100.25, 6000) });
+            passes.Record("v2", "Eve", 200, new[] { Site(1, 2, 9000, 45) });
+            var read = Saved(passes, 1000);
+            var duna = read.Of("v1", "Duna", DunaRadiusM, 10, 20, 0.5);
+            Assert.Equal(5000, duna.LandingUt);
+            Assert.Equal(4000 - 200, duna.BurnUt);
+            Assert.Equal(33.5, duna.SunDeg);
+            Assert.Equal(6000, read.Of("v1", "Duna", DunaRadiusM, -30, 100.25, 0.5).LandingUt);
+            Assert.Equal(9000, read.Of("v2", "Eve", 700000, 1, 2, 0.5).LandingUt);
+            // The vessel id came back too: v2's Eve answer is the vessel's own.
+            Assert.Null(read.Of("v2", "Kerbin", 600000, 1, 2, 0.5));
+        }
+
+        [Fact]
+        public void The_saved_record_keeps_at_most_eight_answers_the_latest()
+        {
+            var passes = new SitePasses();
+            for (var i = 0; i < SitePasses.MaxCalls + 3; i++) passes.Record("v1", "Duna", 100 + i, new[] { Site(i * 2, 0, 5000 + i) });
+            var read = Saved(passes, 10000);
+            Assert.Null(read.Of("v1", "Duna", DunaRadiusM, 0, 0, 0.1));
+            Assert.Null(read.Of("v1", "Duna", DunaRadiusM, 4, 0, 0.1));
+            Assert.Equal(5010, read.Of("v1", "Duna", DunaRadiusM, 20, 0, 0.1).LandingUt);
+            // A hand-edited save with more than eight is cut to the latest eight too.
+            var many = "{\"saved_ut\":10000,\"calls\":[" + string.Join(",", System.Linq.Enumerable.Range(0, 12).Reverse().Select(i =>
+                "{\"vessel_id\":\"v1\",\"body\":\"Duna\",\"ut\":" + (100 + i) + ",\"sites\":[{\"lat\":" + i * 2 + ",\"lng\":0,\"burn_ut\":1,\"landing_ut\":" + (5000 + i) + ",\"sun\":50}]}")) + "]}";
+            var cut = new SitePasses();
+            cut.Load(many, 10000);
+            Assert.Null(cut.Of("v1", "Duna", DunaRadiusM, 6, 0, 0.1));
+            Assert.NotNull(cut.Of("v1", "Duna", DunaRadiusM, 8, 0, 0.1));
+        }
+
+        [Fact]
+        public void A_load_at_an_earlier_UT_drops_the_later_answers()
+        {
+            var passes = new SitePasses();
+            passes.Record("v1", "Duna", 100, new[] { Site(10, 20, 5000) });
+            passes.Record("v1", "Duna", 300, new[] { Site(-30, 100, 9000) });
+            var read = Saved(passes, 200);
+            Assert.NotNull(read.Of("v1", "Duna", DunaRadiusM, 10, 20, 0.5));
+            Assert.Null(read.Of("v1", "Duna", DunaRadiusM, -30, 100, 0.5));
+        }
+
+        [Fact]
+        public void A_save_without_the_record_keeps_the_memory_minus_the_answers_past_the_load()
+        {
+            var passes = new SitePasses();
+            passes.Record("v1", "Duna", 100, new[] { Site(10, 20, 5000) });
+            passes.Record("v1", "Duna", 300, new[] { Site(-30, 100, 9000) });
+            foreach (var text in new[] { "", null, "not json", "[]", "{\"calls\":[]}" })
+            {
+                var again = new SitePasses();
+                again.Record("v1", "Duna", 100, new[] { Site(10, 20, 5000) });
+                again.Record("v1", "Duna", 300, new[] { Site(-30, 100, 9000) });
+                again.Load(text, 200);
+                Assert.NotNull(again.Of("v1", "Duna", DunaRadiusM, 10, 20, 0.5));
+                Assert.Null(again.Of("v1", "Duna", DunaRadiusM, -30, 100, 0.5));
+            }
+        }
+
+        [Fact]
+        public void The_saved_UT_not_the_load_UT_drops_the_later_answers()
+        {
+            var passes = new SitePasses();
+            passes.Record("v1", "Duna", 100, new[] { Site(10, 20, 5000) });
+            passes.Record("v1", "Duna", 300, new[] { Site(-30, 100, 9000) });
+            var read = Saved(passes, 1000, 200);
+            Assert.NotNull(read.Of("v1", "Duna", DunaRadiusM, 10, 20, 0.5));
+            Assert.Null(read.Of("v1", "Duna", DunaRadiusM, -30, 100, 0.5));
         }
     }
 }

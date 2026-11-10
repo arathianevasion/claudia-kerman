@@ -559,9 +559,12 @@ namespace ClaudiaKerman.Core.Missions
     {
         public readonly string SaveDirectory;
         public readonly IList<MissionSaveState> States;
+        /// <summary>The game's saved find_landing_site record (<see cref="MissionControl.ExportSitePasses"/>, #975); null when the save has none.</summary>
+        public readonly string SitePasses;
 
-        public MissionsRestored(string saveDirectory, IList<MissionSaveState> states)
+        public MissionsRestored(string saveDirectory, IList<MissionSaveState> states, string sitePasses = null)
         {
+            SitePasses = sitePasses;
             SaveDirectory = saveDirectory;
             States = states ?? new List<MissionSaveState>();
         }

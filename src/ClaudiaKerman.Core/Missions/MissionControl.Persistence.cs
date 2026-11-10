@@ -58,6 +58,12 @@ namespace ClaudiaKerman.Core.Missions
             return states;
         }
 
+        /// <summary>#975: find_landing_site's recent answers for the save, with the UT it is made at: one game-level value, whatever Missions the save holds (see <see cref="Tools.SitePasses.ToJson"/>).</summary>
+        public string ExportSitePasses()
+        {
+            return ClaudiaKerman.Core.Tools.SitePasses.Shared.ToJson(_ut);
+        }
+
         private static MissionSaveState StateOf(Mission mission)
         {
             // A load that is waiting for a request to finish has already decided the state.
@@ -392,6 +398,8 @@ namespace ClaudiaKerman.Core.Missions
             // A dismissed one keeps its folder but is history too.
             var states = restored.States.Where(s => Directory.Exists(MissionFolder.For(_saveDirectory, s.Id)) && !Dismissed(s)).ToList();
             var restore = Choose(states, existing);
+            // #975: find_landing_site's answers are the game's: the save's own, minus those past its UT; a save without them keeps the memory's, minus those past the current UT.
+            ClaudiaKerman.Core.Tools.SitePasses.Shared.Load(restored.SitePasses, _ut);
             // The save's other unfinished Missions wait Paused at the boundary they were parked at; finished ones are history, kept in their folders.
             _parked.Clear();
             _switch = null;
