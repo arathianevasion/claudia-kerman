@@ -6,6 +6,7 @@
 // single-impulse hyperbolic burn of MechJebLib/Maneuvers/SingleImpulseHyperbolicBurn.cs (MIT) at the parking orbit's periapsis.
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using ClaudiaKerman.Core.Missions;
@@ -48,7 +49,7 @@ namespace ClaudiaKerman.Core.Tools
         public string Target;
         /// <summary>The earliest window within the Craft Check margin of <see cref="Optimal"/>'s total; Optimal itself when none is earlier.</summary>
         public TransferWindow Soonest;
-        /// <summary>The cheapest window departing within the horizon.</summary>
+        /// <summary>The cheapest window departing within the horizon; #966: with a held window not missed, that window's cheapest.</summary>
         public TransferWindow Optimal;
         /// <summary>The horizon searched: from <see cref="From"/> (UT s) for <see cref="Synodic"/>, one synodic period (s) of the two planets, or a moon's period.</summary>
         public double From;
@@ -73,6 +74,8 @@ namespace ClaudiaKerman.Core.Tools
         }
         /// <summary>The Mission Plan's later legs' delta-v, m/s (#694); null with no Mission Plan. <see cref="Fits"/> is judged against <see cref="CraftDv"/> less this.</summary>
         public double? LaterLegsDv;
+        /// <summary>#966: the held window (<see cref="Problem.Held"/>) has gone: its close (the first departure past the margin over its own cheapest) has passed, or nothing left in it has a path. Soonest and Optimal are then the whole horizon's.</summary>
+        public bool HeldMissed;
     }
 
     /// <summary>
@@ -109,6 +112,8 @@ namespace ClaudiaKerman.Core.Tools
         private const double StepTolerance = 1e-4;
         private const int Iterations = 60;
         private const int Bisections = 40;
+        /// <summary>#966: bisections of a held window's close between two grid departures (a 180-row period's step to under a 1/4000th of it).</summary>
+        private const int CloseBisections = 12;
         /// <summary>The cost of a cell with no Lambert path: finite, so BrentMin steps away from it.</summary>
         private const double NoPath = 1e30;
         /// <summary>Balanced takes Optimal only when it saves at least this fraction of Soonest's total.</summary>
@@ -122,6 +127,12 @@ namespace ClaudiaKerman.Core.Tools
         private const int PlanePoints = 32;
         /// <summary>A moon this far (degrees) out of the equator's plane is launched into from the pad (#690); the Mun, in it, is not.</summary>
         private const double OutOfPlaneDeg = 1;
+
+        /// <summary>#966: why a held window's transfer flies no later window (<see cref="WindowSearch.HeldMissed"/>).</summary>
+        internal static string HeldMissedWhy(string target)
+        {
+            return "the window the player picked for " + target + " was missed: no later one is flown, the player picks again";
+        }
 
         /// <summary>
         /// The windows from the craft's planet to <paramref name="target"/>, arriving at <paramref name="targetPe"/> (m above its sea
@@ -245,29 +256,26 @@ namespace ClaudiaKerman.Core.Tools
                     }
 
             // Optimal: BrentMin over the departure a grid step either side of the cheapest, each at its own cheapest flight time.
-            var end = from + synodic;
             Func<double, double, TransferWindow> atTime = (t, seedTof) => CheapestFlight(problem, t, seedTof, tofStep, tofLo);
-            var bestT = from + best * step;
-            var lo = Math.Max(from, bestT - step);
-            var hi = Math.Min(end, bestT + step);
-            var x = Minimise(u => atTime(bestT + u * step, rowTof[best]).TotalDv, (lo - bestT) / step, (hi - bestT) / step);
-            var optimal = atTime(bestT + x * step, rowTof[best]);
-            var gridBest = atTime(bestT, rowTof[best]);
-            if (!(optimal.TotalDv <= gridBest.TotalDv)) optimal = gridBest;
+            Func<int, double, TransferWindow> refined = (row, end) =>
+            {
+                var bestT = from + row * step;
+                var lo = Math.Max(from, bestT - step);
+                var hi = Math.Min(end, bestT + step);
+                var x = Minimise(u => atTime(bestT + u * step, rowTof[row]).TotalDv, (lo - bestT) / step, (hi - bestT) / step);
+                var found = atTime(bestT + x * step, rowTof[row]);
+                var gridBest = atTime(bestT, rowTof[row]);
+                return found.TotalDv <= gridBest.TotalDv ? found : gridBest;
+            };
+            var optimal = refined(best, from + synodic);
 
             // Soonest: the first departure whose total fits the margin over Optimal's; between it and the grid point before, the edge.
-            var budget = optimal.TotalDv * (1 + marginPercent / 100.0);
-            var first = -1;
-            for (var i = 0; i < Departures && first < 0; i++)
-                if (rowCost[i] <= budget) first = i;
-            TransferWindow soonest;
-            if (first < 0 || from + first * step >= optimal.DepartureUt) soonest = optimal;
-            else if (first == 0) soonest = atTime(from, rowTof[0]);
-            else
+            Func<int, double, TransferWindow> edge = (first, budget) =>
             {
+                if (first == 0) return atTime(from, rowTof[0]);
                 double late = from + first * step, early = late - step;
                 var lateTof = rowTof[first];
-                soonest = atTime(late, lateTof);
+                var found = atTime(late, lateTof);
                 for (var k = 0; k < Bisections && late - early > 1; k++)
                 {
                     var mid = (early + late) / 2;
@@ -275,10 +283,124 @@ namespace ClaudiaKerman.Core.Tools
                     if (got.TotalDv <= budget)
                     {
                         late = mid;
-                        soonest = got;
+                        found = got;
                         lateTof = got.ArrivalUt - got.DepartureUt;
                     }
                     else early = mid;
+                }
+                return found;
+            };
+            var withinMargin = 1 + marginPercent / 100.0;
+            // The first grid departure before end whose total fits budget; -1 for none.
+            Func<double, double, int> firstWithin = (budget, end) =>
+            {
+                for (var i = 0; i < Departures && from + i * step < end; i++)
+                    if (rowCost[i] <= budget) return i;
+                return -1;
+            };
+            var soonestRow = firstWithin(optimal.TotalDv * withinMargin, double.PositiveInfinity);
+            var soonest = soonestRow < 0 || from + soonestRow * step >= optimal.DepartureUt ? optimal : edge(soonestRow, optimal.TotalDv * withinMargin);
+            // #966: a held window, found from its anchor (the departure picked, never moved) on a grid of its own, so where it starts
+            // and ends depends on the anchor alone, never on now: from the anchor downhill to the window's cheapest, then the unbroken
+            // run of departures within the margin of that cheapest. It ends at the first grid departure past the margin after its
+            // cheapest; from then on it is missed, and stays so. While open Soonest and Optimal keep to it, and once its cheapest has
+            // passed both leave now. A search round a literal UT (span) flies that UT, so keeps to no held window.
+            var heldMissed = false;
+            if (problem.Held.HasValue && span == null)
+            {
+                // The windows' true recurrence, not the horizon searched (a moon's shortened horizon).
+                var period = problem.Moon ? problem.Target.Period : Transfer.Synodic(problem.Home.Period, problem.Target.Period);
+                var heldStep = period / (Departures - 1);
+                var anchor = problem.Held.Value;
+                var reach = (Departures - 1) / 2;
+                var heldCost = new Dictionary<int, double>();
+                var heldTof = new Dictionary<int, double>();
+                // A departure's cheapest on the flight-time grid, and the flight time it takes.
+                Func<double, double[]> cheapestAt = t =>
+                {
+                    double c = double.PositiveInfinity, tofAt = tofLo;
+                    for (var j = 0; j < Flights; j++)
+                    {
+                        var got = problem.Cost(t, tofLo + j * tofStep).TotalDv;
+                        if (got < c)
+                        {
+                            c = got;
+                            tofAt = tofLo + j * tofStep;
+                        }
+                    }
+                    return new[] { c, tofAt };
+                };
+                Func<int, double> costAt = k =>
+                {
+                    double c;
+                    if (heldCost.TryGetValue(k, out c)) return c;
+                    var got = cheapestAt(anchor + k * heldStep);
+                    heldCost[k] = got[0];
+                    heldTof[k] = got[1];
+                    return got[0];
+                };
+                var kBest = 0;
+                var down = costAt(1) < costAt(0) ? 1 : costAt(-1) < costAt(0) ? -1 : 0;
+                while (down != 0 && Math.Abs(kBest + down) <= reach && costAt(kBest + down) < costAt(kBest)) kBest += down;
+                // A row's cost, its cheapest of the coarse flight times, rises a little where that flight time switches, so the walk can
+                // stop short (#966 round 5). The cheapest is the run's lowest row: the run is found again round it until it is the same
+                // row. Each pass takes a strictly cheaper row of finitely many, so it settles, and on the grid's own rows it is exact.
+                double heldBudget;
+                int kEnd, kOpen;
+                while (true)
+                {
+                    // Within the margin of its cheapest, or more to take in the anchor and the rows on the way down: a departure the
+                    // player picked is in its window.
+                    heldBudget = costAt(kBest) * withinMargin;
+                    for (var k = Math.Min(0, kBest); k <= Math.Max(0, kBest); k++)
+                        if (!double.IsInfinity(costAt(k))) heldBudget = Math.Max(heldBudget, costAt(k));
+                    kEnd = kBest + 1;
+                    while (kEnd - kBest < reach && costAt(kEnd) <= heldBudget) kEnd++;
+                    kOpen = kBest - 1;
+                    while (kBest - kOpen < reach && costAt(kOpen) <= heldBudget) kOpen--;
+                    // No path at the anchor or round it: no window held, so missed below, never one found further off.
+                    if (double.IsInfinity(costAt(kBest))) break;
+                    var lowest = kBest;
+                    for (var k = Math.Max(kOpen + 1, -reach); k < Math.Min(kEnd, reach + 1); k++)
+                        if (costAt(k) < costAt(lowest)) lowest = k;
+                    if (lowest == kBest) break;
+                    kBest = lowest;
+                }
+                // It closes where the cost crosses the budget, bisected between the last grid departure within it and the first past.
+                var closes = anchor + kEnd * heldStep;
+                var inside = closes - heldStep;
+                for (var b = 0; b < CloseBisections && costAt(kEnd) > heldBudget; b++)
+                {
+                    var mid = (inside + closes) / 2;
+                    if (cheapestAt(mid)[0] <= heldBudget) inside = mid;
+                    else closes = mid;
+                }
+                var opens = anchor + kOpen * heldStep;
+                var bestT = anchor + kBest * heldStep;
+                // The first horizon departure before the close with a path, for leaving now; -1 for none.
+                var firstPath = -1;
+                for (var i = 0; i < Departures && from + i * step < closes && firstPath < 0; i++)
+                    if (!double.IsInfinity(rowCost[i])) firstPath = i;
+                heldMissed = double.IsInfinity(costAt(kBest)) || from >= closes || firstPath < 0;
+                // The horizon's rows stand when both are in the held window already.
+                Func<TransferWindow, bool> inWindow = w => w.DepartureUt > opens && w.DepartureUt < closes;
+                var keepsRows = heldMissed || inWindow(optimal) && inWindow(soonest);
+                if (!keepsRows && from >= bestT + heldStep) soonest = optimal = atTime(from + firstPath * step, rowTof[firstPath]);
+                else if (!keepsRows)
+                {
+                    var lo = Math.Max(from, bestT - heldStep);
+                    var hi = Math.Min(closes, bestT + heldStep);
+                    var x = Minimise(u => atTime(bestT + u * heldStep, heldTof[kBest]).TotalDv, (lo - bestT) / heldStep, (hi - bestT) / heldStep);
+                    optimal = atTime(bestT + x * heldStep, heldTof[kBest]);
+                    var gridAt = atTime(Math.Max(lo, bestT), heldTof[kBest]);
+                    if (!(optimal.TotalDv <= gridAt.TotalDv)) optimal = gridAt;
+                    // Soonest: the first horizon departure in the window within the margin of its Optimal.
+                    var budget = optimal.TotalDv * withinMargin;
+                    var heldRow = -1;
+                    for (var i = 0; i < Departures && from + i * step < optimal.DepartureUt && heldRow < 0; i++)
+                        if (from + i * step > opens && rowCost[i] <= budget) heldRow = i;
+                    soonest = heldRow < 0 ? optimal : edge(heldRow, budget);
+                    if (optimal.DepartureUt < soonest.DepartureUt) soonest = optimal;
                 }
             }
             // Launched into its plane (#690) the moon is in the parking plane at every departure: no wait saves anything, so none is taken.
@@ -290,6 +412,7 @@ namespace ClaudiaKerman.Core.Tools
             {
                 Target = problem.Name, Soonest = soonest, Optimal = optimal, From = from, Synodic = synodic,
                 ParkingPe = problem.ParkingPe, ParkingAssumed = problem.ParkingAssumed, Launch = problem.Launch, Moon = problem.Moon, CraftDv = problem.CraftDv, LaterLegsDv = problem.LaterLegsDv,
+                HeldMissed = heldMissed,
             };
         }
 
@@ -386,6 +509,8 @@ namespace ClaudiaKerman.Core.Tools
             public double? CraftDv;
             /// <summary>The Mission Plan's later legs' delta-v, m/s; null with none (#694).</summary>
             public double? LaterLegsDv;
+            /// <summary>#966: the held window's anchor, the departure picked (UT s), which never moves while the pick holds; null for none (<see cref="TransferWindows.Search"/>).</summary>
+            public double? Held;
             /// <summary>Why the last Lambert solve that failed had no path.</summary>
             public string LambertError;
 
@@ -435,6 +560,7 @@ namespace ClaudiaKerman.Core.Tools
                 p.LaterLegsDv = snapshot.LaterLegsDv;
                 if (Vec3.Dot(p.Plane, p.Target.W) < 0) p.Plane = p.Plane * -1;
                 p.Setting = snapshot.TimeVersusDeltaV;
+                if (snapshot.WindowPick != null && snapshot.WindowPick.IsFor(body.Name)) p.Held = snapshot.WindowPick.DepartureUt;
                 if (p.ParkingAssumed && snapshot.IsGrounded) Ground(p, snapshot, home, body);
                 return p;
             }

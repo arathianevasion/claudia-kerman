@@ -266,11 +266,19 @@ namespace ClaudiaKerman.Core.Tools
                 json.Field("later_legs_dv", PlanningJson.Round(found.LaterLegsDv.Value, 1)).Field("available_dv", PlanningJson.Round(found.CraftDv.Value - found.LaterLegsDv.Value, 1));
             Window(json, "soonest", found.Soonest, snapshot.Ut, capture);
             Window(json, "optimal", found.Optimal, snapshot.Ut, capture);
-            json.Field("pick", pick == found.Optimal && pick != found.Soonest ? "optimal" : "soonest")
+            json.Field("pick", PickName(found, pick, snapshot))
                 .Field("setting", snapshot.WindowPick.IsFor(found.Target) ? "Player" : snapshot.TimeVersusDeltaV == TimeVersusDeltaV.Fastest ? "Fastest" : snapshot.TimeVersusDeltaV == TimeVersusDeltaV.MostEfficient ? "Most efficient" : "Balanced")
                 .Field("synodic_s", PlanningJson.Round(found.Synodic, 0))
                 .EndObject();
             return new ToolOutcome { Json = json.ToString(), Summary = Summary(found, pick) };
+        }
+
+        /// <summary>The row taken; when Soonest and Optimal are one departure (#966: a held window's both leave now), the player's own pick names it.</summary>
+        private static string PickName(WindowSearch found, TransferWindow pick, GameSnapshot snapshot)
+        {
+            if (pick != found.Optimal) return "soonest";
+            if (pick != found.Soonest) return "optimal";
+            return snapshot.WindowPick.IsFor(found.Target) && snapshot.WindowPick.Kind == WindowKind.Optimal ? "optimal" : "soonest";
         }
 
         private static string Summary(WindowSearch found, TransferWindow pick)
@@ -290,7 +298,7 @@ namespace ClaudiaKerman.Core.Tools
                 json.Field("total_dv", PlanningJson.Round(w.TotalDv, 1)).EndObject();
             }
             var pick = TransferWindows.Pick(found, snapshot);
-            json.Field("pick", pick == found.Optimal && pick != found.Soonest ? "optimal" : "soonest");
+            json.Field("pick", PickName(found, pick, snapshot));
             // From the ground (#690, #727) the rows assume this launch: fly launch with this target_inc at this time, not an equatorial orbit.
             if (found.Launch != null) Launch(json, found.Launch, snapshot.Ut, found.Launch.Residual == 0
                 ? "the rows assume a launch into " + found.Target + "'s plane at this time, then the transfer in that plane"

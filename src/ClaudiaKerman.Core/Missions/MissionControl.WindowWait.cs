@@ -46,7 +46,8 @@ namespace ClaudiaKerman.Core.Missions
             // Only before the first run: the craft waits on the pad, and the launch carries the Due Time.
             if (plan.Manual || mission.RunStartUt != 0 || _snapshot == null) return;
             var planet = WindowWaits.Planet(_snapshot, mission.Goal);
-            var window = WindowFor(mission, planet);
+            bool heldMissed;
+            var window = WindowFor(mission, planet, out heldMissed);
             if (window == null) return;
             var due = WindowWaits.DueTime(window.DepartureUt, _ut);
             if (!due.HasValue) return;
@@ -86,7 +87,7 @@ namespace ClaudiaKerman.Core.Missions
             var surface = WindowWaits.AfterAscent(snapshot, plan, mission.Plan == null ? null : mission.Plan.Sequences, StepOf(mission, plan));
             if (surface == null) return null;
             var settings = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config));
-            WindowWaits.Solve(snapshot, surface, settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, _ut, mission.WindowPick);
+            WindowWaits.Solve(snapshot, surface, settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, _ut, HeldPick(mission));
             return surface;
         }
 
@@ -106,7 +107,7 @@ namespace ClaudiaKerman.Core.Missions
             if (plan.Manual || !FliesCraft(mission, plan.Vessel)) return;
             var snapshot = MissionVesselSnapshot(mission);
             // The block's own wait takes the window the Mission does, the player's pick included (#686).
-            if (snapshot != null) snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
+            if (snapshot != null) snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, HeldPick(mission));
             var wait = BurnPoints.First(plan.Script, snapshot, _ut, plan.ExpectedDeltaV, _body);
             var due = BurnPoints.DueTime(wait, _ut);
             if (!due.HasValue) return;
@@ -132,12 +133,13 @@ namespace ClaudiaKerman.Core.Missions
             return first != null && first.Block == "return";
         }
 
-        private TransferWindow WindowFor(Mission mission, SnapshotBody planet)
+        private TransferWindow WindowFor(Mission mission, SnapshotBody planet, out bool heldMissed)
         {
+            heldMissed = false;
             if (planet == null || _snapshot == null) return null;
             var settings = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config));
             // The search starts now, not at the snapshot's time, which may be older (the player is back from another Mission).
-            return WindowWaits.Window(_snapshot.At(_ut), planet, settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
+            return WindowWaits.Window(_snapshot.At(_ut), planet, settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, HeldPick(mission), out heldMissed);
         }
 
         private static void ClearWindow(Mission mission)
@@ -170,10 +172,23 @@ namespace ClaudiaKerman.Core.Missions
                 ReturnWindowAlert(mission, plan, missed);
                 return false;
             }
-            var next = surface != null ? surface.Window : WindowFor(mission, planet);
+            TransferWindow next;
+            bool heldMissed;
+            if (surface != null)
+            {
+                next = surface.Window;
+                heldMissed = surface.HeldMissed;
+            }
+            else next = WindowFor(mission, planet, out heldMissed);
             // On the pad that is the whole plan; from a surface in mid-Mission, the legs still to fly (this one too), which the craft's delta-v is for.
             var budget = mission.Plan == null ? 0 : mission.Plan.Sequences.Skip(surface != null ? Math.Max(0, StepOf(mission, plan) - 1) : 0).Sum(s => Math.Max(0, s.DeltaV));
             var head = "The " + mission.WindowPlanet + " window of " + KerbinTime.Date(missed) + " was missed";
+            // #966: the window the player picked has gone, and is never traded for a later one: Claudia's revised plan asks for a pick.
+            if (heldMissed)
+            {
+                MissedWindowAlert(mission, head + " and it was the window the player picked, so the player picks again", MissionPrompts.HeldPickWindowLine);
+                return false;
+            }
             if (next == null || !WindowWaits.Fits(budget, planned, next.TotalDv, CraftDeltaV(_snapshot), _config.CraftCheckMarginPercent))
             {
                 WindowAlert(mission, head, next, planned);
@@ -204,8 +219,14 @@ namespace ClaudiaKerman.Core.Missions
         {
             var why = next == null ? "no next window was found" : "the next one, leaving " + KerbinTime.Date(next.DepartureUt) + ", costs "
                 + MetresPerSecond(next.TotalDv) + " against " + MetresPerSecond(planned) + " planned, outside the Craft Check budget";
-            Note(LogKind.Notice, head + " and " + why + ", so Claudia is revising the Mission Plan.");
-            AskForRevisedPlan(mission, MissionPrompts.WindowMissed(head + " and " + why + "."), MissionPrompts.WindowMissedNotice);
+            MissedWindowAlert(mission, head + " and " + why);
+        }
+
+        /// <summary>A missed window, <paramref name="what"/> saying why the plan can't move on: the plan is dropped and Claudia is asked for a revised one, with <paramref name="toClaudia"/> for her alone.</summary>
+        private void MissedWindowAlert(Mission mission, string what, string toClaudia = "")
+        {
+            Note(LogKind.Notice, what + ", so Claudia is revising the Mission Plan.");
+            AskForRevisedPlan(mission, MissionPrompts.WindowMissed(what + "." + toClaudia), MissionPrompts.WindowMissedNotice);
         }
 
         /// <summary>#905: a return's planned window was missed: the plan is dropped and Claudia is asked, with the next cheap window if the block's own search finds one.</summary>
@@ -221,7 +242,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             var snapshot = MissionVesselSnapshot(mission);
             if (snapshot == null) return null;
-            snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
+            snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, HeldPick(mission));
             var wait = BurnPoints.First(plan.Script, snapshot, _ut, plan.ExpectedDeltaV, _body);
             if (wait != null && wait.DepartureUt.HasValue && wait.DepartureUt.Value > _ut) return wait.DepartureUt;
             // No fixed window (BurnPoints.First gives none for the block's next pass): the UT the block's own search would fly.

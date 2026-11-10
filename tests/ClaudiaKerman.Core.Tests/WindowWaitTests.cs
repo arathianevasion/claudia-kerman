@@ -334,6 +334,7 @@ namespace ClaudiaKerman.Core.Tests
             var clock = new FakeAlarmClock();
             var mission = Control(new StreamingFakeTransport(DunaPlan(), LaunchPlan()));
             ToLaunchPlan(mission, 1203.48, 20000);
+            mission = Unheld(mission, OnPad(1203.48, 20000));
             clock.Take(mission);
             var first = mission.View.DueTime.Ut;
 
@@ -380,10 +381,11 @@ namespace ClaudiaKerman.Core.Tests
         public void AMissedWindowOutsideTheBudgetRaisesAnAlertForARevisedMissionPlan()
         {
             var clock = new FakeAlarmClock();
-            var transport = new StreamingFakeTransport(DunaPlan(), LaunchPlan(), DunaPlan());
-            var mission = Control(transport);
+            var transport = new StreamingFakeTransport(DunaPlan());
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), LaunchPlan()));
             // Exactly the budget, with no margin: no window fits it.
             ToLaunchPlan(mission, 1203.48, Budget);
+            mission = Unheld(mission, OnPad(1203.48, Budget), transport);
             clock.Take(mission);
 
             mission.Send(new UtAdvanced(Window(1203.48).DepartureUt + 120 * Day));
@@ -432,6 +434,8 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("Duna", reread.WindowPlanet);
             Assert.Equal(due + WindowWaits.LaunchLeadS, reread.WindowUt.Value, 3);
             Assert.True(reread.WindowDeltaV > 0);
+            // #966: a pick saved before then, with no window on record, holds none, so a missed window moves on (a held one asks).
+            reread.WindowPickDepartureUt = null;
 
             var clock = new FakeAlarmClock();
             var reload = Control(new StreamingFakeTransport());

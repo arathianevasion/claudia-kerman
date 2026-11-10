@@ -445,6 +445,7 @@ namespace ClaudiaKerman.Core.Missions
                 Remote = start.Remote,
                 AutoMode = _config.DefaultAutoMode,
                 WindowPick = window,
+                WindowPickDepartureUt = window.IsNone ? (double?)null : windows.RowFor(window).DepartureUt,
             };
             // Frozen for the whole Mission, so the cached prefix never changes.
             mission.System.Add(MissionPrompts.BaseLayer);
@@ -583,7 +584,7 @@ namespace ClaudiaKerman.Core.Missions
             if (_snapshot != null)
             {
                 // A planet's plan_transfer row picks its Transfer Window by the player's pick or the Mission Setting, as a tool call would (#458, #686).
-                _snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
+                _snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, HeldPick(mission));
                 _snapshot.MissionGoal = goal;
             }
             return MissionPrompts.StageTable(_snapshot, goal, mission.PlannedAscent) + MissionPrompts.DeltaVMapLine(_snapshot, goal) + MissionPrompts.PadPlanning(_snapshot);
@@ -636,6 +637,7 @@ namespace ClaudiaKerman.Core.Missions
             if (mission.Chutes == null && mission.Plan != null && mission.Stage != MissionStage.AwaitingPlanApproval && _scene == GameScene.Flight) GroupChutes(mission);
             // #867: a plan offered with no snapshot of the craft is judged on the first.
             CrossingFirstSnapshot(mission);
+            SpendPick(mission, snapshot);
             CarryOnWhenSceneAllows();
         }
 
@@ -819,10 +821,19 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// Late Approval: the planned window has closed. Within tolerance, the script takes the next window and the
-        /// player gets a one-line notice (true: carry on starting); otherwise Claudia is asked to re-plan (false).
+        /// player gets a one-line notice (true: carry on starting); otherwise Claudia is asked to re-plan (false). #966: a held pick
+        /// never takes the next window: its own stands while open (true), and once it has gone the player picks again (false).
         /// </summary>
         private bool TakeNextWindow(Mission mission, SequencePlan plan)
         {
+            var held = HeldPick(mission);
+            if (held.DepartureUt.HasValue)
+            {
+                bool heldMissed;
+                WindowFor(mission, _snapshot == null ? null : _snapshot.Bodies.FirstOrDefault(b => held.IsFor(b.Name)), out heldMissed);
+                if (heldMissed) MissedWindowAlert(mission, "The " + held.Body + " window the player picked was missed, so the player picks again", MissionPrompts.HeldPickWindowLine);
+                return !heldMissed;
+            }
             var next = plan.LateWindowDeltaV;
             var limit = plan.ExpectedDeltaV * (1 + _config.LateApprovalToleranceDvPercent / 100.0);
             if (next.HasValue && next.Value <= limit)
@@ -2559,7 +2570,7 @@ namespace ClaudiaKerman.Core.Missions
                 view.PlanStale = StaleBecause(mission);
                 view.PlanStaleTarget = view.PlanStale.Length > 0 && mission.TargetChange.Length > 0;
                 view.PlanDeclined = mission.Declined;
-                view.WindowPick = mission.WindowPick;
+                view.WindowPick = HeldPick(mission);
                 view.ReturnWindowUt = mission.ReturnWindowUt;
                 view.WindowPickNeeded = WindowPickMissing(mission);
                 view.Windows = MissionOffer(mission);
