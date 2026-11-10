@@ -581,7 +581,7 @@ namespace ClaudiaKerman.Core.Missions
             if (_snapshot != null)
             {
                 // A planet's plan_transfer row picks its Transfer Window by the player's pick or the Mission Setting, as a tool call would (#458, #686).
-                _snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
+                _snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, HeldPick(mission));
                 _snapshot.MissionGoal = goal;
             }
             return MissionPrompts.StageTable(_snapshot, goal, mission.PlannedAscent) + MissionPrompts.DeltaVMapLine(_snapshot, goal) + MissionPrompts.PadPlanning(_snapshot);

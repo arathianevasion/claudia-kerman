@@ -11,10 +11,16 @@ Once the player picks Soonest or Optimal, the pick holds for that transfer until
 5. At a revised plan, press Soonest: the log has "Transfer Window to Duna: Soonest." and Approve stays on. After Approve, the next request says "The player picked the Soonest Transfer Window to Duna."
 6. Save and load at a revised plan carrying the pick: the card is there with the pick's button on, and Approve is on.
 
-## Check 2: a missed window asks again
+## Check 2: an open window holds; a closed one asks again
 
-1. As Check 1 to Kerbin orbit with Soonest, then warp past the Soonest row's departure date without approving the transfer.
-2. Revise the plan (change Time versus delta-v). The card shows fresh rows with neither button on, Approve is greyed out, and the status reads "Pick a Transfer Window, then Approve".
+1. As Check 1 to Kerbin orbit with Soonest, then warp past the Soonest row's departure date, a few days into the window, without approving the transfer.
+2. Revise the plan (change Time versus delta-v). The window is still open: the Soonest row says "(now)", its button is on, and Approve is on.
+3. Warp on until the Soonest row is about two years away (the window has closed), then revise again. The card shows fresh rows with neither button on, Approve is greyed out, and the status reads "Pick a Transfer Window, then Approve".
+
+## Check 2b: a held Optimal stays in its window
+
+1. Pick Optimal on the pad, warp on the pad to that Optimal window, launch to Kerbin orbit.
+2. A day or more past the Optimal row's date, revise the plan. The Optimal row leaves "(now)" or within days, not about two years on, and nothing asks for a pick. Approve, and the transfer's `plan_transfer` row in the request (the Mission folder's request log) has `"pick":"optimal"` with a departure within days.
 
 ## Check 3: after the ejection the pick is spent, and the return asks
 

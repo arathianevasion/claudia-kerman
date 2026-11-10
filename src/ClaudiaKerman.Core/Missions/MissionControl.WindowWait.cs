@@ -86,7 +86,7 @@ namespace ClaudiaKerman.Core.Missions
             var surface = WindowWaits.AfterAscent(snapshot, plan, mission.Plan == null ? null : mission.Plan.Sequences, StepOf(mission, plan));
             if (surface == null) return null;
             var settings = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config));
-            WindowWaits.Solve(snapshot, surface, settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, _ut, mission.WindowPick);
+            WindowWaits.Solve(snapshot, surface, settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, _ut, HeldPick(mission));
             return surface;
         }
 
@@ -106,7 +106,7 @@ namespace ClaudiaKerman.Core.Missions
             if (plan.Manual || !FliesCraft(mission, plan.Vessel)) return;
             var snapshot = MissionVesselSnapshot(mission);
             // The block's own wait takes the window the Mission does, the player's pick included (#686).
-            if (snapshot != null) snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
+            if (snapshot != null) snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, HeldPick(mission));
             var wait = BurnPoints.First(plan.Script, snapshot, _ut, plan.ExpectedDeltaV, _body);
             var due = BurnPoints.DueTime(wait, _ut);
             if (!due.HasValue) return;
@@ -137,7 +137,7 @@ namespace ClaudiaKerman.Core.Missions
             if (planet == null || _snapshot == null) return null;
             var settings = MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config));
             // The search starts now, not at the snapshot's time, which may be older (the player is back from another Mission).
-            return WindowWaits.Window(_snapshot.At(_ut), planet, settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
+            return WindowWaits.Window(_snapshot.At(_ut), planet, settings.TimeVersusDeltaV, _config.CraftCheckMarginPercent, HeldPick(mission));
         }
 
         private static void ClearWindow(Mission mission)
@@ -221,7 +221,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             var snapshot = MissionVesselSnapshot(mission);
             if (snapshot == null) return null;
-            snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, mission.WindowPick);
+            snapshot.StampMission(MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).TimeVersusDeltaV, _config.CraftCheckMarginPercent, HeldPick(mission));
             var wait = BurnPoints.First(plan.Script, snapshot, _ut, plan.ExpectedDeltaV, _body);
             if (wait != null && wait.DepartureUt.HasValue && wait.DepartureUt.Value > _ut) return wait.DepartureUt;
             // No fixed window (BurnPoints.First gives none for the block's next pass): the UT the block's own search would fly.

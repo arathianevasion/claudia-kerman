@@ -41,11 +41,14 @@ namespace ClaudiaKerman.Core.Tests
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
         }
 
-        /// <summary>#966: a day after the picked window of <paramref name="kind"/> from the pad left, so a revised plan asks again (a missed window).</summary>
+        /// <summary>
+        /// #966: after the picked window of <paramref name="kind"/> from the pad has gone, so a revised plan asks again (a missed window):
+        /// half a synodic period after it, where the next window is Soonest. A day after its departure the window is still open.
+        /// </summary>
         private static double PastThe(WindowKind kind)
         {
             var windows = DunaWindows(NewGame);
-            return (kind == WindowKind.Optimal ? windows.Optimal : windows.Soonest).DepartureUt + Day;
+            return (kind == WindowKind.Optimal ? windows.Optimal : windows.Soonest).DepartureUt + windows.Synodic / 2 + Day;
         }
 
         /// <summary>The craft seen at <paramref name="ut"/>, after its picked window left, and a revised plan asked for.</summary>

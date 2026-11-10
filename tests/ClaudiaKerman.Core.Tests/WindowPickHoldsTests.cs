@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using ClaudiaKerman.Core.Config;
 using ClaudiaKerman.Core.Missions;
+using ClaudiaKerman.Core.Tools;
 using ClaudiaKerman.Core.Ui;
 using Xunit;
 
@@ -130,11 +131,113 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void AMissedWindowAsksAgain()
         {
-            var past = DunaWindows(NewGame).Soonest.DepartureUt + Day;
-            var mission = RevisedInOrbit(new StreamingFakeTransport(DunaPlan(), LaunchPlan(), DunaPlan()), Duna(WindowKind.Soonest), past);
+            var mission = RevisedInOrbit(new StreamingFakeTransport(DunaPlan(), LaunchPlan(), DunaPlan()), Duna(WindowKind.Soonest), PastThe(WindowKind.Soonest));
             Assert.True(mission.View.WindowPickNeeded);
             Assert.True(mission.View.Windows.Needed);
             Assert.DoesNotContain(QuickReply.Approve, mission.View.QuickReplies);
+            // The fresh rows are the next window's.
+            Assert.True(mission.View.Windows.Rows[0].DepartureUt > DunaWindows(NewGame).Optimal.DepartureUt + DunaWindows(NewGame).Synodic / 2);
+        }
+
+        /// <summary>Started in a low Kerbin orbit at <paramref name="ut"/> with <paramref name="pick"/>, and its first plan approved.</summary>
+        private void PickedInOrbit(MissionControl mission, WindowPick pick, double ut)
+        {
+            mission.Send(new SceneChanged(GameScene.Flight));
+            mission.Send(new UtAdvanced(ut));
+            mission.Send(InOrbit("Kerbin", ut, 9000));
+            CraftCheckRouter.StartChecked(mission, _background, InOrbit("Kerbin", ut, 9000), new StartMission(Goal, 10m, "claude-sonnet-5-5", window: pick));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+        }
+
+        /// <summary>The craft seen in orbit at <paramref name="ut"/>, and the setting edited to <paramref name="setting"/> (a change, so a revision).</summary>
+        private void RevisedAt(MissionControl mission, double ut, TimeVersusDeltaV setting = TimeVersusDeltaV.MostEfficient)
+        {
+            mission.Send(new UtAdvanced(ut));
+            mission.Send(InOrbit("Kerbin", ut, 9000));
+            ToRevisedPlan(mission, setting);
+        }
+
+        [Fact]
+        public void AnOpenWindowIsNotMissedAsItsSoonestDepartureMovesWithTheClockButIsOnceItCloses()
+        {
+            // The band is open from about day 157 to day 278 from a new game: Soonest leaves "now" all through it.
+            var start = NewGame + 157 * Day;
+            var transport = new StreamingFakeTransport(DunaPlan(), LaunchPlan(), DunaPlan(), LaunchPlan(), DunaPlan(), LaunchPlan(), DunaPlan());
+            var mission = Control(transport);
+            PickedInOrbit(mission, Duna(WindowKind.Soonest), start);
+
+            // An hour on, past the departure picked: the same window, still open.
+            RevisedAt(mission, start + 3600);
+            Assert.False(mission.View.WindowPickNeeded);
+            Assert.Equal("Duna:Soonest", mission.View.WindowPick.Key);
+            Assert.Equal(start + 3600, mission.View.Windows.Rows[0].DepartureUt, 0);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            // A second revision after that refresh, days later and the band still open.
+            RevisedAt(mission, start + 10 * Day, TimeVersusDeltaV.Fastest);
+            Assert.False(mission.View.WindowPickNeeded);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+
+            // Past the band's close Soonest is the next window, about a synodic period on: the window has gone, so it asks.
+            RevisedAt(mission, NewGame + 290 * Day);
+            Assert.True(mission.View.WindowPickNeeded);
+            Assert.DoesNotContain(QuickReply.Approve, mission.View.QuickReplies);
+        }
+
+        [Fact]
+        public void AnOptimalPickKeepsItsOpenWindowWhenTheNextOneIsALittleCheaper()
+        {
+            // The player's Duna flight: Optimal picked, then in orbit while that window is open the next synodic window costs a little less.
+            var picked = NewGame + 200 * Day;
+            var config = new PlayerConfig();
+            var window = WindowChoice.Work(InOrbit("Kerbin", picked, 9000), Goal, config.CraftCheckMarginPercent, picked).RowFor(Duna(WindowKind.Optimal));
+            var revised = NewGame + 236 * Day;
+            var whole = WindowChoice.Work(InOrbit("Kerbin", revised, 9000), Goal, config.CraftCheckMarginPercent, revised);
+            var synodic = DunaWindows(NewGame).Synodic;
+            Assert.True(whole.RowFor(Duna(WindowKind.Optimal)).DepartureUt > window.DepartureUt + synodic / 2, "the next window is not the cheaper one here");
+            Assert.True(whole.RowFor(Duna(WindowKind.Optimal)).TotalDv < whole.RowFor(Duna(WindowKind.Soonest)).TotalDv);
+
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), LaunchPlan(), DunaPlan()));
+            PickedInOrbit(mission, Duna(WindowKind.Optimal), picked);
+            RevisedAt(mission, revised);
+            Assert.False(mission.View.WindowPickNeeded);
+            Assert.Equal("Duna:Optimal", mission.View.WindowPick.Key);
+            // The held departure stays in the open window: it leaves now, not two years on.
+            var optimal = mission.View.Windows.Rows[1];
+            Assert.True(optimal.DepartureUt < window.DepartureUt + synodic / 2, "Optimal jumped to the next window");
+            var reread = MissionSaveState.FromValues(Assert.Single(mission.ExportStates()).ToValues());
+            Assert.Equal(optimal.DepartureUt, reread.WindowPickDepartureUt.Value, 0);
+        }
+
+        [Fact]
+        public void PlanTransferForAHeldOptimalPickLeavesInTheHeldWindow()
+        {
+            var revised = NewGame + 236 * Day;
+            var held = DunaWindows(NewGame).Optimal.DepartureUt;
+            var limit = held + DunaWindows(NewGame).Synodic / 2;
+            const string input = "{\"target\":\"Duna\",\"target_pe\":60000}";
+
+            var free = InOrbit("Kerbin", revised, 9000);
+            free.StampMission(TimeVersusDeltaV.MostEfficient, new PlayerConfig().CraftCheckMarginPercent, Duna(WindowKind.Optimal));
+            Assert.True(LeavesAt(PlanningTools.Default().Run("plan_transfer", input, free, null)) > limit, "without a held window Optimal is the next one here");
+
+            var stamped = InOrbit("Kerbin", revised, 9000);
+            stamped.StampMission(TimeVersusDeltaV.MostEfficient, new PlayerConfig().CraftCheckMarginPercent, new WindowPick("Duna", WindowKind.Optimal, held));
+            var row = PlanningTools.Default().Run("plan_transfer", input, stamped, null);
+            Assert.False(row.IsError, row.Json);
+            Assert.InRange(LeavesAt(row), revised - 1, limit);
+            Assert.Contains("\"pick\":\"optimal\"", row.Json);
+        }
+
+        /// <summary>The departure plan_transfer's pick leaves at, from its summary ("... leaving at UT 5098803").</summary>
+        private static double LeavesAt(ToolOutcome outcome)
+        {
+            var at = outcome.Summary.LastIndexOf("UT ", System.StringComparison.Ordinal);
+            return double.Parse(outcome.Summary.Substring(at + 3), System.Globalization.CultureInfo.InvariantCulture);
         }
 
         [Fact]

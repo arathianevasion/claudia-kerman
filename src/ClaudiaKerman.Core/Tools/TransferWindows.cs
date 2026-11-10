@@ -73,6 +73,8 @@ namespace ClaudiaKerman.Core.Tools
         }
         /// <summary>The Mission Plan's later legs' delta-v, m/s (#694); null with no Mission Plan. <see cref="Fits"/> is judged against <see cref="CraftDv"/> less this.</summary>
         public double? LaterLegsDv;
+        /// <summary>#966: the held window (<see cref="Problem.Held"/>) has gone: <see cref="Soonest"/> lies in a later one. Soonest and Optimal are then the whole horizon's.</summary>
+        public bool HeldMissed;
     }
 
     /// <summary>
@@ -245,15 +247,18 @@ namespace ClaudiaKerman.Core.Tools
                     }
 
             // Optimal: BrentMin over the departure a grid step either side of the cheapest, each at its own cheapest flight time.
-            var end = from + synodic;
             Func<double, double, TransferWindow> atTime = (t, seedTof) => CheapestFlight(problem, t, seedTof, tofStep, tofLo);
-            var bestT = from + best * step;
-            var lo = Math.Max(from, bestT - step);
-            var hi = Math.Min(end, bestT + step);
-            var x = Minimise(u => atTime(bestT + u * step, rowTof[best]).TotalDv, (lo - bestT) / step, (hi - bestT) / step);
-            var optimal = atTime(bestT + x * step, rowTof[best]);
-            var gridBest = atTime(bestT, rowTof[best]);
-            if (!(optimal.TotalDv <= gridBest.TotalDv)) optimal = gridBest;
+            Func<int, double, TransferWindow> refined = (at, end) =>
+            {
+                var bestT = from + at * step;
+                var lo = Math.Max(from, bestT - step);
+                var hi = Math.Min(end, bestT + step);
+                var x = Minimise(u => atTime(bestT + u * step, rowTof[at]).TotalDv, (lo - bestT) / step, (hi - bestT) / step);
+                var found = atTime(bestT + x * step, rowTof[at]);
+                var gridBest = atTime(bestT, rowTof[at]);
+                return found.TotalDv <= gridBest.TotalDv ? found : gridBest;
+            };
+            var optimal = refined(best, from + synodic);
 
             // Soonest: the first departure whose total fits the margin over Optimal's; between it and the grid point before, the edge.
             var budget = optimal.TotalDv * (1 + marginPercent / 100.0);
@@ -281,6 +286,22 @@ namespace ClaudiaKerman.Core.Tools
                     else early = mid;
                 }
             }
+            // #966: a held window. Windows recur once a period, so the held one is every departure within half a period of its own;
+            // it has gone once Soonest, the earliest departure within the margin, lies past that. While it has not, Optimal is its cheapest.
+            var heldMissed = false;
+            if (problem.Held.HasValue)
+            {
+                var limit = problem.Held.Value + (problem.Moon ? problem.Target.Period : Transfer.Synodic(problem.Home.Period, problem.Target.Period)) / 2;
+                heldMissed = soonest.DepartureUt >= limit;
+                if (!heldMissed && optimal.DepartureUt >= limit)
+                {
+                    var inHeld = -1;
+                    for (var i = 0; i < Departures && from + i * step < limit; i++)
+                        if (!double.IsInfinity(rowCost[i]) && (inHeld < 0 || rowCost[i] < rowCost[inHeld])) inHeld = i;
+                    if (inHeld >= 0) optimal = refined(inHeld, Math.Min(from + synodic, limit));
+                    if (optimal.DepartureUt < soonest.DepartureUt) soonest = optimal;
+                }
+            }
             // Launched into its plane (#690) the moon is in the parking plane at every departure: no wait saves anything, so none is taken.
             if (problem.Moon && (problem.Launch != null && problem.Launch.Residual == 0 || soonest.TotalDv - optimal.TotalDv < NoSavingDv)) optimal = soonest;
             problem.Describe(soonest);
@@ -290,6 +311,7 @@ namespace ClaudiaKerman.Core.Tools
             {
                 Target = problem.Name, Soonest = soonest, Optimal = optimal, From = from, Synodic = synodic,
                 ParkingPe = problem.ParkingPe, ParkingAssumed = problem.ParkingAssumed, Launch = problem.Launch, Moon = problem.Moon, CraftDv = problem.CraftDv, LaterLegsDv = problem.LaterLegsDv,
+                HeldMissed = heldMissed,
             };
         }
 
@@ -386,6 +408,8 @@ namespace ClaudiaKerman.Core.Tools
             public double? CraftDv;
             /// <summary>The Mission Plan's later legs' delta-v, m/s; null with none (#694).</summary>
             public double? LaterLegsDv;
+            /// <summary>#966: the departure of the window the player's pick holds, UT s; null for none (<see cref="TransferWindows.Search"/>).</summary>
+            public double? Held;
             /// <summary>Why the last Lambert solve that failed had no path.</summary>
             public string LambertError;
 
@@ -435,6 +459,7 @@ namespace ClaudiaKerman.Core.Tools
                 p.LaterLegsDv = snapshot.LaterLegsDv;
                 if (Vec3.Dot(p.Plane, p.Target.W) < 0) p.Plane = p.Plane * -1;
                 p.Setting = snapshot.TimeVersusDeltaV;
+                if (snapshot.WindowPick != null && snapshot.WindowPick.IsFor(body.Name)) p.Held = snapshot.WindowPick.DepartureUt;
                 if (p.ParkingAssumed && snapshot.IsGrounded) Ground(p, snapshot, home, body);
                 return p;
             }

@@ -30,11 +30,14 @@ namespace ClaudiaKerman.Core.Missions
 
         public readonly string Body;
         public readonly WindowKind Kind;
+        /// <summary>#966: the held window's departure, UT s, so a search keeps to that window (<see cref="Tools.TransferWindows.Search"/>); null for none. Not in <see cref="Key"/>.</summary>
+        public readonly double? DepartureUt;
 
-        public WindowPick(string body, WindowKind kind)
+        public WindowPick(string body, WindowKind kind, double? departureUt = null)
         {
             Body = body ?? "";
             Kind = kind;
+            DepartureUt = departureUt;
         }
 
         public bool IsNone
@@ -89,6 +92,8 @@ namespace ClaudiaKerman.Core.Missions
         public string Caption = "";
         /// <summary>Why a transfer that would take a choice offers none (the search found no window); "" otherwise.</summary>
         public string Problem = "";
+        /// <summary>#966: the held window the offer was worked for has gone (<see cref="Tools.WindowSearch.HeldMissed"/>).</summary>
+        internal bool HeldMissed;
         public IList<WindowRow> Rows = new List<WindowRow>();
 
         /// <summary>The player must pick before the Mission or the plan goes on.</summary>
@@ -204,14 +209,21 @@ namespace ClaudiaKerman.Core.Missions
             return Math.Round(value).ToString(CultureInfo.InvariantCulture);
         }
 
-        /// <summary>The offer for <paramref name="goal"/> from <paramref name="now"/>, from the same search the Mission request's plan_transfer rows make.</summary>
-        internal static WindowOffer Work(GameSnapshot snapshot, string goal, int marginPercent, double now)
+        /// <summary>
+        /// The offer for <paramref name="goal"/> from <paramref name="now"/>, from the same search the Mission request's plan_transfer
+        /// rows make. #966: with a <paramref name="held"/> pick its rows keep to the held window, or say it has gone.
+        /// </summary>
+        internal static WindowOffer Work(GameSnapshot snapshot, string goal, int marginPercent, double now, WindowPick held = null)
         {
             var body = Transfer(snapshot, goal);
             if (body == null) return WindowOffer.None;
             var at = snapshot.At(now);
+            at.WindowPick = held ?? WindowPick.None;
             var found = TransferWindows.Find(at, body.Name, MissionPrompts.ArrivalPe(body), ArrivalRule.Capture(at, body.Name, null), marginPercent);
-            return found.Error != null ? Unworked(body.Name, found.Error) : Offer(at, body.Name, now, found.Soonest, found.Optimal);
+            if (found.Error != null) return Unworked(body.Name, found.Error);
+            var offer = Offer(at, body.Name, now, found.Soonest, found.Optimal);
+            offer.HeldMissed = found.HeldMissed;
+            return offer;
         }
 
         /// <summary>

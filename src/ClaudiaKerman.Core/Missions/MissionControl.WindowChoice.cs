@@ -37,6 +37,7 @@ namespace ClaudiaKerman.Core.Missions
         private string _offerKey;
         private GameSnapshot _offerFrom;
         private string _offerGoal;
+        private string _offerHeld;
         private double _offerPeriod;
         /// <summary>The departure last read from a plan, and the plan and snapshot it was read from.</summary>
         private SurfaceDeparture _departure;
@@ -47,19 +48,29 @@ namespace ClaudiaKerman.Core.Missions
         /// The windows on offer for <paramref name="goal"/> from <paramref name="snapshot"/>: one object until what it depends on moves, so
         /// the view can ask on every rebuild. The start form asks of the craft it checks; a Mission of its own craft (<see cref="MissionVesselSnapshot"/>).
         /// </summary>
-        private WindowOffer OfferFor(string goal, GameSnapshot snapshot, Func<double, WindowOffer> work = null)
+        private WindowOffer OfferFor(string goal, GameSnapshot snapshot, Func<double, WindowOffer> work = null, WindowPick held = null)
         {
             if (snapshot == null) return WindowOffer.None;
             var now = Math.Max(_ut, snapshot.Ut);
             var period = WindowChoice.Period(now);
-            if (_offer != null && ReferenceEquals(_offerFrom, snapshot) && _offerGoal == goal && _offerPeriod == period) return _offer;
-            var key = WindowChoice.Key(snapshot, goal, _config.CraftCheckMarginPercent, now);
-            if (_offer == null || key != _offerKey) _offer = work != null ? work(now) : WindowChoice.Work(snapshot, goal, _config.CraftCheckMarginPercent, now);
+            // #966: the held window the rows keep to is part of what they were worked for.
+            var heldKey = held == null || held.IsNone ? "" : held.Key + "@" + held.DepartureUt;
+            if (_offer != null && ReferenceEquals(_offerFrom, snapshot) && _offerGoal == goal && _offerHeld == heldKey && _offerPeriod == period) return _offer;
+            var key = WindowChoice.Key(snapshot, goal, _config.CraftCheckMarginPercent, now) + "|" + heldKey;
+            if (_offer == null || key != _offerKey) _offer = work != null ? work(now) : WindowChoice.Work(snapshot, goal, _config.CraftCheckMarginPercent, now, held);
             _offerKey = key;
             _offerFrom = snapshot;
             _offerGoal = goal;
+            _offerHeld = heldKey;
             _offerPeriod = period;
             return _offer;
+        }
+
+        /// <summary>#966: the Mission's pick with the departure of the window it holds, for a search to keep to; None for none.</summary>
+        private static WindowPick HeldPick(Mission mission)
+        {
+            var pick = mission.WindowPick;
+            return pick.IsNone || !mission.WindowPickDepartureUt.HasValue ? pick : new WindowPick(pick.Body, pick.Kind, mission.WindowPickDepartureUt);
         }
 
         /// <summary>The goal the Mission Plan in hand flies: a new one it carries, or the Mission's.</summary>
@@ -85,24 +96,25 @@ namespace ClaudiaKerman.Core.Missions
                 mission.WindowPickNeeded = !first && (!mission.WindowPick.IsNone || mission.WindowPickSpent);
                 return;
             }
-            var offer = OfferFor(PlanGoal(mission), snapshot);
+            var offer = OfferFor(PlanGoal(mission), snapshot, held: HeldPick(mission));
             // #784: a revised plan asks only for a transfer its remaining legs still fly.
             var asks = offer.Needed && (first || WindowChoice.LegsAsk(snapshot, RestOfPlan(mission), mission.PlannedAscent));
             var holds = asks && (first ? !WindowChoice.Held(mission.WindowPick, offer).IsNone : PickHolds(mission, offer));
             mission.WindowPickNeeded = asks && !holds;
             mission.WindowPickCarried = holds && !first;
-            // The held window's departure as worked out now, from where the craft is.
+            // The held window's departure as worked out now, from where the craft is: it moves within that window, never to a later one.
             if (holds) mission.WindowPickDepartureUt = offer.RowFor(mission.WindowPick).DepartureUt;
         }
 
         /// <summary>
         /// #966: the Mission's pick holds for <paramref name="offer"/>'s transfer. The same transfer is the one to the pick's body, worked
-        /// out from where the craft is now, not a leg's place or name in the plan; it holds until its window is missed (its departure
-        /// passed, as NextWindow reads it) or its ejection flies (<see cref="SpendPick"/>, which drops it).
+        /// out from where the craft is now, not a leg's place or name in the plan; it holds until its window has gone (the offer, worked
+        /// for the held window, finds Soonest in a later one: <see cref="Tools.WindowSearch.HeldMissed"/>) or its ejection flies
+        /// (<see cref="SpendPick"/>, which drops it). Its departure passing is no miss: an open window departs "now" until it closes.
         /// </summary>
-        private bool PickHolds(Mission mission, WindowOffer offer)
+        private static bool PickHolds(Mission mission, WindowOffer offer)
         {
-            return !WindowChoice.Held(mission.WindowPick, offer).IsNone && !(mission.WindowPickDepartureUt.HasValue && WindowWaits.Missed(mission.WindowPickDepartureUt.Value, _ut));
+            return !WindowChoice.Held(mission.WindowPick, offer).IsNone && !offer.HeldMissed;
         }
 
         /// <summary>#966: the craft is seen gone on the pick's transfer (<see cref="WindowChoice.Departed"/>): the ejection has flown, so the pick holds no more, for a return or a later trip alike.</summary>
@@ -125,7 +137,7 @@ namespace ClaudiaKerman.Core.Missions
             var snapshot = MissionVesselSnapshot(mission);
             if (snapshot == null) return true;
             // #966: a plan offered out of Flight is judged when the craft is seen: a pick that holds for it is no pick missing.
-            var offer = OfferFor(PlanGoal(mission), snapshot);
+            var offer = OfferFor(PlanGoal(mission), snapshot, held: HeldPick(mission));
             return offer.Needed && !PickHolds(mission, offer);
         }
 
@@ -140,7 +152,7 @@ namespace ClaudiaKerman.Core.Missions
         private WindowOffer MissionOffer(Mission mission)
         {
             if (!WindowChoiceOpen(mission)) return WindowOffer.None;
-            return mission.Stage == MissionStage.AwaitingSequenceApproval ? DepartureOffer(mission, mission.PendingSequence) : OfferFor(PlanGoal(mission), MissionVesselSnapshot(mission));
+            return mission.Stage == MissionStage.AwaitingSequenceApproval ? DepartureOffer(mission, mission.PendingSequence) : OfferFor(PlanGoal(mission), MissionVesselSnapshot(mission), held: HeldPick(mission));
         }
 
         /// <summary>The departure <paramref name="plan"/> starts, if it is one the player picks for: the mod's own resume of a coast (#775), a Child Vessel's plan and a craft the player is away from ask nothing yet.</summary>

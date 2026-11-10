@@ -228,6 +228,12 @@ namespace ClaudiaKerman.Core.Missions
         public static TransferWindow Window(GameSnapshot snapshot, SnapshotBody planet, TimeVersusDeltaV setting, int marginPercent, WindowPick chosen = null)
         {
             if (snapshot == null || planet == null) return null;
+            // #966: a held pick's search keeps to its window.
+            if (chosen != null && chosen.DepartureUt.HasValue)
+            {
+                snapshot = snapshot.At(snapshot.Ut);
+                snapshot.WindowPick = chosen;
+            }
             var found = TransferWindows.Find(snapshot, planet.Name, MissionPrompts.ArrivalPe(planet), true, marginPercent);
             return found.Error != null ? null : TransferWindows.Pick(found, setting, chosen);
         }
