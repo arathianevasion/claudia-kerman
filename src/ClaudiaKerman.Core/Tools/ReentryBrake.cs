@@ -389,6 +389,20 @@ namespace ClaudiaKerman.Core.Tools
             };
         }
 
+        /// <summary>
+        /// What <see cref="BrakeTick"/> holds between ticks, holding nothing: for the addon when a chute path goes over to its engines in the air (#963, and #958's switch).
+        /// A chute path asks <c>BRAKETICK</c> nothing, so what an earlier flight left must not count. A set already out is then called at the switch and its settle time runs from there: never shorter than its own.
+        /// </summary>
+        public static IDictionary<string, object> BrakeFresh()
+        {
+            return new Dictionary<string, object>
+            {
+                { "open_ut", -1.0 }, { "open_count", 0.0 }, { "settled", false }, { "kept_ut", -1.0 }, { "kept_settled", false }, { "kept_drogues", 0.0 }, { "kept_mains", 0.0 },
+                { "drogue_call_ut", -1.0 }, { "main_call_ut", -1.0 }, { "sample_ut", -1.0 }, { "sample_speed", 0.0 }, { "decel", 0.0 },
+                { "last_resort_ut", -1.0 }, { "unread_ut", -1.0 }, { "trace_ut", -1.0 },
+            };
+        }
+
         /// <summary>When the set was first called, UT: the time held in <paramref name="heldKey"/>, or now on the first tick it is called; -1 while it isn't, so no flight inherits it from the last.</summary>
         private static double CallTime(IDictionary<string, object> ask, string calledKey, string heldKey, IEnumerable<KeyValuePair<string, bool>> aboard, bool drogues, double now)
         {

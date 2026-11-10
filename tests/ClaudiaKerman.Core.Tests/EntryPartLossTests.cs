@@ -133,6 +133,135 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("safe", loss["chute_mode"]);
         }
 
+        // ---- #963: a chute path that loses its mains under its drogues asks the finish again ----
+
+        /// <summary>A chute path with drogue d <paramref name="drogueState"/> and main m in its group (<c>uids</c>); the addon reads only what is aboard, so a lost main isn't listed.</summary>
+        private static Dictionary<string, object> UnderDrogues(string drogueState, string mainState = null)
+        {
+            var ask = Ask(powered: false);
+            ask["uids"] = new List<object> { "d", "m" };
+            var chutes = new List<object> { Chute(drogueState, true) };
+            if (mainState != null) chutes.Add(Chute(mainState));
+            ask["chutes"] = chutes;
+            return ask;
+        }
+
+        [Theory]
+        [InlineData("deployed")]
+        [InlineData("semi")]
+        [InlineData("armed")]
+        public void A_chute_path_that_loses_its_mains_under_its_drogues_goes_to_an_engine_that_can_land_it(string drogueState)
+        {
+            var groupRead = false;
+            var loss = BlockCalls.EntryPartLoss(UnderDrogues(drogueState), _ => Finish(true, "e1"), _ => { groupRead = true; return Group(); });
+            Assert.Equal(true, loss["powered"]);
+            Assert.Equal(true, loss["to_engines"]);
+            Assert.Equal(new List<object> { "e1" }, loss["light"]);
+            // The group stays as it was, the drogues in it, so BRAKETICK waits for them; the lost main counts as failed there and holds nothing back.
+            Assert.Equal(false, loss["regroup"]);
+            Assert.False(groupRead);
+            Assert.Equal("safe", loss["chute_mode"]);
+            Assert.Equal("mains lost, on to the engines: engines", loss["why"]);
+        }
+
+        [Theory]
+        [InlineData("chutes, 38.0 m/s, no engine with fuel")] // no engine, or none that will light
+        [InlineData("chutes, 38.0 m/s")] // the finish found no engine able to land it
+        public void With_no_engine_that_can_land_it_a_chute_path_that_loses_its_mains_stays_on_its_drogues_and_says_so(string why)
+        {
+            var finish = Finish(false);
+            finish["why"] = why;
+            var loss = Loss(UnderDrogues("deployed"), finish, Group());
+            Assert.Equal(true, loss["carry_on"]);
+            Assert.Equal(false, loss["powered"]);
+            Assert.Equal(false, loss["to_engines"]);
+            Assert.Equal(new List<object>(), loss["light"]);
+            Assert.Equal(false, loss["regroup"]);
+            Assert.Equal("safe", loss["chute_mode"]);
+            Assert.Equal("mains lost, staying on the drogues: " + why, loss["why"]);
+        }
+
+        [Theory]
+        [InlineData("stowed")]
+        [InlineData("armed")]
+        [InlineData("deployed")]
+        public void A_main_still_aboard_keeps_a_chute_path_on_its_chutes_whatever_else_went(string mainState)
+        {
+            var loss = Loss(UnderDrogues("deployed", mainState), Finish(true, "e1"), Group());
+            Assert.Equal(false, loss["powered"]);
+            Assert.Equal(new List<object>(), loss["light"]);
+            Assert.Equal("engines", loss["why"]);
+        }
+
+        [Fact]
+        public void A_main_left_aboard_cut_counts_as_lost_with_the_one_that_went()
+        {
+            var ask = UnderDrogues("deployed", ReentryBrake.Cut);
+            ask["uids"] = new List<object> { "d", "m", "m2" };
+            Assert.Equal(true, Loss(ask, Finish(true, "e1"), Group())["to_engines"]);
+        }
+
+        [Fact]
+        public void At_the_switch_braking_starts_fresh_and_waits_for_the_drogues_already_out_to_settle()
+        {
+            // The addon's held times go back to these at the switch: a chute path has called BRAKETICK on none of its ticks, and what an earlier flight left must not count.
+            var held = BlockCalls.BrakeFresh().Select(p => K(p.Key, p.Value)).Concat(new[] { K("drogues_called", true), K("mains_called", false) }).ToArray();
+            var drogueOut = new object[] { Chute(ReentryBrake.Deployed, true) };
+            var first = BlockCalls.BrakeTick(WithUids(Tick(100, drogueOut, held), "d", "m"));
+            Assert.Equal(ReentryBrake.WhyChuteOpening, first["zero_why"]);
+            Assert.Equal(0.0, first["throttle"]);
+            Assert.Equal(false, first["start"]);
+            Assert.Equal(100.0, first["open_ut"]); // its settle time runs from the switch, never less than the real one
+            Assert.Equal(100.0, first["drogue_call_ut"]);
+            // Settled four seconds on with the speed steady: the drogues are waited for as #954's are, then it brakes by radar.
+            var later = Tick(104.1, drogueOut, held);
+            foreach (var key in new[] { "open_ut", "open_count", "drogue_call_ut", "main_call_ut" }) later[key] = first[key];
+            later["sample_ut"] = 103.8;
+            later["sample_speed"] = 90.0;
+            later["decel"] = 0.2;
+            var settled = BlockCalls.BrakeTick(WithUids(later, "d", "m"));
+            Assert.Equal(true, settled["settled"]);
+            Assert.Equal("", settled["zero_why"]);
+            Assert.Equal("chutes open", settled["why"]);
+            Assert.Equal(true, settled["start"]); // radar 500 within brake_h 600
+        }
+
+        [Fact]
+        public void At_the_switch_an_armed_drogue_holds_the_thrust_for_its_second_then_the_last_resort_rule_holds()
+        {
+            var ask = Tick(100, new object[] { Chute(ReentryBrake.Armed, true) }, BlockCalls.BrakeFresh().Select(p => K(p.Key, p.Value)).ToArray());
+            ask["drogues_called"] = true;
+            ask["mains_called"] = false;
+            var first = BlockCalls.BrakeTick(WithUids(ask, "d", "m"));
+            Assert.Equal(0.0, first["throttle"]);
+            Assert.Equal(false, first["start"]);
+            // A second after the switch it has failed: nothing is opening, and the last resort waits for its height (300 m).
+            ask["now"] = 101.1;
+            ask["drogue_call_ut"] = first["drogue_call_ut"];
+            var after = BlockCalls.BrakeTick(WithUids(ask, "d", "m"));
+            Assert.Equal(ReentryBrake.WhyLastResort, after["why"]);
+            Assert.Equal(false, after["start"]);
+            Assert.Equal("", after["zero_why"]);
+            ask["radar"] = 290.0;
+            Assert.Equal(true, BlockCalls.BrakeTick(WithUids(ask, "d", "m"))["start"]);
+        }
+
+        [Fact]
+        public void Fresh_brake_times_hold_nothing()
+        {
+            var fresh = BlockCalls.BrakeFresh();
+            foreach (var key in new[] { "open_ut", "kept_ut", "drogue_call_ut", "main_call_ut", "sample_ut", "last_resort_ut", "unread_ut", "trace_ut" }) Assert.Equal(-1.0, fresh[key]);
+            foreach (var key in new[] { "open_count", "kept_drogues", "kept_mains", "sample_speed", "decel" }) Assert.Equal(0.0, fresh[key]);
+            Assert.Equal(false, fresh["settled"]);
+            Assert.Equal(false, fresh["kept_settled"]);
+        }
+
+        private static Dictionary<string, object> WithUids(Dictionary<string, object> ask, params object[] uids)
+        {
+            ask["uids"] = uids.ToList();
+            return ask;
+        }
+
         [Fact]
         public void A_powered_finish_losing_its_engines_under_open_chutes_keeps_them_and_their_mode()
         {
