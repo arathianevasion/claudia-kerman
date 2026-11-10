@@ -102,6 +102,8 @@ namespace ClaudiaKerman.Core.Missions
             var holds = asks && (first ? !WindowChoice.Held(mission.WindowPick, offer).IsNone : PickHolds(mission, offer));
             mission.WindowPickNeeded = asks && !holds;
             mission.WindowPickCarried = holds && !first;
+            // A pick that reached its first plan with no anchor on record takes one here, once; a revision never moves it.
+            if (holds && first && !mission.WindowPickDepartureUt.HasValue) mission.WindowPickDepartureUt = offer.RowFor(mission.WindowPick).DepartureUt;
         }
 
         /// <summary>

@@ -230,8 +230,9 @@ namespace ClaudiaKerman.Core.Tests
             stamped.StampMission(TimeVersusDeltaV.MostEfficient, new PlayerConfig().CraftCheckMarginPercent, new WindowPick("Duna", WindowKind.Optimal, held));
             var row = PlanningTools.Default().Run("plan_transfer", input, stamped, null);
             Assert.False(row.IsError, row.Json);
-            // Past the held window's best departure, Optimal leaves now (one row with Soonest, so the row reads as Soonest's).
+            // Past the held window's best departure, Optimal leaves now, and the row still names the player's pick.
             Assert.InRange(LeavesAt(row), revised - 1, revised + 1);
+            Assert.Contains("\"pick\":\"optimal\"", row.Json);
         }
 
         [Fact]
@@ -294,7 +295,8 @@ namespace ClaudiaKerman.Core.Tests
             double b;
             var halfWay = MohoB(out b).Synodic / 2;
             var later = MohoWindows(b + 20 * Day, new WindowPick("Moho", WindowKind.Optimal, b + 10 * Day));
-            Assert.True(later.HeldMissed || later.Soonest.DepartureUt < b + halfWay && later.Optimal.DepartureUt < b + halfWay,
+            Assert.False(later.HeldMissed, "window B read as missed 20 days after its best departure");
+            Assert.True(later.Soonest.DepartureUt < b + halfWay && later.Optimal.DepartureUt < b + halfWay,
                 "the held rows moved to the next window: Soonest day " + (later.Soonest.DepartureUt - b) / Day + ", Optimal day " + (later.Optimal.DepartureUt - b) / Day + " after B");
         }
 

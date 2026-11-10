@@ -20,7 +20,7 @@ Once the player picks Soonest or Optimal, the pick holds for that transfer until
 ## Check 2b: a held Optimal stays in its window
 
 1. Pick Optimal on the pad, warp on the pad to that Optimal window, launch to Kerbin orbit.
-2. A day or more past the Optimal row's date, revise the plan. The Optimal row leaves "(now)" or within days, not about two years on, and nothing asks for a pick. Approve, and the transfer's `plan_transfer` row in the request (the Mission folder's request log) has a departure within days (once the window's cheapest has passed, Optimal leaves now, so the row reads `"pick":"soonest"`).
+2. A day or more past the Optimal row's date, revise the plan. The Optimal row leaves "(now)" or within days, not about two years on, and nothing asks for a pick. Approve, and the transfer's `plan_transfer` row in the request (the Mission folder's request log) has `"pick":"optimal"` with a departure within days.
 3. Approve the transfer's Sequence Plan (its script `transfer_to(lexicon("target","Duna","target_pe",60000))`, no window). The ejection flies within days, not after a warp of about two years; KSP.log's transfer_to step shows the ejection's UT within days of now.
 
 ## Check 3: after the ejection the pick is spent, and the return asks

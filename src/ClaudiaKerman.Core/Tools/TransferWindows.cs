@@ -112,6 +112,8 @@ namespace ClaudiaKerman.Core.Tools
         private const double StepTolerance = 1e-4;
         private const int Iterations = 60;
         private const int Bisections = 40;
+        /// <summary>#966: bisections of a held window's close between two grid departures (a 180-row period's step to under a 1/4000th of it).</summary>
+        private const int CloseBisections = 12;
         /// <summary>The cost of a cell with no Lambert path: finite, so BrentMin steps away from it.</summary>
         private const double NoPath = 1e30;
         /// <summary>Balanced takes Optimal only when it saves at least this fraction of Soonest's total.</summary>
@@ -307,41 +309,55 @@ namespace ClaudiaKerman.Core.Tools
                 var reach = (Departures - 1) / 2;
                 var heldCost = new Dictionary<int, double>();
                 var heldTof = new Dictionary<int, double>();
-                Func<int, double> costAt = k =>
+                // A departure's cheapest on the flight-time grid, and the flight time it takes.
+                Func<double, double[]> cheapestAt = t =>
                 {
-                    double c;
-                    if (heldCost.TryGetValue(k, out c)) return c;
-                    c = double.PositiveInfinity;
-                    var tofAt = tofLo;
+                    double c = double.PositiveInfinity, tofAt = tofLo;
                     for (var j = 0; j < Flights; j++)
                     {
-                        var got = problem.Cost(anchor + k * heldStep, tofLo + j * tofStep).TotalDv;
+                        var got = problem.Cost(t, tofLo + j * tofStep).TotalDv;
                         if (got < c)
                         {
                             c = got;
                             tofAt = tofLo + j * tofStep;
                         }
                     }
-                    heldCost[k] = c;
-                    heldTof[k] = tofAt;
-                    return c;
+                    return new[] { c, tofAt };
+                };
+                Func<int, double> costAt = k =>
+                {
+                    double c;
+                    if (heldCost.TryGetValue(k, out c)) return c;
+                    var got = cheapestAt(anchor + k * heldStep);
+                    heldCost[k] = got[0];
+                    heldTof[k] = got[1];
+                    return got[0];
                 };
                 var kBest = 0;
                 var down = costAt(1) < costAt(0) ? 1 : costAt(-1) < costAt(0) ? -1 : 0;
                 while (down != 0 && Math.Abs(kBest + down) <= reach && costAt(kBest + down) < costAt(kBest)) kBest += down;
-                var heldBudget = costAt(kBest) * withinMargin;
+                // Within the margin of its cheapest, or the anchor's own cost if more: a departure the player picked is in its window.
+                var heldBudget = Math.Max(costAt(kBest) * withinMargin, double.IsInfinity(costAt(0)) ? 0 : costAt(0));
                 var kEnd = kBest + 1;
                 while (kEnd - kBest < reach && costAt(kEnd) <= heldBudget) kEnd++;
                 var kOpen = kBest - 1;
                 while (kBest - kOpen < reach && costAt(kOpen) <= heldBudget) kOpen--;
+                // It closes where the cost crosses the budget, bisected between the last grid departure within it and the first past.
                 var closes = anchor + kEnd * heldStep;
+                var inside = closes - heldStep;
+                for (var b = 0; b < CloseBisections && costAt(kEnd) > heldBudget; b++)
+                {
+                    var mid = (inside + closes) / 2;
+                    if (cheapestAt(mid)[0] <= heldBudget) inside = mid;
+                    else closes = mid;
+                }
                 var opens = anchor + kOpen * heldStep;
                 var bestT = anchor + kBest * heldStep;
                 // The first horizon departure before the close with a path, for leaving now; -1 for none.
                 var firstPath = -1;
                 for (var i = 0; i < Departures && from + i * step < closes && firstPath < 0; i++)
                     if (!double.IsInfinity(rowCost[i])) firstPath = i;
-                heldMissed = double.IsInfinity(heldBudget) || from >= closes || firstPath < 0;
+                heldMissed = double.IsInfinity(costAt(kBest)) || from >= closes || firstPath < 0;
                 // The horizon's rows stand when both are in the held window already.
                 Func<TransferWindow, bool> inWindow = w => w.DepartureUt > opens && w.DepartureUt < closes;
                 var keepsRows = heldMissed || inWindow(optimal) && inWindow(soonest);
