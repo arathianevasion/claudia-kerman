@@ -347,6 +347,7 @@ namespace ClaudiaKerman.Core.Tests
 
         private const string ApprovedAtDue = "Approved by Auto Mode at the Due Time.";
         private const string AutoModeWaitsForDueTime = "Auto Mode is waiting for you: a Due Time.";
+        private const string DueWarpNote = "Warping to the Due Time: Auto Mode approves it when the Due Time is reached and you're in the craft.";
 
         /// <summary>A Sequence Plan with a Due Time at UT 1250, after the on-pad snapshot's 1203.</summary>
         private static ScriptedResponse DuePlan()
@@ -373,7 +374,7 @@ namespace ClaudiaKerman.Core.Tests
             var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()));
             // On the way there nothing waits for the player: the log says Auto Mode approves at the Due Time.
             Assert.Equal("", mission.View.AutoModeStop);
-            Assert.Single(mission.View.Log, e => e.Text == "Warping to the Due Time: Auto Mode approves it when the Due Time is reached, while you stay in the craft.");
+            Assert.Single(mission.View.Log, e => e.Text == DueWarpNote);
             mission.Send(new UtAdvanced(1250));
             Assert.Equal(MissionStage.Running, mission.View.Stage);
             var commands = mission.TakeCommands();
@@ -455,6 +456,38 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
             Assert.Equal(AutoModeWaitsForDueTime, mission.View.AutoModeStop);
             Assert.DoesNotContain(mission.View.Log, e => e.Text == ApprovedAtDue);
+        }
+
+        [Fact]
+        public void AWarpedToDueTimeReachedInABlackoutWaitsForThePlayer()
+        {
+            var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()));
+            mission.Send(Snapshot(s => s.HasLink = false));
+            Assert.True(mission.View.Blackout);
+            mission.Send(new UtAdvanced(1250));
+            // ADR 0004: in a Blackout a Due Time waits for the player, Auto Mode or not.
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text == ApprovedAtDue || e.Text.Contains("flown without Approval"));
+        }
+
+        [Fact]
+        public void AWarpPressedInABlackoutIsNoPromiseOnceTheLinkIsBack()
+        {
+            var mission = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()), AutoModeOn());
+            ToSequencePlan(mission);
+            mission.Send(Snapshot(s => s.HasLink = false));
+            Assert.True(mission.View.Blackout);
+            mission.TakeCommands();
+            mission.Send(new WarpToDueTime());
+            Assert.Single(mission.TakeCommands().OfType<WarpToUt>());
+            Assert.DoesNotContain(mission.View.Log, e => e.Text == DueWarpNote);
+
+            mission.Send(OnPad());
+            Assert.False(mission.View.Blackout);
+            mission.Send(new UtAdvanced(1250));
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            Assert.Equal(AutoModeWaitsForDueTime, mission.View.AutoModeStop);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text == ApprovedAtDue || e.Text == DueWarpNote);
         }
 
         [Fact]

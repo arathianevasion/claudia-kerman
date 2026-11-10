@@ -218,10 +218,13 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         private bool AutoModeTakesDue(Mission mission, SequencePlan plan)
         {
-            return mission.AutoMode && !mission.Blackout && DueWarpOf(mission) == plan.DueTimeUt && CraftActive;
+            return mission.AutoMode && !mission.Blackout && plan == mission.PendingSequence && DueWarpOf(mission).HasValue && CraftActive;
         }
 
-        /// <summary>The Due Time the player warped to with Auto Mode on, if it is still the plan in hand's; else null. What a save keeps.</summary>
+        /// <summary>
+        /// The Due Time the player warped to with Auto Mode on, if it is still the plan in hand's and still its Due Time (a re-pick or
+        /// the next window moves it); else null. The one check of the warp's tie to the plan, and what a save keeps.
+        /// </summary>
         private static double? DueWarpOf(Mission mission)
         {
             var plan = mission.PendingSequence;
@@ -243,11 +246,11 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         private void DueWarpPressed(Mission mission, SequencePlan plan)
         {
-            if (!mission.AutoMode || plan.Manual) return;
+            // In a Blackout the Due Time waits for the player (ADR 0004): a warp pressed then is no promise for Auto Mode, even once the link is back.
+            if (!mission.AutoMode || mission.Blackout || plan.Manual) return;
             mission.DueWarpFor = plan;
             mission.DueWarpUt = plan.DueTimeUt.Value;
-            // In a Blackout the Due Time waits for the player (ADR 0004): no promise for Auto Mode then.
-            if (!mission.Blackout) Note(LogKind.Notice, DueWarpNote);
+            Note(LogKind.Notice, DueWarpNote);
         }
 
         /// <summary>
@@ -394,7 +397,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>Logged instead when Auto Mode approves at a Due Time the player warped to (#967).</summary>
         private const string AutoModeApprovedAtDueNote = "Approved by Auto Mode at the Due Time.";
         /// <summary>Logged when the player presses Warp to Due Time with Auto Mode on (#967).</summary>
-        private const string DueWarpNote = "Warping to the Due Time: Auto Mode approves it when the Due Time is reached, while you stay in the craft.";
+        private const string DueWarpNote = "Warping to the Due Time: Auto Mode approves it when the Due Time is reached and you're in the craft.";
         /// <summary>Logged after the "Couldn't produce a safe script" card when Auto Mode re-plans it.</summary>
         private const string AutoModeReplannedNote = "Re-planned by Auto Mode.";
     }

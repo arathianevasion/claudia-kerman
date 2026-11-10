@@ -265,7 +265,7 @@ namespace ClaudiaKerman.Core.Ui
         public const string AutoModeLabel = "Auto Mode";
 
         /// <summary>The switch's tooltip: what Auto Mode does and what still needs the player.</summary>
-        public const string AutoModeTooltip = "Approve Claudia's plans for you while the Spending Cap has room. Starting the Mission, Warnings, Manual stretches, Transfer Window picks and Due Times still need you, but for a Coast Checkpoint's, or one you Warp to with Auto Mode on, while you stay in the craft.";
+        public const string AutoModeTooltip = "Approve Claudia's plans for you while the Spending Cap has room. Starting the Mission, Warnings, Manual stretches, Transfer Window picks and Due Times still need you, but for a Coast Checkpoint's, or one you Warp to with Auto Mode on, when you're in the craft.";
 
         /// <summary>The Settings switch for whether new Missions start in Auto Mode (under Mission defaults only).</summary>
         public const string DefaultAutoModeLabel = "Start new Missions in Auto Mode";
