@@ -653,7 +653,8 @@ namespace ClaudiaKerman.Core.Tests
             var mission = Control(transport);
             ToMissionPlan(mission);
 
-            mission.Send(Pad(s => s.Stages.ForEach(x => x.DeltaVVac *= 0.5)));
+            // Propellant gone: the delta-v and the mass both drop (#980: a change at the same mass is stock catching up, not drift).
+            mission.Send(Pad(s => { s.Stages.ForEach(x => x.DeltaVVac *= 0.5); s.Craft.MassTonnes *= 0.8; }));
             Assert.Contains("delta-v", mission.View.PlanStale);
             Assert.Equal(QuickReply.Replan, mission.View.QuickReplies[0]);
 
