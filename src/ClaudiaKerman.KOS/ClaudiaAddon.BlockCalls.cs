@@ -895,6 +895,11 @@ namespace ClaudiaKerman.KOS
         /// <summary>This processor's powered finish has read its open chutes settled, for <see cref="BrakeTickCall"/>; held until a chute is really opening again.</summary>
         private bool brakeSettled;
 
+        /// <summary>The open time and settled reading set aside while a chute reads semi, for <see cref="BrakeTickCall"/>: a chute that is then cut gives them back (#960).</summary>
+        private double brakeKeptUt = -1;
+        private bool brakeKeptSettled;
+        private double brakeKeptDrogues, brakeKeptMains;
+
         /// <summary>The time (UT, s) each set of this processor's powered finish was first called, for <see cref="BrakeTickCall"/>; -1 while it isn't.</summary>
         private double brakeDrogueCallUt = -1, brakeMainCallUt = -1;
 
@@ -937,6 +942,10 @@ namespace ClaudiaKerman.KOS
             ask["open_ut"] = brakeOpenUt;
             ask["open_count"] = brakeOpenCount;
             ask["settled"] = brakeSettled;
+            ask["kept_ut"] = brakeKeptUt;
+            ask["kept_settled"] = brakeKeptSettled;
+            ask["kept_drogues"] = brakeKeptDrogues;
+            ask["kept_mains"] = brakeKeptMains;
             ask["drogue_call_ut"] = brakeDrogueCallUt;
             ask["main_call_ut"] = brakeMainCallUt;
             ask["sample_ut"] = brakeSampleUt;
@@ -954,6 +963,10 @@ namespace ClaudiaKerman.KOS
             brakeOpenUt = (double)tick["open_ut"];
             brakeOpenCount = (double)tick["open_count"];
             brakeSettled = (bool)tick["settled"];
+            brakeKeptUt = (double)tick["kept_ut"];
+            brakeKeptSettled = (bool)tick["kept_settled"];
+            brakeKeptDrogues = (double)tick["kept_drogues"];
+            brakeKeptMains = (double)tick["kept_mains"];
             brakeDrogueCallUt = (double)tick["drogue_call_ut"];
             brakeMainCallUt = (double)tick["main_call_ut"];
             brakeSampleUt = (double)tick["sample_ut"];

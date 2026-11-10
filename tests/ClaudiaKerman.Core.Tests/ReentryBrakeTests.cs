@@ -406,7 +406,7 @@ namespace ClaudiaKerman.Core.Tests
         /// <summary>Flies a tick on from the last, handing back what the addon holds between ticks.</summary>
         private static void CarryOn(Dictionary<string, object> ask, IDictionary<string, object> answer)
         {
-            foreach (var key in new[] { "open_ut", "open_count", "settled", "drogue_call_ut", "main_call_ut", "sample_ut", "sample_speed", "decel", "last_resort_ut", "unread_ut", "trace_ut" }) ask[key] = answer[key];
+            foreach (var key in new[] { "open_ut", "open_count", "settled", "kept_ut", "kept_settled", "kept_drogues", "kept_mains", "drogue_call_ut", "main_call_ut", "sample_ut", "sample_speed", "decel", "last_resort_ut", "unread_ut", "trace_ut" }) ask[key] = answer[key];
         }
 
         [Theory]
@@ -441,6 +441,116 @@ namespace ClaudiaKerman.Core.Tests
                 radar -= speed * Dt;
                 speed -= slowing * Dt;
             }
+        }
+
+        [Fact]
+        public void Mains_that_read_semi_and_are_then_cut_leave_the_drogues_settled_and_the_stop_at_its_own_height()
+        {
+            // Drogues settled, 140 m/s, mains semi at 1,500 m then cut: the stop takes about 1,080 m, not 4 s (560 m) more.
+            const double Dt = 0.02, StopH = 1080;
+            double radar = 1500, speed = 140, now = 100;
+            var drogues = Set(true, "deployed");
+            var ask = new Dictionary<string, object>
+            {
+                { "brake_h", StopH }, { "last_h", StopH }, { "shield_speed", 400.0 }, { "shield_agl", 300.0 }, { "throttle", FullThrottle }, { "open_ut", 80.0 }, { "settled", true },
+                { "open_count", 1.0 }, { "drogues_called", true }, { "drogue_call_ut", 70.0 }, { "mains_called", true }, { "main_call_ut", 95.0 },
+                { "chutes", drogues.Concat(Set(false, "semi")).ToList() },
+            };
+            var cut = false;
+            while (true)
+            {
+                ask["now"] = now;
+                ask["radar"] = radar;
+                ask["speed"] = speed;
+                if (!cut && radar < 1450)
+                {
+                    cut = true;
+                    ask["chutes"] = drogues.Concat(Set(false, "cut")).ToList();
+                }
+                var tick = BlockCalls.BrakeTick(ask);
+                if (cut) Assert.Equal(80.0, D(tick, "open_ut"));
+                if ((bool)tick["start"])
+                {
+                    Assert.True(cut);
+                    Assert.InRange(radar, StopH - 140 * Dt - 1, StopH);
+                    return;
+                }
+                Assert.True(radar > StopH, "no start at the stop height, radar " + radar);
+                CarryOn(ask, tick);
+                now += Dt;
+                radar -= speed * Dt;
+            }
+        }
+
+        [Fact]
+        public void A_chute_opening_normally_holds_the_thrust_until_it_is_open_and_settled()
+        {
+            var drogues = Set(true, "deployed");
+            var ask = new Dictionary<string, object>
+            {
+                { "now", 100.0 }, { "speed", 40.0 }, { "throttle", FullThrottle }, { "open_ut", 80.0 }, { "settled", true }, { "open_count", 1.0 }, { "decel", 0.2 }, { "mains_called", true },
+                { "chutes", drogues.Concat(Set(false, "semi")).ToList() },
+            };
+            var semi = BlockCalls.BrakeTick(ask);
+            AssertNoThrust(semi, ReentryBrake.WhyChuteOpening);
+            CarryOn(ask, semi);
+            ask["now"] = 101.0;
+            ask["chutes"] = drogues.Concat(Set(false, "deployed")).ToList();
+            var open = BlockCalls.BrakeTick(ask);
+            AssertNoThrust(open, ReentryBrake.WhyChuteOpening);
+            Assert.Equal(101.0, D(open, "open_ut"));
+            CarryOn(ask, open);
+            ask["now"] = 101 + ReentryBrake.SettleMinSeconds + 0.5;
+            Assert.Equal(FullThrottle, D(BlockCalls.BrakeTick(ask), "throttle"));
+        }
+
+        [Fact]
+        public void What_was_set_aside_for_a_semi_chute_is_dropped_once_no_chute_is_left()
+        {
+            var ask = new Dictionary<string, object>
+            {
+                { "now", 100.0 }, { "speed", 40.0 }, { "open_ut", -1.0 }, { "kept_ut", 80.0 }, { "kept_settled", true }, { "mains_called", true },
+                { "chutes", Set(false, "cut") },
+            };
+            var tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(-1.0, D(tick, "kept_ut"));
+            Assert.Equal(false, tick["kept_settled"]);
+        }
+
+        [Fact]
+        public void A_main_that_reads_deployed_as_the_drogue_is_cut_doesnt_get_the_settled_time_back_under_its_canopy()
+        {
+            var ask = new Dictionary<string, object>
+            {
+                { "now", 100.0 }, { "speed", 40.0 }, { "throttle", FullThrottle }, { "open_ut", 80.0 }, { "settled", true }, { "open_count", 1.0 }, { "decel", 0.2 }, { "mains_called", true },
+                { "chutes", Set(true, "deployed").Concat(Set(false, "semi")).ToList() },
+            };
+            CarryOn(ask, BlockCalls.BrakeTick(ask));
+            ask["now"] = 100.02;
+            ask["chutes"] = Set(true, "cut").Concat(Set(false, "deployed")).ToList();
+            var tick = BlockCalls.BrakeTick(ask);
+            AssertNoThrust(tick, ReentryBrake.WhyChuteOpening);
+            Assert.Equal(100.02, D(tick, "open_ut"));
+        }
+
+        [Fact]
+        public void A_semi_chute_that_reads_deployed_after_a_flicker_is_not_treated_as_cut()
+        {
+            var drogues = Set(true, "deployed");
+            var ask = new Dictionary<string, object>
+            {
+                { "now", 100.0 }, { "speed", 40.0 }, { "throttle", FullThrottle }, { "open_ut", 80.0 }, { "settled", true }, { "open_count", 1.0 }, { "decel", 0.2 }, { "mains_called", true },
+                { "chutes", drogues.Concat(Set(false, "semi")).ToList() },
+            };
+            var semi = BlockCalls.BrakeTick(ask);
+            CarryOn(ask, semi);
+            ask["now"] = 100.02;
+            ask["chutes"] = drogues.Concat(Set(false, "deployed")).ToList();
+            var open = BlockCalls.BrakeTick(ask);
+            AssertNoThrust(open, ReentryBrake.WhyChuteOpening);
+            Assert.Equal(100.02, D(open, "open_ut"));
+            Assert.Equal(false, open["settled"]);
+            Assert.Equal(-1.0, D(open, "kept_ut"));
         }
 
         [Fact]
