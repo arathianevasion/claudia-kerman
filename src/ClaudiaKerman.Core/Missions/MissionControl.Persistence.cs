@@ -394,8 +394,9 @@ namespace ClaudiaKerman.Core.Missions
             var states = restored.States.Where(s => Directory.Exists(MissionFolder.For(_saveDirectory, s.Id)) && !Dismissed(s)).ToList();
             var restore = Choose(states, existing);
             // #975: find_landing_site's answers are the game's, saved in each Mission's state; answers past the loaded UT are dropped.
-            var recorded = (restore == null ? states.FirstOrDefault() : restore.State) ?? null;
-            if (recorded != null) ClaudiaKerman.Core.Tools.SitePasses.Shared.Load(recorded.SitePasses, recorded.SavedUt);
+            // A save with no Mission state forgets what the game held. A SavedUt of 0 is unknown: the current UT stands for it.
+            var recorded = restore?.State ?? states.FirstOrDefault();
+            ClaudiaKerman.Core.Tools.SitePasses.Shared.Load(recorded?.SitePasses, recorded != null && recorded.SavedUt > 0 ? recorded.SavedUt : _ut);
             // The save's other unfinished Missions wait Paused at the boundary they were parked at; finished ones are history, kept in their folders.
             _parked.Clear();
             _switch = null;

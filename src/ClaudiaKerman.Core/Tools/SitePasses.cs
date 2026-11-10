@@ -120,8 +120,10 @@ namespace ClaudiaKerman.Core.Tools
                         if (lat.HasValue && lng.HasValue && burn.HasValue && landing.HasValue && sun.HasValue)
                             passes.Add(new SitePass { Latitude = lat.Value, Longitude = lng.Value, BurnUt = burn.Value, LandingUt = landing.Value, SunDeg = sun.Value });
                     }
+                    if (passes.Count == 0) continue;
                     read.Add(new Call { VesselId = JsonNode.Str(node["vessel_id"]) ?? "", Body = body, Ut = callUt.Value, Sites = passes });
                 }
+            read = read.OrderByDescending(c => c.Ut).ToList();
             if (read.Count > MaxCalls) read.RemoveRange(MaxCalls, read.Count - MaxCalls);
             lock (_lock)
             {
