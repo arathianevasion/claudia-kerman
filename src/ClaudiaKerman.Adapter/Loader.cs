@@ -275,7 +275,7 @@ namespace ClaudiaKerman.Adapter
 
         // #974: a flight resuming before find_landing_site gave an answer (a quickload or revert) discarded that answer's timeline, so deorbit forgets it.
         // Every load of the save fires onGameStateLoad, a trip to the Space Center or a switch of vessel too, so the UT says what went back, not the load.
-        private static void FlightReady()
+        private void FlightReady()
         {
             Core.Tools.BlockCalls.ForgetSitePassesAfter(Planetarium.GetUniversalTime());
         }
