@@ -210,5 +210,59 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(0.1, (double)Correction(0.5, 50, 19, 0.1)["max_residual"], 9);
             Assert.Equal(1.0, (double)Correction(0.5, 50, 0)["max_throttle"]);
         }
+
+        // ---- tune_pe's burn (#982) ----
+
+        private static IDictionary<string, object> TunePeBurn(double dv, double accel, double off, double tolerance)
+        {
+            return BurnWorth.Call(new Dictionary<string, object>
+            {
+                { "block", "tune_pe_burn" }, { "dv", dv }, { "accel", accel }, { "off", off }, { "tolerance", tolerance },
+            });
+        }
+
+        /// <summary>
+        /// The flight (m20261110-203402-45d1): tune_pe on patch "next", heliocentric 6.7 million s before Kerbin, solved a 0.0995 m/s Course
+        /// Correction (CORRECTIONBURN: prograde -0.10, normal -0.01) for a Kerbin periapsis 262,601 m against 80,000 m, tolerance 1,000 m, on 180 kN
+        /// and 9.186 t. exec_node's own stop, 0.1 m/s, was above the whole node, so it ended before the engine lit, twice, and the periapsis stayed
+        /// 262,601 m. Now it burns at a capped throttle and stops within one tick of the least throttle.
+        /// </summary>
+        [Fact]
+        public void The_flight_s_tenth_of_a_metre_per_second_burn_is_flown_and_stops_near_its_node()
+        {
+            const double dv = 0.0995, accel = 180 / 9.18629, off = 262601 - 80000.0, tolerance = 1000;
+            Assert.True(BurnWorth.ExecNodeDone >= dv, "the cause: exec_node's own stop is above the node");
+            var answer = TunePeBurn(dv, accel, off, tolerance);
+            Assert.False((bool)answer["skip"]);
+            var done = (double)answer["done_dv"];
+            var throttle = (double)answer["max_throttle"];
+            Assert.Equal(BurnWorth.TickShare * dv / (accel * BurnWorth.PhysicsTick), throttle, 9);
+            // The least throttle exec_node commands is 0.5%: one tick of it, 0.002 m/s, is as near as this engine stops.
+            Assert.Equal(BurnWorth.LeastThrottle * accel * BurnWorth.PhysicsTick, done, 9);
+            Assert.True(done < dv / 50, "stops within 2% of the burn: the periapsis lands within about 3.6 km, not 182 km off");
+        }
+
+        /// <summary>The trim after it: the periapsis about 3.6 km off asks a 0.002 m/s burn, whose throttle cap lets it stop where what is left moves the periapsis under half the tolerance.</summary>
+        [Fact]
+        public void The_trim_after_it_stops_where_what_is_left_moves_the_periapsis_less_than_the_tolerance()
+        {
+            const double dv = 0.002, accel = 180 / 9.18629, off = 3600, tolerance = 1000;
+            var answer = TunePeBurn(dv, accel, off, tolerance);
+            Assert.Equal(dv * tolerance / (2 * off), (double)answer["done_dv"], 9);
+            Assert.True((double)answer["max_throttle"] * accel * BurnWorth.PhysicsTick < dv * tolerance / (2 * off), "a tick at the cap is under the stop");
+        }
+
+        /// <summary>A burn of 2 m/s or more keeps full throttle, and any burn keeps exec_node's 0.1 m/s stop unless the tolerance asks for a nearer one.</summary>
+        [Theory]
+        [InlineData(30, 19, 50000, 1000, 1, 0.1)]
+        [InlineData(5, 19, 200000, 1000, 1, 0.0125)]
+        [InlineData(0.5, 19, 2000, 1000, 0.025 / 0.38, 0.1)]
+        [InlineData(0.5, 0, 0, 1000, 1, 0.1)]
+        public void A_larger_burn_keeps_its_throttle_and_stops_by_the_tolerance(double dv, double accel, double off, double tolerance, double throttle, double done)
+        {
+            var answer = TunePeBurn(dv, accel, off, tolerance);
+            Assert.Equal(throttle, (double)answer["max_throttle"], 9);
+            Assert.Equal(done, (double)answer["done_dv"], 9);
+        }
     }
 }

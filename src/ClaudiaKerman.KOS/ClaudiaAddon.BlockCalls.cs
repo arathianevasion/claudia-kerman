@@ -121,7 +121,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("KEEPCLEAR", new OneArgsSuffix<Lexicon, Lexicon>(KeepClearCall,
                 "Core Library only (land): the site lat, lng moved clear_m clear of keep_lat, keep_lng (straight away, else toward ahead_lat, ahead_lng) by up to max_divert on a body of radius; lexicon lat, lng, dist, moved"));
             AddSuffix("BURNWORTH", new OneArgsSuffix<Lexicon, Lexicon>(BurnWorthCall,
-                "Core Library only (circularize, tune_pe, a Course Correction): whether a burn is worth its turn when the tolerance was defaulted, and tune_pe's default tolerance; for a correction, its max_throttle and done_dv; lexicon safe_height, tolerance, skip, note, ..."));
+                "Core Library only (circularize, tune_pe, a Course Correction): whether a burn is worth its turn when the tolerance was defaulted, and tune_pe's default tolerance; for a correction or tune_pe's burn, its max_throttle and done_dv; lexicon safe_height, tolerance, skip, note, ..."));
             AddSuffix("SHIPSYSTEMS", new OneArgsSuffix<Lexicon, StringValue>(ShipSystemsCall,
                 "Core Library only (launch, ascend, land, deorbit, reentry): a Ship Systems cue (liftoff, final_descent, entry) or stowing to ask after the lift-off stow; lexicon done, capped, note"));
         }

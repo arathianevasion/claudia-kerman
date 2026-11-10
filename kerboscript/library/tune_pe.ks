@@ -424,11 +424,6 @@ function tune_pe_plan {
       set done:error to burn:error.
       return done.
     }
-    local over is tune_pe_over_budget(burn:prograde, max_dv).
-    if over <> "" {
-      set done:error to over.
-      return done.
-    }
     set nd:prograde to burn:prograde.
     add nd.
   } else {
@@ -450,12 +445,12 @@ function tune_pe_plan {
       set done:error to "found no burn that reaches " + round(opt:value) + " m (best is " + round(off_by) + " m off)" + why.
       return done.
     }
-    local over is tune_pe_over_budget(nd:deltav:mag, max_dv).
-    if over <> "" {
-      remove nd.
-      set done:error to over.
-      return done.
-    }
+  }
+  local over is tune_pe_over_budget(nd:deltav:mag, max_dv).
+  if over <> "" {
+    remove nd.
+    set done:error to over.
+    return done.
   }
   set done:ut to burn_ut.
   set done:dv to nd:deltav:mag.
@@ -496,11 +491,14 @@ function tune_pe {
   set extra:burn_ut to round(plan:ut, 1).
 
   // The burn is judged by the periapsis it leaves, not exec_node's residual, and is solved again after the turn (#673), within
-  // max_dv with what spent:dv says was flown before it.
+  // max_dv with what spent:dv says was flown before it. BURNWORTH caps a small burn's throttle and stops it by the tolerance (#982).
   local spent is lexicon("dv", 0).
   local fly is {
-    local burn_opts is claudia_burn_options(ctx, nextnode).
-    set burn_opts:max_residual to 1000000.
+    local burn_opts is claudia_burn_options(ctx, nextnode, 1000000).
+    local fine is addons:claudia:burnworth(lexicon("block", "tune_pe_burn", "dv", nextnode:deltav:mag, "accel", ship:availablethrust / max(0.001, ship:mass),
+      "off", tune_pe_actual(opt:patch) - opt:value, "tolerance", opt:tolerance)).
+    set burn_opts:max_throttle to fine:max_throttle.
+    set burn_opts:done_dv to fine:done_dv.
     set burn_opts:resolve to { parameter nd. return tune_pe_resolve(nd, opt, spent:dv). }.
     local flown is exec_node(burn_opts).
     claudia_add_result(ctx, flown).

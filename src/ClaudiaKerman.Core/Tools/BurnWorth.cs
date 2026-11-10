@@ -30,6 +30,9 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>KSP's physics tick, s.</summary>
         public const double PhysicsTick = 0.02;
 
+        /// <summary>The least throttle exec_node commands while a burn is left (<c>claudia_burn_throttle</c>'s floor), 0 to 1.</summary>
+        public const double LeastThrottle = 0.005;
+
         /// <summary>
         /// A small correction's done_dv, m/s: exec_node stops the burn once what is left is under this share of it, from <see cref="LeastDone"/> to <see cref="MostDone"/>, so it ends within
         /// 0.05 m/s of its node and within a tenth of the burn. Its max_residual stays the block's (exec_node's 0.5 m/s): a residual of a few tenths fails no return.
@@ -105,7 +108,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// The answer to a block's ask. <c>block</c> <c>"hint"</c> gives <c>note</c> as <see cref="SafeHint"/> (<c>to_moon</c>,
         /// <c>pe</c> and <c>body</c>, <c>has_atm</c>, <c>atm_height</c>). Otherwise <c>given</c> says Claudia set the tolerance, and the answer is <c>tolerance</c> (m for
-        /// <c>tune_pe</c>; 0 for <c>circularize</c>, which keeps its own), <c>skip</c> and <c>note</c> (why, when it skips).
+        /// <c>tune_pe</c>; 0 for <c>circularize</c>, which keeps its own), <c>skip</c> and <c>note</c> (why, when it skips). <c>"tune_pe_burn"</c> is <see cref="TunePeBurn"/>.
         /// <c>circularize</c> (<c>dv</c> m/s of the burn, <c>ecc</c>, <c>pe</c> m) skips a burn under 5 m/s on an orbit under 0.03 with a
         /// safe periapsis. <c>tune_pe</c> (<c>value</c> and <c>pe</c> m, <c>patch</c>) skips on patch "current" with a safe periapsis within
         /// the wider tolerance of value; on "next" (a small burn far out moves an encounter a lot) and with an unsafe periapsis the
@@ -122,6 +125,7 @@ namespace ClaudiaKerman.Core.Tools
                 return answer;
             }
             if (block == "correction") return Correction(input, answer);
+            if (block == "tune_pe_burn") return TunePeBurn(input, answer);
             if (Bool(input, "given")) return answer;
             var pe = Number(input, "pe", double.NegativeInfinity);
             var safe = Safe(pe, safeHeight);
@@ -172,6 +176,25 @@ namespace ClaudiaKerman.Core.Tools
             var accel = Number(input, "accel", 0);
             if (accel > 0) answer["max_throttle"] = Math.Min(1, TickShare * dv / (accel * PhysicsTick));
             answer["done_dv"] = Math.Max(LeastDone, Math.Min(MostDone, DoneShare * dv));
+            return answer;
+        }
+
+        /// <summary>
+        /// <c>tune_pe</c>'s burn (#982): <c>dv</c> m/s, <c>accel</c> as for a correction, <c>off</c> m the periapsis is from its value and the block's <c>tolerance</c> m. Under
+        /// <see cref="SmallCorrectionDv"/> its throttle is capped as a correction's. It stops once what is left would move the periapsis less than half the tolerance
+        /// (moving it in proportion to the burn), at most exec_node's <see cref="ExecNodeDone"/>, but not under one tick at the least throttle it flies
+        /// (<see cref="LeastThrottle"/> or the cap). On patch "next" far out a tenth of a m/s moves an encounter's periapsis 180 km, and exec_node's own stop
+        /// ended such a burn before the engine lit.
+        /// </summary>
+        private static IDictionary<string, object> TunePeBurn(IDictionary<string, object> input, Dictionary<string, object> answer)
+        {
+            var dv = Math.Abs(Number(input, "dv", 0));
+            var accel = Math.Max(0, Number(input, "accel", 0));
+            var off = Math.Abs(Number(input, "off", 0));
+            var throttle = dv < SmallCorrectionDv && accel > 0 ? Math.Min(1, TickShare * dv / (accel * PhysicsTick)) : 1.0;
+            var done = off > 0 ? Math.Min(ExecNodeDone, dv * Number(input, "tolerance", 0) / (2 * off)) : ExecNodeDone;
+            answer["max_throttle"] = throttle;
+            answer["done_dv"] = Math.Max(accel * Math.Min(throttle, LeastThrottle) * PhysicsTick, done);
             return answer;
         }
 
