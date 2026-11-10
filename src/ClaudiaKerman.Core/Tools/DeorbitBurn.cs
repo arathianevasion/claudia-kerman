@@ -38,7 +38,7 @@ namespace ClaudiaKerman.Core.Tools
         public bool Daylight;
         /// <summary>The sun's elevation at the target at a UT, degrees; NaN when it can't be read (then the burn counts). Null reads as NaN.</summary>
         public Func<double, double> SunAt;
-        /// <summary>#974: find_landing_site's pass for this target, to fly rather than the earliest; null for none (the earliest rule stands).</summary>
+        /// <summary>#974: find_landing_site's pass for this target, to fly rather than deorbit's own choice; null for none (its own rule stands).</summary>
         public SitePass Site;
     }
 
@@ -308,7 +308,7 @@ namespace ClaudiaKerman.Core.Tools
             /// <summary>
             /// #974: the burn on find_landing_site's pass (one landing within a quarter orbit of its landing), the cheapest there within accuracy and budget.
             /// If none, of the passes within budget landing with the sun at <see cref="LandingSiteSearch.MinSunElevationDeg"/> or more, the one whose sun is nearest the
-            /// site's, with a note saying so. Null when no such pass is within accuracy either: then the earliest rule decides.
+            /// site's, with a note saying so. Null when no such pass is within accuracy and budget either: then deorbit's own rule decides.
             /// </summary>
             private DeorbitPlan FollowSite(List<DeorbitPlan> burns, out string unfollowed)
             {

@@ -411,10 +411,10 @@ namespace ClaudiaKerman.Core.Tools
             return DeorbitBurn(input, snapshot, body, air, craft, SitePasses.Shared);
         }
 
-        /// <summary>#974: forgets find_landing_site's recorded passes, for the adapter on a game load (quickload, revert): their timeline is gone.</summary>
-        public static void ForgetSitePasses()
+        /// <summary>#974: forgets find_landing_site's passes recorded after <paramref name="ut"/>, for the adapter when a flight resumes there: a quickload or revert discarded their timeline.</summary>
+        public static void ForgetSitePassesAfter(double ut)
         {
-            SitePasses.Shared.Clear();
+            SitePasses.Shared.ForgetAfter(ut);
         }
 
         /// <summary>The same, following the sites recorded in <paramref name="sites"/>.</summary>

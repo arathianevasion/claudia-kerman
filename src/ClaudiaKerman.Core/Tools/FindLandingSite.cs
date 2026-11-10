@@ -159,7 +159,7 @@ namespace ClaudiaKerman.Core.Tools
             if (air)
             {
                 // #974: deorbit given one of these sites and its max_wait_s flies the pass worked out here.
-                Passes.Record(snapshot.Craft.VesselId, body.Name, found.Sites);
+                Passes.Record(snapshot.Craft.VesselId, body.Name, snapshot.Ut, found.Sites);
                 return AirAnswer(body, query, found, snapshot.Ut);
             }
             // #545: a biome no pass reaches gets the plane changes for its best site off the track.

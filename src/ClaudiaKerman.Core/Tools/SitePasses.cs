@@ -21,12 +21,13 @@ namespace ClaudiaKerman.Core.Tools
 
     /// <summary>
     /// #974: <c>find_landing_site</c>'s recent answers on bodies with air, so <c>deorbit</c> given one of their sites and a max_wait can fly the pass the
-    /// tool worked out, not the earliest lit one. Kept in memory for the game session (the tool and the block run in the same game) and forgotten on a
-    /// game load (<see cref="Clear"/>), so a pass from a discarded timeline is never followed. A target within deorbit's accuracy_km of a site on the same
+    /// tool worked out, not the earliest lit one. Kept in memory for the game session (the tool and the block run in the same game); an answer given
+    /// after the UT a flight resumes at is forgotten (<see cref="ForgetAfter"/>: a quickload or revert went back past it), so a pass from a discarded
+    /// timeline is never followed, while a trip to the Space Center or a switch of vessel keeps them. A target within deorbit's accuracy_km of a site on the same
     /// body is that site: a site typed to fewer places, or flown by a lander decoupled from the vessel the tool ran for (a new vessel id), still matches.
-    /// Of several, the vessel's own answer wins, then the latest, then the nearest site. Whether the pass is still in deorbit's window is the search's to
+    /// Of several, the vessel's own answer wins, then a site within <see cref="SameSiteKm"/> (the site itself) over one further off, then the latest. Whether the pass is still in deorbit's window is the search's to
     /// find (<see cref="DeorbitBurn"/>: a pass out of it is one it can't fly, so the nearest-sun fallback with a note). After a restart there is none,
-    /// and deorbit keeps its own rule (the earliest pass with the sun at 20 degrees or more).
+    /// and deorbit keeps its own rule (the cheapest pass with the sun at 20 degrees or more, the earliest of a tie).
     /// </summary>
     internal sealed class SitePasses
     {
@@ -36,10 +37,14 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>How many of the tool's answers are kept, the oldest dropped first.</summary>
         public const int MaxCalls = 8;
 
+        /// <summary>A site this close to the target, km, is the site itself: a site as printed (3 places) or typed to 2 is within about 60 m on Eve.</summary>
+        public const double SameSiteKm = 0.1;
+
         private sealed class Call
         {
             public string VesselId;
             public string Body;
+            public double Ut;
             public List<SitePass> Sites;
         }
 
@@ -47,26 +52,26 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The latest answer first.</summary>
         private readonly List<Call> _calls = new List<Call>();
 
-        /// <summary>Keeps the tool's answer for <paramref name="vesselId"/> round <paramref name="body"/>, the latest of the record.</summary>
-        public void Record(string vesselId, string body, IEnumerable<LandingSite> sites)
+        /// <summary>Keeps the tool's answer for <paramref name="vesselId"/> round <paramref name="body"/>, given at <paramref name="ut"/>, the latest of the record.</summary>
+        public void Record(string vesselId, string body, double ut, IEnumerable<LandingSite> sites)
         {
             var passes = sites.Select(s => new SitePass { Latitude = s.Latitude, Longitude = s.Longitude, BurnUt = s.PassUt, LandingUt = s.LandingUt, SunDeg = s.SunElevationDeg }).ToList();
             lock (_lock)
             {
-                _calls.Insert(0, new Call { VesselId = vesselId ?? "", Body = body ?? "", Sites = passes });
+                _calls.Insert(0, new Call { VesselId = vesselId ?? "", Body = body ?? "", Ut = ut, Sites = passes });
                 if (_calls.Count > MaxCalls) _calls.RemoveRange(MaxCalls, _calls.Count - MaxCalls);
             }
         }
 
-        /// <summary>Forgets every answer: a game load (quickload, revert) discards the timeline their passes were worked out in.</summary>
-        public void Clear()
+        /// <summary>Forgets the answers given after <paramref name="ut"/>, the UT a flight resumes at: a quickload or revert went back past them, discarding their timeline.</summary>
+        public void ForgetAfter(double ut)
         {
-            lock (_lock) _calls.Clear();
+            lock (_lock) _calls.RemoveAll(call => call.Ut > ut);
         }
 
         /// <summary>
         /// The recorded pass for a target at (<paramref name="lat"/>, <paramref name="lng"/>) round <paramref name="body"/> (radius <paramref name="radiusM"/>):
-        /// a site within <paramref name="withinKm"/> of it, this vessel's answer first, then the latest, then the nearest; null for none.
+        /// a site within <paramref name="withinKm"/> of it, this vessel's answer first, then the site itself (<see cref="SameSiteKm"/>), then the latest, then the nearest; null for none.
         /// </summary>
         public SitePass Of(string vesselId, string body, double radiusM, double lat, double lng, double withinKm)
         {
@@ -83,7 +88,7 @@ namespace ClaudiaKerman.Core.Tools
                         km = LandingSiteSearch.ArcDegrees(site.Latitude, site.Longitude, lat, lng) * kmPerDeg,
                     }))
                     .Where(m => m.km <= withinKm)
-                    .OrderBy(m => m.own ? 0 : 1).ThenBy(m => m.age).ThenBy(m => m.km)
+                    .OrderBy(m => m.own ? 0 : 1).ThenBy(m => m.km <= SameSiteKm ? 0 : 1).ThenBy(m => m.age).ThenBy(m => m.km)
                     .Select(m => m.site).FirstOrDefault();
             }
         }

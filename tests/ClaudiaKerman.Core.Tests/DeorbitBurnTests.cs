@@ -704,7 +704,7 @@ namespace ClaudiaKerman.Core.Tests
             var siteLanding = (double)later["landing_ut"];
             var sites = new SitePasses();
             // Recorded for another vessel: the craft flying deorbit is a lander decoupled from the one the tool ran for (#974's fix round).
-            sites.Record("mothership", "Kerbin", new[] { new LandingSite { Latitude = KscLat + 0.0004, Longitude = KscLng - 0.0004, PassUt = (double)later["burn_ut"], LandingUt = siteLanding, SunElevationDeg = 40 } });
+            sites.Record("mothership", "Kerbin", 0, new[] { new LandingSite { Latitude = KscLat + 0.0004, Longitude = KscLng - 0.0004, PassUt = (double)later["burn_ut"], LandingUt = siteLanding, SunElevationDeg = 40 } });
             Assert.NotEqual("mothership", snapshot.Craft.VesselId);
             Recorded = sites;
 
@@ -720,12 +720,12 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal((double)first["burn_ut"], (double)auto["burn_ut"], 3);
             Assert.False(auto.ContainsKey("pass_note"));
 
-            // No site within accuracy_km of the target: today's earliest pass, and with Daylight landing on and max_wait a number, a note saying so.
+            // No site within accuracy_km of the target: its own choice, the cheapest lit pass, and with Daylight landing on and max_wait a number, a note saying so.
             var far = new SitePasses();
-            far.Record("", "Kerbin", new[] { new LandingSite { Latitude = KscLat + 1, Longitude = KscLng, PassUt = (double)later["burn_ut"], LandingUt = siteLanding, SunElevationDeg = 40 } });
+            far.Record("", "Kerbin", 0, new[] { new LandingSite { Latitude = KscLat + 1, Longitude = KscLng, PassUt = (double)later["burn_ut"], LandingUt = siteLanding, SunElevationDeg = 40 } });
             Recorded = far;
             var elsewhere = call(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "dv_left", 5000.0));
-            Assert.True((double)elsewhere["landing_ut"] < siteLanding - 1000, "another target: today's earliest pass");
+            Assert.True((double)elsewhere["landing_ut"] < siteLanding - 1000, "another target: its own choice, the cheapest lit pass");
             Assert.Contains("not one of find_landing_site's sites", (string)elsewhere["pass_note"]);
             snapshot.DaylightLandingDefault = false;
             Assert.False(call(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_wait", 21549.425, "dv_left", 5000.0)).ContainsKey("pass_note"));
