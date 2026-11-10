@@ -1,6 +1,6 @@
 # A stale stock stage reading doesn't overstate the delta-v left (#980)
 
-Stock's per-stage delta-v can lag a burn: after a Duna ascent with crossfed radial tanks its stage still started heavier than the whole craft and read about 684 m/s too many until a later warp. The mod now treats a stage that starts heavier than the craft as stale and works its figure out again from the craft's propellant and the stage's own Isp (`StaleStageReading`), before a plan, a margin or a tolerance gate reads it. The pending Sequence Plan's tolerance gate ignores a delta-v change at the same mass. Core tests cover the rules (`StaleStageReadingTests`, `PlanDriftTests`); these checks need the game. Install and where to look are as in `phase-3-gate.md`.
+Stock's per-stage delta-v can lag a burn: after a Duna ascent with crossfed radial tanks its stage still started heavier than the whole craft and read about 684 m/s too many until a later warp. The mod now treats a stage that starts heavier than the craft as stale and works its figure out again from the craft's propellant and the stage's own Isp (`StaleStageReading`), before a plan, a margin or a tolerance gate reads it. The pending Sequence Plan's tolerance gate doesn't compare delta-v when either side holds a figure the mod worked out again. Core tests cover the rules (`StaleStageReadingTests`, `PlanDriftTests`); these checks need the game. Install and where to look are as in `phase-3-gate.md`.
 
 ## Check 1: a Duna ascent reports its real cost
 
@@ -19,5 +19,6 @@ Stock's per-stage delta-v can lag a burn: after a Duna ascent with crossfed radi
 
 1. With a Sequence Plan pending in orbit, burn normal (so the orbit barely moves) until over the player's Re-plan tolerance (15% by default) of the delta-v left is used.
 2. The button turns to Re-plan, and the reason reads "delta-v changed from ... to ... m/s".
+3. Re-plan, then with the new plan pending and no burn, shut down the stage's engine (right-click, Shutdown Engine). Stock's delta-v drops at the same mass; the button turns to Re-plan with the same reason.
 
 Tell the ticket the figures from Check 1 step 3.
