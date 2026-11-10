@@ -158,7 +158,7 @@ namespace ClaudiaKerman.Core.Tests
 
         private sealed class QuicksaveCheck : IScriptCheck
         {
-            public ScriptCheckResult Check(string script)
+            public ScriptCheckResult Check(string script, string customScriptReason = null)
             {
                 return script.ToUpperInvariant().Contains("QUICKSAVE")
                     ? new ScriptCheckResult(null, new List<string> { "line 1: :QUICKSAVE (quicksave)" })
@@ -237,7 +237,7 @@ namespace ClaudiaKerman.Core.Tests
         /// <summary>A Script Check that passes with one warning of its own, or the ScriptLints' ones as the real check adds them.</summary>
         private sealed class WarningCheck : IScriptCheck
         {
-            public ScriptCheckResult Check(string script)
+            public ScriptCheckResult Check(string script, string customScriptReason = null)
             {
                 var result = ScriptCheckResult.Pass();
                 result.Warnings = ScriptLints.Warnings(script).Concat(new[] { Marker }).ToList();
@@ -247,7 +247,7 @@ namespace ClaudiaKerman.Core.Tests
 
         private sealed class LintsOnlyCheck : IScriptCheck
         {
-            public ScriptCheckResult Check(string script)
+            public ScriptCheckResult Check(string script, string customScriptReason = null)
             {
                 var result = ScriptCheckResult.Pass();
                 result.Warnings = ScriptLints.Warnings(script);

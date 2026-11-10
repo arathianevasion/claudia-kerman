@@ -41,7 +41,7 @@ namespace ClaudiaKerman.Core.Tests
             public readonly List<string> Checked = new List<string>();
             public bool FailEverything;
 
-            public ScriptCheckResult Check(string script)
+            public ScriptCheckResult Check(string script, string customScriptReason = null)
             {
                 Checked.Add(script);
                 return FailEverything || script.ToUpperInvariant().Contains("QUICKSAVE")

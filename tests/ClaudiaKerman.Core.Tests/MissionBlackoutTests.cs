@@ -622,7 +622,7 @@ namespace ClaudiaKerman.Core.Tests
         /// <summary>Fails any script that quicksaves, the way the real check would.</summary>
         private sealed class QuicksaveCheck : IScriptCheck
         {
-            public ScriptCheckResult Check(string script)
+            public ScriptCheckResult Check(string script, string customScriptReason = null)
             {
                 return script.ToUpperInvariant().Contains("QUICKSAVE")
                     ? new ScriptCheckResult(null, new List<string> { "line 1: :QUICKSAVE (quicksave)" })
