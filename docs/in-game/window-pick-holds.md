@@ -28,3 +28,9 @@ Once the player picks Soonest or Optimal, the pick holds for that transfer until
 1. Fly Check 1's Mission through its ejection. Once the craft is out of Kerbin's sphere of influence, the Mission folder's `events.jsonl` has a `window_spent` event with "Duna:Optimal" (or the pick made).
 2. With the goal including a return to Kerbin (pin "Orbit Duna and return to Kerbin."), at Duna have Claudia revise the Mission Plan. The card is headed "Transfer Window to Kerbin: pick one" with neither button on, and Approve waits for a pick.
 3. Tell the ticket whether anything asked for a pick between the start form and the Duna ejection.
+
+## Check 4: a missed held window is never traded for a later one
+
+1. Pick Soonest on the pad for "Orbit Duna", Approve the Mission Plan, and leave its first Sequence Plan waiting for its Due Time (the Duna window).
+2. Warp on the pad until well after the window has closed (the Soonest row's date plus about four months), then Approve. The log says the Duna window "was missed and it was the window the player picked, so the player picks again"; there is no "the Due Time moves to" and no warp. Claudia's revised plan arrives with the Transfer Window card's buttons off and Approve greyed out until a pick.
+3. In Kerbin orbit with a held pick, let its window close without a revision, then Approve a Sequence Plan with `transfer_to(lexicon("target","Duna","target_pe",60000))` (no window). The block fails with "the window the player picked for Duna was missed: no later one is flown, the player picks again"; it does not warp to the next window.
