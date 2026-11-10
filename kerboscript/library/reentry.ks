@@ -302,9 +302,10 @@ function reentry_cut_chutes {
 
 // ---- Powered touchdown (#628, #824) ----
 
-// Lights those of engs (the craft's engines) whose uid is in uids, part by part: no stage fires.
+// Lights those of engs (the craft's engines) whose uid is in uids, part by part: no stage fires. At zero throttle, so none burns before BRAKETICK's word (#963).
 function reentry_light {
   parameter engs, uids.
+  set ship:control:pilotmainthrottle to 0.
   for e in engs {
     if uids:contains(e:uid) and not e:ignition { e:activate(). }
   }
@@ -637,7 +638,6 @@ function reentry {
   if finish:error = "" {
     addons:claudia:blocknote(ctx:block, lexicon("phase", "finish", "why", finish:why)).
     if finish:powered and not claudia_on_ground() {
-      set ship:control:pilotmainthrottle to 0.
       reentry_light(ship:engines, finish:engines).
       wait 0.1.
       if ship:availablethrust <= 0 { reentry_light(ship:engines, finish:spare). wait 0.1. }

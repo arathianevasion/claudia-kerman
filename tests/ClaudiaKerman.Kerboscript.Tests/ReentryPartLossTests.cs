@@ -69,18 +69,18 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             var on = powered.ToString().ToLowerInvariant();
             return "global status is \"FLYING\".\n"
-                + "global notes is list().\nglobal lit is list().\nglobal steer_locked is false.\nglobal asked is 0.\n"
+                + "global notes is list().\nglobal lit is list().\nglobal steer_locked is false.\nglobal asked is 0.\nglobal last_why is \"\".\n"
                 + "function chute {\n parameter uid, name.\n"
                 + "  local m is lexicon(\"hasevent\", { parameter e. return e = \"deploy chute\". }).\n"
                 + "  return lexicon(\"uid\", uid, \"name\", name, \"stage\", 1, \"title\", \"Chute \" + uid, \"hasmodule\", { parameter n. return n = \"ModuleParachute\". }, \"getmodule\", { parameter n. return m. }).\n}\n"
                 + "function part_ { parameter uid. return lexicon(\"uid\", uid, \"name\", uid, \"stage\", 0, \"hasmodule\", { parameter n. return false. }). }\n"
                 + "local e1 is lexicon(\"uid\", \"e1\", \"name\", \"liquidEngine\", \"stage\", 2, \"ignition\", false, \"hasmodule\", { parameter n. return false. }).\n"
-                + "set e1:activate to { lit:add(\"e1\"). }.\n"
+                + "set e1:activate to { lit:add(\"e1@\" + ship:control:pilotmainthrottle). }.\n"
                 + "global ship is lexicon(\"parts\", list(part_(\"pod\"), e1, chute(\"d\", \"parachuteDrogue\"), chute(\"m\", \"parachuteSingle\")), \"engines\", list(e1),\n"
-                + "  \"altitude\", " + altitude + ", \"availablethrust\", 0, \"geoposition\", lexicon(\"terrainheight\", 1000)).\n"
+                + "  \"altitude\", " + altitude + ", \"availablethrust\", 0, \"geoposition\", lexicon(\"terrainheight\", 1000), \"control\", lexicon(\"pilotmainthrottle\", 1)).\n"
                 + "global addons is lexicon(\"claudia\", lexicon(\n"
                 + "  \"entryloss\", { parameter q. set asked to asked + 1. set q:chutes to " + states + ". return test_entry_loss(q, " + finish + ", " + group + "). },\n"
-                + "  \"blocknote\", { parameter b, n. notes:add(n:phase + \":\" + n:lost + \":\" + n:powered + \":\" + n:chutes). })).\n"
+                + "  \"blocknote\", { parameter b, n. notes:add(n:phase + \":\" + n:lost + \":\" + n:powered + \":\" + n:chutes). set last_why to n:why. })).\n"
                 + "local opt is lexicon(\"min_ec_pct\", 10, \"max_duration\", 100000, \"abort_on_part_loss\", " + abortOnLoss.ToString().ToLowerInvariant() + ", \"chute_mode\", \"" + mode + "\").\n"
                 + "local ctx is lexicon(\"block\", \"reentry\", \"opt\", opt, \"start_ut\", 0, \"parts\", 4, \"ec_tick\", { return 55. }).\n"
                 + "local body_ is lexicon(\"atm\", lexicon(\"height\", 50000)).\n"
@@ -136,7 +136,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 "[]",
                 "lost=2 parts=2 powered=True engine=True mode=none",
                 "drogues=False/True mains_out=True why=chutes open uids=",
-                "lit=e1 held=True shield_gone=True notes=parts_lost:2:True:0",
+                "lit=e1@0 held=True shield_gone=True notes=parts_lost:2:True:0", // lit at zero throttle (#963)
             }, Run(Rig(false, OnEngine, NoChutes) + "lose(\"d\"). lose(\"m\").\n" + Show));
         }
 
@@ -171,6 +171,43 @@ namespace ClaudiaKerman.Kerboscript.Tests
             var lines = Run(Rig(false, ChutesOnly, Mains) + "lose(\"d\").\n" + Show);
             Assert.Equal("[]", lines[0]);
             Assert.Equal("drogues=False/True mains_out=False why= uids=m", lines[2]);
+        }
+
+        // ---- #963: a chute path that loses its mains under its drogues ----
+
+        private const string DrogueOut = "list(lexicon(\"title\", \"Chute d\", \"state\", \"deployed\", \"drogue\", true))";
+
+        /// <summary>A chute path has never braked.</summary>
+        private const string OnChutes = "set brake_why to \"\".\n";
+
+        /// <summary>
+        /// The drogue is out and the main goes: Core's finish says engines, so the engine is lit at zero throttle and held, and the group stays with the drogue in it, so the powered finish's
+        /// BRAKETICK waits for it (Core's <c>EntryPartLossTests</c>: thrust zero until it settles, timed from the switch).
+        /// </summary>
+        [Fact]
+        public void A_chute_path_losing_its_mains_under_its_drogues_goes_to_its_engine_lit_at_zero_throttle_and_keeps_the_drogues_in_its_group()
+        {
+            Assert.Equal(new[]
+            {
+                "[]",
+                "lost=1 parts=3 powered=True engine=True mode=safe",
+                "drogues=False/True mains_out=True why= uids=d,m",
+                "lit=e1@0 held=True shield_gone=True notes=parts_lost:1:True:2",
+                "throttle=0 why=mains lost, on to the engines: engines, keeping everything",
+            }, Run(Rig(false, OnEngine, NoChutes, states: DrogueOut) + OnChutes + "lose(\"m\").\n" + Show + "print \"throttle=\" + ship:control:pilotmainthrottle + \" why=\" + last_why.\n"));
+        }
+
+        [Fact]
+        public void With_no_engine_to_land_it_a_chute_path_losing_its_mains_stays_on_its_drogues_and_notes_why()
+        {
+            Assert.Equal(new[]
+            {
+                "[]",
+                "lost=1 parts=3 powered=False engine=False mode=safe",
+                "drogues=False/True mains_out=True why= uids=d,m",
+                "lit= held=False shield_gone=True notes=parts_lost:1:False:2",
+                "why=mains lost, staying on the drogues: chutes, 6.1 m/s, no engine with fuel",
+            }, Run(Rig(false, ChutesOnly, NoChutes, states: DrogueOut) + OnChutes + "lose(\"m\").\n" + Show + "print \"why=\" + last_why.\n"));
         }
 
         [Fact]
