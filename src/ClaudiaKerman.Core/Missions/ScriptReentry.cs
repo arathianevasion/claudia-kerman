@@ -43,7 +43,7 @@ namespace ClaudiaKerman.Core.Missions
             foreach (Match call in Call.Matches(masked))
             {
                 var args = Args(code, call.Index + call.Length);
-                separates.Add(Sheds(code, masked, call.Index) ? "auto" : Word(args, "separate"));
+                separates.Add(Sheds(masked, call.Index) ? "auto" : Word(args, "separate"));
                 jettisons.Add(Word(args, "jettison_stage"));
             }
             return new ScriptReentry(All(separates), All(jettisons) ? "none" : "auto");
@@ -65,7 +65,8 @@ namespace ClaudiaKerman.Core.Missions
             get { return new[] { "coast", "science", "deorbit", "return", "reentry" }; }
         }
 
-        private static bool Sheds(string code, string masked, int reentryAt)
+        // Read with comments and strings blanked: a doevent("decouple") is caught by its doevent.
+        private static bool Sheds(string masked, int reentryAt)
         {
             var start = 0;
             foreach (Match anchor in Anchor.Matches(masked.Substring(0, reentryAt)))
@@ -73,7 +74,7 @@ namespace ClaudiaKerman.Core.Missions
                 var open = anchor.Index + anchor.Length;
                 start = open + Args(masked, open).Length;
             }
-            return start < reentryAt && Separation.IsMatch(code.Substring(start, reentryAt - start));
+            return start < reentryAt && Separation.IsMatch(masked.Substring(start, reentryAt - start));
         }
 
         // Every call gives "none" (and there is at least one).

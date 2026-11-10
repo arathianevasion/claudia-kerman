@@ -79,6 +79,7 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\")). print stage:number. set res to reentry(lexicon(\"separate\", \"none\")).")]
         [InlineData("stage. local res is deorbit(lexicon(\"target\", \"ksc\")). coast(lexicon(\"ut\", time:seconds + 60)). set res to reentry(lexicon(\"separate\", \"none\")).")]
         [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\", \"stage_limit\", 2)). set res to reentry(lexicon(\"separate\", \"none\", \"jettison_stage\", \"none\")).")]
+        [InlineData("local res is deorbit(lexicon(\"target\", \"ksc\")). print \"no stage. no decouple, no drop_parts(\". // stage.\nset res to reentry(lexicon(\"separate\", \"none\")).")]
         public void Nothing_separating_between_deorbit_and_reentry_still_keeps_the_stack(string script)
         {
             Assert.True(ScriptReentry.Of(script).KeepsStack);
