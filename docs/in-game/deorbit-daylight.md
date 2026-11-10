@@ -9,3 +9,11 @@ Fly a descent like m20261109-140705-ae3a: a near-equatorial Duna orbit (about 2 
 3. After the landing, the Debrief's landing `sun_elevation_deg` is over 20 and there is no "landed in the dark" event.
 4. Repeat with a `max_wait` too short to reach a lit pass (a few thousand seconds on this orbit). `deorbit` fails before any burn (`burn_ut` -1, no node left) with `no pass in the next <h> h lands in daylight: the best sun at the target is <n> degrees up, under 20; allow a longer max_wait or pick a different site`.
 5. Turn Daylight landing **off** and run step 2 again: `deorbit` burns at the nearest pass as before.
+
+## #970: the craft deorbit aims for, and what "lit" means
+
+Flight m20261109-200745-96f6 had Daylight landing on (saved `setting.daylight_landing = true`; its prompts said on), so #957's rule ran. The pass `deorbit` flew landed, at the target, with the sun about 22.8 degrees up at dawn: lit by the 20 degree rule. It was aimed for the craft without its stack (19 t) while the script's `reentry` kept it (`separate` "none", 41 t), so the craft flew 95 km further west, where the sun was 6.2 degrees. Now `deorbit` (and `return`) aim for the craft the running script's `reentry` flies (Core reads its `separate` and `jettison_stage`). The agent run that wrote this did not launch KSP.
+
+6. Fly a Duna descent whose script is `deorbit(...)` then `reentry(lexicon("separate", "none", "jettison_stage", "none"))` (the plan needs a custom_script_reason since #971), on a craft with a stack below its heat shield. In `KSP.log` the `ENTRYCRAFT` line reads `as it is, its stack kept, shield kept, <whole mass> t`, the `DEORBITBURN` line's `craft` mass is the whole craft, and `reentry`'s ENTRYFINISH line has no "the landing was aimed for the craft ..." part.
+7. The craft lands within about accuracy_km (plus the few km chutes and lift add) of the `DEORBITBURN` landing, and the Debrief's landing `sun_elevation_deg` is within a few degrees of the sun at the target at the predicted `landing_ut`.
+8. Run the same script with `reentry()` (no `separate`): `ENTRYCRAFT` reads `without its stack (...)` as before.
