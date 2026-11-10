@@ -556,6 +556,33 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(plan.ErrorKm, 0, 5);
         }
 
+        /// <summary>
+        /// #970, flight m20261109-200745-96f6's figures with the sun as it moves (the hour angle turning with the body): find_landing_site's pass
+        /// lands at 73 degrees, the pass deorbit flew about 84 degrees of turn before it. At the target that pass landed at dawn, about 22.8 degrees
+        /// up: lit by the 20 degree rule, so it is flown; the craft then landed 17 degrees of longitude west, where the sun was 6.2. Had the sun
+        /// there been under the horizon (the other side of noon, -10.6), the pass is skipped for the next lit one.
+        /// </summary>
+        [Theory]
+        [InlineData(-67.1, true)]
+        [InlineData(-100.6, false)]
+        public void This_flights_dawn_pass_is_lit_at_the_target_and_a_dark_one_is_skipped(double hourAngleAtFirstLanding, bool firstIsLit)
+        {
+            var orbit = Circular(inclinationDeg: 2);
+            var first = Find(KscLat, KscLng, orbit);
+            var land = first.Landing.LandingUt;
+            Func<double, double> sun = ut =>
+            {
+                var hour = (hourAngleAtFirstLanding + 360 * (ut - land) / ReentrySim.RotationPeriod) * Math.PI / 180;
+                return Math.Asin(Math.Cos(KscLat * Math.PI / 180) * Math.Cos(hour)) * 180 / Math.PI;
+            };
+            Assert.Equal(firstIsLit, sun(land) >= LandingSiteSearch.MinSunElevationDeg);
+            var plan = Find(KscLat, KscLng, orbit, daylight: true, sunAt: sun);
+            Assert.Null(plan.Error);
+            Assert.True(sun(plan.Landing.LandingUt) >= LandingSiteSearch.MinSunElevationDeg);
+            if (firstIsLit) Assert.Equal(first.BurnUt, plan.BurnUt, 3);
+            else Assert.True(plan.Landing.LandingUt > land + 1000, "a later, lit pass");
+        }
+
         [Fact]
         public void With_daylight_on_the_sun_is_read_when_the_burn_lands_not_when_it_burns()
         {
