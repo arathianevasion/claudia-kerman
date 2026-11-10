@@ -205,9 +205,6 @@ function reentry_warp_cap {
   return 4.
 }
 
-// Touchdown within what the crew and craft survive: reentry_touchdown_limit.
-function reentry_touchdown_ok { parameter speed. return speed <= reentry_touchdown_limit(). }
-
 // ---- Chutes (#628) ----
 
 // The parachutes among parts.
@@ -954,11 +951,14 @@ function reentry {
   set extra:touchdown_speed to round(last_speed, 1).
   set extra:max_g to round(extra:max_g, 2).
   set extra:max_temp_pct to round(max(extra:max_temp_pct, addons:claudia:hottestpart), 1).
+  // Chutes are cut at first touch; the report waits until the craft has stayed down 2 s so a bounce isn't read as FLYING (#968, Core's GROUNDSETTLE, 30 s at most). Controls are released: no engine lights or throttles here.
+  local settle is lexicon("since", -1, "first", time:seconds, "done", false).
+  until settle:done { set settle to addons:claudia:groundsettle(lexicon("on_ground", claudia_on_ground(), "now", time:seconds, "since", settle:since, "first", settle:first)). wait 0. }
   set extra:geo to reentry_geo().
   set extra:splashed to status = "SPLASHED".
   set extra:sun_elevation_deg to round(90 - vang(ship:up:vector, body("Sun"):position), 1).
   reentry_note_landing(ctx, predicted, last_speed).
-  if not reentry_touchdown_ok(last_speed) {
+  if last_speed > reentry_touchdown_limit() {
     return claudia_finish(ctx, false, "touchdown at " + round(last_speed, 1) + " m/s is over " + reentry_touchdown_limit() + " m/s", extra).
   }
   return claudia_finish(ctx, true, "", extra).

@@ -50,7 +50,9 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (deorbit, return): where the orbit as it is now, or the one given as orbit_sma, orbit_ecc, ..., comes down, held retrograde; lexicon error, lat, lng, landing_ut, error_km"));
             AddSuffix("PREDICTIONMISS", new OneArgsSuffix<Lexicon, Lexicon>(PredictionMissCall,
                 "Core Library only (reentry): the great-circle km on a body of radius (m) between lat, lng and actual_lat, actual_lng; lexicon km"));
-            AddSuffix("TURNTIME", new OneArgsSuffix<Lexicon, Lexicon>(TurnTime,
+            AddSuffix("GROUNDSETTLE", new OneArgsSuffix<Lexicon, Lexicon>(GroundSettleCall,
+                "Core Library only (reentry, each tick after touchdown): whether the craft has stayed on the ground for 2 s (or 30 s have passed since first touch), from on_ground, now, since, first; lexicon since, first, done"));
+            AddSuffix("TURNTIME",new OneArgsSuffix<Lexicon, Lexicon>(TurnTime,
                 "Core Library only (a block that turns to a burn): the time to leave for a 190 degree turn on the wheels and RCS (if the craft has monoprop, on or off), given max_stopping_time; lexicon error, turn_time, turn_s, top_rate, and wheels_turn_time, wheels_turn_s on the wheels alone (-1: no wheel torque)"));
             AddSuffix("LOWCHARGE", new OneArgsSuffix<Lexicon, Lexicon>(LowChargeCall,
                 "Core Library only (reentry, each tick): what low charge does with the periapsis in the air, from ec_pct, min_ec_pct, pe, air_top; lexicon error, carry_on, step (0 nothing, 1 steering released, 2 chutes armed), abort_pct (the charge min_ec_pct is to judge)"));
@@ -207,6 +209,17 @@ namespace ClaudiaKerman.KOS
                 miss = PredictionMiss.Call(KosValues.ToDictionary(input));
                 return KosValues.FromPlain(miss);
             }, () => string.Format(CultureInfo.InvariantCulture, "{0:0.00} km between the predicted and the actual landing", miss["km"]));
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:GROUNDSETTLE</c> (#968, ADR 0014): reentry's wait on the ground (<see cref="GroundSettle.Call"/>), pure.</summary>
+        private Lexicon GroundSettleCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> settled = null;
+            return (Lexicon)Guarded("GROUNDSETTLE", () =>
+            {
+                settled = GroundSettle.Call(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(settled);
+            }, () => string.Format(CultureInfo.InvariantCulture, "settled {0}", settled["done"]), 1);
         }
 
         private Lexicon KeepClearCall(Lexicon input)

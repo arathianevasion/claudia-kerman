@@ -38,7 +38,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
         {
             Assert.Equal(new[] { "auto", "", "True", "False" },
                 Run("local d is reentry_defaults(). print d:chutes. print reentry_unreadable(d).\n"
-                    + "print reentry_touchdown_ok(14.9). print reentry_touchdown_ok(15.1).\n"));
+                    + "print 14.9 <= reentry_touchdown_limit(). print 15.1 <= reentry_touchdown_limit().\n"));
         }
 
         [Theory]
@@ -100,7 +100,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Contains("if ship:availablethrust <= 0 { reentry_light(ship:engines, finish:spare). }", body);
             // Braking ticks don't autostage, and running dry isn't an abort: burning false, and only the touchdown's speed fails it.
             Assert.Contains("claudia_tick(ctx, tset, false)", body);
-            Assert.Contains("if not reentry_touchdown_ok(last_speed) {", body);
+            Assert.Contains("if last_speed > reentry_touchdown_limit() {", body);
         }
 
         /// <summary>
@@ -328,7 +328,7 @@ function sim {
     set used to used + tset * a_max * dt.
     set t to t + dt.
   }
-  print round(last, 2). print round(brake_at). print round(used). print reentry_touchdown_ok(last).
+  print round(last, 2). print round(brake_at). print round(used). print last <= reentry_touchdown_limit().
 }
 ";
 
