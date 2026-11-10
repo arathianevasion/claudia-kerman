@@ -941,7 +941,7 @@ namespace ClaudiaKerman.KOS
                 var ask = BrakeAsk(input);
                 var uids = ask.ContainsKey("uids") ? ((System.Collections.Generic.IEnumerable<object>)ask["uids"]).Select(u => Convert.ToString(u, CultureInfo.InvariantCulture)).ToList() : new System.Collections.Generic.List<string>();
                 ask["chutes"] = ReentryCraft.ChuteStates(shared.Vessel, uids);
-                tick = BlockCalls.BrakeTick(ask, () => BrakeTurnCraft());
+                tick = BlockCalls.BrakeTick(ask, BrakeTurnCraft);
                 HoldBrake(tick);
                 NoteBrake(tick);
                 return KosValues.FromPlain(tick);

@@ -1152,6 +1152,12 @@ namespace ClaudiaKerman.Core.Tests
         /// <summary>The final height for <see cref="UnderCanopy"/> unrounded (<see cref="FinalH"/> is to 2 places).</summary>
         private static readonly double Base = ReentryBrake.FinalHeight(8, AUp, G, 300, Soft, End);
 
+        /// <summary>The final height for <see cref="UnderCanopy"/> leaving <paramref name="s"/> seconds to stop the turn: that long falling with no drag and no thrust from 8 m/s, then the no-drag brake height at the speed it reaches.</summary>
+        private static double Raised(double s)
+        {
+            return 8 * s + G * s * s / 2 + ReentryBrake.BrakeHeight(8 + G * s, AUp, G, new double[] { 0 }, 300, Soft, End);
+        }
+
         private static Dictionary<string, object> Swinging(double radar, double rate, double up = 5)
         {
             var ask = UnderCanopy(radar, up);
@@ -1184,8 +1190,9 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void A_turn_to_stop_raises_the_final_height_by_the_fall_while_it_stops()
         {
-            // 10 deg/s on 0.1 rad/s² of wheels: 1.75 s at 8 m/s.
-            var raised = Base + 8 * 10 / Alpha10;
+            // 10 deg/s on 0.1 rad/s² of wheels: 1.75 s of free fall from 8 m/s, then the brake at 13.1 m/s: 53.5 m, not 22.2.
+            var raised = Raised(10 / Alpha10);
+            Assert.InRange(raised, 53, 54);
             Assert.Equal(raised, D(BlockCalls.BrakeTick(Swinging(60, 10), () => Wheels(10)), "final_h"), 6);
             Assert.Equal(true, BlockCalls.BrakeTick(Swinging(raised - 0.5, 10), () => Wheels(10))["cut"]);
             var above = BlockCalls.BrakeTick(Swinging(raised + 0.5, 10), () => Wheels(10));
@@ -1203,23 +1210,26 @@ namespace ClaudiaKerman.Core.Tests
         public void A_weak_craft_gets_no_more_than_the_cap_and_the_cut_waits_while_its_turn_would_take_longer()
         {
             // 1 kN m on 100 t m²: 0.57 deg/s², 17 s to stop 10 deg/s.
-            var capped = Base + 8 * ReentryBrake.MaxTurnStopSeconds;
-            Assert.Equal(capped, D(BlockCalls.BrakeTick(Swinging(60, 10), () => Wheels(1)), "final_h"), 6);
+            var capped = Raised(ReentryBrake.MaxTurnStopSeconds);
+            Assert.Equal(capped, D(BlockCalls.BrakeTick(Swinging(capped - 0.5, 10), () => Wheels(1)), "final_h"), 6);
             var held = BlockCalls.BrakeTick(Swinging(capped - 0.5, 10), () => Wheels(1));
             Assert.Equal(false, held["cut"]);
             AssertNoThrust(held, ReentryBrake.WhyCutHeld);
             // The swing slows enough: the cut goes.
-            Assert.Equal(true, BlockCalls.BrakeTick(Swinging(Base, 1), () => Wheels(1))["cut"]);
-            // Under the height where full thrust only just stops it, it burns with the chutes on, as before.
-            var low = BlockCalls.BrakeTick(Swinging(7, 10), () => Wheels(1));
-            Assert.Equal(false, low["cut"]);
-            Assert.Equal(0.8, D(low, "throttle"));
+            Assert.Equal(true, BlockCalls.BrakeTick(Swinging(Raised(1 / (Alpha10 / 10)) - 0.5, 1), () => Wheels(1))["cut"]);
+            // Too low for the capped fall and the brake after it, or under the height where full thrust only just stops it: it burns with the chutes on, on the guards.
+            foreach (var radar in new[] { 60.0, 7 })
+            {
+                var low = BlockCalls.BrakeTick(Swinging(radar, 10), () => Wheels(1));
+                Assert.Equal(false, low["cut"]);
+                Assert.Equal(0.8, D(low, "throttle"));
+            }
         }
 
         [Fact]
         public void The_cut_is_noted_with_the_rate_the_angle_and_the_extra_seconds()
         {
-            var raised = Base + 8 * 10 / Alpha10;
+            var raised = Raised(10 / Alpha10);
             var tick = BlockCalls.BrakeTick(Swinging(raised - 0.5, 10, 12), () => Wheels(10));
             Assert.Equal(true, tick["cut"]);
             var note = (IDictionary<string, object>)tick["note"];
