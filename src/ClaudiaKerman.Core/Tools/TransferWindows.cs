@@ -112,12 +112,6 @@ namespace ClaudiaKerman.Core.Tools
         private const double StepTolerance = 1e-4;
         private const int Iterations = 60;
         private const int Bisections = 40;
-        /// <summary>#966: why a held window's transfer flies no later window (<see cref="WindowSearch.HeldMissed"/>).</summary>
-        internal static string HeldMissedWhy(string target)
-        {
-            return "the window the player picked for " + target + " was missed: no later one is flown, the player picks again";
-        }
-
         /// <summary>#966: bisections of a held window's close between two grid departures (a 180-row period's step to under a 1/4000th of it).</summary>
         private const int CloseBisections = 12;
         /// <summary>The cost of a cell with no Lambert path: finite, so BrentMin steps away from it.</summary>
@@ -133,6 +127,12 @@ namespace ClaudiaKerman.Core.Tools
         private const int PlanePoints = 32;
         /// <summary>A moon this far (degrees) out of the equator's plane is launched into from the pad (#690); the Mun, in it, is not.</summary>
         private const double OutOfPlaneDeg = 1;
+
+        /// <summary>#966: why a held window's transfer flies no later window (<see cref="WindowSearch.HeldMissed"/>).</summary>
+        internal static string HeldMissedWhy(string target)
+        {
+            return "the window the player picked for " + target + " was missed: no later one is flown, the player picks again";
+        }
 
         /// <summary>
         /// The windows from the craft's planet to <paramref name="target"/>, arriving at <paramref name="targetPe"/> (m above its sea
@@ -358,6 +358,8 @@ namespace ClaudiaKerman.Core.Tools
                     while (kEnd - kBest < reach && costAt(kEnd) <= heldBudget) kEnd++;
                     kOpen = kBest - 1;
                     while (kBest - kOpen < reach && costAt(kOpen) <= heldBudget) kOpen--;
+                    // No path at the anchor or round it: no window held, so missed below, never one found further off.
+                    if (double.IsInfinity(costAt(kBest))) break;
                     var lowest = kBest;
                     for (var k = Math.Max(kOpen + 1, -reach); k < Math.Min(kEnd, reach + 1); k++)
                         if (costAt(k) < costAt(lowest)) lowest = k;

@@ -172,8 +172,14 @@ namespace ClaudiaKerman.Core.Missions
                 ReturnWindowAlert(mission, plan, missed);
                 return false;
             }
-            var heldMissed = surface != null && surface.HeldMissed;
-            var next = surface != null ? surface.Window : WindowFor(mission, planet, out heldMissed);
+            TransferWindow next;
+            bool heldMissed;
+            if (surface != null)
+            {
+                next = surface.Window;
+                heldMissed = surface.HeldMissed;
+            }
+            else next = WindowFor(mission, planet, out heldMissed);
             // On the pad that is the whole plan; from a surface in mid-Mission, the legs still to fly (this one too), which the craft's delta-v is for.
             var budget = mission.Plan == null ? 0 : mission.Plan.Sequences.Skip(surface != null ? Math.Max(0, StepOf(mission, plan) - 1) : 0).Sum(s => Math.Max(0, s.DeltaV));
             var head = "The " + mission.WindowPlanet + " window of " + KerbinTime.Date(missed) + " was missed";
