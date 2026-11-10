@@ -167,7 +167,7 @@ namespace ClaudiaKerman.Adapter
             return read;
         }
 
-        private static void ForgetSurfaceObjects(GameScenes scene)
+        private void ForgetSurfaceObjects(GameScenes scene)
         {
             lock (SurfaceRead) SurfaceRead.Clear();
         }
