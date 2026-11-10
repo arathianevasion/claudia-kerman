@@ -109,7 +109,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>
         /// #966: the Mission's pick holds for <paramref name="offer"/>'s transfer. The same transfer is the one to the pick's body, worked
         /// out from where the craft is now, not a leg's place or name in the plan; it holds until its window has gone (the offer, worked
-        /// for the held window, finds leaving now past the margin over its own cheapest: <see cref="Tools.WindowSearch.HeldMissed"/>) or its ejection flies
+        /// for the held window, finds leaving now past the margin over its own cheapest, or half a period gone: <see cref="Tools.WindowSearch.HeldMissed"/>) or its ejection flies
         /// (<see cref="SpendPick"/>, which drops it). Its departure passing is no miss: an open window departs "now" until it closes.
         /// A pick saved before #966 has no departure on record, so no window to hold: a revision asks, as it did then.
         /// </summary>

@@ -281,44 +281,48 @@ namespace ClaudiaKerman.Core.Tools
                 }
                 return found;
             };
-            var margin = 1 + marginPercent / 100.0;
-            var soonestRow = -1;
-            for (var i = 0; i < Departures && soonestRow < 0; i++)
-                if (rowCost[i] <= optimal.TotalDv * margin) soonestRow = i;
-            var soonest = soonestRow < 0 || from + soonestRow * step >= optimal.DepartureUt ? optimal : edge(soonestRow, optimal.TotalDv * margin);
+            var withinMargin = 1 + marginPercent / 100.0;
+            // The first grid departure before end whose total fits budget; -1 for none.
+            Func<double, double, int> firstWithin = (budget, end) =>
+            {
+                for (var i = 0; i < Departures && from + i * step < end; i++)
+                    if (rowCost[i] <= budget) return i;
+                return -1;
+            };
+            var soonestRow = firstWithin(optimal.TotalDv * withinMargin, double.PositiveInfinity);
+            var soonest = soonestRow < 0 || from + soonestRow * step >= optimal.DepartureUt ? optimal : edge(soonestRow, optimal.TotalDv * withinMargin);
             // #966: a held window. Windows recur once a period, so the held one is every departure within half a period of its own.
             // It is judged against its own cheapest, not the horizon's (a next window much cheaper, Moho's, would read it as gone):
             // once its departure has passed it is open while leaving now costs within the margin of the cheapest it had, its past
-            // costed too, and gone once that is no longer so or half a period has passed. While open, Soonest and Optimal keep to it.
+            // costed too, and gone once that is no longer so, half a period has passed, or no departure in it has a path.
+            // While open, Soonest and Optimal keep to it.
             var heldMissed = false;
             if (problem.Held.HasValue)
             {
                 // The windows' true recurrence, not the horizon searched (a span, or a moon's shortened horizon).
                 var period = problem.Moon ? problem.Target.Period : Transfer.Synodic(problem.Home.Period, problem.Target.Period);
                 var limit = problem.Held.Value + period / 2;
-                var floor = double.PositiveInfinity;
-                heldMissed = from >= limit;
+                var inHeld = -1;
+                for (var i = 0; i < Departures && from + i * step < limit; i++)
+                    if (!double.IsInfinity(rowCost[i]) && (inHeld < 0 || rowCost[i] < rowCost[inHeld])) inHeld = i;
+                var heldCheapest = double.PositiveInfinity;
+                heldMissed = inHeld < 0;
                 if (!heldMissed && problem.Held.Value <= from)
                 {
                     // Its cheapest: the departures from half a period before it to now, at the period's own grid step.
                     var pastStep = period / (Departures - 1);
-                    floor = rowCost[0];
+                    heldCheapest = rowCost[0];
                     for (var t = from - pastStep; t >= problem.Held.Value - period / 2; t -= pastStep)
-                        for (var j = 0; j < Flights; j++) floor = Math.Min(floor, problem.Cost(t, tofLo + j * tofStep).TotalDv);
-                    heldMissed = !(rowCost[0] <= floor * margin);
+                        for (var j = 0; j < Flights; j++) heldCheapest = Math.Min(heldCheapest, problem.Cost(t, tofLo + j * tofStep).TotalDv);
+                    heldMissed = double.IsInfinity(rowCost[0]) || rowCost[0] > heldCheapest * withinMargin;
                 }
                 if (!heldMissed)
                 {
-                    var inHeld = -1;
-                    for (var i = 0; i < Departures && from + i * step < limit; i++)
-                        if (!double.IsInfinity(rowCost[i]) && (inHeld < 0 || rowCost[i] < rowCost[inHeld])) inHeld = i;
-                    if (optimal.DepartureUt >= limit && inHeld >= 0) optimal = refined(inHeld, Math.Min(from + synodic, limit));
+                    if (optimal.DepartureUt >= limit) optimal = refined(inHeld, Math.Min(from + synodic, limit));
                     if (soonest.DepartureUt >= limit)
                     {
-                        var budget = Math.Min(floor, optimal.TotalDv) * margin;
-                        var heldRow = -1;
-                        for (var i = 0; i < Departures && from + i * step < limit && heldRow < 0; i++)
-                            if (rowCost[i] <= budget) heldRow = i;
+                        var budget = Math.Min(heldCheapest, optimal.TotalDv) * withinMargin;
+                        var heldRow = firstWithin(budget, limit);
                         soonest = heldRow < 0 ? optimal : edge(heldRow, budget);
                     }
                     if (optimal.DepartureUt < soonest.DepartureUt) soonest = optimal;
