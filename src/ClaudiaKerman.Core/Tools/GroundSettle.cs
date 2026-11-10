@@ -10,6 +10,7 @@ namespace ClaudiaKerman.Core.Tools
     /// <summary>
     /// <c>reentry</c>'s wait on the ground (#968, ADR 0014), through the block-internal <c>ADDONS:CLAUDIA:GROUNDSETTLE</c> (<see cref="Call"/>): the block reports only once the craft has stayed LANDED or SPLASHED
     /// for <see cref="SettleSeconds"/>, so a bounce doesn't read as FLYING. Pure; the block holds <c>since</c> between ticks.
+    /// The block cuts its chutes at first touch, before this wait, and has released the controls: nothing in the wait lights or throttles an engine.
     /// </summary>
     public static class GroundSettle
     {

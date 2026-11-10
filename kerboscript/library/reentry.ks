@@ -949,7 +949,6 @@ function reentry {
   addons:claudia:blocknote(ctx:block, lexicon("phase", "chutes_cut", "titles", reentry_cut_chutes(ship:parts, group:last):join(", "))).
   set extra:chutes_kept to reentry_stowed_titles(ship:parts).
   set extra:touchdown_speed to round(last_speed, 1).
-  // Chutes are cut at first touch; the report waits until the craft has stayed down 2 s so a bounce isn't read as FLYING (#968, Core's GROUNDSETTLE, 30 s at most). Controls are released: no engine lights or throttles here.
   local settle is lexicon("since", -1, "first", time:seconds, "done", false).
   until settle:done {
     set settle to addons:claudia:groundsettle(lexicon("on_ground", claudia_on_ground(), "now", time:seconds, "since", settle:since, "first", settle:first)).
