@@ -406,7 +406,7 @@ namespace ClaudiaKerman.Core.Tests
         /// <summary>Flies a tick on from the last, handing back what the addon holds between ticks.</summary>
         private static void CarryOn(Dictionary<string, object> ask, IDictionary<string, object> answer)
         {
-            foreach (var key in new[] { "open_ut", "open_count", "settled", "kept_ut", "kept_settled", "drogue_call_ut", "main_call_ut", "sample_ut", "sample_speed", "decel", "last_resort_ut", "unread_ut", "trace_ut" }) ask[key] = answer[key];
+            foreach (var key in new[] { "open_ut", "open_count", "settled", "kept_ut", "kept_settled", "kept_drogues", "kept_mains", "drogue_call_ut", "main_call_ut", "sample_ut", "sample_speed", "decel", "last_resort_ut", "unread_ut", "trace_ut" }) ask[key] = answer[key];
         }
 
         [Theory]
@@ -515,6 +515,22 @@ namespace ClaudiaKerman.Core.Tests
             var tick = BlockCalls.BrakeTick(ask);
             Assert.Equal(-1.0, D(tick, "kept_ut"));
             Assert.Equal(false, tick["kept_settled"]);
+        }
+
+        [Fact]
+        public void A_main_that_reads_deployed_as_the_drogue_is_cut_doesnt_get_the_settled_time_back_under_its_canopy()
+        {
+            var ask = new Dictionary<string, object>
+            {
+                { "now", 100.0 }, { "speed", 40.0 }, { "throttle", FullThrottle }, { "open_ut", 80.0 }, { "settled", true }, { "open_count", 1.0 }, { "decel", 0.2 }, { "mains_called", true },
+                { "chutes", Set(true, "deployed").Concat(Set(false, "semi")).ToList() },
+            };
+            CarryOn(ask, BlockCalls.BrakeTick(ask));
+            ask["now"] = 100.02;
+            ask["chutes"] = Set(true, "cut").Concat(Set(false, "deployed")).ToList();
+            var tick = BlockCalls.BrakeTick(ask);
+            AssertNoThrust(tick, ReentryBrake.WhyChuteOpening);
+            Assert.Equal(100.02, D(tick, "open_ut"));
         }
 
         [Fact]

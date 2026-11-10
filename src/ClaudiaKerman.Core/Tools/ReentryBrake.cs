@@ -266,6 +266,8 @@ namespace ClaudiaKerman.Core.Tools
                     { "settled", Flag(ask, "settled") },
                     { "kept_ut", Number(ask, "kept_ut", -1) },
                     { "kept_settled", Flag(ask, "kept_settled") },
+                    { "kept_drogues", Number(ask, "kept_drogues", 0) },
+                    { "kept_mains", Number(ask, "kept_mains", 0) },
                     { "drogue_call_ut", Number(ask, "drogue_call_ut", -1) },
                     { "main_call_ut", Number(ask, "main_call_ut", -1) },
                     { "sample_ut", sampleUt },
@@ -287,6 +289,8 @@ namespace ClaudiaKerman.Core.Tools
             var waitedFor = 0;
             var deployed = 0;
             var counted = 0;
+            var countedDrogues = 0;
+            var countedMains = 0;
             var healthy = 0;
             var filling = 0;
             var packing = 0;
@@ -302,7 +306,12 @@ namespace ClaudiaKerman.Core.Tools
                 if (chute.Key == ReentryBrake.Deployed) deployed++;
                 var callUt = chute.Value ? drogueCallUt : mainCallUt;
                 if (callUt < 0 || (lastResortUt >= 0 && callUt >= lastResortUt)) continue;
-                if (chute.Key == ReentryBrake.Deployed) counted++;
+                if (chute.Key == ReentryBrake.Deployed)
+                {
+                    counted++;
+                    if (chute.Value) countedDrogues++;
+                    else countedMains++;
+                }
                 var packed = chute.Key == ReentryBrake.Stowed || chute.Key == ReentryBrake.Armed;
                 if (packed && now - callUt >= ReentryBrake.PackedFailSeconds)
                 {
@@ -320,7 +329,9 @@ namespace ClaudiaKerman.Core.Tools
             var keptUt = Number(ask, "kept_ut", -1);
             var keptSettled = Flag(ask, "kept_settled");
             var openCount = Number(ask, "open_count", counted);
-            if (heldUt < 0 && keptUt >= 0 && filling == 0 && healthy != packing && counted <= openCount)
+            var keptDrogues = Number(ask, "kept_drogues", 0);
+            var keptMains = Number(ask, "kept_mains", 0);
+            if (heldUt < 0 && keptUt >= 0 && countedDrogues <= keptDrogues && countedMains <= keptMains)
             {
                 heldUt = keptUt;
                 heldSettled = keptSettled;
@@ -330,11 +341,15 @@ namespace ClaudiaKerman.Core.Tools
             var settled = openUt >= 0 && ((held && heldSettled) || ReentryBrake.ChutesSettled(now - openUt, decel));
             var nextKeptUt = -1.0;
             var nextKeptSettled = false;
+            var nextKeptDrogues = 0.0;
+            var nextKeptMains = 0.0;
             if (healthy > 0 && (filling > 0 || healthy == packing))
             {
                 var fromHeld = Number(ask, "open_ut", -1) >= 0;
                 nextKeptUt = fromHeld ? Number(ask, "open_ut", -1) : keptUt;
                 nextKeptSettled = fromHeld ? Flag(ask, "settled") : keptSettled;
+                nextKeptDrogues = fromHeld ? countedDrogues : keptDrogues;
+                nextKeptMains = fromHeld ? countedMains : keptMains;
             }
             var opening = packing > 0 || (healthy > 0 && !settled);
             var shieldSpeed = Number(ask, "shield_speed", 0);
@@ -355,6 +370,8 @@ namespace ClaudiaKerman.Core.Tools
                 { "settled", settled },
                 { "kept_ut", nextKeptUt },
                 { "kept_settled", nextKeptSettled },
+                { "kept_drogues", nextKeptDrogues },
+                { "kept_mains", nextKeptMains },
                 { "drogue_call_ut", drogueCallUt },
                 { "main_call_ut", mainCallUt },
                 { "sample_ut", sampleUt },
