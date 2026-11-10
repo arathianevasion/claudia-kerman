@@ -58,6 +58,10 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (reentry, every 0.25 s of a powered fall): the heights it brakes by, from v_down, a_up, g, ks, radar, soft, end; lexicon error, brake_h, last_h (-1 for a fall the engines can't stop)"));
             AddSuffix("BRAKETICK", new OneArgsSuffix<Lexicon, Lexicon>(BrakeTickCall,
                 "Core Library only (reentry, each tick of a powered finish): whether braking may start and the guarded throttle, from radar, speed, brake_h, last_h, uids, the shield limits, throttle, off_deg, rate_deg, drogues_called, mains_called, brake_why; lexicon error, start, why, open, chutes, throttle, zero_why, rate_deg, cut, trace"));
+            AddSuffix("ENTRYLOSS", new OneArgsSuffix<Lexicon, Lexicon>(EntryLossCall,
+                "Core Library only (reentry, a part count that fell): whether it carries on through a part loss in the air, from lost, altitude, air_top, on_ground, powered, thrust, chute_mode, mode, entry, group; lexicon error, carry_on, powered, to_engines, light, chute_mode, finish, group, why"));
+            AddSuffix("ENTRYSKIP", new OneArgsSuffix<Lexicon, Lexicon>(EntrySkipCall,
+                "Core Library only (reentry, after a skip-out): whether it flies another pass, from passes, pe, air_top, entry_in, auto, max_duration, elapsed; lexicon error, refusal, max_duration"));
             AddSuffix("TURNPLAN", new OneArgsSuffix<Lexicon, Lexicon>(TurnPlanCall,
                 "Core Library only (RCS Use, once per turn): the burst turn through angle (deg) with left_s to the deadline (-1: none), or after a stop burst with corrections taken; lexicon error, rcs, wheels_s, coast_rate, spin_s, coast_s, stop_s, stop_deg, wheels_deg, turn_s, alpha, and spin, coast, stop (kOS's t, kp, ki)"));
             AddSuffix("BURSTTURN", new TwoArgsSuffix<Lexicon, Lexicon, Lexicon>(BurstTurnCall,
@@ -371,14 +375,7 @@ namespace ClaudiaKerman.KOS
             // The group and why, so a reentry's chutes can be read back from KSP.log.
             return (Lexicon)Guarded("CHUTEGROUP", () =>
             {
-                var vessel = shared.Vessel;
-                var uids = new System.Collections.Generic.Dictionary<uint, string>();
-                foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
-                set = BlockCalls.ChuteGroupCall(SnapshotReader.ReadForMission(vessel), MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
-                    id => uids.ContainsKey(id) ? uids[id] : null, KosValues.ToDictionary(input));
-                // Nothing can land the craft, said above the air (#827): the Mission window's events and the Debrief, never an Alert.
-                var warning = set["error"] as string == "" ? (string)set["warning"] : "";
-                if (warning.Length > 0 && MissionDriver.Current != null) MissionDriver.Current.Send(new ChuteWarning(warning));
+                set = ReadChuteGroup(KosValues.ToDictionary(input));
                 return KosValues.FromPlain(set);
             }, () => set["error"] as string == ""
                 ? string.Format(CultureInfo.InvariantCulture, "{0}: {1}{2}", (bool)set["last"] ? "Last Entry, every chute aboard" : "stage " + set["stage"],
@@ -393,18 +390,62 @@ namespace ClaudiaKerman.KOS
             System.Collections.Generic.IDictionary<string, object> finish = null;
             return (Lexicon)Guarded("ENTRYFINISH", () =>
             {
-                var vessel = shared.Vessel;
-                var uids = new System.Collections.Generic.Dictionary<uint, string>();
-                foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
-                var snapshot = SnapshotReader.ReadForMission(vessel);
-                SnapshotReader.ReadEngineFuel(snapshot, vessel);
-                // Compared once, and only with this vessel's own aim: a later Entry with no aim of its own has nothing to compare.
-                string aimed;
-                var aimedKey = MissionDriver.AimedCraft.Take(vessel.persistentId, out aimed);
-                finish = BlockCalls.EntryFinishCall(KosValues.ToDictionary(input), snapshot, MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
-                    id => uids.ContainsKey(id) ? uids[id] : null, aimedKey, aimed);
+                finish = ReadEntryFinish(KosValues.ToDictionary(input));
                 return KosValues.FromPlain(finish);
             }, () => finish["error"] as string == "" ? (string)finish["why"] : (string)finish["error"]);
+        }
+
+        /// <summary><see cref="BlockCalls.ChuteGroupCall"/> for the craft as it now is, and any warning sent on; for <c>CHUTEGROUP</c> and <c>ENTRYLOSS</c>.</summary>
+        private System.Collections.Generic.IDictionary<string, object> ReadChuteGroup(System.Collections.Generic.IDictionary<string, object> ask)
+        {
+            var vessel = shared.Vessel;
+            var uids = new System.Collections.Generic.Dictionary<uint, string>();
+            foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
+            var set = BlockCalls.ChuteGroupCall(SnapshotReader.ReadForMission(vessel), MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
+                id => uids.ContainsKey(id) ? uids[id] : null, ask);
+            // Nothing can land the craft, said above the air (#827): the Mission window's events and the Debrief, never an Alert.
+            var warning = set["error"] as string == "" ? (string)set["warning"] : "";
+            if (warning.Length > 0 && MissionDriver.Current != null) MissionDriver.Current.Send(new ChuteWarning(warning));
+            return set;
+        }
+
+        /// <summary><see cref="BlockCalls.EntryFinishCall"/> for the craft as it now is; for <c>ENTRYFINISH</c> and <c>ENTRYLOSS</c>.</summary>
+        private System.Collections.Generic.IDictionary<string, object> ReadEntryFinish(System.Collections.Generic.IDictionary<string, object> ask)
+        {
+            var vessel = shared.Vessel;
+            var uids = new System.Collections.Generic.Dictionary<uint, string>();
+            foreach (var part in vessel.parts) uids[part.persistentId] = part.flightID.ToString(CultureInfo.InvariantCulture);
+            var snapshot = SnapshotReader.ReadForMission(vessel);
+            SnapshotReader.ReadEngineFuel(snapshot, vessel);
+            // Compared once, and only with this vessel's own aim: a later Entry with no aim of its own has nothing to compare.
+            string aimed;
+            var aimedKey = MissionDriver.AimedCraft.Take(vessel.persistentId, out aimed);
+            return BlockCalls.EntryFinishCall(ask, snapshot, MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence, MissionDriver.RunningChild,
+                id => uids.ContainsKey(id) ? uids[id] : null, aimedKey, aimed);
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:ENTRYLOSS</c> (#958, ADR 0014): <see cref="BlockCalls.EntryPartLoss"/> with the craft read now. Called only on a tick the part count fell. A failure (logged by Guarded) still answers, carrying on with what the block had: a falling craft must not abort on a failed read.</summary>
+        private Lexicon EntryLossCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> loss = null;
+            var answer = Guarded("ENTRYLOSS", () =>
+            {
+                loss = BlockCalls.EntryPartLoss(KosValues.ToDictionary(input), ReadEntryFinish, ReadChuteGroup);
+                return KosValues.FromPlain(loss);
+            }, () => string.Format(CultureInfo.InvariantCulture, "carry on {0}, {1}", loss["carry_on"], loss.ContainsKey("why") ? loss["why"] : ""));
+            return loss != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.EntryPartLoss(KosValues.ToDictionary(input), null, null));
+        }
+
+        /// <summary><c>ADDONS:CLAUDIA:ENTRYSKIP</c> (#958, ADR 0014): <see cref="BlockCalls.EntrySkip"/>, pure. A failure refuses nothing and caps nothing, so the block flies on.</summary>
+        private Lexicon EntrySkipCall(Lexicon input)
+        {
+            System.Collections.Generic.IDictionary<string, object> skip = null;
+            var answer = Guarded("ENTRYSKIP", () =>
+            {
+                skip = BlockCalls.EntrySkip(KosValues.ToDictionary(input));
+                return KosValues.FromPlain(skip);
+            }, () => skip["refusal"] as string);
+            return skip != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.EntrySkip(null));
         }
 
         /// <summary><c>ADDONS:CLAUDIA:ENTRYCRAFT</c> (#814): the craft the Entry ahead flies (<see cref="BlockCalls.EntryCraftCall"/>), recorded for <c>reentry</c> to compare.</summary>
