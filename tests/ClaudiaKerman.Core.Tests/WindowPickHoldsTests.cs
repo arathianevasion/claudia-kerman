@@ -408,6 +408,68 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(mission.View.WindowPickNeeded);
         }
 
+        /// <summary>The Duna transfer's Sequence Plan, its window closing at <paramref name="closes"/> and the next one costing what it planned (#774).</summary>
+        private static ScriptedResponse TransferPlan(double closes)
+        {
+            return Reply("{\"kind\":\"sequence_plan\",\"say\":\"Sequence Plan: Duna transfer.\",\"reply_intent\":\"none\",\"mission_plan\":null,"
+                + "\"sequence_plan\":{\"plan_step\":2,\"name\":\"Duna transfer\",\"intent\":\"Burn for Duna.\",\"why\":\"Next step.\",\"target\":\"Duna\","
+                + "\"tolerances\":\"Pe within 10 km\",\"expected_delta_v\":1600,\"expected_duration_s\":600,\"abort_conditions\":[],\"risks\":[],"
+                + "\"custom_script\":false,\"custom_script_reason\":\"\",\"script\":\"print \\\"go\\\".\\n\","
+                + "\"due_time_ut\":-1,\"window_closes_ut\":" + closes.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",\"late_window_dv\":1600},\"debrief\":null}");
+        }
+
+        /// <summary>
+        /// Soonest picked in orbit inside Duna's open window (day 200), a revised plan carrying it a day on, and its transfer's Sequence
+        /// Plan awaiting Approval with Claudia's window closing an hour after that. Soonest leaves now: no Due Time, so no window on record (#616).
+        /// </summary>
+        private MissionControl HeldTransferAwaiting(StreamingFakeTransport transport)
+        {
+            var picked = NewGame + 200 * Day;
+            var mission = Control(transport);
+            PickedInOrbit(mission, Duna(WindowKind.Soonest), picked);
+            RevisedAt(mission, picked + Day);
+            Assert.False(mission.View.WindowPickNeeded);
+            Assert.Equal("Duna:Soonest", mission.View.WindowPick.Key);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            mission.TakeCommands();
+            return mission;
+        }
+
+        [Fact]
+        public void ALateApprovalInOrbitWhileTheHeldWindowIsOpenStartsWithNoNextWindowNote()
+        {
+            var picked = NewGame + 200 * Day;
+            var mission = HeldTransferAwaiting(new StreamingFakeTransport(DunaPlan(), LaunchPlan(), DunaPlan(), TransferPlan(picked + Day + 3600)));
+            // Two days past Claudia's window_closes_ut, the held window still open (it closes near day 278).
+            var late = picked + 3 * Day;
+            mission.Send(new UtAdvanced(late));
+            mission.Send(InOrbit("Kerbin", late, 9000));
+            mission.Send(new Approve());
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("takes the next window"));
+        }
+
+        [Fact]
+        public void ALateApprovalInOrbitAfterTheHeldWindowClosedAsksThePlayerToPickAgain()
+        {
+            var picked = NewGame + 200 * Day;
+            var transport = new StreamingFakeTransport(DunaPlan(), LaunchPlan(), DunaPlan(), TransferPlan(picked + Day + 3600), DunaPlan());
+            var mission = HeldTransferAwaiting(transport);
+            // Past the held window's close.
+            var late = NewGame + 290 * Day;
+            mission.Send(new UtAdvanced(late));
+            mission.Send(InOrbit("Kerbin", late, 9000));
+            mission.Send(new Approve());
+            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("takes the next window"));
+            Assert.Contains(mission.View.Log, e => e.Kind == LogKind.Notice && e.Text.Contains("was missed") && e.Text.Contains("picks again"));
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingPlanApproval);
+            Assert.True(mission.View.WindowPickNeeded);
+            // Claudia's revision is told to leave transfer_to's window to the pick.
+            Assert.Contains("transfer_to's window at", Messages(transport.Requests[4]));
+        }
+
         /// <summary>The Moho windows from a low Kerbin orbit at <paramref name="ut"/>, keeping to <paramref name="pick"/>'s window when it holds one.</summary>
         private static WindowSearch MohoWindows(double ut, WindowPick pick)
         {

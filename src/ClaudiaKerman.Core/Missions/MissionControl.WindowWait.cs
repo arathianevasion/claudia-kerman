@@ -186,7 +186,7 @@ namespace ClaudiaKerman.Core.Missions
             // #966: the window the player picked has gone, and is never traded for a later one: Claudia's revised plan asks for a pick.
             if (heldMissed)
             {
-                MissedWindowAlert(mission, head + " and it was the window the player picked, so the player picks again");
+                MissedWindowAlert(mission, head + " and it was the window the player picked, so the player picks again", MissionPrompts.HeldPickWindowLine);
                 return false;
             }
             if (next == null || !WindowWaits.Fits(budget, planned, next.TotalDv, CraftDeltaV(_snapshot), _config.CraftCheckMarginPercent))
@@ -222,11 +222,11 @@ namespace ClaudiaKerman.Core.Missions
             MissedWindowAlert(mission, head + " and " + why);
         }
 
-        /// <summary>A missed window, <paramref name="what"/> saying why the plan can't move on: the plan is dropped and Claudia is asked for a revised one.</summary>
-        private void MissedWindowAlert(Mission mission, string what)
+        /// <summary>A missed window, <paramref name="what"/> saying why the plan can't move on: the plan is dropped and Claudia is asked for a revised one, with <paramref name="toClaudia"/> for her alone.</summary>
+        private void MissedWindowAlert(Mission mission, string what, string toClaudia = "")
         {
             Note(LogKind.Notice, what + ", so Claudia is revising the Mission Plan.");
-            AskForRevisedPlan(mission, MissionPrompts.WindowMissed(what + "."), MissionPrompts.WindowMissedNotice);
+            AskForRevisedPlan(mission, MissionPrompts.WindowMissed(what + "." + toClaudia), MissionPrompts.WindowMissedNotice);
         }
 
         /// <summary>#905: a return's planned window was missed: the plan is dropped and Claudia is asked, with the next cheap window if the block's own search finds one.</summary>

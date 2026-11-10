@@ -821,10 +821,19 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// Late Approval: the planned window has closed. Within tolerance, the script takes the next window and the
-        /// player gets a one-line notice (true: carry on starting); otherwise Claudia is asked to re-plan (false).
+        /// player gets a one-line notice (true: carry on starting); otherwise Claudia is asked to re-plan (false). #966: a held pick
+        /// never takes the next window: its own stands while open (true), and once it has gone the player picks again (false).
         /// </summary>
         private bool TakeNextWindow(Mission mission, SequencePlan plan)
         {
+            var held = HeldPick(mission);
+            if (held.DepartureUt.HasValue)
+            {
+                bool heldMissed;
+                WindowFor(mission, _snapshot == null ? null : _snapshot.Bodies.FirstOrDefault(b => held.IsFor(b.Name)), out heldMissed);
+                if (heldMissed) MissedWindowAlert(mission, "The " + held.Body + " window the player picked was missed, so the player picks again", MissionPrompts.HeldPickWindowLine);
+                return !heldMissed;
+            }
             var next = plan.LateWindowDeltaV;
             var limit = plan.ExpectedDeltaV * (1 + _config.LateApprovalToleranceDvPercent / 100.0);
             if (next.HasValue && next.Value <= limit)
