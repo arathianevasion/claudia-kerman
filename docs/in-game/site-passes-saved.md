@@ -1,6 +1,6 @@
 # find_landing_site's passes survive a restart (#975)
 
-`deorbit` follows the pass `find_landing_site` gave for a site (#974). The record of those answers is saved in the Mission's state, so a game restart keeps it. Core tests cover the record's save, load, cut to 8 and forgetting later answers (`SitePassesTests`); this check needs the game. Install and where to look are as in `phase-3-gate.md`.
+`deorbit` follows the pass `find_landing_site` gave for a site (#974). The record of those answers is saved in the scenario node as one game-level value with the save's UT (not in a Mission's state), so a game restart keeps it, with or without a Mission in the save. Core tests cover the record's save, load, cut to 8 and forgetting later answers (`SitePassesTests`); this check needs the game. Install and where to look are as in `phase-3-gate.md`.
 
 ## Check: a restart keeps the site's pass
 
