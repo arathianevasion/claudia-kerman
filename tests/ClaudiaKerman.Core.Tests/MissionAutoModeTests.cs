@@ -21,7 +21,7 @@ namespace ClaudiaKerman.Core.Tests
     /// <summary>
     /// Auto Mode (spec #327, ticket #328, ADR 0009), driven through the Mission seam with hand-written streams: plans after
     /// the first Mission Plan are approved as they arrive, with "Approved by Auto Mode." after the card; the first Mission
-    /// Plan, a manual stretch and a Due Time still wait; ticking it approves a waiting plan and unticking leaves a run alone;
+    /// Plan, a manual stretch and a Due Time still wait (but for one the player warped to with Auto Mode on, #967); ticking it approves a waiting plan and unticking leaves a run alone;
     /// the room check approves only while the Spending Cap has room for the Debrief and next plan request that follow; and
     /// the switch is saved with the Mission and new Missions take <c>default_auto_mode</c>.
     /// </summary>

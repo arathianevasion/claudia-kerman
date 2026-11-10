@@ -87,7 +87,7 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The vessel it flies: "" or "craft" for the Mission's craft, otherwise a Child Vessel's name from the Mission Plan.</summary>
         public string Vessel = "";
         /// <summary>
-        /// The resume token of the mod's own plan at a Coast Checkpoint (#775); "" for any plan Claudia wrote. Its Due Time is soft, and it is the only kind Auto Mode may stand in at.
+        /// The resume token of the mod's own plan at a Coast Checkpoint (#775); "" for any plan Claudia wrote. Its Due Time is soft, and the only kind Auto Mode may stand in at unasked (#967 adds one the player warped to).
         /// </summary>
         public string CoastCheckpoint = "";
     }

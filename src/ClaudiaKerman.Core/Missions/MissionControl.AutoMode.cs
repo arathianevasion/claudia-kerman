@@ -170,7 +170,7 @@ namespace ClaudiaKerman.Core.Missions
                     WaitsForPlayer(mission, AdvanceWait.MoonCrossing, plan.Name);
                     return;
                 }
-                // The one exception (#775): Auto Mode may stand in at a coast checkpoint's Due Time, with the player still in the craft, and at no other kind.
+                // The exceptions: Auto Mode may stand in at a coast checkpoint's Due Time, with the player still in the craft (#775), and at one they warped to (#967).
                 if (plan.DueTimeUt.HasValue && !(mission.AutoMode && !mission.Blackout && SoftDueTime(mission, plan)))
                 {
                     // #967: the Due Time the player warped to with Auto Mode on, in the craft: Auto Mode approves once it is reached.
