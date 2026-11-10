@@ -333,7 +333,8 @@ namespace ClaudiaKerman.Core.Tools
                     unfollowed = passNamed + ", and no other pass lands within accuracy_km with the sun at " + Whole(LandingSiteSearch.MinSunElevationDeg) + " degrees or more";
                     return null;
                 }
-                var nearest = lit.OrderBy(burn => double.IsNaN(Sun(burn)) ? double.PositiveInfinity : Math.Abs(Sun(burn) - site.SunDeg)).ThenBy(burn => burn.BurnUt).First();
+                // A sun unread (here or in the site's report) is furthest, so the earliest such pass when none is read.
+                var nearest = lit.OrderBy(burn => double.IsNaN(Sun(burn)) || double.IsNaN(site.SunDeg) ? double.PositiveInfinity : Math.Abs(Sun(burn) - site.SunDeg)).ThenBy(burn => burn.BurnUt).First();
                 var best = Choose(lit.Where(burn => SamePass(burn, nearest.Landing.LandingUt)).ToList(), _ask.AccuracyKm, OverBudget);
                 var sun = Sun(best);
                 best.Note = passNamed + ": flew the lit pass with the sun nearest it, " + (double.IsNaN(sun) ? "unread" : Tenth(sun) + " degrees") + " at landing UT " + Whole(best.Landing.LandingUt);

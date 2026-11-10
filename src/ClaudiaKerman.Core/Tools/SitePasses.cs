@@ -22,7 +22,8 @@ namespace ClaudiaKerman.Core.Tools
     /// <summary>
     /// #974: <c>find_landing_site</c>'s last answer on a body with air, so <c>deorbit</c> given one of its sites and a max_wait can fly the pass the
     /// tool worked out, not the earliest lit one. Kept in memory for the game session: the tool and the block run in the same game, and the record
-    /// is matched by vessel, body, the site to the tool's 3 decimal places, and the pass's landing in deorbit's window. After a restart there is none,
+    /// is matched by vessel, body and the site to the tool's 3 decimal places. Whether the pass is still in deorbit's window is the search's to find
+    /// (<see cref="DeorbitBurn"/>: a pass out of it is one it can't fly, so the nearest-sun fallback with a note). After a restart there is none,
     /// and deorbit keeps its own rule (the earliest pass with the sun at 20 degrees or more).
     /// </summary>
     internal sealed class SitePasses
