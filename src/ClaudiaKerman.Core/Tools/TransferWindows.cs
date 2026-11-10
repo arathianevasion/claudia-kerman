@@ -73,7 +73,7 @@ namespace ClaudiaKerman.Core.Tools
         }
         /// <summary>The Mission Plan's later legs' delta-v, m/s (#694); null with no Mission Plan. <see cref="Fits"/> is judged against <see cref="CraftDv"/> less this.</summary>
         public double? LaterLegsDv;
-        /// <summary>#966: the held window (<see cref="Problem.Held"/>) has gone: <see cref="Soonest"/> lies in a later one. Soonest and Optimal are then the whole horizon's.</summary>
+        /// <summary>#966: the held window (<see cref="Problem.Held"/>) has gone: half a period has passed, or leaving now costs more than the margin over its own cheapest. Soonest and Optimal are then the whole horizon's.</summary>
         public bool HeldMissed;
     }
 
@@ -261,18 +261,12 @@ namespace ClaudiaKerman.Core.Tools
             var optimal = refined(best, from + synodic);
 
             // Soonest: the first departure whose total fits the margin over Optimal's; between it and the grid point before, the edge.
-            var budget = optimal.TotalDv * (1 + marginPercent / 100.0);
-            var first = -1;
-            for (var i = 0; i < Departures && first < 0; i++)
-                if (rowCost[i] <= budget) first = i;
-            TransferWindow soonest;
-            if (first < 0 || from + first * step >= optimal.DepartureUt) soonest = optimal;
-            else if (first == 0) soonest = atTime(from, rowTof[0]);
-            else
+            Func<int, double, TransferWindow> edge = (first, budget) =>
             {
+                if (first == 0) return atTime(from, rowTof[0]);
                 double late = from + first * step, early = late - step;
                 var lateTof = rowTof[first];
-                soonest = atTime(late, lateTof);
+                var found = atTime(late, lateTof);
                 for (var k = 0; k < Bisections && late - early > 1; k++)
                 {
                     var mid = (early + late) / 2;
@@ -280,26 +274,53 @@ namespace ClaudiaKerman.Core.Tools
                     if (got.TotalDv <= budget)
                     {
                         late = mid;
-                        soonest = got;
+                        found = got;
                         lateTof = got.ArrivalUt - got.DepartureUt;
                     }
                     else early = mid;
                 }
-            }
-            // #966: a held window. Windows recur once a period, so the held one is every departure within half a period of its own;
-            // it has gone once Soonest, the earliest departure within the margin, lies past that. While it has not, Optimal is its cheapest.
+                return found;
+            };
+            var margin = 1 + marginPercent / 100.0;
+            var soonestRow = -1;
+            for (var i = 0; i < Departures && soonestRow < 0; i++)
+                if (rowCost[i] <= optimal.TotalDv * margin) soonestRow = i;
+            var soonest = soonestRow < 0 || from + soonestRow * step >= optimal.DepartureUt ? optimal : edge(soonestRow, optimal.TotalDv * margin);
+            // #966: a held window. Windows recur once a period, so the held one is every departure within half a period of its own.
+            // It is judged against its own cheapest, not the horizon's (a next window much cheaper, Moho's, would read it as gone):
+            // once its departure has passed it is open while leaving now costs within the margin of the cheapest it had, its past
+            // costed too, and gone once that is no longer so or half a period has passed. While open, Soonest and Optimal keep to it.
             var heldMissed = false;
             if (problem.Held.HasValue)
             {
                 // The windows' true recurrence, not the horizon searched (a span, or a moon's shortened horizon).
-                var limit = problem.Held.Value + (problem.Moon ? problem.Target.Period : Transfer.Synodic(problem.Home.Period, problem.Target.Period)) / 2;
-                heldMissed = soonest.DepartureUt >= limit;
-                if (!heldMissed && optimal.DepartureUt >= limit)
+                var period = problem.Moon ? problem.Target.Period : Transfer.Synodic(problem.Home.Period, problem.Target.Period);
+                var limit = problem.Held.Value + period / 2;
+                var floor = double.PositiveInfinity;
+                heldMissed = from >= limit;
+                if (!heldMissed && problem.Held.Value <= from)
+                {
+                    // Its cheapest: the departures from half a period before it to now, at the period's own grid step.
+                    var pastStep = period / (Departures - 1);
+                    floor = rowCost[0];
+                    for (var t = from - pastStep; t >= problem.Held.Value - period / 2; t -= pastStep)
+                        for (var j = 0; j < Flights; j++) floor = Math.Min(floor, problem.Cost(t, tofLo + j * tofStep).TotalDv);
+                    heldMissed = !(rowCost[0] <= floor * margin);
+                }
+                if (!heldMissed)
                 {
                     var inHeld = -1;
                     for (var i = 0; i < Departures && from + i * step < limit; i++)
                         if (!double.IsInfinity(rowCost[i]) && (inHeld < 0 || rowCost[i] < rowCost[inHeld])) inHeld = i;
-                    if (inHeld >= 0) optimal = refined(inHeld, Math.Min(from + synodic, limit));
+                    if (optimal.DepartureUt >= limit && inHeld >= 0) optimal = refined(inHeld, Math.Min(from + synodic, limit));
+                    if (soonest.DepartureUt >= limit)
+                    {
+                        var budget = Math.Min(floor, optimal.TotalDv) * margin;
+                        var heldRow = -1;
+                        for (var i = 0; i < Departures && from + i * step < limit && heldRow < 0; i++)
+                            if (rowCost[i] <= budget) heldRow = i;
+                        soonest = heldRow < 0 ? optimal : edge(heldRow, budget);
+                    }
                     if (optimal.DepartureUt < soonest.DepartureUt) soonest = optimal;
                 }
             }

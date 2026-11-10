@@ -233,6 +233,81 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("\"pick\":\"optimal\"", row.Json);
         }
 
+        [Fact]
+        public void TheBlockTheCraftFliesLeavesInTheHeldWindow()
+        {
+            // The player's Duna flight: Optimal picked, then transfer_to(lexicon("target","Duna","target_pe",60000)) flown with its
+            // default window while that window is open and the next synodic one costs a little less.
+            var picked = NewGame + 200 * Day;
+            var flown = NewGame + 236 * Day;
+            var config = new PlayerConfig();
+            var window = WindowChoice.Work(InOrbit("Kerbin", picked, 9000), Goal, config.CraftCheckMarginPercent, picked).RowFor(Duna(WindowKind.Optimal));
+            var limit = window.DepartureUt + DunaWindows(NewGame).Synodic / 2;
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), LaunchPlan()));
+            PickedInOrbit(mission, Duna(WindowKind.Optimal), picked);
+            mission.Send(new UtAdvanced(flown));
+            mission.Send(InOrbit("Kerbin", flown, 9000));
+
+            // The block's snapshot is stamped from the Mission's view, as the adapter stamps every in-flight one.
+            var snapshot = MissionView.Stamp(InOrbit("Kerbin", flown, 9000), mission.View);
+            var ask = new TransferFlightAsk { Target = "Duna", TargetPe = 60000, StartUt = flown, TurnTime = 60, DvLeft = 9000, Auto = true };
+            var step = TransferFlight.Next(snapshot, ask);
+            Assert.True(step.Error == "", step.Error);
+            Assert.InRange(step.Ut, flown - 1, limit);
+        }
+
+        [Fact]
+        public void AnOpenHeldWindowOnAnEccentricPairIsNotMissedWhenTheNextOneIsMuchCheaperButIsOnceItCloses()
+        {
+            // Kerbin to Moho: the window near day 835 from a new game costs over 15 % more than the next, near day 940.
+            var margin = new PlayerConfig().CraftCheckMarginPercent;
+            var picked = NewGame + 760 * Day;
+            var held = MohoWindows(picked, null);
+            var next = MohoWindows(NewGame + 900 * Day, null);
+            Assert.InRange((held.Optimal.DepartureUt - NewGame) / Day, 820, 850);
+            Assert.True(held.Optimal.TotalDv > next.Optimal.TotalDv * (1 + margin / 100.0), "the next window is not that much cheaper here");
+            var limit = held.Optimal.DepartureUt + held.Synodic / 2;
+            var pick = new WindowPick("Moho", WindowKind.Optimal, held.Optimal.DepartureUt);
+
+            // In orbit a few days into the open window, the horizon reaching the cheaper next one: still held, and it leaves now-ish.
+            var open = MohoWindows(NewGame + 838 * Day, pick);
+            Assert.False(open.HeldMissed);
+            Assert.True(open.Soonest.DepartureUt < limit && open.Optimal.DepartureUt < limit, "the rows jumped to the next window");
+
+            // Past its close, still short of half a period on, it has gone.
+            Assert.True(MohoWindows(NewGame + 870 * Day, pick).HeldMissed);
+        }
+
+        /// <summary>The Moho windows from a low Kerbin orbit at <paramref name="ut"/>, keeping to <paramref name="pick"/>'s window when it holds one.</summary>
+        private static WindowSearch MohoWindows(double ut, WindowPick pick)
+        {
+            var snapshot = InOrbit("Kerbin", ut, 9000);
+            snapshot.StampMission(TimeVersusDeltaV.MostEfficient, new PlayerConfig().CraftCheckMarginPercent, pick);
+            var moho = snapshot.Bodies.Single(b => b.Name == "Moho");
+            return TransferWindows.Find(snapshot, "Moho", MissionPrompts.ArrivalPe(moho), true, new PlayerConfig().CraftCheckMarginPercent);
+        }
+
+        [Fact]
+        public void AnOlderSavesPickWithNoDepartureIsNotHeldSoARevisionAsks()
+        {
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), LaunchPlan()));
+            ToMissionPlan(mission, Duna(WindowKind.Optimal));
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            var state = MissionSaveState.FromValues(Assert.Single(mission.ExportStates()).ToValues());
+            // Saved before #966: the pick, but no departure on record.
+            state.WindowPickDepartureUt = null;
+
+            var reload = Control(new StreamingFakeTransport(DunaPlan()));
+            reload.Send(new SceneChanged(GameScene.Flight));
+            reload.Send(new MissionsRestored(_save.Path, new List<MissionSaveState> { state }));
+            reload.Send(new UtAdvanced(NewGame + Day));
+            reload.Send(InOrbit("Kerbin", NewGame + Day, 9000));
+            ToRevisedPlan(reload);
+            Assert.True(reload.View.WindowPickNeeded);
+            Assert.DoesNotContain(QuickReply.Approve, reload.View.QuickReplies);
+        }
+
         /// <summary>The departure plan_transfer's pick leaves at, from its summary ("... leaving at UT 5098803").</summary>
         private static double LeavesAt(ToolOutcome outcome)
         {

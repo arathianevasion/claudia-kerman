@@ -2551,7 +2551,7 @@ namespace ClaudiaKerman.Core.Missions
                 view.PlanStale = StaleBecause(mission);
                 view.PlanStaleTarget = view.PlanStale.Length > 0 && mission.TargetChange.Length > 0;
                 view.PlanDeclined = mission.Declined;
-                view.WindowPick = mission.WindowPick;
+                view.WindowPick = HeldPick(mission);
                 view.ReturnWindowUt = mission.ReturnWindowUt;
                 view.WindowPickNeeded = WindowPickMissing(mission);
                 view.Windows = MissionOffer(mission);

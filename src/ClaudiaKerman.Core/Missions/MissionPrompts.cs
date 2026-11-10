@@ -813,7 +813,7 @@ namespace ClaudiaKerman.Core.Missions
         private static ToolOutcome TransferRow(PlanningTools tools, GameSnapshot snapshot, string input)
         {
             var rows = TransferRows.GetOrCreateValue(snapshot);
-            var key = snapshot.TimeVersusDeltaV + "|" + snapshot.MarginPercent + "|" + snapshot.WindowPick.Key + "|" + input;
+            var key = snapshot.TimeVersusDeltaV + "|" + snapshot.MarginPercent + "|" + snapshot.WindowPick.Key + "@" + snapshot.WindowPick.DepartureUt + "|" + input;
             lock (rows)
             {
                 ToolOutcome found;
