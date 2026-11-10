@@ -93,16 +93,16 @@ namespace ClaudiaKerman.Core.Tools
 
         private static readonly double[] NoDrag = { 0 };
 
-        /// <summary>The final brake height (m, #969): <see cref="BrakeHeight"/> with no drag at all, as the chutes will be cut. -1 with no thrust, or if not even all of it stops the fall before the ground.</summary>
+        /// <summary>The final brake height (m, #969): <see cref="BrakeHeight"/> with no drag at all, as the chutes will be cut. -1 (burn with the chutes kept) if the thrust can't hold the craft up against <paramref name="g"/>, whatever the speed, or if not even all of it stops the fall before the ground.</summary>
         public static double FinalHeight(double vDown, double aUp, double g, double radar, double soft, double end)
         {
-            return aUp <= 0 ? -1 : BrakeHeight(vDown, aUp, g, NoDrag, radar, soft, end);
+            return aUp <= g ? -1 : BrakeHeight(vDown, aUp, g, NoDrag, radar, soft, end);
         }
 
-        /// <summary>The height (m, #969) under which full thrust with no drag can't stop the fall: <see cref="LastResortHeight"/> with none. -1 if full thrust never would.</summary>
+        /// <summary>The height (m, #969) under which full thrust with no drag can't stop the fall: <see cref="LastResortHeight"/> with none. -1 if full thrust never would, or can't hold the craft up against <paramref name="g"/>.</summary>
         public static double FinalLastHeight(double vDown, double aUp, double g, double radar, double soft)
         {
-            return aUp <= 0 ? -1 : LastResortHeight(vDown, aUp, g, NoDrag, radar, soft);
+            return aUp <= g ? -1 : LastResortHeight(vDown, aUp, g, NoDrag, radar, soft);
         }
 
         /// <summary>

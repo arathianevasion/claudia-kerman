@@ -1086,6 +1086,25 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void An_engine_that_cant_hold_the_craft_up_never_cuts_even_already_slow()
+        {
+            // Duna at TWR 0.5: under the soft speed already, the stop distance is 0, but without the chutes it would fall faster all the way down.
+            foreach (var aUp in new[] { G * 0.5, G })
+            {
+                Assert.Equal(-1, ReentryBrake.FinalHeight(Soft * 0.75, aUp, G, 12, Soft, End));
+                Assert.Equal(-1, ReentryBrake.FinalLastHeight(Soft * 0.75, aUp, G, 12, Soft));
+                foreach (var radar in new[] { 300.0, 12, 5 })
+                {
+                    var ask = UnderCanopy(radar, aUp: aUp);
+                    ask["v_down"] = Soft * 0.75;
+                    var tick = BlockCalls.BrakeTick(ask);
+                    Assert.Equal(false, tick["cut"]);
+                    Assert.Equal("", tick["zero_why"]); // the pre-#969 burn, chutes kept
+                }
+            }
+        }
+
+        [Fact]
         public void The_radar_brake_under_settled_chutes_starts_at_the_final_height_and_cuts_the_chutes()
         {
             // Not yet braking: the sampled brake_h (12 m, drag counted) is under the final height, which starts it.

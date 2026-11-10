@@ -15,7 +15,7 @@ The same craft (Mk16 at its default deploy altitude, an LV-T45 with a gimbal) in
 **Since #969, the pause, the cut and the late burn.** After the last resort has slowed it and the chute is fully open and settled:
 
 4. A blocknote `phase thrust_stopped` (`why` `last resort`, `wait` `final burn wait`, with `agl`, `speed` and `final_h`), and the trace's throttle reads 0 with `zero_why` `final burn wait` from then on. No low-throttle burn under the canopy: note it if the trace shows thrust between that note and the cut.
-5. A blocknote `phase chutes_cut`, `why` `final burn`, naming the Mk16, at about the note's `final_h` (tens of metres at the canopy's speed), then the burn to the ground on surface retrograde with the gimbal free. If the craft is more than 30° off upright there, the trace reads `tipped, cut held` until it rights itself; say so on #969 with the angle, and whether it then burned with the chute still on.
+5. A blocknote `phase chutes_cut`, `why` `final burn`, naming the Mk16, at about the note's `final_h` (tens of metres at the canopy's speed), then the burn to the ground on surface retrograde with the gimbal free. If the craft is more than 30° off upright there, the trace reads `tipped, cut held` until it rights itself; say so on #969 with the angle, and whether it then burned with the chute still on. Note the trace's `rate_deg` at the cut, and whether the 30° guard (`zero_why` `off aim`) zeroed the thrust after it.
 6. `powered_dv` should be lower than before #969 (the last resort plus a short final burn). The pass lines don't change.
 
 ## Fly: `tests/blocks/reentry_duna_hop_chutes_then_engine` (chutes first)
