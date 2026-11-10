@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ClaudiaKerman.Core.Claude;
 
 namespace ClaudiaKerman.Core.Tools
 {
@@ -67,6 +68,66 @@ namespace ClaudiaKerman.Core.Tools
         public void ForgetAfter(double ut)
         {
             lock (_lock) _calls.RemoveAll(call => call.Ut > ut);
+        }
+
+        /// <summary>#975: for the Mission save, the latest answer first; "" for none.</summary>
+        public string ToJson()
+        {
+            lock (_lock)
+            {
+                if (_calls.Count == 0) return "";
+                var json = new JsonWriter().BeginArray();
+                foreach (var call in _calls)
+                {
+                    json.BeginObject().Field("vessel_id", call.VesselId).Field("body", call.Body).Field("ut", call.Ut).Name("sites").BeginArray();
+                    foreach (var s in call.Sites)
+                        json.BeginObject().Field("lat", s.Latitude).Field("lng", s.Longitude).Field("burn_ut", s.BurnUt).Field("landing_ut", s.LandingUt).Field("sun", s.SunDeg).EndObject();
+                    json.EndArray().EndObject();
+                }
+                return json.EndArray().ToString();
+            }
+        }
+
+        /// <summary>
+        /// #975: replaces the record with what <see cref="ToJson"/> wrote, as a flight resuming at <paramref name="ut"/> finds it: answers given after
+        /// <paramref name="ut"/> are dropped (<see cref="ForgetAfter"/>), at most <see cref="MaxCalls"/> kept. "" (an older save) or anything unreadable leaves it empty.
+        /// </summary>
+        public void Load(string text, double ut)
+        {
+            var read = new List<Call>();
+            JsonNode root = null;
+            if (!string.IsNullOrEmpty(text))
+            {
+                try
+                {
+                    root = JsonReader.Parse(text);
+                }
+                catch (JsonException)
+                {
+                }
+            }
+            if (root != null && root.Kind == JsonKind.Array)
+                foreach (var node in root.Items.Where(n => n.Kind == JsonKind.Object))
+                {
+                    var callUt = JsonNode.Double(node["ut"]);
+                    var body = JsonNode.Str(node["body"]);
+                    var sites = node["sites"];
+                    if (!callUt.HasValue || callUt.Value > ut || string.IsNullOrEmpty(body) || sites == null || sites.Kind != JsonKind.Array) continue;
+                    var passes = new List<SitePass>();
+                    foreach (var site in sites.Items.Where(n => n.Kind == JsonKind.Object))
+                    {
+                        double? lat = JsonNode.Double(site["lat"]), lng = JsonNode.Double(site["lng"]), burn = JsonNode.Double(site["burn_ut"]), landing = JsonNode.Double(site["landing_ut"]), sun = JsonNode.Double(site["sun"]);
+                        if (lat.HasValue && lng.HasValue && burn.HasValue && landing.HasValue && sun.HasValue)
+                            passes.Add(new SitePass { Latitude = lat.Value, Longitude = lng.Value, BurnUt = burn.Value, LandingUt = landing.Value, SunDeg = sun.Value });
+                    }
+                    read.Add(new Call { VesselId = JsonNode.Str(node["vessel_id"]) ?? "", Body = body, Ut = callUt.Value, Sites = passes });
+                }
+            if (read.Count > MaxCalls) read.RemoveRange(MaxCalls, read.Count - MaxCalls);
+            lock (_lock)
+            {
+                _calls.Clear();
+                _calls.AddRange(read);
+            }
         }
 
         /// <summary>

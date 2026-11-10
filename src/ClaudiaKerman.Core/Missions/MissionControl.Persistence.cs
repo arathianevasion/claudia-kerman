@@ -51,6 +51,7 @@ namespace ClaudiaKerman.Core.Missions
                 var state = StateOf(mission);
                 // The UT the save is made at (#412): a loaded save closes its open RCS Use there. A load still waiting on a request keeps its own.
                 if (mission.DeferredRestore == null) state.SavedUt = _ut;
+                state.SitePasses = ClaudiaKerman.Core.Tools.SitePasses.Shared.ToJson();
                 states.Add(state);
             }
             // The Missions paused at a sequence boundary to make room for the active one.
@@ -392,6 +393,9 @@ namespace ClaudiaKerman.Core.Missions
             // A dismissed one keeps its folder but is history too.
             var states = restored.States.Where(s => Directory.Exists(MissionFolder.For(_saveDirectory, s.Id)) && !Dismissed(s)).ToList();
             var restore = Choose(states, existing);
+            // #975: find_landing_site's answers are the game's, saved in each Mission's state; answers past the loaded UT are dropped.
+            var recorded = (restore == null ? states.FirstOrDefault() : restore.State) ?? null;
+            if (recorded != null) ClaudiaKerman.Core.Tools.SitePasses.Shared.Load(recorded.SitePasses, recorded.SavedUt);
             // The save's other unfinished Missions wait Paused at the boundary they were parked at; finished ones are history, kept in their folders.
             _parked.Clear();
             _switch = null;
