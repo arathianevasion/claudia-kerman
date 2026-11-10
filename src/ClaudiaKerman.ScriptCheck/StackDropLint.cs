@@ -13,7 +13,8 @@ namespace ClaudiaKerman.ScriptCheck
     /// on an earlier Entry it may drop nothing, and a script can't tell which it is, so the warning says so. #557's rule, a reentry with no
     /// drop named, is gone: <c>"auto"</c> decides from the heat shields, so naming a drop is no longer wanted.
     /// #959 adds a second rule: a <c>reentry</c> with <c>separate "none"</c> keeps whatever stack <c>"auto"</c> would drop. Script Check never sees the craft, so it warns on any "none".
-    /// It reads the Mission Script only, never the Core Library bundled after it, ignoring comments; it never refuses a script.
+    /// #971 turns that second rule into a refusal when the plan gives no custom_script_reason (<see cref="Refusals"/>): a stack kept on purpose needs its reason.
+    /// It reads the Mission Script only, never the Core Library bundled after it, ignoring comments; the first rule only warns.
     /// </summary>
     public static class StackDropLint
     {
@@ -22,12 +23,12 @@ namespace ClaudiaKerman.ScriptCheck
         private static readonly Regex Separate = new Regex("\"separate\"\\s*,\\s*(\"(?<text>[^\"]*)\"|(?<other>[^,)\\s]+))", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
         /// <summary>The warnings, or none, for <paramref name="script"/>: a Mission Script, or a bundle whose library lines it skips.</summary>
-        public static IList<string> Warnings(string script)
+        public static IList<string> Warnings(string script, string customScriptReason = null)
         {
             var warnings = new List<string>();
             var code = CoreLibrary.MissionScript(script);
             DeorbitThenDrop(code, warnings);
-            KeptStack(code, warnings);
+            if (customScriptReason == null || customScriptReason.Trim().Length > 0) KeptStack(code, warnings);
             return warnings;
         }
 
@@ -58,6 +59,23 @@ namespace ClaudiaKerman.ScriptCheck
                     + "check its mass and the engine that would land on it: the stage that lands and lifts off is the one above the shield, and \"auto\" drops the rest. "
                     + "\"none\" is right only if nothing is below the shield, or the stack has no decoupler.");
             }
+        }
+
+        /// <summary>
+        /// #971: each <c>reentry</c> with <c>separate "none"</c> when <paramref name="customScriptReason"/> is empty. Flight m20261109-200745-96f6 kept a 41 t stack
+        /// after the warning; the plan must now say why the stack stays. None when the reason is given, or null (no plan to ask).
+        /// </summary>
+        public static IList<string> Refusals(string script, string customScriptReason)
+        {
+            var refusals = new List<string>();
+            if (customScriptReason == null || customScriptReason.Trim().Length > 0) return refusals;
+            var code = CoreLibrary.MissionScript(script);
+            foreach (Match reentry in Reentry.Matches(code))
+                if (SeparateIsNone(Args(code, reentry.Index + reentry.Length), absentIsNone: false))
+                    refusals.Add("line " + LineOf(code, reentry.Index) + ": reentry with separate \"none\" keeps the whole stack, and the plan gives no custom_script_reason. "
+                        + "Either drop the stack: leave separate off or set it to \"auto\", which drops what is below the heat shield; "
+                        + "or, if the stack must stay, say why in custom_script_reason.");
+            return refusals;
         }
 
         private static int LineOf(string code, int index)

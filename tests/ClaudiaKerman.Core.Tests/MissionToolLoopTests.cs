@@ -344,7 +344,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             public int Calls;
 
-            public ScriptCheckResult Check(string script)
+            public ScriptCheckResult Check(string script, string customScriptReason = null)
             {
                 Calls++;
                 return script.ToUpperInvariant().Contains("QUICKSAVE")
