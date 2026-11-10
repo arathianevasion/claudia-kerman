@@ -21,6 +21,11 @@ namespace ClaudiaKerman.Kerboscript.Tests
     /// </summary>
     public class ReentryBrakeFlowTests
     {
+        public ReentryBrakeFlowTests()
+        {
+            KosHarness.Register(typeof(ReentryBrakeRigFunctions));
+        }
+
         private static string Body()
         {
             var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source.Replace("\r\n", "\n");
@@ -104,12 +109,17 @@ namespace ClaudiaKerman.Kerboscript.Tests
             + "function reentry_geo { return lexicon(). }\n"
             + "function claudia_finish { parameter c, ok, reason, ex. notes:add(\"finish,locked=\" + a:gimbal:lock + \",\" + reason). return reason. }\n";
 
-        /// <summary>reentry_gimbals itself, lifted: the exit rig fakes the rest of the block.</summary>
-        private static string GimbalsFunction()
+        /// <summary>One of the library's functions, lifted: the rigs fake the rest of the block.</summary>
+        private static string Function(string name)
         {
             var source = CoreLibrary.Files.Single(f => f.Name == "reentry").Source.Replace("\r\n", "\n");
-            var start = source.IndexOf("function reentry_gimbals {", StringComparison.Ordinal);
+            var start = source.IndexOf("function " + name + " {", StringComparison.Ordinal);
             return source.Substring(start, source.IndexOf("\n}\n", start, StringComparison.Ordinal) + 3 - start);
+        }
+
+        private static string GimbalsFunction()
+        {
+            return Function("reentry_gimbals");
         }
 
         private static string ExitSlice()
@@ -218,7 +228,8 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.DoesNotContain("\"decel\"", ask);
             Assert.Contains("\"drogues_called\", drogues_out", ask);
             Assert.Contains("\"mains_called\", mains_out", ask);
-            Assert.Contains("\"rate_deg\", ship:angularvel:mag * constant:radtodeg", ask);
+            Assert.Contains("\"rate_deg\", vxcl(ship:facing:forevector, ship:angularvel):mag * constant:radtodeg", ask);
+            Assert.Contains("\"brake_why\", brake_why", ask);
         }
 
         [Fact]
@@ -235,8 +246,123 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void The_trace_logs_the_rate_and_why_the_thrust_is_zero_once_a_second_while_braking()
         {
             var body = Body();
-            Assert.Contains("if braking and time:seconds >= trace_ut {", body);
+            Assert.Contains("if b:trace { addons:claudia:blocktrace(", body);
             Assert.Contains("\"rate_deg\", round(b:rate_deg, 1), \"zero_why\", b:zero_why", body);
+        }
+
+        // ---- The spin guard is tipping only: roll about the thrust axis isn't counted (player, 2026-11-09) ----
+
+        /// <summary>The block's own rate measure, lifted from its ask, on a fake craft: Core's throttle and why.</summary>
+        private static string[] ThrustOn(double wx, double wy, double wz)
+        {
+            var body = Body();
+            var ask = body.Substring(body.IndexOf("addons:claudia:braketick(", StringComparison.Ordinal));
+            const string Key = "\"rate_deg\", ";
+            var start = ask.IndexOf(Key, StringComparison.Ordinal) + Key.Length;
+            var measure = ask.Substring(start, ask.IndexOf(", \"drogues_called\"", StringComparison.Ordinal) - start).Replace("constant:radtodeg", "radtodeg");
+            var script = "function vec { parameter x, y, z. return lexicon(\"x\", x, \"y\", y, \"z\", z, \"mag\", sqrt(x^2 + y^2 + z^2)). }\n"
+                + "function vxcl { parameter on, v. local d is on:x*v:x + on:y*v:y + on:z*v:z. return vec(v:x - on:x*d, v:y - on:y*d, v:z - on:z*d). }\n"
+                + "global radtodeg is 57.29577951.\n"
+                + "global ship is lexicon(\"facing\", lexicon(\"forevector\", vec(0, 0, 1)), \"angularvel\", vec(" + wx + ", " + wy + ", " + wz + ")).\n"
+                + "local tick is test_brake_tick(lexicon(\"now\", 100, \"throttle\", 0.8, \"off_deg\", 1, \"rate_deg\", " + measure + ")).\n"
+                + "print tick:throttle + \",\" + tick:zero_why.\n";
+            return KosHarness.Run(script).ToArray();
+        }
+
+        private const double Rad25 = 25 / 57.29577951;
+
+        [Fact]
+        public void A_pointed_craft_rolling_at_25_degrees_a_second_gets_thrust()
+        {
+            Assert.Equal(new[] { "0.8," }, ThrustOn(0, 0, Rad25));
+        }
+
+        [Theory]
+        [InlineData(Rad25, 0)]
+        [InlineData(0, Rad25)]
+        public void A_craft_tipping_at_25_degrees_a_second_gets_none(double wx, double wy)
+        {
+            Assert.Equal(new[] { "0,spinning" }, ThrustOn(wx, wy, 0));
+        }
+
+        // ---- Chute states the addon can't read: cut what is out and land on the engine ----
+
+        private static string CutLines()
+        {
+            var body = Body();
+            var start = body.IndexOf("    if b:cut {\n", StringComparison.Ordinal);
+            Assert.True(start > 0, "the block's cut");
+            const string End = "\n    }\n";
+            return body.Substring(start, body.IndexOf(End, start, StringComparison.Ordinal) + End.Length - start);
+        }
+
+        /// <summary>The block's cut, run with Core's real answers over a read that keeps failing, then the block's real test of whether a chute is due.</summary>
+        private static string CutRig(string ticks)
+        {
+            return "global cuts is 0.\nglobal notes is list().\nlocal chute_mode is \"safe\".\n"
+                + "global ship is lexicon(\"parts\", list()).\nglobal ctx is lexicon(\"block\", \"reentry\").\n"
+                + "global addons is lexicon(\"claudia\", lexicon(\"blocknote\", { parameter a_, n. notes:add(n:phase + \":\" + n:why). })).\n"
+                + "function reentry_cut_chutes { parameter parts, last. set cuts to cuts + 1. return list(\"Mk16 last=\" + last). }\n"
+                + Function("reentry_chute_stage")
+                + "local unread_ut is -1. local sample_ut is -1.\n"
+                + "local tick_at is {\n parameter now.\n"
+                + " local b is test_brake_tick(lexicon(\"now\", now, \"chutes_unread\", true, \"uids\", choose list(\"a\") if chute_mode <> \"none\" else list(), \"unread_ut\", unread_ut, \"sample_ut\", sample_ut, \"speed\", 30, \"radar\", 100, \"brake_h\", 200, \"last_h\", 50, \"shield_speed\", 400, \"shield_agl\", 3000, \"throttle\", 0.8, \"off_deg\", 1, \"rate_deg\", 1)).\n"
+                + " set unread_ut to b:unread_ut. set sample_ut to b:sample_ut.\n"
+                + CutLines()
+                + " return b.\n}.\n"
+                + ticks;
+        }
+
+        [Fact]
+        public void Failing_on_for_a_second_the_cut_fires_once_no_chute_is_called_after_and_the_engine_proceeds()
+        {
+            var script = CutRig("for t in list(100, 100.5, 101, 101.02, 101.04) { tick_at(t). }\n"
+                + "local last_ is tick_at(101.1).\n"
+                + "print cuts. print notes:join(\";\"). print chute_mode.\n"
+                + "print reentry_chute_stage(chute_mode, true, false, false, 100, 100, 0.5).\n"
+                + "print last_:start + \",\" + last_:throttle.\n");
+            Assert.Equal(new[] { "1", "chutes_cut:unreadable", "none", "wait", "True,0.8" }, KosHarness.Run(script).ToArray());
+        }
+
+        [Fact]
+        public void Failing_for_under_a_second_the_block_cuts_nothing_and_still_calls_chutes()
+        {
+            var script = CutRig("tick_at(100). tick_at(100.9).\nprint cuts. print chute_mode.\n");
+            Assert.Equal(new[] { "0", "safe" }, KosHarness.Run(script).ToArray());
+        }
+
+        [Fact]
+        public void The_mid_flight_cut_cuts_whatever_is_out_even_on_the_last_entry()
+        {
+            Assert.Contains("reentry_cut_chutes(ship:parts, false)", CutLines());
+            Assert.Contains("set chute_mode to \"none\".", CutLines());
+        }
+
+        /// <summary>A chute-only descent never asks Core (so can't be told to cut): it opens by speed, height and pressure, reading no chute state at all. This line is its only way in.</summary>
+        [Fact]
+        public void A_chute_only_descent_never_asks_so_nothing_is_cut()
+        {
+            var body = Body();
+            Assert.Equal(1, body.Split("addons:claudia:braketick(").Length - 1);
+            const string Line = "local brake is choose brake_ask() if powered else lexicon(\"start\", false).\n";
+            Assert.Contains(Line, body);
+            var fell = body.IndexOf("local fell is claudia_warp_to(", StringComparison.Ordinal);
+            // The other ask is in the burn alone, reached only when braking started, and braking starts only on Core's word.
+            var loop = body.IndexOf("if fell = \"\" and braking and not claudia_on_ground() {", StringComparison.Ordinal);
+            Assert.Equal(2, body.Split("brake_ask(").Length - 1);
+            Assert.True(body.IndexOf("brake_ask(reentry_brake_throttle(", StringComparison.Ordinal) > loop && loop > fell);
+            var script = "global asked is 0.\nlocal brake_ask is { set asked to asked + 1. return lexicon(\"start\", false, \"cut\", true). }.\nlocal powered is false.\n" + Line + "print asked. print brake:haskey(\"cut\").\n";
+            Assert.Equal(new[] { "0", "False" }, KosHarness.Run(script).ToArray());
+        }
+
+        [Fact]
+        public void After_the_cut_it_lands_like_any_powered_finish()
+        {
+            var body = Body();
+            // mains_out stays true after a cut: the hold under chutes must not outlive them.
+            Assert.Contains("if mains_out and chute_mode <> \"none\" {\n        set steer to reentry_chute_aim(-vel, up_v).", body);
+            // The abort reads the same mode, so it opens nothing after the cut.
+            Assert.Contains("for t in reentry_abort(chute_mode, reentry_fresh_group(group, ask, extra:chutes_used)) {", body);
         }
 
         // ---- The real answers, through the addon's real conversion ----
@@ -263,8 +389,26 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("drogue_call_ut")]);
             Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("main_call_ut")]);
             Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("rate_deg")]);
+            Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("last_resort_ut")]);
+            Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("unread_ut")]);
+            Assert.IsAssignableFrom<ScalarValue>(tick[new StringValue("trace_ut")]);
+            Assert.Equal(BooleanValue.False, tick[new StringValue("cut")]);
+            Assert.Equal(BooleanValue.False, tick[new StringValue("trace")]);
             Assert.Equal(new StringValue("off aim"), tick[new StringValue("zero_why")]);
             Assert.Equal(ScalarValue.Create(0), tick[new StringValue("throttle")]);
+
+            var unread = (Lexicon)KosValues.FromPlain(BlockCalls.BrakeTick(new Dictionary<string, object>
+            {
+                { "now", 20.0 }, { "chutes_unread", true }, { "uids", new List<object> { "a" } }, { "unread_ut", 19.0 }, { "sample_ut", 19.8 }, { "sample_speed", 30.0 }, { "speed", 30.0 }, { "throttle", 1.0 }, { "open_ut", 10.0 }, { "open_count", 1.0 }, { "settled", true }, { "drogue_call_ut", 5.0 }, { "main_call_ut", 8.0 },
+            }));
+            Assert.Equal(BooleanValue.True, unread[new StringValue("cut")]);
+            Assert.Equal(BooleanValue.False, unread[new StringValue("start")]);
+            Assert.Equal(new StringValue("chutes unreadable"), unread[new StringValue("zero_why")]);
+            Assert.Equal(new StringValue("unreadable"), unread[new StringValue("chutes")]);
+            Assert.Equal(ScalarValue.Create(0), unread[new StringValue("throttle")]);
+            Assert.Equal(BooleanValue.True, unread[new StringValue("settled")]);
+            Assert.IsAssignableFrom<ScalarValue>(unread[new StringValue("open_ut")]);
+            Assert.IsAssignableFrom<ScalarValue>(unread[new StringValue("unread_ut")]);
 
             var failed = (Lexicon)KosValues.FromPlain(BlockCalls.BrakeTick(null));
             Assert.Equal(BooleanValue.False, failed[new StringValue("start")]);

@@ -57,7 +57,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("BRAKEHEIGHTS", new OneArgsSuffix<Lexicon, Lexicon>(BrakeHeightsCall,
                 "Core Library only (reentry, every 0.25 s of a powered fall): the heights it brakes by, from v_down, a_up, g, ks, radar, soft, end; lexicon error, brake_h, last_h (-1 for a fall the engines can't stop)"));
             AddSuffix("BRAKETICK", new OneArgsSuffix<Lexicon, Lexicon>(BrakeTickCall,
-                "Core Library only (reentry, each tick of a powered finish): whether braking may start and the guarded throttle, from radar, speed, brake_h, last_h, uids, the shield limits, throttle, off_deg, rate_deg, drogues_called, mains_called; lexicon error, start, why, open, chutes, throttle, zero_why, rate_deg"));
+                "Core Library only (reentry, each tick of a powered finish): whether braking may start and the guarded throttle, from radar, speed, brake_h, last_h, uids, the shield limits, throttle, off_deg, rate_deg, drogues_called, mains_called, brake_why; lexicon error, start, why, open, chutes, throttle, zero_why, rate_deg, cut, trace"));
             AddSuffix("TURNPLAN", new OneArgsSuffix<Lexicon, Lexicon>(TurnPlanCall,
                 "Core Library only (RCS Use, once per turn): the burst turn through angle (deg) with left_s to the deadline (-1: none), or after a stop burst with corrections taken; lexicon error, rcs, wheels_s, coast_rate, spin_s, coast_s, stop_s, stop_deg, wheels_deg, turn_s, alpha, and spin, coast, stop (kOS's t, kp, ki)"));
             AddSuffix("BURSTTURN", new TwoArgsSuffix<Lexicon, Lexicon, Lexicon>(BurstTurnCall,
@@ -857,9 +857,12 @@ namespace ClaudiaKerman.KOS
         /// <summary>The last sample of the fall's speed for <see cref="BrakeTickCall"/> (UT, s; -1 for none, and m/s) and the slowing worked out from it, m/s².</summary>
         private double brakeSampleUt = -1, brakeSampleSpeed, brakeDecel;
 
+        /// <summary>When this processor's last resort first burned, when its chute states first failed to read and when the burn's next trace line is due (UT, s; -1 for none), for <see cref="BrakeTickCall"/>.</summary>
+        private double brakeLastResortUt = -1, brakeUnreadUt = -1, brakeTraceUt = -1;
+
         /// <summary>
         /// <c>ADDONS:CLAUDIA:BRAKETICK</c> (#954, ADR 0014): <see cref="BlockCalls.BrakeTick"/> with the live state of the Chute Group's parachutes (<c>uids</c>), read here as Core has no game.
-        /// Called every physics tick, so its time is logged at most once a second (guardrail 6). A failure answers from the ask without the chutes: the block brakes by radar, as with none, rather than never at all.
+        /// Called every physics tick, so its time is logged at most once a second (guardrail 6). A failure asks Core with <c>chutes_unread</c>: no burn and no thrust until it has failed for a second, then the chutes that are out are cut and the landing goes on the engine (#954; there is no braking by radar under a canopy).
         /// The times the chutes first read fully open and each set was first called are held here between ticks; each goes back to -1 on any tick it no longer holds, so no flight inherits it from the last.
         /// </summary>
         private Lexicon BrakeTickCall(Lexicon input)
@@ -867,30 +870,54 @@ namespace ClaudiaKerman.KOS
             System.Collections.Generic.IDictionary<string, object> tick = null;
             var answer = Guarded("BRAKETICK", () =>
             {
-                var ask = KosValues.ToDictionary(input);
+                var ask = BrakeAsk(input);
                 var uids = ask.ContainsKey("uids") ? ((System.Collections.Generic.IEnumerable<object>)ask["uids"]).Select(u => Convert.ToString(u, CultureInfo.InvariantCulture)).ToList() : new System.Collections.Generic.List<string>();
                 ask["chutes"] = ReentryCraft.ChuteStates(shared.Vessel, uids);
-                ask["now"] = Planetarium.GetUniversalTime();
-                ask["open_ut"] = brakeOpenUt;
-                ask["open_count"] = brakeOpenCount;
-                ask["settled"] = brakeSettled;
-                ask["drogue_call_ut"] = brakeDrogueCallUt;
-                ask["main_call_ut"] = brakeMainCallUt;
-                ask["sample_ut"] = brakeSampleUt;
-                ask["sample_speed"] = brakeSampleSpeed;
-                ask["decel"] = brakeDecel;
                 tick = BlockCalls.BrakeTick(ask);
-                brakeOpenUt = (double)tick["open_ut"];
-                brakeOpenCount = (double)tick["open_count"];
-                brakeSettled = (bool)tick["settled"];
-                brakeDrogueCallUt = (double)tick["drogue_call_ut"];
-                brakeMainCallUt = (double)tick["main_call_ut"];
-                brakeSampleUt = (double)tick["sample_ut"];
-                brakeSampleSpeed = (double)tick["sample_speed"];
-                brakeDecel = (double)tick["decel"];
+                HoldBrake(tick);
                 return KosValues.FromPlain(tick);
             }, () => string.Format(CultureInfo.InvariantCulture, "start {0} ({1}), chutes {2}, throttle {3:0.00} (zero: {4}), rate {5:0.0} deg/s", tick["start"], tick["why"], tick["chutes"], tick["throttle"], tick["zero_why"], tick["rate_deg"]), 1);
-            return tick != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.BrakeTick(KosValues.ToDictionary(input)));
+            if (tick != null) return (Lexicon)answer;
+            var blind = BrakeAsk(input);
+            blind["chutes_unread"] = true;
+            tick = BlockCalls.BrakeTick(blind);
+            HoldBrake(tick);
+            return (Lexicon)KosValues.FromPlain(tick);
+        }
+
+        /// <summary>The block's ask with the time and what this processor holds between ticks, for <see cref="BrakeTickCall"/>.</summary>
+        private System.Collections.Generic.IDictionary<string, object> BrakeAsk(Lexicon input)
+        {
+            var ask = KosValues.ToDictionary(input);
+            ask["now"] = Planetarium.GetUniversalTime();
+            ask["open_ut"] = brakeOpenUt;
+            ask["open_count"] = brakeOpenCount;
+            ask["settled"] = brakeSettled;
+            ask["drogue_call_ut"] = brakeDrogueCallUt;
+            ask["main_call_ut"] = brakeMainCallUt;
+            ask["sample_ut"] = brakeSampleUt;
+            ask["sample_speed"] = brakeSampleSpeed;
+            ask["decel"] = brakeDecel;
+            ask["last_resort_ut"] = brakeLastResortUt;
+            ask["unread_ut"] = brakeUnreadUt;
+            ask["trace_ut"] = brakeTraceUt;
+            return ask;
+        }
+
+        /// <summary>Keeps the times and readings Core handed back for the next tick, for <see cref="BrakeTickCall"/>.</summary>
+        private void HoldBrake(System.Collections.Generic.IDictionary<string, object> tick)
+        {
+            brakeOpenUt = (double)tick["open_ut"];
+            brakeOpenCount = (double)tick["open_count"];
+            brakeSettled = (bool)tick["settled"];
+            brakeDrogueCallUt = (double)tick["drogue_call_ut"];
+            brakeMainCallUt = (double)tick["main_call_ut"];
+            brakeSampleUt = (double)tick["sample_ut"];
+            brakeSampleSpeed = (double)tick["sample_speed"];
+            brakeDecel = (double)tick["decel"];
+            brakeLastResortUt = (double)tick["last_resort_ut"];
+            brakeUnreadUt = (double)tick["unread_ut"];
+            brakeTraceUt = (double)tick["trace_ut"];
         }
 
         /// <summary>

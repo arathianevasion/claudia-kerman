@@ -19,7 +19,7 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>Thrust goes to zero while the craft points more than this many degrees off the steering aim (#954): a tipped craft must not be driven by its engine.</summary>
         public const double MaxOffAimDeg = 30;
 
-        /// <summary>Thrust goes to zero while the craft turns faster than this, deg/s (#954): the wheels give only about 7 deg/s², so a spin has to be prevented, not corrected, and thrust mustn't pulse each time a spinning craft swings past its aim. To tune from the log.</summary>
+        /// <summary>Thrust goes to zero while the craft tips faster than this, deg/s (#954): the wheels give only about 7 deg/s², so a spin has to be prevented, not corrected, and thrust mustn't pulse each time a spinning craft swings past its aim. Roll about the thrust axis isn't counted: it doesn't move the thrust off the aim. To tune from the log.</summary>
         public const double MaxSpinDeg = 20;
 
         /// <summary>A packed chute counts as failed this long after it was first called, s (#954): measured from the call, not from a height, as a block starting low is already under the last-call heights.</summary>
@@ -33,6 +33,18 @@ namespace ClaudiaKerman.Core.Tools
 
         /// <summary>Why the thrust is zero: over <see cref="MaxOffAimDeg"/>.</summary>
         public const string WhyOffAim = "off aim";
+
+        /// <summary>Why the thrust is zero: the addon can't read the chute states, and they aren't cut yet.</summary>
+        public const string WhyUnread = "chutes unreadable";
+
+        /// <summary>The chute states have to stay unreadable this long, s, before the chutes are cut (#954): one bad tick mustn't cut good chutes.</summary>
+        public const double UnreadSeconds = 1;
+
+        /// <summary>The reason a burn began when a failed chute brought it (<c>why</c>, handed back by the block as <c>brake_why</c>).</summary>
+        public const string WhyLastResort = "last resort";
+
+        /// <summary>The seconds between the burn's trace lines (#954).</summary>
+        public const double TraceSeconds = 1;
 
         /// <summary>A full-state chute reads this, the adapter's name for stock's fully deployed.</summary>
         public const string Deployed = "deployed";
@@ -188,7 +200,10 @@ namespace ClaudiaKerman.Core.Tools
         /// <c>shield_speed</c>, <c>shield_agl</c>, and <c>throttle</c>, <c>off_deg</c> (the angle off the steering aim) and <c>rate_deg</c> (deg/s). Gives <c>error</c> "", <c>start</c>, <c>why</c>,
         /// <c>open</c> (all fully open with chutes to wait for), <c>open_ut</c> (when the called chutes all first read so, -1 if one is really opening or none is open), <c>open_count</c>, <c>settled</c>, <c>drogue_call_ut</c>, <c>main_call_ut</c>,
         /// <c>chutes</c> (each title and state, for the note), <c>throttle</c> (0 for any <see cref="ReentryBrake.ZeroThrustWhy"/>), <c>zero_why</c> and <c>rate_deg</c> (-1 if unread, for the log).
-        /// With no reading (the addon's answer to a failed call) nothing starts and the throttle is 0. Pure.
+        /// With no reading (the addon's answer to a failed call) nothing starts and the throttle is 0.
+        /// <para>A last resort under way (<c>brake_why</c> "last resort", the block's own record of the burn; its first tick is <c>last_resort_ut</c>, handed back): a set called at or after that time is passed over, so a later set can't interrupt the burn. A chute that counted as failed is not: if it opens after all, the thrust is zero until it settles. The spin and off-aim rules hold throughout.</para>
+        /// <para>The chute states unreadable (<c>chutes_unread</c>, the addon's flag when its read fails) with a group to read (<c>uids</c>): nothing starts, the thrust is zero and what was held is handed back untouched, so one bad tick costs no settling time. After <see cref="ReentryBrake.UnreadSeconds"/> of failing without a break (<c>unread_ut</c>, handed back; a read from an earlier flight doesn't count, judged by the <c>sample_ut</c> that came in), <c>cut</c> asks the block to cut what is out. The block then sends no <c>uids</c>, so <c>cut</c> is asked for once and the fall goes on the radar rule, as with no chutes.</para>
+        /// <para><c>trace</c>: while braking (<c>brake_why</c> not ""), true once every <see cref="ReentryBrake.TraceSeconds"/>, through <c>trace_ut</c>, handed back. Pure.</para>
         /// </summary>
         public static IDictionary<string, object> BrakeTick(IDictionary<string, object> ask)
         {
@@ -209,10 +224,66 @@ namespace ClaudiaKerman.Core.Tools
                     aboard.Add(new KeyValuePair<string, bool>(state, Flag(chute, "drogue")));
                 }
             }
+            var speed = Number(ask, "speed", double.PositiveInfinity);
+            var heldSampleUt = Number(ask, "sample_ut", -1);
+            var sampleUt = heldSampleUt;
+            var sampleSpeed = Number(ask, "sample_speed", speed);
+            var decel = Number(ask, "decel", 0);
+            if (sampleUt < 0)
+            {
+                sampleUt = now;
+                sampleSpeed = speed;
+            }
+            else if (now - sampleUt >= ReentryBrake.DecelSampleSeconds)
+            {
+                decel = (sampleSpeed - speed) / (now - sampleUt);
+                sampleUt = now;
+                sampleSpeed = speed;
+            }
+            object uids;
+            var group = ask.TryGetValue("uids", out uids) && uids is IEnumerable && !(uids is string) ? ((IEnumerable)uids).Cast<object>().Count() : 0;
+            var brakeWhy = ask.ContainsKey("brake_why") ? ask["brake_why"] as string ?? "" : "";
+            var traceUt = Number(ask, "trace_ut", -1);
+            var trace = brakeWhy != "" && now >= traceUt;
+            if (trace) traceUt = now + ReentryBrake.TraceSeconds;
+            var rateRead = Number(ask, "rate_deg", -1);
+            var rate = double.IsNaN(rateRead) || double.IsInfinity(rateRead) ? -1 : rateRead;
+            var heldUnreadUt = Number(ask, "unread_ut", -1);
+            var unbroken = heldUnreadUt >= 0 && heldSampleUt >= 0 && now - heldSampleUt <= ReentryBrake.UnreadSeconds;
+            var unreadUt = !Flag(ask, "chutes_unread") || group == 0 ? -1 : unbroken ? heldUnreadUt : now;
+            var lastResortUt = brakeWhy != ReentryBrake.WhyLastResort ? -1 : Number(ask, "last_resort_ut", -1) >= 0 ? Number(ask, "last_resort_ut", -1) : now;
+            if (unreadUt >= 0)
+            {
+                return new Dictionary<string, object>
+                {
+                    { "error", "" },
+                    { "start", false },
+                    { "why", "" },
+                    { "open", false },
+                    { "open_ut", Number(ask, "open_ut", -1) },
+                    { "open_count", Number(ask, "open_count", 0) },
+                    { "settled", Flag(ask, "settled") },
+                    { "drogue_call_ut", Number(ask, "drogue_call_ut", -1) },
+                    { "main_call_ut", Number(ask, "main_call_ut", -1) },
+                    { "sample_ut", sampleUt },
+                    { "sample_speed", sampleSpeed },
+                    { "decel", decel },
+                    { "last_resort_ut", lastResortUt },
+                    { "unread_ut", unreadUt },
+                    { "cut", now - unreadUt >= ReentryBrake.UnreadSeconds },
+                    { "trace", trace },
+                    { "trace_ut", traceUt },
+                    { "chutes", "unreadable" },
+                    { "throttle", 0.0 },
+                    { "zero_why", ReentryBrake.WhyUnread },
+                    { "rate_deg", rate },
+                };
+            }
             var drogueCallUt = CallTime(ask, "drogues_called", "drogue_call_ut", aboard, true, now);
             var mainCallUt = CallTime(ask, "mains_called", "main_call_ut", aboard, false, now);
             var waitedFor = 0;
             var deployed = 0;
+            var counted = 0;
             var healthy = 0;
             var filling = 0;
             var packing = 0;
@@ -227,7 +298,8 @@ namespace ClaudiaKerman.Core.Tools
                 waitedFor++;
                 if (chute.Key == ReentryBrake.Deployed) deployed++;
                 var callUt = chute.Value ? drogueCallUt : mainCallUt;
-                if (callUt < 0) continue;
+                if (callUt < 0 || (lastResortUt >= 0 && callUt >= lastResortUt)) continue;
+                if (chute.Key == ReentryBrake.Deployed) counted++;
                 var packed = chute.Key == ReentryBrake.Stowed || chute.Key == ReentryBrake.Armed;
                 if (packed && now - callUt >= ReentryBrake.PackedFailSeconds)
                 {
@@ -238,27 +310,11 @@ namespace ClaudiaKerman.Core.Tools
                 if (packed) packing++;
                 else if (chute.Key != ReentryBrake.Deployed) filling++;
             }
-            object uids;
-            if (ask.TryGetValue("uids", out uids) && uids is IEnumerable && !(uids is string) && ((IEnumerable)uids).Cast<object>().Count() > aboard.Count) failed = true;
+            if (group > aboard.Count) failed = true;
             var open = waitedFor > 0 && deployed == waitedFor;
             var heldUt = Number(ask, "open_ut", -1);
-            var held = heldUt >= 0 && deployed <= Number(ask, "open_count", deployed);
+            var held = heldUt >= 0 && counted <= Number(ask, "open_count", counted);
             var openUt = healthy == packing || filling > 0 ? -1 : held ? heldUt : now;
-            var speed = Number(ask, "speed", double.PositiveInfinity);
-            var sampleUt = Number(ask, "sample_ut", -1);
-            var sampleSpeed = Number(ask, "sample_speed", speed);
-            var decel = Number(ask, "decel", 0);
-            if (sampleUt < 0)
-            {
-                sampleUt = now;
-                sampleSpeed = speed;
-            }
-            else if (now - sampleUt >= ReentryBrake.DecelSampleSeconds)
-            {
-                decel = (sampleSpeed - speed) / (now - sampleUt);
-                sampleUt = now;
-                sampleSpeed = speed;
-            }
             var settled = openUt >= 0 && ((held && Flag(ask, "settled")) || ReentryBrake.ChutesSettled(now - openUt, decel));
             var opening = packing > 0 || (healthy > 0 && !settled);
             var shieldSpeed = Number(ask, "shield_speed", 0);
@@ -267,23 +323,26 @@ namespace ClaudiaKerman.Core.Tools
             var start = byRadar
                 ? ReentryBrake.DueByRadar(radar, Number(ask, "brake_h", -1), speed, shieldSpeed, shieldAgl)
                 : !opening && failed && ReentryBrake.LastResortDue(radar, Number(ask, "last_h", -1), speed, shieldSpeed, shieldAgl);
-            var rateRead = Number(ask, "rate_deg", -1);
-            var rate = double.IsNaN(rateRead) || double.IsInfinity(rateRead) ? -1 : rateRead;
             var zeroWhy = ReentryBrake.ZeroThrustWhy(opening, rate, Number(ask, "off_deg", 0));
             return new Dictionary<string, object>
             {
                 { "error", "" },
                 { "start", start },
-                { "why", waitedFor == 0 ? "radar" : byRadar ? "chutes open" : "last resort" },
+                { "why", waitedFor == 0 ? "radar" : byRadar ? "chutes open" : ReentryBrake.WhyLastResort },
                 { "open", open },
                 { "open_ut", openUt },
-                { "open_count", (double)deployed },
+                { "open_count", (double)counted },
                 { "settled", settled },
                 { "drogue_call_ut", drogueCallUt },
                 { "main_call_ut", mainCallUt },
                 { "sample_ut", sampleUt },
                 { "sample_speed", sampleSpeed },
                 { "decel", decel },
+                { "last_resort_ut", lastResortUt },
+                { "unread_ut", -1.0 },
+                { "cut", false },
+                { "trace", trace },
+                { "trace_ut", traceUt },
                 { "chutes", string.Join(", ", read.ToArray()) },
                 { "throttle", zeroWhy == "" ? Number(ask, "throttle", 0) : 0.0 },
                 { "zero_why", zeroWhy },

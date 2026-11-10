@@ -406,7 +406,7 @@ namespace ClaudiaKerman.Core.Tests
         /// <summary>Flies a tick on from the last, handing back what the addon holds between ticks.</summary>
         private static void CarryOn(Dictionary<string, object> ask, IDictionary<string, object> answer)
         {
-            foreach (var key in new[] { "open_ut", "open_count", "settled", "drogue_call_ut", "main_call_ut", "sample_ut", "sample_speed", "decel" }) ask[key] = answer[key];
+            foreach (var key in new[] { "open_ut", "open_count", "settled", "drogue_call_ut", "main_call_ut", "sample_ut", "sample_speed", "decel", "last_resort_ut", "unread_ut", "trace_ut" }) ask[key] = answer[key];
         }
 
         [Theory]
@@ -710,6 +710,224 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(0.0, D(Tick(1000, 100, 0, 0, Chutes("deployed"), 1, 45), "throttle"));
             Assert.Equal(0.0, D(Tick(1000, 100, 0, 0, Chutes(), 1, 45), "throttle"));
             Assert.Equal(1.0, D(Tick(1000, 100, 0, 0, Chutes(), 1, 10), "throttle"));
+        }
+
+        // ---- A last resort under way (player, 2026-11-09): a later set called doesn't stop it ----
+
+        /// <summary>The last resort burning since UT 90 on drogues called at 80 and failed; the mains called at 95. Now is 100.</summary>
+        private static Dictionary<string, object> LastResortBurning(string drogues, string mains, double rate = 5, double off = 5, string why = "last resort", double mainCallUt = 95)
+        {
+            return new Dictionary<string, object>
+            {
+                { "radar", 800.0 }, { "speed", 120.0 }, { "brake_h", -1.0 }, { "last_h", 1000.0 }, { "shield_speed", 400.0 }, { "shield_agl", 3000.0 }, { "throttle", 0.8 }, { "off_deg", off }, { "rate_deg", rate },
+                { "now", 100.0 }, { "brake_why", why }, { "last_resort_ut", 90.0 }, { "drogues_called", true }, { "drogue_call_ut", 80.0 }, { "mains_called", true }, { "main_call_ut", mainCallUt },
+                { "chutes", Set(true, drogues).Concat(Set(false, mains)).ToList() },
+            };
+        }
+
+        [Theory]
+        [InlineData("armed", "armed")] // called a moment ago, still packed
+        [InlineData("stowed", "semi")]
+        [InlineData("armed", "deployed")]
+        public void Failed_drogues_with_the_last_resort_burning_and_healthy_mains_called_keep_the_thrust(string drogues, string mains)
+        {
+            var tick = BlockCalls.BrakeTick(LastResortBurning(drogues, mains));
+            Assert.Equal(0.8, D(tick, "throttle"));
+            Assert.Equal("", tick["zero_why"]);
+        }
+
+        [Theory]
+        [InlineData("semi", "semi")]
+        [InlineData("semi", "armed")]
+        [InlineData("deployed", "armed")] // packed to deployed between two ticks
+        public void The_failed_drogues_opening_after_all_zero_the_thrust(string drogues, string mains)
+        {
+            AssertNoThrust(BlockCalls.BrakeTick(LastResortBurning(drogues, mains)), ReentryBrake.WhyChuteOpening);
+        }
+
+        [Fact]
+        public void The_failed_drogues_open_settle_and_the_thrust_returns_and_the_mains_opening_doesnt_restart_it()
+        {
+            var ask = LastResortBurning("deployed", "armed");
+            var tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(100.0, D(tick, "open_ut"));
+            CarryOn(ask, tick);
+            ask["now"] = 108.5;
+            tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(0.8, D(tick, "throttle"));
+            CarryOn(ask, tick);
+            ask["now"] = 109.0;
+            ask["chutes"] = Set(true, "deployed").Concat(Set(false, "deployed")).ToList();
+            tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(0.8, D(tick, "throttle"));
+            Assert.Equal(100.0, D(tick, "open_ut"));
+        }
+
+        [Fact]
+        public void Spinning_or_off_the_aim_during_the_last_resort_still_zeroes_the_thrust()
+        {
+            AssertNoThrust(BlockCalls.BrakeTick(LastResortBurning("armed", "semi", rate: 25)), ReentryBrake.WhySpinning);
+            AssertNoThrust(BlockCalls.BrakeTick(LastResortBurning("armed", "semi", off: 45)), ReentryBrake.WhyOffAim);
+        }
+
+        [Theory]
+        [InlineData("chutes open", 95)] // not a last resort: every set still counts
+        [InlineData("", 95)]
+        [InlineData("last resort", 85)] // a set called before the last resort began is no later set
+        public void Only_a_set_called_after_a_last_resort_began_is_passed_over(string why, double mainCallUt)
+        {
+            AssertNoThrust(BlockCalls.BrakeTick(LastResortBurning("deployed", "semi", why: why, mainCallUt: mainCallUt)), ReentryBrake.WhyChuteOpening);
+        }
+
+        [Fact]
+        public void The_last_resort_time_starts_on_its_first_tick_is_held_and_no_flight_inherits_it()
+        {
+            var ask = LastResortBurning("armed", "armed");
+            ask["last_resort_ut"] = -1.0;
+            Assert.Equal(100.0, D(BlockCalls.BrakeTick(ask), "last_resort_ut"));
+            ask["last_resort_ut"] = 90.0;
+            Assert.Equal(90.0, D(BlockCalls.BrakeTick(ask), "last_resort_ut"));
+            ask["brake_why"] = "";
+            Assert.Equal(-1.0, D(BlockCalls.BrakeTick(ask), "last_resort_ut"));
+        }
+
+        [Fact]
+        public void Mains_called_on_the_tick_the_last_resort_began_count_as_later()
+        {
+            // The block's chute_tick runs after the tick that says start: the mains' call and the last resort's time are both first read on the next tick.
+            var ask = LastResortBurning("armed", "armed", mainCallUt: -1);
+            ask["last_resort_ut"] = -1.0;
+            Assert.Equal(0.8, D(BlockCalls.BrakeTick(ask), "throttle"));
+        }
+
+        // ---- States the addon can't read (player, 2026-11-09): cut what is out and land on the engine ----
+
+        private const string Unread = "chutes_unread";
+
+        private static Dictionary<string, object> UnreadTick(double now, double unreadUt = -1)
+        {
+            return new Dictionary<string, object>
+            {
+                { "radar", 500.0 }, { "speed", 40.0 }, { "brake_h", 600.0 }, { "last_h", 300.0 }, { "shield_speed", 400.0 }, { "shield_agl", 3000.0 }, { "throttle", 0.8 }, { "off_deg", 5.0 }, { "rate_deg", 2.0 },
+                { "now", now }, { "uids", new List<object> { "a", "b" } }, { Unread, true }, { "unread_ut", unreadUt }, { "sample_ut", now - 0.25 }, { "sample_speed", 40.0 },
+            };
+        }
+
+        private static void AssertWaiting(IDictionary<string, object> tick)
+        {
+            Assert.Equal(false, tick["start"]);
+            AssertNoThrust(tick, ReentryBrake.WhyUnread);
+            Assert.Equal("unreadable", tick["chutes"]);
+        }
+
+        [Fact]
+        public void One_bad_tick_cuts_nothing_starts_no_burn_and_holds_the_settled_chutes()
+        {
+            var ask = UnreadTick(100);
+            ask["open_ut"] = 80.0;
+            ask["open_count"] = 2.0;
+            ask["settled"] = true;
+            ask["drogue_call_ut"] = 70.0;
+            ask["main_call_ut"] = 75.0;
+            var bad = BlockCalls.BrakeTick(ask);
+            Assert.Equal(false, bad["cut"]);
+            AssertWaiting(bad);
+            Assert.Equal(100.0, D(bad, "unread_ut"));
+            foreach (var held in new[] { "open_ut", "open_count", "settled", "drogue_call_ut", "main_call_ut" }) Assert.Equal(ask[held], bad[held]);
+        }
+
+        [Fact]
+        public void Failing_for_under_a_second_then_reading_again_cuts_nothing_and_the_thrust_returns()
+        {
+            var ask = UnreadTick(100);
+            ask["open_ut"] = 80.0;
+            ask["open_count"] = 1.0;
+            ask["settled"] = true;
+            var tick = BlockCalls.BrakeTick(ask);
+            CarryOn(ask, tick);
+            ask["now"] = 100.9;
+            ask["sample_ut"] = 100.75;
+            tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(false, tick["cut"]);
+            Assert.Equal(100.0, D(tick, "unread_ut"));
+            CarryOn(ask, tick);
+            ask["now"] = 101.5;
+            ask["sample_ut"] = 101.25;
+            ask.Remove(Unread);
+            ask["uids"] = new List<object> { "a" };
+            ask["chutes"] = Chutes("deployed");
+            tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(false, tick["cut"]);
+            Assert.Equal(-1.0, D(tick, "unread_ut"));
+            Assert.Equal(80.0, D(tick, "open_ut"));
+            Assert.Equal(0.8, D(tick, "throttle"));
+        }
+
+        [Fact]
+        public void Failing_for_a_second_asks_for_the_cut_once_and_the_engine_then_proceeds_on_the_radar_rule()
+        {
+            var ask = UnreadTick(100, 99);
+            var tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(true, tick["cut"]);
+            AssertNoThrust(tick, ReentryBrake.WhyUnread);
+            // The block has cut them and set chute_mode "none", so it sends no uids from here: even a read that still fails asks for nothing more.
+            CarryOn(ask, tick);
+            ask["uids"] = new List<object>();
+            ask["now"] = 100.02;
+            ask["sample_ut"] = 100.0;
+            tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(false, tick["cut"]);
+            Assert.Equal(true, tick["start"]);
+            Assert.Equal("radar", tick["why"]);
+            Assert.Equal(0.8, D(tick, "throttle"));
+            Assert.Equal("", tick["zero_why"]);
+            Assert.Equal(-1.0, D(tick, "unread_ut"));
+        }
+
+        [Fact]
+        public void A_failed_read_from_an_earlier_flight_doesnt_count_towards_the_second()
+        {
+            var ask = UnreadTick(5000, 100);
+            ask["sample_ut"] = 101.0;
+            var tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(false, tick["cut"]);
+            Assert.Equal(5000.0, D(tick, "unread_ut"));
+        }
+
+        [Fact]
+        public void Nothing_is_cut_when_the_read_fails_with_no_chutes_to_read()
+        {
+            var ask = UnreadTick(100, 95);
+            ask["uids"] = new List<object>();
+            var tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(false, tick["cut"]);
+            Assert.Equal(true, tick["start"]);
+        }
+
+        [Fact]
+        public void With_the_states_read_nothing_is_ever_cut()
+        {
+            Assert.Equal(false, Tick(30, 12, 32, 8, Chutes("deployed"), 1)["cut"]);
+            Assert.Equal(false, BlockCalls.BrakeTick(null)["cut"]);
+        }
+
+        // ---- The trace's second ----
+
+        [Fact]
+        public void The_trace_is_due_once_a_second_only_while_braking()
+        {
+            var ask = new Dictionary<string, object> { { "now", 100.0 }, { "brake_why", "chutes open" } };
+            var tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(true, tick["trace"]);
+            CarryOn(ask, tick);
+            ask["now"] = 100.9;
+            tick = BlockCalls.BrakeTick(ask);
+            Assert.Equal(false, tick["trace"]);
+            CarryOn(ask, tick);
+            ask["now"] = 101.0;
+            Assert.Equal(true, BlockCalls.BrakeTick(ask)["trace"]);
+            ask["brake_why"] = "";
+            Assert.Equal(false, BlockCalls.BrakeTick(ask)["trace"]);
         }
 
         [Fact]
