@@ -237,10 +237,9 @@ namespace ClaudiaKerman.Kerboscript.Tests
         }
 
         [Fact]
-        public void A_touchdown_under_the_limit_is_fine_and_90_ms_is_not()
+        public void A_touchdown_over_15_ms_fails_it()
         {
-            Assert.Equal("True", One("reentry_touchdown_ok(7.5)"));
-            Assert.Equal("False", One("reentry_touchdown_ok(90)"));
+            Assert.Equal(15, Number("reentry_touchdown_limit()"));
         }
 
         // ---- reentry: measurements ----

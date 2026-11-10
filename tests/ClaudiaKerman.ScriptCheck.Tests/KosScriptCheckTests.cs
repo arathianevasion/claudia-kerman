@@ -180,6 +180,47 @@ namespace ClaudiaKerman.ScriptCheck.Tests
             Assert.Equal(fires, _check.Check(script).Warnings.Any(w => w.Contains(KeptStackLint)));
         }
 
+        // ---- #971: reentry with separate "none" is refused unless the plan gives a custom_script_reason ----
+
+        private const string KeepNone = "local res is reentry(lexicon(\"separate\", \"none\")).\naddons:claudia:report(res).";
+
+        [Theory]
+        [InlineData("")]
+        [InlineData("   ")]
+        public void A_reentry_with_separate_none_and_no_reason_is_refused_and_says_what_to_do(string reason)
+        {
+            var result = _check.Check(CoreLibrary.Bundle(KeepNone), reason);
+            Assert.False(result.Passed);
+            var refusal = Assert.Single(result.Problems);
+            Assert.StartsWith("line 1: ", refusal);
+            Assert.Contains("separate \"none\"", refusal);
+            Assert.Contains("drop the stack: leave separate off or set it to \"auto\"", refusal);
+            Assert.Contains("custom_script_reason", refusal);
+        }
+
+        [Fact]
+        public void A_reentry_with_separate_none_and_a_reason_passes_with_the_warning()
+        {
+            var result = _check.Check(CoreLibrary.Bundle(KeepNone), "The Dart stage lands and lifts off.");
+            Assert.True(result.Passed, string.Join("; ", result.Problems.ToArray()));
+            Assert.Single(result.Warnings, w => w.Contains(KeptStackLint));
+        }
+
+        [Theory]
+        [InlineData("local res is reentry().\n")]
+        [InlineData("local res is reentry(lexicon(\"separate\", \"auto\")).\n")]
+        [InlineData("local res is reentry(lexicon(\"separate\", 2)).\n")]
+        public void A_reentry_without_separate_none_passes_with_no_reason(string script)
+        {
+            Assert.True(_check.Check(script, "").Passed);
+        }
+
+        [Fact]
+        public void With_no_reason_asked_about_a_reentry_with_separate_none_only_warns()
+        {
+            Assert.True(_check.Check(CoreLibrary.Bundle(KeepNone)).Passed);
+        }
+
         // ---- The drop-before-reentry lint (#608): drop_parts as the block call just before reentry ----
 
         private const string DropLint = "drop_parts just before reentry";
@@ -614,6 +655,7 @@ namespace ClaudiaKerman.ScriptCheck.Tests
         [InlineData("print addons:claudia:brakeheights(lexicon()):brake_h.")]
         [InlineData("local t is addons:claudia:braketick(lexicon()).\nprint t:start.")]
         [InlineData("print addons:claudia:entryloss(lexicon()):carry_on.")]
+        [InlineData("print addons:claudia:groundsettle(lexicon()):done.")]
         [InlineData("print addons:claudia:entryskip(lexicon()):refusal.")]
         [InlineData("local t is addons:claudia:TurnTime@.\nprint t(lexicon(\"max_stopping_time\", 2)).")]
         [InlineData("local e is addons:claudia:ejectionburn(lexicon(\"target\", \"Mun\", \"target_pe\", 30000)).\nadd node(e:ut, e:radial, e:normal, e:prograde).")]

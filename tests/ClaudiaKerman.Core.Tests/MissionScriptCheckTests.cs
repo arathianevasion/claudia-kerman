@@ -11,6 +11,7 @@ using ClaudiaKerman.Core.Claude;
 using ClaudiaKerman.Core.Config;
 using ClaudiaKerman.Core.Kos;
 using ClaudiaKerman.Core.Missions;
+using ClaudiaKerman.Core.Tools;
 using Xunit;
 
 namespace ClaudiaKerman.Core.Tests
@@ -39,11 +40,14 @@ namespace ClaudiaKerman.Core.Tests
         private sealed class FakeScriptCheck : IScriptCheck
         {
             public readonly List<string> Checked = new List<string>();
+            /// <summary>The reason the plan gave, as each check was handed it (#971: separate "none" on reentry needs one).</summary>
+            public readonly List<string> Reasons = new List<string>();
             public bool FailEverything;
 
-            public ScriptCheckResult Check(string script)
+            public ScriptCheckResult Check(string script, string customScriptReason = null)
             {
                 Checked.Add(script);
+                Reasons.Add(customScriptReason);
                 return FailEverything || script.ToUpperInvariant().Contains("QUICKSAVE")
                     ? new ScriptCheckResult(null, new List<string> { "line 1: :QUICKSAVE (quicksave)" })
                     : ScriptCheckResult.Pass();
@@ -391,6 +395,65 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(MissionStage.Paused, mission.View.Stage);
             Assert.Equal(3, transport.Requests.Count);
             Assert.Equal("blocked", CostEvents(mission).Last());
+        }
+
+        // ---- #971: the plan's reason reaches the Script Check ----
+
+        private const string BlocksReason = "Claudia says custom, the script says otherwise.";
+
+        [Fact]
+        public void ABlocksOnlyScriptKeepsItsCustomScriptReasonAsTheReasonGiven()
+        {
+            // The badge is off for a blocks-only script (CustomScriptReason stays empty), but the reason she gave is kept for the check.
+            var transport = Replies("mission-plan.sse", "mission-sequence-plan-blocks.sse");
+            var mission = Control(transport);
+            ApproveMissionPlan(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            var plan = Assert.Single(mission.ExportStates()).SequencePlan;
+            Assert.False(plan.CustomScript);
+            Assert.Equal("", plan.CustomScriptReason);
+            Assert.Equal(BlocksReason, plan.ReasonGiven);
+        }
+
+        [Fact]
+        public void TheCheckIsHandedTheReasonGivenWhenTheReplyArrivesAndAgainAtApproval()
+        {
+            var transport = Replies("mission-plan.sse", "mission-sequence-plan-blocks.sse");
+            var mission = Control(transport);
+            ApproveMissionPlan(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            Assert.NotEmpty(_check.Reasons);
+            Assert.All(_check.Reasons, r => Assert.Equal(BlocksReason, r));
+
+            _check.Reasons.Clear();
+            mission.Send(new Approve());
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.Equal(new[] { BlocksReason }, _check.Reasons.ToArray());
+        }
+
+        [Fact]
+        public void TheReasonGivenSurvivesASaveAndReloadAndReachesTheCheckOnRestore()
+        {
+            var transport = Replies("mission-plan.sse", "mission-sequence-plan-blocks.sse");
+            var mission = Control(transport);
+            ApproveMissionPlan(mission);
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            var state = Assert.Single(mission.ExportStates());
+            Assert.Equal(BlocksReason, MissionSaveState.FromValues(state.ToValues()).SequencePlan.ReasonGiven);
+            _check.Reasons.Clear();
+
+            var resumed = Resumed(Replies(), new List<MissionSaveState> { state });
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, resumed.View.Stage);
+            Assert.NotEmpty(_check.Reasons);
+            Assert.All(_check.Reasons, r => Assert.Equal(BlocksReason, r));
+        }
+
+        [Fact]
+        public void AResumedCoastPlanKeepsTheReasonGiven()
+        {
+            var plan = new SequencePlan { Name = "Home", Script = "local res is return().\n", ReasonGiven = BlocksReason };
+            var token = new CoastToken { Block = "return", Target = "Kerbin", Pe = 100000, PeLimit = 8000000, PointUt = 50000, LeadS = 120, WaitUt = 49640, Phase = "correction", ArriveUt = 90000, Bodies = "Kerbin" };
+            Assert.Equal(BlocksReason, CoastCheckpoints.Resumed(plan, token, 1000).ReasonGiven);
         }
 
         // ---- Across saves ----

@@ -11,7 +11,9 @@ namespace ClaudiaKerman.Core.Kos
     /// </summary>
     public interface IScriptCheck
     {
-        ScriptCheckResult Check(string script);
+        /// <param name="script">The script, bundled with the Core Library.</param>
+        /// <param name="customScriptReason">The Sequence Plan's own custom_script_reason, trimmed ("" when it gave none); null when the caller has no plan (the check_script tool), which refuses nothing that needs one (#971).</param>
+        ScriptCheckResult Check(string script, string customScriptReason = null);
     }
 
     /// <summary>A pass, or why the script failed: a compile error, the forbidden calls found, the Building Block calls a block would refuse, or several.</summary>

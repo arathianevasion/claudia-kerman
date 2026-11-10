@@ -721,7 +721,7 @@ namespace ClaudiaKerman.Core.Missions
             // (a reply, a restored save, a refused start) brought the plan here. No automatic rewrite: the plan
             // was offered already, so the player decides what happens next.
             var bundle = Bundle(plan);
-            var check = _scriptCheck.Check(bundle);
+            var check = _scriptCheck.Check(bundle, plan.ReasonGiven);
             if (!check.Passed)
             {
                 ShowUnsafeScript(mission, plan, check.Problems);
@@ -1906,7 +1906,7 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         private ScriptCheckResult CheckScript(Mission mission, SequencePlan plan, bool restored = false)
         {
-            var check = _scriptCheck.Check(Bundle(plan));
+            var check = _scriptCheck.Check(Bundle(plan), plan.ReasonGiven);
             var step = PlanStepProblem(mission, plan, restored);
             if (step == null) return check;
             return new ScriptCheckResult(check.CompileError, check.Forbidden.Concat(new[] { step }).ToList()) { Warnings = check.Warnings, BlockOptions = check.BlockOptions };
