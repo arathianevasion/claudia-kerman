@@ -25,9 +25,11 @@ namespace ClaudiaKerman.Core.Missions
             /// <summary>#782: the Due Time the Sequence Plan in hand came with, which each pick's window is worked against. Saved.</summary>
             public double? WindowOwnDue;
             /// <summary>#966: the picked window's departure, past which the pick is missed; null when not known. Saved.</summary>
-            public double? WindowPickUt;
+            public double? WindowPickDepartureUt;
             /// <summary>#966: the revised Mission Plan in hand carries the held pick: the card offers the choice, and nothing waits for it. Saved.</summary>
-            public bool WindowPickHeld;
+            public bool WindowPickCarried;
+            /// <summary>#966: a pick of this Mission has been spent by its ejection, so a revision out of Flight waits to be judged as one with a pick does. Saved.</summary>
+            public bool WindowPickSpent;
         }
 
         /// <summary>The offer last worked out, what it was worked for, and the snapshot, goal and rework period it last answered.</summary>
@@ -70,17 +72,17 @@ namespace ClaudiaKerman.Core.Missions
         /// A Mission Plan is offered: the windows are worked out again for the craft as it is. The first one carries the start form's
         /// pick. #966: a revised one carries the pick too while it holds (<see cref="PickHolds"/>), even if the ejection now costs more;
         /// it waits for a fresh one only for another transfer, a missed window, or a pick its ejection has spent. With the player away
-        /// from the craft it can't be worked out yet, so a Mission that has a pick waits for them to come back; one with none has no such transfer.
+        /// from the craft it can't be worked out yet, so a Mission that has or has spent a pick waits for them to come back; one that never had one has no such transfer.
         /// </summary>
         private void AskForWindow(Mission mission, bool first)
         {
             _offer = null;
             mission.WindowPickUnsaid = false;
-            mission.WindowPickHeld = false;
+            mission.WindowPickCarried = false;
             var snapshot = MissionVesselSnapshot(mission);
             if (snapshot == null)
             {
-                mission.WindowPickNeeded = !first && !mission.WindowPick.IsNone;
+                mission.WindowPickNeeded = !first && (!mission.WindowPick.IsNone || mission.WindowPickSpent);
                 return;
             }
             var offer = OfferFor(PlanGoal(mission), snapshot);
@@ -88,9 +90,9 @@ namespace ClaudiaKerman.Core.Missions
             var asks = offer.Needed && (first || WindowChoice.LegsAsk(snapshot, RestOfPlan(mission), mission.PlannedAscent));
             var holds = asks && (first ? !WindowChoice.Held(mission.WindowPick, offer).IsNone : PickHolds(mission, offer));
             mission.WindowPickNeeded = asks && !holds;
-            mission.WindowPickHeld = holds && !first;
+            mission.WindowPickCarried = holds && !first;
             // The held window's departure as worked out now, from where the craft is.
-            if (holds) mission.WindowPickUt = offer.RowFor(mission.WindowPick).DepartureUt;
+            if (holds) mission.WindowPickDepartureUt = offer.RowFor(mission.WindowPick).DepartureUt;
         }
 
         /// <summary>
@@ -100,17 +102,19 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         private bool PickHolds(Mission mission, WindowOffer offer)
         {
-            return !WindowChoice.Held(mission.WindowPick, offer).IsNone && !(mission.WindowPickUt.HasValue && WindowWaits.Missed(mission.WindowPickUt.Value, _ut));
+            return !WindowChoice.Held(mission.WindowPick, offer).IsNone && !(mission.WindowPickDepartureUt.HasValue && WindowWaits.Missed(mission.WindowPickDepartureUt.Value, _ut));
         }
 
         /// <summary>#966: the craft is seen gone on the pick's transfer (<see cref="WindowChoice.Departed"/>): the ejection has flown, so the pick holds no more, for a return or a later trip alike.</summary>
         private void SpendPick(Mission mission, GameSnapshot snapshot)
         {
+            // Only the Mission's own craft, once it is flying: another vessel's place says nothing of the craft's ejection.
             if (mission.WindowPick.IsNone || !FollowsCraft(mission) || MissionVesselSnapshot(mission) != snapshot || !WindowChoice.Departed(snapshot, mission.WindowPick)) return;
             Event(mission, "window_spent", mission.WindowPick.Key);
             mission.WindowPick = WindowPick.None;
-            mission.WindowPickUt = null;
-            mission.WindowPickHeld = false;
+            mission.WindowPickSpent = true;
+            mission.WindowPickDepartureUt = null;
+            mission.WindowPickCarried = false;
         }
 
         /// <summary>The Mission Plan in hand can't be approved yet: it waits for the player's pick, under Auto Mode too.</summary>
@@ -129,7 +133,7 @@ namespace ClaudiaKerman.Core.Missions
         private bool WindowChoiceOpen(Mission mission)
         {
             if (mission.Stage == MissionStage.AwaitingSequenceApproval) return !mission.Declined && (mission.WindowPickUnsaid || WindowPickMissing(mission));
-            return (mission.WindowPickNeeded || mission.WindowPickUnsaid || mission.WindowPickHeld) && mission.Stage == MissionStage.AwaitingPlanApproval && !mission.Declined;
+            return (mission.WindowPickNeeded || mission.WindowPickUnsaid || mission.WindowPickCarried) && mission.Stage == MissionStage.AwaitingPlanApproval && !mission.Declined;
         }
 
         /// <summary>The windows the Mission's view shows; none unless the plan in hand offers the choice.</summary>
@@ -181,7 +185,7 @@ namespace ClaudiaKerman.Core.Missions
             var offer = MissionOffer(mission);
             if (!offer.Needed) return;
             mission.WindowPick = new WindowPick(offer.Body, kind);
-            mission.WindowPickUt = offer.RowFor(mission.WindowPick).DepartureUt;
+            mission.WindowPickDepartureUt = offer.RowFor(mission.WindowPick).DepartureUt;
             mission.WindowPickNeeded = false;
             mission.WindowPickUnsaid = true;
             mission.ConfirmPrompt = null;

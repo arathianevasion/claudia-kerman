@@ -442,7 +442,7 @@ namespace ClaudiaKerman.Core.Missions
                 Remote = start.Remote,
                 AutoMode = _config.DefaultAutoMode,
                 WindowPick = window,
-                WindowPickUt = window.IsNone ? (double?)null : windows.RowFor(window).DepartureUt,
+                WindowPickDepartureUt = window.IsNone ? (double?)null : windows.RowFor(window).DepartureUt,
             };
             // Frozen for the whole Mission, so the cached prefix never changes.
             mission.System.Add(MissionPrompts.BaseLayer);

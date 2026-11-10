@@ -141,8 +141,11 @@ namespace ClaudiaKerman.Core.Missions
             var at = system.Find(orbit != null && !string.IsNullOrEmpty(orbit.Body) ? orbit.Body : snapshot.Body);
             if (parent == null || at == null) return false;
             if (string.Equals(at.Name, parent.Name, StringComparison.OrdinalIgnoreCase)) return true;
+            // Up from where the craft is to the body that orbits the target's parent: the target itself once it has arrived, the body it departs from (or another) before.
             for (var body = at; system.Parent(body) != null; body = system.Parent(body))
+            {
                 if (string.Equals(system.Parent(body).Name, parent.Name, StringComparison.OrdinalIgnoreCase)) return string.Equals(body.Name, target.Name, StringComparison.OrdinalIgnoreCase);
+            }
             return false;
         }
 

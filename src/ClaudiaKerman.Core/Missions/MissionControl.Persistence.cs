@@ -94,8 +94,9 @@ namespace ClaudiaKerman.Core.Missions
                 WindowPickNeeded = mission.WindowPickNeeded,
                 WindowPickUnsaid = mission.WindowPickUnsaid,
                 WindowOwnDue = mission.WindowOwnDue,
-                WindowPickUt = mission.WindowPickUt,
-                WindowPickHeld = mission.WindowPickHeld,
+                WindowPickDepartureUt = mission.WindowPickDepartureUt,
+                WindowPickCarried = mission.WindowPickCarried,
+                WindowPickSpent = mission.WindowPickSpent,
                 Remote = mission.Remote,
                 AutoMode = mission.AutoMode,
                 MissionPlanApproved = mission.MissionPlanApproved,
@@ -523,8 +524,9 @@ namespace ClaudiaKerman.Core.Missions
                 WindowPickNeeded = state.WindowPickNeeded,
                 WindowPickUnsaid = state.WindowPickUnsaid,
                 WindowOwnDue = state.WindowOwnDue,
-                WindowPickUt = state.WindowPickUt,
-                WindowPickHeld = state.WindowPickHeld,
+                WindowPickDepartureUt = state.WindowPickDepartureUt,
+                WindowPickCarried = state.WindowPickCarried,
+                WindowPickSpent = state.WindowPickSpent,
             };
             foreach (var setting in state.Settings) mission.Settings[setting.Key] = setting.Value;
             RestoreChildVessels(mission, state.ChildVessels);

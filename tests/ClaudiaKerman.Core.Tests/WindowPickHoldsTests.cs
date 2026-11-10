@@ -148,13 +148,38 @@ namespace ClaudiaKerman.Core.Tests
             var between = NewGame + 100 * Day;
             mission.Send(new UtAdvanced(between));
             mission.Send(Heliocentric(between));
-            // The ejection has flown: the pick no longer holds.
+            // The ejection has flown: the pick no longer holds, and a save says it was spent.
             Assert.True(mission.View.WindowPick.IsNone);
+            var reread = MissionSaveState.FromValues(Assert.Single(mission.ExportStates()).ToValues());
+            Assert.True(reread.WindowPick.IsNone);
+            Assert.True(reread.WindowPickSpent);
 
             var atDuna = between + 200 * Day;
             mission.Send(new UtAdvanced(atDuna));
             mission.Send(InOrbit("Duna", atDuna, 9000));
             ToRevisedPlan(mission);
+            Assert.True(mission.View.WindowPickNeeded);
+            Assert.Equal("Kerbin", mission.View.Windows.Body);
+        }
+
+        [Fact]
+        public void ARevisionOutOfFlightAfterTheEjectionStillWaitsToAskForTheReturn()
+        {
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), LaunchPlan(), DunaPlan()));
+            ToMissionPlan(mission, Duna(WindowKind.Soonest), NewGame, RoundTrip);
+            mission.Send(new Approve());
+            DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
+            var atDuna = NewGame + 300 * Day;
+            mission.Send(new UtAdvanced(atDuna));
+            mission.Send(InOrbit("Duna", atDuna, 9000));
+            Assert.True(mission.View.WindowPick.IsNone);
+
+            // Revised from the Tracking Station: nothing to work the rows from, so it waits for the craft.
+            mission.Send(new SceneChanged(GameScene.Other));
+            ToRevisedPlan(mission);
+            Assert.True(mission.View.WindowPickNeeded);
+            mission.Send(new SceneChanged(GameScene.Flight));
+            mission.Send(InOrbit("Duna", atDuna, 9000));
             Assert.True(mission.View.WindowPickNeeded);
             Assert.Equal("Kerbin", mission.View.Windows.Body);
         }
@@ -194,10 +219,10 @@ namespace ClaudiaKerman.Core.Tests
             var reread = MissionSaveState.FromValues(Assert.Single(mission.ExportStates()).ToValues());
             Assert.Equal("Duna:Optimal", reread.WindowPick.Key);
             Assert.False(reread.WindowPickNeeded);
-            Assert.True(reread.WindowPickHeld);
+            Assert.True(reread.WindowPickCarried);
             // The held window's departure as worked out from orbit at the revision.
             var fromOrbit = WindowChoice.Work(InOrbit("Kerbin", NewGame + Day, 9000), Goal, new PlayerConfig().CraftCheckMarginPercent, NewGame + Day).RowFor(Duna(WindowKind.Optimal));
-            Assert.Equal(fromOrbit.DepartureUt, reread.WindowPickUt.Value, 0);
+            Assert.Equal(fromOrbit.DepartureUt, reread.WindowPickDepartureUt.Value, 0);
 
             var reload = Control(new StreamingFakeTransport());
             reload.Send(new SceneChanged(GameScene.Flight));
