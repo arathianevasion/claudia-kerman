@@ -163,8 +163,6 @@ namespace ClaudiaKerman.Core.Missions
         public string LandingAim = "";
         /// <summary>Each vessel's aimed landing (<see cref="Tools.AimedLandings.ToJson"/>, #913); "" for none. An older save's single target reads as the Mission's own craft's.</summary>
         public string LandingTargets = "";
-        /// <summary>find_landing_site's recent answers (<see cref="Tools.SitePasses.ToJson"/>, #975); "" for none, as an older save has.</summary>
-        public string SitePasses = "";
         /// <summary>A return this run flew no Course Correction (#899).</summary>
         public bool NoCorrection;
         public Tools.PickedSite PickedSite;
@@ -256,7 +254,6 @@ namespace ClaudiaKerman.Core.Missions
             if (ArrivalPlane.Length > 0) values["arrivalPlane"] = ArrivalPlane;
             if (LandingAim.Length > 0) values["landingAim"] = LandingAim;
             if (LandingTargets.Length > 0) values["landingTargets"] = LandingTargets;
-            if (SitePasses.Length > 0) values["sitePasses"] = SitePasses;
             if (NoCorrection) values["noCorrection"] = "true";
             if (PickedSite != null)
             {
@@ -344,7 +341,6 @@ namespace ClaudiaKerman.Core.Missions
                 ArrivalPlane = Get(values, "arrivalPlane"),
                 LandingAim = Get(values, "landingAim"),
                 LandingTargets = Get(values, "landingTargets"),
-                SitePasses = Get(values, "sitePasses"),
                 NoCorrection = Get(values, "noCorrection") == "true",
                 PickedSite = ReadSite(Get(values, "pickedSiteBody"), Get(values, "pickedSiteLatitude")),
                 WindowPick = Get(values, "windowPickBody").Length == 0 ? WindowPick.None
@@ -563,9 +559,12 @@ namespace ClaudiaKerman.Core.Missions
     {
         public readonly string SaveDirectory;
         public readonly IList<MissionSaveState> States;
+        /// <summary>The game's saved find_landing_site record (<see cref="MissionControl.ExportSitePasses"/>, #975); null when the save has none.</summary>
+        public readonly string SitePasses;
 
-        public MissionsRestored(string saveDirectory, IList<MissionSaveState> states)
+        public MissionsRestored(string saveDirectory, IList<MissionSaveState> states, string sitePasses = null)
         {
+            SitePasses = sitePasses;
             SaveDirectory = saveDirectory;
             States = states ?? new List<MissionSaveState>();
         }

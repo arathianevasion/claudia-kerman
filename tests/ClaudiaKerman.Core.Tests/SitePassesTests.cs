@@ -103,15 +103,15 @@ namespace ClaudiaKerman.Core.Tests
 
         // ---- #975: saved with the game ----
 
-        private static SitePasses Saved(SitePasses passes, double loadUt)
+        private static SitePasses Saved(SitePasses passes, double loadUt, double savedUt = double.MaxValue)
         {
             var read = new SitePasses();
-            read.Load(MissionSaveState.FromValues(new MissionSaveState { Id = "m1", SitePasses = passes.ToJson() }.ToValues()).SitePasses, loadUt);
+            read.Load(passes.ToJson(savedUt == double.MaxValue ? loadUt : savedUt), loadUt);
             return read;
         }
 
         [Fact]
-        public void The_record_round_trips_through_the_Mission_save()
+        public void The_record_round_trips_through_the_save()
         {
             var passes = new SitePasses();
             passes.Record("v1", "Duna", 100, new[] { Site(10, 20, 5000, 33.5), Site(-30, 100.25, 6000) });
@@ -137,8 +137,8 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Null(read.Of("v1", "Duna", DunaRadiusM, 4, 0, 0.1));
             Assert.Equal(5010, read.Of("v1", "Duna", DunaRadiusM, 20, 0, 0.1).LandingUt);
             // A hand-edited save with more than eight is cut to the latest eight too.
-            var many = "[" + string.Join(",", System.Linq.Enumerable.Range(0, 12).Reverse().Select(i =>
-                "{\"vessel_id\":\"v1\",\"body\":\"Duna\",\"ut\":" + (100 + i) + ",\"sites\":[{\"lat\":" + i * 2 + ",\"lng\":0,\"burn_ut\":1,\"landing_ut\":" + (5000 + i) + ",\"sun\":50}]}")) + "]";
+            var many = "{\"saved_ut\":10000,\"calls\":[" + string.Join(",", System.Linq.Enumerable.Range(0, 12).Reverse().Select(i =>
+                "{\"vessel_id\":\"v1\",\"body\":\"Duna\",\"ut\":" + (100 + i) + ",\"sites\":[{\"lat\":" + i * 2 + ",\"lng\":0,\"burn_ut\":1,\"landing_ut\":" + (5000 + i) + ",\"sun\":50}]}")) + "]}";
             var cut = new SitePasses();
             cut.Load(many, 10000);
             Assert.Null(cut.Of("v1", "Duna", DunaRadiusM, 6, 0, 0.1));
@@ -157,16 +157,31 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void An_old_save_without_the_record_loads_cleanly_as_empty()
+        public void A_save_without_the_record_keeps_the_memory_minus_the_answers_past_the_load()
         {
-            var old = new MissionSaveState { Id = "m1" }.ToValues();
-            Assert.DoesNotContain("sitePasses", old.Keys);
             var passes = new SitePasses();
             passes.Record("v1", "Duna", 100, new[] { Site(10, 20, 5000) });
-            passes.Load(MissionSaveState.FromValues(old).SitePasses, 1000);
-            Assert.Null(passes.Of("v1", "Duna", DunaRadiusM, 10, 20, 0.5));
-            passes.Load("not json", 1000);
-            Assert.Null(passes.Of("v1", "Duna", DunaRadiusM, 10, 20, 0.5));
+            passes.Record("v1", "Duna", 300, new[] { Site(-30, 100, 9000) });
+            foreach (var text in new[] { "", null, "not json", "[]", "{\"calls\":[]}" })
+            {
+                var again = new SitePasses();
+                again.Record("v1", "Duna", 100, new[] { Site(10, 20, 5000) });
+                again.Record("v1", "Duna", 300, new[] { Site(-30, 100, 9000) });
+                again.Load(text, 200);
+                Assert.NotNull(again.Of("v1", "Duna", DunaRadiusM, 10, 20, 0.5));
+                Assert.Null(again.Of("v1", "Duna", DunaRadiusM, -30, 100, 0.5));
+            }
+        }
+
+        [Fact]
+        public void The_saved_UT_not_the_load_UT_drops_the_later_answers()
+        {
+            var passes = new SitePasses();
+            passes.Record("v1", "Duna", 100, new[] { Site(10, 20, 5000) });
+            passes.Record("v1", "Duna", 300, new[] { Site(-30, 100, 9000) });
+            var read = Saved(passes, 1000, 200);
+            Assert.NotNull(read.Of("v1", "Duna", DunaRadiusM, 10, 20, 0.5));
+            Assert.Null(read.Of("v1", "Duna", DunaRadiusM, -30, 100, 0.5));
         }
     }
 }

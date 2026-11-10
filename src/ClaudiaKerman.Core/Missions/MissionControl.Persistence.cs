@@ -51,12 +51,17 @@ namespace ClaudiaKerman.Core.Missions
                 var state = StateOf(mission);
                 // The UT the save is made at (#412): a loaded save closes its open RCS Use there. A load still waiting on a request keeps its own.
                 if (mission.DeferredRestore == null) state.SavedUt = _ut;
-                state.SitePasses = ClaudiaKerman.Core.Tools.SitePasses.Shared.ToJson();
                 states.Add(state);
             }
             // The Missions paused at a sequence boundary to make room for the active one.
             states.AddRange(_parked);
             return states;
+        }
+
+        /// <summary>#975: find_landing_site's recent answers for the save, with the UT it is made at: one game-level value, whatever Missions the save holds (see <see cref="Tools.SitePasses.ToJson"/>).</summary>
+        public string ExportSitePasses()
+        {
+            return ClaudiaKerman.Core.Tools.SitePasses.Shared.ToJson(_ut);
         }
 
         private static MissionSaveState StateOf(Mission mission)
@@ -393,10 +398,8 @@ namespace ClaudiaKerman.Core.Missions
             // A dismissed one keeps its folder but is history too.
             var states = restored.States.Where(s => Directory.Exists(MissionFolder.For(_saveDirectory, s.Id)) && !Dismissed(s)).ToList();
             var restore = Choose(states, existing);
-            // #975: find_landing_site's answers are the game's, saved in each Mission's state; answers past the loaded UT are dropped.
-            // A save with no Mission state forgets what the game held. A SavedUt of 0 is unknown: the current UT stands for it.
-            var recorded = restore?.State ?? states.FirstOrDefault();
-            ClaudiaKerman.Core.Tools.SitePasses.Shared.Load(recorded?.SitePasses, recorded != null && recorded.SavedUt > 0 ? recorded.SavedUt : _ut);
+            // #975: find_landing_site's answers are the game's: the save's own, minus those past its UT; a save without them keeps the memory's, minus those past the current UT.
+            ClaudiaKerman.Core.Tools.SitePasses.Shared.Load(restored.SitePasses, _ut);
             // The save's other unfinished Missions wait Paused at the boundary they were parked at; finished ones are history, kept in their folders.
             _parked.Clear();
             _switch = null;

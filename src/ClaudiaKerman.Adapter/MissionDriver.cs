@@ -167,6 +167,11 @@ namespace ClaudiaKerman.Adapter
         private readonly ClaudiaFlagKeeper _flag = new ClaudiaFlagKeeper();
 
         /// <summary>The player's agency flag kept while Claudia's flies, for the save (<see cref="MissionScenario"/>); null when none.</summary>
+        public string ExportSitePasses()
+        {
+            return _mission.ExportSitePasses();
+        }
+
         public string SavedAgencyFlag
         {
             get { return _flag.SavedAgencyFlag; }
@@ -304,7 +309,7 @@ namespace ClaudiaKerman.Adapter
                 RenameMigration.MissionFolder(SaveDirectory(), LogLine);
                 ClaudiaFlags.Renamed();
                 _flag.Load(RenameMigration.FlagUrl(SavedAgencyFlagIn(_game)));
-                Send(new MissionsRestored(SaveDirectory(), Saved(_game)));
+                Send(new MissionsRestored(SaveDirectory(), Saved(_game), SitePassesIn(_game)));
             }
             else if (HighLogic.CurrentGame != null && HighLogic.SaveFolder != _saveFolder)
             {
@@ -431,6 +436,14 @@ namespace ClaudiaKerman.Adapter
             foreach (var module in game.scenarios)
                 if (module.moduleName == typeof(MissionScenario).Name) states.AddRange(MissionScenario.Read(module.GetData()));
             return states;
+        }
+
+        /// <summary>find_landing_site's record the loaded game's save holds (#975); null when none.</summary>
+        private static string SitePassesIn(Game game)
+        {
+            foreach (var module in game.scenarios)
+                if (module.moduleName == typeof(MissionScenario).Name) return MissionScenario.ReadSitePasses(module.GetData());
+            return null;
         }
 
         /// <summary>The agency flag the loaded game's save kept while Claudia's flew; null when none.</summary>
