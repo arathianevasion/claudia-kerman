@@ -197,7 +197,8 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void A_powered_finish_keeps_its_hold_under_chutes_on_the_wheels_and_a_chute_only_finish_still_lets_go()
         {
             var body = Body();
-            Assert.Contains("if powered and held {\n        set ctx:rcs_braking to true.\n        if mains_out { lock steering to reentry_chute_aim(-ship:velocity:surface, ship:up:vector). }\n      } else if not braking {\n        unlock steering.", body);
+            Assert.Contains("if powered and held {\n        if mains_out { lock steering to reentry_chute_aim(-ship:velocity:surface, ship:up:vector). }\n      } else if not braking {\n        unlock steering.", body);
+            Assert.Contains("    if powered and held and (drogues_out or mains_out) { set ctx:rcs_braking to true. }", body); // #963: also after a switch to the engines
             // #942's release still wins: it clears held, so no later mains-out takes the steering back.
             Assert.Contains("low:carry_on and not braking { set held to false. unlock steering.", body);
         }

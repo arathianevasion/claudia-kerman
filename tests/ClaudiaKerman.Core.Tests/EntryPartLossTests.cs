@@ -194,6 +194,20 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void A_drogue_only_group_under_its_drogue_losing_a_part_that_is_no_chute_stays_on_its_drogue()
+        {
+            // No chute of the group went (an antenna did): it had no mains to lose, so the canopy it is under still stands.
+            var ask = Ask(powered: false);
+            ask["uids"] = new List<object> { "d" };
+            ask["chutes"] = new List<object> { Chute("deployed", true) };
+            var loss = Loss(ask, Finish(true, "e1"), Group());
+            Assert.Equal(false, loss["powered"]);
+            Assert.Equal(false, loss["to_engines"]);
+            Assert.Equal(new List<object>(), loss["light"]);
+            Assert.Equal("engines", loss["why"]);
+        }
+
+        [Fact]
         public void A_main_left_aboard_cut_counts_as_lost_with_the_one_that_went()
         {
             var ask = UnderDrogues("deployed", ReentryBrake.Cut);

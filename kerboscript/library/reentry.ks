@@ -759,13 +759,13 @@ function reentry {
       }
       // A powered finish keeps its retrograde hold under them (#954): wheels only, no site correction.
       if powered and held {
-        set ctx:rcs_braking to true.
         if mains_out { lock steering to reentry_chute_aim(-ship:velocity:surface, ship:up:vector). }
       } else if not braking {
         unlock steering.
         claudia_rcs_off("steering released").
       }
     }
+    if powered and held and (drogues_out or mains_out) { set ctx:rcs_braking to true. } // RCS off under a chute out or called, from a switch to the engines too (#963)
   }.
 
   // Core's word this tick (#954): whether braking may start and the guarded throttle. tset: the throttle wanted; off_deg: degrees off the aim. Traces the burn when Core says, cuts the chutes if Core can't read them (and calls no more), notes each change of the group's chutes, and locks the gimbals while they're fully open, freeing them at a cut.

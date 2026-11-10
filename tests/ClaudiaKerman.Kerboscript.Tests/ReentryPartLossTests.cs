@@ -54,6 +54,15 @@ namespace ClaudiaKerman.Kerboscript.Tests
             return body.Substring(start, At(body, End, start) + End.Length - start).Replace("lock steering to srfretrograde.", "set steer_locked to true.");
         }
 
+        /// <summary>The block's chute_tick, whole (#963's RCS rule): with both sets called it opens nothing, so no steering is locked or released.</summary>
+        private static string ChuteTick()
+        {
+            var body = Body();
+            var start = At(body, "  local chute_tick is {\n");
+            const string End = "\n  }.\n";
+            return body.Substring(start, At(body, End, start) + End.Length - start);
+        }
+
         private static string AbortLine()
         {
             var lib = Lib();
@@ -82,7 +91,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 + "  \"entryloss\", { parameter q. set asked to asked + 1. set q:chutes to " + states + ". return test_entry_loss(q, " + finish + ", " + group + "). },\n"
                 + "  \"blocknote\", { parameter b, n. notes:add(n:phase + \":\" + n:lost + \":\" + n:powered + \":\" + n:chutes). set last_why to n:why. })).\n"
                 + "local opt is lexicon(\"min_ec_pct\", 10, \"max_duration\", 100000, \"abort_on_part_loss\", " + abortOnLoss.ToString().ToLowerInvariant() + ", \"chute_mode\", \"" + mode + "\").\n"
-                + "local ctx is lexicon(\"block\", \"reentry\", \"opt\", opt, \"start_ut\", 0, \"parts\", 4, \"ec_tick\", { return 55. }).\n"
+                + "local ctx is lexicon(\"block\", \"reentry\", \"opt\", opt, \"start_ut\", 0, \"parts\", 4, \"ec_tick\", { return 55. }, \"rcs_braking\", false).\n"
                 + "local body_ is lexicon(\"atm\", lexicon(\"height\", 50000)).\n"
                 + "local extra is lexicon(\"parts_lost\", 0).\n"
                 + "local entry_ask is lexicon(\"home\", \"pod\", \"chutes\", true).\n"
@@ -195,6 +204,21 @@ namespace ClaudiaKerman.Kerboscript.Tests
                 "lit=e1@0 held=True shield_gone=True notes=parts_lost:1:True:2",
                 "throttle=0 why=mains lost, on to the engines: engines, keeping everything",
             }, Run(Rig(false, OnEngine, NoChutes, states: DrogueOut) + OnChutes + "lose(\"m\").\n" + Show + "print \"throttle=\" + ship:control:pilotmainthrottle + \" why=\" + last_why.\n"));
+        }
+
+        /// <summary>
+        /// ADR 0020: RCS stays off under a chute. The switch locks the hold while the drogue is out; the warp loop's next stop (fall_tick, so chute_tick) runs before claudia_tick's
+        /// RCS rule, and chute_tick, opening nothing as both sets are called, still sets <c>rcs_braking</c>. On the drogues alone, unpowered, it stays as it was.
+        /// </summary>
+        [Theory]
+        [InlineData(true, "held=True rcs_braking=True")]
+        [InlineData(false, "held=False rcs_braking=False")]
+        public void After_a_switch_under_its_drogues_RCS_stays_off_from_the_next_tick(bool engine, string expected)
+        {
+            var script = Rig(false, engine ? OnEngine : ChutesOnly, NoChutes, states: DrogueOut) + OnChutes + ChuteTick()
+                + "lose(\"m\").\ntick(ctx, 1).\nchute_tick(60, 2500, 0.5).\n"
+                + "print \"held=\" + steer_locked + \" rcs_braking=\" + ctx:rcs_braking.\n";
+            Assert.Equal(new[] { expected }, Run(script));
         }
 
         [Fact]
