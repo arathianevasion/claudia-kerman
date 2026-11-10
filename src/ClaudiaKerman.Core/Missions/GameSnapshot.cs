@@ -253,6 +253,8 @@ namespace ClaudiaKerman.Core.Missions
         /// hours. The Mission sets them on the turn's snapshot before a tool runs; they are not part of the snapshot's JSON.
         /// </summary>
         public bool DaylightLandingDefault = true;
+        /// <summary>The running Mission Script's <c>reentry</c> call (#970), stamped by <see cref="MissionView.Stamp"/> for <c>ENTRYCRAFT</c>; <see cref="ScriptReentry.Auto"/> with none.</summary>
+        public ScriptReentry ScriptReentry = ScriptReentry.Auto;
         public double TimeCapHours = MissionSettingsValues.BalancedSearchHours;
         /// <summary>The sequence being planned is the Last Entry (#828: <see cref="Entries.IsLastEntry"/>), so find_landing_site may offer water; false with no Mission Plan.</summary>
         public bool LastEntryPlanned;

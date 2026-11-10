@@ -1642,7 +1642,8 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>
         /// <c>ADDONS:CLAUDIA:ENTRYCRAFT</c> (#814), for <c>return</c> and <c>deorbit</c> at block start: the craft the Entry ahead will fly
         /// (<see cref="EntryCraft"/>), read once and passed on as it is in each landing prediction's <c>craft</c>. The Entry Shield and
-        /// Last Entry are as <see cref="EntryDropCall"/> has them; <c>reentry</c>'s <c>separate</c> is taken as "auto" and its chutes as opening.
+        /// Last Entry are as <see cref="EntryDropCall"/> has them; <c>reentry</c>'s <c>separate</c> and <c>jettison_stage</c> are the running Mission Script's
+        /// (<see cref="GameSnapshot.ScriptReentry"/>, #970; "auto" with none, and <c>jettison_stage</c> given here wins), and its chutes are taken as opening.
         /// Takes <c>home</c> (as <see cref="EntryDropCall"/>; with <c>core</c> instead, Core finds it), <c>leave_out</c> (kOS UIDs the block drops itself first) and <c>body</c> (where the
         /// Entry is, when not where the craft is: a return's planet). Gives <c>error</c> "", <c>leave_out</c> and <c>shield_drop</c> (kOS UIDs, as
         /// <see cref="LeftOut"/> and <see cref="ShieldDrop"/>), <c>whole</c>, <c>kept</c> and <c>gone_prop</c> (t) and <c>burners_kept</c> (who pays a
@@ -1663,7 +1664,9 @@ namespace ClaudiaKerman.Core.Tools
             }
             var dropped = new HashSet<string>(Uids(input, "leave_out"));
             var own = snapshot.Craft.Parts.Where(p => dropped.Contains(uidOf(p.Id) ?? "")).Select(p => p.Id).ToList();
-            var craft = EntryCraft.Of(snapshot, own, Home(input, snapshot, uidOf), Entries.ShieldNumber(snapshot, legs, step, child), true, true, JettisonStage(input), CoreId(input, snapshot, uidOf));
+            var reentry = snapshot.ScriptReentry ?? ScriptReentry.Auto;
+            var jettison = input.ContainsKey("jettison_stage") ? JettisonStage(input) : reentry.JettisonStage;
+            var craft = EntryCraft.Of(snapshot, own, Home(input, snapshot, uidOf), Entries.ShieldNumber(snapshot, legs, step, child), true, !reentry.KeepsStack, jettison, CoreId(input, snapshot, uidOf));
             if (aimed != null) aimed(craft.Key, craft.Describe());
             var gone = craft.LeftOut.Concat(craft.ShieldLeaves);
             var reserve = LandingReserve.Of(snapshot, gone, (int)Number(input, "stage_limit", 0), Home(input, snapshot, uidOf));
