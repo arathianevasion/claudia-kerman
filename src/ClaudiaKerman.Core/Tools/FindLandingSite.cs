@@ -32,6 +32,8 @@ namespace ClaudiaKerman.Core.Tools
         internal BrakeCraft Craft;
         /// <summary>Sites land has tried already (#528), skipped as <see cref="LandingSiteQuery.Exclude"/>; none for the tool.</summary>
         internal List<double[]> Exclude;
+        /// <summary>Where an answer on a body with air is recorded for <c>deorbit</c> (#974).</summary>
+        internal SitePasses Passes = SitePasses.Shared;
 
         public string Name
         {
@@ -154,7 +156,12 @@ namespace ClaudiaKerman.Core.Tools
             var found = query.HasPoi ? LandingSiteSearch.Ring(body, conic, snapshot.Ut, query, api) : LandingSiteSearch.Find(body, conic, snapshot.Ut, query, api);
             if (found.Error != null) return PlanningJson.Error(found.Error);
             if (query.HasPoi) return RingAnswer(body, poiName, query, found, snapshot.Ut);
-            if (air) return AirAnswer(body, query, found, snapshot.Ut);
+            if (air)
+            {
+                // #974: deorbit given one of these sites and its max_wait_s flies the pass worked out here.
+                Passes.Record(snapshot.Craft.VesselId, body.Name, found.Sites);
+                return AirAnswer(body, query, found, snapshot.Ut);
+            }
             // #545: a biome no pass reaches gets the plane changes for its best site off the track.
             var lookOffTrack = WithPlaneChanges && !query.HasNear && found.Sites.Count == 0 && !found.OutOfTime && !string.IsNullOrEmpty(query.Biome)
                 && query.Craft != null && !deadline.Passed;

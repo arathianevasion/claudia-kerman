@@ -402,9 +402,18 @@ namespace ClaudiaKerman.Core.Tools
         /// anything else is an error); <c>leave_out</c> (<see cref="LeftOut"/>) is for the adapter's <paramref name="craft"/>. Gives <c>error</c> "", <c>burn_ut</c>, <c>prograde</c>, <c>normal</c>, <c>radial</c> (m/s, maneuver
         /// node components), <c>dv</c>, and the landing: <c>lat</c>, <c>lng</c>, <c>error_km</c>, <c>landing_ut</c>. A best burn
         /// outside the accuracy gives its <c>error</c> with the landing; a search that could not run, only <c>error</c>.
+        /// #974: with <c>max_wait</c> a number and the target one of find_landing_site's last sites (<see cref="SitePasses.Shared"/>),
+        /// the search flies that site's pass; <c>pass_note</c> says why when it flew another.
         /// </summary>
         public static IDictionary<string, object> DeorbitBurn(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body,
             IReentryAir air, IReentryCraft craft)
+        {
+            return DeorbitBurn(input, snapshot, body, air, craft, SitePasses.Shared);
+        }
+
+        /// <summary>The same, following the sites recorded in <paramref name="sites"/>.</summary>
+        internal static IDictionary<string, object> DeorbitBurn(IDictionary<string, object> input, GameSnapshot snapshot, IPlanningBody body,
+            IReentryAir air, IReentryCraft craft, SitePasses sites)
         {
             var ask = new Dictionary<string, object>(input ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
             bool chutes;
@@ -434,10 +443,13 @@ namespace ClaudiaKerman.Core.Tools
                 LaterLegsDv = snapshot.LaterLegsDv ?? 0,
                 Daylight = snapshot.DaylightLandingDefault,
                 SunAt = ut => body.SunElevation(at.Name, Number(ask, "lat", 0), Number(ask, "lng", 0), ut),
+                Site = ask.ContainsKey("max_wait") && ask["max_wait"] is double
+                    ? sites.Of(snapshot.Craft.VesselId, at.Name, Number(ask, "lat", 0), Number(ask, "lng", 0)) : null,
             }, air, craft, frame);
             if (plan.Landing == null || plan.Landing.Error != null) return Error(plan.Error ?? plan.Landing.Error);
             var result = Landing(plan.Landing, plan.ErrorKm);
             result["error"] = plan.Error ?? "";
+            if (plan.Note != null) result["pass_note"] = plan.Note;
             result["burn_ut"] = plan.BurnUt;
             result["prograde"] = plan.Prograde;
             result["normal"] = plan.Normal;

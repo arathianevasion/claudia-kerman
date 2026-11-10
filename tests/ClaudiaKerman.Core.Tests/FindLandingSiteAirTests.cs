@@ -179,6 +179,30 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("max_wait_s", result.GetProperty("note").GetString());
         }
 
+        /// <summary>#974: the answer is recorded for deorbit, each site with its pass's landing and sun, found by the site as printed (3 places) for this vessel and body.</summary>
+        [Fact]
+        public void Its_sites_are_recorded_for_deorbit_to_fly_their_passes()
+        {
+            var passes = new SitePasses();
+            var snapshot = Orbiting(Duna());
+            snapshot.Craft.VesselId = "v1";
+            var outcome = new FindLandingSite { Passes = passes }.Run(Claude.JsonReader.Parse("{\"body\":\"Duna\",\"daylight\":true}"), snapshot, new World { SunLongitude = 120 });
+            JsonElement result;
+            using (var doc = JsonDocument.Parse(outcome.Json)) result = doc.RootElement.Clone();
+            var sites = Sites(result);
+            Assert.NotEmpty(sites);
+            foreach (var s in sites)
+            {
+                var pass = passes.Of("v1", "Duna", Num(s, "latitude"), Num(s, "longitude"));
+                Assert.NotNull(pass);
+                Assert.InRange(pass.LandingUt, Num(s, "landing_ut") - 1, Num(s, "landing_ut") + 1);
+                Assert.InRange(pass.SunDeg, Num(s, "sun_elevation_deg") - 0.06, Num(s, "sun_elevation_deg") + 0.06);
+            }
+            Assert.Null(passes.Of("v2", "Duna", Num(sites[0], "latitude"), Num(sites[0], "longitude")));
+            Assert.Null(passes.Of("v1", "Kerbin", Num(sites[0], "latitude"), Num(sites[0], "longitude")));
+            Assert.Null(passes.Of("v1", "Duna", Num(sites[0], "latitude") + 0.01, Num(sites[0], "longitude")));
+        }
+
         [Fact]
         public void A_wait_leaves_deorbit_only_the_pass_with_Daylight()
         {
