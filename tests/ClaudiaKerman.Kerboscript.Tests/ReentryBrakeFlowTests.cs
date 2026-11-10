@@ -449,6 +449,12 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(BooleanValue.True, cut[new StringValue("cut")]);
             Assert.Equal(new StringValue("final burn"), cut[new StringValue("cut_why")]);
             Assert.Equal(BooleanValue.True, cut[new StringValue("final")]);
+            // #969's follow-up: the cut's note, with the seconds left to stop the turn.
+            var cutNote = (Lexicon)cut[new StringValue("note")];
+            Assert.Equal(new StringValue("final_cut"), cutNote[new StringValue("phase")]);
+            Assert.IsAssignableFrom<ScalarValue>(cutNote[new StringValue("turn_s")]);
+            Assert.IsAssignableFrom<ScalarValue>(cutNote[new StringValue("rate_deg")]);
+            Assert.IsAssignableFrom<ScalarValue>(cutNote[new StringValue("up_deg")]);
             var stop = (Lexicon)((Lexicon)KosValues.FromPlain(BlockCalls.BrakeTick(new Dictionary<string, object>
             {
                 { "radar", 300.0 }, { "speed", 8.0 }, { "v_down", 8.0 }, { "a_up", 12.0 }, { "g", 2.94 }, { "soft", 2.0 }, { "end", 10.0 }, { "now", 100.0 }, { "brake_why", "last resort" }, { "all_open_ut", 80.0 },
