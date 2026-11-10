@@ -146,8 +146,22 @@ namespace ClaudiaKerman.Core.Tests
             var legs = AfterAscent();
             Assert.Equal("plan_step 4 is \"Land at Duna equator\"; this plan flies step 7, \"Transfer to Kerbin, soonest window\", and counts as step 7.",
                 PlanSteps.Line(legs, 4, 7));
-            Assert.Equal("plan_step 9 is not a step of the Mission Plan; this plan flies step 7, \"Transfer to Kerbin, soonest window\", and counts as step 7.",
-                PlanSteps.Line(legs, 9, 7));
+        }
+
+        [Fact]
+        public void AStepOutsideTheMissionPlanStaysTheScriptChecksProblem()
+        {
+            Assert.Null(Resolve(AfterAscent(), "Transfer to Kerbin, next window", 9, 6));
+            Assert.Null(Resolve(AfterAscent(), "Transfer to Kerbin, next window", 0, 6));
+        }
+
+        [Fact]
+        public void APlanStepStillToFlyNeverGivesWayToALegAlreadyFlown()
+        {
+            // Step 7 sent for a landing named in words only the flown step 4 matches: the step sent stands.
+            Assert.Null(Resolve(AfterAscent(), "Land at Duna equator", 7, 6));
+            // Sent as a flown step, it takes the flown leg it names (a landing flown again).
+            Assert.Equal(4, Resolve(AfterAscent(), "Land at Duna equator", 2, 6));
         }
     }
 }

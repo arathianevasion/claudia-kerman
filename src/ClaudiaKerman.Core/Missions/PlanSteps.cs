@@ -35,22 +35,23 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         public static int? Resolve(IList<PlannedSequence> legs, string name, int sent, int lastBegun, IEnumerable<string> bodies)
         {
-            if (legs == null || legs.Count == 0 || string.IsNullOrWhiteSpace(name)) return null;
+            // A step outside the Mission Plan stays the Script Check's problem (#837): Claudia names it again.
+            if (legs == null || sent < 1 || sent > legs.Count || string.IsNullOrWhiteSpace(name)) return null;
             var names = (bodies ?? Enumerable.Empty<string>()).Where(b => !string.IsNullOrEmpty(b)).ToList();
             var matches = Enumerable.Range(1, legs.Count).Where(step => Clear(name, legs[step - 1].Name, names)).ToList();
             var toFly = matches.Where(step => step >= lastBegun).ToList();
             if (matches.Contains(sent) && (sent >= lastBegun || toFly.Count == 0)) return null;
             if (toFly.Count == 1) return toFly[0];
-            if (matches.Count == 1 && !matches.Contains(sent)) return matches[0];
+            // A leg already flown is taken only in place of another flown one: never back over legs still to fly.
+            if (matches.Count == 1 && !matches.Contains(sent) && sent < lastBegun) return matches[0];
             return null;
         }
 
         /// <summary>The one line the mod tells Claudia (and logs) when <paramref name="sent"/> gave way to <paramref name="step"/>.</summary>
         public static string Line(IList<PlannedSequence> legs, int sent, int step)
         {
-            var was = sent >= 1 && sent <= legs.Count ? "is \"" + legs[sent - 1].Name + "\"" : "is not a step of the Mission Plan";
             var number = step.ToString(CultureInfo.InvariantCulture);
-            return "plan_step " + sent.ToString(CultureInfo.InvariantCulture) + " " + was + "; this plan flies step " + number + ", \"" + legs[step - 1].Name + "\", and counts as step " + number + ".";
+            return "plan_step " + sent.ToString(CultureInfo.InvariantCulture) + " is \"" + legs[sent - 1].Name + "\"; this plan flies step " + number + ", \"" + legs[step - 1].Name + "\", and counts as step " + number + ".";
         }
 
         /// <summary>
