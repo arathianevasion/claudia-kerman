@@ -2,7 +2,7 @@
 
 In-game check for #963. A chute-only `reentry` with its drogues out or armed that loses its main chutes in the air no longer just falls on under the drogues. Core's `ENTRYLOSS` sees a chute of the group gone and no main left aboard, and lets `ENTRYFINISH`'s fresh answer decide. If that says engines, the block lights them (part by part, at zero throttle, no stage) and flies #954's powered finish from there. The group is kept, drogues included, so `BRAKETICK` holds the thrust at zero until they are fully open and settled. If it says chutes (no engine with fuel, or none that will light) the craft stays on its drogues. Either way the `parts_lost` note's `why` says which. The agent run that wrote this did not launch KSP.
 
-**Block migration:** the decision is in Core (`BlockCalls.EntryPartLoss`, the mains-lost rule); `BRAKETICK`'s held times start fresh at the switch (`BlockCalls.BrakeFresh`, the addon). The zero throttle at lighting moved into `reentry_light`, so the library count didn't change. No `//|` change.
+**Block migration:** the decision is in Core (`BlockCalls.EntryPartLoss`, the mains-lost rule); `BRAKETICK`'s held times start fresh at the switch (`BlockCalls.EmptyBrakeHold`, the addon). The zero throttle at lighting moved into `reentry_light`, so the library count didn't change. No `//|` change.
 
 ## The craft
 

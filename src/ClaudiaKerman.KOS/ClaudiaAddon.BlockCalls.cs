@@ -435,7 +435,7 @@ namespace ClaudiaKerman.KOS
                 ask["chutes"] = ReentryCraft.ChuteStates(shared.Vessel, uids);
                 loss = BlockCalls.EntryPartLoss(ask, ReadEntryFinish, ReadChuteGroup);
                 // Gone over to its engines (#963): BRAKETICK starts fresh, so a canopy already out is waited for from now, never on what an earlier flight left.
-                if (loss.ContainsKey("to_engines") && (bool)loss["to_engines"]) HoldBrake(BlockCalls.BrakeFresh());
+                if (loss.ContainsKey("to_engines") && (bool)loss["to_engines"]) HoldBrake(BlockCalls.EmptyBrakeHold());
                 return KosValues.FromPlain(loss);
             }, () => string.Format(CultureInfo.InvariantCulture, "carry on {0}, {1}", loss["carry_on"], loss.ContainsKey("why") ? loss["why"] : ""));
             return loss != null ? (Lexicon)answer : (Lexicon)KosValues.FromPlain(BlockCalls.EntryPartLoss(KosValues.ToDictionary(input), null, null));

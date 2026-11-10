@@ -11,6 +11,12 @@ namespace ClaudiaKerman.Core.Tools
 {
     public static partial class BlockCalls
     {
+        /// <summary>How <see cref="EntryPartLoss"/>'s <c>why</c> begins when a chute path's loss took its mains and the finish chose its engines (#963).</summary>
+        public const string WhyMainsLostToEngines = "mains lost, on to the engines: ";
+
+        /// <summary>The same when the finish found no engine that can land it, so the craft stays on its drogues (#963).</summary>
+        public const string WhyMainsLostOnDrogues = "mains lost, staying on the drogues: ";
+
         /// <summary>
         /// <c>ADDONS:CLAUDIA:ENTRYLOSS</c>, for <c>reentry</c> (#958, ADR 0014), when its part count has fallen below what it last took as the craft. <c>carry_on</c> is whether the block goes on
         /// rather than abort: parts lost (<c>lost</c>) while off the ground (<c>on_ground</c>) at or under the air top (<c>altitude</c>, <c>air_top</c>, m), whatever <c>abort_on_part_loss</c> says. Above the air it is false and the
@@ -58,7 +64,7 @@ namespace ClaudiaKerman.Core.Tools
                 { "chute_mode", uids == 0 ? "none" : powered ? Word(ask, "chute_mode") : Word(ask, "mode") },
                 { "finish", finish },
                 { "group", group },
-                { "why", (mainsLost ? chosen ? "mains lost, on to the engines: " : "mains lost, staying on the drogues: " : "") + (read ? finish.ContainsKey("why") ? finish["why"] : "" : finish["error"]) },
+                { "why", (!mainsLost ? "" : chosen ? WhyMainsLostToEngines : WhyMainsLostOnDrogues) + (read ? finish.ContainsKey("why") ? finish["why"] : "" : finish["error"]) },
             };
         }
 

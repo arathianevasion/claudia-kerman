@@ -393,7 +393,7 @@ namespace ClaudiaKerman.Core.Tools
         /// What <see cref="BrakeTick"/> holds between ticks, holding nothing: for the addon when a chute path goes over to its engines in the air (#963, and #958's switch).
         /// A chute path asks <c>BRAKETICK</c> nothing, so what an earlier flight left must not count. A set already out is then called at the switch and its settle time runs from there: never shorter than its own.
         /// </summary>
-        public static IDictionary<string, object> BrakeFresh()
+        public static IDictionary<string, object> EmptyBrakeHold()
         {
             return new Dictionary<string, object>
             {

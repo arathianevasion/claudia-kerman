@@ -205,7 +205,7 @@ namespace ClaudiaKerman.Core.Tests
         public void At_the_switch_braking_starts_fresh_and_waits_for_the_drogues_already_out_to_settle()
         {
             // The addon's held times go back to these at the switch: a chute path has called BRAKETICK on none of its ticks, and what an earlier flight left must not count.
-            var held = BlockCalls.BrakeFresh().Select(p => K(p.Key, p.Value)).Concat(new[] { K("drogues_called", true), K("mains_called", false) }).ToArray();
+            var held = BlockCalls.EmptyBrakeHold().Select(p => K(p.Key, p.Value)).Concat(new[] { K("drogues_called", true), K("mains_called", false) }).ToArray();
             var drogueOut = new object[] { Chute(ReentryBrake.Deployed, true) };
             var first = BlockCalls.BrakeTick(WithUids(Tick(100, drogueOut, held), "d", "m"));
             Assert.Equal(ReentryBrake.WhyChuteOpening, first["zero_why"]);
@@ -229,7 +229,7 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void At_the_switch_an_armed_drogue_holds_the_thrust_for_its_second_then_the_last_resort_rule_holds()
         {
-            var ask = Tick(100, new object[] { Chute(ReentryBrake.Armed, true) }, BlockCalls.BrakeFresh().Select(p => K(p.Key, p.Value)).ToArray());
+            var ask = Tick(100, new object[] { Chute(ReentryBrake.Armed, true) }, BlockCalls.EmptyBrakeHold().Select(p => K(p.Key, p.Value)).ToArray());
             ask["drogues_called"] = true;
             ask["mains_called"] = false;
             var first = BlockCalls.BrakeTick(WithUids(ask, "d", "m"));
@@ -249,7 +249,7 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void Fresh_brake_times_hold_nothing()
         {
-            var fresh = BlockCalls.BrakeFresh();
+            var fresh = BlockCalls.EmptyBrakeHold();
             foreach (var key in new[] { "open_ut", "kept_ut", "drogue_call_ut", "main_call_ut", "sample_ut", "last_resort_ut", "unread_ut", "trace_ut" }) Assert.Equal(-1.0, fresh[key]);
             foreach (var key in new[] { "open_count", "kept_drogues", "kept_mains", "sample_speed", "decel" }) Assert.Equal(0.0, fresh[key]);
             Assert.Equal(false, fresh["settled"]);
