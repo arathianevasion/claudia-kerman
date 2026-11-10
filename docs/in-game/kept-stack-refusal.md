@@ -15,3 +15,5 @@ A `reentry` with `separate: "none"` keeps the whole stack, so the Script Check r
 1. Repeat, and make the stack's staying the point of the note: "The whole stack lands and flies back; give the reason."
 2. The plan is offered, and the Mission window has a "Script Check: line N: reentry with separate "none" keeps the whole stack..." event.
 3. Reload the save at that Sequence Plan: it is offered again (the reason is saved as `reason_given`).
+
+A pending plan from a save made before this change, with separate "none" and a reason, is refused on restore ("Couldn't produce a safe script") and needs Retry.
