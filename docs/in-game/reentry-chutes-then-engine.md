@@ -4,9 +4,17 @@ In-game check for #954 (flight m20261109-140705-ae3a braked at 1.7 km under chut
 
 **Block migration:** the brake height, the stopping distance, `reentry_brake_due`, the last-resort height and the throttle guard are in Core (`ReentryBrake`), behind `BRAKEHEIGHTS` and `BRAKETICK`; the parity test against the Kerboscript was deleted with it (ADR 0014). `reentry_duna_powered` flies with `chutes: "none"`, so it can't check this.
 
-## Fly: `tests/blocks/reentry_duna_chutes_then_engine`
+## Fly: `tests/blocks/reentry_duna_chutes_then_engine` (the last resort, from an orbit)
 
-It has the Mk16 (its deploy altitude set to 3,000 m) and an LV-T45 (with a gimbal) from `reentry_duna_powered`, flown on `reentry`'s defaults. It starts as a near-vertical hop from 8 km over Duna (see the evidence below for why not an orbit). Results are in `KSP.log`.
+The same craft (Mk16 at its default deploy altitude, an LV-T45 with a gimbal) in an 80 km orbit with the entry as before. It is slick and heavy, so it is still at about 650 m/s at 1,500 m AGL: the Mk16 stays `armed` and the last resort burns. Pass lines: `touchdown_speed` under 3, `powered_dv` over 5, a chute opened, `gimbal_locked` false. The harness reads result fields only, so it can't see the blocknotes: `powered_dv > 5` stands in for "the last resort fired", and the spin rule is not checked by the harness. A human reads `KSP.log`:
+
+1. A blocknote `phase braking` reads `last resort`, at the last-resort height (not before), with the chute `armed` and counted as failed.
+2. Thrust is zero while the chute opens (`zero_why` `chute opening`), and a spin over 20 deg/s makes `zero_why` read `spinning` with the throttle at 0 (the spin rule). Note the `rate_deg` before and after the cut.
+3. It lands under 3 m/s.
+
+## Fly: `tests/blocks/reentry_duna_hop_chutes_then_engine` (chutes first)
+
+It has the Mk16 (its deploy altitude set to 3,000 m) and an LV-T45 (with a gimbal) from `reentry_duna_powered`, flown on `reentry`'s defaults. It starts as a near-vertical hop from 8 km over Duna (see the evidence below for why not an orbit; `test.cfg` has the numbers). Results are in `KSP.log`.
 
 0. Before anything else: the speed at 1,500 m AGL. It should read under 250 m/s (free fall alone bounds it at 209 m/s, with the ground at sea level or above). If the craft spawned under the ground, or a different part of Duna is high, say so.
 
@@ -17,9 +25,11 @@ It has the Mk16 (its deploy altitude set to 3,000 m) and an LV-T45 (with a gimba
 5. Trace lines (`phase braking`) once a second give `throttle`, `off_deg`, `rate_deg` and `zero_why`. `rate_deg` is the tipping rate only, measured as `land` does: a craft rolling about its thrust axis reads low and keeps its thrust. Throttle reads 0 while `zero_why` is set: `chute opening`, `chutes unreadable`, `spinning` (tipping over 20 deg/s) or `off aim` (over 30).
 6. The result's `gimbal_locked` is false, and the LV-T45 gimbals for the next flight (a craft relaunched after this lands has its gimbal back).
 
-## Evidence: the first version of the scenario (2026-11-09, install 211d22f5)
+**Terrain caveat:** the block-test harness has no longitude key, so where the hop lands is not fixed. The test reads the ground height under the craft at the start (log line `reentry hop test: ground under the hop ... m above sea level`, and the result's `ground_m`) and fails on `ground_ok` if it is above about 2,000 m, so it cannot quietly become a second last-resort test. If it fails that way, the run says nothing about chutes first: note the height on #954 and fly again from another spawn. The 209 m/s bound and the chute heights assume ground near sea level.
 
-The player's run of the orbital version landed at 1.7 m/s, but `powered_dv` was 299 against the pass line of under 120. The craft was at 1,459 m AGL doing 655 m/s: the Mk16 stayed `armed` (it opens under 250 m/s), counted as failed after 1 s, and the last resort burned about 6.5 s at full thrust. Thrust was then zero for 11 s while the chute opened, and the spin rule cut thrust once, at 26.7 deg/s, after relighting under the open canopy. So the last resort and the spin rule worked as built; the scenario never tested chutes first, because this slick, heavy craft falls at about its terminal speed and an orbital entry cannot slow it by 1,500 m. The scenario is now a hop (the line above, and `test.cfg`). Not shown without flying: that the new hop keeps `powered_dv` under 120, or has the chute full and settled before the last-resort height. If it still burns the last resort, say so on #954 with the speed at 1,500 m.
+## Evidence: the orbital scenario (2026-11-09, install 211d22f5): the last resort and the spin rule worked
+
+The player's run of the orbital version landed at 1.7 m/s, but `powered_dv` was 299 against the pass line of under 120. The craft was at 1,459 m AGL doing 655 m/s: the Mk16 stayed `armed` (it opens under 250 m/s), counted as failed after 1 s, and the last resort burned about 6.5 s at full thrust. Thrust was then zero for 11 s while the chute opened, and the spin rule cut thrust once, at 26.7 deg/s, after relighting under the open canopy. So the last resort and the spin rule worked as built; the scenario never tested chutes first, because this slick, heavy craft falls at about its terminal speed and an orbital entry cannot slow it by 1,500 m. The orbital scenario now tests that last-resort path (its pass line is under 3 m/s and a burn, not `powered_dv` under 120); the chutes-first path is the hop above. Not shown without flying: that the new hop keeps `powered_dv` under 120, or has the chute full and settled before the last-resort height. If it still burns the last resort, say so on #954 with the speed at 1,500 m.
 
 ## Watch
 
