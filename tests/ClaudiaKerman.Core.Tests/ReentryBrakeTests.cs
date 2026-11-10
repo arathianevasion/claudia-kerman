@@ -1137,6 +1137,100 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("unreadable", BlockCalls.BrakeTick(UnreadTick(100, 99))["cut_why"]);
         }
 
+        // ---- The final height leaves the time to stop the craft's turn (#969, the player's option c) ----
+        // A ±30° swing every ~10 s passes upright at about 19 deg/s; the 41 t stack's wheels give about 7 deg/s², so it turns
+        // another 20 to 30° before they stop it, and the 30° guard could zero the thrust near the ground with the chutes gone.
+
+        /// <summary>Wheels of <paramref name="torque"/> kN m on pitch and yaw, 100 t m² each: 10 kN m is 0.1 rad/s², 5.73 deg/s². RCS aboard, which the stop doesn't count (it is off under the chutes).</summary>
+        private static TurnCraft Wheels(double torque)
+        {
+            return new TurnCraft { WheelPitch = torque, WheelYaw = torque, RcsPitch = 50, RcsYaw = 50, RcsUsable = true, MoiPitch = 100, MoiYaw = 100 };
+        }
+
+        private static readonly double Alpha10 = 0.1 * 180 / Math.PI;
+
+        /// <summary>The final height for <see cref="UnderCanopy"/> unrounded (<see cref="FinalH"/> is to 2 places).</summary>
+        private static readonly double Base = ReentryBrake.FinalHeight(8, AUp, G, 300, Soft, End);
+
+        private static Dictionary<string, object> Swinging(double radar, double rate, double up = 5)
+        {
+            var ask = UnderCanopy(radar, up);
+            ask["rate_deg"] = rate;
+            return ask;
+        }
+
+        [Fact]
+        public void The_time_to_stop_a_turn_is_its_rate_over_the_wheels_and_the_way_back_inside_30_degrees()
+        {
+            Assert.Equal(0, ReentryBrake.TurnStopSeconds(0, 25, Alpha10));
+            Assert.Equal(0, ReentryBrake.TurnStopSeconds(-1, 25, Alpha10)); // unread: no hold, as the spin rule
+            // 10 deg/s at 5° off: stopped in 1.75 s, 8.7° on, still inside 30°.
+            Assert.Equal(10 / Alpha10, ReentryBrake.TurnStopSeconds(10, 5, Alpha10), 6);
+            // 18 deg/s at 25° off, turning away: it stops 28.3° on, at 53.3°, and the guard zeroes the thrust until it is back inside 30°.
+            var over = 25 + 18 * 18 / (2 * Alpha10) - ReentryBrake.MaxOffAimDeg;
+            Assert.Equal(18 / Alpha10 + Math.Sqrt(2 * over / Alpha10), ReentryBrake.TurnStopSeconds(18, 25, Alpha10), 6);
+            Assert.True(double.IsPositiveInfinity(ReentryBrake.TurnStopSeconds(5, 5, 0))); // no wheels: never stops
+        }
+
+        [Fact]
+        public void With_no_turn_to_stop_the_final_height_is_as_before()
+        {
+            var tick = BlockCalls.BrakeTick(Swinging(300, 0), () => Wheels(10));
+            Assert.Equal(Base, D(tick, "final_h"), 6);
+            Assert.Equal(true, BlockCalls.BrakeTick(Swinging(Base - 0.5, 0), () => Wheels(10))["cut"]);
+            Assert.Equal(false, BlockCalls.BrakeTick(Swinging(Base + 0.5, 0), () => Wheels(10))["cut"]);
+        }
+
+        [Fact]
+        public void A_turn_to_stop_raises_the_final_height_by_the_fall_while_it_stops()
+        {
+            // 10 deg/s on 0.1 rad/s² of wheels: 1.75 s at 8 m/s.
+            var raised = Base + 8 * 10 / Alpha10;
+            Assert.Equal(raised, D(BlockCalls.BrakeTick(Swinging(60, 10), () => Wheels(10)), "final_h"), 6);
+            Assert.Equal(true, BlockCalls.BrakeTick(Swinging(raised - 0.5, 10), () => Wheels(10))["cut"]);
+            var above = BlockCalls.BrakeTick(Swinging(raised + 0.5, 10), () => Wheels(10));
+            Assert.Equal(false, above["cut"]);
+            AssertNoThrust(above, ReentryBrake.WhyFinalWait);
+            // Without a reading of the craft, the height is as before #969's follow-up.
+            Assert.Equal(Base, D(BlockCalls.BrakeTick(Swinging(60, 10), () => null), "final_h"), 6);
+            // Higher than the cap could raise it, the craft isn't read: it waits either way.
+            var read = false;
+            Assert.Equal(Base, D(BlockCalls.BrakeTick(Swinging(300, 10), () => { read = true; return Wheels(10); }), "final_h"), 6);
+            Assert.False(read);
+        }
+
+        [Fact]
+        public void A_weak_craft_gets_no_more_than_the_cap_and_the_cut_waits_while_its_turn_would_take_longer()
+        {
+            // 1 kN m on 100 t m²: 0.57 deg/s², 17 s to stop 10 deg/s.
+            var capped = Base + 8 * ReentryBrake.MaxTurnStopSeconds;
+            Assert.Equal(capped, D(BlockCalls.BrakeTick(Swinging(60, 10), () => Wheels(1)), "final_h"), 6);
+            var held = BlockCalls.BrakeTick(Swinging(capped - 0.5, 10), () => Wheels(1));
+            Assert.Equal(false, held["cut"]);
+            AssertNoThrust(held, ReentryBrake.WhyCutHeld);
+            // The swing slows enough: the cut goes.
+            Assert.Equal(true, BlockCalls.BrakeTick(Swinging(Base, 1), () => Wheels(1))["cut"]);
+            // Under the height where full thrust only just stops it, it burns with the chutes on, as before.
+            var low = BlockCalls.BrakeTick(Swinging(7, 10), () => Wheels(1));
+            Assert.Equal(false, low["cut"]);
+            Assert.Equal(0.8, D(low, "throttle"));
+        }
+
+        [Fact]
+        public void The_cut_is_noted_with_the_rate_the_angle_and_the_extra_seconds()
+        {
+            var raised = Base + 8 * 10 / Alpha10;
+            var tick = BlockCalls.BrakeTick(Swinging(raised - 0.5, 10, 12), () => Wheels(10));
+            Assert.Equal(true, tick["cut"]);
+            var note = (IDictionary<string, object>)tick["note"];
+            Assert.Equal("final_cut", note["phase"]);
+            Assert.Equal(Math.Round(10 / Alpha10, 1), Convert.ToDouble(note["turn_s"]));
+            Assert.Equal(10.0, Convert.ToDouble(note["rate_deg"]));
+            Assert.Equal(12.0, Convert.ToDouble(note["up_deg"]));
+            Assert.Equal(Math.Round(raised), Convert.ToDouble(note["final_h"]));
+            Assert.Equal(Math.Round(raised - 0.5), Convert.ToDouble(note["agl"]));
+        }
+
         // ---- States the addon can't read (player, 2026-11-09): cut what is out and land on the engine ----
 
         private const string Unread = "chutes_unread";

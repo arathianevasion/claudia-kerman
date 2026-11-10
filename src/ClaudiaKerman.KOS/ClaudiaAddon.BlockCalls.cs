@@ -941,7 +941,7 @@ namespace ClaudiaKerman.KOS
                 var ask = BrakeAsk(input);
                 var uids = ask.ContainsKey("uids") ? ((System.Collections.Generic.IEnumerable<object>)ask["uids"]).Select(u => Convert.ToString(u, CultureInfo.InvariantCulture)).ToList() : new System.Collections.Generic.List<string>();
                 ask["chutes"] = ReentryCraft.ChuteStates(shared.Vessel, uids);
-                tick = BlockCalls.BrakeTick(ask);
+                tick = BlockCalls.BrakeTick(ask, () => BrakeTurnCraft());
                 HoldBrake(tick);
                 NoteBrake(tick);
                 return KosValues.FromPlain(tick);
@@ -952,6 +952,23 @@ namespace ClaudiaKerman.KOS
             tick = BlockCalls.BrakeTick(blind);
             HoldBrake(tick);
             return (Lexicon)KosValues.FromPlain(tick);
+        }
+
+        /// <summary>
+        /// The craft's torque and moment of inertia, read as TURNTIME reads them (<see cref="TurnCraftReader"/>), for <see cref="BrakeTickCall"/>'s final height (#969): Core asks only when the craft is tipping near the cut.
+        /// A read that fails is logged and answers null, so the final height stays as it was and the chute states, read apart, are not thought unreadable.
+        /// </summary>
+        private TurnCraft BrakeTurnCraft()
+        {
+            try
+            {
+                return TurnCraftReader.Read(shared.Vessel);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning(ModInfo.LogTag + " block call BRAKETICK couldn't read the craft's torque, so the final height leaves no time to stop its turn: " + e);
+                return null;
+            }
         }
 
         /// <summary>The block's ask with the time and what this processor holds between ticks, for <see cref="BrakeTickCall"/>.</summary>
