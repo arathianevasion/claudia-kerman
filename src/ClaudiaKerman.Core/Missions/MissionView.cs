@@ -451,6 +451,8 @@ namespace ClaudiaKerman.Core.Missions
         public WindowPick WindowPick = WindowPick.None;
         /// <summary>The window the running <c>return</c> was planned for (#887), for <see cref="Stamp"/>; null for none.</summary>
         public double? ReturnWindowUt;
+        /// <summary>The running Mission Script's <c>reentry</c> call (#970), for <see cref="Stamp"/>; <see cref="Missions.ScriptReentry.Auto"/> when none runs.</summary>
+        public ScriptReentry ScriptReentry = ScriptReentry.Auto;
 
         /// <summary>The Mission Settings in force.</summary>
         public MissionSettingsValues Settings = new MissionSettingsValues();
@@ -474,6 +476,7 @@ namespace ClaudiaKerman.Core.Missions
                 snapshot.LaterLegsDv = view.PlanLegs == null ? (double?)null : MissionCards.LaterLegsDv(view.PlanLegs, view.CurrentSequence + 1, true, view.CraftName, view.RunningChild);
                 snapshot.PickedSite = view.PickedSite;
                 snapshot.ReturnWindowUt = view.ReturnWindowUt;
+                snapshot.ScriptReentry = view.ScriptReentry;
                 snapshot.RecordedPlane = view.ArrivalPlane;
                 // Each vessel reads only the landing it aimed (#913).
                 snapshot.LandingTarget = view.LandingTargets.Of(snapshot.Craft.VesselId);
