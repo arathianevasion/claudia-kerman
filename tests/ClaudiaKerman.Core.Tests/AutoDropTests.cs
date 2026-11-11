@@ -132,6 +132,38 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         /// <summary>
+        /// Flight m20261111-172716-a40a: Claudia split the trip home in two, and the reentry step names Kerbin but says no "return". The
+        /// player's ruling (fix round 2 after flight): a landing on Kerbin is never a landing, whatever words it uses.
+        /// </summary>
+        [Fact]
+        public void TheSplitTripHomeLeavesTheLegsFreeAtTheDunaAscent()
+        {
+            var plan = new List<PlannedSequence>
+            {
+                Leg("Crew report on Duna", "Run the crewReport experiment from the landed pod and transmit it."),
+                Leg("Ascent from Duna to orbit", "Launch from the Duna surface to a 60 km orbit and circularize."),
+                Leg("Return transfer to Kerbin", "Depart Duna at the soonest Duna-Kerbin window and coast toward Kerbin."),
+                Leg("Reentry at Kerbin", "Coast to the Kerbin encounter and reenter with heat shield and parachutes to recover the crew."),
+            };
+            Assert.True(AutoDrop.LegsFree(plan, 1));
+            Assert.Equal(new[] { "shield", "leg" }, AutoDrop.FreeKinds(plan, 1).ToArray());
+        }
+
+        [Theory]
+        [InlineData("Reentry at Kerbin", "")]
+        [InlineData("Land at KSC", "")]
+        [InlineData("Deorbit and splash down on Kerbin", "")]
+        [InlineData("Kerbin landing", "Deorbit, reenter and descend under the chutes.")]
+        [InlineData("Home stretch", "Reenter and land at the Kerbal Space Center.")]
+        [InlineData("Second stop", "Leave Mun orbit, then land at Kerbin.")]
+        [InlineData("Second stop", "Leave Mun orbit, then splash down at KSC.")]
+        public void ALandingOnKerbinIsNoLanding(string name, string intent)
+        {
+            var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };
+            Assert.True(AutoDrop.LegsFree(plan, 0));
+        }
+
+        /// <summary>
         /// Fix round 3: a landing word after the body, before the next reentry word or Kerbin, comes down there, even when the body follows
         /// "leave", "depart" or "from ... orbit". The name says nothing of the body, so only the intent tells.
         /// </summary>
@@ -192,6 +224,9 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("Mun descent", "Descend on the engine to the crater.")]
         [InlineData("Duna", "Powered descent to the Lowlands.")]
         [InlineData("Ike", "Descending to the equator.")]
+        [InlineData("Descent to Duna equator", "")]
+        [InlineData("Laythe", "Leave Kerbin orbit for Laythe, aerobrake and splash down.")]
+        [InlineData("Laythe splashdown", "After the Kerbin transfer, aerobrake and come down under the chutes.")]
         public void DescendAndDescentAreLandings(string name, string intent)
         {
             var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };

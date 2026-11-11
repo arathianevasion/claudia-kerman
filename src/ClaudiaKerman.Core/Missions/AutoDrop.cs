@@ -17,7 +17,7 @@ namespace ClaudiaKerman.Core.Missions
     /// never counts a radial shield as one (#843).
     /// </para>
     /// <para>
-    /// <b>Landing legs once no landing is left</b> (<see cref="LegsFree"/>); a Kerbin return is no landing unless it comes down on another body it names.
+    /// <b>Landing legs once no landing is left</b> (<see cref="LegsFree"/>); a landing on Kerbin is none, unless the step also comes down on another body it names.
     /// No Mission Plan (a block test): they stay.
     /// </para>
     /// </summary>
@@ -34,12 +34,14 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>
         /// True when the Mission Plan (<paramref name="plan"/>, null: none) has no landing still to fly from the sequence in hand
         /// (<paramref name="step"/>, -1 before the first) on, that one included. A landing, read from the words as <see cref="SequenceWords"/>
-        /// reads them: land or touch down, a deorbit, a reentry, or descend / descent, manual legs too. A Kerbin return (a return home) is never
-        /// one on its own, whatever its words ("reenter and land", "touch down at KSC"): the player's ruling. It is one only when it comes down
-        /// on another stock body it names (<see cref="SequenceWords.IsLandingSite"/>): "Deorbit to the Mun crater, then return to Kerbin and
+        /// reads them: land or touch down, a deorbit, a reentry, or descend / descent, manual legs too. A landing on Kerbin is never one,
+        /// whatever its words (the player's ruling): a step that names Kerbin or a place on it (KSC), or returns home, is one only when it
+        /// comes down on another stock body it names (<see cref="SequenceWords.IsLandingSite"/>). "Reentry at Kerbin", "Land at KSC" and
+        /// "Deorbit and splash down on Kerbin" aren't; "Deorbit to the Mun crater, then return to Kerbin and
         /// land" and "Leave Mun orbit and land at the crater, then return to Kerbin" land on the Mun; "Return from the Mun to Kerbin and land"
-        /// and "Eject from Duna orbit at the soonest Duna-to-Kerbin window, ... then reenter and land" don't. Name and intent read as separate
-        /// sentences, line breaks as spaces.
+        /// and "Eject from Duna orbit at the soonest Duna-to-Kerbin window, ... then reenter and land" don't. A step that names neither
+        /// (no body, or only an away body it doesn't tie the landing to: "Duna entry") is one. Name and intent read as separate sentences,
+        /// line breaks as spaces.
         /// </summary>
         public static bool LegsFree(IList<PlannedSequence> plan, int step)
         {
@@ -58,7 +60,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (!SequenceWords.Landing.IsMatch(words) && !SequenceWords.Deorbit.IsMatch(words) && !SequenceWords.Reentry.IsMatch(words)
                 && !SequenceWords.Descent.IsMatch(words)) return false;
-            return !SequenceWords.ReturnHome.IsMatch(words)
+            return !SequenceWords.ReturnHome.IsMatch(words) && !SequenceWords.KerbinPlace.IsMatch(words)
                 || AwayBody.Matches(words).Cast<Match>().Any(m => SequenceWords.IsLandingSite(words, m));
         }
     }
