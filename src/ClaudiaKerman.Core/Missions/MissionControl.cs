@@ -303,6 +303,8 @@ namespace ClaudiaKerman.Core.Missions
             public int? PlanStep;
             /// <summary>The <see cref="PlanStep"/> from before the Sequence Plan in hand was counted: what a plan dropped unflown leaves.</summary>
             public int? PlanStepBefore;
+            /// <summary>#977: the line telling Claudia a plan_step she sent gave way to the step the plan flies; the next request carries it, once.</summary>
+            public string PlanStepLine = "";
             /// <summary>What the Script Check last found, while "Couldn't produce a safe script" is shown.</summary>
             public IList<string> UnsafeProblems;
             public readonly List<LogEntry> Log = new List<LogEntry>();
@@ -1172,7 +1174,7 @@ namespace ClaudiaKerman.Core.Missions
                 Enqueue(mission, turn);
                 return;
             }
-            turn.UserText = DepartureLine(mission) + turn.UserText;
+            turn.UserText = DepartureLine(mission) + PlanStepLine(mission) + turn.UserText;
             if (turn.Purpose == Purpose.Debrief && PrepareDebrief(mission, turn)) return;
             if (turn.Purpose == Purpose.MissionPlan || (turn.Purpose == Purpose.SequencePlan && !turn.ScriptRewrite)) turn.UserText = WithGoalBiomes(mission, turn.UserText);
             mission.Pending = turn;
@@ -1625,6 +1627,7 @@ namespace ClaudiaKerman.Core.Missions
         private void Apply(Mission mission, Turn turn, MissionReply reply, string answeredBy)
         {
             var planPending = mission.Stage == MissionStage.AwaitingPlanApproval;
+            ResolvePlanStep(mission, OfferedPlan(turn.Purpose, reply, planPending));
             // The Script Check (ADR 0003) comes first: the player never sees a plan whose script fails it.
             var offered = SequenceOffered(turn.Purpose, reply, planPending);
             IList<string> checkWarnings = new List<string>();
@@ -2009,6 +2012,31 @@ namespace ClaudiaKerman.Core.Missions
             if (step >= 1 && step <= steps) return null;
             return "plan_step " + step.ToString(CultureInfo.InvariantCulture) + " is not a step of the Mission Plan: name the step this sequence flies, "
                 + (steps == 1 ? "1 (the plan has one step)" : "1 to " + steps.ToString(CultureInfo.InvariantCulture)) + ".";
+        }
+
+        /// <summary>
+        /// #977: a plan_step naming another Mission Plan sequence than the one the plan's name flies gives way to it (<see cref="PlanSteps"/>),
+        /// before anything reads the step; the mod logs it and tells Claudia in the next request. The last step begun is the one before the plan in hand.
+        /// </summary>
+        private void ResolvePlanStep(Mission mission, SequencePlan plan)
+        {
+            if (plan == null || !plan.PlanStep.HasValue || mission.Plan == null) return;
+            var lastBegun = mission.SequenceCounted ? mission.PlanStepBefore ?? Math.Max(0, mission.SequencesProposed - 1) : StepsBegun(mission);
+            var bodies = _snapshot == null ? null : _snapshot.Bodies.Select(b => b.Name);
+            var step = PlanSteps.Resolve(mission.Plan.Sequences, plan.Name, plan.PlanStep.Value, lastBegun, bodies);
+            if (!step.HasValue) return;
+            var line = PlanSteps.Line(mission.Plan.Sequences, plan.PlanStep.Value, step.Value);
+            plan.PlanStep = step;
+            mission.PlanStepLine = line;
+            Event(mission, "plan_step_resolved", line);
+        }
+
+        /// <summary>The line of <see cref="ResolvePlanStep"/> for the next request, once; "" for none.</summary>
+        private static string PlanStepLine(Mission mission)
+        {
+            var line = mission.PlanStepLine;
+            mission.PlanStepLine = "";
+            return line.Length > 0 ? line + "\n" : "";
         }
 
         private void Revised(Mission mission, MissionReply reply, bool planPending)

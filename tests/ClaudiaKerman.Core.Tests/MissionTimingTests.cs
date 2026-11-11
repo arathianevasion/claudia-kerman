@@ -639,7 +639,8 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void EditingSettingsWhileASequencePlanAwaitsApprovalDropsItAndReplans()
         {
-            var transport = new StreamingFakeTransport(TimedMissionPlan(), SequencePlan(Due), TimedMissionPlan(null, 20000), SequencePlan(null));
+            // Named for step 1, the plan_step it sends (#977 would take "Mun transfer" to step 2).
+            var transport = new StreamingFakeTransport(TimedMissionPlan(), SequencePlan(Due, name: "Launch"), TimedMissionPlan(null, 20000), SequencePlan(null, name: "Launch"));
             var mission = Control(transport);
             ToSequencePlan(mission);
             mission.TakeCommands();
