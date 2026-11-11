@@ -105,12 +105,34 @@ namespace ClaudiaKerman.Core.Ui
         }
     }
 
-    /// <summary>Where the strip's top left goes, the side its panel and tab are on, and how high the panel is.</summary>
+    /// <summary>Where the strip's top left goes, how wide it is, the side its panel and tab are on, and how high the panel is.</summary>
     public struct StripPlacement
     {
-        public float X, Y;
+        public float X, Y, Width;
         public PanelSide Side;
         public float PanelHeight;
+    }
+
+    /// <summary>
+    /// Where the stock altimeter and app launcher bar are on screen, in screen pixels from the top left: the altimeter's
+    /// box and the bar's left edge. <see cref="Unknown"/> when either couldn't be read.
+    /// </summary>
+    public struct StockUi
+    {
+        public readonly bool Known;
+        public readonly float AltimeterLeft, AltimeterRight, AltimeterTop, AltimeterBottom, AppBarLeft;
+
+        public StockUi(float altimeterLeft, float altimeterRight, float altimeterTop, float altimeterBottom, float appBarLeft)
+        {
+            Known = true;
+            AltimeterLeft = altimeterLeft;
+            AltimeterRight = altimeterRight;
+            AltimeterTop = altimeterTop;
+            AltimeterBottom = altimeterBottom;
+            AppBarLeft = appBarLeft;
+        }
+
+        public static readonly StockUi Unknown = default(StockUi);
     }
 
     public static class CapcomStripLayout
@@ -143,9 +165,41 @@ namespace ClaudiaKerman.Core.Ui
             {
                 X = x,
                 Y = y,
+                Width = size.Width,
                 Side = side,
                 PanelHeight = Math.Max(size.MinPanelHeight, Math.Min(size.PanelHeight, room)),
             };
+        }
+
+        /// <summary>
+        /// Places the strip the player hasn't moved. It fills the gap between the altimeter and the app launcher bar, at
+        /// <paramref name="margin"/> from each, its top level with the altimeter's. A gap narrower than
+        /// <paramref name="minWidth"/> puts it under the altimeter, centred on it, at its default <paramref name="size"/>
+        /// width; with no stock edges it is centred on the screen, <paramref name="fallbackTop"/> down. Then as
+        /// <see cref="Place(float, float, StripSize, float, float)"/>, no wider than the screen.
+        /// </summary>
+        public static StripPlacement Place(StockUi stock, float margin, float minWidth, float fallbackTop, StripSize size, float screenWidth, float screenHeight)
+        {
+            float x, y, width = size.Width;
+            if (!stock.Known)
+            {
+                width = Math.Min(width, screenWidth);
+                x = (screenWidth - width) / 2;
+                y = fallbackTop;
+            }
+            else if (stock.AppBarLeft - stock.AltimeterRight - 2 * margin >= minWidth)
+            {
+                x = stock.AltimeterRight + margin;
+                width = stock.AppBarLeft - margin - x;
+                y = stock.AltimeterTop;
+            }
+            else
+            {
+                width = Math.Min(width, screenWidth);
+                x = (stock.AltimeterLeft + stock.AltimeterRight - width) / 2;
+                y = stock.AltimeterBottom + margin;
+            }
+            return Place(x, y, new StripSize(width, size.StripHeight, size.TabHeight, size.PanelHeight, size.MinPanelHeight), screenWidth, screenHeight);
         }
     }
 

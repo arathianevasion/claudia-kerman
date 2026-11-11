@@ -69,6 +69,61 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(DefaultSizes.Settings(scale, 0, 0).Height >= DefaultSizes.SettingsMin(scale).Height);
         }
 
+        // ---- The scale factor from the game's UI Scale and Apps scale ----
+
+        [Fact]
+        public void At_100_percent_UI_and_apps_the_factor_is_todays_1_2()
+        {
+            Assert.Equal(1.2f, UiScale.Factor(1f, 1f), 4);
+        }
+
+        [Fact]
+        public void Apps_150_percent_makes_every_size_one_and_a_half_times_todays()
+        {
+            var factor = UiScale.Factor(1f, 1.5f);
+            Assert.Equal(1.8f, factor, 4);
+            // Within a pixel: the design sizes are today's sizes over 1.2, rounded.
+            Assert.InRange(DefaultSizes.StripWidth(factor), 740 * 1.5f - 1, 740 * 1.5f + 1);
+            Assert.InRange(DefaultSizes.PanelHeight(factor), 640 * 1.5f - 1, 640 * 1.5f + 1);
+            Assert.InRange(DefaultSizes.Mission(factor, 0, 0).Width, 500 * 1.5f - 1, 500 * 1.5f + 1);
+            Assert.InRange(DefaultSizes.Mission(factor, 0, 0).Height, 800 * 1.5f - 1, 800 * 1.5f + 1);
+            Assert.InRange(DefaultSizes.MissionMin(factor).Width, 430 * 1.5f - 1, 430 * 1.5f + 1);
+        }
+
+        [Fact]
+        public void UI_scale_and_apps_scale_multiply()
+        {
+            Assert.Equal(1.2f * 1.3f * 1.2f, UiScale.Factor(1.3f, 1.2f), 4);
+        }
+
+        [Fact]
+        public void Apps_80_percent_shrinks_every_size()
+        {
+            var factor = UiScale.Factor(1f, 0.8f);
+            Assert.True(factor < 1.2f);
+            Assert.True(DefaultSizes.StripWidth(factor) < 740);
+            Assert.True(DefaultSizes.Mission(factor, 0, 0).Width < 500);
+            Assert.True(DefaultSizes.SettingsMin(factor).Height < 400);
+        }
+
+        [Theory]
+        [InlineData(0f, 1f)]
+        [InlineData(1f, -1f)]
+        [InlineData(float.NaN, 1f)]
+        [InlineData(1f, float.PositiveInfinity)]
+        public void A_setting_that_is_not_a_positive_number_counts_as_100_percent(float ui, float apps)
+        {
+            Assert.Equal(1.2f, UiScale.Factor(ui, apps), 4);
+        }
+
+        [Fact]
+        public void At_todays_scale_the_unmoved_strip_falls_back_to_70_px_down_and_a_6_px_margin()
+        {
+            Assert.Equal(70, DefaultSizes.StripTop(1.2f));
+            Assert.Equal(6, DefaultSizes.StripMargin(1.2f));
+            Assert.True(DefaultSizes.StripTop(1.8f) > 70);
+        }
+
         [Fact]
         public void A_bigger_scale_makes_every_minimum_bigger()
         {
