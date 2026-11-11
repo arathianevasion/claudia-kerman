@@ -11,7 +11,7 @@ using ClaudiaKerman.Core.Missions;
 namespace ClaudiaKerman.Core.Tools
 {
     /// <summary>
-    /// <c>plan_ascent</c> (#367): flies the <c>launch</c> block's ascent in <see cref="AscentSim"/> for each turn_shape from 0.20
+    /// <c>plan_ascent</c> (#367): flies the <c>launch</c> block's ascent in <see cref="AscentSim"/> for each turn_shape from 0.05
     /// to 0.80 and picks the one that reaches target_ap and orbit with the most delta-v left, labelling each stage a Boost stage
     /// or an Orbital stage by the trajectory when it lights; or says the craft can't reach orbit, naming the Boost stage that
     /// falls. Given a turn_shape it flies that one only. It reads only the Game Snapshot (ADR 0006): the stage figures, the
@@ -19,7 +19,7 @@ namespace ClaudiaKerman.Core.Tools
     /// </summary>
     internal sealed class PlanAscent : IPlanningTool
     {
-        private const double FirstShape = 0.20;
+        private const double FirstShape = 0.05;
         private const double LastShape = 0.80;
         private const double ShapeStep = 0.05;
 
@@ -33,7 +33,7 @@ namespace ClaudiaKerman.Core.Tools
             get
             {
                 return "Flies the launch block's ascent from this turn's Game Snapshot (stage figures, the craft's nose-first drag) for "
-                    + "turn_shape 0.20 to 0.80 and gives the one reaching target_ap and orbit with the most delta-v left; or "
+                    + "turn_shape 0.05 to 0.80 and gives the one reaching target_ap and orbit with the most delta-v left; or "
                     + "reaches_orbit false naming the Boost stage that falls. Per stage: its role (Boost stage if it lights suborbital, "
                     + "else Orbital stage) and the altitude, speed, apoapsis, periapsis and time to apoapsis when it lights; then delta-v "
                     + "to orbit, left and kept by stage_limit, and the margin (marginal when thin). Give turn_shape to fly one shape. "
@@ -189,8 +189,9 @@ namespace ClaudiaKerman.Core.Tools
             }
 
             var reaching = tried.Where(t => t.Item2.ReachesOrbit).ToList();
+            // A tie on the delta-v left it reports goes to the gentlest turn (#978: below 0.20 a strong craft's turn is often held by max_aoa).
             var best = reaching.Count > 0
-                ? reaching.OrderByDescending(t => t.Item2.DeltaVLeft).First()
+                ? reaching.OrderByDescending(t => Math.Round(t.Item2.DeltaVLeft)).ThenByDescending(t => t.Item1).First()
                 : tried.OrderByDescending(t => t.Item2.BestAp).First();
             var flight = best.Item2;
 
@@ -255,7 +256,7 @@ namespace ClaudiaKerman.Core.Tools
             return new ToolOutcome { Json = json.ToString(), Summary = summary };
         }
 
-        private static List<double> Shapes()
+        internal static List<double> Shapes()
         {
             var shapes = new List<double>();
             for (var i = 0; FirstShape + i * ShapeStep <= LastShape + 1e-9; i++) shapes.Add(Math.Round(FirstShape + i * ShapeStep, 2));

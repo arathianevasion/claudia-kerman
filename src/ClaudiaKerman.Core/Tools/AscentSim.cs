@@ -290,13 +290,6 @@ namespace ClaudiaKerman.Core.Tools
 
         // ---- launch.ks's rules, word for word ----
 
-        private static double LaunchPitch(double h, double startAlt, double endAlt, double shape)
-        {
-            if (h <= startAlt || endAlt <= startAlt) return 90;
-            var fraction = Math.Min(1, (h - startAlt) / (endAlt - startAlt));
-            return 90 * (1 - Math.Pow(fraction, shape));
-        }
-
         private static bool ThickAir(double ratio)
         {
             return ratio > 0.1;
@@ -327,9 +320,8 @@ namespace ClaudiaKerman.Core.Tools
             return Math.Min(1, mass * g / thrust);
         }
 
-        private const double AeroQ = 500;
+        private const double AeroQ = LaunchTurn.AeroQ;
         private const double AoaQRef = 8000;
-        private const double ThinLead = 3;
 
         private static double AllowedAoa(double maxAoa, double q)
         {
@@ -582,12 +574,11 @@ namespace ClaudiaKerman.Core.Tools
                 var pitch = 90.0;
                 if (!coasting && !_burnThrough)
                 {
-                    if (turnStartAlt >= 0) pitch = LaunchPitch(h, turnStartAlt, turnEnd, _o.TurnShape);
-                    if (spd > 30 && q <= AeroQ)
-                    {
-                        thin = prograde - ThinLead > pitch;
-                        pitch = Math.Max(pitch, prograde - ThinLead);
-                    }
+                    // launch's turn law is Core's (#978): the thrust now and gravity less what the orbital speed along the horizon holds up.
+                    var r = R;
+                    var orbital = horizontal + _o.Spin * r / _o.Radius;
+                    pitch = LaunchTurn.Pitch(LaunchTurn.Program(h, turnStartAlt, turnEnd, _o.TurnShape), prograde, spd, q,
+                        thrust * throttle / _mass, _o.Gm / (r * r) - orbital * orbital / r, out thin);
                 }
                 else if (spd > 30)
                 {
