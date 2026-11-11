@@ -192,6 +192,14 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void AScienceCallFoldedAheadOfTheAscentIsPassedOver()
+        {
+            // #983: a crew report folded in as the script's first line runs landed; the launch after it is still the ascent.
+            var plan = new SequencePlan { Name = "Crew report and leave Duna", Script = "science(lexicon()).\nlaunch(lexicon()).\n" };
+            Assert.Equal("Kerbin", WindowWaits.AfterAscent(Landed("Duna", 1000, 9000), plan, Steps("Crew report and leave Duna", "Return to Kerbin"), 1).Planet.Name);
+        }
+
+        [Fact]
         public void TheScriptsOwnTransferToIsADeparture()
         {
             var plan = new SequencePlan { Name = "Leave", Script = "launch(lexicon()).\ntransfer_to(lexicon(\"target\", \"Kerbin\")).\n" };

@@ -55,7 +55,7 @@ namespace ClaudiaKerman.Core.Missions
             return Acts(sequence.Name) ? sequence.Name : sequence.Intent;
         }
 
-        private static bool Acts(string words)
+        internal static bool Acts(string words)
         {
             return Surface.IsMatch(words) || Trip.IsMatch(words) || ReturnHome.IsMatch(words) || Capture.IsMatch(words) || Reentry.IsMatch(words) || Aero.IsMatch(words) || Flyby.IsMatch(words);
         }
