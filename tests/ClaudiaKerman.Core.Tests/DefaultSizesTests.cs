@@ -19,7 +19,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(640, mission.Height);
             var settings = DefaultSizes.Settings(Now, 200, 90);
             // Settings opens at its minimum width, whose paddings and gaps stay in pixels.
-            Assert.Equal(379, settings.Width);
+            Assert.Equal(380, settings.Width);
             Assert.Equal(560, settings.Height);
             Assert.Equal(592, DefaultSizes.StripWidth(Now));
             Assert.Equal(512, DefaultSizes.PanelHeight(Now));
@@ -47,7 +47,7 @@ namespace ClaudiaKerman.Core.Tests
         {
             Assert.True(DefaultSizes.Mission(1.2f, 0, 0).Width > 400);
             Assert.True(DefaultSizes.Mission(1.2f, 0, 0).Height > 640);
-            Assert.True(DefaultSizes.Settings(1.2f, 0, 0).Width > 379);
+            Assert.True(DefaultSizes.Settings(1.2f, 0, 0).Width > 380);
             Assert.True(DefaultSizes.Settings(1.2f, 0, 0).Height > 560);
             Assert.True(DefaultSizes.StripWidth(1.2f) > 592);
             Assert.True(DefaultSizes.PanelHeight(1.2f) > 512);
@@ -90,12 +90,12 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void At_the_base_scale_the_minimums_are_20_percent_under_the_old_hand_picked_sizes()
+        public void At_the_base_scale_the_minimums_shrink_all_but_their_fixed_pixels()
         {
-            // The widths keep their fixed pixels: 132, 96 and 110 of the 430, 450 and 624 at 1.2.
-            Assert.Equal(370, DefaultSizes.MissionMin(Now).Width);
+            // The widths keep their fixed pixels: 108, 102 and 110 of the 430, 450 and 624 at 1.2.
+            Assert.Equal(366, DefaultSizes.MissionMin(Now).Width);
             Assert.Equal(368, DefaultSizes.MissionMin(Now).Height);
-            Assert.Equal(379, DefaultSizes.SettingsMin(Now).Width);
+            Assert.Equal(380, DefaultSizes.SettingsMin(Now).Width);
             Assert.Equal(320, DefaultSizes.SettingsMin(Now).Height);
             Assert.Equal(521, DefaultSizes.StripMinWidth(Now));
         }
@@ -111,18 +111,18 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void At_UI_scale_150_percent_the_minimum_widths_scale_all_but_their_fixed_pixels()
+        public void At_scale_1_8_the_minimum_widths_scale_all_but_their_fixed_pixels()
         {
-            Assert.Equal(579, DefaultSizes.MissionMin(1.8f).Width);
-            Assert.Equal(627, DefaultSizes.SettingsMin(1.8f).Width);
+            Assert.Equal(591, DefaultSizes.MissionMin(1.8f).Width);
+            Assert.Equal(624, DefaultSizes.SettingsMin(1.8f).Width);
             Assert.Equal(881, DefaultSizes.StripMinWidth(1.8f));
         }
 
         [Fact]
-        public void The_fixed_pixels_are_the_sums_of_the_adapters_paddings_and_gaps()
+        public void The_fixed_pixels_are_the_sums_written_in_their_comments()
         {
-            Assert.Equal(132, DefaultSizes.MissionMinWidthFixedPx);
-            Assert.Equal(96, DefaultSizes.SettingsMinWidthFixedPx);
+            Assert.Equal(108, DefaultSizes.MissionMinWidthFixedPx);
+            Assert.Equal(102, DefaultSizes.SettingsMinWidthFixedPx);
             Assert.Equal(110, DefaultSizes.StripMinWidthFixedPx);
             Assert.Equal(71, DefaultSizes.PanelMinHeightFixedPx);
         }
@@ -168,8 +168,8 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(DefaultSizes.PanelHeight(factor), 512 * 1.5f - 1, 512 * 1.5f + 1);
             Assert.InRange(DefaultSizes.Mission(factor, 0, 0).Width, 400 * 1.5f - 1, 400 * 1.5f + 1);
             Assert.InRange(DefaultSizes.Mission(factor, 0, 0).Height, 640 * 1.5f - 1, 640 * 1.5f + 1);
-            // The minimum's fixed 132 px don't grow: the rest, 238 at the base, is 358 at 1.5 times it.
-            Assert.Equal(490, DefaultSizes.MissionMin(factor).Width);
+            // The minimum's fixed 108 px don't grow: the rest, 258 at the base, is 386 at 1.5 times it.
+            Assert.Equal(494, DefaultSizes.MissionMin(factor).Width);
         }
 
         [Fact]
@@ -212,9 +212,9 @@ namespace ClaudiaKerman.Core.Tests
         [Fact]
         public void A_bigger_scale_makes_every_minimum_bigger()
         {
-            Assert.True(DefaultSizes.MissionMin(1.2f).Width > 370);
+            Assert.True(DefaultSizes.MissionMin(1.2f).Width > 366);
             Assert.True(DefaultSizes.MissionMin(1.2f).Height > 368);
-            Assert.True(DefaultSizes.SettingsMin(1.2f).Width > 379);
+            Assert.True(DefaultSizes.SettingsMin(1.2f).Width > 380);
             Assert.True(DefaultSizes.SettingsMin(1.2f).Height > 320);
             Assert.True(DefaultSizes.StripMinWidth(1.2f) > 521);
         }

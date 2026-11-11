@@ -11,7 +11,7 @@ namespace ClaudiaKerman.Core.Ui
     /// are chosen so the old 1.2 scale gives the 500×800 Mission window, 450×700 Settings window, 740 px strip and 640 px
     /// panel. At 100% and 100% (<see cref="UiScale.Base"/>, 0.96) each is 20% under that: 400×640, 560 high, 592 and 512 (#993).
     /// The minimum widths and the panel's minimum height keep the paddings and gaps the Adapter draws in fixed pixels, so
-    /// only the rest of each scales; the Settings window opens at its minimum width, as it did at 1.2.
+    /// only the rest of each scales and they shrink less; the Settings window opens at its minimum width, as it did at 1.2.
     /// </summary>
     public static class DefaultSizes
     {
@@ -23,13 +23,13 @@ namespace ClaudiaKerman.Core.Ui
         public const float MissionMinHeightDesign = 383, SettingsMinHeightDesign = 333;
 
         // The fixed pixels across each minimum width, from the Adapter's constants:
-        // Mission: the window's Padding ×2 (24), the control bar's Padding and right room (Padding) (24), the Gap after Gear
-        // and after Clear (16), the small button's 8 px side paddings on Clear, Dock and Pause Mission (48) and the button
-        // style's 10 px ones on End Mission (20): 132.
-        public const float MissionMinWidthFixedPx = 24 + 24 + 16 + 48 + 20;
-        // Settings, its widest fixed row, the API key's buttons: the window's Padding ×2 (24), the card's Padding ×2 (24),
-        // the Gap between the buttons (8) and the button style's 10 px side paddings on both (40): 96.
-        public const float SettingsMinWidthFixedPx = 24 + 24 + 8 + 40;
+        // Mission, its control bar (the bare window has no side padding): the bar's Padding and right room (Padding) (24),
+        // the Gap after Gear and after Clear (16), the small button's 8 px side paddings on Clear, Dock and Pause Mission
+        // (48) and the button style's 10 px ones on End Mission (20): 108.
+        public const float MissionMinWidthFixedPx = 24 + 16 + 48 + 20;
+        // Settings, its widest fixed row, the Claudia Kerman header: the window's Padding ×2 (24), the header box's Padding
+        // ×2 (24), the 30 px portrait, the Gap after it (8) and the 16 px chevron: 102. (The API key's buttons have 96.)
+        public const float SettingsMinWidthFixedPx = 24 + 24 + 30 + 8 + 16;
         // The strip, its docked panel's control bar: the panel box's 1 px sides (2), the control bar's Padding and right
         // room (Padding) (24), the Gap after Gear and after Clear (16), the small button's side paddings on Clear, Undock and
         // Pause Mission (48) and End Mission's (20): 110. (The status row's are fewer, 70: the strip's Padding ×2, Gap + 2,
