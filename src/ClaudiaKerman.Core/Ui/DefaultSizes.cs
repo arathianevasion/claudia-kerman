@@ -50,11 +50,16 @@ namespace ClaudiaKerman.Core.Ui
         public static float PanelHeight(float fontScale) { return Scale(PanelHeightDesign, fontScale); }
 
         // The unmoved strip's top when the stock UI can't be read (70 px at 1.2), and its margin from the altimeter and the app bar (6 px at 1.2).
-        public const float StripTopDesign = 58.333f, StripMarginDesign = 5;
+        public const float StripTopDesign = 70f / UiScale.Base, StripMarginDesign = 5;
 
         public static float StripTop(float fontScale) { return Scale(StripTopDesign, fontScale); }
 
         public static float StripMargin(float fontScale) { return Scale(StripMarginDesign, fontScale); }
+
+        // Below this the docked panel's prompt and control bar leave the transcript no room (200 px at 1.2).
+        public const float PanelMinHeightDesign = 200f / UiScale.Base;
+
+        public static float PanelMinHeight(float fontScale) { return Scale(PanelMinHeightDesign, fontScale); }
     }
 
     /// <summary>

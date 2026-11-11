@@ -78,7 +78,7 @@ namespace ClaudiaKerman.Adapter
         }
 
         // A new UI scale resizes the default, the minimum and a resizable window by as much; the position is kept (Show
-        // keeps it on screen). A box remembered at the old scale, applied on entering a scene, is resized with it.
+        // keeps it on screen). A remembered box is kept with its scale and resized from that when applied (ApplyRemembered).
         private void FollowScale()
         {
             if (_scale <= 0) return;
@@ -100,8 +100,9 @@ namespace ClaudiaKerman.Adapter
         /// <summary>Draws the window at its current size and updates the mouse lock. <paramref name="options"/> only apply to windows that aren't resizable.</summary>
         public void Show(GUI.WindowFunction draw, params GUILayoutOption[] options)
         {
-            ApplyRemembered();
+            // The scale first, so a box remembered at another scale is resized once, from the scale it was kept at.
             FollowScale();
+            ApplyRemembered();
             Rect resized;
             if (_resizable && TryResize(out resized)) Rect = resized;
             var style = Style ?? GUI.skin.window;
@@ -233,7 +234,7 @@ namespace ClaudiaKerman.Adapter
             SetMouseLock(false);
         }
 
-        // On entering a scene (or the first draw), the remembered box replaces the default.
+        // On entering a scene (or the first draw), the remembered box replaces the default, resized for the UI scale now.
         private void ApplyRemembered()
         {
             if (_memoryName == null) return;
@@ -241,7 +242,7 @@ namespace ClaudiaKerman.Adapter
             if (scene == _appliedScene) return;
             _appliedScene = scene;
             WindowBox box;
-            if (WindowMemory.TryGet(_memoryName, out box))
+            if (WindowMemory.TryGet(_memoryName, StoreScale, out box))
                 Rect = new Rect(box.X, box.Y, _resizable ? Mathf.Max(box.Width, _min.x) : Rect.width, _resizable ? Mathf.Max(box.Height, _min.y) : Rect.height);
             else
                 Rect = _default;
@@ -255,7 +256,13 @@ namespace ClaudiaKerman.Adapter
             var box = new WindowBox(Rect.x, Rect.y, Rect.width, Rect.height);
             if (box.Equals(_lastStored)) return;
             _lastStored = box;
-            WindowMemory.Store(_memoryName, box);
+            WindowMemory.Store(_memoryName, box, StoreScale);
+        }
+
+        // The scale the window's size is for; a window in the stock skin doesn't follow it, so it is kept as at the base.
+        private float StoreScale
+        {
+            get { return _scale > 0 ? _scale : UiScale.Base; }
         }
 
         private void SetMouseLock(bool locked)

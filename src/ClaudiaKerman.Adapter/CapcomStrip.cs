@@ -38,7 +38,7 @@ namespace ClaudiaKerman.Adapter
         private static float DefaultPanelHeight { get { return DefaultSizes.PanelHeight(ClaudiaSkin.FontScale); } }
         private const string PanelMemoryName = "panel";
         // Below this the prompt and the control bar leave the transcript no room; only a very short screen gets there.
-        private const float MinPanelHeight = 200;
+        private static float MinPanelHeight { get { return DefaultSizes.PanelMinHeight(ClaudiaSkin.FontScale); } }
         private const int TabRadius = 6;
         private const string PortraitUrl = "ClaudiaKerman/Icons/ClaudiaPortrait";
 
@@ -60,7 +60,8 @@ namespace ClaudiaKerman.Adapter
         // The strip's own height last Repaint, for clamping the panel to the screen.
         private float _stripHeight = 120;
 
-        // Where the player put the strip (its top left); unmoved, it sits between the altimeter and the app bar.
+        // Where the player put the strip (its top left); unmoved, it sits between the altimeter and the app bar, as last read.
+        private readonly KnownStockUi _stockUi = new KnownStockUi();
         private bool _moved;
         private Vector2 _position;
         private bool _memoryApplied;
@@ -141,7 +142,7 @@ namespace ClaudiaKerman.Adapter
             var size = new StripSize(_width, _stripHeight, TabHeight(), _wantPanelHeight, MinPanelHeight);
             _place = _moved
                 ? CapcomStripLayout.Place(_position.x, _position.y, size, Screen.width, Screen.height)
-                : CapcomStripLayout.Place(StockUiEdges.Read(), DefaultSizes.StripMargin(ClaudiaSkin.FontScale), MinWidth,
+                : CapcomStripLayout.Place(KnownEdges(), DefaultSizes.StripMargin(ClaudiaSkin.FontScale), MinWidth,
                     DefaultSizes.StripTop(ClaudiaSkin.FontScale), size, Screen.width, Screen.height);
             _width = _place.Width;
             var above = _place.Side == PanelSide.Above;
@@ -161,6 +162,12 @@ namespace ClaudiaKerman.Adapter
             // Keys typed into the docked prompt must not stage, throttle or rotate the craft.
             if (!expanded) _typing.Reset();
             _frame.SetTyping(_typing.Held);
+        }
+
+        // The stock edges this frame, or the last ones read at this scale, screen and scene when they can't be read now.
+        private StockUi KnownEdges()
+        {
+            return _stockUi.Next(StockUiEdges.Read(), ClaudiaSkin.FontScale, Screen.width, Screen.height, WindowMemory.Scene());
         }
 
         private bool LocksMouseAt(Vector2 local)
@@ -256,8 +263,8 @@ namespace ClaudiaKerman.Adapter
             _wantWidth = _width;
             _wantPanelHeight = _place.PanelHeight;
             _position = new Vector2(_place.X, _place.Y);
-            WindowMemory.Store(PanelMemoryName, new WindowBox(_position.x, _position.y, _wantWidth, _wantPanelHeight));
-            WindowMemory.Store(MemoryName, new WindowBox(_position.x, _position.y, _wantWidth, _stripHeight));
+            WindowMemory.Store(PanelMemoryName, new WindowBox(_position.x, _position.y, _wantWidth, _wantPanelHeight), _sizedAt);
+            WindowMemory.Store(MemoryName, new WindowBox(_position.x, _position.y, _wantWidth, _stripHeight), _sizedAt);
         }
 
         // A new UI scale resizes the strip and panel the player sized by as much; a moved strip keeps its position.
@@ -273,15 +280,17 @@ namespace ClaudiaKerman.Adapter
 
         // ---- Moving the strip ----
 
-        // On the first draw, where the player last left it.
+        // On the first draw, where the player last left it, and the panel's size resized for the UI scale now.
         private void ApplyRemembered()
         {
             if (_memoryApplied) return;
             _memoryApplied = true;
+            // The defaults to the scale now first, so a remembered size isn't resized twice.
+            FollowScale();
             WindowBox box;
-            _moved = WindowMemory.TryGet(MemoryName, out box);
+            _moved = WindowMemory.TryGet(MemoryName, _sizedAt, out box);
             if (_moved) _position = new Vector2(box.X, box.Y);
-            if (WindowMemory.TryGet(PanelMemoryName, out box))
+            if (WindowMemory.TryGet(PanelMemoryName, _sizedAt, out box))
             {
                 _wantWidth = Mathf.Max(box.Width, MinWidth);
                 _wantPanelHeight = Mathf.Max(box.Height, MinPanelHeight);
@@ -298,7 +307,7 @@ namespace ClaudiaKerman.Adapter
                 if (!_dragMoved) return;
                 // Kept as placed on this screen, so a later, smaller screen doesn't remember it squeezed.
                 _position = new Vector2(_place.X, _place.Y);
-                WindowMemory.Store(MemoryName, new WindowBox(_position.x, _position.y, _width, _stripHeight));
+                WindowMemory.Store(MemoryName, new WindowBox(_position.x, _position.y, _width, _stripHeight), _sizedAt);
                 return;
             }
             if (!_dragMoved && delta.magnitude < DragThreshold) return;

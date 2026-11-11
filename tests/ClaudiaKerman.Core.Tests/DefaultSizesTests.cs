@@ -132,5 +132,13 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(DefaultSizes.SettingsMin(1.5f).Width > 450);
             Assert.True(DefaultSizes.SettingsMin(1.5f).Height > 400);
         }
+
+        [Fact]
+        public void The_docked_panels_floor_is_200_at_the_base_scale_and_follows_it()
+        {
+            Assert.Equal(200, DefaultSizes.PanelMinHeight(1.2f));
+            Assert.Equal(300, DefaultSizes.PanelMinHeight(1.8f));
+            Assert.Equal(160, DefaultSizes.PanelMinHeight(0.96f));
+        }
     }
 }

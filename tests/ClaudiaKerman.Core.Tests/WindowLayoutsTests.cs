@@ -79,6 +79,60 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void ABoxRememberedAtOneUiScaleOpensResizedForTheScaleNow()
+        {
+            var layouts = new WindowLayouts();
+            layouts.Set("flight", "mission", new WindowBox(10, 20, 500, 800), 1.2f);
+            WindowBox box;
+            Assert.True(layouts.TryGet("flight", "mission", 1.8f, out box));
+            Assert.Equal(new WindowBox(10, 20, 750, 1200), box);
+            Assert.True(layouts.TryGet("flight", "mission", 0.96f, out box));
+            Assert.Equal(new WindowBox(10, 20, 400, 640), box);
+        }
+
+        [Fact]
+        public void AnOldLineWithoutAScaleWasKeptAtTheBaseScale()
+        {
+            var layouts = new WindowLayouts();
+            layouts.Parse(new[] { "flight.mission = 10, 20, 500, 800" });
+            WindowBox box;
+            Assert.True(layouts.TryGet("flight", "mission", 1.8f, out box));
+            Assert.Equal(new WindowBox(10, 20, 750, 1200), box);
+        }
+
+        [Fact]
+        public void TheScaleIsWrittenWithTheBoxAndReadBack()
+        {
+            var layouts = new WindowLayouts();
+            layouts.Set("flight", "mission", new WindowBox(10, 20, 750, 1200), 1.8f);
+            Assert.Contains("flight.mission = 10, 20, 750, 1200, 1.8", layouts.Format());
+            var loaded = new WindowLayouts();
+            loaded.Parse(layouts.Format().Split('\n'));
+            WindowBox box;
+            Assert.True(loaded.TryGet("flight", "mission", 1.2f, out box));
+            Assert.Equal(new WindowBox(10, 20, 500, 800), box);
+        }
+
+        [Fact]
+        public void TheSameBoxAtANewScaleIsAChange()
+        {
+            var layouts = new WindowLayouts();
+            Assert.True(layouts.Set("flight", "chat", new WindowBox(1, 2, 3, 4), 1.2f));
+            Assert.False(layouts.Set("flight", "chat", new WindowBox(1, 2, 3, 4), 1.2f));
+            Assert.True(layouts.Set("flight", "chat", new WindowBox(1, 2, 3, 4), 1.8f));
+        }
+
+        [Fact]
+        public void ALineWithABadScaleIsIgnored()
+        {
+            var layouts = new WindowLayouts();
+            layouts.Parse(new[] { "flight.mission = 10, 20, 500, 800, 0", "flight.chat = 10, 20, 500, 800, x" });
+            WindowBox box;
+            Assert.False(layouts.TryGet("flight", "mission", 1.2f, out box));
+            Assert.False(layouts.TryGet("flight", "chat", 1.2f, out box));
+        }
+
+        [Fact]
         public void TheFileIsOutsideTheSaveAndNamedForWindows()
         {
             Assert.Equal("windows.cfg", WindowLayouts.FileName);
