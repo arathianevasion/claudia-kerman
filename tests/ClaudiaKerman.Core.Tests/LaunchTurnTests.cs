@@ -119,7 +119,7 @@ namespace ClaudiaKerman.Core.Tests
         public void The_block_call_runs_in_microseconds_every_tick()
         {
             var ask = Ask();
-            Timing.Within(2, () =>
+            Timing.Within(LaunchTurn.BudgetMs, () =>
             {
                 for (var i = 0; i < 100; i++) LaunchTurn.Call(ask);
             });

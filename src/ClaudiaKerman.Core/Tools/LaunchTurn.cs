@@ -25,6 +25,8 @@ namespace ClaudiaKerman.Core.Tools
         public const double ThinSpeed = 30;
         /// <summary>The pressure, as a fraction of the surface's, over which the air is thick (launch_thick_air).</summary>
         public const double ThickRatio = 0.1;
+        /// <summary>The most milliseconds 100 calls of <see cref="Call"/> may take: it runs every tick of the climb (ADR 0014 guardrail 6).</summary>
+        public const double BudgetMs = 2;
 
         /// <summary>
         /// The pitch program (degrees above the horizon) at altitude <paramref name="h"/> m of a turn that starts at <paramref name="startAlt"/>

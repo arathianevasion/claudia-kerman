@@ -35,7 +35,7 @@ namespace ClaudiaKerman.KOS
             AddSuffix("LAUNCHHEADING", new OneArgsSuffix<Lexicon, Lexicon>(LaunchHeading,
                 "Core Library only (launch): the heading into the plane of inc (negative southbound) from lat, with gm, radius and rotation of the body and target_ap (m); lexicon error, heading"));
             AddSuffix("LAUNCHPITCH", new OneArgsSuffix<Lexicon, Lexicon>(LaunchPitch,
-                "Core Library only (launch, each tick of the climb): the turn's pitch from alt, start_alt, end_alt, shape, speed, prograde, q, accel and g_net; lexicon error, pitch (degrees above the horizon), thin"));
+                "Core Library only (launch, each tick of the climb): the turn's pitch from alt, start_alt, end_alt, shape, speed, prograde, q, ratio, accel and g_net; lexicon error, pitch (degrees above the horizon), thin"));
             AddSuffix("BURNTHROUGH", new OneArgsSuffix<Lexicon, Lexicon>(BurnThrough,
                 "Core Library only (launch, at its first cutoff and each tick of a burn-through): whether the stage is too weak to coast to apoapsis and circularize there, from ap, sma, gm, radius, eta_ap, altitude, target_ap, atm_height, angle, stages, turn and burning; lexicon error, burn_through, dv, half_burn, turn_time, angle, eta_ap, climb, time_left"));
             AddSuffix("BURNTIME", new OneArgsSuffix<Lexicon, Lexicon>(BurnTimeCall,

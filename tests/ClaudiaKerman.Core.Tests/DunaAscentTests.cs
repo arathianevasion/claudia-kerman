@@ -108,7 +108,8 @@ namespace ClaudiaKerman.Core.Tests
         /// <summary>The shape plan_ascent picks, as its search does: the most delta-v left among its shapes that reach orbit.</summary>
         private AscentFlight Best()
         {
-            return PlanAscent.Shapes().Select(Fly).Where(f => f.ReachesOrbit).OrderByDescending(f => f.DeltaVLeft).First();
+            return PlanAscent.Shapes().Select(s => new { Shape = s, Flight = Fly(s) }).Where(t => t.Flight.ReachesOrbit)
+                .OrderByDescending(t => Math.Round(t.Flight.DeltaVLeft)).ThenByDescending(t => t.Shape).First().Flight;
         }
 
         // Before #978 this fixture's best was 1,386 m/s (the flight's own plan_ascent said 1,463, with a drag table the flight didn't record);

@@ -292,7 +292,7 @@ namespace ClaudiaKerman.Core.Tools
 
         private static bool ThickAir(double ratio)
         {
-            return ratio > 0.1;
+            return ratio > LaunchTurn.ThickRatio;
         }
 
         private static bool TurnHeld(double q, double maxQ, double ratio)
