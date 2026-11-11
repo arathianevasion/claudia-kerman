@@ -93,6 +93,8 @@ namespace ClaudiaKerman.Adapter
             ReadParts(snapshot, vessel.parts, vessel.VesselDeltaV);
             ReadChutes(snapshot, vessel);
             MarkTrickleStages(snapshot, vessel.parts);
+            // #980: a stage stock hasn't caught up on since a burn is worked out again in Core, before anything reads the snapshot.
+            StaleStageReading.Freshen(snapshot);
             // plan_ascent's drag, for a launch: only a craft on the ground of a body with air needs it.
             if (vessel.mainBody != null && vessel.mainBody.atmosphere && OnTheGround(vessel.situation))
                 snapshot.Craft.NoseDrag = NoseDrag.Read(vessel.parts, vessel.ReferenceTransform.up, false);

@@ -87,6 +87,40 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("", Drift(before, now));
         }
 
+        /// <summary>#980, in Duna orbit at 11.583 t: stock's stage 4 read 1,287 m/s stale, 603 after a warp with no burn.</summary>
+        private static GameSnapshot Duna(double stageFour, bool freshened)
+        {
+            var snapshot = Orbit();
+            snapshot.Craft.MassTonnes = 11.5830717086792;
+            snapshot.Stages[0].DeltaVVac = 1837.83;
+            snapshot.Stages[1].DeltaVVac = stageFour;
+            snapshot.StageReadingFreshened = freshened;
+            return snapshot;
+        }
+
+        [Fact]
+        public void AFreshenedStageReadingOnEitherSideIsNotComparedSoStockCatchingUpIsNotDrift()
+        {
+            // The mod's own figure for the stale stage (here its craft-mass bound, 1,150 m/s) against stock's 603 later.
+            Assert.Equal("", Drift(Duna(1150, true), Duna(603.09, false)));
+            Assert.Equal("", Drift(Duna(603.09, false), Duna(1150, true)));
+        }
+
+        [Fact]
+        public void ADeltaVDropAtTheSameMassWithNothingFreshenedIsDrift()
+        {
+            // An engine shut down or a tank locked with the plan pending: the mass stays, the delta-v goes.
+            Assert.Equal("delta-v changed from 3125 to 1838 m/s", Drift(Duna(1287.18, false), Duna(0, false)));
+        }
+
+        [Fact]
+        public void ADeltaVDropWithMassGoneIsDrift()
+        {
+            var after = Duna(603.09, false);
+            after.Craft.MassTonnes = 9.9;
+            Assert.Equal("delta-v changed from 3125 to 2441 m/s", Drift(Duna(1287.18, false), after));
+        }
+
         [Fact]
         public void AnOrbitThatMovedBeyondTheToleranceIsDriftOnlyWhileStable()
         {

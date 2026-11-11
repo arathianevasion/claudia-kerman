@@ -28,7 +28,9 @@ namespace ClaudiaKerman.Core.Missions
                 return "the craft is now " + now.Situation + ", not " + baseline.Situation;
 
             var tolerance = tolerancePercent / 100.0;
-            if (baseline.DeltaVSimulator && now.DeltaVSimulator && !baseline.DeltaVUnreliable && !now.DeltaVUnreliable)
+            // #980: a stale stage the mod worked out again is an estimate; against stock's own figure later it isn't drift.
+            if (baseline.DeltaVSimulator && now.DeltaVSimulator && !baseline.DeltaVUnreliable && !now.DeltaVUnreliable
+                && !baseline.StageReadingFreshened && !now.StageReadingFreshened)
             {
                 var before = baseline.Stages.Sum(s => s.DeltaVVac);
                 var after = now.Stages.Sum(s => s.DeltaVVac);
