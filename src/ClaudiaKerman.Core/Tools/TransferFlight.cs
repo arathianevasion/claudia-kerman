@@ -165,7 +165,8 @@ namespace ClaudiaKerman.Core.Tools
         private const double FineResidual = 0.1;
         /// <summary>
         /// A far target's plane burn far out (#986): its max_residual, so exec_node stops it within a quarter of it, <see cref="BurnWorth.LeastDone"/>. Far out it swings the arrival
-        /// sideways, and the 0.1 m/s exec_node leaves of its own moved Duna's periapsis 120 km, into the planet; 0.005 m/s moves it about 6 km. The trim inside restores the rest.
+        /// sideways, and the 0.1 m/s exec_node leaves of its own moved Duna's periapsis 122 km, into the planet; 0.005 m/s moves it about 8 km. The trim inside restores the rest.
+        /// A residual over it is trimmed when within 5% of the node; past that exec_node fails the block (a pointing error of about 3.6° at the end of Duna's 0.32 m/s).
         /// </summary>
         internal const double PlaneResidual = 4 * BurnWorth.LeastDone;
         private const double Lead = 60;
@@ -762,6 +763,7 @@ namespace ClaudiaKerman.Core.Tools
             {
                 if (Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, MidCheck);
                 fix = CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut });
+                plane = false;
             }
             if (far && (!fix.HasBurn || fix.Error != null)) return Go(ask, MidCheck);
             if (ask.MidUt < 0 && fix.HasBurn && fix.Error == null && fix.DeltaV >= SkipDv)

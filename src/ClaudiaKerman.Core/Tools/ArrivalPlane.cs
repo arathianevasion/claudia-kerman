@@ -204,9 +204,10 @@ namespace ClaudiaKerman.Core.Tools
         /// <summary>The equator in a leg's words (#986): "equator", "equatorial"; "non-equatorial" is not.</summary>
         private static readonly Regex EquatorWord = new Regex(@"(?<![\w-])equator(ial)?(?!\w)", RegexOptions.IgnoreCase);
         /// <summary>Words before the equator in its clause that say away from it (#986): "far from the equator", "not on the equator", "off the equator".</summary>
-        private static readonly Regex NotEquator = new Regex(@"(?:\b(?:far|away)\s+from|\b(?:not|off|avoid(?:s|ing)?)\b[^,.;]*?)\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
+        private static readonly Regex NotEquator = new Regex(
+            @"\b(?:(?:far|away)\s+from|(?:north|south)\s+of|not(?:\s+(?:on|at|near))?|off|avoid(?:s|ing)?)\s+(?:the\s+)?(?:\w+['’]s?\s+)?$", RegexOptions.IgnoreCase);
         /// <summary>Words before a capture in its clause that say none flies (#986): "skip capture", "no capture", "without capturing".</summary>
-        private static readonly Regex NoCapture = new Regex(@"\b(?:no|not|never|skip(?:s|ping)?|without|don['’]t)\b", RegexOptions.IgnoreCase);
+        private static readonly Regex NoCapture = new Regex(@"\b(?:no|not|never|skip(?:s|ping)?|without|don['’]t)\s+(?:(?:a|an|the|any|orbital)\s+)?$", RegexOptions.IgnoreCase);
         private static readonly char[] ClauseEnds = { ',', '.', ';' };
 
         /// <summary>

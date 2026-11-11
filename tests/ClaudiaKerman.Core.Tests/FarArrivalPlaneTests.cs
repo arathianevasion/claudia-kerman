@@ -114,7 +114,7 @@ namespace ClaudiaKerman.Core.Tests
                 {
                     rig.MoveTo(step.Ut);
                     var first = step.Kind == "correction" && step.Phase == "mid_check" && rig.Body.Name != ask.Target && flight.FarOutStep == null;
-                    var dv = Math.Sqrt(step.Prograde * step.Prograde + step.Normal * step.Normal + step.Radial * step.Radial);
+                    var dv = Dv(step);
                     var share = first && farOut != null && dv > 0 ? Math.Max(0, farOut(step)) / dv : 1;
                     ask.LastDv = rig.Fly(step.Kind, step.Ut, step.Prograde * share, step.Normal * share, step.Radial * share);
                     if (first)
@@ -180,6 +180,7 @@ namespace ClaudiaKerman.Core.Tests
         [Theory]
         [InlineData("Land at Duna equator", 0.0)]
         [InlineData("Land on Duna's equator", 0.0)]
+        [InlineData("Land the off-road rover on the equator, not near the canyon", 0.0)]
         [InlineData("Equatorial landing on Duna", 0.0)]
         [InlineData("Land at Duna's north pole", 90.0)]
         [InlineData("Polar landing on Duna", 90.0)]
@@ -372,9 +373,12 @@ namespace ClaudiaKerman.Core.Tests
             snapshot.LegsAhead = Legs(leg, "Land at Duna equator");
             string error;
             Assert.Null(ArrivalPlanes.Resolve(snapshot, rig.System, rig.System.Find("Duna"), PlaneOption.Auto, out error));
-            // The same leg naming its capture gives the equator.
-            snapshot.LegsAhead = Legs("Transfer to Duna, capture into orbit", "Land at Duna equator");
-            Assert.Equal(0, ArrivalPlanes.Resolve(snapshot, rig.System, rig.System.Find("Duna"), PlaneOption.Auto, out error).Inc);
+            // A leg naming its capture gives the equator, whatever else its clause turns down.
+            foreach (var capture in new[] { "Transfer to Duna, capture into orbit", "Transfer to Duna without delay and capture into orbit" })
+            {
+                snapshot.LegsAhead = Legs(capture, "Land at Duna equator");
+                Assert.Equal(0, ArrivalPlanes.Resolve(snapshot, rig.System, rig.System.Find("Duna"), PlaneOption.Auto, out error).Inc);
+            }
         }
 
         /// <summary>Review of #986 item 6: the equator named as where the landing isn't sets no plane.</summary>
@@ -382,6 +386,8 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("Land at Duna, far from the equator")]
         [InlineData("Land at Duna away from the equator")]
         [InlineData("Land at Duna, not on the equator")]
+        [InlineData("Land at Duna, far from Duna's equator")]
+        [InlineData("Land at Duna, 30 km south of the equator")]
         public void A_landing_leg_that_names_the_equator_as_where_it_isn_t_gives_no_plane(string leg)
         {
             var rig = TransferRig.Circular("Kerbin", 100000, 0);
