@@ -92,6 +92,8 @@ namespace ClaudiaKerman.Core.Missions
     {
         public string Name = "";
         public double Amount;
+        /// <summary>The part's full load of it (#981: a shield's Ablator share); 0 when not read.</summary>
+        public double Max;
         public double Density;
     }
 
