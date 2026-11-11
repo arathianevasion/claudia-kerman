@@ -59,6 +59,8 @@ namespace ClaudiaKerman.Core.Missions
         public string WindowPlanet = "";
         public double? WindowUt;
         public double? WindowDeltaV;
+        /// <summary>#906: the window a <c>return</c> run was planned for (#887), kept for the block's late restart.</summary>
+        public double? ReturnWindowUt;
         /// <summary>The player's Transfer Window pick (#686), whether the plan in hand waits for a fresh one, and whether Claudia has yet to hear it; none, false and false in older saves.</summary>
         public WindowPick WindowPick = WindowPick.None;
         public bool WindowPickNeeded;
@@ -153,6 +155,9 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The arrival plane <c>transfer_to</c> recorded for <c>capture</c>, and the last site <c>find_landing_site</c> gave (#788).</summary>
         public string ArrivalPlane = "";
         public string LandingAim = "";
+        public Tools.LandingTarget LandingTarget;
+        /// <summary>A return this run flew no Course Correction (#899).</summary>
+        public bool NoCorrection;
         public Tools.PickedSite PickedSite;
         public MissionPlan MissionPlan;
         /// <summary>The current Sequence Plan: the one awaiting Approval, running, or just run.</summary>
@@ -240,6 +245,14 @@ namespace ClaudiaKerman.Core.Missions
             if (PlannedAscent.Length > 0) values["plannedAscent"] = PlannedAscent;
             if (ArrivalPlane.Length > 0) values["arrivalPlane"] = ArrivalPlane;
             if (LandingAim.Length > 0) values["landingAim"] = LandingAim;
+            if (LandingTarget != null)
+            {
+                values["landingTargetBody"] = LandingTarget.Body;
+                values["landingTargetLatitude"] = LandingTarget.Latitude.ToString("R", CultureInfo.InvariantCulture);
+                values["landingTargetLongitude"] = LandingTarget.Longitude.ToString("R", CultureInfo.InvariantCulture);
+                if (LandingTarget.TargetPe.HasValue) values["landingTargetPe"] = LandingTarget.TargetPe.Value.ToString("R", CultureInfo.InvariantCulture);
+            }
+            if (NoCorrection) values["noCorrection"] = "true";
             if (PickedSite != null)
             {
                 values["pickedSiteBody"] = PickedSite.Body;
@@ -259,6 +272,7 @@ namespace ClaudiaKerman.Core.Missions
             if (WindowPickNeeded) values["windowPickNeeded"] = "true";
             if (WindowPickUnsaid) values["windowPickUnsaid"] = "true";
             if (WindowOwnDue.HasValue) values["windowOwnDue"] = WindowOwnDue.Value.ToString("R", CultureInfo.InvariantCulture);
+            if (ReturnWindowUt.HasValue) values["returnWindowUt"] = ReturnWindowUt.Value.ToString("R", CultureInfo.InvariantCulture);
             foreach (var setting in Settings) values[SettingPrefix + setting.Key] = setting.Value;
             for (var i = 0; i < UnsafeProblems.Count; i++) values[UnsafeProblemPrefix + i.ToString(CultureInfo.InvariantCulture)] = UnsafeProblems[i];
             if (QueuedEntries > 0) values["queuedEntries"] = QueuedEntries.ToString(CultureInfo.InvariantCulture);
@@ -321,6 +335,8 @@ namespace ClaudiaKerman.Core.Missions
                 PlannedAscent = Get(values, "plannedAscent"),
                 ArrivalPlane = Get(values, "arrivalPlane"),
                 LandingAim = Get(values, "landingAim"),
+                LandingTarget = ReadLandingTarget(Get(values, "landingTargetBody"), Get(values, "landingTargetLatitude"), Get(values, "landingTargetLongitude"), Get(values, "landingTargetPe")),
+                NoCorrection = Get(values, "noCorrection") == "true",
                 PickedSite = ReadSite(Get(values, "pickedSiteBody"), Get(values, "pickedSiteLatitude")),
                 WindowPick = Get(values, "windowPickBody").Length == 0 ? WindowPick.None
                     : new WindowPick(Get(values, "windowPickBody"), Get(values, "windowPickKind") == WindowKind.Optimal.ToString() ? WindowKind.Optimal : WindowKind.Soonest),
@@ -351,6 +367,7 @@ namespace ClaudiaKerman.Core.Missions
                 state.WindowDeltaV = windowDv;
             }
             if (double.TryParse(Get(values, "windowOwnDue"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.WindowOwnDue = reading;
+            if (double.TryParse(Get(values, "returnWindowUt"), NumberStyles.Float, CultureInfo.InvariantCulture, out reading)) state.ReturnWindowUt = reading;
             decimal cap;
             if (decimal.TryParse(Get(values, "spendingCap"), NumberStyles.Number, CultureInfo.InvariantCulture, out cap)) state.SpendingCap = cap;
             int number;
@@ -437,6 +454,13 @@ namespace ClaudiaKerman.Core.Missions
                 }
             }
             return plain.ToString();
+        }
+
+        private static Tools.LandingTarget ReadLandingTarget(string body, string latitude, string longitude, string pe)
+        {
+            double lat, lng, targetPe;
+            if (body.Length == 0 || !double.TryParse(latitude, NumberStyles.Float, CultureInfo.InvariantCulture, out lat) || !double.TryParse(longitude, NumberStyles.Float, CultureInfo.InvariantCulture, out lng)) return null;
+            return new Tools.LandingTarget { Body = body, Latitude = lat, Longitude = lng, TargetPe = double.TryParse(pe, NumberStyles.Float, CultureInfo.InvariantCulture, out targetPe) ? targetPe : (double?)null };
         }
 
         private static Tools.PickedSite ReadSite(string body, string latitude)

@@ -40,6 +40,8 @@ namespace ClaudiaKerman.Core.Missions
         public string BootFile = "";
         /// <summary>A docking port's size (its node type, e.g. size1), as the Target Vessel's free_ports count them; "" for other parts.</summary>
         public string PortSize = "";
+        /// <summary>A docking port's module state as the adapter read it ("PreAttached", "Docked (docker)", ...); "" when not read. Written only to the capture, never to Claudia's facts.</summary>
+        public string PortState = "";
         /// <summary>A Ship System that extends but can never retract, for the Craft Check's info line (<see cref="ShipSystemsHold"/>). Not in the JSON: the prompt doesn't carry it.</summary>
         public bool CannotRetract;
         /// <summary>An engine already lit, for the Chute Group above it (<see cref="ChuteGroupRules"/>). Not in the JSON: the prompt doesn't carry it.</summary>
@@ -258,6 +260,8 @@ namespace ClaudiaKerman.Core.Missions
         public WindowPick WindowPick = WindowPick.None;
         /// <summary>The delta-v, m/s, of the Mission Plan's legs after the one this turn plans, flown by the craft; null with no Mission Plan. Set by the Mission before a tool runs; not in the JSON.</summary>
         public double? LaterLegsDv;
+        /// <summary>The window a <c>return</c> run restarts for (#887): the Mission's planned one; null for none. Set by the Mission; not in the JSON.</summary>
+        public double? ReturnWindowUt;
         /// <summary>The Mission Plan's legs from the one in hand on, for <c>transfer_to</c>'s arrival plane (#788); null with no Mission Plan. Not in the JSON.</summary>
         public IList<PlannedSequence> LegsAhead;
         /// <summary>The Mission Goal, for the arrival plane, which it may name a pole or a biome for where the legs don't (#806), and the landing target default (#790); "" with no Mission. Not in the JSON.</summary>
@@ -268,6 +272,8 @@ namespace ClaudiaKerman.Core.Missions
         public Tools.PickedSite PickedSite;
         /// <summary>The arrival plane <c>transfer_to</c> last aimed for, as Core recorded it for <c>capture</c> (#788); "" for none. Not in the JSON.</summary>
         public string RecordedPlane = "";
+        /// <summary>Where the Mission's last aiming block aimed the landing, for <c>reentry</c>'s late trim (#892); null for none. Not in the JSON.</summary>
+        public Tools.LandingTarget LandingTarget;
         private static readonly int DefaultMarginPercent = new Config.PlayerConfig().CraftCheckMarginPercent;
 
         /// <summary>
@@ -425,6 +431,7 @@ namespace ClaudiaKerman.Core.Missions
                 }
                 if (part.ChargeMax > 0) json.Field("ec_max", part.ChargeMax);
                 if (part.PortSize.Length > 0) json.Field("port", part.PortSize);
+                if (withBodies && part.PortState.Length > 0) json.Field("port_state", part.PortState);
                 if (withBodies && part.Chute != null) WriteChute(json, part.Chute);
                 json.Name("tags").BeginArray();
                 foreach (var tag in part.Tags) json.String(tag);
@@ -702,6 +709,7 @@ namespace ClaudiaKerman.Core.Missions
                             AntennaPower = JsonNode.Double(part["antenna"]) ?? 0,
                             BootFile = JsonNode.Str(part["boot"]) ?? "",
                             PortSize = JsonNode.Str(part["port"]) ?? "",
+                            PortState = JsonNode.Str(part["port_state"]) ?? "",
                             Tags = tags == null ? new List<string>() : tags.Items.Select(JsonNode.Str).Where(t => t != null).ToList(),
                             MassT = mass,
                             DryMassT = JsonNode.Double(part["dry_t"]) ?? mass,

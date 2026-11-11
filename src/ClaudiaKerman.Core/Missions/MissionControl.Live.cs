@@ -155,6 +155,7 @@ namespace ClaudiaKerman.Core.Missions
             mission.Checks.Clear();
             foreach (var check in TelemetryDefaults.Fill(plan, _config)) mission.Checks.Add(new LiveCheck { Check = check });
             mission.Crossings.Clear();
+            mission.NoCorrection = false;
             mission.JudgedSnapshot = null;
             mission.Burning = false;
             mission.ZeroThrottleReadings = 0;
@@ -680,6 +681,7 @@ namespace ClaudiaKerman.Core.Missions
             Note(LogKind.Notice, line);
             if (ended.Block == "science") NoteScienceKept(mission, ended.Result);
             NoteLanding(mission, ended);
+            if (LandingLine.NoCorrection(ended.Block, ended.Result)) mission.NoCorrection = true;
             if (!BlockSucceeded(ended.Result)) mission.RunEvents.Add(_ut, RunEventKind.BlockAborted, line.TrimEnd('.'));
         }
 
@@ -693,6 +695,7 @@ namespace ClaudiaKerman.Core.Missions
                 mission.RunEvents.Replace(_ut, RunEventKind.Landing, LandingLine.Predicted(aimed));
             }
             if (ended.Block != "reentry") return;
+            mission.LandingTarget = null;
             var dark = LandingLine.Dark(ended.Result, MissionSettingsValues.FromDictionary(mission.Settings, MissionSettingsValues.Defaults(_config)).DaylightLanding, mission.Goal);
             if (dark.Length > 0) mission.RunEvents.Replace(_ut, RunEventKind.DarkLanding, dark);
             var landed = LandingLine.Landed(mission.LandingAim, ended.Result, _snapshot);

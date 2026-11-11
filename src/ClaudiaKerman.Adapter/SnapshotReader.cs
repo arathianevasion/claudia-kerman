@@ -29,6 +29,7 @@ namespace ClaudiaKerman.Adapter
             var snapshot = MissionView.Stamp(Read(vessel), MissionDriver.Current != null ? MissionDriver.Current.View : null);
             // The Mission's view gets the record a frame later; a block test has no Mission at all.
             if (snapshot.RecordedPlane.Length == 0) snapshot.RecordedPlane = MissionDriver.AimedPlane;
+            if (MissionDriver.Current == null || MissionDriver.Current.View.Stage == MissionStage.None) snapshot.LandingTarget = Core.Tools.BlockTestAim.Landing;
             // A block test's plan stands in for the Mission Plan's legs (#866: capture keeps a high orbit for a moon next).
             if (snapshot.LegsAhead == null && MissionDriver.BlockTestPlan != null) snapshot.LegsAhead = MissionDriver.BlockTestPlan;
             snapshot.BiomeLatitudesOf = BiomeLatitudesOf;
@@ -664,6 +665,8 @@ namespace ClaudiaKerman.Adapter
                 Tag(info, "docking_port");
                 var port = module as ModuleDockingNode;
                 if (port != null && info.PortSize.Length == 0) info.PortSize = string.IsNullOrEmpty(port.nodeType) ? "unknown" : port.nodeType.Trim();
+                // The module's state (PreAttached is a joint built in the VAB, Docked a docking): the Mission's own side ends at a docking (#909).
+                if (port != null && !string.IsNullOrEmpty(port.state)) info.PortState = port.state;
             }
             else if (Is(module, "ModuleLiftingSurface")) Tag(info, "aero_stabiliser");
             else if (Is(module, "ModuleGimbal")) Tag(info, "gimbal");

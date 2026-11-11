@@ -47,7 +47,7 @@ namespace ClaudiaKerman.Core.Missions
             var blocked = CoastBlock(mission, plan);
             if (blocked.Length > 0) text += "\n" + CoastCheckpoints.BlockerLine(blocked);
             // #867: the orbit it waits in crosses a moon.
-            return CrossingHeld(mission, plan) ? text + "\n" + mission.CrossingBlocker : text;
+            return CrossingHeld(mission, plan) ? text + "\n" + mission.Crossing.Blocker : text;
         }
 
         /// <summary>The block's wait armed its Encounter Watch: the coast it is on. An empty token: nothing a switch could checkpoint.</summary>
@@ -180,6 +180,7 @@ namespace ClaudiaKerman.Core.Missions
             mission.CheckPending = true;
             if (mission.RunningProcessor.HasValue) _commands.Add(new AbortScript(mission.RunningProcessor.Value, "left at a Coast Checkpoint", mission.RunId.Value));
             mission.RunId = null;
+            mission.ReturnWindowUt = null;
             mission.RunDeadlineUt = null;
             mission.RcsUse.Close(_ut);
             EndLive(mission);

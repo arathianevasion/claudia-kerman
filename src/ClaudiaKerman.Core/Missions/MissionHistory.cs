@@ -34,7 +34,7 @@ namespace ClaudiaKerman.Core.Missions
             if (!stage.HasValue || info == null) return null;
             var entry = Entry(folder, info, stage.Value == MissionStage.Succeeded ? MissionStatus.Succeeded : stage.Value == MissionStage.Lost ? MissionStatus.Lost : MissionStatus.Ended);
             entry.CanDelete = true;
-            var log = MissionLogRebuild.From(MissionStore.ReadTranscript(folder), info.Goal, entry.VesselName, config, MissionStore.ReadNotices(folder));
+            var log = MissionLogRebuild.From(MissionStore.ReadTranscript(folder), info.Goal, entry.VesselName, config, MissionStore.ReadNotices(folder), MissionStore.ReadRatings(folder));
             entry.FinalDebrief = MissionLogRebuild.FinalDebrief(log);
             // Claudia's death is the mod's own Debrief, which no transcript holds.
             if (entry.Status == MissionStatus.Lost)
@@ -71,7 +71,7 @@ namespace ClaudiaKerman.Core.Missions
         {
             if (stage != MissionStage.AwaitingSequenceApproval || plan == null || !plan.DueTimeUt.HasValue) return;
             entry.DueUt = plan.DueTimeUt.Value;
-            entry.DueFor = string.IsNullOrEmpty(windowPlanet) ? "" : WindowWaits.WaitsFor(windowPlanet);
+            entry.DueFor = string.IsNullOrEmpty(windowPlanet) || MissionControl.FirstIsReturn(plan) ? "" : WindowWaits.WaitsFor(windowPlanet);
             // A coast checkpoint (#775): the check on return runs when the player is back on the craft; parked, they have left it.
             if (plan.CoastCheckpoint.Length == 0) return;
             entry.DueFor = CoastCheckpoints.WaitsFor;

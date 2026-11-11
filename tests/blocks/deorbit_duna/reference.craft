@@ -221,6 +221,10 @@ PART
 	modMass = 0
 	modSize = 0,0,0
 	link = batteryBank_4294592424
+	link = parachuteSingle_4294627500
+	link = solarPanels5_4294500101
+	link = solarPanels5_4294500102
+	link = solarPanels5_4294500103
 	attN = bottom,batteryBank_4294592424_0|-0.172999993|0_0|-1|0_0|-0.172999993|0_0|-1|0
 	attN = top,probeCoreOcto2.v2_4294601898_0|0.172999993|0_0|1|0_0|0.172999993|0_0|1|0
 	EVENTS
@@ -896,9 +900,6 @@ PART
 	modMass = 0
 	modSize = 0,0,0
 	link = liquidEngine2.v2_4294562740
-	link = R8winglet_4294624006
-	link = R8winglet_4294623786
-	link = R8winglet_4294623740
 	attN = top,Decoupler.1_4294512936_0|1.875|0_0|1|0_0|1.875|0_0|1|0
 	attN = bottom,liquidEngine2.v2_4294562740_0|-1.88750005|0_0|-1|0_0|-1.88750005|0_0|-1|0
 	EVENTS
@@ -1257,33 +1258,31 @@ PART
 }
 PART
 {
-	part = R8winglet_4294624006
+	part = parachuteSingle_4294627500
 	partName = Part
-	persistentId = 1707880994
-	pos = -1.14752221,10.6541395,3.61812731E-08
+	persistentId = 3681508200
+	pos = 0,14.7659378,-0.745649
 	attPos = 0,0,0
-	attPos0 = -1.14752221,-1.52037716,3.61812731E-08
-	rot = 0,0,0,1
+	attPos0 = 0,0,-0.745649
+	rot = 0.5,-0.5,0.5,-0.5
 	attRot = 0,0,0,1
-	attRot0 = 0,0,0,1
+	attRot0 = 0.5,-0.5,0.5,-0.5
 	mir = 1,1,1
 	symMethod = Radial
 	autostrutMode = Off
 	rigidAttachment = False
-	istg = 1
+	istg = 0
 	resPri = 0
-	dstg = 2
-	sidx = -1
-	sqor = -1
-	sepI = 1
+	dstg = 0
+	sidx = 1
+	sqor = 0
+	sepI = -1
 	attm = 1
 	sameVesselCollision = False
 	modCost = 0
 	modMass = 0
 	modSize = 0,0,0
-	sym = R8winglet_4294623786
-	sym = R8winglet_4294623740
-	srfN = srfAttach,fuelTank.long_4294572040,COL4,0.540501237|0.174731255|0,0.125|0|0,0.540501237|0.174731255|0
+	srfN = srfAttach,kOSMachine1m_4294597990,COL4,0|0|-0.625,0|0|-1.0,0|0|-0.625
 	EVENTS
 	{
 	}
@@ -1307,105 +1306,73 @@ PART
 	}
 	MODULE
 	{
-		name = ModuleControlSurface
+		name = ModuleParachute
 		isEnabled = True
-		mirrorDeploy = False
-		usesMirrorDeploy = True
-		ignorePitch = False
-		ignoreYaw = False
-		ignoreRoll = False
-		deploy = False
-		deployInvert = False
-		partDeployInvert = False
-		deployAngle = 15
-		authorityLimiter = 100
+		persistentState = STOWED
+		animTime = 0
+		minAirPressureToOpen = 0.0399999991
+		deployAltitude = 1000
+		spreadAngle = 7
+		automateSafeDeploy = 0
 		stagingEnabled = True
 		EVENTS
 		{
 		}
 		ACTIONS
 		{
-			ActionToggle
+			DeployAction
 			{
 				actionGroup = None
 			}
-			ActionExtend
-			{
-				actionGroup = None
-			}
-			ActionRetract
-			{
-				actionGroup = None
-			}
-			PitchActive
-			{
-				actionGroup = None
-			}
-			PitchInactive
-			{
-				actionGroup = None
-			}
-			TogglePitch
-			{
-				actionGroup = None
-			}
-			YawActive
-			{
-				actionGroup = None
-			}
-			YawInactive
-			{
-				actionGroup = None
-			}
-			ToggleYaw
-			{
-				actionGroup = None
-			}
-			RollActive
-			{
-				actionGroup = None
-			}
-			RollInactive
-			{
-				actionGroup = None
-			}
-			ToggleRoll
-			{
-				actionGroup = None
-			}
-			ActivateAllControls
-			{
-				actionGroup = None
-			}
-			DeactivateAllControls
+			CutAction
 			{
 				actionGroup = None
 			}
 		}
-		AXISGROUPS
+		UPGRADESAPPLIED
 		{
-			deployAngle
-			{
-				axisGroup = None
-				axisIncremental = Pitch, Yaw, Roll, TranslateX, TranslateY, TranslateZ, WheelSteer, WheelThrottle, Custom01, Custom02, Custom03, Custom04
-				axisSpeedMultiplier = 0
-				axisInverted = None
-				overrideIncremental0 = Pitch, Yaw, Roll, TranslateX, TranslateY, TranslateZ, WheelSteer, WheelThrottle, Custom01, Custom02, Custom03, Custom04
-				overrideIncremental1 = Pitch, Yaw, Roll, TranslateX, TranslateY, TranslateZ, WheelSteer, WheelThrottle, Custom01, Custom02, Custom03, Custom04
-				overrideIncremental2 = Pitch, Yaw, Roll, TranslateX, TranslateY, TranslateZ, WheelSteer, WheelThrottle, Custom01, Custom02, Custom03, Custom04
-				overrideIncremental3 = Pitch, Yaw, Roll, TranslateX, TranslateY, TranslateZ, WheelSteer, WheelThrottle, Custom01, Custom02, Custom03, Custom04
-			}
-			authorityLimiter
-			{
-				axisGroup = None
-				axisIncremental = Pitch, Yaw, Roll, TranslateX, TranslateY, TranslateZ, WheelSteer, WheelThrottle, Custom01, Custom02, Custom03, Custom04
-				axisSpeedMultiplier = 0
-				axisInverted = None
-				overrideIncremental0 = Pitch, Yaw, Roll, TranslateX, TranslateY, TranslateZ, WheelSteer, WheelThrottle, Custom01, Custom02, Custom03, Custom04
-				overrideIncremental1 = Pitch, Yaw, Roll, TranslateX, TranslateY, TranslateZ, WheelSteer, WheelThrottle, Custom01, Custom02, Custom03, Custom04
-				overrideIncremental2 = Pitch, Yaw, Roll, TranslateX, TranslateY, TranslateZ, WheelSteer, WheelThrottle, Custom01, Custom02, Custom03, Custom04
-				overrideIncremental3 = Pitch, Yaw, Roll, TranslateX, TranslateY, TranslateZ, WheelSteer, WheelThrottle, Custom01, Custom02, Custom03, Custom04
-			}
+		}
+	}
+	MODULE
+	{
+		name = ModuleTestSubject
+		isEnabled = True
+		stagingEnabled = True
+		EVENTS
+		{
+		}
+		ACTIONS
+		{
+		}
+		UPGRADESAPPLIED
+		{
+		}
+	}
+	MODULE
+	{
+		name = ModuleDragModifier
+		isEnabled = True
+		stagingEnabled = True
+		EVENTS
+		{
+		}
+		ACTIONS
+		{
+		}
+		UPGRADESAPPLIED
+		{
+		}
+	}
+	MODULE
+	{
+		name = ModuleDragModifier
+		isEnabled = True
+		stagingEnabled = True
+		EVENTS
+		{
+		}
+		ACTIONS
+		{
 		}
 		UPGRADESAPPLIED
 		{
@@ -1432,335 +1399,112 @@ PART
 }
 PART
 {
-	part = R8winglet_4294623786
+	part = solarPanels5_4294500101
 	partName = Part
-	persistentId = 804177085
-	pos = 0.573761284,10.6541395,0.993783355
+	persistentId = 2290342701
+	pos = 0.625,14.7659378,0
 	attPos = 0,0,0
-	attPos0 = 0.573761284,-1.52037716,0.993783355
-	rot = 0,0.866025448,0,0.49999997
+	attPos0 = 0.625,0,0
+	rot = 0,-0.7071068,0,0.7071068
 	attRot = 0,0,0,1
-	attRot0 = 0,0.866025448,0,0.49999997
+	attRot0 = 0,-0.7071068,0,0.7071068
 	mir = 1,1,1
 	symMethod = Radial
 	autostrutMode = Off
 	rigidAttachment = False
-	istg = 1
+	istg = -1
 	resPri = 0
-	dstg = 2
+	dstg = 0
 	sidx = -1
 	sqor = -1
-	sepI = 1
+	sepI = -1
 	attm = 1
 	sameVesselCollision = False
 	modCost = 0
 	modMass = 0
 	modSize = 0,0,0
-	sym = R8winglet_4294623740
-	sym = R8winglet_4294624006
-	srfN = srfAttach,fuelTank.long_4294572040,COL4,0.540501237|0.174731255|0,0.125|0|0,0.540501237|0.174731255|0
+	srfN = srfAttach,kOSMachine1m_4294597990,COL4,0.625|0|0,1.0|0|0,0.625|0|0
 	EVENTS
 	{
 	}
 	ACTIONS
 	{
-		ToggleSameVesselInteraction
-		{
-			actionGroup = None
-		}
-		SetSameVesselInteraction
-		{
-			actionGroup = None
-		}
-		RemoveSameVesselInteraction
-		{
-			actionGroup = None
-		}
 	}
 	PARTDATA
 	{
-	}
-	MODULE
-	{
-		name = ModuleControlSurface
-		isEnabled = True
-		mirrorDeploy = False
-		usesMirrorDeploy = True
-		ignorePitch = False
-		ignoreYaw = False
-		ignoreRoll = False
-		deploy = False
-		deployInvert = False
-		partDeployInvert = False
-		deployAngle = 15
-		authorityLimiter = 100
-		stagingEnabled = True
-		EVENTS
-		{
-		}
-		ACTIONS
-		{
-			ActionToggle
-			{
-				actionGroup = None
-			}
-			ActionExtend
-			{
-				actionGroup = None
-			}
-			ActionRetract
-			{
-				actionGroup = None
-			}
-			PitchActive
-			{
-				actionGroup = None
-			}
-			PitchInactive
-			{
-				actionGroup = None
-			}
-			TogglePitch
-			{
-				actionGroup = None
-			}
-			YawActive
-			{
-				actionGroup = None
-			}
-			YawInactive
-			{
-				actionGroup = None
-			}
-			ToggleYaw
-			{
-				actionGroup = None
-			}
-			RollActive
-			{
-				actionGroup = None
-			}
-			RollInactive
-			{
-				actionGroup = None
-			}
-			ToggleRoll
-			{
-				actionGroup = None
-			}
-			ActivateAllControls
-			{
-				actionGroup = None
-			}
-			DeactivateAllControls
-			{
-				actionGroup = None
-			}
-		}
-		AXISGROUPS
-		{
-			deployAngle
-			{
-				axisGroup = None
-				axisIncremental = Pitch, Yaw, Roll, TranslateX, TranslateY, TranslateZ, WheelSteer, WheelThrottle, Custom01, Custom02, Custom03, Custom04
-				axisSpeedMultiplier = 0
-				axisInverted = None
-			}
-			authorityLimiter
-			{
-				axisGroup = None
-				axisIncremental = Pitch, Yaw, Roll, TranslateX, TranslateY, TranslateZ, WheelSteer, WheelThrottle, Custom01, Custom02, Custom03, Custom04
-				axisSpeedMultiplier = 0
-				axisInverted = None
-			}
-		}
-		UPGRADESAPPLIED
-		{
-		}
-	}
-	MODULE
-	{
-		name = ModuleCargoPart
-		isEnabled = True
-		beingAttached = False
-		beingSettled = False
-		reinitResourcesOnStoreInVessel = False
-		stagingEnabled = True
-		EVENTS
-		{
-		}
-		ACTIONS
-		{
-		}
-		UPGRADESAPPLIED
-		{
-		}
 	}
 }
 PART
 {
-	part = R8winglet_4294623740
+	part = solarPanels5_4294500102
 	partName = Part
-	persistentId = 994571090
-	pos = 0.573761046,10.6541395,-0.993783534
+	persistentId = 2290342702
+	pos = 0,14.7659378,0.625
 	attPos = 0,0,0
-	attPos0 = 0.573761046,-1.52037716,-0.993783534
-	rot = 0,0.866025388,0,-0.50000006
+	attPos0 = 0,0,0.625
+	rot = 0,-1.0,0,0
 	attRot = 0,0,0,1
-	attRot0 = 0,0.866025388,0,-0.50000006
+	attRot0 = 0,-1.0,0,0
 	mir = 1,1,1
 	symMethod = Radial
 	autostrutMode = Off
 	rigidAttachment = False
-	istg = 1
+	istg = -1
 	resPri = 0
-	dstg = 2
+	dstg = 0
 	sidx = -1
 	sqor = -1
-	sepI = 1
+	sepI = -1
 	attm = 1
 	sameVesselCollision = False
 	modCost = 0
 	modMass = 0
 	modSize = 0,0,0
-	sym = R8winglet_4294624006
-	sym = R8winglet_4294623786
-	srfN = srfAttach,fuelTank.long_4294572040,COL4,0.540501237|0.174731255|0,0.125|0|0,0.540501237|0.174731255|0
+	srfN = srfAttach,kOSMachine1m_4294597990,COL4,0|0|0.625,0|0|1.0,0|0|0.625
 	EVENTS
 	{
 	}
 	ACTIONS
 	{
-		ToggleSameVesselInteraction
-		{
-			actionGroup = None
-		}
-		SetSameVesselInteraction
-		{
-			actionGroup = None
-		}
-		RemoveSameVesselInteraction
-		{
-			actionGroup = None
-		}
 	}
 	PARTDATA
 	{
 	}
-	MODULE
+}
+PART
+{
+	part = solarPanels5_4294500103
+	partName = Part
+	persistentId = 2290342703
+	pos = -0.625,14.7659378,0
+	attPos = 0,0,0
+	attPos0 = -0.625,0,0
+	rot = 0,0.7071068,0,0.7071068
+	attRot = 0,0,0,1
+	attRot0 = 0,0.7071068,0,0.7071068
+	mir = 1,1,1
+	symMethod = Radial
+	autostrutMode = Off
+	rigidAttachment = False
+	istg = -1
+	resPri = 0
+	dstg = 0
+	sidx = -1
+	sqor = -1
+	sepI = -1
+	attm = 1
+	sameVesselCollision = False
+	modCost = 0
+	modMass = 0
+	modSize = 0,0,0
+	srfN = srfAttach,kOSMachine1m_4294597990,COL4,-0.625|0|0,-1.0|0|0,-0.625|0|0
+	EVENTS
 	{
-		name = ModuleControlSurface
-		isEnabled = True
-		mirrorDeploy = False
-		usesMirrorDeploy = True
-		ignorePitch = False
-		ignoreYaw = False
-		ignoreRoll = False
-		deploy = False
-		deployInvert = False
-		partDeployInvert = False
-		deployAngle = 15
-		authorityLimiter = 100
-		stagingEnabled = True
-		EVENTS
-		{
-		}
-		ACTIONS
-		{
-			ActionToggle
-			{
-				actionGroup = None
-			}
-			ActionExtend
-			{
-				actionGroup = None
-			}
-			ActionRetract
-			{
-				actionGroup = None
-			}
-			PitchActive
-			{
-				actionGroup = None
-			}
-			PitchInactive
-			{
-				actionGroup = None
-			}
-			TogglePitch
-			{
-				actionGroup = None
-			}
-			YawActive
-			{
-				actionGroup = None
-			}
-			YawInactive
-			{
-				actionGroup = None
-			}
-			ToggleYaw
-			{
-				actionGroup = None
-			}
-			RollActive
-			{
-				actionGroup = None
-			}
-			RollInactive
-			{
-				actionGroup = None
-			}
-			ToggleRoll
-			{
-				actionGroup = None
-			}
-			ActivateAllControls
-			{
-				actionGroup = None
-			}
-			DeactivateAllControls
-			{
-				actionGroup = None
-			}
-		}
-		AXISGROUPS
-		{
-			deployAngle
-			{
-				axisGroup = None
-				axisIncremental = Pitch, Yaw, Roll, TranslateX, TranslateY, TranslateZ, WheelSteer, WheelThrottle, Custom01, Custom02, Custom03, Custom04
-				axisSpeedMultiplier = 0
-				axisInverted = None
-			}
-			authorityLimiter
-			{
-				axisGroup = None
-				axisIncremental = Pitch, Yaw, Roll, TranslateX, TranslateY, TranslateZ, WheelSteer, WheelThrottle, Custom01, Custom02, Custom03, Custom04
-				axisSpeedMultiplier = 0
-				axisInverted = None
-			}
-		}
-		UPGRADESAPPLIED
-		{
-		}
 	}
-	MODULE
+	ACTIONS
 	{
-		name = ModuleCargoPart
-		isEnabled = True
-		beingAttached = False
-		beingSettled = False
-		reinitResourcesOnStoreInVessel = False
-		stagingEnabled = True
-		EVENTS
-		{
-		}
-		ACTIONS
-		{
-		}
-		UPGRADESAPPLIED
-		{
-		}
+	}
+	PARTDATA
+	{
 	}
 }

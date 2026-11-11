@@ -28,6 +28,25 @@ namespace ClaudiaKerman.Core.Missions
             return km.Value.ToString("R", CultureInfo.InvariantCulture) + Separator + Text(result, "aim_note");
         }
 
+        /// <summary>The start of the <c>aim_note</c> a <c>return</c> gives when its aimed Course Correction couldn't be solved and none flew (#817).</summary>
+        public const string NoCorrectionPrefix = "no correction flown";
+
+        /// <summary>The Debrief notice for a <c>return</c> that flew no Course Correction (#899), beside the Telemetry Check one.</summary>
+        public const string NoCorrectionNotice = "Rated Off-Nominal, not Nominal: return's Course Correction couldn't be solved, so none was flown.";
+
+        /// <summary>Whether a <c>return</c>'s <paramref name="result"/> says no correction was flown.</summary>
+        public static bool NoCorrection(string block, IDictionary<string, object> result)
+        {
+            object note;
+            return block == "return" && result != null && result.TryGetValue("aim_note", out note) && note != null && note.ToString().StartsWith(NoCorrectionPrefix, StringComparison.Ordinal);
+        }
+
+        /// <summary>Whether a Debrief turn's text carries a report whose <c>aim_note</c> says no correction was flown, as the log rebuild reads it.</summary>
+        public static bool NoCorrection(string userText)
+        {
+            return userText != null && userText.Contains("\"aim_note\":\"" + NoCorrectionPrefix);
+        }
+
         /// <summary>Whether the craft is at Kerbin or a moon of it: the planet an aimed block's landing is on.</summary>
         private static bool Homebound(GameSnapshot snapshot)
         {

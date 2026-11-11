@@ -89,12 +89,14 @@ namespace ClaudiaKerman.Core.Tests
             lng = landed.Longitude;
         }
 
-        private static IDictionary<string, object> Aim(GameSnapshot snapshot, double lat, double lng, double burnIn = 300, double dvLeft = -1, double pe = Pe)
+        private static IDictionary<string, object> Aim(GameSnapshot snapshot, double lat, double lng, double burnIn = 300, double dvLeft = -1, double pe = Pe, IDictionary<string, object> craft = null)
         {
-            return BlockCalls.CorrectionBurn(new Dictionary<string, object>
+            var ask = new Dictionary<string, object>
             {
                 { "target", "Kerbin" }, { "target_pe", pe }, { "earliest_ut", snapshot.Ut + burnIn }, { "latest_ut", snapshot.Ut + burnIn }, { "lat", lat }, { "lng", lng }, { "dv_left", dvLeft },
-            }, snapshot, new FrameBody(snapshot.Ut), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            };
+            if (craft != null) ask["craft"] = craft;
+            return BlockCalls.CorrectionBurn(ask, snapshot, new FrameBody(snapshot.Ut), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
         }
 
         private static double D(IDictionary<string, object> node, string key)
@@ -119,6 +121,12 @@ namespace ClaudiaKerman.Core.Tests
             return LandingSiteSearch.ArcDegrees(fromLat, fromLng, toLat, toLng) * Math.PI / 180 * 600;
         }
 
+        /// <summary>At Kerbin the aimed solve may move the periapsis within the corridor (#817), then holds it to the solver's tolerance.</summary>
+        private static void InCorridor(double pe)
+        {
+            Assert.InRange(pe, Pe - CorrectionBurn.PeCorridor - 1000, Pe + CorrectionBurn.PeCorridor + 1000);
+        }
+
         /// <summary>km of longitude on the equator.</summary>
         private const double KmPerDeg = 600 * Math.PI / 180;
 
@@ -127,7 +135,7 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData(10)]
         [InlineData(-30)]
         [InlineData(60)]
-        public void The_landing_moves_to_the_target_with_the_periapsis_held(double eastKm)
+        public void The_landing_moves_to_the_target_with_the_periapsis_in_the_corridor(double eastKm)
         {
             var snapshot = Falling();
             double lat, lng;
@@ -137,12 +145,12 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("", node["error"]);
             double pe;
             var flown = Flown(snapshot, node, out pe);
-            Assert.InRange(pe, Pe - 1000, Pe + 1000);
+            InCorridor(pe);
             Assert.InRange(Km(flown.Latitude, flown.Longitude, lat, target), 0, 1);
             Assert.InRange(D(node, "error_km"), 0, 1);
         }
 
-        /// <summary>The miss is more than the burn may reach: it burns its most, the periapsis holds, the landing moves that far, and the rest is reported, no failure.</summary>
+        /// <summary>The miss is more than the burn may reach: it burns its most, the periapsis stays in the corridor, the landing moves that far, and the rest is reported, no failure.</summary>
         [Theory]
         [InlineData(1500)]
         [InlineData(-1500)]
@@ -157,8 +165,9 @@ namespace ClaudiaKerman.Core.Tests
             double pe;
             var flown = Flown(snapshot, node, out pe);
             var left = Km(flown.Latitude, flown.Longitude, lat, target);
-            Assert.InRange(pe, Pe - 1000, Pe + 1000);
-            Assert.InRange(D(node, "dv"), 40, CorrectionBurn.MostLandingDv * 1.1);
+            InCorridor(pe);
+            // Never over its most by more than exec_node's residual (#817): an answer over it is brought back to it.
+            Assert.InRange(D(node, "dv"), 40, CorrectionBurn.MostLandingDv + 0.5);
             Assert.InRange(left, 100, Math.Abs(eastKm) - 100);
             Assert.InRange(D(node, "error_km"), left - 0.01, left + 0.01);
         }
@@ -174,6 +183,22 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("", node["error"]);
             Assert.InRange(D(node, "dv"), 0, 3);
             Assert.True(D(node, "error_km") > 300);
+        }
+
+        /// <summary>#907: the delta-v a stage below stage_limit holds (ENTRYCRAFT's held_dv) isn't the craft's to spend: the correction spends by the kept delta-v.</summary>
+        [Fact]
+        public void The_burn_spends_only_the_kept_delta_v()
+        {
+            var snapshot = Falling();
+            double lat, lng;
+            Natural(snapshot, out lat, out lng);
+            var whole = Aim(snapshot, lat, lng + 500 / KmPerDeg, 300, 450);
+            var kept = Aim(snapshot, lat, lng + 500 / KmPerDeg, 300, 450, craft: new Dictionary<string, object> { { "whole", 10.0 }, { "held_dv", 170.0 } });
+            Assert.Equal("", kept["error"]);
+            // A capsule with no chutes lands on its engines (about 230 m/s). 450 left: whole spends what the miss takes (about 54); 170 held leaves 280, less the 50 reserve and the landing: about nothing.
+            Assert.True(D(whole, "dv") > 40, D(whole, "dv") + " " + whole["aim_note"]);
+            Assert.InRange(D(kept, "dv"), 0, 20);
+            Assert.True(D(kept, "dv") < D(whole, "dv") - 20, D(kept, "dv") + " " + kept["aim_note"]);
         }
 
         /// <summary>A craft with nothing left spends nothing on the landing: 0 is a reading, only a negative figure is unknown.</summary>
@@ -204,7 +229,7 @@ namespace ClaudiaKerman.Core.Tests
             double pe;
             var flown = Flown(snapshot, node, out pe);
             var left = Km(flown.Latitude, flown.Longitude, lat, target);
-            Assert.InRange(pe, Pe - 1000, Pe + 1000);
+            InCorridor(pe);
             Assert.InRange(left, 0, 1);
         }
 
@@ -221,7 +246,7 @@ namespace ClaudiaKerman.Core.Tests
             double pe;
             var flown = Flown(snapshot, node, out pe);
             var left = Km(flown.Latitude, flown.Longitude, lat, target);
-            Assert.InRange(pe, Pe - 1000, Pe + 1000);
+            InCorridor(pe);
             Assert.InRange(D(node, "dv"), 0, 0.1);
             Assert.InRange(D(node, "error_km"), left - 0.01, left + 0.01);
         }
@@ -239,7 +264,7 @@ namespace ClaudiaKerman.Core.Tests
             double pe;
             var flown = Flown(snapshot, node, out pe);
             var left = Km(flown.Latitude, flown.Longitude, lat + 10 / KmPerDeg, target);
-            Assert.InRange(pe, Pe - 1000, Pe + 1000);
+            InCorridor(pe);
             Assert.True(left < Km(lat, lng, lat + 10 / KmPerDeg, target), "the landing moves toward the target");
             Assert.InRange(D(node, "error_km"), left - 0.01, left + 0.01);
             Assert.InRange(D(node, "dv"), 0, 10);
@@ -363,7 +388,7 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void A_far_out_correction_round_the_star_aims_a_landing_with_the_periapsis_held()
+        public void A_far_out_correction_round_the_star_aims_a_landing_with_the_periapsis_in_the_corridor()
         {
             var system = new BodySystem(new[] { Sun, Kerbin });
             const double now = 1000000;
@@ -379,14 +404,14 @@ namespace ClaudiaKerman.Core.Tests
             ask.Landing = landed;
             var plan = CorrectionBurn.Find(system, sun, orbit, now, ask);
             Assert.Null(plan.Error);
-            Assert.InRange(plan.PePredicted, Pe - 1000, Pe + 1000);
+            InCorridor(plan.PePredicted);
             Assert.NotNull(plan.Landing);
             Assert.InRange(plan.ErrorKm, 0, 1);
             Assert.InRange(plan.DeltaV, 0, CorrectionBurn.MostLandingDv * 1.1);
         }
 
         [Fact]
-        public void A_near_kerbin_correction_on_a_hyperbola_aims_a_landing_with_the_periapsis_held()
+        public void A_near_kerbin_correction_on_a_hyperbola_aims_a_landing_with_the_periapsis_in_the_corridor()
         {
             var system = new BodySystem(new[] { Sun, Kerbin });
             const double now = 1000000;
@@ -407,7 +432,7 @@ namespace ClaudiaKerman.Core.Tests
             ask.Landing = landed;
             var plan = CorrectionBurn.Find(system, kerbin, orbit, now, ask);
             Assert.Null(plan.Error);
-            Assert.InRange(plan.PePredicted, Pe - 1000, Pe + 1000);
+            InCorridor(plan.PePredicted);
             Assert.NotNull(plan.Landing);
             Assert.True(plan.ErrorKm < 10, "the landing moves toward the target");
         }

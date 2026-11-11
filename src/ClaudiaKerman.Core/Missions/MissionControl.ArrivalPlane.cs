@@ -16,6 +16,10 @@ namespace ClaudiaKerman.Core.Missions
             public string ArrivalPlane = "";
             /// <summary>What the block that aimed the landing predicted (<see cref="LandingLine.Record"/>), for the reentry that may come in a later run (#790).</summary>
             public string LandingAim = "";
+            /// <summary>Where that block aimed the landing, for <c>reentry</c>'s late trim (#892); null for none. Cleared when a reentry ends.</summary>
+            public LandingTarget LandingTarget;
+            /// <summary>A <c>return</c> this run flew no Course Correction (its aim_note, #899); the Debrief rates the run Off-Nominal and clears it.</summary>
+            public bool NoCorrection;
             /// <summary><c>find_landing_site</c>'s first site in its last answer; null for none.</summary>
             public PickedSite PickedSite;
         }
@@ -23,6 +27,11 @@ namespace ClaudiaKerman.Core.Missions
         private void ArrivalPlaneRecorded(ArrivalPlaneAimed aimed)
         {
             if (_mission != null) _mission.ArrivalPlane = aimed.Record;
+        }
+
+        private void LandingTargetRecorded(LandingTargetAimed aimed)
+        {
+            if (_mission != null) _mission.LandingTarget = aimed.Target;
         }
 
         /// <summary>Keeps the first site of a <c>find_landing_site</c> answer in this step, for a next leg's arrival plane. A later answer replaces it; one with no site leaves it.</summary>

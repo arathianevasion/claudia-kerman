@@ -443,6 +443,36 @@ namespace ClaudiaKerman.Core.Tests
             };
         }
 
+        /// <summary>
+        /// #880: from another planet the next Transfer Window goes, with no landing wait; the step names KSC as the landing, so reentry's Late Trim (a Course Correction, #892) aims there
+        /// within the spare delta-v (#907). A Mission Goal that names another place leaves the landing out and the window where it was.
+        /// </summary>
+        [Fact]
+        public void An_interplanetary_return_home_takes_the_next_window_and_the_trim_aims_at_ksc_within_the_spare_delta_v()
+        {
+            var rig = TransferRig.Circular("Duna", 100000, 0);
+            var aimed = rig.Snapshot();
+            var step = BlockCalls.TransferStep(StartInput("Kerbin", 30000), aimed);
+            Assert.Equal("", step["error"]);
+            Assert.Equal(ReturnAim.KscLatitude, Convert.ToDouble(step["lat"]));
+            Assert.Equal(ReturnAim.KscLongitude, Convert.ToDouble(step["lng"]));
+
+            var named = rig.Snapshot();
+            named.MissionGoal = "Land in the ocean.";
+            var plain = BlockCalls.TransferStep(StartInput("Kerbin", 30000), named);
+            Assert.False(plain.ContainsKey("lat"), "a goal naming another place has no landing to aim at");
+            Assert.Equal(Convert.ToDouble(plain["ut"]), Convert.ToDouble(step["ut"]), 3);
+
+            var coming = AimedCorrectionTests.Falling();
+            // What the adapter records from the step is what the trim aims at.
+            coming.LandingTarget = BlockCalls.LandingTargetOf(step, "Kerbin");
+            var trim = BlockCalls.EntryTrim(new Dictionary<string, object> { { "to_air", 15000.0 }, { "dv_left", 300.0 }, { "isp", 0.0 }, { "has_node", false } },
+                coming, new AimedCorrectionTests.FrameBody(coming.Ut), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            Assert.Equal("", trim["error"]);
+            Assert.True(Convert.ToDouble(trim["dv"]) > 0, "it flies a trim toward KSC: " + trim["aim_note"]);
+            Assert.InRange(Convert.ToDouble(trim["dv"]), 0, DeorbitBurn.SpareDv(300, 0, 0, null));
+        }
+
         [Fact]
         public void Duna_to_Kerbin_departs_when_plan_transfer_does_with_no_capture_priced()
         {

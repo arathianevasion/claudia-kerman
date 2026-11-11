@@ -345,11 +345,15 @@ namespace ClaudiaKerman.Core.Missions
         public ChuteGroups ChuteGroups;
         /// <summary>The Mission Plan's legs, for the Ship Systems hold (#756); null before there is a plan.</summary>
         public IList<PlannedSequence> PlanLegs;
+        /// <summary>The Mission's craft's name, so a Child Vessel's legs are left out of the later legs' delta-v (#832); "" before there is one.</summary>
+        public string CraftName = "";
         /// <summary>The Child Vessel the run flies, for <c>ENTRYDROP</c>'s count (#823); "" for the craft.</summary>
         public string RunningChild = "";
         /// <summary>The arrival plane <c>transfer_to</c> recorded for <c>capture</c>, and the last site <c>find_landing_site</c> gave (#788).</summary>
         public string ArrivalPlane = "";
         public Tools.PickedSite PickedSite;
+        /// <summary>Where the last aiming block aimed the landing (#892); null for none.</summary>
+        public Tools.LandingTarget LandingTarget;
         /// <summary>The kOS processor the Mission flies on; null for the default.</summary>
         public uint? ProcessorPartId;
 
@@ -445,6 +449,8 @@ namespace ClaudiaKerman.Core.Missions
         public bool WindowPickNeeded;
         /// <summary>The window the player last picked for this Mission; it stands in for the setting's pick on its transfer.</summary>
         public WindowPick WindowPick = WindowPick.None;
+        /// <summary>The window the running <c>return</c> was planned for (#887), for <see cref="Stamp"/>; null for none.</summary>
+        public double? ReturnWindowUt;
 
         /// <summary>The Mission Settings in force.</summary>
         public MissionSettingsValues Settings = new MissionSettingsValues();
@@ -461,8 +467,14 @@ namespace ClaudiaKerman.Core.Missions
                 snapshot.StampMission(view.Settings.TimeVersusDeltaV, view.MarginPercent, view.WindowPick);
                 // What the arrival plane reads (#788): the legs from the one in hand on, the site picked, and what transfer_to recorded for capture.
                 snapshot.LegsAhead = view.PlanLegs != null ? System.Linq.Enumerable.ToList(System.Linq.Enumerable.Skip(view.PlanLegs, System.Math.Max(0, view.CurrentSequence))) : null;
+                // What the legs after the one in hand need (#832), kept back by a block's reserve: CurrentSequence is the leg in hand, counted as begun.
+                // In a Child Vessel run the active ship is the child, whose dv_left is not the craft's: the craft's later legs are not taken from it.
+                snapshot.LaterLegsDv = view.PlanLegs == null ? (double?)null : MissionCards.LaterLegsDv(view.PlanLegs, view.CurrentSequence + 1, true, view.CraftName, view.RunningChild);
                 snapshot.PickedSite = view.PickedSite;
+                snapshot.ReturnWindowUt = view.ReturnWindowUt;
                 snapshot.RecordedPlane = view.ArrivalPlane;
+                // The aimed landing is the craft's (#892): a Child Vessel's run flies no trim toward it.
+                snapshot.LandingTarget = view.RunningChild.Length == 0 ? view.LandingTarget : null;
                 snapshot.MissionGoal = view.Goal;
             }
             return snapshot;

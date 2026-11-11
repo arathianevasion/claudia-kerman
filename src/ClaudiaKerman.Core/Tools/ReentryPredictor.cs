@@ -156,7 +156,7 @@ namespace ClaudiaKerman.Core.Tools
         public double LandingUt;
         /// <summary>Where it reaches the ground, in the body's inertial frame, m.</summary>
         public Vec3 Position;
-        /// <summary>The most drag deceleration on the way down, in g.</summary>
+        /// <summary>The most the air pulls on the craft on the way down, in g, its open parachutes left out (#921): what its entry pulls, which the periapsis decides and <see cref="CorrectionBurn.MostEntryG"/> judges. A chute's opening is a separate load no burn can change, and read at the integrator's trial states it spiked to over 100 g.</summary>
         public double PeakG;
         /// <summary>The air speed it reaches the ground at, m/s.</summary>
         public double LandingSpeed;
@@ -468,10 +468,10 @@ namespace ClaudiaKerman.Core.Tools
             if (speed <= 0) return a;
             _evaluations++;
             var mach = sound > 0 ? speed / sound : 0;
-            var area = _craft.DragArea(mach, density * speed) + ChuteArea(t);
+            var bare = _craft.DragArea(mach, density * speed);
             var q = 0.5 * density * speed / _mass;
-            var k = q * area;
-            _peak = Math.Max(_peak, k * speed / G0);
+            var k = q * (bare + ChuteArea(t));
+            _peak = Math.Max(_peak, q * bare * speed / G0);
             a = a - air * k;
             var liftArea = _craft.LiftArea(mach, 0);
             if (liftArea == 0) return a;

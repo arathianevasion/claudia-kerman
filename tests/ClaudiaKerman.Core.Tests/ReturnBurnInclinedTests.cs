@@ -258,6 +258,40 @@ namespace ClaudiaKerman.Core.Tests
             SameWindow(snapshot, block, D(Aimed(snapshot, null, due.Value), "ut"), "asked again at the Due Time");
         }
 
+        /// <summary>
+        /// #887: approved after the alignment the Due Time led, a launch lead or more late but before the window, the block used to search on to
+        /// the next alignment (hours later). Given the Mission's planned window it flies that one.
+        /// </summary>
+        [Fact]
+        public void Approved_late_with_the_window_still_reachable_the_block_flies_the_planned_window()
+        {
+            var snapshot = Orbiting(Mun(1.7), 66.43, 90);
+            var onTime = D(Aimed(snapshot), "ut");
+            double? dueBy;
+            var plan = PlanPick(snapshot, out dueBy);
+            var late = dueBy.Value + WindowWaits.LaunchLeadS + 600;
+            Assert.True(late < plan, "late is past the alignment and a lead, before the window");
+            var unaware = D(Aimed(snapshot, null, late), "ut");
+            Assert.True(unaware > onTime + 3 * 3600, "without the plan's window it searches on to the next band: " + (unaware - onTime) / 3600 + " h");
+            snapshot.ReturnWindowUt = plan;
+            SameWindow(snapshot, onTime, D(Aimed(snapshot, null, late), "ut"), "approved late, the planned window");
+        }
+
+        /// <summary>#887: a restart on time, at the Due Time, answers as it did, with or without the planned window.</summary>
+        [Theory]
+        [InlineData(66.43, 90, 1.7)]
+        [InlineData(90, 240, 4.5)]
+        public void A_restart_on_time_is_unchanged_by_the_planned_window(double inc, double lan, double phase)
+        {
+            var snapshot = Orbiting(Mun(phase), inc, lan);
+            double? dueBy;
+            var plan = PlanPick(snapshot, out dueBy);
+            var due = WindowWaits.DueTime(dueBy.Value, snapshot.Ut).Value;
+            var plain = D(Aimed(snapshot, null, due), "ut");
+            snapshot.ReturnWindowUt = plan;
+            Assert.Equal(plain, D(Aimed(snapshot, null, due), "ut"), 3);
+        }
+
         /// <summary>The rule's tie: landings within 5 km of the nearest count as one, and the sooner window goes.</summary>
         [Fact]
         public void A_tie_within_5_km_goes_to_the_sooner_window()

@@ -23,12 +23,12 @@ From a Minmus orbit, away from Minmus's node, with over 100 m/s more than the ej
 
 1. `RETURNBURN` aims 20 to 60 km off: the ejection takes the moon's latitude with it, and it does not wait for the node.
 2. `CORRECTIONBURN` burns about 15 to 40 m/s, and `aim_note` in the report reads `fix flown: <dv> m/s, <x> km down to <y> km`.
-3. The landing line ends with the same words, and `<y>` from KSC is a few km plus the burn's own error.
+3. The landing line carries the same words (a window note may follow them), and `<y>` from KSC is a few km plus the burn's own error.
 4. There is no visible hitch beyond a moment at the correction (at most 60 predictions, about 630 ms in the game).
 
 ## Check 4: Minmus, without spare delta-v
 
-As Check 3, with a craft that has only the ejection and under about 60 m/s more. `aim_note` reads `miss accepted: <x> km from the target; the fix costs <dv> m/s, over the <m> m/s it may spend above the reserve`, the correction burns only along the track, and the landing line ends with the same words.
+As Check 3, with a craft that has only the ejection and under about 60 m/s more. `aim_note` reads `miss accepted: <x> km from the target; the fix costs <dv> m/s, over the <m> m/s it may spend above the reserve`, the correction burns only along the track, and the landing line carries the same words (a window note may follow them).
 
 ## Check 5 (later): a Duna return
 

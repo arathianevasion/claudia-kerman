@@ -17,7 +17,7 @@ namespace ClaudiaKerman.Core.Tools
         public double TargetPe;
         /// <summary>The window's UT, or null for "next".</summary>
         public double? Window;
-        /// <summary>The ejection its watched wait led to (#867, <see cref="TransferFlight.EjectionToken"/>); "" for none.</summary>
+        /// <summary>The ejection its watched wait led to (#867, <see cref="EjectionToken"/>); "" for none.</summary>
         public string Ejection = "";
         public bool Correction = true;
         public double PeTolerance = 1000;
@@ -64,6 +64,10 @@ namespace ClaudiaKerman.Core.Tools
         /// the first step (<see cref="BurnPoints"/>), which want the ejection itself.
         /// </summary>
         public bool WatchEjection;
+        /// <summary>#915: where a trip home comes down, for the corrections inside the planet's sphere of influence; null for no landing to aim at.</summary>
+        public ReturnLanding Landing;
+        /// <summary>#915: why a trip home with a landing target couldn't read <see cref="Landing"/>; "" otherwise.</summary>
+        public string LandingProblem = "";
     }
 
     /// <summary>The next thing <c>transfer_to</c> does: fly a node, wait until a UT, or end; or why it fails.</summary>
@@ -103,12 +107,14 @@ namespace ClaudiaKerman.Core.Tools
         public double MidUt = -1;
         /// <summary>For return's coast ask (#775): the UT its wait runs to.</summary>
         public double WaitUt;
-        /// <summary>The ejection a watched wait leads to (#867), carried so the step after it flies this node: <see cref="TransferFlight.EjectionToken"/>; "" for none.</summary>
+        /// <summary>The ejection a watched wait leads to (#867), carried so the step after it flies this node: <see cref="EjectionToken"/>; "" for none.</summary>
         public string Ejection = "";
         /// <summary>A wait's Encounter Watch (#770); null for a wait with nothing to watch.</summary>
         public EncounterWatchPlan Watch;
         /// <summary>The arrival plane this flight aims for, for Core to record for <c>capture</c> (#788): <see cref="ArrivalPlane.ToRecord"/>; "" for none.</summary>
         public string AimedPlane = "";
+        /// <summary>#915: what the aim at the landing did and why, for the block call's log line only; "" for no aim.</summary>
+        public string PlanLog = "";
         /// <summary>Script Result keys and values to set.</summary>
         public readonly Dictionary<string, object> Report = new Dictionary<string, object>();
     }
@@ -215,6 +221,7 @@ namespace ClaudiaKerman.Core.Tools
                 }
             }
             double? movedMax = null;
+            var planLog = "";
             for (var i = 0; i < MaxPhases; i++)
             {
                 ToolOutcome error;
@@ -228,6 +235,8 @@ namespace ClaudiaKerman.Core.Tools
                 step.AimedPlane = aimed;
                 if (step.MaxDuration.HasValue) movedMax = step.MaxDuration;
                 else step.MaxDuration = movedMax;
+                if (step.PlanLog != "") planLog = step.PlanLog;
+                else step.PlanLog = planLog;
                 if (step.Error != "" || step.Do != TransferFlightStep.Done || step.Phase == "") return step;
                 // A step that flies nothing goes on to the phase it named, with what it carries.
                 Carry(ask, step);
@@ -386,7 +395,7 @@ namespace ClaudiaKerman.Core.Tools
                 string kept;
                 double? due;
                 var plan = KeptDeparture(snapshot, setup, ask, earliest, out kept, out due)
-                    ?? Fallback(snapshot, target, ask, earliest, kept != "" ? earliest + KeptRoute.MaxLoops * setup.Start.Period : (double?)null, kept != "" ? due : null);
+                    ?? Fallback(snapshot, target, ask, earliest, kept != "" ? earliest + HighRoute.MaxLoops * setup.Start.Period : (double?)null, kept != "" ? due : null);
                 if (plan.Error != null) return Fail(kept != "" ? kept + ", nor anywhere in them: circularize at alt and try again" + (plan.Error != "" ? " (" + plan.Error + ")" : "") : plan.Error);
                 step = Node("ejection", plan.Ut, plan.Prograde, plan.Normal, plan.Radial, Ejected);
                 if (kept != "") step.Report[CaptureFlight.KeptKey] = kept;
@@ -408,7 +417,7 @@ namespace ClaudiaKerman.Core.Tools
             var wait = new TransferFlightStep
             {
                 Do = TransferFlightStep.Wait, Ut = step.Ut - lead, Phase = Eject, ArrivalUt = arrival, PlaneUt = step.PlaneUt, MaxDuration = step.MaxDuration,
-                Watch = new EncounterWatchPlan { NextPatch = true, SinceUt = setup.Now }, Ejection = EjectionToken(step), Sibling = step.Sibling,
+                Watch = new EncounterWatchPlan { NextPatch = true, SinceUt = setup.Now }, Ejection = EjectionToken.Of(step).ToString(), Sibling = step.Sibling,
             };
             foreach (var entry in step.Report) wait.Report[entry.Key] = entry.Value;
             return wait;
@@ -435,8 +444,8 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
-        /// #866: from the high ellipse <c>capture</c> kept for this moon, the ejection at the periapsis that meets its window (<see cref="KeptRoute.Departure"/>),
-        /// within <see cref="KeptRoute.MaxLoops"/> loops; null for any other orbit or a window given (then <see cref="Transfer"/>'s search as before), or none
+        /// #866: from the high ellipse <c>capture</c> kept for this moon, the ejection at the periapsis that meets its window (<see cref="HighRoute.Departure"/>),
+        /// within <see cref="HighRoute.MaxLoops"/> loops; null for any other orbit or a window given (then <see cref="Transfer"/>'s search as before), or none
         /// found, <paramref name="why"/> saying so (then <see cref="Transfer"/>'s search over the same loops, else the circle).
         /// </summary>
         private static TransferPlan KeptDeparture(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask, double earliest, out string why, out double? deadline)
@@ -444,13 +453,13 @@ namespace ClaudiaKerman.Core.Tools
             why = "";
             deadline = null;
             var orbit = setup.Start;
-            if (ask.Window.HasValue || !KeptRoute.IsKept(setup.System, setup.Body, orbit, setup.Target)) return null;
+            if (ask.Window.HasValue || !HighRoute.IsKept(setup.System, setup.Body, orbit, setup.Target)) return null;
             string notNext;
-            var next = KeptRoute.NextMoon(snapshot, setup.System, setup.Body, out deadline, out notNext);
+            var next = HighRoute.NextMoon(snapshot, setup.System, setup.Body, out deadline, out notNext);
             if (next == null || !string.Equals(next.Name, setup.Target.Name, StringComparison.OrdinalIgnoreCase)) deadline = null;
             int loop;
-            var plan = KeptRoute.Departure(snapshot, setup.System, setup.Body, orbit, setup.Target, ask.TargetPe, earliest, earliest + KeptRoute.MaxLoops * orbit.Period, deadline, out loop);
-            if (plan == null) why = "no " + setup.Target.Name + " window at a periapsis within " + KeptRoute.MaxLoops + " loops of the kept orbit" + (deadline.HasValue ? " before the next fixed date" : "");
+            var plan = HighRoute.Departure(snapshot, setup.System, setup.Body, orbit, setup.Target, ask.TargetPe, earliest, earliest + HighRoute.MaxLoops * orbit.Period, deadline, out loop);
+            if (plan == null) why = "no " + setup.Target.Name + " window at a periapsis within " + HighRoute.MaxLoops + " loops of the kept orbit" + (deadline.HasValue ? " before the next fixed date" : "");
             return plan;
         }
 
@@ -463,28 +472,17 @@ namespace ClaudiaKerman.Core.Tools
             return NextPatchWatch.Margin(orbit) + turnTime + Lead;
         }
 
-        /// <summary>The ejection node a watched wait carries (#867): "ut;prograde;normal;radial;phase", invariant.</summary>
-        internal static string EjectionToken(TransferFlightStep step)
-        {
-            return string.Join(";", new[] { step.Ut, step.Prograde, step.Normal, step.Radial }.Select(x => x.ToString("R", CultureInfo.InvariantCulture)).ToArray()) + ";" + step.Phase;
-        }
-
         /// <summary>
         /// After the watched wait (#867): the ejection it carried, flown as planned (the orbit hasn't changed on rails), unless the path meets a moon
         /// before it in the last stretch, which exec_node warps unwatched. Null when nothing readable was carried: the ejection is solved again.
         /// </summary>
         private static TransferFlightStep Carried(PredictBurn.Setup setup, TransferFlightAsk ask)
         {
-            var parts = (ask.Ejection ?? "").Split(';');
-            double ut, prograde, normal, radial;
-            if (parts.Length != 5 || !double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out ut)
-                || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out prograde)
-                || !double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out normal)
-                || !double.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out radial)
-                || (parts[4] != Escaping && parts[4] != Ejected) || ut < setup.Now + ask.TurnTime) return null;
-            var met = MoonCrossings.Follow(setup.System, setup.Body, setup.Start, setup.Now, ut);
+            var token = EjectionToken.Parse(ask.Ejection);
+            if (token == null || (token.Phase != Escaping && token.Phase != Ejected) || token.Ut < setup.Now + ask.TurnTime) return null;
+            var met = MoonCrossings.Follow(setup.System, setup.Body, setup.Start, setup.Now, token.Ut);
             if (met != null) return Fail(NextPatchWatch.WouldMeet(met));
-            var step = Node("ejection", ut, prograde, normal, radial, parts[4]);
+            var step = Node("ejection", token.Ut, token.Prograde, token.Normal, token.Radial, token.Phase);
             step.ArrivalUt = ask.ArrivalUt;
             step.PlaneUt = ask.PlaneUt;
             step.Sibling = ask.Sibling;
@@ -787,6 +785,21 @@ namespace ClaudiaKerman.Core.Tools
             if (!ask.Correction) return Arrive(snapshot, setup, ask);
             var enc = Encounter(setup);
             var lead = ask.TurnTime + Lead;
+            // A landing's aim is flown inside the sphere of influence (#915), even with the periapsis already within pe_tolerance. An aim already known not to fly
+            // doesn't wait for it: the flight goes on, and ends, as with no landing.
+            var aimLog = "";
+            if (enc != null && AimsLanding(ask) && setup.Body != setup.Target)
+            {
+                var whyNot = KnownNoAim(snapshot, ask);
+                if (whyNot == null && FitsNear(enc, ask, setup.Now, lead)) return WaitNear(setup, enc, ask);
+                aimLog = NoAimLog(ask, whyNot ?? "no time to wait for " + setup.Target.Name + "'s sphere of influence");
+            }
+            return WithLog(PeFineCorrection(snapshot, setup, ask, enc, lead), aimLog);
+        }
+
+        /// <summary>The finer correction to target_pe (#672), by way of the target's sphere of influence where that is the place for it.</summary>
+        private static TransferFlightStep PeFineCorrection(GameSnapshot snapshot, PredictBurn.Setup setup, TransferFlightAsk ask, Arrival enc, double lead)
+        {
             // An arrival plane is set inside the sphere of influence, and the plane's own trim there follows (#788).
             if (enc != null && ask.Plane != null && setup.Body != setup.Target && FitsNear(enc, ask, setup.Now, lead)) return WaitNear(setup, enc, ask);
             if (enc != null && Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, FineCheck, "");
@@ -874,15 +887,81 @@ namespace ClaudiaKerman.Core.Tools
                 var trim = PlaneTrim(snapshot, setup, enc, ask);
                 if (trim != null) return trim;
             }
-            if (enc == null || setup.Body != setup.Target || Within(enc.Pe - ask.TargetPe, ask.PeTolerance)) return Go(ask, Fine);
+            if (enc == null || setup.Body != setup.Target) return Go(ask, Fine);
             var lead = ask.TurnTime + Lead;
             string late;
             var ut = CorrectionUt(setup.Now + lead, setup.Now, lead, ask.StartUt, ask.MaxDuration, out late);
+            if (late != "" || ut >= enc.PeUt) return WithLog(Go(ask, Fine), NoAimLog(ask, late != "" ? late : "no time for a burn before periapsis"));
+            var log = "";
+            if (AimsLanding(ask))
+            {
+                var aimed = HomeAim(snapshot, setup.Target, ask, ut, out log);
+                if (aimed != null) return WithLog(FlyCorrection(ask, aimed, "correction", Fine), log);
+            }
             // Worth it only when the trim's own burn is at least as far again off: a coarse burn there is no cheaper.
-            if (late != "" || enc.PeUt - ask.PeTolerance / FineResidual - ut < ask.PeTolerance / FineResidual) return Go(ask, Fine);
+            if (Within(enc.Pe - ask.TargetPe, ask.PeTolerance) || enc.PeUt - ask.PeTolerance / FineResidual - ut < ask.PeTolerance / FineResidual) return WithLog(Go(ask, Fine), log);
             var fix = CorrectionBurn.Find(snapshot, new CorrectionAsk { Target = setup.Target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut });
-            if (!fix.HasBurn || fix.Error != null) return Go(ask, Fine);
-            return FlyCorrection(ask, fix, "correction", Fine);
+            if (!fix.HasBurn || fix.Error != null) return WithLog(Go(ask, Fine), log);
+            return WithLog(FlyCorrection(ask, fix, "correction", Fine), log);
+        }
+
+        /// <summary>Whether this trip home has a landing to aim at (#915). A plane asked for goes first: a landing target takes no arrival plane (#793).</summary>
+        private static bool AimsLanding(TransferFlightAsk ask)
+        {
+            return ask.Plane == null && (ask.Landing != null || ask.LandingProblem != "");
+        }
+
+        /// <summary>
+        /// #915: the correction inside the home planet's sphere of influence, aimed at the landing target by #817's aimed solve: the periapsis inside its corridor and within half of pe_tolerance, the other half left for the burn's flown error, the time of
+        /// arrival with the periapsis held, the spend limited by <see cref="DeorbitBurn.SpareDv"/>. Only here, not on the star's patch, where a burn flown 0.05 m/s off moves the periapsis by tens of km
+        /// (#747) and the landing with it; and not in the finer trim after it, the last chance to come within pe_tolerance, which holds target_pe. Null when it can't aim: the flight goes on as with no
+        /// landing, target_pe only, and <paramref name="log"/> says why (the block call's log line only, as #912).
+        /// </summary>
+        private static CorrectionPlan HomeAim(GameSnapshot snapshot, SnapshotBody target, TransferFlightAsk ask, double ut, out string log)
+        {
+            var why = KnownNoAim(snapshot, ask);
+            CorrectionPlan aimed = null;
+            if (why == null)
+            {
+                aimed = CorrectionBurn.Find(snapshot, new CorrectionAsk
+                {
+                    Target = target.Name, TargetPe = ask.TargetPe, EarliestUt = ut, LatestUt = ut, PeTolerance = ask.PeTolerance, Landing = ask.Landing,
+                    // Stock's "can't say" (0 or less here) spends nothing on the landing.
+                    DvLeft = Math.Max(0, ask.DvLeft), LaterLegsDv = snapshot.LaterLegsDv ?? 0, CorridorHalf = CorrectionBurn.CorridorWithin(ask.PeTolerance),
+                });
+                if (!aimed.HasBurn || aimed.Error != null) why = aimed.Error ?? "no burn found";
+                else if (aimed.NotAimed) why = aimed.AimNote;
+                else if (!CorrectionBurn.LeavesFlownMargin(aimed.PePredicted, ask.TargetPe, ask.PeTolerance)) why = "the aimed periapsis, " + Km(aimed.PePredicted) + " km, is outside half of pe_tolerance of target_pe " + Km(ask.TargetPe) + " km";
+            }
+            if (why == null)
+            {
+                log = "landing aim: " + (aimed.ErrorKm >= 0 ? Math.Round(aimed.ErrorKm, 1).ToString(CultureInfo.InvariantCulture) + " km from the target, " : "") + "periapsis " + Km(aimed.PePredicted) + " km, "
+                    + Math.Round(aimed.DeltaV, 1).ToString(CultureInfo.InvariantCulture) + " m/s" + (aimed.AimNote == "" ? "" : "; " + aimed.AimNote);
+                return aimed;
+            }
+            log = NoAimLog(ask, why);
+            return null;
+        }
+
+        /// <summary>#915: why the aim can't apply, known without the arrival's own patch: no landing to read, target_pe under the corridor's floor, or nothing above the reserve; null when it may.</summary>
+        private static string KnownNoAim(GameSnapshot snapshot, TransferFlightAsk ask)
+        {
+            if (ask.Landing == null) return ask.LandingProblem;
+            if (ask.TargetPe < CorrectionBurn.CorridorFloor) return "target_pe " + Km(ask.TargetPe) + " km is under the periapsis corridor's " + Km(CorrectionBurn.CorridorFloor) + " km floor";
+            // Holding back no powered landing, the most it could be: none here is none once the landing is read. Stock's "can't say" (0 or less here) spends nothing on it.
+            return DeorbitBurn.SpareDv(Math.Max(0, ask.DvLeft), 0, snapshot.LaterLegsDv ?? 0, ask.Landing.Payer) > 0 ? null : "nothing above the reserve to aim the landing with";
+        }
+
+        /// <summary>#915: the log line for a trip home flying target_pe only; "" for a flight with no landing to aim at.</summary>
+        private static string NoAimLog(TransferFlightAsk ask, string why)
+        {
+            return AimsLanding(ask) ? "landing aim: target_pe only: " + why : "";
+        }
+
+        private static TransferFlightStep WithLog(TransferFlightStep step, string log)
+        {
+            step.PlanLog = log;
+            return step;
         }
 
         /// <summary>The arrival: the encounter and its periapsis reported, then a miss outside pe_tolerance (with correction) fails the block.</summary>

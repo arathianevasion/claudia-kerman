@@ -49,6 +49,15 @@ namespace ClaudiaKerman.KOS
         private Rect _rect = new Rect(80, 440, 520, 320);
         private Vector2 _scroll;
         private bool _visible = true;
+        private readonly DebugRunWindow _bridgeTab = new DebugRunWindow();
+        private static readonly string[] TabNames = { "Block Tests - Unvalidated", "Block Tests - Failed", "Block Tests - Passed", "kOS Bridge Tests" };
+        private const int BridgeTab = 3;
+        /// <summary>The tab last picked, kept for the session (a static survives the scene changes a run goes through).</summary>
+        private static int _tab;
+        /// <summary>The tab picked in this frame's input event; applied at the next Layout event so Layout and Repaint draw the same controls.</summary>
+        private static int _pendingTab = -1;
+        private readonly Vector2[] _listScroll = new Vector2[3];
+        private Dictionary<string, BlockTestLogEntry> _results = new Dictionary<string, BlockTestLogEntry>();
 
         private Stage _stage = Stage.Idle;
         private string _test;
@@ -67,6 +76,22 @@ namespace ClaudiaKerman.KOS
             }
             DontDestroyOnLoad(this);
             Debug.Log(ModInfo.LogTag + " block test: shipped " + string.Join(", ", TestNames().ToArray()));
+            ReadResults();
+        }
+
+        /// <summary>Reads block-tests.log once (at start, and after each run); a missing or unreadable log leaves every test Unvalidated.</summary>
+        private void ReadResults()
+        {
+            try
+            {
+                var path = Path.Combine(SaveDirectory, "block-tests.log");
+                _results = BlockTestLog.Latest(File.Exists(path) ? File.ReadAllText(path) : "");
+            }
+            catch (Exception e)
+            {
+                _results = new Dictionary<string, BlockTestLogEntry>();
+                Debug.LogWarning(ModInfo.LogTag + " couldn't read block-tests.log: " + e.Message);
+            }
         }
 
         private static string SaveDirectory
@@ -120,21 +145,53 @@ namespace ClaudiaKerman.KOS
 
         private void Draw(int id)
         {
-            // Rows of a few buttons: one row of every test runs wider than the screen, and the count
-            // below says how many there are to run, so a skipped test is easy to spot.
-            const int PerRow = 5;
+            if (Event.current.type == EventType.Layout && _pendingTab >= 0)
+            {
+                if (_pendingTab != _tab) _rect.height = 0; // GUILayout.Window never shrinks after a tall tab
+                _tab = _pendingTab;
+                _pendingTab = -1;
+            }
             var tests = TestNames().ToList();
-            for (var row = 0; row < tests.Count; row += PerRow)
+            var counts = new int[3];
+            foreach (var test in tests) counts[TabOf(test)]++;
+            var labels = new string[TabNames.Length];
+            for (var i = 0; i < labels.Length; i++) labels[i] = i < 3 ? TabNames[i] + " (" + counts[i] + ")" : TabNames[i];
+            var picked = GUILayout.SelectionGrid(_tab, labels, 2);
+            if (picked != _tab) _pendingTab = picked;
+
+            if (_tab == BridgeTab)
+            {
+                _bridgeTab.Draw();
+                if (GUILayout.Button("Hide", GUILayout.Width(50))) _visible = false;
+                GUI.DragWindow();
+                return;
+            }
+
+            // Rows of a few buttons: one row of every test runs wider than the screen, and the count
+            // below says how many there are to run, so a skipped test is easy to spot. Failed and Passed
+            // show a date (and Failed its reason), so they take a row each.
+            var shown = tests.Where(t => TabOf(t) == _tab).ToList();
+            var perRow = _tab == 0 ? 5 : 1;
+            _listScroll[_tab] = GUILayout.BeginScrollView(_listScroll[_tab], GUILayout.Height(200));
+            for (var row = 0; row < shown.Count; row += perRow)
             {
                 GUILayout.BeginHorizontal();
-                foreach (var test in tests.Skip(row).Take(PerRow))
+                foreach (var test in shown.Skip(row).Take(perRow))
                 {
                     GUI.enabled = _stage == Stage.Idle && HighLogic.LoadedScene != GameScenes.FLIGHT;
-                    if (GUILayout.Button("Run " + test)) Begin(test);
+                    var label = "Run " + test;
+                    BlockTestLogEntry entry;
+                    if (_tab != 0 && _results.TryGetValue(test, out entry))
+                    {
+                        label += " (" + entry.Date + ")";
+                        if (_tab == 1 && entry.Reason.Length > 0) label += " " + Cut(entry.Reason, 70);
+                    }
+                    if (GUILayout.Button(label)) Begin(test);
                 }
                 GUI.enabled = true;
                 GUILayout.EndHorizontal();
             }
+            GUILayout.EndScrollView();
             GUILayout.BeginHorizontal();
             GUILayout.Label(tests.Count + " tests shipped");
             if (GUILayout.Button("Hide", GUILayout.Width(50))) _visible = false;
@@ -146,6 +203,20 @@ namespace ClaudiaKerman.KOS
             GUILayout.Label(string.Join("\n", _log.ToArray()));
             GUILayout.EndScrollView();
             GUI.DragWindow();
+        }
+
+        /// <summary>0 Unvalidated (no result), 1 Failed, 2 Passed: by the test's latest result in block-tests.log.</summary>
+        private int TabOf(string test)
+        {
+            BlockTestLogEntry entry;
+            if (!_results.TryGetValue(test, out entry)) return 0;
+            return entry.Passed ? 2 : 1;
+        }
+
+        private static string Cut(string text, int max)
+        {
+            var line = text.Split('\n')[0];
+            return line.Length <= max ? line : line.Substring(0, max - 1) + "...";
         }
 
         // ---- The run ----
@@ -163,6 +234,7 @@ namespace ClaudiaKerman.KOS
                 if (_spec.TargetCraft != null)
                     File.WriteAllText(Path.Combine(SaveDirectory, "Ships/VAB/" + _spec.TargetCraft), Resource(test, _spec.TargetCraft));
                 MissionDriver.BlockTestTargetId = null;
+                Core.Tools.BlockTestAim.Clear(); // a block test never sees an earlier test's aim (#892)
                 MissionDriver.BlockTestPlan = _spec.Plan.Count > 0 ? _spec.Plan : null;
 
                 var game = GamePersistence.LoadGame("persistent", SaveFolder, true, false);
@@ -316,7 +388,7 @@ namespace ClaudiaKerman.KOS
             try
             {
                 Directory.CreateDirectory(SaveDirectory);
-                var stamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + "Z ";
+                var stamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) + "Z ";
                 File.AppendAllText(Path.Combine(SaveDirectory, "block-tests.log"),
                     stamp + result.Headline + "\n" + string.Concat(result.Lines.Select(l => "    " + l + "\n").ToArray()));
             }
@@ -324,6 +396,7 @@ namespace ClaudiaKerman.KOS
             {
                 Debug.LogWarning(ModInfo.LogTag + " couldn't write block-tests.log: " + e.Message);
             }
+            ReadResults();
         }
 
         private void Note(string line)

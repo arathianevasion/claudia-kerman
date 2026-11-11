@@ -30,6 +30,8 @@ namespace ClaudiaKerman.Core.Missions
         /// (<see cref="ReturnAim.DepartureUt(GameSnapshot, ReturnAsk, out double?)"/>); null to lead the departure.
         /// </summary>
         public double? DueByUt;
+        /// <summary>#906: a return that took the costly-plane window (<see cref="ReturnAim.CheapDepartureUt"/>), whose window may come before its alignment.</summary>
+        public bool CostlyWindow;
         /// <summary>
         /// For a return aimed at a landing (#792): the seconds its max_wait spans, from <see cref="ToEarliestSeconds"/> on. <see cref="DepartureUt"/> is an
         /// estimate (the block has the craft's drag, this has not), and a window just outside the block's near ones leaves it the next turn's, so a plan covers all of it.
@@ -227,13 +229,14 @@ namespace ClaudiaKerman.Core.Missions
             var span = 0.0;
             var defaultAim = false;
             double? dueBy = null;
+            var costly = false;
             if (call.Block == "return")
             {
                 var earliest = TransferFlight.Earliest(now, 0, window);
                 double? estimate;
                 var aimed = Aimed(call, snapshot, now, earliest, body, out estimate, out span, out dueBy);
                 // #816: with no target and no window given, from an inclined orbit the block may wait for the cheap window.
-                if (!aimed && !call.Options.ContainsKey("window")) estimate = Cheap(call, snapshot, now, earliest, out dueBy);
+                if (!aimed && !call.Options.ContainsKey("window")) { estimate = Cheap(call, snapshot, now, earliest, body, out dueBy); costly = estimate.HasValue; }
                 if (!aimed && !window.HasValue && !estimate.HasValue) return null;
                 ut = estimate ?? earliest;
                 departure = estimate ?? (window.HasValue ? earliest : (double?)null);
@@ -257,6 +260,7 @@ namespace ClaudiaKerman.Core.Missions
             {
                 wait.DepartureUt = departure;
                 wait.DueByUt = dueBy;
+                wait.CostlyWindow = costly;
                 wait.PickSpanSeconds = span;
                 wait.ToEarliestSeconds = toEarliest;
                 wait.DefaultAim = defaultAim;
@@ -283,15 +287,17 @@ namespace ClaudiaKerman.Core.Missions
             if (target == null || target == "\"auto\"")
             {
                 string pe;
-                var defaulted = HomeLanding.DefaultTarget(at, new LandingTargetAsk
+                var targetAsk = new LandingTargetAsk
                 {
                     Planet = planet.Name,
                     TargetPe = call.Options.TryGetValue("target_pe", out pe) ? Literal(pe) : null,
                     TargetInc = Literal(call.Option("target_inc")),
                     Window = Literal(call.Option("window")),
-                });
-                if (defaulted != HomeLanding.Ksc) return false;
-                target = "\"ksc\"";
+                };
+                // #880: the Mission's own landing target, once one is set, is the stated one.
+                var recorded = HomeLanding.Recorded(at, targetAsk);
+                if (recorded == null && HomeLanding.DefaultTarget(at, targetAsk) != HomeLanding.Ksc) return false;
+                target = recorded == null ? "\"ksc\"" : "lexicon(\"lat\", " + recorded.Latitude.ToString("R", CultureInfo.InvariantCulture) + ", \"lng\", " + recorded.Longitude.ToString("R", CultureInfo.InvariantCulture) + ")";
             }
             double latitude, longitude;
             var readable = SiteOf(target, out latitude, out longitude);
@@ -299,7 +305,9 @@ namespace ClaudiaKerman.Core.Missions
             string given;
             var targetPe = call.Options.TryGetValue("target_pe", out given) ? Literal(given) : ReturnAim.DefaultTargetPe;
             var maxWait = Literal(call.Option("max_wait"));
-            span = maxWait ?? ReturnAim.AutoWaitFor(at, planet, earliest, targetPe ?? ReturnAim.DefaultTargetPe, body);
+            var stockDv = HomeLanding.StockDv(at);
+            var pastAlignment = stockDv.HasValue && ReturnAim.IsHome(planet) ? ReturnAim.ReachPastAlignmentS : ReturnAim.PastAlignmentS;
+            span = maxWait ?? ReturnAim.AutoWaitFor(at, planet, earliest, targetPe ?? ReturnAim.DefaultTargetPe, body, pastAlignment);
             var limit = Literal(call.Option("max_duration"));
             if (limit.HasValue) span = Math.Min(span, limit.Value);
             if (!readable || !targetPe.HasValue || body == null) return true;
@@ -311,7 +319,8 @@ namespace ClaudiaKerman.Core.Missions
             {
                 // #816: max_wait as the block reads it, "auto" left to the search, so from an inclined orbit both solve the same windows.
                 TargetPe = targetPe.Value, EarliestUt = earliest, Landing = landing, MaxWait = maxWait, LatestUt = limit.HasValue ? now + limit.Value - ReturnAim.AfterBurnS : (double?)null,
-            }, out dueBy);
+                // #880: the block's own search, from what the stages say the craft has; with no figure the plan is #816's estimate, as the block's is. The landing's need comes from the craft's own chutes: this craft is an estimate with none.
+                DvLeft = stockDv, LaterLegsDv = at.LaterLegsDv ?? 0, PoweredLandingDv = HomeLanding.PoweredLanding(at, planet),            }, out dueBy);
             return true;
         }
 
@@ -319,7 +328,7 @@ namespace ClaudiaKerman.Core.Missions
         private const double NoTargetPe = 35000;
 
         /// <summary>The UT a return with no target and no window given waits for (<see cref="ReturnAim.CheapDepartureUt"/>), or null for its next pass.</summary>
-        private static double? Cheap(BlockCall call, GameSnapshot snapshot, double now, double earliest, out double? dueBy)
+        private static double? Cheap(BlockCall call, GameSnapshot snapshot, double now, double earliest, IPlanningBody body, out double? dueBy)
         {
             dueBy = null;
             string given;
@@ -329,9 +338,11 @@ namespace ClaudiaKerman.Core.Missions
             var maxWait = Literal(call.Option("max_wait"));
             var limit = Literal(call.Option("max_duration"));
             var latest = Math.Min(maxWait.HasValue ? earliest + maxWait.Value : double.PositiveInfinity, limit.HasValue ? now + limit.Value - ReturnAim.AfterBurnS : double.PositiveInfinity);
-            return ReturnAim.CheapDepartureUt(snapshot.At(now), new ReturnAsk
+            var at = snapshot.At(now);
+            var planet = ReturnAim.PlanetOf(at);
+            return ReturnAim.CheapDepartureUt(at, new ReturnAsk
             {
-                TargetPe = targetPe.Value, EarliestUt = earliest, CheapWindow = true, LatestUt = double.IsPositiveInfinity(latest) ? (double?)null : latest,
+                TargetPe = targetPe.Value, EarliestUt = earliest, CheapWindow = true, Handed = planet == null ? 1 : ReturnAim.HandedOn(planet, at.Ut, body), LatestUt = double.IsPositiveInfinity(latest) ? (double?)null : latest,
             }, out dueBy);
         }
 

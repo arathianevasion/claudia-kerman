@@ -118,6 +118,7 @@ namespace ClaudiaKerman.Core.Missions
             else if (input is KerbalKilled) CrewDeathSeen(((KerbalKilled)input).Name);
             else if (input is KosRunBlocked) RunBlocked((KosRunBlocked)input);
             else if (input is ArrivalPlaneAimed) ArrivalPlaneRecorded((ArrivalPlaneAimed)input);
+            else if (input is LandingTargetAimed) LandingTargetRecorded((LandingTargetAimed)input);
             else if (input is KosBlockStarted) BlockStarted((KosBlockStarted)input);
             else if (input is KosBlockEnded) BlockEnded((KosBlockEnded)input);
             else if (input is KosWarpRequested) WarpRequestSeen((KosWarpRequested)input);
@@ -323,6 +324,8 @@ namespace ClaudiaKerman.Core.Missions
             public string WindowPlanet = "";
             public double? WindowUt;
             public double? WindowDeltaV;
+            /// <summary>#887: the window a <c>return</c> run was planned for, kept past the start for the block's restart; null for none. Saved (#906); cleared when the run ends.</summary>
+            public double? ReturnWindowUt;
             /// <summary>Persistence (MissionControl.Persistence.cs): a turn the loop owes Claudia once the craft is in Flight.</summary>
             public Owed Owed;
             public RunOutcome OwedOutcome;
@@ -727,6 +730,7 @@ namespace ClaudiaKerman.Core.Missions
             mission.CoastBlocked = CoastBlock(mission, plan);
             if (mission.CoastBlocked.Length > 0) Note(LogKind.Notice, CoastCheckpoints.BlockerLine(mission.CoastBlocked));
             if (plan.DueTimeUt.HasValue) _commands.Add(new ClearDueTimeAlarm(mission.Id));
+            mission.ReturnWindowUt = FirstIsReturn(plan) ? mission.WindowUt : null;
             ClearWindow(mission);
             mission.RunningProcessor = processor.Value;
             mission.RunId = ++_lastRunId;
@@ -942,6 +946,7 @@ namespace ClaudiaKerman.Core.Missions
             var mission = _mission;
             if (mission == null || !IsRunning(mission) || mission.RunId != refused.RunId) return;
             mission.RunId = null;
+            mission.ReturnWindowUt = null;
             mission.RunDeadlineUt = null;
             EndLive(mission);
             // Paused from Running, the Mission stays Paused and Resume goes back to approval, not to Running.
@@ -958,6 +963,7 @@ namespace ClaudiaKerman.Core.Missions
                 || (mission.Stage == MissionStage.Paused && mission.StageBeforePause == MissionStage.Running);
             if (!running || mission.RunId != ended.RunId) return;
             mission.RunId = null;
+            mission.ReturnWindowUt = null;
             TimedOutMidWarp(mission, ended.Outcome);
             mission.RunDeadlineUt = null;
             mission.RcsUse.Close(_ut);
@@ -1009,6 +1015,7 @@ namespace ClaudiaKerman.Core.Missions
             if (IsRunning(mission) && mission.RunningProcessor.HasValue)
                 _commands.Add(new AbortScript(mission.RunningProcessor.Value, "Claudia was killed aboard"));
             mission.RunId = null;
+            mission.ReturnWindowUt = null;
             mission.RunningProcessor = null;
             mission.Queue.Clear();
             if (mission.PendingSequence != null && mission.PendingSequence.DueTimeUt.HasValue) _commands.Add(new ClearDueTimeAlarm(mission.Id));
@@ -1652,7 +1659,7 @@ namespace ClaudiaKerman.Core.Missions
                     OfferSequencePlan(mission, reply.SequencePlan);
                     break;
                 case Purpose.Debrief:
-                    Debriefed(mission, reply);
+                    Debriefed(mission, reply, mission.Conversation.Count);
                     LogDebrief(mission, turn, reply.Debrief);
                     break;
                 case Purpose.Reply:
@@ -2076,7 +2083,8 @@ namespace ClaudiaKerman.Core.Missions
             else mission.DueNotified = false;
         }
 
-        private void Debriefed(Mission mission, MissionReply reply)
+        /// <param name="messages">How many messages the conversation held up to and including this Debrief's reply, which places its saved rating (#904).</param>
+        private void Debriefed(Mission mission, MissionReply reply, int messages)
         {
             var debrief = reply.Debrief;
             // The Debrief of a manual stretch ends it: a revised Mission Plan follows, not the next Sequence Plan.
@@ -2088,11 +2096,22 @@ namespace ClaudiaKerman.Core.Missions
             // A standing crossing rules out Nominal (story 107), whatever Claudia rated it; a recovered one doesn't (#572). The card lists them all.
             var crossings = CrossingsText(mission);
             mission.Crossings.Clear();
-            if (MissionPrompts.RulesOutNominal(crossings) && debrief.Outcome == "Nominal")
+            // #899: so does a return that flew no Course Correction; both notices show when both reasons stand.
+            var noCorrection = mission.NoCorrection;
+            mission.NoCorrection = false;
+            var nominal = debrief.Outcome == "Nominal";
+            var telemetryRated = MissionPrompts.RulesOutNominal(crossings) && nominal;
+            if (telemetryRated)
             {
                 debrief.Outcome = "Off-Nominal";
                 Note(LogKind.Notice, "Rated Off-Nominal, not Nominal: a Telemetry Check was crossed during the run.");
             }
+            if (noCorrection && nominal)
+            {
+                debrief.Outcome = "Off-Nominal";
+                Note(LogKind.Notice, LandingLine.NoCorrectionNotice);
+            }
+            SaveRating(mission, messages, telemetryRated, noCorrection && nominal);
             // Ticking twice is harmless: a Debrief already in a log rebuilt from the transcript has ticked them once.
             GoalSteps.Tick(mission.GoalSteps, debrief.GoalStepsDone);
             var rebuiltLog = mission.SuppressCards;
@@ -2473,11 +2492,13 @@ namespace ClaudiaKerman.Core.Missions
                 }
                 view.CurrentSequence = Math.Min(StepsBegun(mission), view.PlanSequences.Count) - 1;
                 view.PlanLegs = mission.Plan != null ? mission.Plan.Sequences : null;
+                view.CraftName = mission.VesselName;
                 view.ProcessorPartId = mission.ProcessorPartId;
                 view.ChuteGroups = mission.Chutes;
                 view.RunningChild = mission.RunningChild;
                 view.ArrivalPlane = mission.ArrivalPlane;
                 view.PickedSite = mission.PickedSite;
+                view.LandingTarget = mission.LandingTarget;
                 if (mission.Stage == MissionStage.Running && mission.PendingSequence != null)
                 {
                     view.RunStatus = "Running: " + mission.PendingSequence.Name + (mission.RunningChild.Length > 0 ? " on " + mission.RunningChild : "");
@@ -2514,7 +2535,7 @@ namespace ClaudiaKerman.Core.Missions
                         SecondsLeft = Math.Max(0, due.Value - _ut),
                         Reached = _ut >= due.Value,
                         VesselName = mission.VesselName,
-                        WaitsFor = mission.WindowPlanet.Length > 0 ? WindowWaits.WaitsFor(mission.WindowPlanet) : CoastPlanToken(mission.PendingSequence) != null ? CoastCheckpoints.WaitsFor : "",
+                        WaitsFor = mission.WindowPlanet.Length > 0 && !FirstIsReturn(mission.PendingSequence) ? WindowWaits.WaitsFor(mission.WindowPlanet) : CoastPlanToken(mission.PendingSequence) != null ? CoastCheckpoints.WaitsFor : "",
                     };
                 }
                 view.Locks = LocksNow();
@@ -2526,6 +2547,7 @@ namespace ClaudiaKerman.Core.Missions
                 view.PlanStaleTarget = view.PlanStale.Length > 0 && mission.TargetChange.Length > 0;
                 view.PlanDeclined = mission.Declined;
                 view.WindowPick = mission.WindowPick;
+                view.ReturnWindowUt = mission.ReturnWindowUt;
                 view.WindowPickNeeded = WindowPickMissing(mission);
                 view.Windows = MissionOffer(mission);
                 view.TargetNeeded = TargetNeeded(mission);

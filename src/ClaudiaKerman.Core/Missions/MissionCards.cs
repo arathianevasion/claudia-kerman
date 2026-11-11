@@ -33,7 +33,30 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>The craft's delta-v, m/s, for the legs after the one being planned (#694): the plan past <paramref name="stepsBegun"/> less its first, a Child Vessel's legs left out.</summary>
         public static double LaterLegsDv(MissionPlan plan, int stepsBegun, string craftName)
         {
-            return plan.Sequences.Skip(stepsBegun + 1).Where(s => FliesCraft(craftName, s.Vessel)).Sum(s => s.DeltaV);
+            return LaterLegsDv(plan.Sequences, stepsBegun, craftName);
+        }
+
+        /// <summary>
+        /// The one rule for which legs are later (#898), shared by the planning tool path and <c>MissionView.Stamp</c>: <paramref name="stepsBegun"/> legs have begun,
+        /// and when <paramref name="sequenceCounted"/> the last of them is the leg in hand (counted as begun, #828), so a rewrite of it keeps the next leg later.
+        /// While a Child Vessel runs (<paramref name="runningChild"/>) the active ship is the child, whose dv_left is not the craft's: 0.
+        /// </summary>
+        public static double LaterLegsDv(IList<PlannedSequence> legs, int stepsBegun, bool sequenceCounted, string craftName, string runningChild)
+        {
+            if (!string.IsNullOrEmpty(runningChild)) return 0;
+            return LaterLegsDv(legs, LegInHand(stepsBegun, sequenceCounted), craftName);
+        }
+
+        /// <summary>The index of the leg in hand: the last begun, which a rewrite of it (<paramref name="sequenceCounted"/>, #828) still has to fly; legs from here on are not yet flown (#898).</summary>
+        public static int LegInHand(int stepsBegun, bool sequenceCounted)
+        {
+            return Math.Max(0, stepsBegun - (sequenceCounted ? 1 : 0));
+        }
+
+        /// <summary>The craft's delta-v, m/s, for the legs after the one at index <paramref name="current"/> of <paramref name="legs"/>, a Child Vessel's left out.</summary>
+        public static double LaterLegsDv(IEnumerable<PlannedSequence> legs, int current, string craftName)
+        {
+            return legs.Skip(current + 1).Where(s => FliesCraft(craftName, s.Vessel)).Sum(s => s.DeltaV);
         }
 
         /// <param name="craftName">The Mission's craft, so a sequence that flies a Child Vessel is marked with that vessel's name.</param>

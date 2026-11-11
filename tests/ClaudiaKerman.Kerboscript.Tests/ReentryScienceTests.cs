@@ -99,6 +99,18 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture, "reentry_chute_action(\"{0}\", {1}, {2}, {3}, {4})", mode, open.ToString().ToLowerInvariant(), speed, agl, pressure)));
         }
 
+        [Theory]
+        [InlineData("safe", false, 480, 20000, 0.03, "deploy")]  // within a drogue's speed and air
+        [InlineData("safe", false, 520, 20000, 0.03, "wait")]    // too fast for a drogue
+        [InlineData("safe", false, 480, 30000, 0.01, "wait")]    // too thin
+        [InlineData("safe", false, 900, 2900, 0.9, "deploy")]    // last height: open regardless
+        [InlineData("safe", true, 20, 500, 1.0, "wait")]         // already open
+        [InlineData("none", false, 20, 500, 1.0, "wait")]        // never asked to
+        public void Drogues_open_by_their_own_speed_pressure_and_last_height(string mode, bool open, double speed, double agl, double pressure, string expected)
+        {
+            Assert.Equal(expected, One(string.Format(CultureInfo.InvariantCulture, "reentry_drogue_action(\"{0}\", {1}, {2}, {3}, {4})", mode, open.ToString().ToLowerInvariant(), speed, agl, pressure)));
+        }
+
         [Fact]
         public void Chutes_open_high_up_as_soon_as_the_air_and_speed_allow()
         {

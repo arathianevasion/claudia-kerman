@@ -107,28 +107,25 @@ function reentry_unreadable {
 // already open; speed in m/s and agl (height above the ground) in m; pressure in atm.
 function reentry_chute_action {
   parameter mode, out, speed, agl, pressure.
-  if mode = "none" or out {
-    return "wait".
-  }
-  if agl <= reentry_chute_last_agl() {
-    return "deploy".
-  }
-  if speed <= reentry_chute_max_speed() and pressure >= reentry_chute_min_pressure() {
-    return "deploy".
-  }
-  return "wait".
+  return reentry_open_action(mode, out, speed, agl, pressure, reentry_chute_last_agl(), reentry_chute_max_speed(), reentry_chute_min_pressure()).
 }
 
 // What to do about the drogue chutes now: "deploy" or "wait". Same arguments as reentry_chute_action.
 function reentry_drogue_action {
   parameter mode, out, speed, agl, pressure.
+  return reentry_open_action(mode, out, speed, agl, pressure, reentry_drogue_last_agl(), reentry_drogue_max_speed(), reentry_drogue_min_pressure()).
+}
+
+// The chute rule, with its last height (m), most speed (m/s) and least pressure (atm).
+function reentry_open_action {
+  parameter mode, out, speed, agl, pressure, last_agl, max_speed, min_pressure.
   if mode = "none" or out {
     return "wait".
   }
-  if agl <= reentry_drogue_last_agl() {
+  if agl <= last_agl {
     return "deploy".
   }
-  if speed <= reentry_drogue_max_speed() and pressure >= reentry_drogue_min_pressure() {
+  if speed <= max_speed and pressure >= min_pressure {
     return "deploy".
   }
   return "wait".
@@ -569,19 +566,6 @@ function reentry_separation {
   return plan.
 }
 
-// The uid of the part the crew rides in, else of the first command part, else of the part running the script.
-function reentry_home_uid {
-  if ship:crew:length > 0 {
-    return ship:crew[0]:part:uid.
-  }
-  for p in ship:parts {
-    if p:hasmodule("ModuleCommand") {
-      return p:uid.
-    }
-  }
-  return core:part:uid.
-}
-
 function reentry_agl {
   return ship:altitude - max(0, ship:geoposition:terrainheight).
 }
@@ -690,18 +674,22 @@ function reentry {
   }
   // This entry's stack (#557, #823) is read at block start, where ENTRYDROP refuses one separate can't drop, still above the air, and again at the drop
   // point (#815), its lead s before the air or at once inside it: that read flies, the engines light, the stack drops (Pe and stack noted at the air) and ENTRYDROP refuses one still on.
-  local entry_ask is lexicon("home", reentry_home_uid(), "separate", opt:separate, "jettison_stage", opt:jettison_stage, "chutes", opt:chutes <> "none" and opt:chute_mode <> "none", "core", core:part:uid).
+  local entry_ask is lexicon("separate", opt:separate, "jettison_stage", opt:jettison_stage, "chutes", opt:chutes <> "none" and opt:chute_mode <> "none", "core", core:part:uid).
   local below is addons:claudia:entrydrop(entry_ask).
   if below:error <> "" {
     return claudia_finish(ctx, false, below:error, extra).
   }
+  set entry_ask:home to below:home.
   local auto_duration is opt:max_duration:istype("String").
   if auto_duration {
     set opt:max_duration to entry_in + 1800.
   }
   // An abort before the drop keeps the stack, and reads the Chute Group (ADR 0019) fresh: none is chosen yet.
   local ask is lexicon("none", opt:chutes = "none", "engine", false).
+  // Core decides one late trim toward the Mission's landing target (#892); anything else flies nothing, the reason in the log, and the block goes on.
+  claudia_fly_correction(ctx, addons:claudia:entrytrim(lexicon("to_air", entry_in, "home", entry_ask:home, "has_node", hasnode, "stage_limit", opt:stage_limit, "dv_left", claudia_dv_recounted(), "isp", claudia_engine_isp()))).
   if entry_in > below:lead {
+    set entry_in to reentry_entry_eta(ship:orbit:eccentricity, ship:orbit:semimajoraxis, body_:mu, body_:radius + body_:atm:height, ship:orbit:trueanomaly).
     local waited is claudia_wait_until(ctx, time:seconds + entry_in - below:lead).
     if waited <> "" {
       reentry_abort(opt:chute_mode, reentry_group_of(ask, addons:claudia:chutegroup(ask), ship:parts)).

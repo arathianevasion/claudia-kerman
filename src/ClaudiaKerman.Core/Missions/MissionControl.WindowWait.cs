@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using ClaudiaKerman.Core.Kos;
 using ClaudiaKerman.Core.Tools;
 using ClaudiaKerman.Core.Ui;
 
@@ -111,8 +112,24 @@ namespace ClaudiaKerman.Core.Missions
             if (!due.HasValue) return;
             if (plan.DueTimeUt.HasValue && plan.DueTimeUt.Value >= due.Value) return;
             plan.DueTimeUt = due.Value;
+            // #887: a return's window is kept, so a late Approval is a missed window (WindowWaits.Missed) rather than a search on to the next band.
+            var home = wait.Block == "return" && wait.DueByUt.HasValue && (wait.DueByUt.Value < wait.DepartureUt.Value || wait.CostlyWindow) ? ReturnAim.PlanetOf(snapshot.At(_ut)) : null;
+            if (home != null)
+            {
+                mission.WindowPlanet = home.Name;
+                mission.WindowUt = wait.DepartureUt.Value;
+                mission.WindowDeltaV = Math.Max(0, plan.ExpectedDeltaV);
+            }
             Note(LogKind.Notice, "Waiting for the ejection: " + wait.Block + " leaves " + KerbinTime.Date(wait.DepartureUt.Value) + ", so the sequence is due "
                 + KerbinTime.Date(due.Value) + ", " + KerbinTime.Span(wait.DepartureUt.Value - due.Value).Trim() + " before. Fly other Missions meanwhile; a KSP alarm calls you back.");
+        }
+
+        /// <summary>The plan's first burn is a <c>return</c> (#887), the one whose window <see cref="BurnPoints"/> reads.</summary>
+        internal static bool FirstIsReturn(SequencePlan plan)
+        {
+            if (plan == null || plan.Manual || string.IsNullOrWhiteSpace(plan.Script)) return false;
+            var first = BlockOptionCheck.Calls(plan.Script).FirstOrDefault(c => c.Block != "coast");
+            return first != null && first.Block == "return";
         }
 
         private TransferWindow WindowFor(Mission mission, SnapshotBody planet)
@@ -147,7 +164,8 @@ namespace ClaudiaKerman.Core.Missions
             var planned = mission.WindowDeltaV ?? 0;
             var planet = _snapshot == null ? null : _snapshot.Bodies.FirstOrDefault(b => b.Name == mission.WindowPlanet);
             var surface = SurfaceWait(mission, plan);
-            var next = surface != null ? surface.Window : WindowFor(mission, planet);
+            // #887: a return has no transfer window to move to, so a missed one goes to Claudia.
+            var next = surface != null ? surface.Window : FirstIsReturn(plan) ? null : WindowFor(mission, planet);
             // On the pad that is the whole plan; from a surface in mid-Mission, the legs still to fly (this one too), which the craft's delta-v is for.
             var budget = mission.Plan == null ? 0 : mission.Plan.Sequences.Skip(surface != null ? Math.Max(0, StepOf(mission, plan) - 1) : 0).Sum(s => Math.Max(0, s.DeltaV));
             var head = "The " + mission.WindowPlanet + " window of " + KerbinTime.Date(missed) + " was missed";

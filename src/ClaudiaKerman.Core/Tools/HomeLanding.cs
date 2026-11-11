@@ -75,6 +75,42 @@ namespace ClaudiaKerman.Core.Tools
             return NamesAPlace(snapshot, home) ? None : Ksc;
         }
 
+        /// <summary>#880: the Mission's landing target (#892) that an "auto" stands for, when it was set on this planet and the ask is one that lands; null otherwise. A return aimed at "none" has cleared it by then.</summary>
+        public static LandingTarget Recorded(GameSnapshot snapshot, LandingTargetAsk ask)
+        {
+            var target = snapshot == null ? null : snapshot.LandingTarget;
+            if (target == null || !string.Equals(target.Body, ask.Planet, StringComparison.OrdinalIgnoreCase) || !string.Equals(ask.Planet, CraftCheckFlow.HomeBody, StringComparison.OrdinalIgnoreCase) || ask.TargetInc.HasValue || ask.Window.HasValue) return null;
+            var home = snapshot.Bodies.FirstOrDefault(b => string.Equals(b.Name, ask.Planet, StringComparison.OrdinalIgnoreCase));
+            return home == null || (ask.TargetPe.HasValue && ask.TargetPe.Value >= home.AtmosphereHeight) ? null : target;
+        }
+
+        /// <summary>The craft's delta-v by stock's simulator, m/s; null when stock can't say.</summary>
+        public static double? StockDv(GameSnapshot snapshot)
+        {
+            return snapshot.DeltaVSimulator && snapshot.Stages.Count > 0 && !snapshot.DeltaVUnreliable ? snapshot.Stages.Sum(s => s.DeltaVVac) : (double?)null;
+        }
+
+        /// <summary>
+        /// #880: the landing a <c>transfer_to</c> home from another planet comes in for: KSC by the default rule, or null for any other trip or a Mission that names another place. The Transfer Window
+        /// is unchanged by it; the Late Trim (#892) aims at it within the spare delta-v.
+        /// </summary>
+        public static LandingTarget ArrivalTarget(GameSnapshot snapshot, string target, double targetPe)
+        {
+            if (snapshot == null || !string.Equals(target, CraftCheckFlow.HomeBody, StringComparison.OrdinalIgnoreCase)) return null;
+            var system = new BodySystem(snapshot.Bodies);
+            var at = system.Find(snapshot.Orbit != null && !string.IsNullOrEmpty(snapshot.Orbit.Body) ? snapshot.Orbit.Body : snapshot.Body);
+            var home = system.Find(target);
+            if (at == null || home == null || InSystemOf(system, at, home)) return null;
+            if (DefaultTarget(snapshot, new LandingTargetAsk { Planet = home.Name, TargetPe = targetPe }) != Ksc) return null;
+            return new LandingTarget { Body = home.Name, Latitude = ReturnAim.KscLatitude, Longitude = ReturnAim.KscLongitude };
+        }
+
+        /// <summary>#915: the landing a <c>transfer_to</c> home aims its Course Correction at: the Mission's landing target first (inside Kerbin's sphere of influence the only one left to read), else <see cref="ArrivalTarget"/>; null for none.</summary>
+        public static LandingTarget ArrivalLanding(GameSnapshot snapshot, string target, double targetPe)
+        {
+            return Recorded(snapshot, new LandingTargetAsk { Planet = target ?? "", TargetPe = targetPe }) ?? ArrivalTarget(snapshot, target, targetPe);
+        }
+
         /// <summary>Whether the Mission Goal, or a leg ahead or a site picked for it, names a place on <paramref name="home"/> to come down that isn't KSC.</summary>
         private static bool NamesAPlace(GameSnapshot snapshot, SnapshotBody home)
         {
@@ -122,12 +158,12 @@ namespace ClaudiaKerman.Core.Tools
             if (trip == null) return null;
             var ascent = snapshot.IsGrounded ? map.Legs.Where(leg => leg.Id == "ascend:" + at.Name).Select(leg => leg.DeltaV).FirstOrDefault() : 0;
             var plan = new HomeArrivalPlan { CaptureDv = trip.Arrival, DeorbitDv = DeorbitBurn.FromLowOrbit(home), ArrivalPe = ArrivalRule.EntryPe(home) };
-            if (snapshot.DeltaVSimulator && snapshot.Stages.Count > 0 && !snapshot.DeltaVUnreliable)
-                plan.DvLeft = snapshot.Stages.Sum(s => s.DeltaVVac) - ascent - trip.Departure - trip.PlaneChange;
+            var stockDv = StockDv(snapshot);
+            if (stockDv.HasValue) plan.DvLeft = stockDv.Value - ascent - trip.Departure - trip.PlaneChange;
             var need = plan.Need;
             if (plan.DvLeft.HasValue)
             {
-                plan.SpareDv = DeorbitBurn.AutoMaxDv(plan.DvLeft.Value, PoweredLanding(snapshot, home));
+                plan.SpareDv = DeorbitBurn.AutoMaxDv(plan.DvLeft.Value, PoweredLanding(snapshot, home), snapshot.LaterLegsDv ?? 0);
                 plan.CaptureFirst = need <= plan.SpareDv;
             }
             if (plan.CaptureFirst) plan.ArrivalPe = DeltaVMap.LowOrbit(home) - home.Radius;
@@ -145,7 +181,7 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>The craft's speed at the ground with no chutes, m/s, which its engines must take out; 0 with chutes.</summary>
-        private static double PoweredLanding(GameSnapshot snapshot, SnapshotBody home)
+        public static double PoweredLanding(GameSnapshot snapshot, SnapshotBody home)
         {
             if (snapshot.Craft == null || snapshot.Craft.Parts.Any(p => p.Chute != null)) return 0;
             return ChuteGroups.TouchdownWithoutChutes(home, snapshot.Craft.MassTonnes * 1000);

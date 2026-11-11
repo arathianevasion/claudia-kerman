@@ -602,6 +602,32 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal("stock can't say the delta-v left: give max_dv", unknown["error"]);
         }
 
+        /// <summary>
+        /// #832 in flight: the block call's snapshot is stamped by the Mission's view (<see cref="Missions.MissionView.Stamp"/>), which sets the later legs' delta-v from the legs after the one in hand,
+        /// a Child Vessel's left out; the auto max_dv keeps it back. 5,000 m/s left clears the burn with the reserve and a powered landing, not with a 4,500 m/s leg after.
+        /// </summary>
+        [Fact]
+        public void In_flight_the_block_call_keeps_back_the_later_legs_from_the_Mission_s_view()
+        {
+            Func<Missions.GameSnapshot, System.Collections.Generic.IDictionary<string, object>> deorbit = snapshot => BlockCalls.DeorbitBurn(Ask("lat", KscLat, "lng", KscLng, "earliest_ut", 120.0, "max_dv", "auto", "dv_left", 5000.0),
+                snapshot, new Sphere(), new ReentrySim.Atmosphere(), new ReentrySim.Capsule());
+            Assert.Equal("", deorbit(Snapshot())["error"]);
+            var view = new Missions.MissionView
+            {
+                Stage = Missions.MissionStage.Running, CurrentSequence = 1, CraftName = "Ship",
+                PlanLegs = new System.Collections.Generic.List<Missions.PlannedSequence>
+                {
+                    new Missions.PlannedSequence { Name = "Launch", DeltaV = 3400 }, new Missions.PlannedSequence { Name = "Deorbit", DeltaV = 100 },
+                    new Missions.PlannedSequence { Name = "Hop", DeltaV = 4500, Vessel = "craft" }, new Missions.PlannedSequence { Name = "Probe", DeltaV = 900, Vessel = "Probe" },
+                },
+            };
+            var stamped = Missions.MissionView.Stamp(Snapshot(), view);
+            Assert.Equal(4500, stamped.LaterLegsDv);
+            var held = deorbit(stamped);
+            Assert.Contains("over max_dv", (string)held["error"]);
+            Assert.Contains("and 4500 m/s for the later legs", (string)held["error"]);
+        }
+
         /// <summary>The cost two burns must differ by not to be a tie, m/s.</summary>
         private const double DeorbitBurnTieDv = 1;
 
@@ -615,11 +641,49 @@ namespace ClaudiaKerman.Core.Tests
             return Conic.FromState(ReentrySim.Mu, new Vec3(rp, 0, 0), new Vec3(0, v, 0), 0);
         }
 
-        private static DeorbitPlan Auto(double dvLeft, bool withChutes)
+        [Fact]
+        public void A_craft_with_no_chutes_that_keeps_no_engine_is_charged_no_powered_landing()
+        {
+            var left = Find(KscLat, KscLng, Eccentric()).DeltaV + 60;
+            Assert.Contains("a powered landing", Auto(left, withChutes: false).Error);
+            Assert.Null(Auto(left, withChutes: false, payer: new ClaudiaKerman.Core.Missions.DropBurn { KeepsEngine = false }).Error);
+        }
+
+        [Fact]
+        public void Stages_below_stage_limit_can_t_be_spent_by_the_burn()
+        {
+            var cheapest = Find(KscLat, KscLng, Eccentric()).DeltaV;
+            Assert.Null(Auto(cheapest + 100, withChutes: true).Error);
+            Assert.Contains("not enough delta-v", Auto(cheapest + 100, withChutes: true, payer: new ClaudiaKerman.Core.Missions.DropBurn { HeldDv = 2000 }).Error);
+        }
+
+        [Fact]
+        public void The_one_spend_rule_counts_the_kept_delta_v_the_dropped_share_and_the_engine()
+        {
+            Assert.Equal(DeorbitBurn.AutoMaxDv(900, 10, 20), DeorbitBurn.SpareDv(900, 10, 20, null), 9);
+            Assert.Equal(DeorbitBurn.AutoMaxDv(900, 10, 20), DeorbitBurn.SpareDv(900, 10, 20, new ClaudiaKerman.Core.Missions.DropBurn()), 9);
+            Assert.Equal(DeorbitBurn.AutoMaxDv(700, 10, 20), DeorbitBurn.SpareDv(900, 10, 20, new ClaudiaKerman.Core.Missions.DropBurn { HeldDv = 200 }), 9);
+            Assert.Equal(DeorbitBurn.AutoMaxDv(900, 10, 20, 0.5), DeorbitBurn.SpareDv(900, 10, 20, new ClaudiaKerman.Core.Missions.DropBurn { KeptShare = 0.5 }), 9);
+            Assert.Equal(DeorbitBurn.AutoMaxDv(900, 0, 20), DeorbitBurn.SpareDv(900, 10, 20, new ClaudiaKerman.Core.Missions.DropBurn { KeepsEngine = false }), 9);
+            Assert.Equal(-1, DeorbitBurn.KeptDv(-1, new ClaudiaKerman.Core.Missions.DropBurn { HeldDv = 50 }), 9);
+        }
+
+        [Fact]
+        public void The_over_budget_message_prints_the_kept_delta_v_not_stock_s()
+        {
+            var cheapest = Find(KscLat, KscLng, Eccentric()).DeltaV;
+            var left = cheapest + 20 + 30;
+            var plan = Auto(left, withChutes: true, payer: new ClaudiaKerman.Core.Missions.DropBurn { HeldDv = 30 });
+            Assert.Contains("over max_dv", plan.Error);
+            Assert.Contains("(auto: " + Math.Round(left - 30, 1).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " m/s left, less the reserve", plan.Error);
+        }
+
+        private static DeorbitPlan Auto(double dvLeft, bool withChutes, ClaudiaKerman.Core.Missions.DropBurn payer = null)
         {
             var ask = new DeorbitAsk { TargetLatitude = KscLat, TargetLongitude = KscLng, EarliestUt = 120, MaxWait = ReentrySim.RotationPeriod, AccuracyKm = 5, DeltaVLeft = dvLeft };
             var craft = new ReentrySim.Capsule();
             if (withChutes) craft.Chutes = new System.Collections.Generic.List<ReentryChute> { ReentrySim.Mk16() };
+            ask.Payer = payer;
             return DeorbitBurn.Find(ReentrySim.Kerbin(), Eccentric(), ask, new ReentrySim.Atmosphere(), craft, ReentrySim.Frame());
         }
     }
