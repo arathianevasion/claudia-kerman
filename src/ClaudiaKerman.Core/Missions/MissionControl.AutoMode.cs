@@ -91,8 +91,8 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>
         /// After every input and each reply: whether the plan in hand already has the player's Approval, given in a Blackout
         /// or under Auto Mode. Either way the first Mission Plan, a manual stretch and a plan with a Due Time wait for the
-        /// player, and a stale plan is re-planned. Under Auto Mode (and no Blackout, whose own rules stand) an approval or
-        /// re-plan also needs room in the Spending Cap (<see cref="AutoModeRoom"/>). The Approval itself is
+        /// player (but for a Due Time warped to under Auto Mode, #967), and a stale plan is re-planned. Under Auto Mode (and
+        /// no Blackout, whose own rules stand) an approval or re-plan also needs room in the Spending Cap (<see cref="AutoModeRoom"/>). The Approval itself is
         /// <see cref="Approval"/>, so the Script Check, the late-window and the Due Time rules hold as for the player's button.
         /// Auto Mode also answers what Blackout leaves for the player (<see cref="AutoModeAnswers"/>): an Abort
         /// recommendation, a reduced goal and an unsafe script.
@@ -203,7 +203,12 @@ namespace ClaudiaKerman.Core.Missions
                 mission.BlackoutRevisions.Add(missionPlan
                     ? "Mission Plan revised: " + mission.Plan.Why
                     : "Sequence Plan " + MissionPrompts.Quoted(plan.Name) + " flown without Approval: " + plan.Why);
-                if (atDue) Note(LogKind.Notice, AutoModeApprovedAtDueNote);
+                // Logged once: an Approval refused here (no processor to run it on) is tried again on the next input.
+                if (atDue && mission.AutoModeApprovedFor != inHand)
+                {
+                    mission.AutoModeApprovedFor = inHand;
+                    Note(LogKind.Notice, AutoModeApprovedAtDueNote);
+                }
             }
             else
             {
