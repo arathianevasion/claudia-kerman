@@ -872,7 +872,7 @@ namespace ClaudiaKerman.Core.Missions
             if (mission == null || mission.DueNotified || !due.HasValue || _ut < due.Value) return;
             mission.DueNotified = true;
             _commands.Add(new DropWarp());
-            // #967: a Due Time the player warped to under Auto Mode is not theirs to approve: Auto Mode's log line follows, or its stop line.
+            // #967: under Auto Mode, with the player in the craft, a reached Due Time is not theirs to approve: Auto Mode's log line follows, or its stop line.
             if (AutoModeTakesDue(mission, mission.PendingSequence)) return;
             var text = _ut - due.Value > 60
                 ? "Due Time missed by " + KerbinTime.Span(_ut - due.Value) + ": " + mission.PendingSequence.Name + " waits for your Approval."

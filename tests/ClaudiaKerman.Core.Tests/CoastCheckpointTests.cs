@@ -591,7 +591,30 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void Auto_Mode_still_stops_at_a_due_time_of_Claudias_own()
+        public void Auto_Mode_on_in_a_Blackout_with_the_player_in_the_craft_starts_the_resumed_sequence_at_once()
+        {
+            CoastToken token;
+            var rig = ToFirstCheckpoint(out token);
+            var mission = Control(new StreamingFakeTransport(DunaPlan(), SequenceReply("Duna transfer")));
+            var start = ToRunning(mission, rig);
+            mission.Send(new SetAutoMode(true));
+            var dark = Craft(rig);
+            dark.HasLink = false;
+            mission.Send(dark);
+            Assert.True(mission.View.Blackout);
+            mission.TakeCommands();
+            mission.Send(AtCheckpoint(token, start.RunId));
+            _background.Drain();
+
+            // #967: approved as outside a Blackout, before its Due Time, and listed for when the link is back.
+            var resumed = mission.TakeCommands().OfType<StartScript>().Single();
+            Assert.Contains(token.ToString(), resumed.Source);
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("waits for the link"));
+        }
+
+        [Fact]
+        public void Auto_Mode_starts_a_due_time_of_Claudias_own_only_once_it_is_reached()
         {
             CoastToken token;
             var rig = ToFirstCheckpoint(out token);
@@ -605,14 +628,18 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new Approve());
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
             mission.Send(new SetAutoMode(true));
-            mission.Send(new UtAdvanced(due + 1));
             _background.Drain();
             Assert.Empty(mission.TakeCommands().OfType<StartScript>());
-            Assert.Equal("Auto Mode is waiting for you: a Due Time.", mission.View.AutoModeStop);
+            // #967: at the Due Time (the window wait's, past Claudia's) Auto Mode carries on.
+            Assert.True(mission.View.DueTime.Ut >= due);
+            mission.Send(new UtAdvanced(mission.View.DueTime.Ut + 1));
+            _background.Drain();
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
         }
 
         [Fact]
-        public void Auto_Mode_still_stops_at_an_ejection_wait_and_a_window_wait()
+        public void Auto_Mode_starts_an_ejection_wait_and_a_window_wait_at_their_due_time()
         {
             // A transfer_to in Kerbin orbit whose ejection is months off (#749), under the window's Due Time (#616).
             var rig = TransferRig.Circular("Kerbin", 100000, 0);
@@ -629,8 +656,9 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(due.HasDueTime);
             mission.Send(new UtAdvanced(due.Ut + 1));
             _background.Drain();
-            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
-            Assert.Equal("Auto Mode is waiting for you: a Due Time.", mission.View.AutoModeStop);
+            // #967: Auto Mode carries on at the Due Time; the script waits out the ejection itself.
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
         }
 
         [Fact]
@@ -652,8 +680,10 @@ namespace ClaudiaKerman.Core.Tests
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval);
             mission.Send(new SetAutoMode(true));
             _background.Drain();
+            // Not a soft Due Time: nothing starts before it (#967: at it, Auto Mode carries on as for any Due Time).
             Assert.Empty(mission.TakeCommands().OfType<StartScript>());
-            Assert.Equal("Auto Mode is waiting for you: a Due Time.", mission.View.AutoModeStop);
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            Assert.DoesNotContain(QuickReply.Approve, mission.View.QuickReplies);
         }
 
         [Fact]

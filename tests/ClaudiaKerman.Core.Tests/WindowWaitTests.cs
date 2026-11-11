@@ -283,18 +283,22 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void AutoModeNeverApprovesAtTheWindowsDueTime()
+        public void AutoModeStartsTheLaunchFromThePadAtTheWindowsDueTime()
         {
+            // #967: the player's ruling, after the Kerbin pad launch waited in flight m20261111-172716-a40a.
             var mission = Control(new StreamingFakeTransport(DunaPlan(), LaunchPlan()));
             ToLaunchPlan(mission, 1203.48);
             mission.Send(new SetAutoMode(true));
             var due = mission.View.DueTime.Ut;
+            mission.Send(new UtAdvanced(due - 1));
+            _background.Drain();
+            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
+            Assert.Equal("", mission.View.AutoModeStop);
             mission.Send(new UtAdvanced(due + 1));
             _background.Drain();
 
-            Assert.Empty(mission.TakeCommands().OfType<StartScript>());
-            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
-            Assert.Equal("Auto Mode is waiting for you: a Due Time.", mission.View.AutoModeStop);
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
         }
 
         [Fact]

@@ -331,23 +331,56 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(mission.View.AutoMode);
         }
 
-        [Fact]
-        public void ADueTimeWaitsUnderAutoModeEvenOnceItIsReached()
-        {
-            var plan = WithSequenceFields(ScriptedResponse.Fixture("mission-sequence-plan.sse"), "\"due_time_ut\":1250,");
-            var mission = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), plan), AutoModeOn());
-            ToSequencePlan(mission);
-            Assert.NotNull(mission.View.DueTime);
-            mission.Send(new UtAdvanced(1300));
-            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
-            Assert.DoesNotContain(mission.View.Log, e => e.Text == Approved);
-        }
-
-        // ---- A Due Time the player warped to (#967) ----
+        // ---- A reached Due Time (#967) ----
 
         private const string ApprovedAtDue = "Approved by Auto Mode at the Due Time.";
         private const string AutoModeWaitsForDueTime = "Auto Mode is waiting for you: a Due Time.";
-        private const string DueWarpNote = "Warping to the Due Time: Auto Mode approves it when the Due Time is reached and you're in the craft.";
+        private const string DueWarpNote = "Warping to the Due Time: Auto Mode approves it there if you're in the craft.";
+
+        [Fact]
+        public void ADueTimeReachedWithNoWarpPressedIsApprovedByAutoMode()
+        {
+            var mission = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()), AutoModeOn());
+            ToSequencePlan(mission);
+            Assert.True(mission.View.DueTime.HasDueTime);
+            // Before it nothing waits for the player: the time does.
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            Assert.Equal("", mission.View.AutoModeStop);
+            mission.TakeCommands();
+            mission.Send(new UtAdvanced(1250));
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            var commands = mission.TakeCommands();
+            Assert.Single(commands.OfType<StartScript>());
+            Assert.DoesNotContain(commands.OfType<PostScreenMessage>(), m => m.Text.Contains("your Approval"));
+            Assert.Single(mission.View.Log, e => e.Text == ApprovedAtDue);
+        }
+
+        [Fact]
+        public void ADueTimeReachedLandedInABlackoutWithNoWarpPressedIsApprovedByAutoMode()
+        {
+            var mission = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()), AutoModeOn());
+            ToSequencePlan(mission);
+            mission.Send(Snapshot(s => s.HasLink = false));
+            Assert.True(mission.View.Blackout);
+            mission.TakeCommands();
+            mission.Send(new UtAdvanced(1250));
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            Assert.Single(mission.TakeCommands().OfType<StartScript>());
+            Assert.Single(mission.View.Log, e => e.Text == ApprovedAtDue);
+            Assert.DoesNotContain(mission.View.Log, e => e.Text.Contains("waits for the link"));
+        }
+
+        [Fact]
+        public void ADueTimeReachedWithAutoModeOffWaitsForThePlayer()
+        {
+            var mission = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()));
+            ToSequencePlan(mission);
+            mission.Send(new UtAdvanced(1250));
+            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
+            Assert.Contains(QuickReply.Approve, mission.View.QuickReplies);
+            Assert.Contains(mission.View.Log, e => e.Text.Contains("ready for your Approval"));
+            Assert.DoesNotContain(mission.View.Log, e => e.Text == ApprovedAtDue || e.Text == Approved);
+        }
 
         /// <summary>A Sequence Plan with a Due Time at UT 1250, after the on-pad snapshot's 1203.</summary>
         private static ScriptedResponse DuePlan()
@@ -415,47 +448,53 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(AutoModeWaitsForDueTime, mission.View.AutoModeStop);
             Assert.DoesNotContain(mission.View.Log, e => e.Text == ApprovedAtDue);
 
-            // Back in the craft, the warp the player asked for still stands.
+            // Back in the craft, Auto Mode carries on.
             mission.Send(OnPad());
             Assert.Equal(MissionStage.Running, mission.View.Stage);
             Assert.Single(mission.View.Log, e => e.Text == ApprovedAtDue);
         }
 
         [Fact]
-        public void AutoModeTurnedOffBeforeArrivalLeavesTheReachedDueTimeToThePlayerEvenWhenTurnedBackOn()
+        public void AutoModeTurnedOffBeforeArrivalLeavesTheReachedDueTimeToThePlayerUntilItIsOnAgain()
         {
             var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()));
             mission.Send(new SetAutoMode(false));
             mission.Send(new UtAdvanced(1250));
             Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
             Assert.Contains(QuickReply.Approve, mission.View.QuickReplies);
-            mission.Send(new SetAutoMode(true));
-            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
-            Assert.Equal(AutoModeWaitsForDueTime, mission.View.AutoModeStop);
             Assert.DoesNotContain(mission.View.Log, e => e.Text == ApprovedAtDue || e.Text == Approved);
+            // When it was turned on doesn't matter: on at a reached Due Time, in the craft, it carries on.
+            mission.Send(new SetAutoMode(true));
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            Assert.Single(mission.View.Log, e => e.Text == ApprovedAtDue);
         }
 
         [Fact]
-        public void AWarpPressedWithAutoModeOffIsNotTakenUpByTickingItBeforeArrival()
+        public void AWarpPressedWithAutoModeOffThenTickedBeforeArrivalIsApprovedAtTheDueTime()
         {
+            // As at the Kerbin pad in flight m20261111-172716-a40a.
             var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()), new PlayerConfig());
             mission.Send(new SetAutoMode(true));
-            mission.Send(new UtAdvanced(1250));
             Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
-            Assert.DoesNotContain(mission.View.Log, e => e.Text == ApprovedAtDue);
+            mission.Send(new UtAdvanced(1250));
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            Assert.Single(mission.View.Log, e => e.Text == ApprovedAtDue);
         }
 
         [Fact]
-        public void ARevisedPlanReplacingTheOneWarpedForDoesNotInheritTheWarp()
+        public void ARevisedPlanReplacingTheOneWarpedForIsApprovedAtItsOwnDueTime()
         {
-            var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan(), DuePlan()));
+            var later = WithSequenceFields(ScriptedResponse.Fixture("mission-sequence-plan.sse"), "\"due_time_ut\":1270,");
+            var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan(), later));
             mission.Send(new ChangeSomething("Wait a little longer."));
             DrainUntil(mission, v => v.Stage == MissionStage.AwaitingSequenceApproval && !v.Busy);
             Assert.Equal(2, mission.View.Log.Count(e => e.Kind == LogKind.SequencePlan));
             mission.Send(new UtAdvanced(1250));
             Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
-            Assert.Equal(AutoModeWaitsForDueTime, mission.View.AutoModeStop);
-            Assert.DoesNotContain(mission.View.Log, e => e.Text == ApprovedAtDue);
+            Assert.Equal("", mission.View.AutoModeStop);
+            mission.Send(new UtAdvanced(1270));
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            Assert.Single(mission.View.Log, e => e.Text == ApprovedAtDue);
         }
 
         [Fact]
@@ -506,8 +545,7 @@ namespace ClaudiaKerman.Core.Tests
             Assert.True(mission.View.Blackout);
             mission.Send(new SetAutoMode(false));
             mission.Send(new UtAdvanced(1250));
-            Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
-            mission.Send(new SetAutoMode(true));
+            mission.Send(new UtAdvanced(1260));
             Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
             Assert.DoesNotContain(mission.View.Log, e => e.Text == ApprovedAtDue || e.Text == Approved || e.Text.Contains("flown without Approval"));
         }
@@ -614,30 +652,27 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
-        public void TheWarpToTheDueTimeIsSavedWithThePlanAndAutoModeApprovesAfterALoad()
+        public void NoWarpIsSavedAndAutoModeApprovesAfterALoadWithAnOlderSavesWarpLineIgnored()
         {
             var mission = WarpedToDue(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()));
             var state = Assert.Single(mission.ExportStates());
-            Assert.Equal("1250", state.ToValues()["dueWarp"]);
-            var again = MissionSaveState.FromValues(state.ToValues());
+            Assert.False(state.ToValues().ContainsKey("dueWarp"));
 
-            var later = Control(new StreamingFakeTransport(), AutoModeOn());
-            later.Send(new MissionsRestored(_save.Path, new List<MissionSaveState> { again }));
-            Assert.Equal(MissionStage.AwaitingSequenceApproval, later.View.Stage);
-            // The adapter's first snapshot after a load puts the player back in the craft.
-            later.Send(OnPad());
-            later.Send(new UtAdvanced(1250));
-            Assert.Equal(MissionStage.Running, later.View.Stage);
-            Assert.Single(later.View.Log, e => e.Text == ApprovedAtDue);
-
-            // No warp pressed, or a save from before this: nothing is saved, and the reached Due Time waits.
-            var values = state.ToValues();
-            values.Remove("dueWarp");
-            var older = Control(new StreamingFakeTransport(), AutoModeOn());
-            older.Send(new MissionsRestored(_save.Path, new List<MissionSaveState> { MissionSaveState.FromValues(values) }));
-            older.Send(OnPad());
-            older.Send(new UtAdvanced(1250));
-            Assert.Equal(MissionStage.AwaitingSequenceApproval, older.View.Stage);
+            foreach (var dueWarp in new[] { null, "1250", "999" })
+            {
+                // A save from the round before this one may carry the Due Time warped to; it loads, and nothing hangs on it.
+                var values = state.ToValues();
+                if (dueWarp != null) values["dueWarp"] = dueWarp;
+                var later = Control(new StreamingFakeTransport(), AutoModeOn());
+                later.Send(new MissionsRestored(_save.Path, new List<MissionSaveState> { MissionSaveState.FromValues(values) }));
+                Assert.Equal(MissionStage.AwaitingSequenceApproval, later.View.Stage);
+                // The adapter's first snapshot after a load puts the player back in the craft.
+                later.Send(OnPad());
+                later.Send(new UtAdvanced(1250));
+                Assert.Equal(MissionStage.Running, later.View.Stage);
+                Assert.Single(later.View.Log, e => e.Text == ApprovedAtDue);
+                Assert.False(Assert.Single(later.ExportStates()).ToValues().ContainsKey("dueWarp"));
+            }
         }
 
         [Fact]
@@ -760,10 +795,12 @@ namespace ClaudiaKerman.Core.Tests
             ToSequencePlan(manual, 10m, manualWatch);
             AssertWaitingForYou(manual, manualWatch, "Auto Mode is waiting for you: a Manual stretch.", AttentionKind.Approval);
 
-            var due = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"),
-                WithSequenceFields(ScriptedResponse.Fixture("mission-sequence-plan.sse"), "\"due_time_ut\":1250,")), AutoModeOn());
+            // A Due Time waits for the player only once Auto Mode's approval at it was refused (#967).
+            var due = Control(new StreamingFakeTransport(ScriptedResponse.Fixture("mission-plan.sse"), DuePlan()), AutoModeOn());
             var dueWatch = new AttentionWatch();
             ToSequencePlan(due, 10m, dueWatch);
+            due.Send(Snapshot(NoKos));
+            due.Send(new UtAdvanced(1250));
             AssertWaitingForYou(due, dueWatch, "Auto Mode is waiting for you: a Due Time.", AttentionKind.Approval);
 
             var unsafeScript = new StreamingFakeTransport(
