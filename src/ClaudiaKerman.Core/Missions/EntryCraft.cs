@@ -153,6 +153,17 @@ namespace ClaudiaKerman.Core.Missions
             return now(aimedKey) == now(flownKey);
         }
 
+        /// <summary>
+        /// #981: whether the craft as it is can enter the air and come down on its own: an Entry Shield <c>reentry</c> would find, and chutes or an engine
+        /// for the finish. A trip home then needs no capture first.
+        /// </summary>
+        public static bool CanEnter(GameSnapshot snapshot)
+        {
+            if (snapshot == null || snapshot.Craft == null) return false;
+            var parts = snapshot.Craft.Parts;
+            return EntryStack.Of(parts, null, 1).Shield != null && parts.Any(p => p.Chute != null || p.Tags.Contains("engine"));
+        }
+
         /// <summary>The craft in a few words for the log, with its mass.</summary>
         public string Describe()
         {

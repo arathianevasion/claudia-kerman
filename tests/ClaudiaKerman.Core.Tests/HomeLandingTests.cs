@@ -256,6 +256,80 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Contains("\"capture\":false", outcome.Json);
         }
 
+        // ---- #981: a craft that can enter comes in directly ----
+
+        /// <summary>
+        /// Mission m20261110-203402-45d1 at its re-plan in Duna orbit (UT 179013843): 2,441 m/s by stock, a pod with a chute over an Entry Shield over the
+        /// engine stack. <paramref name="shield"/> false takes the shield's tag off; <paramref name="air"/> false gives Kerbin no atmosphere.
+        /// </summary>
+        private static GameSnapshot ShieldedAtDuna(bool shield = true, bool air = true)
+        {
+            const double ut = 179013843.02280834;
+            var kerbin = new SnapshotBody
+            {
+                Name = "Kerbin", Parent = "Sun", Gm = 3531599999999.9995, Radius = 600000, AtmosphereHeight = air ? 70000 : 0, SeaLevelAtm = air ? 1 : 0, SoiRadius = 84159286.479630485,
+                RotationPeriod = 21549.425183089825, Sma = 13599840256, MeanAnomalyAtEpoch = 3.14000010490417,
+            };
+            var snapshot = new GameSnapshot { Ut = ut, Situation = "ORBITING", Body = "Duna", MissionGoal = "return to kerbin in the soonest window" };
+            snapshot.Orbit = new SnapshotOrbit
+            {
+                Body = "Duna", SemiMajorAxis = 379732.23702056933, Eccentricity = 0.0027712785379309032, Inclination = 0.013479989344370995, Lan = 296.90766784479143,
+                ArgumentOfPeriapsis = 151.90871009589452, MeanAnomalyAtEpoch = 1.1051974785711709, Epoch = ut, Periapsis = 58679.893221953709, Apoapsis = 60784.580819184892,
+            };
+            snapshot.Bodies.AddRange(new[] { Sun, kerbin, Mun, Duna, Ike });
+            snapshot.DeltaVSimulator = true;
+            snapshot.Stages.Add(new SnapshotStage { DeltaVVac = 603.09 });
+            snapshot.Stages.Add(new SnapshotStage { DeltaVVac = 1837.83 });
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 1, Name = "mk1pod.v2", MassT = 1.2, Chute = new ReentryChute() });
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 2, ParentId = 1, Name = "HeatShield1", MassT = 0.3, Tags = shield ? new List<string> { "heat_shield", "decoupler" } : new List<string>() });
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 3, ParentId = 2, Name = "liquidEngine3.v2", MassT = 10.08, Tags = new List<string> { "engine" } });
+            snapshot.Craft.MassTonnes = 11.583;
+            return snapshot;
+        }
+
+        /// <summary>The flight's craft had a shield and a chute: the plan is transfer_to at the entry periapsis then reentry, about 671 m/s, not the 1,718 m/s capture.</summary>
+        [Fact]
+        public void A_craft_that_can_enter_comes_home_from_duna_by_direct_entry()
+        {
+            var snapshot = ShieldedAtDuna();
+            var plan = HomeLanding.Arrival(snapshot, "Kerbin");
+            Assert.False(plan.CaptureFirst);
+            Assert.Equal(ArrivalRule.EntryPe(snapshot.Bodies[1]), plan.ArrivalPe);
+            var result = Plan(snapshot);
+            Assert.False(result.GetProperty("capture").GetBoolean());
+            var note = result.GetProperty("arrival_note").GetString();
+            Assert.StartsWith("arrival: entry at 21 km, no capture burn", note);
+            Assert.Contains("reentry()", note);
+            Assert.False(result.GetProperty("optimal").TryGetProperty("capture_dv", out _));
+            Assert.InRange(result.GetProperty("optimal").GetProperty("total_dv").GetDouble(), 660, 682);
+        }
+
+        /// <summary>The same craft without the shield keeps today's capture, deorbit and reentry; so does a home with no air, where nothing enters.</summary>
+        [Fact]
+        public void No_shield_or_no_air_keeps_the_capture()
+        {
+            var bare = ShieldedAtDuna(shield: false);
+            Assert.True(HomeLanding.Arrival(bare, "Kerbin").CaptureFirst);
+            var result = Plan(bare);
+            Assert.True(result.GetProperty("capture").GetBoolean());
+            Assert.Contains("capture()", result.GetProperty("arrival_note").GetString());
+
+            var airless = ShieldedAtDuna(air: false);
+            Assert.Null(HomeLanding.Arrival(airless, "Kerbin"));
+            Assert.True(Plan(airless).GetProperty("capture").GetBoolean());
+        }
+
+        /// <summary>A capture stays allowed: the caller who asks for one gets it, shield or not.</summary>
+        [Fact]
+        public void A_capture_asked_for_is_still_priced_with_a_shield_aboard()
+        {
+            var outcome = PlanningTools.Default().Run("plan_transfer", "{\"target\":\"Kerbin\",\"target_pe\":80000,\"capture\":true}", ShieldedAtDuna(), new NoPlanningBody());
+            Assert.False(outcome.IsError, outcome.Json);
+            var result = JsonDocument.Parse(outcome.Json).RootElement;
+            Assert.True(result.GetProperty("capture").GetBoolean());
+            Assert.True(result.GetProperty("optimal").TryGetProperty("capture_dv", out _));
+        }
+
         /// <summary>From a moon of Kerbin the way home is <c>return</c>, and from a moon of another planet the same choice as its planet.</summary>
         [Fact]
         public void The_choice_is_for_another_planets_system_only()
