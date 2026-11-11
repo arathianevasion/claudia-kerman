@@ -10,7 +10,9 @@ namespace ClaudiaKerman.Core.Tests
 {
     /// <summary>
     /// <c>ADDONS:CLAUDIA:FALLETA</c> (#994, ADR 0014): the seconds until a closed orbit or an inbound hyperbolic path falls to a radius, which <c>reentry</c> waits on.
-    /// The closed-orbit answers are pinned to what the library's <c>claudia_fall_eta</c> gave (run on kOS.Safe before it was deleted).
+    /// Pinned to the library's <c>claudia_fall_eta</c>: seven closed-orbit answers and one Mun descent printed on kOS.Safe before it was deleted,
+    /// and the edges (periapsis at the air's edge, either side of apsides, ecc 0, an 80 Mm apoapsis) worked from its formula in doubles.
+    /// The hyperbolic answers are checked against an independent time of flight, not pinned.
     /// </summary>
     public sealed class FallEtaTests
     {
@@ -123,6 +125,34 @@ namespace ClaudiaKerman.Core.Tests
         {
             var rAp = KerbinRadius + apKm * 1000;
             Assert.Equal(expected, Eta((rAp - RPe) / (rAp + RPe), (RPe + rAp) / 2, KerbinMu, KerbinAir, ta), 6);
+        }
+
+        /// <summary>The edges, pinned to claudia_fall_eta's formula worked again in doubles (it reproduces every pin above to the last digit):
+        /// a periapsis exactly at the air's edge, a hair either side of apoapsis and of periapsis, and an 80 Mm apoapsis near apoapsis.</summary>
+        [Theory]
+        [InlineData(70, 200, 180, 1053.4043830369312)]
+        [InlineData(70, 200, 180.0000001, 1053.4043823408933)]
+        [InlineData(70, 200, 359.9999999, 0)]
+        [InlineData(30, 200, 180.0000001, 717.2855347772309)]
+        [InlineData(30, 200, 179.9999999, 717.2855361931524)]
+        [InlineData(30, 200, 359.9999999, 0)]
+        [InlineData(30, 80000, 179.999, 432663.249041508)]
+        [InlineData(30, 80000, 180, 432609.2896395711)]
+        [InlineData(30, 80000, 180.001, 432555.3302376345)]
+        public void A_closed_orbit_at_the_edges_gives_claudia_fall_etas_answer(double peKm, double apKm, double ta, double expected)
+        {
+            var rPe = KerbinRadius + peKm * 1000;
+            var rAp = KerbinRadius + apKm * 1000;
+            Assert.Equal(expected, Eta((rAp - rPe) / (rAp + rPe), (rPe + rAp) / 2, KerbinMu, KerbinAir, ta), 6);
+        }
+
+        /// <summary>A circular orbit (ecc 0), as claudia_fall_eta answered: inside the air it is there now; above it, never.</summary>
+        [Fact]
+        public void A_circular_orbit_gives_claudia_fall_etas_answer()
+        {
+            Assert.Equal(0, Eta(0, KerbinRadius + 50000, KerbinMu, KerbinAir, 180));
+            Assert.Equal(0, Eta(0, KerbinRadius + 70000, KerbinMu, KerbinAir, 0));
+            Assert.Equal(-1, Eta(0, KerbinRadius + 100000, KerbinMu, KerbinAir, 180));
         }
 
         /// <summary>Independent check: advance the mean anomaly by <paramref name="seconds"/>, solve Kepler's equation, read the radius.</summary>
