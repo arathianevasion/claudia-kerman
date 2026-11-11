@@ -63,7 +63,7 @@ namespace ClaudiaKerman.Core.Ui
 
         // Below this the docked panel's goal, prompt and control bar leave the transcript no room: 200 px at the old 1.2.
         // Their text and heights follow the scale but their paddings and gaps are fixed pixels, so only the rest scales
-        // (176 px at 100% and 100% now, not 160).
+        // (176 px at 100% and 100%).
         public const float PanelMinHeightDesign = (200f - PanelMinHeightFixedPx) / UiScale.OldBase;
         public const float PanelMinHeightFixedPx = 80;
 
