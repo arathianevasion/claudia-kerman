@@ -192,7 +192,8 @@ namespace ClaudiaKerman.Core.Tools
     /// <summary>
     /// Who picks the arrival plane (#788 item 3), first wins: Claudia's explicit value; a Target Vessel orbiting the arrival body;
     /// the next leg's landing site (<c>find_landing_site</c>'s pick, a Point of Interest, a landed Target Vessel, or a latitude in its
-    /// words, or a pole or biome its words or the Mission Goal name, #806); the next leg's moon of this body; none, as before. A trip that ends in reentry is out of scope: "auto" gives it none. Pure.
+    /// words, or a pole or biome its words or the Mission Goal name, #806, or the equator its words name, #986); the next leg's moon of this body; none, as before.
+    /// A trip that ends in reentry gets none from "auto" (a leg in hand that names its capture doesn't, #986); a trip home's far-out aim is <see cref="Home"/>. Pure.
     /// </summary>
     internal static class ArrivalPlanes
     {
@@ -202,6 +203,10 @@ namespace ClaudiaKerman.Core.Tools
         private static readonly Regex PoleWord = new Regex(@"(?<!\w)(?<!non-)(poles?|polar)(?!\w)(?!-mounted)", RegexOptions.IgnoreCase);
         /// <summary>The equator in a leg's words (#986): "equator", "equatorial"; "non-equatorial" is not.</summary>
         private static readonly Regex EquatorWord = new Regex(@"(?<![\w-])equator(ial)?(?!\w)", RegexOptions.IgnoreCase);
+        /// <summary>Words before the equator in its clause that say away from it (#986): "far from the equator", "not on the equator", "off the equator".</summary>
+        private static readonly Regex NotEquator = new Regex(@"(?:\b(?:far|away)\s+from|\b(?:not|off|avoid(?:s|ing)?)\b[^,.;]*?)\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
+        /// <summary>Words before a capture in its clause that say none flies (#986): "skip capture", "no capture", "without capturing".</summary>
+        private static readonly Regex NoCapture = new Regex(@"\b(?:no|not|never|skip(?:s|ping)?|without|don['’]t)\b", RegexOptions.IgnoreCase);
         private static readonly char[] ClauseEnds = { ',', '.', ';' };
 
         /// <summary>
@@ -260,12 +265,29 @@ namespace ClaudiaKerman.Core.Tools
             return OfTargetVessel(snapshot, arrival) ?? OfLegs(snapshot, system, arrival, legs);
         }
 
-        /// <summary>Whether the leg in hand's words name a capture into orbit, not an aerocapture: "coast to Duna, and capture into a 60 km orbit".</summary>
+        /// <summary>
+        /// Whether the leg in hand's words name a capture into orbit, not an aerocapture: "coast to Duna, and capture into a 60 km orbit". A capture its clause turns down
+        /// ("skip capture, straight down") is none.
+        /// </summary>
         private static bool CapturesHere(IList<PlannedSequence> legs)
         {
             if (legs.Count == 0) return false;
             var words = SequenceWords.Of(legs[0]);
-            return SequenceWords.Capture.IsMatch(words) && !SequenceWords.Aero.IsMatch(words);
+            return !SequenceWords.Aero.IsMatch(words) && SequenceWords.Capture.Matches(words).Cast<Match>().Any(m => !NoCapture.IsMatch(Clause(words, m.Index)));
+        }
+
+        /// <summary>Whether <paramref name="words"/> name the equator as the place (#986), not as where it isn't: "Land at Duna, far from the equator" doesn't.</summary>
+        private static bool NamesEquator(string words)
+        {
+            return EquatorWord.Matches(words).Cast<Match>().Any(m => !NotEquator.IsMatch(Clause(words, m.Index)));
+        }
+
+        /// <summary>The words of <paramref name="words"/>'s clause before <paramref name="at"/>.</summary>
+        private static string Clause(string words, int at)
+        {
+            if (at <= 0) return "";
+            var start = words.LastIndexOfAny(ClauseEnds, at - 1) + 1;
+            return words.Substring(start, at - start);
         }
 
         /// <summary>
@@ -424,7 +446,7 @@ namespace ClaudiaKerman.Core.Tools
         {
             var latitude = SiteLatitude(snapshot, arrival, leg);
             if (latitude.HasValue && Math.Abs(latitude.Value) >= ArrivalPlane.SiteMargin) return AtLatitude(arrival, latitude.Value);
-            return EquatorWord.IsMatch(SequenceWords.Of(leg)) ? new ArrivalPlane { Arrival = arrival.Name, Source = "site", Inc = 0 } : null;
+            return NamesEquator(SequenceWords.Of(leg)) ? new ArrivalPlane { Arrival = arrival.Name, Source = "site", Inc = 0 } : null;
         }
 
         private static double? SiteLatitude(GameSnapshot snapshot, SnapshotBody arrival, PlannedSequence leg)
@@ -440,7 +462,7 @@ namespace ClaudiaKerman.Core.Tools
             double latitude;
             if (pair.Success && double.TryParse(pair.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out latitude)) return latitude;
             // The leg's own equator comes before the Mission Goal's pole or biome (#986).
-            return WordsLatitude(snapshot, arrival, words) ?? (EquatorWord.IsMatch(words) ? 0 : GoalLatitude(snapshot, arrival));
+            return WordsLatitude(snapshot, arrival, words) ?? (NamesEquator(words) ? 0 : GoalLatitude(snapshot, arrival));
         }
     }
 }
