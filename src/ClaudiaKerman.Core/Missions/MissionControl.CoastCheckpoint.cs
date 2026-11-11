@@ -66,7 +66,7 @@ namespace ClaudiaKerman.Core.Missions
         }
 
         /// <summary>
-        /// The one Due Time that doesn't hold the player or Auto Mode back (#775): a coast checkpoint's, with the player still in the craft
+        /// The one Due Time that doesn't hold the player or Auto Mode back before it is reached (#775): a coast checkpoint's, with the player still in the craft
         /// (the script warps there on rails). Left, or not yet checked since, it holds as any Due Time does.
         /// </summary>
         private bool SoftDueTime(Mission mission, SequencePlan plan)
