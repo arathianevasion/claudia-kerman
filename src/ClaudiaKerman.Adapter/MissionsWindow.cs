@@ -19,7 +19,7 @@ namespace ClaudiaKerman.Adapter
     {
         private readonly Action<MissionInput> _send;
         private readonly WindowFrame _frame =
-            new WindowFrame(0x434B04, "", "ClaudiaKermanMissions", new Rect(220, 100, 520, 560), new Vector2(420, 260), true);
+            new WindowFrame(0x434B04, "", "ClaudiaKermanMissions", new Rect(220, 100, 520, 560), new Vector2(420, 260), true, UiScale.Base);
 
         private MissionView _view;
         private Vector2 _scroll;

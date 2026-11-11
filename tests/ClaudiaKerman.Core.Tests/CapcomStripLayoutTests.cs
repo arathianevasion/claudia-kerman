@@ -193,6 +193,194 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(0, CapcomStripLayout.Place(300, 70, Size, 500, 1080).X);
         }
 
+        // ---- The unmoved strip in the gap between the altimeter and the app bar ----
+
+        // A 2560 x 1440 screen: the altimeter spans x 1080..1480 from the top down to 90; the app bar starts at x 2200
+        // and runs down to 50. A 740 px default strip that can't go under 624, a 6 px margin, 70 px down when the stock UI can't be read.
+        private static readonly StockUi Stock = new StockUi(1080, 1480, 0, 90, 2200, 50);
+        private static readonly StripSize Default = new StripSize(740, 120, 32, 640, 200);
+
+        private static StripPlacement Unmoved(StockUi stock, float screenWidth = 2560, float screenHeight = 1440)
+        {
+            return CapcomStripLayout.Place(stock, 6, 624, 70, Default, screenWidth, screenHeight);
+        }
+
+        [Fact]
+        public void TheUnmovedStripFillsTheGapBetweenTheAltimeterAndTheAppBar()
+        {
+            var place = Unmoved(Stock);
+            Assert.Equal(1486, place.X);
+            Assert.Equal(708, place.Width);
+            Assert.Equal(0, place.Y);
+        }
+
+        [Fact]
+        public void TheStripKeepsTheMarginFromBothEdgesAndItsTopIsTheAltimetersTop()
+        {
+            var place = Unmoved(new StockUi(900, 1200, 12, 100, 2000, 50));
+            Assert.Equal(1200 + 6, place.X);
+            Assert.Equal(2000 - 6, place.X + place.Width);
+            Assert.Equal(12, place.Y);
+        }
+
+        [Fact]
+        public void TheGapCanBeWiderThanTheDefaultStrip()
+        {
+            Assert.Equal(2400 - 1480 - 12, Unmoved(new StockUi(1080, 1480, 0, 90, 2400, 50)).Width);
+        }
+
+        [Fact]
+        public void ThePanelInTheGapStillOpensBelowAtTheStripsWidth()
+        {
+            var place = Unmoved(Stock);
+            Assert.Equal(PanelSide.Below, place.Side);
+            Assert.Equal(640, place.PanelHeight);
+        }
+
+        [Fact]
+        public void AGapJustWideEnoughForTheMinimumIsUsed()
+        {
+            var place = Unmoved(new StockUi(1080, 1480, 0, 90, 1480 + 624 + 12, 50));
+            Assert.Equal(1486, place.X);
+            Assert.Equal(624, place.Width);
+        }
+
+        [Fact]
+        public void AGapOnePixelShortOfTheMinimumAndBothMarginsIsNarrow()
+        {
+            // 1480..2115 less both 6 px margins is 623 px, one short of the floor (with one margin it would be 629).
+            var place = Unmoved(new StockUi(1080, 1480, 0, 90, 1480 + 623 + 12, 50));
+            Assert.Equal(740, place.Width);
+            Assert.Equal(910, place.X);
+            Assert.Equal(90 + 6, place.Y);
+        }
+
+        [Fact]
+        public void TheNarrowFallbackGoesBelowAnAppBarItsWidthCrosses()
+        {
+            // Centred under the altimeter the strip runs 910..1650, past the bar's left edge at 1600; the bar reaches 120.
+            var place = Unmoved(new StockUi(1080, 1480, 0, 90, 1600, 120));
+            Assert.Equal(910, place.X);
+            Assert.Equal(120 + 6, place.Y);
+        }
+
+        [Fact]
+        public void TheNarrowFallbackUnderATallerAltimeterStaysUnderTheAltimeter()
+        {
+            var place = Unmoved(new StockUi(1080, 1480, 0, 150, 1600, 120));
+            Assert.Equal(150 + 6, place.Y);
+        }
+
+        [Fact]
+        public void TheNarrowFallbackClearOfTheAppBarIgnoresItsHeight()
+        {
+            // The strip ends at 1650, short of a bar from 1700 that reaches 300.
+            var place = Unmoved(new StockUi(1080, 1480, 0, 90, 1700, 300));
+            Assert.Equal(90 + 6, place.Y);
+        }
+
+        [Fact]
+        public void TheNarrowFallbackChecksTheBarWhereTheScreenPutsTheStrip()
+        {
+            // Centred under an altimeter at 0..200 the strip would start at -270 and end clear of a bar from 730; kept on
+            // the 800 px screen it runs 0..740, under the bar.
+            var place = Unmoved(new StockUi(0, 200, 0, 90, 730, 120), 800, 1440);
+            Assert.Equal(0, place.X);
+            Assert.Equal(120 + 6, place.Y);
+        }
+
+        [Fact]
+        public void TheNarrowFallbackWithinTheMarginOfTheBarGoesBelowIt()
+        {
+            // The strip ends at 1650, 3 px short of the bar.
+            Assert.Equal(120 + 6, Unmoved(new StockUi(1080, 1480, 0, 90, 1653, 120)).Y);
+        }
+
+        // ---- The last stock edges read ----
+
+        private static readonly StockUi Other = new StockUi(1000, 1400, 0, 80, 2100, 50);
+
+        [Fact]
+        public void NoEdgesEverReadAreUnknown()
+        {
+            var kept = new KnownStockUi();
+            Assert.False(kept.Next(StockUi.Unknown, 1.2f, 2560, 1440, "flight").Known);
+        }
+
+        [Fact]
+        public void AFrameWithoutEdgesKeepsTheLastOnesRead()
+        {
+            var kept = new KnownStockUi();
+            kept.Next(Stock, 1.2f, 2560, 1440, "flight");
+            Assert.Equal(Stock, kept.Next(StockUi.Unknown, 1.2f, 2560, 1440, "flight"));
+            Assert.Equal(Other, kept.Next(Other, 1.2f, 2560, 1440, "flight"));
+            Assert.Equal(Other, kept.Next(StockUi.Unknown, 1.2f, 2560, 1440, "flight"));
+        }
+
+        [Theory]
+        [InlineData(1.8f, 2560, 1440, "flight")]
+        [InlineData(1.2f, 1920, 1440, "flight")]
+        [InlineData(1.2f, 2560, 1080, "flight")]
+        [InlineData(1.2f, 2560, 1440, "spacecenter")]
+        public void ANewScaleScreenOrSceneForgetsTheEdges(float scale, float width, float height, string scene)
+        {
+            var kept = new KnownStockUi();
+            kept.Next(Stock, 1.2f, 2560, 1440, "flight");
+            Assert.False(kept.Next(StockUi.Unknown, scale, width, height, scene).Known);
+            Assert.Equal(Other, kept.Next(Other, scale, width, height, scene));
+        }
+
+        [Fact]
+        public void AReloadedSceneOfTheSameKindForgetsTheEdges()
+        {
+            var kept = new KnownStockUi();
+            kept.Next(Stock, 1.2f, 2560, 1440, new object());
+            Assert.False(kept.Next(StockUi.Unknown, 1.2f, 2560, 1440, new object()).Known);
+        }
+
+        [Fact]
+        public void AGapNarrowerThanTheMinimumPutsTheStripUnderTheAltimeterCentred()
+        {
+            // 1480..2000 less the margins is 508 px, under the 624 px floor.
+            var place = Unmoved(new StockUi(1080, 1480, 0, 90, 2000, 50));
+            Assert.Equal(740, place.Width);
+            Assert.Equal(1280 - 370, place.X);
+            Assert.Equal(90 + 6, place.Y);
+            Assert.Equal(PanelSide.Below, place.Side);
+        }
+
+        [Fact]
+        public void AnAppBarLeftOfTheAltimeterIsANarrowGap()
+        {
+            var place = Unmoved(new StockUi(1080, 1480, 0, 90, 1000, 50));
+            Assert.Equal(740, place.Width);
+            Assert.Equal(910, place.X);
+        }
+
+        [Fact]
+        public void WithoutTheStockEdgesTheStripIsCentredAtTodaysSpot()
+        {
+            var place = Unmoved(StockUi.Unknown, 1920, 1080);
+            Assert.Equal(740, place.Width);
+            Assert.Equal((1920 - 740) / 2f, place.X);
+            Assert.Equal(70, place.Y);
+            Assert.Equal(PanelSide.Below, place.Side);
+        }
+
+        [Fact]
+        public void TheFallbackSpotIsKeptOnAScreenNarrowerThanTheStrip()
+        {
+            var place = Unmoved(StockUi.Unknown, 600, 1080);
+            Assert.Equal(0, place.X);
+            Assert.Equal(600, place.Width);
+        }
+
+        [Fact]
+        public void APlacementFromADragKeepsTheStripsWidth()
+        {
+            Assert.Equal(620, CapcomStripLayout.Place(650, 70, Size, 1920, 1080).Width);
+        }
+
         // ---- Mouse lock ----
 
         // A 740 x 200 window with a 30 px tab row and a 100 px wide tab, so the tab spans x 320..420.

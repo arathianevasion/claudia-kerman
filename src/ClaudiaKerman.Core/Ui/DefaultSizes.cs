@@ -48,5 +48,37 @@ namespace ClaudiaKerman.Core.Ui
         public static float StripWidth(float fontScale) { return Scale(StripWidthDesign, fontScale); }
 
         public static float PanelHeight(float fontScale) { return Scale(PanelHeightDesign, fontScale); }
+
+        // The unmoved strip's top when the stock UI can't be read (70 px at 1.2), and its margin from the altimeter and the app bar (6 px at 1.2).
+        public const float StripTopDesign = 70f / UiScale.Base, StripMarginDesign = 5;
+
+        public static float StripTop(float fontScale) { return Scale(StripTopDesign, fontScale); }
+
+        public static float StripMargin(float fontScale) { return Scale(StripMarginDesign, fontScale); }
+
+        // Below this the docked panel's prompt and control bar leave the transcript no room (200 px at 1.2).
+        public const float PanelMinHeightDesign = 200f / UiScale.Base;
+
+        public static float PanelMinHeight(float fontScale) { return Scale(PanelMinHeightDesign, fontScale); }
+    }
+
+    /// <summary>
+    /// The UI's one scale factor, from the game's settings: UI Scale times Apps scale times <see cref="Base"/>, so that
+    /// 100% and 100% keep the 1.2 look from before Claudia followed the stock UI (#991).
+    /// </summary>
+    public static class UiScale
+    {
+        public const float Base = 1.2f;
+
+        /// <summary>A setting that isn't a positive number counts as 100%.</summary>
+        public static float Factor(float uiScale, float appsScale)
+        {
+            return Base * Sane(uiScale) * Sane(appsScale);
+        }
+
+        private static float Sane(float setting)
+        {
+            return setting > 0 && !float.IsInfinity(setting) ? setting : 1f;
+        }
     }
 }

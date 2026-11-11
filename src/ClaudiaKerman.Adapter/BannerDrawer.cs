@@ -17,7 +17,8 @@ namespace ClaudiaKerman.Adapter
     public sealed class BannerDrawer
     {
         private GUIStyle _art, _title, _tagline, _secondary, _text;
-        private GUISkin _stylesFor;
+        // Built from ClaudiaSkin's styles, so rebuilt when they are (a new skin or UI scale).
+        private GUIStyle _stylesFor;
 
         /// <summary>
         /// Draws the banner in a transcript <paramref name="width"/> wide. The pending setup stands in for the Mission's
@@ -96,8 +97,8 @@ namespace ClaudiaKerman.Adapter
 
         private void Styles()
         {
-            if (_art != null && ReferenceEquals(_stylesFor, HighLogic.Skin)) return;
-            _stylesFor = HighLogic.Skin;
+            if (_art != null && ReferenceEquals(_stylesFor, ClaudiaSkin.Body)) return;
+            _stylesFor = ClaudiaSkin.Body;
             // The skin's monospace font at 12 px (times FontScale), with no padding or margin so the rows touch.
             _art = new GUIStyle(ClaudiaSkin.Mono)
             {

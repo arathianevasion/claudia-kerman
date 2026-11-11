@@ -25,8 +25,8 @@ namespace ClaudiaKerman.Adapter
         private const string InputControl = "ClaudiaMissionInput";
         private const string RaiseControl = "ClaudiaMissionRaise";
         private const int MaxPromptLines = 7;
-        private static readonly float SendSize = ClaudiaSkin.Scaled(32);
-        private static readonly float ControlBarHeight = ClaudiaSkin.Scaled(44);
+        private static float SendSize { get { return ClaudiaSkin.Scaled(32); } }
+        private static float ControlBarHeight { get { return ClaudiaSkin.Scaled(44); } }
 
         private readonly Action<MissionInput> _send;
         private readonly bool _debugTools;

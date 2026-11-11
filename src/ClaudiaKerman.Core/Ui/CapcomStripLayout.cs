@@ -105,12 +105,62 @@ namespace ClaudiaKerman.Core.Ui
         }
     }
 
-    /// <summary>Where the strip's top left goes, the side its panel and tab are on, and how high the panel is.</summary>
+    /// <summary>Where the strip's top left goes, how wide it is, the side its panel and tab are on, and how high the panel is.</summary>
     public struct StripPlacement
     {
-        public float X, Y;
+        public float X, Y, Width;
         public PanelSide Side;
         public float PanelHeight;
+    }
+
+    /// <summary>
+    /// Where the stock altimeter and app launcher bar are on screen, in screen pixels from the top left: the altimeter's
+    /// box and the bar's left and bottom edges. <see cref="Unknown"/> when either couldn't be read.
+    /// </summary>
+    public struct StockUi
+    {
+        public readonly bool Known;
+        public readonly float AltimeterLeft, AltimeterRight, AltimeterTop, AltimeterBottom, AppBarLeft, AppBarBottom;
+
+        public StockUi(float altimeterLeft, float altimeterRight, float altimeterTop, float altimeterBottom, float appBarLeft, float appBarBottom)
+        {
+            Known = true;
+            AltimeterLeft = altimeterLeft;
+            AltimeterRight = altimeterRight;
+            AltimeterTop = altimeterTop;
+            AltimeterBottom = altimeterBottom;
+            AppBarLeft = appBarLeft;
+            AppBarBottom = appBarBottom;
+        }
+
+        public static readonly StockUi Unknown = default(StockUi);
+    }
+
+    /// <summary>
+    /// The stock edges the unmoved strip goes by: the last ones read, so a frame where they can't be (F2, a hidden or
+    /// empty app bar) doesn't throw the strip to its fallback spot. A new UI scale, screen size or scene forgets them, as
+    /// they no longer hold; until they are read again the strip takes the fallback.
+    /// </summary>
+    public sealed class KnownStockUi
+    {
+        private StockUi _last;
+        private float _scale, _width, _height;
+        private object _scene;
+
+        /// <param name="scene">Stands for the scene the edges belong to: one that isn't <see cref="object.Equals(object, object)"/> to the last forgets them (a reloaded Flight is a new scene).</param>
+        public StockUi Next(StockUi read, float scale, float screenWidth, float screenHeight, object scene)
+        {
+            if (scale != _scale || screenWidth != _width || screenHeight != _height || !Equals(scene, _scene))
+            {
+                _last = StockUi.Unknown;
+                _scale = scale;
+                _width = screenWidth;
+                _height = screenHeight;
+                _scene = scene;
+            }
+            if (read.Known) _last = read;
+            return _last;
+        }
     }
 
     public static class CapcomStripLayout
@@ -143,9 +193,44 @@ namespace ClaudiaKerman.Core.Ui
             {
                 X = x,
                 Y = y,
+                Width = size.Width,
                 Side = side,
                 PanelHeight = Math.Max(size.MinPanelHeight, Math.Min(size.PanelHeight, room)),
             };
+        }
+
+        /// <summary>
+        /// Places the strip the player hasn't moved. It fills the gap between the altimeter and the app launcher bar, at
+        /// <paramref name="margin"/> from each, its top level with the altimeter's. A gap narrower than
+        /// <paramref name="minWidth"/> (less both margins) puts it under the altimeter, centred on it, at its default
+        /// <paramref name="size"/> width, and under the app bar too where it reaches past the bar's left edge; with no
+        /// stock edges it is centred on the screen, <paramref name="fallbackTop"/> down. Then as
+        /// <see cref="Place(float, float, StripSize, float, float)"/>, no wider than the screen.
+        /// </summary>
+        public static StripPlacement Place(StockUi stock, float margin, float minWidth, float fallbackTop, StripSize size, float screenWidth, float screenHeight)
+        {
+            float x, y, width = size.Width;
+            if (!stock.Known)
+            {
+                width = Math.Min(width, screenWidth);
+                x = (screenWidth - width) / 2;
+                y = fallbackTop;
+            }
+            else if (stock.AppBarLeft - stock.AltimeterRight - 2 * margin >= minWidth)
+            {
+                x = stock.AltimeterRight + margin;
+                width = stock.AppBarLeft - margin - x;
+                y = stock.AltimeterTop;
+            }
+            else
+            {
+                width = Math.Min(width, screenWidth);
+                // Kept on screen first, so the bar check sees where the strip will be; within the margin counts as under it.
+                x = Math.Max(0, Math.Min((stock.AltimeterLeft + stock.AltimeterRight - width) / 2, screenWidth - width));
+                var underBar = x + width + margin > stock.AppBarLeft;
+                y = (underBar ? Math.Max(stock.AltimeterBottom, stock.AppBarBottom) : stock.AltimeterBottom) + margin;
+            }
+            return Place(x, y, new StripSize(width, size.StripHeight, size.TabHeight, size.PanelHeight, size.MinPanelHeight), screenWidth, screenHeight);
         }
     }
 

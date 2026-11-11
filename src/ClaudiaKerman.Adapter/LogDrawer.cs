@@ -25,7 +25,8 @@ namespace ClaudiaKerman.Adapter
         private int _seenLogCount = -1;
         private GUIStyle _bold, _script;
         private readonly BannerDrawer _banner = new BannerDrawer();
-        private GUISkin _stylesFor;
+        // Built from ClaudiaSkin's styles, so rebuilt when they are (a new skin or UI scale).
+        private GUIStyle _stylesFor;
 
         // Expanded "why" and "Show script" per log entry.
         private readonly HashSet<LogEntry> _showWhy = new HashSet<LogEntry>();
@@ -141,8 +142,8 @@ namespace ClaudiaKerman.Adapter
 
         private void Styles()
         {
-            if (_bold != null && ReferenceEquals(_stylesFor, HighLogic.Skin)) return;
-            _stylesFor = HighLogic.Skin;
+            if (_bold != null && ReferenceEquals(_stylesFor, ClaudiaSkin.Body)) return;
+            _stylesFor = ClaudiaSkin.Body;
             _bold = new GUIStyle(ClaudiaSkin.Body) { fontStyle = FontStyle.Bold };
             // Scripts keep their lines and scroll both ways in their own box.
             _script = new GUIStyle(ClaudiaSkin.TextField) { wordWrap = false, font = ClaudiaSkin.Mono.font, fontSize = ClaudiaSkin.Scaled(12) };
