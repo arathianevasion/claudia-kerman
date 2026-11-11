@@ -57,14 +57,29 @@ namespace ClaudiaKerman.Core.Tests
         // #978: Duna's craft (thrust-to-weight 3.5) turns at the start under 500 Pa, down to where its thrust still holds its vertical speed:
         // asin(1 / 3.5), 16.6 degrees.
         [Theory]
-        [InlineData(54, 88, 54)]
-        [InlineData(10, 88, 16.6)]
+        [InlineData(80, 88, 80)]
+        [InlineData(10, 25, 16.6)]
         [InlineData(10, 15, 12)]
         public void In_thin_air_a_craft_with_thrust_to_spare_may_turn_below_the_prograde_down_to_where_it_holds_its_climb(double program, double prograde, double pitch)
         {
             bool thin;
             Assert.Equal(pitch, Math.Round(LaunchTurn.Pitch(program, prograde, 80, 300, 0.7, 3.5 * 2.94, 2.94, out thin), 1));
             Assert.Equal(pitch > program, thin);
+        }
+
+        // #978 review: at Duna's turn start (60 m/s, prograde 87 degrees, q 175 Pa) shape 0.10's program says 40 degrees and the hold pitch is
+        // 16.6; the nose may go only 20 degrees below the prograde (LaunchTurn.ThickLead), a kick kOS steering follows. As the prograde falls,
+        // the floor follows it down to the hold pitch.
+        [Theory]
+        [InlineData(40, 87, 67)]
+        [InlineData(10, 60, 40)]
+        [InlineData(10, 30, 16.6)]
+        public void At_the_turn_start_the_nose_goes_no_more_than_20_degrees_below_the_prograde(double program, double prograde, double pitch)
+        {
+            bool thin;
+            Assert.Equal(pitch, Math.Round(LaunchTurn.Pitch(program, prograde, 60, 175, 0.7, 3.5 * 2.94, 2.94, out thin), 1));
+            Assert.True(prograde - pitch <= LaunchTurn.ThickLead);
+            Assert.True(thin);
         }
 
         // Up high (pressure under a tenth of the surface's) even a strong craft keeps #236's 3 degrees, so Kerbin's upper turn doesn't change.

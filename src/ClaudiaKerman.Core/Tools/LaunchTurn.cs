@@ -11,8 +11,8 @@ namespace ClaudiaKerman.Core.Tools
     /// <see cref="AscentSim"/> for <c>plan_ascent</c>: the pitch program, then the thin-air rule. Under 500 Pa (where max_aoa doesn't apply) the
     /// nose is held no more than 3 degrees below the surface prograde (#236), so the upper turn follows its trajectory. Low in the air (over
     /// a tenth of the surface pressure, where q is under 500 Pa only because the craft is still slow) a craft with thrust to spare may go
-    /// lower, down to the pitch at which its thrust still holds its vertical speed against gravity: on Duna, where the turn starts under
-    /// 500 Pa, that lets the turn's first kick happen at all, and the climb no longer goes up nearly straight. On Kerbin's pad the air is
+    /// lower, down to the pitch at which its thrust still holds its vertical speed against gravity but no more than <see cref="ThickLead"/>
+    /// degrees below the prograde (the sim turns the nose at once; the flight's steering doesn't): on Duna, where the turn starts under 500 Pa, that lets the turn's first kick happen at all, and the climb no longer goes up nearly straight. On Kerbin's pad the air is
     /// over 500 Pa from 29 m/s, before the turn starts, so nothing there changes.
     /// </summary>
     public static class LaunchTurn
@@ -21,6 +21,13 @@ namespace ClaudiaKerman.Core.Tools
         public const double AeroQ = 500;
         /// <summary>Degrees the nose may be below the surface prograde in thin air for a craft with no thrust to spare (#236).</summary>
         public const double ThinLead = 3;
+        /// <summary>
+        /// Degrees the nose may be below the surface prograde in thick air under <see cref="AeroQ"/> Pa, however much thrust is to spare (#978
+        /// review). The turn's first kick is no bigger than kOS steering swings in about 3 s, inside the ~5 s Duna's craft spends under 500 Pa,
+        /// so the sim (which turns at once) and the flight agree; and when max_aoa takes over at 500 Pa the aim swings back at most 15 degrees,
+        /// half the 30 off the aim that ends a launch as lost control. On Duna's craft 15 costs 35 m/s, 25 saves 34 and no limit 87 (1,263 at 20).
+        /// </summary>
+        public const double ThickLead = 20;
         /// <summary>Under this surface speed (m/s) the prograde means little and the thin-air rule waits.</summary>
         public const double ThinSpeed = 30;
         /// <summary>The pressure, as a fraction of the surface's, over which the air is thick (launch_thick_air).</summary>
@@ -53,14 +60,15 @@ namespace ClaudiaKerman.Core.Tools
         /// The commanded pitch (degrees above the horizon): the program at <paramref name="program"/>, raised in thin air (q under
         /// <see cref="AeroQ"/> Pa, surface speed over <see cref="ThinSpeed"/>) to no lower than <see cref="ThinLead"/> below
         /// <paramref name="prograde"/> (the surface prograde's pitch), or, in thick air (<paramref name="pressureRatio"/> of the surface
-        /// pressure over <see cref="ThickRatio"/>), than the hold pitch if that is lower. <paramref name="thin"/> says whether the rule raised it.
+        /// pressure over <see cref="ThickRatio"/>), than the hold pitch if that is lower, but never more than <see cref="ThickLead"/> below the
+        /// prograde. <paramref name="thin"/> says whether the rule raised it.
         /// </summary>
         public static double Pitch(double program, double prograde, double speed, double q, double pressureRatio, double accel, double gNet, out bool thin)
         {
             thin = false;
             if (speed <= ThinSpeed || q > AeroQ) return program;
             var floor = prograde - ThinLead;
-            if (pressureRatio > ThickRatio) floor = Math.Min(floor, HoldPitch(accel, gNet));
+            if (pressureRatio > ThickRatio) floor = Math.Min(floor, Math.Max(HoldPitch(accel, gNet), prograde - ThickLead));
             thin = floor > program;
             return Math.Max(program, floor);
         }
