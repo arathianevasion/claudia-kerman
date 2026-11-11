@@ -101,6 +101,7 @@ namespace ClaudiaKerman.Core.Tests
         [Theory]
         [InlineData("Mun and home", "Deorbit to the Mun crater, then return to Kerbin.")]
         [InlineData("Return to Kerbin via Minmus", "Descend to the Minmus flats for a sample, then come home.")]
+        [InlineData("Second stop", "Deorbit from Mun orbit to the crater, then return to Kerbin.")]
         public void AReturnThatAlsoComesDownOnAnotherBodyIsALanding(string name, string intent)
         {
             var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };
