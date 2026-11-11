@@ -695,6 +695,7 @@ namespace ClaudiaKerman.Core.Missions
                     UserText = "The player approved the Mission Plan.\n"
                         + (newGoal != null ? "The Mission Goal is now (quoted data): " + MissionPrompts.Quoted(newGoal) + "\n" : "")
                         + WindowPickLine(mission)
+                        + FoldLine(mission, mission.Plan == null ? 0 : ScienceFold.FirstToFly(mission.Plan.Sequences))
                         + MissionPrompts.Facts(_ut, _snapshot),
                     Notice = MissionPrompts.SequenceNotice,
                 });
@@ -2029,6 +2030,13 @@ namespace ClaudiaKerman.Core.Missions
             plan.PlanStep = step;
             mission.PlanStepLine = line;
             Event(mission, "plan_step_resolved", line);
+        }
+
+        /// <summary>#983: <see cref="ScienceFold"/>'s line for the Sequence Plan request when 1-based <paramref name="step"/> is next to fly; "" for none.</summary>
+        private static string FoldLine(Mission mission, int step)
+        {
+            var line = mission.Plan == null ? "" : ScienceFold.Line(mission.Plan.Sequences, step);
+            return line.Length > 0 ? line + "\n" : "";
         }
 
         /// <summary>The line of <see cref="ResolvePlanStep"/> for the next request, once; "" for none.</summary>
