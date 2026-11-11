@@ -28,7 +28,7 @@ namespace ClaudiaKerman.Core.Tools
     {
         /// <summary>The delta-v left covers capture and deorbit over the reserve and the craft can't enter as it is (#981): fly <c>capture</c>, <c>deorbit</c>, <c>reentry</c>.</summary>
         public bool CaptureFirst;
-        /// <summary>#981: the craft can enter as it is (<see cref="EntryCraft.CanEnter"/>), so it comes in directly whatever the delta-v.</summary>
+        /// <summary>#981: the craft can enter as it is (<see cref="EntryCraft.CanEnter"/>) and arrives within <see cref="HomeLanding.DirectEntryExcessLimit"/>, so it comes in directly whatever the delta-v.</summary>
         public bool CanEnter;
         /// <summary>The craft's delta-v on arrival, m/s: what it has now less any ascent and the departure; null when stock can't say.</summary>
         public double? DvLeft;
@@ -143,9 +143,17 @@ namespace ClaudiaKerman.Core.Tools
         }
 
         /// <summary>
+        /// #981: the most arrival excess speed, m/s (the Delta-v Map's Hohmann figure at Kerbin), at which a craft that can enter comes home directly. The only entry
+        /// heat on record is a shielded Mun return, about 3.2 km/s at the air (what <c>return</c> flies); 1,000 m/s of excess enters at about 3.4 km/s, 6% faster.
+        /// It takes the Duna (about 920) and Eve (about 780) returns and keeps the capture for Dres, Moho, Jool and Eeloo (2 km/s and more).
+        /// </summary>
+        internal const double DirectEntryExcessLimit = 1000;
+
+        /// <summary>
         /// From another planet (or its moon) to Kerbin, at the point the arrival is planned: capture into low orbit then deorbit toward KSC when the delta-v left on arrival, less the reserve,
-        /// covers both by the Delta-v Map's capture figure and the least deorbit burn from low orbit; else come in directly and let the corrections get as close as they can. Null for any other trip,
-        /// or with a Mission Goal that names another place, or when the map has no figure.
+        /// covers both by the Delta-v Map's capture figure and the least deorbit burn from low orbit, unless (#981) the craft can enter as it is (<see cref="EntryCraft.CanEnter"/>)
+        /// and arrives within <see cref="DirectEntryExcessLimit"/>; else come in directly and let the corrections get as close as they can, so a direct entry gives up the capture's
+        /// precise KSC landing for the Late Trim's best. Null for any other trip, or with a Mission Goal that names another place, or when the map has no figure.
         /// </summary>
         public static HomeArrivalPlan Arrival(GameSnapshot snapshot, string target)
         {
@@ -159,7 +167,7 @@ namespace ClaudiaKerman.Core.Tools
             var trip = map.Trip(at.Name, home.Name);
             if (trip == null) return null;
             var ascent = snapshot.IsGrounded ? map.Legs.Where(leg => leg.Id == "ascend:" + at.Name).Select(leg => leg.DeltaV).FirstOrDefault() : 0;
-            var plan = new HomeArrivalPlan { CaptureDv = trip.Arrival, DeorbitDv = DeorbitBurn.FromLowOrbit(home), ArrivalPe = ArrivalRule.EntryPe(home), CanEnter = EntryCraft.CanEnter(snapshot) };
+            var plan = new HomeArrivalPlan { CaptureDv = trip.Arrival, DeorbitDv = DeorbitBurn.FromLowOrbit(home), ArrivalPe = ArrivalRule.EntryPe(home), CanEnter = trip.ArrivalExcess <= DirectEntryExcessLimit && EntryCraft.CanEnter(snapshot, home.Name) };
             var stockDv = StockDv(snapshot);
             if (stockDv.HasValue) plan.DvLeft = stockDv.Value - ascent - trip.Departure - trip.PlaneChange;
             var need = plan.Need;

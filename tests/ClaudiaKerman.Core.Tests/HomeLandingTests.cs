@@ -260,9 +260,10 @@ namespace ClaudiaKerman.Core.Tests
 
         /// <summary>
         /// Mission m20261110-203402-45d1 at its re-plan in Duna orbit (UT 179013843): 2,441 m/s by stock, a pod with a chute over an Entry Shield over the
-        /// engine stack. <paramref name="shield"/> false takes the shield's tag off; <paramref name="air"/> false gives Kerbin no atmosphere.
+        /// engine stack. <paramref name="shield"/> false takes the shield's tag off; <paramref name="air"/> false gives Kerbin no atmosphere;
+        /// <paramref name="dunaSma"/> moves "Duna" round the Sun, for a faster arrival at Kerbin.
         /// </summary>
-        private static GameSnapshot ShieldedAtDuna(bool shield = true, bool air = true)
+        private static GameSnapshot ShieldedAtDuna(bool shield = true, bool air = true, double? dunaSma = null)
         {
             const double ut = 179013843.02280834;
             var kerbin = new SnapshotBody
@@ -276,7 +277,12 @@ namespace ClaudiaKerman.Core.Tests
                 Body = "Duna", SemiMajorAxis = 379732.23702056933, Eccentricity = 0.0027712785379309032, Inclination = 0.013479989344370995, Lan = 296.90766784479143,
                 ArgumentOfPeriapsis = 151.90871009589452, MeanAnomalyAtEpoch = 1.1051974785711709, Epoch = ut, Periapsis = 58679.893221953709, Apoapsis = 60784.580819184892,
             };
-            snapshot.Bodies.AddRange(new[] { Sun, kerbin, Mun, Duna, Ike });
+            var duna = !dunaSma.HasValue ? Duna : new SnapshotBody
+            {
+                Name = Duna.Name, Parent = Duna.Parent, Gm = Duna.Gm, Radius = Duna.Radius, AtmosphereHeight = Duna.AtmosphereHeight, SeaLevelAtm = Duna.SeaLevelAtm, SoiRadius = Duna.SoiRadius,
+                RotationPeriod = Duna.RotationPeriod, Sma = dunaSma.Value, Eccentricity = Duna.Eccentricity, Inclination = Duna.Inclination, Lan = Duna.Lan, MeanAnomalyAtEpoch = Duna.MeanAnomalyAtEpoch,
+            };
+            snapshot.Bodies.AddRange(new[] { Sun, kerbin, Mun, duna, Ike });
             snapshot.DeltaVSimulator = true;
             snapshot.Stages.Add(new SnapshotStage { DeltaVVac = 603.09 });
             snapshot.Stages.Add(new SnapshotStage { DeltaVVac = 1837.83 });
@@ -344,16 +350,88 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(result.GetProperty("optimal").GetProperty("total_dv").GetDouble(), 660, 682);
         }
 
-        /// <summary>A chute only in the stack the Entry drops lands nothing: with no engine either, the craft can't enter.</summary>
+        /// <summary>
+        /// Review of #981: the transfer engine under the shield doesn't make up for the chute. A shielded pod with no chute over a dry LV-909 can't land
+        /// at Kerbin: on chutes there are none, and a powered finish keeps the stack ahead of the shield, which Kerbin's entry heat doesn't allow.
+        /// </summary>
+        [Fact]
+        public void A_shielded_pod_with_no_chute_keeps_the_capture_whatever_the_engine()
+        {
+            var snapshot = ShieldedAtDuna();
+            snapshot.Craft.Parts[0].Chute = null;
+            Assert.Contains("engine", snapshot.Craft.Parts[2].Tags);
+            snapshot.Craft.Parts[2].EngineFuelled = true;
+            // With no chute the reserve holds a powered landing (HomeLanding.PoweredLanding): enough delta-v that, as before #981, it covers the capture too.
+            snapshot.Stages.Add(new SnapshotStage { DeltaVVac = 4000 });
+            Assert.False(EntryCraft.CanEnter(snapshot, "Kerbin"));
+            var plan = HomeLanding.Arrival(snapshot, "Kerbin");
+            Assert.False(plan.CanEnter);
+            Assert.True(plan.CaptureFirst);
+            Assert.True(Plan(snapshot).GetProperty("capture").GetBoolean());
+        }
+
+        /// <summary>A chute only in the stack the Entry drops lands nothing.</summary>
         [Fact]
         public void A_chute_in_the_dropped_stack_does_not_count()
         {
             var snapshot = ShieldedAtDuna();
-            Assert.True(EntryCraft.CanEnter(snapshot));
+            Assert.True(EntryCraft.CanEnter(snapshot, "Kerbin"));
             snapshot.Craft.Parts[0].Chute = null;
-            snapshot.Craft.Parts[2].Tags.Clear();
             snapshot.Craft.Parts[2].Chute = new ReentryChute();
-            Assert.False(EntryCraft.CanEnter(snapshot));
+            Assert.False(EntryCraft.CanEnter(snapshot, "Kerbin"));
+        }
+
+        /// <summary>A chute opened on Duna (semi- or fully deployed) has nothing left to give at Kerbin, as <see cref="ChuteGroups.Usable"/> reads it.</summary>
+        [Theory]
+        [InlineData(ReentryChuteState.SemiDeployed)]
+        [InlineData(ReentryChuteState.Deployed)]
+        public void A_chute_used_on_duna_does_not_count(ReentryChuteState state)
+        {
+            var snapshot = ShieldedAtDuna();
+            snapshot.Craft.Parts[0].Chute.State = state;
+            Assert.False(EntryCraft.CanEnter(snapshot, "Kerbin"));
+            Assert.True(HomeLanding.Arrival(snapshot, "Kerbin").CaptureFirst);
+        }
+
+        /// <summary>A chute on a stage the craft will drop before home (a descent stage's, hung off the pod by a decoupler) isn't on what lands.</summary>
+        [Fact]
+        public void A_chute_on_a_stage_still_to_drop_does_not_count()
+        {
+            var snapshot = ShieldedAtDuna();
+            snapshot.Craft.Parts[0].Chute = null;
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 5, ParentId = 1, Name = "Decoupler.1", MassT = 0.05, Stage = 2, Tags = new List<string> { "decoupler" } });
+            snapshot.Craft.Parts.Add(new SnapshotPart { Id = 6, ParentId = 5, Name = "parachuteRadial", MassT = 0.1, Stage = 2, Chute = new ReentryChute() });
+            Assert.False(EntryCraft.CanEnter(snapshot, "Kerbin"));
+        }
+
+        /// <summary>A shield burnt below half its ablator (<see cref="EntryCraft.AblatorShareNeeded"/>) keeps the capture; a full one doesn't.</summary>
+        [Fact]
+        public void A_burnt_down_shield_keeps_the_capture()
+        {
+            var snapshot = ShieldedAtDuna();
+            var ablator = new SnapshotPartResource { Name = "Ablator", Amount = 200, Max = 200, Density = 0.001 };
+            snapshot.Craft.Parts[1].Resources.Add(ablator);
+            Assert.False(HomeLanding.Arrival(snapshot, "Kerbin").CaptureFirst);
+            ablator.Amount = 60;
+            Assert.False(EntryCraft.CanEnter(snapshot, "Kerbin"));
+            Assert.True(HomeLanding.Arrival(snapshot, "Kerbin").CaptureFirst);
+        }
+
+        /// <summary>
+        /// An arrival faster than <see cref="HomeLanding.DirectEntryExcessLimit"/> keeps the capture, shield and chute or not: "Duna" moved out to Dres's orbit
+        /// arrives at Kerbin with about 2.1 km/s of excess, over twice this flight's.
+        /// </summary>
+        [Fact]
+        public void An_arrival_over_the_excess_limit_keeps_the_capture()
+        {
+            var near = HomeLanding.Arrival(ShieldedAtDuna(), "Kerbin");
+            Assert.True(near.CanEnter);
+            var snapshot = ShieldedAtDuna(dunaSma: 40839348203);
+            snapshot.Stages.Add(new SnapshotStage { DeltaVVac = 4000 });
+            Assert.True(EntryCraft.CanEnter(snapshot, "Kerbin"));
+            var plan = HomeLanding.Arrival(snapshot, "Kerbin");
+            Assert.False(plan.CanEnter);
+            Assert.True(plan.CaptureFirst);
         }
 
         /// <summary>From a moon of Kerbin the way home is <c>return</c>, and from a moon of another planet the same choice as its planet.</summary>

@@ -496,7 +496,7 @@ namespace ClaudiaKerman.Adapter
 
                 foreach (var resource in part.Resources)
                 {
-                    info.Resources.Add(new SnapshotPartResource { Name = resource.resourceName, Amount = resource.amount, Density = resource.info != null ? resource.info.density : 0 });
+                    info.Resources.Add(new SnapshotPartResource { Name = resource.resourceName, Amount = resource.amount, Max = resource.maxAmount, Density = resource.info != null ? resource.info.density : 0 });
                     SnapshotResource total;
                     if (!resources.TryGetValue(resource.resourceName, out total))
                     {

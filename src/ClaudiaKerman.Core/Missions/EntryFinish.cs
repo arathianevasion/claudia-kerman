@@ -98,7 +98,7 @@ namespace ClaudiaKerman.Core.Missions
         /// light. Intake resources (a name starting "Intake": IntakeAir, IntakeAtm) are not counted: no part holds them, the air supplies them, and an air-breathing mode
         /// stays as accepted as before #879. Resources not read (an older recording): <see cref="SnapshotPart.EngineFuelled"/> stands.
         /// </summary>
-        private static bool WillLight(GameSnapshot snapshot, SnapshotPart engine)
+        internal static bool WillLight(GameSnapshot snapshot, SnapshotPart engine)
         {
             // #889, #891: no ignitions left, or flamed out or shut down with allowRestart false, won't light again; a restartable engine relights once fuelled, flameout or not
             if (engine.EngineIgnitionsLeft == 0 || (!engine.EngineAllowsRestart && (engine.EngineFlameout || engine.EngineWasLit))) return false;
