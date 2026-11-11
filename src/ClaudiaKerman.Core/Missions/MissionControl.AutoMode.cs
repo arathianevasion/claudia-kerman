@@ -27,8 +27,9 @@ namespace ClaudiaKerman.Core.Missions
             /// <summary>The plan the Auto Mode room check last held for the player, so its blocked charge is logged once (not saved).</summary>
             public object AutoModeHeldFor;
             /// <summary>
-            /// The plan Auto Mode last approved: if <see cref="Approval"/> refused it (no processor to run it on, an unsafe
-            /// script), it waits for the player rather than being approved again on every input (not saved).
+            /// The plan last approved in advance: if <see cref="Approval"/> refused it (no processor to run it on, an unsafe
+            /// script), it waits for the player rather than being approved again on every input; in a Blackout it is tried
+            /// again once a processor is there, and once more when the link returns (not saved).
             /// </summary>
             public object AutoModeApprovedFor;
             /// <summary>
@@ -185,7 +186,18 @@ namespace ClaudiaKerman.Core.Missions
                 }
             }
             object inHand = missionPlan ? (object)mission.Plan : plan;
-            if (!mission.Blackout && mission.AutoModeApprovedFor == inHand) return;
+            if (mission.AutoModeApprovedFor == inHand)
+            {
+                // Approval refused it (no processor to run it on). Linked, it waits for the player, called at a Due Time Auto Mode took.
+                if (!mission.Blackout)
+                {
+                    if (atDue) WaitsForPlayer(mission, AdvanceWait.DueTime, plan.Name);
+                    return;
+                }
+                // In a Blackout it is tried again only once a processor is there to run it, so the refusal is logged once.
+                string refusal;
+                if (!missionPlan && !SequenceProcessor(mission, plan, out refusal).HasValue) return;
+            }
             var stale = StaleBecause(mission);
             if (!mission.Blackout && !AutoModeRoom(mission, inHand, stale.Length > 0 ? ReplanTurn(stale, missionPlan) : null))
             {
@@ -198,25 +210,26 @@ namespace ClaudiaKerman.Core.Missions
                 Replanned(inAdvance: true);
                 return;
             }
-            if (mission.Blackout)
+            mission.AutoModeApprovedFor = inHand;
+            if (!mission.Blackout) RetractPlanNews();
+            var at = mission.Log.Count;
+            Approval();
+            var started = missionPlan ? mission.Stage != MissionStage.AwaitingPlanApproval : mission.Stage == MissionStage.Running;
+            if (!started)
             {
+                // Refused, and still in hand: no "Approved" line and nothing listed as flown.
+                if (atDue && !mission.Blackout && mission.PendingSequence == plan) WaitsForPlayer(mission, AdvanceWait.DueTime, plan.Name);
+                return;
+            }
+            if (mission.Blackout)
                 mission.BlackoutRevisions.Add(missionPlan
                     ? "Mission Plan revised: " + mission.Plan.Why
                     : "Sequence Plan " + MissionPrompts.Quoted(plan.Name) + " flown without Approval: " + plan.Why);
-                // Logged once: an Approval refused here (no processor to run it on) is tried again on the next input.
-                if (atDue && mission.AutoModeApprovedFor != inHand)
-                {
-                    mission.AutoModeApprovedFor = inHand;
-                    Note(LogKind.Notice, AutoModeApprovedAtDueNote);
-                }
-            }
-            else
-            {
-                mission.AutoModeApprovedFor = inHand;
-                RetractPlanNews();
-                Note(LogKind.Notice, atDue ? AutoModeApprovedAtDueNote : AutoModeApprovedNote);
-            }
-            Approval();
+            // A Blackout says so only at a Due Time Auto Mode took; the line goes where it was before Approval's own lines.
+            if (mission.Blackout && !atDue) return;
+            var note = Note(LogKind.Notice, atDue ? AutoModeApprovedAtDueNote : AutoModeApprovedNote);
+            mission.Log.Remove(note);
+            mission.Log.Insert(System.Math.Min(at, mission.Log.Count), note);
         }
 
         /// <summary>

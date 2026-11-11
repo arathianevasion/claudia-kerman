@@ -168,8 +168,17 @@ namespace ClaudiaKerman.Core.Missions
         /// </summary>
         private uint? SequenceProcessor(Mission mission, SequencePlan plan)
         {
-            var child = PlannedChild(mission, plan.Vessel);
             string refusal;
+            var processor = SequenceProcessor(mission, plan, out refusal);
+            if (refusal.Length == 0) return processor;
+            Note(LogKind.Notice, "Can't run the script: " + refusal + ".");
+            return null;
+        }
+
+        /// <summary>The processor, or null with <paramref name="refusal"/> saying why; nothing logged.</summary>
+        private uint? SequenceProcessor(Mission mission, SequencePlan plan, out string refusal)
+        {
+            var child = PlannedChild(mission, plan.Vessel);
             uint? processor = null;
             if (FliesCraft(mission, plan.Vessel))
             {
@@ -190,9 +199,7 @@ namespace ClaudiaKerman.Core.Missions
                 processor = child.ProcessorPartIds[0];
                 refusal = LeftBehindUnstable(mission, child);
             }
-            if (refusal.Length == 0) return processor;
-            Note(LogKind.Notice, "Can't run the script: " + refusal + ".");
-            return null;
+            return refusal.Length == 0 ? processor : null;
         }
 
         /// <summary>Why a vessel of the Mission that the run would leave behind isn't stable, or "".</summary>

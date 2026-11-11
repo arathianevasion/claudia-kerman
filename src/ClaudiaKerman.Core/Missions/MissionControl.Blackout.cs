@@ -90,6 +90,8 @@ namespace ClaudiaKerman.Core.Missions
         private void BlackoutEnds(Mission mission)
         {
             mission.Blackout = false;
+            // A plan Approval refused in the Blackout is tried once more, linked, with the room check (MissionControl.AutoMode.cs).
+            mission.AutoModeApprovedFor = null;
             var news = mission.Log.Count(e => e.Queued) > 0 || mission.BlackoutRevisions.Count > 0;
             foreach (var entry in mission.Log) entry.Queued = false;
             Note(LogKind.Notice, "The link to Kerbin is back: the Blackout is over.");
