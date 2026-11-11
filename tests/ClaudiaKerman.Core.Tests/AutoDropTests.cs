@@ -82,15 +82,17 @@ namespace ClaudiaKerman.Core.Tests
 
         /// <summary>
         /// Flight m20261111-033300-95d4: the Mission Plan in hand for the Duna ascent, after the Duna landing. The Kerbin return says it
-        /// lands, and the empty radials (legs on them) still rode to orbit.
+        /// lands, and the empty radials (legs on them) still rode to orbit. Both intents the step had in flight, verbatim.
         /// </summary>
-        [Fact]
-        public void AfterTheDunaLandingAKerbinReturnThatSaysItLandsLeavesTheLegsFree()
+        [Theory]
+        [InlineData("Eject at the soonest Duna-to-Kerbin window toward a 35 km periapsis at Kerbin, coast to the encounter, then reenter and land.")]
+        [InlineData("Eject from Duna orbit at the soonest Duna-to-Kerbin window toward a 35 km periapsis at Kerbin, coast to the encounter, then reenter and land.")]
+        public void AfterTheDunaLandingAKerbinReturnThatSaysItLandsLeavesTheLegsFree(string intent)
         {
             var plan = new List<PlannedSequence>
             {
                 Leg("Launch from Duna to orbit", "Launch from the Duna surface to a 60 km orbit and circularize."),
-                Leg("Return to Kerbin and reentry", "Burn for Kerbin in the soonest window, capture, then reenter and land."),
+                Leg("Return to Kerbin and reentry", intent),
             };
             Assert.True(AutoDrop.LegsFree(plan, 0));
             Assert.Equal(new[] { "shield", "leg" }, AutoDrop.FreeKinds(plan, 0).ToArray());
@@ -105,6 +107,9 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("Return from the Mun to Kerbin and land", "")]
         [InlineData("Return from the Mun to Kerbin", "Deorbit and reenter over KSC under the chutes.")]
         [InlineData("Come home from Duna", "Reentry and descent under chutes.")]
+        [InlineData("Return to Kerbin", "Depart Duna in the soonest window, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Leave Mun orbit, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Burn Ike to Kerbin, then reenter and land.")]
         public void AKerbinReturnUnderChutesIsNoLanding(string name, string intent)
         {
             var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };
@@ -116,6 +121,7 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("Deorbit to the Mun crater, then return to Kerbin and land", "")]
         [InlineData("Return to Kerbin via Minmus", "Descend to the Minmus flats for a sample, then come home.")]
         [InlineData("Second stop", "Deorbit from Mun orbit to the crater, then return to Kerbin.")]
+        [InlineData("Land at the Mun's crater, then return to Kerbin", "")]
         public void AReturnThatAlsoComesDownOnAnotherBodyIsALanding(string name, string intent)
         {
             var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };

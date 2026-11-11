@@ -36,8 +36,9 @@ namespace ClaudiaKerman.Core.Missions
         /// (<paramref name="step"/>, -1 before the first) on, that one included. A landing, read from the words as <see cref="SequenceWords"/>
         /// reads them: land or touch down, a deorbit, a reentry, or descend / descent, manual legs too. A Kerbin return (a return home) is never
         /// one on its own, whatever its words ("reenter and land", "touch down at KSC"): the player's ruling. It is one only when it also names
-        /// another stock body, not as where the return comes from ("Deorbit to the Mun crater, then return to Kerbin and land" lands on the Mun;
-        /// "Return from the Mun to Kerbin and land" doesn't).
+        /// another stock body, not as where the return comes from (<see cref="SequenceWords.IsReturnOrigin"/>): "Deorbit to the Mun crater, then
+        /// return to Kerbin and land" lands on the Mun; "Return from the Mun to Kerbin and land" and "Eject from Duna orbit at the soonest
+        /// Duna-to-Kerbin window, ... then reenter and land" don't.
         /// </summary>
         public static bool LegsFree(IList<PlannedSequence> plan, int step)
         {
@@ -55,7 +56,7 @@ namespace ClaudiaKerman.Core.Missions
             if (!SequenceWords.Landing.IsMatch(words) && !SequenceWords.Deorbit.IsMatch(words) && !SequenceWords.Reentry.IsMatch(words)
                 && !SequenceWords.Descent.IsMatch(words)) return false;
             return !SequenceWords.ReturnHome.IsMatch(words)
-                || AwayBody.Matches(words).Cast<Match>().Any(m => !SequenceWords.ReturnsFromBefore(words.Substring(0, m.Index)));
+                || AwayBody.Matches(words).Cast<Match>().Any(m => !SequenceWords.IsReturnOrigin(words, m));
         }
     }
 }

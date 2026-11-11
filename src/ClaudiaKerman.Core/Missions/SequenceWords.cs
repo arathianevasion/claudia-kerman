@@ -23,13 +23,22 @@ namespace ClaudiaKerman.Core.Missions
         public static readonly Regex Descent = new Regex(@"\bdescen(d|ds|ded|ding|t|ts)\b", RegexOptions.IgnoreCase);
 
         /// <summary>
-        /// True when <paramref name="before"/>, the text before a body, names it as where a return comes from ("return from the", "come home
-        /// from") (#979). A bare "from" doesn't: "deorbit from Mun orbit" comes down on the Mun.
+        /// True when <paramref name="body"/>, a body named in <paramref name="words"/>, is where a return comes from (#979): "return / come
+        /// home from X", "eject / depart / leave (from) X", "X-to-Kerbin" or "X to Kerbin", "from X orbit". "Deorbit from Mun orbit" isn't:
+        /// it comes down on the Mun.
         /// </summary>
-        public static bool ReturnsFromBefore(string before)
+        public static bool IsReturnOrigin(string words, Match body)
         {
-            return ReturnsFrom.IsMatch(before);
+            var before = words.Substring(0, body.Index);
+            var after = words.Substring(body.Index + body.Length);
+            return ReturnsFrom.IsMatch(before) || Leaves.IsMatch(before) || ToKerbin.IsMatch(after)
+                || (FromBefore.IsMatch(before) && !DeorbitFromBefore.IsMatch(before) && OrbitAfter.IsMatch(after));
         }
+        private static readonly Regex Leaves = new Regex(@"\b(?:eject|depart|leav)(?:s|ed|ing|e|es)?\s+(?:from\s+)?(?:the\s+)?$", RegexOptions.IgnoreCase);
+        private static readonly Regex ToKerbin = new Regex(@"^(?:'s)?(?:\s*-\s*|\s+)to\s*-?\s*Kerbin\b", RegexOptions.IgnoreCase);
+        private static readonly Regex FromBefore = new Regex(@"\bfrom\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
+        private static readonly Regex DeorbitFromBefore = new Regex(@"\bde-?orbit(?:s|ed|ing)?\s+from\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
+        private static readonly Regex OrbitAfter = new Regex(@"^(?:'s)?\s+orbit\b", RegexOptions.IgnoreCase);
         /// <summary>
         /// The return to the home planet (#689): a return that names Kerbin, or "come/return/go/head home", "back home" and "fly home"
         /// (inflected where natural), whole words. "home in on" and "home stretch" are not returns.
