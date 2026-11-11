@@ -263,10 +263,11 @@ namespace ClaudiaKerman.Adapter
             WindowMemory.Store(_memoryName, box, StoreScale);
         }
 
-        // The scale the window's size is for; a window in the stock skin doesn't follow it, so it is kept as at the base.
+        // The scale the window's size is for; a window in the stock skin doesn't follow it, so it is kept as at the old
+        // base, the scale of a line written without one, and is never resized.
         private float StoreScale
         {
-            get { return _scale > 0 ? _scale : UiScale.Base; }
+            get { return _scale > 0 ? _scale : UiScale.OldBase; }
         }
 
         private void SetMouseLock(bool locked)
