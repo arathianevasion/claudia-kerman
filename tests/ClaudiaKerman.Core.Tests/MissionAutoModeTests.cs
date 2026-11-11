@@ -548,6 +548,10 @@ namespace ClaudiaKerman.Core.Tests
             mission.Send(new UtAdvanced(1260));
             Assert.Equal(MissionStage.AwaitingSequenceApproval, mission.View.Stage);
             Assert.DoesNotContain(mission.View.Log, e => e.Text == ApprovedAtDue || e.Text == Approved || e.Text.Contains("flown without Approval"));
+            // On again, still dark and in the craft: Auto Mode carries on through the Blackout's path.
+            mission.Send(new SetAutoMode(true));
+            Assert.Equal(MissionStage.Running, mission.View.Stage);
+            Assert.Single(mission.View.Log, e => e.Text == ApprovedAtDue);
         }
 
         private const string NoProcessor = "Can't run the script: the craft has no kOS processor.";
