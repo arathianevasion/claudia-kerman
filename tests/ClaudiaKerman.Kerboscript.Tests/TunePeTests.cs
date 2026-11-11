@@ -90,6 +90,13 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal("|600|False", Fit(0, 600, 1200, -1, 0));
         }
 
+        /// <summary>#982: BURNWORTH's tune_pe_burn floors its stop at one tick of the least throttle exec_node flies; that is claudia_burn_throttle's floor.</summary>
+        [Fact]
+        public void The_least_throttle_core_assumes_is_the_one_exec_node_flies()
+        {
+            Assert.Equal(ClaudiaKerman.Core.Tools.BurnWorth.LeastThrottle, Number("claudia_burn_throttle(0.0001, 20, 0)"), 9);
+        }
+
         [Fact]
         public void An_unknown_option_is_refused_by_the_shared_check()
         {
