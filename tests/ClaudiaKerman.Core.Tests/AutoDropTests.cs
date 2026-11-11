@@ -113,10 +113,62 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("Return to Kerbin", "Eject from low Duna orbit at the soonest window, then reenter and land.")]
         [InlineData("Return to Kerbin", "Burn from low Duna orbit at the soonest window, then reenter and land.")]
         [InlineData("Return to Kerbin", "Ejection from Duna at the soonest window, then reenter and land.")]
+        // Fix round 3: more ways of leaving Duna (or the Mun) for home.
+        [InlineData("Return to Kerbin", "Escape Duna's SOI toward Kerbin, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Burn out of Duna orbit at the soonest window, coast to Kerbin, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Leave low Duna orbit at the soonest window, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Duna–Kerbin transfer at the soonest window, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Duna → Kerbin transfer, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Ejection burn at Duna, then reenter Kerbin's atmosphere and land.")]
+        [InlineData("Return to Kerbin", "Burn at Mun periapsis for Kerbin, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Wait in Duna orbit for the window, then eject, reenter and land.")]
+        [InlineData("Return to Kerbin", "Eject from Duna orbit; coast past Ike; reenter and land.")]
+        // A line break doesn't hide the return.
+        [InlineData("Duna departure", "Eject toward Kerbin.\nReturn, reenter and land.")]
         public void AKerbinReturnUnderChutesIsNoLanding(string name, string intent)
         {
             var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };
             Assert.True(AutoDrop.LegsFree(plan, 0));
+        }
+
+        /// <summary>
+        /// Fix round 3: a landing word after the body, before the next reentry word or Kerbin, comes down there, even when the body follows
+        /// "leave", "depart" or "from ... orbit". The name says nothing of the body, so only the intent tells.
+        /// </summary>
+        [Theory]
+        [InlineData("Leave Mun orbit and land at the crater, then return to Kerbin")]
+        [InlineData("Depart Mun orbit and land at the crater, then return to Kerbin.")]
+        [InlineData("Leave Minmus orbit and touch down on the flats, then return to Kerbin.")]
+        [InlineData("From low Mun orbit, burn retrograde and land near the crater, then return to Kerbin.")]
+        [InlineData("From Mun orbit, land at the crater for science, then return to Kerbin.")]
+        [InlineData("Burn from Mun orbit and touch down at the crater, then return to Kerbin.")]
+        [InlineData("Come down from Mun orbit and land at the crater, then return to Kerbin.")]
+        [InlineData("Depart Mun orbit for a powered descent to the crater, then return to Kerbin.")]
+        [InlineData("Leaving Mun orbit, descend to the crater; later return to Kerbin.")]
+        public void LeavingAMoonsOrbitToLandThereIsALanding(string intent)
+        {
+            Assert.False(AutoDrop.LegsFree(new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg("Second stop", intent) }, 0));
+        }
+
+        [Fact]
+        public void LeavingAMoonsOrbitToLandThereIsALandingAsTheNameAlone()
+        {
+            Assert.False(AutoDrop.LegsFree(new List<PlannedSequence> { Leg("Leave Mun orbit and land at the crater, then return to Kerbin", "") }, 0));
+        }
+
+        /// <summary>The name and intent don't read as one clause: "Return to Kerbin" then "From Mun orbit, land ..." lands on the Mun.</summary>
+        [Fact]
+        public void TheNameAndIntentAreSeparateClauses()
+        {
+            Assert.False(AutoDrop.LegsFree(new List<PlannedSequence> { Leg("Return to Kerbin", "From Mun orbit, land at the crater for science, then reenter at Kerbin.") }, 0));
+        }
+
+        [Theory]
+        [InlineData("Transfer from Kerbin orbit to the Mun and land", "")]
+        [InlineData("Return to Kerbin orbit, refuel, then depart for the Mun and land", "")]
+        public void AFlightOutToLandIsALanding(string name, string intent)
+        {
+            Assert.False(AutoDrop.LegsFree(new List<PlannedSequence> { Leg(name, intent) }, 0));
         }
 
         [Theory]

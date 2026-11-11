@@ -17,7 +17,7 @@ namespace ClaudiaKerman.Core.Missions
     /// never counts a radial shield as one (#843).
     /// </para>
     /// <para>
-    /// <b>Landing legs once no landing is left</b> (<see cref="LegsFree"/>); a Kerbin return is no landing unless it names another body.
+    /// <b>Landing legs once no landing is left</b> (<see cref="LegsFree"/>); a Kerbin return is no landing unless it comes down on another body it names.
     /// No Mission Plan (a block test): they stay.
     /// </para>
     /// </summary>
@@ -35,18 +35,21 @@ namespace ClaudiaKerman.Core.Missions
         /// True when the Mission Plan (<paramref name="plan"/>, null: none) has no landing still to fly from the sequence in hand
         /// (<paramref name="step"/>, -1 before the first) on, that one included. A landing, read from the words as <see cref="SequenceWords"/>
         /// reads them: land or touch down, a deorbit, a reentry, or descend / descent, manual legs too. A Kerbin return (a return home) is never
-        /// one on its own, whatever its words ("reenter and land", "touch down at KSC"): the player's ruling. It is one only when it also names
-        /// another stock body, not as where the return comes from (<see cref="SequenceWords.IsReturnOrigin"/>): "Deorbit to the Mun crater, then
-        /// return to Kerbin and land" lands on the Mun; "Return from the Mun to Kerbin and land" and "Eject from Duna orbit at the soonest
-        /// Duna-to-Kerbin window, ... then reenter and land" don't.
+        /// one on its own, whatever its words ("reenter and land", "touch down at KSC"): the player's ruling. It is one only when it comes down
+        /// on another stock body it names (<see cref="SequenceWords.IsLandingSite"/>): "Deorbit to the Mun crater, then return to Kerbin and
+        /// land" and "Leave Mun orbit and land at the crater, then return to Kerbin" land on the Mun; "Return from the Mun to Kerbin and land"
+        /// and "Eject from Duna orbit at the soonest Duna-to-Kerbin window, ... then reenter and land" don't. Name and intent read as separate
+        /// sentences, line breaks as spaces.
         /// </summary>
         public static bool LegsFree(IList<PlannedSequence> plan, int step)
         {
             if (plan == null) return false;
             for (var i = Math.Max(0, step); i < plan.Count; i++)
-                if (Lands(SequenceWords.Of(plan[i]))) return false;
+                if (Lands(Spaces.Replace(plan[i].Name + ". " + plan[i].Intent, " "))) return false;
             return true;
         }
+
+        private static readonly Regex Spaces = new Regex(@"\s+");
 
         /// <summary>The stock bodies a craft can come down on, Kerbin aside (Core reads the plan's words only, no Game Snapshot, twice a second).</summary>
         private static readonly Regex AwayBody = new Regex(@"\b(Moho|Eve|Gilly|Mun|Minmus|Duna|Ike|Dres|Laythe|Vall|Tylo|Bop|Pol|Eeloo)\b", RegexOptions.IgnoreCase);
@@ -56,7 +59,7 @@ namespace ClaudiaKerman.Core.Missions
             if (!SequenceWords.Landing.IsMatch(words) && !SequenceWords.Deorbit.IsMatch(words) && !SequenceWords.Reentry.IsMatch(words)
                 && !SequenceWords.Descent.IsMatch(words)) return false;
             return !SequenceWords.ReturnHome.IsMatch(words)
-                || AwayBody.Matches(words).Cast<Match>().Any(m => !SequenceWords.IsReturnOrigin(words, m));
+                || AwayBody.Matches(words).Cast<Match>().Any(m => SequenceWords.IsLandingSite(words, m));
         }
     }
 }
