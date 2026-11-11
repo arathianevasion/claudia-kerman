@@ -53,6 +53,16 @@ namespace ClaudiaKerman.Core.Missions
         /// <summary>Kerbin, or a place on it: KSC, the Kerbal Space Center (#979).</summary>
         public static readonly Regex KerbinPlace = new Regex(@"\b(Kerbin|KSC|Kerbal Space Cent(er|re))\b", RegexOptions.IgnoreCase);
 
+        /// <summary>
+        /// A come-down at Kerbin or a place on it (#979): a landing, reentry, deorbit or descent word, then the place ("Reentry at Kerbin",
+        /// "Land at KSC", "Reenter over KSC"), or the place's own landing, reentry or air ("Kerbin landing", "into Kerbin's atmosphere").
+        /// A mere mention isn't one: "Kerbin overhead", "Kerbin-rise", "transmit to KSC".
+        /// </summary>
+        public static readonly Regex KerbinDown = new Regex(
+            @"\b(?:land(?:s|ed|ing)?|touch ?down|splash ?down|re-?ent(?:er|ry|ers|ering)|de-?orbit(?:s|ed|ing)?|descen(?:d|ds|ded|ding|t|ts))\s+(?:(?:at|on|to|near|into|in|over|off|onto|toward|towards)\s+)?(?:the\s+)?(?:Kerbin|KSC|Kerbal\s+Space\s+Cent(?:er|re))(?![\w-])"
+            + @"|\b(?:Kerbin|KSC)(?:['’]s)?\s+(?:landing|reentry|re-entry|splash ?down|touch ?down|descent|deorbit|atmosphere|air)\b",
+            RegexOptions.IgnoreCase);
+
         /// <summary>A return still to come: "return", "home".</summary>
         private static readonly Regex ReturnWord = new Regex(@"\b(?:return(?:s|ing|ed)?|home)\b", RegexOptions.IgnoreCase);
 

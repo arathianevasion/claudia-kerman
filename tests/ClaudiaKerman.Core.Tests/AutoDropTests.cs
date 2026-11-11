@@ -157,10 +157,37 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("Home stretch", "Reenter and land at the Kerbal Space Center.")]
         [InlineData("Second stop", "Leave Mun orbit, then land at Kerbin.")]
         [InlineData("Second stop", "Leave Mun orbit, then splash down at KSC.")]
+        [InlineData("Home", "Reenter over KSC and deploy chutes.")]
+        [InlineData("Home", "Descend into Kerbin's atmosphere and splash down.")]
         public void ALandingOnKerbinIsNoLanding(string name, string intent)
         {
             var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };
             Assert.True(AutoDrop.LegsFree(plan, 0));
+        }
+
+        /// <summary>
+        /// Fix round 2 review: a step lands on Kerbin only when a Kerbin place goes with a come-down word, not on any mention. Kerbin
+        /// overhead, in view for comms, or as a relay doesn't free the legs before a landing whose step doesn't name the away body.
+        /// </summary>
+        [Theory]
+        [InlineData("Final descent", "Land in the crater with Kerbin overhead for the comms link.")]
+        [InlineData("Powered descent", "Descend to the surface; keep Kerbin in view for comms.")]
+        [InlineData("Landing", "Touch down near the equator during Kerbin-rise.")]
+        [InlineData("Landing", "Touch down on the plains, as on Kerbin.")]
+        [InlineData("Land", "Touch down before heading back toward Kerbin later.")]
+        [InlineData("Descent", "Deorbit from low orbit and land near the Kerbin-facing side.")]
+        [InlineData("Descent", "Descend and land. Kerbin's SOI is far away so no hurry.")]
+        [InlineData("Touchdown", "Land with the antenna pointed at Kerbin.")]
+        [InlineData("Deorbit burn", "Lower periapsis to 10 km over the landing site; Kerbin is overhead.")]
+        [InlineData("Suicide burn", "Land at the target near the equator, Kerbin side.")]
+        [InlineData("Land", "Land in the crater (comms via KSC).")]
+        [InlineData("Landing", "Land; transmit to KSC.")]
+        [InlineData("Landing", "From Kerbin's view the site is on the near side; land there.")]
+        [InlineData("Duna entry", "Reenter and land, Kerbin relay overhead.")]
+        public void AMentionOfKerbinIsNoLandingOnKerbin(string name, string intent)
+        {
+            var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };
+            Assert.False(AutoDrop.LegsFree(plan, 0));
         }
 
         /// <summary>
