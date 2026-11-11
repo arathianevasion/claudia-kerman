@@ -18,6 +18,11 @@ namespace ClaudiaKerman.Kerboscript.Tests
     /// </summary>
     public class AscentCrossCheckTests
     {
+        static AscentCrossCheckTests()
+        {
+            KosHarness.Register(typeof(LaunchTurnRigFunctions));
+        }
+
         /// <summary>The kOS sim's air: exponential, scale height 5600 m, 1.225 kg/m³ at sea level, sound slowing to 12 km.</summary>
         private sealed class KosSimAir : IAscentAir
         {

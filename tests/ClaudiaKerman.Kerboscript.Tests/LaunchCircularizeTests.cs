@@ -10,6 +10,11 @@ namespace ClaudiaKerman.Kerboscript.Tests
     /// <summary>The pure helpers of the launch and circularize Building Blocks, run on kOS.Safe through the real bundle.</summary>
     public class LaunchCircularizeTests
     {
+        static LaunchCircularizeTests()
+        {
+            KosHarness.Register(typeof(LaunchTurnRigFunctions));
+        }
+
         private static string[] Run(string missionScript)
         {
             return KosHarness.Run(CoreLibrary.Bundle(missionScript)).ToArray();
@@ -47,18 +52,7 @@ namespace ClaudiaKerman.Kerboscript.Tests
             Assert.Equal(reason, One("launch_unreadable(claudia_options(" + options + ", launch_defaults(), \"auto\"):opt)"));
         }
 
-        // ---- launch: the pitch program ----
-
-        [Theory]
-        [InlineData(500, "90")]
-        [InlineData(1000, "90")]
-        [InlineData(18250, "41.77")]
-        [InlineData(70000, "0")]
-        [InlineData(75000, "0")]
-        public void The_pitch_falls_from_vertical_at_the_turn_start_to_flat_at_the_turn_end(double altitude, string pitch)
-        {
-            Assert.Equal(pitch, One("round(launch_pitch(" + altitude + ", 1000, 70000, 0.45), 2)"));
-        }
+        // ---- launch: the turn (its pitch is Core's, LaunchTurnTests, #978) ----
 
         [Theory]
         [InlineData(11000, 12000, 0.5, "True")]
@@ -175,19 +169,6 @@ namespace ClaudiaKerman.Kerboscript.Tests
         public void Without_throttle_max_q_the_turn_hold_changes_nothing()
         {
             Assert.Equal(Ascent(false, 0.5, -1, 80000).Track, Ascent(true, 0.5, -1, 80000).Track);
-        }
-
-        // #236: in thin air the pitch is held no lower than 3 degrees under the surface-prograde pitch.
-        [Theory]
-        [InlineData(30, 60, 100, 3, "57")]
-        [InlineData(58, 60, 100, 3, "58")]
-        [InlineData(70, 60, 100, 3, "70")]
-        [InlineData(30, 60, 500, 3, "57")]
-        [InlineData(30, 60, 501, 3, "30")]
-        [InlineData(30, 60, 20000, 3, "30")]
-        public void In_thin_air_the_pitch_is_held_within_a_few_degrees_of_the_prograde(double pitch, double prograde, double q, double lead, string held)
-        {
-            Assert.Equal(held, One("launch_thin_pitch(" + pitch + ", " + prograde + ", " + q + ", " + lead + ")"));
         }
 
         // #531: the climb's trace names its phase as plan_ascent's sim does; coast wins, then the turn not started, the hold, the thin-air rule.
