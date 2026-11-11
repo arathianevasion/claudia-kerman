@@ -17,6 +17,8 @@ namespace ClaudiaKerman.Core.Missions
         public static readonly Regex Landing = new Regex(@"\b(land(s|ed|ing)?|touch ?down)\b", RegexOptions.IgnoreCase);
         public static readonly Regex Ascent = new Regex(@"\b(ascen(d|ds|t|ding)|lift ?off|take ?off|launch(es|ing)?)\b", RegexOptions.IgnoreCase);
         public static readonly Regex Reentry = new Regex(@"\b(re-?ent(er|ry|ers|ering)|splash ?down)\b", RegexOptions.IgnoreCase);
+        /// <summary>Leaving orbit to come down (#979).</summary>
+        public static readonly Regex Deorbit = new Regex(@"\bde-?orbit(s|ed|ing)?\b", RegexOptions.IgnoreCase);
         /// <summary>
         /// The return to the home planet (#689): a return that names Kerbin, or "come/return/go/head home", "back home" and "fly home"
         /// (inflected where natural), whole words. "home in on" and "home stretch" are not returns.

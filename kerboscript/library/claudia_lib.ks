@@ -707,11 +707,11 @@ function claudia_part_kind {
 
 // True if the "auto" drop_empty fires a decoupler. kinds: claudia_part_kind of every part leaving with
 // it; amounts and capacities: the propellant tanks among them, as claudia_tanks_empty takes them. Only
-// empty tanks and trim may leave, and at least one empty tank, so a bare decoupler with trim never fires.
+// empty tanks, trim and free kinds (Core's AUTODROPFREE, #979) may leave, and at least one empty tank.
 function claudia_auto_drop_fires {
-  parameter kinds, amounts, capacities.
+  parameter kinds, amounts, capacities, free is list().
   for k in kinds {
-    if k <> "" {
+    if k <> "" and not free:contains(k) {
       return false.
     }
   }
@@ -786,7 +786,7 @@ function claudia_scan_craft {
       "isdec", claudia_is_decoupler(p), "crewed", crewed:haskey(uid), "kind", "", "amounts", list(), "caps", list())).
     by_uid:add(uid, p).
   }
-  local kinds is lexicon().
+  local known is lexicon().
   local tanks is list().
   for i in range(0, recs:length) {
     local rec is recs[i].
@@ -794,7 +794,7 @@ function claudia_scan_craft {
       local p is parts[i].
       local kind is claudia_part_kind(p).
       set rec["kind"] to kind.
-      kinds:add(rec:uid, kind).
+      known:add(rec:uid, rec).
       if rec:raw <> "" {
         local amounts is rec:amounts.
         local capacities is rec:caps.
@@ -814,10 +814,9 @@ function claudia_scan_craft {
   local parents is lexicon().
   for rec in recs {
     local d is rec:raw.
-    if d <> "" and kinds:haskey(d) {
-      if kinds[d] = "shield" {
-        set d to "".
-      }
+    // A heat shield is no decoupler (#516): a part under one leaves with the decoupler above it (#979).
+    until d = "" or not known:haskey(d) or known[d]:kind <> "shield" {
+      set d to known[d]:raw.
     }
     decs:add(rec:uid, d).
     parents:add(rec:uid, rec:parent).
@@ -921,9 +920,9 @@ function claudia_scan_cands {
 
 // The decouplers a drop_empty scan fires, judged on a claudia_scan_craft scan: a list of lexicons with uid
 // and gone (the records leaving with it). auto judges every decoupler on the craft; else wanted names the
-// parts whose decoupler is judged. tried: uids drop_empty is done with.
+// parts whose decoupler is judged. tried: uids drop_empty is done with; free: kinds auto lets go (#979).
 function claudia_scan_plan {
-  parameter scan, auto, wanted, tried.
+  parameter scan, auto, wanted, tried, free is list().
   local gone_by is 0.
   if scan:haskey("gone_by") {
     set gone_by to scan:gone_by.
@@ -960,14 +959,14 @@ function claudia_scan_plan {
           } else {
             kinds:add(g:kind).
           }
-          if kinds[kinds:length - 1] <> "" {
+          if kinds[kinds:length - 1] <> "" and not free:contains(kinds[kinds:length - 1]) {
             break.
           }
         }
       }
       local ok is false.
       if auto {
-        set ok to claudia_auto_drop_fires(kinds, amounts, capacities).
+        set ok to claudia_auto_drop_fires(kinds, amounts, capacities, free).
       } else {
         set ok to claudia_tanks_empty(amounts, capacities).
       }
@@ -1006,7 +1005,7 @@ function claudia_drop_empty {
   // One walk of the craft, kept on ctx while it is unchanged; judging and firing read what it recorded (#533, #679).
   local scan_from is time:seconds.
   local scan is claudia_drop_scan(ctx, ship:parts, seats, stage:number).
-  local plan is claudia_scan_plan(scan, auto, wanted, ctx:drop_tried).
+  local plan is claudia_scan_plan(scan, auto, wanted, ctx:drop_tried, addons:claudia:autodropfree():free).
   // launch traces what a scan and its plan cost (#531), only in launch: the game seconds they took, which a long one spends over
   // several physics ticks.
   if auto and ctx:block = "launch" {
