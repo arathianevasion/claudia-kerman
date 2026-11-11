@@ -99,6 +99,33 @@ namespace ClaudiaKerman.Core.Tests
             Assert.InRange(D(fix, "dv"), 0, 10.5);
         }
 
+        /// <summary>#994, the player's ruling: the aim toward the target costs no more than the delta-v left above the reserve (the larger of 50 m/s or 10%; a chuted capsule keeps nothing for a powered landing).</summary>
+        [Theory]
+        [InlineData(60)]
+        [InlineData(80)]
+        [InlineData(150)]
+        public void The_trim_costs_no_more_than_the_delta_v_left_above_the_reserve(double dvLeft)
+        {
+            var fix = Trim(Aimed(400), InsideWindowS, dvLeft);
+            var spare = Math.Min(CorrectionBurn.MostFixDv, DeorbitBurn.SpareDv(dvLeft, 0, 0, null));
+            _out.WriteLine("{0} m/s left, {1:0.00} spare: {2:0.00} m/s; {3}", dvLeft, spare, D(fix, "dv"), fix["aim_note"]);
+            Assert.Equal("", fix["error"]);
+            Assert.InRange(D(fix, "dv"), 0, spare + 0.05);
+        }
+
+        /// <summary>#994: with nothing above the reserve the craft enters on the path it has: no trim, the periapsis it already has, a note saying there is nothing to spend, and the block goes on.</summary>
+        [Fact]
+        public void With_too_little_delta_v_left_it_enters_directly_on_the_path_it_has()
+        {
+            var fix = Trim(Aimed(400), InsideWindowS, 40);
+            _out.WriteLine("{0:0.000} m/s, Pe {1:0} m; {2}", D(fix, "dv"), D(fix, "pe_predicted"), fix["aim_note"]);
+            Assert.Equal("", fix["error"]);
+            Assert.Equal(0.0, D(fix, "dv"));
+            Assert.InRange(D(fix, "pe_predicted"), Pe - 1, Pe + 1);
+            Assert.Contains("over the 0 m/s above the reserve", (string)fix["aim_note"]);
+            Assert.Equal(true, BurnWorth.Call(new Dictionary<string, object> { { "block", "correction" }, { "fix", fix }, { "accel", 10.0 } })["skip"]);
+        }
+
         /// <summary>#907: a stage dropped (or held below stage_limit) before the landing isn't spent: the trim spends by the kept delta-v, as the aimed correction does.</summary>
         [Fact]
         public void The_trim_spends_only_the_kept_delta_v()
