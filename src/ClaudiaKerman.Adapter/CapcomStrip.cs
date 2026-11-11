@@ -62,6 +62,7 @@ namespace ClaudiaKerman.Adapter
 
         // Where the player put the strip (its top left); unmoved, it sits between the altimeter and the app bar, as last read.
         private readonly KnownStockUi _stockUi = new KnownStockUi();
+        private object _flightUi;
         private bool _moved;
         private Vector2 _position;
         private bool _memoryApplied;
@@ -131,11 +132,12 @@ namespace ClaudiaKerman.Adapter
             GUI.skin = HighLogic.Skin;
             Styles();
             ApplyRemembered();
+            // The scale first: a resize step gives sizes at the scale now, which mustn't be resized again.
+            FollowScale();
             if (_dragging) Drag();
             var expanded = PanelShowing;
             if (!expanded) EndResize();
             else StepResize();
-            FollowScale();
             _width = Mathf.Min(_wantWidth, Screen.width);
             // Placed every frame, so a smaller screen re-clamps it and a larger one gives it back. Where the player left it;
             // unmoved, in the gap between the altimeter and the app bar, which is re-read for a new scale, screen or bar.
@@ -165,9 +167,13 @@ namespace ClaudiaKerman.Adapter
         }
 
         // The stock edges this frame, or the last ones read at this scale, screen and scene when they can't be read now.
+        // Each Flight (a revert or quickload too) has its own flight UI controller, which stands for the scene; a frame
+        // without one keeps the last.
         private StockUi KnownEdges()
         {
-            return _stockUi.Next(StockUiEdges.Read(), ClaudiaSkin.FontScale, Screen.width, Screen.height, WindowMemory.Scene());
+            var flightUi = FlightUIModeController.Instance;
+            if (flightUi != null) _flightUi = flightUi;
+            return _stockUi.Next(StockUiEdges.Read(), ClaudiaSkin.FontScale, Screen.width, Screen.height, _flightUi);
         }
 
         private bool LocksMouseAt(Vector2 local)

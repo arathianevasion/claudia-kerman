@@ -279,6 +279,23 @@ namespace ClaudiaKerman.Core.Tests
             Assert.Equal(90 + 6, place.Y);
         }
 
+        [Fact]
+        public void TheNarrowFallbackChecksTheBarWhereTheScreenPutsTheStrip()
+        {
+            // Centred under an altimeter at 0..200 the strip would start at -270 and end clear of a bar from 730; kept on
+            // the 800 px screen it runs 0..740, under the bar.
+            var place = Unmoved(new StockUi(0, 200, 0, 90, 730, 120), 800, 1440);
+            Assert.Equal(0, place.X);
+            Assert.Equal(120 + 6, place.Y);
+        }
+
+        [Fact]
+        public void TheNarrowFallbackWithinTheMarginOfTheBarGoesBelowIt()
+        {
+            // The strip ends at 1650, 3 px short of the bar.
+            Assert.Equal(120 + 6, Unmoved(new StockUi(1080, 1480, 0, 90, 1653, 120)).Y);
+        }
+
         // ---- The last stock edges read ----
 
         private static readonly StockUi Other = new StockUi(1000, 1400, 0, 80, 2100, 50);
@@ -311,6 +328,14 @@ namespace ClaudiaKerman.Core.Tests
             kept.Next(Stock, 1.2f, 2560, 1440, "flight");
             Assert.False(kept.Next(StockUi.Unknown, scale, width, height, scene).Known);
             Assert.Equal(Other, kept.Next(Other, scale, width, height, scene));
+        }
+
+        [Fact]
+        public void AReloadedSceneOfTheSameKindForgetsTheEdges()
+        {
+            var kept = new KnownStockUi();
+            kept.Next(Stock, 1.2f, 2560, 1440, new object());
+            Assert.False(kept.Next(StockUi.Unknown, 1.2f, 2560, 1440, new object()).Known);
         }
 
         [Fact]

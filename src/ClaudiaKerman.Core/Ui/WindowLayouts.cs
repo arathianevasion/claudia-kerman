@@ -27,8 +27,9 @@ namespace ClaudiaKerman.Core.Ui
     /// Where each window sat last time, per scene, kept in the mod's config folder (never the save), so the
     /// same window can sit in different places in the Space Center, the VAB/SPH and Flight. Each box keeps the UI scale
     /// it was sized at (<see cref="UiScale"/>), so it opens resized for the scale now. Format:
-    /// <c>scene.window = x, y, width, height, scale</c> lines, <c>#</c> comments; a line without the scale was kept at
-    /// <see cref="UiScale.Base"/>, and a line that doesn't parse is ignored.
+    /// <c>scene.window = x, y, width, height[, scale]</c> lines, <c>#</c> comments; the scale is written only when it isn't
+    /// <see cref="UiScale.Base"/> (so at 100% and 100% the file reads as before), a line without it was kept at the base,
+    /// and a line that doesn't parse is ignored.
     /// </summary>
     public sealed class WindowLayouts
     {
@@ -67,11 +68,17 @@ namespace ClaudiaKerman.Core.Ui
         public bool Set(string scene, string window, WindowBox box, float scale)
         {
             box = new WindowBox((float)Math.Round(box.X), (float)Math.Round(box.Y), (float)Math.Round(box.Width), (float)Math.Round(box.Height));
+            // As the file keeps it, so the same scale read back is the same.
+            scale = (float)Math.Round(scale, ScaleDecimals);
             Kept old;
             if (_boxes.TryGetValue(Key(scene, window), out old) && old.Box.Equals(box) && old.Scale == scale) return false;
             _boxes[Key(scene, window)] = new Kept { Box = box, Scale = scale };
             return true;
         }
+
+        // A scale is kept to 4 decimals; two closer than the last of them are the same.
+        private const int ScaleDecimals = 4;
+        private const float ScaleTolerance = 0.0001f;
 
         /// <summary>
         /// A box sized at the UI scale <paramref name="from"/>, sized for <paramref name="to"/>: the position is kept (the
@@ -79,7 +86,7 @@ namespace ClaudiaKerman.Core.Ui
         /// </summary>
         public static WindowBox Rescale(WindowBox box, float from, float to)
         {
-            if (from <= 0 || to <= 0 || from == to) return box;
+            if (from <= 0 || to <= 0 || Math.Abs(from - to) < ScaleTolerance) return box;
             var by = to / from;
             return new WindowBox(box.X, box.Y, (float)Math.Round(box.Width * by, MidpointRounding.AwayFromZero),
                 (float)Math.Round(box.Height * by, MidpointRounding.AwayFromZero));
@@ -152,8 +159,10 @@ namespace ClaudiaKerman.Core.Ui
                     .Append(box.X.ToString("0", CultureInfo.InvariantCulture)).Append(", ")
                     .Append(box.Y.ToString("0", CultureInfo.InvariantCulture)).Append(", ")
                     .Append(box.Width.ToString("0", CultureInfo.InvariantCulture)).Append(", ")
-                    .Append(box.Height.ToString("0", CultureInfo.InvariantCulture)).Append(", ")
-                    .Append(_boxes[key].Scale.ToString("0.####", CultureInfo.InvariantCulture)).Append('\n');
+                    .Append(box.Height.ToString("0", CultureInfo.InvariantCulture));
+                var scale = _boxes[key].Scale;
+                if (Math.Abs(scale - UiScale.Base) >= ScaleTolerance) text.Append(", ").Append(scale.ToString("0.####", CultureInfo.InvariantCulture));
+                text.Append('\n');
             }
             return text.ToString();
         }

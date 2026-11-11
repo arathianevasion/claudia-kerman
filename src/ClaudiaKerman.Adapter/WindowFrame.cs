@@ -43,6 +43,7 @@ namespace ClaudiaKerman.Adapter
         private string _appliedScene;
         private Rect _default;
         private WindowBox _lastStored;
+        private float _lastStoredScale;
         // The UI scale the sizes are for (0: they don't follow it), and the minimum at scale 1.
         private float _scale;
         private Vector2 _minDesign;
@@ -247,6 +248,7 @@ namespace ClaudiaKerman.Adapter
             else
                 Rect = _default;
             _lastStored = new WindowBox(Rect.x, Rect.y, Rect.width, Rect.height);
+            _lastStoredScale = StoreScale;
         }
 
         // Saved once a drag or resize is let go, not on every frame of it.
@@ -254,8 +256,10 @@ namespace ClaudiaKerman.Adapter
         {
             if (_memoryName == null || _resizing || Input.GetMouseButton(0)) return;
             var box = new WindowBox(Rect.x, Rect.y, Rect.width, Rect.height);
-            if (box.Equals(_lastStored)) return;
+            // A new scale alone is stored too, so the box isn't later resized from the scale before.
+            if (box.Equals(_lastStored) && StoreScale == _lastStoredScale) return;
             _lastStored = box;
+            _lastStoredScale = StoreScale;
             WindowMemory.Store(_memoryName, box, StoreScale);
         }
 

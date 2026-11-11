@@ -145,11 +145,12 @@ namespace ClaudiaKerman.Core.Ui
     {
         private StockUi _last;
         private float _scale, _width, _height;
-        private string _scene;
+        private object _scene;
 
-        public StockUi Next(StockUi read, float scale, float screenWidth, float screenHeight, string scene)
+        /// <param name="scene">Stands for the scene the edges belong to: one that isn't <see cref="object.Equals(object, object)"/> to the last forgets them (a reloaded Flight is a new scene).</param>
+        public StockUi Next(StockUi read, float scale, float screenWidth, float screenHeight, object scene)
         {
-            if (scale != _scale || screenWidth != _width || screenHeight != _height || scene != _scene)
+            if (scale != _scale || screenWidth != _width || screenHeight != _height || !Equals(scene, _scene))
             {
                 _last = StockUi.Unknown;
                 _scale = scale;
@@ -224,8 +225,10 @@ namespace ClaudiaKerman.Core.Ui
             else
             {
                 width = Math.Min(width, screenWidth);
-                x = (stock.AltimeterLeft + stock.AltimeterRight - width) / 2;
-                y = (x + width > stock.AppBarLeft ? Math.Max(stock.AltimeterBottom, stock.AppBarBottom) : stock.AltimeterBottom) + margin;
+                // Kept on screen first, so the bar check sees where the strip will be; within the margin counts as under it.
+                x = Math.Max(0, Math.Min((stock.AltimeterLeft + stock.AltimeterRight - width) / 2, screenWidth - width));
+                var underBar = x + width + margin > stock.AppBarLeft;
+                y = (underBar ? Math.Max(stock.AltimeterBottom, stock.AppBarBottom) : stock.AltimeterBottom) + margin;
             }
             return Place(x, y, new StripSize(width, size.StripHeight, size.TabHeight, size.PanelHeight, size.MinPanelHeight), screenWidth, screenHeight);
         }

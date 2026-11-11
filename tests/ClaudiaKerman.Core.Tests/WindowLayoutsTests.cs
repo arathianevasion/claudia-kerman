@@ -114,6 +114,29 @@ namespace ClaudiaKerman.Core.Tests
         }
 
         [Fact]
+        public void AtTheBaseScaleTheLineIsWrittenAsBefore()
+        {
+            var layouts = new WindowLayouts();
+            layouts.Set("flight", "mission", new WindowBox(10, 20, 500, 800), 1.2f);
+            Assert.Contains("flight.mission = 10, 20, 500, 800\n", layouts.Format());
+        }
+
+        [Fact]
+        public void AScaleReadBackFromTheFileIsTheSameScale()
+        {
+            // 1.2 x 1.1 x 0.9 is kept as 1.188; the live float is a hair off it.
+            var live = 1.2f * 1.1f * 0.9f;
+            var layouts = new WindowLayouts();
+            layouts.Set("flight", "mission", new WindowBox(10, 20, 501, 799), live);
+            var loaded = new WindowLayouts();
+            loaded.Parse(layouts.Format().Split('\n'));
+            Assert.False(loaded.Set("flight", "mission", new WindowBox(10, 20, 501, 799), live));
+            WindowBox box;
+            Assert.True(loaded.TryGet("flight", "mission", live, out box));
+            Assert.Equal(new WindowBox(10, 20, 501, 799), box);
+        }
+
+        [Fact]
         public void TheSameBoxAtANewScaleIsAChange()
         {
             var layouts = new WindowLayouts();
