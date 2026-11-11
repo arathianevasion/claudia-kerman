@@ -110,6 +110,9 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("Return to Kerbin", "Depart Duna in the soonest window, then reenter and land.")]
         [InlineData("Return to Kerbin", "Leave Mun orbit, then reenter and land.")]
         [InlineData("Return to Kerbin", "Burn Ike to Kerbin, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Eject from low Duna orbit at the soonest window, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Burn from low Duna orbit at the soonest window, then reenter and land.")]
+        [InlineData("Return to Kerbin", "Ejection from Duna at the soonest window, then reenter and land.")]
         public void AKerbinReturnUnderChutesIsNoLanding(string name, string intent)
         {
             var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };
@@ -122,6 +125,8 @@ namespace ClaudiaKerman.Core.Tests
         [InlineData("Return to Kerbin via Minmus", "Descend to the Minmus flats for a sample, then come home.")]
         [InlineData("Second stop", "Deorbit from Mun orbit to the crater, then return to Kerbin.")]
         [InlineData("Land at the Mun's crater, then return to Kerbin", "")]
+        [InlineData("Mun and home", "Descend from Mun orbit to the crater, then return to Kerbin.")]
+        [InlineData("Mun and home", "Do the deorbit burn from the Mun’s orbit, then return to Kerbin.")]
         public void AReturnThatAlsoComesDownOnAnotherBodyIsALanding(string name, string intent)
         {
             var plan = new List<PlannedSequence> { Leg("Ascend from Duna", "Launch to orbit."), Leg(name, intent) };

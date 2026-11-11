@@ -24,21 +24,31 @@ namespace ClaudiaKerman.Core.Missions
 
         /// <summary>
         /// True when <paramref name="body"/>, a body named in <paramref name="words"/>, is where a return comes from (#979): "return / come
-        /// home from X", "eject / depart / leave (from) X", "X-to-Kerbin" or "X to Kerbin", "from X orbit". "Deorbit from Mun orbit" isn't:
-        /// it comes down on the Mun.
+        /// home from X", "eject / depart / leave (from) X", "X-to-Kerbin" or "X to Kerbin", "from (low) X orbit". Not "from X orbit" after
+        /// land, touch down, deorbit or descend in the same clause: "Descend from Mun orbit to the crater" comes down on the Mun.
         /// </summary>
         public static bool IsReturnOrigin(string words, Match body)
         {
             var before = words.Substring(0, body.Index);
             var after = words.Substring(body.Index + body.Length);
-            return ReturnsFrom.IsMatch(before) || Leaves.IsMatch(before) || ToKerbin.IsMatch(after)
-                || (FromBefore.IsMatch(before) && !DeorbitFromBefore.IsMatch(before) && OrbitAfter.IsMatch(after));
+            if (ReturnsFrom.IsMatch(before) || Leaves.IsMatch(before) || ToKerbin.IsMatch(after)) return true;
+            var clause = before.Substring(before.LastIndexOfAny(new[] { '.', ',', ';' }) + 1);
+            return FromBefore.IsMatch(before) && OrbitAfter.IsMatch(after)
+                && !Landing.IsMatch(clause) && !Deorbit.IsMatch(clause) && !Descent.IsMatch(clause);
         }
-        private static readonly Regex Leaves = new Regex(@"\b(?:eject|depart|leav)(?:s|ed|ing|e|es)?\s+(?:from\s+)?(?:the\s+)?$", RegexOptions.IgnoreCase);
-        private static readonly Regex ToKerbin = new Regex(@"^(?:'s)?(?:\s*-\s*|\s+)to\s*-?\s*Kerbin\b", RegexOptions.IgnoreCase);
-        private static readonly Regex FromBefore = new Regex(@"\bfrom\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
-        private static readonly Regex DeorbitFromBefore = new Regex(@"\bde-?orbit(?:s|ed|ing)?\s+from\s+(?:the\s+)?$", RegexOptions.IgnoreCase);
-        private static readonly Regex OrbitAfter = new Regex(@"^(?:'s)?\s+orbit\b", RegexOptions.IgnoreCase);
+
+        /// <summary>The text just before a body, leaving it: "eject from the", "depart", "leave", "ejection from", "departure from".</summary>
+        private static readonly Regex Leaves = new Regex(@"\b(?:eject(?:s|ed|ing|ion)?|depart(?:s|ed|ing|ure)?|leav(?:e|es|ing))\s+(?:from\s+)?(?:the\s+)?$", RegexOptions.IgnoreCase);
+
+        /// <summary>The text just after a body, heading for Kerbin: "-to-Kerbin", " to Kerbin".</summary>
+        private static readonly Regex ToKerbin = new Regex(@"^(?:['’]s)?(?:\s*-\s*|\s+)to\s*-?\s*Kerbin\b", RegexOptions.IgnoreCase);
+
+        /// <summary>The text just before a body ends "from", "from the", or "from" and one word ("from low").</summary>
+        private static readonly Regex FromBefore = new Regex(@"\bfrom\s+(?:the\s+)?(?:\w+\s+)?$", RegexOptions.IgnoreCase);
+
+        /// <summary>The text just after a body is its orbit: " orbit", "'s orbit".</summary>
+        private static readonly Regex OrbitAfter = new Regex(@"^(?:['’]s)?\s+orbit\b", RegexOptions.IgnoreCase);
+
         /// <summary>
         /// The return to the home planet (#689): a return that names Kerbin, or "come/return/go/head home", "back home" and "fly home"
         /// (inflected where natural), whole words. "home in on" and "home stretch" are not returns.
