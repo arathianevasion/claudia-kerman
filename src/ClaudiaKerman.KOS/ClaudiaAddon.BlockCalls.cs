@@ -114,6 +114,8 @@ namespace ClaudiaKerman.KOS
                 "Core Library only (launch, ascend): the decouplers under the engines that give thrust, from core and home; lexicon error, decouplers, gone, stuck"));
             AddSuffix("DROPCHECK", new OneArgsSuffix<Lexicon, Lexicon>(DropCheckCall,
                 "Core Library only (drop_parts, deorbit, reentry): whether a drop taking the craft from before to left m/s of delta-v takes what the Mission Plan still needs; lexicon error, refused, reason, taken, need"));
+            AddSuffix("AUTODROPFREE", new NoArgsSuffix<Lexicon>(AutoDropFreeCall,
+                "Core Library only (drop_empty auto, each look): the part kinds that may leave with an empty tank, from the Mission Plan; lexicon error, free"));
             AddSuffix("LANDGUARD", new OneArgsSuffix<Lexicon, Lexicon>(LandGuardTick,
                 "Core Library only (land, each braking tick): the path guard on alt against path_alt, and near the site the straight-down fallback; lexicon verdict (fly, vertical or abort), error, why, over, and the fallback's al, cr, up, vv, ..."));
             AddSuffix("LANDSTEER", new OneArgsSuffix<Lexicon, Lexicon>(LandSteerTick,
@@ -528,6 +530,23 @@ namespace ClaudiaKerman.KOS
                     MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence);
                 return KosValues.FromPlain(verdict);
             }, () => verdict["error"] as string == "" ? (bool)verdict["refused"] ? "refused: " + verdict["reason"] : "allowed" : (string)verdict["error"]);
+        }
+
+        /// <summary>
+        /// <c>ADDONS:CLAUDIA:AUTODROPFREE</c> (#979, ADR 0014): what may leave with an empty tank (<see cref="BlockCalls.AutoDropFree"/>). drop_empty asks
+        /// every look, twice a second, so its time is logged at most once a second (guardrail 6); it reads the plan's words only, no snapshot. A failure
+        /// answers as with no plan (a shield only), which the block reads as it reads an answer.
+        /// </summary>
+        private Lexicon AutoDropFreeCall()
+        {
+            System.Collections.Generic.IDictionary<string, object> found = null;
+            var answer = (Lexicon)Guarded("AUTODROPFREE", () =>
+            {
+                found = BlockCalls.AutoDropFree(MissionDriver.BlockTestPlan ?? MissionDriver.PlanLegs, MissionDriver.CurrentSequence);
+                return KosValues.FromPlain(found);
+            }, () => "free " + string.Join(", ", ((System.Collections.IList)found["free"]).Cast<object>().Select(k => k.ToString()).ToArray()), 1);
+            // Guarded's error lexicon has no free, wherever the call threw: the block reads free unguarded.
+            return answer.ContainsKey(new StringValue("free")) ? answer : (Lexicon)KosValues.FromPlain(BlockCalls.AutoDropFree(null, -1));
         }
 
         /// <summary><c>ADDONS:CLAUDIA:LANDINGTARGET</c> (#790, ADR 0014): the landing target default (<see cref="BlockCalls.LandingTarget"/>).</summary>
